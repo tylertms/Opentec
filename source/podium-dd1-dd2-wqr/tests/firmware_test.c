@@ -235,21 +235,19 @@ static bool exchange_i2c_read(Kinetis *device, uint8_t request_sequence) {
                (uint16_t)(frame[61] | (uint16_t)(frame[62] << 8));
 }
 
-int main(int argc, char **argv) {
+static bool firmware_passes(const char *path, KinetisPackage package) {
     KinetisConfiguration configuration = kinetis_configuration(KINETIS_PROFILE_MKV30F12810);
     Kinetis *device;
     bool passed = false;
 
-    if (argc != 2) {
-        return EXIT_FAILURE;
-    }
+    configuration.package = package;
     configuration.vector_table_address = APPLICATION_BASE;
     configuration.sram_size = SRAM_SIZE;
     device = kinetis_create(configuration);
     if (device == NULL) {
-        return EXIT_FAILURE;
+        return false;
     }
-    if (load_firmware(device, argv[1]) && kinetis_reset(device) &&
+    if (load_firmware(device, path) && kinetis_reset(device) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 0, 0) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && recover_from_noise(device) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && recover_from_bad_end_marker(device) &&
@@ -262,5 +260,23 @@ int main(int argc, char **argv) {
         passed = true;
     }
     kinetis_destroy(device);
-    return passed ? EXIT_SUCCESS : EXIT_FAILURE;
+    return passed;
+}
+
+int main(int argc, char **argv) {
+    static const KinetisPackage packages[] = {
+        KINETIS_PACKAGE_FM_32_QFN,
+        KINETIS_PACKAGE_LF_48_LQFP,
+        KINETIS_PACKAGE_LH_64_LQFP,
+    };
+
+    if (argc != 2) {
+        return EXIT_FAILURE;
+    }
+    for (size_t index = 0; index < sizeof(packages) / sizeof(packages[0]); ++index) {
+        if (!firmware_passes(argv[1], packages[index])) {
+            return EXIT_FAILURE;
+        }
+    }
+    return EXIT_SUCCESS;
 }
