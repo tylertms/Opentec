@@ -145,6 +145,24 @@ static bool exchange_primary_spi(KinetisK22 *device, uint8_t request_sequence) {
            primary_response_valid(response, (uint8_t)(request_sequence + 2), payload, true);
 }
 
+static bool exchange_alternate_spi(KinetisK22 *device, uint8_t request_sequence) {
+    uint8_t payload[WQR_FRAME_PAYLOAD_SIZE] = {0x34, 0x12};
+    uint8_t request[WQR_FRAME_SIZE];
+    uint8_t response[TRANSMIT_WINDOW_SIZE];
+    const uint8_t *frame = response + RECEIVE_PREFIX_SIZE;
+
+    payload[WQR_FRAME_PAYLOAD_SIZE - 1] = 1;
+    return wqr_protocol_build_frame(request, WQR_PAYLOAD_ALTERNATE_SPI, request_sequence, payload,
+                                    sizeof(payload)) &&
+           send_request(device, request) && receive_response(device, response) &&
+           frame[0] == 0x7b && frame[1] == WQR_PAYLOAD_ALTERNATE_SPI &&
+           frame[2] == (uint8_t)(request_sequence + 1) && frame[3] == WQR_FRAME_PAYLOAD_SIZE &&
+           frame[4] == payload[0] && frame[5] == payload[1] && (frame[60] & 2) != 0 &&
+           frame[63] == 0x7d &&
+           wqr_protocol_crc(frame + 1, WQR_FRAME_BODY_SIZE) ==
+               (uint16_t)(frame[61] | (uint16_t)(frame[62] << 8));
+}
+
 int main(int argc, char **argv) {
     KinetisK22Configuration configuration =
         kinetis_k22_configuration(KINETIS_K22_PROFILE_MK22F12810);
@@ -163,7 +181,8 @@ int main(int argc, char **argv) {
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 0, 0) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && recover_from_noise(device) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_primary_spi(device, 1) &&
-        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 3, 0xaa) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_alternate_spi(device, 3) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 4, 0xaa) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 0, 0)) {
         passed = true;
     }
