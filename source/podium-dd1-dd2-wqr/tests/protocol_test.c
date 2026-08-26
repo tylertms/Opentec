@@ -8,6 +8,8 @@ typedef struct {
     unsigned int spi_transfers;
     uint8_t i2c_address;
     uint8_t i2c_command;
+    bool i2c_complete;
+    bool i2c_started;
     bool spi_complete;
     bool spi_started;
     bool transfer_ready;
@@ -57,6 +59,23 @@ static wqr_io_result test_i2c_read(void *context, uint8_t address, uint8_t comma
 
     io->i2c_address = address;
     io->i2c_command = command;
+    for (index = 0; index < length; ++index) {
+        data[index] = (uint8_t)(command + index);
+    }
+    return WQR_IO_SUCCEEDED;
+}
+
+static wqr_io_result test_pending_i2c_read(void *context, uint8_t address, uint8_t command,
+                                           uint8_t *data, size_t length) {
+    test_io *io = context;
+    size_t index;
+
+    io->i2c_address = address;
+    io->i2c_command = command;
+    io->i2c_started = true;
+    if (!io->i2c_complete) {
+        return WQR_IO_PENDING;
+    }
     for (index = 0; index < length; ++index) {
         data[index] = (uint8_t)(command + index);
     }
@@ -228,6 +247,32 @@ static void test_pending_spi(void) {
     assert(state.spi_transfers == 1);
 }
 
+static void test_pending_i2c(void) {
+    test_io state = {0};
+    wqr_io io = {.context = &state, .i2c_read = test_pending_i2c_read};
+    wqr_protocol protocol;
+    uint8_t frame[WQR_FRAME_SIZE];
+    const uint8_t request[] = {0, 0xa1, 0x10, 3, 0};
+
+    wqr_protocol_init(&protocol, &io);
+    assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_I2C, 0, request, sizeof(request)));
+    assert(wqr_protocol_receive(&protocol, frame));
+    wqr_protocol_poll(&protocol);
+    assert(!wqr_protocol_response(&protocol, frame));
+    assert(state.i2c_started);
+    assert(state.i2c_address == 0xa0);
+    assert(state.i2c_command == 0x10);
+
+    state.i2c_complete = true;
+    wqr_protocol_poll(&protocol);
+    assert(wqr_protocol_response(&protocol, frame));
+    assert(frame[3] == 5);
+    assert(frame[4] == 1);
+    assert(frame[6] == 0x10);
+    assert(frame[7] == 0x11);
+    assert(frame[8] == 0x12);
+}
+
 static void test_chunked_response(void) {
     test_io state = {0};
     wqr_io io = {.context = &state, .i2c_read = test_i2c_read};
@@ -265,6 +310,7 @@ int main(void) {
     test_primary_spi_handshake();
     test_transfer_not_ready();
     test_pending_spi();
+    test_pending_i2c();
     test_chunked_response();
     test_sensor();
     return 0;

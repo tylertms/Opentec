@@ -15,10 +15,34 @@ enum {
     SPI_TRANSMIT_DMA_CHANNEL = 2,
     SPI_RECEIVE_DMA_SOURCE = 14,
     SPI_TRANSMIT_DMA_SOURCE = 15,
-    I2C_TIMEOUT = 100000,
+    I2C_TIMEOUT_MILLISECONDS = 10,
     FPU_ACCESS_MASK = (3u << 20) | (3u << 22),
     WDOG_REQUIRED_MASK = 0x100
 };
+
+typedef enum {
+    I2C_IDLE,
+    I2C_ADDRESS_SENT,
+    I2C_WRITE_IN_PROGRESS,
+    I2C_COMMAND_SENT,
+    I2C_READ_ADDRESS_SENT,
+    I2C_READ_IN_PROGRESS,
+    I2C_SUCCEEDED,
+    I2C_FAILED
+} i2c_phase;
+
+typedef struct {
+    const uint8_t *write_data;
+    uint8_t *read_data;
+    size_t write_length;
+    size_t write_index;
+    size_t read_length;
+    size_t read_index;
+    uint8_t address;
+    uint8_t command;
+    volatile uint8_t timeout;
+    volatile i2c_phase phase;
+} i2c_transaction;
 
 uint32_t SystemCoreClock = DEFAULT_SYSTEM_CLOCK;
 
@@ -30,6 +54,7 @@ static bool uart_transmit_active;
 static bool uart_response_due;
 static volatile bool spi_transfer_complete;
 static bool spi_transfer_active;
+static i2c_transaction i2c;
 static volatile bool adc_sample_ready;
 static volatile uint16_t adc_sample;
 
@@ -258,83 +283,80 @@ static wqr_io_result io_spi_word(void *context, uint16_t transmit, uint16_t *rec
     return success ? WQR_IO_SUCCEEDED : WQR_IO_FAILED;
 }
 
-static bool i2c_wait(void) {
-    uint32_t timeout = I2C_TIMEOUT;
+static void finish_i2c(i2c_phase result) {
+    I2C0->C1 = I2C_C1_IICEN_MASK | I2C_C1_IICIE_MASK;
+    i2c.timeout = 0;
+    i2c.phase = result;
+}
 
-    while ((I2C0->S & I2C_S_IICIF_MASK) == 0 && --timeout != 0) {
+static wqr_io_result i2c_result(void) {
+    if (i2c.phase == I2C_SUCCEEDED) {
+        i2c.phase = I2C_IDLE;
+        return WQR_IO_SUCCEEDED;
     }
-    I2C0->S |= I2C_S_IICIF_MASK;
-    return timeout != 0 && (I2C0->S & I2C_S_RXAK_MASK) == 0;
+    if (i2c.phase == I2C_FAILED) {
+        i2c.phase = I2C_IDLE;
+        return WQR_IO_FAILED;
+    }
+    return WQR_IO_PENDING;
 }
 
-static bool i2c_send(uint8_t value) {
-    I2C0->D = value;
-    return i2c_wait();
+static void start_i2c(uint8_t address) {
+    i2c.address = address;
+    i2c.timeout = I2C_TIMEOUT_MILLISECONDS;
+    i2c.phase = I2C_ADDRESS_SENT;
+    I2C0->C1 = I2C_C1_IICEN_MASK | I2C_C1_IICIE_MASK | I2C_C1_MST_MASK | I2C_C1_TX_MASK;
+    I2C0->D = address;
 }
-
-static void i2c_stop(void) { I2C0->C1 = I2C_C1_IICEN_MASK; }
 
 static wqr_io_result io_i2c_write(void *context, uint8_t address, const uint8_t *data,
                                   size_t length) {
-    size_t index;
+    wqr_io_result result;
 
     (void)context;
-    I2C0->C1 = I2C_C1_IICEN_MASK | I2C_C1_MST_MASK | I2C_C1_TX_MASK;
-    if (!i2c_send(address)) {
-        i2c_stop();
-        return WQR_IO_FAILED;
+    result = i2c_result();
+    if (result != WQR_IO_PENDING || i2c.phase != I2C_IDLE) {
+        return result;
     }
-    for (index = 0; index < length; ++index) {
-        if (!i2c_send(data[index])) {
-            i2c_stop();
-            return WQR_IO_FAILED;
-        }
-    }
-    i2c_stop();
-    return WQR_IO_SUCCEEDED;
+    i2c.write_data = data;
+    i2c.write_length = length;
+    i2c.write_index = 0;
+    i2c.read_length = 0;
+    start_i2c(address);
+    return WQR_IO_PENDING;
 }
 
 static wqr_io_result io_i2c_read(void *context, uint8_t address, uint8_t command, uint8_t *data,
                                  size_t length) {
-    size_t index;
+    wqr_io_result result;
 
     (void)context;
+    result = i2c_result();
+    if (result != WQR_IO_PENDING || i2c.phase != I2C_IDLE) {
+        return result;
+    }
     if (length == 0) {
         return WQR_IO_SUCCEEDED;
     }
-    I2C0->C1 = I2C_C1_IICEN_MASK | I2C_C1_MST_MASK | I2C_C1_TX_MASK;
-    if (!i2c_send(address) || !i2c_send(command)) {
-        i2c_stop();
-        return WQR_IO_FAILED;
-    }
-    I2C0->C1 = I2C_C1_IICEN_MASK | I2C_C1_MST_MASK | I2C_C1_TX_MASK | I2C_C1_RSTA_MASK;
-    if (!i2c_send((uint8_t)(address | 1))) {
-        i2c_stop();
-        return WQR_IO_FAILED;
-    }
-    I2C0->C1 = I2C_C1_IICEN_MASK | (length == 1 ? I2C_C1_TXAK_MASK : 0);
-    (void)I2C0->D;
-    for (index = 0; index < length; ++index) {
-        if (!i2c_wait()) {
-            i2c_stop();
-            return WQR_IO_FAILED;
-        }
-        if (index + 2 == length) {
-            I2C0->C1 |= I2C_C1_TXAK_MASK;
-        }
-        if (index + 1 == length) {
-            i2c_stop();
-        }
-        data[index] = I2C0->D;
-    }
-    return WQR_IO_SUCCEEDED;
+    i2c.read_data = data;
+    i2c.read_length = length;
+    i2c.read_index = 0;
+    i2c.write_length = 0;
+    i2c.command = command;
+    start_i2c(address);
+    return WQR_IO_PENDING;
 }
 
 static void configure_i2c(void) {
     SIM->SCGC4 |= SIM_SCGC4_I2C0_MASK;
+    I2C0->A1 = 0;
     I2C0->F = I2C_F_ICR(4);
-    I2C0->C1 = I2C_C1_IICEN_MASK;
+    I2C0->C1 = I2C_C1_IICEN_MASK | I2C_C1_IICIE_MASK;
+    I2C0->S = I2C_S_IICIF_MASK | I2C_S_ARBL_MASK;
+    I2C0->C2 = 0;
     I2C0->FLT = I2C_FLT_FLT(10) | I2C_FLT_SSIE_MASK;
+    I2C0->RA = 0;
+    nvic_enable(I2C0_IRQn, 10);
 }
 
 static uint8_t io_read_inputs(void *context) {
@@ -422,10 +444,96 @@ void DMA3_IRQHandler(void) {
     spi_transfer_complete = true;
 }
 
+void I2C0_IRQHandler(void) {
+    uint8_t filter = I2C0->FLT;
+    uint8_t status = I2C0->S;
+
+    I2C0->FLT |= filter & (I2C_FLT_STARTF_MASK | I2C_FLT_STOPF_MASK);
+    if ((status & I2C_S_IICIF_MASK) == 0) {
+        return;
+    }
+    if ((status & I2C_S_ARBL_MASK) != 0) {
+        I2C0->S = I2C_S_ARBL_MASK | I2C_S_IICIF_MASK;
+        finish_i2c(I2C_FAILED);
+        return;
+    }
+
+    switch (i2c.phase) {
+    case I2C_ADDRESS_SENT:
+        if ((status & I2C_S_RXAK_MASK) != 0) {
+            finish_i2c(I2C_FAILED);
+        } else if (i2c.read_length != 0) {
+            I2C0->D = i2c.command;
+            i2c.phase = I2C_COMMAND_SENT;
+        } else if (i2c.write_index < i2c.write_length) {
+            I2C0->D = i2c.write_data[i2c.write_index++];
+            i2c.phase = I2C_WRITE_IN_PROGRESS;
+        } else {
+            finish_i2c(I2C_SUCCEEDED);
+        }
+        break;
+    case I2C_WRITE_IN_PROGRESS:
+        if ((status & I2C_S_RXAK_MASK) != 0) {
+            finish_i2c(I2C_FAILED);
+        } else if (i2c.write_index < i2c.write_length) {
+            I2C0->D = i2c.write_data[i2c.write_index++];
+        } else {
+            finish_i2c(I2C_SUCCEEDED);
+        }
+        break;
+    case I2C_COMMAND_SENT:
+        if ((status & I2C_S_RXAK_MASK) != 0) {
+            finish_i2c(I2C_FAILED);
+        } else {
+            I2C0->C1 |= I2C_C1_RSTA_MASK;
+            I2C0->D = i2c.address | 1;
+            i2c.phase = I2C_READ_ADDRESS_SENT;
+        }
+        break;
+    case I2C_READ_ADDRESS_SENT:
+        if ((status & I2C_S_RXAK_MASK) != 0) {
+            finish_i2c(I2C_FAILED);
+        } else {
+            I2C0->C1 = I2C_C1_IICEN_MASK | I2C_C1_IICIE_MASK | I2C_C1_MST_MASK |
+                       (i2c.read_length == 1 ? I2C_C1_TXAK_MASK : 0);
+            (void)I2C0->D;
+            i2c.phase = I2C_READ_IN_PROGRESS;
+        }
+        break;
+    case I2C_READ_IN_PROGRESS:
+        if (i2c.read_index + 2 == i2c.read_length) {
+            I2C0->C1 |= I2C_C1_TXAK_MASK;
+        }
+        if (i2c.read_index + 1 == i2c.read_length) {
+            I2C0->C1 = I2C_C1_IICEN_MASK | I2C_C1_IICIE_MASK;
+        }
+        i2c.read_data[i2c.read_index++] = I2C0->D;
+        if (i2c.read_index == i2c.read_length) {
+            finish_i2c(I2C_SUCCEEDED);
+        }
+        break;
+    default:
+        finish_i2c(I2C_FAILED);
+        break;
+    }
+    I2C0->S = I2C_S_IICIF_MASK;
+}
+
+static void update_i2c_timeout(void) {
+    if (i2c.timeout == 0) {
+        return;
+    }
+    --i2c.timeout;
+    if (i2c.timeout == 0) {
+        finish_i2c(I2C_FAILED);
+    }
+}
+
 void PIT0_IRQHandler(void) {
     static uint8_t adc_period;
 
     wqr_protocol_tick(&protocol);
+    update_i2c_timeout();
     if (++adc_period == 100) {
         adc_period = 0;
         ADC0->SC1[0] = ADC_SC1_AIEN_MASK | ADC_SC1_ADCH(23);
