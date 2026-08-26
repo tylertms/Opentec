@@ -427,6 +427,7 @@ static void configure_watchdog(void) {
                     WDOG_STCTRLH_IRQRSTEN_MASK | WDOG_STCTRLH_WDOGEN_MASK;
     WDOG->TOVALH = 0;
     WDOG->TOVALL = 500;
+    WDOG->PRESC = 0;
 }
 
 static void refresh_watchdog(void) {
