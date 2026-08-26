@@ -1,0 +1,13 @@
+---
+BasedOnStyle: LLVM
+ColumnLimit: 100
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^<'
+    Priority: 1
+  - Regex: '^"'
+    Priority: 2
+IndentWidth: 4
+LineEnding: LF
+PointerAlignment: Left
+...

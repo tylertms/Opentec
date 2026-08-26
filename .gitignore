@@ -1,2 +1,5 @@
 /build/
 /.cache/
+/tmp/
+__pycache__/
+*.py[cod]

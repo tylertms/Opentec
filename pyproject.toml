@@ -1,0 +1,8 @@
+[dependency-groups]
+quality = [
+    "clang-tidy==22.1.8",
+    "pre-commit==4.6.0",
+]
+
+[tool.ruff]
+target-version = "py39"
