@@ -14,17 +14,17 @@ typedef struct {
     bool transfer_control;
 } test_io;
 
-static bool test_spi_transfer(void *context, const uint8_t *transmit, uint8_t *receive,
-                              size_t length) {
+static wqr_io_result test_spi_transfer(void *context, const uint8_t *transmit, uint8_t *receive,
+                                       size_t length) {
     test_io *io = context;
 
     ++io->spi_transfers;
     memcpy(receive, transmit, length);
-    return true;
+    return WQR_IO_SUCCEEDED;
 }
 
-static bool test_pending_spi_transfer(void *context, const uint8_t *transmit, uint8_t *receive,
-                                      size_t length) {
+static wqr_io_result test_pending_spi_transfer(void *context, const uint8_t *transmit,
+                                               uint8_t *receive, size_t length) {
     test_io *io = context;
 
     if (!io->spi_started) {
@@ -32,10 +32,10 @@ static bool test_pending_spi_transfer(void *context, const uint8_t *transmit, ui
         ++io->spi_transfers;
     }
     if (!io->spi_complete) {
-        return false;
+        return WQR_IO_PENDING;
     }
     memcpy(receive, transmit, length);
-    return true;
+    return WQR_IO_SUCCEEDED;
 }
 
 static bool test_transfer_ready(void *context) {
@@ -50,8 +50,8 @@ static void test_set_transfer_control(void *context, bool asserted) {
     io->transfer_control = asserted;
 }
 
-static bool test_i2c_read(void *context, uint8_t address, uint8_t command, uint8_t *data,
-                          size_t length) {
+static wqr_io_result test_i2c_read(void *context, uint8_t address, uint8_t command, uint8_t *data,
+                                   size_t length) {
     test_io *io = context;
     size_t index;
 
@@ -60,7 +60,7 @@ static bool test_i2c_read(void *context, uint8_t address, uint8_t command, uint8
     for (index = 0; index < length; ++index) {
         data[index] = (uint8_t)(command + index);
     }
-    return true;
+    return WQR_IO_SUCCEEDED;
 }
 
 static void test_reset(void *context) {

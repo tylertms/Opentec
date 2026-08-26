@@ -217,16 +217,16 @@ static bool spi_polling_transfer(const uint8_t *transmit, uint8_t *receive, size
     return true;
 }
 
-static bool io_spi_transfer(void *context, const uint8_t *transmit, uint8_t *receive,
-                            size_t length) {
+static wqr_io_result io_spi_transfer(void *context, const uint8_t *transmit, uint8_t *receive,
+                                     size_t length) {
     (void)context;
     if (spi_transfer_active) {
         if (!spi_transfer_complete) {
-            return false;
+            return WQR_IO_PENDING;
         }
         spi_transfer_complete = false;
         spi_transfer_active = false;
-        return true;
+        return WQR_IO_SUCCEEDED;
     }
 
     DMAMUX->CHCFG[SPI_RECEIVE_DMA_CHANNEL] = 0;
@@ -243,10 +243,10 @@ static bool io_spi_transfer(void *context, const uint8_t *transmit, uint8_t *rec
     GPIOC->PCOR = UINT32_C(0x10);
     DMA0->SERQ = DMA_SERQ_SERQ(SPI_RECEIVE_DMA_CHANNEL);
     DMA0->SERQ = DMA_SERQ_SERQ(SPI_TRANSMIT_DMA_CHANNEL);
-    return false;
+    return WQR_IO_PENDING;
 }
 
-static bool io_spi_word(void *context, uint16_t transmit, uint16_t *receive) {
+static wqr_io_result io_spi_word(void *context, uint16_t transmit, uint16_t *receive) {
     uint8_t input[2] = {(uint8_t)transmit, (uint8_t)(transmit >> 8)};
     uint8_t output[2];
     bool success;
@@ -255,7 +255,7 @@ static bool io_spi_word(void *context, uint16_t transmit, uint16_t *receive) {
     success = spi_polling_transfer(input, output, sizeof(input));
 
     *receive = (uint16_t)output[0] | (uint16_t)((uint16_t)output[1] << 8);
-    return success;
+    return success ? WQR_IO_SUCCEEDED : WQR_IO_FAILED;
 }
 
 static bool i2c_wait(void) {
@@ -274,49 +274,50 @@ static bool i2c_send(uint8_t value) {
 
 static void i2c_stop(void) { I2C0->C1 = I2C_C1_IICEN_MASK; }
 
-static bool io_i2c_write(void *context, uint8_t address, const uint8_t *data, size_t length) {
+static wqr_io_result io_i2c_write(void *context, uint8_t address, const uint8_t *data,
+                                  size_t length) {
     size_t index;
 
     (void)context;
     I2C0->C1 = I2C_C1_IICEN_MASK | I2C_C1_MST_MASK | I2C_C1_TX_MASK;
     if (!i2c_send(address)) {
         i2c_stop();
-        return false;
+        return WQR_IO_FAILED;
     }
     for (index = 0; index < length; ++index) {
         if (!i2c_send(data[index])) {
             i2c_stop();
-            return false;
+            return WQR_IO_FAILED;
         }
     }
     i2c_stop();
-    return true;
+    return WQR_IO_SUCCEEDED;
 }
 
-static bool io_i2c_read(void *context, uint8_t address, uint8_t command, uint8_t *data,
-                        size_t length) {
+static wqr_io_result io_i2c_read(void *context, uint8_t address, uint8_t command, uint8_t *data,
+                                 size_t length) {
     size_t index;
 
     (void)context;
     if (length == 0) {
-        return true;
+        return WQR_IO_SUCCEEDED;
     }
     I2C0->C1 = I2C_C1_IICEN_MASK | I2C_C1_MST_MASK | I2C_C1_TX_MASK;
     if (!i2c_send(address) || !i2c_send(command)) {
         i2c_stop();
-        return false;
+        return WQR_IO_FAILED;
     }
     I2C0->C1 = I2C_C1_IICEN_MASK | I2C_C1_MST_MASK | I2C_C1_TX_MASK | I2C_C1_RSTA_MASK;
     if (!i2c_send((uint8_t)(address | 1))) {
         i2c_stop();
-        return false;
+        return WQR_IO_FAILED;
     }
     I2C0->C1 = I2C_C1_IICEN_MASK | (length == 1 ? I2C_C1_TXAK_MASK : 0);
     (void)I2C0->D;
     for (index = 0; index < length; ++index) {
         if (!i2c_wait()) {
             i2c_stop();
-            return false;
+            return WQR_IO_FAILED;
         }
         if (index + 2 == length) {
             I2C0->C1 |= I2C_C1_TXAK_MASK;
@@ -326,7 +327,7 @@ static bool io_i2c_read(void *context, uint8_t address, uint8_t command, uint8_t
         }
         data[index] = I2C0->D;
     }
-    return true;
+    return WQR_IO_SUCCEEDED;
 }
 
 static void configure_i2c(void) {

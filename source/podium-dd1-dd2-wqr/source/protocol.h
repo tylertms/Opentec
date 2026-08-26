@@ -28,12 +28,16 @@ typedef enum {
     WQR_TRANSFER_READY = 4
 } wqr_transfer_state;
 
+typedef enum { WQR_IO_PENDING, WQR_IO_SUCCEEDED, WQR_IO_FAILED } wqr_io_result;
+
 typedef struct {
     void *context;
-    bool (*spi_transfer)(void *context, const uint8_t *transmit, uint8_t *receive, size_t length);
-    bool (*spi_word)(void *context, uint16_t transmit, uint16_t *receive);
-    bool (*i2c_write)(void *context, uint8_t address, const uint8_t *data, size_t length);
-    bool (*i2c_read)(void *context, uint8_t address, uint8_t command, uint8_t *data, size_t length);
+    wqr_io_result (*spi_transfer)(void *context, const uint8_t *transmit, uint8_t *receive,
+                                  size_t length);
+    wqr_io_result (*spi_word)(void *context, uint16_t transmit, uint16_t *receive);
+    wqr_io_result (*i2c_write)(void *context, uint8_t address, const uint8_t *data, size_t length);
+    wqr_io_result (*i2c_read)(void *context, uint8_t address, uint8_t command, uint8_t *data,
+                              size_t length);
     uint8_t (*read_inputs)(void *context);
     bool (*transfer_ready)(void *context);
     void (*set_transfer_control)(void *context, bool asserted);

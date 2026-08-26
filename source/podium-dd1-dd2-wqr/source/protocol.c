@@ -200,6 +200,7 @@ static void encode_status(wqr_protocol *protocol, uint8_t status[WQR_STATUS_SIZE
 
 static bool process_primary_spi(wqr_protocol *protocol) {
     uint8_t *response = protocol->transmit_payload;
+    wqr_io_result result = WQR_IO_FAILED;
 
     if (!protocol->peripheral_transfer_active) {
         memset(response, 0, PRIMARY_RESPONSE_SIZE);
@@ -207,9 +208,11 @@ static bool process_primary_spi(wqr_protocol *protocol) {
     if (protocol->receive_length >= PRIMARY_RESPONSE_SIZE &&
         (protocol->transfer_state == WQR_TRANSFER_READY || protocol->peripheral_transfer_active)) {
         protocol->transfer_detail = 0;
-        if (protocol->io.spi_transfer != NULL &&
-            !protocol->io.spi_transfer(protocol->io.context, protocol->receive_payload, response,
-                                       WQR_SPI_TRANSFER_SIZE)) {
+        if (protocol->io.spi_transfer != NULL) {
+            result = protocol->io.spi_transfer(protocol->io.context, protocol->receive_payload,
+                                               response, WQR_SPI_TRANSFER_SIZE);
+        }
+        if (result == WQR_IO_PENDING) {
             protocol->peripheral_transfer_active = true;
             return false;
         }
@@ -243,7 +246,7 @@ static void process_alternate_spi(wqr_protocol *protocol) {
 static void process_i2c(wqr_protocol *protocol) {
     uint8_t *request = protocol->receive_payload;
     uint8_t address;
-    bool success = false;
+    wqr_io_result result = WQR_IO_FAILED;
     size_t response_length = I2C_FAILURE_RESPONSE_SIZE;
 
     if (protocol->receive_length < I2C_FAILURE_RESPONSE_SIZE) {
@@ -261,20 +264,20 @@ static void process_i2c(wqr_protocol *protocol) {
             length = read_u16(request + 3);
             if (length <= WQR_TRANSFER_CAPACITY - I2C_RESPONSE_OVERHEAD &&
                 protocol->io.i2c_read != NULL) {
-                success = protocol->io.i2c_read(protocol->io.context, address, request[2],
-                                                protocol->transmit_payload + I2C_RESPONSE_OVERHEAD,
-                                                length);
-                if (success) {
+                result = protocol->io.i2c_read(protocol->io.context, address, request[2],
+                                               protocol->transmit_payload + I2C_RESPONSE_OVERHEAD,
+                                               length);
+                if (result == WQR_IO_SUCCEEDED) {
                     response_length = length + I2C_RESPONSE_OVERHEAD;
                 }
             }
         }
     } else if (protocol->io.i2c_write != NULL) {
-        success =
+        result =
             protocol->io.i2c_write(protocol->io.context, address, request + I2C_RESPONSE_OVERHEAD,
                                    protocol->receive_length - I2C_RESPONSE_OVERHEAD);
     }
-    protocol->transmit_payload[0] = success ? 1 : 0;
+    protocol->transmit_payload[0] = result == WQR_IO_SUCCEEDED ? 1 : 0;
     queue_payload(protocol, protocol->transmit_payload, response_length);
 }
 
