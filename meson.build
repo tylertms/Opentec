@@ -10,3 +10,4 @@ project(
 )
 
 subdir('source/podium-dd1-dd2-wqr')
+subdir('tests')
