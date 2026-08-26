@@ -6,12 +6,15 @@
 typedef struct {
     unsigned int resets;
     unsigned int spi_transfers;
+    unsigned int spi_word_transfers;
     uint8_t i2c_address;
     uint8_t i2c_command;
+    uint16_t spi_word;
     bool i2c_complete;
     bool i2c_started;
     bool spi_complete;
     bool spi_started;
+    bool spi_word_complete;
     bool transfer_ready;
     bool transfer_control;
 } test_io;
@@ -37,6 +40,20 @@ static wqr_io_result test_pending_spi_transfer(void *context, const uint8_t *tra
         return WQR_IO_PENDING;
     }
     memcpy(receive, transmit, length);
+    return WQR_IO_SUCCEEDED;
+}
+
+static wqr_io_result test_pending_spi_word(void *context, uint16_t transmit, uint16_t *receive) {
+    test_io *io = context;
+
+    if (io->spi_word_transfers == 0) {
+        io->spi_word = transmit;
+        ++io->spi_word_transfers;
+    }
+    if (!io->spi_word_complete) {
+        return WQR_IO_PENDING;
+    }
+    *receive = 0x1234;
     return WQR_IO_SUCCEEDED;
 }
 
@@ -273,6 +290,38 @@ static void test_pending_i2c(void) {
     assert(frame[8] == 0x12);
 }
 
+static void test_pending_alternate_spi(void) {
+    test_io state = {.transfer_ready = true};
+    wqr_io io = {
+        .context = &state,
+        .spi_word = test_pending_spi_word,
+        .transfer_ready = test_transfer_ready,
+        .set_transfer_control = test_set_transfer_control,
+    };
+    wqr_protocol protocol;
+    uint8_t frame[WQR_FRAME_SIZE];
+    uint8_t payload[WQR_FRAME_PAYLOAD_SIZE] = {0xcd, 0xab};
+
+    payload[56] = 1;
+    wqr_protocol_init(&protocol, &io);
+    protocol.peer_ready_confirmed = true;
+    protocol.transfer_enabled = true;
+    protocol.transfer_control_asserted = true;
+    assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_ALTERNATE_SPI, 0, payload, sizeof(payload)));
+    assert(wqr_protocol_receive(&protocol, frame));
+    wqr_protocol_poll(&protocol);
+    assert(!wqr_protocol_response(&protocol, frame));
+    assert(state.spi_word_transfers == 1);
+    assert(state.spi_word == 0xabcd);
+
+    state.spi_word_complete = true;
+    wqr_protocol_poll(&protocol);
+    assert(wqr_protocol_response(&protocol, frame));
+    assert(frame[4] == 0x34);
+    assert(frame[5] == 0x12);
+    assert(state.spi_word_transfers == 1);
+}
+
 static void test_chunked_response(void) {
     test_io state = {0};
     wqr_io io = {.context = &state, .i2c_read = test_i2c_read};
@@ -311,6 +360,7 @@ int main(void) {
     test_transfer_not_ready();
     test_pending_spi();
     test_pending_i2c();
+    test_pending_alternate_spi();
     test_chunked_response();
     test_sensor();
     return 0;

@@ -10,7 +10,8 @@ enum {
     UART_SOURCE_CLOCK = 96000000,
     UART_BAUD_RATE = 5000000,
     PIT_TICKS_PER_MILLISECOND = 24000,
-    SPI_TIMEOUT = 100000,
+    SPI_BYTE_BITS = 8,
+    SPI_WORD_BITS = 16,
     SPI_RECEIVE_DMA_CHANNEL = 3,
     SPI_TRANSMIT_DMA_CHANNEL = 2,
     SPI_RECEIVE_DMA_SOURCE = 14,
@@ -53,6 +54,8 @@ static volatile bool uart_receive_ready;
 static bool uart_transmit_active;
 static bool uart_response_due;
 static volatile bool spi_transfer_complete;
+static volatile bool spi_transfer_failed;
+static volatile uint16_t spi_received_word;
 static bool spi_transfer_active;
 static i2c_transaction i2c;
 static volatile bool adc_sample_ready;
@@ -201,45 +204,23 @@ static void configure_spi(void) {
     SPI0->MCR = SPI_MCR_MSTR_MASK | SPI_MCR_PCSIS(1) | SPI_MCR_DIS_RXF_MASK | SPI_MCR_DIS_TXF_MASK |
                 SPI_MCR_HALT_MASK;
     SPI0->CTAR[0] = UINT32_C(0x3a514204);
-    SPI0->RSER = SPI_RSER_TCF_RE_MASK | SPI_RSER_EOQF_RE_MASK | SPI_RSER_TFUF_RE_MASK |
-                 SPI_RSER_TFFF_RE_MASK | SPI_RSER_RFOF_RE_MASK | SPI_RSER_RFDF_RE_MASK;
+    SPI0->RSER = 0;
     SPI0->MCR &= ~SPI_MCR_HALT_MASK;
     nvic_enable(DMA2_IRQn, 14);
     nvic_enable(DMA3_IRQn, 14);
+    nvic_enable(SPI0_IRQn, 14);
 }
 
-static bool spi_byte(uint8_t transmit, uint8_t *receive) {
-    uint32_t timeout = SPI_TIMEOUT;
-
-    while ((SPI0->SR & SPI_SR_TFFF_MASK) == 0 && --timeout != 0) {
-    }
-    if (timeout == 0) {
-        return false;
-    }
-    SPI0->PUSHR = transmit;
-    timeout = SPI_TIMEOUT;
-    while ((SPI0->SR & SPI_SR_RFDF_MASK) == 0 && --timeout != 0) {
-    }
-    if (timeout == 0) {
-        return false;
-    }
-    *receive = (uint8_t)SPI0->POPR;
-    SPI0->SR = SPI_SR_TFFF_MASK | SPI_SR_RFDF_MASK;
-    return true;
+static void clear_spi_status(void) {
+    SPI0->SR = SPI_SR_TCF_MASK | SPI_SR_EOQF_MASK | SPI_SR_TFUF_MASK | SPI_SR_TFFF_MASK |
+               SPI_SR_RFOF_MASK | SPI_SR_RFDF_MASK;
 }
 
-static bool spi_polling_transfer(const uint8_t *transmit, uint8_t *receive, size_t length) {
-    size_t index;
-
-    GPIOC->PCOR = UINT32_C(0x10);
-    for (index = 0; index < length; ++index) {
-        if (!spi_byte(transmit[index], receive + index)) {
-            GPIOC->PSOR = UINT32_C(0x10);
-            return false;
-        }
-    }
-    GPIOC->PSOR = UINT32_C(0x10);
-    return true;
+static void set_spi_frame_size(unsigned int bits) {
+    SPI0->MCR |= SPI_MCR_HALT_MASK;
+    SPI0->CTAR[0] = (SPI0->CTAR[0] & ~SPI_CTAR_FMSZ_MASK) | SPI_CTAR_FMSZ(bits - 1);
+    clear_spi_status();
+    SPI0->MCR &= ~SPI_MCR_HALT_MASK;
 }
 
 static wqr_io_result io_spi_transfer(void *context, const uint8_t *transmit, uint8_t *receive,
@@ -251,11 +232,14 @@ static wqr_io_result io_spi_transfer(void *context, const uint8_t *transmit, uin
         }
         spi_transfer_complete = false;
         spi_transfer_active = false;
-        return WQR_IO_SUCCEEDED;
+        return spi_transfer_failed ? WQR_IO_FAILED : WQR_IO_SUCCEEDED;
     }
 
     DMAMUX->CHCFG[SPI_RECEIVE_DMA_CHANNEL] = 0;
     DMAMUX->CHCFG[SPI_TRANSMIT_DMA_CHANNEL] = 0;
+    set_spi_frame_size(SPI_BYTE_BITS);
+    SPI0->RSER = SPI_RSER_TFFF_DIRS_MASK | SPI_RSER_TFFF_RE_MASK | SPI_RSER_RFDF_DIRS_MASK |
+                 SPI_RSER_RFDF_RE_MASK;
     configure_dma_descriptor(SPI_RECEIVE_DMA_CHANNEL, &SPI0->POPR, 0, receive, 1, (uint16_t)length);
     configure_dma_descriptor(SPI_TRANSMIT_DMA_CHANNEL, transmit, 1, &SPI0->PUSHR, 0,
                              (uint16_t)length);
@@ -264,6 +248,7 @@ static wqr_io_result io_spi_transfer(void *context, const uint8_t *transmit, uin
     DMAMUX->CHCFG[SPI_TRANSMIT_DMA_CHANNEL] =
         DMAMUX_CHCFG_ENBL_MASK | DMAMUX_CHCFG_SOURCE(SPI_TRANSMIT_DMA_SOURCE);
     spi_transfer_complete = false;
+    spi_transfer_failed = false;
     spi_transfer_active = true;
     GPIOC->PCOR = UINT32_C(0x10);
     DMA0->SERQ = DMA_SERQ_SERQ(SPI_RECEIVE_DMA_CHANNEL);
@@ -272,15 +257,25 @@ static wqr_io_result io_spi_transfer(void *context, const uint8_t *transmit, uin
 }
 
 static wqr_io_result io_spi_word(void *context, uint16_t transmit, uint16_t *receive) {
-    uint8_t input[2] = {(uint8_t)transmit, (uint8_t)(transmit >> 8)};
-    uint8_t output[2];
-    bool success;
-
     (void)context;
-    success = spi_polling_transfer(input, output, sizeof(input));
+    if (spi_transfer_active) {
+        if (!spi_transfer_complete) {
+            return WQR_IO_PENDING;
+        }
+        spi_transfer_complete = false;
+        spi_transfer_active = false;
+        *receive = spi_received_word;
+        return spi_transfer_failed ? WQR_IO_FAILED : WQR_IO_SUCCEEDED;
+    }
 
-    *receive = (uint16_t)output[0] | (uint16_t)((uint16_t)output[1] << 8);
-    return success ? WQR_IO_SUCCEEDED : WQR_IO_FAILED;
+    set_spi_frame_size(SPI_WORD_BITS);
+    SPI0->RSER = SPI_RSER_TCF_RE_MASK | SPI_RSER_TFUF_RE_MASK | SPI_RSER_RFOF_RE_MASK;
+    spi_transfer_complete = false;
+    spi_transfer_failed = false;
+    spi_transfer_active = true;
+    GPIOC->PCOR = UINT32_C(0x10);
+    SPI0->PUSHR = transmit;
+    return WQR_IO_PENDING;
 }
 
 static void finish_i2c(i2c_phase result) {
@@ -440,6 +435,22 @@ void DMA2_IRQHandler(void) {
 void DMA3_IRQHandler(void) {
     DMA0->CINT = DMA_CINT_CINT(SPI_RECEIVE_DMA_CHANNEL);
     DMA0->CDNE = DMA_CDNE_CDNE(SPI_RECEIVE_DMA_CHANNEL);
+    GPIOC->PSOR = UINT32_C(0x10);
+    spi_transfer_complete = true;
+}
+
+void SPI0_IRQHandler(void) {
+    uint32_t status = SPI0->SR;
+
+    if ((status & (SPI_SR_TCF_MASK | SPI_SR_TFUF_MASK | SPI_SR_RFOF_MASK)) == 0) {
+        return;
+    }
+    spi_transfer_failed = (status & (SPI_SR_TFUF_MASK | SPI_SR_RFOF_MASK)) != 0;
+    if (!spi_transfer_failed) {
+        spi_received_word = (uint16_t)SPI0->POPR;
+    }
+    SPI0->RSER = 0;
+    clear_spi_status();
     GPIOC->PSOR = UINT32_C(0x10);
     spi_transfer_complete = true;
 }

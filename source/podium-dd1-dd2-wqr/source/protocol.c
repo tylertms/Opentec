@@ -220,22 +220,33 @@ static bool process_primary_spi(wqr_protocol *protocol) {
     return true;
 }
 
-static void process_alternate_spi(wqr_protocol *protocol) {
-    uint8_t response[ALTERNATE_RESPONSE_SIZE] = {0};
+static bool process_alternate_spi(wqr_protocol *protocol) {
+    uint8_t *response = protocol->transmit_payload;
     uint16_t received = 0;
+    wqr_io_result result = WQR_IO_FAILED;
 
+    if (!protocol->peripheral_transfer_active) {
+        memset(response, 0, ALTERNATE_RESPONSE_SIZE);
+    }
     if (protocol->receive_length >= PRIMARY_RESPONSE_SIZE) {
         protocol->transfer_detail = 1;
-        if (protocol->io.spi_word != NULL && protocol->transfer_enabled) {
-            (void)protocol->io.spi_word(protocol->io.context, read_u16(protocol->receive_payload),
-                                        &received);
+        if (protocol->io.spi_word != NULL &&
+            (protocol->transfer_enabled || protocol->peripheral_transfer_active)) {
+            result = protocol->io.spi_word(protocol->io.context,
+                                           read_u16(protocol->receive_payload), &received);
+            if (result == WQR_IO_PENDING) {
+                protocol->peripheral_transfer_active = true;
+                return false;
+            }
         }
     }
+    protocol->peripheral_transfer_active = false;
     write_u16(response, received);
     if (transfer_ready(protocol)) {
         response[TRANSFER_CONTROL_OFFSET] |= TRANSFER_STATUS_DETECTED;
     }
-    queue_payload(protocol, response, sizeof(response));
+    queue_payload(protocol, response, ALTERNATE_RESPONSE_SIZE);
+    return true;
 }
 
 static bool process_i2c(wqr_protocol *protocol) {
@@ -300,8 +311,7 @@ static bool process_payload(wqr_protocol *protocol) {
     case WQR_PAYLOAD_PRIMARY_SPI:
         return process_primary_spi(protocol);
     case WQR_PAYLOAD_ALTERNATE_SPI:
-        process_alternate_spi(protocol);
-        return true;
+        return process_alternate_spi(protocol);
     case WQR_PAYLOAD_I2C:
         return process_i2c(protocol);
     case WQR_PAYLOAD_STATUS:
