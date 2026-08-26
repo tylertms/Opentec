@@ -100,22 +100,25 @@ static bool receive_response(Kinetis *device, uint8_t window[TRANSMIT_WINDOW_SIZ
     return false;
 }
 
+static bool frame_integrity_valid(const uint8_t frame[WQR_FRAME_SIZE]) {
+    uint16_t crc = (uint16_t)frame[61] | (uint16_t)((uint16_t)frame[62] << 8);
+
+    return frame[0] == 0x7b && frame[63] == 0x7d &&
+           wqr_protocol_crc(frame + 1, WQR_FRAME_BODY_SIZE) == crc;
+}
+
 static bool status_response_valid(const uint8_t window[TRANSMIT_WINDOW_SIZE], uint8_t sequence,
                                   uint8_t command_marker) {
     const uint8_t *frame = window + RECEIVE_PREFIX_SIZE;
-    uint16_t crc = (uint16_t)frame[61] | (uint16_t)((uint16_t)frame[62] << 8);
 
-    return frame[0] == 0x7b && frame[1] == WQR_PAYLOAD_STATUS && frame[2] == sequence &&
-           frame[3] == WQR_STATUS_SIZE && frame[4] == 7 && frame[63] == 0x7d &&
-           frame[18] == command_marker && wqr_protocol_crc(frame + 1, WQR_FRAME_BODY_SIZE) == crc;
+    return frame_integrity_valid(frame) && frame[1] == WQR_PAYLOAD_STATUS && frame[2] == sequence &&
+           frame[3] == WQR_STATUS_SIZE && frame[4] == 7 && frame[18] == command_marker;
 }
 
 static bool nack_response_valid(const uint8_t window[TRANSMIT_WINDOW_SIZE]) {
     const uint8_t *frame = window + RECEIVE_PREFIX_SIZE;
-    uint16_t crc = (uint16_t)frame[61] | (uint16_t)((uint16_t)frame[62] << 8);
 
-    return frame[0] == 0x7b && frame[1] == 0 && frame[63] == 0x7d &&
-           wqr_protocol_crc(frame + 1, WQR_FRAME_BODY_SIZE) == crc;
+    return frame_integrity_valid(frame) && frame[1] == 0;
 }
 
 static bool exchange_status(Kinetis *device, uint8_t request_sequence, uint8_t command_marker) {
@@ -155,12 +158,10 @@ static bool primary_response_valid(const uint8_t window[TRANSMIT_WINDOW_SIZE], u
     static const uint8_t empty_response[WQR_SPI_TRANSFER_SIZE];
     const uint8_t *frame = window + RECEIVE_PREFIX_SIZE;
     const uint8_t *expected = exchanged ? payload : empty_response;
-    uint16_t crc = (uint16_t)frame[61] | (uint16_t)((uint16_t)frame[62] << 8);
 
-    return frame[0] == 0x7b && frame[1] == WQR_PAYLOAD_PRIMARY_SPI && frame[2] == sequence &&
-           frame[3] == WQR_FRAME_PAYLOAD_SIZE && frame[63] == 0x7d && (frame[60] & 2) != 0 &&
-           memcmp(frame + 4, expected, WQR_SPI_TRANSFER_SIZE) == 0 &&
-           wqr_protocol_crc(frame + 1, WQR_FRAME_BODY_SIZE) == crc;
+    return frame_integrity_valid(frame) && frame[1] == WQR_PAYLOAD_PRIMARY_SPI &&
+           frame[2] == sequence && frame[3] == WQR_FRAME_PAYLOAD_SIZE && (frame[60] & 2) != 0 &&
+           memcmp(frame + 4, expected, WQR_SPI_TRANSFER_SIZE) == 0;
 }
 
 static bool exchange_primary_spi(Kinetis *device, uint8_t request_sequence) {
@@ -194,12 +195,9 @@ static bool exchange_alternate_spi(Kinetis *device, uint8_t request_sequence) {
     return wqr_protocol_build_frame(request, WQR_PAYLOAD_ALTERNATE_SPI, request_sequence, payload,
                                     sizeof(payload)) &&
            send_request(device, request) && receive_response(device, response) &&
-           frame[0] == 0x7b && frame[1] == WQR_PAYLOAD_ALTERNATE_SPI &&
+           frame_integrity_valid(frame) && frame[1] == WQR_PAYLOAD_ALTERNATE_SPI &&
            frame[2] == (uint8_t)(request_sequence + 1) && frame[3] == WQR_FRAME_PAYLOAD_SIZE &&
-           frame[4] == payload[0] && frame[5] == payload[1] && (frame[60] & 2) != 0 &&
-           frame[63] == 0x7d &&
-           wqr_protocol_crc(frame + 1, WQR_FRAME_BODY_SIZE) ==
-               (uint16_t)(frame[61] | (uint16_t)(frame[62] << 8));
+           frame[4] == payload[0] && frame[5] == payload[1] && (frame[60] & 2) != 0;
 }
 
 static bool exchange_i2c_write(Kinetis *device, uint8_t request_sequence) {
@@ -211,11 +209,9 @@ static bool exchange_i2c_write(Kinetis *device, uint8_t request_sequence) {
     return wqr_protocol_build_frame(request, WQR_PAYLOAD_I2C, request_sequence, payload,
                                     sizeof(payload)) &&
            send_request(device, request) && receive_response(device, response) &&
-           frame[0] == 0x7b && frame[1] == WQR_PAYLOAD_I2C &&
+           frame_integrity_valid(frame) && frame[1] == WQR_PAYLOAD_I2C &&
            frame[2] == (uint8_t)(request_sequence + 1) && frame[3] == 3 && frame[4] == 1 &&
-           frame[5] == payload[1] && frame[6] == payload[2] && frame[63] == 0x7d &&
-           wqr_protocol_crc(frame + 1, WQR_FRAME_BODY_SIZE) ==
-               (uint16_t)(frame[61] | (uint16_t)(frame[62] << 8));
+           frame[5] == payload[1] && frame[6] == payload[2];
 }
 
 static bool exchange_i2c_read(Kinetis *device, uint8_t request_sequence) {
@@ -227,12 +223,51 @@ static bool exchange_i2c_read(Kinetis *device, uint8_t request_sequence) {
     return wqr_protocol_build_frame(request, WQR_PAYLOAD_I2C, request_sequence, payload,
                                     sizeof(payload)) &&
            send_request(device, request) && receive_response(device, response) &&
-           frame[0] == 0x7b && frame[1] == WQR_PAYLOAD_I2C &&
+           frame_integrity_valid(frame) && frame[1] == WQR_PAYLOAD_I2C &&
            frame[2] == (uint8_t)(request_sequence + 1) && frame[3] == 5 && frame[4] == 1 &&
-           frame[5] == payload[1] && frame[6] == 0x5a && frame[7] == 0x5a && frame[8] == 0x5a &&
-           frame[63] == 0x7d &&
-           wqr_protocol_crc(frame + 1, WQR_FRAME_BODY_SIZE) ==
-               (uint16_t)(frame[61] | (uint16_t)(frame[62] << 8));
+           frame[5] == payload[1] && frame[6] == 0x5a && frame[7] == 0x5a && frame[8] == 0x5a;
+}
+
+static bool exchange_fragmented_i2c_read(Kinetis *device, uint8_t request_sequence) {
+    const uint8_t first_payload[] = {0, 0xa1, 0x10};
+    const uint8_t last_payload[] = {3, 0};
+    uint8_t request[WQR_FRAME_SIZE];
+    uint8_t response[TRANSMIT_WINDOW_SIZE];
+    const uint8_t *frame = response + RECEIVE_PREFIX_SIZE;
+
+    if (!wqr_protocol_build_frame(request, 0x10 | WQR_PAYLOAD_I2C, request_sequence, first_payload,
+                                  sizeof(first_payload)) ||
+        !send_request(device, request) || !receive_response(device, response) ||
+        !frame_integrity_valid(frame) || frame[1] != 1 || frame[4] != WQR_PAYLOAD_I2C) {
+        return false;
+    }
+    return wqr_protocol_build_frame(request, 0x40 | WQR_PAYLOAD_I2C,
+                                    (uint8_t)(request_sequence + 1), last_payload,
+                                    sizeof(last_payload)) &&
+           send_request(device, request) && receive_response(device, response) &&
+           frame_integrity_valid(frame) && frame[1] == WQR_PAYLOAD_I2C &&
+           frame[2] == (uint8_t)(request_sequence + 2) && frame[3] == 5 && frame[4] == 1 &&
+           frame[5] == 0xa1 && frame[6] == 0x5a && frame[7] == 0x5a && frame[8] == 0x5a;
+}
+
+static bool exchange_chunked_i2c_read(Kinetis *device, uint8_t request_sequence) {
+    const uint8_t payload[] = {0, 0xa1, 0x20, 60, 0};
+    uint8_t request[WQR_FRAME_SIZE];
+    uint8_t response[TRANSMIT_WINDOW_SIZE];
+    const uint8_t *frame = response + RECEIVE_PREFIX_SIZE;
+
+    if (!wqr_protocol_build_frame(request, WQR_PAYLOAD_I2C, request_sequence, payload,
+                                  sizeof(payload)) ||
+        !send_request(device, request) || !receive_response(device, response) ||
+        !frame_integrity_valid(frame) || frame[1] != (0x10 | WQR_PAYLOAD_I2C) ||
+        frame[2] != (uint8_t)(request_sequence + 1) || frame[3] != WQR_FRAME_PAYLOAD_SIZE) {
+        return false;
+    }
+    return wqr_protocol_build_frame(request, 1, (uint8_t)(request_sequence + 1), NULL, 0) &&
+           send_request(device, request) && receive_response(device, response) &&
+           frame_integrity_valid(frame) && frame[1] == (0x40 | WQR_PAYLOAD_I2C) &&
+           frame[2] == (uint8_t)(request_sequence + 2) && frame[3] == 5 && frame[4] == 0x5a &&
+           frame[5] == 0x5a && frame[6] == 0x5a && frame[7] == 0x5a && frame[8] == 0x5a;
 }
 
 static bool firmware_passes(const char *path, KinetisPackage package) {
@@ -255,7 +290,9 @@ static bool firmware_passes(const char *path, KinetisPackage package) {
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_alternate_spi(device, 3) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_i2c_write(device, 4) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_i2c_read(device, 5) &&
-        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 6, 0xaa) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_fragmented_i2c_read(device, 6) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_chunked_i2c_read(device, 8) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 10, 0xaa) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 0, 0)) {
         passed = true;
     }
