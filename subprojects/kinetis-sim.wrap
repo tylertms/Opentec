@@ -1,4 +1,4 @@
 [wrap-git]
-url = https://github.com/tylertms/kinetis-k22-sim
+url = https://github.com/tylertms/kinetis-sim
 revision = 805abc2ccfdaa67d3b0454273321feb6502f4f7b
 depth = 1
