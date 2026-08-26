@@ -62,6 +62,7 @@ typedef struct {
     bool response_ready;
     bool reset_after_response;
     bool transfer_control_asserted;
+    bool alternate_spi_active;
 } wqr_protocol;
 
 void wqr_protocol_init(wqr_protocol *protocol, const wqr_io *io);

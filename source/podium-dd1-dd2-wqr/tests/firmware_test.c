@@ -238,11 +238,19 @@ static bool exchange_alternate_spi(Kinetis *device, uint8_t request_sequence) {
     const uint8_t *frame = response + RECEIVE_PREFIX_SIZE;
 
     payload[WQR_FRAME_PAYLOAD_SIZE - 1] = 1;
-    return wqr_protocol_build_frame(request, WQR_PAYLOAD_ALTERNATE_SPI, request_sequence, payload,
-                                    sizeof(payload)) &&
+    if (!wqr_protocol_build_frame(request, WQR_PAYLOAD_ALTERNATE_SPI, request_sequence, payload,
+                                  sizeof(payload)) ||
+        !send_request(device, request) || !receive_response(device, response) ||
+        !frame_integrity_valid(frame) || frame[1] != WQR_PAYLOAD_ALTERNATE_SPI ||
+        frame[2] != (uint8_t)(request_sequence + 1) || frame[3] != WQR_FRAME_PAYLOAD_SIZE ||
+        frame[4] != 0 || frame[5] != 0 || (frame[60] & 2) == 0) {
+        return false;
+    }
+    return wqr_protocol_build_frame(request, WQR_PAYLOAD_ALTERNATE_SPI,
+                                    (uint8_t)(request_sequence + 1), payload, sizeof(payload)) &&
            send_request(device, request) && receive_response(device, response) &&
            frame_integrity_valid(frame) && frame[1] == WQR_PAYLOAD_ALTERNATE_SPI &&
-           frame[2] == (uint8_t)(request_sequence + 1) && frame[3] == WQR_FRAME_PAYLOAD_SIZE &&
+           frame[2] == (uint8_t)(request_sequence + 2) && frame[3] == WQR_FRAME_PAYLOAD_SIZE &&
            frame[4] == payload[0] && frame[5] == payload[1] && (frame[60] & 2) != 0;
 }
 
@@ -359,12 +367,12 @@ static bool firmware_passes(const char *path, KinetisPackage package) {
         run_firmware(device, STARTUP_INSTRUCTIONS) &&
         exchange_primary_spi_after_dropped_transfer(device, 4) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_alternate_spi(device, 5) &&
-        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_i2c_write(device, 6) &&
-        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_i2c_timeout(device, 7) &&
-        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_i2c_read(device, 8) &&
-        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_fragmented_i2c_read(device, 9) &&
-        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_chunked_i2c_read(device, 11) &&
-        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 13, 0xaa) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_i2c_write(device, 7) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_i2c_timeout(device, 8) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_i2c_read(device, 9) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_fragmented_i2c_read(device, 10) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_chunked_i2c_read(device, 12) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 14, 0xaa) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 0, 0)) {
         passed = true;
     }

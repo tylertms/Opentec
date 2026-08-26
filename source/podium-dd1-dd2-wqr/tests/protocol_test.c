@@ -15,6 +15,7 @@ typedef struct {
     bool spi_complete;
     bool spi_started;
     bool spi_word_complete;
+    bool spi_word_started;
     bool transfer_ready;
     bool transfer_control;
 } test_io;
@@ -46,13 +47,15 @@ static wqr_io_result test_pending_spi_transfer(void *context, const uint8_t *tra
 static wqr_io_result test_pending_spi_word(void *context, uint16_t transmit, uint16_t *receive) {
     test_io *io = context;
 
-    if (io->spi_word_transfers == 0) {
+    if (!io->spi_word_started) {
+        io->spi_word_started = true;
         io->spi_word = transmit;
         ++io->spi_word_transfers;
     }
     if (!io->spi_word_complete) {
         return WQR_IO_PENDING;
     }
+    io->spi_word_started = false;
     *receive = 0x1234;
     return WQR_IO_SUCCEEDED;
 }
@@ -312,7 +315,7 @@ static void test_pending_alternate_spi(void) {
     wqr_protocol_poll(&protocol);
     assert(!wqr_protocol_response(&protocol, frame));
     assert(state.spi_word_transfers == 1);
-    assert(state.spi_word == 0xabcd);
+    assert(state.spi_word == 0);
 
     state.spi_word_complete = true;
     wqr_protocol_poll(&protocol);
@@ -320,6 +323,18 @@ static void test_pending_alternate_spi(void) {
     assert(frame[4] == 0x34);
     assert(frame[5] == 0x12);
     assert(state.spi_word_transfers == 1);
+
+    state.spi_word_complete = false;
+    assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_ALTERNATE_SPI, 1, payload, sizeof(payload)));
+    assert(wqr_protocol_receive(&protocol, frame));
+    wqr_protocol_poll(&protocol);
+    assert(!wqr_protocol_response(&protocol, frame));
+    assert(state.spi_word_transfers == 2);
+    assert(state.spi_word == 0xabcd);
+
+    state.spi_word_complete = true;
+    wqr_protocol_poll(&protocol);
+    assert(wqr_protocol_response(&protocol, frame));
 }
 
 static void test_chunked_response(void) {

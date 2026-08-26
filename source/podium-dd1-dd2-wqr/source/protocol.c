@@ -197,6 +197,7 @@ static bool process_primary_spi(wqr_protocol *protocol) {
     uint8_t *response = protocol->transmit_payload;
     wqr_io_result result = WQR_IO_FAILED;
 
+    protocol->alternate_spi_active = false;
     if (!protocol->peripheral_transfer_active) {
         memset(response, 0, PRIMARY_RESPONSE_SIZE);
     }
@@ -223,6 +224,7 @@ static bool process_primary_spi(wqr_protocol *protocol) {
 static bool process_alternate_spi(wqr_protocol *protocol) {
     uint8_t *response = protocol->transmit_payload;
     uint16_t received = 0;
+    uint16_t transmit;
     wqr_io_result result = WQR_IO_FAILED;
 
     if (!protocol->peripheral_transfer_active) {
@@ -232,8 +234,12 @@ static bool process_alternate_spi(wqr_protocol *protocol) {
         protocol->transfer_detail = 1;
         if (protocol->io.spi_word != NULL &&
             (protocol->transfer_enabled || protocol->peripheral_transfer_active)) {
-            result = protocol->io.spi_word(protocol->io.context,
-                                           read_u16(protocol->receive_payload), &received);
+            transmit = read_u16(protocol->receive_payload);
+            if (!protocol->peripheral_transfer_active && !protocol->alternate_spi_active) {
+                transmit = 0;
+                protocol->alternate_spi_active = true;
+            }
+            result = protocol->io.spi_word(protocol->io.context, transmit, &received);
             if (result == WQR_IO_PENDING) {
                 protocol->peripheral_transfer_active = true;
                 return false;
