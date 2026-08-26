@@ -45,7 +45,7 @@ if meson.is_cross_build()
   test(
     'podium-dd1-dd2-wqr',
     firmware_test,
-    args: [firmware],
+    args: [firmware.full_path()],
     suite: ['wqr', 'firmware'],
   )
 else
