@@ -77,6 +77,14 @@ static bool status_response_valid(const uint8_t window[TRANSMIT_WINDOW_SIZE], ui
            frame[18] == command_marker && wqr_protocol_crc(frame + 1, WQR_FRAME_BODY_SIZE) == crc;
 }
 
+static bool nack_response_valid(const uint8_t window[TRANSMIT_WINDOW_SIZE]) {
+    const uint8_t *frame = window + RECEIVE_PREFIX_SIZE;
+    uint16_t crc = (uint16_t)frame[61] | (uint16_t)((uint16_t)frame[62] << 8);
+
+    return frame[0] == 0x7b && frame[1] == 0 && frame[63] == 0x7d &&
+           wqr_protocol_crc(frame + 1, WQR_FRAME_BODY_SIZE) == crc;
+}
+
 static bool exchange_status(KinetisK22 *device, uint8_t request_sequence, uint8_t command_marker) {
     uint8_t request[WQR_FRAME_SIZE];
     uint8_t response[TRANSMIT_WINDOW_SIZE];
@@ -87,6 +95,14 @@ static bool exchange_status(KinetisK22 *device, uint8_t request_sequence, uint8_
                                     payload_length) &&
            send_request(device, request) && receive_response(device, response) &&
            status_response_valid(response, (uint8_t)(request_sequence + 1), command_marker);
+}
+
+static bool recover_from_noise(KinetisK22 *device) {
+    uint8_t noise[WQR_FRAME_SIZE] = {0};
+    uint8_t response[TRANSMIT_WINDOW_SIZE];
+
+    return send_request(device, noise) && receive_response(device, response) &&
+           nack_response_valid(response);
 }
 
 int main(int argc, char **argv) {
@@ -105,6 +121,7 @@ int main(int argc, char **argv) {
     }
     if (cortex_m4_load_elf(device, argv[1], NULL) && kinetis_k22_reset(device) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 0, 0) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && recover_from_noise(device) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 1, 0xaa) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 0, 0)) {
         passed = true;

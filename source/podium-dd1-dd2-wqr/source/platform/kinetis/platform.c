@@ -9,6 +9,8 @@ enum {
     UART_FRAME_OFFSET = 4,
     UART_SOURCE_CLOCK = 96000000,
     UART_BAUD_RATE = 5000000,
+    UART_RESPONSE_GUARD_TICKS = 471,
+    UART_RECOVERY_GUARD_TICKS = 3964,
     PIT_TICKS_PER_MILLISECOND = 24000,
     SPI_BYTE_BITS = 8,
     SPI_WORD_BITS = 16,
@@ -53,6 +55,7 @@ static uint8_t uart_transmit_window[UART_TRANSMIT_SIZE] __attribute__((aligned(4
 static volatile bool uart_receive_ready;
 static bool uart_transmit_active;
 static bool uart_response_due;
+static bool uart_recovery_active;
 static volatile bool spi_transfer_complete;
 static volatile bool spi_transfer_failed;
 static volatile uint16_t spi_received_word;
@@ -412,12 +415,16 @@ static void prepare_transmit_window(void) {
     }
 }
 
+static void start_uart_guard(uint32_t ticks) {
+    PIT->CHANNEL[1].LDVAL = ticks;
+    PIT->CHANNEL[1].TCTRL = PIT_TCTRL_TEN_MASK | PIT_TCTRL_TIE_MASK;
+}
+
 void DMA0_IRQHandler(void) {
     DMA0->CINT = DMA_CINT_CINT(0);
     DMA0->CDNE = DMA_CDNE_CDNE(0);
     uart_transmit_active = false;
-    PIT->CHANNEL[1].LDVAL = 471;
-    PIT->CHANNEL[1].TCTRL = PIT_TCTRL_TEN_MASK | PIT_TCTRL_TIE_MASK;
+    start_uart_guard(UART_RESPONSE_GUARD_TICKS);
 }
 
 void DMA1_IRQHandler(void) {
@@ -554,6 +561,10 @@ void PIT0_IRQHandler(void) {
 void PIT1_IRQHandler(void) {
     PIT->CHANNEL[1].TFLG = PIT_TFLG_TIF_MASK;
     PIT->CHANNEL[1].TCTRL = PIT_TCTRL_TIE_MASK;
+    if (uart_recovery_active) {
+        uart_recovery_active = false;
+        return;
+    }
     configure_uart_receive();
     wqr_protocol_response_sent(&protocol);
 }
@@ -578,15 +589,20 @@ static void process_uart_frame(void) {
 
     for (offset = 0; offset <= 4; ++offset) {
         if (uart_receive_window[offset] == 0x7b) {
-            wqr_protocol_receive(&protocol, uart_receive_window + offset);
-            uart_response_due = true;
-            return;
+            break;
         }
     }
+    if (offset > 4) {
+        offset = 0;
+        uart_recovery_active = true;
+        start_uart_guard(UART_RECOVERY_GUARD_TICKS);
+    }
+    wqr_protocol_receive(&protocol, uart_receive_window + offset);
+    uart_response_due = true;
 }
 
 static void start_uart_response(void) {
-    if (!uart_response_due || uart_transmit_active ||
+    if (!uart_response_due || uart_transmit_active || uart_recovery_active ||
         !wqr_protocol_response(&protocol, uart_transmit_window + UART_FRAME_OFFSET)) {
         return;
     }
