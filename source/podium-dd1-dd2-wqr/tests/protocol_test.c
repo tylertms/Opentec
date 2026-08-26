@@ -69,6 +69,8 @@ static void test_status_and_reset(void) {
     wqr_protocol_init(&protocol, &io);
     assert(wqr_protocol_build_frame(request, WQR_PAYLOAD_STATUS, 7, &command, 1));
     assert(wqr_protocol_receive(&protocol, request));
+    assert(!wqr_protocol_response(&protocol, response));
+    wqr_protocol_poll(&protocol);
     assert(wqr_protocol_response(&protocol, response));
     assert(response[0] == 0x7b);
     assert(response[1] == WQR_PAYLOAD_STATUS);
@@ -98,6 +100,7 @@ static void test_fragmented_i2c_read(void) {
     assert((response[1] & 0x0f) == 1);
     assert(wqr_protocol_build_frame(request, 0x40 | WQR_PAYLOAD_I2C, 1, last, sizeof(last)));
     assert(wqr_protocol_receive(&protocol, request));
+    wqr_protocol_poll(&protocol);
     assert(wqr_protocol_response(&protocol, response));
     assert(state.i2c_address == 0xa0);
     assert(state.i2c_command == 0x10);
@@ -134,6 +137,7 @@ static void test_primary_spi_handshake(void) {
     wqr_protocol_init(&protocol, &io);
     assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_PRIMARY_SPI, 0, payload, sizeof(payload)));
     assert(wqr_protocol_receive(&protocol, frame));
+    wqr_protocol_poll(&protocol);
     assert(wqr_protocol_response(&protocol, frame));
     assert(state.transfer_control);
     assert(state.spi_transfers == 1);
@@ -159,6 +163,7 @@ static void test_transfer_not_ready(void) {
     wqr_protocol_init(&protocol, &io);
     assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_PRIMARY_SPI, 0, payload, sizeof(payload)));
     assert(wqr_protocol_receive(&protocol, frame));
+    wqr_protocol_poll(&protocol);
     assert(wqr_protocol_response(&protocol, frame));
     assert(state.transfer_control);
     assert(state.spi_transfers == 0);
@@ -176,6 +181,7 @@ static void test_chunked_response(void) {
     wqr_protocol_init(&protocol, &io);
     assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_I2C, 11, request, sizeof(request)));
     assert(wqr_protocol_receive(&protocol, frame));
+    wqr_protocol_poll(&protocol);
     assert(wqr_protocol_response(&protocol, frame));
     assert(frame[1] == (0x10 | WQR_PAYLOAD_I2C));
     assert(frame[2] == 12);

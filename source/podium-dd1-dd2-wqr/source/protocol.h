@@ -58,6 +58,7 @@ typedef struct {
     uint8_t transfer_state;
     uint8_t transfer_detail;
     uint8_t command_marker;
+    bool payload_pending;
     bool response_ready;
     bool reset_after_response;
     bool transfer_control_asserted;

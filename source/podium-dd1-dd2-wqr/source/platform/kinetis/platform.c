@@ -22,6 +22,8 @@ static wqr_protocol protocol;
 static uint8_t uart_receive_window[UART_WINDOW_SIZE] __attribute__((aligned(4)));
 static uint8_t uart_transmit_window[UART_TRANSMIT_SIZE] __attribute__((aligned(4)));
 static volatile bool uart_receive_ready;
+static bool uart_transmit_active;
+static bool uart_response_due;
 static volatile bool adc_sample_ready;
 static volatile uint16_t adc_sample;
 
@@ -356,6 +358,7 @@ static void prepare_transmit_window(void) {
 void DMA0_IRQHandler(void) {
     DMA0->CINT = DMA_CINT_CINT(0);
     DMA0->CDNE = DMA_CDNE_CDNE(0);
+    uart_transmit_active = false;
     wqr_protocol_response_sent(&protocol);
     PIT->CHANNEL[1].LDVAL = 471;
     PIT->CHANNEL[1].TCTRL = PIT_TCTRL_TEN_MASK | PIT_TCTRL_TIE_MASK;
@@ -405,13 +408,22 @@ static void process_uart_frame(void) {
     for (offset = 0; offset <= 4; ++offset) {
         if (uart_receive_window[offset] == 0x7b) {
             wqr_protocol_receive(&protocol, uart_receive_window + offset);
-            if (wqr_protocol_response(&protocol, uart_transmit_window + UART_FRAME_OFFSET)) {
-                DMA0->CDNE = DMA_CDNE_CDNE(0);
-                DMA0->SERQ = DMA_SERQ_SERQ(0);
-            }
+            uart_response_due = true;
             return;
         }
     }
+}
+
+static void start_uart_response(void) {
+    if (!uart_response_due || uart_transmit_active ||
+        !wqr_protocol_response(&protocol, uart_transmit_window + UART_FRAME_OFFSET)) {
+        return;
+    }
+
+    uart_response_due = false;
+    uart_transmit_active = true;
+    DMA0->CDNE = DMA_CDNE_CDNE(0);
+    DMA0->SERQ = DMA_SERQ_SERQ(0);
 }
 
 void firmware_main(void) {
@@ -449,6 +461,7 @@ void firmware_main(void) {
             adc_sample_ready = false;
             wqr_protocol_set_sensor_sample(&protocol, adc_sample);
         }
+        start_uart_response();
         refresh_watchdog();
     }
 }

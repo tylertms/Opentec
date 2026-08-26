@@ -33,6 +33,8 @@ static const float sensor_resistance[SENSOR_TABLE_SIZE] = {
     4.344900e3f, 3.731000e3f, 3.215500e3f, 2.781000e3f, 2.413200e3f, 2.101000e3f, 1.834900e3f,
     1.607300e3f, 1.412200e3f, 1.244200e3f, 1.099300e3f, 9.738000e2f, 8.649000e2f};
 
+static bool process_payload(wqr_protocol *protocol);
+
 static uint16_t read_u16(const uint8_t *data) {
     return (uint16_t)data[0] | (uint16_t)((uint16_t)data[1] << 8);
 }
@@ -112,6 +114,12 @@ void wqr_protocol_poll(wqr_protocol *protocol) {
         protocol->transfer_state = WQR_TRANSFER_READY;
     } else {
         protocol->transfer_state = WQR_TRANSFER_DETECTED;
+    }
+
+    if (protocol->payload_pending) {
+        protocol->payload_pending = false;
+        (void)process_payload(protocol);
+        protocol->receive_length = 0;
     }
 }
 
@@ -339,11 +347,10 @@ bool wqr_protocol_receive(wqr_protocol *protocol, const uint8_t frame[WQR_FRAME_
         queue_control(protocol, false);
         return false;
     }
-    if (!process_payload(protocol)) {
-        queue_control(protocol, false);
-        return false;
-    }
-    protocol->receive_length = 0;
+    protocol->transmit_length = 0;
+    protocol->transmit_offset = 0;
+    protocol->response_ready = false;
+    protocol->payload_pending = true;
     return true;
 }
 
