@@ -32,22 +32,20 @@ if meson.is_cross_build()
   )
 
   simulator = subproject('kinetis-k22-sim', native: true)
-  simulator_runner = simulator.get_variable('kinetis_k22_firmware_runner')
+  simulator_image = simulator.get_variable('kinetis_k22_firmware_image_dependency')
+  firmware_test = executable(
+    'podium-dd1-dd2-wqr-test',
+    'tests/firmware_test.c',
+    sources,
+    native: true,
+    dependencies: simulator_image,
+    include_directories: include,
+  )
 
   test(
     'podium-dd1-dd2-wqr',
-    simulator_runner,
-    args: [
-      firmware,
-      '--reset-address',
-      '0xa000',
-      '--profile',
-      'MK22F12810',
-      '--max-instructions',
-      '1000000',
-      '--max-cycles',
-      '10000000',
-    ],
+    firmware_test,
+    args: [firmware],
     suite: ['wqr', 'firmware'],
   )
 else
