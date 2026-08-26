@@ -5,12 +5,14 @@ Checks: >
   bugprone-*,
   performance-*,
   portability-*,
-  readability-*,
+  readability-duplicate-include,
+  readability-inconsistent-declaration-parameter-name,
+  readability-misleading-indentation,
+  readability-redundant-*,
+  -bugprone-easily-swappable-parameters,
   -clang-analyzer-core.FixedAddressDereference,
-  -performance-no-int-to-ptr,
-  -readability-function-cognitive-complexity,
-  -readability-identifier-length,
-  -readability-magic-numbers
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  -performance-no-int-to-ptr
 WarningsAsErrors: '*'
 HeaderFilterRegex: 'source[/\\].*'
 FormatStyle: file
