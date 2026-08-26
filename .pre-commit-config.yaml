@@ -1,4 +1,5 @@
 minimum_pre_commit_version: "4.6.0"
+exclude: ^source/podium-dd1-dd2-wqr/source/vendor/
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
