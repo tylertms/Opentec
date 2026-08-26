@@ -191,6 +191,8 @@ static void test_primary_spi_handshake(void) {
     payload[0] = 0x5a;
     payload[56] = 1;
     wqr_protocol_init(&protocol, &io);
+    wqr_protocol_poll(&protocol);
+    assert(!protocol.peer_ready_confirmed);
     assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_PRIMARY_SPI, 0, payload, sizeof(payload)));
     assert(wqr_protocol_receive(&protocol, frame));
     wqr_protocol_poll(&protocol);
@@ -363,7 +365,8 @@ static void test_chunked_response(void) {
 
 static void test_sensor(void) {
     assert(wqr_sensor_value(0) == 999);
-    assert(wqr_sensor_value(4095) > 100);
+    assert(wqr_sensor_value(2048) == 64);
+    assert(wqr_sensor_value(4095) == -99);
 }
 
 int main(void) {

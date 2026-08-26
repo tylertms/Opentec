@@ -143,9 +143,11 @@ static void apply_transfer_control(wqr_protocol *protocol) {
 void wqr_protocol_poll(wqr_protocol *protocol) {
     if (protocol->payload_pending) {
         apply_transfer_control(protocol);
+        if (protocol->payload_type == WQR_PAYLOAD_PRIMARY_SPI ||
+            protocol->payload_type == WQR_PAYLOAD_ALTERNATE_SPI) {
+            update_transfer_handshake(protocol, transfer_ready(protocol));
+        }
     }
-
-    update_transfer_handshake(protocol, transfer_ready(protocol));
 
     if (protocol->payload_pending) {
         if (process_payload(protocol)) {
@@ -456,15 +458,16 @@ void wqr_protocol_tick(wqr_protocol *protocol) {
 }
 
 int16_t wqr_sensor_value(uint16_t sample) {
-    float voltage;
     float resistance;
     size_t index = 0;
 
     if (sample == 0) {
         return 999;
     }
-    voltage = (float)sample * 3.3f / 4096.0f;
-    resistance = 10000.0f / (3.3f / voltage + 1.0f);
+    if (sample >= 4096) {
+        return -99;
+    }
+    resistance = 10000.0f * (float)sample / (4096.0f - (float)sample);
     while (index < SENSOR_TABLE_SIZE && resistance < sensor_resistance[index]) {
         ++index;
     }
@@ -477,7 +480,7 @@ int16_t wqr_sensor_value(uint16_t sample) {
     return (int16_t)((((sensor_resistance[index - 1] - resistance) /
                        (sensor_resistance[index - 1] - sensor_resistance[index])) +
                       (float)(index - 1)) *
-                         5.0f +
+                         5.0f -
                      15.0f);
 }
 
