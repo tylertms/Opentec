@@ -14,7 +14,8 @@ enum {
     TRANSMIT_WINDOW_SIZE = WQR_FRAME_SIZE + 8,
     STARTUP_INSTRUCTIONS = 50000,
     RESPONSE_INSTRUCTION_LIMIT = 1000000,
-    GPIO_PORT_C = 2
+    GPIO_PORT_C = 2,
+    APPLICATION_BASE = 0xa000
 };
 
 static bool service_spi(KinetisK22 *device) {
@@ -58,6 +59,11 @@ static bool run_firmware(KinetisK22 *device, size_t instructions) {
         }
     }
     return true;
+}
+
+static bool load_firmware(KinetisK22 *device, const char *path) {
+    return cortex_m4_load_elf(device, path, NULL) ||
+           cortex_m4_load_binary(device, path, APPLICATION_BASE);
 }
 
 static bool send_request(KinetisK22 *device, const uint8_t frame[WQR_FRAME_SIZE]) {
@@ -225,12 +231,12 @@ int main(int argc, char **argv) {
     if (argc != 2) {
         return EXIT_FAILURE;
     }
-    configuration.vector_table_address = 0xa000;
+    configuration.vector_table_address = APPLICATION_BASE;
     device = kinetis_k22_create(configuration);
     if (device == NULL) {
         return EXIT_FAILURE;
     }
-    if (cortex_m4_load_elf(device, argv[1], NULL) && kinetis_k22_reset(device) &&
+    if (load_firmware(device, argv[1]) && kinetis_k22_reset(device) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 0, 0) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && recover_from_noise(device) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_primary_spi(device, 1) &&
