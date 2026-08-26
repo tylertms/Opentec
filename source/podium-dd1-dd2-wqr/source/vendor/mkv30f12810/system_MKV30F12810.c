@@ -1,9 +1,11 @@
 /*
 ** ###################################################################
-**     Processors:          MK22FN128VDC10
-**                          MK22FN128VLH10
-**                          MK22FN128VLL10
-**                          MK22FN128VMP10
+**     Processors:          MKV30F128VFM10
+**                          MKV30F128VLF10
+**                          MKV30F128VLH10
+**                          MKV30F64VFM10
+**                          MKV30F64VLF10
+**                          MKV30F64VLH10
 **
 **     Compilers:           Freescale C/C++ for Embedded ARM
 **                          GNU C Compiler
@@ -11,8 +13,8 @@
 **                          Keil ARM C/C++ Compiler
 **                          MCUXpresso Compiler
 **
-**     Reference manual:    K22P121M100SF9RM, Rev. 1, April 25, 2014
-**     Version:             rev. 1.6, 2015-02-19
+**     Reference manual:    KV30P64M100SFARM, Rev. 0, February 14, 2014
+**     Version:             rev. 0.5, 2015-02-19
 **     Build:               b181105
 **
 **     Abstract:
@@ -30,32 +32,28 @@
 **     mail:                 support@nxp.com
 **
 **     Revisions:
-**     - rev. 1.0 (2013-11-01)
-**         Initial version.
-**     - rev. 1.1 (2013-12-20)
-**         Update according to reference manual rev. 0.1,
-**     - rev. 1.2 (2014-02-10)
-**         The declaration of clock configurations has been moved to separate header file system_MK22F12810.h
-**     - rev. 1.3 (2014-05-06)
-**         Update according to reference manual rev. 1.0,
-**         Update of system and startup files.
+**     - rev. 0.1 (2014-02-24)
+**         Initial version
+**     - rev. 0.2 (2014-07-15)
 **         Module access macro module_BASES replaced by module_BASE_PTRS.
-**     - rev. 1.4 (2014-08-28)
+**         Update of system and startup files.
+**     - rev. 0.3 (2014-08-28)
 **         Update of system files - default clock configuration changed.
 **         Update of startup files - possibility to override DefaultISR added.
-**     - rev. 1.5 (2014-10-14)
+**     - rev. 0.4 (2014-10-14)
 **         Interrupt INT_LPTimer renamed to INT_LPTMR0, interrupt INT_Watchdog renamed to INT_WDOG_EWM.
-**     - rev. 1.6 (2015-02-19)
+**     - rev. 0.5 (2015-02-19)
 **         Renamed interrupt vector LLW to LLWU.
 **
 ** ###################################################################
 */
 
 /*!
- * @file MK22F12810
- * @version 1.6
+ * @file MKV30F12810
+ * @version 0.5
  * @date 2015-02-19
- * @brief Device specific configuration file for MK22F12810 (implementation file)
+ * @brief Device specific configuration file for MKV30F12810 (implementation
+ *        file)
  *
  * Provides a system configuration function and a global variable that contains
  * the system frequency. It configures the device and initializes the oscillator
@@ -115,14 +113,11 @@ void SystemCoreClockUpdate (void) {
       /* External reference clock is selected */
       switch (MCG->C7 & MCG_C7_OSCSEL_MASK) {
       case 0x00U:
-        MCGOUTClock = CPU_XTAL_CLK_HZ; /* System oscillator drives MCG clock */
-        break;
-      case 0x01U:
-        MCGOUTClock = CPU_XTAL32k_CLK_HZ; /* RTC 32 kHz oscillator drives MCG clock */
+        MCGOUTClock = CPU_XTAL_CLK_HZ;                                       /* System oscillator drives MCG clock */
         break;
       case 0x02U:
       default:
-        MCGOUTClock = CPU_INT_IRC_CLK_HZ; /* IRC 48MHz oscillator drives MCG clock */
+        MCGOUTClock = CPU_INT_IRC_CLK_HZ;                                              /* IRC 48MHz oscillator drives MCG clock */
         break;
       }
       tmpC7 = MCG->C7;
@@ -141,9 +136,9 @@ void SystemCoreClockUpdate (void) {
       } else {/* ((MCG->C2 & MCG_C2_RANGE_MASK) != 0x00U) */
         Divider = (uint16_t)(1LU << ((MCG->C1 & MCG_C1_FRDIV_MASK) >> MCG_C1_FRDIV_SHIFT));
       }
-      MCGOUTClock = (MCGOUTClock / Divider); /* Calculate the divided FLL reference clock */
+      MCGOUTClock = (MCGOUTClock / Divider);  /* Calculate the divided FLL reference clock */
     } else { /* (!((MCG->C1 & MCG_C1_IREFS_MASK) == 0x00U)) */
-      MCGOUTClock = CPU_INT_SLOW_CLK_HZ; /* The slow internal reference clock is selected */
+      MCGOUTClock = CPU_INT_SLOW_CLK_HZ;                                     /* The slow internal reference clock is selected */
     } /* (!((MCG->C1 & MCG_C1_IREFS_MASK) == 0x00U)) */
     /* Select correct multiplier to calculate the MCG output clock  */
     switch (MCG->C4 & (MCG_C4_DMX32_MASK | MCG_C4_DRST_DRS_MASK)) {
@@ -178,23 +173,20 @@ void SystemCoreClockUpdate (void) {
   } else if ((MCG->C1 & MCG_C1_CLKS_MASK) == 0x40U) {
     /* Internal reference clock is selected */
     if ((MCG->C2 & MCG_C2_IRCS_MASK) == 0x00U) {
-      MCGOUTClock = CPU_INT_SLOW_CLK_HZ; /* Slow internal reference clock selected */
+      MCGOUTClock = CPU_INT_SLOW_CLK_HZ;                                       /* Slow internal reference clock selected */
     } else { /* (!((MCG->C2 & MCG_C2_IRCS_MASK) == 0x00U)) */
       Divider = (uint16_t)(0x01LU << ((MCG->SC & MCG_SC_FCRDIV_MASK) >> MCG_SC_FCRDIV_SHIFT));
-      MCGOUTClock = (uint32_t) (CPU_INT_FAST_CLK_HZ / Divider); /* Fast internal reference clock selected */
+      MCGOUTClock = (uint32_t) (CPU_INT_FAST_CLK_HZ / Divider);  /* Fast internal reference clock selected */
     } /* (!((MCG->C2 & MCG_C2_IRCS_MASK) == 0x00U)) */
   } else if ((MCG->C1 & MCG_C1_CLKS_MASK) == 0x80U) {
     /* External reference clock is selected */
     switch (MCG->C7 & MCG_C7_OSCSEL_MASK) {
     case 0x00U:
-      MCGOUTClock = CPU_XTAL_CLK_HZ;   /* System oscillator drives MCG clock */
-      break;
-    case 0x01U:
-      MCGOUTClock = CPU_XTAL32k_CLK_HZ; /* RTC 32 kHz oscillator drives MCG clock */
+      MCGOUTClock = CPU_XTAL_CLK_HZ;                                           /* System oscillator drives MCG clock */
       break;
     case 0x02U:
     default:
-      MCGOUTClock = CPU_INT_IRC_CLK_HZ; /* IRC 48MHz oscillator drives MCG clock */
+      MCGOUTClock = CPU_INT_IRC_CLK_HZ;                                              /* IRC 48MHz oscillator drives MCG clock */
       break;
     }
   } else { /* (!((MCG->C1 & MCG_C1_CLKS_MASK) == 0x80U)) */

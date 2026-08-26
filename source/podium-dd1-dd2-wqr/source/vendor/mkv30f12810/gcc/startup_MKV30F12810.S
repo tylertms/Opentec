@@ -1,14 +1,16 @@
 /* ------------------------------------------------------------------------- */
-/*  @file:    startup_MK22F12810.s                                           */
+/*  @file:    startup_MKV30F12810.s                                          */
 /*  @purpose: CMSIS Cortex-M4 Core Device Startup File                       */
-/*            MK22F12810                                                     */
-/*  @version: 1.6                                                            */
+/*            MKV30F12810                                                    */
+/*  @version: 0.5                                                            */
 /*  @date:    2015-2-19                                                      */
-/*  @build:   b231019                                                        */
+/*  @build:   b190918                                                        */
 /* ------------------------------------------------------------------------- */
 /*                                                                           */
 /* Copyright 1997-2016 Freescale Semiconductor, Inc.                         */
-/* Copyright 2016-2023 NXP                                                   */
+/* Copyright 2016-2019 NXP                                                   */
+/* All rights reserved.                                                      */
+/*                                                                           */
 /* SPDX-License-Identifier: BSD-3-Clause                                     */
 /*****************************************************************************/
 /* Version: GCC for ARM Embedded Processors                                  */
@@ -63,18 +65,18 @@ __isr_vector:
     .long   WDOG_EWM_IRQHandler                             /* WDOG Interrupt*/
     .long   Reserved39_IRQHandler                           /* Reserved Interrupt 39*/
     .long   I2C0_IRQHandler                                 /* I2C0 interrupt*/
-    .long   I2C1_IRQHandler                                 /* I2C1 interrupt*/
+    .long   Reserved41_IRQHandler                           /* Reserved Interrupt 41*/
     .long   SPI0_IRQHandler                                 /* SPI0 Interrupt*/
-    .long   SPI1_IRQHandler                                 /* SPI1 Interrupt*/
-    .long   I2S0_Tx_IRQHandler                              /* I2S0 transmit interrupt*/
-    .long   I2S0_Rx_IRQHandler                              /* I2S0 receive interrupt*/
-    .long   LPUART0_IRQHandler                              /* LPUART0 status/error interrupt*/
+    .long   Reserved43_IRQHandler                           /* Reserved Interrupt 43*/
+    .long   Reserved44_IRQHandler                           /* Reserved Interrupt 44*/
+    .long   Reserved45_IRQHandler                           /* Reserved interrupt 45*/
+    .long   Reserved46_IRQHandler                           /* Reserved interrupt 46*/
     .long   UART0_RX_TX_IRQHandler                          /* UART0 Receive/Transmit interrupt*/
     .long   UART0_ERR_IRQHandler                            /* UART0 Error interrupt*/
     .long   UART1_RX_TX_IRQHandler                          /* UART1 Receive/Transmit interrupt*/
     .long   UART1_ERR_IRQHandler                            /* UART1 Error interrupt*/
-    .long   UART2_RX_TX_IRQHandler                          /* UART2 Receive/Transmit interrupt*/
-    .long   UART2_ERR_IRQHandler                            /* UART2 Error interrupt*/
+    .long   Reserved51_IRQHandler                           /* Reserved interrupt 51*/
+    .long   Reserved52_IRQHandler                           /* Reserved interrupt 52*/
     .long   Reserved53_IRQHandler                           /* Reserved interrupt 53*/
     .long   Reserved54_IRQHandler                           /* Reserved interrupt 54*/
     .long   ADC0_IRQHandler                                 /* ADC0 interrupt*/
@@ -84,14 +86,14 @@ __isr_vector:
     .long   FTM1_IRQHandler                                 /* FTM1 fault, overflow and channels interrupt*/
     .long   FTM2_IRQHandler                                 /* FTM2 fault, overflow and channels interrupt*/
     .long   Reserved61_IRQHandler                           /* Reserved interrupt 61*/
-    .long   RTC_IRQHandler                                  /* RTC interrupt*/
-    .long   RTC_Seconds_IRQHandler                          /* RTC seconds interrupt*/
+    .long   Reserved62_IRQHandler                           /* Reserved interrupt 62*/
+    .long   Reserved63_IRQHandler                           /* Reserved interrupt 63*/
     .long   PIT0_IRQHandler                                 /* PIT timer channel 0 interrupt*/
     .long   PIT1_IRQHandler                                 /* PIT timer channel 1 interrupt*/
     .long   PIT2_IRQHandler                                 /* PIT timer channel 2 interrupt*/
     .long   PIT3_IRQHandler                                 /* PIT timer channel 3 interrupt*/
     .long   PDB0_IRQHandler                                 /* PDB0 Interrupt*/
-    .long   USB0_IRQHandler                                 /* USB0 interrupt*/
+    .long   Reserved69_IRQHandler                           /* Reserved interrupt 69*/
     .long   Reserved70_IRQHandler                           /* Reserved interrupt 70*/
     .long   Reserved71_IRQHandler                           /* Reserved interrupt 71*/
     .long   DAC0_IRQHandler                                 /* DAC0 interrupt*/
@@ -112,18 +114,18 @@ __isr_vector:
     .long   Reserved87_IRQHandler                           /* Reserved interrupt 87*/
     .long   Reserved88_IRQHandler                           /* Reserved interrupt 88*/
     .long   ADC1_IRQHandler                                 /* ADC1 interrupt*/
-    .long   Reserved90_IRQHandler                           /* Reserved Interrupt 90*/
-    .long   Reserved91_IRQHandler                           /* Reserved Interrupt 91*/
-    .long   Reserved92_IRQHandler                           /* Reserved Interrupt 92*/
-    .long   Reserved93_IRQHandler                           /* Reserved Interrupt 93*/
-    .long   Reserved94_IRQHandler                           /* Reserved Interrupt 94*/
-    .long   Reserved95_IRQHandler                           /* Reserved Interrupt 95*/
-    .long   Reserved96_IRQHandler                           /* Reserved Interrupt 96*/
-    .long   Reserved97_IRQHandler                           /* Reserved Interrupt 97*/
-    .long   Reserved98_IRQHandler                           /* Reserved Interrupt 98*/
-    .long   Reserved99_IRQHandler                           /* Reserved Interrupt 99*/
-    .long   Reserved100_IRQHandler                          /* Reserved Interrupt 100*/
-    .long   Reserved101_IRQHandler                          /* Reserved Interrupt 101*/
+    .long   DefaultISR                                      /* 90*/
+    .long   DefaultISR                                      /* 91*/
+    .long   DefaultISR                                      /* 92*/
+    .long   DefaultISR                                      /* 93*/
+    .long   DefaultISR                                      /* 94*/
+    .long   DefaultISR                                      /* 95*/
+    .long   DefaultISR                                      /* 96*/
+    .long   DefaultISR                                      /* 97*/
+    .long   DefaultISR                                      /* 98*/
+    .long   DefaultISR                                      /* 99*/
+    .long   DefaultISR                                      /* 100*/
+    .long   DefaultISR                                      /* 101*/
     .long   DefaultISR                                      /* 102*/
     .long   DefaultISR                                      /* 103*/
     .long   DefaultISR                                      /* 104*/
@@ -279,7 +281,7 @@ __isr_vector:
     .long   DefaultISR                                      /* 254*/
     .long   0xFFFFFFFF                                      /*  Reserved for user TRIM value*/
 
-    .size   __isr_vector, . - __isr_vector
+    .size    __isr_vector, . - __isr_vector
 
 /* Flash Configuration */
     .section .FlashConfig, "a"
@@ -291,11 +293,6 @@ __isr_vector:
     .text
     .thumb
 
-#if defined (__cplusplus)
-#ifdef __REDLIB__
-#error Redlib does not support C++
-#endif
-#endif
 /* Reset Handler */
 
     .thumb_func
@@ -369,11 +366,7 @@ Reset_Handler:
 
     cpsie   i               /* Unmask interrupts */
 #ifndef __START
-#ifdef __REDLIB__
-#define __START __main
-#else
 #define __START _start
-#endif
 #endif
 #ifndef __ATOLLIC__
     ldr   r0,=__START
@@ -496,57 +489,12 @@ I2C0_IRQHandler:
 
     .align 1
     .thumb_func
-    .weak I2C1_IRQHandler
-    .type I2C1_IRQHandler, %function
-I2C1_IRQHandler:
-    ldr   r0,=I2C1_DriverIRQHandler
-    bx    r0
-    .size I2C1_IRQHandler, . - I2C1_IRQHandler
-
-    .align 1
-    .thumb_func
     .weak SPI0_IRQHandler
     .type SPI0_IRQHandler, %function
 SPI0_IRQHandler:
     ldr   r0,=SPI0_DriverIRQHandler
     bx    r0
     .size SPI0_IRQHandler, . - SPI0_IRQHandler
-
-    .align 1
-    .thumb_func
-    .weak SPI1_IRQHandler
-    .type SPI1_IRQHandler, %function
-SPI1_IRQHandler:
-    ldr   r0,=SPI1_DriverIRQHandler
-    bx    r0
-    .size SPI1_IRQHandler, . - SPI1_IRQHandler
-
-    .align 1
-    .thumb_func
-    .weak I2S0_Tx_IRQHandler
-    .type I2S0_Tx_IRQHandler, %function
-I2S0_Tx_IRQHandler:
-    ldr   r0,=I2S0_Tx_DriverIRQHandler
-    bx    r0
-    .size I2S0_Tx_IRQHandler, . - I2S0_Tx_IRQHandler
-
-    .align 1
-    .thumb_func
-    .weak I2S0_Rx_IRQHandler
-    .type I2S0_Rx_IRQHandler, %function
-I2S0_Rx_IRQHandler:
-    ldr   r0,=I2S0_Rx_DriverIRQHandler
-    bx    r0
-    .size I2S0_Rx_IRQHandler, . - I2S0_Rx_IRQHandler
-
-    .align 1
-    .thumb_func
-    .weak LPUART0_IRQHandler
-    .type LPUART0_IRQHandler, %function
-LPUART0_IRQHandler:
-    ldr   r0,=LPUART0_DriverIRQHandler
-    bx    r0
-    .size LPUART0_IRQHandler, . - LPUART0_IRQHandler
 
     .align 1
     .thumb_func
@@ -584,24 +532,6 @@ UART1_ERR_IRQHandler:
     bx    r0
     .size UART1_ERR_IRQHandler, . - UART1_ERR_IRQHandler
 
-    .align 1
-    .thumb_func
-    .weak UART2_RX_TX_IRQHandler
-    .type UART2_RX_TX_IRQHandler, %function
-UART2_RX_TX_IRQHandler:
-    ldr   r0,=UART2_RX_TX_DriverIRQHandler
-    bx    r0
-    .size UART2_RX_TX_IRQHandler, . - UART2_RX_TX_IRQHandler
-
-    .align 1
-    .thumb_func
-    .weak UART2_ERR_IRQHandler
-    .type UART2_ERR_IRQHandler, %function
-UART2_ERR_IRQHandler:
-    ldr   r0,=UART2_ERR_DriverIRQHandler
-    bx    r0
-    .size UART2_ERR_IRQHandler, . - UART2_ERR_IRQHandler
-
 
 /*    Macro to define default handlers. Default handler
  *    will be weak symbol and just dead loops. They can be
@@ -610,6 +540,7 @@ UART2_ERR_IRQHandler:
     .weak \handler_name
     .set  \handler_name, DefaultISR
     .endm
+
 /* Exception Handlers */
     def_irq_handler    MemManage_Handler
     def_irq_handler    BusFault_Handler
@@ -640,18 +571,18 @@ UART2_ERR_IRQHandler:
     def_irq_handler    WDOG_EWM_IRQHandler
     def_irq_handler    Reserved39_IRQHandler
     def_irq_handler    I2C0_DriverIRQHandler
-    def_irq_handler    I2C1_DriverIRQHandler
+    def_irq_handler    Reserved41_IRQHandler
     def_irq_handler    SPI0_DriverIRQHandler
-    def_irq_handler    SPI1_DriverIRQHandler
-    def_irq_handler    I2S0_Tx_DriverIRQHandler
-    def_irq_handler    I2S0_Rx_DriverIRQHandler
-    def_irq_handler    LPUART0_DriverIRQHandler
+    def_irq_handler    Reserved43_IRQHandler
+    def_irq_handler    Reserved44_IRQHandler
+    def_irq_handler    Reserved45_IRQHandler
+    def_irq_handler    Reserved46_IRQHandler
     def_irq_handler    UART0_RX_TX_DriverIRQHandler
     def_irq_handler    UART0_ERR_DriverIRQHandler
     def_irq_handler    UART1_RX_TX_DriverIRQHandler
     def_irq_handler    UART1_ERR_DriverIRQHandler
-    def_irq_handler    UART2_RX_TX_DriverIRQHandler
-    def_irq_handler    UART2_ERR_DriverIRQHandler
+    def_irq_handler    Reserved51_IRQHandler
+    def_irq_handler    Reserved52_IRQHandler
     def_irq_handler    Reserved53_IRQHandler
     def_irq_handler    Reserved54_IRQHandler
     def_irq_handler    ADC0_IRQHandler
@@ -661,14 +592,14 @@ UART2_ERR_IRQHandler:
     def_irq_handler    FTM1_IRQHandler
     def_irq_handler    FTM2_IRQHandler
     def_irq_handler    Reserved61_IRQHandler
-    def_irq_handler    RTC_IRQHandler
-    def_irq_handler    RTC_Seconds_IRQHandler
+    def_irq_handler    Reserved62_IRQHandler
+    def_irq_handler    Reserved63_IRQHandler
     def_irq_handler    PIT0_IRQHandler
     def_irq_handler    PIT1_IRQHandler
     def_irq_handler    PIT2_IRQHandler
     def_irq_handler    PIT3_IRQHandler
     def_irq_handler    PDB0_IRQHandler
-    def_irq_handler    USB0_IRQHandler
+    def_irq_handler    Reserved69_IRQHandler
     def_irq_handler    Reserved70_IRQHandler
     def_irq_handler    Reserved71_IRQHandler
     def_irq_handler    DAC0_IRQHandler
@@ -689,17 +620,5 @@ UART2_ERR_IRQHandler:
     def_irq_handler    Reserved87_IRQHandler
     def_irq_handler    Reserved88_IRQHandler
     def_irq_handler    ADC1_IRQHandler
-    def_irq_handler    Reserved90_IRQHandler
-    def_irq_handler    Reserved91_IRQHandler
-    def_irq_handler    Reserved92_IRQHandler
-    def_irq_handler    Reserved93_IRQHandler
-    def_irq_handler    Reserved94_IRQHandler
-    def_irq_handler    Reserved95_IRQHandler
-    def_irq_handler    Reserved96_IRQHandler
-    def_irq_handler    Reserved97_IRQHandler
-    def_irq_handler    Reserved98_IRQHandler
-    def_irq_handler    Reserved99_IRQHandler
-    def_irq_handler    Reserved100_IRQHandler
-    def_irq_handler    Reserved101_IRQHandler
 
     .end

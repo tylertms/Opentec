@@ -1,13 +1,12 @@
 /*
 ** ###################################################################
-**     Processors:          MK22FN128VDC10
-**                          MK22FN128VLH10
-**                          MK22FN128VLL10
-**                          MK22FN128VMP10
+**     Processors:          MKV30F128VFM10
+**                          MKV30F128VLF10
+**                          MKV30F128VLH10
 **
 **     Compiler:            GNU C Compiler
-**     Reference manual:    K22P121M100SF9RM, Rev. 1, April 25, 2014
-**     Version:             rev. 1.6, 2015-02-19
+**     Reference manual:    KV30P64M100SFARM, Rev. 0, February 14, 2014
+**     Version:             rev. 0.5, 2015-02-19
 **     Build:               b210812
 **
 **     Abstract:
@@ -34,15 +33,17 @@ STACK_SIZE = DEFINED(__stack_size__) ? __stack_size__ : 0x0400;
 /* Specify the memory areas */
 MEMORY
 {
-  m_interrupts          (RX)  : ORIGIN = 0x1FFFE000, LENGTH = 0x00000400
-  m_text                (RX)  : ORIGIN = 0x1FFFE400, LENGTH = 0x00001C00
-  m_data                (RW)  : ORIGIN = 0x20000000, LENGTH = 0x00004000
+  m_interrupts          (RX)  : ORIGIN = 0x0000A000, LENGTH = 0x00000400
+  m_flash_config        (RX)  : ORIGIN = 0x0000A400, LENGTH = 0x00000010
+  m_text                (RX)  : ORIGIN = 0x0000A410, LENGTH = 0x00015BF0
+  m_data                (RW)  : ORIGIN = 0x1FFFE000, LENGTH = 0x00002000
+  m_data_2              (RW)  : ORIGIN = 0x20000000, LENGTH = 0x00002000
 }
 
 /* Define output sections */
 SECTIONS
 {
-  /* The startup code goes first into internal RAM */
+  /* The startup code goes first into internal flash */
   .interrupts :
   {
     . = ALIGN(4);
@@ -50,7 +51,14 @@ SECTIONS
     . = ALIGN(4);
   } > m_interrupts
 
-  /* The program code and other data goes into internal RAM */
+  .flash_config :
+  {
+    . = ALIGN(4);
+    KEEP(*(.FlashConfig))    /* Flash Configuration Field (FCF) */
+    . = ALIGN(4);
+  } > m_flash_config
+
+  /* The program code and other data goes into internal flash */
   .text :
   {
     . = ALIGN(4);
@@ -183,21 +191,21 @@ SECTIONS
     . += HEAP_SIZE;
     __HeapLimit = .;
     __heap_limit = .; /* Add for _sbrk */
-  } > m_data
+  } > m_data_2
 
   .stack :
   {
     . = ALIGN(8);
     . += STACK_SIZE;
-  } > m_data
+  } > m_data_2
 
   /* Initializes stack on the end of block */
-  __StackTop   = ORIGIN(m_data) + LENGTH(m_data);
+  __StackTop   = ORIGIN(m_data_2) + LENGTH(m_data_2);
   __StackLimit = __StackTop - STACK_SIZE;
   PROVIDE(__stack = __StackTop);
 
   .ARM.attributes 0 : { *(.ARM.attributes) }
 
-  ASSERT(__StackLimit >= __HeapLimit, "region m_data overflowed with stack and heap")
+  ASSERT(__StackLimit >= __HeapLimit, "region m_data_2 overflowed with stack and heap")
 }
 

@@ -14,15 +14,15 @@
  *
  * The CPU macro should be declared in the project or makefile.
  */
-#if (defined(CPU_MK22FN128VDC10) || defined(CPU_MK22FN128VLH10) || defined(CPU_MK22FN128VLL10) || \
-    defined(CPU_MK22FN128VMP10))
+#if (defined(CPU_MKV30F128VFM10) || defined(CPU_MKV30F128VLF10) || defined(CPU_MKV30F128VLH10) || \
+    defined(CPU_MKV30F64VFM10) || defined(CPU_MKV30F64VLF10) || defined(CPU_MKV30F64VLH10))
 
-#define K22F12810_SERIES
+#define KV30F12810_SERIES
 
 /* CMSIS-style register definitions */
-#include "MK22F12810.h"
+#include "MKV30F12810.h"
 /* CPU specific feature definitions */
-#include "MK22F12810_features.h"
+#include "MKV30F12810_features.h"
 
 #else
     #error "No valid CPU defined!"

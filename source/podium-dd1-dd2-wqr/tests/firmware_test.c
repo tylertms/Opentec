@@ -5,7 +5,7 @@
 #include <string.h>
 
 #include "cortex_m4_firmware_image.h"
-#include "kinetis_k22.h"
+#include "kinetis.h"
 #include "protocol.h"
 
 enum {
@@ -15,33 +15,34 @@ enum {
     STARTUP_INSTRUCTIONS = 50000,
     RESPONSE_INSTRUCTION_LIMIT = 1000000,
     GPIO_PORT_C = 2,
-    APPLICATION_BASE = 0xa000
+    APPLICATION_BASE = 0xa000,
+    SRAM_SIZE = 0x4000
 };
 
-static bool service_spi(KinetisK22 *device) {
-    KinetisK22SpiTransfer transfer;
+static bool service_spi(Kinetis *device) {
+    KinetisSpiTransfer transfer;
 
-    return !kinetis_k22_spi_transfer(device, KINETIS_K22_SERIAL_SPI0, &transfer) ||
-           kinetis_k22_serial_receive(device, KINETIS_K22_SERIAL_SPI0, transfer.data, 0);
+    return !kinetis_spi_transfer(device, KINETIS_SERIAL_SPI0, &transfer) ||
+           kinetis_serial_receive(device, KINETIS_SERIAL_SPI0, transfer.data, 0);
 }
 
-static bool service_i2c(KinetisK22 *device) {
-    KinetisK22I2cTransfer transfer;
+static bool service_i2c(Kinetis *device) {
+    KinetisI2cTransfer transfer;
 
-    if (!kinetis_k22_i2c_transfer(device, KINETIS_K22_SERIAL_I2C0, &transfer)) {
+    if (!kinetis_i2c_transfer(device, KINETIS_SERIAL_I2C0, &transfer)) {
         return true;
     }
-    if (transfer.type == KINETIS_K22_I2C_WRITE) {
-        return kinetis_k22_i2c_acknowledge(device, KINETIS_K22_SERIAL_I2C0, true);
+    if (transfer.type == KINETIS_I2C_WRITE) {
+        return kinetis_i2c_acknowledge(device, KINETIS_SERIAL_I2C0, true);
     }
-    if (transfer.type == KINETIS_K22_I2C_READ) {
-        return kinetis_k22_i2c_receive(device, KINETIS_K22_SERIAL_I2C0, 0x5a);
+    if (transfer.type == KINETIS_I2C_READ) {
+        return kinetis_i2c_receive(device, KINETIS_SERIAL_I2C0, 0x5a);
     }
     return true;
 }
 
-static bool step_firmware(KinetisK22 *device) {
-    CortexM4 *cpu = kinetis_k22_cpu(device);
+static bool step_firmware(Kinetis *device) {
+    CortexM4 *cpu = kinetis_cpu(device);
     CortexM4Result result = cortex_m4_step(cpu);
 
     if (result.stop == CORTEX_M4_STOP_LOCKUP || result.stop == CORTEX_M4_STOP_UNSUPPORTED ||
@@ -52,7 +53,7 @@ static bool step_firmware(KinetisK22 *device) {
     return service_spi(device) && service_i2c(device);
 }
 
-static bool run_firmware(KinetisK22 *device, size_t instructions) {
+static bool run_firmware(Kinetis *device, size_t instructions) {
     while (instructions-- != 0) {
         if (!step_firmware(device)) {
             return false;
@@ -61,17 +62,17 @@ static bool run_firmware(KinetisK22 *device, size_t instructions) {
     return true;
 }
 
-static bool load_firmware(KinetisK22 *device, const char *path) {
+static bool load_firmware(Kinetis *device, const char *path) {
     return cortex_m4_load_elf(device, path, NULL) ||
            cortex_m4_load_binary(device, path, APPLICATION_BASE);
 }
 
-static bool send_request(KinetisK22 *device, const uint8_t frame[WQR_FRAME_SIZE]) {
+static bool send_request(Kinetis *device, const uint8_t frame[WQR_FRAME_SIZE]) {
     uint8_t window[RECEIVE_WINDOW_SIZE] = {0};
 
     memcpy(window + RECEIVE_PREFIX_SIZE, frame, WQR_FRAME_SIZE);
     for (size_t index = 0; index < sizeof(window); ++index) {
-        while (!kinetis_k22_uart1_receive(device, window[index], 0)) {
+        while (!kinetis_uart1_receive(device, window[index], 0)) {
             if (!step_firmware(device)) {
                 return false;
             }
@@ -80,13 +81,13 @@ static bool send_request(KinetisK22 *device, const uint8_t frame[WQR_FRAME_SIZE]
     return true;
 }
 
-static bool receive_response(KinetisK22 *device, uint8_t window[TRANSMIT_WINDOW_SIZE]) {
+static bool receive_response(Kinetis *device, uint8_t window[TRANSMIT_WINDOW_SIZE]) {
     size_t length = 0;
 
     for (size_t instruction = 0; instruction < RESPONSE_INSTRUCTION_LIMIT; ++instruction) {
         uint8_t value;
 
-        while (length < TRANSMIT_WINDOW_SIZE && kinetis_k22_uart1_transmit(device, &value)) {
+        while (length < TRANSMIT_WINDOW_SIZE && kinetis_uart1_transmit(device, &value)) {
             window[length++] = value;
         }
         if (length == TRANSMIT_WINDOW_SIZE) {
@@ -117,7 +118,7 @@ static bool nack_response_valid(const uint8_t window[TRANSMIT_WINDOW_SIZE]) {
            wqr_protocol_crc(frame + 1, WQR_FRAME_BODY_SIZE) == crc;
 }
 
-static bool exchange_status(KinetisK22 *device, uint8_t request_sequence, uint8_t command_marker) {
+static bool exchange_status(Kinetis *device, uint8_t request_sequence, uint8_t command_marker) {
     uint8_t request[WQR_FRAME_SIZE];
     uint8_t response[TRANSMIT_WINDOW_SIZE];
     const uint8_t *payload = command_marker == 0 ? NULL : &command_marker;
@@ -129,7 +130,7 @@ static bool exchange_status(KinetisK22 *device, uint8_t request_sequence, uint8_
            status_response_valid(response, (uint8_t)(request_sequence + 1), command_marker);
 }
 
-static bool recover_from_noise(KinetisK22 *device) {
+static bool recover_from_noise(Kinetis *device) {
     uint8_t noise[WQR_FRAME_SIZE] = {0};
     uint8_t response[TRANSMIT_WINDOW_SIZE];
 
@@ -150,7 +151,7 @@ static bool primary_response_valid(const uint8_t window[TRANSMIT_WINDOW_SIZE], u
            wqr_protocol_crc(frame + 1, WQR_FRAME_BODY_SIZE) == crc;
 }
 
-static bool exchange_primary_spi(KinetisK22 *device, uint8_t request_sequence) {
+static bool exchange_primary_spi(Kinetis *device, uint8_t request_sequence) {
     uint8_t payload[WQR_FRAME_PAYLOAD_SIZE] = {0};
     uint8_t request[WQR_FRAME_SIZE];
     uint8_t response[TRANSMIT_WINDOW_SIZE];
@@ -159,7 +160,7 @@ static bool exchange_primary_spi(KinetisK22 *device, uint8_t request_sequence) {
         payload[index] = (uint8_t)(index + 1);
     }
     payload[WQR_FRAME_PAYLOAD_SIZE - 1] = 1;
-    return kinetis_k22_gpio_drive(device, GPIO_PORT_C, 2, false) &&
+    return kinetis_gpio_drive(device, GPIO_PORT_C, 2, false) &&
            wqr_protocol_build_frame(request, WQR_PAYLOAD_PRIMARY_SPI, request_sequence, payload,
                                     sizeof(payload)) &&
            send_request(device, request) && receive_response(device, response) &&
@@ -171,7 +172,7 @@ static bool exchange_primary_spi(KinetisK22 *device, uint8_t request_sequence) {
            primary_response_valid(response, (uint8_t)(request_sequence + 2), payload, true);
 }
 
-static bool exchange_alternate_spi(KinetisK22 *device, uint8_t request_sequence) {
+static bool exchange_alternate_spi(Kinetis *device, uint8_t request_sequence) {
     uint8_t payload[WQR_FRAME_PAYLOAD_SIZE] = {0x34, 0x12};
     uint8_t request[WQR_FRAME_SIZE];
     uint8_t response[TRANSMIT_WINDOW_SIZE];
@@ -189,7 +190,7 @@ static bool exchange_alternate_spi(KinetisK22 *device, uint8_t request_sequence)
                (uint16_t)(frame[61] | (uint16_t)(frame[62] << 8));
 }
 
-static bool exchange_i2c_write(KinetisK22 *device, uint8_t request_sequence) {
+static bool exchange_i2c_write(Kinetis *device, uint8_t request_sequence) {
     const uint8_t payload[] = {0, 0xa0, 0x10, 0x22};
     uint8_t request[WQR_FRAME_SIZE];
     uint8_t response[TRANSMIT_WINDOW_SIZE];
@@ -205,7 +206,7 @@ static bool exchange_i2c_write(KinetisK22 *device, uint8_t request_sequence) {
                (uint16_t)(frame[61] | (uint16_t)(frame[62] << 8));
 }
 
-static bool exchange_i2c_read(KinetisK22 *device, uint8_t request_sequence) {
+static bool exchange_i2c_read(Kinetis *device, uint8_t request_sequence) {
     const uint8_t payload[] = {0, 0xa1, 0x10, 3, 0};
     uint8_t request[WQR_FRAME_SIZE];
     uint8_t response[TRANSMIT_WINDOW_SIZE];
@@ -223,20 +224,20 @@ static bool exchange_i2c_read(KinetisK22 *device, uint8_t request_sequence) {
 }
 
 int main(int argc, char **argv) {
-    KinetisK22Configuration configuration =
-        kinetis_k22_configuration(KINETIS_K22_PROFILE_MK22F12810);
-    KinetisK22 *device;
+    KinetisConfiguration configuration = kinetis_configuration(KINETIS_PROFILE_MKV30F12810);
+    Kinetis *device;
     bool passed = false;
 
     if (argc != 2) {
         return EXIT_FAILURE;
     }
     configuration.vector_table_address = APPLICATION_BASE;
-    device = kinetis_k22_create(configuration);
+    configuration.sram_size = SRAM_SIZE;
+    device = kinetis_create(configuration);
     if (device == NULL) {
         return EXIT_FAILURE;
     }
-    if (load_firmware(device, argv[1]) && kinetis_k22_reset(device) &&
+    if (load_firmware(device, argv[1]) && kinetis_reset(device) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 0, 0) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && recover_from_noise(device) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_primary_spi(device, 1) &&
@@ -247,6 +248,6 @@ int main(int argc, char **argv) {
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 0, 0)) {
         passed = true;
     }
-    kinetis_k22_destroy(device);
+    kinetis_destroy(device);
     return passed ? EXIT_SUCCESS : EXIT_FAILURE;
 }

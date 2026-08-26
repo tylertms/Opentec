@@ -1,9 +1,11 @@
 /*
 ** ###################################################################
-**     Processors:          MK22FN128VDC10
-**                          MK22FN128VLH10
-**                          MK22FN128VLL10
-**                          MK22FN128VMP10
+**     Processors:          MKV30F128VFM10
+**                          MKV30F128VLF10
+**                          MKV30F128VLH10
+**                          MKV30F64VFM10
+**                          MKV30F64VLF10
+**                          MKV30F64VLH10
 **
 **     Compilers:           Freescale C/C++ for Embedded ARM
 **                          GNU C Compiler
@@ -11,8 +13,8 @@
 **                          Keil ARM C/C++ Compiler
 **                          MCUXpresso Compiler
 **
-**     Reference manual:    K22P121M100SF9RM, Rev. 1, April 25, 2014
-**     Version:             rev. 1.6, 2015-02-19
+**     Reference manual:    KV30P64M100SFARM, Rev. 0, February 14, 2014
+**     Version:             rev. 0.5, 2015-02-19
 **     Build:               b181105
 **
 **     Abstract:
@@ -30,40 +32,35 @@
 **     mail:                 support@nxp.com
 **
 **     Revisions:
-**     - rev. 1.0 (2013-11-01)
-**         Initial version.
-**     - rev. 1.1 (2013-12-20)
-**         Update according to reference manual rev. 0.1,
-**     - rev. 1.2 (2014-02-10)
-**         The declaration of clock configurations has been moved to separate header file system_MK22F12810.h
-**     - rev. 1.3 (2014-05-06)
-**         Update according to reference manual rev. 1.0,
-**         Update of system and startup files.
+**     - rev. 0.1 (2014-02-24)
+**         Initial version
+**     - rev. 0.2 (2014-07-15)
 **         Module access macro module_BASES replaced by module_BASE_PTRS.
-**     - rev. 1.4 (2014-08-28)
+**         Update of system and startup files.
+**     - rev. 0.3 (2014-08-28)
 **         Update of system files - default clock configuration changed.
 **         Update of startup files - possibility to override DefaultISR added.
-**     - rev. 1.5 (2014-10-14)
+**     - rev. 0.4 (2014-10-14)
 **         Interrupt INT_LPTimer renamed to INT_LPTMR0, interrupt INT_Watchdog renamed to INT_WDOG_EWM.
-**     - rev. 1.6 (2015-02-19)
+**     - rev. 0.5 (2015-02-19)
 **         Renamed interrupt vector LLW to LLWU.
 **
 ** ###################################################################
 */
 
 /*!
- * @file MK22F12810
- * @version 1.6
+ * @file MKV30F12810
+ * @version 0.5
  * @date 2015-02-19
- * @brief Device specific configuration file for MK22F12810 (header file)
+ * @brief Device specific configuration file for MKV30F12810 (header file)
  *
  * Provides a system configuration function and a global variable that contains
  * the system frequency. It configures the device and initializes the oscillator
  * (PLL) that is part of the microcontroller device.
  */
 
-#ifndef _SYSTEM_MK22F12810_H_
-#define _SYSTEM_MK22F12810_H_                    /**< Symbol preventing repeated inclusion */
+#ifndef _SYSTEM_MKV30F12810_H_
+#define _SYSTEM_MKV30F12810_H_                   /**< Symbol preventing repeated inclusion */
 
 #ifdef __cplusplus
 extern "C" {
@@ -79,14 +76,12 @@ extern "C" {
 /* Define clock source values */
 
 #define CPU_XTAL_CLK_HZ                8000000u            /* Value of the external crystal or oscillator clock frequency in Hz */
-#define CPU_XTAL32k_CLK_HZ             32768u              /* Value of the external 32k crystal or oscillator clock frequency in Hz */
+#define CPU_XTAL32k_CLK_HZ             0u                  /* No RTC clock available */
 #define CPU_INT_SLOW_CLK_HZ            32768u              /* Value of the slow internal oscillator clock frequency in Hz  */
 #define CPU_INT_FAST_CLK_HZ            4000000u            /* Value of the fast internal oscillator clock frequency in Hz  */
 #define CPU_INT_IRC_CLK_HZ             48000000u           /* Value of the 48M internal oscillator clock frequency in Hz  */
 
 /* RTC oscillator setting */
-/* RTC_CR: SC2P=0,SC4P=0,SC8P=0,SC16P=0,CLKO=1,OSCE=1,WPS=0,UM=0,SUP=0,WPE=0,SWR=0 */
-#define SYSTEM_RTC_CR_VALUE            0x0300U             /* RTC_CR */
 
 /* Low power mode enable */
 /* SMC_PMPROT: AHSRUN=1,AVLP=1,ALLS=1,AVLLS=1 */
@@ -140,4 +135,4 @@ void SystemInitHook (void);
 }
 #endif
 
-#endif  /* _SYSTEM_MK22F12810_H_ */
+#endif  /* _SYSTEM_MKV30F12810_H_ */

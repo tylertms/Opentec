@@ -1,7 +1,7 @@
 /build/
 /.cache/
 /tmp/
-/subprojects/kinetis-k22-sim/
+/subprojects/kinetis-sim/
 /subprojects/packagecache/
 /subprojects/.wraplock
 __pycache__/

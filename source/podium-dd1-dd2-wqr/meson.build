@@ -2,13 +2,13 @@ sources = files('source/protocol.c')
 include = include_directories('source')
 
 if meson.is_cross_build()
-  linker_script = 'source/vendor/mk22f12810/gcc/MK22FN128xxx10_flash.ld'
+  linker_script = 'source/vendor/mkv30f12810/gcc/MKV30F128xxx10_flash.ld'
 
   firmware = executable(
     'podium-dd1-dd2-wqr',
     sources,
     'source/platform/kinetis/platform.c',
-    'source/vendor/mk22f12810/gcc/startup_MK22F12810.S',
+    'source/vendor/mkv30f12810/gcc/startup_MKV30F12810.S',
     c_args: [
       '-ffreestanding',
       '-ffunction-sections',
@@ -20,7 +20,7 @@ if meson.is_cross_build()
     include_directories: [
       include,
       include_directories('source/vendor/cmsis-core/include', is_system: true),
-      include_directories('source/vendor/mk22f12810', is_system: true),
+      include_directories('source/vendor/mkv30f12810', is_system: true),
     ],
     link_args: [
       '-nostartfiles',
@@ -31,8 +31,8 @@ if meson.is_cross_build()
     name_suffix: 'elf',
   )
 
-  simulator = subproject('kinetis-k22-sim', native: true)
-  simulator_image = simulator.get_variable('kinetis_k22_firmware_image_dependency')
+  simulator = subproject('kinetis-sim', native: true)
+  simulator_image = simulator.get_variable('kinetis_firmware_image_dependency')
   firmware_test = executable(
     'podium-dd1-dd2-wqr-test',
     'tests/firmware_test.c',
