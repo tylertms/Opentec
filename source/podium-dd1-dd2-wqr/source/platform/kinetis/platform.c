@@ -20,6 +20,7 @@ enum {
     SPI_TRANSMIT_DMA_CHANNEL = 2,
     SPI_RECEIVE_DMA_SOURCE = 14,
     SPI_TRANSMIT_DMA_SOURCE = 15,
+    SPI_RETRY_MILLISECONDS = 2,
     I2C_TIMEOUT_MILLISECONDS = 10,
     FPU_ACCESS_MASK = (3u << 20) | (3u << 22),
     WDOG_REQUIRED_MASK = 0x100
@@ -64,6 +65,7 @@ static volatile bool spi_transfer_complete;
 static volatile bool spi_transfer_failed;
 static volatile uint16_t spi_received_word;
 static bool spi_transfer_active;
+static volatile uint8_t spi_retry_delay;
 static uint32_t spi_transmit_words[WQR_SPI_TRANSFER_SIZE];
 static uint32_t spi_receive_words[WQR_SPI_TRANSFER_SIZE];
 static uint8_t *spi_receive_destination;
@@ -237,6 +239,32 @@ static void set_spi_frame_size(unsigned int bits) {
     SPI0->MCR &= ~SPI_MCR_HALT_MASK;
 }
 
+static void start_spi_dma(void) {
+    DMAMUX->CHCFG[SPI_RECEIVE_DMA_CHANNEL] = 0;
+    DMAMUX->CHCFG[SPI_TRANSMIT_DMA_CHANNEL] = 0;
+    DMA0->CINT = DMA_CINT_CINT(SPI_RECEIVE_DMA_CHANNEL);
+    DMA0->CINT = DMA_CINT_CINT(SPI_TRANSMIT_DMA_CHANNEL);
+    DMA0->CDNE = DMA_CDNE_CDNE(SPI_RECEIVE_DMA_CHANNEL);
+    DMA0->CDNE = DMA_CDNE_CDNE(SPI_TRANSMIT_DMA_CHANNEL);
+    set_spi_frame_size(SPI_BYTE_BITS);
+    SPI0->RSER = SPI_RSER_TFFF_DIRS_MASK | SPI_RSER_TFFF_RE_MASK | SPI_RSER_RFDF_DIRS_MASK |
+                 SPI_RSER_RFDF_RE_MASK;
+    configure_dma_descriptor(SPI_RECEIVE_DMA_CHANNEL, &SPI0->POPR, 0, spi_receive_words, 4,
+                             (uint16_t)spi_transfer_length, DMA_TRANSFER_32_BIT);
+    configure_dma_descriptor(SPI_TRANSMIT_DMA_CHANNEL, spi_transmit_words, 4, &SPI0->PUSHR, 0,
+                             (uint16_t)spi_transfer_length, DMA_TRANSFER_32_BIT);
+    DMAMUX->CHCFG[SPI_RECEIVE_DMA_CHANNEL] =
+        DMAMUX_CHCFG_ENBL_MASK | DMAMUX_CHCFG_SOURCE(SPI_RECEIVE_DMA_SOURCE);
+    DMAMUX->CHCFG[SPI_TRANSMIT_DMA_CHANNEL] =
+        DMAMUX_CHCFG_ENBL_MASK | DMAMUX_CHCFG_SOURCE(SPI_TRANSMIT_DMA_SOURCE);
+    spi_transfer_complete = false;
+    spi_transfer_failed = false;
+    spi_retry_delay = SPI_RETRY_MILLISECONDS;
+    GPIOC->PCOR = UINT32_C(0x10);
+    DMA0->SERQ = DMA_SERQ_SERQ(SPI_RECEIVE_DMA_CHANNEL);
+    DMA0->SERQ = DMA_SERQ_SERQ(SPI_TRANSMIT_DMA_CHANNEL);
+}
+
 static wqr_io_result io_spi_transfer(void *context, const uint8_t *transmit, uint8_t *receive,
                                      size_t length) {
     (void)context;
@@ -246,6 +274,7 @@ static wqr_io_result io_spi_transfer(void *context, const uint8_t *transmit, uin
         }
         spi_transfer_complete = false;
         spi_transfer_active = false;
+        spi_retry_delay = 0;
         if (!spi_transfer_failed) {
             for (size_t index = 0; index < spi_transfer_length; ++index) {
                 spi_receive_destination[index] = (uint8_t)spi_receive_words[index];
@@ -259,25 +288,8 @@ static wqr_io_result io_spi_transfer(void *context, const uint8_t *transmit, uin
     }
     spi_receive_destination = receive;
     spi_transfer_length = length;
-    DMAMUX->CHCFG[SPI_RECEIVE_DMA_CHANNEL] = 0;
-    DMAMUX->CHCFG[SPI_TRANSMIT_DMA_CHANNEL] = 0;
-    set_spi_frame_size(SPI_BYTE_BITS);
-    SPI0->RSER = SPI_RSER_TFFF_DIRS_MASK | SPI_RSER_TFFF_RE_MASK | SPI_RSER_RFDF_DIRS_MASK |
-                 SPI_RSER_RFDF_RE_MASK;
-    configure_dma_descriptor(SPI_RECEIVE_DMA_CHANNEL, &SPI0->POPR, 0, spi_receive_words, 4,
-                             (uint16_t)length, DMA_TRANSFER_32_BIT);
-    configure_dma_descriptor(SPI_TRANSMIT_DMA_CHANNEL, spi_transmit_words, 4, &SPI0->PUSHR, 0,
-                             (uint16_t)length, DMA_TRANSFER_32_BIT);
-    DMAMUX->CHCFG[SPI_RECEIVE_DMA_CHANNEL] =
-        DMAMUX_CHCFG_ENBL_MASK | DMAMUX_CHCFG_SOURCE(SPI_RECEIVE_DMA_SOURCE);
-    DMAMUX->CHCFG[SPI_TRANSMIT_DMA_CHANNEL] =
-        DMAMUX_CHCFG_ENBL_MASK | DMAMUX_CHCFG_SOURCE(SPI_TRANSMIT_DMA_SOURCE);
-    spi_transfer_complete = false;
-    spi_transfer_failed = false;
     spi_transfer_active = true;
-    GPIOC->PCOR = UINT32_C(0x10);
-    DMA0->SERQ = DMA_SERQ_SERQ(SPI_RECEIVE_DMA_CHANNEL);
-    DMA0->SERQ = DMA_SERQ_SERQ(SPI_TRANSMIT_DMA_CHANNEL);
+    start_spi_dma();
     return WQR_IO_PENDING;
 }
 
@@ -298,6 +310,7 @@ static wqr_io_result io_spi_word(void *context, uint16_t transmit, uint16_t *rec
     spi_transfer_complete = false;
     spi_transfer_failed = false;
     spi_transfer_active = true;
+    spi_retry_delay = 0;
     GPIOC->PCOR = UINT32_C(0x10);
     SPI0->PUSHR = transmit;
     return WQR_IO_PENDING;
@@ -464,6 +477,7 @@ void DMA3_IRQHandler(void) {
     DMA0->CINT = DMA_CINT_CINT(SPI_RECEIVE_DMA_CHANNEL);
     DMA0->CDNE = DMA_CDNE_CDNE(SPI_RECEIVE_DMA_CHANNEL);
     GPIOC->PSOR = UINT32_C(0x10);
+    spi_retry_delay = 0;
     spi_transfer_complete = true;
 }
 
@@ -568,10 +582,20 @@ static void update_i2c_timeout(void) {
     }
 }
 
+static void update_spi_retry(void) {
+    if (!spi_transfer_active || spi_transfer_complete || spi_retry_delay == 0) {
+        return;
+    }
+    if (--spi_retry_delay == 0) {
+        start_spi_dma();
+    }
+}
+
 void PIT0_IRQHandler(void) {
     static uint8_t adc_period;
 
     wqr_protocol_tick(&protocol);
+    update_spi_retry();
     update_i2c_timeout();
     if (++adc_period == 100) {
         adc_period = 0;

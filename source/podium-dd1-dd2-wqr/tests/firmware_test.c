@@ -23,11 +23,19 @@ enum {
     SRAM_SIZE = 0x4000
 };
 
+static bool drop_next_spi_response;
+
 static bool service_spi(Kinetis *device) {
     KinetisSpiTransfer transfer;
 
-    return !kinetis_spi_transfer(device, KINETIS_SERIAL_SPI0, &transfer) ||
-           kinetis_serial_receive(device, KINETIS_SERIAL_SPI0, transfer.data, 0);
+    if (!kinetis_spi_transfer(device, KINETIS_SERIAL_SPI0, &transfer)) {
+        return true;
+    }
+    if (drop_next_spi_response) {
+        drop_next_spi_response = false;
+        return true;
+    }
+    return kinetis_serial_receive(device, KINETIS_SERIAL_SPI0, transfer.data, 0);
 }
 
 static bool service_i2c(Kinetis *device) {
@@ -202,6 +210,22 @@ static bool exchange_primary_spi(Kinetis *device, uint8_t request_sequence) {
            primary_response_valid(response, (uint8_t)(request_sequence + 2), payload, true);
 }
 
+static bool exchange_primary_spi_after_dropped_transfer(Kinetis *device, uint8_t request_sequence) {
+    uint8_t payload[WQR_FRAME_PAYLOAD_SIZE] = {0};
+    uint8_t request[WQR_FRAME_SIZE];
+    uint8_t response[TRANSMIT_WINDOW_SIZE];
+
+    for (size_t index = 0; index < WQR_SPI_TRANSFER_SIZE; ++index) {
+        payload[index] = (uint8_t)(WQR_SPI_TRANSFER_SIZE - index);
+    }
+    payload[WQR_FRAME_PAYLOAD_SIZE - 1] = 1;
+    drop_next_spi_response = true;
+    return wqr_protocol_build_frame(request, WQR_PAYLOAD_PRIMARY_SPI, request_sequence, payload,
+                                    sizeof(payload)) &&
+           send_request(device, request) && receive_response(device, response) &&
+           primary_response_valid(response, (uint8_t)(request_sequence + 1), payload, true);
+}
+
 static bool exchange_alternate_spi(Kinetis *device, uint8_t request_sequence) {
     uint8_t payload[WQR_FRAME_PAYLOAD_SIZE] = {0x34, 0x12};
     uint8_t request[WQR_FRAME_SIZE];
@@ -312,12 +336,14 @@ static bool firmware_passes(const char *path, KinetisPackage package) {
         run_firmware(device, STARTUP_INSTRUCTIONS) && recover_from_noise(device) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && recover_from_bad_end_marker(device) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_primary_spi(device, 2) &&
-        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_alternate_spi(device, 4) &&
-        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_i2c_write(device, 5) &&
-        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_i2c_read(device, 6) &&
-        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_fragmented_i2c_read(device, 7) &&
-        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_chunked_i2c_read(device, 9) &&
-        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 11, 0xaa) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) &&
+        exchange_primary_spi_after_dropped_transfer(device, 4) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_alternate_spi(device, 5) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_i2c_write(device, 6) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_i2c_read(device, 7) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_fragmented_i2c_read(device, 8) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_chunked_i2c_read(device, 10) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 12, 0xaa) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 0, 0)) {
         passed = true;
     }
