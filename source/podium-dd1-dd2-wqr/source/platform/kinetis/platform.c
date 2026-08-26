@@ -387,7 +387,7 @@ static void configure_i2c(void) {
     I2C0->C1 = I2C_C1_IICEN_MASK | I2C_C1_IICIE_MASK;
     I2C0->S = I2C_S_IICIF_MASK | I2C_S_ARBL_MASK;
     I2C0->C2 = 0;
-    I2C0->FLT = I2C_FLT_FLT(10) | I2C_FLT_SSIE_MASK;
+    I2C0->FLT = I2C_FLT_FLT(10);
     I2C0->RA = 0;
     nvic_enable(I2C0_IRQn, 10);
 }
