@@ -67,21 +67,32 @@ static bool receive_response(KinetisK22 *device, uint8_t window[TRANSMIT_WINDOW_
     return false;
 }
 
-static bool status_response_valid(const uint8_t window[TRANSMIT_WINDOW_SIZE]) {
+static bool status_response_valid(const uint8_t window[TRANSMIT_WINDOW_SIZE], uint8_t sequence,
+                                  uint8_t command_marker) {
     const uint8_t *frame = window + RECEIVE_PREFIX_SIZE;
     uint16_t crc = (uint16_t)frame[61] | (uint16_t)((uint16_t)frame[62] << 8);
 
-    return frame[0] == 0x7b && frame[1] == WQR_PAYLOAD_STATUS && frame[2] == 1 &&
+    return frame[0] == 0x7b && frame[1] == WQR_PAYLOAD_STATUS && frame[2] == sequence &&
            frame[3] == WQR_STATUS_SIZE && frame[4] == 7 && frame[63] == 0x7d &&
-           wqr_protocol_crc(frame + 1, WQR_FRAME_BODY_SIZE) == crc;
+           frame[18] == command_marker && wqr_protocol_crc(frame + 1, WQR_FRAME_BODY_SIZE) == crc;
+}
+
+static bool exchange_status(KinetisK22 *device, uint8_t request_sequence, uint8_t command_marker) {
+    uint8_t request[WQR_FRAME_SIZE];
+    uint8_t response[TRANSMIT_WINDOW_SIZE];
+    const uint8_t *payload = command_marker == 0 ? NULL : &command_marker;
+    size_t payload_length = command_marker == 0 ? 0 : 1;
+
+    return wqr_protocol_build_frame(request, WQR_PAYLOAD_STATUS, request_sequence, payload,
+                                    payload_length) &&
+           send_request(device, request) && receive_response(device, response) &&
+           status_response_valid(response, (uint8_t)(request_sequence + 1), command_marker);
 }
 
 int main(int argc, char **argv) {
     KinetisK22Configuration configuration =
         kinetis_k22_configuration(KINETIS_K22_PROFILE_MK22F12810);
     KinetisK22 *device;
-    uint8_t request[WQR_FRAME_SIZE];
-    uint8_t response[TRANSMIT_WINDOW_SIZE];
     bool passed = false;
 
     if (argc != 2) {
@@ -93,10 +104,9 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
     if (cortex_m4_load_elf(device, argv[1], NULL) && kinetis_k22_reset(device) &&
-        run_firmware(device, STARTUP_INSTRUCTIONS) &&
-        wqr_protocol_build_frame(request, WQR_PAYLOAD_STATUS, 0, NULL, 0) &&
-        send_request(device, request) && receive_response(device, response) &&
-        status_response_valid(response) && run_firmware(device, STARTUP_INSTRUCTIONS)) {
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 0, 0) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 1, 0xaa) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 0, 0)) {
         passed = true;
     }
     kinetis_k22_destroy(device);

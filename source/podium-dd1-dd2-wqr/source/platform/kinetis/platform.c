@@ -416,7 +416,6 @@ void DMA0_IRQHandler(void) {
     DMA0->CINT = DMA_CINT_CINT(0);
     DMA0->CDNE = DMA_CDNE_CDNE(0);
     uart_transmit_active = false;
-    wqr_protocol_response_sent(&protocol);
     PIT->CHANNEL[1].LDVAL = 471;
     PIT->CHANNEL[1].TCTRL = PIT_TCTRL_TEN_MASK | PIT_TCTRL_TIE_MASK;
 }
@@ -556,6 +555,7 @@ void PIT1_IRQHandler(void) {
     PIT->CHANNEL[1].TFLG = PIT_TFLG_TIF_MASK;
     PIT->CHANNEL[1].TCTRL = PIT_TCTRL_TIE_MASK;
     configure_uart_receive();
+    wqr_protocol_response_sent(&protocol);
 }
 
 void ADC0_IRQHandler(void) {
