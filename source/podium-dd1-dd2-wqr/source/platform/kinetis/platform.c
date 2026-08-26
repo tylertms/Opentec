@@ -34,6 +34,8 @@ typedef enum {
     I2C_FAILED
 } i2c_phase;
 
+typedef enum { DMA_TRANSFER_8_BIT = 0, DMA_TRANSFER_32_BIT = 2 } dma_transfer_width;
+
 typedef struct {
     const uint8_t *write_data;
     uint8_t *read_data;
@@ -60,6 +62,10 @@ static volatile bool spi_transfer_complete;
 static volatile bool spi_transfer_failed;
 static volatile uint16_t spi_received_word;
 static bool spi_transfer_active;
+static uint32_t spi_transmit_words[WQR_SPI_TRANSFER_SIZE];
+static uint32_t spi_receive_words[WQR_SPI_TRANSFER_SIZE];
+static uint8_t *spi_receive_destination;
+static size_t spi_transfer_length;
 static i2c_transaction i2c;
 static volatile bool adc_sample_ready;
 static volatile uint16_t adc_sample;
@@ -125,11 +131,12 @@ static void configure_pins(void) {
 
 static void configure_dma_descriptor(unsigned int channel, volatile const void *source,
                                      int16_t source_offset, volatile void *destination,
-                                     int16_t destination_offset, uint16_t count) {
+                                     int16_t destination_offset, uint16_t count,
+                                     dma_transfer_width width) {
     DMA0->TCD[channel].SADDR = (uint32_t)(uintptr_t)source;
     DMA0->TCD[channel].SOFF = (uint16_t)source_offset;
-    DMA0->TCD[channel].ATTR = 0;
-    DMA0->TCD[channel].NBYTES_MLNO = 1;
+    DMA0->TCD[channel].ATTR = DMA_ATTR_SSIZE(width) | DMA_ATTR_DSIZE(width);
+    DMA0->TCD[channel].NBYTES_MLNO = UINT32_C(1) << width;
     DMA0->TCD[channel].SLAST = -(int32_t)(source_offset * count);
     DMA0->TCD[channel].DADDR = (uint32_t)(uintptr_t)destination;
     DMA0->TCD[channel].DOFF = (uint16_t)destination_offset;
@@ -141,7 +148,8 @@ static void configure_dma_descriptor(unsigned int channel, volatile const void *
 
 static void configure_uart_receive(void) {
     DMAMUX->CHCFG[1] = 0;
-    configure_dma_descriptor(1, &UART1->D, 0, uart_receive_window, 1, UART_WINDOW_SIZE);
+    configure_dma_descriptor(1, &UART1->D, 0, uart_receive_window, 1, UART_WINDOW_SIZE,
+                             DMA_TRANSFER_8_BIT);
     DMAMUX->CHCFG[1] = DMAMUX_CHCFG_ENBL_MASK | DMAMUX_CHCFG_SOURCE(4);
     DMA0->CDNE = DMA_CDNE_CDNE(1);
     DMA0->SERQ = DMA_SERQ_SERQ(1);
@@ -164,7 +172,8 @@ static void configure_uart(void) {
     UART1->C2 = UART_C2_TE_MASK | UART_C2_RE_MASK | UART_C2_RIE_MASK | UART_C2_TIE_MASK;
     UART1->C5 = UART_C5_TDMAS_MASK | UART_C5_RDMAS_MASK;
     DMAMUX->CHCFG[0] = 0;
-    configure_dma_descriptor(0, uart_transmit_window, 1, &UART1->D, 0, UART_TRANSMIT_SIZE);
+    configure_dma_descriptor(0, uart_transmit_window, 1, &UART1->D, 0, UART_TRANSMIT_SIZE,
+                             DMA_TRANSFER_8_BIT);
     DMAMUX->CHCFG[0] = DMAMUX_CHCFG_ENBL_MASK | DMAMUX_CHCFG_SOURCE(5);
     configure_uart_receive();
     nvic_enable(DMA0_IRQn, 15);
@@ -235,17 +244,28 @@ static wqr_io_result io_spi_transfer(void *context, const uint8_t *transmit, uin
         }
         spi_transfer_complete = false;
         spi_transfer_active = false;
+        if (!spi_transfer_failed) {
+            for (size_t index = 0; index < spi_transfer_length; ++index) {
+                spi_receive_destination[index] = (uint8_t)spi_receive_words[index];
+            }
+        }
         return spi_transfer_failed ? WQR_IO_FAILED : WQR_IO_SUCCEEDED;
     }
 
+    for (size_t index = 0; index < length; ++index) {
+        spi_transmit_words[index] = transmit[index];
+    }
+    spi_receive_destination = receive;
+    spi_transfer_length = length;
     DMAMUX->CHCFG[SPI_RECEIVE_DMA_CHANNEL] = 0;
     DMAMUX->CHCFG[SPI_TRANSMIT_DMA_CHANNEL] = 0;
     set_spi_frame_size(SPI_BYTE_BITS);
     SPI0->RSER = SPI_RSER_TFFF_DIRS_MASK | SPI_RSER_TFFF_RE_MASK | SPI_RSER_RFDF_DIRS_MASK |
                  SPI_RSER_RFDF_RE_MASK;
-    configure_dma_descriptor(SPI_RECEIVE_DMA_CHANNEL, &SPI0->POPR, 0, receive, 1, (uint16_t)length);
-    configure_dma_descriptor(SPI_TRANSMIT_DMA_CHANNEL, transmit, 1, &SPI0->PUSHR, 0,
-                             (uint16_t)length);
+    configure_dma_descriptor(SPI_RECEIVE_DMA_CHANNEL, &SPI0->POPR, 0, spi_receive_words, 4,
+                             (uint16_t)length, DMA_TRANSFER_32_BIT);
+    configure_dma_descriptor(SPI_TRANSMIT_DMA_CHANNEL, spi_transmit_words, 4, &SPI0->PUSHR, 0,
+                             (uint16_t)length, DMA_TRANSFER_32_BIT);
     DMAMUX->CHCFG[SPI_RECEIVE_DMA_CHANNEL] =
         DMAMUX_CHCFG_ENBL_MASK | DMAMUX_CHCFG_SOURCE(SPI_RECEIVE_DMA_SOURCE);
     DMAMUX->CHCFG[SPI_TRANSMIT_DMA_CHANNEL] =
