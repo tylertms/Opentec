@@ -159,21 +159,16 @@ static void test_primary_spi_handshake(void) {
     assert(state.transfer_control);
     assert(state.spi_transfers == 0);
     assert((frame[60] & 2) != 0);
-    assert(protocol.transfer_state == WQR_TRANSFER_WAITING);
+    assert(protocol.peer_ready_confirmed);
+    assert(!protocol.transfer_enabled);
 
     assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_PRIMARY_SPI, 1, payload, sizeof(payload)));
-    assert(wqr_protocol_receive(&protocol, frame));
-    wqr_protocol_poll(&protocol);
-    assert(state.spi_transfers == 0);
-    assert(protocol.transfer_state == WQR_TRANSFER_DETECTED);
-
-    assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_PRIMARY_SPI, 2, payload, sizeof(payload)));
     assert(wqr_protocol_receive(&protocol, frame));
     wqr_protocol_poll(&protocol);
     assert(wqr_protocol_response(&protocol, frame));
     assert(state.spi_transfers == 1);
     assert(frame[4] == 0x5a);
-    assert(protocol.transfer_state == WQR_TRANSFER_READY);
+    assert(protocol.transfer_enabled);
     assert(protocol.transfer_detail == 0);
 }
 
@@ -198,7 +193,8 @@ static void test_transfer_not_ready(void) {
     assert(state.transfer_control);
     assert(state.spi_transfers == 0);
     assert((frame[60] & 2) == 0);
-    assert(protocol.transfer_state == WQR_TRANSFER_WAITING);
+    assert(!protocol.peer_ready_confirmed);
+    assert(!protocol.transfer_enabled);
 }
 
 static void test_pending_spi(void) {
@@ -216,7 +212,8 @@ static void test_pending_spi(void) {
     payload[0] = 0x5a;
     payload[56] = 1;
     wqr_protocol_init(&protocol, &io);
-    protocol.transfer_state = WQR_TRANSFER_READY;
+    protocol.peer_ready_confirmed = true;
+    protocol.transfer_enabled = true;
     protocol.transfer_control_asserted = true;
     assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_PRIMARY_SPI, 0, payload, sizeof(payload)));
     assert(wqr_protocol_receive(&protocol, frame));

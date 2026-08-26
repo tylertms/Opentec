@@ -21,13 +21,6 @@ typedef enum {
     WQR_PAYLOAD_STATUS = 5
 } wqr_payload_type;
 
-typedef enum {
-    WQR_TRANSFER_IDLE = 0,
-    WQR_TRANSFER_WAITING = 1,
-    WQR_TRANSFER_DETECTED = 2,
-    WQR_TRANSFER_READY = 4
-} wqr_transfer_state;
-
 typedef enum { WQR_IO_PENDING, WQR_IO_SUCCEEDED, WQR_IO_FAILED } wqr_io_result;
 
 typedef struct {
@@ -60,9 +53,10 @@ typedef struct {
     uint8_t payload_type;
     uint8_t response_type;
     uint8_t sequence;
-    uint8_t transfer_state;
     uint8_t transfer_detail;
     uint8_t command_marker;
+    bool peer_ready_confirmed;
+    bool transfer_enabled;
     bool payload_pending;
     bool peripheral_transfer_active;
     bool response_ready;

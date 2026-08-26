@@ -23,6 +23,9 @@ enum {
     TRANSFER_CONTROL_OFFSET = 56,
     TRANSFER_CONTROL_ASSERTED = 1,
     TRANSFER_STATUS_DETECTED = 2,
+    STATUS_TRANSFER_WAITING = 1,
+    STATUS_TRANSFER_DETECTED = 2,
+    STATUS_TRANSFER_READY = 4,
     SENSOR_TABLE_SIZE = 34
 };
 
@@ -106,33 +109,18 @@ static void set_transfer_control(wqr_protocol *protocol, bool asserted) {
     }
 }
 
-static void update_transfer_state(wqr_protocol *protocol, bool ready) {
-    switch (protocol->transfer_state) {
-    case WQR_TRANSFER_IDLE:
-        protocol->transfer_detail = 0;
-        protocol->transfer_state = WQR_TRANSFER_WAITING;
-        break;
-    case WQR_TRANSFER_WAITING:
-        if (ready) {
-            protocol->transfer_state = WQR_TRANSFER_DETECTED;
-        }
-        break;
-    case WQR_TRANSFER_DETECTED:
-        if (!ready) {
-            protocol->transfer_state = WQR_TRANSFER_IDLE;
-        } else if (protocol->transfer_control_asserted) {
-            protocol->transfer_state = WQR_TRANSFER_READY;
-        }
-        break;
-    case WQR_TRANSFER_READY:
-        if (!ready || !protocol->transfer_control_asserted) {
-            protocol->transfer_state = WQR_TRANSFER_IDLE;
-        }
-        break;
-    default:
-        protocol->transfer_state = WQR_TRANSFER_IDLE;
-        break;
+static void update_transfer_handshake(wqr_protocol *protocol, bool ready) {
+    if (!ready) {
+        protocol->peer_ready_confirmed = false;
+        protocol->transfer_enabled = false;
+        return;
     }
+    if (!protocol->peer_ready_confirmed) {
+        protocol->peer_ready_confirmed = true;
+        protocol->transfer_enabled = false;
+        return;
+    }
+    protocol->transfer_enabled = protocol->transfer_control_asserted;
 }
 
 static void apply_transfer_control(wqr_protocol *protocol) {
@@ -148,7 +136,7 @@ static void apply_transfer_control(wqr_protocol *protocol) {
         (protocol->receive_payload[TRANSFER_CONTROL_OFFSET] & TRANSFER_CONTROL_ASSERTED) != 0;
     set_transfer_control(protocol, asserted);
     if (!asserted) {
-        protocol->transfer_state = WQR_TRANSFER_IDLE;
+        protocol->transfer_enabled = false;
     }
 }
 
@@ -157,7 +145,7 @@ void wqr_protocol_poll(wqr_protocol *protocol) {
         apply_transfer_control(protocol);
     }
 
-    update_transfer_state(protocol, transfer_ready(protocol));
+    update_transfer_handshake(protocol, transfer_ready(protocol));
 
     if (protocol->payload_pending) {
         if (process_payload(protocol)) {
@@ -184,6 +172,13 @@ static void queue_control(wqr_protocol *protocol, bool acknowledged) {
     protocol->response_type = acknowledged ? 1 : 0;
 }
 
+static uint8_t transfer_status(const wqr_protocol *protocol) {
+    if (protocol->transfer_enabled) {
+        return STATUS_TRANSFER_READY;
+    }
+    return protocol->peer_ready_confirmed ? STATUS_TRANSFER_DETECTED : STATUS_TRANSFER_WAITING;
+}
+
 static void encode_status(wqr_protocol *protocol, uint8_t status[WQR_STATUS_SIZE]) {
     memset(status, 0, WQR_STATUS_SIZE);
     status[0] = 7;
@@ -193,7 +188,7 @@ static void encode_status(wqr_protocol *protocol, uint8_t status[WQR_STATUS_SIZE
     write_u16(status + 2, (uint16_t)protocol->sensor_value);
     write_u32(status + 4, protocol->seconds);
     write_u32(status + 8, protocol->error_count);
-    status[12] = protocol->transfer_state;
+    status[12] = transfer_status(protocol);
     status[13] = protocol->transfer_detail;
     status[14] = protocol->command_marker;
 }
@@ -206,7 +201,7 @@ static bool process_primary_spi(wqr_protocol *protocol) {
         memset(response, 0, PRIMARY_RESPONSE_SIZE);
     }
     if (protocol->receive_length >= PRIMARY_RESPONSE_SIZE &&
-        (protocol->transfer_state == WQR_TRANSFER_READY || protocol->peripheral_transfer_active)) {
+        (protocol->transfer_enabled || protocol->peripheral_transfer_active)) {
         protocol->transfer_detail = 0;
         if (protocol->io.spi_transfer != NULL) {
             result = protocol->io.spi_transfer(protocol->io.context, protocol->receive_payload,
@@ -231,7 +226,7 @@ static void process_alternate_spi(wqr_protocol *protocol) {
 
     if (protocol->receive_length >= PRIMARY_RESPONSE_SIZE) {
         protocol->transfer_detail = 1;
-        if (protocol->io.spi_word != NULL && protocol->transfer_state == WQR_TRANSFER_READY) {
+        if (protocol->io.spi_word != NULL && protocol->transfer_enabled) {
             (void)protocol->io.spi_word(protocol->io.context, read_u16(protocol->receive_payload),
                                         &received);
         }
