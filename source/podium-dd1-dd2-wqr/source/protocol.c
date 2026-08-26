@@ -20,43 +20,33 @@ enum {
     I2C_FAILURE_RESPONSE_SIZE = 3,
     PRIMARY_RESPONSE_SIZE = 57,
     ALTERNATE_RESPONSE_SIZE = 57,
+    SENSOR_TABLE_COLUMNS = 2,
     SENSOR_TABLE_SIZE = 34
 };
 
-static const float sensor_resistance[SENSOR_TABLE_SIZE] = {336851.0f,
-                                                           256115.796875f,
-                                                           196435.203125f,
-                                                           151917.40625f,
-                                                           118422.203125f,
-                                                           93011.8984375f,
-                                                           73582.703125f,
-                                                           58614.6015625f,
-                                                           47000.0f,
-                                                           37925.30078125f,
-                                                           30788.099609375f,
-                                                           25139.099609375f,
-                                                           20640.80078125f,
-                                                           17037.80078125f,
-                                                           14135.7998046875f,
-                                                           11785.7998046875f,
-                                                           9872.900390625f,
-                                                           8308.099609375f,
-                                                           7021.89990234375f,
-                                                           5959.7001953125f,
-                                                           5078.7001953125f,
-                                                           4344.89990234375f,
-                                                           3731.0f,
-                                                           3215.5f,
-                                                           2781.0f,
-                                                           2413.199951171875f,
-                                                           2101.0f,
-                                                           1834.9000244140625f,
-                                                           1607.300048828125f,
-                                                           1412.199951171875f,
-                                                           1244.199951171875f,
-                                                           1099.300048828125f,
-                                                           973.7999877929688f,
-                                                           864.9000244140625f};
+static const float sensor_resistance[][SENSOR_TABLE_COLUMNS] = {
+    {336851.0f, 256115.796875f},
+    {196435.203125f, 151917.40625f},
+    {118422.203125f, 93011.8984375f},
+    {73582.703125f, 58614.6015625f},
+    {47000.0f, 37925.30078125f},
+    {30788.099609375f, 25139.099609375f},
+    {20640.80078125f, 17037.80078125f},
+    {14135.7998046875f, 11785.7998046875f},
+    {9872.900390625f, 8308.099609375f},
+    {7021.89990234375f, 5959.7001953125f},
+    {5078.7001953125f, 4344.89990234375f},
+    {3731.0f, 3215.5f},
+    {2781.0f, 2413.199951171875f},
+    {2101.0f, 1834.9000244140625f},
+    {1607.300048828125f, 1412.199951171875f},
+    {1244.199951171875f, 1099.300048828125f},
+    {973.7999877929688f, 864.9000244140625f},
+};
+
+static float sensor_resistance_at(size_t index) {
+    return sensor_resistance[index / SENSOR_TABLE_COLUMNS][index % SENSOR_TABLE_COLUMNS];
+}
 
 static uint16_t read_u16(const uint8_t *data) {
     return (uint16_t)data[0] | (uint16_t)((uint16_t)data[1] << 8);
@@ -403,7 +393,7 @@ int16_t wqr_sensor_value(uint16_t sample) {
     }
     voltage = (float)sample * 3.3f / 4096.0f;
     resistance = 10000.0f / (3.3f / voltage + 1.0f);
-    while (index < SENSOR_TABLE_SIZE && resistance < sensor_resistance[index]) {
+    while (index < SENSOR_TABLE_SIZE && resistance < sensor_resistance_at(index)) {
         ++index;
     }
     if (index == 0) {
@@ -412,8 +402,8 @@ int16_t wqr_sensor_value(uint16_t sample) {
     if (index == SENSOR_TABLE_SIZE) {
         return 999;
     }
-    return (int16_t)((((sensor_resistance[index - 1] - resistance) /
-                       (sensor_resistance[index - 1] - sensor_resistance[index])) +
+    return (int16_t)((((sensor_resistance_at(index - 1) - resistance) /
+                       (sensor_resistance_at(index - 1) - sensor_resistance_at(index))) +
                       (float)(index - 1)) *
                          5.0f +
                      15.0f);
