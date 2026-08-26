@@ -1,6 +1,6 @@
 #include <stdint.h>
 
-#include "fsl_device_registers.h"
+#include "MK22F12810.h"
 #include "protocol.h"
 
 enum {
@@ -11,8 +11,12 @@ enum {
     UART_BAUD_RATE = 5000000,
     PIT_TICKS_PER_MILLISECOND = 24000,
     SPI_TIMEOUT = 100000,
-    I2C_TIMEOUT = 100000
+    I2C_TIMEOUT = 100000,
+    FPU_ACCESS_MASK = (3u << 20) | (3u << 22),
+    WDOG_REQUIRED_MASK = 0x100
 };
+
+uint32_t SystemCoreClock = DEFAULT_SYSTEM_CLOCK;
 
 static wqr_protocol protocol;
 static uint8_t uart_receive_window[UART_WINDOW_SIZE] __attribute__((aligned(4)));
@@ -20,6 +24,14 @@ static uint8_t uart_transmit_window[UART_TRANSMIT_SIZE] __attribute__((aligned(4
 static volatile bool uart_receive_ready;
 static volatile bool adc_sample_ready;
 static volatile uint16_t adc_sample;
+
+void SystemInit(void) {
+    SCB->CPACR |= FPU_ACCESS_MASK;
+    WDOG->UNLOCK = WDOG_UNLOCK_WDOGUNLOCK(0xc520);
+    WDOG->UNLOCK = WDOG_UNLOCK_WDOGUNLOCK(0xd928);
+    WDOG->STCTRLH = WDOG_REQUIRED_MASK | WDOG_STCTRLH_WAITEN_MASK | WDOG_STCTRLH_STOPEN_MASK |
+                    WDOG_STCTRLH_ALLOWUPDATE_MASK | WDOG_STCTRLH_CLKSRC_MASK;
+}
 
 static void nvic_enable(IRQn_Type interrupt, uint32_t priority) {
     NVIC_SetPriority(interrupt, priority);
