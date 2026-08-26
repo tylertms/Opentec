@@ -14,7 +14,11 @@ enum {
     TRANSMIT_WINDOW_SIZE = WQR_FRAME_SIZE + 8,
     STARTUP_INSTRUCTIONS = 50000,
     RESPONSE_INSTRUCTION_LIMIT = 1000000,
+    SENSOR_SETTLE_INSTRUCTIONS = 3000000,
+    GPIO_PORT_A = 0,
     GPIO_PORT_C = 2,
+    SENSOR_SAMPLE = 2048,
+    INPUT_FLAGS = 5,
     APPLICATION_BASE = 0xa000,
     SRAM_SIZE = 0x4000
 };
@@ -131,6 +135,19 @@ static bool exchange_status(Kinetis *device, uint8_t request_sequence, uint8_t c
                                     payload_length) &&
            send_request(device, request) && receive_response(device, response) &&
            status_response_valid(response, (uint8_t)(request_sequence + 1), command_marker);
+}
+
+static bool exchange_measured_status(Kinetis *device, uint8_t request_sequence) {
+    uint8_t request[WQR_FRAME_SIZE];
+    uint8_t response[TRANSMIT_WINDOW_SIZE];
+    const uint8_t *frame = response + RECEIVE_PREFIX_SIZE;
+    uint16_t sensor_value = (uint16_t)wqr_sensor_value(SENSOR_SAMPLE);
+
+    return wqr_protocol_build_frame(request, WQR_PAYLOAD_STATUS, request_sequence, NULL, 0) &&
+           send_request(device, request) && receive_response(device, response) &&
+           status_response_valid(response, (uint8_t)(request_sequence + 1), 0) &&
+           frame[5] == INPUT_FLAGS && frame[6] == (uint8_t)sensor_value &&
+           frame[7] == (uint8_t)(sensor_value >> 8);
 }
 
 static bool recover_from_noise(Kinetis *device) {
@@ -270,6 +287,13 @@ static bool exchange_chunked_i2c_read(Kinetis *device, uint8_t request_sequence)
            frame[5] == 0x5a && frame[6] == 0x5a && frame[7] == 0x5a && frame[8] == 0x5a;
 }
 
+static bool configure_inputs(Kinetis *device) {
+    kinetis_set_adc0_channel(device, 23, SENSOR_SAMPLE);
+    return kinetis_gpio_drive(device, GPIO_PORT_A, 4, false) &&
+           kinetis_gpio_drive(device, GPIO_PORT_A, 18, true) &&
+           kinetis_gpio_drive(device, GPIO_PORT_A, 19, false);
+}
+
 static bool firmware_passes(const char *path, KinetisPackage package) {
     KinetisConfiguration configuration = kinetis_configuration(KINETIS_PROFILE_MKV30F12810);
     Kinetis *device;
@@ -282,17 +306,18 @@ static bool firmware_passes(const char *path, KinetisPackage package) {
     if (device == NULL) {
         return false;
     }
-    if (load_firmware(device, path) && kinetis_reset(device) &&
+    if (configure_inputs(device) && load_firmware(device, path) && kinetis_reset(device) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 0, 0) &&
+        run_firmware(device, SENSOR_SETTLE_INSTRUCTIONS) && exchange_measured_status(device, 1) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && recover_from_noise(device) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && recover_from_bad_end_marker(device) &&
-        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_primary_spi(device, 1) &&
-        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_alternate_spi(device, 3) &&
-        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_i2c_write(device, 4) &&
-        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_i2c_read(device, 5) &&
-        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_fragmented_i2c_read(device, 6) &&
-        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_chunked_i2c_read(device, 8) &&
-        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 10, 0xaa) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_primary_spi(device, 2) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_alternate_spi(device, 4) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_i2c_write(device, 5) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_i2c_read(device, 6) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_fragmented_i2c_read(device, 7) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_chunked_i2c_read(device, 9) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 11, 0xaa) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 0, 0)) {
         passed = true;
     }
