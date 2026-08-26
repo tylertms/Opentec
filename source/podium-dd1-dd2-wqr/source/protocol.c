@@ -20,6 +20,9 @@ enum {
     I2C_FAILURE_RESPONSE_SIZE = 3,
     PRIMARY_RESPONSE_SIZE = 57,
     ALTERNATE_RESPONSE_SIZE = 57,
+    TRANSFER_CONTROL_OFFSET = 56,
+    TRANSFER_CONTROL_ASSERTED = 1,
+    TRANSFER_STATUS_DETECTED = 2,
     SENSOR_TABLE_SIZE = 34
 };
 
@@ -95,8 +98,20 @@ static bool transfer_ready(const wqr_protocol *protocol) {
 }
 
 static void set_transfer_control(wqr_protocol *protocol, bool asserted) {
+    protocol->transfer_control_asserted = asserted;
     if (protocol->io.set_transfer_control != NULL) {
         protocol->io.set_transfer_control(protocol->io.context, asserted);
+    }
+}
+
+void wqr_protocol_poll(wqr_protocol *protocol) {
+    if (!transfer_ready(protocol)) {
+        protocol->transfer_state = WQR_TRANSFER_WAITING;
+        protocol->transfer_detail = 0;
+    } else if (protocol->transfer_control_asserted) {
+        protocol->transfer_state = WQR_TRANSFER_READY;
+    } else {
+        protocol->transfer_state = WQR_TRANSFER_DETECTED;
     }
 }
 
@@ -133,40 +148,43 @@ static void encode_status(wqr_protocol *protocol, uint8_t status[WQR_STATUS_SIZE
 
 static void process_primary_spi(wqr_protocol *protocol) {
     uint8_t response[PRIMARY_RESPONSE_SIZE] = {0};
-    bool success = false;
 
     if (protocol->receive_length >= PRIMARY_RESPONSE_SIZE) {
-        set_transfer_control(protocol, (protocol->receive_payload[56] & 1) != 0);
-        if (protocol->io.spi_transfer != NULL && transfer_ready(protocol)) {
-            success = protocol->io.spi_transfer(protocol->io.context, protocol->receive_payload,
-                                                response, WQR_SPI_TRANSFER_SIZE);
+        set_transfer_control(protocol, (protocol->receive_payload[TRANSFER_CONTROL_OFFSET] &
+                                        TRANSFER_CONTROL_ASSERTED) != 0);
+        protocol->transfer_detail = 0;
+        wqr_protocol_poll(protocol);
+        if (protocol->io.spi_transfer != NULL && protocol->transfer_state == WQR_TRANSFER_READY) {
+            (void)protocol->io.spi_transfer(protocol->io.context, protocol->receive_payload,
+                                            response, WQR_SPI_TRANSFER_SIZE);
         }
     }
-    if (transfer_ready(protocol)) {
-        response[56] |= 2;
+    if (protocol->transfer_state == WQR_TRANSFER_DETECTED ||
+        protocol->transfer_state == WQR_TRANSFER_READY) {
+        response[TRANSFER_CONTROL_OFFSET] |= TRANSFER_STATUS_DETECTED;
     }
-    protocol->transfer_state = success ? 2 : 0;
     queue_payload(protocol, response, sizeof(response));
 }
 
 static void process_alternate_spi(wqr_protocol *protocol) {
     uint8_t response[ALTERNATE_RESPONSE_SIZE] = {0};
     uint16_t received = 0;
-    bool success = false;
 
     if (protocol->receive_length >= PRIMARY_RESPONSE_SIZE) {
-        set_transfer_control(protocol, (protocol->receive_payload[56] & 1) != 0);
-        if (protocol->io.spi_word != NULL && transfer_ready(protocol)) {
-            success = protocol->io.spi_word(protocol->io.context,
-                                            read_u16(protocol->receive_payload), &received);
+        set_transfer_control(protocol, (protocol->receive_payload[TRANSFER_CONTROL_OFFSET] &
+                                        TRANSFER_CONTROL_ASSERTED) != 0);
+        protocol->transfer_detail = 1;
+        wqr_protocol_poll(protocol);
+        if (protocol->io.spi_word != NULL && protocol->transfer_state == WQR_TRANSFER_READY) {
+            (void)protocol->io.spi_word(protocol->io.context, read_u16(protocol->receive_payload),
+                                        &received);
         }
     }
     write_u16(response, received);
-    if (transfer_ready(protocol)) {
-        response[56] |= 2;
+    if (protocol->transfer_state == WQR_TRANSFER_DETECTED ||
+        protocol->transfer_state == WQR_TRANSFER_READY) {
+        response[TRANSFER_CONTROL_OFFSET] |= TRANSFER_STATUS_DETECTED;
     }
-    protocol->transfer_detail = 1;
-    protocol->transfer_state = success ? 3 : 0;
     queue_payload(protocol, response, sizeof(response));
 }
 

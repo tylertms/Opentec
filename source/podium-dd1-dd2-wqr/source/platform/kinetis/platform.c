@@ -428,6 +428,7 @@ void firmware_main(void) {
     __enable_irq();
 
     for (;;) {
+        wqr_protocol_poll(&protocol);
         if (uart_receive_ready) {
             uart_receive_ready = false;
             process_uart_frame();

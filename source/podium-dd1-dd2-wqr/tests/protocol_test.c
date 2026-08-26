@@ -5,9 +5,33 @@
 
 typedef struct {
     unsigned int resets;
+    unsigned int spi_transfers;
     uint8_t i2c_address;
     uint8_t i2c_command;
+    bool transfer_ready;
+    bool transfer_control;
 } test_io;
+
+static bool test_spi_transfer(void *context, const uint8_t *transmit, uint8_t *receive,
+                              size_t length) {
+    test_io *io = context;
+
+    ++io->spi_transfers;
+    memcpy(receive, transmit, length);
+    return true;
+}
+
+static bool test_transfer_ready(void *context) {
+    test_io *io = context;
+
+    return io->transfer_ready;
+}
+
+static void test_set_transfer_control(void *context, bool asserted) {
+    test_io *io = context;
+
+    io->transfer_control = asserted;
+}
 
 static bool test_i2c_read(void *context, uint8_t address, uint8_t command, uint8_t *data,
                           size_t length) {
@@ -93,6 +117,55 @@ static void test_invalid_frame(void) {
     assert(response[4] == 0xff);
 }
 
+static void test_primary_spi_handshake(void) {
+    test_io state = {.transfer_ready = true};
+    wqr_io io = {
+        .context = &state,
+        .spi_transfer = test_spi_transfer,
+        .transfer_ready = test_transfer_ready,
+        .set_transfer_control = test_set_transfer_control,
+    };
+    wqr_protocol protocol;
+    uint8_t frame[WQR_FRAME_SIZE];
+    uint8_t payload[WQR_FRAME_PAYLOAD_SIZE] = {0};
+
+    payload[0] = 0x5a;
+    payload[56] = 1;
+    wqr_protocol_init(&protocol, &io);
+    assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_PRIMARY_SPI, 0, payload, sizeof(payload)));
+    assert(wqr_protocol_receive(&protocol, frame));
+    assert(wqr_protocol_response(&protocol, frame));
+    assert(state.transfer_control);
+    assert(state.spi_transfers == 1);
+    assert(frame[4] == 0x5a);
+    assert((frame[60] & 2) != 0);
+    assert(protocol.transfer_state == WQR_TRANSFER_READY);
+    assert(protocol.transfer_detail == 0);
+}
+
+static void test_transfer_not_ready(void) {
+    test_io state = {0};
+    wqr_io io = {
+        .context = &state,
+        .spi_transfer = test_spi_transfer,
+        .transfer_ready = test_transfer_ready,
+        .set_transfer_control = test_set_transfer_control,
+    };
+    wqr_protocol protocol;
+    uint8_t frame[WQR_FRAME_SIZE];
+    uint8_t payload[WQR_FRAME_PAYLOAD_SIZE] = {0};
+
+    payload[56] = 1;
+    wqr_protocol_init(&protocol, &io);
+    assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_PRIMARY_SPI, 0, payload, sizeof(payload)));
+    assert(wqr_protocol_receive(&protocol, frame));
+    assert(wqr_protocol_response(&protocol, frame));
+    assert(state.transfer_control);
+    assert(state.spi_transfers == 0);
+    assert((frame[60] & 2) == 0);
+    assert(protocol.transfer_state == WQR_TRANSFER_WAITING);
+}
+
 static void test_chunked_response(void) {
     test_io state = {0};
     wqr_io io = {.context = &state, .i2c_read = test_i2c_read};
@@ -126,6 +199,8 @@ int main(void) {
     test_status_and_reset();
     test_fragmented_i2c_read();
     test_invalid_frame();
+    test_primary_spi_handshake();
+    test_transfer_not_ready();
     test_chunked_response();
     test_sensor();
     return 0;

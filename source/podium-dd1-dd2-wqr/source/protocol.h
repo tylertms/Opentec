@@ -21,6 +21,12 @@ typedef enum {
     WQR_PAYLOAD_STATUS = 5
 } wqr_payload_type;
 
+typedef enum {
+    WQR_TRANSFER_WAITING = 1,
+    WQR_TRANSFER_DETECTED = 2,
+    WQR_TRANSFER_READY = 4
+} wqr_transfer_state;
+
 typedef struct {
     void *context;
     bool (*spi_transfer)(void *context, const uint8_t *transmit, uint8_t *receive, size_t length);
@@ -54,12 +60,14 @@ typedef struct {
     uint8_t command_marker;
     bool response_ready;
     bool reset_after_response;
+    bool transfer_control_asserted;
 } wqr_protocol;
 
 void wqr_protocol_init(wqr_protocol *protocol, const wqr_io *io);
 bool wqr_protocol_receive(wqr_protocol *protocol, const uint8_t frame[WQR_FRAME_SIZE]);
 bool wqr_protocol_response(const wqr_protocol *protocol, uint8_t frame[WQR_FRAME_SIZE]);
 void wqr_protocol_response_sent(wqr_protocol *protocol);
+void wqr_protocol_poll(wqr_protocol *protocol);
 void wqr_protocol_tick(wqr_protocol *protocol);
 void wqr_protocol_set_sensor_sample(wqr_protocol *protocol, uint16_t sample);
 uint16_t wqr_protocol_crc(const uint8_t *data, size_t length);
