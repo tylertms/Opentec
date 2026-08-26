@@ -15,5 +15,6 @@ Checks: >
   -performance-no-int-to-ptr
 WarningsAsErrors: '*'
 HeaderFilterRegex: 'source[/\\].*'
+ExcludeHeaderFilterRegex: 'source[/\\].*[/\\]vendor[/\\].*'
 FormatStyle: file
 ...
