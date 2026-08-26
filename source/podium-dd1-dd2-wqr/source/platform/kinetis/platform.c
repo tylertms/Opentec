@@ -7,6 +7,8 @@ enum {
     UART_WINDOW_SIZE = 68,
     UART_TRANSMIT_SIZE = 72,
     UART_FRAME_OFFSET = 4,
+    UART_FRAME_START = 0x7b,
+    UART_FRAME_END = 0x7d,
     UART_SOURCE_CLOCK = 96000000,
     UART_BAUD_RATE = 5000000,
     UART_RESPONSE_GUARD_TICKS = 471,
@@ -608,11 +610,11 @@ static void process_uart_frame(void) {
     size_t offset;
 
     for (offset = 0; offset <= 4; ++offset) {
-        if (uart_receive_window[offset] == 0x7b) {
+        if (uart_receive_window[offset] == UART_FRAME_START) {
             break;
         }
     }
-    if (offset > 4) {
+    if (offset > 4 || uart_receive_window[offset + WQR_FRAME_SIZE - 1] != UART_FRAME_END) {
         offset = 0;
         uart_recovery_active = true;
         start_uart_guard(UART_RECOVERY_GUARD_TICKS);

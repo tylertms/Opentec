@@ -138,6 +138,18 @@ static bool recover_from_noise(Kinetis *device) {
            nack_response_valid(response);
 }
 
+static bool recover_from_bad_end_marker(Kinetis *device) {
+    uint8_t request[WQR_FRAME_SIZE];
+    uint8_t response[TRANSMIT_WINDOW_SIZE];
+
+    if (!wqr_protocol_build_frame(request, WQR_PAYLOAD_STATUS, 1, NULL, 0)) {
+        return false;
+    }
+    request[WQR_FRAME_SIZE - 1] = 0;
+    return send_request(device, request) && receive_response(device, response) &&
+           nack_response_valid(response);
+}
+
 static bool primary_response_valid(const uint8_t window[TRANSMIT_WINDOW_SIZE], uint8_t sequence,
                                    const uint8_t payload[WQR_FRAME_PAYLOAD_SIZE], bool exchanged) {
     static const uint8_t empty_response[WQR_SPI_TRANSFER_SIZE];
@@ -240,6 +252,7 @@ int main(int argc, char **argv) {
     if (load_firmware(device, argv[1]) && kinetis_reset(device) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 0, 0) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && recover_from_noise(device) &&
+        run_firmware(device, STARTUP_INSTRUCTIONS) && recover_from_bad_end_marker(device) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_primary_spi(device, 1) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_alternate_spi(device, 3) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_i2c_write(device, 4) &&
