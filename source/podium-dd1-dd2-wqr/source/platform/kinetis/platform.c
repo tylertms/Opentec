@@ -11,6 +11,10 @@ enum {
     UART_BAUD_RATE = 5000000,
     PIT_TICKS_PER_MILLISECOND = 24000,
     SPI_TIMEOUT = 100000,
+    SPI_RECEIVE_DMA_CHANNEL = 3,
+    SPI_TRANSMIT_DMA_CHANNEL = 2,
+    SPI_RECEIVE_DMA_SOURCE = 14,
+    SPI_TRANSMIT_DMA_SOURCE = 15,
     I2C_TIMEOUT = 100000,
     FPU_ACCESS_MASK = (3u << 20) | (3u << 22),
     WDOG_REQUIRED_MASK = 0x100
@@ -24,6 +28,8 @@ static uint8_t uart_transmit_window[UART_TRANSMIT_SIZE] __attribute__((aligned(4
 static volatile bool uart_receive_ready;
 static bool uart_transmit_active;
 static bool uart_response_due;
+static volatile bool spi_transfer_complete;
+static bool spi_transfer_active;
 static volatile bool adc_sample_ready;
 static volatile uint16_t adc_sample;
 
@@ -170,8 +176,11 @@ static void configure_spi(void) {
     SPI0->MCR = SPI_MCR_MSTR_MASK | SPI_MCR_PCSIS(1) | SPI_MCR_DIS_RXF_MASK | SPI_MCR_DIS_TXF_MASK |
                 SPI_MCR_HALT_MASK;
     SPI0->CTAR[0] = UINT32_C(0x3a514204);
-    SPI0->RSER = 0;
+    SPI0->RSER = SPI_RSER_TCF_RE_MASK | SPI_RSER_EOQF_RE_MASK | SPI_RSER_TFUF_RE_MASK |
+                 SPI_RSER_TFFF_RE_MASK | SPI_RSER_RFOF_RE_MASK | SPI_RSER_RFDF_RE_MASK;
     SPI0->MCR &= ~SPI_MCR_HALT_MASK;
+    nvic_enable(DMA2_IRQn, 14);
+    nvic_enable(DMA3_IRQn, 14);
 }
 
 static bool spi_byte(uint8_t transmit, uint8_t *receive) {
@@ -194,11 +203,9 @@ static bool spi_byte(uint8_t transmit, uint8_t *receive) {
     return true;
 }
 
-static bool io_spi_transfer(void *context, const uint8_t *transmit, uint8_t *receive,
-                            size_t length) {
+static bool spi_polling_transfer(const uint8_t *transmit, uint8_t *receive, size_t length) {
     size_t index;
 
-    (void)context;
     GPIOC->PCOR = UINT32_C(0x10);
     for (index = 0; index < length; ++index) {
         if (!spi_byte(transmit[index], receive + index)) {
@@ -210,10 +217,42 @@ static bool io_spi_transfer(void *context, const uint8_t *transmit, uint8_t *rec
     return true;
 }
 
+static bool io_spi_transfer(void *context, const uint8_t *transmit, uint8_t *receive,
+                            size_t length) {
+    (void)context;
+    if (spi_transfer_active) {
+        if (!spi_transfer_complete) {
+            return false;
+        }
+        spi_transfer_complete = false;
+        spi_transfer_active = false;
+        return true;
+    }
+
+    DMAMUX->CHCFG[SPI_RECEIVE_DMA_CHANNEL] = 0;
+    DMAMUX->CHCFG[SPI_TRANSMIT_DMA_CHANNEL] = 0;
+    configure_dma_descriptor(SPI_RECEIVE_DMA_CHANNEL, &SPI0->POPR, 0, receive, 1, (uint16_t)length);
+    configure_dma_descriptor(SPI_TRANSMIT_DMA_CHANNEL, transmit, 1, &SPI0->PUSHR, 0,
+                             (uint16_t)length);
+    DMAMUX->CHCFG[SPI_RECEIVE_DMA_CHANNEL] =
+        DMAMUX_CHCFG_ENBL_MASK | DMAMUX_CHCFG_SOURCE(SPI_RECEIVE_DMA_SOURCE);
+    DMAMUX->CHCFG[SPI_TRANSMIT_DMA_CHANNEL] =
+        DMAMUX_CHCFG_ENBL_MASK | DMAMUX_CHCFG_SOURCE(SPI_TRANSMIT_DMA_SOURCE);
+    spi_transfer_complete = false;
+    spi_transfer_active = true;
+    GPIOC->PCOR = UINT32_C(0x10);
+    DMA0->SERQ = DMA_SERQ_SERQ(SPI_RECEIVE_DMA_CHANNEL);
+    DMA0->SERQ = DMA_SERQ_SERQ(SPI_TRANSMIT_DMA_CHANNEL);
+    return false;
+}
+
 static bool io_spi_word(void *context, uint16_t transmit, uint16_t *receive) {
     uint8_t input[2] = {(uint8_t)transmit, (uint8_t)(transmit >> 8)};
     uint8_t output[2];
-    bool success = io_spi_transfer(context, input, output, sizeof(input));
+    bool success;
+
+    (void)context;
+    success = spi_polling_transfer(input, output, sizeof(input));
 
     *receive = (uint16_t)output[0] | (uint16_t)((uint16_t)output[1] << 8);
     return success;
@@ -368,6 +407,18 @@ void DMA1_IRQHandler(void) {
     DMA0->CINT = DMA_CINT_CINT(1);
     DMA0->CDNE = DMA_CDNE_CDNE(1);
     uart_receive_ready = true;
+}
+
+void DMA2_IRQHandler(void) {
+    DMA0->CINT = DMA_CINT_CINT(SPI_TRANSMIT_DMA_CHANNEL);
+    DMA0->CDNE = DMA_CDNE_CDNE(SPI_TRANSMIT_DMA_CHANNEL);
+}
+
+void DMA3_IRQHandler(void) {
+    DMA0->CINT = DMA_CINT_CINT(SPI_RECEIVE_DMA_CHANNEL);
+    DMA0->CDNE = DMA_CDNE_CDNE(SPI_RECEIVE_DMA_CHANNEL);
+    GPIOC->PSOR = UINT32_C(0x10);
+    spi_transfer_complete = true;
 }
 
 void PIT0_IRQHandler(void) {

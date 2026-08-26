@@ -160,9 +160,10 @@ void wqr_protocol_poll(wqr_protocol *protocol) {
     update_transfer_state(protocol, transfer_ready(protocol));
 
     if (protocol->payload_pending) {
-        protocol->payload_pending = false;
-        (void)process_payload(protocol);
-        protocol->receive_length = 0;
+        if (process_payload(protocol)) {
+            protocol->payload_pending = false;
+            protocol->receive_length = 0;
+        }
     }
 }
 
@@ -197,20 +198,28 @@ static void encode_status(wqr_protocol *protocol, uint8_t status[WQR_STATUS_SIZE
     status[14] = protocol->command_marker;
 }
 
-static void process_primary_spi(wqr_protocol *protocol) {
-    uint8_t response[PRIMARY_RESPONSE_SIZE] = {0};
+static bool process_primary_spi(wqr_protocol *protocol) {
+    uint8_t *response = protocol->transmit_payload;
 
-    if (protocol->receive_length >= PRIMARY_RESPONSE_SIZE) {
+    if (!protocol->peripheral_transfer_active) {
+        memset(response, 0, PRIMARY_RESPONSE_SIZE);
+    }
+    if (protocol->receive_length >= PRIMARY_RESPONSE_SIZE &&
+        (protocol->transfer_state == WQR_TRANSFER_READY || protocol->peripheral_transfer_active)) {
         protocol->transfer_detail = 0;
-        if (protocol->io.spi_transfer != NULL && protocol->transfer_state == WQR_TRANSFER_READY) {
-            (void)protocol->io.spi_transfer(protocol->io.context, protocol->receive_payload,
-                                            response, WQR_SPI_TRANSFER_SIZE);
+        if (protocol->io.spi_transfer != NULL &&
+            !protocol->io.spi_transfer(protocol->io.context, protocol->receive_payload, response,
+                                       WQR_SPI_TRANSFER_SIZE)) {
+            protocol->peripheral_transfer_active = true;
+            return false;
         }
     }
+    protocol->peripheral_transfer_active = false;
     if (transfer_ready(protocol)) {
         response[TRANSFER_CONTROL_OFFSET] |= TRANSFER_STATUS_DETECTED;
     }
-    queue_payload(protocol, response, sizeof(response));
+    queue_payload(protocol, response, PRIMARY_RESPONSE_SIZE);
+    return true;
 }
 
 static void process_alternate_spi(wqr_protocol *protocol) {
@@ -282,8 +291,7 @@ static void process_status(wqr_protocol *protocol) {
 static bool process_payload(wqr_protocol *protocol) {
     switch (protocol->payload_type) {
     case WQR_PAYLOAD_PRIMARY_SPI:
-        process_primary_spi(protocol);
-        return true;
+        return process_primary_spi(protocol);
     case WQR_PAYLOAD_ALTERNATE_SPI:
         process_alternate_spi(protocol);
         return true;
