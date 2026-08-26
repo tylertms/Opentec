@@ -22,6 +22,7 @@ typedef enum {
 } wqr_payload_type;
 
 typedef enum {
+    WQR_TRANSFER_IDLE = 0,
     WQR_TRANSFER_WAITING = 1,
     WQR_TRANSFER_DETECTED = 2,
     WQR_TRANSFER_READY = 4

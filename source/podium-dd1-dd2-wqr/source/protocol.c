@@ -106,15 +106,58 @@ static void set_transfer_control(wqr_protocol *protocol, bool asserted) {
     }
 }
 
-void wqr_protocol_poll(wqr_protocol *protocol) {
-    if (!transfer_ready(protocol)) {
-        protocol->transfer_state = WQR_TRANSFER_WAITING;
+static void update_transfer_state(wqr_protocol *protocol, bool ready) {
+    switch (protocol->transfer_state) {
+    case WQR_TRANSFER_IDLE:
         protocol->transfer_detail = 0;
-    } else if (protocol->transfer_control_asserted) {
-        protocol->transfer_state = WQR_TRANSFER_READY;
-    } else {
-        protocol->transfer_state = WQR_TRANSFER_DETECTED;
+        protocol->transfer_state = WQR_TRANSFER_WAITING;
+        break;
+    case WQR_TRANSFER_WAITING:
+        if (ready) {
+            protocol->transfer_state = WQR_TRANSFER_DETECTED;
+        }
+        break;
+    case WQR_TRANSFER_DETECTED:
+        if (!ready) {
+            protocol->transfer_state = WQR_TRANSFER_IDLE;
+        } else if (protocol->transfer_control_asserted) {
+            protocol->transfer_state = WQR_TRANSFER_READY;
+        }
+        break;
+    case WQR_TRANSFER_READY:
+        if (!ready || !protocol->transfer_control_asserted) {
+            protocol->transfer_state = WQR_TRANSFER_IDLE;
+        }
+        break;
+    default:
+        protocol->transfer_state = WQR_TRANSFER_IDLE;
+        break;
     }
+}
+
+static void apply_transfer_control(wqr_protocol *protocol) {
+    bool asserted;
+
+    if ((protocol->payload_type != WQR_PAYLOAD_PRIMARY_SPI &&
+         protocol->payload_type != WQR_PAYLOAD_ALTERNATE_SPI) ||
+        protocol->receive_length < WQR_FRAME_PAYLOAD_SIZE) {
+        return;
+    }
+
+    asserted =
+        (protocol->receive_payload[TRANSFER_CONTROL_OFFSET] & TRANSFER_CONTROL_ASSERTED) != 0;
+    set_transfer_control(protocol, asserted);
+    if (!asserted) {
+        protocol->transfer_state = WQR_TRANSFER_IDLE;
+    }
+}
+
+void wqr_protocol_poll(wqr_protocol *protocol) {
+    if (protocol->payload_pending) {
+        apply_transfer_control(protocol);
+    }
+
+    update_transfer_state(protocol, transfer_ready(protocol));
 
     if (protocol->payload_pending) {
         protocol->payload_pending = false;
@@ -158,17 +201,13 @@ static void process_primary_spi(wqr_protocol *protocol) {
     uint8_t response[PRIMARY_RESPONSE_SIZE] = {0};
 
     if (protocol->receive_length >= PRIMARY_RESPONSE_SIZE) {
-        set_transfer_control(protocol, (protocol->receive_payload[TRANSFER_CONTROL_OFFSET] &
-                                        TRANSFER_CONTROL_ASSERTED) != 0);
         protocol->transfer_detail = 0;
-        wqr_protocol_poll(protocol);
         if (protocol->io.spi_transfer != NULL && protocol->transfer_state == WQR_TRANSFER_READY) {
             (void)protocol->io.spi_transfer(protocol->io.context, protocol->receive_payload,
                                             response, WQR_SPI_TRANSFER_SIZE);
         }
     }
-    if (protocol->transfer_state == WQR_TRANSFER_DETECTED ||
-        protocol->transfer_state == WQR_TRANSFER_READY) {
+    if (transfer_ready(protocol)) {
         response[TRANSFER_CONTROL_OFFSET] |= TRANSFER_STATUS_DETECTED;
     }
     queue_payload(protocol, response, sizeof(response));
@@ -179,18 +218,14 @@ static void process_alternate_spi(wqr_protocol *protocol) {
     uint16_t received = 0;
 
     if (protocol->receive_length >= PRIMARY_RESPONSE_SIZE) {
-        set_transfer_control(protocol, (protocol->receive_payload[TRANSFER_CONTROL_OFFSET] &
-                                        TRANSFER_CONTROL_ASSERTED) != 0);
         protocol->transfer_detail = 1;
-        wqr_protocol_poll(protocol);
         if (protocol->io.spi_word != NULL && protocol->transfer_state == WQR_TRANSFER_READY) {
             (void)protocol->io.spi_word(protocol->io.context, read_u16(protocol->receive_payload),
                                         &received);
         }
     }
     write_u16(response, received);
-    if (protocol->transfer_state == WQR_TRANSFER_DETECTED ||
-        protocol->transfer_state == WQR_TRANSFER_READY) {
+    if (transfer_ready(protocol)) {
         response[TRANSFER_CONTROL_OFFSET] |= TRANSFER_STATUS_DETECTED;
     }
     queue_payload(protocol, response, sizeof(response));

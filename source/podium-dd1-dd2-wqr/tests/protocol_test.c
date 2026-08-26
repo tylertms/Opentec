@@ -140,9 +140,22 @@ static void test_primary_spi_handshake(void) {
     wqr_protocol_poll(&protocol);
     assert(wqr_protocol_response(&protocol, frame));
     assert(state.transfer_control);
+    assert(state.spi_transfers == 0);
+    assert((frame[60] & 2) != 0);
+    assert(protocol.transfer_state == WQR_TRANSFER_WAITING);
+
+    assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_PRIMARY_SPI, 1, payload, sizeof(payload)));
+    assert(wqr_protocol_receive(&protocol, frame));
+    wqr_protocol_poll(&protocol);
+    assert(state.spi_transfers == 0);
+    assert(protocol.transfer_state == WQR_TRANSFER_DETECTED);
+
+    assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_PRIMARY_SPI, 2, payload, sizeof(payload)));
+    assert(wqr_protocol_receive(&protocol, frame));
+    wqr_protocol_poll(&protocol);
+    assert(wqr_protocol_response(&protocol, frame));
     assert(state.spi_transfers == 1);
     assert(frame[4] == 0x5a);
-    assert((frame[60] & 2) != 0);
     assert(protocol.transfer_state == WQR_TRANSFER_READY);
     assert(protocol.transfer_detail == 0);
 }
