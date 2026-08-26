@@ -4,7 +4,7 @@ include = include_directories('source')
 if meson.is_cross_build()
   linker_script = 'source/vendor/mk22f12810/gcc/MK22FN128xxx10_flash.ld'
 
-  executable(
+  firmware = executable(
     'podium-dd1-dd2-wqr',
     sources,
     'source/platform/kinetis/platform.c',
@@ -29,6 +29,26 @@ if meson.is_cross_build()
     ],
     link_depends: files(linker_script),
     name_suffix: 'elf',
+  )
+
+  simulator = subproject('kinetis-k22-sim', native: true)
+  simulator_runner = simulator.get_variable('kinetis_k22_firmware_runner')
+
+  test(
+    'podium-dd1-dd2-wqr',
+    simulator_runner,
+    args: [
+      firmware,
+      '--reset-address',
+      '0xa000',
+      '--profile',
+      'MK22F12810',
+      '--max-instructions',
+      '1000000',
+      '--max-cycles',
+      '10000000',
+    ],
+    suite: ['wqr', 'firmware'],
   )
 else
   subdir('tests')

@@ -1,6 +1,9 @@
 /build/
 /.cache/
 /tmp/
+/subprojects/kinetis-k22-sim/
+/subprojects/packagecache/
+/subprojects/.wraplock
 __pycache__/
 *.py[cod]
 uv.lock

@@ -1,12 +1,16 @@
 project(
   'opentec',
   'c',
-  meson_version: '>=1.3.0',
+  meson_version: '>=1.12.0',
   default_options: [
     'c_std=c11',
     'warning_level=3',
     'werror=true',
   ],
 )
+
+if meson.get_compiler('c').get_id() != 'gcc'
+  error('GCC is required')
+endif
 
 subdir('source/podium-dd1-dd2-wqr')
