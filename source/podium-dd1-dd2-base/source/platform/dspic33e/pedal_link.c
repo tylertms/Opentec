@@ -89,12 +89,30 @@ void platform_pedal_link_init(void) {
 void platform_pedal_link_begin_discovery(void) {
     IEC0bits.DMA1IE = 0;
     DMA1CONbits.CHEN = 0;
+    ANSELBbits.ANSB13 = 0;
+    ANSELBbits.ANSB14 = 0;
+    U2MODEbits.UARTEN = 1;
+    U2STAbits.UTXEN = 1;
     U2BRG = PEDAL_LEGACY_BAUD_PERIOD;
     clear_receive_fifo();
     byte_ready = false;
     frame_ready = false;
     IFS1bits.U2RXIF = 0;
     IEC1bits.U2RXIE = 1;
+}
+
+void platform_pedal_link_begin_analog(void) {
+    IEC0bits.DMA1IE = 0;
+    IEC1bits.U2RXIE = 0;
+    DMA1CONbits.CHEN = 0;
+    U2MODEbits.UARTEN = 0;
+    ANSELBbits.ANSB13 = 1;
+    ANSELBbits.ANSB14 = 1;
+    ANSELBbits.ANSB15 = 1;
+    TRISFbits.TRISF0 = 1;
+    TRISFbits.TRISF1 = 1;
+    byte_ready = false;
+    frame_ready = false;
 }
 
 void platform_pedal_link_begin_framed_receive(void) {

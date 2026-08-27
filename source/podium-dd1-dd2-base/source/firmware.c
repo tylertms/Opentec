@@ -62,6 +62,7 @@ static MotorPositionReport motor_position_report;
 static bool motor_position_ready;
 static WheelPositionCalibration wheel_position_calibration;
 static PedalService pedal_service;
+static AnalogSamples analog_samples;
 static fanatec_input_state usb_input_state;
 static uint8_t usb_input_report[FANATEC_INPUT_REPORT_SIZE];
 static ForceOutputCommand motor_output_command;
@@ -198,6 +199,12 @@ static void service_usb_input(void) {
     }
 }
 
+static void service_analog_input(void) {
+    if (platform_adc_read(&analog_samples)) {
+        pedal_service_set_analog_samples(&pedal_service, analog_samples.pedal_axes);
+    }
+}
+
 int main(void) {
     platform_clock_init();
     board_identity = platform_board_identity_read();
@@ -216,6 +223,7 @@ int main(void) {
         platform_aux_bus_service();
         uint32_t now_ms = platform_time_ms();
         platform_cooling_service(now_ms);
+        service_analog_input();
         service_motor_link();
         pedal_service_run(&pedal_service, now_ms);
         service_usb_input();

@@ -26,6 +26,13 @@ static void reconnect(PedalService *service, uint32_t now_ms) {
     pedal_input_release(&service->input);
     service->connected = false;
     service->device = PEDAL_DEVICE_NONE;
+    if (service->analog_samples_ready && pedal_analog_detect(service->analog_samples[2])) {
+        platform_pedal_link_begin_analog();
+        pedal_analog_update(&service->analog, service->analog_samples, &service->input);
+        service->connected = true;
+        service->phase = PEDAL_SERVICE_ANALOG;
+        return;
+    }
     service->phase = PEDAL_SERVICE_RECONNECT_WAIT;
     service->deadline_ms = now_ms + PEDAL_RECONNECT_DELAY_MS;
     platform_pedal_link_begin_discovery();
@@ -42,11 +49,24 @@ static bool send_frame(PedalService *service, uint8_t type, uint8_t first, uint8
 
 void pedal_service_init(PedalService *service) {
     pedal_input_release(&service->input);
+    pedal_analog_init(&service->analog);
     service->phase = PEDAL_SERVICE_DETECT_REQUEST;
     service->device = PEDAL_DEVICE_NONE;
     service->deadline_ms = 0;
     service->next_status_ms = 0;
+    service->analog_samples_ready = false;
     service->connected = false;
+}
+
+void pedal_service_set_analog_samples(PedalService *service,
+                                      const uint16_t samples[PEDAL_INPUT_AXIS_COUNT]) {
+    for (uint8_t axis = 0; axis < PEDAL_INPUT_AXIS_COUNT; axis++) {
+        service->analog_samples[axis] = samples[axis];
+    }
+    service->analog_samples_ready = true;
+    if (service->phase == PEDAL_SERVICE_ANALOG) {
+        pedal_analog_update(&service->analog, service->analog_samples, &service->input);
+    }
 }
 
 static void service_detect_response(PedalService *service, uint32_t now_ms) {
@@ -135,6 +155,8 @@ void pedal_service_run(PedalService *service, uint32_t now_ms) {
         if (platform_time_reached(now_ms, service->deadline_ms)) {
             service->phase = PEDAL_SERVICE_DETECT_REQUEST;
         }
+        break;
+    case PEDAL_SERVICE_ANALOG:
         break;
     case PEDAL_SERVICE_V4_UNSUPPORTED:
         break;

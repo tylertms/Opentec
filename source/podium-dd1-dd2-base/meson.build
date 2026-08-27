@@ -34,6 +34,7 @@ motor_tuning_service_sources = files('source/motor/tuning_service.c')
 motor_tuning_sync_sources = files('source/motor/tuning_sync.c')
 pedal_frame_sources = files('source/pedal/frame.c')
 pedal_axis_sources = files('source/pedal/axis.c')
+pedal_analog_sources = files('source/pedal/analog.c')
 pedal_input_sources = files('source/pedal/input.c')
 pedal_service_sources = files('source/pedal/service.c')
 profile_bank_sources = files('source/profile/bank.c')
@@ -96,6 +97,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'motor-tuning-sync': 'source/motor/tuning_sync.c',
     'pedal-frame': 'source/pedal/frame.c',
     'pedal-axis': 'source/pedal/axis.c',
+    'pedal-analog': 'source/pedal/analog.c',
     'pedal-input': 'source/pedal/input.c',
     'pedal-service': 'source/pedal/service.c',
     'platform-clock': 'source/platform/dspic33e/clock.c',
@@ -448,12 +450,26 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  pedal_analog_test = executable(
+    'base-pedal-analog-test',
+    'tests/source/pedal_analog.c',
+    pedal_analog_sources,
+    pedal_axis_sources,
+    pedal_input_sources,
+    analog_axis_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   pedal_service_test = executable(
     'base-pedal-service-test',
     'tests/source/pedal_service.c',
     pedal_service_sources,
+    pedal_analog_sources,
+    pedal_axis_sources,
     pedal_input_sources,
     pedal_frame_sources,
+    analog_axis_sources,
     platform_time_sources,
     build_by_default: false,
     include_directories: base_include,
@@ -603,6 +619,7 @@ if not meson.is_cross_build()
   test('base-pedal-frame', pedal_frame_test, suite: ['base', 'pedal', 'transport'])
   test('base-pedal-axis', pedal_axis_test, suite: ['base', 'pedal', 'analog'])
   test('base-pedal-input', pedal_input_test, suite: ['base', 'pedal', 'input'])
+  test('base-pedal-analog', pedal_analog_test, suite: ['base', 'pedal', 'analog'])
   test('base-pedal-service', pedal_service_test, suite: ['base', 'pedal'])
   test('base-profile-tuning', profile_tuning_test, suite: ['base', 'profile'])
   test('base-profile-bank', profile_bank_test, suite: ['base', 'profile'])

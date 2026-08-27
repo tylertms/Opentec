@@ -13,6 +13,7 @@ typedef struct {
     uint16_t primary_shifter_x;
     uint16_t secondary_shifter_y;
     uint16_t secondary_shifter_x;
+    uint16_t pedal_axes[3];
 } AnalogSamples;
 
 void analog_samples_decode(const volatile uint16_t scan[ANALOG_SCAN_SAMPLE_COUNT],

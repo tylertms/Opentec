@@ -14,11 +14,14 @@ static uint8_t received_frame[PEDAL_FRAME_SIZE];
 static uint8_t byte_send_count;
 static uint8_t frame_send_count;
 static uint8_t discovery_count;
+static uint8_t analog_count;
 static uint8_t framed_receive_count;
 static bool byte_ready;
 static bool frame_ready;
 
 void platform_pedal_link_init(void) {}
+
+void platform_pedal_link_begin_analog(void) { analog_count++; }
 
 void platform_pedal_link_begin_discovery(void) { discovery_count++; }
 
@@ -62,6 +65,7 @@ static void reset_link(void) {
     byte_send_count = 0;
     frame_send_count = 0;
     discovery_count = 0;
+    analog_count = 0;
     framed_receive_count = 0;
     byte_ready = false;
     frame_ready = false;
@@ -179,10 +183,30 @@ static void test_retries_after_discovery_timeout(void) {
     assert(discovery_count == 1);
 }
 
+static void test_selects_analog_input_after_discovery_timeout(void) {
+    PedalService service;
+    const uint16_t samples[PEDAL_INPUT_AXIS_COUNT] = {0, 0x0800, 0x0fff};
+    reset_link();
+    pedal_service_init(&service);
+    pedal_service_set_analog_samples(&service, samples);
+
+    pedal_service_run(&service, 0);
+    pedal_service_run(&service, 100);
+
+    const PedalInput *input = pedal_service_input(&service);
+    assert(service.phase == PEDAL_SERVICE_ANALOG);
+    assert(service.connected);
+    assert(analog_count == 1);
+    assert(discovery_count == 0);
+    assert(input->axes[0] == UINT16_MAX);
+    assert(input->axes[2] == 0);
+}
+
 int main(void) {
     test_connects_and_publishes_v3_input();
     test_releases_input_after_stream_timeout();
     test_identifies_unsupported_v4_transport();
     test_retries_after_discovery_timeout();
+    test_selects_analog_input_after_discovery_timeout();
     return 0;
 }

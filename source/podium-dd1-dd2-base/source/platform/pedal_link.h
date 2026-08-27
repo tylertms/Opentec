@@ -7,6 +7,7 @@
 #include "pedal/frame.h"
 
 void platform_pedal_link_init(void);
+void platform_pedal_link_begin_analog(void);
 void platform_pedal_link_begin_discovery(void);
 void platform_pedal_link_begin_framed_receive(void);
 bool platform_pedal_link_send_byte(uint8_t value);

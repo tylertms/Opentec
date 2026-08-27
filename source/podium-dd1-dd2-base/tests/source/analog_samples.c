@@ -15,5 +15,8 @@ int main(void) {
     assert(samples.primary_shifter_x == 50);
     assert(samples.secondary_shifter_y == 60);
     assert(samples.secondary_shifter_x == 70);
+    assert(samples.pedal_axes[0] == 80);
+    assert(samples.pedal_axes[1] == 90);
+    assert(samples.pedal_axes[2] == 100);
     return 0;
 }

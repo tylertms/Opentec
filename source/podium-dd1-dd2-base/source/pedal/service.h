@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "pedal/analog.h"
 #include "pedal/frame.h"
 #include "pedal/input.h"
 
@@ -15,6 +16,7 @@ typedef enum {
     PEDAL_SERVICE_V3_START,
     PEDAL_SERVICE_V3_STREAM,
     PEDAL_SERVICE_RECONNECT_WAIT,
+    PEDAL_SERVICE_ANALOG,
     PEDAL_SERVICE_V4_UNSUPPORTED,
 } PedalServicePhase;
 
@@ -26,6 +28,7 @@ typedef enum {
 
 typedef struct {
     PedalInput input;
+    PedalAnalog analog;
     PedalServicePhase phase;
     PedalDevice device;
     uint32_t deadline_ms;
@@ -34,10 +37,14 @@ typedef struct {
     PedalFrame receive_frame;
     uint8_t frame_buffer[PEDAL_FRAME_SIZE];
     uint8_t response;
+    uint16_t analog_samples[PEDAL_INPUT_AXIS_COUNT];
+    bool analog_samples_ready;
     bool connected;
 } PedalService;
 
 void pedal_service_init(PedalService *service);
+void pedal_service_set_analog_samples(PedalService *service,
+                                      const uint16_t samples[PEDAL_INPUT_AXIS_COUNT]);
 void pedal_service_run(PedalService *service, uint32_t now_ms);
 const PedalInput *pedal_service_input(const PedalService *service);
 
