@@ -1,6 +1,7 @@
 #include <xc.h>
 
 #include "platform/clock.h"
+#include "platform/pin_mux.h"
 #include "platform/time.h"
 
 #pragma config GWRP = OFF
@@ -27,6 +28,7 @@
 
 int main(void) {
     platform_clock_init();
+    platform_pin_mux_init();
     platform_time_init();
     for (;;) {
     }
