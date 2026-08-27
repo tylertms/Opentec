@@ -46,6 +46,7 @@ static bool set_request(const UsbSetupPacket *packet, UsbControlRequest *request
     request->length = packet->length;
     request->descriptor_type = (uint8_t)(packet->value >> 8);
     request->descriptor_index = (uint8_t)packet->value;
+    request->recipient = packet->request_type & 0x1f;
     return true;
 }
 
@@ -84,12 +85,13 @@ static bool classify_standard(const UsbSetupPacket *packet, UsbControlRequest *r
         break;
     case USB_REQUEST_GET_INTERFACE:
         if (packet->request_type == (USB_DIRECTION_IN | USB_RECIPIENT_INTERFACE) &&
-            packet->value == 0 && packet->length == 1) {
+            packet->value == 0 && packet->index == 0 && packet->length == 1) {
             return set_request(packet, request, USB_CONTROL_GET_INTERFACE);
         }
         break;
     case USB_REQUEST_SET_INTERFACE:
-        if (packet->request_type == USB_RECIPIENT_INTERFACE && packet->length == 0) {
+        if (packet->request_type == USB_RECIPIENT_INTERFACE && packet->index == 0 &&
+            packet->length == 0) {
             return set_request(packet, request, USB_CONTROL_SET_INTERFACE);
         }
         break;
@@ -100,7 +102,7 @@ static bool classify_standard(const UsbSetupPacket *packet, UsbControlRequest *r
 }
 
 static bool classify_hid(const UsbSetupPacket *packet, UsbControlRequest *request) {
-    if ((packet->request_type & 0x1f) != USB_RECIPIENT_INTERFACE) {
+    if ((packet->request_type & 0x1f) != USB_RECIPIENT_INTERFACE || packet->index != 0) {
         return false;
     }
     bool input = (packet->request_type & USB_DIRECTION_IN) != 0;

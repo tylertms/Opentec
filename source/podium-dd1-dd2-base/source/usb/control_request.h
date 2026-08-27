@@ -38,6 +38,7 @@ typedef struct {
     uint16_t length;
     uint8_t descriptor_type;
     uint8_t descriptor_index;
+    uint8_t recipient;
 } UsbControlRequest;
 
 bool usb_setup_packet_decode(const uint8_t data[USB_SETUP_PACKET_SIZE], UsbSetupPacket *packet);
