@@ -2,6 +2,8 @@
 #include <xc.h>
 
 #include "board/identity.h"
+#include "force_feedback/output.h"
+#include "motor/live_frame.h"
 #include "motor/probe.h"
 #include "motor/telemetry_service.h"
 #include "motor/tuning_service.h"
@@ -9,6 +11,7 @@
 #include "platform/aux_bus.h"
 #include "platform/board_identity.h"
 #include "platform/clock.h"
+#include "platform/motor_link.h"
 #include "platform/pin_mux.h"
 #include "platform/time.h"
 #include "profile/tuning.h"
@@ -42,6 +45,29 @@ static MotorTuningService motor_tuning_service;
 static TuningProfile tuning_profile;
 static MotorTuningContext motor_tuning_context;
 static bool motor_tuning_ready;
+static MotorPositionReport motor_position_report;
+static bool motor_position_ready;
+static ForceOutputCommand motor_output_command;
+static MotorLiveFrame motor_live_frame;
+static uint8_t motor_received_frame[MOTOR_LIVE_FRAME_SIZE];
+static uint8_t motor_transmitted_frame[MOTOR_LIVE_FRAME_SIZE];
+
+static void initialize_motor_link(void) {
+    motor_output_command = (ForceOutputCommand){0};
+    motor_force_frame_init(0, &motor_output_command, 0, &motor_live_frame);
+    motor_live_frame_encode(&motor_live_frame, motor_transmitted_frame);
+    platform_motor_link_init(motor_transmitted_frame);
+    motor_position_ready = false;
+}
+
+static void service_motor_link(void) {
+    if (platform_motor_link_take_received(motor_received_frame) &&
+        motor_live_frame_decode(motor_received_frame, &motor_live_frame) ==
+            MOTOR_LIVE_FRAME_VALID &&
+        motor_position_report_decode(&motor_live_frame, &motor_position_report)) {
+        motor_position_ready = true;
+    }
+}
 
 static void initialize_motor(void) {
     tuning_profile_defaults(&tuning_profile);
@@ -78,9 +104,11 @@ int main(void) {
     platform_time_init();
     platform_adc_init();
     platform_aux_bus_init();
+    initialize_motor_link();
     initialize_motor();
     for (;;) {
         platform_aux_bus_service();
+        service_motor_link();
         service_motor();
     }
 }
