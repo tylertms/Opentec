@@ -12,6 +12,7 @@ button_filter_sources = files('source/input/button_filter.c')
 h_pattern_shifter_sources = files('source/shifter/h_pattern.c')
 logitech_input_sources = files('source/usb/logitech_input.c')
 motor_tuning_parameter_sources = files('source/motor/tuning_parameter.c')
+motor_tuning_sync_sources = files('source/motor/tuning_sync.c')
 pedal_frame_sources = files('source/pedal/frame.c')
 pedal_axis_sources = files('source/pedal/axis.c')
 profile_bank_sources = files('source/profile/bank.c')
@@ -49,6 +50,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'h-pattern-shifter': 'source/shifter/h_pattern.c',
     'logitech-input': 'source/usb/logitech_input.c',
     'motor-tuning-parameter': 'source/motor/tuning_parameter.c',
+    'motor-tuning-sync': 'source/motor/tuning_sync.c',
     'pedal-frame': 'source/pedal/frame.c',
     'pedal-axis': 'source/pedal/axis.c',
     'profile-bank': 'source/profile/bank.c',
@@ -191,6 +193,16 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  motor_tuning_sync_test = executable(
+    'base-motor-tuning-sync-test',
+    'tests/source/motor_tuning_sync.c',
+    motor_tuning_sync_sources,
+    motor_tuning_parameter_sources,
+    profile_tuning_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   pedal_frame_test = executable(
     'base-pedal-frame-test',
     'tests/source/pedal_frame.c',
@@ -309,6 +321,7 @@ if not meson.is_cross_build()
   test('base-h-pattern-shifter', h_pattern_shifter_test, suite: ['base', 'shifter'])
   test('base-logitech-input', logitech_input_test, suite: ['base', 'usb', 'input'])
   test('base-motor-tuning-parameter', motor_tuning_parameter_test, suite: ['base', 'motor'])
+  test('base-motor-tuning-sync', motor_tuning_sync_test, suite: ['base', 'motor'])
   test('base-pedal-frame', pedal_frame_test, suite: ['base', 'pedal', 'transport'])
   test('base-pedal-axis', pedal_axis_test, suite: ['base', 'pedal', 'analog'])
   test('base-profile-tuning', profile_tuning_test, suite: ['base', 'profile'])
