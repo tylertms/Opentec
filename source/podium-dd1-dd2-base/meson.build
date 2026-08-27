@@ -4,6 +4,7 @@ common_source_path = meson.project_source_root() / 'source'
 analog_axis_sources = files('source/analog/axis.c')
 analog_samples_sources = files('source/analog/samples.c')
 force_effect_bank_sources = files('source/force_feedback/bank.c')
+cooling_fan_sources = files('source/cooling/fan.c')
 force_effect_sources = files('source/force_feedback/effect.c')
 force_output_sources = files('source/force_feedback/output.c')
 force_output_report_sources = files('source/force_feedback/output_report.c')
@@ -49,6 +50,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
   foreach name, source : {
     'analog-axis': 'source/analog/axis.c',
     'analog-samples': 'source/analog/samples.c',
+    'cooling-fan': 'source/cooling/fan.c',
     'force-effect-bank': 'source/force_feedback/bank.c',
     'force-effect': 'source/force_feedback/effect.c',
     'force-output': 'source/force_feedback/output.c',
@@ -148,6 +150,14 @@ if not meson.is_cross_build()
     'base-force-effect-test',
     'tests/source/force_effect.c',
     force_effect_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  cooling_fan_test = executable(
+    'base-cooling-fan-test',
+    'tests/source/cooling_fan.c',
+    cooling_fan_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -409,6 +419,7 @@ if not meson.is_cross_build()
 
   test('base-analog-axis', analog_axis_test, suite: ['base', 'analog'])
   test('base-analog-samples', analog_samples_test, suite: ['base', 'analog'])
+  test('base-cooling-fan', cooling_fan_test, suite: ['base', 'cooling'])
   test('base-force-effect', force_effect_test, suite: ['base', 'force-feedback'])
   test('base-force-effect-bank', force_effect_bank_test, suite: ['base', 'force-feedback'])
   test('base-force-output', force_output_test, suite: ['base', 'force-feedback'])
