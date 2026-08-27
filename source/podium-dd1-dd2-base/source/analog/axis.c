@@ -12,6 +12,29 @@ static uint16_t clamp_sample(uint16_t sample, uint16_t minimum, uint16_t maximum
     return sample;
 }
 
+uint16_t analog_axis_filter(AnalogAxisFilter *filter, uint16_t sample, uint16_t deadband) {
+    uint16_t difference = sample > filter->value ? sample - filter->value : filter->value - sample;
+    if (difference <= deadband) {
+        return filter->value;
+    }
+
+    filter->total -= filter->samples[filter->next_sample];
+    filter->samples[filter->next_sample] = sample;
+    filter->total += sample;
+
+    if (filter->count < ANALOG_AXIS_FILTER_SAMPLES) {
+        filter->count++;
+    }
+
+    filter->next_sample++;
+    if (filter->next_sample == ANALOG_AXIS_FILTER_SAMPLES) {
+        filter->next_sample = 0;
+    }
+
+    filter->value = (uint16_t)(filter->total / filter->count);
+    return filter->value;
+}
+
 uint16_t analog_axis_unipolar(uint16_t sample, const AnalogUnipolarCalibration *calibration) {
     if (calibration->minimum >= calibration->maximum) {
         return 0;
