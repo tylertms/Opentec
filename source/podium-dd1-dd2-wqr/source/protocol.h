@@ -8,13 +8,6 @@
 
 enum { WQR_TRANSFER_CAPACITY = 512, WQR_SPI_TRANSFER_SIZE = 33, WQR_STATUS_SIZE = 15 };
 
-typedef enum {
-    WQR_PAYLOAD_PRIMARY_SPI = 2,
-    WQR_PAYLOAD_ALTERNATE_SPI = 3,
-    WQR_PAYLOAD_I2C = 4,
-    WQR_PAYLOAD_STATUS = 5
-} wqr_payload_type;
-
 typedef enum { WQR_IO_PENDING, WQR_IO_SUCCEEDED, WQR_IO_FAILED } wqr_io_result;
 
 typedef struct {
