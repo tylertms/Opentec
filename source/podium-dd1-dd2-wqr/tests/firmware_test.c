@@ -33,6 +33,13 @@ enum {
     APPLICATION_BASE = 0xa000,
     SRAM_SIZE = 0x4000,
     FLASH_SIZE = 0x20000,
+    FIRMWARE_METADATA_OFFSET = 0x3c0,
+    FIRMWARE_CHECKSUM_OFFSET = 0x3cc,
+    FIRMWARE_FLASH_CONFIG_OFFSET = 0x40c,
+    FIRMWARE_METADATA_SIZE = 80,
+    FIRMWARE_READ_SIZE = 256,
+    FIRMWARE_MAGIC = 0x62727177,
+    FIRMWARE_VERSION = 0x0064ffff,
     SMC_PMSTAT_ADDRESS = 0x4007e003,
     PMC_REGSC_ADDRESS = 0x4007d002,
     I2C0_FLT_ADDRESS = 0x40066006,
@@ -50,6 +57,8 @@ enum {
     EXPECTED_CORE_CLOCK_HZ = 96000000,
     EXPECTED_UART_RESPONSE_GUARD_TICKS = 467
 };
+
+static const uint32_t expected_firmware_flash_config = UINT32_C(0xfffffbfe);
 
 typedef struct {
     const uint16_t *spi;
@@ -187,6 +196,54 @@ static bool run_firmware(Kinetis *device, size_t instructions) {
 static bool load_firmware(Kinetis *device, const char *path) {
     return cortex_m4_load_elf(device, path, NULL) ||
            cortex_m4_load_binary(device, path, APPLICATION_BASE);
+}
+
+static uint32_t read_u32(const uint8_t *data) {
+    return (uint32_t)data[0] | (uint32_t)data[1] << 8 | (uint32_t)data[2] << 16 |
+           (uint32_t)data[3] << 24;
+}
+
+static bool firmware_image_valid(Kinetis *device) {
+    uint8_t metadata[FIRMWARE_METADATA_SIZE];
+    uint8_t data[FIRMWARE_READ_SIZE];
+    uint32_t crc = UINT32_MAX;
+    uint32_t image_size;
+    uint32_t expected_crc;
+
+    if (!kinetis_read(device, APPLICATION_BASE + FIRMWARE_METADATA_OFFSET, metadata,
+                      sizeof(metadata))) {
+        return false;
+    }
+    image_size = read_u32(metadata + 8);
+    expected_crc = read_u32(metadata + 12);
+    if (read_u32(metadata) != FIRMWARE_MAGIC || read_u32(metadata + 4) != APPLICATION_BASE ||
+        read_u32(metadata + 16) != FIRMWARE_VERSION ||
+        read_u32(metadata + FIRMWARE_FLASH_CONFIG_OFFSET - FIRMWARE_METADATA_OFFSET) !=
+            expected_firmware_flash_config ||
+        image_size < FIRMWARE_METADATA_OFFSET + FIRMWARE_METADATA_SIZE ||
+        image_size > FLASH_SIZE - APPLICATION_BASE) {
+        return false;
+    }
+
+    for (uint32_t offset = 0; offset < image_size; offset += sizeof(data)) {
+        size_t length = image_size - offset < sizeof(data) ? image_size - offset : sizeof(data);
+
+        if (!kinetis_read(device, APPLICATION_BASE + offset, data, length)) {
+            return false;
+        }
+        for (size_t index = 0; index < length; ++index) {
+            uint32_t address = offset + (uint32_t)index;
+
+            if (address >= FIRMWARE_CHECKSUM_OFFSET && address < FIRMWARE_CHECKSUM_OFFSET + 4) {
+                continue;
+            }
+            crc ^= (uint32_t)data[index] << 24;
+            for (unsigned int bit = 0; bit < 8; ++bit) {
+                crc = crc << 1 ^ ((crc & UINT32_C(0x80000000)) != 0 ? UINT32_C(0x04c11db7) : 0);
+            }
+        }
+    }
+    return crc == expected_crc;
 }
 
 static bool register_equals(Kinetis *device, uint32_t address, size_t size,
@@ -732,10 +789,11 @@ static bool firmware_passes(const char *path, KinetisPackage package) {
         return false;
     }
     cortex_m4_set_coverage(kinetis_cpu(device), coverage);
-    VERIFY_STAGE("load and start firmware",
-                 configure_inputs(device) && load_firmware(device, path) && kinetis_reset(device) &&
-                     kinetis_set_reset_state(device, 1, true) &&
-                     run_firmware(device, STARTUP_INSTRUCTIONS));
+    VERIFY_STAGE("load firmware", configure_inputs(device) && load_firmware(device, path) &&
+                                      firmware_image_valid(device));
+    VERIFY_STAGE("start firmware", kinetis_reset(device) &&
+                                       kinetis_set_reset_state(device, 1, true) &&
+                                       run_firmware(device, STARTUP_INSTRUCTIONS));
     VERIFY_STAGE("hardware configuration", hardware_configuration_valid(device));
     VERIFY_STAGE("status", exchange_status(device, 0, 0));
     VERIFY_STAGE("UART response guard",

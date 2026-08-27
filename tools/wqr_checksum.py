@@ -6,6 +6,7 @@ APPLICATION_BASE = 0xA000
 FLASH_END = 0x20000
 METADATA_OFFSET = 0x3C0
 CHECKSUM_OFFSET = 0x3CC
+FLASH_CONFIG_OFFSET = 0x400
 METADATA_FORMAT = "<4sIIII12s32s12sI"
 METADATA_SIZE = struct.calcsize(METADATA_FORMAT)
 ELF_HEADER = struct.Struct("<16sHHIIIIIHHHHHH")
@@ -91,6 +92,17 @@ def patch_image(image: bytes) -> bytes:
         raise ValueError("image does not contain the metadata region")
     if len(image) > FLASH_END - APPLICATION_BASE:
         raise ValueError("image exceeds application flash")
+    metadata_region = image[METADATA_OFFSET:FLASH_CONFIG_OFFSET]
+    metadata_words = set(struct.unpack("<16I", metadata_region))
+    metadata_words.difference_update((0, 0xFFFFFFFF))
+    if metadata_region[:4] != b"wqrb" and (
+        len(metadata_words) > 1
+        or any(
+            word & 1 == 0 or not APPLICATION_BASE <= word - 1 < FLASH_END
+            for word in metadata_words
+        )
+    ):
+        raise ValueError("firmware metadata region is occupied")
 
     patched = bytearray(image)
     metadata = struct.pack(

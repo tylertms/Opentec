@@ -31,6 +31,18 @@ if meson.is_cross_build()
     link_depends: files(linker_script),
     name_suffix: 'elf',
   )
+  firmware_image = custom_target(
+    'podium-dd1-dd2-wqr-image',
+    input: firmware,
+    output: 'podium-dd1-dd2-wqr.bin',
+    command: [
+      import('python').find_installation(),
+      meson.project_source_root() / 'tools/wqr_checksum.py',
+      '@INPUT@',
+      '@OUTPUT@',
+    ],
+    build_by_default: true,
+  )
 
   simulator = subproject('kinetis-sim', native: true)
   simulator_firmware_image = simulator.get_variable('kinetis_firmware_image_dependency')
@@ -46,8 +58,8 @@ if meson.is_cross_build()
   test(
     'podium-dd1-dd2-wqr',
     firmware_test,
-    args: [firmware.full_path()],
-    depends: firmware,
+    args: [firmware_image],
+    depends: firmware_image,
     suite: ['wqr', 'firmware'],
   )
 else
