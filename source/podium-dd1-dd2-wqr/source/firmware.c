@@ -1,20 +1,20 @@
+#include <fsl_adc16.h>
+#include <fsl_clock.h>
+#include <fsl_dmamux.h>
+#include <fsl_dspi.h>
+#include <fsl_edma.h>
+#include <fsl_gpio.h>
+#include <fsl_i2c.h>
+#include <fsl_lptmr.h>
+#include <fsl_pit.h>
+#include <fsl_port.h>
+#include <fsl_smc.h>
+#include <fsl_uart.h>
+#include <fsl_uart_edma.h>
+#include <fsl_wdog.h>
 #include <stdint.h>
 #include <string.h>
 
-#include "fsl_adc16.h"
-#include "fsl_clock.h"
-#include "fsl_dmamux.h"
-#include "fsl_dspi.h"
-#include "fsl_edma.h"
-#include "fsl_gpio.h"
-#include "fsl_i2c.h"
-#include "fsl_lptmr.h"
-#include "fsl_pit.h"
-#include "fsl_port.h"
-#include "fsl_smc.h"
-#include "fsl_uart.h"
-#include "fsl_uart_edma.h"
-#include "fsl_wdog.h"
 #include "protocol.h"
 
 enum {

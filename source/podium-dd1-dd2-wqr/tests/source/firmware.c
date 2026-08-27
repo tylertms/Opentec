@@ -1,3 +1,5 @@
+#include <cortex_m4_firmware_image.h>
+#include <kinetis.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -5,8 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "cortex_m4_firmware_image.h"
-#include "kinetis.h"
 #include "protocol.h"
 
 #define VERIFY_STAGE(name, expression)                                                             \
