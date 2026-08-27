@@ -26,6 +26,12 @@ static void assign(uint8_t *value, uint8_t target, uint8_t source, uint8_t sourc
     *value = (*value & (uint8_t)~mask) | (((source >> source_bit) & 1u) << target);
 }
 
+/**
+ * Maps a native-mode phase-8 sample into the base button banks.
+ *
+ * @param service Wheel service that owns the three output banks.
+ * @param sample Five input bits returned by the attached device.
+ */
 static void apply_auxiliary(WheelService *service, uint8_t sample) {
     assign(&service->button_banks[0], 3, sample, 3);
     assign(&service->button_banks[0], 1, sample, 4);
@@ -34,6 +40,13 @@ static void apply_auxiliary(WheelService *service, uint8_t sample) {
     assign(&service->button_banks[2], 2, sample, 0);
 }
 
+/**
+ * Maps a native-mode phase-1 sample into the base button banks.
+ *
+ * @param service Wheel service that owns the three output banks.
+ * @param sample Five input bits returned by the attached device.
+ * @param secondary Adds the secondary-channel mapping for sample bit 1 when true.
+ */
 static void apply_first(WheelService *service, uint8_t sample, bool secondary) {
     assign(&service->button_banks[2], 5, sample, 0);
     assign(&service->button_banks[2], 1, sample, 3);
@@ -44,6 +57,12 @@ static void apply_first(WheelService *service, uint8_t sample, bool secondary) {
     }
 }
 
+/**
+ * Maps a native-mode phase-2 sample into the base button banks.
+ *
+ * @param service Wheel service that owns the three output banks.
+ * @param sample Five input bits returned by the attached device.
+ */
 static void apply_second(WheelService *service, uint8_t sample) {
     assign(&service->button_banks[1], 3, sample, 0);
     assign(&service->button_banks[1], 5, sample, 3);
@@ -52,6 +71,12 @@ static void apply_second(WheelService *service, uint8_t sample) {
     assign(&service->button_banks[1], 6, sample, 2);
 }
 
+/**
+ * Maps a native-mode phase-4 sample into the base button banks.
+ *
+ * @param service Wheel service that owns the three output banks.
+ * @param sample Five input bits returned by the attached device.
+ */
 static void apply_third(WheelService *service, uint8_t sample) {
     assign(&service->button_banks[0], 4, sample, 2);
     assign(&service->button_banks[0], 6, sample, 1);
@@ -60,12 +85,24 @@ static void apply_third(WheelService *service, uint8_t sample) {
     assign(&service->button_banks[1], 0, sample, 0);
 }
 
+/**
+ * Selects the response prefix for the active scan channel.
+ *
+ * @param service Wheel service with the negotiated scan channel.
+ * @return 0xE0 for the primary channel or 0xC0 for the secondary channel.
+ */
 static uint8_t expected_scan_response(const WheelService *service) {
     return service->protocol.phase == WHEEL_PROTOCOL_SCANNING_SECONDARY
                ? WHEEL_BUTTON_SECONDARY_RESPONSE
                : WHEEL_BUTTON_PRIMARY_RESPONSE;
 }
 
+/**
+ * Validates a command-3 response and applies its five-bit sample to the active phase.
+ *
+ * @param service Wheel service that owns the scan phase and output banks.
+ * @param response Received transport frame, or null when no frame is available.
+ */
 static void apply_scan_response(WheelService *service, const WheelTransportFrame *response) {
     if (response == 0 || response->length != WHEEL_TRANSPORT_PAYLOAD_SIZE ||
         (response->data[WHEEL_TRANSPORT_PAYLOAD_SIZE - 1] & WHEEL_BUTTON_RESPONSE_READY) == 0) {

@@ -30,6 +30,12 @@ static void clear_uart(void) {
     }
 }
 
+/**
+ * Configures UART3 for the normal attached-wheel link.
+ *
+ * The link uses inverted receive and transmit signals, high-speed baud generation, and a baud
+ * period of 2.
+ */
 static void configure_uart(void) {
     U3MODEbits.UARTEN = 0;
     U3MODE = 0;
@@ -42,6 +48,11 @@ static void configure_uart(void) {
     U3STAbits.UTXEN = 1;
 }
 
+/**
+ * Configures the byte-oriented, one-shot UART3 DMA channels.
+ *
+ * DMA5 sends 72 bytes with request 0x53. DMA6 receives 68 bytes with request 0x52.
+ */
 static void configure_dma(void) {
     DMA5CON = 0;
     DMA5CONbits.SIZE = 1;
@@ -66,6 +77,11 @@ static void configure_dma(void) {
     DMA6CNT = WHEEL_LINK_RECEIVE_SIZE - 1;
 }
 
+/**
+ * Enables wheel-link DMA and UART error interrupts.
+ *
+ * DMA5 uses priority 5 and DMA6 uses priority 4.
+ */
 static void configure_interrupts(void) {
     IPC15bits.DMA5IP = WHEEL_LINK_TRANSMIT_PRIORITY;
     IPC17bits.DMA6IP = WHEEL_LINK_RECEIVE_PRIORITY;

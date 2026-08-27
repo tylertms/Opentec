@@ -9,6 +9,13 @@ enum {
     WHEEL_TRANSPORT_CHECKSUM_OFFSET = 61,
 };
 
+/**
+ * Updates the wheel transport CRC-16 with one byte.
+ *
+ * @param checksum Current CRC value.
+ * @param data Next byte in the frame body.
+ * @return Updated CRC value.
+ */
 static uint16_t update_checksum(uint16_t checksum, uint8_t data) {
     uint16_t mixed = (uint8_t)data ^ checksum;
     uint16_t low = (uint8_t)mixed;
@@ -19,6 +26,12 @@ static uint16_t update_checksum(uint16_t checksum, uint8_t data) {
     return result ^ ((((mixed + mixed) ^ high) << 4) ^ nibble) << 3;
 }
 
+/**
+ * Calculates the CRC-16 over the 60-byte wheel transport body.
+ *
+ * @param body First of 60 bytes, beginning with the command byte.
+ * @return CRC value stored low byte first in the frame.
+ */
 static uint16_t checksum(const uint8_t *body) {
     uint16_t value = 0;
     for (uint8_t index = 0; index < WHEEL_TRANSPORT_BODY_SIZE; index++) {
@@ -27,6 +40,13 @@ static uint16_t checksum(const uint8_t *body) {
     return value;
 }
 
+/**
+ * Encodes one logical wheel transport frame into its 64-byte wire representation.
+ *
+ * @param frame Command, packet counter, length, and up to 57 payload bytes.
+ * @param output Destination for the complete frame.
+ * @return Frame status, including an invalid-length result for oversized payloads.
+ */
 WheelTransportFrameResult wheel_transport_frame_encode(const WheelTransportFrame *frame,
                                                        uint8_t output[WHEEL_TRANSPORT_FRAME_SIZE]) {
     if (frame->length > WHEEL_TRANSPORT_PAYLOAD_SIZE) {
@@ -50,6 +70,13 @@ WheelTransportFrameResult wheel_transport_frame_encode(const WheelTransportFrame
     return WHEEL_TRANSPORT_FRAME_VALID;
 }
 
+/**
+ * Validates and decodes one 64-byte wheel transport frame.
+ *
+ * @param input Complete wire frame with delimiters and CRC.
+ * @param frame Destination for the decoded command, packet counter, length, and payload.
+ * @return Frame status identifying boundary, length, or checksum failures.
+ */
 WheelTransportFrameResult
 wheel_transport_frame_decode(const uint8_t input[WHEEL_TRANSPORT_FRAME_SIZE],
                              WheelTransportFrame *frame) {

@@ -3,6 +3,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/**
+ * Calculates the attached-wheel message CRC-8 with an initial value of 0xFF.
+ *
+ * @param data First byte covered by the checksum.
+ * @param length Number of bytes to process.
+ * @return Reflected CRC-8 value using polynomial 0x8C.
+ */
 static uint8_t crc8(const uint8_t *data, uint8_t length) {
     uint8_t crc = UINT8_MAX;
     while (length-- != 0) {
@@ -29,6 +36,12 @@ static void build_selection_response(WheelProtocol *protocol) {
     protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] = flags;
 }
 
+/**
+ * Stores the first 30 bytes of an active attached-wheel request and detects changes.
+ *
+ * @param protocol Protocol state that owns the request snapshot and change latch.
+ * @param request Complete 57-byte attached-wheel request.
+ */
 static void capture_request(WheelProtocol *protocol,
                             const uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE]) {
     bool changed = false;
