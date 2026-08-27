@@ -1,3 +1,7 @@
+base_include = include_directories('source')
+base_source_path = meson.current_source_dir() / 'source'
+wheel_position_sources = files('source/wheel/position.c')
+
 if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
   device_pack = subproject('dspic33e-device-pack')
   device_pack_path = device_pack.get_variable('device_pack_path')
@@ -9,17 +13,23 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
   ]
   linker_script = device_pack_path / 'support/dsPIC33E/gld/p33EP512MU810.gld'
 
-  firmware_object = custom_target(
-    'podium-dd1-dd2-base-object',
-    input: 'source/firmware.c',
-    output: 'firmware.o',
-    command: [compiler] + device_args + ['-c', '@INPUT@', '-o', '@OUTPUT@'],
-    build_by_default: false,
-  )
+  firmware_objects = []
+  foreach name, source : {
+    'firmware': 'source/firmware.c',
+    'wheel-position': 'source/wheel/position.c',
+  }
+    firmware_objects += custom_target(
+      'podium-dd1-dd2-base-' + name + '-object',
+      input: source,
+      output: name + '.o',
+      command: [compiler] + device_args + ['-I' + base_source_path, '-c', '@INPUT@', '-o', '@OUTPUT@'],
+      build_by_default: false,
+    )
+  endforeach
 
   firmware = custom_target(
     'podium-dd1-dd2-base-elf',
-    input: firmware_object,
+    input: firmware_objects,
     output: 'podium-dd1-dd2-base.elf',
     command: [compiler] + device_args + [
       '-Wl,--script=' + linker_script,
@@ -37,4 +47,16 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     command: [bin2hex, '@INPUT@'],
     build_by_default: true,
   )
+endif
+
+if not meson.is_cross_build()
+  wheel_position_test = executable(
+    'base-wheel-position-test',
+    'tests/source/wheel_position.c',
+    wheel_position_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  test('base-wheel-position', wheel_position_test, suite: ['base', 'wheel-position'])
 endif
