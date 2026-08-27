@@ -30,7 +30,7 @@ static int32_t step_toward(int32_t current, int32_t target, uint16_t maximum_ste
 static ForceOutputCommand make_command(int32_t value) {
     ForceOutputCommand command = {
         .magnitude = value < 0 ? (uint16_t)-value : (uint16_t)value,
-        .direction = value < 0,
+        .negative = value < 0,
         .active = value != 0,
     };
     return command;

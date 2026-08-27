@@ -13,19 +13,19 @@ static void test_slew_and_direction(void) {
     force_output_reset(&state);
     ForceOutputCommand command = force_output_step(&state, 500, 1, &limits);
     assert(command.magnitude == 100);
-    assert(command.direction == 0);
+    assert(command.negative == 0);
     assert(command.active == 1);
 
     command = force_output_step(&state, 500, 1, &limits);
     assert(command.magnitude == 200);
     command = force_output_step(&state, -500, 1, &limits);
     assert(command.magnitude == 100);
-    assert(command.direction == 0);
+    assert(command.negative == 0);
     command = force_output_step(&state, -500, 1, &limits);
     assert(command.magnitude == 0);
     command = force_output_step(&state, -500, 1, &limits);
     assert(command.magnitude == 100);
-    assert(command.direction == 1);
+    assert(command.negative == 1);
 }
 
 static void test_saturation(void) {
@@ -38,10 +38,10 @@ static void test_saturation(void) {
     force_output_reset(&state);
     ForceOutputCommand command = force_output_step(&state, INT32_MAX, 1, &limits);
     assert(command.magnitude == 5000);
-    assert(command.direction == 0);
+    assert(command.negative == 0);
     command = force_output_step(&state, INT32_MIN, 1, &limits);
     assert(command.magnitude == 5000);
-    assert(command.direction == 1);
+    assert(command.negative == 1);
 }
 
 static void test_interlock(void) {

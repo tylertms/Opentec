@@ -14,7 +14,7 @@ typedef struct {
 
 typedef struct {
     uint16_t magnitude;
-    uint8_t direction;
+    uint8_t negative;
     uint8_t active;
 } ForceOutputCommand;
 
