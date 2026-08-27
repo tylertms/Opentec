@@ -14,6 +14,7 @@ button_filter_sources = files('source/input/button_filter.c')
 board_identity_sources = files('source/board/identity.c')
 h_pattern_shifter_sources = files('source/shifter/h_pattern.c')
 logitech_input_sources = files('source/usb/logitech_input.c')
+motor_identity_sources = files('source/motor/identity.c')
 motor_tuning_parameter_sources = files('source/motor/tuning_parameter.c')
 motor_tuning_service_sources = files('source/motor/tuning_service.c')
 motor_tuning_sync_sources = files('source/motor/tuning_sync.c')
@@ -57,6 +58,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'firmware': 'source/firmware.c',
     'h-pattern-shifter': 'source/shifter/h_pattern.c',
     'logitech-input': 'source/usb/logitech_input.c',
+    'motor-identity': 'source/motor/identity.c',
     'motor-tuning-parameter': 'source/motor/tuning_parameter.c',
     'motor-tuning-service': 'source/motor/tuning_service.c',
     'motor-tuning-sync': 'source/motor/tuning_sync.c',
@@ -233,6 +235,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  motor_identity_test = executable(
+    'base-motor-identity-test',
+    'tests/source/motor_identity.c',
+    motor_identity_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   motor_tuning_sync_test = executable(
     'base-motor-tuning-sync-test',
     'tests/source/motor_tuning_sync.c',
@@ -386,6 +396,7 @@ if not meson.is_cross_build()
   test('base-board-identity', board_identity_test, suite: ['base', 'board'])
   test('base-h-pattern-shifter', h_pattern_shifter_test, suite: ['base', 'shifter'])
   test('base-logitech-input', logitech_input_test, suite: ['base', 'usb', 'input'])
+  test('base-motor-identity', motor_identity_test, suite: ['base', 'motor'])
   test('base-motor-tuning-parameter', motor_tuning_parameter_test, suite: ['base', 'motor'])
   test('base-motor-tuning-sync', motor_tuning_sync_test, suite: ['base', 'motor'])
   test('base-motor-tuning-service', motor_tuning_service_test, suite: ['base', 'motor'])
