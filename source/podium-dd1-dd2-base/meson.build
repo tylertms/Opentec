@@ -2,6 +2,7 @@ base_include = include_directories('source')
 base_source_path = meson.current_source_dir() / 'source'
 common_source_path = meson.project_source_root() / 'source'
 analog_axis_sources = files('source/analog/axis.c')
+force_effect_sources = files('source/force_feedback/effect.c')
 force_output_sources = files('source/force_feedback/output.c')
 force_filter_sources = files('source/force_feedback/filter.c')
 force_soft_stop_sources = files('source/force_feedback/soft_stop.c')
@@ -32,6 +33,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
   firmware_objects = []
   foreach name, source : {
     'analog-axis': 'source/analog/axis.c',
+    'force-effect': 'source/force_feedback/effect.c',
     'force-output': 'source/force_feedback/output.c',
     'force-filter': 'source/force_feedback/filter.c',
     'force-soft-stop': 'source/force_feedback/soft_stop.c',
@@ -93,6 +95,14 @@ if not meson.is_cross_build()
     'base-analog-axis-test',
     'tests/source/analog_axis.c',
     analog_axis_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  force_effect_test = executable(
+    'base-force-effect-test',
+    'tests/source/force_effect.c',
+    force_effect_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -234,6 +244,7 @@ if not meson.is_cross_build()
   )
 
   test('base-analog-axis', analog_axis_test, suite: ['base', 'analog'])
+  test('base-force-effect', force_effect_test, suite: ['base', 'force-feedback'])
   test('base-force-output', force_output_test, suite: ['base', 'force-feedback'])
   test('base-force-filter', force_filter_test, suite: ['base', 'force-feedback'])
   test('base-force-soft-stop', force_soft_stop_test, suite: ['base', 'force-feedback'])
