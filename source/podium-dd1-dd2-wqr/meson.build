@@ -46,7 +46,7 @@ if meson.is_cross_build()
     output: 'podium-dd1-dd2-wqr.bin',
     command: [
       python,
-      meson.project_source_root() / 'tools/wqr_checksum.py',
+      meson.project_source_root() / 'tools/checksum.py',
       '@INPUT@',
       '@OUTPUT@',
     ],
@@ -75,7 +75,7 @@ if meson.is_cross_build()
     output: 'podium-dd1-dd2-wqr.hex',
     command: [
       python,
-      meson.project_source_root() / 'tools/firmware_crypto.py',
+      meson.project_source_root() / 'tools/crypto.py',
       'encrypt',
       '@INPUT@',
       '@OUTPUT@',

@@ -72,7 +72,8 @@ class FirmwareCipher:
     def decrypt(self, payload):
         if not payload or len(payload) % AES_BLOCK_SIZE:
             raise ValueError(
-                f"Encrypted firmware size must be a nonzero multiple of {AES_BLOCK_SIZE}"
+                "Encrypted firmware size must be a nonzero multiple of "
+                f"{AES_BLOCK_SIZE}"
             )
 
         buffer = (ctypes.c_ubyte * len(payload)).from_buffer_copy(payload)
