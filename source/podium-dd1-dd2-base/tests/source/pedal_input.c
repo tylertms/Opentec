@@ -47,6 +47,8 @@ static void test_released_hid_axes_are_high(void) {
     assert(input.auxiliary == 0);
     assert(pedal_input_hid_axis(input.axes[0]) == UINT16_MAX);
     assert(pedal_input_hid_axis(UINT16_MAX) == 0);
+    assert(pedal_input_hid_auxiliary(input.auxiliary) == UINT8_MAX);
+    assert(pedal_input_hid_auxiliary(UINT8_MAX) == 0);
 }
 
 int main(void) {

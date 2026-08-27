@@ -192,7 +192,7 @@ static void service_usb_input(void) {
     for (uint8_t axis = 0; axis < FANATEC_INPUT_PEDAL_AXES; axis++) {
         usb_input_state.pedals[axis] = pedal_input_hid_axis(pedal_input->axes[axis]);
     }
-    usb_input_state.auxiliary_pedal = pedal_input->auxiliary;
+    usb_input_state.auxiliary_pedal = pedal_input_hid_auxiliary(pedal_input->auxiliary);
     if (fanatec_input_encode(usb_input_report, &usb_input_state)) {
         usb_device_send_input(usb_input_report, sizeof(usb_input_report));
     }

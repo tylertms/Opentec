@@ -25,3 +25,5 @@ bool pedal_input_decode(const PedalFrame *frame, PedalInput *input) {
 }
 
 uint16_t pedal_input_hid_axis(uint16_t value) { return (uint16_t)~value; }
+
+uint8_t pedal_input_hid_auxiliary(uint8_t value) { return (uint8_t)~value; }
