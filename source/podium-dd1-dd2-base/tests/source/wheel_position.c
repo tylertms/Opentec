@@ -54,6 +54,34 @@ static void test_invalid_travel(void) {
     assert(wheel_position_axis(INT32_MAX, &calibration) == 0);
 }
 
+static void test_reference_capture(void) {
+    WheelPositionReference reference;
+    wheel_position_reference_reset(&reference);
+    assert(!reference.calibrated);
+    assert(wheel_position_reference_capture(&reference, 25000));
+    assert(reference.calibrated);
+    assert(reference.center == 25000);
+    assert(!wheel_position_reference_capture(&reference, 25000));
+    assert(wheel_position_reference_capture(&reference, -25000));
+    assert(reference.center == -25000);
+}
+
+static void test_calibration_building(void) {
+    WheelPositionReference reference = {.center = 1234, .calibrated = true};
+    WheelPositionCalibration calibration = wheel_position_calibration_build(&reference, 900, 4);
+    assert(calibration.center == 1234);
+    assert(calibration.travel == 30000);
+    assert(calibration.deadband == 40);
+
+    calibration = wheel_position_calibration_build(&reference, 2520, 0);
+    assert(calibration.travel == WHEEL_POSITION_SAMPLE_LIMIT);
+
+    reference.calibrated = false;
+    calibration = wheel_position_calibration_build(&reference, 900, 0);
+    assert(calibration.travel == 0);
+    assert(wheel_position_hid_axis(INT32_MAX, &calibration) == 32768);
+}
+
 static void test_velocity(void) {
     WheelVelocityEstimator estimator;
     wheel_velocity_reset(&estimator);
@@ -71,6 +99,8 @@ int main(void) {
     test_deadband();
     test_axis_scaling();
     test_invalid_travel();
+    test_reference_capture();
+    test_calibration_building();
     test_velocity();
     return 0;
 }

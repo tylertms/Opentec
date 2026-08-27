@@ -15,13 +15,13 @@ enum {
     NVM_PAGE_ERASE = 0x4003,
 };
 
-static const uint32_t profile_storage_page_a = UINT32_C(0x54000);
-static const uint32_t profile_storage_page_b = UINT32_C(0x54800);
+static const uint32_t settings_storage_page_a = UINT32_C(0x54000);
+static const uint32_t settings_storage_page_b = UINT32_C(0x54800);
 static const uint16_t platform_storage_pages[FLASH_STORAGE_INSTRUCTION_COUNT]
     __attribute__((space(prog), address(0x54000), noload, used));
 
 static uint32_t slot_address(PlatformStorageSlot slot) {
-    return slot == PLATFORM_STORAGE_PROFILE_A ? profile_storage_page_a : profile_storage_page_b;
+    return slot == PLATFORM_STORAGE_SETTINGS_A ? settings_storage_page_a : settings_storage_page_b;
 }
 
 static bool nvm_execute(void) {

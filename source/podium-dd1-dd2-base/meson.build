@@ -35,9 +35,10 @@ motor_tuning_sync_sources = files('source/motor/tuning_sync.c')
 pedal_frame_sources = files('source/pedal/frame.c')
 pedal_axis_sources = files('source/pedal/axis.c')
 profile_bank_sources = files('source/profile/bank.c')
-profile_persistence_sources = files('source/profile/persistence.c')
 profile_record_sources = files('source/profile/record.c')
 profile_tuning_sources = files('source/profile/tuning.c')
+settings_persistence_sources = files('source/settings/persistence.c')
+settings_state_sources = files('source/settings/state.c')
 platform_time_sources = files('source/platform/time.c')
 remote_exchange_sources = files('source/wheel/remote_exchange.c')
 remote_i2c_sources = files('source/wheel/remote_i2c.c')
@@ -105,13 +106,14 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'platform-usb': 'source/platform/dspic33e/usb.c',
     'platform-time-common': 'source/platform/time.c',
     'profile-bank': 'source/profile/bank.c',
-    'profile-persistence': 'source/profile/persistence.c',
     'profile-record': 'source/profile/record.c',
     'profile-tuning': 'source/profile/tuning.c',
     'remote-exchange': 'source/wheel/remote_exchange.c',
     'remote-i2c': 'source/wheel/remote_i2c.c',
     'remote-spi': 'source/wheel/remote_spi.c',
     'remote-status': 'source/wheel/remote_status.c',
+    'settings-persistence': 'source/settings/persistence.c',
+    'settings-state': 'source/settings/state.c',
     'wqr-frame': meson.project_source_root() / 'source/common/wqr_frame.c',
     'wheel-position': 'source/wheel/position.c',
   }
@@ -460,13 +462,15 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
-  profile_persistence_test = executable(
-    'base-profile-persistence-test',
-    'tests/source/tuning_profile_persistence.c',
-    profile_persistence_sources,
+  settings_persistence_test = executable(
+    'base-settings-persistence-test',
+    'tests/source/base_settings_persistence.c',
+    settings_persistence_sources,
+    settings_state_sources,
     profile_record_sources,
     profile_bank_sources,
     profile_tuning_sources,
+    wheel_position_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -578,9 +582,9 @@ if not meson.is_cross_build()
   test('base-profile-bank', profile_bank_test, suite: ['base', 'profile'])
   test('base-profile-record', profile_record_test, suite: ['base', 'profile', 'persistence'])
   test(
-    'base-profile-persistence',
-    profile_persistence_test,
-    suite: ['base', 'profile', 'persistence'],
+    'base-settings-persistence',
+    settings_persistence_test,
+    suite: ['base', 'settings', 'persistence'],
   )
   test('base-platform-time', platform_time_test, suite: ['base', 'platform'])
   test('base-remote-exchange', remote_exchange_test, suite: ['base', 'transport'])

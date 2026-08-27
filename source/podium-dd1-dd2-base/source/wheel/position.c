@@ -51,6 +51,32 @@ uint16_t wheel_position_hid_axis(int32_t sample, const WheelPositionCalibration 
     return (uint16_t)((int32_t)wheel_position_axis(sample, calibration) + 32768);
 }
 
+void wheel_position_reference_reset(WheelPositionReference *reference) {
+    reference->center = 0;
+    reference->calibrated = false;
+}
+
+bool wheel_position_reference_capture(WheelPositionReference *reference, int32_t sample) {
+    bool changed = !reference->calibrated || reference->center != sample;
+    reference->center = sample;
+    reference->calibrated = true;
+    return changed;
+}
+
+WheelPositionCalibration wheel_position_calibration_build(const WheelPositionReference *reference,
+                                                          uint16_t rotation_degrees,
+                                                          uint8_t deadzone) {
+    uint32_t travel = (uint32_t)rotation_degrees * WHEEL_POSITION_COUNTS_PER_REVOLUTION / 720;
+    if (travel > WHEEL_POSITION_SAMPLE_LIMIT) {
+        travel = WHEEL_POSITION_SAMPLE_LIMIT;
+    }
+    return (WheelPositionCalibration){
+        .center = reference->center,
+        .travel = reference->calibrated ? travel : 0,
+        .deadband = (uint32_t)deadzone * 10,
+    };
+}
+
 void wheel_velocity_reset(WheelVelocityEstimator *estimator) {
     memset(estimator, 0, sizeof(*estimator));
 }

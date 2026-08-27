@@ -17,9 +17,12 @@
 #include "platform/pin_mux.h"
 #include "platform/time.h"
 #include "profile/bank.h"
-#include "profile/persistence.h"
 #include "profile/tuning.h"
+#include "settings/persistence.h"
+#include "settings/state.h"
 #include "usb/device.h"
+#include "usb/fanatec_input.h"
+#include "wheel/position.h"
 
 #pragma config GWRP = OFF
 #pragma config GSS = OFF
@@ -47,13 +50,16 @@ static BoardIdentity board_identity;
 static MotorProbe motor_probe;
 static MotorTelemetryService motor_telemetry_service;
 static MotorTuningService motor_tuning_service;
-static TuningProfileBank tuning_profiles;
-static TuningProfilePersistence tuning_profile_persistence;
+static BaseSettings base_settings;
+static BaseSettingsPersistence settings_persistence;
 static const TuningProfile *tuning_profile;
 static MotorTuningContext motor_tuning_context;
 static bool motor_tuning_ready;
 static MotorPositionReport motor_position_report;
 static bool motor_position_ready;
+static WheelPositionCalibration wheel_position_calibration;
+static fanatec_input_state usb_input_state;
+static uint8_t usb_input_report[FANATEC_INPUT_REPORT_SIZE];
 static ForceOutputCommand motor_output_command;
 static MotorLiveFrame motor_live_frame;
 static uint8_t motor_received_frame[MOTOR_LIVE_FRAME_SIZE];
@@ -127,14 +133,18 @@ static void service_motor_link(void) {
         motor_live_frame_decode(motor_received_frame, &motor_live_frame) ==
             MOTOR_LIVE_FRAME_VALID &&
         motor_position_report_decode(&motor_live_frame, &motor_position_report)) {
+        if (!base_settings.wheel_position.calibrated &&
+            wheel_position_reference_capture(&base_settings.wheel_position,
+                                             motor_position_report.wheel_position)) {
+            base_settings_persistence_mark_dirty(&settings_persistence, platform_time_ms());
+        }
         motor_position_ready = true;
     }
 }
 
 static void initialize_motor(void) {
-    tuning_profile_persistence_load(&tuning_profile_persistence, &tuning_profiles,
-                                    platform_time_ms());
-    tuning_profile = tuning_profile_bank_active(&tuning_profiles);
+    base_settings_persistence_load(&settings_persistence, &base_settings, platform_time_ms());
+    tuning_profile = tuning_profile_bank_active(&base_settings.tuning_profiles);
     motor_tuning_context = (MotorTuningContext){
         .automatic_rotation_degrees = tuning_profile->rotation_degrees,
         .ramp_percent = 0,
@@ -148,8 +158,7 @@ static void initialize_motor(void) {
 }
 
 static void service_motor(void) {
-    tuning_profile_persistence_service(&tuning_profile_persistence, &tuning_profiles,
-                                       platform_time_ms());
+    base_settings_persistence_service(&settings_persistence, &base_settings, platform_time_ms());
     motor_probe_run(&motor_probe);
     const MotorIdentity *identity = motor_probe_identity(&motor_probe);
     if (!motor_tuning_ready && identity != 0) {
@@ -160,6 +169,23 @@ static void service_motor(void) {
     if (motor_tuning_ready) {
         motor_telemetry_service_run(&motor_telemetry_service, platform_time_ms());
         motor_tuning_service_run(&motor_tuning_service);
+    }
+}
+
+static void service_usb_input(void) {
+    if (!motor_position_ready) {
+        return;
+    }
+
+    wheel_position_calibration = wheel_position_calibration_build(
+        &base_settings.wheel_position, tuning_profile->rotation_degrees,
+        tuning_profile->steering_deadzone);
+    usb_input_state = (fanatec_input_state){
+        .steering = wheel_position_hid_axis(motor_position_report.wheel_position,
+                                            &wheel_position_calibration),
+    };
+    if (fanatec_input_encode(usb_input_report, &usb_input_state)) {
+        usb_device_send_input(usb_input_report, sizeof(usb_input_report));
     }
 }
 
@@ -180,6 +206,7 @@ int main(void) {
         uint32_t now_ms = platform_time_ms();
         platform_cooling_service(now_ms);
         service_motor_link();
+        service_usb_input();
         service_motor();
         service_cooling(now_ms);
     }
