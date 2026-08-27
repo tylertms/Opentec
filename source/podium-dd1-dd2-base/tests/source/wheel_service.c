@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "platform/wheel_link.h"
+#include "wheel/display_output.h"
 #include "wheel/protocol.h"
 #include "wheel/service.h"
 #include "wheel/transport_frame.h"
@@ -208,6 +209,38 @@ static void test_negotiates_before_scanning_and_maps_buttons(void) {
     assert((buttons[2] & 0x22) == 0x22);
 }
 
+static void test_sends_display_output_with_each_scan_phase(void) {
+    WheelService service;
+    received_ready = false;
+    uint32_t now_ms = begin_scan(&service);
+    const WheelDisplayOutput output = {
+        .glyphs = {0xa5, 0x5a, 0x40},
+        .auxiliary = 0x37,
+        .phase_four_marker = true,
+    };
+    wheel_service_set_display_output(&service, &output);
+
+    respond_scan(WHEEL_BUTTON_PRIMARY_RESPONSE);
+    wheel_service_run(&service, now_ms++);
+    WheelTransportFrame scan = request();
+    assert(scan.data[1] == (uint8_t)~0x0a);
+
+    respond_scan(WHEEL_BUTTON_PRIMARY_RESPONSE);
+    wheel_service_run(&service, now_ms++);
+    scan = request();
+    assert(scan.data[1] == (uint8_t)~0x36);
+
+    respond_scan(WHEEL_BUTTON_PRIMARY_RESPONSE);
+    wheel_service_run(&service, now_ms++);
+    scan = request();
+    assert(scan.data[1] == (uint8_t)~0xc9);
+
+    respond_scan(WHEEL_BUTTON_PRIMARY_RESPONSE);
+    wheel_service_run(&service, now_ms);
+    scan = request();
+    assert(scan.data[1] == (uint8_t)~0x37);
+}
+
 static void test_keeps_protocol_transport_for_packet_modes(void) {
     WheelService service;
     received_ready = false;
@@ -256,6 +289,7 @@ int main(void) {
     test_maps_primary_scan_bits();
     test_maps_secondary_scan_bit();
     test_negotiates_before_scanning_and_maps_buttons();
+    test_sends_display_output_with_each_scan_phase();
     test_keeps_protocol_transport_for_packet_modes();
     test_restarts_discovery_after_scan_timeout();
     return 0;

@@ -43,6 +43,7 @@ settings_persistence_sources = files('source/settings/persistence.c')
 settings_state_sources = files('source/settings/state.c')
 platform_time_sources = files('source/platform/time.c')
 wheel_position_sources = files('source/wheel/position.c')
+wheel_display_output_sources = files('source/wheel/display_output.c')
 wheel_protocol_sources = files('source/wheel/protocol.c')
 wheel_service_sources = files('source/wheel/service.c')
 wheel_transport_frame_sources = files('source/wheel/transport_frame.c')
@@ -117,6 +118,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'settings-persistence': 'source/settings/persistence.c',
     'settings-state': 'source/settings/state.c',
     'wheel-position': 'source/wheel/position.c',
+    'wheel-display-output': 'source/wheel/display_output.c',
     'wheel-protocol': 'source/wheel/protocol.c',
     'wheel-service': 'source/wheel/service.c',
     'wheel-transport-frame': 'source/wheel/transport_frame.c',
@@ -521,6 +523,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_display_output_test = executable(
+    'base-wheel-display-output-test',
+    'tests/source/wheel_display_output.c',
+    wheel_display_output_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_transport_frame_test = executable(
     'base-wheel-transport-frame-test',
     'tests/source/wheel_transport_frame.c',
@@ -541,6 +551,7 @@ if not meson.is_cross_build()
     'base-wheel-service-test',
     'tests/source/wheel_service.c',
     wheel_service_sources,
+    wheel_display_output_sources,
     wheel_protocol_sources,
     wheel_transport_service_sources,
     wheel_transport_frame_sources,
@@ -611,6 +622,11 @@ if not meson.is_cross_build()
   )
   test('base-platform-time', platform_time_test, suite: ['base', 'platform'])
   test('base-wheel-position', wheel_position_test, suite: ['base', 'wheel-position'])
+  test(
+    'base-wheel-display-output',
+    wheel_display_output_test,
+    suite: ['base', 'wheel', 'display'],
+  )
   test('base-wheel-protocol', wheel_protocol_test, suite: ['base', 'wheel', 'protocol'])
   test('base-wheel-service', wheel_service_test, suite: ['base', 'wheel', 'input'])
   test(

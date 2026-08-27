@@ -3,16 +3,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "wheel/display_output.h"
 #include "wheel/protocol.h"
 #include "wheel/transport_service.h"
 
 enum {
     WHEEL_PROTOCOL_TRANSPORT_COMMAND = 2,
     WHEEL_BUTTON_COMMAND = 3,
-    WHEEL_BUTTON_PHASE_FIRST = 1,
-    WHEEL_BUTTON_PHASE_SECOND = 2,
-    WHEEL_BUTTON_PHASE_THIRD = 4,
-    WHEEL_BUTTON_PHASE_AUXILIARY = 8,
     WHEEL_BUTTON_REQUEST_READY = 1,
     WHEEL_BUTTON_RESPONSE_READY = 2,
     WHEEL_BUTTON_PRIMARY_RESPONSE = 0xe0,
@@ -115,16 +112,16 @@ static void apply_scan_response(WheelService *service, const WheelTransportFrame
     }
     uint8_t sample = encoded & WHEEL_BUTTON_VALUE_MASK;
     switch (service->scan_phase) {
-    case WHEEL_BUTTON_PHASE_FIRST:
+    case WHEEL_SCAN_PHASE_FIRST:
         apply_first(service, sample, response_type == WHEEL_BUTTON_SECONDARY_RESPONSE);
         break;
-    case WHEEL_BUTTON_PHASE_SECOND:
+    case WHEEL_SCAN_PHASE_SECOND:
         apply_second(service, sample);
         break;
-    case WHEEL_BUTTON_PHASE_THIRD:
+    case WHEEL_SCAN_PHASE_THIRD:
         apply_third(service, sample);
         break;
-    case WHEEL_BUTTON_PHASE_AUXILIARY:
+    case WHEEL_SCAN_PHASE_AUXILIARY:
         apply_auxiliary(service, sample);
         break;
     }
@@ -145,13 +142,14 @@ static void reset_connection(WheelService *service) {
 static void start_scan(WheelService *service, uint32_t now_ms) {
     service->scan_phase >>= 1;
     if (service->scan_phase == 0) {
-        service->scan_phase = WHEEL_BUTTON_PHASE_AUXILIARY;
+        service->scan_phase = WHEEL_SCAN_PHASE_AUXILIARY;
     }
     for (uint8_t index = 0; index < WHEEL_TRANSPORT_PAYLOAD_SIZE; index++) {
         service->request[index] = 0;
     }
     service->request[0] = service->scan_phase;
-    service->request[1] = UINT8_MAX;
+    service->request[1] =
+        (uint8_t)~wheel_display_output_encode(&service->display_output, service->scan_phase);
     service->request[WHEEL_TRANSPORT_PAYLOAD_SIZE - 1] = WHEEL_BUTTON_REQUEST_READY;
     service->request_kind = WHEEL_SERVICE_REQUEST_BUTTONS;
     if (!wheel_transport_service_start(&service->transport, WHEEL_BUTTON_COMMAND, service->request,
@@ -178,8 +176,17 @@ void wheel_service_init(WheelService *service) {
     wheel_transport_service_init(&service->transport);
     wheel_protocol_init(&service->protocol);
     clear_buttons(service);
+    for (uint8_t index = 0; index < WHEEL_DISPLAY_GLYPH_COUNT; index++) {
+        service->display_output.glyphs[index] = 0;
+    }
+    service->display_output.auxiliary = 0;
+    service->display_output.phase_four_marker = false;
     service->scan_phase = 0;
     service->request_kind = WHEEL_SERVICE_REQUEST_NONE;
+}
+
+void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output) {
+    service->display_output = *output;
 }
 
 void wheel_service_run(WheelService *service, uint32_t now_ms) {

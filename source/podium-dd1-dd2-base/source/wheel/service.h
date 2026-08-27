@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "wheel/display_output.h"
 #include "wheel/protocol.h"
 #include "wheel/transport_service.h"
 
@@ -18,6 +19,7 @@ typedef enum {
 typedef struct {
     WheelTransportService transport;
     WheelProtocol protocol;
+    WheelDisplayOutput display_output;
     uint8_t request[WHEEL_TRANSPORT_PAYLOAD_SIZE];
     uint8_t button_banks[WHEEL_BUTTON_BANK_COUNT];
     uint8_t scan_phase;
@@ -26,6 +28,7 @@ typedef struct {
 
 void wheel_service_init(WheelService *service);
 void wheel_service_run(WheelService *service, uint32_t now_ms);
+void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output);
 const uint8_t *wheel_service_buttons(const WheelService *service);
 uint8_t wheel_service_mode(const WheelService *service);
 WheelProtocolPhase wheel_service_protocol_phase(const WheelService *service);
