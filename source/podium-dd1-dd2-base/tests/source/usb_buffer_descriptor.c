@@ -36,9 +36,18 @@ static void test_capacity_and_packet_fields_are_masked(void) {
     assert(usb_buffer_descriptor_packet_id(&descriptor) == 13);
 }
 
+static void test_setup_arm(void) {
+    UsbBufferDescriptor descriptor;
+    usb_buffer_descriptor_arm_setup(&descriptor, 0x1234, 64);
+    assert(descriptor.status == (USB_BUFFER_STALL | USB_BUFFER_OWNED_BY_USB));
+    assert(descriptor.count == 64);
+    assert(descriptor.address == 0x1234);
+}
+
 int main(void) {
     test_bdt_index();
     test_arm();
     test_capacity_and_packet_fields_are_masked();
+    test_setup_arm();
     return 0;
 }

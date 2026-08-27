@@ -95,6 +95,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'platform-motor-link': 'source/platform/dspic33e/motor_link.c',
     'platform-pin-mux': 'source/platform/dspic33e/pin_mux.c',
     'platform-time': 'source/platform/dspic33e/time.c',
+    'platform-usb': 'source/platform/dspic33e/usb.c',
     'platform-time-common': 'source/platform/time.c',
     'profile-bank': 'source/profile/bank.c',
     'profile-record': 'source/profile/record.c',

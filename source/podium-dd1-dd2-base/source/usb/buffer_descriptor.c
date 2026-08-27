@@ -17,6 +17,14 @@ void usb_buffer_descriptor_clear(volatile UsbBufferDescriptor *descriptor) {
     descriptor->address_high = 0;
 }
 
+void usb_buffer_descriptor_arm_setup(volatile UsbBufferDescriptor *descriptor, uint32_t address,
+                                     uint16_t capacity) {
+    descriptor->address = (uint16_t)address;
+    descriptor->address_high = (uint16_t)(address >> 16);
+    descriptor->count = capacity & USB_BUFFER_COUNT_MASK;
+    descriptor->status = USB_BUFFER_STALL | USB_BUFFER_OWNED_BY_USB;
+}
+
 void usb_buffer_descriptor_arm(volatile UsbBufferDescriptor *descriptor, uint32_t address,
                                uint16_t capacity, bool data_one, bool stall) {
     descriptor->address = (uint16_t)address;

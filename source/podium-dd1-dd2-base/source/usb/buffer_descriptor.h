@@ -24,6 +24,8 @@ typedef struct {
 
 uint8_t usb_buffer_descriptor_index(uint8_t endpoint, bool input, bool odd_bank);
 void usb_buffer_descriptor_clear(volatile UsbBufferDescriptor *descriptor);
+void usb_buffer_descriptor_arm_setup(volatile UsbBufferDescriptor *descriptor, uint32_t address,
+                                     uint16_t capacity);
 void usb_buffer_descriptor_arm(volatile UsbBufferDescriptor *descriptor, uint32_t address,
                                uint16_t capacity, bool data_one, bool stall);
 bool usb_buffer_descriptor_owned(const volatile UsbBufferDescriptor *descriptor);
