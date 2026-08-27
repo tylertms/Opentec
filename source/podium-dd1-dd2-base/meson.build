@@ -10,6 +10,7 @@ force_effect_sources = files('source/force_feedback/effect.c')
 force_output_sources = files('source/force_feedback/output.c')
 force_output_report_sources = files('source/force_feedback/output_report.c')
 force_filter_sources = files('source/force_feedback/filter.c')
+force_safety_sources = files('source/force_feedback/safety.c')
 force_soft_stop_sources = files('source/force_feedback/soft_stop.c')
 fanatec_input_sources = files('source/usb/fanatec_input.c')
 button_filter_sources = files('source/input/button_filter.c')
@@ -58,6 +59,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'force-output': 'source/force_feedback/output.c',
     'force-output-report': 'source/force_feedback/output_report.c',
     'force-filter': 'source/force_feedback/filter.c',
+    'force-safety': 'source/force_feedback/safety.c',
     'force-soft-stop': 'source/force_feedback/soft_stop.c',
     'fanatec-input': 'source/usb/fanatec_input.c',
     'button-filter': 'source/input/button_filter.c',
@@ -191,6 +193,14 @@ if not meson.is_cross_build()
     'base-force-output-test',
     'tests/source/force_output.c',
     force_output_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  force_safety_test = executable(
+    'base-force-safety-test',
+    'tests/source/force_safety.c',
+    force_safety_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -446,6 +456,7 @@ if not meson.is_cross_build()
     suite: ['base', 'force-feedback', 'transport'],
   )
   test('base-force-filter', force_filter_test, suite: ['base', 'force-feedback'])
+  test('base-force-safety', force_safety_test, suite: ['base', 'force-feedback'])
   test('base-force-soft-stop', force_soft_stop_test, suite: ['base', 'force-feedback'])
   test('base-fanatec-input', fanatec_input_test, suite: ['base', 'usb', 'input'])
   test('base-button-filter', button_filter_test, suite: ['base', 'wheel-input'])
