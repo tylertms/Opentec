@@ -138,22 +138,16 @@ void wheel_remote_exchange_init(wheel_remote_exchange *exchange, uint32_t timeou
     exchange->retry_limit = retry_limit;
 }
 
-bool wheel_remote_exchange_start(wheel_remote_exchange *exchange, uint8_t payload_type,
-                                 uint8_t initial_sequence, const uint8_t *request,
-                                 size_t request_length) {
+uint8_t *wheel_remote_exchange_prepare(wheel_remote_exchange *exchange, uint8_t payload_type,
+                                       uint8_t initial_sequence, size_t request_length) {
     if (exchange_active(exchange)) {
         exchange->error = WHEEL_REMOTE_ERROR_BUSY;
-        return false;
+        return NULL;
     }
     if (payload_type < WQR_PAYLOAD_PRIMARY_SPI || payload_type > WQR_PAYLOAD_STATUS ||
-        request_length > WHEEL_REMOTE_EXCHANGE_CAPACITY ||
-        (request == NULL && request_length != 0)) {
+        request_length > WHEEL_REMOTE_EXCHANGE_CAPACITY) {
         exchange->error = WHEEL_REMOTE_ERROR_ARGUMENT;
-        return false;
-    }
-
-    if (request_length != 0) {
-        memcpy(exchange->request, request, request_length);
+        return NULL;
     }
     exchange->request_length = request_length;
     exchange->request_offset = 0;
@@ -170,6 +164,27 @@ bool wheel_remote_exchange_start(wheel_remote_exchange *exchange, uint8_t payloa
     exchange->response_open = false;
     exchange->ack_completes = false;
     exchange->state = WHEEL_REMOTE_REQUEST_READY;
+    return exchange->request;
+}
+
+bool wheel_remote_exchange_start(wheel_remote_exchange *exchange, uint8_t payload_type,
+                                 uint8_t initial_sequence, const uint8_t *request,
+                                 size_t request_length) {
+    uint8_t *destination;
+
+    if (request == NULL && request_length != 0) {
+        exchange->error = WHEEL_REMOTE_ERROR_ARGUMENT;
+        return false;
+    }
+
+    destination =
+        wheel_remote_exchange_prepare(exchange, payload_type, initial_sequence, request_length);
+    if (destination == NULL) {
+        return false;
+    }
+    if (request_length != 0 && request != destination) {
+        memcpy(destination, request, request_length);
+    }
     return true;
 }
 

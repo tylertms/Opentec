@@ -54,6 +54,8 @@ typedef struct {
 
 void wheel_remote_exchange_init(wheel_remote_exchange *exchange, uint32_t timeout_ms,
                                 uint8_t retry_limit);
+uint8_t *wheel_remote_exchange_prepare(wheel_remote_exchange *exchange, uint8_t payload_type,
+                                       uint8_t initial_sequence, size_t request_length);
 bool wheel_remote_exchange_start(wheel_remote_exchange *exchange, uint8_t payload_type,
                                  uint8_t initial_sequence, const uint8_t *request,
                                  size_t request_length);
