@@ -15,7 +15,7 @@ enum {
 typedef struct {
     uint8_t glyphs[WHEEL_DISPLAY_GLYPH_COUNT];
     uint8_t auxiliary;
-    bool phase_four_marker;
+    bool third_glyph_marker;
 } WheelDisplayOutput;
 
 uint8_t wheel_display_output_encode(const WheelDisplayOutput *output, uint8_t phase);

@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "wheel/packet_mode_one.h"
+
 enum {
     WHEEL_PROTOCOL_PACKET_SIZE = 57,
     WHEEL_PROTOCOL_CONTENT_SIZE = 32,
@@ -39,6 +41,7 @@ typedef enum {
 typedef struct {
     uint8_t response[WHEEL_PROTOCOL_PACKET_SIZE];
     uint8_t request[WHEEL_PROTOCOL_SNAPSHOT_SIZE];
+    WheelPacketModeOneOutput mode_one_output;
     WheelProtocolPhase phase;
     uint8_t mode;
     bool request_ready;
@@ -46,6 +49,8 @@ typedef struct {
 } WheelProtocol;
 
 void wheel_protocol_init(WheelProtocol *protocol);
+void wheel_protocol_set_mode_one_output(WheelProtocol *protocol,
+                                        const WheelPacketModeOneOutput *output);
 void wheel_protocol_accept(WheelProtocol *protocol,
                            const uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE]);
 const uint8_t *wheel_protocol_response(const WheelProtocol *protocol);

@@ -134,7 +134,9 @@ static void clear_buttons(WheelService *service) {
 }
 
 static void reset_connection(WheelService *service) {
+    WheelPacketModeOneOutput mode_one_output = service->protocol.mode_one_output;
     wheel_protocol_init(&service->protocol);
+    service->protocol.mode_one_output = mode_one_output;
     clear_buttons(service);
     service->scan_phase = 0;
 }
@@ -180,13 +182,16 @@ void wheel_service_init(WheelService *service) {
         service->display_output.glyphs[index] = 0;
     }
     service->display_output.auxiliary = 0;
-    service->display_output.phase_four_marker = false;
+    service->display_output.third_glyph_marker = false;
     service->scan_phase = 0;
     service->request_kind = WHEEL_SERVICE_REQUEST_NONE;
 }
 
 void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output) {
     service->display_output = *output;
+    WheelPacketModeOneOutput mode_one_output = service->protocol.mode_one_output;
+    mode_one_output.display = *output;
+    service->protocol.mode_one_output = mode_one_output;
 }
 
 void wheel_service_run(WheelService *service, uint32_t now_ms) {

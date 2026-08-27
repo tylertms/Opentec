@@ -31,7 +31,7 @@ uint8_t wheel_display_output_encode(const WheelDisplayOutput *output, uint8_t ph
         (uint8_t)(((glyph & 0x01u) << 6) | ((glyph & 0x02u) << 3) | ((glyph & 0x04u) >> 2) |
                   ((glyph & 0x08u) >> 1) | ((glyph & 0x10u) << 1) | ((glyph & 0x20u) << 2) |
                   ((glyph & 0x40u) >> 5) | ((glyph & 0x80u) >> 4));
-    if ((phase & WHEEL_SCAN_PHASE_THIRD) != 0 && output->phase_four_marker) {
+    if ((phase & WHEEL_SCAN_PHASE_THIRD) != 0 && output->third_glyph_marker) {
         encoded |= 0x08u;
     }
     return encoded;

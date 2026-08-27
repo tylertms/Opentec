@@ -8,7 +8,7 @@ static void test_selects_and_encodes_each_scan_phase(void) {
     const WheelDisplayOutput output = {
         .glyphs = {0xa5, 0x5a, 0x40},
         .auxiliary = 0x37,
-        .phase_four_marker = false,
+        .third_glyph_marker = false,
     };
 
     assert(wheel_display_output_encode(&output, WHEEL_SCAN_PHASE_FIRST) == 0xc9);
@@ -20,7 +20,7 @@ static void test_selects_and_encodes_each_scan_phase(void) {
 static void test_adds_the_phase_four_marker(void) {
     const WheelDisplayOutput output = {
         .glyphs = {0, 0, 0x40},
-        .phase_four_marker = true,
+        .third_glyph_marker = true,
     };
 
     assert(wheel_display_output_encode(&output, WHEEL_SCAN_PHASE_THIRD) == 0x0a);
@@ -30,7 +30,7 @@ static void test_prioritizes_lower_scan_phase_bits(void) {
     const WheelDisplayOutput output = {
         .glyphs = {0x01, 0x02, 0x04},
         .auxiliary = 0xff,
-        .phase_four_marker = true,
+        .third_glyph_marker = true,
     };
 
     assert(wheel_display_output_encode(&output, 0) == 0);

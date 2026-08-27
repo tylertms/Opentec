@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "wheel/packet_mode_one.h"
+
 /**
  * Calculates the attached-wheel message CRC-8 with an initial value of 0xFF.
  *
@@ -31,6 +33,18 @@ static void build_selection_response(WheelProtocol *protocol) {
     uint8_t flags = protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET];
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
     protocol->response[0] = WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
+    protocol->response[WHEEL_PROTOCOL_CHECKSUM_OFFSET] =
+        crc8(protocol->response, WHEEL_PROTOCOL_CONTENT_SIZE);
+    protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] = flags;
+}
+
+static void build_active_response(WheelProtocol *protocol) {
+    if (!wheel_packet_mode_one_applies(protocol->mode)) {
+        return;
+    }
+    uint8_t flags = protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET];
+    clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
+    wheel_packet_mode_one_encode(&protocol->mode_one_output, protocol->response);
     protocol->response[WHEEL_PROTOCOL_CHECKSUM_OFFSET] =
         crc8(protocol->response, WHEEL_PROTOCOL_CONTENT_SIZE);
     protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] = flags;
@@ -79,12 +93,19 @@ static void select_mode(WheelProtocol *protocol,
 }
 
 void wheel_protocol_init(WheelProtocol *protocol) {
+    const WheelPacketModeOneOutput empty_output = {0};
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
     clear(protocol->request, WHEEL_PROTOCOL_SNAPSHOT_SIZE);
+    protocol->mode_one_output = empty_output;
     protocol->phase = WHEEL_PROTOCOL_WAITING;
     protocol->mode = WHEEL_MODE_UNKNOWN;
     protocol->request_ready = false;
     protocol->request_changed = false;
+}
+
+void wheel_protocol_set_mode_one_output(WheelProtocol *protocol,
+                                        const WheelPacketModeOneOutput *output) {
+    protocol->mode_one_output = *output;
 }
 
 void wheel_protocol_accept(WheelProtocol *protocol,
@@ -126,6 +147,7 @@ void wheel_protocol_accept(WheelProtocol *protocol,
         }
         if (request[0] == WHEEL_PROTOCOL_COMMAND_SELECT_MODE) {
             capture_request(protocol, request);
+            build_active_response(protocol);
             protocol->phase = WHEEL_PROTOCOL_ACTIVE;
         }
         return;
@@ -133,6 +155,7 @@ void wheel_protocol_accept(WheelProtocol *protocol,
         if (ready && request[0] == WHEEL_PROTOCOL_COMMAND_SELECT_MODE &&
             wheel_protocol_message_valid(request)) {
             capture_request(protocol, request);
+            build_active_response(protocol);
         }
         return;
     case WHEEL_PROTOCOL_AUTHENTICATING:

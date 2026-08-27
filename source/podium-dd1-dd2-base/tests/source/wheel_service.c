@@ -216,7 +216,7 @@ static void test_sends_display_output_with_each_scan_phase(void) {
     const WheelDisplayOutput output = {
         .glyphs = {0xa5, 0x5a, 0x40},
         .auxiliary = 0x37,
-        .phase_four_marker = true,
+        .third_glyph_marker = true,
     };
     wheel_service_set_display_output(&service, &output);
 
