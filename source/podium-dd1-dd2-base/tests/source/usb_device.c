@@ -21,6 +21,7 @@ static uint8_t event_tail;
 static TransferRecord sent;
 static TransferRecord received[4];
 static uint8_t receive_count;
+static uint8_t send_count;
 static uint8_t address;
 static uint8_t control_ready_count;
 static bool attached;
@@ -34,6 +35,7 @@ static void reset_platform(void) {
     memset(&sent, 0, sizeof(sent));
     memset(received, 0, sizeof(received));
     receive_count = 0;
+    send_count = 0;
     address = 0;
     control_ready_count = 0;
     attached = false;
@@ -67,6 +69,7 @@ bool platform_usb_take_event(PlatformUsbEvent *event) {
 }
 
 bool platform_usb_send(uint8_t endpoint, const uint8_t *data, uint8_t length, bool data_one) {
+    send_count++;
     sent.endpoint = endpoint;
     sent.length = length;
     sent.data_one = data_one;
@@ -142,6 +145,7 @@ static void test_enumerates_podium_device(void) {
 static void test_exchanges_hid_reports(void) {
     static const uint8_t set_configuration[] = {0x00, 9, 1, 0, 0, 0, 0, 0};
     static const uint8_t input[] = {1, 2, 3, 4};
+    static const uint8_t changed_input[] = {1, 2, 3, 5};
     static const uint8_t output[] = {2, 9, 8, 7};
 
     usb_device_init(BOARD_VARIANT_DD2);
@@ -150,9 +154,15 @@ static void test_exchanges_hid_reports(void) {
     push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 0, 0, 0);
     usb_device_service();
 
+    send_count = 0;
     assert(usb_device_send_input(input, sizeof(input)));
     assert(sent.endpoint == 1 && sent.length == sizeof(input) && !sent.data_one);
     assert(memcmp(sent.data, input, sizeof(input)) == 0);
+    assert(send_count == 1);
+    assert(usb_device_send_input(input, sizeof(input)));
+    assert(send_count == 1);
+    assert(usb_device_send_input(changed_input, sizeof(changed_input)));
+    assert(send_count == 2 && sent.data_one);
 
     push_event(PLATFORM_USB_EVENT_OUT, 1, output, sizeof(output));
     usb_device_service();

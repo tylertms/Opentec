@@ -59,6 +59,18 @@ static bool output_ready;
 static bool input_data_one;
 static bool output_data_one;
 
+static bool input_report_matches(const uint8_t *report, uint8_t length) {
+    if (input_report_length != length) {
+        return false;
+    }
+    for (uint8_t index = 0; index < length; index++) {
+        if (input_report[index] != report[index]) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void build_descriptors(BoardVariant variant) {
     descriptor_identity = (UsbDeviceIdentity){
         .usb_version = 0x0200,
@@ -362,13 +374,16 @@ bool usb_device_send_input(const uint8_t *report, uint8_t length) {
     if (!usb_device_configured() || report == 0 || length == 0 || length > USB_DEVICE_REPORT_SIZE) {
         return false;
     }
+    if (input_report_matches(report, length)) {
+        return true;
+    }
+    if (!platform_usb_send(USB_HID_ENDPOINT, report, length, input_data_one)) {
+        return false;
+    }
     for (uint8_t index = 0; index < length; index++) {
         input_report[index] = report[index];
     }
     input_report_length = length;
-    if (!platform_usb_send(USB_HID_ENDPOINT, report, length, input_data_one)) {
-        return false;
-    }
     input_data_one = !input_data_one;
     return true;
 }
