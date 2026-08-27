@@ -144,6 +144,61 @@ It combines their three output banks at `rom:043982` through `rom:0439aa` and `r
 Some output bits change in operating modes other than mode 0.
 Those operating-mode mappings are not implemented yet.
 
+## Command 2 wheel negotiation
+
+Command 2 exchanges 57-byte messages.
+The receive copy at `rom:044b64` moves 57 bytes into the buffer at `ram:4acc`.
+The transmit buffer starts at `ram:4a8a`.
+
+Request byte 56 uses bit 1 as the ready signal.
+Response byte 56 uses bit 0 as the acknowledgement signal.
+The request checks appear at `rom:044ce0` through `rom:044ce6` and `rom:044d02` through `rom:044d0c`.
+The acknowledgement write appears at `rom:044d0e`.
+
+The initial exchange has three synchronization stages before command selection.
+The state transitions appear at `rom:044ce0` through `rom:044d50`.
+The binary assigns delays of 1, 10, 2,000, and 10,000 ms during these stages.
+The assignments appear at `rom:044cc4`, `rom:044cee`, `rom:044d16`, and `rom:044d36`.
+
+The selection state accepts command 0xA5 with a mode byte from 0 through 0x1E.
+It also accepts command 0xC1 for primary scanning and command 0x81 for secondary scanning.
+These checks appear at `rom:044d5a` through `rom:044e02`.
+
+The selection response writes command 0xA5 to byte 0.
+It calculates the checksum over bytes 0 through 31 and stores it at byte 32.
+These writes appear at `rom:044e94` through `rom:044ea2`.
+
+The checksum starts at 0xFF.
+It uses the lookup table at program address `rom:00e9c8` through the PSV window.
+The checksum loop appears at `rom:0528c0` through `rom:0528dc`.
+The first table values are `00 5E BC E2 61 3F DD 83`.
+These values implement the reflected polynomial 0x8C.
+
+An otherwise empty selection response has byte 0 set to 0xA5.
+Its checksum is 0x9A.
+A message with bytes 0 through 31 set to their byte offsets has checksum 0x21.
+
+The active state validates the checksum before it invokes a mode-specific decoder.
+It compares and stores the first 30 request bytes.
+The validation appears at `rom:045116` through `rom:04517a`.
+The snapshot operation appears at `rom:044c3c` through `rom:044c56`.
+
+Authentication uses commands 0xA6 and 0xA7.
+It applies AES-128 in counter mode to 32-byte message regions.
+The state transitions appear at `rom:044ea6` through `rom:0450b8`.
+The AES counter operation appears at `rom:04b6b0`.
+The counter increment appears at `rom:04b676`.
+
+The authentication decision reads a separate operating-mode value at `ram:4153`.
+It does not read the selected wheel mode at runtime offset 0x73.
+The decision appears at `rom:0268dc` through `rom:0268fc`.
+The operating-mode ranges are 0x0A through 0x0C, 0x0E through 0x17, and 0x1B through 0x1E.
+
+The selected wheel mode chooses a pair of mode-specific packet handlers.
+The selection table appears at `rom:04478c` through `rom:0448ee`.
+The stored handler values point to jump stubs at `rom:00045a` through `rom:0004c6`.
+The individual packet layouts remain under investigation.
+
 ## Timing and failure behavior
 
 The normal transaction deadline is 10 ms.
@@ -185,7 +240,7 @@ No implementation assigns firmware, temperature, uptime, or error meanings to th
 | Message fragmentation | Missing | Recover exact control-frame acceptance and retry behavior. |
 | Startup routed probe | Missing | Recover the command 5 request data and completion states. |
 | Alternate UART mode | Missing | Recover its byte transport and exit conditions. |
-| Command 2 wheel negotiation | Provisional | Trace every mode, field, timeout, and authentication branch. |
+| Command 2 wheel negotiation | Partial | Raw synchronization, selection, checksum, and request snapshots are implemented. Add timers, AES, and mode-specific packet codecs. |
 | Command 3 auxiliary scan | Partial | Native mode 0 mappings are implemented. Recover aggregation masks and alternate operating-mode mappings. |
 | Command 4 memory transfer | Missing | Recover access rules, ranges, and update behavior. |
 | Command 5 routed messages | Missing | Recover message types and payload meanings. |

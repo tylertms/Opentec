@@ -67,22 +67,26 @@ static void respond_protocol(uint8_t command, uint8_t mode) {
     respond_frame(&frame);
 }
 
-static void begin_scan_mode(WheelService *service, uint8_t command) {
+static uint32_t begin_scan_mode(WheelService *service, uint8_t command) {
     wheel_service_init(service);
     wheel_service_run(service, 0);
     assert(request().command == 2);
-    respond_protocol(0, 0);
-    wheel_service_run(service, 1);
+    for (uint32_t now_ms = 1; now_ms <= 3; now_ms++) {
+        respond_protocol(0, 0);
+        wheel_service_run(service, now_ms);
+    }
     WheelTransportFrame frame = request();
     assert(frame.data[WHEEL_PROTOCOL_FLAGS_OFFSET] == WHEEL_PROTOCOL_RESPONSE_ACKNOWLEDGED);
     respond_protocol(command, 0);
-    wheel_service_run(service, 2);
+    wheel_service_run(service, 4);
+    return 5;
 }
 
-static void begin_scan(WheelService *service) {
-    begin_scan_mode(service, WHEEL_PROTOCOL_COMMAND_SCAN_PRIMARY);
+static uint32_t begin_scan(WheelService *service) {
+    uint32_t now_ms = begin_scan_mode(service, WHEEL_PROTOCOL_COMMAND_SCAN_PRIMARY);
     assert(wheel_service_protocol_phase(service) == WHEEL_PROTOCOL_SCANNING_PRIMARY);
     assert(wheel_service_mode(service) == WHEEL_MODE_SCAN_PRIMARY);
+    return now_ms;
 }
 
 typedef struct {
@@ -93,10 +97,9 @@ typedef struct {
 
 static void assert_scan_mapping(const ScanMapping *mapping) {
     WheelService service;
-    uint32_t now_ms = 3;
 
     received_ready = false;
-    begin_scan(&service);
+    uint32_t now_ms = begin_scan(&service);
     WheelTransportFrame scan = request();
     while (scan.data[0] != mapping->phase) {
         respond_scan(WHEEL_BUTTON_PRIMARY_RESPONSE);
@@ -141,19 +144,19 @@ static void test_maps_primary_scan_bits(void) {
 static void test_maps_secondary_scan_bit(void) {
     WheelService service;
     received_ready = false;
-    begin_scan_mode(&service, WHEEL_PROTOCOL_COMMAND_SCAN_SECONDARY);
+    uint32_t now_ms = begin_scan_mode(&service, WHEEL_PROTOCOL_COMMAND_SCAN_SECONDARY);
     assert(wheel_service_protocol_phase(&service) == WHEEL_PROTOCOL_SCANNING_SECONDARY);
 
     respond_scan(WHEEL_BUTTON_SECONDARY_RESPONSE);
-    wheel_service_run(&service, 3);
+    wheel_service_run(&service, now_ms++);
     respond_scan(WHEEL_BUTTON_SECONDARY_RESPONSE);
-    wheel_service_run(&service, 4);
+    wheel_service_run(&service, now_ms++);
     respond_scan(WHEEL_BUTTON_SECONDARY_RESPONSE);
-    wheel_service_run(&service, 5);
+    wheel_service_run(&service, now_ms++);
     WheelTransportFrame scan = request();
     assert(scan.data[0] == 1);
     respond_scan(WHEEL_BUTTON_SECONDARY_RESPONSE | 0x02);
-    wheel_service_run(&service, 6);
+    wheel_service_run(&service, now_ms);
 
     const uint8_t *buttons = wheel_service_buttons(&service);
     assert(buttons[0] == 0);
@@ -164,7 +167,7 @@ static void test_maps_secondary_scan_bit(void) {
 static void test_negotiates_before_scanning_and_maps_buttons(void) {
     WheelService service;
     received_ready = false;
-    begin_scan(&service);
+    uint32_t now_ms = begin_scan(&service);
 
     WheelTransportFrame scan = request();
     assert(scan.command == 3);
@@ -174,7 +177,7 @@ static void test_negotiates_before_scanning_and_maps_buttons(void) {
     assert(scan.data[WHEEL_TRANSPORT_PAYLOAD_SIZE - 1] == 1);
 
     respond_scan(0xe0 | 0x1f);
-    wheel_service_run(&service, 3);
+    wheel_service_run(&service, now_ms++);
     scan = request();
     assert(scan.data[0] == 4);
     const uint8_t *buttons = wheel_service_buttons(&service);
@@ -182,7 +185,7 @@ static void test_negotiates_before_scanning_and_maps_buttons(void) {
     assert((buttons[2] & 0x04) != 0);
 
     respond_scan(0xe0 | 0x1f);
-    wheel_service_run(&service, 4);
+    wheel_service_run(&service, now_ms++);
     scan = request();
     assert(scan.data[0] == 2);
     buttons = wheel_service_buttons(&service);
@@ -190,14 +193,14 @@ static void test_negotiates_before_scanning_and_maps_buttons(void) {
     assert((buttons[1] & 0x01) != 0);
 
     respond_scan(0xe0 | 0x1f);
-    wheel_service_run(&service, 5);
+    wheel_service_run(&service, now_ms++);
     scan = request();
     assert(scan.data[0] == 1);
     buttons = wheel_service_buttons(&service);
     assert((buttons[1] & 0xf8) == 0xf8);
 
     respond_scan(0xe0 | 0x1f);
-    wheel_service_run(&service, 6);
+    wheel_service_run(&service, now_ms);
     scan = request();
     assert(scan.data[0] == 8);
     buttons = wheel_service_buttons(&service);
@@ -210,10 +213,21 @@ static void test_keeps_protocol_transport_for_packet_modes(void) {
     received_ready = false;
     wheel_service_init(&service);
     wheel_service_run(&service, 0);
-    respond_protocol(0, 0);
-    wheel_service_run(&service, 1);
+    for (uint32_t now_ms = 1; now_ms <= 3; now_ms++) {
+        respond_protocol(0, 0);
+        wheel_service_run(&service, now_ms);
+    }
     respond_protocol(WHEEL_PROTOCOL_COMMAND_SELECT_MODE, 1);
-    wheel_service_run(&service, 2);
+    wheel_service_run(&service, 4);
+    WheelTransportFrame active = {
+        .command = 2,
+        .length = WHEEL_PROTOCOL_PACKET_SIZE,
+    };
+    active.data[0] = WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
+    active.data[WHEEL_PROTOCOL_FLAGS_OFFSET] = WHEEL_PROTOCOL_REQUEST_READY;
+    active.data[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(active.data);
+    respond_frame(&active);
+    wheel_service_run(&service, 5);
 
     assert(wheel_service_protocol_phase(&service) == WHEEL_PROTOCOL_ACTIVE);
     assert(wheel_service_mode(&service) == 1);
@@ -227,8 +241,8 @@ static void test_keeps_protocol_transport_for_packet_modes(void) {
 static void test_restarts_discovery_after_scan_timeout(void) {
     WheelService service;
     received_ready = false;
-    begin_scan(&service);
-    wheel_service_run(&service, 13);
+    uint32_t now_ms = begin_scan(&service);
+    wheel_service_run(&service, now_ms + 10);
 
     const uint8_t *buttons = wheel_service_buttons(&service);
     assert(buttons[0] == 0);

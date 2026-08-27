@@ -169,10 +169,7 @@ void wheel_service_run(WheelService *service, uint32_t now_ms) {
     }
 }
 
-const uint8_t *wheel_service_buttons(const WheelService *service) {
-    const WheelProtocolInput *input = wheel_protocol_input(&service->protocol);
-    return input != 0 ? input->buttons : service->button_banks;
-}
+const uint8_t *wheel_service_buttons(const WheelService *service) { return service->button_banks; }
 
 uint8_t wheel_service_mode(const WheelService *service) { return service->protocol.mode; }
 

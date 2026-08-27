@@ -20,7 +20,6 @@ usb_buffer_descriptor_sources = files('source/usb/buffer_descriptor.c')
 usb_device_control_sources = files('source/usb/device_control.c')
 usb_device_sources = files('source/usb/device.c')
 podium_report_descriptor_sources = files('source/usb/podium_report_descriptor.c')
-button_filter_sources = files('source/input/button_filter.c')
 board_identity_sources = files('source/board/identity.c')
 h_pattern_shifter_sources = files('source/shifter/h_pattern.c')
 logitech_input_sources = files('source/usb/logitech_input.c')
@@ -82,7 +81,6 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'usb-device-control': 'source/usb/device_control.c',
     'usb-device': 'source/usb/device.c',
     'podium-report-descriptor': 'source/usb/podium_report_descriptor.c',
-    'button-filter': 'source/input/button_filter.c',
     'board-identity': 'source/board/identity.c',
     'firmware': 'source/firmware.c',
     'h-pattern-shifter': 'source/shifter/h_pattern.c',
@@ -326,14 +324,6 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
-  button_filter_test = executable(
-    'base-button-filter-test',
-    'tests/source/button_filter.c',
-    button_filter_sources,
-    build_by_default: false,
-    include_directories: base_include,
-  )
-
   board_identity_test = executable(
     'base-board-identity-test',
     'tests/source/board_identity.c',
@@ -543,7 +533,6 @@ if not meson.is_cross_build()
     'base-wheel-protocol-test',
     'tests/source/wheel_protocol.c',
     wheel_protocol_sources,
-    button_filter_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -553,7 +542,6 @@ if not meson.is_cross_build()
     'tests/source/wheel_service.c',
     wheel_service_sources,
     wheel_protocol_sources,
-    button_filter_sources,
     wheel_transport_service_sources,
     wheel_transport_frame_sources,
     platform_time_sources,
@@ -598,7 +586,6 @@ if not meson.is_cross_build()
     podium_report_descriptor_test,
     suite: ['base', 'usb'],
   )
-  test('base-button-filter', button_filter_test, suite: ['base', 'wheel-input'])
   test('base-board-identity', board_identity_test, suite: ['base', 'board'])
   test('base-h-pattern-shifter', h_pattern_shifter_test, suite: ['base', 'shifter'])
   test('base-logitech-input', logitech_input_test, suite: ['base', 'usb', 'input'])
