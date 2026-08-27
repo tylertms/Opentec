@@ -43,14 +43,9 @@ profile_tuning_sources = files('source/profile/tuning.c')
 settings_persistence_sources = files('source/settings/persistence.c')
 settings_state_sources = files('source/settings/state.c')
 platform_time_sources = files('source/platform/time.c')
-remote_exchange_sources = files('source/wheel/remote_exchange.c')
-remote_i2c_sources = files('source/wheel/remote_i2c.c')
-remote_spi_sources = files('source/wheel/remote_spi.c')
-remote_status_sources = files('source/wheel/remote_status.c')
 wheel_position_sources = files('source/wheel/position.c')
 wheel_protocol_sources = files('source/wheel/protocol.c')
 wheel_service_sources = files('source/wheel/service.c')
-wheel_status_sources = files('source/wheel/status.c')
 wheel_transport_frame_sources = files('source/wheel/transport_frame.c')
 wheel_transport_service_sources = files('source/wheel/transport_service.c')
 
@@ -121,17 +116,11 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'profile-bank': 'source/profile/bank.c',
     'profile-record': 'source/profile/record.c',
     'profile-tuning': 'source/profile/tuning.c',
-    'remote-exchange': 'source/wheel/remote_exchange.c',
-    'remote-i2c': 'source/wheel/remote_i2c.c',
-    'remote-spi': 'source/wheel/remote_spi.c',
-    'remote-status': 'source/wheel/remote_status.c',
     'settings-persistence': 'source/settings/persistence.c',
     'settings-state': 'source/settings/state.c',
-    'wqr-frame': meson.project_source_root() / 'source/common/wqr_frame.c',
     'wheel-position': 'source/wheel/position.c',
     'wheel-protocol': 'source/wheel/protocol.c',
     'wheel-service': 'source/wheel/service.c',
-    'wheel-status': 'source/wheel/status.c',
     'wheel-transport-frame': 'source/wheel/transport_frame.c',
     'wheel-transport-service': 'source/wheel/transport_service.c',
   }
@@ -565,18 +554,9 @@ if not meson.is_cross_build()
     wheel_service_sources,
     wheel_protocol_sources,
     button_filter_sources,
-    wheel_status_sources,
     wheel_transport_service_sources,
     wheel_transport_frame_sources,
     platform_time_sources,
-    build_by_default: false,
-    include_directories: base_include,
-  )
-
-  wheel_status_test = executable(
-    'base-wheel-status-test',
-    'tests/source/wheel_status.c',
-    wheel_status_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -589,53 +569,6 @@ if not meson.is_cross_build()
     platform_time_sources,
     build_by_default: false,
     include_directories: base_include,
-  )
-
-  remote_exchange_test = executable(
-    'base-remote-exchange-test',
-    'tests/source/remote_exchange.c',
-    remote_exchange_sources,
-    wqr_frame_sources,
-    build_by_default: false,
-    include_directories: [base_include, common_include],
-  )
-
-  remote_status_test = executable(
-    'base-remote-status-test',
-    'tests/source/remote_status.c',
-    remote_exchange_sources,
-    remote_status_sources,
-    wqr_frame_sources,
-    build_by_default: false,
-    include_directories: [base_include, common_include],
-  )
-
-  remote_i2c_test = executable(
-    'base-remote-i2c-test',
-    'tests/source/remote_i2c.c',
-    remote_exchange_sources,
-    remote_i2c_sources,
-    wqr_frame_sources,
-    build_by_default: false,
-    include_directories: [base_include, common_include],
-  )
-
-  remote_spi_test = executable(
-    'base-remote-spi-test',
-    'tests/source/remote_spi.c',
-    remote_exchange_sources,
-    remote_spi_sources,
-    wqr_frame_sources,
-    build_by_default: false,
-    include_directories: [base_include, common_include],
-  )
-
-  wqr_frame_test = executable(
-    'base-wqr-frame-test',
-    'tests/source/wqr_frame.c',
-    wqr_frame_sources,
-    build_by_default: false,
-    include_directories: common_include,
   )
 
   test('base-analog-axis', analog_axis_test, suite: ['base', 'analog'])
@@ -690,14 +623,9 @@ if not meson.is_cross_build()
     suite: ['base', 'settings', 'persistence'],
   )
   test('base-platform-time', platform_time_test, suite: ['base', 'platform'])
-  test('base-remote-exchange', remote_exchange_test, suite: ['base', 'transport'])
-  test('base-remote-i2c', remote_i2c_test, suite: ['base', 'wheel-i2c'])
-  test('base-remote-spi', remote_spi_test, suite: ['base', 'wheel-spi'])
-  test('base-remote-status', remote_status_test, suite: ['base', 'wheel-status'])
   test('base-wheel-position', wheel_position_test, suite: ['base', 'wheel-position'])
   test('base-wheel-protocol', wheel_protocol_test, suite: ['base', 'wheel', 'protocol'])
   test('base-wheel-service', wheel_service_test, suite: ['base', 'wheel', 'input'])
-  test('base-wheel-status', wheel_status_test, suite: ['base', 'wheel', 'status'])
   test(
     'base-wheel-transport-frame',
     wheel_transport_frame_test,
@@ -708,5 +636,4 @@ if not meson.is_cross_build()
     wheel_transport_service_test,
     suite: ['base', 'wheel', 'transport'],
   )
-  test('base-wqr-frame', wqr_frame_test, suite: ['base', 'transport'])
 endif

@@ -5,14 +5,12 @@
 #include <stdint.h>
 
 #include "wheel/protocol.h"
-#include "wheel/status.h"
 #include "wheel/transport_service.h"
 
 enum { WHEEL_BUTTON_BANK_COUNT = 3 };
 
 typedef enum {
     WHEEL_SERVICE_REQUEST_NONE,
-    WHEEL_SERVICE_REQUEST_STATUS,
     WHEEL_SERVICE_REQUEST_PROTOCOL,
     WHEEL_SERVICE_REQUEST_BUTTONS,
 } WheelServiceRequest;
@@ -23,16 +21,12 @@ typedef struct {
     uint8_t request[WHEEL_TRANSPORT_PAYLOAD_SIZE];
     uint8_t button_banks[WHEEL_BUTTON_BANK_COUNT];
     uint8_t scan_phase;
-    WheelStatus status;
     WheelServiceRequest request_kind;
-    bool status_ready;
-    bool status_requested;
 } WheelService;
 
 void wheel_service_init(WheelService *service);
 void wheel_service_run(WheelService *service, uint32_t now_ms);
 const uint8_t *wheel_service_buttons(const WheelService *service);
-const WheelStatus *wheel_service_status(const WheelService *service);
 uint8_t wheel_service_mode(const WheelService *service);
 WheelProtocolPhase wheel_service_protocol_phase(const WheelService *service);
 

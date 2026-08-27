@@ -19,7 +19,6 @@ enum {
     WHEEL_BUTTON_SECONDARY_RESPONSE = 0xc0,
     WHEEL_BUTTON_RESPONSE_MASK = 0xe0,
     WHEEL_BUTTON_VALUE_MASK = 0x1f,
-    WHEEL_STATUS_COMMAND = 5,
 };
 
 static void assign(uint8_t *value, uint8_t target, uint8_t source, uint8_t source_bit) {
@@ -104,8 +103,6 @@ static void reset_connection(WheelService *service) {
     wheel_protocol_init(&service->protocol);
     clear_buttons(service);
     service->scan_phase = 0;
-    service->status_ready = false;
-    service->status_requested = false;
 }
 
 static void start_scan(WheelService *service, uint32_t now_ms) {
@@ -135,16 +132,6 @@ static void start_protocol(WheelService *service, uint32_t now_ms) {
     }
 }
 
-static void start_status(WheelService *service, uint32_t now_ms) {
-    service->request[0] = 0;
-    service->request_kind = WHEEL_SERVICE_REQUEST_STATUS;
-    service->status_requested = true;
-    if (!wheel_transport_service_start(&service->transport, WHEEL_STATUS_COMMAND, service->request,
-                                       1, now_ms)) {
-        service->transport.status = WHEEL_TRANSPORT_FAILED;
-    }
-}
-
 static bool scan_active(const WheelService *service) {
     return service->protocol.phase == WHEEL_PROTOCOL_SCANNING_PRIMARY ||
            service->protocol.phase == WHEEL_PROTOCOL_SCANNING_SECONDARY;
@@ -156,8 +143,6 @@ void wheel_service_init(WheelService *service) {
     clear_buttons(service);
     service->scan_phase = 0;
     service->request_kind = WHEEL_SERVICE_REQUEST_NONE;
-    service->status_ready = false;
-    service->status_requested = false;
 }
 
 void wheel_service_run(WheelService *service, uint32_t now_ms) {
@@ -167,22 +152,17 @@ void wheel_service_run(WheelService *service, uint32_t now_ms) {
     }
     if (service->transport.status == WHEEL_TRANSPORT_SUCCEEDED) {
         const WheelTransportFrame *response = wheel_transport_service_response(&service->transport);
-        if (service->request_kind == WHEEL_SERVICE_REQUEST_STATUS) {
-            service->status_ready = wheel_status_decode(&service->status, response);
-        } else if (service->request_kind == WHEEL_SERVICE_REQUEST_PROTOCOL && response != 0 &&
-                   response->length == WHEEL_PROTOCOL_PACKET_SIZE) {
+        if (service->request_kind == WHEEL_SERVICE_REQUEST_PROTOCOL && response != 0 &&
+            response->length == WHEEL_PROTOCOL_PACKET_SIZE) {
             wheel_protocol_accept(&service->protocol, response->data);
         } else if (service->request_kind == WHEEL_SERVICE_REQUEST_BUTTONS) {
             apply_scan_response(service, response);
         }
-    } else if (service->transport.status == WHEEL_TRANSPORT_FAILED &&
-               service->request_kind != WHEEL_SERVICE_REQUEST_STATUS) {
+    } else if (service->transport.status == WHEEL_TRANSPORT_FAILED) {
         reset_connection(service);
     }
 
-    if (!service->status_requested) {
-        start_status(service, now_ms);
-    } else if (scan_active(service)) {
+    if (scan_active(service)) {
         start_scan(service, now_ms);
     } else {
         start_protocol(service, now_ms);
@@ -192,10 +172,6 @@ void wheel_service_run(WheelService *service, uint32_t now_ms) {
 const uint8_t *wheel_service_buttons(const WheelService *service) {
     const WheelProtocolInput *input = wheel_protocol_input(&service->protocol);
     return input != 0 ? input->buttons : service->button_banks;
-}
-
-const WheelStatus *wheel_service_status(const WheelService *service) {
-    return service->status_ready ? &service->status : 0;
 }
 
 uint8_t wheel_service_mode(const WheelService *service) { return service->protocol.mode; }
