@@ -1,6 +1,7 @@
 #include <xc.h>
 
 #include "board/identity.h"
+#include "platform/adc.h"
 #include "platform/board_identity.h"
 #include "platform/clock.h"
 #include "platform/pin_mux.h"
@@ -35,6 +36,7 @@ int main(void) {
     board_identity = platform_board_identity_read();
     platform_pin_mux_init();
     platform_time_init();
+    platform_adc_init();
     for (;;) {
     }
 }
