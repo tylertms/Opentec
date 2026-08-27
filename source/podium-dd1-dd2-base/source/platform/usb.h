@@ -30,6 +30,7 @@ bool platform_usb_receive(uint8_t endpoint, uint8_t length, bool data_one);
 void platform_usb_control_ready(void);
 void platform_usb_set_address(uint8_t address);
 void platform_usb_configure_hid_endpoint(void);
+void platform_usb_unconfigure_hid_endpoint(void);
 void platform_usb_stall(uint8_t endpoint);
 
 #endif

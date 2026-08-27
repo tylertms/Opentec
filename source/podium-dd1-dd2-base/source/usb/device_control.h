@@ -57,6 +57,7 @@ typedef struct {
 } UsbDeviceControl;
 
 void usb_device_control_init(UsbDeviceControl *device, bool self_powered);
+void usb_device_control_cancel(UsbDeviceControl *device);
 UsbControlTransfer usb_device_control_handle(UsbDeviceControl *device,
                                              const UsbControlRequest *request,
                                              const UsbDescriptorCatalog *catalog);

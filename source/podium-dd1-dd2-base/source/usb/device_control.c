@@ -33,13 +33,11 @@ static UsbControlTransfer data(UsbDescriptorView descriptor, uint16_t requested_
     if (descriptor.data == 0 || descriptor.length == 0) {
         return stall();
     }
-    if (descriptor.length > requested_length) {
-        descriptor.length = requested_length;
-    }
+    uint16_t length = descriptor.length > requested_length ? requested_length : descriptor.length;
     return (UsbControlTransfer){
         .kind = USB_CONTROL_TRANSFER_DATA,
         .data = descriptor,
-        .length = descriptor.length,
+        .length = length,
     };
 }
 
@@ -48,6 +46,11 @@ void usb_device_control_init(UsbDeviceControl *device, bool self_powered) {
         .hid_protocol = 1,
         .self_powered = self_powered,
     };
+}
+
+void usb_device_control_cancel(UsbDeviceControl *device) {
+    device->pending_change = USB_DEVICE_PENDING_NONE;
+    device->pending_value = 0;
 }
 
 static UsbControlTransfer get_descriptor(const UsbControlRequest *request,

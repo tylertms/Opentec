@@ -43,6 +43,19 @@ static void test_address_changes_after_status_stage(void) {
     assert(device.address == 42);
 }
 
+static void test_new_setup_cancels_pending_change(void) {
+    UsbDeviceControl device;
+    usb_device_control_init(&device, true);
+    UsbControlRequest control = request(USB_CONTROL_SET_ADDRESS);
+    control.value = 42;
+
+    usb_device_control_handle(&device, &control, &catalog);
+    usb_device_control_cancel(&device);
+    usb_device_control_complete(&device);
+
+    assert(device.address == 0);
+}
+
 static void test_configuration_changes_after_status_stage(void) {
     UsbDeviceControl device;
     usb_device_control_init(&device, true);
@@ -72,6 +85,7 @@ static void test_selects_and_clips_descriptors(void) {
 
     assert(transfer.kind == USB_CONTROL_TRANSFER_DATA);
     assert(transfer.data.data == device_descriptor);
+    assert(transfer.data.length == sizeof(device_descriptor));
     assert(transfer.length == 2);
 
     control.descriptor_type = 3;
@@ -119,6 +133,7 @@ static void test_device_status(void) {
 
 int main(void) {
     test_address_changes_after_status_stage();
+    test_new_setup_cancels_pending_change();
     test_configuration_changes_after_status_stage();
     test_selects_and_clips_descriptors();
     test_hid_state_and_report_handoff();

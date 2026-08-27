@@ -18,6 +18,7 @@ usb_control_request_sources = files('source/usb/control_request.c')
 usb_control_pipe_sources = files('source/usb/control_pipe.c')
 usb_buffer_descriptor_sources = files('source/usb/buffer_descriptor.c')
 usb_device_control_sources = files('source/usb/device_control.c')
+usb_device_sources = files('source/usb/device.c')
 podium_report_descriptor_sources = files('source/usb/podium_report_descriptor.c')
 button_filter_sources = files('source/input/button_filter.c')
 board_identity_sources = files('source/board/identity.c')
@@ -73,6 +74,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'usb-control-pipe': 'source/usb/control_pipe.c',
     'usb-buffer-descriptor': 'source/usb/buffer_descriptor.c',
     'usb-device-control': 'source/usb/device_control.c',
+    'usb-device': 'source/usb/device.c',
     'podium-report-descriptor': 'source/usb/podium_report_descriptor.c',
     'button-filter': 'source/input/button_filter.c',
     'board-identity': 'source/board/identity.c',
@@ -286,6 +288,19 @@ if not meson.is_cross_build()
     'base-usb-device-control-test',
     'tests/source/usb_device_control.c',
     usb_device_control_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  usb_device_test = executable(
+    'base-usb-device-test',
+    'tests/source/usb_device.c',
+    usb_device_sources,
+    usb_control_pipe_sources,
+    usb_control_request_sources,
+    usb_descriptor_sources,
+    usb_device_control_sources,
+    podium_report_descriptor_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -525,6 +540,7 @@ if not meson.is_cross_build()
   test('base-usb-control-pipe', usb_control_pipe_test, suite: ['base', 'usb'])
   test('base-usb-buffer-descriptor', usb_buffer_descriptor_test, suite: ['base', 'usb'])
   test('base-usb-device-control', usb_device_control_test, suite: ['base', 'usb'])
+  test('base-usb-device', usb_device_test, suite: ['base', 'usb'])
   test(
     'base-podium-report-descriptor',
     podium_report_descriptor_test,

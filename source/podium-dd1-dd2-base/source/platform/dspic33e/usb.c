@@ -192,6 +192,19 @@ void platform_usb_set_address(uint8_t address) { U1ADDR = address & 0x7f; }
 
 void platform_usb_configure_hid_endpoint(void) { U1EP1 = USB_ENDPOINT_INTERRUPT; }
 
+void platform_usb_unconfigure_hid_endpoint(void) {
+    bool interrupt_enabled = IEC5bits.USB1IE != 0;
+    IEC5bits.USB1IE = 0;
+    U1EP1 = 0;
+    for (uint8_t direction = 0; direction < USB_DIRECTION_COUNT; direction++) {
+        for (uint8_t bank = 0; bank < USB_BANK_COUNT; bank++) {
+            usb_buffer_descriptor_clear(descriptor(1, direction != 0, bank != 0));
+        }
+        next_bank[1][direction] = 0;
+    }
+    IEC5bits.USB1IE = interrupt_enabled;
+}
+
 void platform_usb_stall(uint8_t endpoint) {
     if (endpoint < USB_ENDPOINT_COUNT) {
         volatile uint16_t *endpoint_control = &U1EP0 + endpoint;
