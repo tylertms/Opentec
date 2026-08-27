@@ -49,6 +49,7 @@ remote_spi_sources = files('source/wheel/remote_spi.c')
 remote_status_sources = files('source/wheel/remote_status.c')
 wheel_position_sources = files('source/wheel/position.c')
 wheel_button_service_sources = files('source/wheel/button_service.c')
+wheel_status_sources = files('source/wheel/status.c')
 wheel_transport_frame_sources = files('source/wheel/transport_frame.c')
 wheel_transport_service_sources = files('source/wheel/transport_service.c')
 
@@ -128,6 +129,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'wqr-frame': meson.project_source_root() / 'source/common/wqr_frame.c',
     'wheel-position': 'source/wheel/position.c',
     'wheel-button-service': 'source/wheel/button_service.c',
+    'wheel-status': 'source/wheel/status.c',
     'wheel-transport-frame': 'source/wheel/transport_frame.c',
     'wheel-transport-service': 'source/wheel/transport_service.c',
   }
@@ -550,9 +552,18 @@ if not meson.is_cross_build()
     'base-wheel-button-service-test',
     'tests/source/wheel_button_service.c',
     wheel_button_service_sources,
+    wheel_status_sources,
     wheel_transport_service_sources,
     wheel_transport_frame_sources,
     platform_time_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  wheel_status_test = executable(
+    'base-wheel-status-test',
+    'tests/source/wheel_status.c',
+    wheel_status_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -672,6 +683,7 @@ if not meson.is_cross_build()
   test('base-remote-status', remote_status_test, suite: ['base', 'wheel-status'])
   test('base-wheel-position', wheel_position_test, suite: ['base', 'wheel-position'])
   test('base-wheel-button-service', wheel_button_service_test, suite: ['base', 'wheel', 'input'])
+  test('base-wheel-status', wheel_status_test, suite: ['base', 'wheel', 'status'])
   test(
     'base-wheel-transport-frame',
     wheel_transport_frame_test,

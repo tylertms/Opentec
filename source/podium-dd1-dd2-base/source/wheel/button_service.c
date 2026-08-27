@@ -17,6 +17,7 @@ enum {
     WHEEL_BUTTON_SECONDARY_RESPONSE = 0xc0,
     WHEEL_BUTTON_RESPONSE_MASK = 0xe0,
     WHEEL_BUTTON_VALUE_MASK = 0x1f,
+    WHEEL_STATUS_COMMAND = 5,
 };
 
 static void assign(uint8_t *value, uint8_t target, uint8_t source, uint8_t source_bit) {
@@ -103,8 +104,19 @@ static void start_scan(WheelButtonService *service, uint32_t now_ms) {
     service->request[0] = service->phase;
     service->request[1] = UINT8_MAX;
     service->request[WHEEL_TRANSPORT_PAYLOAD_SIZE - 1] = WHEEL_BUTTON_REQUEST_READY;
+    service->request_kind = WHEEL_SERVICE_REQUEST_BUTTONS;
     if (!wheel_transport_service_start(&service->transport, WHEEL_BUTTON_COMMAND, service->request,
                                        sizeof(service->request), now_ms)) {
+        service->transport.status = WHEEL_TRANSPORT_FAILED;
+    }
+}
+
+static void start_status(WheelButtonService *service, uint32_t now_ms) {
+    service->request[0] = 0;
+    service->request_kind = WHEEL_SERVICE_REQUEST_STATUS;
+    service->status_requested = true;
+    if (!wheel_transport_service_start(&service->transport, WHEEL_STATUS_COMMAND, service->request,
+                                       1, now_ms)) {
         service->transport.status = WHEEL_TRANSPORT_FAILED;
     }
 }
@@ -113,6 +125,9 @@ void wheel_button_service_init(WheelButtonService *service) {
     wheel_transport_service_init(&service->transport);
     clear_buttons(service);
     service->phase = 0;
+    service->request_kind = WHEEL_SERVICE_REQUEST_NONE;
+    service->status_ready = false;
+    service->status_requested = false;
 }
 
 void wheel_button_service_run(WheelButtonService *service, uint32_t now_ms) {
@@ -121,13 +136,27 @@ void wheel_button_service_run(WheelButtonService *service, uint32_t now_ms) {
         return;
     }
     if (service->transport.status == WHEEL_TRANSPORT_SUCCEEDED) {
-        apply_response(service, wheel_transport_service_response(&service->transport));
-    } else if (service->transport.status == WHEEL_TRANSPORT_FAILED) {
+        const WheelTransportFrame *response = wheel_transport_service_response(&service->transport);
+        if (service->request_kind == WHEEL_SERVICE_REQUEST_STATUS) {
+            service->status_ready = wheel_status_decode(&service->status, response);
+        } else if (service->request_kind == WHEEL_SERVICE_REQUEST_BUTTONS) {
+            apply_response(service, response);
+        }
+    } else if (service->transport.status == WHEEL_TRANSPORT_FAILED &&
+               service->request_kind == WHEEL_SERVICE_REQUEST_BUTTONS) {
         clear_buttons(service);
     }
-    start_scan(service, now_ms);
+    if (service->status_requested) {
+        start_scan(service, now_ms);
+    } else {
+        start_status(service, now_ms);
+    }
 }
 
 const uint8_t *wheel_button_service_buttons(const WheelButtonService *service) {
     return service->button_banks;
+}
+
+const WheelStatus *wheel_button_service_status(const WheelButtonService *service) {
+    return service->status_ready ? &service->status : 0;
 }
