@@ -33,22 +33,22 @@ enum {
     APPLICATION_BASE = 0xa000,
     SRAM_SIZE = 0x4000,
     FLASH_SIZE = 0x20000,
-    SMC_PMSTAT = 0x4007e003,
-    PMC_REGSC = 0x4007d002,
-    I2C0_FLT = 0x40066006,
-    PIT1_LDVAL = 0x40037110,
-    SPI0_CTAR0 = 0x4002c00c,
+    SMC_PMSTAT_ADDRESS = 0x4007e003,
+    PMC_REGSC_ADDRESS = 0x4007d002,
+    I2C0_FLT_ADDRESS = 0x40066006,
+    PIT1_LDVAL_ADDRESS = 0x40037110,
+    SPI0_CTAR0_ADDRESS = 0x4002c00c,
     SPI_CTAR_CPHA = 1u << 25,
     SPI_CTAR_FMSZ_SHIFT = 27,
     DMA_TCD_BASE = 0x40009000,
-    DMA_TCD_SIZE = 0x20,
-    DMA_TCD_ATTR = 0x06,
-    DMA_TCD_NBYTES = 0x08,
-    DMA_TCD_DOFF = 0x14,
+    DMA_TCD_STRIDE = 0x20,
+    DMA_TCD_ATTR_OFFSET = 0x06,
+    DMA_TCD_NBYTES_OFFSET = 0x08,
+    DMA_TCD_DOFF_OFFSET = 0x14,
     DMA_SPI_TRANSMIT_CHANNEL = 2,
     DMA_SPI_RECEIVE_CHANNEL = 3,
-    CORE_CLOCK_HZ = 96000000,
-    UART_RESPONSE_GUARD_TICKS = 467
+    EXPECTED_CORE_CLOCK_HZ = 96000000,
+    EXPECTED_UART_RESPONSE_GUARD_TICKS = 467
 };
 
 typedef struct {
@@ -202,16 +202,17 @@ static bool hardware_configuration_valid(Kinetis *device) {
     uint32_t i2c_filter = 0;
     uint32_t clock = kinetis_core_clock_hz(device);
 
-    bool power_mode_read = kinetis_read(device, SMC_PMSTAT, &power_mode, 1);
-    bool regulator_read = kinetis_read(device, PMC_REGSC, &regulator, 1);
-    bool i2c_filter_read = kinetis_read(device, I2C0_FLT, &i2c_filter, 1);
+    bool power_mode_read = kinetis_read(device, SMC_PMSTAT_ADDRESS, &power_mode, 1);
+    bool regulator_read = kinetis_read(device, PMC_REGSC_ADDRESS, &regulator, 1);
+    bool i2c_filter_read = kinetis_read(device, I2C0_FLT_ADDRESS, &i2c_filter, 1);
     if (!power_mode_read || !regulator_read || !i2c_filter_read) {
         fprintf(stderr, "hardware register read failed: PMSTAT %u, REGSC %u, FLT %u, PC 0x%08x\n",
                 power_mode_read, regulator_read, i2c_filter_read,
                 cortex_m4_get_register(kinetis_cpu(device), 15));
         return false;
     }
-    if (clock == CORE_CLOCK_HZ && power_mode == 0x80 && regulator == 0x04 && i2c_filter == 0x2a) {
+    if (clock == EXPECTED_CORE_CLOCK_HZ && power_mode == 0x80 && regulator == 0x04 &&
+        i2c_filter == 0x2a) {
         return true;
     }
     fprintf(stderr,
@@ -222,21 +223,21 @@ static bool hardware_configuration_valid(Kinetis *device) {
 }
 
 static bool spi_dma_is_byte_wide(Kinetis *device) {
-    uint32_t transmit = DMA_TCD_BASE + DMA_SPI_TRANSMIT_CHANNEL * DMA_TCD_SIZE;
-    uint32_t receive = DMA_TCD_BASE + DMA_SPI_RECEIVE_CHANNEL * DMA_TCD_SIZE;
+    uint32_t transmit = DMA_TCD_BASE + DMA_SPI_TRANSMIT_CHANNEL * DMA_TCD_STRIDE;
+    uint32_t receive = DMA_TCD_BASE + DMA_SPI_RECEIVE_CHANNEL * DMA_TCD_STRIDE;
 
-    return register_equals(device, transmit + DMA_TCD_ATTR, 2, 0) &&
-           register_equals(device, transmit + DMA_TCD_NBYTES, 4, 1) &&
-           register_equals(device, transmit + DMA_TCD_DOFF, 2, 0) &&
-           register_equals(device, receive + DMA_TCD_ATTR, 2, 0) &&
-           register_equals(device, receive + DMA_TCD_NBYTES, 4, 1) &&
-           register_equals(device, receive + DMA_TCD_DOFF, 2, 1);
+    return register_equals(device, transmit + DMA_TCD_ATTR_OFFSET, 2, 0) &&
+           register_equals(device, transmit + DMA_TCD_NBYTES_OFFSET, 4, 1) &&
+           register_equals(device, transmit + DMA_TCD_DOFF_OFFSET, 2, 0) &&
+           register_equals(device, receive + DMA_TCD_ATTR_OFFSET, 2, 0) &&
+           register_equals(device, receive + DMA_TCD_NBYTES_OFFSET, 4, 1) &&
+           register_equals(device, receive + DMA_TCD_DOFF_OFFSET, 2, 1);
 }
 
 static bool spi_format_is(Kinetis *device, unsigned int bits, bool capture_on_second_edge) {
     uint32_t attributes = 0;
 
-    return kinetis_read(device, SPI0_CTAR0, &attributes, sizeof(attributes)) &&
+    return kinetis_read(device, SPI0_CTAR0_ADDRESS, &attributes, sizeof(attributes)) &&
            ((attributes >> SPI_CTAR_FMSZ_SHIFT) & 0x0f) == bits - 1 &&
            ((attributes & SPI_CTAR_CPHA) != 0) == capture_on_second_edge;
 }
@@ -244,11 +245,11 @@ static bool spi_format_is(Kinetis *device, unsigned int bits, bool capture_on_se
 static bool uart_guard_is_exact(Kinetis *device) {
     uint32_t ticks = 0;
 
-    if (!kinetis_read(device, PIT1_LDVAL, &ticks, sizeof(ticks))) {
+    if (!kinetis_read(device, PIT1_LDVAL_ADDRESS, &ticks, sizeof(ticks))) {
         fprintf(stderr, "UART guard register read failed\n");
         return false;
     }
-    if (ticks == UART_RESPONSE_GUARD_TICKS) {
+    if (ticks == EXPECTED_UART_RESPONSE_GUARD_TICKS) {
         return true;
     }
     fprintf(stderr, "unexpected UART guard: %u ticks\n", ticks);
@@ -379,6 +380,15 @@ static bool reject_oversized_payload(Kinetis *device, uint8_t request_sequence) 
     request[61] = (uint8_t)crc;
     request[62] = (uint8_t)(crc >> 8);
     return send_request(device, request) && receive_response(device, response) &&
+           nack_response_valid(response);
+}
+
+static bool reject_invalid_payload_type(Kinetis *device, uint8_t request_sequence) {
+    uint8_t request[WQR_FRAME_SIZE];
+    uint8_t response[TRANSMIT_WINDOW_SIZE];
+
+    return wqr_protocol_build_frame(request, 6, request_sequence, NULL, 0) &&
+           send_request(device, request) && receive_response(device, response) &&
            nack_response_valid(response);
 }
 
@@ -616,6 +626,21 @@ static bool exchange_i2c_read(Kinetis *device, uint8_t request_sequence) {
            i2c_expectations_met();
 }
 
+static bool exchange_empty_i2c_read(Kinetis *device, uint8_t request_sequence) {
+    const uint8_t payload[] = {0, 0xa1, 0x10, 0, 0};
+    uint8_t request[WQR_FRAME_SIZE];
+    uint8_t response[TRANSMIT_WINDOW_SIZE];
+    const uint8_t *frame = response + RECEIVE_PREFIX_SIZE;
+
+    expect_i2c(NULL, 0);
+    return wqr_protocol_build_frame(request, WQR_PAYLOAD_I2C, request_sequence, payload,
+                                    sizeof(payload)) &&
+           send_request(device, request) && receive_response(device, response) &&
+           frame_integrity_valid(frame) && frame[1] == WQR_PAYLOAD_I2C &&
+           frame[2] == (uint8_t)(request_sequence + 1) && frame[3] == 2 && frame[4] == 1 &&
+           frame[5] == payload[1] && i2c_expectations_met();
+}
+
 static bool exchange_fragmented_i2c_read(Kinetis *device, uint8_t request_sequence) {
     const uint8_t first_payload[] = {0, 0xa1, 0x10};
     const uint8_t last_payload[] = {3, 0};
@@ -643,12 +668,12 @@ static bool exchange_fragmented_i2c_read(Kinetis *device, uint8_t request_sequen
 }
 
 static bool exchange_chunked_i2c_read(Kinetis *device, uint8_t request_sequence) {
-    const uint8_t payload[] = {0, 0xa1, 0x20, 60, 0};
-    KinetisI2cTransfer transfers[66];
+    const uint8_t payload[] = {0, 0xa1, 0x20, 120, 0};
+    KinetisI2cTransfer transfers[126];
     uint8_t request[WQR_FRAME_SIZE];
     uint8_t response[TRANSMIT_WINDOW_SIZE];
     const uint8_t *frame = response + RECEIVE_PREFIX_SIZE;
-    expect_i2c_read(transfers, 0x20, 60);
+    expect_i2c_read(transfers, 0x20, 120);
     if (!wqr_protocol_build_frame(request, WQR_PAYLOAD_I2C, request_sequence, payload,
                                   sizeof(payload)) ||
         !send_request(device, request) || !receive_response(device, response) ||
@@ -657,11 +682,18 @@ static bool exchange_chunked_i2c_read(Kinetis *device, uint8_t request_sequence)
         !i2c_expectations_met()) {
         return false;
     }
+    if (!run_firmware(device, IDLE_INSTRUCTIONS) ||
+        !wqr_protocol_build_frame(request, 1, (uint8_t)(request_sequence + 1), NULL, 0) ||
+        !send_request(device, request) || !receive_response(device, response) ||
+        !frame_integrity_valid(frame) || frame[1] != (0x20 | WQR_PAYLOAD_I2C) ||
+        frame[2] != (uint8_t)(request_sequence + 2) || frame[3] != WQR_FRAME_PAYLOAD_SIZE) {
+        return false;
+    }
     return run_firmware(device, IDLE_INSTRUCTIONS) &&
-           wqr_protocol_build_frame(request, 1, (uint8_t)(request_sequence + 1), NULL, 0) &&
+           wqr_protocol_build_frame(request, 1, (uint8_t)(request_sequence + 2), NULL, 0) &&
            send_request(device, request) && receive_response(device, response) &&
            frame_integrity_valid(frame) && frame[1] == (0x40 | WQR_PAYLOAD_I2C) &&
-           frame[2] == (uint8_t)(request_sequence + 2) && frame[3] == 5 && frame[4] == 0x5a &&
+           frame[2] == (uint8_t)(request_sequence + 3) && frame[3] == 8 && frame[4] == 0x5a &&
            frame[5] == 0x5a && frame[6] == 0x5a && frame[7] == 0x5a && frame[8] == 0x5a;
 }
 
@@ -718,6 +750,8 @@ static bool firmware_passes(const char *path, KinetisPackage package) {
                  run_firmware(device, IDLE_INSTRUCTIONS) && reject_invalid_crc(device, 2));
     VERIFY_STAGE("payload length rejection",
                  run_firmware(device, IDLE_INSTRUCTIONS) && reject_oversized_payload(device, 2));
+    VERIFY_STAGE("payload type rejection",
+                 run_firmware(device, IDLE_INSTRUCTIONS) && reject_invalid_payload_type(device, 2));
     VERIFY_STAGE("fragment type rejection",
                  run_firmware(device, IDLE_INSTRUCTIONS) && reject_fragment_type_change(device, 2));
     VERIFY_STAGE("primary SPI", run_firmware(device, IDLE_INSTRUCTIONS) &&
@@ -737,14 +771,16 @@ static bool firmware_passes(const char *path, KinetisPackage package) {
                  run_firmware(device, IDLE_INSTRUCTIONS) && exchange_i2c_nack(device, 12));
     VERIFY_STAGE("I2C arbitration loss", run_firmware(device, IDLE_INSTRUCTIONS) &&
                                              exchange_i2c_arbitration_loss(device, 13));
+    VERIFY_STAGE("empty I2C read",
+                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_empty_i2c_read(device, 14));
     VERIFY_STAGE("I2C read",
-                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_i2c_read(device, 14));
+                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_i2c_read(device, 15));
     VERIFY_STAGE("fragmented I2C read", run_firmware(device, IDLE_INSTRUCTIONS) &&
-                                            exchange_fragmented_i2c_read(device, 15));
+                                            exchange_fragmented_i2c_read(device, 16));
     VERIFY_STAGE("chunked I2C response",
-                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_chunked_i2c_read(device, 17));
+                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_chunked_i2c_read(device, 18));
     VERIFY_STAGE("software reset request",
-                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_status(device, 19, 0xaa) &&
+                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_status(device, 21, 0xaa) &&
                      run_firmware(device, STARTUP_INSTRUCTIONS) && software_reset_recorded(device));
     VERIFY_STAGE("status after reset",
                  exchange_status(device, 0, 0) && hardware_configuration_valid(device));
@@ -755,13 +791,13 @@ finished:
     uninitialized_reads = kinetis_get_uninitialized_sram_read_count(device);
     passed = passed && coverage_result.outside_range == 0 && uninitialized_reads == 0;
     printf("%s: %zu unique instructions, %llu executed, %zu skipped, "
-           "%zu/%zu observed branch outcomes across %zu sites, %zu fully covered, "
+           "%zu/%zu observed branch outcomes across %zu sites, %zu with both outcomes, "
            "%llu branches executed (%llu taken, %llu not taken), %llu outside range, "
            "%llu uninitialized SRAM reads\n",
            path, coverage_result.unique_instructions,
            (unsigned long long)coverage_result.instructions, coverage_result.unique_skipped,
-           coverage_result.unique_branch_outcomes, coverage_result.unique_branch_sites * 2,
-           coverage_result.unique_branch_sites, coverage_result.fully_covered_branch_sites,
+           coverage_result.observed_branch_outcomes, coverage_result.observed_branch_sites * 2,
+           coverage_result.observed_branch_sites, coverage_result.branch_sites_with_both_outcomes,
            (unsigned long long)coverage_result.conditional_branches,
            (unsigned long long)coverage_result.branches_taken,
            (unsigned long long)coverage_result.branches_not_taken,
