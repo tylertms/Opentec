@@ -3,6 +3,7 @@ base_source_path = meson.current_source_dir() / 'source'
 common_source_path = meson.project_source_root() / 'source'
 analog_axis_sources = files('source/analog/axis.c')
 force_output_sources = files('source/force_feedback/output.c')
+force_filter_sources = files('source/force_feedback/filter.c')
 fanatec_input_sources = files('source/usb/fanatec_input.c')
 button_filter_sources = files('source/input/button_filter.c')
 h_pattern_shifter_sources = files('source/shifter/h_pattern.c')
@@ -31,6 +32,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
   foreach name, source : {
     'analog-axis': 'source/analog/axis.c',
     'force-output': 'source/force_feedback/output.c',
+    'force-filter': 'source/force_feedback/filter.c',
     'fanatec-input': 'source/usb/fanatec_input.c',
     'button-filter': 'source/input/button_filter.c',
     'firmware': 'source/firmware.c',
@@ -97,6 +99,14 @@ if not meson.is_cross_build()
     'base-force-output-test',
     'tests/source/force_output.c',
     force_output_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  force_filter_test = executable(
+    'base-force-filter-test',
+    'tests/source/force_filter.c',
+    force_filter_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -215,6 +225,7 @@ if not meson.is_cross_build()
 
   test('base-analog-axis', analog_axis_test, suite: ['base', 'analog'])
   test('base-force-output', force_output_test, suite: ['base', 'force-feedback'])
+  test('base-force-filter', force_filter_test, suite: ['base', 'force-feedback'])
   test('base-fanatec-input', fanatec_input_test, suite: ['base', 'usb', 'input'])
   test('base-button-filter', button_filter_test, suite: ['base', 'wheel-input'])
   test('base-h-pattern-shifter', h_pattern_shifter_test, suite: ['base', 'shifter'])
