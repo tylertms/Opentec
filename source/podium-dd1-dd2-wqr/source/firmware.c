@@ -310,6 +310,7 @@ static void start_spi_dma(void) {
 
     EDMA_AbortTransfer(&spi_receive_dma);
     EDMA_AbortTransfer(&spi_transmit_dma);
+    DSPI_FlushFifo(SPI0, true, true);
     set_spi_format(8, kDSPI_ClockPhaseSecondEdge);
 
     EDMA_PrepareTransfer(&receive, (void *)(uintptr_t)DSPI_GetRxRegisterAddress(SPI0), 1,
@@ -516,13 +517,19 @@ static void io_request_reset(void *context) {
     NVIC_SystemReset();
 }
 
-static void configure_watchdog(void) {
-    wdog_config_t config;
+void SystemInitHook(void) {
+    wdog_config_t config = {
+        .enableWdog = true,
+        .clockSource = kWDOG_LpoClockSource,
+        .prescaler = kWDOG_ClockPrescalerDivide1,
+        .workMode = {.enableWait = true, .enableStop = true, .enableDebug = false},
+        .enableUpdate = true,
+        .enableInterrupt = true,
+        .enableWindowMode = false,
+        .windowValue = 0,
+        .timeoutValue = 500,
+    };
 
-    WDOG_GetDefaultConfig(&config);
-    config.workMode.enableStop = true;
-    config.enableInterrupt = true;
-    config.timeoutValue = 500;
     WDOG_Init(WDOG, &config);
 }
 
@@ -703,7 +710,6 @@ void firmware_main(void) {
     edma_config_t dma;
 
     __disable_irq();
-    configure_watchdog();
     configure_clock();
     configure_pins();
     prepare_transmit_window();

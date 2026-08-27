@@ -43,6 +43,16 @@ if meson.is_cross_build()
   )
 
   test(
+    'wqr-checksum-edges',
+    python,
+    args: [
+      meson.current_source_dir() / 'source/checksum.py',
+      meson.project_source_root() / 'source/podium-dd1-dd2-wqr/tools/checksum.py',
+    ],
+    suite: ['wqr', 'package'],
+  )
+
+  test(
     'wqr-encryption',
     python,
     args: [

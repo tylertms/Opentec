@@ -24,6 +24,7 @@ enum {
     STARTUP_INSTRUCTIONS = 300000,
     IDLE_INSTRUCTIONS = 50000,
     INTERRUPT_INSTRUCTIONS = 100,
+    WATCHDOG_RESET_CYCLES = 1024,
     RESPONSE_INSTRUCTION_LIMIT = 2000000,
     SENSOR_SETTLE_INSTRUCTIONS = 10000000,
     GPIO_PORT_A = 0,
@@ -35,12 +36,19 @@ enum {
     FLASH_SIZE = 0x20000,
     SMC_PMSTAT_ADDRESS = 0x4007e003,
     PMC_REGSC_ADDRESS = 0x4007d002,
+    RCM_SRS0_ADDRESS = 0x4007f000,
+    RCM_SRS1_ADDRESS = 0x4007f001,
     I2C0_F_ADDRESS = 0x40066001,
     I2C0_FLT_ADDRESS = 0x40066006,
     UART1_S1_ADDRESS = 0x4006b004,
     PIT1_LDVAL_ADDRESS = 0x40037110,
     PIT1_CVAL_ADDRESS = 0x40037114,
+    SPI0_MCR_ADDRESS = 0x4002c000,
     SPI0_CTAR0_ADDRESS = 0x4002c00c,
+    WDOG_STCTRLH_ADDRESS = 0x40052000,
+    WDOG_TOVALH_ADDRESS = 0x40052004,
+    WDOG_TOVALL_ADDRESS = 0x40052006,
+    SPI_MCR_HALT = 1,
     SPI_CTAR_CPHA = 1u << 25,
     SPI_CTAR_FMSZ_SHIFT = 27,
     DMA_TCD_BASE = 0x40009000,
@@ -55,6 +63,8 @@ enum {
     EXPECTED_CORE_CLOCK_HZ = 96000000,
     EXPECTED_UART_RESPONSE_GUARD_TICKS = 467,
     EXPECTED_UART_RECOVERY_GUARD_TICKS = 3964,
+    EXPECTED_WDOG_CONTROL = 0x40d5,
+    EXPECTED_WDOG_TIMEOUT = 500,
     DMA3_PRIORITY = 10,
     PIT0_PRIORITY = 11
 };
@@ -206,6 +216,12 @@ static bool register_equals(Kinetis *device, uint32_t address, size_t size,
     return kinetis_read(device, address, &value, size) && value == expected_value;
 }
 
+static bool watchdog_configuration_valid(Kinetis *device) {
+    return register_equals(device, WDOG_STCTRLH_ADDRESS, 2, EXPECTED_WDOG_CONTROL) &&
+           register_equals(device, WDOG_TOVALH_ADDRESS, 2, 0) &&
+           register_equals(device, WDOG_TOVALL_ADDRESS, 2, EXPECTED_WDOG_TIMEOUT);
+}
+
 static bool hardware_configuration_valid(Kinetis *device) {
     uint32_t power_mode = 0;
     uint32_t regulator = 0;
@@ -308,18 +324,22 @@ static bool interrupt_priorities_are_safe(Kinetis *device) {
            dma_priority < pit_priority;
 }
 
-static bool send_request(Kinetis *device, const uint8_t frame[WQR_FRAME_SIZE]) {
-    uint8_t window[RECEIVE_WINDOW_SIZE] = {0};
-
-    memcpy(window + RECEIVE_PREFIX_SIZE, frame, WQR_FRAME_SIZE);
-    for (size_t index = 0; index < sizeof(window); ++index) {
-        while (!kinetis_uart1_receive(device, window[index], 0)) {
+static bool send_uart(Kinetis *device, const uint8_t *data, size_t length) {
+    for (size_t index = 0; index < length; ++index) {
+        while (!kinetis_uart1_receive(device, data[index], 0)) {
             if (!step_firmware(device)) {
                 return false;
             }
         }
     }
     return true;
+}
+
+static bool send_request(Kinetis *device, const uint8_t frame[WQR_FRAME_SIZE]) {
+    uint8_t window[RECEIVE_WINDOW_SIZE] = {0};
+
+    memcpy(window + RECEIVE_PREFIX_SIZE, frame, WQR_FRAME_SIZE);
+    return send_uart(device, window, sizeof(window));
 }
 
 static bool receive_response(Kinetis *device, uint8_t window[TRANSMIT_WINDOW_SIZE]) {
@@ -389,6 +409,24 @@ static bool exchange_measured_status(Kinetis *device, uint8_t request_sequence) 
            status_response_valid(response, (uint8_t)(request_sequence + 1), 0) &&
            frame[5] == INPUT_FLAGS && frame[6] == (uint8_t)sensor_value &&
            frame[7] == (uint8_t)(sensor_value >> 8);
+}
+
+static bool exchange_input_status(Kinetis *device, uint8_t request_sequence, uint8_t inputs) {
+    uint8_t response[TRANSMIT_WINDOW_SIZE];
+    const uint8_t *frame = response + RECEIVE_PREFIX_SIZE;
+
+    return exchange_frame(device, WQR_PAYLOAD_STATUS, request_sequence, NULL, 0, response) &&
+           status_response_valid(response, (uint8_t)(request_sequence + 1), 0) &&
+           frame[5] == inputs;
+}
+
+static bool exchange_shifted_status(Kinetis *device, uint8_t request_sequence) {
+    uint8_t request[RECEIVE_WINDOW_SIZE] = {0};
+    uint8_t response[TRANSMIT_WINDOW_SIZE];
+
+    return wqr_protocol_build_frame(request, WQR_PAYLOAD_STATUS, request_sequence, NULL, 0) &&
+           send_uart(device, request, sizeof(request)) && receive_response(device, response) &&
+           status_response_valid(response, (uint8_t)(request_sequence + 1), 0);
 }
 
 static bool recover_from_noise(Kinetis *device) {
@@ -532,6 +570,47 @@ static bool exchange_repeated_primary_spi(Kinetis *device, uint8_t request_seque
     return queue_spi_response(device, payload, WQR_SPI_TRANSFER_SIZE) &&
            exchange_frame(device, WQR_PAYLOAD_PRIMARY_SPI, request_sequence, payload,
                           sizeof(payload), response) &&
+           primary_response_valid(response, (uint8_t)(request_sequence + 1), payload, true) &&
+           spi_expectations_met();
+}
+
+static bool exchange_primary_spi_after_retry(Kinetis *device, uint8_t request_sequence) {
+    uint8_t payload[WQR_FRAME_PAYLOAD_SIZE] = {0};
+    uint16_t transmitted[WQR_SPI_TRANSFER_SIZE];
+    uint8_t request[WQR_FRAME_SIZE];
+    uint8_t response[TRANSMIT_WINDOW_SIZE];
+    uint32_t control = 0;
+    bool transfer_active = true;
+
+    for (size_t index = 0; index < WQR_SPI_TRANSFER_SIZE; ++index) {
+        payload[index] = (uint8_t)(0x40 + index);
+        transmitted[index] = payload[index];
+    }
+    payload[WQR_FRAME_PAYLOAD_SIZE - 1] = 1;
+    if (!queue_spi_response(device, payload, WQR_SPI_TRANSFER_SIZE) ||
+        !wqr_protocol_build_frame(request, WQR_PAYLOAD_PRIMARY_SPI, request_sequence, payload,
+                                  sizeof(payload)) ||
+        !send_request(device, request)) {
+        return false;
+    }
+    expect_spi(transmitted, WQR_SPI_TRANSFER_SIZE);
+    for (size_t instruction = 0; instruction < RESPONSE_INSTRUCTION_LIMIT; ++instruction) {
+        if (!kinetis_gpio_pin(device, GPIO_PORT_C, 4, &transfer_active)) {
+            return false;
+        }
+        if (!transfer_active) {
+            break;
+        }
+        if (!step_firmware(device)) {
+            return false;
+        }
+    }
+    if (transfer_active || !kinetis_read(device, SPI0_MCR_ADDRESS, &control, sizeof(control))) {
+        return false;
+    }
+    control |= SPI_MCR_HALT;
+    return kinetis_write(device, SPI0_MCR_ADDRESS, &control, sizeof(control)) &&
+           receive_response(device, response) &&
            primary_response_valid(response, (uint8_t)(request_sequence + 1), payload, true) &&
            spi_expectations_met();
 }
@@ -752,18 +831,26 @@ static bool exchange_chunked_i2c_read(Kinetis *device, uint8_t request_sequence)
            frame[5] == 0x5a && frame[6] == 0x5a && frame[7] == 0x5a && frame[8] == 0x5a;
 }
 
-static bool configure_inputs(Kinetis *device) {
+static bool configure_inputs(Kinetis *device, uint8_t inputs) {
     return kinetis_set_adc_input(device, 0, KINETIS_ADC_MUX_A, 23, SENSOR_SAMPLE) &&
-           kinetis_gpio_drive(device, GPIO_PORT_A, 4, false) &&
-           kinetis_gpio_drive(device, GPIO_PORT_A, 18, true) &&
-           kinetis_gpio_drive(device, GPIO_PORT_A, 19, false);
+           kinetis_gpio_drive(device, GPIO_PORT_A, 4, (inputs & 1) == 0) &&
+           kinetis_gpio_drive(device, GPIO_PORT_A, 18, (inputs & 2) == 0) &&
+           kinetis_gpio_drive(device, GPIO_PORT_A, 19, (inputs & 4) == 0);
 }
 
-static bool software_reset_recorded(Kinetis *device) {
+static bool reset_recorded(Kinetis *device, uint32_t address, uint8_t source) {
     uint8_t reset_status;
 
-    return kinetis_read(device, UINT32_C(0x4007f001), &reset_status, sizeof(reset_status)) &&
-           (reset_status & 4) != 0;
+    return kinetis_read(device, address, &reset_status, sizeof(reset_status)) &&
+           (reset_status & source) != 0;
+}
+
+static bool ignore_stale_spi_completion(Kinetis *device) {
+    CortexM4 *cpu = kinetis_cpu(device);
+
+    cortex_m4_set_irq(cpu, DMA3_INTERRUPT, true);
+    return run_firmware(device, INTERRUPT_INSTRUCTIONS) &&
+           !cortex_m4_get_irq_pending(cpu, DMA3_INTERRUPT);
 }
 
 static bool firmware_passes(const char *path, KinetisPackage package) {
@@ -787,11 +874,13 @@ static bool firmware_passes(const char *path, KinetisPackage package) {
         return false;
     }
     cortex_m4_set_coverage(kinetis_cpu(device), coverage);
-    VERIFY_STAGE("load firmware", configure_inputs(device) && load_firmware(device, path));
+    VERIFY_STAGE("load firmware",
+                 configure_inputs(device, INPUT_FLAGS) && load_firmware(device, path));
     VERIFY_STAGE("start firmware", kinetis_reset(device) &&
                                        kinetis_set_reset_state(device, 1, true) &&
                                        run_firmware(device, STARTUP_INSTRUCTIONS));
     VERIFY_STAGE("hardware configuration", hardware_configuration_valid(device));
+    VERIFY_STAGE("watchdog configuration", watchdog_configuration_valid(device));
     VERIFY_STAGE("interrupt priorities", interrupt_priorities_are_safe(device));
     VERIFY_STAGE("status", exchange_status(device, 0, 0));
     VERIFY_STAGE("UART response guard",
@@ -812,38 +901,54 @@ static bool firmware_passes(const char *path, KinetisPackage package) {
                  run_firmware(device, IDLE_INSTRUCTIONS) && reject_invalid_payload_type(device, 2));
     VERIFY_STAGE("fragment type rejection",
                  run_firmware(device, IDLE_INSTRUCTIONS) && reject_fragment_type_change(device, 2));
+    VERIFY_STAGE("stale SPI completion", ignore_stale_spi_completion(device));
     VERIFY_STAGE("primary SPI", run_firmware(device, IDLE_INSTRUCTIONS) &&
                                     exchange_primary_spi(device, 3) &&
                                     spi_dma_is_byte_wide(device) && spi_format_is(device, 8, true));
     VERIFY_STAGE("repeated primary SPI", run_firmware(device, IDLE_INSTRUCTIONS) &&
                                              exchange_repeated_primary_spi(device, 5));
+    VERIFY_STAGE("SPI retry", run_firmware(device, IDLE_INSTRUCTIONS) &&
+                                  exchange_primary_spi_after_retry(device, 6));
     VERIFY_STAGE("SPI reconnect",
-                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_after_reconnect(device, 6) &&
+                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_after_reconnect(device, 7) &&
                      spi_dma_is_byte_wide(device) && spi_format_is(device, 8, true));
     VERIFY_STAGE("alternate SPI", run_firmware(device, IDLE_INSTRUCTIONS) &&
-                                      exchange_alternate_spi(device, 9) &&
+                                      exchange_alternate_spi(device, 10) &&
                                       spi_format_is(device, 16, false));
     VERIFY_STAGE("I2C write",
-                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_i2c_write(device, 11));
+                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_i2c_write(device, 13));
     VERIFY_STAGE("I2C NACK",
-                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_i2c_nack(device, 12));
+                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_i2c_nack(device, 14));
     VERIFY_STAGE("I2C arbitration loss", run_firmware(device, IDLE_INSTRUCTIONS) &&
-                                             exchange_i2c_arbitration_loss(device, 13));
+                                             exchange_i2c_arbitration_loss(device, 15));
     VERIFY_STAGE("I2C timeout",
-                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_i2c_timeout(device, 14));
+                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_i2c_timeout(device, 16));
     VERIFY_STAGE("empty I2C read",
-                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_empty_i2c_read(device, 15));
+                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_empty_i2c_read(device, 17));
     VERIFY_STAGE("I2C read",
-                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_i2c_read(device, 16));
+                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_i2c_read(device, 18));
     VERIFY_STAGE("fragmented I2C read", run_firmware(device, IDLE_INSTRUCTIONS) &&
-                                            exchange_fragmented_i2c_read(device, 17));
+                                            exchange_fragmented_i2c_read(device, 19));
     VERIFY_STAGE("chunked I2C response",
-                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_chunked_i2c_read(device, 19));
-    VERIFY_STAGE("software reset request",
-                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_status(device, 22, 0xaa) &&
-                     run_firmware(device, STARTUP_INSTRUCTIONS) && software_reset_recorded(device));
-    VERIFY_STAGE("status after reset",
-                 exchange_status(device, 0, 0) && hardware_configuration_valid(device));
+                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_chunked_i2c_read(device, 21));
+    VERIFY_STAGE("software reset request", run_firmware(device, IDLE_INSTRUCTIONS) &&
+                                               exchange_status(device, 24, 0xaa) &&
+                                               run_firmware(device, STARTUP_INSTRUCTIONS) &&
+                                               reset_recorded(device, RCM_SRS1_ADDRESS, 4));
+    VERIFY_STAGE("status after reset", exchange_status(device, 0, 0) &&
+                                           hardware_configuration_valid(device) &&
+                                           watchdog_configuration_valid(device));
+    VERIFY_STAGE("inverted inputs",
+                 configure_inputs(device, 2) && exchange_input_status(device, 1, 2));
+    VERIFY_STAGE("shifted UART frame",
+                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_shifted_status(device, 2));
+    kinetis_watchdog_advance(device, 500);
+    kinetis_advance(device, WATCHDOG_RESET_CYCLES);
+    VERIFY_STAGE("watchdog reset source", reset_recorded(device, RCM_SRS0_ADDRESS, 0x20));
+    VERIFY_STAGE("watchdog restart", run_firmware(device, STARTUP_INSTRUCTIONS));
+    VERIFY_STAGE("watchdog recovery", hardware_configuration_valid(device) &&
+                                          watchdog_configuration_valid(device) &&
+                                          exchange_status(device, 0, 0));
     passed = true;
 
 finished:

@@ -38,6 +38,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'arm'
     '-fno-pic',
     '-fno-pie',
     '-DCPU_MKV30F128VLH10',
+    '-DDISABLE_WDOG=0',
     '-DNDEBUG',
   ]
 
