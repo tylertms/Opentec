@@ -256,13 +256,13 @@ static bool recover_from_bad_end_marker(Kinetis *device) {
 
 static bool primary_response_valid(const uint8_t window[TRANSMIT_WINDOW_SIZE], uint8_t sequence,
                                    const uint8_t payload[WQR_FRAME_PAYLOAD_SIZE], bool exchanged) {
-    static const uint8_t empty_response[WQR_SPI_TRANSFER_SIZE];
+    static const uint8_t empty_response[WQR_SPI_TRANSFER_SIZE] = {0};
     const uint8_t *frame = window + RECEIVE_PREFIX_SIZE;
-    const uint8_t *expected = exchanged ? payload : empty_response;
+    const uint8_t *expected_response = exchanged ? payload : empty_response;
 
     return frame_integrity_valid(frame) && frame[1] == WQR_PAYLOAD_PRIMARY_SPI &&
            frame[2] == sequence && frame[3] == WQR_FRAME_PAYLOAD_SIZE && (frame[60] & 2) != 0 &&
-           memcmp(frame + 4, expected, WQR_SPI_TRANSFER_SIZE) == 0;
+           memcmp(frame + 4, expected_response, WQR_SPI_TRANSFER_SIZE) == 0;
 }
 
 static bool exchange_primary_spi(Kinetis *device, uint8_t request_sequence) {
