@@ -8,12 +8,15 @@
 #include "motor/probe.h"
 #include "motor/telemetry_service.h"
 #include "motor/tuning_service.h"
+#include "pedal/input.h"
+#include "pedal/service.h"
 #include "platform/adc.h"
 #include "platform/aux_bus.h"
 #include "platform/board_identity.h"
 #include "platform/clock.h"
 #include "platform/cooling.h"
 #include "platform/motor_link.h"
+#include "platform/pedal_link.h"
 #include "platform/pin_mux.h"
 #include "platform/time.h"
 #include "profile/bank.h"
@@ -58,6 +61,7 @@ static bool motor_tuning_ready;
 static MotorPositionReport motor_position_report;
 static bool motor_position_ready;
 static WheelPositionCalibration wheel_position_calibration;
+static PedalService pedal_service;
 static fanatec_input_state usb_input_state;
 static uint8_t usb_input_report[FANATEC_INPUT_REPORT_SIZE];
 static ForceOutputCommand motor_output_command;
@@ -184,6 +188,11 @@ static void service_usb_input(void) {
         .steering = wheel_position_hid_axis(motor_position_report.wheel_position,
                                             &wheel_position_calibration),
     };
+    const PedalInput *pedal_input = pedal_service_input(&pedal_service);
+    for (uint8_t axis = 0; axis < FANATEC_INPUT_PEDAL_AXES; axis++) {
+        usb_input_state.pedals[axis] = pedal_input_hid_axis(pedal_input->axes[axis]);
+    }
+    usb_input_state.auxiliary_pedal = pedal_input->auxiliary;
     if (fanatec_input_encode(usb_input_report, &usb_input_state)) {
         usb_device_send_input(usb_input_report, sizeof(usb_input_report));
     }
@@ -197,6 +206,8 @@ int main(void) {
     initialize_cooling();
     platform_adc_init();
     platform_aux_bus_init();
+    platform_pedal_link_init();
+    pedal_service_init(&pedal_service);
     initialize_motor_link();
     initialize_motor();
     usb_device_init(board_identity.variant);
@@ -206,6 +217,7 @@ int main(void) {
         uint32_t now_ms = platform_time_ms();
         platform_cooling_service(now_ms);
         service_motor_link();
+        pedal_service_run(&pedal_service, now_ms);
         service_usb_input();
         service_motor();
         service_cooling(now_ms);

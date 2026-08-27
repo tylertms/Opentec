@@ -34,6 +34,8 @@ motor_tuning_service_sources = files('source/motor/tuning_service.c')
 motor_tuning_sync_sources = files('source/motor/tuning_sync.c')
 pedal_frame_sources = files('source/pedal/frame.c')
 pedal_axis_sources = files('source/pedal/axis.c')
+pedal_input_sources = files('source/pedal/input.c')
+pedal_service_sources = files('source/pedal/service.c')
 profile_bank_sources = files('source/profile/bank.c')
 profile_record_sources = files('source/profile/record.c')
 profile_tuning_sources = files('source/profile/tuning.c')
@@ -94,12 +96,15 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'motor-tuning-sync': 'source/motor/tuning_sync.c',
     'pedal-frame': 'source/pedal/frame.c',
     'pedal-axis': 'source/pedal/axis.c',
+    'pedal-input': 'source/pedal/input.c',
+    'pedal-service': 'source/pedal/service.c',
     'platform-clock': 'source/platform/dspic33e/clock.c',
     'platform-cooling': 'source/platform/dspic33e/cooling.c',
     'platform-board-identity': 'source/platform/dspic33e/board_identity.c',
     'platform-adc': 'source/platform/dspic33e/adc.c',
     'platform-aux-bus': 'source/platform/dspic33e/aux_bus.c',
     'platform-motor-link': 'source/platform/dspic33e/motor_link.c',
+    'platform-pedal-link': 'source/platform/dspic33e/pedal_link.c',
     'platform-pin-mux': 'source/platform/dspic33e/pin_mux.c',
     'platform-storage': 'source/platform/dspic33e/storage.c',
     'platform-time': 'source/platform/dspic33e/time.c',
@@ -435,6 +440,25 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  pedal_input_test = executable(
+    'base-pedal-input-test',
+    'tests/source/pedal_input.c',
+    pedal_input_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  pedal_service_test = executable(
+    'base-pedal-service-test',
+    'tests/source/pedal_service.c',
+    pedal_service_sources,
+    pedal_input_sources,
+    pedal_frame_sources,
+    platform_time_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   profile_tuning_test = executable(
     'base-profile-tuning-test',
     'tests/source/tuning_profile.c',
@@ -578,6 +602,8 @@ if not meson.is_cross_build()
   test('base-motor-tuning-service', motor_tuning_service_test, suite: ['base', 'motor'])
   test('base-pedal-frame', pedal_frame_test, suite: ['base', 'pedal', 'transport'])
   test('base-pedal-axis', pedal_axis_test, suite: ['base', 'pedal', 'analog'])
+  test('base-pedal-input', pedal_input_test, suite: ['base', 'pedal', 'input'])
+  test('base-pedal-service', pedal_service_test, suite: ['base', 'pedal'])
   test('base-profile-tuning', profile_tuning_test, suite: ['base', 'profile'])
   test('base-profile-bank', profile_bank_test, suite: ['base', 'profile'])
   test('base-profile-record', profile_record_test, suite: ['base', 'profile', 'persistence'])
