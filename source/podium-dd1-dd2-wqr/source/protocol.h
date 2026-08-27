@@ -44,11 +44,9 @@ typedef struct {
     size_t receive_length;
     size_t transmit_length;
     size_t transmit_offset;
-    uint32_t frame_count;
     uint32_t error_count;
     uint32_t milliseconds;
     uint32_t seconds;
-    uint16_t raw_sensor_sample;
     int16_t sensor_value;
     uint8_t payload_type;
     uint8_t response_type;
