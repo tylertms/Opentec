@@ -17,6 +17,7 @@
 #include "platform/pin_mux.h"
 #include "platform/time.h"
 #include "profile/tuning.h"
+#include "usb/device.h"
 
 #pragma config GWRP = OFF
 #pragma config GSS = OFF
@@ -164,7 +165,9 @@ int main(void) {
     platform_aux_bus_init();
     initialize_motor_link();
     initialize_motor();
+    usb_device_init(board_identity.variant);
     for (;;) {
+        usb_device_service();
         platform_aux_bus_service();
         uint32_t now_ms = platform_time_ms();
         platform_cooling_service(now_ms);
