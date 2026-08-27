@@ -35,6 +35,7 @@ motor_tuning_sync_sources = files('source/motor/tuning_sync.c')
 pedal_frame_sources = files('source/pedal/frame.c')
 pedal_axis_sources = files('source/pedal/axis.c')
 profile_bank_sources = files('source/profile/bank.c')
+profile_persistence_sources = files('source/profile/persistence.c')
 profile_record_sources = files('source/profile/record.c')
 profile_tuning_sources = files('source/profile/tuning.c')
 platform_time_sources = files('source/platform/time.c')
@@ -52,6 +53,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
   device_args = [
     '-mcpu=33EP512MU810',
     '-mdfp=' + device_pack_path,
+    '-mlarge-code',
   ]
   linker_script = device_pack_path / 'support/dsPIC33E/gld/p33EP512MU810.gld'
 
@@ -98,10 +100,12 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'platform-aux-bus': 'source/platform/dspic33e/aux_bus.c',
     'platform-motor-link': 'source/platform/dspic33e/motor_link.c',
     'platform-pin-mux': 'source/platform/dspic33e/pin_mux.c',
+    'platform-storage': 'source/platform/dspic33e/storage.c',
     'platform-time': 'source/platform/dspic33e/time.c',
     'platform-usb': 'source/platform/dspic33e/usb.c',
     'platform-time-common': 'source/platform/time.c',
     'profile-bank': 'source/profile/bank.c',
+    'profile-persistence': 'source/profile/persistence.c',
     'profile-record': 'source/profile/record.c',
     'profile-tuning': 'source/profile/tuning.c',
     'remote-exchange': 'source/wheel/remote_exchange.c',
@@ -456,6 +460,17 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  profile_persistence_test = executable(
+    'base-profile-persistence-test',
+    'tests/source/tuning_profile_persistence.c',
+    profile_persistence_sources,
+    profile_record_sources,
+    profile_bank_sources,
+    profile_tuning_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   platform_time_test = executable(
     'base-platform-time-test',
     'tests/source/platform_time.c',
@@ -562,6 +577,11 @@ if not meson.is_cross_build()
   test('base-profile-tuning', profile_tuning_test, suite: ['base', 'profile'])
   test('base-profile-bank', profile_bank_test, suite: ['base', 'profile'])
   test('base-profile-record', profile_record_test, suite: ['base', 'profile', 'persistence'])
+  test(
+    'base-profile-persistence',
+    profile_persistence_test,
+    suite: ['base', 'profile', 'persistence'],
+  )
   test('base-platform-time', platform_time_test, suite: ['base', 'platform'])
   test('base-remote-exchange', remote_exchange_test, suite: ['base', 'transport'])
   test('base-remote-i2c', remote_i2c_test, suite: ['base', 'wheel-i2c'])

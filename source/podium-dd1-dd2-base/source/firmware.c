@@ -16,6 +16,8 @@
 #include "platform/motor_link.h"
 #include "platform/pin_mux.h"
 #include "platform/time.h"
+#include "profile/bank.h"
+#include "profile/persistence.h"
 #include "profile/tuning.h"
 #include "usb/device.h"
 
@@ -45,7 +47,9 @@ static BoardIdentity board_identity;
 static MotorProbe motor_probe;
 static MotorTelemetryService motor_telemetry_service;
 static MotorTuningService motor_tuning_service;
-static TuningProfile tuning_profile;
+static TuningProfileBank tuning_profiles;
+static TuningProfilePersistence tuning_profile_persistence;
+static const TuningProfile *tuning_profile;
 static MotorTuningContext motor_tuning_context;
 static bool motor_tuning_ready;
 static MotorPositionReport motor_position_report;
@@ -128,9 +132,11 @@ static void service_motor_link(void) {
 }
 
 static void initialize_motor(void) {
-    tuning_profile_defaults(&tuning_profile);
+    tuning_profile_persistence_load(&tuning_profile_persistence, &tuning_profiles,
+                                    platform_time_ms());
+    tuning_profile = tuning_profile_bank_active(&tuning_profiles);
     motor_tuning_context = (MotorTuningContext){
-        .automatic_rotation_degrees = tuning_profile.rotation_degrees,
+        .automatic_rotation_degrees = tuning_profile->rotation_degrees,
         .ramp_percent = 0,
         .strength_percent = board_identity.variant == BOARD_VARIANT_DD1 ? 40 : 32,
         .xbox_mode = 0,
@@ -142,11 +148,13 @@ static void initialize_motor(void) {
 }
 
 static void service_motor(void) {
+    tuning_profile_persistence_service(&tuning_profile_persistence, &tuning_profiles,
+                                       platform_time_ms());
     motor_probe_run(&motor_probe);
     const MotorIdentity *identity = motor_probe_identity(&motor_probe);
     if (!motor_tuning_ready && identity != 0) {
         motor_telemetry_service_init(&motor_telemetry_service, identity);
-        motor_tuning_service_init(&motor_tuning_service, &tuning_profile, &motor_tuning_context);
+        motor_tuning_service_init(&motor_tuning_service, tuning_profile, &motor_tuning_context);
         motor_tuning_ready = true;
     }
     if (motor_tuning_ready) {
