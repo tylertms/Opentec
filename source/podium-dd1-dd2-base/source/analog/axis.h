@@ -31,5 +31,6 @@ typedef struct {
 uint16_t analog_axis_unipolar(uint16_t sample, const AnalogUnipolarCalibration *calibration);
 int16_t analog_axis_bipolar(uint16_t sample, const AnalogBipolarCalibration *calibration);
 uint16_t analog_axis_filter(AnalogAxisFilter *filter, uint16_t sample, uint16_t deadband);
+uint16_t analog_axis_scale(uint16_t sample, uint16_t minimum, uint16_t maximum);
 
 #endif

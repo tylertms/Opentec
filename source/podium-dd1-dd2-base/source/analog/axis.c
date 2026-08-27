@@ -35,15 +35,22 @@ uint16_t analog_axis_filter(AnalogAxisFilter *filter, uint16_t sample, uint16_t 
     return filter->value;
 }
 
+uint16_t analog_axis_scale(uint16_t sample, uint16_t minimum, uint16_t maximum) {
+    if (minimum >= maximum) {
+        return 0;
+    }
+
+    sample = clamp_sample(sample, minimum, maximum);
+    return (uint16_t)((uint32_t)(sample - minimum) * UINT16_MAX / (maximum - minimum));
+}
+
 uint16_t analog_axis_unipolar(uint16_t sample, const AnalogUnipolarCalibration *calibration) {
     if (calibration->minimum >= calibration->maximum) {
         return 0;
     }
 
-    sample = clamp_sample(sample, calibration->minimum, calibration->maximum);
-    uint32_t value = (uint32_t)(sample - calibration->minimum) * UINT16_MAX /
-                     (calibration->maximum - calibration->minimum);
-    return calibration->inverted == 0 ? (uint16_t)value : (uint16_t)(UINT16_MAX - value);
+    uint16_t value = analog_axis_scale(sample, calibration->minimum, calibration->maximum);
+    return calibration->inverted == 0 ? value : (uint16_t)(UINT16_MAX - value);
 }
 
 int16_t analog_axis_bipolar(uint16_t sample, const AnalogBipolarCalibration *calibration) {
