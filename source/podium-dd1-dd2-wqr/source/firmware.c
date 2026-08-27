@@ -658,6 +658,7 @@ static void start_uart_response(void) {
     transfer.dataSize = UART_TRANSMIT_SIZE;
 
     if (UART_SendEDMA(UART1, &uart_handle, &transfer) != kStatus_Success) {
+        UART_TransferAbortSendEDMA(UART1, &uart_handle);
         uart_transmit_active = false;
         return;
     }
