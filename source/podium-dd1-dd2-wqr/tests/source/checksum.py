@@ -7,6 +7,7 @@ FLASH_LIMIT = 0x20000
 METADATA_OFFSET = 0x3C0
 CHECKSUM_OFFSET = 0x3CC
 FLASH_CONFIGURATION_OFFSET = 0x400
+FLASH_CONFIGURATION_END = 0x410
 FIRMWARE_VERSION = 0x0064FFFF
 VENDOR_FLASH_CONFIGURATION = b"\xff" * 12 + b"\xfe\xff\xff\xff"
 WQR_FLASH_CONFIGURATION = b"\xff" * 12 + b"\xfe\xfb\xff\xff"
@@ -61,6 +62,10 @@ def main():
     assert checksum.FIRMWARE_VERSION == FIRMWARE_VERSION
     assert checksum.VENDOR_FLASH_CONFIGURATION == VENDOR_FLASH_CONFIGURATION
     assert checksum.WQR_FLASH_CONFIGURATION == WQR_FLASH_CONFIGURATION
+    assert (
+        FLASH_CONFIGURATION_OFFSET + len(WQR_FLASH_CONFIGURATION)
+        == FLASH_CONFIGURATION_END
+    )
 
     source = source_image()
     packaged = checksum.add_checksum(source)
@@ -109,8 +114,9 @@ def main():
     checksum.validate_checksum(maximum_packaged)
 
     assert_rejected(
-        lambda: checksum.validate_layout(source[:FLASH_CONFIGURATION_OFFSET])
+        lambda: checksum.validate_layout(source[: FLASH_CONFIGURATION_END - 1])
     )
+    checksum.validate_layout(source[:FLASH_CONFIGURATION_END])
     assert_rejected(
         lambda: checksum.validate_layout(bytes(FLASH_LIMIT - APPLICATION_BASE + 1))
     )

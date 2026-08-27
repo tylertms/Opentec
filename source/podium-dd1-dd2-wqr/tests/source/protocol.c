@@ -315,8 +315,8 @@ static void test_i2c_boundaries(void) {
     uint8_t frame[WQR_FRAME_SIZE];
     const uint8_t short_request[] = {0, 0xa0};
     const uint8_t write_request[] = {0, 0xa0, 0x33, 0x44};
-    const uint8_t short_read[] = {0, 0xa1, 0x10};
-    const uint8_t oversized_read[] = {0, 0xa1, 0x10, 0xff, 0xff};
+    const uint8_t short_read[] = {0, 0xa1, 0x10, 0};
+    const uint8_t oversized_read[] = {0, 0xa1, 0x10, 0xff, 0x01};
     const uint8_t empty_read[] = {0, 0xa1, 0x20, 0, 0};
     const uint8_t maximum_read[] = {0, 0xa1, 0x30, 0xfe, 0x01};
 
@@ -482,6 +482,18 @@ static void test_sequence_wrap(void) {
     assert(wqr_protocol_response(&protocol, response));
     assert(response[2] == 1);
     assert(response[4] == 1);
+
+    wqr_protocol_init(&protocol, &io);
+    assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_STATUS, 255, NULL, 0));
+    assert(wqr_protocol_receive(&protocol, frame));
+    wqr_protocol_poll(&protocol);
+    assert(wqr_protocol_response(&protocol, response));
+    assert(response[2] == 0);
+    assert(wqr_protocol_build_frame(frame, 0, 255, NULL, 0));
+    assert(wqr_protocol_receive(&protocol, frame));
+    assert(wqr_protocol_response(&protocol, response));
+    assert(response[1] == WQR_PAYLOAD_STATUS);
+    assert(response[2] == 0);
 }
 
 static void test_primary_spi_handshake(void) {
@@ -676,6 +688,7 @@ static void test_pending_alternate_spi(void) {
     assert(state.spi_word_transfers == 2);
     assert(state.spi_word == 0xabcd);
 
+    state.transfer_ready = false;
     state.spi_word_complete = true;
     wqr_protocol_poll(&protocol);
     assert(wqr_protocol_response(&protocol, frame));
