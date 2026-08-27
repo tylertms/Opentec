@@ -22,30 +22,8 @@ enum {
     INPUT_FLAGS = 5,
     APPLICATION_BASE = 0xa000,
     SRAM_SIZE = 0x4000,
-    FLASH_SIZE = 0x20000,
-    COVERAGE_SLOT_COUNT = FLASH_SIZE / 2,
-    COVERAGE_SIZE = COVERAGE_SLOT_COUNT / 8
+    FLASH_SIZE = 0x20000
 };
-
-typedef struct {
-    uint8_t slots[COVERAGE_SIZE];
-    size_t count;
-} FirmwareCoverage;
-
-static void record_instruction(void *context, uint32_t address, uint32_t opcode, bool executed) {
-    FirmwareCoverage *coverage = context;
-    size_t slot = address / 2;
-
-    (void)opcode;
-    if (!executed || slot >= COVERAGE_SLOT_COUNT) {
-        return;
-    }
-    uint8_t mask = (uint8_t)(1u << (slot & 7u));
-    if ((coverage->slots[slot / 8] & mask) == 0) {
-        coverage->slots[slot / 8] |= mask;
-        coverage->count++;
-    }
-}
 
 static bool service_spi(Kinetis *device) {
     KinetisSpiTransfer transfer;
@@ -374,7 +352,8 @@ static bool configure_inputs(Kinetis *device) {
 
 static bool firmware_passes(const char *path, KinetisPackage package) {
     KinetisConfiguration configuration = kinetis_configuration(KINETIS_PROFILE_MKV30F12810);
-    FirmwareCoverage coverage = {0};
+    CortexM4CoverageResult coverage_result;
+    CortexM4Coverage *coverage;
     Kinetis *device;
     bool passed = false;
 
@@ -385,7 +364,12 @@ static bool firmware_passes(const char *path, KinetisPackage package) {
     if (device == NULL) {
         return false;
     }
-    cortex_m4_set_trace(kinetis_cpu(device), record_instruction, &coverage);
+    coverage = cortex_m4_coverage_create(APPLICATION_BASE, FLASH_SIZE - APPLICATION_BASE);
+    if (coverage == NULL) {
+        kinetis_destroy(device);
+        return false;
+    }
+    cortex_m4_set_coverage(kinetis_cpu(device), coverage);
     passed =
         configure_inputs(device) && load_firmware(device, path) && kinetis_reset(device) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 0, 0) &&
@@ -402,7 +386,21 @@ static bool firmware_passes(const char *path, KinetisPackage package) {
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_chunked_i2c_read(device, 12) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 14, 0xaa) &&
         run_firmware(device, STARTUP_INSTRUCTIONS) && exchange_status(device, 0, 0);
-    printf("%s: %zu unique instructions\n", path, coverage.count);
+    coverage_result = cortex_m4_coverage_result(coverage);
+    passed = passed && coverage_result.outside_range == 0;
+    printf("%s: %zu unique instructions, %llu executed, %zu skipped, "
+           "%zu/%zu observed branch outcomes across %zu sites, %zu fully covered, "
+           "%llu branches executed (%llu taken, %llu not taken), %llu outside range\n",
+           path, coverage_result.unique_instructions,
+           (unsigned long long)coverage_result.instructions, coverage_result.unique_skipped,
+           coverage_result.unique_branch_outcomes, coverage_result.unique_branch_sites * 2,
+           coverage_result.unique_branch_sites, coverage_result.fully_covered_branch_sites,
+           (unsigned long long)coverage_result.conditional_branches,
+           (unsigned long long)coverage_result.branches_taken,
+           (unsigned long long)coverage_result.branches_not_taken,
+           (unsigned long long)coverage_result.outside_range);
+    cortex_m4_set_coverage(kinetis_cpu(device), NULL);
+    cortex_m4_coverage_destroy(coverage);
     kinetis_destroy(device);
     return passed;
 }
