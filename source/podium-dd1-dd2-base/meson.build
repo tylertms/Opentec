@@ -63,6 +63,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'platform-clock': 'source/platform/dspic33e/clock.c',
     'platform-board-identity': 'source/platform/dspic33e/board_identity.c',
     'platform-adc': 'source/platform/dspic33e/adc.c',
+    'platform-aux-bus': 'source/platform/dspic33e/aux_bus.c',
     'platform-pin-mux': 'source/platform/dspic33e/pin_mux.c',
     'platform-time': 'source/platform/dspic33e/time.c',
     'platform-time-common': 'source/platform/time.c',

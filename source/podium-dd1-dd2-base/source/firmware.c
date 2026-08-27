@@ -2,6 +2,7 @@
 
 #include "board/identity.h"
 #include "platform/adc.h"
+#include "platform/aux_bus.h"
 #include "platform/board_identity.h"
 #include "platform/clock.h"
 #include "platform/pin_mux.h"
@@ -37,6 +38,8 @@ int main(void) {
     platform_pin_mux_init();
     platform_time_init();
     platform_adc_init();
+    platform_aux_bus_init();
     for (;;) {
+        platform_aux_bus_service();
     }
 }
