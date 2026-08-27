@@ -1,0 +1,7 @@
+[wrap-file]
+directory = dspic33e-device-pack-1.7.401
+source_url = https://packs.download.microchip.com/Microchip.dsPIC33E-GM-GP-MC-GU-MU_DFP.1.7.401.atpack
+source_filename = Microchip.dsPIC33E-GM-GP-MC-GU-MU_DFP.1.7.401.zip
+source_hash = 5d3ab4780f37e945347d2d6987d6fa3dc6faf2915a68eb2d0a8c45360cfa1d25
+lead_directory_missing = true
+patch_directory = dspic33e-device-pack

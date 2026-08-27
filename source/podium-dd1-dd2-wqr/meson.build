@@ -1,7 +1,7 @@
 protocol_sources = files('source/protocol.c')
 protocol_include = include_directories('source')
 
-if meson.is_cross_build()
+if meson.is_cross_build() and host_machine.cpu_family() == 'arm'
   mcux_sdk = subproject('mcux-sdk')
   cmsis = subproject('cmsis')
   sdk_drivers = mcux_sdk.get_variable('mcux_sdk_driver_sources')
@@ -133,4 +133,6 @@ if meson.is_cross_build()
 
 endif
 
-subdir('tests')
+if not meson.is_cross_build() or host_machine.cpu_family() == 'arm'
+  subdir('tests')
+endif

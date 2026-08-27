@@ -10,8 +10,9 @@ project(
   ],
 )
 
-if meson.is_cross_build()
+if meson.is_cross_build() and host_machine.cpu_family() == 'arm'
   add_languages('c', native: true)
 endif
 
 subdir('source/podium-dd1-dd2-wqr')
+subdir('source/podium-dd1-dd2-base')
