@@ -25,8 +25,34 @@ if meson.is_cross_build()
   test(
     'wqr-firmware',
     firmware_test,
-    args: firmware.full_path(),
-    depends: firmware,
+    args: checksummed_binary.full_path(),
+    depends: checksummed_binary,
     suite: ['wqr', 'firmware'],
+  )
+
+  test(
+    'wqr-checksum',
+    python,
+    args: [
+      meson.project_source_root() / 'tools/checksum.py',
+      '--verify',
+      checksummed_binary.full_path(),
+    ],
+    depends: checksummed_binary,
+    suite: ['wqr', 'package'],
+  )
+
+  test(
+    'wqr-encryption',
+    python,
+    args: [
+      meson.project_source_root() / 'tools/crypto.py',
+      'verify',
+      firmware_hex.full_path(),
+      firmware_package.full_path(),
+      '--legacy-wide-secret',
+    ],
+    depends: firmware_package,
+    suite: ['wqr', 'package'],
   )
 endif

@@ -115,7 +115,7 @@ if meson.is_cross_build()
     build_subdir: 'wqr-package.p',
   )
 
-  custom_target(
+  firmware_package = custom_target(
     'podium-dd1-dd2-wqr',
     input: firmware_hex,
     output: 'podium-dd1-dd2-wqr.hex',

@@ -78,7 +78,34 @@ def add_checksum(image: bytes) -> bytes:
     return bytes(checksummed)
 
 
+def validate_checksum(image: bytes) -> None:
+    validate_layout(image)
+
+    magic, base, size, checksum, version, reserved, padding = METADATA.unpack_from(
+        image, METADATA_OFFSET
+    )
+    checksum_data = image[:CHECKSUM_OFFSET] + image[CHECKSUM_OFFSET + 4 :]
+    flash_configuration = image[
+        FLASH_CONFIGURATION_OFFSET : FLASH_CONFIGURATION_OFFSET
+        + len(WQR_FLASH_CONFIGURATION)
+    ]
+    if (
+        magic != b"wqrb"
+        or base != APPLICATION_BASE
+        or size != len(image)
+        or checksum != crc32_mpeg2(checksum_data)
+        or version != FIRMWARE_VERSION
+        or reserved != b"\xff" * len(reserved)
+        or padding != b"\x00" * len(padding)
+        or flash_configuration != WQR_FLASH_CONFIGURATION
+    ):
+        raise ValueError("firmware metadata or checksum is invalid")
+
+
 def main() -> None:
+    if len(sys.argv) == 3 and sys.argv[1] == "--verify":
+        validate_checksum(Path(sys.argv[2]).read_bytes())
+        return
     if len(sys.argv) != 3:
         raise SystemExit(f"usage: {Path(sys.argv[0]).name} INPUT OUTPUT")
 

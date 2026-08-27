@@ -56,17 +56,17 @@ static wqr_protocol protocol;
 static uint8_t uart_receive_window[UART_WINDOW_SIZE] __attribute__((aligned(4)));
 static uint8_t uart_transmit_window[UART_TRANSMIT_SIZE] __attribute__((aligned(4)));
 static volatile bool uart_receive_ready;
-static bool uart_transmit_active;
+static volatile bool uart_transmit_active;
 static bool uart_response_due;
-static bool uart_recovery_active;
+static volatile bool uart_recovery_active;
 static uart_edma_handle_t uart_handle;
 static edma_handle_t uart_transmit_dma;
 static edma_handle_t uart_receive_dma;
 
 static volatile bool spi_transfer_complete;
 static volatile bool spi_transfer_failed;
-static bool spi_transfer_active;
-static bool spi_word_active;
+static volatile bool spi_transfer_active;
+static volatile bool spi_word_active;
 static volatile uint8_t spi_retry_delay;
 static const uint8_t *spi_transmit_source;
 static uint8_t *spi_receive_destination;
@@ -83,6 +83,12 @@ static i2c_master_handle_t i2c_handle;
 
 static volatile bool adc_sample_ready;
 static volatile uint16_t adc_sample;
+
+static void reset_if_failed(status_t status) {
+    if (status != kStatus_Success) {
+        NVIC_SystemReset();
+    }
+}
 
 static void nvic_enable(IRQn_Type interrupt, uint32_t priority) {
     NVIC_SetPriority(interrupt, priority);
@@ -102,14 +108,14 @@ static void configure_clock(void) {
     }
 
     SMC_SetPowerModeProtection(SMC, kSMC_AllowPowerModeHsrun);
-    SMC_SetPowerModeHsrun(SMC);
+    reset_if_failed(SMC_SetPowerModeHsrun(SMC));
     while (SMC_GetPowerModeState(SMC) != kSMC_PowerStateHsrun) {
     }
 
     CLOCK_SetSimConfig(&clocks);
     OSC->CR = OSC_CR_ERCLKEN_MASK;
     MCG->C2 = (uint8_t)((MCG->C2 & ~MCG_C2_RANGE_MASK) | MCG_C2_RANGE(1));
-    CLOCK_BootToFeeMode(kMCG_OscselIrc, 6, kMCG_Dmx32Default, kMCG_DrsHigh, NULL);
+    reset_if_failed(CLOCK_BootToFeeMode(kMCG_OscselIrc, 6, kMCG_Dmx32Default, kMCG_DrsHigh, NULL));
     MCG->C1 |= MCG_C1_IRCLKEN_MASK;
 
     LPTMR_GetDefaultConfig(&stability_timer);
@@ -164,6 +170,12 @@ static void start_uart_guard(uint32_t ticks) {
     PIT_StartTimer(PIT, kPIT_Chnl_1);
 }
 
+static void start_uart_recovery(void) {
+    UART_TransferAbortReceiveEDMA(UART1, &uart_handle);
+    uart_recovery_active = true;
+    start_uart_guard(UART_RECOVERY_GUARD_TICKS);
+}
+
 static void uart_callback(UART_Type *base, uart_edma_handle_t *handle, status_t status,
                           void *data) {
     (void)base;
@@ -174,12 +186,12 @@ static void uart_callback(UART_Type *base, uart_edma_handle_t *handle, status_t 
     }
 }
 
-static void configure_uart_receive(void) {
+static status_t configure_uart_receive(void) {
     uart_transfer_t transfer = {
         .data = uart_receive_window,
         .dataSize = UART_WINDOW_SIZE,
     };
-    UART_ReceiveEDMA(UART1, &uart_handle, &transfer);
+    return UART_ReceiveEDMA(UART1, &uart_handle, &transfer);
 }
 
 static void configure_uart(void) {
@@ -205,7 +217,7 @@ static void configure_uart(void) {
 
     UART_TransferCreateHandleEDMA(UART1, &uart_handle, uart_callback, NULL, &uart_transmit_dma,
                                   &uart_receive_dma);
-    configure_uart_receive();
+    reset_if_failed(configure_uart_receive());
 
     nvic_enable(DMA0_IRQn, 15);
     nvic_enable(DMA1_IRQn, 15);
@@ -235,7 +247,7 @@ static void configure_adc(void) {
     config.resolution = kADC16_ResolutionSE12Bit;
     config.hardwareAverageMode = kADC16_HardwareAverageCount32;
     ADC16_Init(ADC0, &config);
-    ADC16_DoAutoCalibration(ADC0);
+    reset_if_failed(ADC16_DoAutoCalibration(ADC0));
     nvic_enable(ADC0_IRQn, 9);
 }
 
@@ -597,16 +609,17 @@ void PIT0_IRQHandler(void) {
 }
 
 void PIT1_IRQHandler(void) {
+    bool response_sent = !uart_recovery_active;
+
     PIT_ClearStatusFlags(PIT, kPIT_Chnl_1, kPIT_TimerFlag);
     PIT_StopTimer(PIT, kPIT_Chnl_1);
-    if (uart_recovery_active) {
-        uart_recovery_active = false;
-        configure_uart_receive();
-        return;
+    uart_recovery_active = false;
+    if (configure_uart_receive() != kStatus_Success) {
+        start_uart_recovery();
     }
-
-    configure_uart_receive();
-    wqr_protocol_response_sent(&protocol);
+    if (response_sent) {
+        wqr_protocol_response_sent(&protocol);
+    }
 }
 
 void ADC0_IRQHandler(void) {
@@ -626,8 +639,7 @@ static void process_uart_frame(void) {
     }
     if (offset > 4 || uart_receive_window[offset + WQR_FRAME_SIZE - 1] != UART_FRAME_END) {
         offset = 0;
-        uart_recovery_active = true;
-        start_uart_guard(UART_RECOVERY_GUARD_TICKS);
+        start_uart_recovery();
     }
 
     wqr_protocol_receive(&protocol, uart_receive_window + offset);
@@ -641,14 +653,15 @@ static void start_uart_response(void) {
         !wqr_protocol_response(&protocol, uart_transmit_window + UART_FRAME_OFFSET)) {
         return;
     }
-    uart_response_due = false;
     uart_transmit_active = true;
     transfer.data = uart_transmit_window;
     transfer.dataSize = UART_TRANSMIT_SIZE;
 
     if (UART_SendEDMA(UART1, &uart_handle, &transfer) != kStatus_Success) {
         uart_transmit_active = false;
+        return;
     }
+    uart_response_due = false;
 }
 
 void firmware_main(void) {
@@ -665,6 +678,7 @@ void firmware_main(void) {
     edma_config_t dma;
 
     __disable_irq();
+    configure_watchdog();
     configure_clock();
     configure_pins();
     prepare_transmit_window();
@@ -679,8 +693,6 @@ void firmware_main(void) {
     configure_spi();
     configure_i2c();
     wqr_protocol_init(&protocol, &io);
-    configure_watchdog();
-
     __enable_irq();
 
     for (;;) {
