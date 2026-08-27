@@ -33,7 +33,6 @@ enum {
     INPUT_FLAGS = 5,
     APPLICATION_BASE = 0xa000,
     SRAM_SIZE = 0x4000,
-    FLASH_SIZE = 0x20000,
     SMC_PMSTAT_ADDRESS = 0x4007e003,
     PMC_REGSC_ADDRESS = 0x4007d002,
     RCM_SRS0_ADDRESS = 0x4007f000,
@@ -853,7 +852,7 @@ static bool ignore_stale_spi_completion(Kinetis *device) {
            !cortex_m4_get_irq_pending(cpu, DMA3_INTERRUPT);
 }
 
-static bool firmware_passes(const char *path, KinetisPackage package) {
+static bool firmware_passes(const char *path, const char *elf_path, KinetisPackage package) {
     KinetisConfiguration configuration = kinetis_configuration(KINETIS_PROFILE_MKV30F12810);
     CortexM4CoverageResult coverage_result;
     CortexM4Coverage *coverage;
@@ -868,7 +867,7 @@ static bool firmware_passes(const char *path, KinetisPackage package) {
     if (device == NULL) {
         return false;
     }
-    coverage = cortex_m4_coverage_create(APPLICATION_BASE, FLASH_SIZE - APPLICATION_BASE);
+    coverage = cortex_m4_coverage_create_elf(elf_path);
     if (coverage == NULL) {
         kinetis_destroy(device);
         return false;
@@ -955,9 +954,13 @@ finished:
     coverage_result = cortex_m4_coverage_result(coverage);
     uninitialized_reads = kinetis_get_uninitialized_sram_read_count(device);
     passed = passed && coverage_result.outside_range == 0 && uninitialized_reads == 0;
-    printf("%s: %zu unique, %llu executed, %zu branches, %llu invalid reads\n", path,
-           coverage_result.unique_instructions, (unsigned long long)coverage_result.instructions,
-           coverage_result.observed_branch_sites, (unsigned long long)uninitialized_reads);
+    printf("%s: instructions %zu/%zu (%.2f%%), branches %zu/%zu (%.2f%%), "
+           "%llu executed, %llu invalid reads\n",
+           path, coverage_result.covered_instructions, coverage_result.total_instructions,
+           coverage_result.instruction_coverage_percent, coverage_result.covered_branch_sites,
+           coverage_result.total_branch_sites, coverage_result.branch_coverage_percent,
+           (unsigned long long)coverage_result.instructions,
+           (unsigned long long)uninitialized_reads);
     cortex_m4_set_coverage(kinetis_cpu(device), NULL);
     cortex_m4_coverage_destroy(coverage);
     kinetis_destroy(device);
@@ -965,8 +968,9 @@ finished:
 }
 
 int main(int argc, char **argv) {
-    if (argc != 2) {
+    if (argc != 3) {
         return EXIT_FAILURE;
     }
-    return firmware_passes(argv[1], KINETIS_PACKAGE_LH_64_LQFP) ? EXIT_SUCCESS : EXIT_FAILURE;
+    return firmware_passes(argv[1], argv[2], KINETIS_PACKAGE_LH_64_LQFP) ? EXIT_SUCCESS
+                                                                         : EXIT_FAILURE;
 }

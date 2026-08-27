@@ -26,8 +26,8 @@ if meson.is_cross_build()
   test(
     'wqr-firmware',
     firmware_test,
-    args: checksummed_binary.full_path(),
-    depends: checksummed_binary,
+    args: [checksummed_binary.full_path(), firmware.full_path()],
+    depends: [checksummed_binary, firmware],
     suite: ['wqr', 'firmware'],
   )
 
