@@ -57,6 +57,7 @@ static uint8_t uart_receive_window[UART_WINDOW_SIZE] __attribute__((aligned(4)))
 static uint8_t uart_transmit_window[UART_TRANSMIT_SIZE] __attribute__((aligned(4)));
 static volatile bool uart_receive_ready;
 static volatile bool uart_transmit_active;
+static volatile bool uart_response_sent_pending;
 static volatile bool uart_response_due;
 static volatile bool uart_recovery_active;
 static uart_edma_handle_t uart_handle;
@@ -533,7 +534,10 @@ static void prepare_transmit_window(void) {
 
 void DMA0_IRQHandler(void) {
     uart_transmit_active = false;
-    start_uart_guard(UART_RESPONSE_GUARD_TICKS);
+    uart_response_sent_pending = true;
+    if (!uart_recovery_active) {
+        start_uart_guard(UART_RESPONSE_GUARD_TICKS);
+    }
     EDMA_HandleIRQ(&uart_transmit_dma);
 }
 
@@ -625,7 +629,7 @@ void PIT0_IRQHandler(void) {
 }
 
 void PIT1_IRQHandler(void) {
-    bool response_sent = !uart_recovery_active;
+    bool response_sent = uart_response_sent_pending;
 
     PIT_ClearStatusFlags(PIT, kPIT_Chnl_1, kPIT_TimerFlag);
     PIT_StopTimer(PIT, kPIT_Chnl_1);
@@ -637,6 +641,7 @@ void PIT1_IRQHandler(void) {
         start_uart_recovery();
     }
     if (response_sent) {
+        uart_response_sent_pending = false;
         wqr_protocol_response_sent(&protocol);
     }
 }

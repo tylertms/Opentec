@@ -280,6 +280,23 @@ static bool uart_recovery_guard_is_fresh(Kinetis *device) {
     return false;
 }
 
+static bool wait_for_uart_error_clear(Kinetis *device) {
+    for (size_t instruction = 0; instruction < INTERRUPT_INSTRUCTIONS * 10; ++instruction) {
+        uint8_t status = 0;
+
+        if (!kinetis_read(device, UART1_S1_ADDRESS, &status, sizeof(status))) {
+            return false;
+        }
+        if ((status & 0x0f) == 0) {
+            return true;
+        }
+        if (!step_firmware(device)) {
+            return false;
+        }
+    }
+    return false;
+}
+
 static bool interrupt_priorities_are_safe(Kinetis *device) {
     uint32_t dma_priority = 0;
     uint32_t pit_priority = 0;
@@ -387,11 +404,12 @@ static bool recover_from_uart_error(Kinetis *device, uint8_t request_sequence) {
     uint32_t restarted_ticks = 0;
     uint32_t status = 0;
 
-    return run_firmware(device, IDLE_INSTRUCTIONS) && kinetis_uart1_error(device, 0x0f) &&
+    return kinetis_uart1_error(device, 0x0f) && wait_for_uart_error_clear(device) &&
            run_firmware(device, INTERRUPT_INSTRUCTIONS) && uart_recovery_guard_is_fresh(device) &&
            run_firmware(device, INTERRUPT_INSTRUCTIONS * 10) &&
            kinetis_read(device, PIT1_CVAL_ADDRESS, &aged_ticks, sizeof(aged_ticks)) &&
-           kinetis_uart1_error(device, 0x0f) && run_firmware(device, INTERRUPT_INSTRUCTIONS) &&
+           kinetis_uart1_error(device, 0x0f) && wait_for_uart_error_clear(device) &&
+           run_firmware(device, INTERRUPT_INSTRUCTIONS) &&
            kinetis_read(device, PIT1_CVAL_ADDRESS, &restarted_ticks, sizeof(restarted_ticks)) &&
            uart_recovery_guard_is_fresh(device) && restarted_ticks > aged_ticks &&
            run_firmware(device, IDLE_INSTRUCTIONS) &&
