@@ -48,6 +48,7 @@ remote_i2c_sources = files('source/wheel/remote_i2c.c')
 remote_spi_sources = files('source/wheel/remote_spi.c')
 remote_status_sources = files('source/wheel/remote_status.c')
 wheel_position_sources = files('source/wheel/position.c')
+wheel_transport_frame_sources = files('source/wheel/transport_frame.c')
 
 if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
   device_pack = subproject('dspic33e-device-pack')
@@ -123,6 +124,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'settings-state': 'source/settings/state.c',
     'wqr-frame': meson.project_source_root() / 'source/common/wqr_frame.c',
     'wheel-position': 'source/wheel/position.c',
+    'wheel-transport-frame': 'source/wheel/transport_frame.c',
   }
     firmware_objects += custom_target(
       'podium-dd1-dd2-base-' + name + '-object',
@@ -531,6 +533,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_transport_frame_test = executable(
+    'base-wheel-transport-frame-test',
+    'tests/source/wheel_transport_frame.c',
+    wheel_transport_frame_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   remote_exchange_test = executable(
     'base-remote-exchange-test',
     'tests/source/remote_exchange.c',
@@ -635,5 +645,10 @@ if not meson.is_cross_build()
   test('base-remote-spi', remote_spi_test, suite: ['base', 'wheel-spi'])
   test('base-remote-status', remote_status_test, suite: ['base', 'wheel-status'])
   test('base-wheel-position', wheel_position_test, suite: ['base', 'wheel-position'])
+  test(
+    'base-wheel-transport-frame',
+    wheel_transport_frame_test,
+    suite: ['base', 'wheel', 'transport'],
+  )
   test('base-wqr-frame', wqr_frame_test, suite: ['base', 'transport'])
 endif
