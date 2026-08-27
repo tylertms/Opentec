@@ -57,7 +57,7 @@ static uint8_t uart_receive_window[UART_WINDOW_SIZE] __attribute__((aligned(4)))
 static uint8_t uart_transmit_window[UART_TRANSMIT_SIZE] __attribute__((aligned(4)));
 static volatile bool uart_receive_ready;
 static volatile bool uart_transmit_active;
-static bool uart_response_due;
+static volatile bool uart_response_due;
 static volatile bool uart_recovery_active;
 static uart_edma_handle_t uart_handle;
 static edma_handle_t uart_transmit_dma;
@@ -79,6 +79,7 @@ static edma_handle_t spi_receive_dma;
 
 static volatile i2c_phase i2c_state;
 static volatile uint8_t i2c_timeout;
+static volatile bool i2c_recovery_pending;
 static i2c_master_handle_t i2c_handle;
 
 static volatile bool adc_sample_ready;
@@ -204,10 +205,6 @@ static void configure_uart(void) {
     UART_Init(UART1, &config, UART_SOURCE_CLOCK);
     UART1->S2 = UART_S2_RXINV_MASK;
     UART1->C3 |= UART_C3_TXINV_MASK;
-    UART_EnableInterrupts(UART1, kUART_RxOverrunInterruptEnable | kUART_NoiseErrorInterruptEnable |
-                                     kUART_FramingErrorInterruptEnable |
-                                     kUART_ParityErrorInterruptEnable);
-
     EDMA_CreateHandle(&uart_transmit_dma, DMA0, UART_TRANSMIT_DMA_CHANNEL);
     EDMA_CreateHandle(&uart_receive_dma, DMA0, UART_RECEIVE_DMA_CHANNEL);
     DMAMUX_SetSource(DMAMUX, UART_TRANSMIT_DMA_CHANNEL, UART_TRANSMIT_DMA_SOURCE);
@@ -217,6 +214,9 @@ static void configure_uart(void) {
 
     UART_TransferCreateHandleEDMA(UART1, &uart_handle, uart_callback, NULL, &uart_transmit_dma,
                                   &uart_receive_dma);
+    UART_EnableInterrupts(UART1, kUART_RxOverrunInterruptEnable | kUART_NoiseErrorInterruptEnable |
+                                     kUART_FramingErrorInterruptEnable |
+                                     kUART_ParityErrorInterruptEnable);
     reset_if_failed(configure_uart_receive());
 
     nvic_enable(DMA0_IRQn, 15);
@@ -481,6 +481,16 @@ static void configure_i2c(void) {
     nvic_enable(I2C0_IRQn, 10);
 }
 
+static void recover_i2c(void) {
+    if (!i2c_recovery_pending) {
+        return;
+    }
+
+    i2c_recovery_pending = false;
+    configure_i2c();
+    i2c_state = I2C_FAILED;
+}
+
 static uint8_t io_read_inputs(void *context) {
     (void)context;
     return (uint8_t)((GPIO_PinRead(GPIOA, 4) == 0 ? 1 : 0) |
@@ -567,6 +577,8 @@ void UART1_ERR_DriverIRQHandler(void) {
 
     if ((status & (UART_S1_OR_MASK | UART_S1_NF_MASK | UART_S1_FE_MASK | UART_S1_PF_MASK)) != 0) {
         (void)UART1->D;
+        uart_receive_ready = false;
+        start_uart_recovery();
     }
 }
 
@@ -576,9 +588,8 @@ static void update_i2c_timeout(void) {
     }
     --i2c_timeout;
     if (i2c_timeout == 0) {
-        I2C_MasterTransferAbort(I2C0, &i2c_handle);
-        I2C0->FLT |= I2C_FLT_SSIE_MASK;
-        i2c_state = I2C_FAILED;
+        I2C_DisableInterrupts(I2C0, kI2C_GlobalInterruptEnable);
+        i2c_recovery_pending = true;
     }
 }
 
@@ -614,6 +625,9 @@ void PIT1_IRQHandler(void) {
     PIT_ClearStatusFlags(PIT, kPIT_Chnl_1, kPIT_TimerFlag);
     PIT_StopTimer(PIT, kPIT_Chnl_1);
     uart_recovery_active = false;
+    if (!response_sent && uart_response_due) {
+        return;
+    }
     if (configure_uart_receive() != kStatus_Success) {
         start_uart_recovery();
     }
@@ -697,6 +711,7 @@ void firmware_main(void) {
     __enable_irq();
 
     for (;;) {
+        recover_i2c();
         wqr_protocol_poll(&protocol);
         if (uart_receive_ready) {
             uart_receive_ready = false;

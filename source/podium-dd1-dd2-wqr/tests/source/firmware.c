@@ -24,7 +24,7 @@ enum {
     STARTUP_INSTRUCTIONS = 300000,
     IDLE_INSTRUCTIONS = 50000,
     INTERRUPT_INSTRUCTIONS = 100,
-    RESPONSE_INSTRUCTION_LIMIT = 1000000,
+    RESPONSE_INSTRUCTION_LIMIT = 2000000,
     SENSOR_SETTLE_INSTRUCTIONS = 10000000,
     GPIO_PORT_A = 0,
     GPIO_PORT_C = 2,
@@ -35,7 +35,9 @@ enum {
     FLASH_SIZE = 0x20000,
     SMC_PMSTAT_ADDRESS = 0x4007e003,
     PMC_REGSC_ADDRESS = 0x4007d002,
+    I2C0_F_ADDRESS = 0x40066001,
     I2C0_FLT_ADDRESS = 0x40066006,
+    UART1_S1_ADDRESS = 0x4006b004,
     PIT1_LDVAL_ADDRESS = 0x40037110,
     SPI0_CTAR0_ADDRESS = 0x4002c00c,
     SPI_CTAR_CPHA = 1u << 25,
@@ -347,6 +349,14 @@ static bool recover_from_noise(Kinetis *device) {
            nack_response_valid(response);
 }
 
+static bool recover_from_uart_error(Kinetis *device, uint8_t request_sequence) {
+    uint32_t status = 0;
+
+    return kinetis_uart1_error(device, 0x0f) && run_firmware(device, IDLE_INSTRUCTIONS) &&
+           kinetis_read(device, UART1_S1_ADDRESS, &status, 1) && (status & 0x0f) == 0 &&
+           exchange_status(device, request_sequence, 0);
+}
+
 static bool recover_from_bad_end_marker(Kinetis *device) {
     uint8_t request[WQR_FRAME_SIZE];
     uint8_t response[TRANSMIT_WINDOW_SIZE];
@@ -590,6 +600,21 @@ static bool exchange_i2c_arbitration_loss(Kinetis *device, uint8_t request_seque
            !expected.i2c_arbitration_loss;
 }
 
+static bool exchange_i2c_timeout(Kinetis *device, uint8_t request_sequence) {
+    const uint8_t payload[] = {0, 0xa0, 0x10, 0x22};
+    const uint8_t slow_clock = 0xff;
+    uint8_t response[TRANSMIT_WINDOW_SIZE];
+    const uint8_t *frame = response + RECEIVE_PREFIX_SIZE;
+
+    expect_i2c_prefix(NULL, 0);
+    return kinetis_write(device, I2C0_F_ADDRESS, &slow_clock, sizeof(slow_clock)) &&
+           exchange_frame(device, WQR_PAYLOAD_I2C, request_sequence, payload, sizeof(payload),
+                          response) &&
+           frame_integrity_valid(frame) && frame[1] == WQR_PAYLOAD_I2C &&
+           frame[2] == (uint8_t)(request_sequence + 1) && frame[3] == 3 && frame[4] == 0 &&
+           frame[5] == payload[1] && frame[6] == payload[2] && i2c_expectations_met();
+}
+
 static bool exchange_i2c_read(Kinetis *device, uint8_t request_sequence) {
     const uint8_t payload[] = {0, 0xa1, 0x10, 3, 0};
     KinetisI2cTransfer transfers[9];
@@ -714,6 +739,8 @@ static bool firmware_passes(const char *path, KinetisPackage package) {
                                         exchange_measured_status(device, 1));
     VERIFY_STAGE("UART noise recovery",
                  run_firmware(device, IDLE_INSTRUCTIONS) && recover_from_noise(device));
+    VERIFY_STAGE("UART recovery turnaround", exchange_status(device, 2, 0));
+    VERIFY_STAGE("UART error recovery", recover_from_uart_error(device, 3));
     VERIFY_STAGE("UART framing recovery",
                  run_firmware(device, IDLE_INSTRUCTIONS) && recover_from_bad_end_marker(device));
     VERIFY_STAGE("CRC rejection",
@@ -741,16 +768,18 @@ static bool firmware_passes(const char *path, KinetisPackage package) {
                  run_firmware(device, IDLE_INSTRUCTIONS) && exchange_i2c_nack(device, 12));
     VERIFY_STAGE("I2C arbitration loss", run_firmware(device, IDLE_INSTRUCTIONS) &&
                                              exchange_i2c_arbitration_loss(device, 13));
+    VERIFY_STAGE("I2C timeout",
+                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_i2c_timeout(device, 14));
     VERIFY_STAGE("empty I2C read",
-                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_empty_i2c_read(device, 14));
+                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_empty_i2c_read(device, 15));
     VERIFY_STAGE("I2C read",
-                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_i2c_read(device, 15));
+                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_i2c_read(device, 16));
     VERIFY_STAGE("fragmented I2C read", run_firmware(device, IDLE_INSTRUCTIONS) &&
-                                            exchange_fragmented_i2c_read(device, 16));
+                                            exchange_fragmented_i2c_read(device, 17));
     VERIFY_STAGE("chunked I2C response",
-                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_chunked_i2c_read(device, 18));
+                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_chunked_i2c_read(device, 19));
     VERIFY_STAGE("software reset request",
-                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_status(device, 21, 0xaa) &&
+                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_status(device, 22, 0xaa) &&
                      run_firmware(device, STARTUP_INSTRUCTIONS) && software_reset_recorded(device));
     VERIFY_STAGE("status after reset",
                  exchange_status(device, 0, 0) && hardware_configuration_valid(device));
