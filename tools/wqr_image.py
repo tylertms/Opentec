@@ -1,7 +1,5 @@
 import struct
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 APPLICATION_BASE = 0xA000
@@ -22,29 +20,7 @@ def crc32_mpeg2(data: bytes) -> int:
     return crc
 
 
-def load_image(source: Path) -> bytes:
-    source_data = source.read_bytes()
-    if not source_data.startswith(b"\x7fELF"):
-        return source_data
-
-    with tempfile.TemporaryDirectory() as directory:
-        image = Path(directory) / "firmware.bin"
-        subprocess.run(
-            [
-                "arm-none-eabi-objcopy",
-                "-O",
-                "binary",
-                "--gap-fill",
-                "0xff",
-                source,
-                image,
-            ],
-            check=True,
-        )
-        return image.read_bytes()
-
-
-def patch_image(image: bytes) -> bytes:
+def package_image(image: bytes) -> bytes:
     if len(image) < METADATA_OFFSET + METADATA_SIZE:
         raise ValueError("image does not contain the metadata region")
     if len(image) > FLASH_END - APPLICATION_BASE:
@@ -61,12 +37,12 @@ def patch_image(image: bytes) -> bytes:
     ):
         raise ValueError("firmware metadata region is occupied")
 
-    patched = bytearray(image)
+    packaged = bytearray(image)
     metadata = struct.pack(
         METADATA_FORMAT,
         b"wqrb",
         APPLICATION_BASE,
-        len(patched),
+        len(packaged),
         0,
         0x0064FFFF,
         b"\xff" * 12,
@@ -74,10 +50,10 @@ def patch_image(image: bytes) -> bytes:
         b"\xff" * 12,
         0xFFFFFBFE,
     )
-    patched[METADATA_OFFSET : METADATA_OFFSET + METADATA_SIZE] = metadata
-    checksum_data = bytes(patched[:CHECKSUM_OFFSET] + patched[CHECKSUM_OFFSET + 4 :])
-    struct.pack_into("<I", patched, CHECKSUM_OFFSET, crc32_mpeg2(checksum_data))
-    return bytes(patched)
+    packaged[METADATA_OFFSET : METADATA_OFFSET + METADATA_SIZE] = metadata
+    checksum_data = bytes(packaged[:CHECKSUM_OFFSET] + packaged[CHECKSUM_OFFSET + 4 :])
+    struct.pack_into("<I", packaged, CHECKSUM_OFFSET, crc32_mpeg2(checksum_data))
+    return bytes(packaged)
 
 
 def main() -> None:
@@ -86,7 +62,7 @@ def main() -> None:
 
     source = Path(sys.argv[1])
     destination = Path(sys.argv[2])
-    destination.write_bytes(patch_image(load_image(source)))
+    destination.write_bytes(package_image(source.read_bytes()))
 
 
 if __name__ == "__main__":

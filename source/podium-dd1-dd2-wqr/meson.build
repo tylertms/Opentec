@@ -3,6 +3,7 @@ protocol_include = include_directories('source')
 
 if meson.is_cross_build()
   linker_script = 'source/vendor/mkv30f12810/gcc/MKV30F128xxx10_flash.ld'
+  objcopy = find_program('objcopy')
 
   firmware = executable(
     'podium-dd1-dd2-wqr',
@@ -31,13 +32,19 @@ if meson.is_cross_build()
     link_depends: files(linker_script),
     name_suffix: 'elf',
   )
+  raw_firmware = custom_target(
+    'podium-dd1-dd2-wqr-raw-image',
+    input: firmware,
+    output: 'podium-dd1-dd2-wqr.raw',
+    command: [objcopy, '-O', 'binary', '--gap-fill', '0xff', '@INPUT@', '@OUTPUT@'],
+  )
   firmware_image = custom_target(
     'podium-dd1-dd2-wqr-image',
-    input: firmware,
+    input: raw_firmware,
     output: 'podium-dd1-dd2-wqr.bin',
     command: [
       import('python').find_installation(),
-      meson.project_source_root() / 'tools/wqr_checksum.py',
+      meson.project_source_root() / 'tools/wqr_image.py',
       '@INPUT@',
       '@OUTPUT@',
     ],
