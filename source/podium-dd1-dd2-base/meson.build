@@ -1,5 +1,6 @@
 base_include = include_directories('source')
 base_source_path = meson.current_source_dir() / 'source'
+analog_axis_sources = files('source/analog/axis.c')
 force_output_sources = files('source/force_feedback/output.c')
 wheel_position_sources = files('source/wheel/position.c')
 
@@ -16,6 +17,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
 
   firmware_objects = []
   foreach name, source : {
+    'analog-axis': 'source/analog/axis.c',
     'force-output': 'source/force_feedback/output.c',
     'firmware': 'source/firmware.c',
     'wheel-position': 'source/wheel/position.c',
@@ -52,6 +54,14 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
 endif
 
 if not meson.is_cross_build()
+  analog_axis_test = executable(
+    'base-analog-axis-test',
+    'tests/source/analog_axis.c',
+    analog_axis_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   force_output_test = executable(
     'base-force-output-test',
     'tests/source/force_output.c',
@@ -68,6 +78,7 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  test('base-analog-axis', analog_axis_test, suite: ['base', 'analog'])
   test('base-force-output', force_output_test, suite: ['base', 'force-feedback'])
   test('base-wheel-position', wheel_position_test, suite: ['base', 'wheel-position'])
 endif
