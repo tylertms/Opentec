@@ -11,7 +11,7 @@ enum {
     UART_FRAME_END = 0x7d,
     UART_SOURCE_CLOCK = 96000000,
     UART_BAUD_RATE = 5000000,
-    UART_RESPONSE_GUARD_TICKS = 471,
+    UART_RESPONSE_GUARD_TICKS = 467,
     UART_RECOVERY_GUARD_TICKS = 3964,
     PIT_TICKS_PER_MILLISECOND = 24000,
     SPI_BYTE_BITS = 8,
@@ -36,8 +36,6 @@ typedef enum {
     I2C_SUCCEEDED,
     I2C_FAILED
 } i2c_phase;
-
-typedef enum { DMA_TRANSFER_8_BIT = 0, DMA_TRANSFER_32_BIT = 2 } dma_transfer_width;
 
 typedef struct {
     const uint8_t *write_data;
@@ -66,8 +64,7 @@ static volatile bool spi_transfer_failed;
 static volatile uint16_t spi_received_word;
 static bool spi_transfer_active;
 static volatile uint8_t spi_retry_delay;
-static uint32_t spi_transmit_words[WQR_SPI_TRANSFER_SIZE];
-static uint32_t spi_receive_words[WQR_SPI_TRANSFER_SIZE];
+static const uint8_t *spi_transmit_source;
 static uint8_t *spi_receive_destination;
 static size_t spi_transfer_length;
 static i2c_transaction i2c;
@@ -87,8 +84,33 @@ static void nvic_enable(IRQn_Type interrupt, uint32_t priority) {
     NVIC_EnableIRQ(interrupt);
 }
 
+static void enter_high_speed_run(void) {
+    if ((RCM->SRS0 & RCM_SRS0_WAKEUP_MASK) != 0 && (PMC->REGSC & PMC_REGSC_ACKISO_MASK) != 0) {
+        PMC->REGSC |= PMC_REGSC_ACKISO_MASK;
+    }
+    SMC->PMPROT = SMC_PMPROT_AHSRUN_MASK;
+    SMC->PMCTRL = (uint8_t)((SMC->PMCTRL & ~SMC_PMCTRL_RUNM_MASK) | SMC_PMCTRL_RUNM(3));
+    while ((SMC->PMSTAT & SMC_PMSTAT_PMSTAT_MASK) != SMC_PMSTAT_PMSTAT(0x80)) {
+    }
+}
+
+static void wait_for_clock_stability(void) {
+    SIM->SCGC5 |= SIM_SCGC5_LPTMR_MASK;
+    LPTMR0->CMR = 0;
+    LPTMR0->CSR = LPTMR_CSR_TCF_MASK;
+    LPTMR0->PSR = LPTMR_PSR_PBYP_MASK | LPTMR_PSR_PCS(1);
+    LPTMR0->CSR = LPTMR_CSR_TEN_MASK;
+    while ((LPTMR0->CSR & LPTMR_CSR_TCF_MASK) == 0) {
+    }
+    LPTMR0->CSR = 0;
+    SIM->SCGC5 &= ~SIM_SCGC5_LPTMR_MASK;
+}
+
 static void configure_clock(void) {
+    enter_high_speed_run();
     SIM->CLKDIV1 = SIM_CLKDIV1_OUTDIV1(0) | SIM_CLKDIV1_OUTDIV2(3) | SIM_CLKDIV1_OUTDIV4(3);
+    SIM->SOPT1 = (SIM->SOPT1 & ~SIM_SOPT1_OSC32KSEL_MASK) | SIM_SOPT1_OSC32KSEL(3);
+    SIM->SOPT2 &= ~SIM_SOPT2_PLLFLLSEL_MASK;
     MCG->C8 = 0;
     MCG->C2 = (uint8_t)((MCG->C2 & ~MCG_C2_RANGE_MASK) | MCG_C2_RANGE(1));
     OSC->CR = OSC_CR_ERCLKEN_MASK;
@@ -101,6 +123,7 @@ static void configure_clock(void) {
     MCG->C6 = 0;
     while ((MCG->S & MCG_S_CLKST_MASK) != 0) {
     }
+    wait_for_clock_stability();
     SystemCoreClock = UART_SOURCE_CLOCK;
 }
 
@@ -135,12 +158,11 @@ static void configure_pins(void) {
 
 static void configure_dma_descriptor(unsigned int channel, volatile const void *source,
                                      int16_t source_offset, volatile void *destination,
-                                     int16_t destination_offset, uint16_t count,
-                                     dma_transfer_width width) {
+                                     int16_t destination_offset, uint16_t count) {
     DMA0->TCD[channel].SADDR = (uint32_t)(uintptr_t)source;
     DMA0->TCD[channel].SOFF = (uint16_t)source_offset;
-    DMA0->TCD[channel].ATTR = DMA_ATTR_SSIZE(width) | DMA_ATTR_DSIZE(width);
-    DMA0->TCD[channel].NBYTES_MLNO = UINT32_C(1) << width;
+    DMA0->TCD[channel].ATTR = 0;
+    DMA0->TCD[channel].NBYTES_MLNO = 1;
     DMA0->TCD[channel].SLAST = -(int32_t)(source_offset * count);
     DMA0->TCD[channel].DADDR = (uint32_t)(uintptr_t)destination;
     DMA0->TCD[channel].DOFF = (uint16_t)destination_offset;
@@ -152,8 +174,7 @@ static void configure_dma_descriptor(unsigned int channel, volatile const void *
 
 static void configure_uart_receive(void) {
     DMAMUX->CHCFG[1] = 0;
-    configure_dma_descriptor(1, &UART1->D, 0, uart_receive_window, 1, UART_WINDOW_SIZE,
-                             DMA_TRANSFER_8_BIT);
+    configure_dma_descriptor(1, &UART1->D, 0, uart_receive_window, 1, UART_WINDOW_SIZE);
     DMAMUX->CHCFG[1] = DMAMUX_CHCFG_ENBL_MASK | DMAMUX_CHCFG_SOURCE(4);
     DMA0->CDNE = DMA_CDNE_CDNE(1);
     DMA0->SERQ = DMA_SERQ_SERQ(1);
@@ -176,8 +197,7 @@ static void configure_uart(void) {
     UART1->C2 = UART_C2_TE_MASK | UART_C2_RE_MASK | UART_C2_RIE_MASK | UART_C2_TIE_MASK;
     UART1->C5 = UART_C5_TDMAS_MASK | UART_C5_RDMAS_MASK;
     DMAMUX->CHCFG[0] = 0;
-    configure_dma_descriptor(0, uart_transmit_window, 1, &UART1->D, 0, UART_TRANSMIT_SIZE,
-                             DMA_TRANSFER_8_BIT);
+    configure_dma_descriptor(0, uart_transmit_window, 1, &UART1->D, 0, UART_TRANSMIT_SIZE);
     DMAMUX->CHCFG[0] = DMAMUX_CHCFG_ENBL_MASK | DMAMUX_CHCFG_SOURCE(5);
     configure_uart_receive();
     nvic_enable(DMA0_IRQn, 15);
@@ -232,9 +252,10 @@ static void clear_spi_status(void) {
                SPI_SR_RFOF_MASK | SPI_SR_RFDF_MASK;
 }
 
-static void set_spi_frame_size(unsigned int bits) {
+static void set_spi_format(unsigned int bits, bool capture_on_second_edge) {
     SPI0->MCR |= SPI_MCR_HALT_MASK;
-    SPI0->CTAR[0] = (SPI0->CTAR[0] & ~SPI_CTAR_FMSZ_MASK) | SPI_CTAR_FMSZ(bits - 1);
+    SPI0->CTAR[0] = (SPI0->CTAR[0] & ~(SPI_CTAR_FMSZ_MASK | SPI_CTAR_CPHA_MASK)) |
+                    SPI_CTAR_FMSZ(bits - 1) | (capture_on_second_edge ? SPI_CTAR_CPHA_MASK : 0);
     clear_spi_status();
     SPI0->MCR &= ~SPI_MCR_HALT_MASK;
 }
@@ -246,13 +267,13 @@ static void start_spi_dma(void) {
     DMA0->CINT = DMA_CINT_CINT(SPI_TRANSMIT_DMA_CHANNEL);
     DMA0->CDNE = DMA_CDNE_CDNE(SPI_RECEIVE_DMA_CHANNEL);
     DMA0->CDNE = DMA_CDNE_CDNE(SPI_TRANSMIT_DMA_CHANNEL);
-    set_spi_frame_size(SPI_BYTE_BITS);
+    set_spi_format(SPI_BYTE_BITS, true);
     SPI0->RSER = SPI_RSER_TFFF_DIRS_MASK | SPI_RSER_TFFF_RE_MASK | SPI_RSER_RFDF_DIRS_MASK |
                  SPI_RSER_RFDF_RE_MASK;
-    configure_dma_descriptor(SPI_RECEIVE_DMA_CHANNEL, &SPI0->POPR, 0, spi_receive_words, 4,
-                             (uint16_t)spi_transfer_length, DMA_TRANSFER_32_BIT);
-    configure_dma_descriptor(SPI_TRANSMIT_DMA_CHANNEL, spi_transmit_words, 4, &SPI0->PUSHR, 0,
-                             (uint16_t)spi_transfer_length, DMA_TRANSFER_32_BIT);
+    configure_dma_descriptor(SPI_RECEIVE_DMA_CHANNEL, &SPI0->POPR, 0, spi_receive_destination, 1,
+                             (uint16_t)spi_transfer_length);
+    configure_dma_descriptor(SPI_TRANSMIT_DMA_CHANNEL, spi_transmit_source, 1, &SPI0->PUSHR, 0,
+                             (uint16_t)spi_transfer_length);
     DMAMUX->CHCFG[SPI_RECEIVE_DMA_CHANNEL] =
         DMAMUX_CHCFG_ENBL_MASK | DMAMUX_CHCFG_SOURCE(SPI_RECEIVE_DMA_SOURCE);
     DMAMUX->CHCFG[SPI_TRANSMIT_DMA_CHANNEL] =
@@ -275,17 +296,10 @@ static wqr_io_result io_spi_transfer(void *context, const uint8_t *transmit, uin
         spi_transfer_complete = false;
         spi_transfer_active = false;
         spi_retry_delay = 0;
-        if (!spi_transfer_failed) {
-            for (size_t index = 0; index < spi_transfer_length; ++index) {
-                spi_receive_destination[index] = (uint8_t)spi_receive_words[index];
-            }
-        }
         return spi_transfer_failed ? WQR_IO_FAILED : WQR_IO_SUCCEEDED;
     }
 
-    for (size_t index = 0; index < length; ++index) {
-        spi_transmit_words[index] = transmit[index];
-    }
+    spi_transmit_source = transmit;
     spi_receive_destination = receive;
     spi_transfer_length = length;
     spi_transfer_active = true;
@@ -305,7 +319,7 @@ static wqr_io_result io_spi_word(void *context, uint16_t transmit, uint16_t *rec
         return spi_transfer_failed ? WQR_IO_FAILED : WQR_IO_SUCCEEDED;
     }
 
-    set_spi_frame_size(SPI_WORD_BITS);
+    set_spi_format(SPI_WORD_BITS, false);
     SPI0->RSER = SPI_RSER_TCF_RE_MASK | SPI_RSER_TFUF_RE_MASK | SPI_RSER_RFOF_RE_MASK;
     spi_transfer_complete = false;
     spi_transfer_failed = false;
@@ -387,7 +401,7 @@ static void configure_i2c(void) {
     I2C0->C1 = I2C_C1_IICEN_MASK | I2C_C1_IICIE_MASK;
     I2C0->S = I2C_S_IICIF_MASK | I2C_S_ARBL_MASK;
     I2C0->C2 = 0;
-    I2C0->FLT = I2C_FLT_FLT(10);
+    I2C0->FLT = I2C_FLT_SSIE_MASK | I2C_FLT_FLT(10);
     I2C0->RA = 0;
     nvic_enable(I2C0_IRQn, 10);
 }
@@ -501,14 +515,20 @@ void SPI0_IRQHandler(void) {
 void I2C0_IRQHandler(void) {
     uint8_t filter = I2C0->FLT;
     uint8_t status = I2C0->S;
+    uint8_t detection = filter & (I2C_FLT_STARTF_MASK | I2C_FLT_STOPF_MASK);
 
-    I2C0->FLT |= filter & (I2C_FLT_STARTF_MASK | I2C_FLT_STOPF_MASK);
     if ((status & I2C_S_IICIF_MASK) == 0) {
         return;
     }
     if ((status & I2C_S_ARBL_MASK) != 0) {
+        I2C0->FLT |= detection;
         I2C0->S = I2C_S_ARBL_MASK | I2C_S_IICIF_MASK;
         finish_i2c(I2C_FAILED);
+        return;
+    }
+    if (detection != 0) {
+        I2C0->FLT |= detection;
+        I2C0->S = I2C_S_IICIF_MASK;
         return;
     }
 
