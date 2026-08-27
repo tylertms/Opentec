@@ -2,36 +2,74 @@ protocol_sources = files('source/protocol.c')
 protocol_include = include_directories('source')
 
 if meson.is_cross_build()
-  linker_script = 'source/vendor/mkv30f12810/gcc/MKV30F128xxx10_flash.ld'
+  mcux_sdk = subproject('mcux-sdk')
+  cmsis = subproject('cmsis')
+  sdk_include = mcux_sdk.get_variable('mcux_sdk_includes')
+  cmsis_include = cmsis.get_variable('cmsis_includes')
+  sdk_sources = mcux_sdk.get_variable('mcux_sdk_sources')
+  sdk_device_sources = mcux_sdk.get_variable('mcux_sdk_device_sources')
+  linker_script = files('source/firmware.ld')[0]
+  sdk_drivers = static_library(
+    'podium-dd1-dd2-wqr-sdk',
+    sdk_sources['clock'],
+    sdk_sources['common'],
+    sdk_sources['adc16'],
+    sdk_sources['dmamux'],
+    sdk_sources['dspi'],
+    sdk_sources['edma'],
+    sdk_sources['gpio'],
+    sdk_sources['i2c'],
+    sdk_sources['lptmr'],
+    sdk_sources['pit'],
+    sdk_sources['smc'],
+    sdk_sources['uart'],
+    sdk_sources['uart_edma'],
+    sdk_sources['wdog'],
+    build_by_default: false,
+    c_args: [
+      '-ffreestanding',
+      '-ffunction-sections',
+      '-fdata-sections',
+      '-fno-pic',
+      '-fno-pie',
+      '-DCPU_MKV30F128VLH10',
+      '-DNDEBUG',
+    ],
+    include_directories: [sdk_include, cmsis_include],
+    override_options: ['warning_level=0'],
+    pic: false,
+  )
   objcopy = find_program('objcopy')
   python = import('python').find_installation()
 
   firmware = executable(
-    'podium-dd1-dd2-wqr.elf',
+    'podium-dd1-dd2-wqr',
     protocol_sources,
     'source/platform/kinetis/platform.c',
-    'source/vendor/mkv30f12810/gcc/startup_MKV30F12810.S',
+    sdk_device_sources,
+    build_by_default: false,
     c_args: [
       '-ffreestanding',
       '-ffunction-sections',
       '-fdata-sections',
       '-fno-common',
+      '-fno-pic',
+      '-fno-pie',
       '-DCPU_MKV30F128VLH10',
+      '-DNDEBUG',
       '-D__START=firmware_main',
       '-D__STARTUP_CLEAR_BSS',
     ],
-    include_directories: [
-      protocol_include,
-      include_directories('source/vendor/cmsis-core/include', is_system: true),
-      include_directories('source/vendor/mkv30f12810', is_system: true),
-    ],
-    build_by_default: false,
+    include_directories: [protocol_include, sdk_include, cmsis_include],
     link_args: [
       '-nostartfiles',
+      '-no-pie',
       '-Wl,--gc-sections',
-      '-T' + (meson.current_source_dir() / linker_script),
+      '-T' + linker_script.full_path(),
     ],
-    link_depends: files(linker_script),
+    link_depends: linker_script,
+    link_with: sdk_drivers,
+    name_suffix: 'elf',
   )
   unchecksummed_firmware = custom_target(
     'podium-dd1-dd2-wqr-binary',
@@ -91,11 +129,10 @@ if meson.is_cross_build()
     'tests/firmware_test.c',
     protocol_sources,
     build_by_default: false,
-    native: true,
     dependencies: simulator_firmware_image,
     include_directories: protocol_include,
+    native: true,
   )
-
   test(
     'podium-dd1-dd2-wqr',
     firmware_test,
@@ -111,6 +148,5 @@ else
     build_by_default: false,
     include_directories: protocol_include,
   )
-
   test('wqr-protocol', protocol_test, suite: ['wqr', 'protocol'])
 endif

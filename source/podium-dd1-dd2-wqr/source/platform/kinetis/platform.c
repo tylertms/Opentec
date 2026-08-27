@@ -1,6 +1,20 @@
 #include <stdint.h>
+#include <string.h>
 
-#include "MKV30F12810.h"
+#include "fsl_adc16.h"
+#include "fsl_clock.h"
+#include "fsl_dmamux.h"
+#include "fsl_dspi.h"
+#include "fsl_edma.h"
+#include "fsl_gpio.h"
+#include "fsl_i2c.h"
+#include "fsl_lptmr.h"
+#include "fsl_pit.h"
+#include "fsl_port.h"
+#include "fsl_smc.h"
+#include "fsl_uart.h"
+#include "fsl_uart_edma.h"
+#include "fsl_wdog.h"
 #include "protocol.h"
 
 enum {
@@ -13,44 +27,24 @@ enum {
     UART_BAUD_RATE = 5000000,
     UART_RESPONSE_GUARD_TICKS = 467,
     UART_RECOVERY_GUARD_TICKS = 3964,
+    BUS_CLOCK = 24000000,
     PIT_TICKS_PER_MILLISECOND = 24000,
-    SPI_BYTE_BITS = 8,
-    SPI_WORD_BITS = 16,
-    SPI_RECEIVE_DMA_CHANNEL = 3,
+    UART_TRANSMIT_DMA_CHANNEL = 0,
+    UART_RECEIVE_DMA_CHANNEL = 1,
     SPI_TRANSMIT_DMA_CHANNEL = 2,
+    SPI_RECEIVE_DMA_CHANNEL = 3,
+    UART_RECEIVE_DMA_SOURCE = 4,
+    UART_TRANSMIT_DMA_SOURCE = 5,
     SPI_RECEIVE_DMA_SOURCE = 14,
     SPI_TRANSMIT_DMA_SOURCE = 15,
     SPI_RETRY_MILLISECONDS = 2,
     I2C_TIMEOUT_MILLISECONDS = 10,
-    FPU_ACCESS_MASK = (3u << 20) | (3u << 22),
-    WDOG_REQUIRED_MASK = 0x100
+    SPI_ERROR_INTERRUPTS =
+        kDSPI_TxFifoUnderflowInterruptEnable | kDSPI_RxFifoOverflowInterruptEnable,
+    SPI_ERROR_FLAGS = kDSPI_TxFifoUnderflowFlag | kDSPI_RxFifoOverflowFlag
 };
 
-typedef enum {
-    I2C_IDLE,
-    I2C_ADDRESS_SENT,
-    I2C_WRITE_IN_PROGRESS,
-    I2C_COMMAND_SENT,
-    I2C_READ_ADDRESS_SENT,
-    I2C_READ_IN_PROGRESS,
-    I2C_SUCCEEDED,
-    I2C_FAILED
-} i2c_phase;
-
-typedef struct {
-    const uint8_t *write_data;
-    uint8_t *read_data;
-    size_t write_length;
-    size_t write_index;
-    size_t read_length;
-    size_t read_index;
-    uint8_t address;
-    uint8_t command;
-    volatile uint8_t timeout;
-    volatile i2c_phase phase;
-} i2c_transaction;
-
-uint32_t SystemCoreClock = DEFAULT_SYSTEM_CLOCK;
+typedef enum { I2C_IDLE, I2C_PENDING, I2C_SUCCEEDED, I2C_FAILED } i2c_phase;
 
 static wqr_protocol protocol;
 static uint8_t uart_receive_window[UART_WINDOW_SIZE] __attribute__((aligned(4)));
@@ -59,231 +53,239 @@ static volatile bool uart_receive_ready;
 static bool uart_transmit_active;
 static bool uart_response_due;
 static bool uart_recovery_active;
+static uart_edma_handle_t uart_handle;
+static edma_handle_t uart_transmit_dma;
+static edma_handle_t uart_receive_dma;
 static volatile bool spi_transfer_complete;
 static volatile bool spi_transfer_failed;
-static volatile uint16_t spi_received_word;
 static bool spi_transfer_active;
+static bool spi_word_active;
 static volatile uint8_t spi_retry_delay;
 static const uint8_t *spi_transmit_source;
 static uint8_t *spi_receive_destination;
 static size_t spi_transfer_length;
-static i2c_transaction i2c;
+static uint16_t spi_transmitted_word;
+static uint16_t spi_received_word;
+static dspi_master_handle_t spi_word_handle;
+static edma_handle_t spi_transmit_dma;
+static edma_handle_t spi_receive_dma;
+static volatile i2c_phase i2c_state;
+static volatile uint8_t i2c_timeout;
+static i2c_master_handle_t i2c_handle;
 static volatile bool adc_sample_ready;
 static volatile uint16_t adc_sample;
-
-void SystemInit(void) {
-    SCB->CPACR |= FPU_ACCESS_MASK;
-    WDOG->UNLOCK = WDOG_UNLOCK_WDOGUNLOCK(0xc520);
-    WDOG->UNLOCK = WDOG_UNLOCK_WDOGUNLOCK(0xd928);
-    WDOG->STCTRLH = WDOG_REQUIRED_MASK | WDOG_STCTRLH_WAITEN_MASK | WDOG_STCTRLH_STOPEN_MASK |
-                    WDOG_STCTRLH_ALLOWUPDATE_MASK | WDOG_STCTRLH_CLKSRC_MASK;
-}
 
 static void nvic_enable(IRQn_Type interrupt, uint32_t priority) {
     NVIC_SetPriority(interrupt, priority);
     NVIC_EnableIRQ(interrupt);
 }
 
-static void enter_high_speed_run(void) {
+static void configure_clock(void) {
+    lptmr_config_t stability_timer;
+    sim_clock_config_t clocks = {
+        .pllFllSel = 0,
+        .er32kSrc = 3,
+        .clkdiv1 = SIM_CLKDIV1_OUTDIV1(0) | SIM_CLKDIV1_OUTDIV2(3) | SIM_CLKDIV1_OUTDIV4(3),
+    };
+
     if ((RCM->SRS0 & RCM_SRS0_WAKEUP_MASK) != 0 && (PMC->REGSC & PMC_REGSC_ACKISO_MASK) != 0) {
         PMC->REGSC |= PMC_REGSC_ACKISO_MASK;
     }
-    SMC->PMPROT = SMC_PMPROT_AHSRUN_MASK;
-    SMC->PMCTRL = (uint8_t)((SMC->PMCTRL & ~SMC_PMCTRL_RUNM_MASK) | SMC_PMCTRL_RUNM(3));
-    while ((SMC->PMSTAT & SMC_PMSTAT_PMSTAT_MASK) != SMC_PMSTAT_PMSTAT(0x80)) {
+    SMC_SetPowerModeProtection(SMC, kSMC_AllowPowerModeHsrun);
+    SMC_SetPowerModeHsrun(SMC);
+    while (SMC_GetPowerModeState(SMC) != kSMC_PowerStateHsrun) {
     }
-}
-
-static void wait_for_clock_stability(void) {
-    SIM->SCGC5 |= SIM_SCGC5_LPTMR_MASK;
-    LPTMR0->CMR = 0;
-    LPTMR0->CSR = LPTMR_CSR_TCF_MASK;
-    LPTMR0->PSR = LPTMR_PSR_PBYP_MASK | LPTMR_PSR_PCS(1);
-    LPTMR0->CSR = LPTMR_CSR_TEN_MASK;
-    while ((LPTMR0->CSR & LPTMR_CSR_TCF_MASK) == 0) {
-    }
-    LPTMR0->CSR = 0;
-    SIM->SCGC5 &= ~SIM_SCGC5_LPTMR_MASK;
-}
-
-static void configure_clock(void) {
-    enter_high_speed_run();
-    SIM->CLKDIV1 = SIM_CLKDIV1_OUTDIV1(0) | SIM_CLKDIV1_OUTDIV2(3) | SIM_CLKDIV1_OUTDIV4(3);
-    SIM->SOPT1 = (SIM->SOPT1 & ~SIM_SOPT1_OSC32KSEL_MASK) | SIM_SOPT1_OSC32KSEL(3);
-    SIM->SOPT2 &= ~SIM_SOPT2_PLLFLLSEL_MASK;
-    MCG->C8 = 0;
-    MCG->C2 = (uint8_t)((MCG->C2 & ~MCG_C2_RANGE_MASK) | MCG_C2_RANGE(1));
+    CLOCK_SetSimConfig(&clocks);
     OSC->CR = OSC_CR_ERCLKEN_MASK;
-    MCG->C7 = MCG_C7_OSCSEL(2);
-    MCG->C1 = MCG_C1_FRDIV(6) | MCG_C1_IRCLKEN_MASK;
-    while ((MCG->S & MCG_S_IREFST_MASK) != 0) {
+    MCG->C2 = (uint8_t)((MCG->C2 & ~MCG_C2_RANGE_MASK) | MCG_C2_RANGE(1));
+    CLOCK_BootToFeeMode(kMCG_OscselIrc, 6, kMCG_Dmx32Default, kMCG_DrsHigh, NULL);
+    MCG->C1 |= MCG_C1_IRCLKEN_MASK;
+    LPTMR_GetDefaultConfig(&stability_timer);
+    LPTMR_Init(LPTMR0, &stability_timer);
+    LPTMR_SetTimerPeriod(LPTMR0, 1);
+    LPTMR_StartTimer(LPTMR0);
+    while ((LPTMR_GetStatusFlags(LPTMR0) & kLPTMR_TimerCompareFlag) == 0) {
     }
-    MCG->C4 =
-        (uint8_t)((MCG->C4 & ~(MCG_C4_DMX32_MASK | MCG_C4_DRST_DRS_MASK)) | MCG_C4_DRST_DRS(3));
-    MCG->C6 = 0;
-    while ((MCG->S & MCG_S_CLKST_MASK) != 0) {
-    }
-    wait_for_clock_stability();
+    LPTMR_Deinit(LPTMR0);
     SystemCoreClock = UART_SOURCE_CLOCK;
 }
 
-static void configure_pin(PORT_Type *port, unsigned int pin, uint32_t value) {
-    port->PCR[pin] = value;
-}
-
 static void configure_pins(void) {
+    const gpio_pin_config_t output_low = {kGPIO_DigitalOutput, 0};
+    const gpio_pin_config_t output_high = {kGPIO_DigitalOutput, 1};
     uint32_t input_config =
         PORT_PCR_MUX(1) | PORT_PCR_PFE_MASK | PORT_PCR_PE_MASK | PORT_PCR_PS_MASK;
 
-    SIM->SCGC5 |= SIM_SCGC5_PORTA_MASK | SIM_SCGC5_PORTB_MASK | SIM_SCGC5_PORTC_MASK |
-                  SIM_SCGC5_PORTD_MASK | SIM_SCGC5_PORTE_MASK;
-    configure_pin(PORTE, 16, PORT_PCR_MUX(3));
-    configure_pin(PORTE, 17, PORT_PCR_MUX(3));
-    configure_pin(PORTC, 5, PORT_PCR_MUX(2));
-    configure_pin(PORTC, 6, PORT_PCR_MUX(2));
-    configure_pin(PORTC, 7, PORT_PCR_MUX(2));
-    configure_pin(PORTC, 4, PORT_PCR_MUX(1));
-    configure_pin(PORTC, 1, PORT_PCR_MUX(1));
-    configure_pin(PORTC, 2, PORT_PCR_MUX(1));
-    configure_pin(PORTC, 3, PORT_PCR_MUX(1));
-    configure_pin(PORTB, 0, PORT_PCR_MUX(2) | PORT_PCR_ODE_MASK);
-    configure_pin(PORTB, 1, PORT_PCR_MUX(2) | PORT_PCR_ODE_MASK);
-    configure_pin(PORTA, 4, input_config);
-    configure_pin(PORTA, 18, input_config);
-    configure_pin(PORTA, 19, input_config);
-    GPIOC->PDDR |= UINT32_C(0x1a);
-    GPIOC->PSOR = UINT32_C(0x10);
-    GPIOC->PCOR = UINT32_C(0x08);
+    CLOCK_EnableClock(kCLOCK_PortA);
+    CLOCK_EnableClock(kCLOCK_PortB);
+    CLOCK_EnableClock(kCLOCK_PortC);
+    CLOCK_EnableClock(kCLOCK_PortD);
+    CLOCK_EnableClock(kCLOCK_PortE);
+    PORT_SetPinMux(PORTE, 16, kPORT_MuxAlt3);
+    PORT_SetPinMux(PORTE, 17, kPORT_MuxAlt3);
+    PORT_SetPinMux(PORTC, 5, kPORT_MuxAlt2);
+    PORT_SetPinMux(PORTC, 6, kPORT_MuxAlt2);
+    PORT_SetPinMux(PORTC, 7, kPORT_MuxAlt2);
+    PORT_SetPinMux(PORTC, 4, kPORT_MuxAsGpio);
+    PORT_SetPinMux(PORTC, 1, kPORT_MuxAsGpio);
+    PORT_SetPinMux(PORTC, 2, kPORT_MuxAsGpio);
+    PORT_SetPinMux(PORTC, 3, kPORT_MuxAsGpio);
+    PORTB->PCR[0] = PORT_PCR_MUX(2) | PORT_PCR_ODE_MASK;
+    PORTB->PCR[1] = PORT_PCR_MUX(2) | PORT_PCR_ODE_MASK;
+    PORTA->PCR[4] = input_config;
+    PORTA->PCR[18] = input_config;
+    PORTA->PCR[19] = input_config;
+    GPIO_PinInit(GPIOC, 1, &output_low);
+    GPIO_PinInit(GPIOC, 3, &output_low);
+    GPIO_PinInit(GPIOC, 4, &output_high);
 }
 
-static void configure_dma_descriptor(unsigned int channel, volatile const void *source,
-                                     int16_t source_offset, volatile void *destination,
-                                     int16_t destination_offset, uint16_t count) {
-    DMA0->TCD[channel].SADDR = (uint32_t)(uintptr_t)source;
-    DMA0->TCD[channel].SOFF = (uint16_t)source_offset;
-    DMA0->TCD[channel].ATTR = 0;
-    DMA0->TCD[channel].NBYTES_MLNO = 1;
-    DMA0->TCD[channel].SLAST = -(int32_t)(source_offset * count);
-    DMA0->TCD[channel].DADDR = (uint32_t)(uintptr_t)destination;
-    DMA0->TCD[channel].DOFF = (uint16_t)destination_offset;
-    DMA0->TCD[channel].CITER_ELINKNO = count;
-    DMA0->TCD[channel].DLAST_SGA = -(int32_t)(destination_offset * count);
-    DMA0->TCD[channel].CSR = DMA_CSR_INTMAJOR_MASK | DMA_CSR_DREQ_MASK;
-    DMA0->TCD[channel].BITER_ELINKNO = count;
+static void start_uart_guard(uint32_t ticks) {
+    PIT_SetTimerPeriod(PIT, kPIT_Chnl_1, ticks + 1);
+    PIT_StartTimer(PIT, kPIT_Chnl_1);
+}
+
+static void uart_callback(UART_Type *base, uart_edma_handle_t *handle, status_t status,
+                          void *data) {
+    (void)base;
+    (void)handle;
+    (void)data;
+    if (status == kStatus_UART_RxIdle) {
+        uart_receive_ready = true;
+    }
 }
 
 static void configure_uart_receive(void) {
-    DMAMUX->CHCFG[1] = 0;
-    configure_dma_descriptor(1, &UART1->D, 0, uart_receive_window, 1, UART_WINDOW_SIZE);
-    DMAMUX->CHCFG[1] = DMAMUX_CHCFG_ENBL_MASK | DMAMUX_CHCFG_SOURCE(4);
-    DMA0->CDNE = DMA_CDNE_CDNE(1);
-    DMA0->SERQ = DMA_SERQ_SERQ(1);
+    uart_transfer_t transfer = {
+        .data = uart_receive_window,
+        .dataSize = UART_WINDOW_SIZE,
+    };
+    UART_ReceiveEDMA(UART1, &uart_handle, &transfer);
 }
 
 static void configure_uart(void) {
-    uint32_t divisor = UART_SOURCE_CLOCK / (UART_BAUD_RATE * 16);
-    uint32_t fraction = (UART_SOURCE_CLOCK * 2 / UART_BAUD_RATE) & 0x1f;
+    uart_config_t config;
 
-    SIM->SCGC4 |= SIM_SCGC4_UART1_MASK;
-    SIM->SCGC6 |= SIM_SCGC6_DMAMUX_MASK;
-    SIM->SCGC7 |= SIM_SCGC7_DMA_MASK;
-    UART1->BDH = (uint8_t)((UART1->BDH & ~UART_BDH_SBR_MASK) | UART_BDH_SBR(divisor >> 8));
-    UART1->BDL = (uint8_t)divisor;
-    UART1->C4 = (uint8_t)((UART1->C4 & ~UART_C4_BRFA_MASK) | UART_C4_BRFA(fraction));
-    UART1->C1 = 0;
+    UART_GetDefaultConfig(&config);
+    config.baudRate_Bps = UART_BAUD_RATE;
+    config.enableTx = true;
+    config.enableRx = true;
+    UART_Init(UART1, &config, UART_SOURCE_CLOCK);
     UART1->S2 = UART_S2_RXINV_MASK;
-    UART1->C3 = UART_C3_TXINV_MASK | UART_C3_PEIE_MASK | UART_C3_FEIE_MASK | UART_C3_NEIE_MASK |
-                UART_C3_ORIE_MASK;
-    UART1->C2 = UART_C2_TE_MASK | UART_C2_RE_MASK | UART_C2_RIE_MASK | UART_C2_TIE_MASK;
-    UART1->C5 = UART_C5_TDMAS_MASK | UART_C5_RDMAS_MASK;
-    DMAMUX->CHCFG[0] = 0;
-    configure_dma_descriptor(0, uart_transmit_window, 1, &UART1->D, 0, UART_TRANSMIT_SIZE);
-    DMAMUX->CHCFG[0] = DMAMUX_CHCFG_ENBL_MASK | DMAMUX_CHCFG_SOURCE(5);
+    UART1->C3 |= UART_C3_TXINV_MASK;
+    UART_EnableInterrupts(UART1, kUART_RxOverrunInterruptEnable | kUART_NoiseErrorInterruptEnable |
+                                     kUART_FramingErrorInterruptEnable |
+                                     kUART_ParityErrorInterruptEnable);
+    EDMA_CreateHandle(&uart_transmit_dma, DMA0, UART_TRANSMIT_DMA_CHANNEL);
+    EDMA_CreateHandle(&uart_receive_dma, DMA0, UART_RECEIVE_DMA_CHANNEL);
+    DMAMUX_SetSource(DMAMUX, UART_TRANSMIT_DMA_CHANNEL, UART_TRANSMIT_DMA_SOURCE);
+    DMAMUX_SetSource(DMAMUX, UART_RECEIVE_DMA_CHANNEL, UART_RECEIVE_DMA_SOURCE);
+    DMAMUX_EnableChannel(DMAMUX, UART_TRANSMIT_DMA_CHANNEL);
+    DMAMUX_EnableChannel(DMAMUX, UART_RECEIVE_DMA_CHANNEL);
+    UART_TransferCreateHandleEDMA(UART1, &uart_handle, uart_callback, NULL, &uart_transmit_dma,
+                                  &uart_receive_dma);
     configure_uart_receive();
     nvic_enable(DMA0_IRQn, 15);
     nvic_enable(DMA1_IRQn, 15);
+    nvic_enable(UART1_RX_TX_IRQn, 15);
     nvic_enable(UART1_ERR_IRQn, 15);
 }
 
 static void configure_pit(void) {
-    SIM->SCGC6 |= SIM_SCGC6_PIT_MASK;
-    PIT->MCR = 0;
-    PIT->CHANNEL[0].LDVAL = PIT_TICKS_PER_MILLISECOND;
-    PIT->CHANNEL[0].TCTRL = PIT_TCTRL_TEN_MASK | PIT_TCTRL_TIE_MASK;
-    PIT->CHANNEL[1].TCTRL = PIT_TCTRL_TIE_MASK;
+    pit_config_t config;
+
+    PIT_GetDefaultConfig(&config);
+    PIT_Init(PIT, &config);
+    PIT_SetTimerPeriod(PIT, kPIT_Chnl_0, PIT_TICKS_PER_MILLISECOND + 1);
+    PIT_EnableInterrupts(PIT, kPIT_Chnl_0, kPIT_TimerInterruptEnable);
+    PIT_EnableInterrupts(PIT, kPIT_Chnl_1, kPIT_TimerInterruptEnable);
+    PIT_StartTimer(PIT, kPIT_Chnl_0);
     nvic_enable(PIT0_IRQn, 11);
     nvic_enable(PIT1_IRQn, 13);
 }
 
 static void configure_adc(void) {
-    uint32_t positive_gain;
-    uint32_t negative_gain;
+    adc16_config_t config;
 
-    SIM->SCGC6 |= SIM_SCGC6_ADC0_MASK;
-    ADC0->CFG1 = (ADC0->CFG1 & ~(ADC_CFG1_MODE_MASK | ADC_CFG1_ADIV_MASK)) | ADC_CFG1_MODE(1);
-    ADC0->SC3 = ADC_SC3_CAL_MASK | ADC_SC3_AVGE_MASK | ADC_SC3_AVGS(3);
-    while ((ADC0->SC1[0] & ADC_SC1_COCO_MASK) == 0) {
-    }
-    ADC0->SC3 &= ~ADC_SC3_CALF_MASK;
-    positive_gain = ADC0->CLPS + ADC0->CLP4 + ADC0->CLP3 + ADC0->CLP2 + ADC0->CLP1 + ADC0->CLP0;
-    negative_gain = ADC0->CLMS + ADC0->CLM4 + ADC0->CLM3 + ADC0->CLM2 + ADC0->CLM1 + ADC0->CLM0;
-    ADC0->PG = UINT32_C(0x8000) | (positive_gain >> 1);
-    ADC0->MG = UINT32_C(0x8000) | (negative_gain >> 1);
-    ADC0->CFG1 = ADC_CFG1_MODE(1) | ADC_CFG1_ADIV(1);
-    ADC0->SC3 = ADC_SC3_AVGE_MASK | ADC_SC3_AVGS(3);
-    ADC0->SC2 = 0;
+    ADC16_GetDefaultConfig(&config);
+    config.clockSource = kADC16_ClockSourceAlt0;
+    config.clockDivider = kADC16_ClockDivider2;
+    config.resolution = kADC16_ResolutionSE12Bit;
+    config.hardwareAverageMode = kADC16_HardwareAverageCount32;
+    ADC16_Init(ADC0, &config);
+    ADC16_DoAutoCalibration(ADC0);
     nvic_enable(ADC0_IRQn, 9);
 }
 
+static void finish_spi(status_t status) {
+    GPIO_PinWrite(GPIOC, 4, 1);
+    spi_retry_delay = 0;
+    spi_transfer_failed = status != kStatus_Success;
+    spi_transfer_complete = true;
+}
+
+static void spi_word_callback(SPI_Type *base, dspi_master_handle_t *handle, status_t status,
+                              void *data) {
+    (void)handle;
+    (void)data;
+    DSPI_DisableInterrupts(base, SPI_ERROR_INTERRUPTS);
+    finish_spi(status);
+}
+
+static void set_spi_format(unsigned int bits, dspi_clock_phase_t phase) {
+    DSPI_StopTransfer(SPI0);
+    SPI0->CTAR[0] = (SPI0->CTAR[0] & ~(SPI_CTAR_FMSZ_MASK | SPI_CTAR_CPHA_MASK)) |
+                    SPI_CTAR_FMSZ(bits - 1) |
+                    (phase == kDSPI_ClockPhaseSecondEdge ? SPI_CTAR_CPHA_MASK : 0);
+    DSPI_ClearStatusFlags(SPI0, kDSPI_AllStatusFlag);
+    DSPI_StartTransfer(SPI0);
+}
+
 static void configure_spi(void) {
-    SIM->SCGC6 |= SIM_SCGC6_SPI0_MASK;
-    SPI0->MCR = SPI_MCR_MSTR_MASK | SPI_MCR_PCSIS(1) | SPI_MCR_DIS_RXF_MASK | SPI_MCR_DIS_TXF_MASK |
-                SPI_MCR_HALT_MASK;
+    dspi_master_config_t config;
+
+    DSPI_MasterGetDefaultConfig(&config);
+    config.whichCtar = kDSPI_Ctar0;
+    config.ctarConfig.bitsPerFrame = 8;
+    config.ctarConfig.cpha = kDSPI_ClockPhaseSecondEdge;
+    config.whichPcs = kDSPI_Pcs0;
+    config.pcsActiveHighOrLow = kDSPI_PcsActiveLow;
+    DSPI_MasterInit(SPI0, &config, BUS_CLOCK);
     SPI0->CTAR[0] = UINT32_C(0x3a514204);
-    SPI0->RSER = 0;
-    SPI0->MCR &= ~SPI_MCR_HALT_MASK;
+    EDMA_CreateHandle(&spi_transmit_dma, DMA0, SPI_TRANSMIT_DMA_CHANNEL);
+    EDMA_CreateHandle(&spi_receive_dma, DMA0, SPI_RECEIVE_DMA_CHANNEL);
+    DMAMUX_SetSource(DMAMUX, SPI_TRANSMIT_DMA_CHANNEL, SPI_TRANSMIT_DMA_SOURCE);
+    DMAMUX_SetSource(DMAMUX, SPI_RECEIVE_DMA_CHANNEL, SPI_RECEIVE_DMA_SOURCE);
+    DMAMUX_EnableChannel(DMAMUX, SPI_TRANSMIT_DMA_CHANNEL);
+    DMAMUX_EnableChannel(DMAMUX, SPI_RECEIVE_DMA_CHANNEL);
+    DSPI_MasterTransferCreateHandle(SPI0, &spi_word_handle, spi_word_callback, NULL);
     nvic_enable(DMA2_IRQn, 14);
     nvic_enable(DMA3_IRQn, 14);
     nvic_enable(SPI0_IRQn, 14);
 }
 
-static void clear_spi_status(void) {
-    SPI0->SR = SPI_SR_TCF_MASK | SPI_SR_EOQF_MASK | SPI_SR_TFUF_MASK | SPI_SR_TFFF_MASK |
-               SPI_SR_RFOF_MASK | SPI_SR_RFDF_MASK;
-}
-
-static void set_spi_format(unsigned int bits, bool capture_on_second_edge) {
-    SPI0->MCR |= SPI_MCR_HALT_MASK;
-    SPI0->CTAR[0] = (SPI0->CTAR[0] & ~(SPI_CTAR_FMSZ_MASK | SPI_CTAR_CPHA_MASK)) |
-                    SPI_CTAR_FMSZ(bits - 1) | (capture_on_second_edge ? SPI_CTAR_CPHA_MASK : 0);
-    clear_spi_status();
-    SPI0->MCR &= ~SPI_MCR_HALT_MASK;
-}
-
 static void start_spi_dma(void) {
-    DMAMUX->CHCFG[SPI_RECEIVE_DMA_CHANNEL] = 0;
-    DMAMUX->CHCFG[SPI_TRANSMIT_DMA_CHANNEL] = 0;
-    DMA0->CINT = DMA_CINT_CINT(SPI_RECEIVE_DMA_CHANNEL);
-    DMA0->CINT = DMA_CINT_CINT(SPI_TRANSMIT_DMA_CHANNEL);
-    DMA0->CDNE = DMA_CDNE_CDNE(SPI_RECEIVE_DMA_CHANNEL);
-    DMA0->CDNE = DMA_CDNE_CDNE(SPI_TRANSMIT_DMA_CHANNEL);
-    set_spi_format(SPI_BYTE_BITS, true);
-    SPI0->RSER = SPI_RSER_TFFF_DIRS_MASK | SPI_RSER_TFFF_RE_MASK | SPI_RSER_RFDF_DIRS_MASK |
-                 SPI_RSER_RFDF_RE_MASK;
-    configure_dma_descriptor(SPI_RECEIVE_DMA_CHANNEL, &SPI0->POPR, 0, spi_receive_destination, 1,
-                             (uint16_t)spi_transfer_length);
-    configure_dma_descriptor(SPI_TRANSMIT_DMA_CHANNEL, spi_transmit_source, 1, &SPI0->PUSHR, 0,
-                             (uint16_t)spi_transfer_length);
-    DMAMUX->CHCFG[SPI_RECEIVE_DMA_CHANNEL] =
-        DMAMUX_CHCFG_ENBL_MASK | DMAMUX_CHCFG_SOURCE(SPI_RECEIVE_DMA_SOURCE);
-    DMAMUX->CHCFG[SPI_TRANSMIT_DMA_CHANNEL] =
-        DMAMUX_CHCFG_ENBL_MASK | DMAMUX_CHCFG_SOURCE(SPI_TRANSMIT_DMA_SOURCE);
+    edma_transfer_config_t receive;
+    edma_transfer_config_t transmit;
+
+    EDMA_AbortTransfer(&spi_receive_dma);
+    EDMA_AbortTransfer(&spi_transmit_dma);
+    set_spi_format(8, kDSPI_ClockPhaseSecondEdge);
+    EDMA_PrepareTransfer(&receive, (void *)(uintptr_t)DSPI_GetRxRegisterAddress(SPI0), 1,
+                         spi_receive_destination, 1, 1, spi_transfer_length,
+                         kEDMA_PeripheralToMemory);
+    EDMA_PrepareTransfer(&transmit, (void *)(uintptr_t)spi_transmit_source, 1,
+                         (void *)(uintptr_t)DSPI_MasterGetTxRegisterAddress(SPI0), 1, 1,
+                         spi_transfer_length, kEDMA_MemoryToPeripheral);
+    EDMA_SubmitTransfer(&spi_receive_dma, &receive);
+    EDMA_SubmitTransfer(&spi_transmit_dma, &transmit);
     spi_transfer_complete = false;
     spi_transfer_failed = false;
     spi_retry_delay = SPI_RETRY_MILLISECONDS;
-    GPIOC->PCOR = UINT32_C(0x10);
-    DMA0->SERQ = DMA_SERQ_SERQ(SPI_RECEIVE_DMA_CHANNEL);
-    DMA0->SERQ = DMA_SERQ_SERQ(SPI_TRANSMIT_DMA_CHANNEL);
+    GPIO_PinWrite(GPIOC, 4, 0);
+    DSPI_EnableDMA(SPI0, kDSPI_RxDmaEnable | kDSPI_TxDmaEnable);
+    EDMA_StartTransfer(&spi_receive_dma);
+    EDMA_StartTransfer(&spi_transmit_dma);
 }
 
 static wqr_io_result io_spi_transfer(void *context, const uint8_t *transmit, uint8_t *receive,
@@ -295,19 +297,20 @@ static wqr_io_result io_spi_transfer(void *context, const uint8_t *transmit, uin
         }
         spi_transfer_complete = false;
         spi_transfer_active = false;
-        spi_retry_delay = 0;
         return spi_transfer_failed ? WQR_IO_FAILED : WQR_IO_SUCCEEDED;
     }
-
     spi_transmit_source = transmit;
     spi_receive_destination = receive;
     spi_transfer_length = length;
+    spi_word_active = false;
     spi_transfer_active = true;
     start_spi_dma();
     return WQR_IO_PENDING;
 }
 
 static wqr_io_result io_spi_word(void *context, uint16_t transmit, uint16_t *receive) {
+    dspi_transfer_t transfer;
+
     (void)context;
     if (spi_transfer_active) {
         if (!spi_transfer_complete) {
@@ -318,114 +321,130 @@ static wqr_io_result io_spi_word(void *context, uint16_t transmit, uint16_t *rec
         *receive = spi_received_word;
         return spi_transfer_failed ? WQR_IO_FAILED : WQR_IO_SUCCEEDED;
     }
-
-    set_spi_format(SPI_WORD_BITS, false);
-    SPI0->RSER = SPI_RSER_TCF_RE_MASK | SPI_RSER_TFUF_RE_MASK | SPI_RSER_RFOF_RE_MASK;
+    spi_transmitted_word = transmit;
+    transfer.txData = (const uint8_t *)&spi_transmitted_word;
+    transfer.rxData = (uint8_t *)&spi_received_word;
+    transfer.dataSize = sizeof(spi_transmitted_word);
+    transfer.configFlags = kDSPI_MasterCtar0;
+    set_spi_format(16, kDSPI_ClockPhaseFirstEdge);
     spi_transfer_complete = false;
     spi_transfer_failed = false;
     spi_transfer_active = true;
+    spi_word_active = true;
     spi_retry_delay = 0;
-    GPIOC->PCOR = UINT32_C(0x10);
-    SPI0->PUSHR = transmit;
+    GPIO_PinWrite(GPIOC, 4, 0);
+    if (DSPI_MasterTransferNonBlocking(SPI0, &spi_word_handle, &transfer) == kStatus_Success) {
+        DSPI_EnableInterrupts(SPI0, SPI_ERROR_INTERRUPTS);
+    } else {
+        finish_spi(kStatus_Fail);
+    }
     return WQR_IO_PENDING;
 }
 
-static void finish_i2c(i2c_phase result) {
-    I2C0->C1 = I2C_C1_IICEN_MASK | I2C_C1_IICIE_MASK;
-    i2c.timeout = 0;
-    i2c.phase = result;
+static void i2c_callback(I2C_Type *base, i2c_master_handle_t *handle, status_t status, void *data) {
+    (void)base;
+    (void)handle;
+    (void)data;
+    i2c_timeout = 0;
+    I2C0->FLT |= I2C_FLT_SSIE_MASK;
+    i2c_state = status == kStatus_Success ? I2C_SUCCEEDED : I2C_FAILED;
 }
 
 static wqr_io_result i2c_result(void) {
-    if (i2c.phase == I2C_SUCCEEDED) {
-        i2c.phase = I2C_IDLE;
+    if (i2c_state == I2C_SUCCEEDED) {
+        i2c_state = I2C_IDLE;
         return WQR_IO_SUCCEEDED;
     }
-    if (i2c.phase == I2C_FAILED) {
-        i2c.phase = I2C_IDLE;
+    if (i2c_state == I2C_FAILED) {
+        i2c_state = I2C_IDLE;
         return WQR_IO_FAILED;
     }
     return WQR_IO_PENDING;
 }
 
-static void start_i2c(uint8_t address) {
-    i2c.address = address;
-    i2c.timeout = I2C_TIMEOUT_MILLISECONDS;
-    i2c.phase = I2C_ADDRESS_SENT;
-    I2C0->C1 = I2C_C1_IICEN_MASK | I2C_C1_IICIE_MASK | I2C_C1_MST_MASK | I2C_C1_TX_MASK;
-    I2C0->D = address;
+static wqr_io_result start_i2c(i2c_master_transfer_t *transfer) {
+    I2C0->FLT &= (uint8_t)~I2C_FLT_SSIE_MASK;
+    i2c_timeout = I2C_TIMEOUT_MILLISECONDS;
+    i2c_state = I2C_PENDING;
+    if (I2C_MasterTransferNonBlocking(I2C0, &i2c_handle, transfer) != kStatus_Success) {
+        i2c_timeout = 0;
+        i2c_state = I2C_FAILED;
+        I2C0->FLT |= I2C_FLT_SSIE_MASK;
+    }
+    return WQR_IO_PENDING;
 }
 
 static wqr_io_result io_i2c_write(void *context, uint8_t address, const uint8_t *data,
                                   size_t length) {
+    i2c_master_transfer_t transfer = {
+        .flags = kI2C_TransferDefaultFlag,
+        .slaveAddress = address >> 1,
+        .direction = kI2C_Write,
+        .data = (uint8_t *)(uintptr_t)data,
+        .dataSize = length,
+    };
     wqr_io_result result;
 
     (void)context;
     result = i2c_result();
-    if (result != WQR_IO_PENDING || i2c.phase != I2C_IDLE) {
+    if (result != WQR_IO_PENDING || i2c_state != I2C_IDLE) {
         return result;
     }
-    i2c.write_data = data;
-    i2c.write_length = length;
-    i2c.write_index = 0;
-    i2c.read_length = 0;
-    start_i2c(address);
-    return WQR_IO_PENDING;
+    return start_i2c(&transfer);
 }
 
 static wqr_io_result io_i2c_read(void *context, uint8_t address, uint8_t command, uint8_t *data,
                                  size_t length) {
+    i2c_master_transfer_t transfer = {
+        .flags = kI2C_TransferDefaultFlag,
+        .slaveAddress = address >> 1,
+        .direction = kI2C_Read,
+        .subaddress = command,
+        .subaddressSize = 1,
+        .data = data,
+        .dataSize = length,
+    };
     wqr_io_result result;
 
     (void)context;
     result = i2c_result();
-    if (result != WQR_IO_PENDING || i2c.phase != I2C_IDLE) {
+    if (result != WQR_IO_PENDING || i2c_state != I2C_IDLE) {
         return result;
     }
     if (length == 0) {
         return WQR_IO_SUCCEEDED;
     }
-    i2c.read_data = data;
-    i2c.read_length = length;
-    i2c.read_index = 0;
-    i2c.write_length = 0;
-    i2c.command = command;
-    start_i2c(address);
-    return WQR_IO_PENDING;
+    return start_i2c(&transfer);
 }
 
 static void configure_i2c(void) {
-    SIM->SCGC4 |= SIM_SCGC4_I2C0_MASK;
-    I2C0->A1 = 0;
-    I2C0->F = I2C_F_ICR(4);
-    I2C0->C1 = I2C_C1_IICEN_MASK | I2C_C1_IICIE_MASK;
-    I2C0->S = I2C_S_IICIF_MASK | I2C_S_ARBL_MASK;
-    I2C0->C2 = 0;
-    I2C0->FLT = I2C_FLT_SSIE_MASK | I2C_FLT_FLT(10);
-    I2C0->RA = 0;
+    i2c_master_config_t config;
+
+    I2C_MasterGetDefaultConfig(&config);
+    config.baudRate_Bps = 1200000;
+    config.glitchFilterWidth = 10;
+    I2C_MasterInit(I2C0, &config, BUS_CLOCK);
+    I2C0->FLT |= I2C_FLT_SSIE_MASK;
+    I2C_MasterTransferCreateHandle(I2C0, &i2c_handle, i2c_callback, NULL);
+    i2c_state = I2C_IDLE;
     nvic_enable(I2C0_IRQn, 10);
 }
 
 static uint8_t io_read_inputs(void *context) {
-    uint32_t inputs = GPIOA->PDIR;
-
     (void)context;
-    return (uint8_t)(((inputs & 0x10) == 0 ? 1 : 0) | ((inputs & 0x40000) == 0 ? 2 : 0) |
-                     ((inputs & 0x80000) == 0 ? 4 : 0));
+    return (uint8_t)((GPIO_PinRead(GPIOA, 4) == 0 ? 1 : 0) |
+                     (GPIO_PinRead(GPIOA, 18) == 0 ? 2 : 0) |
+                     (GPIO_PinRead(GPIOA, 19) == 0 ? 4 : 0));
 }
 
 static bool io_transfer_ready(void *context) {
     (void)context;
-    return (GPIOC->PDIR & UINT32_C(0x04)) == 0;
+    return GPIO_PinRead(GPIOC, 2) == 0;
 }
 
 static void io_set_transfer_control(void *context, bool asserted) {
     (void)context;
-    if (asserted) {
-        GPIOC->PSOR = UINT32_C(0x08);
-    } else {
-        GPIOC->PCOR = UINT32_C(0x08);
-    }
+    GPIO_PinWrite(GPIOC, 3, asserted ? 1 : 0);
 }
 
 static void io_request_reset(void *context) {
@@ -434,177 +453,86 @@ static void io_request_reset(void *context) {
 }
 
 static void configure_watchdog(void) {
-    WDOG->UNLOCK = WDOG_UNLOCK_WDOGUNLOCK(0xc520);
-    WDOG->UNLOCK = WDOG_UNLOCK_WDOGUNLOCK(0xd928);
-    WDOG->STCTRLH = WDOG_STCTRLH_DISTESTWDOG_MASK | WDOG_STCTRLH_WAITEN_MASK |
-                    WDOG_STCTRLH_STOPEN_MASK | WDOG_STCTRLH_ALLOWUPDATE_MASK |
-                    WDOG_STCTRLH_IRQRSTEN_MASK | WDOG_STCTRLH_WDOGEN_MASK;
-    WDOG->TOVALH = 0;
-    WDOG->TOVALL = 500;
-    WDOG->PRESC = 0;
-}
+    wdog_config_t config;
 
-static void refresh_watchdog(void) {
-    uint32_t interrupt_mask = __get_PRIMASK();
-
-    __disable_irq();
-    WDOG->REFRESH = WDOG_REFRESH_WDOGREFRESH(0xa602);
-    WDOG->REFRESH = WDOG_REFRESH_WDOGREFRESH(0xb480);
-    __set_PRIMASK(interrupt_mask);
+    WDOG_GetDefaultConfig(&config);
+    config.workMode.enableStop = true;
+    config.enableInterrupt = true;
+    config.timeoutValue = 500;
+    WDOG_Init(WDOG, &config);
 }
 
 static void prepare_transmit_window(void) {
-    unsigned int index;
-
-    for (index = 0; index < UART_TRANSMIT_SIZE; ++index) {
-        uart_transmit_window[index] = 0;
-    }
-    for (index = 0; index < UART_FRAME_OFFSET; ++index) {
-        uart_transmit_window[index] = 0xf0;
-        uart_transmit_window[UART_TRANSMIT_SIZE - index - 1] = 0xf0;
-    }
-}
-
-static void start_uart_guard(uint32_t ticks) {
-    PIT->CHANNEL[1].LDVAL = ticks;
-    PIT->CHANNEL[1].TCTRL = PIT_TCTRL_TEN_MASK | PIT_TCTRL_TIE_MASK;
+    memset(uart_transmit_window, 0, sizeof(uart_transmit_window));
+    memset(uart_transmit_window, 0xf0, UART_FRAME_OFFSET);
+    memset(uart_transmit_window + UART_TRANSMIT_SIZE - UART_FRAME_OFFSET, 0xf0, UART_FRAME_OFFSET);
 }
 
 void DMA0_IRQHandler(void) {
-    DMA0->CINT = DMA_CINT_CINT(0);
-    DMA0->CDNE = DMA_CDNE_CDNE(0);
     uart_transmit_active = false;
     start_uart_guard(UART_RESPONSE_GUARD_TICKS);
+    EDMA_HandleIRQ(&uart_transmit_dma);
 }
 
-void DMA1_IRQHandler(void) {
-    DMA0->CINT = DMA_CINT_CINT(1);
-    DMA0->CDNE = DMA_CDNE_CDNE(1);
-    uart_receive_ready = true;
-}
+void DMA1_IRQHandler(void) { EDMA_HandleIRQ(&uart_receive_dma); }
 
 void DMA2_IRQHandler(void) {
-    DMA0->CINT = DMA_CINT_CINT(SPI_TRANSMIT_DMA_CHANNEL);
-    DMA0->CDNE = DMA_CDNE_CDNE(SPI_TRANSMIT_DMA_CHANNEL);
+    EDMA_ClearChannelStatusFlags(DMA0, SPI_TRANSMIT_DMA_CHANNEL,
+                                 kEDMA_DoneFlag | kEDMA_InterruptFlag);
 }
 
 void DMA3_IRQHandler(void) {
-    DMA0->CINT = DMA_CINT_CINT(SPI_RECEIVE_DMA_CHANNEL);
-    DMA0->CDNE = DMA_CDNE_CDNE(SPI_RECEIVE_DMA_CHANNEL);
-    GPIOC->PSOR = UINT32_C(0x10);
-    spi_retry_delay = 0;
-    spi_transfer_complete = true;
+    EDMA_ClearChannelStatusFlags(DMA0, SPI_RECEIVE_DMA_CHANNEL,
+                                 kEDMA_DoneFlag | kEDMA_InterruptFlag);
+    DSPI_DisableDMA(SPI0, kDSPI_RxDmaEnable | kDSPI_TxDmaEnable);
+    finish_spi(kStatus_Success);
 }
 
 void SPI0_IRQHandler(void) {
-    uint32_t status = SPI0->SR;
+    uint32_t errors = DSPI_GetStatusFlags(SPI0) & SPI_ERROR_FLAGS;
 
-    if ((status & (SPI_SR_TCF_MASK | SPI_SR_TFUF_MASK | SPI_SR_RFOF_MASK)) == 0) {
+    if (errors == 0) {
+        DSPI_MasterTransferHandleIRQ(SPI0, &spi_word_handle);
         return;
     }
-    spi_transfer_failed = (status & (SPI_SR_TFUF_MASK | SPI_SR_RFOF_MASK)) != 0;
-    if (!spi_transfer_failed) {
-        spi_received_word = (uint16_t)SPI0->POPR;
-    }
-    SPI0->RSER = 0;
-    clear_spi_status();
-    GPIOC->PSOR = UINT32_C(0x10);
-    spi_transfer_complete = true;
+    DSPI_MasterTransferAbort(SPI0, &spi_word_handle);
+    DSPI_DisableInterrupts(SPI0, SPI_ERROR_INTERRUPTS);
+    DSPI_ClearStatusFlags(SPI0, errors);
+    finish_spi(kStatus_DSPI_Error);
 }
 
 void I2C0_IRQHandler(void) {
-    uint8_t filter = I2C0->FLT;
-    uint8_t status = I2C0->S;
-    uint8_t detection = filter & (I2C_FLT_STARTF_MASK | I2C_FLT_STOPF_MASK);
+    uint8_t detection = I2C0->FLT & (I2C_FLT_STARTF_MASK | I2C_FLT_STOPF_MASK);
 
-    if ((status & I2C_S_IICIF_MASK) == 0) {
+    I2C0->FLT |= detection;
+    if ((I2C0->S & I2C_S_IICIF_MASK) == 0) {
         return;
     }
-    if ((status & I2C_S_ARBL_MASK) != 0) {
-        I2C0->FLT |= detection;
-        I2C0->S = I2C_S_ARBL_MASK | I2C_S_IICIF_MASK;
-        finish_i2c(I2C_FAILED);
-        return;
-    }
-    if (detection != 0) {
-        I2C0->FLT |= detection;
-        I2C0->S = I2C_S_IICIF_MASK;
-        return;
-    }
+    I2C_MasterTransferHandleIRQ(I2C0, &i2c_handle);
+}
 
-    switch (i2c.phase) {
-    case I2C_ADDRESS_SENT:
-        if ((status & I2C_S_RXAK_MASK) != 0) {
-            finish_i2c(I2C_FAILED);
-        } else if (i2c.read_length != 0) {
-            I2C0->D = i2c.command;
-            i2c.phase = I2C_COMMAND_SENT;
-        } else if (i2c.write_index < i2c.write_length) {
-            I2C0->D = i2c.write_data[i2c.write_index++];
-            i2c.phase = I2C_WRITE_IN_PROGRESS;
-        } else {
-            finish_i2c(I2C_SUCCEEDED);
-        }
-        break;
-    case I2C_WRITE_IN_PROGRESS:
-        if ((status & I2C_S_RXAK_MASK) != 0) {
-            finish_i2c(I2C_FAILED);
-        } else if (i2c.write_index < i2c.write_length) {
-            I2C0->D = i2c.write_data[i2c.write_index++];
-        } else {
-            finish_i2c(I2C_SUCCEEDED);
-        }
-        break;
-    case I2C_COMMAND_SENT:
-        if ((status & I2C_S_RXAK_MASK) != 0) {
-            finish_i2c(I2C_FAILED);
-        } else {
-            I2C0->C1 |= I2C_C1_RSTA_MASK;
-            I2C0->D = i2c.address | 1;
-            i2c.phase = I2C_READ_ADDRESS_SENT;
-        }
-        break;
-    case I2C_READ_ADDRESS_SENT:
-        if ((status & I2C_S_RXAK_MASK) != 0) {
-            finish_i2c(I2C_FAILED);
-        } else {
-            I2C0->C1 = I2C_C1_IICEN_MASK | I2C_C1_IICIE_MASK | I2C_C1_MST_MASK |
-                       (i2c.read_length == 1 ? I2C_C1_TXAK_MASK : 0);
-            (void)I2C0->D;
-            i2c.phase = I2C_READ_IN_PROGRESS;
-        }
-        break;
-    case I2C_READ_IN_PROGRESS:
-        if (i2c.read_index + 2 == i2c.read_length) {
-            I2C0->C1 |= I2C_C1_TXAK_MASK;
-        }
-        if (i2c.read_index + 1 == i2c.read_length) {
-            I2C0->C1 = I2C_C1_IICEN_MASK | I2C_C1_IICIE_MASK;
-        }
-        i2c.read_data[i2c.read_index++] = I2C0->D;
-        if (i2c.read_index == i2c.read_length) {
-            finish_i2c(I2C_SUCCEEDED);
-        }
-        break;
-    default:
-        finish_i2c(I2C_FAILED);
-        break;
+void UART1_ERR_DriverIRQHandler(void) {
+    uint8_t status = UART1->S1;
+
+    if ((status & (UART_S1_OR_MASK | UART_S1_NF_MASK | UART_S1_FE_MASK | UART_S1_PF_MASK)) != 0) {
+        (void)UART1->D;
     }
-    I2C0->S = I2C_S_IICIF_MASK;
 }
 
 static void update_i2c_timeout(void) {
-    if (i2c.timeout == 0) {
+    if (i2c_timeout == 0) {
         return;
     }
-    --i2c.timeout;
-    if (i2c.timeout == 0) {
-        finish_i2c(I2C_FAILED);
+    --i2c_timeout;
+    if (i2c_timeout == 0) {
+        I2C_MasterTransferAbort(I2C0, &i2c_handle);
+        I2C0->FLT |= I2C_FLT_SSIE_MASK;
+        i2c_state = I2C_FAILED;
     }
 }
 
 static void update_spi_retry(void) {
-    if (!spi_transfer_active || spi_transfer_complete || spi_retry_delay == 0) {
+    if (!spi_transfer_active || spi_word_active || spi_transfer_complete || spi_retry_delay == 0) {
         return;
     }
     if (--spi_retry_delay == 0) {
@@ -619,17 +547,22 @@ void PIT0_IRQHandler(void) {
     update_spi_retry();
     update_i2c_timeout();
     if (++adc_period == 100) {
+        const adc16_channel_config_t channel = {
+            .channelNumber = 23,
+            .enableInterruptOnConversionCompleted = true,
+        };
         adc_period = 0;
-        ADC0->SC1[0] = ADC_SC1_AIEN_MASK | ADC_SC1_ADCH(23);
+        ADC16_SetChannelConfig(ADC0, 0, &channel);
     }
-    PIT->CHANNEL[0].TFLG = PIT_TFLG_TIF_MASK;
+    PIT_ClearStatusFlags(PIT, kPIT_Chnl_0, kPIT_TimerFlag);
 }
 
 void PIT1_IRQHandler(void) {
-    PIT->CHANNEL[1].TFLG = PIT_TFLG_TIF_MASK;
-    PIT->CHANNEL[1].TCTRL = PIT_TCTRL_TIE_MASK;
+    PIT_ClearStatusFlags(PIT, kPIT_Chnl_1, kPIT_TimerFlag);
+    PIT_StopTimer(PIT, kPIT_Chnl_1);
     if (uart_recovery_active) {
         uart_recovery_active = false;
+        configure_uart_receive();
         return;
     }
     configure_uart_receive();
@@ -637,19 +570,11 @@ void PIT1_IRQHandler(void) {
 }
 
 void ADC0_IRQHandler(void) {
-    adc_sample = (uint16_t)ADC0->R[0];
+    adc_sample = (uint16_t)ADC16_GetChannelConversionValue(ADC0, 0);
     adc_sample_ready = true;
 }
 
 void WDOG_EWM_IRQHandler(void) {}
-
-void UART1_ERR_IRQHandler(void) {
-    uint8_t status = UART1->S1;
-
-    if ((status & (UART_S1_OR_MASK | UART_S1_NF_MASK | UART_S1_FE_MASK | UART_S1_PF_MASK)) != 0) {
-        (void)UART1->D;
-    }
-}
 
 static void process_uart_frame(void) {
     size_t offset;
@@ -669,15 +594,19 @@ static void process_uart_frame(void) {
 }
 
 static void start_uart_response(void) {
+    uart_transfer_t transfer;
+
     if (!uart_response_due || uart_transmit_active || uart_recovery_active ||
         !wqr_protocol_response(&protocol, uart_transmit_window + UART_FRAME_OFFSET)) {
         return;
     }
-
     uart_response_due = false;
     uart_transmit_active = true;
-    DMA0->CDNE = DMA_CDNE_CDNE(0);
-    DMA0->SERQ = DMA_SERQ_SERQ(0);
+    transfer.data = uart_transmit_window;
+    transfer.dataSize = UART_TRANSMIT_SIZE;
+    if (UART_SendEDMA(UART1, &uart_handle, &transfer) != kStatus_Success) {
+        uart_transmit_active = false;
+    }
 }
 
 void firmware_main(void) {
@@ -691,11 +620,15 @@ void firmware_main(void) {
         .set_transfer_control = io_set_transfer_control,
         .request_reset = io_request_reset,
     };
+    edma_config_t dma;
 
     __disable_irq();
     configure_clock();
     configure_pins();
     prepare_transmit_window();
+    EDMA_GetDefaultConfig(&dma);
+    EDMA_Init(DMA0, &dma);
+    DMAMUX_Init(DMAMUX);
     configure_uart();
     configure_pit();
     configure_adc();
@@ -716,6 +649,6 @@ void firmware_main(void) {
             wqr_protocol_set_sensor_sample(&protocol, adc_sample);
         }
         start_uart_response();
-        refresh_watchdog();
+        WDOG_Refresh(WDOG);
     }
 }

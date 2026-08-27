@@ -2,9 +2,10 @@
 /.cache/
 /.env
 /tmp/
-/subprojects/kinetis-sim/
-/subprojects/packagecache/
-/subprojects/.wraplock
+/subprojects/*
+!/subprojects/*.wrap
+!/subprojects/packagefiles/
+!/subprojects/packagefiles/**
 __pycache__/
 *.py[cod]
 uv.lock

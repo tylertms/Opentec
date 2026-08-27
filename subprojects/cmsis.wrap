@@ -1,0 +1,5 @@
+[wrap-git]
+url = https://github.com/nxp-mcuxpresso/CMSIS_5.git
+revision = ace291fb56654b2a62b4a80cbba8a75abb36aa18
+depth = 1
+patch_directory = cmsis

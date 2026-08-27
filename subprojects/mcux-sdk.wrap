@@ -1,0 +1,5 @@
+[wrap-git]
+url = https://github.com/nxp-mcuxpresso/legacy-mcux-sdk.git
+revision = 8a289764d763ad06e0c3a05c885644ed98b970af
+depth = 1
+patch_directory = mcux-sdk
