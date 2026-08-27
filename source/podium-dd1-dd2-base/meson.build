@@ -554,6 +554,7 @@ if not meson.is_cross_build()
     'base-wheel-protocol-test',
     'tests/source/wheel_protocol.c',
     wheel_protocol_sources,
+    button_filter_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -563,6 +564,7 @@ if not meson.is_cross_build()
     'tests/source/wheel_service.c',
     wheel_service_sources,
     wheel_protocol_sources,
+    button_filter_sources,
     wheel_status_sources,
     wheel_transport_service_sources,
     wheel_transport_frame_sources,

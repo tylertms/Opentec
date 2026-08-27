@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "input/button_filter.h"
+
 static uint8_t crc8(const uint8_t *data, uint8_t length) {
     uint8_t crc = UINT8_MAX;
     while (length-- != 0) {
@@ -20,6 +22,12 @@ static void clear_response(WheelProtocol *protocol) {
     }
 }
 
+static void clear_input(WheelProtocol *protocol) {
+    protocol->input = (WheelProtocolInput){0};
+    protocol->output = (WheelProtocolOutput){0};
+    protocol->button_filter = (WheelButtonFilter){0};
+}
+
 static void acknowledge(WheelProtocol *protocol) {
     protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] = WHEEL_PROTOCOL_RESPONSE_ACKNOWLEDGED;
 }
@@ -31,6 +39,42 @@ static void respond_to_mode_selection(WheelProtocol *protocol) {
     protocol->response[WHEEL_PROTOCOL_CHECKSUM_OFFSET] =
         crc8(protocol->response, WHEEL_PROTOCOL_CONTENT_SIZE);
     protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] = flags;
+}
+
+static void build_active_response(WheelProtocol *protocol) {
+    uint8_t flags = protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET];
+    clear_response(protocol);
+    protocol->response[0] = WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
+    protocol->response[2] = protocol->output.display_segments[0];
+    protocol->response[3] = protocol->output.display_segments[1];
+    protocol->response[4] = protocol->output.display_segments[2];
+    protocol->response[5] = protocol->output.display_value;
+    protocol->response[6] = protocol->output.display_status;
+    protocol->response[7] = protocol->output.legacy_axes[0];
+    protocol->response[8] = protocol->output.legacy_axes[1];
+    protocol->response[WHEEL_PROTOCOL_CHECKSUM_OFFSET] =
+        wheel_protocol_message_checksum(protocol->response);
+    protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] = flags;
+}
+
+static void decode_input(WheelProtocol *protocol,
+                         const uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE]) {
+    const uint8_t *payload = request + 2;
+    wheel_button_filter_update(&protocol->button_filter, payload, protocol->input.buttons);
+    protocol->input.axis_outputs[0] = payload[3];
+    protocol->input.axis_outputs[1] = payload[4];
+    protocol->input.motion = (int8_t)payload[5];
+    for (uint8_t index = 0; index < sizeof(protocol->input.controls); index++) {
+        protocol->input.controls[index] = payload[6 + index];
+    }
+    protocol->input.axis_values[0] = payload[16];
+    protocol->input.axis_values[1] = payload[17];
+    protocol->input.mode_buttons = payload[18];
+    protocol->input.axis_report_enabled = payload[19] != 0;
+    protocol->input.capability_flags =
+        (uint16_t)payload[26] | (uint16_t)((uint16_t)payload[28] << 8);
+    protocol->input.axis_limit = payload[29];
+    protocol->input.ready = true;
 }
 
 bool wheel_protocol_mode_requires_authentication(uint8_t mode) {
@@ -60,6 +104,7 @@ bool wheel_protocol_mode_requires_authentication(uint8_t mode) {
 
 void wheel_protocol_init(WheelProtocol *protocol) {
     clear_response(protocol);
+    clear_input(protocol);
     protocol->phase = WHEEL_PROTOCOL_WAITING;
     protocol->mode = WHEEL_MODE_BOOT;
 }
@@ -74,6 +119,14 @@ void wheel_protocol_accept(WheelProtocol *protocol,
     if (protocol->phase == WHEEL_PROTOCOL_WAITING) {
         acknowledge(protocol);
         protocol->phase = WHEEL_PROTOCOL_SELECTING;
+        return;
+    }
+    if (protocol->phase == WHEEL_PROTOCOL_ACTIVE) {
+        if (request[0] == WHEEL_PROTOCOL_COMMAND_SELECT_MODE &&
+            wheel_protocol_message_valid(request)) {
+            decode_input(protocol, request);
+        }
+        build_active_response(protocol);
         return;
     }
     if (protocol->phase != WHEEL_PROTOCOL_SELECTING) {
@@ -106,6 +159,21 @@ void wheel_protocol_accept(WheelProtocol *protocol,
 
 const uint8_t *wheel_protocol_response(const WheelProtocol *protocol) { return protocol->response; }
 
+const WheelProtocolInput *wheel_protocol_input(const WheelProtocol *protocol) {
+    return protocol->input.ready ? &protocol->input : 0;
+}
+
+void wheel_protocol_set_output(WheelProtocol *protocol, const WheelProtocolOutput *output) {
+    protocol->output = *output;
+    if (protocol->phase == WHEEL_PROTOCOL_ACTIVE) {
+        build_active_response(protocol);
+    }
+}
+
+uint8_t wheel_protocol_message_checksum(const uint8_t packet[WHEEL_PROTOCOL_PACKET_SIZE]) {
+    return crc8(packet, WHEEL_PROTOCOL_CONTENT_SIZE);
+}
+
 bool wheel_protocol_message_valid(const uint8_t packet[WHEEL_PROTOCOL_PACKET_SIZE]) {
-    return packet[WHEEL_PROTOCOL_CHECKSUM_OFFSET] == crc8(packet, WHEEL_PROTOCOL_CONTENT_SIZE);
+    return packet[WHEEL_PROTOCOL_CHECKSUM_OFFSET] == wheel_protocol_message_checksum(packet);
 }

@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "input/button_filter.h"
+
 enum {
     WHEEL_PROTOCOL_PACKET_SIZE = 57,
     WHEEL_PROTOCOL_CONTENT_SIZE = 32,
@@ -31,7 +33,30 @@ typedef enum {
 } WheelProtocolPhase;
 
 typedef struct {
+    uint8_t buttons[3];
+    uint8_t axis_outputs[2];
+    int8_t motion;
+    uint8_t controls[8];
+    uint8_t axis_values[2];
+    uint8_t mode_buttons;
+    uint16_t capability_flags;
+    uint8_t axis_limit;
+    bool axis_report_enabled;
+    bool ready;
+} WheelProtocolInput;
+
+typedef struct {
+    uint8_t display_segments[3];
+    uint8_t display_value;
+    uint8_t display_status;
+    uint8_t legacy_axes[2];
+} WheelProtocolOutput;
+
+typedef struct {
     uint8_t response[WHEEL_PROTOCOL_PACKET_SIZE];
+    WheelProtocolInput input;
+    WheelProtocolOutput output;
+    WheelButtonFilter button_filter;
     WheelProtocolPhase phase;
     uint8_t mode;
 } WheelProtocol;
@@ -40,6 +65,9 @@ void wheel_protocol_init(WheelProtocol *protocol);
 void wheel_protocol_accept(WheelProtocol *protocol,
                            const uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE]);
 const uint8_t *wheel_protocol_response(const WheelProtocol *protocol);
+const WheelProtocolInput *wheel_protocol_input(const WheelProtocol *protocol);
+void wheel_protocol_set_output(WheelProtocol *protocol, const WheelProtocolOutput *output);
+uint8_t wheel_protocol_message_checksum(const uint8_t packet[WHEEL_PROTOCOL_PACKET_SIZE]);
 bool wheel_protocol_message_valid(const uint8_t packet[WHEEL_PROTOCOL_PACKET_SIZE]);
 bool wheel_protocol_mode_requires_authentication(uint8_t mode);
 
