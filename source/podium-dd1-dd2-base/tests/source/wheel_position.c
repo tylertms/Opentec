@@ -54,10 +54,23 @@ static void test_invalid_travel(void) {
     assert(wheel_position_axis(INT32_MAX, &calibration) == 0);
 }
 
+static void test_velocity(void) {
+    WheelVelocityEstimator estimator;
+    wheel_velocity_reset(&estimator);
+
+    assert(wheel_velocity_update(&estimator, 100, UINT32_MAX - 1, 25) == 0);
+    assert(wheel_velocity_update(&estimator, 100, UINT32_MAX - 1, 25) == 0);
+    assert(wheel_velocity_update(&estimator, 110, 0, 25) == 1250);
+    assert(wheel_velocity_update(&estimator, 120, 2, 25) == 2187);
+    assert(wheel_velocity_update(&estimator, 100, 4, 100) == -10000);
+    assert(wheel_velocity_update(&estimator, 90, 5, 0) == -10000);
+}
+
 int main(void) {
     test_centering();
     test_deadband();
     test_axis_scaling();
     test_invalid_travel();
+    test_velocity();
     return 0;
 }

@@ -1,6 +1,7 @@
 #include "wheel/position.h"
 
 #include <stdint.h>
+#include <string.h>
 
 static int32_t clamp_position(int64_t position) {
     if (position < -WHEEL_POSITION_SAMPLE_LIMIT) {
@@ -48,4 +49,35 @@ int16_t wheel_position_axis(int32_t sample, const WheelPositionCalibration *cali
 
 uint16_t wheel_position_hid_axis(int32_t sample, const WheelPositionCalibration *calibration) {
     return (uint16_t)((int32_t)wheel_position_axis(sample, calibration) + 32768);
+}
+
+void wheel_velocity_reset(WheelVelocityEstimator *estimator) {
+    memset(estimator, 0, sizeof(*estimator));
+}
+
+int32_t wheel_velocity_update(WheelVelocityEstimator *estimator, int32_t position, uint32_t time_ms,
+                              uint8_t response_percent) {
+    position = clamp_position(position);
+    if (estimator->initialized == 0) {
+        estimator->previous_position = position;
+        estimator->previous_time_ms = time_ms;
+        estimator->initialized = 1;
+        return 0;
+    }
+
+    uint32_t elapsed_ms = time_ms - estimator->previous_time_ms;
+    if (elapsed_ms == 0) {
+        return estimator->velocity;
+    }
+    if (response_percent > 100) {
+        response_percent = 100;
+    }
+
+    int32_t distance = position - estimator->previous_position;
+    int32_t measured_velocity = distance * 1000 / (int32_t)elapsed_ms;
+    int32_t correction = measured_velocity - estimator->velocity;
+    estimator->velocity += (int32_t)((int64_t)correction * response_percent / 100);
+    estimator->previous_position = position;
+    estimator->previous_time_ms = time_ms;
+    return estimator->velocity;
 }
