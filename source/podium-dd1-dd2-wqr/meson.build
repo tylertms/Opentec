@@ -14,6 +14,7 @@ if meson.is_cross_build()
       '-ffunction-sections',
       '-fdata-sections',
       '-fno-common',
+      '-DCPU_MKV30F128VLH10',
       '-D__START=firmware_main',
       '-D__STARTUP_CLEAR_BSS',
     ],
