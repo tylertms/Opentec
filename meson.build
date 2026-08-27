@@ -10,4 +10,8 @@ project(
   ],
 )
 
+if meson.is_cross_build()
+  add_languages('c', native: true)
+endif
+
 subdir('source/podium-dd1-dd2-wqr')
