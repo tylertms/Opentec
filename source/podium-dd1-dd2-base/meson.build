@@ -9,6 +9,7 @@ force_filter_sources = files('source/force_feedback/filter.c')
 force_soft_stop_sources = files('source/force_feedback/soft_stop.c')
 fanatec_input_sources = files('source/usb/fanatec_input.c')
 button_filter_sources = files('source/input/button_filter.c')
+board_identity_sources = files('source/board/identity.c')
 h_pattern_shifter_sources = files('source/shifter/h_pattern.c')
 logitech_input_sources = files('source/usb/logitech_input.c')
 motor_tuning_parameter_sources = files('source/motor/tuning_parameter.c')
@@ -47,6 +48,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'force-soft-stop': 'source/force_feedback/soft_stop.c',
     'fanatec-input': 'source/usb/fanatec_input.c',
     'button-filter': 'source/input/button_filter.c',
+    'board-identity': 'source/board/identity.c',
     'firmware': 'source/firmware.c',
     'h-pattern-shifter': 'source/shifter/h_pattern.c',
     'logitech-input': 'source/usb/logitech_input.c',
@@ -55,6 +57,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'pedal-frame': 'source/pedal/frame.c',
     'pedal-axis': 'source/pedal/axis.c',
     'platform-clock': 'source/platform/dspic33e/clock.c',
+    'platform-board-identity': 'source/platform/dspic33e/board_identity.c',
     'platform-pin-mux': 'source/platform/dspic33e/pin_mux.c',
     'platform-time': 'source/platform/dspic33e/time.c',
     'platform-time-common': 'source/platform/time.c',
@@ -169,6 +172,14 @@ if not meson.is_cross_build()
     'base-button-filter-test',
     'tests/source/button_filter.c',
     button_filter_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  board_identity_test = executable(
+    'base-board-identity-test',
+    'tests/source/board_identity.c',
+    board_identity_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -331,6 +342,7 @@ if not meson.is_cross_build()
   test('base-force-soft-stop', force_soft_stop_test, suite: ['base', 'force-feedback'])
   test('base-fanatec-input', fanatec_input_test, suite: ['base', 'usb', 'input'])
   test('base-button-filter', button_filter_test, suite: ['base', 'wheel-input'])
+  test('base-board-identity', board_identity_test, suite: ['base', 'board'])
   test('base-h-pattern-shifter', h_pattern_shifter_test, suite: ['base', 'shifter'])
   test('base-logitech-input', logitech_input_test, suite: ['base', 'usb', 'input'])
   test('base-motor-tuning-parameter', motor_tuning_parameter_test, suite: ['base', 'motor'])
