@@ -1,12 +1,16 @@
+#include <stdbool.h>
 #include <xc.h>
 
 #include "board/identity.h"
+#include "motor/probe.h"
+#include "motor/tuning_service.h"
 #include "platform/adc.h"
 #include "platform/aux_bus.h"
 #include "platform/board_identity.h"
 #include "platform/clock.h"
 #include "platform/pin_mux.h"
 #include "platform/time.h"
+#include "profile/tuning.h"
 
 #pragma config GWRP = OFF
 #pragma config GSS = OFF
@@ -31,6 +35,36 @@
 #pragma config JTAGEN = OFF
 
 static BoardIdentity board_identity;
+static MotorProbe motor_probe;
+static MotorTuningService motor_tuning_service;
+static TuningProfile tuning_profile;
+static MotorTuningContext motor_tuning_context;
+static bool motor_tuning_ready;
+
+static void initialize_motor(void) {
+    tuning_profile_defaults(&tuning_profile);
+    motor_tuning_context = (MotorTuningContext){
+        .automatic_rotation_degrees = tuning_profile.rotation_degrees,
+        .ramp_percent = 0,
+        .strength_percent = board_identity.variant == BOARD_VARIANT_DD1 ? 40 : 32,
+        .xbox_mode = 0,
+        .calibration_active = 0,
+    };
+    motor_probe_init(&motor_probe);
+    motor_probe_start(&motor_probe);
+    motor_tuning_ready = false;
+}
+
+static void service_motor(void) {
+    motor_probe_run(&motor_probe);
+    if (!motor_tuning_ready && motor_probe_identity(&motor_probe) != 0) {
+        motor_tuning_service_init(&motor_tuning_service, &tuning_profile, &motor_tuning_context);
+        motor_tuning_ready = true;
+    }
+    if (motor_tuning_ready) {
+        motor_tuning_service_run(&motor_tuning_service);
+    }
+}
 
 int main(void) {
     platform_clock_init();
@@ -39,7 +73,9 @@ int main(void) {
     platform_time_init();
     platform_adc_init();
     platform_aux_bus_init();
+    initialize_motor();
     for (;;) {
         platform_aux_bus_service();
+        service_motor();
     }
 }
