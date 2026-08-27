@@ -1,5 +1,6 @@
 base_include = include_directories('source')
 base_source_path = meson.current_source_dir() / 'source'
+common_source_path = meson.project_source_root() / 'source'
 analog_axis_sources = files('source/analog/axis.c')
 force_output_sources = files('source/force_feedback/output.c')
 wheel_position_sources = files('source/wheel/position.c')
@@ -20,13 +21,21 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'analog-axis': 'source/analog/axis.c',
     'force-output': 'source/force_feedback/output.c',
     'firmware': 'source/firmware.c',
+    'wqr-frame': meson.project_source_root() / 'source/common/wqr_frame.c',
     'wheel-position': 'source/wheel/position.c',
   }
     firmware_objects += custom_target(
       'podium-dd1-dd2-base-' + name + '-object',
       input: source,
       output: name + '.o',
-      command: [compiler] + device_args + ['-I' + base_source_path, '-c', '@INPUT@', '-o', '@OUTPUT@'],
+      command: [compiler] + device_args + [
+        '-I' + base_source_path,
+        '-I' + common_source_path,
+        '-c',
+        '@INPUT@',
+        '-o',
+        '@OUTPUT@',
+      ],
       build_by_default: false,
     )
   endforeach
@@ -78,7 +87,16 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wqr_frame_test = executable(
+    'base-wqr-frame-test',
+    'tests/source/wqr_frame.c',
+    wqr_frame_sources,
+    build_by_default: false,
+    include_directories: common_include,
+  )
+
   test('base-analog-axis', analog_axis_test, suite: ['base', 'analog'])
   test('base-force-output', force_output_test, suite: ['base', 'force-feedback'])
   test('base-wheel-position', wheel_position_test, suite: ['base', 'wheel-position'])
+  test('base-wqr-frame', wqr_frame_test, suite: ['base', 'transport'])
 endif

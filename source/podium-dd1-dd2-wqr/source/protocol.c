@@ -3,21 +3,6 @@
 #include <string.h>
 
 enum {
-    FRAME_START = 0x7b,
-    FRAME_END = 0x7d,
-    FRAME_TYPE_MASK = 0x0f,
-    FRAME_FIRST = 0x10,
-    FRAME_MORE = 0x20,
-    FRAME_LAST = 0x40,
-    FRAME_FRAGMENT_MASK = 0x70,
-
-    FRAME_TYPE_OFFSET = 1,
-    FRAME_SEQUENCE_OFFSET = 2,
-    FRAME_LENGTH_OFFSET = 3,
-    FRAME_PAYLOAD_OFFSET = 4,
-    FRAME_CRC_OFFSET = 61,
-    FRAME_END_OFFSET = 63,
-
     I2C_RESPONSE_OVERHEAD = 2,
     I2C_FAILURE_RESPONSE_SIZE = 3,
     SPI_RESPONSE_SIZE = 57,
@@ -58,49 +43,12 @@ static void write_u32(uint8_t *data, uint32_t value) {
 }
 
 uint16_t wqr_protocol_crc(const uint8_t *data, size_t length) {
-    uint16_t crc = 0;
-
-    while (length-- != 0) {
-        unsigned int bit;
-
-        crc ^= *data++;
-        for (bit = 0; bit < 8; ++bit) {
-            crc = (uint16_t)((crc >> 1) ^ ((crc & 1) != 0 ? 0x8408 : 0));
-        }
-    }
-
-    return crc;
+    return wqr_frame_crc(data, length);
 }
 
 bool wqr_protocol_build_frame(uint8_t frame[WQR_FRAME_SIZE], uint8_t type_flags, uint8_t sequence,
                               const uint8_t *payload, size_t payload_length) {
-    uint16_t crc;
-
-    if (payload_length > WQR_FRAME_PAYLOAD_SIZE || (payload == NULL && payload_length != 0)) {
-        return false;
-    }
-
-    memset(frame, 0, WQR_FRAME_SIZE);
-    frame[0] = FRAME_START;
-    frame[FRAME_TYPE_OFFSET] = type_flags;
-    frame[FRAME_SEQUENCE_OFFSET] = sequence;
-    frame[FRAME_LENGTH_OFFSET] = (uint8_t)payload_length;
-
-    if (payload_length != 0) {
-        memcpy(frame + FRAME_PAYLOAD_OFFSET, payload, payload_length);
-    }
-
-    crc = wqr_protocol_crc(frame + FRAME_TYPE_OFFSET, WQR_FRAME_BODY_SIZE);
-    write_u16(frame + FRAME_CRC_OFFSET, crc);
-    frame[FRAME_END_OFFSET] = FRAME_END;
-    return true;
-}
-
-static bool frame_valid(const uint8_t frame[WQR_FRAME_SIZE]) {
-    return frame[0] == FRAME_START && frame[FRAME_END_OFFSET] == FRAME_END &&
-           frame[FRAME_LENGTH_OFFSET] <= WQR_FRAME_PAYLOAD_SIZE &&
-           read_u16(frame + FRAME_CRC_OFFSET) ==
-               wqr_protocol_crc(frame + FRAME_TYPE_OFFSET, WQR_FRAME_BODY_SIZE);
+    return wqr_frame_build(frame, type_flags, sequence, payload, payload_length);
 }
 
 static bool transfer_ready(const wqr_protocol *protocol) {
@@ -357,23 +305,24 @@ void wqr_protocol_init(wqr_protocol *protocol, const wqr_io *io) {
 }
 
 bool wqr_protocol_receive(wqr_protocol *protocol, const uint8_t frame[WQR_FRAME_SIZE]) {
+    wqr_frame_view view;
     uint8_t type_flags;
     uint8_t type;
     uint8_t fragments;
 
-    if (!frame_valid(frame)) {
+    if (!wqr_frame_parse(frame, &view)) {
         ++protocol->error_count;
         queue_control(protocol, false);
         return false;
     }
 
-    type_flags = frame[FRAME_TYPE_OFFSET];
-    type = type_flags & FRAME_TYPE_MASK;
-    fragments = type_flags & FRAME_FRAGMENT_MASK;
+    type_flags = view.type_flags;
+    type = type_flags & WQR_FRAME_TYPE_MASK;
+    fragments = type_flags & WQR_FRAME_FRAGMENT_MASK;
 
     if (type == 0) {
-        bool sequence_is_earlier = frame[FRAME_SEQUENCE_OFFSET] < protocol->sequence ||
-                                   (protocol->sequence == 0 && frame[FRAME_SEQUENCE_OFFSET] != 0);
+        bool sequence_is_earlier =
+            view.sequence < protocol->sequence || (protocol->sequence == 0 && view.sequence != 0);
 
         if (protocol->response_ready && sequence_is_earlier) {
             return true;
@@ -396,8 +345,8 @@ bool wqr_protocol_receive(wqr_protocol *protocol, const uint8_t frame[WQR_FRAME_
         return false;
     }
 
-    if (fragments != 0 && fragments != FRAME_FIRST && fragments != FRAME_MORE &&
-        fragments != FRAME_LAST) {
+    if (fragments != 0 && fragments != WQR_FRAME_FIRST && fragments != WQR_FRAME_MORE &&
+        fragments != WQR_FRAME_LAST) {
         ++protocol->error_count;
         protocol->receive_length = 0;
         protocol->fragment_open = false;
@@ -408,19 +357,19 @@ bool wqr_protocol_receive(wqr_protocol *protocol, const uint8_t frame[WQR_FRAME_
         protocol->receive_length = 0;
         protocol->payload_type = type;
         protocol->fragment_open = false;
-    } else if (fragments == FRAME_FIRST) {
+    } else if (fragments == WQR_FRAME_FIRST) {
         protocol->receive_length = 0;
         protocol->payload_type = type;
         protocol->fragment_open = true;
     } else if (!protocol->fragment_open || protocol->payload_type != type ||
-               frame[FRAME_SEQUENCE_OFFSET] != protocol->sequence) {
+               view.sequence != protocol->sequence) {
         ++protocol->error_count;
         protocol->receive_length = 0;
         protocol->fragment_open = false;
         queue_control(protocol, false);
         return false;
     }
-    if (!append_payload(protocol, frame + FRAME_PAYLOAD_OFFSET, frame[FRAME_LENGTH_OFFSET])) {
+    if (!append_payload(protocol, view.payload, view.payload_length)) {
         ++protocol->error_count;
         protocol->receive_length = 0;
         protocol->fragment_open = false;
@@ -428,8 +377,8 @@ bool wqr_protocol_receive(wqr_protocol *protocol, const uint8_t frame[WQR_FRAME_
         return false;
     }
 
-    protocol->sequence = (uint8_t)(frame[FRAME_SEQUENCE_OFFSET] + 1);
-    if (fragments == FRAME_FIRST || fragments == FRAME_MORE) {
+    protocol->sequence = (uint8_t)(view.sequence + 1);
+    if (fragments == WQR_FRAME_FIRST || fragments == WQR_FRAME_MORE) {
         queue_control(protocol, true);
         protocol->payload_type = type;
         return true;
@@ -453,11 +402,11 @@ bool wqr_protocol_response(const wqr_protocol *protocol, uint8_t frame[WQR_FRAME
 
     remaining = protocol->transmit_length - protocol->transmit_offset;
     length = remaining < WQR_FRAME_PAYLOAD_SIZE ? remaining : WQR_FRAME_PAYLOAD_SIZE;
-    type_flags = protocol->response_type & FRAME_TYPE_MASK;
+    type_flags = protocol->response_type & WQR_FRAME_TYPE_MASK;
     if (protocol->transmit_length > WQR_FRAME_PAYLOAD_SIZE) {
-        type_flags |= protocol->transmit_offset == 0       ? FRAME_FIRST
-                      : remaining > WQR_FRAME_PAYLOAD_SIZE ? FRAME_MORE
-                                                           : FRAME_LAST;
+        type_flags |= protocol->transmit_offset == 0       ? WQR_FRAME_FIRST
+                      : remaining > WQR_FRAME_PAYLOAD_SIZE ? WQR_FRAME_MORE
+                                                           : WQR_FRAME_LAST;
     }
     return wqr_protocol_build_frame(frame, type_flags, protocol->sequence,
                                     protocol->transmit_payload + protocol->transmit_offset, length);
