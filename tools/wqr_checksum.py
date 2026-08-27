@@ -20,7 +20,7 @@ def crc32_mpeg2(data: bytes) -> int:
     return crc
 
 
-def package_image(image: bytes) -> bytes:
+def add_checksum(image: bytes) -> bytes:
     if len(image) < METADATA_OFFSET + METADATA_SIZE:
         raise ValueError("image does not contain the metadata region")
     if len(image) > FLASH_END - APPLICATION_BASE:
@@ -37,12 +37,12 @@ def package_image(image: bytes) -> bytes:
     ):
         raise ValueError("firmware metadata region is occupied")
 
-    packaged = bytearray(image)
+    checksummed = bytearray(image)
     metadata = struct.pack(
         METADATA_FORMAT,
         b"wqrb",
         APPLICATION_BASE,
-        len(packaged),
+        len(checksummed),
         0,
         0x0064FFFF,
         b"\xff" * 12,
@@ -50,10 +50,12 @@ def package_image(image: bytes) -> bytes:
         b"\xff" * 12,
         0xFFFFFBFE,
     )
-    packaged[METADATA_OFFSET : METADATA_OFFSET + METADATA_SIZE] = metadata
-    checksum_data = bytes(packaged[:CHECKSUM_OFFSET] + packaged[CHECKSUM_OFFSET + 4 :])
-    struct.pack_into("<I", packaged, CHECKSUM_OFFSET, crc32_mpeg2(checksum_data))
-    return bytes(packaged)
+    checksummed[METADATA_OFFSET : METADATA_OFFSET + METADATA_SIZE] = metadata
+    checksum_data = bytes(
+        checksummed[:CHECKSUM_OFFSET] + checksummed[CHECKSUM_OFFSET + 4 :]
+    )
+    struct.pack_into("<I", checksummed, CHECKSUM_OFFSET, crc32_mpeg2(checksum_data))
+    return bytes(checksummed)
 
 
 def main() -> None:
@@ -62,7 +64,7 @@ def main() -> None:
 
     source = Path(sys.argv[1])
     destination = Path(sys.argv[2])
-    destination.write_bytes(package_image(source.read_bytes()))
+    destination.write_bytes(add_checksum(source.read_bytes()))
 
 
 if __name__ == "__main__":

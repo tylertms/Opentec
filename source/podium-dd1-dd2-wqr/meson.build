@@ -4,6 +4,7 @@ protocol_include = include_directories('source')
 if meson.is_cross_build()
   linker_script = 'source/vendor/mkv30f12810/gcc/MKV30F128xxx10_flash.ld'
   objcopy = find_program('objcopy')
+  python = import('python').find_installation()
 
   firmware = executable(
     'podium-dd1-dd2-wqr',
@@ -32,23 +33,53 @@ if meson.is_cross_build()
     link_depends: files(linker_script),
     name_suffix: 'elf',
   )
-  raw_firmware = custom_target(
-    'podium-dd1-dd2-wqr-raw-image',
+  unchecksummed_firmware = custom_target(
+    'podium-dd1-dd2-wqr-binary',
     input: firmware,
-    output: 'podium-dd1-dd2-wqr.raw',
-    command: [objcopy, '-O', 'binary', '--gap-fill', '0xff', '@INPUT@', '@OUTPUT@'],
+    output: 'podium-dd1-dd2-wqr.unchecksummed.bin',
+    command: [objcopy, '-O', 'binary', '@INPUT@', '@OUTPUT@'],
   )
   firmware_image = custom_target(
     'podium-dd1-dd2-wqr-image',
-    input: raw_firmware,
+    input: unchecksummed_firmware,
     output: 'podium-dd1-dd2-wqr.bin',
     command: [
-      import('python').find_installation(),
-      meson.project_source_root() / 'tools/wqr_image.py',
+      python,
+      meson.project_source_root() / 'tools/wqr_checksum.py',
       '@INPUT@',
       '@OUTPUT@',
     ],
     build_by_default: true,
+  )
+  firmware_hex = custom_target(
+    'podium-dd1-dd2-wqr-intel-hex',
+    input: firmware_image,
+    output: 'podium-dd1-dd2-wqr.unencrypted.hex',
+    command: [
+      objcopy,
+      '-I',
+      'binary',
+      '-O',
+      'ihex',
+      '--change-addresses',
+      '0xa000',
+      '@INPUT@',
+      '@OUTPUT@',
+    ],
+  )
+  custom_target(
+    'podium-dd1-dd2-wqr-encrypted-firmware',
+    input: firmware_hex,
+    output: 'podium-dd1-dd2-wqr.hex',
+    command: [
+      python,
+      meson.project_source_root() / 'tools/firmware_crypto.py',
+      'encrypt',
+      '@INPUT@',
+      '@OUTPUT@',
+      '--legacy-wide-secret',
+      '--preserve-newlines',
+    ],
   )
 
   simulator = subproject('kinetis-sim', native: true)
