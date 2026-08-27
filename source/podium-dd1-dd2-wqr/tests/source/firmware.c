@@ -39,6 +39,7 @@ enum {
     I2C0_FLT_ADDRESS = 0x40066006,
     UART1_S1_ADDRESS = 0x4006b004,
     PIT1_LDVAL_ADDRESS = 0x40037110,
+    PIT1_CVAL_ADDRESS = 0x40037114,
     SPI0_CTAR0_ADDRESS = 0x4002c00c,
     SPI_CTAR_CPHA = 1u << 25,
     SPI_CTAR_FMSZ_SHIFT = 27,
@@ -49,9 +50,16 @@ enum {
     DMA_TCD_DOFF_OFFSET = 0x14,
     DMA_SPI_TRANSMIT_CHANNEL = 2,
     DMA_SPI_RECEIVE_CHANNEL = 3,
+    DMA3_INTERRUPT = 3,
+    PIT0_INTERRUPT = 48,
     EXPECTED_CORE_CLOCK_HZ = 96000000,
-    EXPECTED_UART_RESPONSE_GUARD_TICKS = 467
+    EXPECTED_UART_RESPONSE_GUARD_TICKS = 467,
+    EXPECTED_UART_RECOVERY_GUARD_TICKS = 3964,
+    DMA3_PRIORITY = 10,
+    PIT0_PRIORITY = 11
 };
+
+static const uint32_t NVIC_PRIORITY_BASE = UINT32_C(0xe000e400);
 
 typedef struct {
     const uint16_t *spi;
@@ -258,6 +266,31 @@ static bool uart_guard_is_exact(Kinetis *device) {
     return false;
 }
 
+static bool uart_recovery_guard_is_fresh(Kinetis *device) {
+    uint32_t ticks = 0;
+
+    if (!kinetis_read(device, PIT1_CVAL_ADDRESS, &ticks, sizeof(ticks))) {
+        fprintf(stderr, "UART recovery guard register read failed\n");
+        return false;
+    }
+    if (ticks > EXPECTED_UART_RECOVERY_GUARD_TICKS / 2) {
+        return true;
+    }
+    fprintf(stderr, "unexpected UART recovery guard: %u ticks\n", ticks);
+    return false;
+}
+
+static bool interrupt_priorities_are_safe(Kinetis *device) {
+    uint32_t dma_priority = 0;
+    uint32_t pit_priority = 0;
+    CortexM4 *cpu = kinetis_cpu(device);
+
+    return cortex_m4_read_memory(cpu, NVIC_PRIORITY_BASE + DMA3_INTERRUPT, 1, &dma_priority) &&
+           cortex_m4_read_memory(cpu, NVIC_PRIORITY_BASE + PIT0_INTERRUPT, 1, &pit_priority) &&
+           dma_priority == DMA3_PRIORITY << 4 && pit_priority == PIT0_PRIORITY << 4 &&
+           dma_priority < pit_priority;
+}
+
 static bool send_request(Kinetis *device, const uint8_t frame[WQR_FRAME_SIZE]) {
     uint8_t window[RECEIVE_WINDOW_SIZE] = {0};
 
@@ -350,9 +383,18 @@ static bool recover_from_noise(Kinetis *device) {
 }
 
 static bool recover_from_uart_error(Kinetis *device, uint8_t request_sequence) {
+    uint32_t aged_ticks = 0;
+    uint32_t restarted_ticks = 0;
     uint32_t status = 0;
 
-    return kinetis_uart1_error(device, 0x0f) && run_firmware(device, IDLE_INSTRUCTIONS) &&
+    return run_firmware(device, IDLE_INSTRUCTIONS) && kinetis_uart1_error(device, 0x0f) &&
+           run_firmware(device, INTERRUPT_INSTRUCTIONS) && uart_recovery_guard_is_fresh(device) &&
+           run_firmware(device, INTERRUPT_INSTRUCTIONS * 10) &&
+           kinetis_read(device, PIT1_CVAL_ADDRESS, &aged_ticks, sizeof(aged_ticks)) &&
+           kinetis_uart1_error(device, 0x0f) && run_firmware(device, INTERRUPT_INSTRUCTIONS) &&
+           kinetis_read(device, PIT1_CVAL_ADDRESS, &restarted_ticks, sizeof(restarted_ticks)) &&
+           uart_recovery_guard_is_fresh(device) && restarted_ticks > aged_ticks &&
+           run_firmware(device, IDLE_INSTRUCTIONS) &&
            kinetis_read(device, UART1_S1_ADDRESS, &status, 1) && (status & 0x0f) == 0 &&
            exchange_status(device, request_sequence, 0);
 }
@@ -732,6 +774,7 @@ static bool firmware_passes(const char *path, KinetisPackage package) {
                                        kinetis_set_reset_state(device, 1, true) &&
                                        run_firmware(device, STARTUP_INSTRUCTIONS));
     VERIFY_STAGE("hardware configuration", hardware_configuration_valid(device));
+    VERIFY_STAGE("interrupt priorities", interrupt_priorities_are_safe(device));
     VERIFY_STAGE("status", exchange_status(device, 0, 0));
     VERIFY_STAGE("UART response guard",
                  run_firmware(device, INTERRUPT_INSTRUCTIONS) && uart_guard_is_exact(device));

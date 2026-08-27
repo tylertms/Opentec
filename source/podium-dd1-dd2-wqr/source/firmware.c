@@ -167,6 +167,8 @@ static void configure_pins(void) {
 }
 
 static void start_uart_guard(uint32_t ticks) {
+    PIT_StopTimer(PIT, kPIT_Chnl_1);
+    PIT_ClearStatusFlags(PIT, kPIT_Chnl_1, kPIT_TimerFlag);
     PIT_SetTimerPeriod(PIT, kPIT_Chnl_1, ticks + 1);
     PIT_StartTimer(PIT, kPIT_Chnl_1);
 }
@@ -297,7 +299,7 @@ static void configure_spi(void) {
     DSPI_MasterTransferCreateHandle(SPI0, &spi_word_handle, spi_word_callback, NULL);
 
     nvic_enable(DMA2_IRQn, 14);
-    nvic_enable(DMA3_IRQn, 14);
+    nvic_enable(DMA3_IRQn, 10);
     nvic_enable(SPI0_IRQn, 14);
 }
 
@@ -543,6 +545,9 @@ void DMA2_IRQHandler(void) {
 }
 
 void DMA3_IRQHandler(void) {
+    if ((EDMA_GetChannelStatusFlags(DMA0, SPI_RECEIVE_DMA_CHANNEL) & kEDMA_InterruptFlag) == 0) {
+        return;
+    }
     EDMA_ClearChannelStatusFlags(DMA0, SPI_RECEIVE_DMA_CHANNEL,
                                  kEDMA_DoneFlag | kEDMA_InterruptFlag);
     DSPI_DisableDMA(SPI0, kDSPI_RxDmaEnable | kDSPI_TxDmaEnable);
