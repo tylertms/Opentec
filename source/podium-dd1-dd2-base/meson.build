@@ -4,6 +4,7 @@ common_source_path = meson.project_source_root() / 'source'
 analog_axis_sources = files('source/analog/axis.c')
 force_output_sources = files('source/force_feedback/output.c')
 fanatec_input_sources = files('source/usb/fanatec_input.c')
+button_filter_sources = files('source/input/button_filter.c')
 remote_exchange_sources = files('source/wheel/remote_exchange.c')
 remote_i2c_sources = files('source/wheel/remote_i2c.c')
 remote_spi_sources = files('source/wheel/remote_spi.c')
@@ -26,6 +27,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'analog-axis': 'source/analog/axis.c',
     'force-output': 'source/force_feedback/output.c',
     'fanatec-input': 'source/usb/fanatec_input.c',
+    'button-filter': 'source/input/button_filter.c',
     'firmware': 'source/firmware.c',
     'remote-exchange': 'source/wheel/remote_exchange.c',
     'remote-i2c': 'source/wheel/remote_i2c.c',
@@ -97,6 +99,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  button_filter_test = executable(
+    'base-button-filter-test',
+    'tests/source/button_filter.c',
+    button_filter_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_position_test = executable(
     'base-wheel-position-test',
     'tests/source/wheel_position.c',
@@ -155,6 +165,7 @@ if not meson.is_cross_build()
   test('base-analog-axis', analog_axis_test, suite: ['base', 'analog'])
   test('base-force-output', force_output_test, suite: ['base', 'force-feedback'])
   test('base-fanatec-input', fanatec_input_test, suite: ['base', 'usb', 'input'])
+  test('base-button-filter', button_filter_test, suite: ['base', 'wheel-input'])
   test('base-remote-exchange', remote_exchange_test, suite: ['base', 'transport'])
   test('base-remote-i2c', remote_i2c_test, suite: ['base', 'wheel-i2c'])
   test('base-remote-spi', remote_spi_test, suite: ['base', 'wheel-spi'])
