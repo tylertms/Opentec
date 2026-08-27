@@ -7,7 +7,7 @@ if meson.is_cross_build()
   python = import('python').find_installation()
 
   firmware = executable(
-    'podium-dd1-dd2-wqr',
+    'podium-dd1-dd2-wqr.elf',
     protocol_sources,
     'source/platform/kinetis/platform.c',
     'source/vendor/mkv30f12810/gcc/startup_MKV30F12810.S',
@@ -25,13 +25,13 @@ if meson.is_cross_build()
       include_directories('source/vendor/cmsis-core/include', is_system: true),
       include_directories('source/vendor/mkv30f12810', is_system: true),
     ],
+    build_by_default: false,
     link_args: [
       '-nostartfiles',
       '-Wl,--gc-sections',
       '-T' + (meson.current_source_dir() / linker_script),
     ],
     link_depends: files(linker_script),
-    name_suffix: 'elf',
   )
   unchecksummed_firmware = custom_target(
     'podium-dd1-dd2-wqr-binary',
@@ -50,7 +50,6 @@ if meson.is_cross_build()
       '@INPUT@',
       '@OUTPUT@',
     ],
-    build_by_default: true,
   )
   firmware_hex = custom_target(
     'podium-dd1-dd2-wqr-intel-hex',
@@ -70,7 +69,7 @@ if meson.is_cross_build()
     build_subdir: 'podium-dd1-dd2-wqr.elf.p',
   )
   custom_target(
-    'podium-dd1-dd2-wqr-encrypted-firmware',
+    'podium-dd1-dd2-wqr',
     input: firmware_hex,
     output: 'podium-dd1-dd2-wqr.hex',
     command: [
@@ -82,6 +81,7 @@ if meson.is_cross_build()
       '--legacy-wide-secret',
       '--preserve-newlines',
     ],
+    build_by_default: true,
   )
 
   simulator = subproject('kinetis-sim', native: true)
@@ -90,6 +90,7 @@ if meson.is_cross_build()
     'podium-dd1-dd2-wqr-test',
     'tests/firmware_test.c',
     protocol_sources,
+    build_by_default: false,
     native: true,
     dependencies: simulator_firmware_image,
     include_directories: protocol_include,
