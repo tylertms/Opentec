@@ -26,8 +26,8 @@
 #include "settings/state.h"
 #include "usb/device.h"
 #include "usb/fanatec_input.h"
-#include "wheel/button_service.h"
 #include "wheel/position.h"
+#include "wheel/service.h"
 
 #pragma config GWRP = OFF
 #pragma config GSS = OFF
@@ -64,7 +64,7 @@ static MotorPositionReport motor_position_report;
 static bool motor_position_ready;
 static WheelPositionCalibration wheel_position_calibration;
 static PedalService pedal_service;
-static WheelButtonService wheel_button_service;
+static WheelService wheel_service;
 static AnalogSamples analog_samples;
 static fanatec_input_state usb_input_state;
 static uint8_t usb_input_report[FANATEC_INPUT_REPORT_SIZE];
@@ -192,7 +192,7 @@ static void service_usb_input(void) {
         .steering = wheel_position_hid_axis(motor_position_report.wheel_position,
                                             &wheel_position_calibration),
     };
-    const uint8_t *wheel_buttons = wheel_button_service_buttons(&wheel_button_service);
+    const uint8_t *wheel_buttons = wheel_service_buttons(&wheel_service);
     for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {
         usb_input_state.button_banks[bank] = wheel_buttons[bank];
     }
@@ -223,7 +223,7 @@ int main(void) {
     platform_pedal_link_init();
     pedal_service_init(&pedal_service);
     platform_wheel_link_init();
-    wheel_button_service_init(&wheel_button_service);
+    wheel_service_init(&wheel_service);
     initialize_motor_link();
     initialize_motor();
     usb_device_init(board_identity.variant);
@@ -235,7 +235,7 @@ int main(void) {
         service_analog_input();
         service_motor_link();
         pedal_service_run(&pedal_service, now_ms);
-        wheel_button_service_run(&wheel_button_service, now_ms);
+        wheel_service_run(&wheel_service, now_ms);
         service_usb_input();
         service_motor();
         service_cooling(now_ms);

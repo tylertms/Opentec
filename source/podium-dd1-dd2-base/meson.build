@@ -48,7 +48,8 @@ remote_i2c_sources = files('source/wheel/remote_i2c.c')
 remote_spi_sources = files('source/wheel/remote_spi.c')
 remote_status_sources = files('source/wheel/remote_status.c')
 wheel_position_sources = files('source/wheel/position.c')
-wheel_button_service_sources = files('source/wheel/button_service.c')
+wheel_protocol_sources = files('source/wheel/protocol.c')
+wheel_service_sources = files('source/wheel/service.c')
 wheel_status_sources = files('source/wheel/status.c')
 wheel_transport_frame_sources = files('source/wheel/transport_frame.c')
 wheel_transport_service_sources = files('source/wheel/transport_service.c')
@@ -128,7 +129,8 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'settings-state': 'source/settings/state.c',
     'wqr-frame': meson.project_source_root() / 'source/common/wqr_frame.c',
     'wheel-position': 'source/wheel/position.c',
-    'wheel-button-service': 'source/wheel/button_service.c',
+    'wheel-protocol': 'source/wheel/protocol.c',
+    'wheel-service': 'source/wheel/service.c',
     'wheel-status': 'source/wheel/status.c',
     'wheel-transport-frame': 'source/wheel/transport_frame.c',
     'wheel-transport-service': 'source/wheel/transport_service.c',
@@ -548,10 +550,19 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
-  wheel_button_service_test = executable(
-    'base-wheel-button-service-test',
-    'tests/source/wheel_button_service.c',
-    wheel_button_service_sources,
+  wheel_protocol_test = executable(
+    'base-wheel-protocol-test',
+    'tests/source/wheel_protocol.c',
+    wheel_protocol_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  wheel_service_test = executable(
+    'base-wheel-service-test',
+    'tests/source/wheel_service.c',
+    wheel_service_sources,
+    wheel_protocol_sources,
     wheel_status_sources,
     wheel_transport_service_sources,
     wheel_transport_frame_sources,
@@ -682,7 +693,8 @@ if not meson.is_cross_build()
   test('base-remote-spi', remote_spi_test, suite: ['base', 'wheel-spi'])
   test('base-remote-status', remote_status_test, suite: ['base', 'wheel-status'])
   test('base-wheel-position', wheel_position_test, suite: ['base', 'wheel-position'])
-  test('base-wheel-button-service', wheel_button_service_test, suite: ['base', 'wheel', 'input'])
+  test('base-wheel-protocol', wheel_protocol_test, suite: ['base', 'wheel', 'protocol'])
+  test('base-wheel-service', wheel_service_test, suite: ['base', 'wheel', 'input'])
   test('base-wheel-status', wheel_status_test, suite: ['base', 'wheel', 'status'])
   test(
     'base-wheel-transport-frame',
