@@ -1,5 +1,8 @@
 #include <xc.h>
 
+#include "platform/clock.h"
+#include "platform/time.h"
+
 #pragma config GWRP = OFF
 #pragma config GSS = OFF
 #pragma config GSSK = OFF
@@ -23,6 +26,8 @@
 #pragma config JTAGEN = OFF
 
 int main(void) {
+    platform_clock_init();
+    platform_time_init();
     for (;;) {
     }
 }

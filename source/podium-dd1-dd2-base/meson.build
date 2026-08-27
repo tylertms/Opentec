@@ -18,6 +18,7 @@ pedal_axis_sources = files('source/pedal/axis.c')
 profile_bank_sources = files('source/profile/bank.c')
 profile_record_sources = files('source/profile/record.c')
 profile_tuning_sources = files('source/profile/tuning.c')
+platform_time_sources = files('source/platform/time.c')
 shifter_frame_sources = files('source/shifter/frame.c')
 remote_exchange_sources = files('source/wheel/remote_exchange.c')
 remote_i2c_sources = files('source/wheel/remote_i2c.c')
@@ -53,6 +54,9 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'motor-tuning-sync': 'source/motor/tuning_sync.c',
     'pedal-frame': 'source/pedal/frame.c',
     'pedal-axis': 'source/pedal/axis.c',
+    'platform-clock': 'source/platform/dspic33e/clock.c',
+    'platform-time': 'source/platform/dspic33e/time.c',
+    'platform-time-common': 'source/platform/time.c',
     'profile-bank': 'source/profile/bank.c',
     'profile-record': 'source/profile/record.c',
     'profile-tuning': 'source/profile/tuning.c',
@@ -247,6 +251,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  platform_time_test = executable(
+    'base-platform-time-test',
+    'tests/source/platform_time.c',
+    platform_time_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   shifter_frame_test = executable(
     'base-shifter-frame-test',
     'tests/source/shifter_frame.c',
@@ -327,6 +339,7 @@ if not meson.is_cross_build()
   test('base-profile-tuning', profile_tuning_test, suite: ['base', 'profile'])
   test('base-profile-bank', profile_bank_test, suite: ['base', 'profile'])
   test('base-profile-record', profile_record_test, suite: ['base', 'profile', 'persistence'])
+  test('base-platform-time', platform_time_test, suite: ['base', 'platform'])
   test('base-shifter-frame', shifter_frame_test, suite: ['base', 'shifter', 'transport'])
   test('base-remote-exchange', remote_exchange_test, suite: ['base', 'transport'])
   test('base-remote-i2c', remote_i2c_test, suite: ['base', 'wheel-i2c'])
