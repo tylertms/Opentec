@@ -14,6 +14,7 @@ force_safety_sources = files('source/force_feedback/safety.c')
 force_soft_stop_sources = files('source/force_feedback/soft_stop.c')
 fanatec_input_sources = files('source/usb/fanatec_input.c')
 usb_descriptor_sources = files('source/usb/descriptor.c')
+usb_control_request_sources = files('source/usb/control_request.c')
 podium_report_descriptor_sources = files('source/usb/podium_report_descriptor.c')
 button_filter_sources = files('source/input/button_filter.c')
 board_identity_sources = files('source/board/identity.c')
@@ -65,6 +66,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'force-soft-stop': 'source/force_feedback/soft_stop.c',
     'fanatec-input': 'source/usb/fanatec_input.c',
     'usb-descriptor': 'source/usb/descriptor.c',
+    'usb-control-request': 'source/usb/control_request.c',
     'podium-report-descriptor': 'source/usb/podium_report_descriptor.c',
     'button-filter': 'source/input/button_filter.c',
     'board-identity': 'source/board/identity.c',
@@ -245,6 +247,14 @@ if not meson.is_cross_build()
     'base-usb-descriptor-test',
     'tests/source/usb_descriptor.c',
     usb_descriptor_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  usb_control_request_test = executable(
+    'base-usb-control-request-test',
+    'tests/source/usb_control_request.c',
+    usb_control_request_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -480,6 +490,7 @@ if not meson.is_cross_build()
   test('base-force-soft-stop', force_soft_stop_test, suite: ['base', 'force-feedback'])
   test('base-fanatec-input', fanatec_input_test, suite: ['base', 'usb', 'input'])
   test('base-usb-descriptor', usb_descriptor_test, suite: ['base', 'usb'])
+  test('base-usb-control-request', usb_control_request_test, suite: ['base', 'usb'])
   test(
     'base-podium-report-descriptor',
     podium_report_descriptor_test,
