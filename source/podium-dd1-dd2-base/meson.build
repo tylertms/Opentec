@@ -5,6 +5,7 @@ analog_axis_sources = files('source/analog/axis.c')
 force_output_sources = files('source/force_feedback/output.c')
 fanatec_input_sources = files('source/usb/fanatec_input.c')
 button_filter_sources = files('source/input/button_filter.c')
+h_pattern_shifter_sources = files('source/shifter/h_pattern.c')
 remote_exchange_sources = files('source/wheel/remote_exchange.c')
 remote_i2c_sources = files('source/wheel/remote_i2c.c')
 remote_spi_sources = files('source/wheel/remote_spi.c')
@@ -29,6 +30,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'fanatec-input': 'source/usb/fanatec_input.c',
     'button-filter': 'source/input/button_filter.c',
     'firmware': 'source/firmware.c',
+    'h-pattern-shifter': 'source/shifter/h_pattern.c',
     'remote-exchange': 'source/wheel/remote_exchange.c',
     'remote-i2c': 'source/wheel/remote_i2c.c',
     'remote-spi': 'source/wheel/remote_spi.c',
@@ -107,6 +109,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  h_pattern_shifter_test = executable(
+    'base-h-pattern-shifter-test',
+    'tests/source/h_pattern_shifter.c',
+    h_pattern_shifter_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_position_test = executable(
     'base-wheel-position-test',
     'tests/source/wheel_position.c',
@@ -166,6 +176,7 @@ if not meson.is_cross_build()
   test('base-force-output', force_output_test, suite: ['base', 'force-feedback'])
   test('base-fanatec-input', fanatec_input_test, suite: ['base', 'usb', 'input'])
   test('base-button-filter', button_filter_test, suite: ['base', 'wheel-input'])
+  test('base-h-pattern-shifter', h_pattern_shifter_test, suite: ['base', 'shifter'])
   test('base-remote-exchange', remote_exchange_test, suite: ['base', 'transport'])
   test('base-remote-i2c', remote_i2c_test, suite: ['base', 'wheel-i2c'])
   test('base-remote-spi', remote_spi_test, suite: ['base', 'wheel-spi'])
