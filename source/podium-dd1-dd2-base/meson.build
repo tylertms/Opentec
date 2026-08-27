@@ -4,6 +4,7 @@ common_source_path = meson.project_source_root() / 'source'
 analog_axis_sources = files('source/analog/axis.c')
 analog_samples_sources = files('source/analog/samples.c')
 force_effect_bank_sources = files('source/force_feedback/bank.c')
+force_controller_sources = files('source/force_feedback/controller.c')
 cooling_fan_sources = files('source/cooling/fan.c')
 force_effect_sources = files('source/force_feedback/effect.c')
 force_output_sources = files('source/force_feedback/output.c')
@@ -52,6 +53,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'analog-samples': 'source/analog/samples.c',
     'cooling-fan': 'source/cooling/fan.c',
     'force-effect-bank': 'source/force_feedback/bank.c',
+    'force-controller': 'source/force_feedback/controller.c',
     'force-effect': 'source/force_feedback/effect.c',
     'force-output': 'source/force_feedback/output.c',
     'force-output-report': 'source/force_feedback/output_report.c',
@@ -168,6 +170,19 @@ if not meson.is_cross_build()
     'tests/source/force_effect_bank.c',
     force_effect_bank_sources,
     force_effect_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  force_controller_test = executable(
+    'base-force-controller-test',
+    'tests/source/force_controller.c',
+    force_controller_sources,
+    force_effect_bank_sources,
+    force_effect_sources,
+    force_filter_sources,
+    force_output_sources,
+    force_soft_stop_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -423,6 +438,7 @@ if not meson.is_cross_build()
   test('base-cooling-fan', cooling_fan_test, suite: ['base', 'cooling'])
   test('base-force-effect', force_effect_test, suite: ['base', 'force-feedback'])
   test('base-force-effect-bank', force_effect_bank_test, suite: ['base', 'force-feedback'])
+  test('base-force-controller', force_controller_test, suite: ['base', 'force-feedback'])
   test('base-force-output', force_output_test, suite: ['base', 'force-feedback'])
   test(
     'base-force-output-report',
