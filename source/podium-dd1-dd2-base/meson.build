@@ -6,6 +6,7 @@ force_output_sources = files('source/force_feedback/output.c')
 fanatec_input_sources = files('source/usb/fanatec_input.c')
 button_filter_sources = files('source/input/button_filter.c')
 h_pattern_shifter_sources = files('source/shifter/h_pattern.c')
+pedal_frame_sources = files('source/pedal/frame.c')
 shifter_frame_sources = files('source/shifter/frame.c')
 remote_exchange_sources = files('source/wheel/remote_exchange.c')
 remote_i2c_sources = files('source/wheel/remote_i2c.c')
@@ -32,6 +33,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'button-filter': 'source/input/button_filter.c',
     'firmware': 'source/firmware.c',
     'h-pattern-shifter': 'source/shifter/h_pattern.c',
+    'pedal-frame': 'source/pedal/frame.c',
     'shifter-frame': 'source/shifter/frame.c',
     'remote-exchange': 'source/wheel/remote_exchange.c',
     'remote-i2c': 'source/wheel/remote_i2c.c',
@@ -119,6 +121,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  pedal_frame_test = executable(
+    'base-pedal-frame-test',
+    'tests/source/pedal_frame.c',
+    pedal_frame_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   shifter_frame_test = executable(
     'base-shifter-frame-test',
     'tests/source/shifter_frame.c',
@@ -187,6 +197,7 @@ if not meson.is_cross_build()
   test('base-fanatec-input', fanatec_input_test, suite: ['base', 'usb', 'input'])
   test('base-button-filter', button_filter_test, suite: ['base', 'wheel-input'])
   test('base-h-pattern-shifter', h_pattern_shifter_test, suite: ['base', 'shifter'])
+  test('base-pedal-frame', pedal_frame_test, suite: ['base', 'pedal', 'transport'])
   test('base-shifter-frame', shifter_frame_test, suite: ['base', 'shifter', 'transport'])
   test('base-remote-exchange', remote_exchange_test, suite: ['base', 'transport'])
   test('base-remote-i2c', remote_i2c_test, suite: ['base', 'wheel-i2c'])
