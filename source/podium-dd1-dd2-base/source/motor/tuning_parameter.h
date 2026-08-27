@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include "profile/tuning.h"
+
 typedef enum {
     MOTOR_TUNING_SENSITIVITY,
     MOTOR_TUNING_FORCE_FEEDBACK_STRENGTH,
@@ -18,20 +20,7 @@ typedef enum {
 } MotorTuningParameter;
 
 typedef struct {
-    uint8_t sensitivity;
-    uint8_t force_feedback_strength;
-    uint8_t linear_force_mode;
-    uint8_t natural_damper;
-    uint8_t natural_friction;
-    uint8_t natural_inertia;
-    uint8_t interpolation_filter;
-    uint8_t force_effect_intensity;
-    uint8_t force_effect_strength;
-    uint8_t spring_effect_strength;
-    uint8_t damper_effect_strength;
-} MotorTuningValues;
-
-typedef struct {
+    uint16_t automatic_rotation_degrees;
     uint8_t ramp_percent;
     uint8_t strength_percent;
     uint8_t xbox_mode;
@@ -44,8 +33,7 @@ typedef struct {
     uint8_t data[2];
 } MotorParameterWrite;
 
-uint8_t motor_tuning_parameter_encode(MotorTuningParameter parameter,
-                                      const MotorTuningValues *values,
+uint8_t motor_tuning_parameter_encode(MotorTuningParameter parameter, const TuningProfile *profile,
                                       const MotorTuningContext *context,
                                       MotorParameterWrite *write);
 
