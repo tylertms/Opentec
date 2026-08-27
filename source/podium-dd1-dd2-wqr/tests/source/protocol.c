@@ -1,7 +1,7 @@
+#include "protocol.h"
+
 #include <assert.h>
 #include <string.h>
-
-#include "protocol.h"
 
 typedef struct {
     unsigned int resets;

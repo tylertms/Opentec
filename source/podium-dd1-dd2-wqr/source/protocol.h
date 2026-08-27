@@ -41,18 +41,21 @@ typedef struct {
     uint8_t receive_payload[WQR_TRANSFER_CAPACITY];
     uint8_t transmit_payload[WQR_TRANSFER_CAPACITY];
     wqr_io io;
+
     size_t receive_length;
     size_t transmit_length;
     size_t transmit_offset;
     uint32_t error_count;
     uint32_t milliseconds;
     uint32_t seconds;
+
     int16_t sensor_value;
     uint8_t payload_type;
     uint8_t response_type;
     uint8_t sequence;
     uint8_t transfer_detail;
     uint8_t command_marker;
+
     bool peer_ready_confirmed;
     bool transfer_enabled;
     bool payload_pending;

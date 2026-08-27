@@ -10,18 +10,22 @@ enum {
     FRAME_MORE = 0x20,
     FRAME_LAST = 0x40,
     FRAME_FRAGMENT_MASK = 0x70,
+
     FRAME_TYPE_OFFSET = 1,
     FRAME_SEQUENCE_OFFSET = 2,
     FRAME_LENGTH_OFFSET = 3,
     FRAME_PAYLOAD_OFFSET = 4,
     FRAME_CRC_OFFSET = 61,
     FRAME_END_OFFSET = 63,
+
     I2C_RESPONSE_OVERHEAD = 2,
     I2C_FAILURE_RESPONSE_SIZE = 3,
     SPI_RESPONSE_SIZE = 57,
     TRANSFER_CONTROL_OFFSET = 56,
+
     TRANSFER_CONTROL_ASSERTED = 1,
     TRANSFER_STATUS_DETECTED = 2,
+
     STATUS_TRANSFER_WAITING = 1,
     STATUS_TRANSFER_DETECTED = 2,
     STATUS_TRANSFER_READY = 4,
@@ -81,9 +85,11 @@ bool wqr_protocol_build_frame(uint8_t frame[WQR_FRAME_SIZE], uint8_t type_flags,
     frame[FRAME_TYPE_OFFSET] = type_flags;
     frame[FRAME_SEQUENCE_OFFSET] = sequence;
     frame[FRAME_LENGTH_OFFSET] = (uint8_t)payload_length;
+
     if (payload_length != 0) {
         memcpy(frame + FRAME_PAYLOAD_OFFSET, payload, payload_length);
     }
+
     crc = wqr_protocol_crc(frame + FRAME_TYPE_OFFSET, WQR_FRAME_BODY_SIZE);
     write_u16(frame + FRAME_CRC_OFFSET, crc);
     frame[FRAME_END_OFFSET] = FRAME_END;
@@ -103,6 +109,7 @@ static bool transfer_ready(const wqr_protocol *protocol) {
 
 static void set_transfer_control(wqr_protocol *protocol, bool asserted) {
     protocol->transfer_control_asserted = asserted;
+
     if (protocol->io.set_transfer_control != NULL) {
         protocol->io.set_transfer_control(protocol->io.context, asserted);
     }
@@ -119,6 +126,7 @@ static void update_transfer_handshake(wqr_protocol *protocol, bool ready) {
         protocol->transfer_enabled = false;
         return;
     }
+
     protocol->transfer_enabled = protocol->transfer_control_asserted;
 }
 
@@ -159,6 +167,7 @@ static void queue_payload(wqr_protocol *protocol, const uint8_t *payload, size_t
     if (payload != protocol->transmit_payload) {
         memcpy(protocol->transmit_payload, payload, length);
     }
+
     protocol->transmit_length = length;
     protocol->transmit_offset = 0;
     protocol->response_type = protocol->payload_type;
@@ -182,9 +191,11 @@ static uint8_t transfer_status(const wqr_protocol *protocol) {
 static void encode_status(wqr_protocol *protocol, uint8_t status[WQR_STATUS_SIZE]) {
     memset(status, 0, WQR_STATUS_SIZE);
     status[0] = 7;
+
     if (protocol->io.read_inputs != NULL) {
         status[1] = protocol->io.read_inputs(protocol->io.context) & 7;
     }
+
     write_u16(status + 2, (uint16_t)protocol->sensor_value);
     write_u32(status + 4, protocol->seconds);
     write_u32(status + 8, protocol->error_count);

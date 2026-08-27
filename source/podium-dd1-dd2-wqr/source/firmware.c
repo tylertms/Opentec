@@ -27,18 +27,23 @@ enum {
     UART_BAUD_RATE = 5000000,
     UART_RESPONSE_GUARD_TICKS = 467,
     UART_RECOVERY_GUARD_TICKS = 3964,
+
     BUS_CLOCK = 24000000,
     PIT_TICKS_PER_MILLISECOND = 24000,
+
     UART_TRANSMIT_DMA_CHANNEL = 0,
     UART_RECEIVE_DMA_CHANNEL = 1,
     SPI_TRANSMIT_DMA_CHANNEL = 2,
     SPI_RECEIVE_DMA_CHANNEL = 3,
+
     UART_RECEIVE_DMA_SOURCE = 4,
     UART_TRANSMIT_DMA_SOURCE = 5,
     SPI_RECEIVE_DMA_SOURCE = 14,
     SPI_TRANSMIT_DMA_SOURCE = 15,
+
     SPI_RETRY_MILLISECONDS = 2,
     I2C_TIMEOUT_MILLISECONDS = 10,
+
     SPI_ERROR_INTERRUPTS =
         kDSPI_TxFifoUnderflowInterruptEnable | kDSPI_RxFifoOverflowInterruptEnable,
     SPI_ERROR_FLAGS = kDSPI_TxFifoUnderflowFlag | kDSPI_RxFifoOverflowFlag
@@ -47,6 +52,7 @@ enum {
 typedef enum { I2C_IDLE, I2C_PENDING, I2C_SUCCEEDED, I2C_FAILED } i2c_phase;
 
 static wqr_protocol protocol;
+
 static uint8_t uart_receive_window[UART_WINDOW_SIZE] __attribute__((aligned(4)));
 static uint8_t uart_transmit_window[UART_TRANSMIT_SIZE] __attribute__((aligned(4)));
 static volatile bool uart_receive_ready;
@@ -56,6 +62,7 @@ static bool uart_recovery_active;
 static uart_edma_handle_t uart_handle;
 static edma_handle_t uart_transmit_dma;
 static edma_handle_t uart_receive_dma;
+
 static volatile bool spi_transfer_complete;
 static volatile bool spi_transfer_failed;
 static bool spi_transfer_active;
@@ -69,9 +76,11 @@ static uint16_t spi_received_word;
 static dspi_master_handle_t spi_word_handle;
 static edma_handle_t spi_transmit_dma;
 static edma_handle_t spi_receive_dma;
+
 static volatile i2c_phase i2c_state;
 static volatile uint8_t i2c_timeout;
 static i2c_master_handle_t i2c_handle;
+
 static volatile bool adc_sample_ready;
 static volatile uint16_t adc_sample;
 
@@ -91,15 +100,18 @@ static void configure_clock(void) {
     if ((RCM->SRS0 & RCM_SRS0_WAKEUP_MASK) != 0 && (PMC->REGSC & PMC_REGSC_ACKISO_MASK) != 0) {
         PMC->REGSC |= PMC_REGSC_ACKISO_MASK;
     }
+
     SMC_SetPowerModeProtection(SMC, kSMC_AllowPowerModeHsrun);
     SMC_SetPowerModeHsrun(SMC);
     while (SMC_GetPowerModeState(SMC) != kSMC_PowerStateHsrun) {
     }
+
     CLOCK_SetSimConfig(&clocks);
     OSC->CR = OSC_CR_ERCLKEN_MASK;
     MCG->C2 = (uint8_t)((MCG->C2 & ~MCG_C2_RANGE_MASK) | MCG_C2_RANGE(1));
     CLOCK_BootToFeeMode(kMCG_OscselIrc, 6, kMCG_Dmx32Default, kMCG_DrsHigh, NULL);
     MCG->C1 |= MCG_C1_IRCLKEN_MASK;
+
     LPTMR_GetDefaultConfig(&stability_timer);
     LPTMR_Init(LPTMR0, &stability_timer);
     LPTMR_SetTimerPeriod(LPTMR0, 1);
@@ -107,6 +119,7 @@ static void configure_clock(void) {
     while ((LPTMR_GetStatusFlags(LPTMR0) & kLPTMR_TimerCompareFlag) == 0) {
     }
     LPTMR_Deinit(LPTMR0);
+
     SystemCoreClock = UART_SOURCE_CLOCK;
 }
 
@@ -121,20 +134,26 @@ static void configure_pins(void) {
     CLOCK_EnableClock(kCLOCK_PortC);
     CLOCK_EnableClock(kCLOCK_PortD);
     CLOCK_EnableClock(kCLOCK_PortE);
+
     PORT_SetPinMux(PORTE, 16, kPORT_MuxAlt3);
     PORT_SetPinMux(PORTE, 17, kPORT_MuxAlt3);
+
     PORT_SetPinMux(PORTC, 5, kPORT_MuxAlt2);
     PORT_SetPinMux(PORTC, 6, kPORT_MuxAlt2);
     PORT_SetPinMux(PORTC, 7, kPORT_MuxAlt2);
+
     PORT_SetPinMux(PORTC, 4, kPORT_MuxAsGpio);
     PORT_SetPinMux(PORTC, 1, kPORT_MuxAsGpio);
     PORT_SetPinMux(PORTC, 2, kPORT_MuxAsGpio);
     PORT_SetPinMux(PORTC, 3, kPORT_MuxAsGpio);
+
     PORTB->PCR[0] = PORT_PCR_MUX(2) | PORT_PCR_ODE_MASK;
     PORTB->PCR[1] = PORT_PCR_MUX(2) | PORT_PCR_ODE_MASK;
+
     PORTA->PCR[4] = input_config;
     PORTA->PCR[18] = input_config;
     PORTA->PCR[19] = input_config;
+
     GPIO_PinInit(GPIOC, 1, &output_low);
     GPIO_PinInit(GPIOC, 3, &output_low);
     GPIO_PinInit(GPIOC, 4, &output_high);
@@ -176,15 +195,18 @@ static void configure_uart(void) {
     UART_EnableInterrupts(UART1, kUART_RxOverrunInterruptEnable | kUART_NoiseErrorInterruptEnable |
                                      kUART_FramingErrorInterruptEnable |
                                      kUART_ParityErrorInterruptEnable);
+
     EDMA_CreateHandle(&uart_transmit_dma, DMA0, UART_TRANSMIT_DMA_CHANNEL);
     EDMA_CreateHandle(&uart_receive_dma, DMA0, UART_RECEIVE_DMA_CHANNEL);
     DMAMUX_SetSource(DMAMUX, UART_TRANSMIT_DMA_CHANNEL, UART_TRANSMIT_DMA_SOURCE);
     DMAMUX_SetSource(DMAMUX, UART_RECEIVE_DMA_CHANNEL, UART_RECEIVE_DMA_SOURCE);
     DMAMUX_EnableChannel(DMAMUX, UART_TRANSMIT_DMA_CHANNEL);
     DMAMUX_EnableChannel(DMAMUX, UART_RECEIVE_DMA_CHANNEL);
+
     UART_TransferCreateHandleEDMA(UART1, &uart_handle, uart_callback, NULL, &uart_transmit_dma,
                                   &uart_receive_dma);
     configure_uart_receive();
+
     nvic_enable(DMA0_IRQn, 15);
     nvic_enable(DMA1_IRQn, 15);
     nvic_enable(UART1_RX_TX_IRQn, 15);
@@ -252,13 +274,16 @@ static void configure_spi(void) {
     config.pcsActiveHighOrLow = kDSPI_PcsActiveLow;
     DSPI_MasterInit(SPI0, &config, BUS_CLOCK);
     SPI0->CTAR[0] = UINT32_C(0x3a514204);
+
     EDMA_CreateHandle(&spi_transmit_dma, DMA0, SPI_TRANSMIT_DMA_CHANNEL);
     EDMA_CreateHandle(&spi_receive_dma, DMA0, SPI_RECEIVE_DMA_CHANNEL);
     DMAMUX_SetSource(DMAMUX, SPI_TRANSMIT_DMA_CHANNEL, SPI_TRANSMIT_DMA_SOURCE);
     DMAMUX_SetSource(DMAMUX, SPI_RECEIVE_DMA_CHANNEL, SPI_RECEIVE_DMA_SOURCE);
     DMAMUX_EnableChannel(DMAMUX, SPI_TRANSMIT_DMA_CHANNEL);
     DMAMUX_EnableChannel(DMAMUX, SPI_RECEIVE_DMA_CHANNEL);
+
     DSPI_MasterTransferCreateHandle(SPI0, &spi_word_handle, spi_word_callback, NULL);
+
     nvic_enable(DMA2_IRQn, 14);
     nvic_enable(DMA3_IRQn, 14);
     nvic_enable(SPI0_IRQn, 14);
@@ -271,6 +296,7 @@ static void start_spi_dma(void) {
     EDMA_AbortTransfer(&spi_receive_dma);
     EDMA_AbortTransfer(&spi_transmit_dma);
     set_spi_format(8, kDSPI_ClockPhaseSecondEdge);
+
     EDMA_PrepareTransfer(&receive, (void *)(uintptr_t)DSPI_GetRxRegisterAddress(SPI0), 1,
                          spi_receive_destination, 1, 1, spi_transfer_length,
                          kEDMA_PeripheralToMemory);
@@ -279,10 +305,12 @@ static void start_spi_dma(void) {
                          spi_transfer_length, kEDMA_MemoryToPeripheral);
     EDMA_SubmitTransfer(&spi_receive_dma, &receive);
     EDMA_SubmitTransfer(&spi_transmit_dma, &transmit);
+
     spi_transfer_complete = false;
     spi_transfer_failed = false;
     spi_retry_delay = SPI_RETRY_MILLISECONDS;
     GPIO_PinWrite(GPIOC, 4, 0);
+
     DSPI_EnableDMA(SPI0, kDSPI_RxDmaEnable | kDSPI_TxDmaEnable);
     EDMA_StartTransfer(&spi_receive_dma);
     EDMA_StartTransfer(&spi_transmit_dma);
@@ -299,6 +327,7 @@ static wqr_io_result io_spi_transfer(void *context, const uint8_t *transmit, uin
         spi_transfer_active = false;
         return spi_transfer_failed ? WQR_IO_FAILED : WQR_IO_SUCCEEDED;
     }
+
     spi_transmit_source = transmit;
     spi_receive_destination = receive;
     spi_transfer_length = length;
@@ -321,11 +350,13 @@ static wqr_io_result io_spi_word(void *context, uint16_t transmit, uint16_t *rec
         *receive = spi_received_word;
         return spi_transfer_failed ? WQR_IO_FAILED : WQR_IO_SUCCEEDED;
     }
+
     spi_transmitted_word = transmit;
     transfer.txData = (const uint8_t *)&spi_transmitted_word;
     transfer.rxData = (uint8_t *)&spi_received_word;
     transfer.dataSize = sizeof(spi_transmitted_word);
     transfer.configFlags = kDSPI_MasterCtar0;
+
     set_spi_format(16, kDSPI_ClockPhaseFirstEdge);
     spi_transfer_complete = false;
     spi_transfer_failed = false;
@@ -333,6 +364,7 @@ static wqr_io_result io_spi_word(void *context, uint16_t transmit, uint16_t *rec
     spi_word_active = true;
     spi_retry_delay = 0;
     GPIO_PinWrite(GPIOC, 4, 0);
+
     if (DSPI_MasterTransferNonBlocking(SPI0, &spi_word_handle, &transfer) == kStatus_Success) {
         DSPI_EnableInterrupts(SPI0, SPI_ERROR_INTERRUPTS);
     } else {
@@ -345,6 +377,7 @@ static void i2c_callback(I2C_Type *base, i2c_master_handle_t *handle, status_t s
     (void)base;
     (void)handle;
     (void)data;
+
     i2c_timeout = 0;
     I2C0->FLT |= I2C_FLT_SSIE_MASK;
     i2c_state = status == kStatus_Success ? I2C_SUCCEEDED : I2C_FAILED;
@@ -359,6 +392,7 @@ static wqr_io_result i2c_result(void) {
         i2c_state = I2C_IDLE;
         return WQR_IO_FAILED;
     }
+
     return WQR_IO_PENDING;
 }
 
@@ -366,11 +400,13 @@ static wqr_io_result start_i2c(i2c_master_transfer_t *transfer) {
     I2C0->FLT &= (uint8_t)~I2C_FLT_SSIE_MASK;
     i2c_timeout = I2C_TIMEOUT_MILLISECONDS;
     i2c_state = I2C_PENDING;
+
     if (I2C_MasterTransferNonBlocking(I2C0, &i2c_handle, transfer) != kStatus_Success) {
         i2c_timeout = 0;
         i2c_state = I2C_FAILED;
         I2C0->FLT |= I2C_FLT_SSIE_MASK;
     }
+
     return WQR_IO_PENDING;
 }
 
@@ -390,6 +426,7 @@ static wqr_io_result io_i2c_write(void *context, uint8_t address, const uint8_t 
     if (result != WQR_IO_PENDING || i2c_state != I2C_IDLE) {
         return result;
     }
+
     return start_i2c(&transfer);
 }
 
@@ -414,6 +451,7 @@ static wqr_io_result io_i2c_read(void *context, uint8_t address, uint8_t command
     if (length == 0) {
         return WQR_IO_SUCCEEDED;
     }
+
     return start_i2c(&transfer);
 }
 
@@ -427,6 +465,7 @@ static void configure_i2c(void) {
     I2C0->FLT |= I2C_FLT_SSIE_MASK;
     I2C_MasterTransferCreateHandle(I2C0, &i2c_handle, i2c_callback, NULL);
     i2c_state = I2C_IDLE;
+
     nvic_enable(I2C0_IRQn, 10);
 }
 
@@ -565,6 +604,7 @@ void PIT1_IRQHandler(void) {
         configure_uart_receive();
         return;
     }
+
     configure_uart_receive();
     wqr_protocol_response_sent(&protocol);
 }
@@ -589,6 +629,7 @@ static void process_uart_frame(void) {
         uart_recovery_active = true;
         start_uart_guard(UART_RECOVERY_GUARD_TICKS);
     }
+
     wqr_protocol_receive(&protocol, uart_receive_window + offset);
     uart_response_due = true;
 }
@@ -604,6 +645,7 @@ static void start_uart_response(void) {
     uart_transmit_active = true;
     transfer.data = uart_transmit_window;
     transfer.dataSize = UART_TRANSMIT_SIZE;
+
     if (UART_SendEDMA(UART1, &uart_handle, &transfer) != kStatus_Success) {
         uart_transmit_active = false;
     }
@@ -626,9 +668,11 @@ void firmware_main(void) {
     configure_clock();
     configure_pins();
     prepare_transmit_window();
+
     EDMA_GetDefaultConfig(&dma);
     EDMA_Init(DMA0, &dma);
     DMAMUX_Init(DMAMUX);
+
     configure_uart();
     configure_pit();
     configure_adc();
@@ -636,6 +680,7 @@ void firmware_main(void) {
     configure_i2c();
     wqr_protocol_init(&protocol, &io);
     configure_watchdog();
+
     __enable_irq();
 
     for (;;) {
@@ -644,10 +689,12 @@ void firmware_main(void) {
             uart_receive_ready = false;
             process_uart_frame();
         }
+
         if (adc_sample_ready) {
             adc_sample_ready = false;
             wqr_protocol_set_sensor_sample(&protocol, adc_sample);
         }
+
         start_uart_response();
         WDOG_Refresh(WDOG);
     }
