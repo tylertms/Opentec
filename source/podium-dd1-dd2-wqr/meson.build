@@ -38,6 +38,7 @@ if meson.is_cross_build()
     input: firmware,
     output: 'podium-dd1-dd2-wqr.unchecksummed.bin',
     command: [objcopy, '-O', 'binary', '@INPUT@', '@OUTPUT@'],
+    build_subdir: 'podium-dd1-dd2-wqr.elf.p',
   )
   firmware_image = custom_target(
     'podium-dd1-dd2-wqr-image',
@@ -66,6 +67,7 @@ if meson.is_cross_build()
       '@INPUT@',
       '@OUTPUT@',
     ],
+    build_subdir: 'podium-dd1-dd2-wqr.elf.p',
   )
   custom_target(
     'podium-dd1-dd2-wqr-encrypted-firmware',
