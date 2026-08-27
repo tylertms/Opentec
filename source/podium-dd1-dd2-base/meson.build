@@ -74,6 +74,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'pedal-frame': 'source/pedal/frame.c',
     'pedal-axis': 'source/pedal/axis.c',
     'platform-clock': 'source/platform/dspic33e/clock.c',
+    'platform-cooling': 'source/platform/dspic33e/cooling.c',
     'platform-board-identity': 'source/platform/dspic33e/board_identity.c',
     'platform-adc': 'source/platform/dspic33e/adc.c',
     'platform-aux-bus': 'source/platform/dspic33e/aux_bus.c',

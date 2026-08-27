@@ -2,6 +2,7 @@
 #include <xc.h>
 
 #include "board/identity.h"
+#include "cooling/fan.h"
 #include "force_feedback/output.h"
 #include "motor/live_frame.h"
 #include "motor/probe.h"
@@ -11,6 +12,7 @@
 #include "platform/aux_bus.h"
 #include "platform/board_identity.h"
 #include "platform/clock.h"
+#include "platform/cooling.h"
 #include "platform/motor_link.h"
 #include "platform/pin_mux.h"
 #include "platform/time.h"
@@ -51,6 +53,61 @@ static ForceOutputCommand motor_output_command;
 static MotorLiveFrame motor_live_frame;
 static uint8_t motor_received_frame[MOTOR_LIVE_FRAME_SIZE];
 static uint8_t motor_transmitted_frame[MOTOR_LIVE_FRAME_SIZE];
+static FanController fan_controller;
+static PlatformFanTachometer fan_tachometer;
+static uint16_t fan_speed_rpm[2];
+static uint32_t next_cooling_update_ms;
+
+enum {
+    COOLING_UPDATE_INTERVAL_MS = 1000,
+    FAN_TACHOMETER_TIMER_HZ = 60000000,
+    FAN_TACHOMETER_PULSES_PER_REVOLUTION = 2,
+};
+
+static void set_cooling_duty(uint8_t duty_percent) {
+    if (board_identity.mode_bits == 7) {
+        platform_cooling_set_duty(duty_percent, duty_percent);
+    } else {
+        platform_cooling_set_duty(duty_percent, 0);
+    }
+}
+
+static void initialize_cooling(void) {
+    fan_controller_init(&fan_controller);
+    fan_speed_rpm[PLATFORM_FAN_PRIMARY] = 0;
+    fan_speed_rpm[PLATFORM_FAN_SECONDARY] = 0;
+    next_cooling_update_ms = 0;
+    platform_cooling_init(board_identity.mode_bits != 7);
+    set_cooling_duty(fan_controller.duty_percent);
+}
+
+static void update_fan_speed(PlatformFan fan) {
+    if (!platform_cooling_take_tachometer(fan, &fan_tachometer)) {
+        return;
+    }
+
+    fan_speed_rpm[fan] =
+        fan_tachometer.present
+            ? fan_tachometer_rpm(fan_tachometer.previous_capture, fan_tachometer.current_capture,
+                                 FAN_TACHOMETER_TIMER_HZ, FAN_TACHOMETER_PULSES_PER_REVOLUTION)
+            : 0;
+}
+
+static void service_cooling(uint32_t now_ms) {
+    update_fan_speed(PLATFORM_FAN_PRIMARY);
+    update_fan_speed(PLATFORM_FAN_SECONDARY);
+    if (!platform_time_reached(now_ms, next_cooling_update_ms)) {
+        return;
+    }
+
+    const MotorTelemetry *telemetry =
+        motor_tuning_ready ? motor_telemetry_service_value(&motor_telemetry_service) : 0;
+    bool temperature_valid = telemetry != 0 && telemetry->motor_temperature_valid;
+    int16_t temperature = temperature_valid ? (int16_t)telemetry->motor_temperature : 0;
+    uint8_t duty = fan_controller_update(&fan_controller, temperature, temperature_valid, true);
+    set_cooling_duty(duty);
+    next_cooling_update_ms = now_ms + COOLING_UPDATE_INTERVAL_MS;
+}
 
 static void initialize_motor_link(void) {
     motor_output_command = (ForceOutputCommand){0};
@@ -102,13 +159,17 @@ int main(void) {
     board_identity = platform_board_identity_read();
     platform_pin_mux_init();
     platform_time_init();
+    initialize_cooling();
     platform_adc_init();
     platform_aux_bus_init();
     initialize_motor_link();
     initialize_motor();
     for (;;) {
         platform_aux_bus_service();
+        uint32_t now_ms = platform_time_ms();
+        platform_cooling_service(now_ms);
         service_motor_link();
         service_motor();
+        service_cooling(now_ms);
     }
 }
