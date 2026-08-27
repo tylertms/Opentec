@@ -15,6 +15,7 @@ board_identity_sources = files('source/board/identity.c')
 h_pattern_shifter_sources = files('source/shifter/h_pattern.c')
 logitech_input_sources = files('source/usb/logitech_input.c')
 motor_identity_sources = files('source/motor/identity.c')
+motor_live_frame_sources = files('source/motor/live_frame.c')
 motor_probe_sources = files('source/motor/probe.c')
 motor_telemetry_sources = files('source/motor/telemetry.c')
 motor_telemetry_service_sources = files('source/motor/telemetry_service.c')
@@ -27,7 +28,6 @@ profile_bank_sources = files('source/profile/bank.c')
 profile_record_sources = files('source/profile/record.c')
 profile_tuning_sources = files('source/profile/tuning.c')
 platform_time_sources = files('source/platform/time.c')
-shifter_frame_sources = files('source/shifter/frame.c')
 remote_exchange_sources = files('source/wheel/remote_exchange.c')
 remote_i2c_sources = files('source/wheel/remote_i2c.c')
 remote_spi_sources = files('source/wheel/remote_spi.c')
@@ -62,6 +62,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'h-pattern-shifter': 'source/shifter/h_pattern.c',
     'logitech-input': 'source/usb/logitech_input.c',
     'motor-identity': 'source/motor/identity.c',
+    'motor-live-frame': 'source/motor/live_frame.c',
     'motor-probe': 'source/motor/probe.c',
     'motor-telemetry': 'source/motor/telemetry.c',
     'motor-telemetry-service': 'source/motor/telemetry_service.c',
@@ -80,7 +81,6 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'profile-bank': 'source/profile/bank.c',
     'profile-record': 'source/profile/record.c',
     'profile-tuning': 'source/profile/tuning.c',
-    'shifter-frame': 'source/shifter/frame.c',
     'remote-exchange': 'source/wheel/remote_exchange.c',
     'remote-i2c': 'source/wheel/remote_i2c.c',
     'remote-spi': 'source/wheel/remote_spi.c',
@@ -249,6 +249,15 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  motor_live_frame_test = executable(
+    'base-motor-live-frame-test',
+    'tests/source/motor_live_frame.c',
+    motor_live_frame_sources,
+    force_output_report_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   motor_probe_test = executable(
     'base-motor-probe-test',
     'tests/source/motor_probe.c',
@@ -342,14 +351,6 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
-  shifter_frame_test = executable(
-    'base-shifter-frame-test',
-    'tests/source/shifter_frame.c',
-    shifter_frame_sources,
-    build_by_default: false,
-    include_directories: base_include,
-  )
-
   wheel_position_test = executable(
     'base-wheel-position-test',
     'tests/source/wheel_position.c',
@@ -423,6 +424,7 @@ if not meson.is_cross_build()
   test('base-h-pattern-shifter', h_pattern_shifter_test, suite: ['base', 'shifter'])
   test('base-logitech-input', logitech_input_test, suite: ['base', 'usb', 'input'])
   test('base-motor-identity', motor_identity_test, suite: ['base', 'motor'])
+  test('base-motor-live-frame', motor_live_frame_test, suite: ['base', 'motor', 'transport'])
   test('base-motor-probe', motor_probe_test, suite: ['base', 'motor'])
   test('base-motor-telemetry-service', motor_telemetry_service_test, suite: ['base', 'motor'])
   test('base-motor-tuning-parameter', motor_tuning_parameter_test, suite: ['base', 'motor'])
@@ -434,7 +436,6 @@ if not meson.is_cross_build()
   test('base-profile-bank', profile_bank_test, suite: ['base', 'profile'])
   test('base-profile-record', profile_record_test, suite: ['base', 'profile', 'persistence'])
   test('base-platform-time', platform_time_test, suite: ['base', 'platform'])
-  test('base-shifter-frame', shifter_frame_test, suite: ['base', 'shifter', 'transport'])
   test('base-remote-exchange', remote_exchange_test, suite: ['base', 'transport'])
   test('base-remote-i2c', remote_i2c_test, suite: ['base', 'wheel-i2c'])
   test('base-remote-spi', remote_spi_test, suite: ['base', 'wheel-spi'])
