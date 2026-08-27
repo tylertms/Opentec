@@ -15,6 +15,7 @@ force_soft_stop_sources = files('source/force_feedback/soft_stop.c')
 fanatec_input_sources = files('source/usb/fanatec_input.c')
 usb_descriptor_sources = files('source/usb/descriptor.c')
 usb_control_request_sources = files('source/usb/control_request.c')
+usb_control_pipe_sources = files('source/usb/control_pipe.c')
 usb_buffer_descriptor_sources = files('source/usb/buffer_descriptor.c')
 usb_device_control_sources = files('source/usb/device_control.c')
 podium_report_descriptor_sources = files('source/usb/podium_report_descriptor.c')
@@ -69,6 +70,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'fanatec-input': 'source/usb/fanatec_input.c',
     'usb-descriptor': 'source/usb/descriptor.c',
     'usb-control-request': 'source/usb/control_request.c',
+    'usb-control-pipe': 'source/usb/control_pipe.c',
     'usb-buffer-descriptor': 'source/usb/buffer_descriptor.c',
     'usb-device-control': 'source/usb/device_control.c',
     'podium-report-descriptor': 'source/usb/podium_report_descriptor.c',
@@ -260,6 +262,14 @@ if not meson.is_cross_build()
     'base-usb-control-request-test',
     'tests/source/usb_control_request.c',
     usb_control_request_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  usb_control_pipe_test = executable(
+    'base-usb-control-pipe-test',
+    'tests/source/usb_control_pipe.c',
+    usb_control_pipe_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -512,6 +522,7 @@ if not meson.is_cross_build()
   test('base-fanatec-input', fanatec_input_test, suite: ['base', 'usb', 'input'])
   test('base-usb-descriptor', usb_descriptor_test, suite: ['base', 'usb'])
   test('base-usb-control-request', usb_control_request_test, suite: ['base', 'usb'])
+  test('base-usb-control-pipe', usb_control_pipe_test, suite: ['base', 'usb'])
   test('base-usb-buffer-descriptor', usb_buffer_descriptor_test, suite: ['base', 'usb'])
   test('base-usb-device-control', usb_device_control_test, suite: ['base', 'usb'])
   test(

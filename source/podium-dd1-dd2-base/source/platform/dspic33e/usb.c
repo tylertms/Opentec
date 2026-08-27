@@ -144,21 +144,26 @@ static bool arm(uint8_t endpoint, bool input, const uint8_t *data, uint8_t lengt
     }
 
     uint8_t direction = input ? 1 : 0;
-    uint8_t bank = next_bank[endpoint][direction];
-    volatile UsbBufferDescriptor *target = descriptor(endpoint, input, bank != 0);
-    if (usb_buffer_descriptor_owned(target) && !(endpoint == 0 && !input)) {
-        return false;
-    }
-    if (input) {
-        volatile uint8_t *destination = &buffers[endpoint][1][bank][0];
-        for (uint8_t index = 0; index < length; index++) {
-            destination[index] = data[index];
+    uint8_t preferred = next_bank[endpoint][direction];
+    for (uint8_t offset = 0; offset < USB_BANK_COUNT; offset++) {
+        uint8_t bank = (preferred + offset) & 1;
+        volatile UsbBufferDescriptor *target = descriptor(endpoint, input, bank != 0);
+        bool replace_setup = endpoint == 0 && !input && offset == 0;
+        if (usb_buffer_descriptor_owned(target) && !replace_setup) {
+            continue;
         }
+        if (input) {
+            volatile uint8_t *destination = &buffers[endpoint][1][bank][0];
+            for (uint8_t index = 0; index < length; index++) {
+                destination[index] = data[index];
+            }
+        }
+        usb_buffer_descriptor_arm(target, buffer_address(endpoint, input, bank != 0), length,
+                                  data_one, false);
+        next_bank[endpoint][direction] = bank ^ 1;
+        return true;
     }
-    usb_buffer_descriptor_arm(target, buffer_address(endpoint, input, bank != 0), length, data_one,
-                              false);
-    next_bank[endpoint][direction] ^= 1;
-    return true;
+    return false;
 }
 
 bool platform_usb_send(uint8_t endpoint, const uint8_t *data, uint8_t length, bool data_one) {
