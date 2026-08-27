@@ -34,7 +34,7 @@ if meson.is_cross_build()
     'wqr-checksum',
     python,
     args: [
-      meson.project_source_root() / 'tools/checksum.py',
+      meson.project_source_root() / 'source/podium-dd1-dd2-wqr/tools/checksum.py',
       '--verify',
       checksummed_binary.full_path(),
     ],

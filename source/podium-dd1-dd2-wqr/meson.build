@@ -90,7 +90,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'arm'
     output: 'firmware.checksummed.bin',
     command: [
       python,
-      meson.project_source_root() / 'tools/checksum.py',
+      meson.current_source_dir() / 'tools/checksum.py',
       '@INPUT@',
       '@OUTPUT@',
     ],
