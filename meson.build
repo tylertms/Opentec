@@ -9,8 +9,4 @@ project(
   ],
 )
 
-if meson.get_compiler('c').get_id() != 'gcc'
-  error('GCC is required')
-endif
-
 subdir('source/podium-dd1-dd2-wqr')
