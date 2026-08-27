@@ -5,6 +5,7 @@ protocol_test = executable(
   build_by_default: false,
   include_directories: protocol_include,
   native: meson.is_cross_build(),
+  override_options: ['b_ndebug=false'],
 )
 
 test('wqr-protocol', protocol_test, suite: ['wqr', 'protocol'])

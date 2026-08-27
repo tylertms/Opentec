@@ -82,6 +82,7 @@ static wqr_io_result test_i2c_read(void *context, uint8_t address, uint8_t comma
     size_t index;
 
     ++io->i2c_reads;
+    io->i2c_length = length;
     io->i2c_address = address;
     io->i2c_command = command;
     for (index = 0; index < length; ++index) {
@@ -317,6 +318,7 @@ static void test_i2c_boundaries(void) {
     const uint8_t short_read[] = {0, 0xa1, 0x10};
     const uint8_t oversized_read[] = {0, 0xa1, 0x10, 0xff, 0xff};
     const uint8_t empty_read[] = {0, 0xa1, 0x20, 0, 0};
+    const uint8_t maximum_read[] = {0, 0xa1, 0x30, 0xfe, 0x01};
 
     wqr_protocol_init(&protocol, &io);
     assert(
@@ -362,14 +364,28 @@ static void test_i2c_boundaries(void) {
     assert(state.i2c_reads == 1);
     assert(state.i2c_command == 0x20);
 
+    assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_I2C, 5, maximum_read, sizeof(maximum_read)));
+    assert(wqr_protocol_receive(&protocol, frame));
+    wqr_protocol_poll(&protocol);
+    assert(protocol.transmit_length == WQR_TRANSFER_CAPACITY);
+    assert(wqr_protocol_response(&protocol, frame));
+    assert(frame[1] == (WQR_FRAME_FIRST | WQR_PAYLOAD_I2C));
+    assert(frame[2] == 6);
+    assert(frame[3] == WQR_FRAME_PAYLOAD_SIZE);
+    assert(frame[4] == 1);
+    assert(frame[5] == 0xa1);
+    assert(frame[6] == 0x30);
+    assert(state.i2c_reads == 2);
+    assert(state.i2c_length == WQR_TRANSFER_CAPACITY - 2);
+
     wqr_protocol_init(&protocol, NULL);
     assert(
-        wqr_protocol_build_frame(frame, WQR_PAYLOAD_I2C, 5, write_request, sizeof(write_request)));
+        wqr_protocol_build_frame(frame, WQR_PAYLOAD_I2C, 6, write_request, sizeof(write_request)));
     assert(wqr_protocol_receive(&protocol, frame));
     wqr_protocol_poll(&protocol);
     assert(wqr_protocol_response(&protocol, frame));
     assert(frame[4] == 0);
-    assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_I2C, 6, empty_read, sizeof(empty_read)));
+    assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_I2C, 7, empty_read, sizeof(empty_read)));
     assert(wqr_protocol_receive(&protocol, frame));
     wqr_protocol_poll(&protocol);
     assert(wqr_protocol_response(&protocol, frame));
