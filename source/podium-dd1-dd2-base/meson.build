@@ -15,6 +15,7 @@ motor_tuning_parameter_sources = files('source/motor/tuning_parameter.c')
 pedal_frame_sources = files('source/pedal/frame.c')
 pedal_axis_sources = files('source/pedal/axis.c')
 profile_bank_sources = files('source/profile/bank.c')
+profile_record_sources = files('source/profile/record.c')
 profile_tuning_sources = files('source/profile/tuning.c')
 shifter_frame_sources = files('source/shifter/frame.c')
 remote_exchange_sources = files('source/wheel/remote_exchange.c')
@@ -51,6 +52,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'pedal-frame': 'source/pedal/frame.c',
     'pedal-axis': 'source/pedal/axis.c',
     'profile-bank': 'source/profile/bank.c',
+    'profile-record': 'source/profile/record.c',
     'profile-tuning': 'source/profile/tuning.c',
     'shifter-frame': 'source/shifter/frame.c',
     'remote-exchange': 'source/wheel/remote_exchange.c',
@@ -223,6 +225,16 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  profile_record_test = executable(
+    'base-profile-record-test',
+    'tests/source/tuning_profile_record.c',
+    profile_record_sources,
+    profile_bank_sources,
+    profile_tuning_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   shifter_frame_test = executable(
     'base-shifter-frame-test',
     'tests/source/shifter_frame.c',
@@ -301,6 +313,7 @@ if not meson.is_cross_build()
   test('base-pedal-axis', pedal_axis_test, suite: ['base', 'pedal', 'analog'])
   test('base-profile-tuning', profile_tuning_test, suite: ['base', 'profile'])
   test('base-profile-bank', profile_bank_test, suite: ['base', 'profile'])
+  test('base-profile-record', profile_record_test, suite: ['base', 'profile', 'persistence'])
   test('base-shifter-frame', shifter_frame_test, suite: ['base', 'shifter', 'transport'])
   test('base-remote-exchange', remote_exchange_test, suite: ['base', 'transport'])
   test('base-remote-i2c', remote_i2c_test, suite: ['base', 'wheel-i2c'])
