@@ -3,6 +3,7 @@
 
 #include "board/identity.h"
 #include "motor/probe.h"
+#include "motor/telemetry_service.h"
 #include "motor/tuning_service.h"
 #include "platform/adc.h"
 #include "platform/aux_bus.h"
@@ -36,6 +37,7 @@
 
 static BoardIdentity board_identity;
 static MotorProbe motor_probe;
+static MotorTelemetryService motor_telemetry_service;
 static MotorTuningService motor_tuning_service;
 static TuningProfile tuning_profile;
 static MotorTuningContext motor_tuning_context;
@@ -57,11 +59,14 @@ static void initialize_motor(void) {
 
 static void service_motor(void) {
     motor_probe_run(&motor_probe);
-    if (!motor_tuning_ready && motor_probe_identity(&motor_probe) != 0) {
+    const MotorIdentity *identity = motor_probe_identity(&motor_probe);
+    if (!motor_tuning_ready && identity != 0) {
+        motor_telemetry_service_init(&motor_telemetry_service, identity);
         motor_tuning_service_init(&motor_tuning_service, &tuning_profile, &motor_tuning_context);
         motor_tuning_ready = true;
     }
     if (motor_tuning_ready) {
+        motor_telemetry_service_run(&motor_telemetry_service, platform_time_ms());
         motor_tuning_service_run(&motor_tuning_service);
     }
 }
