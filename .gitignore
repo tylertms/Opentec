@@ -1,5 +1,6 @@
 /build/
 /.cache/
+/.env
 /tmp/
 /subprojects/kinetis-sim/
 /subprojects/packagecache/
