@@ -163,6 +163,31 @@ static void test_fragmented_i2c_read(void) {
     assert(response[4] == 1);
 }
 
+static void test_invalid_fragments(void) {
+    test_io state = {0};
+    wqr_io io = {.context = &state, .request_reset = test_reset};
+    wqr_protocol protocol;
+    uint8_t frame[WQR_FRAME_SIZE];
+    const uint8_t command = 0xaa;
+
+    wqr_protocol_init(&protocol, &io);
+    assert(wqr_protocol_build_frame(frame, 0x40 | WQR_PAYLOAD_STATUS, 200, &command, 1));
+    assert(!wqr_protocol_receive(&protocol, frame));
+    wqr_protocol_poll(&protocol);
+    wqr_protocol_response_sent(&protocol);
+    assert(state.resets == 0);
+    assert(protocol.error_count == 1);
+
+    assert(wqr_protocol_build_frame(frame, 0x10 | WQR_PAYLOAD_STATUS, 2, NULL, 0));
+    assert(wqr_protocol_receive(&protocol, frame));
+    assert(wqr_protocol_build_frame(frame, 0x40 | WQR_PAYLOAD_STATUS, 4, &command, 1));
+    assert(!wqr_protocol_receive(&protocol, frame));
+    wqr_protocol_poll(&protocol);
+    wqr_protocol_response_sent(&protocol);
+    assert(state.resets == 0);
+    assert(protocol.error_count == 2);
+}
+
 static void test_invalid_frame(void) {
     wqr_protocol protocol;
     uint8_t frame[WQR_FRAME_SIZE] = {0};
@@ -373,6 +398,7 @@ int main(void) {
     test_crc();
     test_status_and_reset();
     test_fragmented_i2c_read();
+    test_invalid_fragments();
     test_invalid_frame();
     test_primary_spi_handshake();
     test_transfer_not_ready();

@@ -60,6 +60,7 @@ typedef struct {
     bool payload_pending;
     bool peripheral_transfer_active;
     bool response_ready;
+    bool fragment_open;
     bool reset_after_response;
     bool transfer_control_asserted;
     bool alternate_spi_active;

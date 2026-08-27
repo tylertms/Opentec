@@ -388,17 +388,34 @@ bool wqr_protocol_receive(wqr_protocol *protocol, const uint8_t frame[WQR_FRAME_
         return false;
     }
 
-    if (fragments == 0 || fragments == FRAME_FIRST) {
+    if (fragments != 0 && fragments != FRAME_FIRST && fragments != FRAME_MORE &&
+        fragments != FRAME_LAST) {
+        ++protocol->error_count;
+        protocol->receive_length = 0;
+        protocol->fragment_open = false;
+        queue_control(protocol, false);
+        return false;
+    }
+    if (fragments == 0) {
         protocol->receive_length = 0;
         protocol->payload_type = type;
-    } else if (protocol->payload_type != type) {
+        protocol->fragment_open = false;
+    } else if (fragments == FRAME_FIRST) {
+        protocol->receive_length = 0;
+        protocol->payload_type = type;
+        protocol->fragment_open = true;
+    } else if (!protocol->fragment_open || protocol->payload_type != type ||
+               frame[FRAME_SEQUENCE_OFFSET] != protocol->sequence) {
         ++protocol->error_count;
+        protocol->receive_length = 0;
+        protocol->fragment_open = false;
         queue_control(protocol, false);
         return false;
     }
     if (!append_payload(protocol, frame + FRAME_PAYLOAD_OFFSET, frame[FRAME_LENGTH_OFFSET])) {
         ++protocol->error_count;
         protocol->receive_length = 0;
+        protocol->fragment_open = false;
         queue_control(protocol, false);
         return false;
     }
@@ -409,11 +426,7 @@ bool wqr_protocol_receive(wqr_protocol *protocol, const uint8_t frame[WQR_FRAME_
         protocol->payload_type = type;
         return true;
     }
-    if (fragments != 0 && fragments != FRAME_LAST) {
-        ++protocol->error_count;
-        queue_control(protocol, false);
-        return false;
-    }
+    protocol->fragment_open = false;
     protocol->transmit_length = 0;
     protocol->transmit_offset = 0;
     protocol->response_ready = false;
