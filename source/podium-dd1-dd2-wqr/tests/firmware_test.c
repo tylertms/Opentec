@@ -408,17 +408,8 @@ static bool firmware_passes(const char *path, KinetisPackage package) {
 }
 
 int main(int argc, char **argv) {
-    static const KinetisPackage packages[] = {
-        KINETIS_PACKAGE_FM_32_QFN,
-    };
-
     if (argc != 2) {
         return EXIT_FAILURE;
     }
-    for (size_t index = 0; index < sizeof(packages) / sizeof(packages[0]); ++index) {
-        if (!firmware_passes(argv[1], packages[index])) {
-            return EXIT_FAILURE;
-        }
-    }
-    return EXIT_SUCCESS;
+    return firmware_passes(argv[1], KINETIS_PACKAGE_LH_64_LQFP) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
