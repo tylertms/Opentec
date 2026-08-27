@@ -24,7 +24,6 @@ static void test_single_frame_exchange(void) {
     uint8_t response[] = {1, 2, 3};
     uint8_t frame[WQR_FRAME_SIZE];
     const uint8_t *result;
-    size_t result_length;
     wqr_frame_view view;
 
     wheel_remote_exchange_init(&exchange, 20, 2);
@@ -45,9 +44,9 @@ static void test_single_frame_exchange(void) {
     assert(view.sequence == 8);
     assert(exchange.state == WHEEL_REMOTE_COMPLETE);
 
-    result = wheel_remote_exchange_response(&exchange, &result_length);
+    result = wheel_remote_exchange_response(&exchange);
     assert(result != NULL);
-    assert(result_length == sizeof(response));
+    assert(wheel_remote_exchange_response_length(&exchange) == sizeof(response));
     assert(memcmp(result, response, sizeof(response)) == 0);
 }
 
@@ -115,7 +114,6 @@ static void test_fragmented_response_and_sequence_wrap(void) {
     uint8_t response[120];
     uint8_t frame[WQR_FRAME_SIZE];
     const uint8_t *result;
-    size_t result_length;
 
     fill(response, sizeof(response), 11);
     wheel_remote_exchange_init(&exchange, 20, 2);
@@ -132,8 +130,8 @@ static void test_fragmented_response_and_sequence_wrap(void) {
                              6);
     assert(exchange.state == WHEEL_REMOTE_COMPLETE);
 
-    result = wheel_remote_exchange_response(&exchange, &result_length);
-    assert(result_length == sizeof(response));
+    result = wheel_remote_exchange_response(&exchange);
+    assert(wheel_remote_exchange_response_length(&exchange) == sizeof(response));
     assert(memcmp(result, response, sizeof(response)) == 0);
 }
 
@@ -205,7 +203,8 @@ static void test_failures(void) {
     wheel_remote_exchange_tick(&exchange, 1);
     assert(exchange.state == WHEEL_REMOTE_FAILED);
     assert(exchange.error == WHEEL_REMOTE_ERROR_TIMEOUT);
-    assert(wheel_remote_exchange_response(&exchange, NULL) == NULL);
+    assert(wheel_remote_exchange_response(&exchange) == NULL);
+    assert(wheel_remote_exchange_response_length(&exchange) == 0);
 }
 
 int main(void) {

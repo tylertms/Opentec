@@ -4,6 +4,7 @@ common_source_path = meson.project_source_root() / 'source'
 analog_axis_sources = files('source/analog/axis.c')
 force_output_sources = files('source/force_feedback/output.c')
 remote_exchange_sources = files('source/wheel/remote_exchange.c')
+remote_status_sources = files('source/wheel/remote_status.c')
 wheel_position_sources = files('source/wheel/position.c')
 
 if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
@@ -23,6 +24,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'force-output': 'source/force_feedback/output.c',
     'firmware': 'source/firmware.c',
     'remote-exchange': 'source/wheel/remote_exchange.c',
+    'remote-status': 'source/wheel/remote_status.c',
     'wqr-frame': meson.project_source_root() / 'source/common/wqr_frame.c',
     'wheel-position': 'source/wheel/position.c',
   }
@@ -98,6 +100,16 @@ if not meson.is_cross_build()
     include_directories: [base_include, common_include],
   )
 
+  remote_status_test = executable(
+    'base-remote-status-test',
+    'tests/source/remote_status.c',
+    remote_exchange_sources,
+    remote_status_sources,
+    wqr_frame_sources,
+    build_by_default: false,
+    include_directories: [base_include, common_include],
+  )
+
   wqr_frame_test = executable(
     'base-wqr-frame-test',
     'tests/source/wqr_frame.c',
@@ -109,6 +121,7 @@ if not meson.is_cross_build()
   test('base-analog-axis', analog_axis_test, suite: ['base', 'analog'])
   test('base-force-output', force_output_test, suite: ['base', 'force-feedback'])
   test('base-remote-exchange', remote_exchange_test, suite: ['base', 'transport'])
+  test('base-remote-status', remote_status_test, suite: ['base', 'wheel-status'])
   test('base-wheel-position', wheel_position_test, suite: ['base', 'wheel-position'])
   test('base-wqr-frame', wqr_frame_test, suite: ['base', 'transport'])
 endif

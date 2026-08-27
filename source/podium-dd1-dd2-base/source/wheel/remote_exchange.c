@@ -216,12 +216,14 @@ void wheel_remote_exchange_tick(wheel_remote_exchange *exchange, uint32_t elapse
     exchange->elapsed_ms += elapsed_ms;
 }
 
-const uint8_t *wheel_remote_exchange_response(const wheel_remote_exchange *exchange,
-                                              size_t *response_length) {
-    if (exchange->state != WHEEL_REMOTE_COMPLETE || response_length == NULL) {
+const uint8_t *wheel_remote_exchange_response(const wheel_remote_exchange *exchange) {
+    if (exchange->state != WHEEL_REMOTE_COMPLETE) {
         return NULL;
     }
 
-    *response_length = exchange->response_length;
     return exchange->response;
+}
+
+size_t wheel_remote_exchange_response_length(const wheel_remote_exchange *exchange) {
+    return exchange->state == WHEEL_REMOTE_COMPLETE ? exchange->response_length : 0;
 }

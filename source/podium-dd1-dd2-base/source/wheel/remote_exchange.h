@@ -62,7 +62,7 @@ bool wheel_remote_exchange_next_frame(wheel_remote_exchange *exchange,
 bool wheel_remote_exchange_receive(wheel_remote_exchange *exchange,
                                    const uint8_t frame[WQR_FRAME_SIZE]);
 void wheel_remote_exchange_tick(wheel_remote_exchange *exchange, uint32_t elapsed_ms);
-const uint8_t *wheel_remote_exchange_response(const wheel_remote_exchange *exchange,
-                                              size_t *response_length);
+const uint8_t *wheel_remote_exchange_response(const wheel_remote_exchange *exchange);
+size_t wheel_remote_exchange_response_length(const wheel_remote_exchange *exchange);
 
 #endif
