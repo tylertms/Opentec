@@ -92,6 +92,58 @@ Command 0 and command 1 are transport control frames.
 Command 1 advances the transmit offset by 57 bytes.
 The receive control path appears at `rom:04c282` through `rom:04c2f8`.
 
+## Command 3 input scan
+
+The scan request is 57 bytes.
+Its low command nibble is 3.
+The message descriptor and dispatch appear at `rom:0435be` through `rom:04360e`.
+
+Request byte 0 cycles through 8, 4, 2, and 1.
+The phase update appears at `rom:04323a` through `rom:04324c`.
+
+Request byte 56 has bit 0 set.
+The initialization appears at `rom:043572` through `rom:043574`.
+
+Response byte 56 must have bit 1 set.
+The check appears at `rom:0435f4` through `rom:043600`.
+
+Response byte 1 contains the five-bit sample and the response type.
+Bits 7 through 5 select response type 0xE0 or 0xC0.
+The remaining five bits contain the sample.
+The checks appear at `rom:043c5e` through `rom:043c8c`.
+
+The following map applies in native operating mode 0.
+Bank numbers identify output bytes at `ram:4161` through `ram:4163`.
+
+| Phase | Sample bit | Output bit | Primary evidence | Secondary evidence |
+| ---: | ---: | --- | --- | --- |
+| 8 | 0 | Bank 2 bit 2 | `rom:0437ea` through `rom:0437fe` | `rom:043a46` through `rom:043a5a` |
+| 8 | 1 | Bank 0 bit 2 | `rom:0437a6` through `rom:0437b8` | `rom:043a02` through `rom:043a14` |
+| 8 | 2 | Bank 0 bit 0 | `rom:0437ba` through `rom:0437c8` | `rom:043a16` through `rom:043a24` |
+| 8 | 3 | Bank 0 bit 3 | `rom:043784` through `rom:043792` | `rom:0439e0` through `rom:0439ee` |
+| 8 | 4 | Bank 0 bit 1 | `rom:043798` through `rom:0437a4` | `rom:0439f4` through `rom:043a00` |
+| 4 | 0 | Bank 1 bit 0 | `rom:043962` through `rom:04396e` | `rom:043bd8` through `rom:043be6` |
+| 4 | 1 | Bank 0 bit 6 | `rom:043924` through `rom:043936` | `rom:043b9c` through `rom:043bae` |
+| 4 | 2 | Bank 0 bit 4 | `rom:04390e` through `rom:043922` | `rom:043b86` through `rom:043b9a` |
+| 4 | 3 | Bank 0 bit 7 | `rom:04394c` through `rom:04395e` | `rom:043bc4` through `rom:043bd6` |
+| 4 | 4 | Bank 0 bit 5 | `rom:043938` through `rom:04394a` | `rom:043bb0` through `rom:043bc2` |
+| 2 | 0 | Bank 1 bit 3 | `rom:043898` through `rom:0438ac` | `rom:043b10` through `rom:043b24` |
+| 2 | 1 | Bank 1 bit 7 | `rom:0438da` through `rom:0438ee` | `rom:043b52` through `rom:043b66` |
+| 2 | 2 | Bank 1 bit 6 | `rom:0438f0` through `rom:043904` | `rom:043b68` through `rom:043b7c` |
+| 2 | 3 | Bank 1 bit 5 | `rom:0438ae` through `rom:0438c2` | `rom:043b26` through `rom:043b3a` |
+| 2 | 4 | Bank 1 bit 4 | `rom:0438c4` through `rom:0438d8` | `rom:043b3c` through `rom:043b50` |
+| 1 | 0 | Bank 2 bit 5 | `rom:043802` through `rom:04381a` | `rom:043a5e` through `rom:043a76` |
+| 1 | 2 | Bank 1 bit 1 | `rom:04387c` through `rom:04388e` | `rom:043ad8` through `rom:043aea` |
+| 1 | 3 | Bank 2 bit 1 | `rom:043832` through `rom:043848` | `rom:043a8e` through `rom:043aa4` |
+| 1 | 4 | Bank 1 bit 2 | `rom:043862` through `rom:04387a` | `rom:043abe` through `rom:043ad6` |
+| 1 | 1 | Bank 2 bit 3 | Not assigned | `rom:043aec` through `rom:043b06` |
+
+The binary stores separate primary and secondary scan workspaces.
+It combines their three output banks at `rom:043982` through `rom:0439aa` and `rom:043bfa` through `rom:043c22`.
+
+Some output bits change in operating modes other than mode 0.
+Those operating-mode mappings are not implemented yet.
+
 ## Timing and failure behavior
 
 The normal transaction deadline is 10 ms.
@@ -134,7 +186,7 @@ No implementation assigns firmware, temperature, uptime, or error meanings to th
 | Startup routed probe | Missing | Recover the command 5 request data and completion states. |
 | Alternate UART mode | Missing | Recover its byte transport and exit conditions. |
 | Command 2 wheel negotiation | Provisional | Trace every mode, field, timeout, and authentication branch. |
-| Command 3 auxiliary scan | Provisional | Trace every scan phase and button mapping. |
+| Command 3 auxiliary scan | Partial | Native mode 0 mappings are implemented. Recover aggregation masks and alternate operating-mode mappings. |
 | Command 4 memory transfer | Missing | Recover access rules, ranges, and update behavior. |
 | Command 5 routed messages | Missing | Recover message types and payload meanings. |
 
