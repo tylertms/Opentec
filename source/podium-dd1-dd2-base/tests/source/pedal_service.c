@@ -698,16 +698,20 @@ static void test_selects_auxiliary_automatic_calibration_from_pedal_state(void) 
     PedalService service;
     reset_link();
     pedal_service_init(&service);
+    assert(!pedal_service_calibration_active(&service));
     assert(!pedal_service_auxiliary_automatic_calibration(&service));
 
     service.phase = PEDAL_SERVICE_LEGACY_REQUEST;
+    assert(pedal_service_calibration_active(&service));
     assert(pedal_service_auxiliary_automatic_calibration(&service));
 
     service.phase = PEDAL_SERVICE_V3_STREAM;
     service.v3.primary_calibration = true;
+    assert(pedal_service_calibration_active(&service));
     assert(pedal_service_auxiliary_automatic_calibration(&service));
 
     service.v3.connection_flags = 0x02;
+    assert(pedal_service_calibration_active(&service));
     assert(!pedal_service_auxiliary_automatic_calibration(&service));
 }
 

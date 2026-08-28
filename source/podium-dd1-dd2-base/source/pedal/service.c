@@ -234,21 +234,47 @@ void pedal_service_set_auxiliary_override(PedalService *service, bool active, ui
  * @return True when the auxiliary input uses automatic endpoint settling.
  */
 bool pedal_service_auxiliary_automatic_calibration(const PedalService *service) {
-    bool legacy = service->phase == PEDAL_SERVICE_LEGACY_REQUEST ||
-                  service->phase == PEDAL_SERVICE_LEGACY_RESPONSE;
-    bool calibrating =
-        legacy || service->v3.primary_calibration || service->v3.secondary_calibration;
-    return calibrating && (service->v3.connection_flags & 0xaa) == 0;
+    return pedal_service_calibration_active(service) && (service->v3.connection_flags & 0xaa) == 0;
 }
 
 void pedal_service_set_protocol_status(PedalService *service, const PedalProtocolStatus *status) {
     service->protocol_status = *status;
 }
 
+/**
+ * @brief Reports whether the attached pedal path accepts calibration commands.
+ *
+ * Accepts commands during legacy transport or either active V3 calibration mode.
+ *
+ * @param[in] service Current pedal transport and calibration state.
+ * @return True when pedal calibration commands may be queued.
+ */
+bool pedal_service_calibration_active(const PedalService *service) {
+    bool legacy = service->phase == PEDAL_SERVICE_LEGACY_REQUEST ||
+                  service->phase == PEDAL_SERVICE_LEGACY_RESPONSE;
+    return legacy || service->v3.primary_calibration || service->v3.secondary_calibration;
+}
+
+/**
+ * @brief Queues one or more pedal calibration controls.
+ *
+ * Merges the requested controls with any controls still waiting for transmission.
+ *
+ * @param[in,out] service Pedal service and pending control mask.
+ * @param[in] control Calibration control bits to queue.
+ */
 void pedal_service_request_control(PedalService *service, PedalV3Control control) {
     service->pending_control |= (uint8_t)control;
 }
 
+/**
+ * @brief Queues one three-channel pedal calibration input command.
+ *
+ * Replaces the pending input values with the latest host command.
+ *
+ * @param[in,out] service Pedal service and pending input command.
+ * @param[in] values Three calibration input values to queue.
+ */
 void pedal_service_request_input_command(PedalService *service,
                                          const uint8_t values[PEDAL_INPUT_AXIS_COUNT]) {
     for (uint8_t axis = 0; axis < PEDAL_INPUT_AXIS_COUNT; axis++) {

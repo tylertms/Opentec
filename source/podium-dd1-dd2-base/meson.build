@@ -103,6 +103,7 @@ motor_tuning_sync_sources = files('source/motor/tuning_sync.c')
 pedal_frame_sources = files('source/pedal/frame.c')
 pedal_axis_sources = files('source/pedal/axis.c')
 pedal_analog_sources = files('source/pedal/analog.c')
+pedal_calibration_command_sources = files('source/pedal/calibration_command.c')
 pedal_input_sources = files('source/pedal/input.c')
 pedal_protocol_sources = files('source/pedal/protocol.c')
 pedal_service_sources = files('source/pedal/service.c')
@@ -264,6 +265,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'pedal-frame': 'source/pedal/frame.c',
     'pedal-axis': 'source/pedal/axis.c',
     'pedal-analog': 'source/pedal/analog.c',
+    'pedal-calibration-command': 'source/pedal/calibration_command.c',
     'pedal-input': 'source/pedal/input.c',
     'pedal-protocol': 'source/pedal/protocol.c',
     'pedal-service': 'source/pedal/service.c',
@@ -1294,6 +1296,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  pedal_calibration_command_test = executable(
+    'base-pedal-calibration-command-test',
+    'tests/source/pedal_calibration_command.c',
+    pedal_calibration_command_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   pedal_analog_test = executable(
     'base-pedal-analog-test',
     'tests/source/pedal_analog.c',
@@ -2000,6 +2010,11 @@ if not meson.is_cross_build()
   test('base-transfer-session', transfer_session_test, suite: ['base', 'transfer'])
   test('base-pedal-axis', pedal_axis_test, suite: ['base', 'pedal', 'analog'])
   test('base-pedal-input', pedal_input_test, suite: ['base', 'pedal', 'input'])
+  test(
+    'base-pedal-calibration-command',
+    pedal_calibration_command_test,
+    suite: ['base', 'pedal', 'input'],
+  )
   test('base-pedal-analog', pedal_analog_test, suite: ['base', 'pedal', 'analog'])
   test('base-pedal-protocol', pedal_protocol_test, suite: ['base', 'pedal', 'transport'])
   test('base-pedal-service', pedal_service_test, suite: ['base', 'pedal'])

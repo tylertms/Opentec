@@ -22,8 +22,12 @@ enum {
 
 /**
  * @brief Selects the pedal transport from the detected device and protocol response bytes.
- * @param device Device byte returned by the detection request.
- * @param response Response byte returned by the protocol request.
+ *
+ * Chooses V3 or V4 for their recognized device and response pairs, requests rediscovery for empty
+ * or invalid responses, and otherwise uses the legacy byte protocol.
+ *
+ * @param[in] device Device byte returned by the detection request.
+ * @param[in] response Response byte returned by the protocol request.
  * @return V3, V4, legacy, or rediscovery transport selection.
  */
 PedalProtocol pedal_protocol_select(uint8_t device, uint8_t response) {
@@ -42,9 +46,13 @@ PedalProtocol pedal_protocol_select(uint8_t device, uint8_t response) {
 
 /**
  * @brief Builds the one-byte request for a legacy pedal channel.
- * @param channel Axis or auxiliary channel to poll.
- * @param protocol_first Configured channel bits for the second axis.
- * @param protocol_second Configured channel bits for the third axis.
+ *
+ * Combines the selected axis prefix with the configured channel bits. The auxiliary slot has no
+ * transmitted request byte.
+ *
+ * @param[in] channel Axis or auxiliary channel to poll.
+ * @param[in] protocol_first Configured channel bits for the second axis.
+ * @param[in] protocol_second Configured channel bits for the third axis.
  * @return Request byte sent to the pedal controller.
  */
 uint8_t pedal_legacy_request(PedalLegacyChannel channel, uint8_t protocol_first,
@@ -65,10 +73,14 @@ uint8_t pedal_legacy_request(PedalLegacyChannel channel, uint8_t protocol_first,
 
 /**
  * @brief Applies a one-byte legacy pedal response to its selected input channel.
- * @param channel Axis or auxiliary channel that produced the response.
- * @param response Byte received from the pedal controller.
- * @param auxiliary_locked True when another input source owns the auxiliary channel.
- * @param input Pedal input state to update.
+ *
+ * Expands inverted pedal axes to sixteen bits and publishes the auxiliary byte when no other source
+ * owns that channel.
+ *
+ * @param[in] channel Axis or auxiliary channel that produced the response.
+ * @param[in] response Byte received from the pedal controller.
+ * @param[in] auxiliary_locked True when another input source owns the auxiliary channel.
+ * @param[in,out] input Pedal input state to update.
  */
 void pedal_legacy_apply_response(PedalLegacyChannel channel, uint8_t response,
                                  bool auxiliary_locked, PedalInput *input) {
@@ -81,8 +93,11 @@ void pedal_legacy_apply_response(PedalLegacyChannel channel, uint8_t response,
 
 /**
  * @brief Builds the V3 startup or recovery handshake frame.
- * @param recovering True for the recovery handshake sent after a stream failure.
- * @param frame Destination for the message type and payload.
+ *
+ * Selects the complementary startup or recovery marker bytes in the handshake payload.
+ *
+ * @param[in] recovering True for the recovery handshake sent after a stream failure.
+ * @param[out] frame Destination for the message type and payload.
  */
 void pedal_v3_build_handshake(bool recovering, PedalFrame *frame) {
     *frame = (PedalFrame){
@@ -93,8 +108,11 @@ void pedal_v3_build_handshake(bool recovering, PedalFrame *frame) {
 
 /**
  * @brief Builds the V3 protocol-status frame.
- * @param status Protocol value, channel selectors, and scale to publish.
- * @param frame Destination for the message type and payload.
+ *
+ * Copies the protocol value, channel selectors, and scale into the four-byte status payload.
+ *
+ * @param[in] status Protocol value, channel selectors, and scale to publish.
+ * @param[out] frame Destination for the message type and payload.
  */
 void pedal_v3_build_status(const PedalProtocolStatus *status, PedalFrame *frame) {
     *frame = (PedalFrame){
@@ -104,10 +122,14 @@ void pedal_v3_build_status(const PedalProtocolStatus *status, PedalFrame *frame)
 }
 
 /**
- * @brief Builds the next pending V3 pedal-control frame.
- * @param pending Bit mask of pending up, down, enable, disable, and automatic commands.
- * @param frame Destination for the next control frame.
- * @return Commands that remain pending after the frame's commands are consumed.
+ * @brief Builds the next V3 pedal calibration control frame.
+ *
+ * Sends all pending direct controls together. When no direct control remains, the automatic
+ * control uses its dedicated payload and is removed independently.
+ *
+ * @param[in] pending Pending pedal control bit mask.
+ * @param[out] frame Encoded V3 control frame.
+ * @return Control bits that remain pending after this frame.
  */
 uint8_t pedal_v3_build_control(uint8_t pending, PedalFrame *frame) {
     uint8_t direct = pending & PEDAL_V3_DIRECT_CONTROL_MASK;
@@ -131,8 +153,11 @@ uint8_t pedal_v3_build_control(uint8_t pending, PedalFrame *frame) {
 
 /**
  * @brief Builds a V3 three-channel input command.
- * @param values Three command bytes forwarded to the pedal controller.
- * @param frame Destination for the input-command frame.
+ *
+ * Copies the three host calibration values into the input-command payload.
+ *
+ * @param[in] values Three command bytes forwarded to the pedal controller.
+ * @param[out] frame Destination for the input-command frame.
  */
 void pedal_v3_build_input_command(const uint8_t values[PEDAL_INPUT_AXIS_COUNT], PedalFrame *frame) {
     *frame = (PedalFrame){
@@ -143,10 +168,14 @@ void pedal_v3_build_input_command(const uint8_t values[PEDAL_INPUT_AXIS_COUNT], 
 
 /**
  * @brief Builds a V3 brake-force configuration frame.
- * @param brake_force Configured alternate brake force.
- * @param fine_scale True for five-point calibration steps; false for ten-point steps.
- * @param reset True to request the pedal controller's configuration reset action.
- * @param frame Destination for the configuration frame.
+ *
+ * Converts the configured percentage to the active five- or ten-point step and optionally sets the
+ * reset marker.
+ *
+ * @param[in] brake_force Configured alternate brake force.
+ * @param[in] fine_scale True for five-point calibration steps; false for ten-point steps.
+ * @param[in] reset True to request the pedal controller's configuration reset action.
+ * @param[out] frame Destination for the configuration frame.
  */
 void pedal_v3_build_configuration(uint8_t brake_force, bool fine_scale, bool reset,
                                   PedalFrame *frame) {
@@ -159,7 +188,10 @@ void pedal_v3_build_configuration(uint8_t brake_force, bool fine_scale, bool res
 
 /**
  * @brief Builds the zero-payload V3 calibration keepalive frame.
- * @param frame Destination for the keepalive frame.
+ *
+ * Selects the calibration keepalive message type and clears the remaining frame fields.
+ *
+ * @param[out] frame Destination for the keepalive frame.
  */
 void pedal_v3_build_keepalive(PedalFrame *frame) {
     *frame = (PedalFrame){

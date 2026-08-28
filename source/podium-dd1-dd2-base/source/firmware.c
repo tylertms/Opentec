@@ -22,6 +22,7 @@
 #include "motor/status_service.h"
 #include "motor/telemetry_service.h"
 #include "motor/tuning_service.h"
+#include "pedal/calibration_command.h"
 #include "pedal/input.h"
 #include "pedal/service.h"
 #include "platform/adc.h"
@@ -140,6 +141,8 @@ static UsbDeviceOutputReport usb_device_output_report;
 static UsbConnectionMonitor usb_connection_monitor;
 static UsbOutputCommand usb_output_command;
 static UsbOperatingModeCommand usb_operating_mode_command;
+static PedalCalibrationCommand pedal_calibration_command;
+static PedalCalibrationActions pedal_calibration_actions;
 static UsbVendorCommand usb_vendor_command;
 static UsbWheelTransferCommand usb_wheel_transfer_command;
 static ForceFeedbackCommand force_feedback_command;
@@ -681,6 +684,36 @@ static void forward_force_feedback_command(const ForceFeedbackCommand *command,
     }
 }
 
+/**
+ * @brief Applies routed pedal and local auxiliary calibration actions.
+ *
+ * Queues attached-pedal control or input reports and translates the independent local action into
+ * endpoint capture or reset requests.
+ *
+ * @param[in] actions Routed calibration actions to apply.
+ */
+static void apply_pedal_calibration_actions(const PedalCalibrationActions *actions) {
+    if (actions->pedal_control != 0) {
+        pedal_service_request_control(&pedal_service, actions->pedal_control);
+    }
+    if (actions->pedal_input_pending) {
+        pedal_service_request_input_command(&pedal_service, actions->pedal_input);
+    }
+    switch (actions->auxiliary_action) {
+    case PEDAL_AUXILIARY_CALIBRATION_MINIMUM:
+        auxiliary_axis_request_adjustment(&auxiliary_axis, AUXILIARY_AXIS_ADJUST_MINIMUM);
+        break;
+    case PEDAL_AUXILIARY_CALIBRATION_MAXIMUM:
+        auxiliary_axis_request_adjustment(&auxiliary_axis, AUXILIARY_AXIS_ADJUST_MAXIMUM);
+        break;
+    case PEDAL_AUXILIARY_CALIBRATION_RESET:
+        auxiliary_axis_reset(&auxiliary_axis);
+        break;
+    case PEDAL_AUXILIARY_CALIBRATION_NONE:
+        break;
+    }
+}
+
 static void service_usb_output(void) {
     if (!usb_device_take_output(&usb_device_output_report)) {
         return;
@@ -704,6 +737,12 @@ static void service_usb_output(void) {
     if (usb_operating_mode_command_decode(&usb_output_command, &usb_operating_mode_command)) {
         if (usb_operating_mode_command_requests_native_reset(&usb_operating_mode_command)) {
             (void)usb_device_set_input_mode(USB_INPUT_REPORT_MODE_FANATEC);
+        } else if (pedal_calibration_command_decode(&usb_operating_mode_command,
+                                                    &pedal_calibration_command)) {
+            pedal_calibration_actions = pedal_calibration_command_route(
+                &pedal_calibration_command, pedal_service_calibration_active(&pedal_service),
+                auxiliary_axis.active);
+            apply_pedal_calibration_actions(&pedal_calibration_actions);
         }
         return;
     }

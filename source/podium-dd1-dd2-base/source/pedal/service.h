@@ -89,6 +89,7 @@ void pedal_service_set_analog_samples(PedalService *service,
 void pedal_service_set_brake_force(PedalService *service, uint8_t force_percent);
 void pedal_service_set_v4_tuning(PedalService *service, PedalV4Tuning tuning);
 void pedal_service_set_auxiliary_override(PedalService *service, bool active, uint8_t value);
+bool pedal_service_calibration_active(const PedalService *service);
 bool pedal_service_auxiliary_automatic_calibration(const PedalService *service);
 void pedal_service_set_protocol_status(PedalService *service, const PedalProtocolStatus *status);
 void pedal_service_request_control(PedalService *service, PedalV3Control control);
