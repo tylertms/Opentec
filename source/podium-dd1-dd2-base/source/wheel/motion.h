@@ -13,6 +13,7 @@ typedef struct {
 void wheel_motion_init(WheelMotion *motion);
 void wheel_motion_accumulate_primary(WheelMotion *motion, int8_t delta);
 void wheel_motion_accumulate_axis(WheelMotion *motion, uint8_t axis, int8_t delta);
+int8_t wheel_motion_primary_direction(const WheelMotion *motion);
 int8_t wheel_motion_take_primary(WheelMotion *motion);
 int8_t wheel_motion_take_axis(WheelMotion *motion, uint8_t axis);
 

@@ -52,6 +52,7 @@
 #include "usb/connection.h"
 #include "usb/device.h"
 #include "usb/diagnostic_report.h"
+#include "usb/fanatec_encoder.h"
 #include "usb/fanatec_input.h"
 #include "usb/input_report.h"
 #include "usb/motor_vendor_service.h"
@@ -121,6 +122,7 @@ static HPatternShifter h_pattern_shifter;
 static ShifterInputState shifter_input;
 static ShifterDisplay shifter_display;
 static UsbInputReportState usb_input_state;
+static FanatecEncoder fanatec_encoder;
 static WheelMultiPositionInput wheel_multi_position_input;
 static fanatec_multi_position_input fanatec_multi_position_input_state;
 static uint8_t usb_input_report[USB_INPUT_REPORT_MAX_SIZE];
@@ -888,7 +890,10 @@ static void service_usb_input(uint32_t now_ms) {
     for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {
         usb_input_state.fanatec.button_banks[bank] = wheel_buttons[bank];
     }
-    usb_input_state.fanatec.encoder_delta = wheel_service_take_encoder_delta(&wheel_service);
+    if (fanatec_encoder_update(&fanatec_encoder, wheel_service_encoder_direction(&wheel_service),
+                               now_ms, &usb_input_state.fanatec)) {
+        (void)wheel_service_take_encoder_step(&wheel_service);
+    }
     fanatec_input_apply_shifter(&usb_input_state.fanatec, &shifter_input, h_pattern_shifter.gear);
     const PedalInput *pedal_input = pedal_service_input(&pedal_service);
     for (uint8_t axis = 0; axis < FANATEC_INPUT_PEDAL_AXES; axis++) {
@@ -1007,6 +1012,7 @@ int main(void) {
     platform_serial_link_init();
     serial_service_init(&serial_service);
     wheel_service_init(&wheel_service, &serial_service);
+    fanatec_encoder_init(&fanatec_encoder);
     wheel_status_service_init(&wheel_status_service, &serial_service);
     initialize_usb_command_bridge();
     wheel_velocity_reset(&wheel_velocity_estimator);

@@ -44,6 +44,7 @@ force_filter_sources = files('source/force_feedback/filter.c')
 force_safety_sources = files('source/force_feedback/safety.c')
 force_soft_stop_sources = files('source/force_feedback/soft_stop.c')
 fanatec_input_sources = files('source/usb/fanatec_input.c')
+fanatec_encoder_sources = files('source/usb/fanatec_encoder.c')
 usb_input_report_sources = files('source/usb/input_report.c')
 usb_compatibility_report_descriptor_sources = files(
   'source/usb/compatibility_report_descriptor.c',
@@ -212,6 +213,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'force-safety': 'source/force_feedback/safety.c',
     'force-soft-stop': 'source/force_feedback/soft_stop.c',
     'fanatec-input': 'source/usb/fanatec_input.c',
+    'fanatec-encoder': 'source/usb/fanatec_encoder.c',
     'usb-input-report': 'source/usb/input_report.c',
     'usb-compatibility-report-descriptor': 'source/usb/compatibility_report_descriptor.c',
     'usb-compatibility-descriptor': 'source/usb/compatibility_descriptor.c',
@@ -782,6 +784,15 @@ if not meson.is_cross_build()
     'base-fanatec-input-test',
     'tests/source/fanatec_input.c',
     fanatec_input_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  fanatec_encoder_test = executable(
+    'base-fanatec-encoder-test',
+    'tests/source/fanatec_encoder.c',
+    fanatec_encoder_sources,
+    platform_time_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -1923,6 +1934,7 @@ if not meson.is_cross_build()
   test('base-force-safety', force_safety_test, suite: ['base', 'force-feedback'])
   test('base-force-soft-stop', force_soft_stop_test, suite: ['base', 'force-feedback'])
   test('base-fanatec-input', fanatec_input_test, suite: ['base', 'usb', 'input'])
+  test('base-fanatec-encoder', fanatec_encoder_test, suite: ['base', 'usb', 'input'])
   test('base-usb-input-report', usb_input_report_test, suite: ['base', 'usb', 'input'])
   test(
     'base-usb-compatibility-report-descriptor',

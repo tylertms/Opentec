@@ -235,7 +235,7 @@ static void encode_payload(uint8_t report[FANATEC_INPUT_COMPATIBILITY_REPORT_SIZ
     }
     memcpy(report + CLUTCH_PADDLES_OFFSET, state->clutch_paddles, sizeof(state->clutch_paddles));
     report[AUXILIARY_PEDAL_OFFSET] = state->auxiliary_pedal;
-    report[ENCODER_OFFSET] = (uint8_t)state->encoder_delta;
+    report[ENCODER_OFFSET] = (uint8_t)state->encoder_position;
     report[STATUS_OFFSET] = state->status_flags;
     report[MODE_OFFSET] = state->wheel_mode;
     report[AXIS_LIMIT_OFFSET] = state->axis_limit;

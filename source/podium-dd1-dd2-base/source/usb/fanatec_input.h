@@ -27,7 +27,7 @@ typedef struct {
     uint16_t pedals[FANATEC_INPUT_PEDAL_AXES];
     uint8_t clutch_paddles[2];
     uint8_t auxiliary_pedal;
-    int8_t encoder_delta;
+    int8_t encoder_position;
     uint8_t transfer_code;
     uint8_t status_flags;
     uint8_t wheel_mode;

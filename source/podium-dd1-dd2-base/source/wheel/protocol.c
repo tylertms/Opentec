@@ -761,6 +761,18 @@ bool wheel_protocol_controls(const WheelProtocol *protocol, uint8_t controls[8])
 }
 
 /**
+ * @brief Returns the queued attached-wheel motion direction.
+ *
+ * Inspects the protocol's primary wrapping motion counter without consuming it.
+ *
+ * @param[in] protocol Attached-wheel protocol state.
+ * @return Negative one, zero, or positive one.
+ */
+int8_t wheel_protocol_motion_direction(const WheelProtocol *protocol) {
+    return wheel_motion_primary_direction(&protocol->motion);
+}
+
+/**
  * @brief Takes one queued attached-wheel motion step.
  *
  * Moves the protocol's primary wrapping motion counter one position toward zero.

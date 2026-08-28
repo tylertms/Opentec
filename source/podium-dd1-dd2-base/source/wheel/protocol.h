@@ -111,6 +111,7 @@ uint8_t wheel_protocol_axis_limit(const WheelProtocol *protocol);
 const uint8_t *wheel_protocol_axis_outputs(const WheelProtocol *protocol);
 bool wheel_protocol_axis_values(const WheelProtocol *protocol, uint16_t values[2]);
 bool wheel_protocol_controls(const WheelProtocol *protocol, uint8_t controls[8]);
+int8_t wheel_protocol_motion_direction(const WheelProtocol *protocol);
 int8_t wheel_protocol_take_motion(WheelProtocol *protocol);
 bool wheel_protocol_request_changed(WheelProtocol *protocol);
 bool wheel_protocol_acknowledgement_input_active(const WheelProtocol *protocol);

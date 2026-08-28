@@ -767,6 +767,18 @@ uint8_t wheel_service_accessory_flags(const WheelService *service) {
 }
 
 /**
+ * @brief Returns the queued attached-wheel encoder direction.
+ *
+ * Inspects the motion accumulated by valid wheel protocol reports without consuming it.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return Negative one, zero, or positive one.
+ */
+int8_t wheel_service_encoder_direction(const WheelService *service) {
+    return wheel_protocol_motion_direction(&service->protocol);
+}
+
+/**
  * @brief Takes one queued attached-wheel encoder step.
  *
  * Consumes one signed step from the motion accumulated by valid wheel protocol reports.
@@ -774,7 +786,7 @@ uint8_t wheel_service_accessory_flags(const WheelService *service) {
  * @param[in,out] service Attached-wheel service state.
  * @return Negative one, zero, or positive one.
  */
-int8_t wheel_service_take_encoder_delta(WheelService *service) {
+int8_t wheel_service_take_encoder_step(WheelService *service) {
     return wheel_protocol_take_motion(&service->protocol);
 }
 

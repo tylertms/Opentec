@@ -10,11 +10,14 @@ int main(void) {
     wheel_motion_accumulate_primary(&motion, 12);
     wheel_motion_accumulate_primary(&motion, 1);
     wheel_motion_accumulate_primary(&motion, -7);
+    assert(wheel_motion_primary_direction(&motion) == 1);
     assert(wheel_motion_take_primary(&motion) == 1);
+    assert(wheel_motion_primary_direction(&motion) == 0);
     assert(wheel_motion_take_primary(&motion) == 0);
 
     wheel_motion_accumulate_primary(&motion, -1);
     wheel_motion_accumulate_primary(&motion, -100);
+    assert(wheel_motion_primary_direction(&motion) == -1);
     assert(wheel_motion_take_primary(&motion) == -1);
     assert(wheel_motion_take_primary(&motion) == -1);
     assert(wheel_motion_take_primary(&motion) == 0);

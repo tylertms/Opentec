@@ -2,6 +2,14 @@
 
 #include <stdint.h>
 
+/**
+ * @brief Accumulates one signed motion direction.
+ *
+ * Moves the wrapping counter by one according to the input sign and ignores zero.
+ *
+ * @param[in,out] counter Wrapping motion counter to update.
+ * @param[in] delta Signed input used only to select the step direction.
+ */
 static void accumulate(uint8_t *counter, int8_t delta) {
     if (delta < 0) {
         (*counter)--;
@@ -10,16 +18,37 @@ static void accumulate(uint8_t *counter, int8_t delta) {
     }
 }
 
-static int8_t take(uint8_t *counter) {
-    if (*counter == 0) {
+/**
+ * @brief Returns the direction represented by a wrapping counter.
+ *
+ * Interprets zero as idle, the lower half as positive, and the upper half as negative.
+ *
+ * @param[in] counter Wrapping motion counter.
+ * @return Negative one, zero, or positive one.
+ */
+static int8_t direction(uint8_t counter) {
+    if (counter == 0) {
         return 0;
     }
-    if ((*counter & 0x80u) != 0) {
+    return (counter & 0x80u) != 0 ? -1 : 1;
+}
+
+/**
+ * @brief Takes one signed motion direction.
+ *
+ * Moves a nonzero wrapping counter one position toward zero and returns its direction.
+ *
+ * @param[in,out] counter Wrapping motion counter to consume.
+ * @return Negative one, zero, or positive one.
+ */
+static int8_t take(uint8_t *counter) {
+    int8_t step = direction(*counter);
+    if (step < 0) {
         (*counter)++;
-        return -1;
+    } else if (step > 0) {
+        (*counter)--;
     }
-    (*counter)--;
-    return 1;
+    return step;
 }
 
 /**
@@ -63,6 +92,18 @@ void wheel_motion_accumulate_axis(WheelMotion *motion, uint8_t axis, int8_t delt
     if (axis < WHEEL_MOTION_AXIS_COUNT) {
         accumulate(&motion->axes[axis], delta);
     }
+}
+
+/**
+ * @brief Returns the queued primary wheel motion direction.
+ *
+ * Inspects the primary wrapping counter without consuming it.
+ *
+ * @param[in] motion Motion state whose primary direction is requested.
+ * @return Negative one, zero, or positive one.
+ */
+int8_t wheel_motion_primary_direction(const WheelMotion *motion) {
+    return direction(motion->primary);
 }
 
 /**
