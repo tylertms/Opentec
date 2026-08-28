@@ -66,20 +66,20 @@ static void test_dual_fan_profile(void) {
     assert(controller.secondary_duty_percent == 6);
 }
 
-static void test_auxiliary_window(void) {
+static void test_managed_window(void) {
     CoolingController controller;
     cooling_controller_init(&controller, true);
     controller.phase = COOLING_PHASE_FULL;
 
     cooling_controller_update(&controller, 126.0f, true, false, 100);
-    assert(controller.phase == COOLING_PHASE_START_AUXILIARY_WINDOW);
+    assert(controller.phase == COOLING_PHASE_START_MANAGED_WINDOW);
     assert(controller.force_scale_percent == 95);
     cooling_controller_update(&controller, 126.0f, true, false, 100);
-    assert(controller.phase == COOLING_PHASE_AUXILIARY_WINDOW);
+    assert(controller.phase == COOLING_PHASE_MANAGED_WINDOW);
     assert(controller.primary_deadline_ms == 210100);
     assert(controller.secondary_deadline_ms == 300100);
     cooling_controller_update(&controller, 136.0f, true, false, 101);
-    assert(controller.phase == COOLING_PHASE_AUXILIARY_LIMIT);
+    assert(controller.phase == COOLING_PHASE_MANAGED_LIMIT);
     assert(controller.force_scale_percent == 0);
     cooling_controller_update(&controller, 124.0f, true, false, 102);
     assert(controller.phase == COOLING_PHASE_FULL);
@@ -126,7 +126,7 @@ int main(void) {
     test_standard_fan_profile();
     test_standard_hysteresis_and_limit();
     test_dual_fan_profile();
-    test_auxiliary_window();
+    test_managed_window();
     test_configuration_limits();
     test_suspend_and_output_inhibit();
     return 0;

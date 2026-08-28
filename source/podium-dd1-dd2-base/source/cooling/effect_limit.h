@@ -15,7 +15,7 @@ typedef struct {
 typedef enum {
     COOLING_EFFECT_LIMIT_INACTIVE,
     COOLING_EFFECT_LIMIT_STANDARD,
-    COOLING_EFFECT_LIMIT_AUXILIARY,
+    COOLING_EFFECT_LIMIT_MANAGED,
 } CoolingEffectLimitPhase;
 
 typedef struct {
@@ -27,6 +27,6 @@ typedef struct {
 void cooling_effect_limit_init(CoolingEffectLimit *limit);
 void cooling_effect_limit_update(CoolingEffectLimit *limit, CoolingEffectStrengths *strengths,
                                  const CoolingController *controller, float motor_temperature_c,
-                                 bool auxiliary_active, uint32_t now_ms);
+                                 bool managed_motor_present, uint32_t now_ms);
 
 #endif

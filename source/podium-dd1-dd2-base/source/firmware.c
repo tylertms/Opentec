@@ -108,15 +108,18 @@ static void initialize_cooling(void) {
 }
 
 static void service_cooling(uint32_t now_ms) {
+    bool managed_motor_present = motor_probe_identity(&motor_probe) != 0;
     const MotorTelemetry *telemetry =
         motor_tuning_ready ? motor_telemetry_service_value(&motor_telemetry_service) : 0;
     float motor_temperature = telemetry != 0 && telemetry->motor_temperature_valid
                                   ? (float)(int16_t)telemetry->motor_temperature
                                   : 0.0f;
-    cooling_controller_update(&cooling_controller, motor_temperature, false, false, now_ms);
+    cooling_controller_update(&cooling_controller, motor_temperature, managed_motor_present, false,
+                              now_ms);
     CoolingEffectStrengths previous_strengths = cooling_effect_strengths;
     cooling_effect_limit_update(&cooling_effect_limit, &cooling_effect_strengths,
-                                &cooling_controller, motor_temperature, false, now_ms);
+                                &cooling_controller, motor_temperature, managed_motor_present,
+                                now_ms);
     if (cooling_effect_strengths.force != previous_strengths.force ||
         cooling_effect_strengths.spring != previous_strengths.spring ||
         cooling_effect_strengths.damper != previous_strengths.damper) {

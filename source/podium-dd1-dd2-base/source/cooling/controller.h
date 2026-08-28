@@ -13,9 +13,9 @@ typedef enum {
     COOLING_PHASE_NEAR_MAXIMUM,
     COOLING_PHASE_FULL,
     COOLING_PHASE_STANDARD_LIMIT,
-    COOLING_PHASE_START_AUXILIARY_WINDOW,
-    COOLING_PHASE_AUXILIARY_WINDOW,
-    COOLING_PHASE_AUXILIARY_LIMIT,
+    COOLING_PHASE_START_MANAGED_WINDOW,
+    COOLING_PHASE_MANAGED_WINDOW,
+    COOLING_PHASE_MANAGED_LIMIT,
 } CoolingPhase;
 
 typedef struct {
@@ -40,6 +40,6 @@ void cooling_controller_set_primary_delay_seconds(CoolingController *controller,
 void cooling_controller_set_secondary_delay_seconds(CoolingController *controller, int8_t seconds);
 void cooling_controller_set_suspend_request(CoolingController *controller, uint8_t request);
 void cooling_controller_update(CoolingController *controller, float motor_temperature_c,
-                               bool auxiliary_active, bool output_inhibited, uint32_t now_ms);
+                               bool managed_motor_present, bool output_inhibited, uint32_t now_ms);
 
 #endif

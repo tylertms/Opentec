@@ -22,23 +22,23 @@ static void clamp_strengths(CoolingEffectStrengths *strengths) {
 void cooling_effect_limit_init(CoolingEffectLimit *limit) { *limit = (CoolingEffectLimit){0}; }
 
 /**
- * @brief Applies and releases the standard or auxiliary thermal effect-strength limit.
+ * @brief Applies and releases the standalone or managed-motor thermal effect-strength limit.
  * @param[in,out] limit Thermal effect-limit phase, snapshot, and active indication.
  * @param[in,out] strengths Current force, spring, and damper tuning strengths.
  * @param[in] controller Cooling phase, thresholds, deadline, and delay configuration.
  * @param[in] motor_temperature_c Current motor temperature in degrees Celsius.
- * @param[in] auxiliary_active True when the auxiliary thermal policy is active.
+ * @param[in] managed_motor_present True after a motor controller is identified.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 void cooling_effect_limit_update(CoolingEffectLimit *limit, CoolingEffectStrengths *strengths,
                                  const CoolingController *controller, float motor_temperature_c,
-                                 bool auxiliary_active, uint32_t now_ms) {
+                                 bool managed_motor_present, uint32_t now_ms) {
     switch (limit->phase) {
     case COOLING_EFFECT_LIMIT_INACTIVE:
-        if (auxiliary_active) {
-            if (controller->phase > COOLING_PHASE_START_AUXILIARY_WINDOW &&
+        if (managed_motor_present) {
+            if (controller->phase > COOLING_PHASE_START_MANAGED_WINDOW &&
                 now_ms > controller->primary_deadline_ms + controller->secondary_delay_ms) {
-                limit->phase = COOLING_EFFECT_LIMIT_AUXILIARY;
+                limit->phase = COOLING_EFFECT_LIMIT_MANAGED;
                 limit->snapshot = *strengths;
             }
         } else if (motor_temperature_c > 115.0f) {
@@ -55,7 +55,7 @@ void cooling_effect_limit_update(CoolingEffectLimit *limit, CoolingEffectStrengt
             *strengths = limit->snapshot;
         }
         break;
-    case COOLING_EFFECT_LIMIT_AUXILIARY:
+    case COOLING_EFFECT_LIMIT_MANAGED:
         clamp_strengths(strengths);
         limit->active = true;
         if (motor_temperature_c < (float)(controller->low_threshold_offset + 115)) {

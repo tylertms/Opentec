@@ -41,27 +41,27 @@ static void test_standard_limit(void) {
     assert(!limit.active);
 }
 
-static void test_auxiliary_limit(void) {
+static void test_managed_limit(void) {
     CoolingController controller;
     CoolingEffectLimit limit;
     CoolingEffectStrengths strengths = maximum_strengths();
     cooling_controller_init(&controller, true);
     cooling_effect_limit_init(&limit);
-    controller.phase = COOLING_PHASE_AUXILIARY_WINDOW;
+    controller.phase = COOLING_PHASE_MANAGED_WINDOW;
     controller.primary_deadline_ms = 1000;
     cooling_controller_set_secondary_delay_seconds(&controller, 1);
 
     cooling_effect_limit_update(&limit, &strengths, &controller, 130.0f, true, 2000);
     assert(limit.phase == COOLING_EFFECT_LIMIT_INACTIVE);
     cooling_effect_limit_update(&limit, &strengths, &controller, 130.0f, true, 2001);
-    assert(limit.phase == COOLING_EFFECT_LIMIT_AUXILIARY);
+    assert(limit.phase == COOLING_EFFECT_LIMIT_MANAGED);
     cooling_effect_limit_update(&limit, &strengths, &controller, 130.0f, true, 2002);
     assert(limit.active);
     assert(strengths.force == 10);
 
     cooling_controller_set_low_threshold_offset(&controller, -5);
     cooling_effect_limit_update(&limit, &strengths, &controller, 110.0f, true, 2003);
-    assert(limit.phase == COOLING_EFFECT_LIMIT_AUXILIARY);
+    assert(limit.phase == COOLING_EFFECT_LIMIT_MANAGED);
     cooling_effect_limit_update(&limit, &strengths, &controller, 109.0f, true, 2004);
     assert(limit.phase == COOLING_EFFECT_LIMIT_INACTIVE);
     assert(strengths.force == 12);
@@ -86,7 +86,7 @@ static void test_values_at_or_below_limit(void) {
 
 int main(void) {
     test_standard_limit();
-    test_auxiliary_limit();
+    test_managed_limit();
     test_values_at_or_below_limit();
     return 0;
 }
