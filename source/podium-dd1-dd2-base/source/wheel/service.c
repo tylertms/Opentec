@@ -28,60 +28,77 @@ static void assign(uint8_t *value, uint8_t target, uint8_t source, uint8_t sourc
 /**
  * Maps a native-mode phase-8 sample into the base button banks.
  *
- * @param service Wheel service that owns the three output banks.
+ * @param banks Three sampled button banks to update.
  * @param sample Five input bits returned by the attached device.
  */
-static void apply_auxiliary(WheelService *service, uint8_t sample) {
-    assign(&service->button_banks[0], 3, sample, 3);
-    assign(&service->button_banks[0], 1, sample, 4);
-    assign(&service->button_banks[0], 2, sample, 1);
-    assign(&service->button_banks[0], 0, sample, 2);
-    assign(&service->button_banks[2], 2, sample, 0);
+static void apply_auxiliary(uint8_t banks[WHEEL_BUTTON_BANK_COUNT], uint8_t sample) {
+    assign(&banks[0], 3, sample, 3);
+    assign(&banks[0], 1, sample, 4);
+    assign(&banks[0], 2, sample, 1);
+    assign(&banks[0], 0, sample, 2);
+    assign(&banks[2], 2, sample, 0);
 }
 
 /**
  * Maps a native-mode phase-1 sample into the base button banks.
  *
- * @param service Wheel service that owns the three output banks.
+ * @param banks Three sampled button banks to update.
  * @param sample Five input bits returned by the attached device.
  * @param secondary Adds the secondary-channel mapping for sample bit 1 when true.
  */
-static void apply_first(WheelService *service, uint8_t sample, bool secondary) {
-    assign(&service->button_banks[2], 5, sample, 0);
-    assign(&service->button_banks[2], 1, sample, 3);
-    assign(&service->button_banks[1], 2, sample, 4);
-    assign(&service->button_banks[1], 1, sample, 2);
+static void apply_first(uint8_t banks[WHEEL_BUTTON_BANK_COUNT], uint8_t sample, bool secondary) {
+    assign(&banks[2], 5, sample, 0);
+    assign(&banks[2], 1, sample, 3);
+    assign(&banks[1], 2, sample, 4);
+    assign(&banks[1], 1, sample, 2);
     if (secondary) {
-        assign(&service->button_banks[2], 3, sample, 1);
+        assign(&banks[2], 3, sample, 1);
     }
 }
 
 /**
  * Maps a native-mode phase-2 sample into the base button banks.
  *
- * @param service Wheel service that owns the three output banks.
+ * @param banks Three sampled button banks to update.
  * @param sample Five input bits returned by the attached device.
  */
-static void apply_second(WheelService *service, uint8_t sample) {
-    assign(&service->button_banks[1], 3, sample, 0);
-    assign(&service->button_banks[1], 5, sample, 3);
-    assign(&service->button_banks[1], 4, sample, 4);
-    assign(&service->button_banks[1], 7, sample, 1);
-    assign(&service->button_banks[1], 6, sample, 2);
+static void apply_second(uint8_t banks[WHEEL_BUTTON_BANK_COUNT], uint8_t sample) {
+    assign(&banks[1], 3, sample, 0);
+    assign(&banks[1], 5, sample, 3);
+    assign(&banks[1], 4, sample, 4);
+    assign(&banks[1], 7, sample, 1);
+    assign(&banks[1], 6, sample, 2);
 }
 
 /**
  * Maps a native-mode phase-4 sample into the base button banks.
  *
- * @param service Wheel service that owns the three output banks.
+ * @param banks Three sampled button banks to update.
  * @param sample Five input bits returned by the attached device.
  */
-static void apply_third(WheelService *service, uint8_t sample) {
-    assign(&service->button_banks[0], 4, sample, 2);
-    assign(&service->button_banks[0], 6, sample, 1);
-    assign(&service->button_banks[0], 5, sample, 4);
-    assign(&service->button_banks[0], 7, sample, 3);
-    assign(&service->button_banks[1], 0, sample, 0);
+static void apply_third(uint8_t banks[WHEEL_BUTTON_BANK_COUNT], uint8_t sample) {
+    assign(&banks[0], 4, sample, 2);
+    assign(&banks[0], 6, sample, 1);
+    assign(&banks[0], 5, sample, 4);
+    assign(&banks[0], 7, sample, 3);
+    assign(&banks[1], 0, sample, 0);
+}
+
+/**
+ * Publishes the bitwise intersection of the three interleaved command-3 samples.
+ *
+ * @param service Wheel service that owns the sample history and output banks.
+ */
+static void publish_scan_samples(WheelService *service) {
+    for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {
+        service->button_banks[bank] = service->scan_samples[0][bank] &
+                                      service->scan_samples[1][bank] &
+                                      service->scan_samples[2][bank];
+    }
+    service->scan_sample_index++;
+    if (service->scan_sample_index == WHEEL_SCAN_SAMPLE_DEPTH) {
+        service->scan_sample_index = 0;
+    }
 }
 
 /**
@@ -113,26 +130,32 @@ static void apply_scan_response(WheelService *service, const WheelTransportFrame
         return;
     }
     uint8_t sample = encoded & WHEEL_BUTTON_VALUE_MASK;
+    uint8_t *banks = service->scan_samples[service->scan_sample_index];
     switch (service->scan_phase) {
     case WHEEL_SCAN_PHASE_FIRST:
-        apply_first(service, sample, response_type == WHEEL_BUTTON_SECONDARY_RESPONSE);
+        apply_first(banks, sample, response_type == WHEEL_BUTTON_SECONDARY_RESPONSE);
         break;
     case WHEEL_SCAN_PHASE_SECOND:
-        apply_second(service, sample);
+        apply_second(banks, sample);
         break;
     case WHEEL_SCAN_PHASE_THIRD:
-        apply_third(service, sample);
+        apply_third(banks, sample);
         break;
     case WHEEL_SCAN_PHASE_AUXILIARY:
-        apply_auxiliary(service, sample);
+        apply_auxiliary(banks, sample);
         break;
     }
+    publish_scan_samples(service);
 }
 
-static void clear_buttons(WheelService *service) {
+static void clear_scan_filter(WheelService *service) {
     for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {
         service->button_banks[bank] = 0;
+        for (uint8_t sample = 0; sample < WHEEL_SCAN_SAMPLE_DEPTH; sample++) {
+            service->scan_samples[sample][bank] = 0;
+        }
     }
+    service->scan_sample_index = 0;
 }
 
 static void reset_connection(WheelService *service) {
@@ -160,7 +183,7 @@ static void reset_connection(WheelService *service) {
     service->protocol.axis_override_processor.y_available = axis_y_available;
     wheel_protocol_set_button_latch(&service->protocol, button_latch_enabled,
                                     profile_transition_pending);
-    clear_buttons(service);
+    clear_scan_filter(service);
     service->protocol_deadline_ms = 0;
     service->protocol_deadline_active = false;
     service->scan_phase = 0;
@@ -218,7 +241,7 @@ static bool scan_active(const WheelService *service) {
 void wheel_service_init(WheelService *service) {
     wheel_transport_service_init(&service->transport);
     wheel_protocol_init(&service->protocol);
-    clear_buttons(service);
+    clear_scan_filter(service);
     for (uint8_t index = 0; index < WHEEL_DISPLAY_GLYPH_COUNT; index++) {
         service->display_output.glyphs[index] = 0;
     }

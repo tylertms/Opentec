@@ -8,7 +8,10 @@
 #include "wheel/protocol.h"
 #include "wheel/transport_service.h"
 
-enum { WHEEL_BUTTON_BANK_COUNT = 3 };
+enum {
+    WHEEL_BUTTON_BANK_COUNT = 3,
+    WHEEL_SCAN_SAMPLE_DEPTH = 3,
+};
 
 typedef enum {
     WHEEL_SERVICE_REQUEST_NONE,
@@ -22,8 +25,10 @@ typedef struct {
     WheelDisplayOutput display_output;
     uint8_t request[WHEEL_TRANSPORT_PAYLOAD_SIZE];
     uint8_t button_banks[WHEEL_BUTTON_BANK_COUNT];
+    uint8_t scan_samples[WHEEL_SCAN_SAMPLE_DEPTH][WHEEL_BUTTON_BANK_COUNT];
     uint32_t protocol_deadline_ms;
     uint8_t scan_phase;
+    uint8_t scan_sample_index;
     WheelServiceRequest request_kind;
     bool protocol_deadline_active;
 } WheelService;
