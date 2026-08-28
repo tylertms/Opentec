@@ -473,6 +473,22 @@ void wheel_service_set_display_output(WheelService *service, const WheelDisplayO
 }
 
 /**
+ * @brief Updates the vibration output sent to the attached wheel.
+ *
+ * Applies the same two vibration channels to every negotiated packet-family encoder.
+ *
+ * @param[in,out] service Attached-wheel service to update.
+ * @param[in] output Two attached-wheel vibration channels.
+ */
+void wheel_service_set_vibration_output(WheelService *service, const WheelVibrationOutput *output) {
+    for (uint8_t channel = 0; channel < WHEEL_VIBRATION_CHANNEL_COUNT; channel++) {
+        service->protocol.mode_one_output.vibration[channel] = output->channels[channel];
+        service->protocol.mode_four_output.vibration[channel] = output->channels[channel];
+        service->protocol.crc_output.vibration[channel] = output->channels[channel];
+    }
+}
+
+/**
  * @brief Configures the attached-wheel CRC packet adapter.
  *
  * Retains adapter buttons, axes, rotary positions, mode, connection state, and pending motion used

@@ -536,7 +536,7 @@ static void test_builds_mode_four_active_response(void) {
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
     const WheelPacketModeFourOutput output = {
         .display = {.glyphs = {0x11, 0x22, 0x33}, .third_glyph_marker = true},
-        .display_state = {0x44, 0x55},
+        .vibration = {0x44, 0x55},
         .legacy_axes = {0x66, 0x77},
     };
     wheel_protocol_init(&protocol);
@@ -588,7 +588,7 @@ static void test_builds_mode_one_active_response(void) {
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
     const WheelPacketModeOneOutput output = {
         .display = {.glyphs = {0x11, 0x22, 0x33}, .third_glyph_marker = true},
-        .display_state = {0x44, 0x55},
+        .vibration = {0x44, 0x55},
         .link_status = {0x66, 0x77},
     };
     wheel_protocol_init(&protocol);
@@ -612,6 +612,7 @@ static void test_builds_crc_family_active_response(void) {
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
     const WheelPacketCrcOutput output = {
         .display = {.glyphs = {0x11, 0x22, 0x33}, .third_glyph_marker = true},
+        .vibration = {0x22, 0x33},
         .legacy_axes = {0x44, 0x55},
         .report_state = 0x66,
         .status_update_pending = true,
@@ -625,7 +626,7 @@ static void test_builds_crc_family_active_response(void) {
     wheel_protocol_accept(&protocol, request);
 
     const uint8_t *response = wheel_protocol_response(&protocol);
-    const uint8_t expected[] = {0xa5, 0, 0x11, 0x22, 0xb3, 0, 0, 0x44, 0x55, 0x66, 0xff};
+    const uint8_t expected[] = {0xa5, 0, 0x11, 0x22, 0xb3, 0x22, 0x33, 0x44, 0x55, 0x66, 0xff};
     assert(memcmp(response, expected, sizeof(expected)) == 0);
     assert(wheel_protocol_message_valid(response));
 

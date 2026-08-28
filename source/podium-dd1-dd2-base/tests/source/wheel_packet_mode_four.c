@@ -132,7 +132,7 @@ static void test_maps_playstation_mode_buttons_and_latches_runtime(void) {
 static void test_encodes_mode_four_response(void) {
     const WheelPacketModeFourOutput output = {
         .display = {.glyphs = {0x11, 0x22, 0x33}, .third_glyph_marker = true},
-        .display_state = {0x44, 0x55},
+        .vibration = {0x44, 0x55},
         .legacy_axes = {0x66, 0x77},
     };
     uint8_t response[WHEEL_PACKET_MODE_FOUR_RESPONSE_SIZE] = {0};

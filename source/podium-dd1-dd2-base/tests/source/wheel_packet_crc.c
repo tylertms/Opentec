@@ -226,6 +226,7 @@ static void test_uses_adapter_xbox_button_sources(void) {
 static void test_encodes_standard_and_authenticated_responses(void) {
     WheelPacketCrcOutput output = {
         .display = {.glyphs = {0x11, 0x22, 0x33}, .third_glyph_marker = true},
+        .vibration = {0x22, 0x33},
         .legacy_axes = {0x44, 0x55},
         .report_state = 0x66,
         .status_update_pending = true,
@@ -234,7 +235,7 @@ static void test_encodes_standard_and_authenticated_responses(void) {
 
     wheel_packet_crc_encode(6, &output, response);
 
-    const uint8_t expected[] = {0xa5, 0, 0x11, 0x22, 0xb3, 0, 0, 0x44, 0x55, 0x66, 0xff};
+    const uint8_t expected[] = {0xa5, 0, 0x11, 0x22, 0xb3, 0x22, 0x33, 0x44, 0x55, 0x66, 0xff};
     assert(memcmp(response, expected, sizeof(expected)) == 0);
     assert(!output.status_update_pending);
 

@@ -210,10 +210,10 @@ void wheel_packet_mode_four_normalize(WheelPacketModeFourInput *input, uint8_t i
 /**
  * @brief Encodes a mode-4 attached-wheel response.
  *
- * Writes command A5, three display glyphs, the optional third-glyph marker, two display-state
+ * Writes command A5, three display glyphs, the optional third-glyph marker, two vibration
  * bytes, and two legacy-axis bytes.
  *
- * @param[in] output Current display output, display state, and legacy axes.
+ * @param[in] output Current display output, vibration channels, and legacy axes.
  * @param[out] response Nine-byte destination buffer.
  */
 void wheel_packet_mode_four_encode(const WheelPacketModeFourOutput *output,
@@ -226,8 +226,8 @@ void wheel_packet_mode_four_encode(const WheelPacketModeFourOutput *output,
     if (output->display.third_glyph_marker) {
         response[4] |= 0x80u;
     }
-    response[5] = output->display_state[0];
-    response[6] = output->display_state[1];
+    response[5] = output->vibration[0];
+    response[6] = output->vibration[1];
     response[7] = output->legacy_axes[0];
     response[8] = output->legacy_axes[1];
 }

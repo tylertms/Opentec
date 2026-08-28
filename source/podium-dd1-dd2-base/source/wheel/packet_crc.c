@@ -382,8 +382,9 @@ void wheel_packet_crc_snapshot(const WheelPacketCrcInput *input,
 /**
  * @brief Encodes a CRC-family attached-wheel response payload.
  *
- * Writes the mode-specific command, three display glyphs, optional third-glyph marker, two legacy
- * axes, report state, and one-shot status-update marker. The caller supplies the CRC byte.
+ * Writes the mode-specific command, three display glyphs, optional third-glyph marker, two
+ * vibration channels, two legacy axes, report state, and one-shot status-update marker. The caller
+ * supplies the CRC byte.
  *
  * @param[in] wheel_mode Selected mode 6 or mode 0x15.
  * @param[in,out] output Current response values whose pending status marker is consumed.
@@ -401,6 +402,8 @@ void wheel_packet_crc_encode(uint8_t wheel_mode, WheelPacketCrcOutput *output,
     if (output->display.third_glyph_marker) {
         response[4] |= 0x80u;
     }
+    response[5] = output->vibration[0];
+    response[6] = output->vibration[1];
     response[7] = output->legacy_axes[0];
     response[8] = output->legacy_axes[1];
     response[9] = output->report_state;

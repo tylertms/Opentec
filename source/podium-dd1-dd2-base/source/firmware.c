@@ -70,6 +70,7 @@
 #include "wheel/status_service.h"
 #include "wheel/steering_limit.h"
 #include "wheel/transfer_service.h"
+#include "wheel/vibration.h"
 
 #pragma config GWRP = OFF
 #pragma config GSS = OFF
@@ -115,6 +116,7 @@ static WheelPositionCalibration wheel_position_calibration;
 static WheelVelocityEstimator wheel_velocity_estimator;
 static PedalService pedal_service;
 static PedalBrakeIndicator pedal_brake_indicator;
+static WheelVibrationOutput wheel_vibration_output;
 static SerialService serial_service;
 static WheelService wheel_service;
 static WheelStatusService wheel_status_service;
@@ -1112,6 +1114,11 @@ int main(void) {
         if (brake_indicator_selector != PEDAL_BRAKE_INDICATOR_NO_UPDATE) {
             pedal_service_set_brake_indicator_selector(&pedal_service, brake_indicator_selector);
         }
+        wheel_vibration_from_brake(
+            &wheel_vibration_output, pedal_service_input(&pedal_service)->axes[1],
+            tuning_profile->vibration_strength, wheel_service_mode(&wheel_service),
+            pedal_brake_indicator.selector != 0);
+        wheel_service_set_vibration_output(&wheel_service, &wheel_vibration_output);
         serial_service_run(&serial_service, now_ms);
         service_usb_command_bridge(now_ms);
         wheel_status_service_run(&wheel_status_service, now_ms, !serial_command_waiting());

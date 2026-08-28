@@ -8,6 +8,7 @@
 #include "wheel/display_output.h"
 #include "wheel/protocol.h"
 #include "wheel/rotary_input.h"
+#include "wheel/vibration.h"
 
 enum {
     WHEEL_BUTTON_BANK_COUNT = 3,
@@ -50,6 +51,7 @@ typedef struct {
 void wheel_service_init(WheelService *service, SerialService *transport);
 void wheel_service_run(WheelService *service, uint32_t now_ms, bool start_allowed);
 void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output);
+void wheel_service_set_vibration_output(WheelService *service, const WheelVibrationOutput *output);
 void wheel_service_set_crc_adapter(WheelService *service, const WheelPacketCrcAdapter *adapter);
 void wheel_service_configure_axis_processing(WheelService *service, uint8_t interface_mode,
                                              uint8_t paddle_mode, uint8_t bite_point_percent,

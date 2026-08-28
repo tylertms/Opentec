@@ -18,7 +18,7 @@ static void test_identifies_shared_codec_modes(void) {
 static void test_encodes_the_complete_response(void) {
     const WheelPacketModeOneOutput output = {
         .display = {.glyphs = {0x11, 0x22, 0x33}, .third_glyph_marker = true},
-        .display_state = {0x44, 0x55},
+        .vibration = {0x44, 0x55},
         .link_status = {0x66, 0x77},
     };
     uint8_t response[WHEEL_PACKET_MODE_ONE_RESPONSE_SIZE] = {0};

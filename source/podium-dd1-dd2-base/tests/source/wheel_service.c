@@ -669,6 +669,21 @@ static void test_reports_bite_point_adjustment(void) {
     assert(percent == 62);
 }
 
+static void test_applies_vibration_to_every_packet_family(void) {
+    WheelService service;
+    initialize_service(&service);
+    const WheelVibrationOutput output = {.channels = {0x34, 0x56}};
+
+    wheel_service_set_vibration_output(&service, &output);
+
+    assert(service.protocol.mode_one_output.vibration[0] == 0x34);
+    assert(service.protocol.mode_one_output.vibration[1] == 0x56);
+    assert(service.protocol.mode_four_output.vibration[0] == 0x34);
+    assert(service.protocol.mode_four_output.vibration[1] == 0x56);
+    assert(service.protocol.crc_output.vibration[0] == 0x34);
+    assert(service.protocol.crc_output.vibration[1] == 0x56);
+}
+
 int main(void) {
     test_maps_primary_scan_bits();
     test_maps_secondary_scan_bit();
@@ -692,5 +707,6 @@ int main(void) {
     test_reports_mode_gated_input_capability();
     test_exposes_axis_overrides();
     test_reports_bite_point_adjustment();
+    test_applies_vibration_to_every_packet_family();
     return 0;
 }

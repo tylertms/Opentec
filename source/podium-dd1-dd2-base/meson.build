@@ -140,6 +140,7 @@ wheel_protocol_sources = files('source/wheel/protocol.c')
 wheel_service_sources = files('source/wheel/service.c')
 wheel_status_service_sources = files('source/wheel/status_service.c')
 wheel_transfer_service_sources = files('source/wheel/transfer_service.c')
+wheel_vibration_sources = files('source/wheel/vibration.c')
 motor_command_digest_sources = files('source/motor/command_digest.c')
 motor_command_application_sources = files('source/motor/command_application.c')
 motor_command_fragment_sources = files('source/motor/command_fragment.c')
@@ -323,6 +324,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'wheel-service': 'source/wheel/service.c',
     'wheel-status-service': 'source/wheel/status_service.c',
     'wheel-transfer-service': 'source/wheel/transfer_service.c',
+    'wheel-vibration': 'source/wheel/vibration.c',
     'motor-command-digest': 'source/motor/command_digest.c',
     'motor-command-application': 'source/motor/command_application.c',
     'motor-command-fragment': 'source/motor/command_fragment.c',
@@ -1476,6 +1478,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_vibration_test = executable(
+    'base-wheel-vibration-test',
+    'tests/source/wheel_vibration.c',
+    wheel_vibration_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_output_reports_test = executable(
     'base-wheel-output-reports-test',
     'tests/source/wheel_output_reports.c',
@@ -2101,6 +2111,7 @@ if not meson.is_cross_build()
     wheel_display_output_test,
     suite: ['base', 'wheel', 'display'],
   )
+  test('base-wheel-vibration', wheel_vibration_test, suite: ['base', 'wheel', 'output'])
   test(
     'base-wheel-output-reports',
     wheel_output_reports_test,
