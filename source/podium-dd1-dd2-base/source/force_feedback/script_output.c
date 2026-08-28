@@ -1,6 +1,9 @@
 #include "force_feedback/script_output.h"
 
+#include <stdbool.h>
 #include <stdint.h>
+
+#include "force_feedback/output_scale.h"
 
 typedef union {
     float number;
@@ -45,4 +48,52 @@ int32_t force_feedback_script_output_request(uint32_t motion, int8_t strength,
  */
 int32_t force_feedback_script_output_ramp(int32_t filtered, uint8_t ramp_percent) {
     return (int32_t)((int64_t)filtered * ramp_percent / 100);
+}
+
+/**
+ * @brief Reset force-script output processing state.
+ *
+ * Clears the smoothing history and wheel-range end-stop ramp.
+ *
+ * @param[out] state Script output state to clear.
+ */
+void force_feedback_script_output_init(ForceFeedbackScriptOutputState *state) {
+    *state = (ForceFeedbackScriptOutputState){0};
+}
+
+/**
+ * @brief Convert one force-script motion value into the live motor output report.
+ *
+ * Applies tuning strength, time-gated smoothing, the startup ramp, wheel-range limiting, signed
+ * magnitude clamping, available-output limiting, and final output strength in firmware order.
+ * The secondary magnitude is preserved while secondary output is disabled.
+ *
+ * @param[in,out] state Script smoothing and wheel-range end-stop state.
+ * @param[in] motion Raw floating-point bits from script motion output 2.
+ * @param[in] position Centered wheel position.
+ * @param[in] now_ms Current system time in milliseconds.
+ * @param[in] config Current smoothing, strength, ramp, range, and output limits.
+ * @param[in,out] report Motor output report to update.
+ * @return True when the centered wheel position is outside the configured travel limit.
+ */
+bool force_feedback_script_output_apply(ForceFeedbackScriptOutputState *state, uint32_t motion,
+                                        int32_t position, uint32_t now_ms,
+                                        const ForceFeedbackScriptOutputConfig *config,
+                                        ForceOutputReport *report) {
+    force_filter_configure(&state->filter, config->smoothing_intensity);
+    int32_t force = force_feedback_script_output_request(motion, config->tuning_strength,
+                                                         config->automatic_strength);
+    force = force_filter_update(&state->filter, force, now_ms);
+    force = force_feedback_script_output_ramp(force, config->ramp_percent);
+    ForceSoftStopResult limited =
+        force_soft_stop_update(&state->soft_stop, &config->soft_stop, position, force,
+                               config->secondary_output_disabled, now_ms);
+    ForceOutputScale scale = {
+        .available_percent = config->available_percent,
+        .tuning_strength_percent = config->tuning_strength,
+        .output_strength_percent = config->output_strength_percent,
+        .secondary_output_disabled = config->secondary_output_disabled,
+    };
+    force_output_scale_apply(limited.force, 0, scale, report);
+    return limited.outside_travel;
 }

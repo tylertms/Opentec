@@ -31,11 +31,11 @@ static uint16_t split_force(int32_t force, bool *positive_direction) {
  * @param[in] scale Available, tuning, and base strength percentages plus the secondary gate.
  * @param[in,out] report Direction and magnitudes to update.
  */
-void force_output_scale_apply(int32_t force, int32_t secondary_magnitude,
-                              const ForceOutputScale *scale, ForceOutputReport *report) {
+void force_output_scale_apply(int32_t force, int32_t secondary_magnitude, ForceOutputScale scale,
+                              ForceOutputReport *report) {
     uint16_t primary = split_force(force, &report->positive_direction);
-    uint32_t available = (uint32_t)UINT16_MAX * scale->available_percent / 100;
-    available = (uint16_t)(available * scale->tuning_strength_percent / 100);
+    uint16_t available = (uint16_t)((uint32_t)UINT16_MAX * scale.available_percent / 100);
+    available = (uint16_t)((int32_t)available * scale.tuning_strength_percent / 100);
 
     if (available <= primary) {
         primary = (uint16_t)available;
@@ -43,10 +43,9 @@ void force_output_scale_apply(int32_t force, int32_t secondary_magnitude,
         secondary_magnitude = (int32_t)available;
     }
 
-    report->primary_magnitude =
-        (uint16_t)((uint32_t)primary * scale->output_strength_percent / 100);
-    if (!scale->secondary_output_disabled) {
+    report->primary_magnitude = (uint16_t)((int64_t)primary * scale.output_strength_percent / 100);
+    if (!scale.secondary_output_disabled) {
         report->secondary_magnitude =
-            (uint16_t)((uint32_t)secondary_magnitude * scale->output_strength_percent / 100);
+            (uint16_t)((int64_t)secondary_magnitude * scale.output_strength_percent / 100);
     }
 }
