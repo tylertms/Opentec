@@ -61,7 +61,6 @@ typedef struct {
 
 typedef struct {
     WheelDisplayOutput display;
-    uint8_t operating_mode;
     uint8_t display_state[2];
     uint8_t link_status[2];
 } WheelPacketModeOneOutput;
@@ -78,7 +77,7 @@ void wheel_packet_mode_one_decode(const uint8_t request[WHEEL_PACKET_MODE_ONE_RE
 void wheel_packet_mode_one_normalize(WheelPacketModeOneInput *input, bool authenticated,
                                      bool button_latch_enabled, bool profile_transition_pending,
                                      uint8_t snapshot[WHEEL_PACKET_MODE_ONE_SNAPSHOT_SIZE]);
-void wheel_packet_mode_one_encode(const WheelPacketModeOneOutput *output,
+void wheel_packet_mode_one_encode(uint8_t wheel_mode, const WheelPacketModeOneOutput *output,
                                   uint8_t response[WHEEL_PACKET_MODE_ONE_RESPONSE_SIZE]);
 
 #endif

@@ -53,7 +53,7 @@ static void build_active_response(WheelProtocol *protocol) {
     }
     uint8_t flags = protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET];
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
-    wheel_packet_mode_one_encode(&protocol->mode_one_output, protocol->response);
+    wheel_packet_mode_one_encode(protocol->mode, &protocol->mode_one_output, protocol->response);
     protocol->response[WHEEL_PROTOCOL_CHECKSUM_OFFSET] =
         crc8(protocol->response, WHEEL_PROTOCOL_CONTENT_SIZE);
     protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] = flags;
@@ -116,22 +116,19 @@ static void capture_request(WheelProtocol *protocol,
                                              &protocol->mode_one_input);
         protocol->acknowledgement_input_active =
             acknowledgement_input_active(protocol, &protocol->mode_one_input);
-        if (protocol->mode_one_output.operating_mode == 0x13 ||
-            protocol->mode_one_output.operating_mode == 0x14) {
+        if (protocol->mode == 0x13 || protocol->mode == 0x14) {
             wheel_packet_mode_one_filter_control_axes(&protocol->mode_one_control_axis_filter,
                                                       &protocol->mode_one_input);
             wheel_axis_override_process(
                 &protocol->axis_override_processor, protocol->configured_axis_override_mode,
-                protocol->mode_one_output.operating_mode, protocol->interface_mode,
+                protocol->mode, protocol->interface_mode,
                 protocol->mode_one_input.controls.enabled != 0, protocol->axis_calibration_value,
                 protocol->mode_one_input.controls.x, protocol->mode_one_input.controls.y,
                 protocol->mode_one_input.axis_outputs);
         }
-        wheel_packet_mode_one_normalize(&protocol->mode_one_input,
-                                        protocol->mode_one_output.operating_mode == 0x13 ||
-                                            protocol->mode_one_output.operating_mode == 0x14,
-                                        protocol->button_latch_enabled,
-                                        protocol->profile_transition_pending, snapshot);
+        wheel_packet_mode_one_normalize(
+            &protocol->mode_one_input, protocol->mode == 0x13 || protocol->mode == 0x14,
+            protocol->button_latch_enabled, protocol->profile_transition_pending, snapshot);
         bool changed = false;
         for (uint8_t index = 0; index < WHEEL_PROTOCOL_SNAPSHOT_SIZE; index++) {
             changed |= protocol->request[index] != snapshot[index];
@@ -159,9 +156,8 @@ static void select_mode(WheelProtocol *protocol,
             break;
         }
         protocol->mode = request[1];
-        if (wheel_authentication_required(protocol->mode_one_output.operating_mode)) {
-            wheel_authentication_init(&protocol->authentication,
-                                      protocol->mode_one_output.operating_mode);
+        if (wheel_authentication_required(protocol->mode)) {
+            wheel_authentication_init(&protocol->authentication, protocol->mode);
             protocol->phase = WHEEL_PROTOCOL_AUTHENTICATING;
         } else {
             protocol->phase = WHEEL_PROTOCOL_ACTIVE;
@@ -183,7 +179,7 @@ static void select_mode(WheelProtocol *protocol,
  * @return True for A6 or A7 in authenticated modes, or A5 in other modes.
  */
 static bool active_command_valid(const WheelProtocol *protocol, uint8_t command) {
-    if (wheel_authentication_required(protocol->mode_one_output.operating_mode)) {
+    if (wheel_authentication_required(protocol->mode)) {
         return command == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE ||
                command == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE_REPLY;
     }
@@ -279,9 +275,8 @@ void wheel_protocol_accept(WheelProtocol *protocol,
         if (wheel_protocol_message_valid(request)) {
             if (active_command_valid(protocol, request[0])) {
                 capture_request(protocol, request);
-            } else if (wheel_authentication_required(protocol->mode_one_output.operating_mode)) {
-                wheel_authentication_init(&protocol->authentication,
-                                          protocol->mode_one_output.operating_mode);
+            } else if (wheel_authentication_required(protocol->mode)) {
+                wheel_authentication_init(&protocol->authentication, protocol->mode);
                 protocol->phase = WHEEL_PROTOCOL_AUTHENTICATING;
             }
         }

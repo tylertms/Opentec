@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 enum {
-    OPERATING_MODE_FIXED_AXES = 0x1c,
+    WHEEL_MODE_FIXED_AXES = 0x1c,
     AXIS_AVAILABLE_THRESHOLD = 0x87,
     AXIS_UNAVAILABLE = 0xff,
 };
@@ -25,8 +25,8 @@ static void convert_standard_axes(uint8_t axes[2]) {
     axes[1] = (uint8_t)(axes[1] + 0x80u);
 }
 
-static void convert_enabled_axes(uint8_t operating_mode, uint8_t axes[2]) {
-    if (operating_mode == OPERATING_MODE_FIXED_AXES) {
+static void convert_enabled_axes(uint8_t wheel_mode, uint8_t axes[2]) {
+    if (wheel_mode == WHEEL_MODE_FIXED_AXES) {
         axes[0] = UINT8_MAX;
         axes[1] = 0;
         return;
@@ -107,9 +107,11 @@ static void process_multiplexed_axes(WheelAxisOverrideProcessor *processor, uint
 }
 
 /**
- * Clears the attached-wheel axis override processor.
+ * @brief Clears the attached-wheel axis override processor.
  *
- * @param processor Axis override state to initialize.
+ * Clears every override and returns axis multiplexing to its selection phase.
+ *
+ * @param[out] processor Axis override state to initialize.
  */
 void wheel_axis_override_processor_init(WheelAxisOverrideProcessor *processor) {
     clear_overrides(&processor->overrides);
@@ -119,20 +121,23 @@ void wheel_axis_override_processor_init(WheelAxisOverrideProcessor *processor) {
 }
 
 /**
- * Applies the attached-wheel axis mode to override outputs and report axes.
+ * @brief Applies the attached-wheel axis override mode.
  *
- * @param processor Persistent override and multiplex state.
- * @param mode Selected axis override mode.
- * @param operating_mode Current device operating mode.
- * @param interface_mode Current input-report interface mode.
- * @param enabled True when the attached device provides axis overrides.
- * @param calibration_value Current calibrated axis value.
- * @param x First attached-device axis value.
- * @param y Second attached-device axis value.
- * @param axes Two report axes updated in place.
+ * Clears prior overrides, maps enabled wheel axes into the selected output destinations, and
+ * converts or multiplexes the two report axes.
+ *
+ * @param[in,out] processor Persistent override and multiplex state.
+ * @param[in] mode Selected axis override mode.
+ * @param[in] wheel_mode Selected attached-wheel mode.
+ * @param[in] interface_mode Current input-report interface mode.
+ * @param[in] enabled True when the attached device provides axis overrides.
+ * @param[in] calibration_value Current calibrated axis value.
+ * @param[in] x First attached-device axis value.
+ * @param[in] y Second attached-device axis value.
+ * @param[in,out] axes Two report axes updated in place.
  */
 void wheel_axis_override_process(WheelAxisOverrideProcessor *processor, uint8_t mode,
-                                 uint8_t operating_mode, uint8_t interface_mode, bool enabled,
+                                 uint8_t wheel_mode, uint8_t interface_mode, bool enabled,
                                  uint8_t calibration_value, uint8_t x, uint8_t y, uint8_t axes[2]) {
     clear_overrides(&processor->overrides);
     if (!enabled) {
@@ -144,21 +149,21 @@ void wheel_axis_override_process(WheelAxisOverrideProcessor *processor, uint8_t 
     case WHEEL_AXIS_OVERRIDE_MODE_CALIBRATED:
         processor->overrides.axis_7.enabled = true;
         processor->overrides.axis_7.value = calibration_value;
-        convert_enabled_axes(operating_mode, axes);
+        convert_enabled_axes(wheel_mode, axes);
         break;
     case WHEEL_AXIS_OVERRIDE_MODE_SECONDARY:
         processor->overrides.axis_7.enabled = true;
         processor->overrides.axis_7.value = x;
         processor->overrides.auxiliary.enabled = true;
         processor->overrides.auxiliary.value = y;
-        convert_enabled_axes(operating_mode, axes);
+        convert_enabled_axes(wheel_mode, axes);
         break;
     case WHEEL_AXIS_OVERRIDE_MODE_PRIMARY:
         processor->overrides.axis_6.enabled = true;
         processor->overrides.axis_6.value = x;
         processor->overrides.axis_5.enabled = true;
         processor->overrides.axis_5.value = y;
-        convert_enabled_axes(operating_mode, axes);
+        convert_enabled_axes(wheel_mode, axes);
         break;
     case WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED:
         process_multiplexed_axes(processor, interface_mode, x, y, axes);

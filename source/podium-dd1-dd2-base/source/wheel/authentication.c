@@ -212,9 +212,11 @@ static void encrypt_block(const uint8_t round_keys[WHEEL_AUTHENTICATION_ROUND_KE
 }
 
 /**
- * Advances the big-endian eight-byte sequence at the start of a counter.
+ * @brief Advances an authentication counter.
  *
- * @param counter Counter whose leading eight bytes are incremented.
+ * Increments the big-endian eight-byte sequence at the start of the counter.
+ *
+ * @param[in,out] counter Counter whose leading eight bytes are incremented.
  */
 static void increment_counter(uint8_t *counter) {
     for (uint8_t index = WHEEL_AUTHENTICATION_RETRY_COUNTER_SIZE; index > 0; index--) {
@@ -239,17 +241,17 @@ static void xcrypt_content(const uint8_t round_keys[WHEEL_AUTHENTICATION_ROUND_K
     }
 }
 
-static const WheelAuthenticationKeys *keys_for_mode(uint8_t operating_mode) {
-    if (operating_mode < 0x0a || operating_mode > 0x1e) {
+static const WheelAuthenticationKeys *keys_for_mode(uint8_t wheel_mode) {
+    if (wheel_mode < 0x0a || wheel_mode > 0x1e) {
         return 0;
     }
-    uint8_t key_pair = mode_key_pair[operating_mode - 0x0a];
+    uint8_t key_pair = mode_key_pair[wheel_mode - 0x0a];
     return key_pair == KEY_PAIR_UNSUPPORTED ? 0 : &key_pairs[key_pair];
 }
 
 static bool initialize_ciphers(WheelAuthentication *authentication,
                                const uint8_t request[WHEEL_AUTHENTICATION_CONTENT_SIZE]) {
-    const WheelAuthenticationKeys *keys = keys_for_mode(authentication->operating_mode);
+    const WheelAuthenticationKeys *keys = keys_for_mode(authentication->wheel_mode);
     if (keys == 0) {
         return false;
     }
@@ -326,32 +328,43 @@ static bool accept_proof(WheelAuthentication *authentication,
 }
 
 /**
- * Reports whether an operating mode uses the attached-wheel authentication exchange.
+ * @brief Reports whether a wheel mode uses the authentication exchange.
  *
- * @param operating_mode Active base operating mode.
+ * Selects modes with a supported authentication key pair.
+ *
+ * @param[in] wheel_mode Selected attached-wheel mode.
  * @return True when the mode requires authentication.
  */
-bool wheel_authentication_required(uint8_t operating_mode) {
-    return keys_for_mode(operating_mode) != 0;
-}
+bool wheel_authentication_required(uint8_t wheel_mode) { return keys_for_mode(wheel_mode) != 0; }
 
-void wheel_authentication_init(WheelAuthentication *authentication, uint8_t operating_mode) {
+/**
+ * @brief Initializes authentication for an attached-wheel mode.
+ *
+ * Clears both cipher schedules, counters, and retry state before awaiting a challenge.
+ *
+ * @param[out] authentication Authentication exchange state.
+ * @param[in] wheel_mode Selected attached-wheel mode.
+ */
+void wheel_authentication_init(WheelAuthentication *authentication, uint8_t wheel_mode) {
     clear_bytes(authentication->transmit_round_keys, WHEEL_AUTHENTICATION_ROUND_KEY_SIZE);
     clear_bytes(authentication->receive_round_keys, WHEEL_AUTHENTICATION_ROUND_KEY_SIZE);
     clear_bytes(authentication->transmit_counter, WHEEL_AUTHENTICATION_COUNTER_SIZE);
     clear_bytes(authentication->receive_counter, WHEEL_AUTHENTICATION_COUNTER_SIZE);
     clear_bytes(authentication->retry_counter, WHEEL_AUTHENTICATION_RETRY_COUNTER_SIZE);
-    authentication->operating_mode = operating_mode;
+    authentication->wheel_mode = wheel_mode;
     authentication->stage = WHEEL_AUTHENTICATION_AWAITING_CHALLENGE;
 }
 
 /**
- * Processes one authenticated attached-wheel message and prepares the next response.
+ * @brief Processes one authenticated attached-wheel message.
  *
- * @param authentication Authentication state for the active operating mode.
- * @param request First 32 bytes of the attached-wheel request.
- * @param checksum_valid True when the request checksum matches its content.
- * @param response First 32 bytes of the persistent attached-wheel response.
+ * Accepts the challenge or encrypted proof for the current exchange stage and prepares the next
+ * response content.
+ *
+ * @param[in,out] authentication Authentication state for the selected wheel mode.
+ * @param[in] request First 32 bytes of the attached-wheel request.
+ * @param[in] checksum_valid True when the request checksum matches its content.
+ * @param[in,out] response First 32 bytes of the persistent attached-wheel response.
  * @return True after a correctly encrypted proof command is received.
  */
 bool wheel_authentication_accept(WheelAuthentication *authentication,

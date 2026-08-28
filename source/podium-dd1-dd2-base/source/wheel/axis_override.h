@@ -38,7 +38,7 @@ typedef struct {
 
 void wheel_axis_override_processor_init(WheelAxisOverrideProcessor *processor);
 void wheel_axis_override_process(WheelAxisOverrideProcessor *processor, uint8_t mode,
-                                 uint8_t operating_mode, uint8_t interface_mode, bool enabled,
+                                 uint8_t wheel_mode, uint8_t interface_mode, bool enabled,
                                  uint8_t calibration_value, uint8_t x, uint8_t y, uint8_t axes[2]);
 
 #endif
