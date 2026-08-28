@@ -46,6 +46,7 @@
 #include "usb/connection.h"
 #include "usb/device.h"
 #include "usb/fanatec_input.h"
+#include "usb/input_report.h"
 #include "usb/output_command.h"
 #include "usb/vendor_command.h"
 #include "wheel/position.h"
@@ -94,8 +95,8 @@ static AnalogSamples analog_samples;
 static HPatternShifter h_pattern_shifter;
 static ShifterInputState shifter_input;
 static ShifterDisplay shifter_display;
-static fanatec_input_state usb_input_state;
-static uint8_t usb_input_report[FANATEC_INPUT_REPORT_SIZE];
+static UsbInputReportState usb_input_state;
+static uint8_t usb_input_report[USB_INPUT_REPORT_MAX_SIZE];
 static UsbDeviceOutputReport usb_device_output_report;
 static UsbConnectionMonitor usb_connection_monitor;
 static UsbOutputCommand usb_output_command;
@@ -372,36 +373,41 @@ static void service_usb_input(void) {
     wheel_position_calibration = wheel_position_calibration_build(
         &base_settings.wheel_position, tuning_profile->rotation_degrees,
         tuning_profile->steering_deadzone);
-    usb_input_state = (fanatec_input_state){
-        .steering = wheel_position_hid_axis(motor_position_report.wheel_position,
-                                            &wheel_position_calibration),
-        .wheel_mode = FANATEC_INPUT_DIRECT_DRIVE_MODE,
-        .axis_limit = wheel_service_axis_limit(&wheel_service),
+    usb_input_state = (UsbInputReportState){
+        .fanatec =
+            {
+                .steering = wheel_position_hid_axis(motor_position_report.wheel_position,
+                                                    &wheel_position_calibration),
+                .wheel_mode = FANATEC_INPUT_DIRECT_DRIVE_MODE,
+                .axis_limit = wheel_service_axis_limit(&wheel_service),
+            },
     };
     const uint8_t *clutch_paddles = wheel_service_clutch_paddles(&wheel_service);
     if (clutch_paddles != 0) {
-        usb_input_state.clutch_paddles[0] = clutch_paddles[0];
-        usb_input_state.clutch_paddles[1] = clutch_paddles[1];
+        usb_input_state.fanatec.clutch_paddles[0] = clutch_paddles[0];
+        usb_input_state.fanatec.clutch_paddles[1] = clutch_paddles[1];
     }
     uint8_t wheel_controls[8];
     if (wheel_service_controls(&wheel_service, wheel_controls)) {
-        fanatec_input_apply_wheel_controls(&usb_input_state, wheel_controls,
+        fanatec_input_apply_wheel_controls(&usb_input_state.fanatec, wheel_controls,
                                            wheel_service_mode(&wheel_service) !=
                                                WHEEL_MODE_CRC_AUTHENTICATED);
     }
     const uint8_t *wheel_buttons = wheel_service_buttons(&wheel_service);
     for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {
-        usb_input_state.button_banks[bank] = wheel_buttons[bank];
+        usb_input_state.fanatec.button_banks[bank] = wheel_buttons[bank];
     }
-    usb_input_state.encoder_delta = wheel_service_take_encoder_delta(&wheel_service);
-    fanatec_input_apply_shifter(&usb_input_state, &shifter_input, h_pattern_shifter.gear);
+    usb_input_state.fanatec.encoder_delta = wheel_service_take_encoder_delta(&wheel_service);
+    fanatec_input_apply_shifter(&usb_input_state.fanatec, &shifter_input, h_pattern_shifter.gear);
     const PedalInput *pedal_input = pedal_service_input(&pedal_service);
     for (uint8_t axis = 0; axis < FANATEC_INPUT_PEDAL_AXES; axis++) {
-        usb_input_state.pedals[axis] = pedal_input_hid_axis(pedal_input->axes[axis]);
+        usb_input_state.fanatec.pedals[axis] = pedal_input_hid_axis(pedal_input->axes[axis]);
     }
-    usb_input_state.auxiliary_pedal = pedal_input_hid_auxiliary(pedal_input->auxiliary);
-    if (fanatec_input_encode(usb_input_report, &usb_input_state)) {
-        usb_device_send_input(usb_input_report, sizeof(usb_input_report));
+    usb_input_state.fanatec.auxiliary_pedal = pedal_input_hid_auxiliary(pedal_input->auxiliary);
+    uint8_t report_size =
+        usb_input_report_encode(USB_INPUT_REPORT_MODE_FANATEC, usb_input_report, &usb_input_state);
+    if (report_size != 0) {
+        usb_device_send_input(usb_input_report, report_size);
     }
 }
 
