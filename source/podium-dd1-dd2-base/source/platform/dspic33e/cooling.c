@@ -1,17 +1,17 @@
-#include "platform/resistance.h"
+#include "platform/cooling.h"
 
 #include <stdbool.h>
 #include <stdint.h>
 #include <xc.h>
 
-#include "analog/resistance_output.h"
+#include "cooling/pwm.h"
 #include "platform/time.h"
 
 enum {
-    RESISTANCE_PWM_PERIOD = 3192,
-    RESISTANCE_PWM_REGISTER_PERIOD = RESISTANCE_PWM_PERIOD - 1,
-    RESISTANCE_CAPTURE_INTERVAL_MS = 50,
-    RESISTANCE_CAPTURE_INTERRUPT_PRIORITY = 5,
+    FAN_PWM_PERIOD = 3192,
+    FAN_PWM_REGISTER_PERIOD = FAN_PWM_PERIOD - 1,
+    FAN_CAPTURE_INTERVAL_MS = 50,
+    FAN_CAPTURE_INTERRUPT_PRIORITY = 5,
 };
 
 typedef struct {
@@ -20,11 +20,11 @@ typedef struct {
     volatile bool ready;
     volatile bool present;
     volatile bool active;
-} ResistanceCaptureState;
+} FanCaptureState;
 
-static ResistanceCaptureState captures[2];
+static FanCaptureState captures[2];
 static bool pwm_inverted;
-static PlatformResistanceChannel next_channel;
+static PlatformFan next_fan;
 static uint32_t next_capture_ms;
 
 static void configure_pwm(void) {
@@ -36,7 +36,7 @@ static void configure_pwm(void) {
     OC5CON1 = 0;
     OC5CON2 = 0;
     OC5R = 0;
-    OC5RS = RESISTANCE_PWM_REGISTER_PERIOD;
+    OC5RS = FAN_PWM_REGISTER_PERIOD;
     OC5CON1bits.OCTSEL = 7;
     OC5CON1bits.OCM = 6;
     OC5CON2bits.SYNCSEL = 0x1f;
@@ -44,7 +44,7 @@ static void configure_pwm(void) {
     OC1CON1 = 0;
     OC1CON2 = 0;
     OC1R = 0;
-    OC1RS = RESISTANCE_PWM_REGISTER_PERIOD;
+    OC1RS = FAN_PWM_REGISTER_PERIOD;
     OC1CON1bits.OCTSEL = 7;
     OC1CON1bits.OCM = 6;
     OC1CON2bits.SYNCSEL = 0x1f;
@@ -64,7 +64,7 @@ static void configure_primary_capture(void) {
     IC2CON2bits.IC32 = 1;
     IC1CON2bits.ICTRIG = 1;
     IC2CON2bits.ICTRIG = 1;
-    IPC0bits.IC1IP = RESISTANCE_CAPTURE_INTERRUPT_PRIORITY;
+    IPC0bits.IC1IP = FAN_CAPTURE_INTERRUPT_PRIORITY;
     IFS0bits.IC1IF = 0;
     IEC0bits.IC1IE = 1;
 }
@@ -83,7 +83,7 @@ static void configure_secondary_capture(void) {
     IC4CON2bits.IC32 = 1;
     IC3CON2bits.ICTRIG = 1;
     IC4CON2bits.ICTRIG = 1;
-    IPC9bits.IC3IP = RESISTANCE_CAPTURE_INTERRUPT_PRIORITY;
+    IPC9bits.IC3IP = FAN_CAPTURE_INTERRUPT_PRIORITY;
     IFS2bits.IC3IF = 0;
     IEC2bits.IC3IE = 1;
 }
@@ -103,78 +103,77 @@ static void arm_secondary_capture(void) {
 }
 
 /**
- * @brief Configures both resistance PWM outputs and their paired pulse-capture inputs.
+ * @brief Configures both fan PWM outputs and their paired tachometer capture inputs.
  * @param[in] inverted_pwm True when increasing duty requires a decreasing compare value.
  */
-void platform_resistance_init(bool inverted_pwm) {
-    captures[PLATFORM_RESISTANCE_PRIMARY] = (ResistanceCaptureState){0};
-    captures[PLATFORM_RESISTANCE_SECONDARY] = (ResistanceCaptureState){0};
+void platform_cooling_init(bool inverted_pwm) {
+    captures[PLATFORM_FAN_PRIMARY] = (FanCaptureState){0};
+    captures[PLATFORM_FAN_SECONDARY] = (FanCaptureState){0};
     pwm_inverted = inverted_pwm;
-    next_channel = PLATFORM_RESISTANCE_PRIMARY;
-    next_capture_ms = platform_time_ms() + RESISTANCE_CAPTURE_INTERVAL_MS;
+    next_fan = PLATFORM_FAN_PRIMARY;
+    next_capture_ms = platform_time_ms() + FAN_CAPTURE_INTERVAL_MS;
     configure_pwm();
     configure_primary_capture();
     configure_secondary_capture();
 }
 
 /**
- * @brief Applies clamped duty percentages to the two resistance PWM outputs.
+ * @brief Applies clamped duty percentages to the two fan PWM outputs.
  * @param[in] primary_percent Primary output duty from 0 through 100 percent.
  * @param[in] secondary_percent Secondary output duty from 0 through 100 percent.
  * @param[in] outputs_disabled True to force both outputs to their inactive compare value.
  */
-void platform_resistance_set_duty(uint16_t primary_percent, uint16_t secondary_percent,
-                                  bool outputs_disabled) {
-    OC5R = resistance_output_compare(primary_percent, pwm_inverted, outputs_disabled);
-    OC1R = resistance_output_compare(secondary_percent, pwm_inverted, outputs_disabled);
+void platform_cooling_set_duty(uint16_t primary_percent, uint16_t secondary_percent,
+                               bool outputs_disabled) {
+    OC5R = fan_pwm_compare(primary_percent, pwm_inverted, outputs_disabled);
+    OC1R = fan_pwm_compare(secondary_percent, pwm_inverted, outputs_disabled);
 }
 
 /**
- * @brief Alternately checks and rearms one resistance pulse-capture channel every 50 milliseconds.
+ * @brief Alternately checks and rearms one fan tachometer capture every 50 milliseconds.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
-void platform_resistance_service(uint32_t now_ms) {
+void platform_cooling_service(uint32_t now_ms) {
     if (!platform_time_reached(now_ms, next_capture_ms)) {
         return;
     }
 
-    ResistanceCaptureState *capture = &captures[next_channel];
+    FanCaptureState *capture = &captures[next_fan];
     if (!capture->active) {
         capture->present = false;
         capture->ready = true;
     }
     capture->active = false;
 
-    if (next_channel == PLATFORM_RESISTANCE_PRIMARY) {
+    if (next_fan == PLATFORM_FAN_PRIMARY) {
         arm_primary_capture();
-        next_channel = PLATFORM_RESISTANCE_SECONDARY;
+        next_fan = PLATFORM_FAN_SECONDARY;
     } else {
         arm_secondary_capture();
-        next_channel = PLATFORM_RESISTANCE_PRIMARY;
+        next_fan = PLATFORM_FAN_PRIMARY;
     }
-    next_capture_ms = now_ms + RESISTANCE_CAPTURE_INTERVAL_MS;
+    next_capture_ms = now_ms + FAN_CAPTURE_INTERVAL_MS;
 }
 
 /**
- * @brief Consumes the newest completed or missing pulse-capture result for one channel.
- * @param[in] channel Resistance pulse-capture channel to inspect.
- * @param[out] capture Consecutive timestamps and signal-presence state.
+ * @brief Consumes the newest completed or missing tachometer result for one fan.
+ * @param[in] fan Fan tachometer channel to inspect.
+ * @param[out] tachometer Consecutive timestamps and signal-presence state.
  * @return True when a new capture result was consumed.
  */
-bool platform_resistance_take_capture(PlatformResistanceChannel channel,
-                                      PlatformResistanceCapture *capture) {
-    if (channel != PLATFORM_RESISTANCE_PRIMARY && channel != PLATFORM_RESISTANCE_SECONDARY) {
+bool platform_cooling_take_tachometer(PlatformFan fan, PlatformFanTachometer *tachometer) {
+    if (fan != PLATFORM_FAN_PRIMARY && fan != PLATFORM_FAN_SECONDARY) {
         return false;
     }
 
-    ResistanceCaptureState *state = &captures[channel];
+    FanCaptureState *state = &captures[fan];
     if (!state->ready) {
         return false;
     }
 
-    capture->previous_capture = state->previous;
-    capture->current_capture = state->current;
-    capture->present = state->present;
+    tachometer->previous_capture = state->previous;
+    tachometer->current_capture = state->current;
+    tachometer->present = state->present;
     state->ready = false;
     return true;
 }
@@ -183,7 +182,7 @@ bool platform_resistance_take_capture(PlatformResistanceChannel channel,
  * @brief Captures two consecutive primary input periods and stops the paired capture units.
  */
 void __attribute__((interrupt, no_auto_psv)) _IC1Interrupt(void) {
-    ResistanceCaptureState *capture = &captures[PLATFORM_RESISTANCE_PRIMARY];
+    FanCaptureState *capture = &captures[PLATFORM_FAN_PRIMARY];
 
     IFS0bits.IC1IF = 0;
     uint16_t previous_low = IC1BUF;
@@ -205,7 +204,7 @@ void __attribute__((interrupt, no_auto_psv)) _IC1Interrupt(void) {
  * @brief Captures two consecutive secondary input periods and stops the paired capture units.
  */
 void __attribute__((interrupt, no_auto_psv)) _IC3Interrupt(void) {
-    ResistanceCaptureState *capture = &captures[PLATFORM_RESISTANCE_SECONDARY];
+    FanCaptureState *capture = &captures[PLATFORM_FAN_SECONDARY];
 
     IFS2bits.IC3IF = 0;
     uint16_t previous_low = IC3BUF;

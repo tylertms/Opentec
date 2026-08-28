@@ -8,8 +8,8 @@ int main(void) {
     AnalogSamples samples;
     analog_samples_decode(scan, &samples);
 
-    assert(samples.resistance_left == 10);
-    assert(samples.resistance_right == 20);
+    assert(samples.primary_thermistor == 10);
+    assert(samples.secondary_thermistor == 20);
     assert(samples.auxiliary_axis == 30);
     assert(samples.primary_shifter_y == 40);
     assert(samples.primary_shifter_x == 50);

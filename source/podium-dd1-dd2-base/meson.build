@@ -2,9 +2,10 @@ base_include = include_directories('source')
 base_source_path = meson.current_source_dir() / 'source'
 common_source_path = meson.project_source_root() / 'source'
 analog_axis_sources = files('source/analog/axis.c')
-analog_pulse_measurement_sources = files('source/analog/pulse_measurement.c')
-analog_resistance_output_sources = files('source/analog/resistance_output.c')
 analog_samples_sources = files('source/analog/samples.c')
+cooling_pwm_sources = files('source/cooling/pwm.c')
+cooling_tachometer_sources = files('source/cooling/tachometer.c')
+cooling_temperature_sources = files('source/cooling/temperature.c')
 force_effect_bank_sources = files('source/force_feedback/bank.c')
 force_controller_sources = files('source/force_feedback/controller.c')
 force_effect_sources = files('source/force_feedback/effect.c')
@@ -80,9 +81,10 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
   firmware_objects = []
   foreach name, source : {
     'analog-axis': 'source/analog/axis.c',
-    'analog-pulse-measurement': 'source/analog/pulse_measurement.c',
-    'analog-resistance-output': 'source/analog/resistance_output.c',
     'analog-samples': 'source/analog/samples.c',
+    'cooling-pwm': 'source/cooling/pwm.c',
+    'cooling-tachometer': 'source/cooling/tachometer.c',
+    'cooling-temperature': 'source/cooling/temperature.c',
     'force-effect-bank': 'source/force_feedback/bank.c',
     'force-controller': 'source/force_feedback/controller.c',
     'force-effect': 'source/force_feedback/effect.c',
@@ -129,7 +131,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'transfer-frame': 'source/transfer/frame.c',
     'transfer-session': 'source/transfer/session.c',
     'platform-clock': 'source/platform/dspic33e/clock.c',
-    'platform-resistance': 'source/platform/dspic33e/resistance.c',
+    'platform-cooling': 'source/platform/dspic33e/cooling.c',
     'platform-board-identity': 'source/platform/dspic33e/board_identity.c',
     'platform-adc': 'source/platform/dspic33e/adc.c',
     'platform-aux-bus': 'source/platform/dspic33e/aux_bus.c',
@@ -221,18 +223,26 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
-  analog_pulse_measurement_test = executable(
-    'base-analog-pulse-measurement-test',
-    'tests/source/pulse_measurement.c',
-    analog_pulse_measurement_sources,
+  cooling_tachometer_test = executable(
+    'base-cooling-tachometer-test',
+    'tests/source/cooling_tachometer.c',
+    cooling_tachometer_sources,
     build_by_default: false,
     include_directories: base_include,
   )
 
-  analog_resistance_output_test = executable(
-    'base-analog-resistance-output-test',
-    'tests/source/resistance_output.c',
-    analog_resistance_output_sources,
+  cooling_pwm_test = executable(
+    'base-cooling-pwm-test',
+    'tests/source/cooling_pwm.c',
+    cooling_pwm_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  cooling_temperature_test = executable(
+    'base-cooling-temperature-test',
+    'tests/source/cooling_temperature.c',
+    cooling_temperature_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -738,14 +748,19 @@ if not meson.is_cross_build()
 
   test('base-analog-axis', analog_axis_test, suite: ['base', 'analog'])
   test(
-    'base-analog-pulse-measurement',
-    analog_pulse_measurement_test,
-    suite: ['base', 'analog'],
+    'base-cooling-tachometer',
+    cooling_tachometer_test,
+    suite: ['base', 'cooling'],
   )
   test(
-    'base-analog-resistance-output',
-    analog_resistance_output_test,
-    suite: ['base', 'analog'],
+    'base-cooling-pwm',
+    cooling_pwm_test,
+    suite: ['base', 'cooling'],
+  )
+  test(
+    'base-cooling-temperature',
+    cooling_temperature_test,
+    suite: ['base', 'cooling'],
   )
   test('base-analog-samples', analog_samples_test, suite: ['base', 'analog'])
   test('base-force-effect', force_effect_test, suite: ['base', 'force-feedback'])

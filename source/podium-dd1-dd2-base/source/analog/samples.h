@@ -6,8 +6,8 @@
 enum { ANALOG_SCAN_SAMPLE_COUNT = 10 };
 
 typedef struct {
-    uint16_t resistance_left;
-    uint16_t resistance_right;
+    uint16_t primary_thermistor;
+    uint16_t secondary_thermistor;
     uint16_t auxiliary_axis;
     uint16_t primary_shifter_y;
     uint16_t primary_shifter_x;

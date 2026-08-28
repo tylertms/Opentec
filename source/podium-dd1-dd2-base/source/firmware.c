@@ -1,9 +1,10 @@
 #include <stdbool.h>
 #include <xc.h>
 
-#include "analog/pulse_measurement.h"
 #include "board/identity.h"
 #include "board/status_led.h"
+#include "cooling/tachometer.h"
+#include "cooling/temperature.h"
 #include "force_feedback/output.h"
 #include "motor/live_frame.h"
 #include "motor/probe.h"
@@ -15,10 +16,10 @@
 #include "platform/aux_bus.h"
 #include "platform/board_identity.h"
 #include "platform/clock.h"
+#include "platform/cooling.h"
 #include "platform/motor_link.h"
 #include "platform/pedal_link.h"
 #include "platform/pin_mux.h"
-#include "platform/resistance.h"
 #include "platform/shifter.h"
 #include "platform/status_led.h"
 #include "platform/time.h"
@@ -82,30 +83,31 @@ static MotorLiveFrame motor_live_frame;
 static uint8_t motor_received_frame[MOTOR_LIVE_FRAME_SIZE];
 static uint8_t motor_transmitted_frame[MOTOR_LIVE_FRAME_SIZE];
 static StatusLed status_led;
-static PlatformResistanceCapture resistance_capture;
-static uint16_t resistance_pulse_units[2];
+static CoolingTemperatureMonitor cooling_temperature_monitor;
+static PlatformFanTachometer fan_tachometer;
+static uint16_t fan_speed_rpm[2];
 
 enum {
-    RESISTANCE_STARTUP_DUTY_PERCENT = 25,
+    FAN_STARTUP_DUTY_PERCENT = 25,
 };
 
-static void initialize_resistance_measurement(void) {
-    resistance_pulse_units[PLATFORM_RESISTANCE_PRIMARY] = 0;
-    resistance_pulse_units[PLATFORM_RESISTANCE_SECONDARY] = 0;
-    platform_resistance_init(board_identity.mode_bits != 7);
-    platform_resistance_set_duty(RESISTANCE_STARTUP_DUTY_PERCENT, RESISTANCE_STARTUP_DUTY_PERCENT,
-                                 false);
+static void initialize_cooling(void) {
+    cooling_temperature_monitor_init(&cooling_temperature_monitor);
+    fan_speed_rpm[PLATFORM_FAN_PRIMARY] = 0;
+    fan_speed_rpm[PLATFORM_FAN_SECONDARY] = 0;
+    platform_cooling_init(board_identity.mode_bits != 7);
+    platform_cooling_set_duty(FAN_STARTUP_DUTY_PERCENT, FAN_STARTUP_DUTY_PERCENT, false);
 }
 
-static void update_resistance_pulse_units(PlatformResistanceChannel channel) {
-    if (!platform_resistance_take_capture(channel, &resistance_capture)) {
+static void update_fan_speed(PlatformFan fan) {
+    if (!platform_cooling_take_tachometer(fan, &fan_tachometer)) {
         return;
     }
 
-    resistance_pulse_units[channel] =
-        resistance_capture.present ? pulse_measurement_units(resistance_capture.previous_capture,
-                                                             resistance_capture.current_capture)
-                                   : 0;
+    fan_speed_rpm[fan] =
+        fan_tachometer.present
+            ? fan_tachometer_rpm(fan_tachometer.previous_capture, fan_tachometer.current_capture)
+            : 0;
 }
 
 static void initialize_motor_link(void) {
@@ -198,6 +200,9 @@ static void service_usb_input(void) {
 static void service_analog_input(void) {
     platform_shifter_read(&shifter_input);
     if (platform_adc_read(&analog_samples)) {
+        cooling_temperature_monitor_add(&cooling_temperature_monitor,
+                                        analog_samples.primary_thermistor,
+                                        analog_samples.secondary_thermistor);
         pedal_service_set_analog_samples(&pedal_service, analog_samples.pedal_axes);
         if (!base_settings.h_pattern_shifter.calibrated) {
             h_pattern_shifter = (HPatternShifter){0};
@@ -231,7 +236,7 @@ int main(void) {
     platform_time_init();
     platform_status_led_init();
     status_led_init(&status_led);
-    initialize_resistance_measurement();
+    initialize_cooling();
     platform_adc_init();
     platform_shifter_init();
     platform_shifter_read(&shifter_input);
@@ -249,9 +254,9 @@ int main(void) {
         platform_aux_bus_service();
         uint32_t now_ms = platform_time_ms();
         platform_status_led_set(status_led_update(&status_led, now_ms));
-        platform_resistance_service(now_ms);
-        update_resistance_pulse_units(PLATFORM_RESISTANCE_PRIMARY);
-        update_resistance_pulse_units(PLATFORM_RESISTANCE_SECONDARY);
+        platform_cooling_service(now_ms);
+        update_fan_speed(PLATFORM_FAN_PRIMARY);
+        update_fan_speed(PLATFORM_FAN_SECONDARY);
         service_analog_input();
         service_motor_link();
         pedal_service_run(&pedal_service, now_ms);
