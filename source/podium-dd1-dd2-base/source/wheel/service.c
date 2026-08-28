@@ -540,6 +540,18 @@ bool wheel_service_acknowledgement_input_active(const WheelService *service) {
 }
 
 /**
+ * @brief Reports whether an attached adapter is connected.
+ *
+ * Returns the connection state retained from the current CRC-family adapter report.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return True while the adapter is connected.
+ */
+bool wheel_service_adapter_connected(const WheelService *service) {
+    return service->protocol.crc_adapter.connected;
+}
+
+/**
  * @brief Returns the negotiated attached-wheel mode.
  *
  * Reads the mode selected by the attached-wheel protocol handshake.

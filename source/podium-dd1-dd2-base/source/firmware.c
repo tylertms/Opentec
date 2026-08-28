@@ -54,7 +54,7 @@
 #include "usb/motor_vendor_service.h"
 #include "usb/operating_mode_command.h"
 #include "usb/output_command.h"
-#include "usb/remote_tuning_records.h"
+#include "usb/remote_tuning_service.h"
 #include "usb/tuning_menu_service.h"
 #include "usb/tuning_profile_report.h"
 #include "usb/tuning_profile_service.h"
@@ -120,7 +120,7 @@ static uint8_t usb_motor_acknowledgement[USB_DEVICE_REPORT_SIZE];
 static uint8_t usb_motor_response[USB_DEVICE_REPORT_SIZE];
 static uint8_t usb_wheel_transfer_response[USB_DEVICE_REPORT_SIZE];
 static UsbDiagnosticReportService usb_diagnostic_report_service;
-static UsbRemoteTuningRecords usb_remote_tuning_records;
+static UsbRemoteTuningService usb_remote_tuning_service;
 static UsbTuningMenuService usb_tuning_menu_service;
 static UsbTuningProfileService usb_tuning_profile_service;
 static UsbDiagnosticSnapshot usb_diagnostic_snapshot;
@@ -342,7 +342,7 @@ static void initialize_usb_command_bridge(void) {
     (void)usb_motor_vendor_service_init(&usb_motor_vendor_service, &usb_motor_buffers);
     wheel_transfer_service_init(&wheel_transfer_service);
     usb_diagnostic_report_service_init(&usb_diagnostic_report_service);
-    usb_remote_tuning_records_init(&usb_remote_tuning_records);
+    usb_remote_tuning_service_init(&usb_remote_tuning_service);
     usb_tuning_menu_service_init(&usb_tuning_menu_service);
     usb_tuning_profile_service_init(&usb_tuning_profile_service);
     usb_motor_acknowledgement_ready = false;
@@ -673,10 +673,12 @@ static void service_usb_output(void) {
                                                 &usb_vendor_command)) {
             return;
         }
-        if (usb_remote_tuning_records_apply(&usb_remote_tuning_records, &usb_vendor_command)) {
+        uint32_t now_ms = platform_time_ms();
+        if (usb_remote_tuning_service_apply(&usb_remote_tuning_service, &usb_vendor_command, now_ms,
+                                            wheel_service_mode(&wheel_service), true,
+                                            wheel_service_adapter_connected(&wheel_service))) {
             return;
         }
-        uint32_t now_ms = platform_time_ms();
         UsbTuningProfileAction tuning_action = usb_tuning_profile_service_apply(
             &usb_tuning_profile_service, &base_settings.tuning_profiles, &usb_vendor_command,
             now_ms);

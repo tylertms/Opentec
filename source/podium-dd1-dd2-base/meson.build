@@ -78,6 +78,7 @@ usb_device_sources = files('source/usb/device.c')
 usb_output_command_sources = files('source/usb/output_command.c')
 usb_operating_mode_command_sources = files('source/usb/operating_mode_command.c')
 usb_remote_tuning_records_sources = files('source/usb/remote_tuning_records.c')
+usb_remote_tuning_service_sources = files('source/usb/remote_tuning_service.c')
 usb_vendor_command_sources = files('source/usb/vendor_command.c')
 podium_report_descriptor_sources = files('source/usb/podium_report_descriptor.c')
 board_identity_sources = files('source/board/identity.c')
@@ -233,6 +234,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'usb-output-command': 'source/usb/output_command.c',
     'usb-operating-mode-command': 'source/usb/operating_mode_command.c',
     'usb-remote-tuning-records': 'source/usb/remote_tuning_records.c',
+    'usb-remote-tuning-service': 'source/usb/remote_tuning_service.c',
     'usb-vendor-command': 'source/usb/vendor_command.c',
     'podium-report-descriptor': 'source/usb/podium_report_descriptor.c',
     'board-identity': 'source/board/identity.c',
@@ -1018,6 +1020,15 @@ if not meson.is_cross_build()
   usb_remote_tuning_records_test = executable(
     'base-usb-remote-tuning-records-test',
     'tests/source/usb_remote_tuning_records.c',
+    usb_remote_tuning_records_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  usb_remote_tuning_service_test = executable(
+    'base-usb-remote-tuning-service-test',
+    'tests/source/usb_remote_tuning_service.c',
+    usb_remote_tuning_service_sources,
     usb_remote_tuning_records_sources,
     build_by_default: false,
     include_directories: base_include,
@@ -1881,6 +1892,11 @@ if not meson.is_cross_build()
   test(
     'base-usb-remote-tuning-records',
     usb_remote_tuning_records_test,
+    suite: ['base', 'usb', 'profile'],
+  )
+  test(
+    'base-usb-remote-tuning-service',
+    usb_remote_tuning_service_test,
     suite: ['base', 'usb', 'profile'],
   )
   test('base-usb-diagnostic-report', usb_diagnostic_report_test, suite: ['base', 'usb', 'output'])

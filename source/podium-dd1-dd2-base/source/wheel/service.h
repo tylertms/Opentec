@@ -48,6 +48,7 @@ bool wheel_service_axis_values(const WheelService *service, uint16_t values[2]);
 bool wheel_service_controls(const WheelService *service, uint8_t controls[8]);
 int8_t wheel_service_take_encoder_delta(WheelService *service);
 bool wheel_service_acknowledgement_input_active(const WheelService *service);
+bool wheel_service_adapter_connected(const WheelService *service);
 uint8_t wheel_service_mode(const WheelService *service);
 WheelProtocolPhase wheel_service_protocol_phase(const WheelService *service);
 
