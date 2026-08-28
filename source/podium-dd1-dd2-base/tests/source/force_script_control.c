@@ -13,24 +13,23 @@ static void test_decodes_slot_commands_and_runtime_mode(void) {
     static const uint8_t expected[FORCE_FEEDBACK_SCRIPT_SLOT_COUNT] = {
         0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 15,
     };
-    ForceFeedbackScriptControl control;
+    ForceFeedbackScriptControlResult result =
+        force_feedback_script_control_decode(packet, sizeof(packet));
 
-    assert(force_feedback_script_control_decode(packet, sizeof(packet), &control));
+    assert(result.valid);
     for (uint8_t slot = 0; slot < FORCE_FEEDBACK_SCRIPT_SLOT_COUNT; slot++) {
-        assert(control.slots[slot] == expected[slot]);
+        assert(result.value.slots[slot] == expected[slot]);
     }
-    assert(control.runtime_mode == FORCE_FEEDBACK_RUNTIME_ZERO_OUTPUT);
+    assert(result.value.runtime_mode == FORCE_FEEDBACK_RUNTIME_ZERO_OUTPUT);
 }
 
 static void test_rejects_incomplete_commands(void) {
     uint8_t packet[13] = {[0] = 0x0c};
-    ForceFeedbackScriptControl control;
 
-    assert(!force_feedback_script_control_decode(packet, 12, &control));
+    assert(!force_feedback_script_control_decode(packet, 12).valid);
     packet[0] = 0x0b;
-    assert(!force_feedback_script_control_decode(packet, sizeof(packet), &control));
-    assert(!force_feedback_script_control_decode(NULL, sizeof(packet), &control));
-    assert(!force_feedback_script_control_decode(packet, sizeof(packet), NULL));
+    assert(!force_feedback_script_control_decode(packet, sizeof(packet)).valid);
+    assert(!force_feedback_script_control_decode(NULL, sizeof(packet)).valid);
 }
 
 static void test_encodes_slot_status_and_preserves_response_prefix(void) {

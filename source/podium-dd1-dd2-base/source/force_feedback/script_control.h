@@ -44,6 +44,11 @@ typedef struct {
 } ForceFeedbackScriptControl;
 
 typedef struct {
+    ForceFeedbackScriptControl value;
+    bool valid;
+} ForceFeedbackScriptControlResult;
+
+typedef struct {
     ForceFeedbackScriptSlotState slots[FORCE_FEEDBACK_SCRIPT_SLOT_COUNT];
     ForceFeedbackRuntimeMode runtime_mode;
 } ForceFeedbackScriptStatus;
@@ -65,8 +70,8 @@ typedef struct {
     bool script_executing;
 } ForceFeedbackScriptClock;
 
-bool force_feedback_script_control_decode(const uint8_t *packet, size_t length,
-                                          ForceFeedbackScriptControl *control);
+ForceFeedbackScriptControlResult force_feedback_script_control_decode(const uint8_t *packet,
+                                                                      size_t length);
 bool force_feedback_script_status_encode(const ForceFeedbackScriptStatus *status, uint8_t *response,
                                          size_t length);
 bool force_feedback_script_slot_apply(ForceFeedbackScriptSlot *slot,

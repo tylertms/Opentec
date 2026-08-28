@@ -22,23 +22,24 @@ enum {
  *
  * @param[in] packet Feature-command packet beginning with the script-control opcode.
  * @param[in] length Number of available packet bytes.
- * @param[out] control Destination for the per-slot commands and runtime mode.
- * @return True when the packet contains the complete script-control command.
+ * @return The decoded controls and whether the packet contains the complete command.
  */
-bool force_feedback_script_control_decode(const uint8_t *packet, size_t length,
-                                          ForceFeedbackScriptControl *control) {
-    if (packet == NULL || control == NULL || length < SCRIPT_CONTROL_PACKET_SIZE ||
+ForceFeedbackScriptControlResult force_feedback_script_control_decode(const uint8_t *packet,
+                                                                      size_t length) {
+    ForceFeedbackScriptControlResult result = {0};
+    if (packet == NULL || length < SCRIPT_CONTROL_PACKET_SIZE ||
         packet[0] != SCRIPT_CONTROL_OPCODE) {
-        return false;
+        return result;
     }
 
     for (uint8_t index = 0; index < SCRIPT_CONTROL_PACKED_SLOT_COUNT; index++) {
         uint8_t packed = packet[SCRIPT_CONTROL_FIRST_SLOT_OFFSET + index];
-        control->slots[index * 2] = packed >> 4;
-        control->slots[index * 2 + 1] = packed & 0x0f;
+        result.value.slots[index * 2] = packed >> 4;
+        result.value.slots[index * 2 + 1] = packed & 0x0f;
     }
-    control->runtime_mode = packet[SCRIPT_CONTROL_RUNTIME_MODE_OFFSET];
-    return true;
+    result.value.runtime_mode = packet[SCRIPT_CONTROL_RUNTIME_MODE_OFFSET];
+    result.valid = true;
+    return result;
 }
 
 /**

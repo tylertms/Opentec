@@ -36,8 +36,58 @@ static void test_initializes_complete_runtime(void) {
     assert(!system.clock.script_executing);
 }
 
+static void test_applies_controls_and_compacts_storage(void) {
+    ForceFeedbackScriptSystem system;
+    force_feedback_script_runtime_init(&system);
+    system.values.slots[0].state = FORCE_FEEDBACK_SCRIPT_SLOT_INACTIVE;
+    system.values.slots[0].values[0] = 7;
+    system.values.slots[1].state = FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE;
+    system.values.slots[2].state = FORCE_FEEDBACK_SCRIPT_SLOT_INACTIVE;
+    system.store.data[0] = 10;
+    system.store.data[1] = 20;
+    system.store.data[2] = 30;
+    system.store.slots[0] =
+        (ForceFeedbackScriptStorageSlot){.offset = 0, .size = 1, .allocated = true};
+    system.store.slots[1] =
+        (ForceFeedbackScriptStorageSlot){.offset = 1, .size = 1, .allocated = true};
+    system.store.slots[2] =
+        (ForceFeedbackScriptStorageSlot){.offset = 2, .size = 1, .allocated = true};
+    system.store.used = 3;
+
+    uint8_t packet[13] = {
+        [0] = 0x0c,
+        [4] = 0x13,
+        [12] = FORCE_FEEDBACK_RUNTIME_ZERO_OUTPUT,
+    };
+    assert(force_feedback_script_runtime_apply_control(&system, packet, sizeof(packet)));
+
+    assert(system.values.slots[0].state == FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE);
+    assert(system.values.slots[0].values[0] == 0);
+    assert(system.values.slots[1].state == FORCE_FEEDBACK_SCRIPT_SLOT_PAUSED);
+    assert(system.values.slots[2].state == FORCE_FEEDBACK_SCRIPT_SLOT_EMPTY);
+    assert(system.mode == FORCE_FEEDBACK_RUNTIME_ZERO_OUTPUT);
+    assert(system.store.used == 2);
+    assert(system.store.data[0] == 10);
+    assert(system.store.data[1] == 20);
+    assert(system.store.slots[1].offset == 1);
+    assert(!system.store.slots[2].allocated);
+}
+
+static void test_rejects_invalid_control_without_changes(void) {
+    ForceFeedbackScriptSystem system;
+    force_feedback_script_runtime_init(&system);
+    system.values.slots[0].state = FORCE_FEEDBACK_SCRIPT_SLOT_INACTIVE;
+    uint8_t packet[12] = {[0] = 0x0c};
+
+    assert(!force_feedback_script_runtime_apply_control(&system, packet, sizeof(packet)));
+    assert(system.values.slots[0].state == FORCE_FEEDBACK_SCRIPT_SLOT_INACTIVE);
+    assert(system.mode == FORCE_FEEDBACK_RUNTIME_POSITION_ONLY);
+}
+
 int main(void) {
     test_initializes_complete_runtime();
+    test_applies_controls_and_compacts_storage();
+    test_rejects_invalid_control_without_changes();
     force_feedback_script_runtime_init(NULL);
     return 0;
 }

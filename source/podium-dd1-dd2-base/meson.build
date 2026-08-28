@@ -424,6 +424,7 @@ if not meson.is_cross_build()
     'base-force-script-runtime-test',
     'tests/source/force_script_runtime.c',
     force_script_runtime_sources,
+    force_script_control_sources,
     force_script_input_sources,
     force_script_store_sources,
     build_by_default: false,
