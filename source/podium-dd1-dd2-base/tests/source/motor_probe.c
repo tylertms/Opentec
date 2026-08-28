@@ -72,7 +72,9 @@ static void test_discovers_motor(void) {
     assert(identity != 0);
     assert(identity->protocol == MOTOR_PROTOCOL_POSITION_A);
     assert(identity->model == 5);
-    assert(identity->version == UINT32_C(0x0302012a));
+    for (uint8_t index = 0; index < sizeof(version); index++) {
+        assert(identity->version[index] == version[index]);
+    }
     assert(start_count == 2);
 }
 

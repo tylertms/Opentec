@@ -60,12 +60,12 @@ static void test_reads_extended_telemetry(void) {
     motor_telemetry_service_run(&service, 0);
     assert(requested_register == 0x12);
     assert(requested_length == 2);
-    const uint8_t motor_temperature[2] = {0x34, 0x12};
+    const uint8_t motor_temperature[2] = {0x12, 0x34};
     finish_read(motor_temperature);
     motor_telemetry_service_run(&service, 1);
 
     assert(requested_register == 0x13);
-    const uint8_t driver_temperature[2] = {0x78, 0x56};
+    const uint8_t driver_temperature[2] = {0x56, 0x78};
     finish_read(driver_temperature);
     motor_telemetry_service_run(&service, 2);
 
@@ -84,7 +84,7 @@ static void test_reads_extended_telemetry(void) {
     const MotorTelemetry *telemetry = motor_telemetry_service_value(&service);
     assert(telemetry->motor_temperature == 0x1234);
     assert(telemetry->driver_temperature == 0x5678);
-    assert(telemetry->runtime_seconds == UINT32_C(0x04030201));
+    assert(telemetry->runtime_seconds == UINT32_C(0x01020304));
     assert(telemetry->accessory_type == 9);
     assert(telemetry->motor_temperature_valid);
     assert(telemetry->driver_temperature_valid);
@@ -92,9 +92,9 @@ static void test_reads_extended_telemetry(void) {
     assert(telemetry->accessory_type_valid);
     assert(start_count == 4);
 
-    motor_telemetry_service_run(&service, 1003);
+    motor_telemetry_service_run(&service, 203);
     assert(start_count == 4);
-    motor_telemetry_service_run(&service, 1004);
+    motor_telemetry_service_run(&service, 204);
     assert(start_count == 5);
     assert(requested_register == 0x12);
 }

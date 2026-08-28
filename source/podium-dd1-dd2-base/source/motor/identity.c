@@ -6,14 +6,15 @@
 /**
  * @brief Classifies a motor controller and extracts its model, version, and transfer code.
  * @param[in] status Initial controller status byte.
- * @param[in] version Four-byte little-endian controller version response.
+ * @param[in] version Four-byte controller version response.
  * @param[out] identity Decoded controller identity, including partial fields on failure.
  * @return True for legacy, standard, and the two extended protocol encodings.
  */
 bool motor_identity_decode(uint8_t status, const uint8_t version[4], MotorIdentity *identity) {
     identity->initial_status = status;
-    identity->version = (uint32_t)version[0] | (uint32_t)version[1] << 8 |
-                        (uint32_t)version[2] << 16 | (uint32_t)version[3] << 24;
+    for (uint8_t index = 0; index < sizeof(identity->version); index++) {
+        identity->version[index] = version[index];
+    }
     identity->transfer_code = version[0] & 0x3f;
     identity->model = 0;
 

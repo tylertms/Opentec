@@ -12,7 +12,7 @@ enum {
     MOTOR_RUNTIME_REGISTER = 0x11,
     MOTOR_TEMPERATURE_REGISTER = 0x12,
     MOTOR_DRIVER_TEMPERATURE_REGISTER = 0x13,
-    MOTOR_TELEMETRY_POLL_INTERVAL_MS = 1000,
+    MOTOR_TELEMETRY_POLL_INTERVAL_MS = 200,
 };
 
 void motor_telemetry_service_init(MotorTelemetryService *service, const MotorIdentity *identity) {

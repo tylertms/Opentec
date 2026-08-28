@@ -10,7 +10,9 @@ static void test_legacy_identity(void) {
     assert(motor_identity_decode(0x21, version, &identity));
     assert(identity.protocol == MOTOR_PROTOCOL_LEGACY);
     assert(identity.model == 0);
-    assert(identity.version == UINT32_C(0x563412c5));
+    for (uint8_t index = 0; index < sizeof(version); index++) {
+        assert(identity.version[index] == version[index]);
+    }
     assert(identity.transfer_code == 5);
     assert(identity.initial_status == 0x21);
     assert(!motor_identity_has_extended_parameters(&identity));

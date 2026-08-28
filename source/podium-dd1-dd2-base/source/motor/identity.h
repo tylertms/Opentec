@@ -13,7 +13,7 @@ typedef enum {
 
 typedef struct {
     MotorProtocol protocol;
-    uint32_t version;
+    uint8_t version[4];
     uint8_t model;
     uint8_t transfer_code;
     uint8_t initial_status;
