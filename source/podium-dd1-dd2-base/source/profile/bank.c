@@ -9,6 +9,7 @@ void tuning_profile_bank_defaults(TuningProfileBank *bank) {
     }
     bank->selected_slot = 0;
     bank->active_slot = 0;
+    bank->standard_mode_enabled = true;
 }
 
 bool tuning_profile_bank_select(TuningProfileBank *bank, uint8_t slot) {

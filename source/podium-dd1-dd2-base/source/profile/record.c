@@ -8,6 +8,9 @@ enum {
     RECORD_MAGIC_1 = 'T',
     RECORD_MAGIC_2 = 'P',
     RECORD_MAGIC_3 = 'F',
+    RECORD_LEGACY_VERSION = 1,
+    RECORD_STANDARD_MODE_MASK = 0x80,
+    RECORD_SLOT_COUNT_MASK = 0x7f,
     RECORD_DATA_SIZE = TUNING_PROFILE_RECORD_SIZE - TUNING_PROFILE_RECORD_CHECKSUM_SIZE,
 };
 
@@ -114,7 +117,11 @@ bool tuning_profile_record_encode(const TuningProfileBank *bank,
     cursor = write_u8(output, cursor, TUNING_PROFILE_RECORD_VERSION);
     cursor = write_u8(output, cursor, bank->selected_slot);
     cursor = write_u8(output, cursor, bank->active_slot);
-    cursor = write_u8(output, cursor, TUNING_PROFILE_SLOT_COUNT);
+    uint8_t flags = (uint8_t)TUNING_PROFILE_SLOT_COUNT;
+    if (bank->standard_mode_enabled) {
+        flags |= (uint8_t)RECORD_STANDARD_MODE_MASK;
+    }
+    cursor = write_u8(output, cursor, flags);
 
     for (uint8_t slot = 0; slot < TUNING_PROFILE_SLOT_COUNT; slot++) {
         cursor = write_profile(output, cursor, &bank->slots[slot]);
@@ -129,9 +136,10 @@ bool tuning_profile_record_decode(const uint8_t input[TUNING_PROFILE_RECORD_SIZE
     uint16_t stored_checksum =
         (uint16_t)input[RECORD_DATA_SIZE] | ((uint16_t)input[RECORD_DATA_SIZE + 1] << 8);
     if (input[0] != RECORD_MAGIC_0 || input[1] != RECORD_MAGIC_1 || input[2] != RECORD_MAGIC_2 ||
-        input[3] != RECORD_MAGIC_3 || input[4] != TUNING_PROFILE_RECORD_VERSION ||
-        input[7] != TUNING_PROFILE_SLOT_COUNT || input[5] >= TUNING_PROFILE_SLOT_COUNT ||
-        input[6] >= TUNING_PROFILE_SLOT_COUNT ||
+        input[3] != RECORD_MAGIC_3 ||
+        (input[4] != RECORD_LEGACY_VERSION && input[4] != TUNING_PROFILE_RECORD_VERSION) ||
+        (input[7] & RECORD_SLOT_COUNT_MASK) != TUNING_PROFILE_SLOT_COUNT ||
+        input[5] >= TUNING_PROFILE_SLOT_COUNT || input[6] >= TUNING_PROFILE_SLOT_COUNT ||
         stored_checksum != record_checksum(input, RECORD_DATA_SIZE)) {
         return false;
     }
@@ -139,6 +147,8 @@ bool tuning_profile_record_decode(const uint8_t input[TUNING_PROFILE_RECORD_SIZE
     TuningProfileBank decoded;
     decoded.selected_slot = input[5];
     decoded.active_slot = input[6];
+    decoded.standard_mode_enabled =
+        input[4] == RECORD_LEGACY_VERSION || (input[7] & RECORD_STANDARD_MODE_MASK) != 0;
     uint16_t cursor = TUNING_PROFILE_RECORD_HEADER_SIZE;
     for (uint8_t slot = 0; slot < TUNING_PROFILE_SLOT_COUNT; slot++) {
         cursor = read_profile(input, cursor, &decoded.slots[slot]);

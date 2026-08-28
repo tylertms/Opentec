@@ -12,6 +12,7 @@ static void test_round_trip(void) {
     tuning_profile_bank_defaults(&source);
     source.selected_slot = 3;
     source.active_slot = 2;
+    source.standard_mode_enabled = false;
     source.slots[0].rotation_degrees = 900;
     source.slots[1].force_feedback_strength = 80;
     source.slots[2].force_scale = TUNING_FORCE_SCALE_LINEAR;
@@ -23,6 +24,7 @@ static void test_round_trip(void) {
     assert(tuning_profile_record_decode(record, &decoded));
     assert(decoded.selected_slot == 3);
     assert(decoded.active_slot == 2);
+    assert(!decoded.standard_mode_enabled);
     assert(decoded.slots[0].rotation_degrees == 900);
     assert(decoded.slots[1].force_feedback_strength == 80);
     assert(decoded.slots[2].force_scale == TUNING_FORCE_SCALE_LINEAR);
@@ -46,7 +48,7 @@ static void test_stable_header_and_field_encoding(void) {
     assert(record[4] == TUNING_PROFILE_RECORD_VERSION);
     assert(record[5] == 1);
     assert(record[6] == 4);
-    assert(record[7] == TUNING_PROFILE_SLOT_COUNT);
+    assert(record[7] == (uint8_t)(TUNING_PROFILE_SLOT_COUNT | 0x80));
     assert(record[8] == 0x38);
     assert(record[9] == 0x04);
     assert(record[10] == 1);

@@ -264,6 +264,18 @@ static void test_deadline_wraps_safely(void) {
            BASE_SETTINGS_PERSISTENCE_SAVED);
 }
 
+static void test_explicit_save_has_no_delay(void) {
+    reset_storage();
+    BaseSettingsPersistence persistence;
+    BaseSettings settings;
+    base_settings_persistence_load(&persistence, &settings, 0);
+
+    base_settings_persistence_request_save(&persistence, 100);
+
+    assert(base_settings_persistence_service(&persistence, &settings, 100) ==
+           BASE_SETTINGS_PERSISTENCE_SAVED);
+}
+
 int main(void) {
     test_defaults_are_saved_after_delay();
     test_dirty_changes_are_coalesced();
@@ -274,5 +286,6 @@ int main(void) {
     test_interrupted_replacement_preserves_previous_record();
     test_corrupted_new_record_falls_back_to_previous_record();
     test_deadline_wraps_safely();
+    test_explicit_save_has_no_delay();
     return 0;
 }

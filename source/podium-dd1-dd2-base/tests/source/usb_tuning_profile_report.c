@@ -61,10 +61,34 @@ static void test_rejects_null_inputs(void) {
     assert(!usb_tuning_profile_report_decode(input, NULL));
 }
 
+static void test_encodes_profile_response(void) {
+    TuningProfileBank bank;
+    uint8_t output[USB_DEVICE_REPORT_SIZE];
+    tuning_profile_bank_defaults(&bank);
+    bank.active_slot = 3;
+    bank.slots[3].force_feedback_strength = 80;
+
+    usb_tuning_profile_report_encode_response(&bank, output);
+
+    assert(output[0] == UINT8_MAX);
+    assert(output[1] == 3);
+    assert(output[2] == 0x84);
+    assert(output[3] == 126);
+    assert(output[4] == 80);
+    for (uint8_t index = 28; index < USB_DEVICE_REPORT_SIZE; index++) {
+        assert(output[index] == 0);
+    }
+
+    bank.standard_mode_enabled = false;
+    usb_tuning_profile_report_encode_response(&bank, output);
+    assert(output[2] == 4);
+}
+
 int main(void) {
     test_encodes_factory_profile();
     test_round_trips_manual_rotation();
     test_automatic_rotation_keeps_concrete_range();
     test_rejects_null_inputs();
+    test_encodes_profile_response();
     return 0;
 }

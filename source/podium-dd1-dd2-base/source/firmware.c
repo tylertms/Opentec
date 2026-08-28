@@ -54,6 +54,8 @@
 #include "usb/motor_vendor_service.h"
 #include "usb/operating_mode_command.h"
 #include "usb/output_command.h"
+#include "usb/tuning_profile_report.h"
+#include "usb/tuning_profile_service.h"
 #include "usb/vendor_command.h"
 #include "wheel/position.h"
 #include "wheel/service.h"
@@ -116,8 +118,10 @@ static uint8_t usb_motor_acknowledgement[USB_DEVICE_REPORT_SIZE];
 static uint8_t usb_motor_response[USB_DEVICE_REPORT_SIZE];
 static uint8_t usb_wheel_transfer_response[USB_DEVICE_REPORT_SIZE];
 static UsbDiagnosticReportService usb_diagnostic_report_service;
+static UsbTuningProfileService usb_tuning_profile_service;
 static UsbDiagnosticSnapshot usb_diagnostic_snapshot;
 static uint8_t usb_diagnostic_report[USB_DEVICE_REPORT_SIZE];
+static uint8_t usb_tuning_profile_response[USB_DEVICE_REPORT_SIZE];
 static UsbDeviceOutputReport usb_device_output_report;
 static UsbConnectionMonitor usb_connection_monitor;
 static UsbOutputCommand usb_output_command;
@@ -148,6 +152,7 @@ static bool force_output_prompt_visible;
 static bool usb_motor_acknowledgement_ready;
 static bool usb_motor_response_ready;
 static bool usb_wheel_transfer_response_ready;
+static bool usb_tuning_profile_response_ready;
 static bool usb_wheel_transfer_response_pending[WHEEL_TRANSFER_REQUEST_COUNT];
 
 enum {
@@ -281,9 +286,7 @@ static void service_motor_link(void) {
     platform_motor_link_set_transmit(motor_transmitted_frame);
 }
 
-static void initialize_motor(void) {
-    base_settings_persistence_load(&settings_persistence, &base_settings, platform_time_ms());
-    force_feedback_state_init(&force_feedback_state);
+static void apply_active_tuning_profile(void) {
     runtime_tuning_profile = *tuning_profile_bank_active(&base_settings.tuning_profiles);
     tuning_profile = &runtime_tuning_profile;
     cooling_effect_strengths = (CoolingEffectStrengths){
@@ -299,23 +302,32 @@ static void initialize_motor(void) {
         .throttle_curve = (uint8_t)tuning_profile->throttle_pedal_curve,
     };
     pedal_service_set_v4_tuning(&pedal_service, pedal_tuning);
+    motor_tuning_context.automatic_rotation_degrees = tuning_profile->rotation_degrees;
+    if (motor_tuning_ready) {
+        motor_tuning_service_refresh(&motor_tuning_service, tuning_profile, &motor_tuning_context);
+    }
+}
+
+static void initialize_motor(void) {
+    base_settings_persistence_load(&settings_persistence, &base_settings, platform_time_ms());
+    force_feedback_state_init(&force_feedback_state);
     motor_tuning_context = (MotorTuningContext){
-        .automatic_rotation_degrees = tuning_profile->rotation_degrees,
         .ramp_percent = 0,
         .strength_percent = board_identity.variant == BOARD_VARIANT_DD1 ? 40 : 32,
         .xbox_mode = 0,
         .calibration_active = 0,
     };
+    motor_tuning_ready = false;
+    apply_active_tuning_profile();
     motor_probe_init(&motor_probe);
     motor_probe_start(&motor_probe, platform_time_ms());
-    motor_tuning_ready = false;
 }
 
 /**
  * @brief Initializes the host command bridge.
  *
  * Attaches report-6 mailbox storage and wheel-transfer requests to the shared type-four command
- * transport.
+ * transport, then initializes diagnostic and tuning-profile vendor responses.
  */
 static void initialize_usb_command_bridge(void) {
     command_transport_init(&command_transport);
@@ -324,9 +336,11 @@ static void initialize_usb_command_bridge(void) {
     (void)usb_motor_vendor_service_init(&usb_motor_vendor_service, &usb_motor_buffers);
     wheel_transfer_service_init(&wheel_transfer_service);
     usb_diagnostic_report_service_init(&usb_diagnostic_report_service);
+    usb_tuning_profile_service_init(&usb_tuning_profile_service);
     usb_motor_acknowledgement_ready = false;
     usb_motor_response_ready = false;
     usb_wheel_transfer_response_ready = false;
+    usb_tuning_profile_response_ready = false;
     for (uint8_t request = 0; request < WHEEL_TRANSFER_REQUEST_COUNT; request++) {
         usb_wheel_transfer_response_pending[request] = false;
     }
@@ -469,6 +483,12 @@ static void service_usb_command_bridge(uint32_t now_ms) {
             usb_wheel_transfer_response_ready = true;
         }
     }
+    if (!usb_tuning_profile_response_ready &&
+        usb_tuning_profile_service_response_pending(&usb_tuning_profile_service)) {
+        usb_tuning_profile_report_encode_response(&base_settings.tuning_profiles,
+                                                  usb_tuning_profile_response);
+        usb_tuning_profile_response_ready = true;
+    }
     update_usb_diagnostic_snapshot(now_ms);
     bool usb_diagnostic_report_ready = usb_diagnostic_report_prepare(
         &usb_diagnostic_report_service, &usb_diagnostic_snapshot, usb_diagnostic_report);
@@ -477,13 +497,20 @@ static void service_usb_command_bridge(uint32_t now_ms) {
         usb_wheel_transfer_response_ready = false;
     }
     if (!usb_motor_acknowledgement_ready && !usb_wheel_transfer_response_ready &&
-        usb_diagnostic_report_ready && usb_device_send_vendor_report(usb_diagnostic_report)) {
+        usb_tuning_profile_response_ready &&
+        usb_device_send_vendor_report(usb_tuning_profile_response)) {
+        usb_tuning_profile_response_ready = false;
+        usb_tuning_profile_service_response_sent(&usb_tuning_profile_service);
+    }
+    if (!usb_motor_acknowledgement_ready && !usb_wheel_transfer_response_ready &&
+        !usb_tuning_profile_response_ready && usb_diagnostic_report_ready &&
+        usb_device_send_vendor_report(usb_diagnostic_report)) {
         usb_diagnostic_report_commit(&usb_diagnostic_report_service, usb_diagnostic_report);
         usb_diagnostic_report_ready = false;
     }
     if (!usb_motor_acknowledgement_ready && !usb_wheel_transfer_response_ready &&
-        !usb_diagnostic_report_ready && usb_motor_response_ready &&
-        usb_device_send_vendor_report(usb_motor_response)) {
+        !usb_tuning_profile_response_ready && !usb_diagnostic_report_ready &&
+        usb_motor_response_ready && usb_device_send_vendor_report(usb_motor_response)) {
         usb_motor_response_ready = false;
     }
 }
@@ -607,6 +634,25 @@ static void service_usb_output(void) {
     if (usb_vendor_command_decode(&usb_output_command, &usb_vendor_command)) {
         if (usb_diagnostic_report_apply_command(&usb_diagnostic_report_service,
                                                 &usb_vendor_command)) {
+            return;
+        }
+        uint32_t now_ms = platform_time_ms();
+        UsbTuningProfileAction tuning_action = usb_tuning_profile_service_apply(
+            &usb_tuning_profile_service, &base_settings.tuning_profiles, &usb_vendor_command,
+            now_ms);
+        if ((tuning_action & USB_TUNING_PROFILE_ACTION_CLAIM) != 0) {
+            if ((tuning_action & USB_TUNING_PROFILE_ACTION_PROFILE_CHANGED) != 0) {
+                apply_active_tuning_profile();
+            }
+            if ((tuning_action & USB_TUNING_PROFILE_ACTION_SETTINGS_CHANGED) != 0) {
+                base_settings_persistence_mark_dirty(&settings_persistence, now_ms);
+            }
+            if ((tuning_action & USB_TUNING_PROFILE_ACTION_SAVE) != 0) {
+                base_settings_persistence_request_save(&settings_persistence, now_ms);
+            }
+            if (usb_tuning_profile_service_response_pending(&usb_tuning_profile_service)) {
+                usb_tuning_profile_response_ready = false;
+            }
             return;
         }
         if (usb_vendor_command_requests_motor_command(&usb_vendor_command)) {

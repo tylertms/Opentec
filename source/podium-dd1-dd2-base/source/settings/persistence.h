@@ -25,6 +25,7 @@ typedef struct {
 bool base_settings_persistence_load(BaseSettingsPersistence *persistence, BaseSettings *settings,
                                     uint32_t now_ms);
 void base_settings_persistence_mark_dirty(BaseSettingsPersistence *persistence, uint32_t now_ms);
+void base_settings_persistence_request_save(BaseSettingsPersistence *persistence, uint32_t now_ms);
 BaseSettingsPersistenceResult
 base_settings_persistence_service(BaseSettingsPersistence *persistence,
                                   const BaseSettings *settings, uint32_t now_ms);

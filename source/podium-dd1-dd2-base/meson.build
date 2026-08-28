@@ -68,6 +68,7 @@ usb_updater_control_sources = files('source/usb/updater_control.c')
 usb_descriptor_sources = files('source/usb/descriptor.c')
 usb_diagnostic_report_sources = files('source/usb/diagnostic_report.c')
 usb_tuning_profile_report_sources = files('source/usb/tuning_profile_report.c')
+usb_tuning_profile_service_sources = files('source/usb/tuning_profile_service.c')
 usb_control_request_sources = files('source/usb/control_request.c')
 usb_control_pipe_sources = files('source/usb/control_pipe.c')
 usb_buffer_descriptor_sources = files('source/usb/buffer_descriptor.c')
@@ -219,6 +220,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'usb-descriptor': 'source/usb/descriptor.c',
     'usb-diagnostic-report': 'source/usb/diagnostic_report.c',
     'usb-tuning-profile-report': 'source/usb/tuning_profile_report.c',
+    'usb-tuning-profile-service': 'source/usb/tuning_profile_service.c',
     'usb-control-request': 'source/usb/control_request.c',
     'usb-control-pipe': 'source/usb/control_pipe.c',
     'usb-buffer-descriptor': 'source/usb/buffer_descriptor.c',
@@ -1019,6 +1021,18 @@ if not meson.is_cross_build()
     'base-usb-tuning-profile-report-test',
     'tests/source/usb_tuning_profile_report.c',
     usb_tuning_profile_report_sources,
+    profile_bank_sources,
+    profile_tuning_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  usb_tuning_profile_service_test = executable(
+    'base-usb-tuning-profile-service-test',
+    'tests/source/usb_tuning_profile_service.c',
+    usb_tuning_profile_service_sources,
+    usb_tuning_profile_report_sources,
+    profile_bank_sources,
     profile_tuning_sources,
     build_by_default: false,
     include_directories: base_include,
@@ -1836,6 +1850,11 @@ if not meson.is_cross_build()
   test(
     'base-usb-tuning-profile-report',
     usb_tuning_profile_report_test,
+    suite: ['base', 'usb', 'profile'],
+  )
+  test(
+    'base-usb-tuning-profile-service',
+    usb_tuning_profile_service_test,
     suite: ['base', 'usb', 'profile'],
   )
   test(

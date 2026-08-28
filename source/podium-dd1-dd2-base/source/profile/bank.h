@@ -12,6 +12,7 @@ typedef struct {
     TuningProfile slots[TUNING_PROFILE_SLOT_COUNT];
     uint8_t selected_slot;
     uint8_t active_slot;
+    bool standard_mode_enabled;
 } TuningProfileBank;
 
 void tuning_profile_bank_defaults(TuningProfileBank *bank);

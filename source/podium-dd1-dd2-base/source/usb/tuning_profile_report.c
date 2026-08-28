@@ -3,10 +3,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "usb/device.h"
+
 enum {
     AUTOMATIC_ROTATION_CODE = 126,
     ROTATION_ENCODING_BIAS = 127,
     ROTATION_UNIT_DEGREES = 10,
+    RESPONSE_COMMAND = 3,
+    RESPONSE_STANDARD_MODE_MASK = 0x80,
 };
 
 static uint8_t encode_rotation(const TuningProfile *profile) {
@@ -107,4 +111,27 @@ void usb_tuning_profile_report_encode(const TuningProfile *profile,
     output[22] = (uint8_t)profile->brake_pedal_curve;
     output[23] = (uint8_t)profile->clutch_pedal_curve;
     output[24] = (uint8_t)profile->throttle_pedal_curve;
+}
+
+/**
+ * @brief Encodes a complete tuning-profile response.
+ *
+ * Clears the native vendor report, writes the FF 03 header, combines the one-based active profile
+ * with the Standard-mode flag, and appends the active profile's twenty-five values.
+ *
+ * @param[in] bank Tuning profiles and active Standard or Advanced mode.
+ * @param[out] output Encoded 64-byte vendor report.
+ */
+void usb_tuning_profile_report_encode_response(const TuningProfileBank *bank,
+                                               uint8_t output[USB_DEVICE_REPORT_SIZE]) {
+    for (uint8_t index = 0; index < USB_DEVICE_REPORT_SIZE; index++) {
+        output[index] = 0;
+    }
+    output[0] = UINT8_MAX;
+    output[1] = RESPONSE_COMMAND;
+    output[2] = (uint8_t)(bank->active_slot + 1);
+    if (bank->standard_mode_enabled) {
+        output[2] |= RESPONSE_STANDARD_MODE_MASK;
+    }
+    usb_tuning_profile_report_encode(tuning_profile_bank_active(bank), &output[3]);
 }

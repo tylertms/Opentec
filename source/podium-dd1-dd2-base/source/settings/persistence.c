@@ -235,6 +235,19 @@ void base_settings_persistence_mark_dirty(BaseSettingsPersistence *persistence, 
     persistence->write_after_ms = now_ms + BASE_SETTINGS_SAVE_DELAY_MS;
 }
 
+/**
+ * @brief Requests immediate settings persistence.
+ *
+ * Marks the current settings dirty and makes them eligible for the next persistence service pass.
+ *
+ * @param[in,out] persistence Settings persistence state.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+void base_settings_persistence_request_save(BaseSettingsPersistence *persistence, uint32_t now_ms) {
+    persistence->dirty = true;
+    persistence->write_after_ms = now_ms;
+}
+
 BaseSettingsPersistenceResult
 base_settings_persistence_service(BaseSettingsPersistence *persistence,
                                   const BaseSettings *settings, uint32_t now_ms) {
