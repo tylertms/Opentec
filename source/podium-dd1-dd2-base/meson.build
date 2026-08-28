@@ -49,6 +49,7 @@ usb_compatibility_report_descriptor_sources = files(
 )
 usb_compatibility_descriptor_sources = files('source/usb/compatibility_descriptor.c')
 usb_console_descriptor_sources = files('source/usb/console_descriptor.c')
+usb_xbox_gip_metadata_sources = files('source/usb/xbox_gip_metadata.c')
 usb_updater_descriptor_sources = files('source/usb/updater_descriptor.c')
 usb_updater_control_sources = files('source/usb/updater_control.c')
 usb_descriptor_sources = files('source/usb/descriptor.c')
@@ -168,6 +169,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'usb-compatibility-report-descriptor': 'source/usb/compatibility_report_descriptor.c',
     'usb-compatibility-descriptor': 'source/usb/compatibility_descriptor.c',
     'usb-console-descriptor': 'source/usb/console_descriptor.c',
+    'usb-xbox-gip-metadata': 'source/usb/xbox_gip_metadata.c',
     'usb-updater-descriptor': 'source/usb/updater_descriptor.c',
     'usb-updater-control': 'source/usb/updater_control.c',
     'usb-descriptor': 'source/usb/descriptor.c',
@@ -716,6 +718,14 @@ if not meson.is_cross_build()
     'base-usb-console-descriptor-test',
     'tests/source/console_descriptor.c',
     usb_console_descriptor_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  usb_xbox_gip_metadata_test = executable(
+    'base-usb-xbox-gip-metadata-test',
+    'tests/source/xbox_gip_metadata.c',
+    usb_xbox_gip_metadata_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -1403,6 +1413,7 @@ if not meson.is_cross_build()
     suite: ['base', 'usb'],
   )
   test('base-usb-console-descriptor', usb_console_descriptor_test, suite: ['base', 'usb'])
+  test('base-usb-xbox-gip-metadata', usb_xbox_gip_metadata_test, suite: ['base', 'usb'])
   test('base-usb-updater-descriptor', usb_updater_descriptor_test, suite: ['base', 'usb'])
   test('base-usb-updater-control', usb_updater_control_test, suite: ['base', 'usb'])
   test('base-usb-descriptor', usb_descriptor_test, suite: ['base', 'usb'])
