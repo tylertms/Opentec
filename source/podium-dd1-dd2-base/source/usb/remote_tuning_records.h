@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "remote_tuning/response.h"
 #include "usb/vendor_command.h"
 
 enum {
@@ -23,10 +24,13 @@ typedef struct {
 /** @brief Retained remote-tuning control records. */
 typedef struct {
     UsbRemoteTuningRecord records[USB_REMOTE_TUNING_RECORD_COUNT];
+    uint8_t count;
 } UsbRemoteTuningRecords;
 
 void usb_remote_tuning_records_init(UsbRemoteTuningRecords *records);
 bool usb_remote_tuning_records_apply(UsbRemoteTuningRecords *records,
                                      const UsbVendorCommand *command);
+bool usb_remote_tuning_records_take_response(UsbRemoteTuningRecords *records, RemoteTuningLink link,
+                                             RemoteTuningResponse *response);
 
 #endif

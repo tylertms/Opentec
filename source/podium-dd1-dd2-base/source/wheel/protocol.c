@@ -424,6 +424,18 @@ bool wheel_protocol_queue_remote_tuning_response(WheelProtocol *protocol,
 }
 
 /**
+ * @brief Reports whether a remote-tuning response awaits attached-wheel transfer.
+ *
+ * Tests the shared remote-tuning output without consuming its response.
+ *
+ * @param[in] protocol Attached-wheel protocol state.
+ * @return True when a supported response is pending.
+ */
+bool wheel_protocol_remote_tuning_response_pending(const WheelProtocol *protocol) {
+    return protocol != NULL && wheel_packet_remote_tuning_pending(&protocol->remote_tuning_output);
+}
+
+/**
  * @brief Configures attached-wheel axis processing.
  *
  * Retains the host interface mode, axis override mode, and calibration byte applied to incoming

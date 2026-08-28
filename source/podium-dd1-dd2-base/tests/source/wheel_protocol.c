@@ -652,6 +652,7 @@ static void test_builds_remote_tuning_responses(void) {
             .value = 5,
         };
         assert(wheel_protocol_queue_remote_tuning_response(&protocol, &pending));
+        assert(wheel_protocol_remote_tuning_response_pending(&protocol));
         uint8_t report_arguments[26] = {1, 0x55};
         wheel_output_reports_apply(&protocol.output_reports, report_arguments, 0, 0, false);
 
@@ -666,6 +667,7 @@ static void test_builds_remote_tuning_responses(void) {
         assert(response[1] == REMOTE_TUNING_RESPONSE_SETUP);
         assert(response[2] == 5);
         assert(wheel_protocol_message_valid(response));
+        assert(!wheel_protocol_remote_tuning_response_pending(&protocol));
         assert(!wheel_packet_remote_tuning_pending(&protocol.remote_tuning_output));
     }
 }

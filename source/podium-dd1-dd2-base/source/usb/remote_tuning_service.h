@@ -37,7 +37,7 @@ bool usb_remote_tuning_service_apply(UsbRemoteTuningService *service,
                                      const UsbVendorCommand *command, uint32_t now_ms,
                                      uint8_t wheel_mode, bool setup_selection_allowed,
                                      bool adapter_connected);
-bool usb_remote_tuning_service_take_response(UsbRemoteTuningService *service,
+bool usb_remote_tuning_service_take_response(UsbRemoteTuningService *service, uint8_t wheel_mode,
                                              RemoteTuningResponse *response);
 
 #endif

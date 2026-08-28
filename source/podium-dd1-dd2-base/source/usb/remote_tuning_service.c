@@ -247,20 +247,31 @@ bool usb_remote_tuning_service_apply(UsbRemoteTuningService *service,
 /**
  * @brief Takes the pending attached-wheel remote-tuning response.
  *
- * Copies the retained link, response code, and value, then clears the pending response. Session
- * state and downstream synchronization latches remain unchanged.
+ * Takes a pending state response first. Otherwise, builds the next bounded legacy or extended
+ * record response for the current wheel mode. Session state and downstream synchronization
+ * latches remain unchanged.
  *
  * @param[in,out] service Remote-tuning session that owns the pending response.
+ * @param[in] wheel_mode Current attached-wheel mode.
  * @param[out] response Pending attached-wheel response.
  * @return True when a response was taken.
  */
-bool usb_remote_tuning_service_take_response(UsbRemoteTuningService *service,
+bool usb_remote_tuning_service_take_response(UsbRemoteTuningService *service, uint8_t wheel_mode,
                                              RemoteTuningResponse *response) {
-    if (service == NULL || response == NULL ||
-        service->pending_response.code == REMOTE_TUNING_RESPONSE_NONE) {
+    if (service == NULL || response == NULL) {
         return false;
     }
-    *response = service->pending_response;
-    service->pending_response = (RemoteTuningResponse){0};
-    return true;
+    if (service->pending_response.code != REMOTE_TUNING_RESPONSE_NONE) {
+        *response = service->pending_response;
+        service->pending_response = (RemoteTuningResponse){0};
+        return true;
+    }
+
+    RemoteTuningLink link = REMOTE_TUNING_LINK_NONE;
+    if (wheel_mode == WHEEL_MODE_REMOTE_TUNING_LEGACY) {
+        link = REMOTE_TUNING_LINK_LEGACY;
+    } else if (wheel_mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED) {
+        link = REMOTE_TUNING_LINK_EXTENDED;
+    }
+    return usb_remote_tuning_records_take_response(&service->records, link, response);
 }

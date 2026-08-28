@@ -7,32 +7,116 @@ enum {
     REMOTE_TUNING_PACKET_RECORDS = 1,
     REMOTE_TUNING_PACKET_ALTERNATE_RECORDS = 3,
     REMOTE_TUNING_RECORD_HEADER_SIZE = 5,
+    REMOTE_TUNING_RECORD_ROUTE_EXTENDED = 3,
+    REMOTE_TUNING_RECORD_ROUTE_LEGACY = 4,
+    REMOTE_TUNING_ALTERNATE_RECORD_FLAG = 0x80,
 };
 
 /**
  * @brief Retains one remote-tuning record.
  *
- * Selects the highest-numbered free slot from the 32-record store and copies the record fields and
- * payload. A slot is free when both its type and selector are zero. A full store drops the record.
+ * Appends the record to the 32-entry arrival-order store. A full store drops the record.
  *
  * @param[in,out] records Remote-tuning record store.
  * @param[in] input Complete record header followed by its payload.
  */
 static void store_record(UsbRemoteTuningRecords *records, const uint8_t *input) {
-    for (uint8_t remaining = USB_REMOTE_TUNING_RECORD_COUNT; remaining != 0; remaining--) {
-        UsbRemoteTuningRecord *record = &records->records[remaining - 1];
-        if (record->type != 0 || record->selector != 0) {
-            continue;
-        }
-
-        record->type = input[0];
-        record->selector = input[1];
-        record->value = (uint16_t)input[2] | (uint16_t)input[3] << 8;
-        record->payload_length = input[4];
-        memset(record->payload, 0, sizeof(record->payload));
-        memcpy(record->payload, input + REMOTE_TUNING_RECORD_HEADER_SIZE, record->payload_length);
+    if (records->count >= USB_REMOTE_TUNING_RECORD_COUNT) {
         return;
     }
+
+    UsbRemoteTuningRecord *record = &records->records[records->count++];
+    record->type = input[0];
+    record->selector = input[1];
+    record->value = (uint16_t)input[2] | (uint16_t)input[3] << 8;
+    record->payload_length = input[4];
+    memset(record->payload, 0, sizeof(record->payload));
+    memcpy(record->payload, input + REMOTE_TUNING_RECORD_HEADER_SIZE, record->payload_length);
+}
+
+/**
+ * @brief Tests whether a record belongs to one attached-wheel response channel.
+ *
+ * Legacy transport accepts route-four records from both selector banks. Extended transport accepts
+ * route-three records and separates selectors by bit 7.
+ *
+ * @param[in] record Retained remote-tuning record.
+ * @param[in] link Attached-wheel response link.
+ * @param[in] alternate Extended selector-bank choice.
+ * @return True when the record belongs to the selected channel.
+ */
+static bool record_matches(const UsbRemoteTuningRecord *record, RemoteTuningLink link,
+                           bool alternate) {
+    if (link == REMOTE_TUNING_LINK_LEGACY) {
+        return record->type == REMOTE_TUNING_RECORD_ROUTE_LEGACY;
+    }
+    return link == REMOTE_TUNING_LINK_EXTENDED &&
+           record->type == REMOTE_TUNING_RECORD_ROUTE_EXTENDED &&
+           ((record->selector & REMOTE_TUNING_ALTERNATE_RECORD_FLAG) != 0) == alternate;
+}
+
+/**
+ * @brief Appends one complete record to attached-wheel response data.
+ *
+ * Writes the type, selector, little-endian value, payload length, and payload without padding.
+ *
+ * @param[in] record Logical record to serialize.
+ * @param[in,out] response Response receiving the serialized record.
+ */
+static void append_record(const UsbRemoteTuningRecord *record, RemoteTuningResponse *response) {
+    uint8_t *output = response->record_data + response->record_data_length;
+    output[0] = record->type;
+    output[1] = record->selector;
+    output[2] = (uint8_t)record->value;
+    output[3] = (uint8_t)(record->value >> 8);
+    output[4] = record->payload_length;
+    memcpy(output + REMOTE_TUNING_RECORD_HEADER_SIZE, record->payload, record->payload_length);
+    response->record_data_length += REMOTE_TUNING_RECORD_HEADER_SIZE + record->payload_length;
+}
+
+/**
+ * @brief Takes one bounded response from a selected record channel.
+ *
+ * Serializes complete matching records in arrival order until the next record would exceed the
+ * 30-byte response area. Consumed records are removed while all other records retain their order.
+ *
+ * @param[in,out] records Arrival-order record store.
+ * @param[in] link Attached-wheel response link.
+ * @param[in] alternate Extended selector-bank choice.
+ * @param[out] response Response containing zero or more complete serialized records.
+ * @return True when at least one record was consumed.
+ */
+static bool take_channel(UsbRemoteTuningRecords *records, RemoteTuningLink link, bool alternate,
+                         RemoteTuningResponse *response) {
+    memset(response, 0, sizeof(*response));
+    response->link = link;
+    response->code =
+        alternate ? REMOTE_TUNING_RESPONSE_ALTERNATE_RECORDS : REMOTE_TUNING_RESPONSE_RECORDS;
+    uint8_t retained = 0;
+    bool full = false;
+
+    for (uint8_t index = 0; index < records->count; index++) {
+        UsbRemoteTuningRecord *record = &records->records[index];
+        uint8_t record_size = REMOTE_TUNING_RECORD_HEADER_SIZE + record->payload_length;
+        bool consume = !full && record_matches(record, link, alternate);
+        if (consume &&
+            record_size <= REMOTE_TUNING_RECORD_DATA_SIZE - response->record_data_length) {
+            append_record(record, response);
+            continue;
+        }
+        if (consume) {
+            full = true;
+        }
+        records->records[retained++] = *record;
+    }
+
+    if (response->record_data_length == 0) {
+        return false;
+    }
+    memset(records->records + retained, 0,
+           (records->count - retained) * sizeof(records->records[0]));
+    records->count = retained;
+    return true;
 }
 
 /**
@@ -88,4 +172,31 @@ bool usb_remote_tuning_records_apply(UsbRemoteTuningRecords *records,
         offset += record_size;
     }
     return true;
+}
+
+/**
+ * @brief Takes the next attached-wheel record response.
+ *
+ * Legacy responses combine both selector banks from route four. Extended responses select route
+ * three and drain the standard selector bank before the alternate bank. Other links retain every
+ * record.
+ *
+ * @param[in,out] records Arrival-order record store.
+ * @param[in] link Attached-wheel response link.
+ * @param[out] response Next bounded record response.
+ * @return True when a response was produced.
+ */
+bool usb_remote_tuning_records_take_response(UsbRemoteTuningRecords *records, RemoteTuningLink link,
+                                             RemoteTuningResponse *response) {
+    if (records == NULL || response == NULL) {
+        return false;
+    }
+    if (link == REMOTE_TUNING_LINK_LEGACY) {
+        return take_channel(records, link, false, response);
+    }
+    if (link == REMOTE_TUNING_LINK_EXTENDED) {
+        return take_channel(records, link, false, response) ||
+               take_channel(records, link, true, response);
+    }
+    return false;
 }

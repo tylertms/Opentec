@@ -458,12 +458,20 @@ static bool accept_usb_motor_report(const UsbDeviceOutputReport *report) {
 /**
  * @brief Advances host command services over serial message type four.
  *
- * Applies completed type-four responses, advances wheel-transfer and mailbox requests, submits the
- * next queued command, and schedules their vendor reports on the shared USB endpoint.
+ * Queues the next remote-tuning response for the attached wheel, applies completed type-four
+ * responses, advances wheel-transfer and mailbox requests, submits the next queued command, and
+ * schedules their vendor reports on the shared USB endpoint.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 static void service_usb_command_bridge(uint32_t now_ms) {
+    if (!wheel_service_remote_tuning_response_pending(&wheel_service) &&
+        usb_remote_tuning_service_take_response(&usb_remote_tuning_service,
+                                                wheel_service_mode(&wheel_service),
+                                                &usb_remote_tuning_response)) {
+        (void)wheel_service_queue_remote_tuning_response(&wheel_service,
+                                                         &usb_remote_tuning_response);
+    }
     (void)motor_command_serial_receive(&command_transport, &serial_service);
     wheel_transfer_service_run(&wheel_transfer_service, &command_transport);
     (void)usb_motor_vendor_service_run_mailbox(&usb_motor_vendor_service, &motor_command_mailbox,
@@ -678,11 +686,6 @@ static void service_usb_output(void) {
         if (usb_remote_tuning_service_apply(&usb_remote_tuning_service, &usb_vendor_command, now_ms,
                                             wheel_service_mode(&wheel_service), true,
                                             wheel_service_adapter_connected(&wheel_service))) {
-            if (usb_remote_tuning_service_take_response(&usb_remote_tuning_service,
-                                                        &usb_remote_tuning_response)) {
-                (void)wheel_service_queue_remote_tuning_response(&wheel_service,
-                                                                 &usb_remote_tuning_response);
-            }
             return;
         }
         UsbTuningProfileAction tuning_action = usb_tuning_profile_service_apply(

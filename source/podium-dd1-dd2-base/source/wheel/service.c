@@ -400,6 +400,18 @@ bool wheel_service_queue_remote_tuning_response(WheelService *service,
 }
 
 /**
+ * @brief Reports whether a remote-tuning response awaits attached-wheel transfer.
+ *
+ * Tests protocol output without consuming the queued response.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return True when a supported response is pending.
+ */
+bool wheel_service_remote_tuning_response_pending(const WheelService *service) {
+    return service != 0 && wheel_protocol_remote_tuning_response_pending(&service->protocol);
+}
+
+/**
  * @brief Applies a host-provided attached-wheel output report.
  *
  * Uses the negotiated wheel mode, current adapter mode, and display blink state to retain or

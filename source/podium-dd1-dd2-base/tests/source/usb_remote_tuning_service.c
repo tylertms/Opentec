@@ -21,9 +21,9 @@ static void retains_records_and_extends_the_session(void) {
     UsbVendorCommand command = command_for(arguments, sizeof(arguments));
     assert(usb_remote_tuning_service_apply(&service, &command, 100, 1, true, false));
     assert(service.session_deadline_ms == 60100);
-    assert(service.records.records[31].type == 0x12);
-    assert(service.records.records[31].selector == 0x34);
-    assert(service.records.records[31].value == 0x5678);
+    assert(service.records.records[0].type == 0x12);
+    assert(service.records.records[0].selector == 0x34);
+    assert(service.records.records[0].value == 0x5678);
 }
 
 static void applies_active_state_and_routes_responses(void) {
@@ -174,17 +174,28 @@ static void applies_refresh_requests(void) {
 static void takes_pending_responses(void) {
     UsbRemoteTuningService service;
     usb_remote_tuning_service_init(&service);
+    uint8_t record_arguments[] = {1, 3, 1, 0x34, 0x12, 0};
+    UsbVendorCommand record_command = command_for(record_arguments, sizeof(record_arguments));
+    assert(usb_remote_tuning_service_apply(&service, &record_command, 100,
+                                           WHEEL_MODE_REMOTE_TUNING_EXTENDED, true, false));
+
     uint8_t arguments[] = {2, 1};
     UsbVendorCommand command = command_for(arguments, sizeof(arguments));
     assert(usb_remote_tuning_service_apply(&service, &command, 100,
                                            WHEEL_MODE_REMOTE_TUNING_EXTENDED, true, false));
 
     RemoteTuningResponse response;
-    assert(usb_remote_tuning_service_take_response(&service, &response));
+    assert(usb_remote_tuning_service_take_response(&service, WHEEL_MODE_REMOTE_TUNING_EXTENDED,
+                                                   &response));
     assert(response.link == REMOTE_TUNING_LINK_EXTENDED);
     assert(response.code == REMOTE_TUNING_RESPONSE_ACTIVE);
     assert(response.value == 1);
-    assert(!usb_remote_tuning_service_take_response(&service, &response));
+    assert(usb_remote_tuning_service_take_response(&service, WHEEL_MODE_REMOTE_TUNING_EXTENDED,
+                                                   &response));
+    assert(response.code == REMOTE_TUNING_RESPONSE_RECORDS);
+    assert(response.record_data_length == 5);
+    assert(!usb_remote_tuning_service_take_response(&service, WHEEL_MODE_REMOTE_TUNING_EXTENDED,
+                                                    &response));
 }
 
 static void claims_unknown_remote_packets(void) {

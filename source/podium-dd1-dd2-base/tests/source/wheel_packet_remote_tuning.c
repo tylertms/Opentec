@@ -45,6 +45,29 @@ static void encodes_setup_and_refresh_values(void) {
     assert(packet[0] == 0xa7 && packet[1] == 5 && packet[2] == 1);
 }
 
+static void encodes_standard_and_alternate_records(void) {
+    WheelPacketRemoteTuningOutput output;
+    wheel_packet_remote_tuning_init(&output);
+    uint8_t packet[WHEEL_PACKET_REMOTE_TUNING_SIZE] = {0};
+    RemoteTuningResponse records = response(REMOTE_TUNING_RESPONSE_RECORDS, 0);
+    records.record_data_length = 7;
+    for (uint8_t index = 0; index < records.record_data_length; index++) {
+        records.record_data[index] = index + 1;
+    }
+
+    assert(wheel_packet_remote_tuning_queue(&output, &records));
+    assert(wheel_packet_remote_tuning_encode(&output, packet));
+    assert(packet[0] == 0xa7 && packet[1] == 1);
+    for (uint8_t index = 0; index < records.record_data_length; index++) {
+        assert(packet[index + 2] == index + 1);
+    }
+
+    records.code = REMOTE_TUNING_RESPONSE_ALTERNATE_RECORDS;
+    assert(wheel_packet_remote_tuning_queue(&output, &records));
+    assert(wheel_packet_remote_tuning_encode(&output, packet));
+    assert(packet[1] == 3);
+}
+
 static void rejects_unsupported_responses(void) {
     WheelPacketRemoteTuningOutput output;
     wheel_packet_remote_tuning_init(&output);
@@ -56,11 +79,17 @@ static void rejects_unsupported_responses(void) {
     RemoteTuningResponse no_link = response(REMOTE_TUNING_RESPONSE_SETUP, 1);
     no_link.link = REMOTE_TUNING_LINK_NONE;
     assert(!wheel_packet_remote_tuning_queue(&output, &no_link));
+
+    RemoteTuningResponse empty_records = response(REMOTE_TUNING_RESPONSE_RECORDS, 0);
+    assert(!wheel_packet_remote_tuning_queue(&output, &empty_records));
+    empty_records.record_data_length = REMOTE_TUNING_RECORD_DATA_SIZE + 1;
+    assert(!wheel_packet_remote_tuning_queue(&output, &empty_records));
 }
 
 int main(void) {
     encodes_active_state();
     encodes_setup_and_refresh_values();
+    encodes_standard_and_alternate_records();
     rejects_unsupported_responses();
     return 0;
 }

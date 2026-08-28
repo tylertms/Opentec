@@ -91,6 +91,7 @@ void wheel_protocol_set_crc_output(WheelProtocol *protocol, const WheelPacketCrc
 void wheel_protocol_set_crc_adapter(WheelProtocol *protocol, const WheelPacketCrcAdapter *adapter);
 bool wheel_protocol_queue_remote_tuning_response(WheelProtocol *protocol,
                                                  const RemoteTuningResponse *response);
+bool wheel_protocol_remote_tuning_response_pending(const WheelProtocol *protocol);
 void wheel_protocol_set_axis_processing(WheelProtocol *protocol, uint8_t interface_mode,
                                         uint8_t override_mode, uint8_t calibration_value);
 void wheel_protocol_set_button_latch(WheelProtocol *protocol, bool enabled,

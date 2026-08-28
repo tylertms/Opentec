@@ -39,6 +39,7 @@ void wheel_service_set_display_output(WheelService *service, const WheelDisplayO
 void wheel_service_set_crc_adapter(WheelService *service, const WheelPacketCrcAdapter *adapter);
 bool wheel_service_queue_remote_tuning_response(WheelService *service,
                                                 const RemoteTuningResponse *response);
+bool wheel_service_remote_tuning_response_pending(const WheelService *service);
 void wheel_service_apply_output_report(WheelService *service, const uint8_t *arguments,
                                        bool display_blink_active);
 void wheel_service_queue_report_seventeen(
