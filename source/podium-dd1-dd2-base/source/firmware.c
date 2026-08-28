@@ -59,6 +59,7 @@
 #include "usb/tuning_profile_report.h"
 #include "usb/tuning_profile_service.h"
 #include "usb/vendor_command.h"
+#include "wheel/command_forwarder.h"
 #include "wheel/position.h"
 #include "wheel/service.h"
 #include "wheel/status_service.h"
@@ -121,6 +122,9 @@ static uint8_t usb_motor_response[USB_DEVICE_REPORT_SIZE];
 static uint8_t usb_wheel_transfer_response[USB_DEVICE_REPORT_SIZE];
 static UsbDiagnosticReportService usb_diagnostic_report_service;
 static UsbRemoteTuningService usb_remote_tuning_service;
+static WheelCommandForwarder wheel_command_forwarder;
+static uint8_t wheel_command_batch[USB_REMOTE_TUNING_FORWARD_BATCH_SIZE];
+static uint8_t wheel_command_batch_length;
 static RemoteTuningResponse usb_remote_tuning_response;
 static UsbTuningMenuService usb_tuning_menu_service;
 static UsbTuningProfileService usb_tuning_profile_service;
@@ -344,6 +348,7 @@ static void initialize_usb_command_bridge(void) {
     wheel_transfer_service_init(&wheel_transfer_service);
     usb_diagnostic_report_service_init(&usb_diagnostic_report_service);
     usb_remote_tuning_service_init(&usb_remote_tuning_service);
+    wheel_command_forwarder_init(&wheel_command_forwarder);
     usb_tuning_menu_service_init(&usb_tuning_menu_service);
     usb_tuning_profile_service_init(&usb_tuning_profile_service);
     usb_motor_acknowledgement_ready = false;
@@ -458,9 +463,10 @@ static bool accept_usb_motor_report(const UsbDeviceOutputReport *report) {
 /**
  * @brief Advances host command services over serial message type four.
  *
- * Queues the next remote-tuning response for the attached wheel, applies completed type-four
- * responses, advances wheel-transfer and mailbox requests, submits the next queued command, and
- * schedules their vendor reports on the shared USB endpoint.
+ * Queues the next remote-tuning response for the attached wheel, batches generic tuning records,
+ * discovers their command endpoint, applies completed type-four responses, advances wheel-transfer
+ * and mailbox requests, submits the next queued command, and schedules their vendor reports on the
+ * shared USB endpoint.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -474,6 +480,14 @@ static void service_usb_command_bridge(uint32_t now_ms) {
     }
     (void)motor_command_serial_receive(&command_transport, &serial_service);
     wheel_transfer_service_run(&wheel_transfer_service, &command_transport);
+    if (wheel_command_forwarder_accepting(&wheel_command_forwarder) &&
+        usb_remote_tuning_service_take_forward_batch(
+            &usb_remote_tuning_service, wheel_service_mode(&wheel_service), wheel_command_batch,
+            &wheel_command_batch_length)) {
+        (void)wheel_command_forwarder_queue(&wheel_command_forwarder, wheel_command_batch,
+                                            wheel_command_batch_length);
+    }
+    wheel_command_forwarder_run(&wheel_command_forwarder, &command_transport);
     (void)usb_motor_vendor_service_run_mailbox(&usb_motor_vendor_service, &motor_command_mailbox,
                                                &command_transport);
     if (serial_service.status == SERIAL_SERVICE_IDLE) {

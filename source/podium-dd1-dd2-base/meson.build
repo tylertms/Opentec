@@ -119,6 +119,7 @@ wheel_position_sources = files('source/wheel/position.c')
 wheel_axis_override_sources = files('source/wheel/axis_override.c')
 wheel_authentication_sources = files('source/wheel/authentication.c')
 wheel_capability_sources = files('source/wheel/capability.c')
+wheel_command_forwarder_sources = files('source/wheel/command_forwarder.c')
 wheel_display_output_sources = files('source/wheel/display_output.c')
 wheel_output_reports_sources = files('source/wheel/output_reports.c')
 transfer_memory_sources = files('source/transfer/memory.c')
@@ -292,6 +293,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'wheel-axis-override': 'source/wheel/axis_override.c',
     'wheel-authentication': 'source/wheel/authentication.c',
     'wheel-capability': 'source/wheel/capability.c',
+    'wheel-command-forwarder': 'source/wheel/command_forwarder.c',
     'wheel-display-output': 'source/wheel/display_output.c',
     'wheel-output-reports': 'source/wheel/output_reports.c',
     'transfer-memory': 'source/transfer/memory.c',
@@ -1613,6 +1615,16 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_command_forwarder_test = executable(
+    'base-wheel-command-forwarder-test',
+    'tests/source/wheel_command_forwarder.c',
+    wheel_command_forwarder_sources,
+    transfer_command_sources,
+    transfer_memory_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_motion_test = executable(
     'base-wheel-motion-test',
     'tests/source/wheel_motion.c',
@@ -2051,6 +2063,11 @@ if not meson.is_cross_build()
   test('base-serial-service', serial_service_test, suite: ['base', 'serial', 'transport'])
   test('base-wheel-protocol', wheel_protocol_test, suite: ['base', 'wheel', 'protocol'])
   test('base-wheel-capability', wheel_capability_test, suite: ['base', 'wheel', 'input'])
+  test(
+    'base-wheel-command-forwarder',
+    wheel_command_forwarder_test,
+    suite: ['base', 'wheel', 'transfer'],
+  )
   test('base-wheel-motion', wheel_motion_test, suite: ['base', 'wheel', 'input'])
   test(
     'base-wheel-packet-crc',
