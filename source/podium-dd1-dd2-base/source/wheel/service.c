@@ -327,8 +327,8 @@ const uint8_t *wheel_service_buttons(const WheelService *service) {
 /**
  * @brief Reports attached-wheel input eligible to acknowledge a display overlay.
  *
- * Uses the packet protocol's directional, button, auxiliary, and interface-gated input state.
- * Scan-mode wheels report active when any filtered button bank is nonzero.
+ * Uses the standard packet protocol's directional, button, and auxiliary input state. Scan-mode
+ * wheels report active when any filtered button bank is nonzero.
  *
  * @param[in] service Attached-wheel service state.
  * @return True while an eligible input is active.

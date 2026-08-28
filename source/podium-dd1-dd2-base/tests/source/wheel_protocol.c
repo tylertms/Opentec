@@ -428,19 +428,6 @@ static void test_tracks_display_acknowledgement_input(void) {
     assert(wheel_protocol_acknowledgement_input_active(&protocol));
     request[11] = 0;
 
-    request[12] = 1;
-    const uint8_t gated_modes[] = {4, 6, 0x15};
-    for (uint8_t index = 0; index < sizeof(gated_modes) / sizeof(gated_modes[0]); index++) {
-        wheel_protocol_set_axis_processing(&protocol, gated_modes[index],
-                                           WHEEL_AXIS_OVERRIDE_MODE_NONE, 0);
-        accept_active_request(&protocol, request);
-        assert(wheel_protocol_acknowledgement_input_active(&protocol));
-    }
-    wheel_protocol_set_axis_processing(&protocol, 5, WHEEL_AXIS_OVERRIDE_MODE_NONE, 0);
-    accept_active_request(&protocol, request);
-    assert(!wheel_protocol_acknowledgement_input_active(&protocol));
-    request[12] = 0;
-
     request[2] = 0x80;
     accept_active_request(&protocol, request);
     accept_active_request(&protocol, request);

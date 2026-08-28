@@ -6,12 +6,6 @@
 #include "wheel/authentication.h"
 #include "wheel/packet_mode_one.h"
 
-enum {
-    WHEEL_INTERFACE_MODE_VENDOR_04 = 0x04,
-    WHEEL_INTERFACE_MODE_VENDOR_06 = 0x06,
-    WHEEL_INTERFACE_MODE_ANALOG_AXES = 0x15,
-};
-
 /**
  * @brief Calculates the attached-wheel message CRC-8.
  *
@@ -60,36 +54,17 @@ static void build_active_response(WheelProtocol *protocol) {
 }
 
 /**
- * @brief Tests whether an interface mode enables the gated overlay input.
- *
- * Enables the secondary auxiliary input for interface modes 4, 6, and 0x15.
- *
- * @param[in] interface_mode Current wheel input interface mode.
- * @return True when the gated input participates in overlay acknowledgement.
- */
-static bool interface_mode_uses_gated_acknowledgement_input(uint8_t interface_mode) {
-    return interface_mode == WHEEL_INTERFACE_MODE_VENDOR_04 ||
-           interface_mode == WHEEL_INTERFACE_MODE_VENDOR_06 ||
-           interface_mode == WHEEL_INTERFACE_MODE_ANALOG_AXES;
-}
-
-/**
  * @brief Detects input eligible to acknowledge a display overlay.
  *
- * Accepts any directional or button bit, the first auxiliary byte, and the second auxiliary byte
- * only in interface modes 4, 6, and 0x15.
+ * Accepts any directional or button bit and the first auxiliary byte from the standard packet
+ * codec.
  *
- * @param[in] protocol Protocol state with the active interface mode.
  * @param[in] input Decoded and button-filtered attached-wheel request.
  * @return True while an eligible input is active.
  */
-static bool acknowledgement_input_active(const WheelProtocol *protocol,
-                                         const WheelPacketModeOneInput *input) {
+static bool acknowledgement_input_active(const WheelPacketModeOneInput *input) {
     bool button_active = input->buttons[0] != 0 || input->buttons[1] != 0 || input->buttons[2] != 0;
-    bool gated_input_active =
-        input->controls.x != 0 &&
-        interface_mode_uses_gated_acknowledgement_input(protocol->interface_mode);
-    return button_active || input->controls.latch_flags != 0 || gated_input_active;
+    return button_active || input->controls.latch_flags != 0;
 }
 
 /**
@@ -115,7 +90,7 @@ static void capture_request(WheelProtocol *protocol,
         wheel_packet_mode_one_filter_buttons(&protocol->mode_one_button_filter,
                                              &protocol->mode_one_input);
         protocol->acknowledgement_input_active =
-            acknowledgement_input_active(protocol, &protocol->mode_one_input);
+            acknowledgement_input_active(&protocol->mode_one_input);
         if (protocol->mode == 0x13 || protocol->mode == 0x14) {
             wheel_packet_mode_one_filter_control_axes(&protocol->mode_one_control_axis_filter,
                                                       &protocol->mode_one_input);
@@ -321,14 +296,15 @@ bool wheel_protocol_request_changed(WheelProtocol *protocol) {
 /**
  * @brief Reports display-acknowledgement input from the current wheel packet.
  *
- * Returns the directional, button, auxiliary, and interface-gated input state captured before
- * request normalization clears transient fields.
+ * Returns the directional, button, and auxiliary input state captured before request normalization
+ * clears transient fields.
  *
  * @param[in] protocol Attached-wheel protocol state.
  * @return True while an eligible input is active.
  */
 bool wheel_protocol_acknowledgement_input_active(const WheelProtocol *protocol) {
-    return protocol->request_ready && protocol->acknowledgement_input_active;
+    return protocol->request_ready && wheel_packet_mode_one_applies(protocol->mode) &&
+           protocol->acknowledgement_input_active;
 }
 
 uint8_t wheel_protocol_message_checksum(const uint8_t packet[WHEEL_PROTOCOL_PACKET_SIZE]) {
