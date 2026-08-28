@@ -9,6 +9,7 @@
 enum {
     WHEEL_PACKET_MODE_ONE_RESPONSE_SIZE = 9,
     WHEEL_PACKET_MODE_ONE_REQUEST_SIZE = 32,
+    WHEEL_PACKET_MODE_ONE_SNAPSHOT_SIZE = 30,
     WHEEL_PACKET_MODE_ONE_BUTTON_COUNT = 3,
     WHEEL_PACKET_MODE_ONE_BUTTON_HISTORY_DEPTH = 3,
     WHEEL_PACKET_MODE_ONE_CONTROL_AXIS_COUNT = 2,
@@ -41,6 +42,13 @@ typedef struct {
 } WheelPacketModeOneInput;
 
 typedef struct {
+    uint16_t axis_values[WHEEL_PACKET_MODE_ONE_AXIS_VALUE_COUNT];
+    uint8_t report_mode;
+    uint8_t report_capabilities;
+    uint8_t axis_limit;
+} WheelPacketModeOneReportState;
+
+typedef struct {
     uint8_t samples[WHEEL_PACKET_MODE_ONE_BUTTON_HISTORY_DEPTH][WHEEL_PACKET_MODE_ONE_BUTTON_COUNT];
     uint8_t next_sample;
 } WheelPacketModeOneButtonFilter;
@@ -67,6 +75,9 @@ void wheel_packet_mode_one_filter_control_axes(WheelPacketModeOneControlAxisFilt
                                                WheelPacketModeOneInput *input);
 void wheel_packet_mode_one_decode(const uint8_t request[WHEEL_PACKET_MODE_ONE_REQUEST_SIZE],
                                   WheelPacketModeOneInput *input);
+void wheel_packet_mode_one_normalize(WheelPacketModeOneInput *input, bool authenticated,
+                                     bool button_latch_enabled, bool profile_transition_pending,
+                                     uint8_t snapshot[WHEEL_PACKET_MODE_ONE_SNAPSHOT_SIZE]);
 void wheel_packet_mode_one_encode(const WheelPacketModeOneOutput *output,
                                   uint8_t response[WHEEL_PACKET_MODE_ONE_RESPONSE_SIZE]);
 

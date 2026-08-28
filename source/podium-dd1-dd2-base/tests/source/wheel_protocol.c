@@ -283,8 +283,8 @@ static void test_accepts_authenticated_active_commands_and_restarts_authenticati
 
     assert(protocol.phase == WHEEL_PROTOCOL_ACTIVE);
     assert(wheel_protocol_request(&protocol) != 0);
-    assert(wheel_protocol_request(&protocol)[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
-    assert(wheel_protocol_request(&protocol)[2] == 0x41);
+    assert(wheel_protocol_request(&protocol)[0] == 0);
+    assert(wheel_protocol_request(&protocol)[2] == 0);
 
     request[0] = WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
     request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
@@ -332,7 +332,7 @@ static void test_restarts_synchronization_when_ready_drops(void) {
     assert(wheel_protocol_response(&protocol)[WHEEL_PROTOCOL_FLAGS_OFFSET] == 0);
 }
 
-static void test_captures_raw_active_requests(void) {
+static void test_captures_normalized_active_requests(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
     wheel_protocol_init(&protocol);
@@ -349,14 +349,25 @@ static void test_captures_raw_active_requests(void) {
 
     assert(protocol.phase == WHEEL_PROTOCOL_ACTIVE);
     assert(wheel_protocol_request(&protocol) != 0);
-    assert(memcmp(wheel_protocol_request(&protocol), request, WHEEL_PROTOCOL_SNAPSHOT_SIZE) == 0);
+    const uint8_t expected[WHEEL_PROTOCOL_SNAPSHOT_SIZE] = {
+        0, 0, 0, 5, 6, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 31,
+    };
+    assert(memcmp(wheel_protocol_request(&protocol), expected, sizeof(expected)) == 0);
     const WheelPacketModeOneInput *input = wheel_protocol_mode_one_input(&protocol);
     assert(input != 0);
     assert(input->buttons[0] == 0);
     assert(input->buttons[2] == 0);
     assert(input->motion == 7);
-    assert(input->axis_values[0] == 0x1312);
+    assert(input->axis_values[0] == 0);
     assert(input->axis_limit == 31);
+    const WheelPacketModeOneReportState *report_state =
+        wheel_protocol_mode_one_report_state(&protocol);
+    assert(report_state != 0);
+    assert(report_state->axis_values[0] == 0x1312);
+    assert(report_state->axis_values[1] == 0x1514);
+    assert(report_state->report_mode == 28);
+    assert(report_state->report_capabilities == 30);
+    assert(report_state->axis_limit == 31);
     assert(wheel_protocol_request_changed(&protocol));
     assert(!wheel_protocol_request_changed(&protocol));
 
@@ -364,10 +375,14 @@ static void test_captures_raw_active_requests(void) {
     assert(!wheel_protocol_request_changed(&protocol));
     assert(wheel_protocol_mode_one_input(&protocol)->buttons[0] == 0);
     wheel_protocol_accept(&protocol, request);
-    assert(!wheel_protocol_request_changed(&protocol));
+    assert(wheel_protocol_request_changed(&protocol));
     assert(wheel_protocol_mode_one_input(&protocol)->buttons[0] == 2);
     assert(wheel_protocol_mode_one_input(&protocol)->buttons[2] == 4);
     request[29]++;
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+    wheel_protocol_accept(&protocol, request);
+    assert(!wheel_protocol_request_changed(&protocol));
+    request[31]++;
     request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
     wheel_protocol_accept(&protocol, request);
     assert(wheel_protocol_request_changed(&protocol));
@@ -389,8 +404,8 @@ static void test_averages_control_axes_only_for_authenticated_operating_modes(vo
     request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
     wheel_protocol_accept(&protocol, request);
     const WheelPacketModeOneInput *input = wheel_protocol_mode_one_input(&protocol);
-    assert(input->controls.x == 30);
-    assert(input->controls.y == 10);
+    assert(input->controls.x == 0);
+    assert(input->controls.y == 0);
 
     wheel_protocol_init(&protocol);
     output.operating_mode = 1;
@@ -401,8 +416,8 @@ static void test_averages_control_axes_only_for_authenticated_operating_modes(vo
     request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
     wheel_protocol_accept(&protocol, request);
     input = wheel_protocol_mode_one_input(&protocol);
-    assert(input->controls.x == 90);
-    assert(input->controls.y == 30);
+    assert(input->controls.x == 0);
+    assert(input->controls.y == 0);
 }
 
 static void test_applies_authenticated_axis_overrides(void) {
@@ -494,7 +509,7 @@ int main(void) {
     test_accepts_authenticated_active_commands_and_restarts_authentication();
     test_refreshes_active_response_after_invalid_checksum();
     test_restarts_synchronization_when_ready_drops();
-    test_captures_raw_active_requests();
+    test_captures_normalized_active_requests();
     test_averages_control_axes_only_for_authenticated_operating_modes();
     test_applies_authenticated_axis_overrides();
     test_builds_mode_one_active_response();

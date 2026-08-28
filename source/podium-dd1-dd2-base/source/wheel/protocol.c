@@ -59,13 +59,15 @@ static void build_active_response(WheelProtocol *protocol) {
  */
 static void capture_request(WheelProtocol *protocol,
                             const uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE]) {
-    bool changed = false;
-    for (uint8_t index = 0; index < WHEEL_PROTOCOL_SNAPSHOT_SIZE; index++) {
-        changed |= protocol->request[index] != request[index];
-        protocol->request[index] = request[index];
-    }
     if (wheel_packet_mode_one_applies(protocol->mode)) {
+        uint8_t snapshot[WHEEL_PACKET_MODE_ONE_SNAPSHOT_SIZE];
         wheel_packet_mode_one_decode(request, &protocol->mode_one_input);
+        protocol->mode_one_report_state.axis_values[0] = protocol->mode_one_input.axis_values[0];
+        protocol->mode_one_report_state.axis_values[1] = protocol->mode_one_input.axis_values[1];
+        protocol->mode_one_report_state.report_mode = protocol->mode_one_input.report_mode;
+        protocol->mode_one_report_state.report_capabilities =
+            protocol->mode_one_input.report_capabilities;
+        protocol->mode_one_report_state.axis_limit = protocol->mode_one_input.axis_limit;
         wheel_packet_mode_one_filter_buttons(&protocol->mode_one_button_filter,
                                              &protocol->mode_one_input);
         if (protocol->mode_one_output.operating_mode == 0x13 ||
@@ -79,9 +81,19 @@ static void capture_request(WheelProtocol *protocol,
                 protocol->mode_one_input.controls.x, protocol->mode_one_input.controls.y,
                 protocol->mode_one_input.axis_outputs);
         }
+        wheel_packet_mode_one_normalize(&protocol->mode_one_input,
+                                        protocol->mode_one_output.operating_mode == 0x13 ||
+                                            protocol->mode_one_output.operating_mode == 0x14,
+                                        protocol->button_latch_enabled,
+                                        protocol->profile_transition_pending, snapshot);
+        bool changed = false;
+        for (uint8_t index = 0; index < WHEEL_PROTOCOL_SNAPSHOT_SIZE; index++) {
+            changed |= protocol->request[index] != snapshot[index];
+            protocol->request[index] = snapshot[index];
+        }
+        protocol->request_changed |= changed;
     }
     protocol->request_ready = true;
-    protocol->request_changed |= changed;
 }
 
 static void select_mode(WheelProtocol *protocol,
@@ -132,6 +144,7 @@ static bool active_command_valid(const WheelProtocol *protocol, uint8_t command)
 
 void wheel_protocol_init(WheelProtocol *protocol) {
     const WheelPacketModeOneInput empty_input = {0};
+    const WheelPacketModeOneReportState empty_report_state = {0};
     const WheelPacketModeOneOutput empty_output = {0};
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
     clear(protocol->request, WHEEL_PROTOCOL_SNAPSHOT_SIZE);
@@ -139,6 +152,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     wheel_packet_mode_one_button_filter_init(&protocol->mode_one_button_filter);
     wheel_packet_mode_one_control_axis_filter_init(&protocol->mode_one_control_axis_filter);
     protocol->mode_one_input = empty_input;
+    protocol->mode_one_report_state = empty_report_state;
     protocol->mode_one_output = empty_output;
     wheel_authentication_init(&protocol->authentication, WHEEL_MODE_UNKNOWN);
     protocol->phase = WHEEL_PROTOCOL_WAITING;
@@ -146,6 +160,8 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     protocol->interface_mode = 0;
     protocol->configured_axis_override_mode = WHEEL_AXIS_OVERRIDE_MODE_NONE;
     protocol->axis_calibration_value = 0;
+    protocol->button_latch_enabled = false;
+    protocol->profile_transition_pending = false;
     protocol->request_ready = false;
     protocol->request_changed = false;
 }
@@ -160,6 +176,12 @@ void wheel_protocol_set_axis_processing(WheelProtocol *protocol, uint8_t interfa
     protocol->interface_mode = interface_mode;
     protocol->configured_axis_override_mode = override_mode;
     protocol->axis_calibration_value = calibration_value;
+}
+
+void wheel_protocol_set_button_latch(WheelProtocol *protocol, bool enabled,
+                                     bool profile_transition_pending) {
+    protocol->button_latch_enabled = enabled;
+    protocol->profile_transition_pending = profile_transition_pending;
 }
 
 void wheel_protocol_accept(WheelProtocol *protocol,
@@ -232,6 +254,13 @@ const uint8_t *wheel_protocol_request(const WheelProtocol *protocol) {
 const WheelPacketModeOneInput *wheel_protocol_mode_one_input(const WheelProtocol *protocol) {
     return protocol->request_ready && wheel_packet_mode_one_applies(protocol->mode)
                ? &protocol->mode_one_input
+               : 0;
+}
+
+const WheelPacketModeOneReportState *
+wheel_protocol_mode_one_report_state(const WheelProtocol *protocol) {
+    return protocol->request_ready && wheel_packet_mode_one_applies(protocol->mode)
+               ? &protocol->mode_one_report_state
                : 0;
 }
 

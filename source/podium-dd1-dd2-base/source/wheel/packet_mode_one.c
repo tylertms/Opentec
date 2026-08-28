@@ -143,6 +143,64 @@ void wheel_packet_mode_one_decode(const uint8_t request[WHEEL_PACKET_MODE_ONE_RE
     input->axis_limit = payload[REQUEST_AXIS_LIMIT_OFFSET];
 }
 
+static void synchronize_latched_buttons(WheelPacketModeOneInput *input) {
+    if ((input->buttons[1] & 0x01u) != 0 || (input->controls.latch_flags & 0x01u) != 0) {
+        input->buttons[1] |= 0x01u;
+        input->controls.latch_flags |= 0x01u;
+    }
+    if ((input->buttons[1] & 0x08u) != 0 || (input->controls.latch_flags & 0x02u) != 0) {
+        input->buttons[1] |= 0x08u;
+        input->controls.latch_flags |= 0x02u;
+    }
+}
+
+/**
+ * Normalizes standard attached-wheel input and builds its change-detection snapshot.
+ *
+ * @param input Decoded input updated to the normalized logical values.
+ * @param authenticated True for operating modes 0x13 and 0x14.
+ * @param button_latch_enabled True when alternate button latching is active.
+ * @param profile_transition_pending True while a profile transition suppresses button latching.
+ * @param snapshot Thirty-byte normalized destination.
+ */
+void wheel_packet_mode_one_normalize(WheelPacketModeOneInput *input, bool authenticated,
+                                     bool button_latch_enabled, bool profile_transition_pending,
+                                     uint8_t snapshot[WHEEL_PACKET_MODE_ONE_SNAPSHOT_SIZE]) {
+    if (authenticated && button_latch_enabled && !profile_transition_pending) {
+        synchronize_latched_buttons(input);
+    }
+
+    input->controls.values[0] = 0;
+    input->controls.values[1] = 0;
+    input->controls.enabled = 0;
+    if (!authenticated) {
+        input->controls.latch_flags = 0;
+    }
+    input->controls.x = 0;
+    input->controls.y = 0;
+    input->controls.mode = 0;
+    input->controls.packed_values = 0;
+    input->axis_values[0] = 0;
+    input->axis_values[1] = 0;
+    input->mode_buttons = 0;
+    input->axis_report_enabled = 0;
+
+    for (uint8_t index = 0; index < WHEEL_PACKET_MODE_ONE_SNAPSHOT_SIZE; index++) {
+        snapshot[index] = 0;
+    }
+    for (uint8_t index = 0; index < WHEEL_PACKET_MODE_ONE_BUTTON_COUNT; index++) {
+        snapshot[index] = input->buttons[index];
+    }
+    for (uint8_t index = 0; index < WHEEL_PACKET_MODE_ONE_AXIS_OUTPUT_COUNT; index++) {
+        snapshot[3 + index] = input->axis_outputs[index];
+    }
+    snapshot[5] = (uint8_t)input->motion;
+    if (authenticated) {
+        snapshot[9] = input->controls.latch_flags;
+    }
+    snapshot[29] = input->axis_limit;
+}
+
 /**
  * Encodes the shared nine-byte output used by attached-wheel modes 1, 3, 0x13, and 0x14.
  *

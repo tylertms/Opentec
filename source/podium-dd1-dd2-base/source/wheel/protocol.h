@@ -47,12 +47,15 @@ typedef struct {
     WheelPacketModeOneButtonFilter mode_one_button_filter;
     WheelPacketModeOneControlAxisFilter mode_one_control_axis_filter;
     WheelPacketModeOneInput mode_one_input;
+    WheelPacketModeOneReportState mode_one_report_state;
     WheelPacketModeOneOutput mode_one_output;
     WheelProtocolPhase phase;
     uint8_t mode;
     uint8_t interface_mode;
     uint8_t configured_axis_override_mode;
     uint8_t axis_calibration_value;
+    bool button_latch_enabled;
+    bool profile_transition_pending;
     bool request_ready;
     bool request_changed;
 } WheelProtocol;
@@ -62,11 +65,15 @@ void wheel_protocol_set_mode_one_output(WheelProtocol *protocol,
                                         const WheelPacketModeOneOutput *output);
 void wheel_protocol_set_axis_processing(WheelProtocol *protocol, uint8_t interface_mode,
                                         uint8_t override_mode, uint8_t calibration_value);
+void wheel_protocol_set_button_latch(WheelProtocol *protocol, bool enabled,
+                                     bool profile_transition_pending);
 void wheel_protocol_accept(WheelProtocol *protocol,
                            const uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE]);
 const uint8_t *wheel_protocol_response(const WheelProtocol *protocol);
 const uint8_t *wheel_protocol_request(const WheelProtocol *protocol);
 const WheelPacketModeOneInput *wheel_protocol_mode_one_input(const WheelProtocol *protocol);
+const WheelPacketModeOneReportState *
+wheel_protocol_mode_one_report_state(const WheelProtocol *protocol);
 const WheelAxisOverrideProcessor *wheel_protocol_axis_overrides(const WheelProtocol *protocol);
 bool wheel_protocol_request_changed(WheelProtocol *protocol);
 uint8_t wheel_protocol_message_checksum(const uint8_t packet[WHEEL_PROTOCOL_PACKET_SIZE]);

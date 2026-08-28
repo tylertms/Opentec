@@ -130,6 +130,53 @@ static void test_averages_authenticated_control_axes_across_three_samples(void) 
     assert(input.controls.y == 50);
 }
 
+static void test_builds_normalized_snapshots(void) {
+    WheelPacketModeOneInput input = {
+        .buttons = {0x11, 0x08, 0x33},
+        .axis_outputs = {0x44, 0x55},
+        .motion = -2,
+        .controls = {.values = {0x61, 0x62},
+                     .enabled = 1,
+                     .latch_flags = 1,
+                     .x = 0x65,
+                     .y = 0x66,
+                     .mode = 4,
+                     .packed_values = 0x68},
+        .axis_values = {0x1234, 0xabcd},
+        .mode_buttons = 0x70,
+        .axis_report_enabled = 0x71,
+        .report_mode = 0x72,
+        .report_capabilities = 0x73,
+        .axis_limit = 0x74,
+    };
+    uint8_t snapshot[WHEEL_PACKET_MODE_ONE_SNAPSHOT_SIZE];
+    wheel_packet_mode_one_normalize(&input, true, true, false, snapshot);
+
+    assert(input.buttons[1] == 0x09);
+    assert(input.controls.latch_flags == 3);
+    assert(input.controls.values[0] == 0);
+    assert(input.controls.x == 0);
+    assert(input.axis_values[0] == 0);
+    assert(snapshot[0] == 0x11);
+    assert(snapshot[1] == 0x09);
+    assert(snapshot[2] == 0x33);
+    assert(snapshot[3] == 0x44);
+    assert(snapshot[4] == 0x55);
+    assert(snapshot[5] == 0xfe);
+    assert(snapshot[9] == 3);
+    assert(snapshot[29] == 0x74);
+    for (uint8_t index = 6; index < 29; index++) {
+        if (index != 9) {
+            assert(snapshot[index] == 0);
+        }
+    }
+
+    input.controls.latch_flags = 3;
+    wheel_packet_mode_one_normalize(&input, false, true, false, snapshot);
+    assert(input.controls.latch_flags == 0);
+    assert(snapshot[9] == 0);
+}
+
 int main(void) {
     test_identifies_shared_codec_modes();
     test_encodes_the_complete_response();
@@ -137,5 +184,6 @@ int main(void) {
     test_decodes_standard_input_fields();
     test_filters_buttons_across_three_samples();
     test_averages_authenticated_control_axes_across_three_samples();
+    test_builds_normalized_snapshots();
     return 0;
 }

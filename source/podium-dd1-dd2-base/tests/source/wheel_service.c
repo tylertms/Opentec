@@ -286,6 +286,7 @@ static void test_restarts_discovery_after_scan_timeout(void) {
     service.protocol.axis_override_processor.y_available = true;
     service.protocol.axis_override_processor.overrides.axis_5.enabled = true;
     service.protocol.axis_override_processor.overrides.axis_5.value = 0x7d;
+    wheel_protocol_set_button_latch(&service.protocol, true, true);
     wheel_service_run(&service, now_ms + 10);
 
     const uint8_t *buttons = wheel_service_buttons(&service);
@@ -305,6 +306,8 @@ static void test_restarts_discovery_after_scan_timeout(void) {
     assert(service.protocol.axis_override_processor.y_available);
     assert(!service.protocol.axis_override_processor.overrides.axis_5.enabled);
     assert(service.protocol.axis_override_processor.overrides.axis_5.value == 0);
+    assert(service.protocol.button_latch_enabled);
+    assert(service.protocol.profile_transition_pending);
     assert(request().command == 2);
 }
 

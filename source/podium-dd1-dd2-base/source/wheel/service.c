@@ -145,6 +145,8 @@ static void reset_connection(WheelService *service) {
     uint8_t axis_multiplex_phase = service->protocol.axis_override_processor.multiplex_phase;
     bool axis_x_available = service->protocol.axis_override_processor.x_available;
     bool axis_y_available = service->protocol.axis_override_processor.y_available;
+    bool button_latch_enabled = service->protocol.button_latch_enabled;
+    bool profile_transition_pending = service->protocol.profile_transition_pending;
     wheel_protocol_init(&service->protocol);
     service->protocol.mode_one_button_filter = mode_one_button_filter;
     service->protocol.mode_one_control_axis_filter = mode_one_control_axis_filter;
@@ -154,6 +156,8 @@ static void reset_connection(WheelService *service) {
     service->protocol.axis_override_processor.multiplex_phase = axis_multiplex_phase;
     service->protocol.axis_override_processor.x_available = axis_x_available;
     service->protocol.axis_override_processor.y_available = axis_y_available;
+    wheel_protocol_set_button_latch(&service->protocol, button_latch_enabled,
+                                    profile_transition_pending);
     clear_buttons(service);
     service->scan_phase = 0;
 }
