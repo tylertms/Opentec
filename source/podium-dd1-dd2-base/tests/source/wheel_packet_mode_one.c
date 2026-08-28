@@ -77,7 +77,8 @@ static void test_decodes_standard_input_fields(void) {
     assert(input.axis_values[1] == 0xabcd);
     assert(input.mode_buttons == 0x70);
     assert(input.axis_report_enabled == 0x71);
-    assert(input.capability_flags == 0x7372);
+    assert(input.report_mode == 0x72);
+    assert(input.report_capabilities == 0x73);
     assert(input.axis_limit == 0x74);
 }
 

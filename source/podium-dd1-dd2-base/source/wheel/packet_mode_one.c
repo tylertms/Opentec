@@ -16,8 +16,8 @@ enum {
     REQUEST_AXIS_VALUES_OFFSET = 16,
     REQUEST_MODE_BUTTONS_OFFSET = 20,
     REQUEST_AXIS_REPORT_ENABLED_OFFSET = 21,
-    REQUEST_CAPABILITY_FLAGS_LOW_OFFSET = 26,
-    REQUEST_CAPABILITY_FLAGS_HIGH_OFFSET = 28,
+    REQUEST_REPORT_MODE_OFFSET = 26,
+    REQUEST_REPORT_CAPABILITIES_OFFSET = 28,
     REQUEST_AXIS_LIMIT_OFFSET = 29,
 };
 
@@ -138,8 +138,8 @@ void wheel_packet_mode_one_decode(const uint8_t request[WHEEL_PACKET_MODE_ONE_RE
     }
     input->mode_buttons = payload[REQUEST_MODE_BUTTONS_OFFSET];
     input->axis_report_enabled = payload[REQUEST_AXIS_REPORT_ENABLED_OFFSET];
-    input->capability_flags = payload[REQUEST_CAPABILITY_FLAGS_LOW_OFFSET] |
-                              (uint16_t)payload[REQUEST_CAPABILITY_FLAGS_HIGH_OFFSET] << 8;
+    input->report_mode = payload[REQUEST_REPORT_MODE_OFFSET];
+    input->report_capabilities = payload[REQUEST_REPORT_CAPABILITIES_OFFSET];
     input->axis_limit = payload[REQUEST_AXIS_LIMIT_OFFSET];
 }
 

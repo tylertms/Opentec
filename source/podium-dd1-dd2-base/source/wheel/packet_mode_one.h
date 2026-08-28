@@ -35,7 +35,8 @@ typedef struct {
     uint16_t axis_values[WHEEL_PACKET_MODE_ONE_AXIS_VALUE_COUNT];
     uint8_t mode_buttons;
     uint8_t axis_report_enabled;
-    uint16_t capability_flags;
+    uint8_t report_mode;
+    uint8_t report_capabilities;
     uint8_t axis_limit;
 } WheelPacketModeOneInput;
 
