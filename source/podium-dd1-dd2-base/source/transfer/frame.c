@@ -32,7 +32,10 @@ static uint8_t checksum(const uint8_t *data, uint8_t length) {
 
 /**
  * @brief Extracts the two-bit transfer group from a command.
- * @param command Packed transfer command.
+ *
+ * Reads command bits eight and nine as a value from zero through three.
+ *
+ * @param[in] command Packed transfer command.
  * @return Group value from zero through three.
  */
 uint8_t transfer_command_group(uint16_t command) {
@@ -41,7 +44,10 @@ uint8_t transfer_command_group(uint16_t command) {
 
 /**
  * @brief Extracts the three-bit command type.
- * @param command Packed transfer command.
+ *
+ * Reads command bits ten through twelve as a value from zero through seven.
+ *
+ * @param[in] command Packed transfer command.
  * @return Command type from zero through seven.
  */
 uint8_t transfer_command_type(uint16_t command) {
@@ -50,7 +56,10 @@ uint8_t transfer_command_type(uint16_t command) {
 
 /**
  * @brief Extracts the three-bit data sequence from a command.
- * @param command Packed transfer command.
+ *
+ * Reads command bits three through five as a value from zero through seven.
+ *
+ * @param[in] command Packed transfer command.
  * @return Sequence value from zero through seven.
  */
 uint8_t transfer_command_sequence(uint16_t command) {
@@ -59,7 +68,10 @@ uint8_t transfer_command_sequence(uint16_t command) {
 
 /**
  * @brief Extracts the five-bit progress or error value from a command.
- * @param command Packed transfer command.
+ *
+ * Reads command bits three through seven as a value from zero through 31.
+ *
+ * @param[in] command Packed transfer command.
  * @return Progress or error value from zero through 31.
  */
 uint8_t transfer_command_progress(uint16_t command) {
@@ -68,7 +80,10 @@ uint8_t transfer_command_progress(uint16_t command) {
 
 /**
  * @brief Extracts the three-bit parameter from a command.
- * @param command Packed transfer command.
+ *
+ * Reads command bits zero through two as a value from zero through seven.
+ *
+ * @param[in] command Packed transfer command.
  * @return Parameter value from zero through seven.
  */
 uint8_t transfer_command_parameter(uint16_t command) {
@@ -77,15 +92,21 @@ uint8_t transfer_command_parameter(uint16_t command) {
 
 /**
  * @brief Builds the empty transfer command.
+ *
+ * Returns the zero command used when no transfer action is present.
+ *
  * @return Zero-valued command.
  */
 uint16_t transfer_empty_command(void) { return 0; }
 
 /**
  * @brief Packs a transfer data command.
- * @param group Two-bit transfer group.
- * @param sequence Three-bit data sequence.
- * @param parameter Three-bit fragment parameter.
+ *
+ * Combines the data type with its group, sequence, and fragment parameter fields.
+ *
+ * @param[in] group Two-bit transfer group.
+ * @param[in] sequence Three-bit data sequence.
+ * @param[in] parameter Three-bit fragment parameter.
  * @return Packed command value.
  */
 uint16_t transfer_data_command(uint8_t group, uint8_t sequence, uint8_t parameter) {
@@ -98,8 +119,11 @@ uint16_t transfer_data_command(uint8_t group, uint8_t sequence, uint8_t paramete
 
 /**
  * @brief Packs a transfer acknowledgement command.
- * @param group Two-bit transfer group.
- * @param parameter Three-bit acknowledged fragment parameter.
+ *
+ * Combines the status type with its group and acknowledged fragment parameter fields.
+ *
+ * @param[in] group Two-bit transfer group.
+ * @param[in] parameter Three-bit acknowledged fragment parameter.
  * @return Packed command value.
  */
 uint16_t transfer_status_command(uint8_t group, uint8_t parameter) {
@@ -110,9 +134,12 @@ uint16_t transfer_status_command(uint8_t group, uint8_t parameter) {
 
 /**
  * @brief Packs a transfer progress or error command.
- * @param group Two-bit transfer group.
- * @param parameter Three-bit fragment parameter.
- * @param sequence Five-bit progress or error value.
+ *
+ * Combines the status type with its group, progress, and fragment parameter fields.
+ *
+ * @param[in] group Two-bit transfer group.
+ * @param[in] parameter Three-bit fragment parameter.
+ * @param[in] sequence Five-bit progress or error value.
  * @return Packed command value.
  */
 uint16_t transfer_progress_command(uint8_t group, uint8_t parameter, uint8_t sequence) {
@@ -141,10 +168,14 @@ static uint16_t append_encoded(uint8_t value, uint8_t *output, uint16_t output_l
 
 /**
  * @brief Encodes one transfer command, payload, and checksum with marker escaping.
- * @param command Packed transfer command.
- * @param payload Payload bytes, or null when the payload length is zero.
- * @param payload_length Payload length from zero through 124 bytes.
- * @param output Destination with room for the maximum encoded frame.
+ *
+ * Escapes reserved boundary bytes and surrounds the command, payload, and checksum with the start
+ * and end markers.
+ *
+ * @param[in] command Packed transfer command.
+ * @param[in] payload Payload bytes, or null when the payload length is zero.
+ * @param[in] payload_length Payload length from zero through 124 bytes.
+ * @param[out] output Destination with room for the maximum encoded frame.
  * @return Encoded byte count, or zero when the payload is invalid or too long.
  */
 uint16_t transfer_frame_encode_values(uint16_t command, const uint8_t *payload,
@@ -175,8 +206,11 @@ uint16_t transfer_frame_encode_values(uint16_t command, const uint8_t *payload,
 
 /**
  * @brief Encodes one transfer frame with marker escaping.
- * @param frame Command and payload to encode; payload length must not exceed 124 bytes.
- * @param output Destination with room for the maximum encoded frame.
+ *
+ * Encodes the frame's packed command and payload with its checksum and boundary markers.
+ *
+ * @param[in] frame Command and payload to encode; payload length must not exceed 124 bytes.
+ * @param[out] output Destination with room for the maximum encoded frame.
  * @return Encoded byte count, or zero when the payload is too long.
  */
 uint16_t transfer_frame_encode(const TransferFrame *frame,
@@ -200,9 +234,13 @@ static uint16_t decode_byte(uint8_t value) {
 
 /**
  * @brief Validates and decodes one escaped transfer frame.
- * @param input Complete encoded frame including boundary markers.
- * @param input_length Encoded byte count from 5 through 135.
- * @param frame Destination for the command and up to 125 payload bytes.
+ *
+ * Validates the frame boundaries, escaping, decoded length, and checksum before publishing its
+ * command and payload.
+ *
+ * @param[in] input Complete encoded frame including boundary markers.
+ * @param[in] input_length Encoded byte count from 5 through 135.
+ * @param[out] frame Destination for the command and up to 125 payload bytes.
  * @return Frame status identifying length, boundary, escape, or checksum failures.
  */
 TransferFrameResult transfer_frame_decode(const uint8_t *input, uint16_t input_length,
