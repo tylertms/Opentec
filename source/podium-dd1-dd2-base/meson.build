@@ -44,6 +44,9 @@ force_safety_sources = files('source/force_feedback/safety.c')
 force_soft_stop_sources = files('source/force_feedback/soft_stop.c')
 fanatec_input_sources = files('source/usb/fanatec_input.c')
 usb_input_report_sources = files('source/usb/input_report.c')
+usb_compatibility_report_descriptor_sources = files(
+  'source/usb/compatibility_report_descriptor.c',
+)
 usb_descriptor_sources = files('source/usb/descriptor.c')
 usb_control_request_sources = files('source/usb/control_request.c')
 usb_control_pipe_sources = files('source/usb/control_pipe.c')
@@ -158,6 +161,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'force-soft-stop': 'source/force_feedback/soft_stop.c',
     'fanatec-input': 'source/usb/fanatec_input.c',
     'usb-input-report': 'source/usb/input_report.c',
+    'usb-compatibility-report-descriptor': 'source/usb/compatibility_report_descriptor.c',
     'usb-descriptor': 'source/usb/descriptor.c',
     'usb-control-request': 'source/usb/control_request.c',
     'usb-control-pipe': 'source/usb/control_pipe.c',
@@ -679,6 +683,14 @@ if not meson.is_cross_build()
     usb_input_report_sources,
     fanatec_input_sources,
     logitech_input_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  usb_compatibility_report_descriptor_test = executable(
+    'base-usb-compatibility-report-descriptor-test',
+    'tests/source/compatibility_report_descriptor.c',
+    usb_compatibility_report_descriptor_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -1334,6 +1346,11 @@ if not meson.is_cross_build()
   test('base-force-soft-stop', force_soft_stop_test, suite: ['base', 'force-feedback'])
   test('base-fanatec-input', fanatec_input_test, suite: ['base', 'usb', 'input'])
   test('base-usb-input-report', usb_input_report_test, suite: ['base', 'usb', 'input'])
+  test(
+    'base-usb-compatibility-report-descriptor',
+    usb_compatibility_report_descriptor_test,
+    suite: ['base', 'usb'],
+  )
   test('base-usb-descriptor', usb_descriptor_test, suite: ['base', 'usb'])
   test('base-usb-control-request', usb_control_request_test, suite: ['base', 'usb'])
   test('base-usb-control-pipe', usb_control_pipe_test, suite: ['base', 'usb'])

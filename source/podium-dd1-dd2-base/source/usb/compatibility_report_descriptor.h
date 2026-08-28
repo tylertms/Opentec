@@ -1,0 +1,21 @@
+#ifndef OPENTEC_BASE_USB_COMPATIBILITY_REPORT_DESCRIPTOR_H
+#define OPENTEC_BASE_USB_COMPATIBILITY_REPORT_DESCRIPTOR_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#include "usb/input_report.h"
+
+enum {
+    USB_FANATEC_COMPATIBILITY_REPORT_DESCRIPTOR_SIZE = 133,
+    USB_DRIVING_FORCE_EX_REPORT_DESCRIPTOR_SIZE = 130,
+    USB_DRIVING_FORCE_PRO_REPORT_DESCRIPTOR_SIZE = 97,
+    USB_G27_REPORT_DESCRIPTOR_SIZE = 133,
+    USB_COMPATIBILITY_REPORT_DESCRIPTOR_MAX_SIZE = 133,
+};
+
+size_t usb_compatibility_report_descriptor_encode(
+    UsbInputReportMode mode, uint8_t output[USB_COMPATIBILITY_REPORT_DESCRIPTOR_MAX_SIZE],
+    size_t capacity);
+
+#endif
