@@ -13,6 +13,8 @@
 #include "force_feedback/output_enable.h"
 #include "force_feedback/script_runtime.h"
 #include "force_feedback/state.h"
+#include "motor/command_mailbox.h"
+#include "motor/command_serial.h"
 #include "motor/live_frame.h"
 #include "motor/output_transport.h"
 #include "motor/probe.h"
@@ -31,13 +33,14 @@
 #include "platform/motor_link.h"
 #include "platform/pedal_link.h"
 #include "platform/pin_mux.h"
+#include "platform/serial_link.h"
 #include "platform/shifter.h"
 #include "platform/status_led.h"
 #include "platform/time.h"
 #include "platform/usb.h"
-#include "platform/wheel_link.h"
 #include "profile/bank.h"
 #include "profile/tuning.h"
+#include "serial/service.h"
 #include "settings/persistence.h"
 #include "settings/state.h"
 #include "shifter/display.h"
@@ -47,6 +50,7 @@
 #include "usb/device.h"
 #include "usb/fanatec_input.h"
 #include "usb/input_report.h"
+#include "usb/motor_vendor_service.h"
 #include "usb/operating_mode_command.h"
 #include "usb/output_command.h"
 #include "usb/vendor_command.h"
@@ -77,6 +81,9 @@
 
 static BoardIdentity board_identity;
 static MotorProbe motor_probe;
+static CommandTransport command_transport;
+static MotorCommandMailboxExchange motor_command_mailbox;
+static UsbMotorVendorService usb_motor_vendor_service;
 static MotorStatusService motor_status_service;
 static MotorTelemetryService motor_telemetry_service;
 static MotorTuningService motor_tuning_service;
@@ -91,6 +98,7 @@ static MotorPositionReport motor_position_report;
 static bool motor_position_ready;
 static WheelPositionCalibration wheel_position_calibration;
 static PedalService pedal_service;
+static SerialService serial_service;
 static WheelService wheel_service;
 static AnalogSamples analog_samples;
 static HPatternShifter h_pattern_shifter;
@@ -98,6 +106,8 @@ static ShifterInputState shifter_input;
 static ShifterDisplay shifter_display;
 static UsbInputReportState usb_input_state;
 static uint8_t usb_input_report[USB_INPUT_REPORT_MAX_SIZE];
+static uint8_t usb_motor_acknowledgement[USB_DEVICE_REPORT_SIZE];
+static uint8_t usb_motor_response[USB_DEVICE_REPORT_SIZE];
 static UsbDeviceOutputReport usb_device_output_report;
 static UsbConnectionMonitor usb_connection_monitor;
 static UsbOutputCommand usb_output_command;
@@ -124,9 +134,28 @@ static ForceOutputEnable force_output_enable;
 static ForceOutputEnableAction force_output_enable_action;
 static bool force_output_enabled;
 static bool force_output_prompt_visible;
+static bool usb_motor_acknowledgement_ready;
+static bool usb_motor_response_ready;
 
 enum {
     FAN_STARTUP_DUTY_PERCENT = 25,
+    USB_MOTOR_BUFFER_SIZE = MEMORY_TRANSFER_MAX_READ_SIZE,
+};
+
+static uint8_t usb_motor_upload_assembly[USB_MOTOR_BUFFER_SIZE];
+static uint8_t usb_motor_receive_assembly[USB_MOTOR_BUFFER_SIZE];
+static uint8_t usb_motor_mailbox_receive[USB_MOTOR_BUFFER_SIZE];
+static uint8_t usb_motor_transmit[USB_MOTOR_BUFFER_SIZE];
+static uint8_t usb_motor_application_data[USB_MOTOR_BUFFER_SIZE];
+static const UsbMotorVendorServiceBuffers usb_motor_buffers = {
+    .upload_assembly = usb_motor_upload_assembly,
+    .upload_assembly_capacity = sizeof(usb_motor_upload_assembly),
+    .receive_assembly = usb_motor_receive_assembly,
+    .receive_assembly_capacity = sizeof(usb_motor_receive_assembly),
+    .motor_transmit = usb_motor_transmit,
+    .motor_transmit_capacity = sizeof(usb_motor_transmit),
+    .application_data = usb_motor_application_data,
+    .application_data_capacity = sizeof(usb_motor_application_data),
 };
 
 static void initialize_cooling(void) {
@@ -270,6 +299,90 @@ static void initialize_motor(void) {
 }
 
 /**
+ * @brief Initializes the host motor-command bridge.
+ *
+ * Attaches the report-6 protocol to its owner-0x20 mailbox storage and the shared type-four command
+ * transport.
+ */
+static void initialize_usb_motor_bridge(void) {
+    command_transport_init(&command_transport);
+    (void)motor_command_mailbox_exchange_init(&motor_command_mailbox, usb_motor_mailbox_receive,
+                                              sizeof(usb_motor_mailbox_receive));
+    (void)usb_motor_vendor_service_init(&usb_motor_vendor_service, &usb_motor_buffers);
+    usb_motor_acknowledgement_ready = false;
+    usb_motor_response_ready = false;
+}
+
+/**
+ * @brief Accepts one host report for the motor-command bridge.
+ *
+ * Applies report-6 uploads, restart and release controls, and segmented response progress
+ * acknowledgements before the generic HID output decoder sees the report.
+ *
+ * @param[in] report Host output or feature report.
+ * @return True when the motor-command bridge owns the report.
+ */
+static bool accept_usb_motor_report(const UsbDeviceOutputReport *report) {
+    if (report->length == USB_MOTOR_RESPONSE_ACKNOWLEDGEMENT_SIZE &&
+        usb_motor_vendor_service_acknowledge_response(&usb_motor_vendor_service, report->data)) {
+        return true;
+    }
+    if (report->report_id != USB_MOTOR_COMMAND_REPORT_ID ||
+        report->length != USB_FEATURE_UPLOAD_PACKET_SIZE) {
+        return false;
+    }
+    UsbMotorVendorServiceResult result = usb_motor_vendor_service_accept_usb_mailbox(
+        &usb_motor_vendor_service, &motor_command_mailbox, &command_transport, report->data,
+        report->length, usb_motor_acknowledgement);
+    if ((result.actions & USB_MOTOR_VENDOR_ACTION_WRITE_USB) != 0) {
+        usb_motor_acknowledgement_ready = true;
+    }
+    return (result.actions & USB_MOTOR_VENDOR_ACTION_CLAIM) != 0;
+}
+
+/**
+ * @brief Advances the owner-0x20 mailbox over serial message type four.
+ *
+ * Applies completed type-four responses, advances mailbox polling and packet exchange, and submits
+ * the next queued command whenever the shared attached-device service becomes idle.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_usb_motor_bridge(uint32_t now_ms) {
+    (void)motor_command_serial_receive(&command_transport, &serial_service);
+    (void)usb_motor_vendor_service_run_mailbox(&usb_motor_vendor_service, &motor_command_mailbox,
+                                               &command_transport);
+    if (serial_service.status == SERIAL_SERVICE_IDLE) {
+        (void)motor_command_serial_submit(&command_transport, &serial_service, now_ms);
+    }
+
+    if (usb_motor_acknowledgement_ready &&
+        usb_device_send_vendor_report(usb_motor_acknowledgement)) {
+        usb_motor_acknowledgement_ready = false;
+    }
+    if (!usb_motor_response_ready) {
+        usb_motor_response_ready = usb_motor_vendor_service_next_response(&usb_motor_vendor_service,
+                                                                          usb_motor_response) != 0;
+    }
+    if (!usb_motor_acknowledgement_ready && usb_motor_response_ready &&
+        usb_device_send_vendor_report(usb_motor_response)) {
+        usb_motor_response_ready = false;
+    }
+}
+
+/**
+ * @brief Reports whether a type-four command is waiting for the shared serial link.
+ *
+ * Checks the command transport's queued request state without changing its owner or phase.
+ *
+ * @return True when a read or write request is queued for submission.
+ */
+static bool usb_motor_command_waiting(void) {
+    return command_transport.phase == COMMAND_TRANSPORT_WRITE_QUEUED ||
+           command_transport.phase == COMMAND_TRANSPORT_READ_QUEUED;
+}
+
+/**
  * @brief Advance the force-feedback script clocks for one Timer 2 interrupt.
  *
  * Advances the shared engine clock in active and zero-output modes, advances the selected slot
@@ -347,8 +460,13 @@ static void forward_force_feedback_command(const ForceFeedbackCommand *command,
 }
 
 static void service_usb_output(void) {
-    if (!usb_device_take_output(&usb_device_output_report) ||
-        !usb_output_command_decode(&usb_device_output_report, &usb_output_command)) {
+    if (!usb_device_take_output(&usb_device_output_report)) {
+        return;
+    }
+    if (accept_usb_motor_report(&usb_device_output_report)) {
+        return;
+    }
+    if (!usb_output_command_decode(&usb_device_output_report, &usb_output_command)) {
         return;
     }
 
@@ -502,8 +620,10 @@ int main(void) {
     platform_aux_bus_init();
     platform_pedal_link_init();
     pedal_service_init(&pedal_service);
-    platform_wheel_link_init();
-    wheel_service_init(&wheel_service);
+    platform_serial_link_init();
+    serial_service_init(&serial_service);
+    wheel_service_init(&wheel_service, &serial_service);
+    initialize_usb_motor_bridge();
     initialize_motor_link();
     initialize_motor();
     initialize_force_feedback_script();
@@ -523,7 +643,12 @@ int main(void) {
         service_analog_input();
         service_motor_link();
         pedal_service_run(&pedal_service, now_ms);
-        wheel_service_run(&wheel_service, now_ms);
+        serial_service_run(&serial_service, now_ms);
+        service_usb_motor_bridge(now_ms);
+        wheel_service_run(&wheel_service, now_ms, !usb_motor_command_waiting());
+        if (serial_service.status == SERIAL_SERVICE_IDLE) {
+            (void)motor_command_serial_submit(&command_transport, &serial_service, now_ms);
+        }
         service_force_output_enable();
         service_shifter_display(now_ms);
         service_usb_input();

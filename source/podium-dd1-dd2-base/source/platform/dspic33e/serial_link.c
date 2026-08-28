@@ -1,37 +1,37 @@
-#include "platform/wheel_link.h"
+#include "platform/serial_link.h"
 
 #include <stdbool.h>
 #include <stdint.h>
 #include <xc.h>
 
 enum {
-    WHEEL_LINK_TRANSMIT_SIZE = 72,
-    WHEEL_LINK_RECEIVE_SIZE = 68,
-    WHEEL_LINK_FRAME_OFFSET = 4,
-    WHEEL_LINK_ALIGNMENT_LIMIT = 5,
-    WHEEL_LINK_PADDING = 0xf0,
-    WHEEL_LINK_BAUD_PERIOD = 2,
-    WHEEL_LINK_TRANSMIT_DMA_REQUEST = 0x53,
-    WHEEL_LINK_RECEIVE_DMA_REQUEST = 0x52,
-    WHEEL_LINK_TRANSMIT_PRIORITY = 5,
-    WHEEL_LINK_RECEIVE_PRIORITY = 4,
-    WHEEL_LINK_TIMER_PRIORITY = 6,
-    WHEEL_LINK_TRANSMIT_GUARD_PERIOD = 0x4b0,
-    WHEEL_LINK_RECEIVE_TIMEOUT_PERIOD = 10000,
+    SERIAL_LINK_TRANSMIT_SIZE = 72,
+    SERIAL_LINK_RECEIVE_SIZE = 68,
+    SERIAL_LINK_FRAME_OFFSET = 4,
+    SERIAL_LINK_ALIGNMENT_LIMIT = 5,
+    SERIAL_LINK_PADDING = 0xf0,
+    SERIAL_LINK_BAUD_PERIOD = 2,
+    SERIAL_LINK_TRANSMIT_DMA_REQUEST = 0x53,
+    SERIAL_LINK_RECEIVE_DMA_REQUEST = 0x52,
+    SERIAL_LINK_TRANSMIT_PRIORITY = 5,
+    SERIAL_LINK_RECEIVE_PRIORITY = 4,
+    SERIAL_LINK_TIMER_PRIORITY = 6,
+    SERIAL_LINK_TRANSMIT_GUARD_PERIOD = 0x4b0,
+    SERIAL_LINK_RECEIVE_TIMEOUT_PERIOD = 10000,
 };
 
 typedef enum {
-    WHEEL_LINK_TIMER_IDLE,
-    WHEEL_LINK_TIMER_RECEIVE_TIMEOUT,
-    WHEEL_LINK_TIMER_START_RECEIVE,
-} WheelLinkTimerAction;
+    SERIAL_LINK_TIMER_IDLE,
+    SERIAL_LINK_TIMER_RECEIVE_TIMEOUT,
+    SERIAL_LINK_TIMER_START_RECEIVE,
+} SerialLinkTimerAction;
 
-static volatile uint8_t transmit_dma[WHEEL_LINK_TRANSMIT_SIZE];
-static volatile uint8_t receive_dma[WHEEL_LINK_RECEIVE_SIZE];
-static volatile uint8_t received_frame[WHEEL_TRANSPORT_FRAME_SIZE];
+static volatile uint8_t transmit_dma[SERIAL_LINK_TRANSMIT_SIZE];
+static volatile uint8_t receive_dma[SERIAL_LINK_RECEIVE_SIZE];
+static volatile uint8_t received_packet[SERIAL_PACKET_SIZE];
 static volatile bool transfer_active;
 static volatile bool frame_ready;
-static volatile WheelLinkTimerAction timer_action;
+static volatile SerialLinkTimerAction timer_action;
 
 /**
  * @brief Clears UART3 receive errors and pending bytes.
@@ -59,7 +59,7 @@ static void configure_uart(void) {
     U3STA = 0;
     U3MODEbits.BRGH = 1;
     U3MODEbits.URXINV = 1;
-    U3BRG = WHEEL_LINK_BAUD_PERIOD;
+    U3BRG = SERIAL_LINK_BAUD_PERIOD;
     U3STAbits.UTXINV = 1;
     U3MODEbits.UARTEN = 1;
     U3STAbits.UTXEN = 1;
@@ -76,22 +76,22 @@ static void configure_dma(void) {
     DMA5CONbits.DIR = 1;
     DMA5CONbits.AMODE = 0;
     DMA5CONbits.MODE = 1;
-    DMA5REQbits.IRQSEL = WHEEL_LINK_TRANSMIT_DMA_REQUEST;
+    DMA5REQbits.IRQSEL = SERIAL_LINK_TRANSMIT_DMA_REQUEST;
     DMA5PAD = (uint16_t)&U3TXREG;
     DMA5STAL = (uint16_t)transmit_dma;
     DMA5STAH = 0;
-    DMA5CNT = WHEEL_LINK_TRANSMIT_SIZE - 1;
+    DMA5CNT = SERIAL_LINK_TRANSMIT_SIZE - 1;
 
     DMA6CON = 0;
     DMA6CONbits.SIZE = 1;
     DMA6CONbits.DIR = 0;
     DMA6CONbits.AMODE = 0;
     DMA6CONbits.MODE = 1;
-    DMA6REQbits.IRQSEL = WHEEL_LINK_RECEIVE_DMA_REQUEST;
+    DMA6REQbits.IRQSEL = SERIAL_LINK_RECEIVE_DMA_REQUEST;
     DMA6PAD = (uint16_t)&U3RXREG;
     DMA6STAL = (uint16_t)receive_dma;
     DMA6STAH = 0;
-    DMA6CNT = WHEEL_LINK_RECEIVE_SIZE - 1;
+    DMA6CNT = SERIAL_LINK_RECEIVE_SIZE - 1;
 }
 
 /**
@@ -100,8 +100,8 @@ static void configure_dma(void) {
  * DMA5 uses priority 5, DMA6 uses priority 4, and Timer 6 uses priority 6.
  */
 static void configure_interrupts(void) {
-    IPC15bits.DMA5IP = WHEEL_LINK_TRANSMIT_PRIORITY;
-    IPC17bits.DMA6IP = WHEEL_LINK_RECEIVE_PRIORITY;
+    IPC15bits.DMA5IP = SERIAL_LINK_TRANSMIT_PRIORITY;
+    IPC17bits.DMA6IP = SERIAL_LINK_RECEIVE_PRIORITY;
     IFS3bits.DMA5IF = 0;
     IFS4bits.DMA6IF = 0;
     IFS2bits.T6IF = 0;
@@ -109,7 +109,7 @@ static void configure_interrupts(void) {
     IFS5bits.U3RXIF = 0;
     IEC3bits.DMA5IE = 1;
     IEC4bits.DMA6IE = 1;
-    IPC11bits.T6IP = WHEEL_LINK_TIMER_PRIORITY;
+    IPC11bits.T6IP = SERIAL_LINK_TIMER_PRIORITY;
     IEC2bits.T6IE = 1;
     IEC5bits.U3EIE = 1;
 }
@@ -123,7 +123,7 @@ static void configure_timer(void) {
     T6CON = 0;
     TMR6 = 0;
     PR6 = 0;
-    timer_action = WHEEL_LINK_TIMER_IDLE;
+    timer_action = SERIAL_LINK_TIMER_IDLE;
 }
 
 /**
@@ -134,7 +134,7 @@ static void configure_timer(void) {
  * @param[in] period Timer 6 period in instruction cycles.
  * @param[in] action Action to perform when the period expires.
  */
-static void start_timer(uint16_t period, WheelLinkTimerAction action) {
+static void start_timer(uint16_t period, SerialLinkTimerAction action) {
     T6CONbits.TON = 0;
     timer_action = action;
     TMR6 = 0;
@@ -152,7 +152,7 @@ static void stop_timer(void) {
     T6CONbits.TON = 0;
     TMR6 = 0;
     IFS2bits.T6IF = 0;
-    timer_action = WHEEL_LINK_TIMER_IDLE;
+    timer_action = SERIAL_LINK_TIMER_IDLE;
 }
 
 /**
@@ -163,7 +163,7 @@ static void stop_timer(void) {
 static void start_receive(void) {
     DMA6CONbits.CHEN = 0;
     IEC4bits.DMA6IE = 0;
-    for (uint8_t index = 0; index < WHEEL_LINK_RECEIVE_SIZE; index++) {
+    for (uint8_t index = 0; index < SERIAL_LINK_RECEIVE_SIZE; index++) {
         receive_dma[index] = 0;
     }
     clear_uart();
@@ -179,7 +179,7 @@ static void start_receive(void) {
  *
  * Configures the physical pins, inverted high-speed UART, one-shot DMA channels, and Timer 6.
  */
-void platform_wheel_link_init(void) {
+void platform_serial_link_init(void) {
     transfer_active = false;
     frame_ready = false;
     TRISFbits.TRISF2 = 0;
@@ -198,7 +198,7 @@ void platform_wheel_link_init(void) {
  *
  * Stops all active DMA and timer work, clears pending receive data, and releases the transaction.
  */
-void platform_wheel_link_reset(void) {
+void platform_serial_link_reset(void) {
     IEC3bits.DMA5IE = 0;
     IEC4bits.DMA6IE = 0;
     IEC5bits.U3RXIE = 0;
@@ -223,17 +223,17 @@ void platform_wheel_link_reset(void) {
  * @param[in] frame Transport frame to transmit.
  * @return true when the exchange starts; false when another exchange is active.
  */
-bool platform_wheel_link_start(const uint8_t frame[WHEEL_TRANSPORT_FRAME_SIZE]) {
+bool platform_serial_link_start(const uint8_t packet[SERIAL_PACKET_SIZE]) {
     IEC3bits.DMA5IE = 0;
     if (transfer_active) {
         IEC3bits.DMA5IE = 1;
         return false;
     }
-    for (uint8_t index = 0; index < WHEEL_LINK_TRANSMIT_SIZE; index++) {
-        transmit_dma[index] = WHEEL_LINK_PADDING;
+    for (uint8_t index = 0; index < SERIAL_LINK_TRANSMIT_SIZE; index++) {
+        transmit_dma[index] = SERIAL_LINK_PADDING;
     }
-    for (uint8_t index = 0; index < WHEEL_TRANSPORT_FRAME_SIZE; index++) {
-        transmit_dma[WHEEL_LINK_FRAME_OFFSET + index] = frame[index];
+    for (uint8_t index = 0; index < SERIAL_PACKET_SIZE; index++) {
+        transmit_dma[SERIAL_LINK_FRAME_OFFSET + index] = packet[index];
     }
     DMA5CONbits.CHEN = 0;
     DMA6CONbits.CHEN = 0;
@@ -258,12 +258,12 @@ bool platform_wheel_link_start(const uint8_t frame[WHEEL_TRANSPORT_FRAME_SIZE]) 
  * @param[out] frame Storage that receives the transport frame.
  * @return true when a frame was copied; false when no response is ready.
  */
-bool platform_wheel_link_take_received(uint8_t frame[WHEEL_TRANSPORT_FRAME_SIZE]) {
+bool platform_serial_link_take_received(uint8_t packet[SERIAL_PACKET_SIZE]) {
     IEC4bits.DMA6IE = 0;
     bool ready = frame_ready;
     if (ready) {
-        for (uint8_t index = 0; index < WHEEL_TRANSPORT_FRAME_SIZE; index++) {
-            frame[index] = received_frame[index];
+        for (uint8_t index = 0; index < SERIAL_PACKET_SIZE; index++) {
+            packet[index] = received_packet[index];
         }
         frame_ready = false;
     }
@@ -279,7 +279,7 @@ bool platform_wheel_link_take_received(uint8_t frame[WHEEL_TRANSPORT_FRAME_SIZE]
 void __attribute__((interrupt, no_auto_psv)) _DMA5Interrupt(void) {
     DMA5CONbits.CHEN = 0;
     IFS3bits.DMA5IF = 0;
-    start_timer(WHEEL_LINK_TRANSMIT_GUARD_PERIOD, WHEEL_LINK_TIMER_START_RECEIVE);
+    start_timer(SERIAL_LINK_TRANSMIT_GUARD_PERIOD, SERIAL_LINK_TIMER_START_RECEIVE);
 }
 
 /**
@@ -293,13 +293,12 @@ void __attribute__((interrupt, no_auto_psv)) _DMA6Interrupt(void) {
     IEC4bits.DMA6IE = 0;
     stop_timer();
     uint8_t offset = 0;
-    while (offset < WHEEL_LINK_ALIGNMENT_LIMIT &&
-           receive_dma[offset] != WHEEL_TRANSPORT_FRAME_START) {
+    while (offset < SERIAL_LINK_ALIGNMENT_LIMIT && receive_dma[offset] != SERIAL_PACKET_START) {
         offset++;
     }
-    if (offset < WHEEL_LINK_ALIGNMENT_LIMIT) {
-        for (uint8_t index = 0; index < WHEEL_TRANSPORT_FRAME_SIZE; index++) {
-            received_frame[index] = receive_dma[offset + index];
+    if (offset < SERIAL_LINK_ALIGNMENT_LIMIT) {
+        for (uint8_t index = 0; index < SERIAL_PACKET_SIZE; index++) {
+            received_packet[index] = receive_dma[offset + index];
         }
         frame_ready = true;
     }
@@ -316,7 +315,7 @@ void __attribute__((interrupt, no_auto_psv)) _U3RXInterrupt(void) {
     IEC5bits.U3RXIE = 0;
     IFS5bits.U3RXIF = 0;
     if (transfer_active && DMA6CONbits.CHEN != 0) {
-        start_timer(WHEEL_LINK_RECEIVE_TIMEOUT_PERIOD, WHEEL_LINK_TIMER_RECEIVE_TIMEOUT);
+        start_timer(SERIAL_LINK_RECEIVE_TIMEOUT_PERIOD, SERIAL_LINK_TIMER_RECEIVE_TIMEOUT);
     }
 }
 
@@ -326,11 +325,11 @@ void __attribute__((interrupt, no_auto_psv)) _U3RXInterrupt(void) {
  * Arms receive DMA after transmit turnaround or releases an exchange whose receive frame timed out.
  */
 void __attribute__((interrupt, no_auto_psv)) _T6Interrupt(void) {
-    WheelLinkTimerAction action = timer_action;
+    SerialLinkTimerAction action = timer_action;
     stop_timer();
-    if (action == WHEEL_LINK_TIMER_START_RECEIVE && transfer_active) {
+    if (action == SERIAL_LINK_TIMER_START_RECEIVE && transfer_active) {
         start_receive();
-    } else if (action == WHEEL_LINK_TIMER_RECEIVE_TIMEOUT) {
+    } else if (action == SERIAL_LINK_TIMER_RECEIVE_TIMEOUT) {
         DMA6CONbits.CHEN = 0;
         IEC4bits.DMA6IE = 0;
         IEC5bits.U3RXIE = 0;

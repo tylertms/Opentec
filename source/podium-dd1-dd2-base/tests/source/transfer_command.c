@@ -104,11 +104,26 @@ static void test_rejects_invalid_requests_and_responses(void) {
     assert(command_transport_poll(&transport, 0) == COMMAND_TRANSPORT_WRITE_REJECTED);
 }
 
+static void test_fails_pending_requests_by_direction(void) {
+    CommandTransport transport;
+    command_transport_init(&transport);
+    assert(command_transport_queue_write(&transport, 0x20, 0, 0, 0) == COMMAND_TRANSPORT_COMPLETE);
+    assert(command_transport_request_sent(&transport));
+    command_transport_fail(&transport);
+    assert(command_transport_poll(&transport, 0x20) == COMMAND_TRANSPORT_WRITE_REJECTED);
+
+    assert(command_transport_queue_read(&transport, 0x20, 0, 0, 0) == COMMAND_TRANSPORT_COMPLETE);
+    assert(command_transport_request_sent(&transport));
+    command_transport_fail(&transport);
+    assert(command_transport_poll(&transport, 0x20) == COMMAND_TRANSPORT_READ_REJECTED);
+}
+
 int main(void) {
     test_tracks_ownership();
     test_completes_write();
     test_completes_read();
     test_latches_rejections();
     test_rejects_invalid_requests_and_responses();
+    test_fails_pending_requests_by_direction();
     return 0;
 }

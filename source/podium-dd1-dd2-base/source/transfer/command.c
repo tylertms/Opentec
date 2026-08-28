@@ -177,6 +177,24 @@ bool command_transport_request_sent(CommandTransport *transport) {
 }
 
 /**
+ * @brief Fails the active command request.
+ *
+ * Latches the rejection result for the pending request direction and returns the transport to its
+ * idle phase.
+ *
+ * @param[in,out] transport Command transport whose request failed.
+ */
+void command_transport_fail(CommandTransport *transport) {
+    if (transport->phase == COMMAND_TRANSPORT_WRITE_PENDING) {
+        transport->completion = COMMAND_TRANSPORT_WRITE_REJECTED;
+        transport->phase = COMMAND_TRANSPORT_IDLE;
+    } else if (transport->phase == COMMAND_TRANSPORT_READ_PENDING) {
+        transport->completion = COMMAND_TRANSPORT_READ_REJECTED;
+        transport->phase = COMMAND_TRANSPORT_IDLE;
+    }
+}
+
+/**
  * @brief Applies a group-4 response to the active command request.
  *
  * Completes accepted writes, copies accepted read data, and latches direction-specific rejection

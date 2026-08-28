@@ -133,11 +133,10 @@ motor_command_scheduler_sources = files('source/motor/command_scheduler.c')
 motor_command_sequence_sources = files('source/motor/command_sequence.c')
 motor_command_serial_sources = files('source/motor/command_serial.c')
 motor_command_startup_sources = files('source/motor/command_startup.c')
-motor_serial_message_sources = files('source/motor/serial_message.c')
-motor_serial_packet_sources = files('source/motor/serial_packet.c')
-motor_serial_session_sources = files('source/motor/serial_session.c')
-wheel_transport_frame_sources = files('source/wheel/transport_frame.c')
-wheel_transport_service_sources = files('source/wheel/transport_service.c')
+serial_message_sources = files('source/serial/message.c')
+serial_packet_sources = files('source/serial/packet.c')
+serial_service_sources = files('source/serial/service.c')
+serial_session_sources = files('source/serial/session.c')
 
 if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
   device_pack = subproject('dspic33e-device-pack')
@@ -266,7 +265,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'platform-shifter': 'source/platform/dspic33e/shifter.c',
     'platform-time': 'source/platform/dspic33e/time.c',
     'platform-usb': 'source/platform/dspic33e/usb.c',
-    'platform-wheel-link': 'source/platform/dspic33e/wheel_link.c',
+    'platform-serial-link': 'source/platform/dspic33e/serial_link.c',
     'platform-time-common': 'source/platform/time.c',
     'profile-bank': 'source/profile/bank.c',
     'profile-record': 'source/profile/record.c',
@@ -298,11 +297,10 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'motor-command-sequence': 'source/motor/command_sequence.c',
     'motor-command-serial': 'source/motor/command_serial.c',
     'motor-command-startup': 'source/motor/command_startup.c',
-    'motor-serial-message': 'source/motor/serial_message.c',
-    'motor-serial-packet': 'source/motor/serial_packet.c',
-    'motor-serial-session': 'source/motor/serial_session.c',
-    'wheel-transport-frame': 'source/wheel/transport_frame.c',
-    'wheel-transport-service': 'source/wheel/transport_service.c',
+    'serial-message': 'source/serial/message.c',
+    'serial-packet': 'source/serial/packet.c',
+    'serial-service': 'source/serial/service.c',
+    'serial-session': 'source/serial/session.c',
   }
     firmware_objects += custom_target(
       'podium-dd1-dd2-base-' + name + '-object',
@@ -1439,29 +1437,29 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
-  motor_serial_packet_test = executable(
-    'base-motor-serial-packet-test',
-    'tests/source/motor_serial_packet.c',
-    motor_serial_packet_sources,
+  serial_packet_test = executable(
+    'base-serial-packet-test',
+    'tests/source/serial_packet.c',
+    serial_packet_sources,
     build_by_default: false,
     include_directories: base_include,
   )
 
-  motor_serial_message_test = executable(
-    'base-motor-serial-message-test',
-    'tests/source/motor_serial_message.c',
-    motor_serial_message_sources,
-    motor_serial_packet_sources,
+  serial_message_test = executable(
+    'base-serial-message-test',
+    'tests/source/serial_message.c',
+    serial_message_sources,
+    serial_packet_sources,
     build_by_default: false,
     include_directories: base_include,
   )
 
-  motor_serial_session_test = executable(
-    'base-motor-serial-session-test',
-    'tests/source/motor_serial_session.c',
-    motor_serial_session_sources,
-    motor_serial_message_sources,
-    motor_serial_packet_sources,
+  serial_session_test = executable(
+    'base-serial-session-test',
+    'tests/source/serial_session.c',
+    serial_session_sources,
+    serial_message_sources,
+    serial_packet_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -1470,19 +1468,25 @@ if not meson.is_cross_build()
     'base-motor-command-serial-test',
     'tests/source/motor_command_serial.c',
     motor_command_serial_sources,
-    motor_serial_session_sources,
-    motor_serial_message_sources,
-    motor_serial_packet_sources,
+    serial_service_sources,
+    serial_session_sources,
+    serial_message_sources,
+    serial_packet_sources,
     transfer_command_sources,
     transfer_memory_sources,
+    platform_time_sources,
     build_by_default: false,
     include_directories: base_include,
   )
 
-  wheel_transport_frame_test = executable(
-    'base-wheel-transport-frame-test',
-    'tests/source/wheel_transport_frame.c',
-    wheel_transport_frame_sources,
+  serial_service_test = executable(
+    'base-serial-service-test',
+    'tests/source/serial_service.c',
+    serial_service_sources,
+    serial_session_sources,
+    serial_message_sources,
+    serial_packet_sources,
+    platform_time_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -1555,18 +1559,10 @@ if not meson.is_cross_build()
     wheel_packet_mode_one_sources,
     wheel_packet_mode_four_sources,
     wheel_protocol_sources,
-    wheel_transport_service_sources,
-    wheel_transport_frame_sources,
-    platform_time_sources,
-    build_by_default: false,
-    include_directories: base_include,
-  )
-
-  wheel_transport_service_test = executable(
-    'base-wheel-transport-service-test',
-    'tests/source/wheel_transport_service.c',
-    wheel_transport_service_sources,
-    wheel_transport_frame_sources,
+    serial_service_sources,
+    serial_session_sources,
+    serial_message_sources,
+    serial_packet_sources,
     platform_time_sources,
     build_by_default: false,
     include_directories: base_include,
@@ -1900,10 +1896,11 @@ if not meson.is_cross_build()
     motor_command_startup_test,
     suite: ['base', 'motor'],
   )
-  test('base-motor-serial-packet', motor_serial_packet_test, suite: ['base', 'motor'])
-  test('base-motor-serial-message', motor_serial_message_test, suite: ['base', 'motor'])
-  test('base-motor-serial-session', motor_serial_session_test, suite: ['base', 'motor'])
+  test('base-serial-packet', serial_packet_test, suite: ['base', 'serial'])
+  test('base-serial-message', serial_message_test, suite: ['base', 'serial'])
+  test('base-serial-session', serial_session_test, suite: ['base', 'serial'])
   test('base-motor-command-serial', motor_command_serial_test, suite: ['base', 'motor'])
+  test('base-serial-service', serial_service_test, suite: ['base', 'serial', 'transport'])
   test('base-wheel-protocol', wheel_protocol_test, suite: ['base', 'wheel', 'protocol'])
   test('base-wheel-capability', wheel_capability_test, suite: ['base', 'wheel', 'input'])
   test('base-wheel-motion', wheel_motion_test, suite: ['base', 'wheel', 'input'])
@@ -1923,14 +1920,4 @@ if not meson.is_cross_build()
     suite: ['base', 'wheel', 'protocol'],
   )
   test('base-wheel-service', wheel_service_test, suite: ['base', 'wheel', 'input'])
-  test(
-    'base-wheel-transport-frame',
-    wheel_transport_frame_test,
-    suite: ['base', 'wheel', 'transport'],
-  )
-  test(
-    'base-wheel-transport-service',
-    wheel_transport_service_test,
-    suite: ['base', 'wheel', 'transport'],
-  )
 endif

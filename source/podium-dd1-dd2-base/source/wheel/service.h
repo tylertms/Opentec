@@ -4,9 +4,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "serial/service.h"
 #include "wheel/display_output.h"
 #include "wheel/protocol.h"
-#include "wheel/transport_service.h"
 
 enum {
     WHEEL_BUTTON_BANK_COUNT = 3,
@@ -20,10 +20,10 @@ typedef enum {
 } WheelServiceRequest;
 
 typedef struct {
-    WheelTransportService transport;
+    SerialService *transport;
     WheelProtocol protocol;
     WheelDisplayOutput display_output;
-    uint8_t request[WHEEL_TRANSPORT_PAYLOAD_SIZE];
+    uint8_t request[SERIAL_PACKET_MAX_PAYLOAD_SIZE];
     uint8_t button_banks[WHEEL_BUTTON_BANK_COUNT];
     uint8_t scan_samples[WHEEL_SCAN_SAMPLE_DEPTH][WHEEL_BUTTON_BANK_COUNT];
     uint32_t protocol_deadline_ms;
@@ -33,8 +33,8 @@ typedef struct {
     bool protocol_deadline_active;
 } WheelService;
 
-void wheel_service_init(WheelService *service);
-void wheel_service_run(WheelService *service, uint32_t now_ms);
+void wheel_service_init(WheelService *service, SerialService *transport);
+void wheel_service_run(WheelService *service, uint32_t now_ms, bool start_allowed);
 void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output);
 void wheel_service_set_crc_adapter(WheelService *service, const WheelPacketCrcAdapter *adapter);
 const uint8_t *wheel_service_buttons(const WheelService *service);

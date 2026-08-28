@@ -50,6 +50,7 @@ CommandTransportResult command_transport_queue_read(CommandTransport *transport,
 bool command_transport_request(const CommandTransport *transport, const uint8_t **request,
                                uint16_t *length);
 bool command_transport_request_sent(CommandTransport *transport);
+void command_transport_fail(CommandTransport *transport);
 void command_transport_receive(CommandTransport *transport, const uint8_t *response,
                                uint16_t length);
 

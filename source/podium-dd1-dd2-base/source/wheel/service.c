@@ -4,9 +4,10 @@
 #include <stdint.h>
 
 #include "platform/time.h"
+#include "serial/message.h"
+#include "serial/service.h"
 #include "wheel/display_output.h"
 #include "wheel/protocol.h"
-#include "wheel/transport_service.h"
 
 enum {
     WHEEL_PROTOCOL_TRANSPORT_COMMAND = 2,
@@ -132,11 +133,11 @@ static uint8_t expected_scan_response(const WheelService *service) {
  * and publishes the updated three-sample filter.
  *
  * @param[in,out] service Wheel service that owns the scan phase and output banks.
- * @param[in] response Received transport frame, or null when no frame is available.
+ * @param[in] response Received transport message, or null when no message is available.
  */
-static void apply_scan_response(WheelService *service, const WheelTransportFrame *response) {
-    if (response == 0 || response->length != WHEEL_TRANSPORT_PAYLOAD_SIZE ||
-        (response->data[WHEEL_TRANSPORT_PAYLOAD_SIZE - 1] & WHEEL_BUTTON_RESPONSE_READY) == 0) {
+static void apply_scan_response(WheelService *service, const SerialMessageAssembly *response) {
+    if (response == 0 || response->length != SERIAL_PACKET_MAX_PAYLOAD_SIZE ||
+        (response->data[SERIAL_PACKET_MAX_PAYLOAD_SIZE - 1] & WHEEL_BUTTON_RESPONSE_READY) == 0) {
         return;
     }
     uint8_t encoded = response->data[1];
@@ -238,31 +239,48 @@ static void refresh_protocol_deadline(WheelService *service, uint32_t now_ms) {
     service->protocol_deadline_active = true;
 }
 
+/**
+ * @brief Starts the next command-three wheel scan.
+ *
+ * Rotates through scan phases 8, 4, 2, and 1, encodes current display output, marks the request
+ * ready, and submits a full 57-byte type-three message.
+ *
+ * @param[in,out] service Wheel service starting the scan.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 static void start_scan(WheelService *service, uint32_t now_ms) {
     service->scan_phase >>= 1;
     if (service->scan_phase == 0) {
         service->scan_phase = WHEEL_SCAN_PHASE_AUXILIARY;
     }
-    for (uint8_t index = 0; index < WHEEL_TRANSPORT_PAYLOAD_SIZE; index++) {
+    for (uint8_t index = 0; index < SERIAL_PACKET_MAX_PAYLOAD_SIZE; index++) {
         service->request[index] = 0;
     }
     service->request[0] = service->scan_phase;
     service->request[1] =
         (uint8_t)~wheel_display_output_encode(&service->display_output, service->scan_phase);
-    service->request[WHEEL_TRANSPORT_PAYLOAD_SIZE - 1] = WHEEL_BUTTON_REQUEST_READY;
+    service->request[SERIAL_PACKET_MAX_PAYLOAD_SIZE - 1] = WHEEL_BUTTON_REQUEST_READY;
     service->request_kind = WHEEL_SERVICE_REQUEST_BUTTONS;
-    if (!wheel_transport_service_start(&service->transport, WHEEL_BUTTON_COMMAND, service->request,
-                                       sizeof(service->request), now_ms)) {
-        service->transport.status = WHEEL_TRANSPORT_FAILED;
+    if (!serial_service_start(service->transport, WHEEL_BUTTON_COMMAND, service->request,
+                              sizeof(service->request), now_ms)) {
+        reset_connection(service);
     }
 }
 
+/**
+ * @brief Starts the next command-two wheel protocol exchange.
+ *
+ * Submits the current 57-byte protocol response through serial message type two.
+ *
+ * @param[in,out] service Wheel service starting the protocol exchange.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 static void start_protocol(WheelService *service, uint32_t now_ms) {
     service->request_kind = WHEEL_SERVICE_REQUEST_PROTOCOL;
-    if (!wheel_transport_service_start(&service->transport, WHEEL_PROTOCOL_TRANSPORT_COMMAND,
-                                       wheel_protocol_response(&service->protocol),
-                                       WHEEL_PROTOCOL_PACKET_SIZE, now_ms)) {
-        service->transport.status = WHEEL_TRANSPORT_FAILED;
+    if (!serial_service_start(service->transport, WHEEL_PROTOCOL_TRANSPORT_COMMAND,
+                              wheel_protocol_response(&service->protocol),
+                              WHEEL_PROTOCOL_PACKET_SIZE, now_ms)) {
+        reset_connection(service);
     }
 }
 
@@ -271,8 +289,17 @@ static bool scan_active(const WheelService *service) {
            service->protocol.phase == WHEEL_PROTOCOL_SCANNING_SECONDARY;
 }
 
-void wheel_service_init(WheelService *service) {
-    wheel_transport_service_init(&service->transport);
+/**
+ * @brief Initializes attached-wheel protocol service state.
+ *
+ * Attaches the shared serial service and resets protocol, display, scan filter, request, and
+ * activity-deadline state.
+ *
+ * @param[out] service Wheel service to initialize.
+ * @param[in,out] transport Shared serial service used for type-two and type-three traffic.
+ */
+void wheel_service_init(WheelService *service, SerialService *transport) {
+    service->transport = transport;
     wheel_protocol_init(&service->protocol);
     clear_scan_filter(service);
     for (uint8_t index = 0; index < WHEEL_DISPLAY_GLYPH_COUNT; index++) {
@@ -303,13 +330,27 @@ void wheel_service_set_crc_adapter(WheelService *service, const WheelPacketCrcAd
     wheel_protocol_set_crc_adapter(&service->protocol, adapter);
 }
 
-void wheel_service_run(WheelService *service, uint32_t now_ms) {
-    wheel_transport_service_run(&service->transport, now_ms);
-    if (service->transport.status == WHEEL_TRANSPORT_PENDING) {
+/**
+ * @brief Advances attached-wheel protocol traffic.
+ *
+ * Applies a completed type-two or type-three response, maintains protocol activity state, and
+ * starts the next wheel exchange when the shared serial scheduler grants the slot.
+ *
+ * @param[in,out] service Attached-wheel service to advance.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[in] start_allowed Allows a new wheel request to claim the shared serial service.
+ */
+void wheel_service_run(WheelService *service, uint32_t now_ms, bool start_allowed) {
+    if (service->transport == 0 || service->transport->status == SERIAL_SERVICE_PENDING) {
         return;
     }
-    if (service->transport.status == WHEEL_TRANSPORT_SUCCEEDED) {
-        const WheelTransportFrame *response = wheel_transport_service_response(&service->transport);
+    if (service->transport->status != SERIAL_SERVICE_IDLE &&
+        service->transport->request_type != WHEEL_PROTOCOL_TRANSPORT_COMMAND &&
+        service->transport->request_type != WHEEL_BUTTON_COMMAND) {
+        return;
+    }
+    if (service->transport->status == SERIAL_SERVICE_SUCCEEDED) {
+        const SerialMessageAssembly *response = serial_service_response(service->transport);
         if (service->request_kind == WHEEL_SERVICE_REQUEST_PROTOCOL && response != 0 &&
             response->length == WHEEL_PROTOCOL_PACKET_SIZE) {
             wheel_protocol_accept(&service->protocol, response->data);
@@ -320,13 +361,18 @@ void wheel_service_run(WheelService *service, uint32_t now_ms) {
         } else if (service->request_kind == WHEEL_SERVICE_REQUEST_BUTTONS) {
             apply_scan_response(service, response);
         }
-    } else if (service->transport.status == WHEEL_TRANSPORT_FAILED) {
+        serial_service_release(service->transport);
+    } else if (service->transport->status == SERIAL_SERVICE_FAILED) {
+        serial_service_release(service->transport);
         reset_connection(service);
     }
 
     if (service->protocol_deadline_active && protocol_exchange_active(service) &&
         platform_time_reached(now_ms, service->protocol_deadline_ms)) {
         reset_connection(service);
+    }
+    if (!start_allowed) {
+        return;
     }
 
     if (scan_active(service)) {
