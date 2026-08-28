@@ -26,6 +26,23 @@ static void test_encodes_control_responses(void) {
     assert(memcmp(packet, expected_reset, sizeof(expected_reset)) == 0);
 }
 
+static void test_encodes_information_requests(void) {
+    static const uint8_t selector_three[] = {
+        0x03, 0x00, 0x06, 0x00, 0x05, 0x00, 0x03, 0x00, 0x02, 0x64, 0xe8,
+    };
+    static const uint8_t selector_four[] = {
+        0x03, 0x00, 0x06, 0x00, 0x05, 0x00, 0x04, 0x00, 0x02, 0xe8, 0xed,
+    };
+    uint8_t packet[WHEEL_STATUS_MEMORY_INFO_REQUEST_SIZE];
+
+    assert(wheel_status_memory_info_request_encode(3, 0, 3, false, packet));
+    assert(memcmp(packet, selector_three, sizeof(packet)) == 0);
+    assert(wheel_status_memory_info_request_encode(4, 0, 3, false, packet));
+    assert(memcmp(packet, selector_four, sizeof(packet)) == 0);
+    assert(!wheel_status_memory_info_request_encode(0, 0, 3, false, packet));
+    assert(!wheel_status_memory_info_request_encode(10, 0, 3, false, packet));
+}
+
 static void test_decodes_digest_response(void) {
     static const uint8_t packet[] = {
         0x03, 0x00, 0x1a, 0x00, 0x87, 0x00, 0x00, 0x00, 0x14, 0x00, 0x01,
@@ -63,6 +80,7 @@ static void test_rejects_invalid_digest_responses(void) {
 int main(void) {
     test_encodes_digest_request();
     test_encodes_control_responses();
+    test_encodes_information_requests();
     test_decodes_digest_response();
     test_rejects_invalid_digest_responses();
     return 0;

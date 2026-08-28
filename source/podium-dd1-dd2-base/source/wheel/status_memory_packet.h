@@ -9,12 +9,16 @@
 enum {
     WHEEL_STATUS_MEMORY_CONTROL_PACKET_SIZE = 5,
     WHEEL_STATUS_MEMORY_DIGEST_REQUEST_SIZE = 11,
+    WHEEL_STATUS_MEMORY_INFO_REQUEST_SIZE = 11,
     WHEEL_STATUS_MEMORY_MAX_PACKET_SIZE = 1009,
 };
 
 void wheel_status_memory_digest_request_encode(
     uint8_t sequence, uint8_t adjacent_sequence, bool retry,
     uint8_t output[WHEEL_STATUS_MEMORY_DIGEST_REQUEST_SIZE]);
+bool wheel_status_memory_info_request_encode(uint8_t selector, uint8_t sequence,
+                                             uint8_t adjacent_sequence, bool retry,
+                                             uint8_t output[WHEEL_STATUS_MEMORY_INFO_REQUEST_SIZE]);
 void wheel_status_memory_acknowledgement_encode(
     uint8_t previous_sequence, uint8_t output[WHEEL_STATUS_MEMORY_CONTROL_PACKET_SIZE]);
 void wheel_status_memory_sequence_reset_encode(

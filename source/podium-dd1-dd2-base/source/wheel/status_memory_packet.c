@@ -11,6 +11,7 @@ enum {
     WHEEL_STATUS_MEMORY_RESET_FLAG = 0x40,
     WHEEL_STATUS_MEMORY_MODE_MASK = 0x60,
     WHEEL_STATUS_MEMORY_DIGEST_COMMAND = 7,
+    WHEEL_STATUS_MEMORY_INFO_COMMAND = 5,
     WHEEL_STATUS_MEMORY_DIGEST_LENGTH = 20,
     WHEEL_STATUS_MEMORY_COMMAND_BODY_LENGTH = 6,
     WHEEL_STATUS_MEMORY_DIGEST_RESPONSE_COMMAND = 0x87,
@@ -21,6 +22,8 @@ enum {
     WHEEL_STATUS_MEMORY_CHECKSUM_SIZE = 2,
     WHEEL_STATUS_MEMORY_MIN_PACKET_SIZE = 3,
 };
+
+static const uint8_t info_lengths[] = {0, 2, 20, 2, 2, 1, 2, 16, 4, 50};
 
 /**
  * @brief Updates the wheel-status packet checksum.
@@ -121,6 +124,42 @@ void wheel_status_memory_digest_request_encode(
     output[4] = WHEEL_STATUS_MEMORY_DIGEST_COMMAND;
     output[8] = WHEEL_STATUS_MEMORY_DIGEST_LENGTH;
     finish(output, WHEEL_STATUS_MEMORY_DIGEST_REQUEST_SIZE - 2);
+}
+
+/**
+ * @brief Encodes a wheel-status information request.
+ *
+ * Builds command 5 with the selected information identifier, its fixed response length, normal
+ * or retry sequencing, and a big-endian checksum over the first nine bytes.
+ *
+ * @param[in] selector Information selector from one through nine.
+ * @param[in] sequence Current two-bit sequence, or an out-of-range value to reset it to zero.
+ * @param[in] adjacent_sequence Previous sequence for normal mode or next sequence for retry mode.
+ * @param[in] retry Selects retry header mode when true.
+ * @param[out] output Eleven-byte information request.
+ * @return True when the selector is supported.
+ */
+bool wheel_status_memory_info_request_encode(
+    uint8_t selector, uint8_t sequence, uint8_t adjacent_sequence, bool retry,
+    uint8_t output[WHEEL_STATUS_MEMORY_INFO_REQUEST_SIZE]) {
+    if (selector == 0 || selector >= sizeof(info_lengths)) {
+        return false;
+    }
+    for (uint8_t index = 0; index < WHEEL_STATUS_MEMORY_INFO_REQUEST_SIZE; index++) {
+        output[index] = 0;
+    }
+    if (sequence > WHEEL_STATUS_MEMORY_SEQUENCE_MASK) {
+        sequence = 0;
+    }
+    output[0] = (adjacent_sequence & WHEEL_STATUS_MEMORY_SEQUENCE_MASK) |
+                (sequence << WHEEL_STATUS_MEMORY_SEQUENCE_SHIFT) |
+                ((uint8_t)retry << WHEEL_STATUS_MEMORY_MODE_SHIFT);
+    output[2] = WHEEL_STATUS_MEMORY_COMMAND_BODY_LENGTH;
+    output[4] = WHEEL_STATUS_MEMORY_INFO_COMMAND;
+    output[6] = selector;
+    output[8] = info_lengths[selector];
+    finish(output, WHEEL_STATUS_MEMORY_INFO_REQUEST_SIZE - 2);
+    return true;
 }
 
 /**
