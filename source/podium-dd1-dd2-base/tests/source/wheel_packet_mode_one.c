@@ -104,11 +104,37 @@ static void test_filters_buttons_across_three_samples(void) {
     assert(input.buttons[2] == 0x7f);
 }
 
+static void test_averages_authenticated_control_axes_across_three_samples(void) {
+    WheelPacketModeOneControlAxisFilter filter;
+    wheel_packet_mode_one_control_axis_filter_init(&filter);
+
+    WheelPacketModeOneInput input = {.controls = {.x = 90, .y = 30}};
+    wheel_packet_mode_one_filter_control_axes(&filter, &input);
+    assert(input.controls.x == 30);
+    assert(input.controls.y == 10);
+
+    input = (WheelPacketModeOneInput){.controls = {.x = 60, .y = 90}};
+    wheel_packet_mode_one_filter_control_axes(&filter, &input);
+    assert(input.controls.x == 50);
+    assert(input.controls.y == 40);
+
+    input = (WheelPacketModeOneInput){.controls = {.x = 30, .y = 60}};
+    wheel_packet_mode_one_filter_control_axes(&filter, &input);
+    assert(input.controls.x == 60);
+    assert(input.controls.y == 60);
+
+    input = (WheelPacketModeOneInput){.controls = {.x = 0, .y = 0}};
+    wheel_packet_mode_one_filter_control_axes(&filter, &input);
+    assert(input.controls.x == 30);
+    assert(input.controls.y == 50);
+}
+
 int main(void) {
     test_identifies_shared_codec_modes();
     test_encodes_the_complete_response();
     test_requests_authentication_for_operating_modes_0x13_and_0x14();
     test_decodes_standard_input_fields();
     test_filters_buttons_across_three_samples();
+    test_averages_authenticated_control_axes_across_three_samples();
     return 0;
 }

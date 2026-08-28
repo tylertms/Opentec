@@ -43,6 +43,7 @@ typedef struct {
     uint8_t request[WHEEL_PROTOCOL_SNAPSHOT_SIZE];
     WheelAuthentication authentication;
     WheelPacketModeOneButtonFilter mode_one_button_filter;
+    WheelPacketModeOneControlAxisFilter mode_one_control_axis_filter;
     WheelPacketModeOneInput mode_one_input;
     WheelPacketModeOneOutput mode_one_output;
     WheelProtocolPhase phase;

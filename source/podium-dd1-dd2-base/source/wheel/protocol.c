@@ -68,6 +68,11 @@ static void capture_request(WheelProtocol *protocol,
         wheel_packet_mode_one_decode(request, &protocol->mode_one_input);
         wheel_packet_mode_one_filter_buttons(&protocol->mode_one_button_filter,
                                              &protocol->mode_one_input);
+        if (protocol->mode_one_output.operating_mode == 0x13 ||
+            protocol->mode_one_output.operating_mode == 0x14) {
+            wheel_packet_mode_one_filter_control_axes(&protocol->mode_one_control_axis_filter,
+                                                      &protocol->mode_one_input);
+        }
     }
     protocol->request_ready = true;
     protocol->request_changed |= changed;
@@ -125,6 +130,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
     clear(protocol->request, WHEEL_PROTOCOL_SNAPSHOT_SIZE);
     wheel_packet_mode_one_button_filter_init(&protocol->mode_one_button_filter);
+    wheel_packet_mode_one_control_axis_filter_init(&protocol->mode_one_control_axis_filter);
     protocol->mode_one_input = empty_input;
     protocol->mode_one_output = empty_output;
     wheel_authentication_init(&protocol->authentication, WHEEL_MODE_UNKNOWN);

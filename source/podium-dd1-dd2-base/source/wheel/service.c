@@ -136,9 +136,12 @@ static void clear_buttons(WheelService *service) {
 static void reset_connection(WheelService *service) {
     WheelPacketModeOneButtonFilter mode_one_button_filter =
         service->protocol.mode_one_button_filter;
+    WheelPacketModeOneControlAxisFilter mode_one_control_axis_filter =
+        service->protocol.mode_one_control_axis_filter;
     WheelPacketModeOneOutput mode_one_output = service->protocol.mode_one_output;
     wheel_protocol_init(&service->protocol);
     service->protocol.mode_one_button_filter = mode_one_button_filter;
+    service->protocol.mode_one_control_axis_filter = mode_one_control_axis_filter;
     service->protocol.mode_one_output = mode_one_output;
     clear_buttons(service);
     service->scan_phase = 0;

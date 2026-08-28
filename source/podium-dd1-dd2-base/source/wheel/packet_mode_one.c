@@ -35,6 +35,11 @@ bool wheel_packet_mode_one_applies(uint8_t wheel_mode) {
     return wheel_mode == 1 || wheel_mode == 3 || wheel_mode == 0x13 || wheel_mode == 0x14;
 }
 
+/**
+ * Clears the standard attached-wheel button history.
+ *
+ * @param filter Three-sample button filter to initialize.
+ */
 void wheel_packet_mode_one_button_filter_init(WheelPacketModeOneButtonFilter *filter) {
     for (uint8_t sample = 0; sample < WHEEL_PACKET_MODE_ONE_BUTTON_HISTORY_DEPTH; sample++) {
         for (uint8_t button = 0; button < WHEEL_PACKET_MODE_ONE_BUTTON_COUNT; button++) {
@@ -59,6 +64,46 @@ void wheel_packet_mode_one_filter_buttons(WheelPacketModeOneButtonFilter *filter
     }
     filter->next_sample++;
     if (filter->next_sample == WHEEL_PACKET_MODE_ONE_BUTTON_HISTORY_DEPTH) {
+        filter->next_sample = 0;
+    }
+}
+
+/**
+ * Clears the authenticated attached-wheel control-axis history.
+ *
+ * @param filter Three-sample control-axis filter to initialize.
+ */
+void wheel_packet_mode_one_control_axis_filter_init(WheelPacketModeOneControlAxisFilter *filter) {
+    for (uint8_t sample = 0; sample < WHEEL_PACKET_MODE_ONE_CONTROL_AXIS_HISTORY_DEPTH; sample++) {
+        for (uint8_t axis = 0; axis < WHEEL_PACKET_MODE_ONE_CONTROL_AXIS_COUNT; axis++) {
+            filter->samples[sample][axis] = 0;
+        }
+    }
+    filter->next_sample = 0;
+}
+
+/**
+ * Replaces both control axes with their unsigned three-sample moving averages.
+ *
+ * @param filter Three-sample history and insertion position.
+ * @param input Input whose control axes are added to the history and averaged in place.
+ */
+void wheel_packet_mode_one_filter_control_axes(WheelPacketModeOneControlAxisFilter *filter,
+                                               WheelPacketModeOneInput *input) {
+    uint8_t axes[WHEEL_PACKET_MODE_ONE_CONTROL_AXIS_COUNT] = {input->controls.x, input->controls.y};
+    for (uint8_t axis = 0; axis < WHEEL_PACKET_MODE_ONE_CONTROL_AXIS_COUNT; axis++) {
+        filter->samples[filter->next_sample][axis] = axes[axis];
+        uint16_t sum = 0;
+        for (uint8_t sample = 0; sample < WHEEL_PACKET_MODE_ONE_CONTROL_AXIS_HISTORY_DEPTH;
+             sample++) {
+            sum += filter->samples[sample][axis];
+        }
+        axes[axis] = (uint8_t)(sum / WHEEL_PACKET_MODE_ONE_CONTROL_AXIS_HISTORY_DEPTH);
+    }
+    input->controls.x = axes[0];
+    input->controls.y = axes[1];
+    filter->next_sample++;
+    if (filter->next_sample == WHEEL_PACKET_MODE_ONE_CONTROL_AXIS_HISTORY_DEPTH) {
         filter->next_sample = 0;
     }
 }

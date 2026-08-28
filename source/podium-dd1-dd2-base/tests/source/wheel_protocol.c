@@ -373,6 +373,38 @@ static void test_captures_raw_active_requests(void) {
     assert(wheel_protocol_request_changed(&protocol));
 }
 
+static void test_averages_control_axes_only_for_authenticated_operating_modes(void) {
+    WheelProtocol protocol;
+    wheel_protocol_init(&protocol);
+    WheelPacketModeOneOutput output = {.operating_mode = 0x13};
+    wheel_protocol_set_mode_one_output(&protocol, &output);
+    protocol.mode = 1;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    request[12] = 90;
+    request[13] = 30;
+    request[WHEEL_PROTOCOL_FLAGS_OFFSET] = WHEEL_PROTOCOL_REQUEST_READY;
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+    wheel_protocol_accept(&protocol, request);
+    const WheelPacketModeOneInput *input = wheel_protocol_mode_one_input(&protocol);
+    assert(input->controls.x == 30);
+    assert(input->controls.y == 10);
+
+    wheel_protocol_init(&protocol);
+    output.operating_mode = 1;
+    wheel_protocol_set_mode_one_output(&protocol, &output);
+    protocol.mode = 1;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    request[0] = WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+    wheel_protocol_accept(&protocol, request);
+    input = wheel_protocol_mode_one_input(&protocol);
+    assert(input->controls.x == 90);
+    assert(input->controls.y == 30);
+}
+
 static void test_builds_mode_one_active_response(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -433,6 +465,7 @@ int main(void) {
     test_refreshes_active_response_after_invalid_checksum();
     test_restarts_synchronization_when_ready_drops();
     test_captures_raw_active_requests();
+    test_averages_control_axes_only_for_authenticated_operating_modes();
     test_builds_mode_one_active_response();
     test_rejects_out_of_range_mode();
     test_crc8_vectors();
