@@ -8,6 +8,9 @@
 #include "usb/descriptor.h"
 
 enum {
+    USB_XBOX_GIP_DIGEST_SIZE = 8,
+    USB_XBOX_GIP_SERIAL_TEXT_SIZE = USB_XBOX_GIP_DIGEST_SIZE * 2,
+    USB_XBOX_GIP_SERIAL_SIZE = USB_XBOX_GIP_SERIAL_TEXT_SIZE + 1,
     USB_XBOX_GIP_CONFIGURATION_DESCRIPTOR_SIZE = 32,
     USB_XBOX_GIP_SECURITY_DESCRIPTOR_SIZE = 40,
     USB_XBOX_GIP_OS_STRING_DESCRIPTOR_SIZE = 18,
@@ -22,6 +25,8 @@ bool usb_xbox_gip_product_id(BoardVariant variant, uint8_t wheel_mode, uint16_t 
 const char *usb_xbox_gip_product_name(BoardVariant variant);
 const char *usb_playstation_product_name(BoardVariant variant);
 const char *usb_xbox_gip_initial_serial(void);
+void usb_xbox_gip_serial_encode(const uint8_t digest[USB_XBOX_GIP_DIGEST_SIZE],
+                                char output[USB_XBOX_GIP_SERIAL_SIZE]);
 void usb_xbox_gip_configuration_descriptor_encode(
     uint8_t output[USB_XBOX_GIP_CONFIGURATION_DESCRIPTOR_SIZE]);
 void usb_xbox_gip_security_descriptor_encode(uint8_t output[USB_XBOX_GIP_SECURITY_DESCRIPTOR_SIZE]);

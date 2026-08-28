@@ -143,6 +143,25 @@ const char *usb_playstation_product_name(BoardVariant variant) {
 const char *usb_xbox_gip_initial_serial(void) { return "0000000000000000"; }
 
 /**
+ * @brief Encodes the Xbox GIP serial text.
+ *
+ * Renders the attached-wheel digest in reverse byte order with uppercase hexadecimal digits.
+ *
+ * @param[in] digest Eight-byte attached-wheel status digest.
+ * @param[out] output Sixteen-character serial text and terminating null byte.
+ */
+void usb_xbox_gip_serial_encode(const uint8_t digest[USB_XBOX_GIP_DIGEST_SIZE],
+                                char output[USB_XBOX_GIP_SERIAL_SIZE]) {
+    static const char digits[] = "0123456789ABCDEF";
+    for (size_t index = 0; index < USB_XBOX_GIP_DIGEST_SIZE; index++) {
+        uint8_t value = digest[USB_XBOX_GIP_DIGEST_SIZE - index - 1];
+        output[index * 2] = digits[value >> 4];
+        output[index * 2 + 1] = digits[value & 0x0f];
+    }
+    output[USB_XBOX_GIP_SERIAL_TEXT_SIZE] = '\0';
+}
+
+/**
  * @brief Encodes the Xbox GIP USB configuration descriptor.
  *
  * Emits the vendor-specific interface with 64-byte interrupt output endpoint 0x01 and input

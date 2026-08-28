@@ -3,10 +3,9 @@
 
 #include <stdint.h>
 
-#include "board/identity.h"
+#include "usb/console_descriptor.h"
 
 enum {
-    USB_XBOX_GIP_DIGEST_SIZE = 8,
     USB_XBOX_GIP_DIGEST_RESPONSE_SIZE = 32,
     USB_XBOX_GIP_READY_RESPONSE_SIZE = 8,
     USB_XBOX_GIP_TRANSFER_STATUS_RESPONSE_SIZE = 13,

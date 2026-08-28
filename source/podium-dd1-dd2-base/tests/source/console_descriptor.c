@@ -29,6 +29,17 @@ static void test_xbox_gip_identity(void) {
     assert(strcmp(usb_xbox_gip_initial_serial(), "0000000000000000") == 0);
 }
 
+static void test_xbox_gip_serial(void) {
+    static const uint8_t digest[USB_XBOX_GIP_DIGEST_SIZE] = {
+        0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0,
+    };
+    char serial[USB_XBOX_GIP_SERIAL_SIZE];
+
+    usb_xbox_gip_serial_encode(digest, serial);
+
+    assert(strcmp(serial, "F0DEBC9A78563412") == 0);
+}
+
 static void test_xbox_gip_product_ids(void) {
     static const uint8_t wheel_modes[] = {6, 21, 7, 18, 9, 11, 29, 10};
     static const uint16_t dd1_ids[] = {0x0f50, 0x0f50, 0x0f51, 0x0f51,
@@ -117,6 +128,7 @@ static void test_playstation_report(void) {
 
 int main(void) {
     test_xbox_gip_identity();
+    test_xbox_gip_serial();
     test_xbox_gip_product_ids();
     test_xbox_gip_configuration();
     test_xbox_gip_control_descriptors();
