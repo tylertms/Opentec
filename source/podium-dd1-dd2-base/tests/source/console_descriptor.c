@@ -45,6 +45,10 @@ static void test_xbox_gip_product_ids(void) {
     uint16_t product_id = 0x1234;
     assert(!usb_xbox_gip_product_id(BOARD_VARIANT_DD1, 0, &product_id));
     assert(product_id == 0x1234);
+
+    assert(usb_xbox_gip_mode_code(BOARD_VARIANT_DD1, 6) == 0x50);
+    assert(usb_xbox_gip_mode_code(BOARD_VARIANT_DD2, 29) == 0x63);
+    assert(usb_xbox_gip_mode_code(BOARD_VARIANT_DD1, 0) == 0);
 }
 
 static void test_xbox_gip_configuration(void) {

@@ -51,6 +51,42 @@ UsbDeviceIdentity usb_playstation_device_identity(BoardVariant variant) {
 }
 
 /**
+ * @brief Selects the Xbox GIP mode code.
+ *
+ * Maps the attached wheel mode to the low byte shared by discovery responses and the USB product
+ * identifier. Unsupported wheel modes return zero.
+ *
+ * @param[in] variant Wheel-base hardware variant.
+ * @param[in] wheel_mode Attached wheel operating-mode selector.
+ * @return DD1 or DD2 mode code, or zero for an unsupported wheel mode.
+ */
+uint8_t usb_xbox_gip_mode_code(BoardVariant variant, uint8_t wheel_mode) {
+    uint8_t code;
+    switch (wheel_mode) {
+    case 6:
+    case 21:
+        code = 0x50;
+        break;
+    case 7:
+    case 18:
+        code = 0x51;
+        break;
+    case 9:
+    case 11:
+    case 29:
+        code = 0x53;
+        break;
+    case 10:
+        code = 0x54;
+        break;
+    default:
+        return 0;
+    }
+
+    return variant == BOARD_VARIANT_DD1 ? code : code + 0x10;
+}
+
+/**
  * @brief Selects the Xbox GIP product identifier.
  *
  * Maps the attached wheel mode to the DD1 or DD2 identifier family. Unsupported wheel modes leave
@@ -62,28 +98,12 @@ UsbDeviceIdentity usb_playstation_device_identity(BoardVariant variant) {
  * @return True when the wheel mode has a product identifier; otherwise false.
  */
 bool usb_xbox_gip_product_id(BoardVariant variant, uint8_t wheel_mode, uint16_t *product_id) {
-    uint16_t identifier;
-    switch (wheel_mode) {
-    case 6:
-    case 21:
-        identifier = variant == BOARD_VARIANT_DD1 ? 0x0f50 : 0x0f60;
-        break;
-    case 7:
-    case 18:
-        identifier = variant == BOARD_VARIANT_DD1 ? 0x0f51 : 0x0f61;
-        break;
-    case 9:
-    case 11:
-    case 29:
-        identifier = variant == BOARD_VARIANT_DD1 ? 0x0f53 : 0x0f63;
-        break;
-    case 10:
-        identifier = variant == BOARD_VARIANT_DD1 ? 0x0f54 : 0x0f64;
-        break;
-    default:
+    uint8_t code = usb_xbox_gip_mode_code(variant, wheel_mode);
+    if (code == 0) {
         return false;
     }
-    *product_id = identifier;
+
+    *product_id = 0x0f00u | code;
     return true;
 }
 

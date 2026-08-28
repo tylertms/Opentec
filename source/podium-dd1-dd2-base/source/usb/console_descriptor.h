@@ -17,6 +17,7 @@ enum {
 
 UsbDeviceIdentity usb_xbox_gip_device_identity(uint16_t product_id);
 UsbDeviceIdentity usb_playstation_device_identity(BoardVariant variant);
+uint8_t usb_xbox_gip_mode_code(BoardVariant variant, uint8_t wheel_mode);
 bool usb_xbox_gip_product_id(BoardVariant variant, uint8_t wheel_mode, uint16_t *product_id);
 const char *usb_xbox_gip_product_name(BoardVariant variant);
 const char *usb_playstation_product_name(BoardVariant variant);
