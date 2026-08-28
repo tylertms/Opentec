@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "usb/vendor_command.h"
 
@@ -71,6 +72,49 @@ static void test_identifies_motor_command_request(void) {
     assert(!usb_vendor_command_requests_motor_command(NULL));
 }
 
+static void test_decodes_wheel_transfer_commands(void) {
+    uint8_t payload[63] = {0xff, 0xe0, 0x02, 0x05, 1};
+    UsbOutputCommand output = make_output(payload, 0xff);
+    UsbVendorCommand command;
+    UsbWheelTransferCommand transfer;
+
+    assert(usb_vendor_command_decode(&output, &command));
+    assert(usb_vendor_command_decode_wheel_transfer(&command, &transfer));
+    assert(transfer.request == WHEEL_TRANSFER_READ);
+    assert(transfer.action == USB_WHEEL_TRANSFER_START);
+
+    payload[3] = 4;
+    payload[4] = 2;
+    assert(usb_vendor_command_decode_wheel_transfer(&command, &transfer));
+    assert(transfer.request == WHEEL_TRANSFER_WRITE);
+    assert(transfer.action == USB_WHEEL_TRANSFER_STATUS);
+
+    payload[2] = 3;
+    assert(!usb_vendor_command_decode_wheel_transfer(&command, &transfer));
+    payload[2] = 2;
+    payload[4] = 3;
+    assert(!usb_vendor_command_decode_wheel_transfer(&command, &transfer));
+    assert(!usb_vendor_command_decode_wheel_transfer(NULL, &transfer));
+    assert(!usb_vendor_command_decode_wheel_transfer(&command, NULL));
+}
+
+static void test_encodes_wheel_transfer_status(void) {
+    uint8_t report[USB_DEVICE_REPORT_SIZE];
+
+    usb_vendor_command_encode_wheel_transfer_response(WHEEL_TRANSFER_READ, WHEEL_TRANSFER_COMPLETE,
+                                                      report);
+    static const uint8_t expected_read[] = {0xff, 0xe0, 0x02, 0x05, 2};
+    assert(memcmp(report, expected_read, sizeof(expected_read)) == 0);
+    for (size_t index = sizeof(expected_read); index < sizeof(report); index++) {
+        assert(report[index] == 0);
+    }
+
+    usb_vendor_command_encode_wheel_transfer_response(WHEEL_TRANSFER_WRITE,
+                                                      WHEEL_TRANSFER_INVALID_RESPONSE, report);
+    static const uint8_t expected_write[] = {0xff, 0xe0, 0x02, 0x04, 0xfd};
+    assert(memcmp(report, expected_write, sizeof(expected_write)) == 0);
+}
+
 static void test_rejects_unhandled_payloads(void) {
     uint8_t payload[63] = {0};
     UsbOutputCommand output = make_output(payload, 6);
@@ -93,6 +137,8 @@ int main(void) {
     test_classifies_direct_command_routes();
     test_validates_extended_reset_signature();
     test_identifies_motor_command_request();
+    test_decodes_wheel_transfer_commands();
+    test_encodes_wheel_transfer_status();
     test_rejects_unhandled_payloads();
     return 0;
 }

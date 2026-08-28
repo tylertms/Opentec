@@ -121,6 +121,7 @@ wheel_packet_mode_one_sources = files('source/wheel/packet_mode_one.c')
 wheel_packet_mode_four_sources = files('source/wheel/packet_mode_four.c')
 wheel_protocol_sources = files('source/wheel/protocol.c')
 wheel_service_sources = files('source/wheel/service.c')
+wheel_transfer_service_sources = files('source/wheel/transfer_service.c')
 motor_command_digest_sources = files('source/motor/command_digest.c')
 motor_command_application_sources = files('source/motor/command_application.c')
 motor_command_fragment_sources = files('source/motor/command_fragment.c')
@@ -285,6 +286,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'wheel-packet-mode-four': 'source/wheel/packet_mode_four.c',
     'wheel-protocol': 'source/wheel/protocol.c',
     'wheel-service': 'source/wheel/service.c',
+    'wheel-transfer-service': 'source/wheel/transfer_service.c',
     'motor-command-digest': 'source/motor/command_digest.c',
     'motor-command-application': 'source/motor/command_application.c',
     'motor-command-fragment': 'source/motor/command_fragment.c',
@@ -1568,6 +1570,16 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_transfer_service_test = executable(
+    'base-wheel-transfer-service-test',
+    'tests/source/wheel_transfer_service.c',
+    wheel_transfer_service_sources,
+    transfer_command_sources,
+    transfer_memory_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   test('base-analog-axis', analog_axis_test, suite: ['base', 'analog'])
   test(
     'base-cooling-controller',
@@ -1920,4 +1932,9 @@ if not meson.is_cross_build()
     suite: ['base', 'wheel', 'protocol'],
   )
   test('base-wheel-service', wheel_service_test, suite: ['base', 'wheel', 'input'])
+  test(
+    'base-wheel-transfer-service',
+    wheel_transfer_service_test,
+    suite: ['base', 'wheel', 'transfer'],
+  )
 endif

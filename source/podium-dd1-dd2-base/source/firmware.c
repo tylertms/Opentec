@@ -56,6 +56,7 @@
 #include "usb/vendor_command.h"
 #include "wheel/position.h"
 #include "wheel/service.h"
+#include "wheel/transfer_service.h"
 
 #pragma config GWRP = OFF
 #pragma config GSS = OFF
@@ -84,6 +85,7 @@ static MotorProbe motor_probe;
 static CommandTransport command_transport;
 static MotorCommandMailboxExchange motor_command_mailbox;
 static UsbMotorVendorService usb_motor_vendor_service;
+static WheelTransferService wheel_transfer_service;
 static MotorStatusService motor_status_service;
 static MotorTelemetryService motor_telemetry_service;
 static MotorTuningService motor_tuning_service;
@@ -108,11 +110,13 @@ static UsbInputReportState usb_input_state;
 static uint8_t usb_input_report[USB_INPUT_REPORT_MAX_SIZE];
 static uint8_t usb_motor_acknowledgement[USB_DEVICE_REPORT_SIZE];
 static uint8_t usb_motor_response[USB_DEVICE_REPORT_SIZE];
+static uint8_t usb_wheel_transfer_response[USB_DEVICE_REPORT_SIZE];
 static UsbDeviceOutputReport usb_device_output_report;
 static UsbConnectionMonitor usb_connection_monitor;
 static UsbOutputCommand usb_output_command;
 static UsbOperatingModeCommand usb_operating_mode_command;
 static UsbVendorCommand usb_vendor_command;
+static UsbWheelTransferCommand usb_wheel_transfer_command;
 static ForceFeedbackCommand force_feedback_command;
 static ForceFeedbackState force_feedback_state;
 static ForceFeedbackScriptSystem force_feedback_script_system;
@@ -136,6 +140,8 @@ static bool force_output_enabled;
 static bool force_output_prompt_visible;
 static bool usb_motor_acknowledgement_ready;
 static bool usb_motor_response_ready;
+static bool usb_wheel_transfer_response_ready;
+static bool usb_wheel_transfer_response_pending[WHEEL_TRANSFER_REQUEST_COUNT];
 
 enum {
     FAN_STARTUP_DUTY_PERCENT = 25,
@@ -299,18 +305,23 @@ static void initialize_motor(void) {
 }
 
 /**
- * @brief Initializes the host motor-command bridge.
+ * @brief Initializes the host command bridge.
  *
- * Attaches the report-6 protocol to its owner-0x20 mailbox storage and the shared type-four command
+ * Attaches report-6 mailbox storage and wheel-transfer requests to the shared type-four command
  * transport.
  */
-static void initialize_usb_motor_bridge(void) {
+static void initialize_usb_command_bridge(void) {
     command_transport_init(&command_transport);
     (void)motor_command_mailbox_exchange_init(&motor_command_mailbox, usb_motor_mailbox_receive,
                                               sizeof(usb_motor_mailbox_receive));
     (void)usb_motor_vendor_service_init(&usb_motor_vendor_service, &usb_motor_buffers);
+    wheel_transfer_service_init(&wheel_transfer_service);
     usb_motor_acknowledgement_ready = false;
     usb_motor_response_ready = false;
+    usb_wheel_transfer_response_ready = false;
+    for (uint8_t request = 0; request < WHEEL_TRANSFER_REQUEST_COUNT; request++) {
+        usb_wheel_transfer_response_pending[request] = false;
+    }
 }
 
 /**
@@ -341,15 +352,16 @@ static bool accept_usb_motor_report(const UsbDeviceOutputReport *report) {
 }
 
 /**
- * @brief Advances the owner-0x20 mailbox over serial message type four.
+ * @brief Advances host command services over serial message type four.
  *
- * Applies completed type-four responses, advances mailbox polling and packet exchange, and submits
- * the next queued command whenever the shared attached-device service becomes idle.
+ * Applies completed type-four responses, advances wheel-transfer and mailbox requests, submits the
+ * next queued command, and schedules their vendor reports on the shared USB endpoint.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
-static void service_usb_motor_bridge(uint32_t now_ms) {
+static void service_usb_command_bridge(uint32_t now_ms) {
     (void)motor_command_serial_receive(&command_transport, &serial_service);
+    wheel_transfer_service_run(&wheel_transfer_service, &command_transport);
     (void)usb_motor_vendor_service_run_mailbox(&usb_motor_vendor_service, &motor_command_mailbox,
                                                &command_transport);
     if (serial_service.status == SERIAL_SERVICE_IDLE) {
@@ -364,8 +376,25 @@ static void service_usb_motor_bridge(uint32_t now_ms) {
         usb_motor_response_ready = usb_motor_vendor_service_next_response(&usb_motor_vendor_service,
                                                                           usb_motor_response) != 0;
     }
-    if (!usb_motor_acknowledgement_ready && usb_motor_response_ready &&
-        usb_device_send_vendor_report(usb_motor_response)) {
+    if (!usb_wheel_transfer_response_ready) {
+        WheelTransferRequest request = WHEEL_TRANSFER_READ;
+        if (!usb_wheel_transfer_response_pending[request]) {
+            request = WHEEL_TRANSFER_WRITE;
+        }
+        if (usb_wheel_transfer_response_pending[request]) {
+            usb_vendor_command_encode_wheel_transfer_response(
+                request, wheel_transfer_service_status(&wheel_transfer_service, request),
+                usb_wheel_transfer_response);
+            usb_wheel_transfer_response_pending[request] = false;
+            usb_wheel_transfer_response_ready = true;
+        }
+    }
+    if (!usb_motor_acknowledgement_ready && usb_wheel_transfer_response_ready &&
+        usb_device_send_vendor_report(usb_wheel_transfer_response)) {
+        usb_wheel_transfer_response_ready = false;
+    }
+    if (!usb_motor_acknowledgement_ready && !usb_wheel_transfer_response_ready &&
+        usb_motor_response_ready && usb_device_send_vendor_report(usb_motor_response)) {
         usb_motor_response_ready = false;
     }
 }
@@ -377,7 +406,7 @@ static void service_usb_motor_bridge(uint32_t now_ms) {
  *
  * @return True when a read or write request is queued for submission.
  */
-static bool usb_motor_command_waiting(void) {
+static bool serial_command_waiting(void) {
     return command_transport.phase == COMMAND_TRANSPORT_WRITE_QUEUED ||
            command_transport.phase == COMMAND_TRANSPORT_READ_QUEUED;
 }
@@ -486,9 +515,17 @@ static void service_usb_output(void) {
         return;
     }
 
-    if (usb_vendor_command_decode(&usb_output_command, &usb_vendor_command) &&
-        usb_vendor_command_requests_motor_command(&usb_vendor_command)) {
-        motor_command_request_pending = true;
+    if (usb_vendor_command_decode(&usb_output_command, &usb_vendor_command)) {
+        if (usb_vendor_command_requests_motor_command(&usb_vendor_command)) {
+            motor_command_request_pending = true;
+        } else if (usb_vendor_command_decode_wheel_transfer(&usb_vendor_command,
+                                                            &usb_wheel_transfer_command)) {
+            if (usb_wheel_transfer_command.action == USB_WHEEL_TRANSFER_START) {
+                (void)wheel_transfer_service_start(&wheel_transfer_service,
+                                                   usb_wheel_transfer_command.request);
+            }
+            usb_wheel_transfer_response_pending[usb_wheel_transfer_command.request] = true;
+        }
     }
 }
 
@@ -623,7 +660,7 @@ int main(void) {
     platform_serial_link_init();
     serial_service_init(&serial_service);
     wheel_service_init(&wheel_service, &serial_service);
-    initialize_usb_motor_bridge();
+    initialize_usb_command_bridge();
     initialize_motor_link();
     initialize_motor();
     initialize_force_feedback_script();
@@ -644,8 +681,8 @@ int main(void) {
         service_motor_link();
         pedal_service_run(&pedal_service, now_ms);
         serial_service_run(&serial_service, now_ms);
-        service_usb_motor_bridge(now_ms);
-        wheel_service_run(&wheel_service, now_ms, !usb_motor_command_waiting());
+        service_usb_command_bridge(now_ms);
+        wheel_service_run(&wheel_service, now_ms, !serial_command_waiting());
         if (serial_service.status == SERIAL_SERVICE_IDLE) {
             (void)motor_command_serial_submit(&command_transport, &serial_service, now_ms);
         }

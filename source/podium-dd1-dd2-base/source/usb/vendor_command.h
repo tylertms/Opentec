@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "usb/output_command.h"
+#include "wheel/transfer_service.h"
 
 typedef enum {
     USB_VENDOR_COMMAND_DEVICE_CONTROL_RESPONSE,
@@ -26,7 +27,22 @@ typedef struct {
     uint8_t length;
 } UsbVendorCommand;
 
+typedef enum {
+    USB_WHEEL_TRANSFER_START = 1,
+    USB_WHEEL_TRANSFER_STATUS = 2,
+} UsbWheelTransferAction;
+
+typedef struct {
+    WheelTransferRequest request;
+    UsbWheelTransferAction action;
+} UsbWheelTransferCommand;
+
 bool usb_vendor_command_decode(const UsbOutputCommand *output, UsbVendorCommand *command);
 bool usb_vendor_command_requests_motor_command(const UsbVendorCommand *command);
+bool usb_vendor_command_decode_wheel_transfer(const UsbVendorCommand *command,
+                                              UsbWheelTransferCommand *transfer);
+void usb_vendor_command_encode_wheel_transfer_response(WheelTransferRequest request,
+                                                       WheelTransferStatus status,
+                                                       uint8_t output[USB_DEVICE_REPORT_SIZE]);
 
 #endif
