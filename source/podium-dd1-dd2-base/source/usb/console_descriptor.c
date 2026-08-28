@@ -1,5 +1,6 @@
 #include "usb/console_descriptor.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -47,6 +48,43 @@ UsbDeviceIdentity usb_playstation_device_identity(BoardVariant variant) {
         .manufacturer_string = 1,
         .product_string = 9,
     };
+}
+
+/**
+ * @brief Selects the Xbox GIP product identifier.
+ *
+ * Maps the attached wheel mode to the DD1 or DD2 identifier family. Unsupported wheel modes leave
+ * the supplied identifier unchanged.
+ *
+ * @param[in] variant Wheel-base hardware variant.
+ * @param[in] wheel_mode Attached wheel operating-mode selector.
+ * @param[out] product_id Destination for the selected product identifier.
+ * @return True when the wheel mode has a product identifier; otherwise false.
+ */
+bool usb_xbox_gip_product_id(BoardVariant variant, uint8_t wheel_mode, uint16_t *product_id) {
+    uint16_t identifier;
+    switch (wheel_mode) {
+    case 6:
+    case 21:
+        identifier = variant == BOARD_VARIANT_DD1 ? 0x0f50 : 0x0f60;
+        break;
+    case 7:
+    case 18:
+        identifier = variant == BOARD_VARIANT_DD1 ? 0x0f51 : 0x0f61;
+        break;
+    case 9:
+    case 11:
+    case 29:
+        identifier = variant == BOARD_VARIANT_DD1 ? 0x0f53 : 0x0f63;
+        break;
+    case 10:
+        identifier = variant == BOARD_VARIANT_DD1 ? 0x0f54 : 0x0f64;
+        break;
+    default:
+        return false;
+    }
+    *product_id = identifier;
+    return true;
 }
 
 /**
@@ -98,6 +136,44 @@ void usb_xbox_gip_configuration_descriptor_encode(
         0x09, 0x02, 0x20, 0x00, 0x01, 0x01, 0x00, 0xe0, 0x28, 0x09, 0x04,
         0x00, 0x00, 0x02, 0xff, 0x47, 0xd0, 0x00, 0x07, 0x05, 0x01, 0x03,
         0x40, 0x00, 0x04, 0x07, 0x05, 0x81, 0x03, 0x40, 0x00, 0x04,
+    };
+    for (size_t index = 0; index < sizeof(descriptor); index++) {
+        output[index] = descriptor[index];
+    }
+}
+
+/**
+ * @brief Encodes the Xbox GIP security descriptor.
+ *
+ * Emits the 40-byte vendor response selected by request 0x90 with index 4, including the GIP10
+ * capability signature.
+ *
+ * @param[out] output Destination for the 40-byte security descriptor.
+ */
+void usb_xbox_gip_security_descriptor_encode(
+    uint8_t output[USB_XBOX_GIP_SECURITY_DESCRIPTOR_SIZE]) {
+    static const uint8_t descriptor[USB_XBOX_GIP_SECURITY_DESCRIPTOR_SIZE] = {
+        0x28, 0x00, 0x00, 0x00, 0x00, 0x01, 0x04, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x01, 0x58, 0x47, 0x49, 0x50, 0x31, 0x30, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    };
+    for (size_t index = 0; index < sizeof(descriptor); index++) {
+        output[index] = descriptor[index];
+    }
+}
+
+/**
+ * @brief Encodes the Xbox GIP Microsoft OS string descriptor.
+ *
+ * Emits string request index 0xEE as the MSFT100 signature followed by vendor request code 0x90.
+ *
+ * @param[out] output Destination for the 18-byte string descriptor.
+ */
+void usb_xbox_gip_os_string_descriptor_encode(
+    uint8_t output[USB_XBOX_GIP_OS_STRING_DESCRIPTOR_SIZE]) {
+    static const uint8_t descriptor[USB_XBOX_GIP_OS_STRING_DESCRIPTOR_SIZE] = {
+        0x12, 0x03, 0x4d, 0x00, 0x53, 0x00, 0x46, 0x00, 0x54,
+        0x00, 0x31, 0x00, 0x30, 0x00, 0x30, 0x00, 0x90, 0x00,
     };
     for (size_t index = 0; index < sizeof(descriptor); index++) {
         output[index] = descriptor[index];

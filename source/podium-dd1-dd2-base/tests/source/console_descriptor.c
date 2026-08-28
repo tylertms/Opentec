@@ -29,6 +29,24 @@ static void test_xbox_gip_identity(void) {
     assert(strcmp(usb_xbox_gip_initial_serial(), "0000000000000000") == 0);
 }
 
+static void test_xbox_gip_product_ids(void) {
+    static const uint8_t wheel_modes[] = {6, 21, 7, 18, 9, 11, 29, 10};
+    static const uint16_t dd1_ids[] = {0x0f50, 0x0f50, 0x0f51, 0x0f51,
+                                       0x0f53, 0x0f53, 0x0f53, 0x0f54};
+    static const uint16_t dd2_ids[] = {0x0f60, 0x0f60, 0x0f61, 0x0f61,
+                                       0x0f63, 0x0f63, 0x0f63, 0x0f64};
+    for (size_t index = 0; index < sizeof(wheel_modes); index++) {
+        uint16_t product_id = 0;
+        assert(usb_xbox_gip_product_id(BOARD_VARIANT_DD1, wheel_modes[index], &product_id));
+        assert(product_id == dd1_ids[index]);
+        assert(usb_xbox_gip_product_id(BOARD_VARIANT_DD2, wheel_modes[index], &product_id));
+        assert(product_id == dd2_ids[index]);
+    }
+    uint16_t product_id = 0x1234;
+    assert(!usb_xbox_gip_product_id(BOARD_VARIANT_DD1, 0, &product_id));
+    assert(product_id == 0x1234);
+}
+
 static void test_xbox_gip_configuration(void) {
     static const uint8_t expected[USB_XBOX_GIP_CONFIGURATION_DESCRIPTOR_SIZE] = {
         0x09, 0x02, 0x20, 0x00, 0x01, 0x01, 0x00, 0xe0, 0x28, 0x09, 0x04,
@@ -38,6 +56,24 @@ static void test_xbox_gip_configuration(void) {
     uint8_t descriptor[sizeof(expected)];
     usb_xbox_gip_configuration_descriptor_encode(descriptor);
     assert(memcmp(descriptor, expected, sizeof(expected)) == 0);
+}
+
+static void test_xbox_gip_control_descriptors(void) {
+    static const uint8_t security[USB_XBOX_GIP_SECURITY_DESCRIPTOR_SIZE] = {
+        0x28, 0x00, 0x00, 0x00, 0x00, 0x01, 0x04, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x01, 0x58, 0x47, 0x49, 0x50, 0x31, 0x30, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    };
+    static const uint8_t os_string[USB_XBOX_GIP_OS_STRING_DESCRIPTOR_SIZE] = {
+        0x12, 0x03, 0x4d, 0x00, 0x53, 0x00, 0x46, 0x00, 0x54,
+        0x00, 0x31, 0x00, 0x30, 0x00, 0x30, 0x00, 0x90, 0x00,
+    };
+    uint8_t actual_security[sizeof(security)];
+    uint8_t actual_os_string[sizeof(os_string)];
+    usb_xbox_gip_security_descriptor_encode(actual_security);
+    usb_xbox_gip_os_string_descriptor_encode(actual_os_string);
+    assert(memcmp(actual_security, security, sizeof(security)) == 0);
+    assert(memcmp(actual_os_string, os_string, sizeof(os_string)) == 0);
 }
 
 static void test_playstation_identity(void) {
@@ -77,7 +113,9 @@ static void test_playstation_report(void) {
 
 int main(void) {
     test_xbox_gip_identity();
+    test_xbox_gip_product_ids();
     test_xbox_gip_configuration();
+    test_xbox_gip_control_descriptors();
     test_playstation_identity();
     test_playstation_configuration();
     test_playstation_report();
