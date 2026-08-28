@@ -77,6 +77,7 @@ usb_device_control_sources = files('source/usb/device_control.c')
 usb_device_sources = files('source/usb/device.c')
 usb_output_command_sources = files('source/usb/output_command.c')
 usb_operating_mode_command_sources = files('source/usb/operating_mode_command.c')
+usb_remote_tuning_records_sources = files('source/usb/remote_tuning_records.c')
 usb_vendor_command_sources = files('source/usb/vendor_command.c')
 podium_report_descriptor_sources = files('source/usb/podium_report_descriptor.c')
 board_identity_sources = files('source/board/identity.c')
@@ -231,6 +232,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'usb-device': 'source/usb/device.c',
     'usb-output-command': 'source/usb/output_command.c',
     'usb-operating-mode-command': 'source/usb/operating_mode_command.c',
+    'usb-remote-tuning-records': 'source/usb/remote_tuning_records.c',
     'usb-vendor-command': 'source/usb/vendor_command.c',
     'podium-report-descriptor': 'source/usb/podium_report_descriptor.c',
     'board-identity': 'source/board/identity.c',
@@ -1009,6 +1011,14 @@ if not meson.is_cross_build()
     'base-usb-vendor-command-test',
     'tests/source/usb_vendor_command.c',
     usb_vendor_command_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  usb_remote_tuning_records_test = executable(
+    'base-usb-remote-tuning-records-test',
+    'tests/source/usb_remote_tuning_records.c',
+    usb_remote_tuning_records_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -1868,6 +1878,11 @@ if not meson.is_cross_build()
     suite: ['base', 'usb', 'output'],
   )
   test('base-usb-vendor-command', usb_vendor_command_test, suite: ['base', 'usb', 'output'])
+  test(
+    'base-usb-remote-tuning-records',
+    usb_remote_tuning_records_test,
+    suite: ['base', 'usb', 'profile'],
+  )
   test('base-usb-diagnostic-report', usb_diagnostic_report_test, suite: ['base', 'usb', 'output'])
   test(
     'base-usb-tuning-menu-service',
