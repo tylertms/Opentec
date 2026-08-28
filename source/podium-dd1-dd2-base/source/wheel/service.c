@@ -373,6 +373,18 @@ uint8_t wheel_service_axis_limit(const WheelService *service) {
 }
 
 /**
+ * @brief Returns the attached wheel's two clutch-paddle bytes.
+ *
+ * Selects the current axis-output bytes that feed the two clutch-paddle report fields.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return Two clutch-paddle bytes, or null when unavailable.
+ */
+const uint8_t *wheel_service_clutch_paddles(const WheelService *service) {
+    return wheel_protocol_axis_outputs(&service->protocol);
+}
+
+/**
  * @brief Takes one queued attached-wheel encoder step.
  *
  * Consumes one signed step from the motion accumulated by valid wheel protocol reports.

@@ -441,6 +441,27 @@ uint8_t wheel_protocol_axis_limit(const WheelProtocol *protocol) {
 }
 
 /**
+ * @brief Returns the attached wheel's two primary axis-output bytes.
+ *
+ * Selects the normalized values from the current mode-one, mode-four, or CRC-family input report.
+ *
+ * @param[in] protocol Attached-wheel protocol state.
+ * @return Two axis-output bytes, or null when no supported input report is ready.
+ */
+const uint8_t *wheel_protocol_axis_outputs(const WheelProtocol *protocol) {
+    const WheelPacketModeOneInput *mode_one = wheel_protocol_mode_one_input(protocol);
+    if (mode_one != 0) {
+        return mode_one->axis_outputs;
+    }
+    const WheelPacketModeFourInput *mode_four = wheel_protocol_mode_four_input(protocol);
+    if (mode_four != 0) {
+        return mode_four->axis_outputs;
+    }
+    const WheelPacketCrcInput *crc = wheel_protocol_crc_input(protocol);
+    return crc != 0 ? crc->axis_outputs : 0;
+}
+
+/**
  * @brief Takes one queued attached-wheel motion step.
  *
  * Moves the protocol's primary wrapping motion counter one position toward zero.

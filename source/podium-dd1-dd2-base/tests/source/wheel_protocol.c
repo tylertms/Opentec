@@ -326,6 +326,7 @@ static void test_captures_normalized_active_requests(void) {
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
     wheel_protocol_init(&protocol);
     assert(wheel_protocol_axis_limit(&protocol) == 0);
+    assert(wheel_protocol_axis_outputs(&protocol) == 0);
     synchronize(&protocol, request);
     select_mode(&protocol, request, 1);
 
@@ -349,6 +350,7 @@ static void test_captures_normalized_active_requests(void) {
     assert(input->buttons[2] == 0);
     assert(input->motion == 7);
     assert(input->axis_values[0] == 0);
+    assert(wheel_protocol_axis_outputs(&protocol) == input->axis_outputs);
     assert(input->axis_limit == 31);
     assert(wheel_protocol_axis_limit(&protocol) == 31);
     const WheelPacketModeOneReportState *report_state =
@@ -467,6 +469,8 @@ static void test_captures_mode_four_requests(void) {
     request[2] = 0x80;
     request[3] = 0x40;
     request[4] = 0x20;
+    request[5] = 0x31;
+    request[6] = 0xc2;
     request[8] = 0xff;
     request[9] = 0xff;
     request[10] = 0xff;
@@ -487,6 +491,8 @@ static void test_captures_mode_four_requests(void) {
     assert(input->buttons[0] == 0x80);
     assert(input->buttons[1] == 0x40);
     assert(input->buttons[2] == 0x20);
+    assert(wheel_protocol_axis_outputs(&protocol)[0] == 0x31);
+    assert(wheel_protocol_axis_outputs(&protocol)[1] == 0xc2);
     assert(input->axis_values[0] == 0x1234);
     assert(input->control_data[0] == 0x61);
     assert(input->axis_limit == 0x74);
@@ -613,6 +619,8 @@ static void test_captures_crc_family_requests(void) {
     select_mode(&protocol, request, 6);
 
     request[2] = 0x80;
+    request[5] = 0x52;
+    request[6] = 0xa4;
     request[8] = 0x08;
     request[12] = 0x02;
     request[28] = 0x34;
@@ -627,6 +635,8 @@ static void test_captures_crc_family_requests(void) {
     assert(input != 0);
     assert(input->buttons[0] == 0x80);
     assert(input->buttons[1] == 0x08);
+    assert(wheel_protocol_axis_outputs(&protocol)[0] == 0x52);
+    assert(wheel_protocol_axis_outputs(&protocol)[1] == 0xa4);
     assert(input->controls[4] == 0x02);
     assert(wheel_protocol_axis_limit(&protocol) == 0x62);
     assert(wheel_protocol_request(&protocol)[0] == 0x80);

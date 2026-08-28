@@ -39,6 +39,7 @@ void wheel_service_set_display_output(WheelService *service, const WheelDisplayO
 void wheel_service_set_crc_adapter(WheelService *service, const WheelPacketCrcAdapter *adapter);
 const uint8_t *wheel_service_buttons(const WheelService *service);
 uint8_t wheel_service_axis_limit(const WheelService *service);
+const uint8_t *wheel_service_clutch_paddles(const WheelService *service);
 int8_t wheel_service_take_encoder_delta(WheelService *service);
 bool wheel_service_acknowledgement_input_active(const WheelService *service);
 uint8_t wheel_service_mode(const WheelService *service);

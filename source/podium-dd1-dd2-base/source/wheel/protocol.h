@@ -98,6 +98,7 @@ wheel_protocol_mode_one_report_state(const WheelProtocol *protocol);
 const WheelAxisOverrideProcessor *wheel_protocol_axis_overrides(const WheelProtocol *protocol);
 const WheelCapabilityState *wheel_protocol_capabilities(const WheelProtocol *protocol);
 uint8_t wheel_protocol_axis_limit(const WheelProtocol *protocol);
+const uint8_t *wheel_protocol_axis_outputs(const WheelProtocol *protocol);
 int8_t wheel_protocol_take_motion(WheelProtocol *protocol);
 bool wheel_protocol_request_changed(WheelProtocol *protocol);
 bool wheel_protocol_acknowledgement_input_active(const WheelProtocol *protocol);

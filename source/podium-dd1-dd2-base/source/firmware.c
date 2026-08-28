@@ -378,6 +378,11 @@ static void service_usb_input(void) {
         .wheel_mode = FANATEC_INPUT_DIRECT_DRIVE_MODE,
         .axis_limit = wheel_service_axis_limit(&wheel_service),
     };
+    const uint8_t *clutch_paddles = wheel_service_clutch_paddles(&wheel_service);
+    if (clutch_paddles != 0) {
+        usb_input_state.clutch_paddles[0] = clutch_paddles[0];
+        usb_input_state.clutch_paddles[1] = clutch_paddles[1];
+    }
     const uint8_t *wheel_buttons = wheel_service_buttons(&wheel_service);
     for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {
         usb_input_state.button_banks[bank] = wheel_buttons[bank];
