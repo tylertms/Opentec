@@ -339,7 +339,7 @@ static void test_captures_raw_active_requests(void) {
     synchronize(&protocol, request);
     select_mode(&protocol, request, 1);
 
-    for (uint8_t index = 0; index < WHEEL_PROTOCOL_SNAPSHOT_SIZE; index++) {
+    for (uint8_t index = 0; index < WHEEL_PROTOCOL_CONTENT_SIZE; index++) {
         request[index] = index;
     }
     request[0] = WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
@@ -350,6 +350,13 @@ static void test_captures_raw_active_requests(void) {
     assert(protocol.phase == WHEEL_PROTOCOL_ACTIVE);
     assert(wheel_protocol_request(&protocol) != 0);
     assert(memcmp(wheel_protocol_request(&protocol), request, WHEEL_PROTOCOL_SNAPSHOT_SIZE) == 0);
+    const WheelPacketModeOneInput *input = wheel_protocol_mode_one_input(&protocol);
+    assert(input != 0);
+    assert(input->buttons[0] == 2);
+    assert(input->buttons[2] == 4);
+    assert(input->motion == 7);
+    assert(input->axis_values[0] == 0x1312);
+    assert(input->axis_limit == 31);
     assert(wheel_protocol_request_changed(&protocol));
     assert(!wheel_protocol_request_changed(&protocol));
 

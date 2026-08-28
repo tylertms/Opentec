@@ -42,6 +42,7 @@ typedef struct {
     uint8_t response[WHEEL_PROTOCOL_PACKET_SIZE];
     uint8_t request[WHEEL_PROTOCOL_SNAPSHOT_SIZE];
     WheelAuthentication authentication;
+    WheelPacketModeOneInput mode_one_input;
     WheelPacketModeOneOutput mode_one_output;
     WheelProtocolPhase phase;
     uint8_t mode;
@@ -56,6 +57,7 @@ void wheel_protocol_accept(WheelProtocol *protocol,
                            const uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE]);
 const uint8_t *wheel_protocol_response(const WheelProtocol *protocol);
 const uint8_t *wheel_protocol_request(const WheelProtocol *protocol);
+const WheelPacketModeOneInput *wheel_protocol_mode_one_input(const WheelProtocol *protocol);
 bool wheel_protocol_request_changed(WheelProtocol *protocol);
 uint8_t wheel_protocol_message_checksum(const uint8_t packet[WHEEL_PROTOCOL_PACKET_SIZE]);
 bool wheel_protocol_message_valid(const uint8_t packet[WHEEL_PROTOCOL_PACKET_SIZE]);

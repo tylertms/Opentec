@@ -8,7 +8,22 @@ enum {
     WHEEL_PACKET_COMMAND_AUTHENTICATE = 0xa6,
     WHEEL_PACKET_AUTHENTICATION_MODE_FIRST = 0x13,
     WHEEL_PACKET_AUTHENTICATION_MODE_LAST = 0x14,
+    REQUEST_PAYLOAD_OFFSET = 2,
+    REQUEST_BUTTONS_OFFSET = 0,
+    REQUEST_AXIS_OUTPUTS_OFFSET = 3,
+    REQUEST_MOTION_OFFSET = 5,
+    REQUEST_CONTROLS_OFFSET = 6,
+    REQUEST_AXIS_VALUES_OFFSET = 16,
+    REQUEST_MODE_BUTTONS_OFFSET = 20,
+    REQUEST_AXIS_REPORT_ENABLED_OFFSET = 21,
+    REQUEST_CAPABILITY_FLAGS_LOW_OFFSET = 26,
+    REQUEST_CAPABILITY_FLAGS_HIGH_OFFSET = 28,
+    REQUEST_AXIS_LIMIT_OFFSET = 29,
 };
+
+static uint16_t read_little_endian_u16(const uint8_t *data) {
+    return (uint16_t)data[0] | (uint16_t)data[1] << 8;
+}
 
 /**
  * Tests whether an attached-wheel mode uses the mode-1 packet codec.
@@ -18,6 +33,41 @@ enum {
  */
 bool wheel_packet_mode_one_applies(uint8_t wheel_mode) {
     return wheel_mode == 1 || wheel_mode == 3 || wheel_mode == 0x13 || wheel_mode == 0x14;
+}
+
+/**
+ * Decodes the standard attached-wheel input fields from a command-2 request.
+ *
+ * @param request First 32 request bytes, including the command and reserved prefix.
+ * @param input Logical input fields populated from the request payload.
+ */
+void wheel_packet_mode_one_decode(const uint8_t request[WHEEL_PACKET_MODE_ONE_REQUEST_SIZE],
+                                  WheelPacketModeOneInput *input) {
+    const uint8_t *payload = &request[REQUEST_PAYLOAD_OFFSET];
+    for (uint8_t index = 0; index < WHEEL_PACKET_MODE_ONE_BUTTON_COUNT; index++) {
+        input->buttons[index] = payload[REQUEST_BUTTONS_OFFSET + index];
+    }
+    for (uint8_t index = 0; index < WHEEL_PACKET_MODE_ONE_AXIS_OUTPUT_COUNT; index++) {
+        input->axis_outputs[index] = payload[REQUEST_AXIS_OUTPUTS_OFFSET + index];
+    }
+    input->motion = (int8_t)payload[REQUEST_MOTION_OFFSET];
+    input->controls.values[0] = payload[REQUEST_CONTROLS_OFFSET];
+    input->controls.values[1] = payload[REQUEST_CONTROLS_OFFSET + 1];
+    input->controls.enabled = payload[REQUEST_CONTROLS_OFFSET + 2];
+    input->controls.latch_flags = payload[REQUEST_CONTROLS_OFFSET + 3];
+    input->controls.x = payload[REQUEST_CONTROLS_OFFSET + 4];
+    input->controls.y = payload[REQUEST_CONTROLS_OFFSET + 5];
+    input->controls.mode = payload[REQUEST_CONTROLS_OFFSET + 6];
+    input->controls.packed_values = payload[REQUEST_CONTROLS_OFFSET + 7];
+    for (uint8_t index = 0; index < WHEEL_PACKET_MODE_ONE_AXIS_VALUE_COUNT; index++) {
+        input->axis_values[index] =
+            read_little_endian_u16(&payload[REQUEST_AXIS_VALUES_OFFSET + index * 2]);
+    }
+    input->mode_buttons = payload[REQUEST_MODE_BUTTONS_OFFSET];
+    input->axis_report_enabled = payload[REQUEST_AXIS_REPORT_ENABLED_OFFSET];
+    input->capability_flags = payload[REQUEST_CAPABILITY_FLAGS_LOW_OFFSET] |
+                              (uint16_t)payload[REQUEST_CAPABILITY_FLAGS_HIGH_OFFSET] << 8;
+    input->axis_limit = payload[REQUEST_AXIS_LIMIT_OFFSET];
 }
 
 /**

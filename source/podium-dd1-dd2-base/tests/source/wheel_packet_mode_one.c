@@ -48,9 +48,43 @@ static void test_requests_authentication_for_operating_modes_0x13_and_0x14(void)
     assert(response[0] == 0xa5);
 }
 
+static void test_decodes_standard_input_fields(void) {
+    uint8_t request[WHEEL_PACKET_MODE_ONE_REQUEST_SIZE] = {0};
+    const uint8_t payload[] = {
+        0x11, 0x22, 0x33, 0x44, 0x55, 0xfe, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0xa0,
+        0xa1, 0x34, 0x12, 0xcd, 0xab, 0x70, 0x71, 0xa2, 0xa3, 0xa4, 0xa5, 0x72, 0xa6, 0x73, 0x74,
+    };
+    memcpy(&request[2], payload, sizeof(payload));
+
+    WheelPacketModeOneInput input;
+    wheel_packet_mode_one_decode(request, &input);
+
+    assert(input.buttons[0] == 0x11);
+    assert(input.buttons[1] == 0x22);
+    assert(input.buttons[2] == 0x33);
+    assert(input.axis_outputs[0] == 0x44);
+    assert(input.axis_outputs[1] == 0x55);
+    assert(input.motion == -2);
+    assert(input.controls.values[0] == 0x61);
+    assert(input.controls.values[1] == 0x62);
+    assert(input.controls.enabled == 0x63);
+    assert(input.controls.latch_flags == 0x64);
+    assert(input.controls.x == 0x65);
+    assert(input.controls.y == 0x66);
+    assert(input.controls.mode == 0x67);
+    assert(input.controls.packed_values == 0x68);
+    assert(input.axis_values[0] == 0x1234);
+    assert(input.axis_values[1] == 0xabcd);
+    assert(input.mode_buttons == 0x70);
+    assert(input.axis_report_enabled == 0x71);
+    assert(input.capability_flags == 0x7372);
+    assert(input.axis_limit == 0x74);
+}
+
 int main(void) {
     test_identifies_shared_codec_modes();
     test_encodes_the_complete_response();
     test_requests_authentication_for_operating_modes_0x13_and_0x14();
+    test_decodes_standard_input_fields();
     return 0;
 }

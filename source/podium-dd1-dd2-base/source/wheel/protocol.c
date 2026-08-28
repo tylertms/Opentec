@@ -64,6 +64,9 @@ static void capture_request(WheelProtocol *protocol,
         changed |= protocol->request[index] != request[index];
         protocol->request[index] = request[index];
     }
+    if (wheel_packet_mode_one_applies(protocol->mode)) {
+        wheel_packet_mode_one_decode(request, &protocol->mode_one_input);
+    }
     protocol->request_ready = true;
     protocol->request_changed |= changed;
 }
@@ -115,9 +118,11 @@ static bool active_command_valid(const WheelProtocol *protocol, uint8_t command)
 }
 
 void wheel_protocol_init(WheelProtocol *protocol) {
+    const WheelPacketModeOneInput empty_input = {0};
     const WheelPacketModeOneOutput empty_output = {0};
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
     clear(protocol->request, WHEEL_PROTOCOL_SNAPSHOT_SIZE);
+    protocol->mode_one_input = empty_input;
     protocol->mode_one_output = empty_output;
     wheel_authentication_init(&protocol->authentication, WHEEL_MODE_UNKNOWN);
     protocol->phase = WHEEL_PROTOCOL_WAITING;
@@ -196,6 +201,12 @@ const uint8_t *wheel_protocol_response(const WheelProtocol *protocol) { return p
 
 const uint8_t *wheel_protocol_request(const WheelProtocol *protocol) {
     return protocol->request_ready ? protocol->request : 0;
+}
+
+const WheelPacketModeOneInput *wheel_protocol_mode_one_input(const WheelProtocol *protocol) {
+    return protocol->request_ready && wheel_packet_mode_one_applies(protocol->mode)
+               ? &protocol->mode_one_input
+               : 0;
 }
 
 bool wheel_protocol_request_changed(WheelProtocol *protocol) {
