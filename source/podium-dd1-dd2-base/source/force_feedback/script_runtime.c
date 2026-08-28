@@ -25,6 +25,7 @@ void force_feedback_script_runtime_init(ForceFeedbackScriptSystem *system) {
     force_feedback_script_inputs_init(&system->inputs);
     system->clock = (ForceFeedbackScriptClock){0};
     system->motion = (ForceFeedbackScriptMotionState){0};
+    system->scheduler = (ForceFeedbackScriptScheduler){0};
     system->mode = FORCE_FEEDBACK_RUNTIME_POSITION_ONLY;
     system->store.position_request_pending = true;
 }

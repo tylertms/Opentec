@@ -7,6 +7,7 @@
 
 #include "force_feedback/script_motion.h"
 #include "force_feedback/script_operand.h"
+#include "force_feedback/script_scheduler.h"
 #include "force_feedback/script_store.h"
 
 typedef struct {
@@ -15,6 +16,7 @@ typedef struct {
     ForceFeedbackScriptInputs inputs;
     ForceFeedbackScriptClock clock;
     ForceFeedbackScriptMotionState motion;
+    ForceFeedbackScriptScheduler scheduler;
     ForceFeedbackRuntimeMode mode;
 } ForceFeedbackScriptSystem;
 

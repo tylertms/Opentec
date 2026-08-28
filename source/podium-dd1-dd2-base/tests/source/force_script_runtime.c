@@ -37,6 +37,7 @@ static void test_initializes_complete_runtime(void) {
     assert(system.motion.tick_snapshot == 0);
     assert(system.motion.previous_position == 0.0f);
     assert(system.motion.previous_velocity == 0.0f);
+    assert(system.scheduler.deadline == 0);
 }
 
 static void test_applies_controls_and_compacts_storage(void) {
