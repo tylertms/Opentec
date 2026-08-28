@@ -40,6 +40,63 @@ HPatternCalibration h_pattern_calibration_build(const HPatternCalibrationSamples
     };
 }
 
+void h_pattern_calibration_start(HPatternCalibrationSession *session) {
+    *session = (HPatternCalibrationSession){0};
+}
+
+/**
+ * Captures the current H-pattern position and advances through the calibration sequence.
+ *
+ * @param session Current position and samples collected by this calibration session.
+ * @param lateral_position Current lateral axis sample.
+ * @param longitudinal_position Current longitudinal axis sample.
+ * @param settings Destination updated after neutral, reverse, and gears one through seven are
+ * captured.
+ * @return True only when the seventh-gear capture completes and enables the new calibration.
+ */
+bool h_pattern_calibration_capture(HPatternCalibrationSession *session, uint16_t lateral_position,
+                                   uint16_t longitudinal_position, HPatternSettings *settings) {
+    switch (session->next_position) {
+    case H_PATTERN_CALIBRATION_NEUTRAL:
+        session->samples.neutral_longitudinal = longitudinal_position;
+        break;
+    case H_PATTERN_CALIBRATION_REVERSE:
+        session->samples.reverse_lateral = lateral_position;
+        session->samples.reverse_longitudinal = longitudinal_position;
+        break;
+    case H_PATTERN_CALIBRATION_FIRST:
+        session->samples.first_lateral = lateral_position;
+        break;
+    case H_PATTERN_CALIBRATION_SECOND:
+        session->samples.second_lateral = lateral_position;
+        session->samples.second_longitudinal = longitudinal_position;
+        break;
+    case H_PATTERN_CALIBRATION_THIRD:
+        session->samples.third_lateral = lateral_position;
+        break;
+    case H_PATTERN_CALIBRATION_FOURTH:
+        session->samples.fourth_lateral = lateral_position;
+        break;
+    case H_PATTERN_CALIBRATION_FIFTH:
+        session->samples.fifth_lateral = lateral_position;
+        break;
+    case H_PATTERN_CALIBRATION_SIXTH:
+        session->samples.sixth_lateral = lateral_position;
+        break;
+    case H_PATTERN_CALIBRATION_SEVENTH:
+        session->samples.seventh_lateral = lateral_position;
+        settings->calibration = h_pattern_calibration_build(&session->samples);
+        settings->calibrated = true;
+        session->next_position = H_PATTERN_CALIBRATION_COMPLETE;
+        return true;
+    case H_PATTERN_CALIBRATION_COMPLETE:
+        return false;
+    }
+
+    session->next_position++;
+    return false;
+}
+
 static bool is_upper_row_gear(ShifterGear gear) {
     return gear == SHIFTER_GEAR_REVERSE || gear == SHIFTER_GEAR_FIRST ||
            gear == SHIFTER_GEAR_THIRD || gear == SHIFTER_GEAR_FIFTH || gear == SHIFTER_GEAR_SEVENTH;

@@ -46,6 +46,24 @@ typedef struct {
     uint16_t seventh_lateral;
 } HPatternCalibrationSamples;
 
+typedef enum {
+    H_PATTERN_CALIBRATION_NEUTRAL,
+    H_PATTERN_CALIBRATION_REVERSE,
+    H_PATTERN_CALIBRATION_FIRST,
+    H_PATTERN_CALIBRATION_SECOND,
+    H_PATTERN_CALIBRATION_THIRD,
+    H_PATTERN_CALIBRATION_FOURTH,
+    H_PATTERN_CALIBRATION_FIFTH,
+    H_PATTERN_CALIBRATION_SIXTH,
+    H_PATTERN_CALIBRATION_SEVENTH,
+    H_PATTERN_CALIBRATION_COMPLETE,
+} HPatternCalibrationPosition;
+
+typedef struct {
+    HPatternCalibrationPosition next_position;
+    HPatternCalibrationSamples samples;
+} HPatternCalibrationSession;
+
 typedef struct {
     uint16_t neutral_position;
     uint16_t latched_position;
@@ -53,6 +71,9 @@ typedef struct {
 } HPatternShifter;
 
 HPatternCalibration h_pattern_calibration_build(const HPatternCalibrationSamples *samples);
+void h_pattern_calibration_start(HPatternCalibrationSession *session);
+bool h_pattern_calibration_capture(HPatternCalibrationSession *session, uint16_t lateral_position,
+                                   uint16_t longitudinal_position, HPatternSettings *settings);
 ShifterGear h_pattern_shifter_update(HPatternShifter *shifter,
                                      const HPatternCalibration *calibration,
                                      uint16_t lateral_position, uint16_t longitudinal_position);
