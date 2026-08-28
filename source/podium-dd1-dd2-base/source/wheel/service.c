@@ -181,6 +181,7 @@ static void reset_connection(WheelService *service) {
     WheelPacketModeOneOutput mode_one_output = service->protocol.mode_one_output;
     WheelPacketModeFourFilter mode_four_filter = service->protocol.mode_four_filter;
     WheelPacketModeFourOutput mode_four_output = service->protocol.mode_four_output;
+    WheelPacketCrcOutput crc_output = service->protocol.crc_output;
     uint8_t interface_mode = service->protocol.interface_mode;
     uint8_t axis_override_mode = service->protocol.configured_axis_override_mode;
     uint8_t axis_calibration_value = service->protocol.axis_calibration_value;
@@ -195,6 +196,7 @@ static void reset_connection(WheelService *service) {
     service->protocol.mode_one_output = mode_one_output;
     service->protocol.mode_four_filter = mode_four_filter;
     service->protocol.mode_four_output = mode_four_output;
+    service->protocol.crc_output = crc_output;
     wheel_protocol_set_axis_processing(&service->protocol, interface_mode, axis_override_mode,
                                        axis_calibration_value);
     service->protocol.axis_override_processor.multiplex_phase = axis_multiplex_phase;
@@ -282,6 +284,9 @@ void wheel_service_set_display_output(WheelService *service, const WheelDisplayO
     WheelPacketModeFourOutput mode_four_output = service->protocol.mode_four_output;
     mode_four_output.display = *output;
     service->protocol.mode_four_output = mode_four_output;
+    WheelPacketCrcOutput crc_output = service->protocol.crc_output;
+    crc_output.display = *output;
+    service->protocol.crc_output = crc_output;
 }
 
 void wheel_service_run(WheelService *service, uint32_t now_ms) {

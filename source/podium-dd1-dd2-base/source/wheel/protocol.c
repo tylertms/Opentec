@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "wheel/authentication.h"
+#include "wheel/packet_crc.h"
 #include "wheel/packet_mode_four.h"
 #include "wheel/packet_mode_one.h"
 
@@ -43,12 +44,15 @@ static void build_selection_response(WheelProtocol *protocol) {
 }
 
 static void build_active_response(WheelProtocol *protocol) {
-    if (!wheel_packet_mode_one_applies(protocol->mode) && protocol->mode != 4) {
+    if (!wheel_packet_mode_one_applies(protocol->mode) && protocol->mode != 4 &&
+        !wheel_packet_crc_applies(protocol->mode)) {
         return;
     }
     uint8_t flags = protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET];
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
-    if (protocol->mode == 4) {
+    if (wheel_packet_crc_applies(protocol->mode)) {
+        wheel_packet_crc_encode(protocol->mode, &protocol->crc_output, protocol->response);
+    } else if (protocol->mode == 4) {
         wheel_packet_mode_four_encode(&protocol->mode_four_output, protocol->response);
     } else {
         wheel_packet_mode_one_encode(protocol->mode, &protocol->mode_one_output,
@@ -202,6 +206,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     const WheelPacketModeFourInput empty_mode_four_input = {0};
     const WheelPacketModeFourRuntime empty_mode_four_runtime = {0};
     const WheelPacketModeFourOutput empty_mode_four_output = {0};
+    const WheelPacketCrcOutput empty_crc_output = {0};
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
     clear(protocol->request, WHEEL_PROTOCOL_SNAPSHOT_SIZE);
     wheel_axis_override_processor_init(&protocol->axis_override_processor);
@@ -214,6 +219,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     protocol->mode_four_input = empty_mode_four_input;
     protocol->mode_four_runtime = empty_mode_four_runtime;
     protocol->mode_four_output = empty_mode_four_output;
+    protocol->crc_output = empty_crc_output;
     wheel_authentication_init(&protocol->authentication, WHEEL_MODE_UNKNOWN);
     protocol->phase = WHEEL_PROTOCOL_WAITING;
     protocol->mode = WHEEL_MODE_UNKNOWN;
@@ -235,6 +241,10 @@ void wheel_protocol_set_mode_one_output(WheelProtocol *protocol,
 void wheel_protocol_set_mode_four_output(WheelProtocol *protocol,
                                          const WheelPacketModeFourOutput *output) {
     protocol->mode_four_output = *output;
+}
+
+void wheel_protocol_set_crc_output(WheelProtocol *protocol, const WheelPacketCrcOutput *output) {
+    protocol->crc_output = *output;
 }
 
 void wheel_protocol_set_axis_processing(WheelProtocol *protocol, uint8_t interface_mode,

@@ -556,6 +556,32 @@ static void test_builds_mode_one_active_response(void) {
     assert(wheel_protocol_message_valid(response));
 }
 
+static void test_builds_crc_family_active_response(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    const WheelPacketCrcOutput output = {
+        .display = {.glyphs = {0x11, 0x22, 0x33}, .third_glyph_marker = true},
+        .legacy_axes = {0x44, 0x55},
+        .report_state = 0x66,
+        .status_update_pending = true,
+    };
+    wheel_protocol_init(&protocol);
+    wheel_protocol_set_crc_output(&protocol, &output);
+    synchronize(&protocol, request);
+    select_mode(&protocol, request, 6);
+
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+    wheel_protocol_accept(&protocol, request);
+
+    const uint8_t *response = wheel_protocol_response(&protocol);
+    const uint8_t expected[] = {0xa5, 0, 0x11, 0x22, 0xb3, 0, 0, 0x44, 0x55, 0x66, 0xff};
+    assert(memcmp(response, expected, sizeof(expected)) == 0);
+    assert(wheel_protocol_message_valid(response));
+
+    wheel_protocol_accept(&protocol, request);
+    assert(wheel_protocol_response(&protocol)[10] == 0);
+}
+
 static void test_rejects_out_of_range_mode(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -598,6 +624,7 @@ int main(void) {
     test_applies_authenticated_axis_overrides();
     test_builds_mode_one_active_response();
     test_builds_mode_four_active_response();
+    test_builds_crc_family_active_response();
     test_rejects_out_of_range_mode();
     test_crc8_vectors();
     return 0;
