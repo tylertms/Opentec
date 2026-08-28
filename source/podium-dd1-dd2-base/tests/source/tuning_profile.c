@@ -10,7 +10,7 @@ static void test_defaults(void) {
     assert(profile.rotation_degrees == 1080);
     assert(profile.automatic_rotation == 1);
     assert(profile.force_feedback_strength == 35);
-    assert(profile.vibration_enabled == 1);
+    assert(profile.vibration_strength == 10);
     assert(profile.brake_indicator_level == 101);
     assert(profile.force_scale == TUNING_FORCE_SCALE_PEAK);
     assert(profile.force_effect_strength == 10);
@@ -79,7 +79,7 @@ static void test_modes(void) {
     TuningProfile profile;
     tuning_profile_defaults(&profile);
     profile.automatic_rotation = 2;
-    profile.vibration_enabled = 2;
+    profile.vibration_strength = 200;
     profile.force_scale = (TuningForceScale)10;
     profile.drift_compensation = 2;
     profile.multi_position_mode = (TuningMultiPositionMode)10;
@@ -93,7 +93,7 @@ static void test_modes(void) {
 
     tuning_profile_normalize(&profile);
     assert(profile.automatic_rotation == 1);
-    assert(profile.vibration_enabled == 1);
+    assert(profile.vibration_strength == 100);
     assert(profile.force_scale == TUNING_FORCE_SCALE_LINEAR);
     assert(profile.drift_compensation == 1);
     assert(profile.multi_position_mode == TUNING_MULTI_POSITION_AUTOMATIC);

@@ -42,7 +42,7 @@ static uint16_t write_profile(uint8_t *output, uint16_t cursor, const TuningProf
     cursor = write_u16(output, cursor, profile->rotation_degrees);
     cursor = write_u8(output, cursor, profile->automatic_rotation);
     cursor = write_u8(output, cursor, profile->force_feedback_strength);
-    cursor = write_u8(output, cursor, profile->vibration_enabled);
+    cursor = write_u8(output, cursor, profile->vibration_strength);
     cursor = write_u8(output, cursor, profile->brake_indicator_level);
     cursor = write_u8(output, cursor, (uint8_t)profile->force_scale);
     cursor = write_u8(output, cursor, profile->steering_deadzone);
@@ -72,7 +72,7 @@ static uint16_t read_profile(const uint8_t *input, uint16_t cursor, TuningProfil
     cursor += 2;
     profile->automatic_rotation = input[cursor++];
     profile->force_feedback_strength = input[cursor++];
-    profile->vibration_enabled = input[cursor++];
+    profile->vibration_strength = input[cursor++];
     profile->brake_indicator_level = input[cursor++];
     profile->force_scale = (TuningForceScale)input[cursor++];
     profile->steering_deadzone = input[cursor++];

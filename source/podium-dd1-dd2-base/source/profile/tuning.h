@@ -35,7 +35,7 @@ typedef struct {
     uint16_t rotation_degrees;
     uint8_t automatic_rotation;
     uint8_t force_feedback_strength;
-    uint8_t vibration_enabled;
+    uint8_t vibration_strength;
     uint8_t brake_indicator_level;
     TuningForceScale force_scale;
     uint8_t steering_deadzone;
