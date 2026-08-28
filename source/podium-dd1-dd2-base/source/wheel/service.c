@@ -316,6 +316,14 @@ void wheel_service_init(WheelService *service, SerialService *transport) {
     service->protocol_deadline_active = false;
 }
 
+/**
+ * @brief Updates the output state sent to the attached wheel.
+ *
+ * Applies the same display and auxiliary output to each negotiated packet-family encoder.
+ *
+ * @param[in,out] service Attached-wheel service to update.
+ * @param[in] output Display glyphs, auxiliary byte, and marker state to send.
+ */
 void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output) {
     service->display_output = *output;
     WheelPacketModeOneOutput mode_one_output = service->protocol.mode_one_output;
@@ -329,6 +337,14 @@ void wheel_service_set_display_output(WheelService *service, const WheelDisplayO
     service->protocol.crc_output = crc_output;
 }
 
+/**
+ * @brief Configures the attached-wheel CRC packet adapter.
+ *
+ * Retains the adapter identifier, mode, and variant used to encode and decode CRC-family packets.
+ *
+ * @param[in,out] service Attached-wheel service to configure.
+ * @param[in] adapter CRC packet adapter configuration.
+ */
 void wheel_service_set_crc_adapter(WheelService *service, const WheelPacketCrcAdapter *adapter) {
     wheel_protocol_set_crc_adapter(&service->protocol, adapter);
 }
@@ -523,8 +539,24 @@ bool wheel_service_acknowledgement_input_active(const WheelService *service) {
     return false;
 }
 
+/**
+ * @brief Returns the negotiated attached-wheel mode.
+ *
+ * Reads the mode selected by the attached-wheel protocol handshake.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return Current attached-wheel mode identifier.
+ */
 uint8_t wheel_service_mode(const WheelService *service) { return service->protocol.mode; }
 
+/**
+ * @brief Returns the attached-wheel protocol phase.
+ *
+ * Reads the current handshake or active-traffic phase maintained by the wheel protocol.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return Current attached-wheel protocol phase.
+ */
 WheelProtocolPhase wheel_service_protocol_phase(const WheelService *service) {
     return service->protocol.phase;
 }
