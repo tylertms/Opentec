@@ -25,6 +25,7 @@ enum {
     SHIFTER_SEQUENTIAL_BUTTON_BANK = 4,
     SHIFTER_TRANSITION_BUTTON_0 = 1 << 0,
     SHIFTER_TRANSITION_BUTTON_1 = 1 << 1,
+    STATUS_SEQUENTIAL_SHIFTERS = 1 << 0,
     MULTI_POSITION_ENCODER_MODE = 0,
     MULTI_POSITION_PULSE_MODE = 1,
     MULTI_POSITION_CONSTANT_MODE = 2,
@@ -181,7 +182,7 @@ void fanatec_input_apply_multi_position_rotaries(fanatec_input_state *state, uin
  * @brief Applies shifter input to the Fanatec button fields.
  *
  * Places the current H-pattern gear or sequential transition buttons according to the two shifter
- * port modes.
+ * port modes. Status bit zero indicates that both ports use sequential input.
  *
  * @param[in,out] state Input report state to update.
  * @param[in] shifter Mode and transition state for both shifter ports.
@@ -189,8 +190,10 @@ void fanatec_input_apply_multi_position_rotaries(fanatec_input_state *state, uin
  */
 void fanatec_input_apply_shifter(fanatec_input_state *state, const ShifterInputState *shifter,
                                  ShifterGear gear) {
-    bool sequential_only = shifter->primary_mode == SHIFTER_INPUT_SEQUENTIAL &&
-                           shifter->secondary_mode == SHIFTER_INPUT_SEQUENTIAL;
+    const bool sequential_only = shifter->primary_mode == SHIFTER_INPUT_SEQUENTIAL &&
+                                 shifter->secondary_mode == SHIFTER_INPUT_SEQUENTIAL;
+    state->status_flags = (uint8_t)((state->status_flags & (uint8_t)~STATUS_SEQUENTIAL_SHIFTERS) |
+                                    (sequential_only ? STATUS_SEQUENTIAL_SHIFTERS : 0));
     if (sequential_only) {
         uint8_t transitions = (shifter->primary_transition ? SHIFTER_TRANSITION_BUTTON_1 : 0) |
                               (shifter->secondary_transition ? SHIFTER_TRANSITION_BUTTON_0 : 0);

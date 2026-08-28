@@ -208,6 +208,7 @@ static void test_unsupported_multi_position_mode_clears_rotaries(void) {
 static void test_h_pattern_shifter_mapping(void) {
     fanatec_input_state state = {
         .button_banks = {0, 0x80, 0xff, 0, 0xff},
+        .status_flags = 0xff,
     };
     ShifterInputState shifter = {
         .primary_mode = SHIFTER_INPUT_H_PATTERN,
@@ -220,11 +221,13 @@ static void test_h_pattern_shifter_mapping(void) {
     assert(state.button_banks[1] == 0x82);
     assert(state.button_banks[2] == SHIFTER_GEAR_THIRD);
     assert(state.button_banks[4] == 0xfc);
+    assert(state.status_flags == 0xfe);
 }
 
 static void test_sequential_shifter_mapping(void) {
     fanatec_input_state state = {
         .button_banks = {0, 0x83, 0xff, 0, 0xfc},
+        .status_flags = 0xa0,
     };
     ShifterInputState shifter = {
         .primary_mode = SHIFTER_INPUT_SEQUENTIAL,
@@ -237,6 +240,7 @@ static void test_sequential_shifter_mapping(void) {
     assert(state.button_banks[1] == 0x83);
     assert(state.button_banks[2] == 0);
     assert(state.button_banks[4] == 0xfe);
+    assert(state.status_flags == 0xa1);
 }
 
 int main(void) {
