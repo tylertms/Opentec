@@ -27,6 +27,7 @@ force_script_math_sources = files('source/force_feedback/script_math.c')
 force_script_motion_sources = files('source/force_feedback/script_motion.c')
 force_script_operand_sources = files('source/force_feedback/script_operand.c')
 force_script_operation_sources = files('source/force_feedback/script_operation.c')
+force_script_output_sources = files('source/force_feedback/script_output.c')
 force_script_range_sources = files('source/force_feedback/script_range.c')
 force_script_runtime_sources = files('source/force_feedback/script_runtime.c')
 force_script_sample_sources = files('source/force_feedback/script_sample.c')
@@ -130,6 +131,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'force-script-motion': 'source/force_feedback/script_motion.c',
     'force-script-operand': 'source/force_feedback/script_operand.c',
     'force-script-operation': 'source/force_feedback/script_operation.c',
+    'force-script-output': 'source/force_feedback/script_output.c',
     'force-script-range': 'source/force_feedback/script_range.c',
     'force-script-runtime': 'source/force_feedback/script_runtime.c',
     'force-script-sample': 'source/force_feedback/script_sample.c',
@@ -540,6 +542,14 @@ if not meson.is_cross_build()
     force_script_math_sources,
     force_script_range_sources,
     force_script_sample_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  force_script_output_test = executable(
+    'base-force-script-output-test',
+    'tests/source/force_script_output.c',
+    force_script_output_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -1162,6 +1172,11 @@ if not meson.is_cross_build()
   test(
     'base-force-script-operation',
     force_script_operation_test,
+    suite: ['base', 'force-feedback', 'script'],
+  )
+  test(
+    'base-force-script-output',
+    force_script_output_test,
     suite: ['base', 'force-feedback', 'script'],
   )
   test(
