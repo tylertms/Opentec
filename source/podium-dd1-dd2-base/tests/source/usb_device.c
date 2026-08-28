@@ -19,7 +19,7 @@ static PlatformUsbEvent events[EVENT_CAPACITY];
 static uint8_t event_head;
 static uint8_t event_tail;
 static TransferRecord sent;
-static TransferRecord received[4];
+static TransferRecord received[8];
 static uint8_t receive_count;
 static uint8_t send_count;
 static uint8_t address;
@@ -200,6 +200,8 @@ static void test_exchanges_hid_reports(void) {
 static void test_reenumerates_compatibility_modes(void) {
     static const uint8_t get_device_descriptor[] = {0x80, 6, 0, 1, 0, 0, 18, 0};
     static const uint8_t get_configuration_descriptor[] = {0x80, 6, 0, 2, 0, 0, 41, 0};
+    static const uint8_t set_configuration[] = {0x00, 9, 1, 0, 0, 0, 0, 0};
+    static const uint8_t unnumbered_output[] = {0xf8, 9, 1, 1, 0, 0, 0};
     static const uint16_t vendor_ids[] = {0x0eb7, 0x046d, 0x046d, 0x046d};
     static const uint16_t product_ids[] = {0x0e03, 0xc294, 0xc298, 0xc29b};
     static const uint16_t report_sizes[] = {133, 130, 97, 133};
@@ -236,6 +238,18 @@ static void test_reenumerates_compatibility_modes(void) {
     }
     assert(!usb_device_set_input_mode((UsbInputReportMode)5));
     assert(usb_device_input_mode() == USB_INPUT_REPORT_MODE_G27);
+
+    receive_count = 0;
+    push_setup(set_configuration);
+    usb_device_service();
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 0, 0, 0);
+    usb_device_service();
+    push_event(PLATFORM_USB_EVENT_OUT, 1, unnumbered_output, sizeof(unnumbered_output));
+    usb_device_service();
+    UsbDeviceOutputReport report;
+    assert(usb_device_take_output(&report));
+    assert(report.report_id == 0 && report.length == sizeof(unnumbered_output));
+    assert(memcmp(report.data, unnumbered_output, sizeof(unnumbered_output)) == 0);
 }
 
 int main(void) {

@@ -29,6 +29,21 @@ static void test_decodes_short_report(void) {
     assert(command.payload[6] == 7);
 }
 
+static void test_decodes_unnumbered_short_report(void) {
+    UsbDeviceOutputReport report = make_report(0, 7);
+    UsbOutputCommand command;
+    for (uint8_t index = 0; index < report.length; index++) {
+        report.data[index] = (uint8_t)(0xf8 + index);
+    }
+
+    assert(usb_output_command_decode(&report, &command));
+    assert(command.kind == USB_OUTPUT_COMMAND_SHORT);
+    assert(command.payload == report.data);
+    assert(command.length == 7);
+    assert(command.payload[0] == 0xf8);
+    assert(command.payload[6] == 0xfe);
+}
+
 static void test_decodes_vendor_transfer_report(void) {
     UsbDeviceOutputReport report = make_report(0xff, 64);
     UsbOutputCommand command;
@@ -66,6 +81,7 @@ static void test_rejects_unhandled_reports(void) {
 
 int main(void) {
     test_decodes_short_report();
+    test_decodes_unnumbered_short_report();
     test_decodes_vendor_transfer_report();
     test_rejects_unhandled_reports();
     return 0;

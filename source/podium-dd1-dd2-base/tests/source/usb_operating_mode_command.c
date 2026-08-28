@@ -48,8 +48,24 @@ static void test_rejects_other_envelopes(void) {
     assert(!usb_operating_mode_command_decode(&output, NULL));
 }
 
+static void test_identifies_native_reset(void) {
+    UsbOperatingModeCommand command = {
+        .opcode = 1,
+        .parameters = {1, 0, 0, 0},
+    };
+
+    assert(usb_operating_mode_command_requests_native_reset(&command));
+    command.parameters[0] = 0;
+    assert(!usb_operating_mode_command_requests_native_reset(&command));
+    command.parameters[0] = 1;
+    command.opcode = 2;
+    assert(!usb_operating_mode_command_requests_native_reset(&command));
+    assert(!usb_operating_mode_command_requests_native_reset(NULL));
+}
+
 int main(void) {
     test_decodes_command_envelope();
     test_rejects_other_envelopes();
+    test_identifies_native_reset();
     return 0;
 }

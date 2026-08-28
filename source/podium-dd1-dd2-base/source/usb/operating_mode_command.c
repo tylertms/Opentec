@@ -37,3 +37,16 @@ bool usb_operating_mode_command_decode(const UsbOutputCommand *output,
     }
     return true;
 }
+
+/**
+ * @brief Identifies the primary USB reset request.
+ *
+ * Matches operating-mode opcode 1 with subcommand 1, which selects primary mode 0 before the USB
+ * controller restart.
+ *
+ * @param[in] command Decoded operating-mode command.
+ * @return True for the native-mode USB reset request; otherwise false.
+ */
+bool usb_operating_mode_command_requests_native_reset(const UsbOperatingModeCommand *command) {
+    return command != NULL && command->opcode == 1 && command->parameters[0] == 1;
+}

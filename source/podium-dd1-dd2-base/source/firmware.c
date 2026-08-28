@@ -47,6 +47,7 @@
 #include "usb/device.h"
 #include "usb/fanatec_input.h"
 #include "usb/input_report.h"
+#include "usb/operating_mode_command.h"
 #include "usb/output_command.h"
 #include "usb/vendor_command.h"
 #include "wheel/position.h"
@@ -100,6 +101,7 @@ static uint8_t usb_input_report[USB_INPUT_REPORT_MAX_SIZE];
 static UsbDeviceOutputReport usb_device_output_report;
 static UsbConnectionMonitor usb_connection_monitor;
 static UsbOutputCommand usb_output_command;
+static UsbOperatingModeCommand usb_operating_mode_command;
 static UsbVendorCommand usb_vendor_command;
 static ForceFeedbackCommand force_feedback_command;
 static ForceFeedbackState force_feedback_state;
@@ -355,6 +357,13 @@ static void service_usb_output(void) {
                 &force_feedback_state, &force_feedback_command,
                 (int32_t)wheel_position_travel_from_degrees(tuning_profile->rotation_degrees))) {
             forward_force_feedback_command(&force_feedback_command, usb_output_command.payload);
+        }
+        return;
+    }
+
+    if (usb_operating_mode_command_decode(&usb_output_command, &usb_operating_mode_command)) {
+        if (usb_operating_mode_command_requests_native_reset(&usb_operating_mode_command)) {
+            (void)usb_device_set_input_mode(USB_INPUT_REPORT_MODE_FANATEC);
         }
         return;
     }

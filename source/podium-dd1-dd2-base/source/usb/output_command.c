@@ -11,18 +11,31 @@ enum {
 };
 
 /**
- * @brief Classifies a complete Podium HID output report.
+ * @brief Classifies a complete primary HID output report.
  *
- * Exposes the seven-byte shared command payload or the 63-byte vendor-transfer payload after
- * checking the report type, report ID, leading byte, and exact transfer length.
+ * Exposes a seven-byte shared command from an unnumbered compatibility report or native report 1.
+ * Native report 255 exposes its 63-byte vendor-transfer payload.
  *
- * @param[in] report HID output report including its leading report ID.
+ * @param[in] report HID output report with its endpoint-specific report-ID classification.
  * @param[out] command Destination for the command kind, payload, and payload length.
  * @return True for the shared short report or the full vendor-transfer report.
  */
 bool usb_output_command_decode(const UsbDeviceOutputReport *report, UsbOutputCommand *command) {
     if (report == NULL || command == NULL || report->report_type != USB_DEVICE_HID_REPORT_OUTPUT ||
-        report->length == 0 || report->data[0] != report->report_id) {
+        report->length == 0) {
+        return false;
+    }
+
+    if (report->report_id == 0 && report->length == SHORT_REPORT_PAYLOAD_SIZE) {
+        *command = (UsbOutputCommand){
+            .kind = USB_OUTPUT_COMMAND_SHORT,
+            .payload = report->data,
+            .length = SHORT_REPORT_PAYLOAD_SIZE,
+        };
+        return true;
+    }
+
+    if (report->data[0] != report->report_id) {
         return false;
     }
 

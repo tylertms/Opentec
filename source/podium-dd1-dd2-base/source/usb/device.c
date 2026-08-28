@@ -384,7 +384,8 @@ static void handle_control_output(void) {
 
 static void handle_hid_output(void) {
     if (usb_event.length != 0) {
-        store_output_report(USB_DEVICE_HID_REPORT_OUTPUT, usb_event.data[0], usb_event.data,
+        uint8_t report_id = input_mode == USB_INPUT_REPORT_MODE_FANATEC ? usb_event.data[0] : 0;
+        store_output_report(USB_DEVICE_HID_REPORT_OUTPUT, report_id, usb_event.data,
                             usb_event.length);
     }
     if (platform_usb_receive(USB_HID_ENDPOINT, USB_DEVICE_REPORT_SIZE, output_data_one)) {
