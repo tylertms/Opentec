@@ -25,6 +25,7 @@
 #include "profile/tuning.h"
 #include "settings/persistence.h"
 #include "settings/state.h"
+#include "shifter/display.h"
 #include "shifter/h_pattern.h"
 #include "shifter/input.h"
 #include "usb/device.h"
@@ -71,6 +72,7 @@ static WheelService wheel_service;
 static AnalogSamples analog_samples;
 static HPatternShifter h_pattern_shifter;
 static ShifterInputState shifter_input;
+static ShifterDisplay shifter_display;
 static fanatec_input_state usb_input_state;
 static uint8_t usb_input_report[FANATEC_INPUT_REPORT_SIZE];
 static ForceOutputCommand motor_output_command;
@@ -233,6 +235,15 @@ static void service_analog_input(void) {
     }
 }
 
+static void service_shifter_display(uint32_t now_ms) {
+    WheelDisplayOutput *output = &wheel_service.display_output;
+    bool wheel_active = wheel_service_protocol_phase(&wheel_service) == WHEEL_PROTOCOL_ACTIVE;
+    if (shifter_display_update(&shifter_display, h_pattern_shifter.gear, wheel_active, now_ms,
+                               output)) {
+        wheel_service_set_display_output(&wheel_service, output);
+    }
+}
+
 int main(void) {
     platform_clock_init();
     board_identity = platform_board_identity_read();
@@ -242,6 +253,7 @@ int main(void) {
     platform_adc_init();
     platform_shifter_init();
     platform_shifter_read(&shifter_input);
+    shifter_display_init(&shifter_display);
     platform_aux_bus_init();
     platform_pedal_link_init();
     pedal_service_init(&pedal_service);
@@ -259,6 +271,7 @@ int main(void) {
         service_motor_link();
         pedal_service_run(&pedal_service, now_ms);
         wheel_service_run(&wheel_service, now_ms);
+        service_shifter_display(now_ms);
         service_usb_input();
         service_motor();
         service_cooling(now_ms);

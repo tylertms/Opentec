@@ -22,6 +22,7 @@ usb_device_sources = files('source/usb/device.c')
 podium_report_descriptor_sources = files('source/usb/podium_report_descriptor.c')
 board_identity_sources = files('source/board/identity.c')
 h_pattern_shifter_sources = files('source/shifter/h_pattern.c')
+shifter_display_sources = files('source/shifter/display.c')
 logitech_input_sources = files('source/usb/logitech_input.c')
 motor_identity_sources = files('source/motor/identity.c')
 motor_live_frame_sources = files('source/motor/live_frame.c')
@@ -88,6 +89,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'board-identity': 'source/board/identity.c',
     'firmware': 'source/firmware.c',
     'h-pattern-shifter': 'source/shifter/h_pattern.c',
+    'shifter-display': 'source/shifter/display.c',
     'logitech-input': 'source/usb/logitech_input.c',
     'motor-identity': 'source/motor/identity.c',
     'motor-live-frame': 'source/motor/live_frame.c',
@@ -345,6 +347,14 @@ if not meson.is_cross_build()
     'base-h-pattern-shifter-test',
     'tests/source/h_pattern_shifter.c',
     h_pattern_shifter_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  shifter_display_test = executable(
+    'base-shifter-display-test',
+    'tests/source/shifter_display.c',
+    shifter_display_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -628,6 +638,7 @@ if not meson.is_cross_build()
   )
   test('base-board-identity', board_identity_test, suite: ['base', 'board'])
   test('base-h-pattern-shifter', h_pattern_shifter_test, suite: ['base', 'shifter'])
+  test('base-shifter-display', shifter_display_test, suite: ['base', 'shifter', 'display'])
   test('base-logitech-input', logitech_input_test, suite: ['base', 'usb', 'input'])
   test('base-motor-identity', motor_identity_test, suite: ['base', 'motor'])
   test('base-motor-live-frame', motor_live_frame_test, suite: ['base', 'motor', 'transport'])
