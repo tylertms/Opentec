@@ -21,9 +21,11 @@ void pedal_analog_init(PedalAnalog *analog) {
     for (uint8_t axis = 0; axis < PEDAL_INPUT_AXIS_COUNT; axis++) {
         analog->axes[axis] = (PedalAxisCalibration){
             .minimum = 0,
-            .maximum = PEDAL_ANALOG_SAMPLE_MASK,
+            .maximum = 0,
             .lower_deadzone = PEDAL_ANALOG_LOWER_DEADZONE,
             .upper_deadzone = PEDAL_ANALOG_UPPER_DEADZONE,
+            .output_scale = UINT16_MAX,
+            .learn_maximum = 1,
         };
     }
 }

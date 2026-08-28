@@ -13,6 +13,16 @@ static void test_scales_inverted_adc_samples(void) {
     PedalInput input;
     pedal_analog_init(&analog);
 
+    for (uint8_t axis = 0; axis < PEDAL_INPUT_AXIS_COUNT; axis++) {
+        assert(analog.axes[axis].minimum == 0);
+        assert(analog.axes[axis].maximum == 0);
+        assert(analog.axes[axis].lower_deadzone == 45);
+        assert(analog.axes[axis].upper_deadzone == 120);
+        assert(analog.axes[axis].output_scale == UINT16_MAX);
+        assert(!analog.axes[axis].learn_minimum);
+        assert(analog.axes[axis].learn_maximum);
+    }
+
     const uint16_t released[PEDAL_INPUT_AXIS_COUNT] = {0, 0, 0};
     pedal_analog_update(&analog, released, &input);
     assert(input.axes[0] == UINT16_MAX);

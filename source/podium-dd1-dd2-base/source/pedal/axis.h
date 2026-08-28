@@ -8,6 +8,7 @@ typedef struct {
     uint16_t maximum;
     uint16_t lower_deadzone;
     uint16_t upper_deadzone;
+    uint16_t output_scale;
     uint8_t learn_minimum;
     uint8_t learn_maximum;
 } PedalAxisCalibration;
