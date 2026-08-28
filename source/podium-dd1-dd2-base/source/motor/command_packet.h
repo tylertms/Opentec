@@ -19,6 +19,7 @@ bool motor_command_packet_payload_encode(uint8_t mode, uint8_t sequence, uint8_t
                                          const uint8_t *payload, uint16_t payload_length,
                                          uint8_t *output, uint16_t output_capacity,
                                          uint16_t *output_length);
+bool motor_command_packet_checksum_valid(const uint8_t *input, uint16_t length);
 void motor_command_packet_digest_request_encode(
     uint8_t sequence, uint8_t adjacent_sequence, bool retry,
     uint8_t output[MOTOR_COMMAND_PACKET_DIGEST_REQUEST_SIZE]);

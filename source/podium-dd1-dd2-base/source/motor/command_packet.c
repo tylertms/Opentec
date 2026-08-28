@@ -74,7 +74,7 @@ static uint16_t checksum(const uint8_t *data, uint16_t length) {
  * @param[in] length Received byte count.
  * @return True when the packet length and checksum are valid.
  */
-static bool checksum_valid(const uint8_t *input, uint16_t length) {
+bool motor_command_packet_checksum_valid(const uint8_t *input, uint16_t length) {
     if (input == 0 || length < MOTOR_COMMAND_PACKET_MIN_PACKET_SIZE ||
         length > MOTOR_COMMAND_PACKET_MAX_PACKET_SIZE) {
         return false;
@@ -102,7 +102,8 @@ static bool checksum_valid(const uint8_t *input, uint16_t length) {
 static bool command_valid(uint8_t previous_sequence, const uint8_t *input, uint16_t length,
                           uint8_t command, uint16_t minimum_length) {
     return input != 0 && length >= minimum_length &&
-           length == (((uint16_t)input[1] << 8) | input[2]) + 5 && checksum_valid(input, length) &&
+           length == (((uint16_t)input[1] << 8) | input[2]) + 5 &&
+           motor_command_packet_checksum_valid(input, length) &&
            (input[0] & (MOTOR_COMMAND_PACKET_RESPONSE_FLAG | MOTOR_COMMAND_PACKET_MODE_MASK)) ==
                0 &&
            (input[0] & MOTOR_COMMAND_PACKET_SEQUENCE_MASK) ==
