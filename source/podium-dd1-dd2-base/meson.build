@@ -115,6 +115,7 @@ wheel_protocol_sources = files('source/wheel/protocol.c')
 wheel_service_sources = files('source/wheel/service.c')
 motor_command_digest_sources = files('source/motor/command_digest.c')
 motor_command_fragment_sources = files('source/motor/command_fragment.c')
+motor_command_mailbox_sources = files('source/motor/command_mailbox.c')
 motor_command_packet_sources = files('source/motor/command_packet.c')
 motor_command_sequence_sources = files('source/motor/command_sequence.c')
 motor_command_startup_sources = files('source/motor/command_startup.c')
@@ -264,6 +265,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'wheel-service': 'source/wheel/service.c',
     'motor-command-digest': 'source/motor/command_digest.c',
     'motor-command-fragment': 'source/motor/command_fragment.c',
+    'motor-command-mailbox': 'source/motor/command_mailbox.c',
     'motor-command-packet': 'source/motor/command_packet.c',
     'motor-command-sequence': 'source/motor/command_sequence.c',
     'motor-command-startup': 'source/motor/command_startup.c',
@@ -1271,6 +1273,16 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  motor_command_mailbox_test = executable(
+    'base-motor-command-mailbox-test',
+    'tests/source/motor_command_mailbox.c',
+    motor_command_mailbox_sources,
+    transfer_command_sources,
+    transfer_memory_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   motor_command_sequence_test = executable(
     'base-motor-command-sequence-test',
     'tests/source/motor_command_sequence.c',
@@ -1647,6 +1659,11 @@ if not meson.is_cross_build()
   test(
     'base-motor-command-fragment',
     motor_command_fragment_test,
+    suite: ['base', 'motor'],
+  )
+  test(
+    'base-motor-command-mailbox',
+    motor_command_mailbox_test,
     suite: ['base', 'motor'],
   )
   test(
