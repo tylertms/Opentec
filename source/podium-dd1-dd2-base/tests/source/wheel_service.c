@@ -275,6 +275,8 @@ static void test_restarts_discovery_after_scan_timeout(void) {
     WheelService service;
     received_ready = false;
     uint32_t now_ms = begin_scan(&service);
+    service.protocol.mode_one_button_filter.samples[1][2] = 0x5a;
+    service.protocol.mode_one_button_filter.next_sample = 2;
     wheel_service_run(&service, now_ms + 10);
 
     const uint8_t *buttons = wheel_service_buttons(&service);
@@ -282,6 +284,8 @@ static void test_restarts_discovery_after_scan_timeout(void) {
     assert(buttons[1] == 0);
     assert(buttons[2] == 0);
     assert(wheel_service_protocol_phase(&service) == WHEEL_PROTOCOL_WAITING);
+    assert(service.protocol.mode_one_button_filter.samples[1][2] == 0x5a);
+    assert(service.protocol.mode_one_button_filter.next_sample == 2);
     assert(request().command == 2);
 }
 

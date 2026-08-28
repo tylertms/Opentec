@@ -10,6 +10,7 @@ enum {
     WHEEL_PACKET_MODE_ONE_RESPONSE_SIZE = 9,
     WHEEL_PACKET_MODE_ONE_REQUEST_SIZE = 32,
     WHEEL_PACKET_MODE_ONE_BUTTON_COUNT = 3,
+    WHEEL_PACKET_MODE_ONE_BUTTON_HISTORY_DEPTH = 3,
     WHEEL_PACKET_MODE_ONE_AXIS_OUTPUT_COUNT = 2,
     WHEEL_PACKET_MODE_ONE_AXIS_VALUE_COUNT = 2,
 };
@@ -37,6 +38,11 @@ typedef struct {
 } WheelPacketModeOneInput;
 
 typedef struct {
+    uint8_t samples[WHEEL_PACKET_MODE_ONE_BUTTON_HISTORY_DEPTH][WHEEL_PACKET_MODE_ONE_BUTTON_COUNT];
+    uint8_t next_sample;
+} WheelPacketModeOneButtonFilter;
+
+typedef struct {
     WheelDisplayOutput display;
     uint8_t operating_mode;
     uint8_t display_state[2];
@@ -44,6 +50,9 @@ typedef struct {
 } WheelPacketModeOneOutput;
 
 bool wheel_packet_mode_one_applies(uint8_t wheel_mode);
+void wheel_packet_mode_one_button_filter_init(WheelPacketModeOneButtonFilter *filter);
+void wheel_packet_mode_one_filter_buttons(WheelPacketModeOneButtonFilter *filter,
+                                          WheelPacketModeOneInput *input);
 void wheel_packet_mode_one_decode(const uint8_t request[WHEEL_PACKET_MODE_ONE_REQUEST_SIZE],
                                   WheelPacketModeOneInput *input);
 void wheel_packet_mode_one_encode(const WheelPacketModeOneOutput *output,

@@ -35,6 +35,34 @@ bool wheel_packet_mode_one_applies(uint8_t wheel_mode) {
     return wheel_mode == 1 || wheel_mode == 3 || wheel_mode == 0x13 || wheel_mode == 0x14;
 }
 
+void wheel_packet_mode_one_button_filter_init(WheelPacketModeOneButtonFilter *filter) {
+    for (uint8_t sample = 0; sample < WHEEL_PACKET_MODE_ONE_BUTTON_HISTORY_DEPTH; sample++) {
+        for (uint8_t button = 0; button < WHEEL_PACKET_MODE_ONE_BUTTON_COUNT; button++) {
+            filter->samples[sample][button] = 0;
+        }
+    }
+    filter->next_sample = 0;
+}
+
+/**
+ * Accepts one button sample and keeps only bits present in all three recent samples.
+ *
+ * @param filter Three-sample history and insertion position.
+ * @param input Input whose button bytes are added to the history and filtered in place.
+ */
+void wheel_packet_mode_one_filter_buttons(WheelPacketModeOneButtonFilter *filter,
+                                          WheelPacketModeOneInput *input) {
+    for (uint8_t button = 0; button < WHEEL_PACKET_MODE_ONE_BUTTON_COUNT; button++) {
+        filter->samples[filter->next_sample][button] = input->buttons[button];
+        input->buttons[button] =
+            filter->samples[0][button] & filter->samples[1][button] & filter->samples[2][button];
+    }
+    filter->next_sample++;
+    if (filter->next_sample == WHEEL_PACKET_MODE_ONE_BUTTON_HISTORY_DEPTH) {
+        filter->next_sample = 0;
+    }
+}
+
 /**
  * Decodes the standard attached-wheel input fields from a command-2 request.
  *

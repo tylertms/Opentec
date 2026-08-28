@@ -352,8 +352,8 @@ static void test_captures_raw_active_requests(void) {
     assert(memcmp(wheel_protocol_request(&protocol), request, WHEEL_PROTOCOL_SNAPSHOT_SIZE) == 0);
     const WheelPacketModeOneInput *input = wheel_protocol_mode_one_input(&protocol);
     assert(input != 0);
-    assert(input->buttons[0] == 2);
-    assert(input->buttons[2] == 4);
+    assert(input->buttons[0] == 0);
+    assert(input->buttons[2] == 0);
     assert(input->motion == 7);
     assert(input->axis_values[0] == 0x1312);
     assert(input->axis_limit == 31);
@@ -362,6 +362,11 @@ static void test_captures_raw_active_requests(void) {
 
     wheel_protocol_accept(&protocol, request);
     assert(!wheel_protocol_request_changed(&protocol));
+    assert(wheel_protocol_mode_one_input(&protocol)->buttons[0] == 0);
+    wheel_protocol_accept(&protocol, request);
+    assert(!wheel_protocol_request_changed(&protocol));
+    assert(wheel_protocol_mode_one_input(&protocol)->buttons[0] == 2);
+    assert(wheel_protocol_mode_one_input(&protocol)->buttons[2] == 4);
     request[29]++;
     request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
     wheel_protocol_accept(&protocol, request);

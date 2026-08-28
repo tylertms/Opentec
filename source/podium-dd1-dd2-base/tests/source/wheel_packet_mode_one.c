@@ -81,10 +81,34 @@ static void test_decodes_standard_input_fields(void) {
     assert(input.axis_limit == 0x74);
 }
 
+static void test_filters_buttons_across_three_samples(void) {
+    WheelPacketModeOneButtonFilter filter;
+    wheel_packet_mode_one_button_filter_init(&filter);
+
+    WheelPacketModeOneInput input = {.buttons = {0xf3, 0x5a, 0xff}};
+    wheel_packet_mode_one_filter_buttons(&filter, &input);
+    assert(input.buttons[0] == 0);
+    assert(input.buttons[1] == 0);
+    assert(input.buttons[2] == 0);
+
+    input = (WheelPacketModeOneInput){.buttons = {0xf7, 0x7a, 0x7f}};
+    wheel_packet_mode_one_filter_buttons(&filter, &input);
+    assert(input.buttons[0] == 0);
+    assert(input.buttons[1] == 0);
+    assert(input.buttons[2] == 0);
+
+    input = (WheelPacketModeOneInput){.buttons = {0xfb, 0x5e, 0xff}};
+    wheel_packet_mode_one_filter_buttons(&filter, &input);
+    assert(input.buttons[0] == 0xf3);
+    assert(input.buttons[1] == 0x5a);
+    assert(input.buttons[2] == 0x7f);
+}
+
 int main(void) {
     test_identifies_shared_codec_modes();
     test_encodes_the_complete_response();
     test_requests_authentication_for_operating_modes_0x13_and_0x14();
     test_decodes_standard_input_fields();
+    test_filters_buttons_across_three_samples();
     return 0;
 }
