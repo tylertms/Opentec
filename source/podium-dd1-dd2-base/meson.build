@@ -16,6 +16,7 @@ force_effect_sources = files('source/force_feedback/effect.c')
 force_output_sources = files('source/force_feedback/output.c')
 force_output_report_sources = files('source/force_feedback/output_report.c')
 force_output_scale_sources = files('source/force_feedback/output_scale.c')
+force_script_bits_sources = files('source/force_feedback/script_bits.c')
 force_script_compare_sources = files('source/force_feedback/script_compare.c')
 force_script_control_sources = files('source/force_feedback/script_control.c')
 force_script_input_sources = files('source/force_feedback/script_input.c')
@@ -107,6 +108,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'force-output': 'source/force_feedback/output.c',
     'force-output-report': 'source/force_feedback/output_report.c',
     'force-output-scale': 'source/force_feedback/output_scale.c',
+    'force-script-bits': 'source/force_feedback/script_bits.c',
     'force-script-compare': 'source/force_feedback/script_compare.c',
     'force-script-control': 'source/force_feedback/script_control.c',
     'force-script-input': 'source/force_feedback/script_input.c',
@@ -362,6 +364,14 @@ if not meson.is_cross_build()
     'base-force-script-control-test',
     'tests/source/force_script_control.c',
     force_script_control_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  force_script_bits_test = executable(
+    'base-force-script-bits-test',
+    'tests/source/force_script_bits.c',
+    force_script_bits_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -927,6 +937,11 @@ if not meson.is_cross_build()
   test(
     'base-force-script-control',
     force_script_control_test,
+    suite: ['base', 'force-feedback', 'script'],
+  )
+  test(
+    'base-force-script-bits',
+    force_script_bits_test,
     suite: ['base', 'force-feedback', 'script'],
   )
   test(
