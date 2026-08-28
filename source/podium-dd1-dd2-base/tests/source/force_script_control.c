@@ -125,11 +125,44 @@ static void test_preserves_state_for_rejected_transitions(void) {
                                                   FORCE_FEEDBACK_SCRIPT_SLOT_START, NULL));
 }
 
+static void test_advances_script_clocks(void) {
+    ForceFeedbackScriptClock clock = {
+        .ticks = UINT32_MAX,
+        .slot_ticks = {[6] = UINT32_MAX},
+        .active_slot = 6,
+        .script_executing = true,
+    };
+
+    force_feedback_script_clock_tick(&clock, FORCE_FEEDBACK_RUNTIME_ACTIVE);
+    assert(clock.ticks == 0);
+    assert(clock.slot_ticks[6] == 0);
+
+    force_feedback_script_clock_tick(&clock, FORCE_FEEDBACK_RUNTIME_ZERO_OUTPUT);
+    assert(clock.ticks == 1);
+    assert(clock.slot_ticks[6] == 1);
+
+    force_feedback_script_clock_tick(&clock, FORCE_FEEDBACK_RUNTIME_POSITION_ONLY);
+    assert(clock.ticks == 1);
+    assert(clock.slot_ticks[6] == 2);
+
+    clock.script_executing = false;
+    force_feedback_script_clock_tick(&clock, 3);
+    assert(clock.ticks == 1);
+    assert(clock.slot_ticks[6] == 2);
+
+    clock.script_executing = true;
+    clock.active_slot = FORCE_FEEDBACK_SCRIPT_SLOT_COUNT;
+    force_feedback_script_clock_tick(&clock, FORCE_FEEDBACK_RUNTIME_ACTIVE);
+    assert(clock.ticks == 2);
+    force_feedback_script_clock_tick(NULL, FORCE_FEEDBACK_RUNTIME_ACTIVE);
+}
+
 int main(void) {
     test_decodes_slot_commands_and_runtime_mode();
     test_rejects_incomplete_commands();
     test_encodes_slot_status_and_preserves_response_prefix();
     test_applies_slot_lifecycle();
     test_preserves_state_for_rejected_transitions();
+    test_advances_script_clocks();
     return 0;
 }

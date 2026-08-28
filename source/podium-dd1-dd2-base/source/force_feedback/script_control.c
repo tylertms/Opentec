@@ -115,3 +115,23 @@ bool force_feedback_script_slot_transition(ForceFeedbackScriptSlotState current,
         return false;
     }
 }
+
+/**
+ * Advances the force-feedback engine clock and the currently executing script slot clock.
+ *
+ * @param clock Runtime clock state containing the engine and per-slot tick counters.
+ * @param mode Current force-feedback runtime mode.
+ */
+void force_feedback_script_clock_tick(ForceFeedbackScriptClock *clock,
+                                      ForceFeedbackRuntimeMode mode) {
+    if (clock == NULL) {
+        return;
+    }
+
+    if (mode == FORCE_FEEDBACK_RUNTIME_ACTIVE || mode == FORCE_FEEDBACK_RUNTIME_ZERO_OUTPUT) {
+        clock->ticks++;
+    }
+    if (clock->script_executing && clock->active_slot < FORCE_FEEDBACK_SCRIPT_SLOT_COUNT) {
+        clock->slot_ticks[clock->active_slot]++;
+    }
+}
