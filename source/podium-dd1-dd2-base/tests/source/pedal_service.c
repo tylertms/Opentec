@@ -649,8 +649,17 @@ static void test_selects_analog_input_after_discovery_timeout(void) {
     assert(service.connected);
     assert(analog_count == 1);
     assert(discovery_count == 0);
-    assert(input->axes[0] == UINT16_MAX);
+    assert(input->axes[0] == 0);
     assert(input->axes[2] == 0);
+
+    pedal_service_set_analog_samples(&service, samples);
+    assert(input->axes[0] == 45);
+
+    const uint16_t disconnected[PEDAL_INPUT_AXIS_COUNT] = {0, 0, 0};
+    pedal_service_set_analog_samples(&service, disconnected);
+    assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
+    assert(!service.connected);
+    assert(discovery_count == 1);
 }
 
 int main(void) {

@@ -62,9 +62,9 @@ static void reconnect(PedalService *service, uint32_t now_ms) {
     for (uint8_t channel = 0; channel < PEDAL_LEGACY_CHANNEL_COUNT; channel++) {
         service->legacy_retries[channel] = 0;
     }
-    if (service->analog_samples_ready && pedal_analog_detect(service->analog_samples[2])) {
+    if (service->analog_samples_ready &&
+        pedal_analog_update(&service->analog, service->analog_samples, &service->input)) {
         platform_pedal_link_begin_analog();
-        pedal_analog_update(&service->analog, service->analog_samples, &service->input);
         service->connected = true;
         service->phase = PEDAL_SERVICE_ANALOG;
         return;
@@ -157,8 +157,9 @@ void pedal_service_set_analog_samples(PedalService *service,
         service->analog_samples[axis] = samples[axis];
     }
     service->analog_samples_ready = true;
-    if (service->phase == PEDAL_SERVICE_ANALOG) {
-        pedal_analog_update(&service->analog, service->analog_samples, &service->input);
+    if (service->phase == PEDAL_SERVICE_ANALOG &&
+        !pedal_analog_update(&service->analog, service->analog_samples, &service->input)) {
+        reconnect(service, service->clock_ms);
     }
 }
 

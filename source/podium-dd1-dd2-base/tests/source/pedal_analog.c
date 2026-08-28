@@ -3,16 +3,11 @@
 
 #include "pedal/analog.h"
 
-static void test_detects_analog_connector_level(void) {
-    assert(pedal_analog_detect(0x0fff));
-    assert(!pedal_analog_detect(0));
-}
-
-static void test_scales_inverted_adc_samples(void) {
+static void test_initializes_calibration_defaults(void) {
     PedalAnalog analog;
-    PedalInput input;
     pedal_analog_init(&analog);
 
+    assert(!analog.active);
     for (uint8_t axis = 0; axis < PEDAL_INPUT_AXIS_COUNT; axis++) {
         assert(analog.axes[axis].minimum == 0);
         assert(analog.axes[axis].maximum == 0);
@@ -22,23 +17,41 @@ static void test_scales_inverted_adc_samples(void) {
         assert(!analog.axes[axis].learn_minimum);
         assert(analog.axes[axis].learn_maximum);
     }
+}
 
-    const uint16_t released[PEDAL_INPUT_AXIS_COUNT] = {0, 0, 0};
-    pedal_analog_update(&analog, released, &input);
-    assert(input.axes[0] == UINT16_MAX);
-    assert(input.axes[1] == UINT16_MAX);
-    assert(input.axes[2] == UINT16_MAX);
+static void test_captures_and_scales_analog_samples(void) {
+    PedalAnalog analog;
+    PedalInput input = {0};
+    pedal_analog_init(&analog);
 
-    const uint16_t pressed[PEDAL_INPUT_AXIS_COUNT] = {0x0fff, 0x0fff, 0x0fff};
-    pedal_analog_update(&analog, pressed, &input);
+    const uint16_t disconnected[PEDAL_INPUT_AXIS_COUNT] = {0, 0, 0};
+    assert(!pedal_analog_update(&analog, disconnected, &input));
+
+    const uint16_t samples[PEDAL_INPUT_AXIS_COUNT] = {0, 0x0800, 0x0fff};
+    assert(pedal_analog_update(&analog, samples, &input));
+    assert(analog.active);
+    assert(analog.axes[0].minimum == 0x0ffe);
+    assert(analog.axes[1].minimum == 0x07fe);
+    assert(analog.axes[2].minimum == 0);
     assert(input.axes[0] == 0);
     assert(input.axes[1] == 0);
     assert(input.axes[2] == 0);
+
+    assert(pedal_analog_update(&analog, samples, &input));
+    assert(input.axes[0] == 45);
+    assert(input.axes[1] == 0);
+    assert(input.axes[2] == 0);
     assert(input.auxiliary == 0);
+
+    assert(!pedal_analog_update(&analog, disconnected, &input));
+    assert(!analog.active);
+    assert(input.axes[0] == 0);
+    assert(input.axes[1] == 0);
+    assert(input.axes[2] == 0);
 }
 
 int main(void) {
-    test_detects_analog_connector_level();
-    test_scales_inverted_adc_samples();
+    test_initializes_calibration_defaults();
+    test_captures_and_scales_analog_samples();
     return 0;
 }
