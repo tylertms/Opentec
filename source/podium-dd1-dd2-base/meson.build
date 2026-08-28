@@ -14,6 +14,7 @@ force_feedback_state_sources = files('source/force_feedback/state.c')
 force_controller_sources = files('source/force_feedback/controller.c')
 force_effect_sources = files('source/force_feedback/effect.c')
 force_output_sources = files('source/force_feedback/output.c')
+force_output_enable_sources = files('source/force_feedback/output_enable.c')
 force_output_report_sources = files('source/force_feedback/output_report.c')
 force_output_scale_sources = files('source/force_feedback/output_scale.c')
 force_script_bits_sources = files('source/force_feedback/script_bits.c')
@@ -359,6 +360,14 @@ if not meson.is_cross_build()
     'base-force-output-test',
     'tests/source/force_output.c',
     force_output_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  force_output_enable_test = executable(
+    'base-force-output-enable-test',
+    'tests/source/force_output_enable.c',
+    force_output_enable_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -1114,6 +1123,11 @@ if not meson.is_cross_build()
   )
   test('base-force-controller', force_controller_test, suite: ['base', 'force-feedback'])
   test('base-force-output', force_output_test, suite: ['base', 'force-feedback'])
+  test(
+    'base-force-output-enable',
+    force_output_enable_test,
+    suite: ['base', 'force-feedback', 'output'],
+  )
   test(
     'base-force-output-report',
     force_output_report_test,
