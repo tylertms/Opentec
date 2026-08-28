@@ -5,7 +5,9 @@
 #include <stdint.h>
 
 #include "board/identity.h"
+#include "usb/console_descriptor.h"
 #include "usb/input_report.h"
+#include "usb/xbox_gip_session.h"
 
 enum {
     USB_DEVICE_REPORT_SIZE = 64,
@@ -41,6 +43,7 @@ void usb_device_init(BoardVariant variant);
 bool usb_device_set_input_mode(UsbInputReportMode mode);
 UsbInputReportMode usb_device_input_mode(void);
 bool usb_device_set_operating_mode(UsbOperatingMode mode);
+bool usb_device_set_xbox_mode(uint8_t wheel_mode, const uint8_t digest[USB_XBOX_GIP_DIGEST_SIZE]);
 UsbOperatingMode usb_device_operating_mode(void);
 void usb_device_service(void);
 bool usb_device_configured(void);
@@ -48,5 +51,6 @@ bool usb_device_take_output(UsbDeviceOutputReport *report);
 bool usb_device_send_input(const uint8_t *report, uint8_t length);
 bool usb_device_take_updater_packet(UsbDeviceUpdaterPacket *packet);
 bool usb_device_send_updater_packet(const uint8_t *data, uint8_t length);
+UsbXboxGipSessionAction usb_device_take_xbox_session_actions(void);
 
 #endif

@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "platform/time.h"
 #include "platform/usb.h"
 #include "usb/compatibility_descriptor.h"
 #include "usb/compatibility_report_descriptor.h"
@@ -15,6 +16,8 @@
 #include "usb/podium_report_descriptor.h"
 #include "usb/updater_control.h"
 #include "usb/updater_descriptor.h"
+#include "usb/xbox_gip_metadata.h"
+#include "usb/xbox_gip_service.h"
 
 enum {
     USB_CONTROL_ENDPOINT = 0,
@@ -59,6 +62,13 @@ static uint8_t value_data[2];
 static uint8_t updater_line_coding[USB_UPDATER_LINE_CODING_SIZE];
 static uint8_t xbox_security_descriptor[USB_XBOX_GIP_SECURITY_DESCRIPTOR_SIZE];
 static uint8_t xbox_os_string_descriptor[USB_XBOX_GIP_OS_STRING_DESCRIPTOR_SIZE];
+static uint8_t xbox_digest[USB_XBOX_GIP_DIGEST_SIZE];
+static uint8_t xbox_metadata[USB_XBOX_GIP_METADATA_SIZE];
+static uint8_t xbox_request[USB_XBOX_GIP_METADATA_PACKET_SIZE];
+static uint8_t xbox_response[USB_XBOX_GIP_METADATA_PACKET_SIZE];
+static char xbox_serial[USB_XBOX_GIP_SERIAL_SIZE];
+static uint8_t xbox_serial_descriptor[USB_XBOX_GIP_SERIAL_TEXT_SIZE * 2 + 2];
+static uint8_t xbox_response_length;
 static uint8_t input_report[USB_DEVICE_REPORT_SIZE];
 static uint8_t input_report_length;
 static uint8_t control_report_type;
@@ -70,11 +80,18 @@ static bool input_data_one;
 static bool output_data_one;
 static bool updater_input_data_one;
 static bool updater_output_data_one;
+static bool xbox_identity_ready;
+static bool xbox_request_ready;
+static bool xbox_response_ready;
+static bool xbox_input_busy;
 static BoardVariant board_variant;
 static UsbInputReportMode input_mode;
 static UsbOperatingMode operating_mode;
 static UsbUpdaterControl updater_control;
 static UsbDeviceUpdaterPacket updater_packet;
+static UsbXboxGipService xbox_service;
+static UsbXboxGipServiceIdentity xbox_service_identity;
+static UsbXboxGipSessionAction xbox_session_actions;
 
 static bool input_report_matches(const uint8_t *report, uint8_t length) {
     if (input_report_length != length) {
@@ -148,6 +165,17 @@ static bool build_descriptors(BoardVariant variant, UsbOperatingMode mode) {
         usb_updater_control_init(&updater_control);
         configuration_length = USB_UPDATER_CONFIGURATION_DESCRIPTOR_SIZE;
         report_length = 0;
+    } else if (mode == USB_OPERATING_MODE_XBOX_GIP) {
+        uint8_t mode_code = usb_xbox_gip_mode_code(variant, xbox_service_identity.wheel_mode);
+        if (!xbox_identity_ready || mode_code == 0) {
+            return false;
+        }
+        descriptor_identity = usb_xbox_gip_device_identity(0x0f00u | mode_code);
+        product = usb_xbox_gip_product_name(variant);
+        product_index = descriptor_identity.product_string;
+        usb_xbox_gip_configuration_descriptor_encode(configuration_descriptor);
+        configuration_length = USB_XBOX_GIP_CONFIGURATION_DESCRIPTOR_SIZE;
+        report_length = 0;
     } else {
         return false;
     }
@@ -174,6 +202,14 @@ static bool build_descriptors(BoardVariant variant, UsbOperatingMode mode) {
     }
     strings[product_index] =
         (UsbDescriptorView){.data = product_descriptor, .length = (uint16_t)product_length};
+    if (mode == USB_OPERATING_MODE_XBOX_GIP) {
+        size_t serial_length = usb_string_descriptor_encode(xbox_serial, xbox_serial_descriptor,
+                                                            sizeof(xbox_serial_descriptor));
+        strings[descriptor_identity.serial_string] = (UsbDescriptorView){
+            .data = xbox_serial_descriptor,
+            .length = (uint16_t)serial_length,
+        };
+    }
     descriptor_catalog = (UsbDescriptorCatalog){
         .device = {.data = device_descriptor, .length = sizeof(device_descriptor)},
         .configuration =
@@ -209,12 +245,27 @@ static void reset_state(void) {
     output_data_one = false;
     updater_input_data_one = false;
     updater_output_data_one = false;
+    xbox_request_ready = false;
+    xbox_response_ready = false;
+    xbox_input_busy = false;
+    xbox_session_actions = USB_XBOX_GIP_SESSION_ACTION_NONE;
+    for (uint8_t index = 0; index < USB_XBOX_GIP_METADATA_PACKET_SIZE; index++) {
+        xbox_request[index] = 0;
+    }
+    usb_xbox_gip_service_init(&xbox_service);
 }
 
 void usb_device_init(BoardVariant variant) {
     board_variant = variant;
+    xbox_identity_ready = false;
     usb_xbox_gip_security_descriptor_encode(xbox_security_descriptor);
     usb_xbox_gip_os_string_descriptor_encode(xbox_os_string_descriptor);
+    usb_xbox_gip_metadata_encode(xbox_metadata);
+    xbox_service_identity = (UsbXboxGipServiceIdentity){
+        .variant = variant,
+        .digest = xbox_digest,
+        .metadata = xbox_metadata,
+    };
     (void)build_descriptors(variant, USB_OPERATING_MODE_FANATEC);
     reset_state();
     platform_usb_init();
@@ -242,13 +293,14 @@ bool usb_device_set_input_mode(UsbInputReportMode mode) {
  * @brief Selects the active USB operating mode.
  *
  * Rebuilds and activates the descriptor and endpoint profile for primary HID modes zero through
- * four or the motor updater CDC mode five.
+ * four, the motor updater CDC mode five, or a prepared Xbox GIP mode six identity.
  *
  * @param[in] mode USB operating-mode selector.
  * @return True when the mode has a complete transport profile; otherwise false.
  */
 bool usb_device_set_operating_mode(UsbOperatingMode mode) {
-    if (mode > USB_OPERATING_MODE_UPDATER) {
+    if (mode > USB_OPERATING_MODE_XBOX_GIP ||
+        (mode == USB_OPERATING_MODE_XBOX_GIP && !xbox_identity_ready)) {
         return false;
     }
     platform_usb_detach();
@@ -260,6 +312,29 @@ bool usb_device_set_operating_mode(UsbOperatingMode mode) {
     platform_usb_control_ready();
     platform_usb_restart();
     return true;
+}
+
+/**
+ * @brief Selects Xbox GIP mode for an attached wheel.
+ *
+ * Applies the wheel-specific product identifier, reverse-digest serial text, discovery digest,
+ * and Xbox endpoint service before restarting USB in operating mode six.
+ *
+ * @param[in] wheel_mode Attached-wheel operating-mode selector.
+ * @param[in] digest Eight-byte attached-wheel status digest.
+ * @return True when the wheel mode has a supported Xbox identity; otherwise false.
+ */
+bool usb_device_set_xbox_mode(uint8_t wheel_mode, const uint8_t digest[USB_XBOX_GIP_DIGEST_SIZE]) {
+    if (digest == 0 || usb_xbox_gip_mode_code(board_variant, wheel_mode) == 0) {
+        return false;
+    }
+    xbox_service_identity.wheel_mode = wheel_mode;
+    for (uint8_t index = 0; index < USB_XBOX_GIP_DIGEST_SIZE; index++) {
+        xbox_digest[index] = digest[index];
+    }
+    usb_xbox_gip_serial_encode(xbox_digest, xbox_serial);
+    xbox_identity_ready = true;
+    return usb_device_set_operating_mode(USB_OPERATING_MODE_XBOX_GIP);
 }
 
 /**
@@ -414,7 +489,14 @@ static void handle_setup(void) {
     handle_control_transfer();
 }
 
-static void configure_hid_endpoint(void) {
+/**
+ * @brief Configures the primary bidirectional USB endpoint.
+ *
+ * Enables endpoint 1 in both directions and arms both 64-byte output banks with alternating data
+ * toggles for HID and Xbox GIP operating modes.
+ *
+ */
+static void configure_primary_endpoint(void) {
     input_data_one = false;
     output_data_one = false;
     platform_usb_configure_endpoint(USB_HID_ENDPOINT, true, true);
@@ -457,7 +539,7 @@ static void complete_control_change(void) {
             if (operating_mode == USB_OPERATING_MODE_UPDATER) {
                 configure_updater_endpoints();
             } else {
-                configure_hid_endpoint();
+                configure_primary_endpoint();
             }
         } else {
             if (operating_mode == USB_OPERATING_MODE_UPDATER) {
@@ -542,6 +624,28 @@ static void handle_hid_output(void) {
     }
 }
 
+/**
+ * @brief Captures an Xbox GIP request packet.
+ *
+ * Zero-fills the 64-byte request workspace, copies the received endpoint payload, and rearms the
+ * next endpoint 1 output bank.
+ *
+ */
+static void handle_xbox_output(void) {
+    if (!xbox_request_ready) {
+        for (uint8_t index = 0; index < USB_XBOX_GIP_METADATA_PACKET_SIZE; index++) {
+            xbox_request[index] = 0;
+        }
+        for (uint8_t index = 0; index < usb_event.length; index++) {
+            xbox_request[index] = usb_event.data[index];
+        }
+        xbox_request_ready = true;
+    }
+    if (platform_usb_receive(USB_HID_ENDPOINT, USB_DEVICE_REPORT_SIZE, output_data_one)) {
+        output_data_one = !output_data_one;
+    }
+}
+
 static void handle_updater_output(void) {
     updater_packet.length = usb_event.length;
     for (uint8_t index = 0; index < usb_event.length; index++) {
@@ -571,7 +675,11 @@ static void handle_event(void) {
         if (usb_event.endpoint == USB_CONTROL_ENDPOINT) {
             handle_control_output();
         } else if (usb_event.endpoint == USB_HID_ENDPOINT) {
-            handle_hid_output();
+            if (operating_mode == USB_OPERATING_MODE_XBOX_GIP) {
+                handle_xbox_output();
+            } else {
+                handle_hid_output();
+            }
         } else if (operating_mode == USB_OPERATING_MODE_UPDATER &&
                    usb_event.endpoint == USB_UPDATER_DATA_ENDPOINT) {
             handle_updater_output();
@@ -580,6 +688,9 @@ static void handle_event(void) {
     case PLATFORM_USB_EVENT_IN_COMPLETE:
         if (usb_event.endpoint == USB_CONTROL_ENDPOINT) {
             handle_control_input_complete();
+        } else if (operating_mode == USB_OPERATING_MODE_XBOX_GIP &&
+                   usb_event.endpoint == USB_HID_ENDPOINT) {
+            xbox_input_busy = false;
         }
         break;
     case PLATFORM_USB_EVENT_SUSPEND:
@@ -587,10 +698,45 @@ static void handle_event(void) {
     }
 }
 
+/**
+ * @brief Services the Xbox GIP endpoint exchange.
+ *
+ * Preserves one response until endpoint 1 can accept it, waits for transfer completion before
+ * producing another response, and passes received requests through the discovery and session
+ * service.
+ *
+ */
+static void service_xbox_gip(void) {
+    if (operating_mode != USB_OPERATING_MODE_XBOX_GIP || !usb_device_configured() ||
+        xbox_input_busy) {
+        return;
+    }
+    if (!xbox_response_ready) {
+        UsbXboxGipServiceResult result = usb_xbox_gip_service_poll(
+            &xbox_service, &xbox_service_identity, xbox_request, platform_time_ms(), xbox_response);
+        xbox_request_ready = false;
+        for (uint8_t index = 0; index < USB_XBOX_GIP_METADATA_PACKET_SIZE; index++) {
+            xbox_request[index] = 0;
+        }
+        xbox_session_actions |= result.session_actions;
+        if (result.response_length == 0) {
+            return;
+        }
+        xbox_response_length = result.response_length;
+        xbox_response_ready = true;
+    }
+    if (platform_usb_send(USB_HID_ENDPOINT, xbox_response, xbox_response_length, input_data_one)) {
+        input_data_one = !input_data_one;
+        xbox_response_ready = false;
+        xbox_input_busy = true;
+    }
+}
+
 void usb_device_service(void) {
     while (platform_usb_take_event(&usb_event)) {
         handle_event();
     }
+    service_xbox_gip();
 }
 
 bool usb_device_configured(void) { return usb_device_control_configured(&device_control); }
@@ -642,4 +788,18 @@ bool usb_device_send_updater_packet(const uint8_t *data, uint8_t length) {
     }
     updater_input_data_one = !updater_input_data_one;
     return true;
+}
+
+/**
+ * @brief Takes pending Xbox GIP session actions.
+ *
+ * Returns every accepted session action accumulated since the previous take and clears the
+ * pending action set.
+ *
+ * @return Pending Xbox GIP session actions.
+ */
+UsbXboxGipSessionAction usb_device_take_xbox_session_actions(void) {
+    UsbXboxGipSessionAction actions = xbox_session_actions;
+    xbox_session_actions = USB_XBOX_GIP_SESSION_ACTION_NONE;
+    return actions;
 }

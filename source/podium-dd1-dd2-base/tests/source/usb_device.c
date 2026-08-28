@@ -30,6 +30,7 @@ static bool endpoint_input[5];
 static bool endpoint_output[5];
 static bool stalled;
 static uint8_t restart_count;
+static uint32_t now_ms;
 
 static void reset_platform(void) {
     memset(events, 0, sizeof(events));
@@ -47,6 +48,7 @@ static void reset_platform(void) {
     memset(endpoint_output, 0, sizeof(endpoint_output));
     stalled = false;
     restart_count = 0;
+    now_ms = 0;
 }
 
 static void push_event(PlatformUsbEventType type, uint8_t endpoint, const uint8_t *data,
@@ -118,6 +120,7 @@ void platform_usb_unconfigure_endpoint(uint8_t endpoint) {
     }
 }
 void platform_usb_stall(uint8_t endpoint) { stalled = endpoint == 0; }
+uint32_t platform_time_ms(void) { return now_ms; }
 
 static void complete_control_input(void) {
     push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 0, 0, 0);
@@ -350,11 +353,63 @@ static void test_exchanges_updater_packets(void) {
     assert(memcmp(sent.data, bulk_input, sizeof(bulk_input)) == 0);
 }
 
+static void test_exchanges_xbox_gip_discovery(void) {
+    static const uint8_t digest[USB_XBOX_GIP_DIGEST_SIZE] = {
+        0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0,
+    };
+    static const uint8_t get_device_descriptor[] = {0x80, 6, 0, 1, 0, 0, 18, 0};
+    static const uint8_t get_configuration_descriptor[] = {0x80, 6, 0, 2, 0, 0, 64, 0};
+    static const uint8_t set_configuration[] = {0x00, 9, 1, 0, 0, 0, 0, 0};
+    static const uint8_t activate[] = {5, 0, 0, 0, 0};
+
+    usb_device_init(BOARD_VARIANT_DD1);
+    assert(!usb_device_set_xbox_mode(0, digest));
+    assert(usb_device_set_xbox_mode(6, digest));
+    assert(usb_device_operating_mode() == USB_OPERATING_MODE_XBOX_GIP);
+
+    push_setup(get_device_descriptor);
+    usb_device_service();
+    assert(sent.data[4] == 0xff && sent.data[5] == 0xff && sent.data[6] == 0xff);
+    assert(sent.data[10] == 0x50 && sent.data[11] == 0x0f);
+    assert(sent.data[16] == 3);
+    complete_control_input();
+
+    push_setup(get_configuration_descriptor);
+    usb_device_service();
+    assert(sent.length == USB_XBOX_GIP_CONFIGURATION_DESCRIPTOR_SIZE);
+    assert(sent.data[20] == 0x01 && sent.data[27] == 0x81);
+    complete_control_input();
+    assert_string_descriptor(2, "FANATEC Podium Wheel Base DD1");
+    assert_string_descriptor(3, "F0DEBC9A78563412");
+
+    receive_count = 0;
+    push_setup(set_configuration);
+    usb_device_service();
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 0, 0, 0);
+    now_ms = 100;
+    usb_device_service();
+    assert(endpoint_input[1] && endpoint_output[1]);
+    assert(receive_count == 2);
+    assert(sent.endpoint == 1 && sent.length == 32);
+    assert(sent.data[0] == 2 && sent.data[2] == 1);
+    assert(memcmp(&sent.data[4], digest, sizeof(digest)) == 0);
+
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 1, 0, 0);
+    push_event(PLATFORM_USB_EVENT_OUT, 1, activate, sizeof(activate));
+    usb_device_service();
+    assert(sent.endpoint == 1 && sent.length == 8);
+    assert(sent.data[0] == 3 && sent.data[2] == 2);
+    assert(usb_device_take_xbox_session_actions() ==
+           (USB_XBOX_GIP_SESSION_ACTION_SEND_READY | USB_XBOX_GIP_SESSION_ACTION_REFRESH_STATE));
+    assert(usb_device_take_xbox_session_actions() == USB_XBOX_GIP_SESSION_ACTION_NONE);
+}
+
 int main(void) {
     test_enumerates_podium_device();
     test_returns_xbox_security_descriptor();
     test_exchanges_hid_reports();
     test_reenumerates_compatibility_modes();
     test_exchanges_updater_packets();
+    test_exchanges_xbox_gip_discovery();
     return 0;
 }
