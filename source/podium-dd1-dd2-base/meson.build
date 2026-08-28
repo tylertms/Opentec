@@ -67,6 +67,7 @@ usb_updater_descriptor_sources = files('source/usb/updater_descriptor.c')
 usb_updater_control_sources = files('source/usb/updater_control.c')
 usb_descriptor_sources = files('source/usb/descriptor.c')
 usb_diagnostic_report_sources = files('source/usb/diagnostic_report.c')
+usb_tuning_menu_service_sources = files('source/usb/tuning_menu_service.c')
 usb_tuning_profile_report_sources = files('source/usb/tuning_profile_report.c')
 usb_tuning_profile_service_sources = files('source/usb/tuning_profile_service.c')
 usb_control_request_sources = files('source/usb/control_request.c')
@@ -220,6 +221,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'usb-updater-control': 'source/usb/updater_control.c',
     'usb-descriptor': 'source/usb/descriptor.c',
     'usb-diagnostic-report': 'source/usb/diagnostic_report.c',
+    'usb-tuning-menu-service': 'source/usb/tuning_menu_service.c',
     'usb-tuning-profile-report': 'source/usb/tuning_profile_report.c',
     'usb-tuning-profile-service': 'source/usb/tuning_profile_service.c',
     'usb-control-request': 'source/usb/control_request.c',
@@ -1025,6 +1027,14 @@ if not meson.is_cross_build()
     usb_tuning_profile_report_sources,
     profile_bank_sources,
     profile_tuning_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  usb_tuning_menu_service_test = executable(
+    'base-usb-tuning-menu-service-test',
+    'tests/source/usb_tuning_menu_service.c',
+    usb_tuning_menu_service_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -1859,6 +1869,11 @@ if not meson.is_cross_build()
   )
   test('base-usb-vendor-command', usb_vendor_command_test, suite: ['base', 'usb', 'output'])
   test('base-usb-diagnostic-report', usb_diagnostic_report_test, suite: ['base', 'usb', 'output'])
+  test(
+    'base-usb-tuning-menu-service',
+    usb_tuning_menu_service_test,
+    suite: ['base', 'usb', 'profile'],
+  )
   test(
     'base-usb-tuning-profile-report',
     usb_tuning_profile_report_test,

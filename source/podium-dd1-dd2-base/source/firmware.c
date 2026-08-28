@@ -54,6 +54,7 @@
 #include "usb/motor_vendor_service.h"
 #include "usb/operating_mode_command.h"
 #include "usb/output_command.h"
+#include "usb/tuning_menu_service.h"
 #include "usb/tuning_profile_report.h"
 #include "usb/tuning_profile_service.h"
 #include "usb/vendor_command.h"
@@ -118,9 +119,11 @@ static uint8_t usb_motor_acknowledgement[USB_DEVICE_REPORT_SIZE];
 static uint8_t usb_motor_response[USB_DEVICE_REPORT_SIZE];
 static uint8_t usb_wheel_transfer_response[USB_DEVICE_REPORT_SIZE];
 static UsbDiagnosticReportService usb_diagnostic_report_service;
+static UsbTuningMenuService usb_tuning_menu_service;
 static UsbTuningProfileService usb_tuning_profile_service;
 static UsbDiagnosticSnapshot usb_diagnostic_snapshot;
 static uint8_t usb_diagnostic_report[USB_DEVICE_REPORT_SIZE];
+static uint8_t usb_tuning_menu_response[USB_DEVICE_REPORT_SIZE];
 static uint8_t usb_tuning_profile_response[USB_DEVICE_REPORT_SIZE];
 static UsbDeviceOutputReport usb_device_output_report;
 static UsbConnectionMonitor usb_connection_monitor;
@@ -152,6 +155,7 @@ static bool force_output_prompt_visible;
 static bool usb_motor_acknowledgement_ready;
 static bool usb_motor_response_ready;
 static bool usb_wheel_transfer_response_ready;
+static bool usb_tuning_menu_response_ready;
 static bool usb_tuning_profile_response_ready;
 static bool usb_wheel_transfer_response_pending[WHEEL_TRANSFER_REQUEST_COUNT];
 
@@ -327,7 +331,7 @@ static void initialize_motor(void) {
  * @brief Initializes the host command bridge.
  *
  * Attaches report-6 mailbox storage and wheel-transfer requests to the shared type-four command
- * transport, then initializes diagnostic and tuning-profile vendor responses.
+ * transport, then initializes diagnostic and tuning vendor responses.
  */
 static void initialize_usb_command_bridge(void) {
     command_transport_init(&command_transport);
@@ -336,10 +340,12 @@ static void initialize_usb_command_bridge(void) {
     (void)usb_motor_vendor_service_init(&usb_motor_vendor_service, &usb_motor_buffers);
     wheel_transfer_service_init(&wheel_transfer_service);
     usb_diagnostic_report_service_init(&usb_diagnostic_report_service);
+    usb_tuning_menu_service_init(&usb_tuning_menu_service);
     usb_tuning_profile_service_init(&usb_tuning_profile_service);
     usb_motor_acknowledgement_ready = false;
     usb_motor_response_ready = false;
     usb_wheel_transfer_response_ready = false;
+    usb_tuning_menu_response_ready = false;
     usb_tuning_profile_response_ready = false;
     for (uint8_t request = 0; request < WHEEL_TRANSFER_REQUEST_COUNT; request++) {
         usb_wheel_transfer_response_pending[request] = false;
@@ -489,6 +495,11 @@ static void service_usb_command_bridge(uint32_t now_ms) {
                                                   usb_tuning_profile_response);
         usb_tuning_profile_response_ready = true;
     }
+    if (!usb_tuning_menu_response_ready &&
+        usb_tuning_menu_service_response_pending(&usb_tuning_menu_service)) {
+        usb_tuning_menu_service_encode_response(&usb_tuning_menu_service, usb_tuning_menu_response);
+        usb_tuning_menu_response_ready = true;
+    }
     update_usb_diagnostic_snapshot(now_ms);
     bool usb_diagnostic_report_ready = usb_diagnostic_report_prepare(
         &usb_diagnostic_report_service, &usb_diagnostic_snapshot, usb_diagnostic_report);
@@ -503,14 +514,21 @@ static void service_usb_command_bridge(uint32_t now_ms) {
         usb_tuning_profile_service_response_sent(&usb_tuning_profile_service);
     }
     if (!usb_motor_acknowledgement_ready && !usb_wheel_transfer_response_ready &&
-        !usb_tuning_profile_response_ready && usb_diagnostic_report_ready &&
-        usb_device_send_vendor_report(usb_diagnostic_report)) {
+        !usb_tuning_profile_response_ready && usb_tuning_menu_response_ready &&
+        usb_device_send_vendor_report(usb_tuning_menu_response)) {
+        usb_tuning_menu_response_ready = false;
+        usb_tuning_menu_service_response_sent(&usb_tuning_menu_service);
+    }
+    if (!usb_motor_acknowledgement_ready && !usb_wheel_transfer_response_ready &&
+        !usb_tuning_profile_response_ready && !usb_tuning_menu_response_ready &&
+        usb_diagnostic_report_ready && usb_device_send_vendor_report(usb_diagnostic_report)) {
         usb_diagnostic_report_commit(&usb_diagnostic_report_service, usb_diagnostic_report);
         usb_diagnostic_report_ready = false;
     }
     if (!usb_motor_acknowledgement_ready && !usb_wheel_transfer_response_ready &&
-        !usb_tuning_profile_response_ready && !usb_diagnostic_report_ready &&
-        usb_motor_response_ready && usb_device_send_vendor_report(usb_motor_response)) {
+        !usb_tuning_profile_response_ready && !usb_tuning_menu_response_ready &&
+        !usb_diagnostic_report_ready && usb_motor_response_ready &&
+        usb_device_send_vendor_report(usb_motor_response)) {
         usb_motor_response_ready = false;
     }
 }
@@ -640,6 +658,12 @@ static void service_usb_output(void) {
             usb_vendor_command_decode_wheel_report_seventeen(&usb_vendor_command);
         if (wheel_report_seventeen != 0) {
             wheel_service_queue_report_seventeen(&wheel_service, wheel_report_seventeen);
+            return;
+        }
+        if (usb_tuning_menu_service_apply(&usb_tuning_menu_service, &usb_vendor_command)) {
+            if (usb_tuning_menu_service_response_pending(&usb_tuning_menu_service)) {
+                usb_tuning_menu_response_ready = false;
+            }
             return;
         }
         if (usb_diagnostic_report_apply_command(&usb_diagnostic_report_service,
