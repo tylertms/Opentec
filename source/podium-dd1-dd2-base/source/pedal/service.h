@@ -93,6 +93,8 @@ void pedal_service_set_auxiliary_override(PedalService *service, bool active, ui
 bool pedal_service_calibration_active(const PedalService *service);
 bool pedal_service_auxiliary_automatic_calibration(const PedalService *service);
 void pedal_service_set_protocol_status(PedalService *service, const PedalProtocolStatus *status);
+void pedal_service_set_brake_indicator_selector(PedalService *service, uint8_t selector);
+bool pedal_service_legacy_transport_active(const PedalService *service);
 void pedal_service_apply_protocol_command(PedalService *service,
                                           const PedalProtocolCommand *command);
 void pedal_service_request_control(PedalService *service, PedalV3Control control);

@@ -104,6 +104,7 @@ motor_tuning_sync_sources = files('source/motor/tuning_sync.c')
 pedal_frame_sources = files('source/pedal/frame.c')
 pedal_axis_sources = files('source/pedal/axis.c')
 pedal_analog_sources = files('source/pedal/analog.c')
+pedal_brake_indicator_sources = files('source/pedal/brake_indicator.c')
 pedal_calibration_command_sources = files('source/pedal/calibration_command.c')
 pedal_input_sources = files('source/pedal/input.c')
 pedal_protocol_sources = files('source/pedal/protocol.c')
@@ -270,6 +271,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'pedal-frame': 'source/pedal/frame.c',
     'pedal-axis': 'source/pedal/axis.c',
     'pedal-analog': 'source/pedal/analog.c',
+    'pedal-brake-indicator': 'source/pedal/brake_indicator.c',
     'pedal-calibration-command': 'source/pedal/calibration_command.c',
     'pedal-input': 'source/pedal/input.c',
     'pedal-protocol': 'source/pedal/protocol.c',
@@ -1305,6 +1307,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  pedal_brake_indicator_test = executable(
+    'base-pedal-brake-indicator-test',
+    'tests/source/pedal_brake_indicator.c',
+    pedal_brake_indicator_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   pedal_input_test = executable(
     'base-pedal-input-test',
     'tests/source/pedal_input.c',
@@ -2053,6 +2063,7 @@ if not meson.is_cross_build()
   test('base-transfer-frame', transfer_frame_test, suite: ['base', 'transfer'])
   test('base-transfer-session', transfer_session_test, suite: ['base', 'transfer'])
   test('base-pedal-axis', pedal_axis_test, suite: ['base', 'pedal', 'analog'])
+  test('base-pedal-brake-indicator', pedal_brake_indicator_test, suite: ['base', 'pedal'])
   test('base-pedal-input', pedal_input_test, suite: ['base', 'pedal', 'input'])
   test(
     'base-pedal-calibration-command',

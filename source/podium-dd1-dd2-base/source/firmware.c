@@ -22,6 +22,7 @@
 #include "motor/status_service.h"
 #include "motor/telemetry_service.h"
 #include "motor/tuning_service.h"
+#include "pedal/brake_indicator.h"
 #include "pedal/calibration_command.h"
 #include "pedal/input.h"
 #include "pedal/protocol_command.h"
@@ -113,6 +114,7 @@ static bool motor_position_ready;
 static WheelPositionCalibration wheel_position_calibration;
 static WheelVelocityEstimator wheel_velocity_estimator;
 static PedalService pedal_service;
+static PedalBrakeIndicator pedal_brake_indicator;
 static SerialService serial_service;
 static WheelService wheel_service;
 static WheelStatusService wheel_status_service;
@@ -1075,6 +1077,7 @@ int main(void) {
     platform_aux_bus_init();
     platform_pedal_link_init();
     pedal_service_init(&pedal_service);
+    pedal_brake_indicator_init(&pedal_brake_indicator);
     platform_serial_link_init();
     serial_service_init(&serial_service);
     wheel_service_init(&wheel_service, &serial_service);
@@ -1102,6 +1105,13 @@ int main(void) {
         service_analog_input(now_ms);
         service_motor_link();
         pedal_service_run(&pedal_service, now_ms);
+        uint8_t brake_indicator_selector = pedal_brake_indicator_update(
+            &pedal_brake_indicator, tuning_profile->brake_indicator_level,
+            pedal_service_input(&pedal_service)->axes[1],
+            pedal_service_legacy_transport_active(&pedal_service));
+        if (brake_indicator_selector != PEDAL_BRAKE_INDICATOR_NO_UPDATE) {
+            pedal_service_set_brake_indicator_selector(&pedal_service, brake_indicator_selector);
+        }
         serial_service_run(&serial_service, now_ms);
         service_usb_command_bridge(now_ms);
         wheel_status_service_run(&wheel_status_service, now_ms, !serial_command_waiting());

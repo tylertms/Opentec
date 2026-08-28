@@ -251,6 +251,32 @@ void pedal_service_set_protocol_status(PedalService *service, const PedalProtoco
 }
 
 /**
+ * @brief Applies the brake indicator to the pedal protocol selector.
+ *
+ * Replaces only the first protocol selector and preserves the configured value, second selector,
+ * and legacy scale.
+ *
+ * @param[in,out] service Pedal protocol status to update.
+ * @param[in] selector Active or released brake-indicator selector.
+ */
+void pedal_service_set_brake_indicator_selector(PedalService *service, uint8_t selector) {
+    service->protocol_status.first = selector;
+}
+
+/**
+ * @brief Reports whether the byte-oriented legacy pedal transport is active.
+ *
+ * Includes both request and response phases of the legacy polling cycle.
+ *
+ * @param[in] service Current pedal service phase.
+ * @return True during either legacy transport phase; otherwise false.
+ */
+bool pedal_service_legacy_transport_active(const PedalService *service) {
+    return service->phase == PEDAL_SERVICE_LEGACY_REQUEST ||
+           service->phase == PEDAL_SERVICE_LEGACY_RESPONSE;
+}
+
+/**
  * @brief Applies a host update to the pedal protocol status.
  *
  * Protocol updates always replace the first selector. Value 0x66 preserves the current value and

@@ -755,6 +755,31 @@ static void test_applies_pedal_protocol_commands(void) {
     assert(service.protocol_status.scale == 0x88);
 }
 
+static void test_applies_transport_specific_brake_indicator_selector(void) {
+    PedalService service;
+    reset_link();
+    pedal_service_init(&service);
+    service.protocol_status = (PedalProtocolStatus){
+        .value = 0x10,
+        .first = 0x20,
+        .second = 0x30,
+        .scale = 0x40,
+    };
+
+    pedal_service_set_brake_indicator_selector(&service, UINT8_MAX);
+    assert(service.protocol_status.value == 0x10);
+    assert(service.protocol_status.first == UINT8_MAX);
+    assert(service.protocol_status.second == 0x30);
+    assert(service.protocol_status.scale == 0x40);
+
+    service.phase = PEDAL_SERVICE_LEGACY_REQUEST;
+    assert(pedal_service_legacy_transport_active(&service));
+    service.phase = PEDAL_SERVICE_LEGACY_RESPONSE;
+    assert(pedal_service_legacy_transport_active(&service));
+    service.phase = PEDAL_SERVICE_V3_STREAM;
+    assert(!pedal_service_legacy_transport_active(&service));
+}
+
 int main(void) {
     test_connects_and_publishes_v3_input();
     test_applies_active_brake_force();
@@ -775,5 +800,6 @@ int main(void) {
     test_local_auxiliary_override_restores_the_remote_value();
     test_selects_auxiliary_automatic_calibration_from_pedal_state();
     test_applies_pedal_protocol_commands();
+    test_applies_transport_specific_brake_indicator_selector();
     return 0;
 }
