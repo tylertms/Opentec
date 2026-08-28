@@ -33,6 +33,7 @@ force_script_sample_sources = files('source/force_feedback/script_sample.c')
 force_script_scheduler_sources = files('source/force_feedback/script_scheduler.c')
 force_script_service_sources = files('source/force_feedback/script_service.c')
 force_script_store_sources = files('source/force_feedback/script_store.c')
+force_script_tick_sources = files('source/force_feedback/script_tick.c')
 force_filter_sources = files('source/force_feedback/filter.c')
 force_safety_sources = files('source/force_feedback/safety.c')
 force_soft_stop_sources = files('source/force_feedback/soft_stop.c')
@@ -135,6 +136,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'force-script-scheduler': 'source/force_feedback/script_scheduler.c',
     'force-script-service': 'source/force_feedback/script_service.c',
     'force-script-store': 'source/force_feedback/script_store.c',
+    'force-script-tick': 'source/force_feedback/script_tick.c',
     'force-filter': 'source/force_feedback/filter.c',
     'force-safety': 'source/force_feedback/safety.c',
     'force-soft-stop': 'source/force_feedback/soft_stop.c',
@@ -428,6 +430,31 @@ if not meson.is_cross_build()
     'base-force-script-scheduler-test',
     'tests/source/force_script_scheduler.c',
     force_script_scheduler_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  force_script_tick_test = executable(
+    'base-force-script-tick-test',
+    'tests/source/force_script_tick.c',
+    force_script_tick_sources,
+    force_script_runtime_sources,
+    force_script_control_sources,
+    force_script_scheduler_sources,
+    force_script_service_sources,
+    force_script_executor_sources,
+    force_script_operation_sources,
+    force_script_operand_sources,
+    force_script_motion_sources,
+    force_script_store_sources,
+    force_script_input_sources,
+    force_script_bits_sources,
+    force_script_compare_sources,
+    force_script_integer_sources,
+    force_script_logic_sources,
+    force_script_math_sources,
+    force_script_range_sources,
+    force_script_sample_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -1085,6 +1112,11 @@ if not meson.is_cross_build()
   test(
     'base-force-script-scheduler',
     force_script_scheduler_test,
+    suite: ['base', 'force-feedback', 'script'],
+  )
+  test(
+    'base-force-script-tick',
+    force_script_tick_test,
     suite: ['base', 'force-feedback', 'script'],
   )
   test(

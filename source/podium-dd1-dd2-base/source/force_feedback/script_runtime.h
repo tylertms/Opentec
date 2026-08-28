@@ -17,6 +17,8 @@ typedef struct {
     ForceFeedbackScriptClock clock;
     ForceFeedbackScriptMotionState motion;
     ForceFeedbackScriptScheduler scheduler;
+    uint32_t host_tick_snapshot;
+    uint32_t idle_tick_snapshot;
     ForceFeedbackRuntimeMode mode;
 } ForceFeedbackScriptSystem;
 

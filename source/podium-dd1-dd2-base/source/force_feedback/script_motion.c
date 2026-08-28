@@ -50,6 +50,8 @@ static float clamp_position(float position) {
  * @param[in] motion_ticks Current 10 kHz motion-clock count.
  * @param[in] wheel_position Signed raw wheel-position sample.
  * @param[in] half_travel Positive raw wheel travel from center to either endpoint.
+ * @param[in] integrate_inputs true to apply a matching live integration slot; false to use only
+ * wheel sampling or the retained position.
  * @pre runtime, inputs, and state point to valid objects.
  * @pre half_travel is nonzero when selector zero does not match a live-input slot.
  */
@@ -57,15 +59,17 @@ void force_feedback_script_motion_update(ForceFeedbackScriptRuntime *runtime,
                                          const ForceFeedbackScriptInputs *inputs,
                                          ForceFeedbackScriptMotionState *state,
                                          uint32_t motion_ticks, int32_t wheel_position,
-                                         uint32_t half_travel) {
+                                         uint32_t half_travel, bool integrate_inputs) {
     uint32_t selector = runtime->motion[MOTION_SELECTOR];
     float position = read_value(runtime->motion[MOTION_POSITION]);
     bool integrated = false;
-    for (uint8_t index = 0; index < FORCE_FEEDBACK_SCRIPT_INPUT_SLOT_COUNT; index++) {
-        if (selector == inputs->slots[index].status) {
-            position = clamp_position(position + read_value(inputs->slots[index].duration));
-            integrated = true;
-            break;
+    if (integrate_inputs) {
+        for (uint8_t index = 0; index < FORCE_FEEDBACK_SCRIPT_INPUT_SLOT_COUNT; index++) {
+            if (selector == inputs->slots[index].status) {
+                position = clamp_position(position + read_value(inputs->slots[index].duration));
+                integrated = true;
+                break;
+            }
         }
     }
     if (!integrated && selector == FORCE_FEEDBACK_SCRIPT_INPUT_POSITION) {

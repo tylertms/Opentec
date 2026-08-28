@@ -1,6 +1,7 @@
 #ifndef OPENTEC_BASE_FORCE_FEEDBACK_SCRIPT_MOTION_H
 #define OPENTEC_BASE_FORCE_FEEDBACK_SCRIPT_MOTION_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "force_feedback/script_operand.h"
@@ -15,6 +16,6 @@ void force_feedback_script_motion_update(ForceFeedbackScriptRuntime *runtime,
                                          const ForceFeedbackScriptInputs *inputs,
                                          ForceFeedbackScriptMotionState *state,
                                          uint32_t motion_ticks, int32_t wheel_position,
-                                         uint32_t half_travel);
+                                         uint32_t half_travel, bool integrate_inputs);
 
 #endif
