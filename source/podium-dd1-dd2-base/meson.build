@@ -457,6 +457,10 @@ if not meson.is_cross_build()
     force_script_math_sources,
     force_script_range_sources,
     force_script_sample_sources,
+    force_script_output_sources,
+    force_filter_sources,
+    force_soft_stop_sources,
+    force_output_scale_sources,
     build_by_default: false,
     include_directories: base_include,
   )

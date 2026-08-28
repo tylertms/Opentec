@@ -111,3 +111,39 @@ ForceFeedbackScriptOutputPolicy force_feedback_script_tick(ForceFeedbackScriptSy
     return system->values.motion[MOTION_SELECTOR] == 0 ? FORCE_FEEDBACK_SCRIPT_OUTPUT_MOTION
                                                        : FORCE_FEEDBACK_SCRIPT_OUTPUT_NONE;
 }
+
+/**
+ * @brief Service one force-script tick and conditionally update the motor output report.
+ *
+ * Leaves the existing report untouched when no motor write is selected. Zero-output policies
+ * pass zero motion through the same smoothing, ramp, position-limit, clamp, and motor-scaling
+ * path used for a script motion write.
+ *
+ * @param[in,out] system Complete script runtime and scheduler state.
+ * @param[in,out] output_state Script smoothing and wheel-range end-stop state.
+ * @param[in] now Current monotonic time in milliseconds.
+ * @param[in] wheel_position Signed centered wheel-position sample.
+ * @param[in] half_travel Positive wheel travel from center to either endpoint.
+ * @param[in] config Current smoothing, strength, ramp, range, and output limits.
+ * @param[in,out] report Motor output report to update when a write is selected.
+ * @return Whether a motor write occurred and whether the wheel is outside its travel limit.
+ */
+ForceFeedbackScriptTickResult force_feedback_script_tick_output(
+    ForceFeedbackScriptSystem *system, ForceFeedbackScriptOutputState *output_state, uint32_t now,
+    int32_t wheel_position, uint32_t half_travel, const ForceFeedbackScriptOutputConfig *config,
+    ForceOutputReport *report) {
+    ForceFeedbackScriptOutputPolicy policy =
+        force_feedback_script_tick(system, now, wheel_position, half_travel);
+    if (policy == FORCE_FEEDBACK_SCRIPT_OUTPUT_NONE) {
+        return (ForceFeedbackScriptTickResult){0};
+    }
+
+    uint32_t motion =
+        policy == FORCE_FEEDBACK_SCRIPT_OUTPUT_ZERO ? 0 : system->values.motion[MOTION_FORCE];
+    bool outside_travel = force_feedback_script_output_apply(output_state, motion, wheel_position,
+                                                             now, config, report);
+    return (ForceFeedbackScriptTickResult){
+        .wrote_output = true,
+        .outside_travel = outside_travel,
+    };
+}

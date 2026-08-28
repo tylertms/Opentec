@@ -88,9 +88,50 @@ static void test_handles_position_only_and_idle_selector(void) {
     assert(position_only.values.slots[0].execution_count == 0);
 }
 
+static ForceFeedbackScriptOutputConfig full_output_config(void) {
+    return (ForceFeedbackScriptOutputConfig){
+        .soft_stop = {.travel_limit = 2000},
+        .available_percent = 100,
+        .output_strength_percent = 100,
+        .automatic_strength = 100,
+        .ramp_percent = 100,
+        .smoothing_intensity = 100,
+        .tuning_strength = 100,
+    };
+}
+
+static void test_updates_report_only_for_selected_output(void) {
+    const uint8_t script[] = {0xa0, 0x02, 0x52};
+    ForceFeedbackScriptSystem system = prepare_system(script, sizeof(script));
+    system.clock.motion_ticks = 10;
+    ForceFeedbackScriptOutputState output_state;
+    force_feedback_script_output_init(&output_state);
+    ForceFeedbackScriptOutputConfig config = full_output_config();
+    ForceOutputReport report = {.secondary_magnitude = 1234};
+
+    ForceFeedbackScriptTickResult result =
+        force_feedback_script_tick_output(&system, &output_state, 1, 0, 1000, &config, &report);
+    assert(result.wrote_output);
+    assert(!result.outside_travel);
+    assert(report.primary_magnitude == 0);
+
+    report.primary_magnitude = 4321;
+    result =
+        force_feedback_script_tick_output(&system, &output_state, 2, 0, 1000, &config, &report);
+    assert(!result.wrote_output);
+    assert(report.primary_magnitude == 4321);
+
+    system.clock.motion_ticks = 20;
+    result =
+        force_feedback_script_tick_output(&system, &output_state, 7, 0, 1000, &config, &report);
+    assert(result.wrote_output);
+    assert(report.primary_magnitude == UINT16_MAX);
+}
+
 int main(void) {
     test_runs_host_tick_and_exposes_motion();
     test_selects_zero_for_active_expired_and_suppressed_output();
     test_handles_position_only_and_idle_selector();
+    test_updates_report_only_for_selected_output();
     return 0;
 }
