@@ -44,8 +44,12 @@ static void write_u16(uint8_t *output, uint16_t value) {
 
 /**
  * @brief Encodes one framed motor-link packet and its CRC-16/CCITT checksum.
- * @param frame Packet type and eight-byte payload.
- * @param output Thirteen-byte framed packet.
+ *
+ * Writes the packet boundaries, type, payload, and checksum used by each SPI exchange with the
+ * motor controller.
+ *
+ * @param[in] frame Packet type and eight-byte payload.
+ * @param[out] output Thirteen-byte framed packet.
  */
 void motor_live_frame_encode(const MotorLiveFrame *frame, uint8_t output[MOTOR_LIVE_FRAME_SIZE]) {
     output[0] = MOTOR_LIVE_FRAME_START;
@@ -60,8 +64,11 @@ void motor_live_frame_encode(const MotorLiveFrame *frame, uint8_t output[MOTOR_L
 
 /**
  * @brief Checks and decodes one complete motor-link packet.
- * @param input Thirteen-byte packet received from the motor controller.
- * @param frame Decoded packet type and payload when the packet is valid.
+ *
+ * Validates both packet boundaries and the CRC before publishing the decoded type and payload.
+ *
+ * @param[in] input Thirteen-byte packet received from the motor controller.
+ * @param[out] frame Decoded packet type and payload when the packet is valid.
  * @return The boundary or checksum result.
  */
 MotorLiveFrameResult motor_live_frame_decode(const uint8_t input[MOTOR_LIVE_FRAME_SIZE],
@@ -84,8 +91,12 @@ MotorLiveFrameResult motor_live_frame_decode(const uint8_t input[MOTOR_LIVE_FRAM
 
 /**
  * @brief Decodes a current or replayed wheel-position packet.
- * @param frame Decoded motor-link packet.
- * @param report Wheel position, measured torque, and auxiliary position fields.
+ *
+ * Accepts live and replay position packet types and expands their packed position, torque, and
+ * auxiliary sensor fields.
+ *
+ * @param[in] frame Decoded motor-link packet.
+ * @param[out] report Wheel position, measured torque, and auxiliary position fields.
  * @return True for position and replay packet types; otherwise false.
  */
 bool motor_position_report_decode(const MotorLiveFrame *frame, MotorPositionReport *report) {
@@ -104,9 +115,13 @@ bool motor_position_report_decode(const MotorLiveFrame *frame, MotorPositionRepo
 
 /**
  * @brief Builds the live force-output payload returned during the motor-link exchange.
- * @param center_position Stored wheel-center position.
- * @param report Final direction and force magnitudes.
- * @param frame Initialized live packet ready for framing.
+ *
+ * Combines the stored wheel center with the final primary and secondary force channels in a live
+ * motor-controller packet.
+ *
+ * @param[in] center_position Stored wheel-center position.
+ * @param[in] report Final direction and force magnitudes.
+ * @param[out] frame Initialized live packet ready for framing.
  */
 void motor_live_force_frame_init(int16_t center_position, const ForceOutputReport *report,
                                  MotorLiveFrame *frame) {

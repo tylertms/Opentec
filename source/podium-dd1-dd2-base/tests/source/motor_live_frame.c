@@ -81,7 +81,7 @@ static void test_rejects_invalid_frames(void) {
     input[2] ^= 1;
     assert(motor_live_frame_decode(input, &frame) == MOTOR_LIVE_FRAME_INVALID_CHECKSUM);
 
-    frame.type = MOTOR_LIVE_EFFECT_TYPE;
+    frame.type = MOTOR_LIVE_STATUS_TYPE;
     MotorPositionReport report;
     assert(!motor_position_report_decode(&frame, &report));
 }

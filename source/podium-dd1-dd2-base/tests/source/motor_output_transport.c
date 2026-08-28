@@ -1,0 +1,110 @@
+#include <assert.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <string.h>
+
+#include "motor/output_transport.h"
+
+static const ForceOutputReport live_report = {
+    .positive_direction = true,
+    .primary_magnitude = 0x1234,
+    .secondary_magnitude = 0x5678,
+};
+
+static void test_status_precedes_live_output(void) {
+    MotorOutputTransport transport;
+    MotorLiveFrame frame;
+
+    motor_output_transport_init(&transport);
+    motor_output_transport_build_frame(&transport, MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS, 123,
+                                       &live_report, &frame);
+
+    assert(frame.type == MOTOR_LIVE_STATUS_TYPE);
+    assert(frame.payload[0] == MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS);
+    for (uint8_t index = 1; index < MOTOR_LIVE_PAYLOAD_SIZE; index++) {
+        assert(frame.payload[index] == 0);
+    }
+
+    motor_output_transport_build_frame(&transport, MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS, 123,
+                                       &live_report, &frame);
+    assert(frame.type == MOTOR_LIVE_POSITION_TYPE);
+    assert(frame.payload[0] == 123);
+    assert(frame.payload[1] == 0);
+    assert(frame.payload[2] == 1);
+    assert(frame.payload[3] == 0x34);
+    assert(frame.payload[4] == 0x12);
+    assert(frame.payload[5] == 0x78);
+    assert(frame.payload[6] == 0x56);
+    assert(frame.payload[7] == 0);
+}
+
+static void test_commands_precede_status_changes(void) {
+    const uint8_t command[MOTOR_OUTPUT_COMMAND_SIZE] = {0x11, 8, 3, 4, 5, 6, 7};
+    MotorOutputTransport transport;
+    MotorLiveFrame frame;
+
+    motor_output_transport_init(&transport);
+    assert(motor_output_transport_enqueue_command(&transport, command));
+    motor_output_transport_build_frame(&transport, MOTOR_OUTPUT_STATUS_PRIMARY_DISABLED, 0,
+                                       &live_report, &frame);
+
+    assert(frame.type == MOTOR_LIVE_STATUS_TYPE);
+    assert(frame.payload[0] == MOTOR_OUTPUT_STATUS_PRIMARY_DISABLED);
+    assert(memcmp(frame.payload + 1, command, sizeof(command)) == 0);
+    assert(transport.count == 0);
+
+    motor_output_transport_build_frame(&transport, MOTOR_OUTPUT_STATUS_SECONDARY_DISABLED, 0,
+                                       &live_report, &frame);
+    assert(frame.type == MOTOR_LIVE_STATUS_TYPE);
+    assert(frame.payload[0] == MOTOR_OUTPUT_STATUS_SECONDARY_DISABLED);
+    for (uint8_t index = 1; index < MOTOR_LIVE_PAYLOAD_SIZE; index++) {
+        assert(frame.payload[index] == 0);
+    }
+}
+
+static void test_opcode_records_are_zero_filled(void) {
+    MotorOutputTransport transport;
+    MotorLiveFrame frame;
+
+    motor_output_transport_init(&transport);
+    assert(motor_output_transport_enqueue_opcode(&transport, 0x43));
+    motor_output_transport_build_frame(&transport, 0, 0, &live_report, &frame);
+
+    assert(frame.payload[1] == 0x43);
+    for (uint8_t index = 2; index < MOTOR_LIVE_PAYLOAD_SIZE; index++) {
+        assert(frame.payload[index] == 0);
+    }
+}
+
+static void test_queue_capacity_and_wrap(void) {
+    MotorOutputTransport transport;
+    MotorLiveFrame frame;
+    uint8_t command[MOTOR_OUTPUT_COMMAND_SIZE] = {0};
+
+    motor_output_transport_init(&transport);
+    for (uint8_t index = 0; index < MOTOR_OUTPUT_QUEUE_CAPACITY; index++) {
+        command[0] = index;
+        assert(motor_output_transport_enqueue_command(&transport, command));
+    }
+    assert(!motor_output_transport_enqueue_opcode(&transport, 0xff));
+
+    for (uint8_t index = 0; index < MOTOR_OUTPUT_QUEUE_CAPACITY; index++) {
+        motor_output_transport_build_frame(&transport, 0, 0, &live_report, &frame);
+        assert(frame.payload[1] == index);
+    }
+    assert(transport.count == 0);
+    assert(transport.read_index == 0);
+    assert(transport.write_index == 0);
+
+    assert(motor_output_transport_enqueue_opcode(&transport, 0xa5));
+    motor_output_transport_build_frame(&transport, 0, 0, &live_report, &frame);
+    assert(frame.payload[1] == 0xa5);
+}
+
+int main(void) {
+    test_status_precedes_live_output();
+    test_commands_precede_status_changes();
+    test_opcode_records_are_zero_filled();
+    test_queue_capacity_and_wrap();
+    return 0;
+}

@@ -12,6 +12,7 @@
 #include "force_feedback/script_runtime.h"
 #include "force_feedback/state.h"
 #include "motor/live_frame.h"
+#include "motor/output_transport.h"
 #include "motor/probe.h"
 #include "motor/status_service.h"
 #include "motor/telemetry_service.h"
@@ -98,6 +99,7 @@ static ForceFeedbackState force_feedback_state;
 static ForceFeedbackScriptSystem force_feedback_script_system;
 static ForceOutputReport motor_output_report;
 static MotorLiveFrame motor_live_frame;
+static MotorOutputTransport motor_output_transport;
 static uint8_t motor_received_frame[MOTOR_LIVE_FRAME_SIZE];
 static uint8_t motor_transmitted_frame[MOTOR_LIVE_FRAME_SIZE];
 static StatusLed status_led;
@@ -165,15 +167,39 @@ static void update_fan_speed(PlatformFan fan) {
 
 static void initialize_motor_link(void) {
     motor_output_report = (ForceOutputReport){0};
-    motor_live_force_frame_init(0, &motor_output_report, &motor_live_frame);
+    motor_output_transport_init(&motor_output_transport);
+    motor_output_transport_build_frame(&motor_output_transport, MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS,
+                                       0, &motor_output_report, &motor_live_frame);
     motor_live_frame_encode(&motor_live_frame, motor_transmitted_frame);
     platform_motor_link_init(motor_transmitted_frame);
     motor_position_ready = false;
 }
 
+/**
+ * @brief Builds the motor controller's force-feedback status byte.
+ *
+ * Selects remote motor-side effect processing and mirrors the primary and secondary output gates
+ * into status bits 4 and 5.
+ *
+ * @return Current force-feedback status bits for the next motor-link packet.
+ */
+static uint8_t motor_force_feedback_status(void) {
+    uint8_t status = MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS;
+    if (force_feedback_state.primary_output_disabled) {
+        status |= MOTOR_OUTPUT_STATUS_PRIMARY_DISABLED;
+    }
+    if (force_feedback_state.secondary_output_disabled) {
+        status |= MOTOR_OUTPUT_STATUS_SECONDARY_DISABLED;
+    }
+    return status;
+}
+
 static void service_motor_link(void) {
-    if (platform_motor_link_take_received(motor_received_frame) &&
-        motor_live_frame_decode(motor_received_frame, &motor_live_frame) ==
+    if (!platform_motor_link_take_received(motor_received_frame)) {
+        return;
+    }
+
+    if (motor_live_frame_decode(motor_received_frame, &motor_live_frame) ==
             MOTOR_LIVE_FRAME_VALID &&
         motor_position_report_decode(&motor_live_frame, &motor_position_report)) {
         if (!base_settings.wheel_position.calibrated &&
@@ -183,6 +209,12 @@ static void service_motor_link(void) {
         }
         motor_position_ready = true;
     }
+
+    motor_output_transport_build_frame(&motor_output_transport, motor_force_feedback_status(),
+                                       (int16_t)base_settings.wheel_position.center,
+                                       &motor_output_report, &motor_live_frame);
+    motor_live_frame_encode(&motor_live_frame, motor_transmitted_frame);
+    platform_motor_link_set_transmit(motor_transmitted_frame);
 }
 
 static void initialize_motor(void) {
@@ -261,6 +293,37 @@ static void service_motor(void) {
     }
 }
 
+/**
+ * @brief Forwards a host force-feedback command to the motor controller.
+ *
+ * Queues full seven-byte records for configuration and position-effect activation. Clear commands
+ * carry only their opcode, while primary and secondary output commands are represented by status
+ * bits in the next motor-link packet.
+ *
+ * @param[in] command Decoded force-feedback command kind.
+ * @param[in] payload Original seven-byte host command.
+ */
+static void forward_force_feedback_command(const ForceFeedbackCommand *command,
+                                           const uint8_t payload[MOTOR_OUTPUT_COMMAND_SIZE]) {
+    switch (command->kind) {
+    case FORCE_FEEDBACK_COMMAND_CONFIGURE_KIND_1:
+    case FORCE_FEEDBACK_COMMAND_CONFIGURE_KIND_2:
+    case FORCE_FEEDBACK_COMMAND_CONFIGURE_KIND_3:
+    case FORCE_FEEDBACK_COMMAND_ACTIVATE_POSITION_EFFECT:
+        motor_output_transport_enqueue_command(&motor_output_transport, payload);
+        break;
+
+    case FORCE_FEEDBACK_COMMAND_CLEAR_EFFECT:
+    case FORCE_FEEDBACK_COMMAND_CLEAR_POSITION_EFFECT:
+        motor_output_transport_enqueue_opcode(&motor_output_transport, payload[0]);
+        break;
+
+    case FORCE_FEEDBACK_COMMAND_SET_PRIMARY_OUTPUT:
+    case FORCE_FEEDBACK_COMMAND_SET_SECONDARY_OUTPUT:
+        break;
+    }
+}
+
 static void service_usb_output(void) {
     if (!usb_device_take_output(&usb_device_output_report) ||
         !usb_output_command_decode(&usb_device_output_report, &usb_output_command)) {
@@ -268,9 +331,11 @@ static void service_usb_output(void) {
     }
 
     if (force_feedback_command_decode(&usb_output_command, &force_feedback_command)) {
-        force_feedback_state_apply(
-            &force_feedback_state, &force_feedback_command,
-            (int32_t)wheel_position_travel_from_degrees(tuning_profile->rotation_degrees));
+        if (force_feedback_state_apply(
+                &force_feedback_state, &force_feedback_command,
+                (int32_t)wheel_position_travel_from_degrees(tuning_profile->rotation_degrees))) {
+            forward_force_feedback_command(&force_feedback_command, usb_output_command.payload);
+        }
         return;
     }
 
