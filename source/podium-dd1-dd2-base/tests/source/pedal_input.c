@@ -39,6 +39,7 @@ static void test_scales_brake_force(void) {
     assert(pedal_input_scale_brake(1000, 50) == 3000);
     assert(pedal_input_scale_brake(1000, 0) == 5000);
     assert(pedal_input_scale_brake(30000, 50) == UINT16_MAX);
+    assert(pedal_input_scale_brake(225, 99) == 233);
     assert(pedal_input_scale_brake(1000, 101) == 1000);
 }
 

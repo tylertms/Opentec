@@ -33,8 +33,8 @@ bool pedal_input_decode(const PedalFrame *frame, PedalInput *input) {
  */
 uint16_t pedal_input_scale_brake(uint16_t value, uint8_t force_percent) {
     uint8_t force = force_percent > 100 ? 100 : force_percent;
-    uint32_t gain_percent = 100u + (uint32_t)(100 - force) * 4u;
-    uint32_t scaled = (uint32_t)value * gain_percent / 100u;
+    float gain = 1.0f + (float)(100 - force) * 0.04f;
+    uint32_t scaled = (uint32_t)((float)value * gain);
     return scaled > UINT16_MAX ? UINT16_MAX : (uint16_t)scaled;
 }
 
