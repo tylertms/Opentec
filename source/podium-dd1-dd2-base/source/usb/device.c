@@ -14,8 +14,6 @@
 enum {
     USB_CONTROL_ENDPOINT = 0,
     USB_HID_ENDPOINT = 1,
-    USB_HID_REPORT_INPUT = 1,
-    USB_HID_REPORT_OUTPUT = 2,
     USB_HID_DESCRIPTOR_OFFSET = 18,
     USB_HID_DESCRIPTOR_SIZE = 9,
     USB_STRING_COUNT = 4,
@@ -177,8 +175,8 @@ static void begin_value_input(void) {
 }
 
 static bool report_matches_request(void) {
-    return control_transfer.report_type == USB_HID_REPORT_INPUT && input_report_length != 0 &&
-           input_report[0] == control_transfer.report_id;
+    return control_transfer.report_type == USB_DEVICE_HID_REPORT_INPUT &&
+           input_report_length != 0 && input_report[0] == control_transfer.report_id;
 }
 
 static void handle_control_transfer(void) {
@@ -315,7 +313,7 @@ static void handle_control_output(void) {
 
 static void handle_hid_output(void) {
     if (usb_event.length != 0) {
-        store_output_report(USB_HID_REPORT_OUTPUT, usb_event.data[0], usb_event.data,
+        store_output_report(USB_DEVICE_HID_REPORT_OUTPUT, usb_event.data[0], usb_event.data,
                             usb_event.length);
     }
     if (platform_usb_receive(USB_HID_ENDPOINT, USB_DEVICE_REPORT_SIZE, output_data_one)) {

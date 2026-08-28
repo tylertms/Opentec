@@ -6,7 +6,12 @@
 
 #include "board/identity.h"
 
-enum { USB_DEVICE_REPORT_SIZE = 64 };
+enum {
+    USB_DEVICE_REPORT_SIZE = 64,
+    USB_DEVICE_HID_REPORT_INPUT = 1,
+    USB_DEVICE_HID_REPORT_OUTPUT = 2,
+    USB_DEVICE_HID_REPORT_FEATURE = 3,
+};
 
 typedef struct {
     uint8_t report_type;
