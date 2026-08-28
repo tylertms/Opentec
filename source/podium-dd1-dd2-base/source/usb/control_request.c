@@ -22,6 +22,9 @@ enum {
     USB_HID_SET_REPORT = 9,
     USB_HID_SET_IDLE = 10,
     USB_HID_SET_PROTOCOL = 11,
+    USB_CDC_SET_LINE_CODING = 0x20,
+    USB_CDC_GET_LINE_CODING = 0x21,
+    USB_CDC_SET_CONTROL_LINE_STATE = 0x22,
 };
 
 static uint16_t read_u16(const uint8_t *data) { return (uint16_t)data[0] | (uint16_t)data[1] << 8; }
@@ -143,6 +146,37 @@ static bool classify_hid(const UsbSetupPacket *packet, UsbControlRequest *reques
     return false;
 }
 
+/**
+ * @brief Classifies motor updater CDC interface requests.
+ *
+ * Accepts the seven-byte line-coding input and output requests and the zero-length control-line
+ * state request for interface zero.
+ *
+ * @param[in] packet Decoded USB setup packet.
+ * @param[out] request Classified control request.
+ * @return True when the packet is a supported updater CDC request; otherwise false.
+ */
+static bool classify_cdc(const UsbSetupPacket *packet, UsbControlRequest *request) {
+    if ((packet->request_type & 0x1f) != USB_RECIPIENT_INTERFACE || packet->index != 0 ||
+        (packet->value != 0 && packet->request != USB_CDC_SET_CONTROL_LINE_STATE)) {
+        return false;
+    }
+    bool input = (packet->request_type & USB_DIRECTION_IN) != 0;
+    switch (packet->request) {
+    case USB_CDC_SET_LINE_CODING:
+        return !input && packet->length == 7 &&
+               set_request(packet, request, USB_CONTROL_CDC_SET_LINE_CODING);
+    case USB_CDC_GET_LINE_CODING:
+        return input && packet->length == 7 &&
+               set_request(packet, request, USB_CONTROL_CDC_GET_LINE_CODING);
+    case USB_CDC_SET_CONTROL_LINE_STATE:
+        return !input && packet->length == 0 &&
+               set_request(packet, request, USB_CONTROL_CDC_SET_CONTROL_LINE_STATE);
+    default:
+        return false;
+    }
+}
+
 bool usb_control_request_classify(const UsbSetupPacket *packet, UsbControlRequest *request) {
     if (packet == 0 || request == 0) {
         return false;
@@ -153,7 +187,7 @@ bool usb_control_request_classify(const UsbSetupPacket *packet, UsbControlReques
         return classify_standard(packet, request);
     }
     if (type == USB_TYPE_CLASS) {
-        return classify_hid(packet, request);
+        return classify_cdc(packet, request) || classify_hid(packet, request);
     }
     return false;
 }

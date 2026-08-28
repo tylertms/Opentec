@@ -63,6 +63,26 @@ static void test_classifies_hid_requests(void) {
     assert(request.value == 0x0500);
 }
 
+static void test_classifies_cdc_requests(void) {
+    const uint8_t set_line_coding[] = {0x21, 0x20, 0x00, 0x00, 0x00, 0x00, 0x07, 0x00};
+    const uint8_t get_line_coding[] = {0xa1, 0x21, 0x00, 0x00, 0x00, 0x00, 0x07, 0x00};
+    const uint8_t set_control_lines[] = {0x21, 0x22, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00};
+    UsbControlRequest request;
+
+    UsbSetupPacket packet = decode(set_line_coding);
+    assert(usb_control_request_classify(&packet, &request));
+    assert(request.kind == USB_CONTROL_CDC_SET_LINE_CODING);
+
+    packet = decode(get_line_coding);
+    assert(usb_control_request_classify(&packet, &request));
+    assert(request.kind == USB_CONTROL_CDC_GET_LINE_CODING);
+
+    packet = decode(set_control_lines);
+    assert(usb_control_request_classify(&packet, &request));
+    assert(request.kind == USB_CONTROL_CDC_SET_CONTROL_LINE_STATE);
+    assert(request.value == 3);
+}
+
 static void test_rejects_invalid_requests(void) {
     const uint8_t invalid_address[] = {0x00, 0x05, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00};
     const uint8_t invalid_protocol[] = {0x21, 0x0b, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -82,6 +102,7 @@ int main(void) {
     test_classifies_descriptor_request();
     test_classifies_enumeration_state_changes();
     test_classifies_hid_requests();
+    test_classifies_cdc_requests();
     test_rejects_invalid_requests();
     return 0;
 }
