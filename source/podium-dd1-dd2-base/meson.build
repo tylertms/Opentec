@@ -8,6 +8,7 @@ cooling_effect_limit_sources = files('source/cooling/effect_limit.c')
 cooling_pwm_sources = files('source/cooling/pwm.c')
 cooling_tachometer_sources = files('source/cooling/tachometer.c')
 cooling_temperature_sources = files('source/cooling/temperature.c')
+display_controller_sources = files('source/display/controller.c')
 force_effect_bank_sources = files('source/force_feedback/bank.c')
 force_feedback_command_sources = files('source/force_feedback/command.c')
 force_feedback_state_sources = files('source/force_feedback/state.c')
@@ -114,6 +115,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'cooling-pwm': 'source/cooling/pwm.c',
     'cooling-tachometer': 'source/cooling/tachometer.c',
     'cooling-temperature': 'source/cooling/temperature.c',
+    'display-controller': 'source/display/controller.c',
     'force-effect-bank': 'source/force_feedback/bank.c',
     'force-feedback-command': 'source/force_feedback/command.c',
     'force-feedback-state': 'source/force_feedback/state.c',
@@ -185,6 +187,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'transfer-session': 'source/transfer/session.c',
     'platform-clock': 'source/platform/dspic33e/clock.c',
     'platform-cooling': 'source/platform/dspic33e/cooling.c',
+    'platform-display': 'source/platform/dspic33e/display.c',
     'platform-force-feedback-timer': 'source/platform/dspic33e/force_feedback_timer.c',
     'platform-board-identity': 'source/platform/dspic33e/board_identity.c',
     'platform-adc': 'source/platform/dspic33e/adc.c',
@@ -314,6 +317,14 @@ if not meson.is_cross_build()
     'base-cooling-temperature-test',
     'tests/source/cooling_temperature.c',
     cooling_temperature_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  display_controller_test = executable(
+    'base-display-controller-test',
+    'tests/source/display_controller.c',
+    display_controller_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -1108,6 +1119,7 @@ if not meson.is_cross_build()
     cooling_temperature_test,
     suite: ['base', 'cooling'],
   )
+  test('base-display-controller', display_controller_test, suite: ['base', 'display'])
   test('base-analog-samples', analog_samples_test, suite: ['base', 'analog'])
   test('base-force-effect', force_effect_test, suite: ['base', 'force-feedback'])
   test('base-force-effect-bank', force_effect_bank_test, suite: ['base', 'force-feedback'])

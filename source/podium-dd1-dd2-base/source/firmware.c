@@ -24,6 +24,7 @@
 #include "platform/board_identity.h"
 #include "platform/clock.h"
 #include "platform/cooling.h"
+#include "platform/display.h"
 #include "platform/force_feedback_timer.h"
 #include "platform/motor_link.h"
 #include "platform/pedal_link.h"
@@ -112,6 +113,7 @@ static CoolingEffectStrengths cooling_effect_strengths;
 static CoolingTemperatureMonitor cooling_temperature_monitor;
 static PlatformFanTachometer fan_tachometer;
 static uint16_t fan_speed_rpm[2];
+static uint8_t display_framebuffer[PLATFORM_DISPLAY_FRAMEBUFFER_SIZE];
 
 enum {
     FAN_STARTUP_DUTY_PERCENT = 25,
@@ -419,6 +421,8 @@ int main(void) {
     board_identity = platform_board_identity_read();
     platform_pin_mux_init();
     platform_time_init();
+    platform_display_init();
+    platform_display_write_frame(display_framebuffer);
     platform_status_led_init();
     status_led_init(&status_led);
     initialize_cooling();
