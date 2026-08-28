@@ -12,6 +12,12 @@ enum {
     PEDAL_LEGACY_CHANNEL_MASK = 0x3f,
     PEDAL_V3_HANDSHAKE_FRAME = 2,
     PEDAL_V3_STATUS_FRAME = 0,
+    PEDAL_V3_INPUT_COMMAND_FRAME = 3,
+    PEDAL_V3_CONFIGURATION_FRAME = 6,
+    PEDAL_V3_KEEPALIVE_FRAME = 0x10,
+    PEDAL_V3_NORMAL_BRAKE_STEP = 10,
+    PEDAL_V3_CALIBRATION_BRAKE_STEP = 5,
+    PEDAL_V3_DIRECT_CONTROL_MASK = 0x0f,
 };
 
 /**
@@ -94,5 +100,69 @@ void pedal_v3_build_status(const PedalProtocolStatus *status, PedalFrame *frame)
     *frame = (PedalFrame){
         .type = PEDAL_V3_STATUS_FRAME,
         .payload = {status->value, status->first, status->second, status->scale},
+    };
+}
+
+/**
+ * @brief Builds the next pending V3 pedal-control frame.
+ * @param pending Bit mask of pending up, down, enable, disable, and automatic commands.
+ * @param frame Destination for the next control frame.
+ * @return Commands that remain pending after the frame's commands are consumed.
+ */
+uint8_t pedal_v3_build_control(uint8_t pending, PedalFrame *frame) {
+    uint8_t direct = pending & PEDAL_V3_DIRECT_CONTROL_MASK;
+    if (direct != 0) {
+        *frame = (PedalFrame){
+            .type = PEDAL_V3_HANDSHAKE_FRAME,
+            .payload = {UINT8_MAX, 0, (direct & PEDAL_V3_CONTROL_UP) != 0 ? UINT8_MAX : 0,
+                        (direct & PEDAL_V3_CONTROL_DOWN) != 0 ? UINT8_MAX : 0,
+                        (direct & PEDAL_V3_CONTROL_ENABLE) != 0 ? UINT8_MAX : 0,
+                        (direct & PEDAL_V3_CONTROL_DISABLE) != 0 ? UINT8_MAX : 0},
+        };
+        return pending & (uint8_t)~direct;
+    }
+
+    *frame = (PedalFrame){
+        .type = PEDAL_V3_HANDSHAKE_FRAME,
+        .payload = {UINT8_MAX, 0, 0, 0, 0, UINT8_MAX},
+    };
+    return pending & (uint8_t)~PEDAL_V3_CONTROL_AUTOMATIC;
+}
+
+/**
+ * @brief Builds a V3 three-channel input command.
+ * @param values Three command bytes forwarded to the pedal controller.
+ * @param frame Destination for the input-command frame.
+ */
+void pedal_v3_build_input_command(const uint8_t values[PEDAL_INPUT_AXIS_COUNT], PedalFrame *frame) {
+    *frame = (PedalFrame){
+        .type = PEDAL_V3_INPUT_COMMAND_FRAME,
+        .payload = {values[0], values[1], values[2]},
+    };
+}
+
+/**
+ * @brief Builds a V3 brake-force configuration frame.
+ * @param brake_force Configured alternate brake force.
+ * @param fine_scale True for five-point calibration steps; false for ten-point steps.
+ * @param reset True to request the pedal controller's configuration reset action.
+ * @param frame Destination for the configuration frame.
+ */
+void pedal_v3_build_configuration(uint8_t brake_force, bool fine_scale, bool reset,
+                                  PedalFrame *frame) {
+    uint8_t step = fine_scale ? PEDAL_V3_CALIBRATION_BRAKE_STEP : PEDAL_V3_NORMAL_BRAKE_STEP;
+    *frame = (PedalFrame){
+        .type = PEDAL_V3_CONFIGURATION_FRAME,
+        .payload = {(uint8_t)(brake_force / step + 1), reset ? UINT8_MAX : 0},
+    };
+}
+
+/**
+ * @brief Builds the zero-payload V3 calibration keepalive frame.
+ * @param frame Destination for the keepalive frame.
+ */
+void pedal_v3_build_keepalive(PedalFrame *frame) {
+    *frame = (PedalFrame){
+        .type = PEDAL_V3_KEEPALIVE_FRAME,
     };
 }

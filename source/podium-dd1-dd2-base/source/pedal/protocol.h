@@ -35,6 +35,14 @@ typedef struct {
     uint8_t scale;
 } PedalProtocolStatus;
 
+typedef enum {
+    PEDAL_V3_CONTROL_UP = 1u << 0,
+    PEDAL_V3_CONTROL_DOWN = 1u << 1,
+    PEDAL_V3_CONTROL_ENABLE = 1u << 2,
+    PEDAL_V3_CONTROL_DISABLE = 1u << 3,
+    PEDAL_V3_CONTROL_AUTOMATIC = 1u << 4,
+} PedalV3Control;
+
 PedalProtocol pedal_protocol_select(uint8_t device, uint8_t response);
 uint8_t pedal_legacy_request(PedalLegacyChannel channel, uint8_t protocol_first,
                              uint8_t protocol_second);
@@ -42,5 +50,10 @@ void pedal_legacy_apply_response(PedalLegacyChannel channel, uint8_t response,
                                  bool auxiliary_locked, PedalInput *input);
 void pedal_v3_build_handshake(bool recovering, PedalFrame *frame);
 void pedal_v3_build_status(const PedalProtocolStatus *status, PedalFrame *frame);
+uint8_t pedal_v3_build_control(uint8_t pending, PedalFrame *frame);
+void pedal_v3_build_input_command(const uint8_t values[PEDAL_INPUT_AXIS_COUNT], PedalFrame *frame);
+void pedal_v3_build_configuration(uint8_t brake_force, bool fine_scale, bool reset,
+                                  PedalFrame *frame);
+void pedal_v3_build_keepalive(PedalFrame *frame);
 
 #endif

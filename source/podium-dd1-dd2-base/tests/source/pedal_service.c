@@ -150,6 +150,47 @@ static void test_applies_active_brake_force(void) {
     assert(input->axes[2] == 3);
 }
 
+static void test_uses_raw_brake_during_v3_calibration(void) {
+    PedalService service;
+    const PedalFrame sample = {
+        .type = PEDAL_FRAME_AXIS_SAMPLE,
+        .payload = {1, 0, 0xe8, 3, 3, 0, 0, 4},
+    };
+    const PedalFrame calibration = {
+        .type = 5,
+        .payload = {0x04, 0x62},
+    };
+    reset_link();
+    pedal_service_init(&service);
+    pedal_service_set_brake_force(&service, 50);
+    connect_v3(&service);
+
+    receive_frame(&sample);
+    pedal_service_run(&service, 11);
+    assert(pedal_service_input(&service)->axes[1] == 3000);
+
+    receive_frame(&calibration);
+    pedal_service_run(&service, 12);
+    assert(pedal_service_input(&service)->axes[1] == 1000);
+    assert(pedal_service_v3_state(&service)->primary_calibration);
+}
+
+static void test_ignores_unknown_v3_reports_for_timeout(void) {
+    PedalService service;
+    const PedalFrame unknown = {
+        .type = 9,
+    };
+    reset_link();
+    pedal_service_init(&service);
+    connect_v3(&service);
+
+    receive_frame(&unknown);
+    pedal_service_run(&service, 11);
+    assert(!service.connected);
+    pedal_service_run(&service, 15010);
+    assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
+}
+
 static void test_sends_v3_status_on_change_and_interval(void) {
     PedalService service;
     PedalFrame frame;
@@ -174,20 +215,100 @@ static void test_sends_v3_status_on_change_and_interval(void) {
     assert(frame.payload[3] == 0x44);
 
     pedal_service_run(&service, 12);
-    assert(frame_send_count == 2);
+    assert(frame_send_count == 3);
+    assert(pedal_frame_decode(sent_frame, &frame) == PEDAL_FRAME_VALID);
+    assert(frame.type == 3);
+    assert(frame.payload[0] == 0);
+    assert(frame.payload[1] == 0);
+    assert(frame.payload[2] == 0);
 
     PedalProtocolStatus changed = initial;
     changed.scale = 0x55;
     pedal_service_set_protocol_status(&service, &changed);
     pedal_service_run(&service, 13);
-    assert(frame_send_count == 3);
+    assert(frame_send_count == 4);
     assert(pedal_frame_decode(sent_frame, &frame) == PEDAL_FRAME_VALID);
+    assert(frame.type == 0);
     assert(frame.payload[3] == 0x55);
 
     pedal_service_run(&service, 513);
-    assert(frame_send_count == 3);
+    assert(frame_send_count == 5);
+    assert(pedal_frame_decode(sent_frame, &frame) == PEDAL_FRAME_VALID);
+    assert(frame.type == 3);
     pedal_service_run(&service, 514);
+    assert(frame_send_count == 6);
+    assert(pedal_frame_decode(sent_frame, &frame) == PEDAL_FRAME_VALID);
+    assert(frame.type == 0);
+}
+
+static void test_schedules_v3_commands_and_calibration_frames(void) {
+    PedalService service;
+    PedalFrame frame;
+    const uint8_t input_command[PEDAL_INPUT_AXIS_COUNT] = {1, 2, 3};
+    const PedalFrame calibration = {
+        .type = 5,
+        .payload = {0x04, 0x62},
+    };
+    reset_link();
+    pedal_service_init(&service);
+    connect_v3(&service);
+
+    pedal_service_run(&service, 11);
+    pedal_service_run(&service, 12);
+    pedal_service_request_control(&service, PEDAL_V3_CONTROL_UP | PEDAL_V3_CONTROL_ENABLE |
+                                                PEDAL_V3_CONTROL_AUTOMATIC);
+    pedal_service_run(&service, 13);
     assert(frame_send_count == 4);
+    assert(pedal_frame_decode(sent_frame, &frame) == PEDAL_FRAME_VALID);
+    assert(frame.type == 2);
+    assert(frame.payload[2] == UINT8_MAX);
+    assert(frame.payload[4] == UINT8_MAX);
+    assert(frame.payload[5] == 0);
+    assert(service.pending_control == PEDAL_V3_CONTROL_AUTOMATIC);
+    assert(pedal_service_v3_state(&service)->connection_flags == UINT8_MAX);
+
+    pedal_service_run(&service, 14);
+    assert(frame_send_count == 5);
+    assert(pedal_frame_decode(sent_frame, &frame) == PEDAL_FRAME_VALID);
+    assert(frame.type == 2);
+    assert(frame.payload[2] == 0);
+    assert(frame.payload[4] == 0);
+    assert(frame.payload[5] == UINT8_MAX);
+    assert(service.pending_control == 0);
+
+    pedal_service_run(&service, 15);
+    assert(frame_send_count == 6);
+    assert(pedal_frame_decode(sent_frame, &frame) == PEDAL_FRAME_VALID);
+    assert(frame.type == 3);
+    assert(frame.payload[0] == 0);
+    assert(frame.payload[1] == 0);
+    assert(frame.payload[2] == 0);
+
+    pedal_service_request_input_command(&service, input_command);
+    pedal_service_run(&service, 16);
+    assert(frame_send_count == 7);
+    assert(pedal_frame_decode(sent_frame, &frame) == PEDAL_FRAME_VALID);
+    assert(frame.type == 3);
+    assert(frame.payload[0] == 1);
+    assert(frame.payload[1] == 2);
+    assert(frame.payload[2] == 3);
+
+    receive_frame(&calibration);
+    pedal_service_request_configuration(&service, 79, true);
+    pedal_service_run(&service, 17);
+    assert(frame_send_count == 8);
+    assert(pedal_frame_decode(sent_frame, &frame) == PEDAL_FRAME_VALID);
+    assert(frame.type == 6);
+    assert(frame.payload[0] == 16);
+    assert(frame.payload[1] == UINT8_MAX);
+    assert(!service.configuration_pending);
+    assert(service.startup_frame_count == 0);
+
+    pedal_service_run(&service, 18);
+    assert(frame_send_count == 9);
+    assert(pedal_frame_decode(sent_frame, &frame) == PEDAL_FRAME_VALID);
+    assert(frame.type == 0x10);
+    assert(service.next_keepalive_ms == 2518);
 }
 
 static void test_uses_long_timeout_during_stream_startup(void) {
@@ -344,7 +465,10 @@ static void test_selects_analog_input_after_discovery_timeout(void) {
 int main(void) {
     test_connects_and_publishes_v3_input();
     test_applies_active_brake_force();
+    test_uses_raw_brake_during_v3_calibration();
+    test_ignores_unknown_v3_reports_for_timeout();
     test_sends_v3_status_on_change_and_interval();
+    test_schedules_v3_commands_and_calibration_frames();
     test_uses_long_timeout_during_stream_startup();
     test_tightens_timeout_after_stream_startup();
     test_identifies_unsupported_v4_transport();

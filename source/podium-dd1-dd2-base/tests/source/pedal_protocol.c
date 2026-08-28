@@ -77,11 +77,65 @@ static void test_builds_v3_status(void) {
     }
 }
 
+static void test_builds_v3_control_sequence(void) {
+    uint8_t pending = PEDAL_V3_CONTROL_UP | PEDAL_V3_CONTROL_ENABLE | PEDAL_V3_CONTROL_AUTOMATIC;
+    PedalFrame frame;
+
+    pending = pedal_v3_build_control(pending, &frame);
+    assert(frame.type == 2);
+    assert(frame.payload[0] == 0xff);
+    assert(frame.payload[1] == 0);
+    assert(frame.payload[2] == 0xff);
+    assert(frame.payload[3] == 0);
+    assert(frame.payload[4] == 0xff);
+    assert(frame.payload[5] == 0);
+    assert(pending == PEDAL_V3_CONTROL_AUTOMATIC);
+
+    pending = pedal_v3_build_control(pending, &frame);
+    assert(frame.payload[0] == 0xff);
+    assert(frame.payload[1] == 0);
+    assert(frame.payload[2] == 0);
+    assert(frame.payload[3] == 0);
+    assert(frame.payload[4] == 0);
+    assert(frame.payload[5] == 0xff);
+    assert(pending == 0);
+}
+
+static void test_builds_v3_input_configuration_and_keepalive(void) {
+    const uint8_t values[PEDAL_INPUT_AXIS_COUNT] = {1, 2, 3};
+    PedalFrame frame;
+
+    pedal_v3_build_input_command(values, &frame);
+    assert(frame.type == 3);
+    assert(frame.payload[0] == 1);
+    assert(frame.payload[1] == 2);
+    assert(frame.payload[2] == 3);
+    for (uint8_t index = 3; index < PEDAL_FRAME_PAYLOAD_SIZE; index++) {
+        assert(frame.payload[index] == 0);
+    }
+
+    pedal_v3_build_configuration(79, false, false, &frame);
+    assert(frame.type == 6);
+    assert(frame.payload[0] == 8);
+    assert(frame.payload[1] == 0);
+    pedal_v3_build_configuration(79, true, true, &frame);
+    assert(frame.payload[0] == 16);
+    assert(frame.payload[1] == 0xff);
+
+    pedal_v3_build_keepalive(&frame);
+    assert(frame.type == 0x10);
+    for (uint8_t index = 0; index < PEDAL_FRAME_PAYLOAD_SIZE; index++) {
+        assert(frame.payload[index] == 0);
+    }
+}
+
 int main(void) {
     test_selects_protocol();
     test_builds_legacy_requests();
     test_applies_legacy_responses();
     test_builds_v3_handshakes();
     test_builds_v3_status();
+    test_builds_v3_control_sequence();
+    test_builds_v3_input_configuration_and_keepalive();
     return 0;
 }

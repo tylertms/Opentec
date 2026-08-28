@@ -19,13 +19,29 @@ enum {
     PEDAL_STARTUP_FRAME_COUNT = 250,
     PEDAL_RECONNECT_DELAY_MS = 550,
     PEDAL_STATUS_INTERVAL_MS = 500,
+    PEDAL_INPUT_COMMAND_INTERVAL_MS = 500,
+    PEDAL_KEEPALIVE_INTERVAL_MS = 2500,
     PEDAL_LEGACY_RESPONSE_TIMEOUT_MS = 17,
     PEDAL_LEGACY_AXIS_1_RETRY_LIMIT = 5,
     PEDAL_LEGACY_RETRY_LIMIT = 6,
 };
 
+static void clear_v3_outbound(PedalService *service) {
+    service->pending_control = 0;
+    for (uint8_t axis = 0; axis < PEDAL_INPUT_AXIS_COUNT; axis++) {
+        service->input_command[axis] = 0;
+    }
+    service->input_command_pending = false;
+    service->configuration_pending = false;
+    service->configuration_reset_pending = false;
+    service->next_input_command_ms = 0;
+    service->next_keepalive_ms = 0;
+}
+
 static void reconnect(PedalService *service, uint32_t now_ms) {
     pedal_input_release(&service->input);
+    pedal_v3_state_init(&service->v3);
+    clear_v3_outbound(service);
     service->connected = false;
     service->device = PEDAL_DEVICE_NONE;
     service->startup_frame_count = 0;
@@ -52,14 +68,18 @@ static bool send_frame(PedalService *service) {
 
 void pedal_service_init(PedalService *service) {
     pedal_input_release(&service->input);
+    pedal_v3_state_init(&service->v3);
     pedal_analog_init(&service->analog);
     service->phase = PEDAL_SERVICE_DETECT_REQUEST;
     service->device = PEDAL_DEVICE_NONE;
     service->deadline_ms = 0;
     service->next_status_ms = 0;
+    service->next_input_command_ms = 0;
+    service->next_keepalive_ms = 0;
     service->response = 0;
     service->brake_force_percent = 100;
     service->startup_frame_count = 0;
+    service->configuration_brake_force = 0;
     service->legacy_channel = PEDAL_LEGACY_AXIS_1;
     service->protocol_status = (PedalProtocolStatus){0};
     service->transmitted_status = (PedalProtocolStatus){0};
@@ -68,8 +88,10 @@ void pedal_service_init(PedalService *service) {
     }
     service->analog_samples_ready = false;
     service->connected = false;
+    service->auxiliary_locked = false;
     service->recovery_handshake = false;
     service->status_transmitted = false;
+    clear_v3_outbound(service);
 }
 
 void pedal_service_set_analog_samples(PedalService *service,
@@ -87,8 +109,30 @@ void pedal_service_set_brake_force(PedalService *service, uint8_t force_percent)
     service->brake_force_percent = force_percent > 100 ? 100 : force_percent;
 }
 
+void pedal_service_set_auxiliary_locked(PedalService *service, bool locked) {
+    service->auxiliary_locked = locked;
+}
+
 void pedal_service_set_protocol_status(PedalService *service, const PedalProtocolStatus *status) {
     service->protocol_status = *status;
+}
+
+void pedal_service_request_control(PedalService *service, PedalV3Control control) {
+    service->pending_control |= (uint8_t)control;
+}
+
+void pedal_service_request_input_command(PedalService *service,
+                                         const uint8_t values[PEDAL_INPUT_AXIS_COUNT]) {
+    for (uint8_t axis = 0; axis < PEDAL_INPUT_AXIS_COUNT; axis++) {
+        service->input_command[axis] = values[axis];
+    }
+    service->input_command_pending = true;
+}
+
+void pedal_service_request_configuration(PedalService *service, uint8_t brake_force, bool reset) {
+    service->configuration_brake_force = brake_force;
+    service->configuration_pending = true;
+    service->configuration_reset_pending |= reset;
 }
 
 static void service_detect_response(PedalService *service, uint32_t now_ms) {
@@ -141,8 +185,8 @@ static void advance_legacy_channel(PedalService *service) {
 
 static void service_legacy_response(PedalService *service, uint32_t now_ms) {
     if (platform_pedal_link_take_byte(&service->response)) {
-        pedal_legacy_apply_response(service->legacy_channel, service->response, false,
-                                    &service->input);
+        pedal_legacy_apply_response(service->legacy_channel, service->response,
+                                    service->auxiliary_locked, &service->input);
         service->legacy_retries[service->legacy_channel] = 0;
         if (service->legacy_channel == PEDAL_LEGACY_AUXILIARY) {
             service->connected = true;
@@ -172,18 +216,107 @@ static void service_legacy_response(PedalService *service, uint32_t now_ms) {
     reconnect(service, now_ms);
 }
 
+static void restart_v3_timeout(PedalService *service, uint32_t now_ms) {
+    service->startup_frame_count = 0;
+    service->deadline_ms = now_ms + PEDAL_INITIAL_SAMPLE_TIMEOUT_MS;
+}
+
+static void service_v3_output(PedalService *service, uint32_t now_ms) {
+    const PedalProtocolStatus *status = &service->protocol_status;
+    const PedalProtocolStatus *transmitted = &service->transmitted_status;
+    bool status_changed =
+        status->value != transmitted->value || status->first != transmitted->first ||
+        status->second != transmitted->second || status->scale != transmitted->scale;
+    bool status_due =
+        !service->status_transmitted || status_changed || now_ms > service->next_status_ms;
+    if (!(service->v3.primary_calibration && service->v3.secondary_calibration) && status_due) {
+        pedal_v3_build_status(status, &service->transmit_frame);
+        if (send_frame(service)) {
+            service->transmitted_status = service->protocol_status;
+            service->status_transmitted = true;
+            service->next_status_ms = now_ms + PEDAL_STATUS_INTERVAL_MS;
+        }
+        return;
+    }
+
+    if (service->pending_control != 0) {
+        uint8_t remaining_control =
+            pedal_v3_build_control(service->pending_control, &service->transmit_frame);
+        uint8_t sent_control = service->pending_control ^ remaining_control;
+        if (send_frame(service)) {
+            service->pending_control = remaining_control;
+            if ((sent_control & PEDAL_V3_CONTROL_ENABLE) != 0) {
+                service->v3.connection_flags = UINT8_MAX;
+            }
+            if ((sent_control & PEDAL_V3_CONTROL_DISABLE) != 0) {
+                service->v3.connection_flags = 0;
+            }
+            for (uint8_t axis = 0; axis < PEDAL_INPUT_AXIS_COUNT; axis++) {
+                service->input_command[axis] = 0;
+            }
+            service->input_command_pending = true;
+            restart_v3_timeout(service, now_ms);
+        }
+        return;
+    }
+
+    if (!service->input_command_pending && now_ms > service->next_input_command_ms) {
+        for (uint8_t axis = 0; axis < PEDAL_INPUT_AXIS_COUNT; axis++) {
+            service->input_command[axis] = 0;
+        }
+        service->input_command_pending = true;
+        service->next_input_command_ms = now_ms + PEDAL_INPUT_COMMAND_INTERVAL_MS;
+    }
+    if (service->input_command_pending) {
+        pedal_v3_build_input_command(service->input_command, &service->transmit_frame);
+        if (send_frame(service)) {
+            if (service->input_command[0] != 0) {
+                restart_v3_timeout(service, now_ms);
+            }
+            service->input_command_pending = false;
+        }
+        return;
+    }
+
+    bool calibrating = service->v3.primary_calibration || service->v3.secondary_calibration;
+    if (calibrating && service->configuration_pending) {
+        bool fine_scale = (service->v3.primary_calibration && !service->v3.legacy_calibration) ||
+                          service->v3.secondary_calibration;
+        pedal_v3_build_configuration(service->configuration_brake_force, fine_scale,
+                                     service->configuration_reset_pending,
+                                     &service->transmit_frame);
+        if (send_frame(service)) {
+            if (service->configuration_reset_pending) {
+                restart_v3_timeout(service, now_ms);
+            }
+            service->configuration_pending = false;
+            service->configuration_reset_pending = false;
+        }
+        return;
+    }
+    if (calibrating && now_ms > service->next_keepalive_ms) {
+        pedal_v3_build_keepalive(&service->transmit_frame);
+        if (send_frame(service)) {
+            service->next_keepalive_ms = now_ms + PEDAL_KEEPALIVE_INTERVAL_MS;
+        }
+    }
+}
+
 static void service_v3_stream(PedalService *service, uint32_t now_ms) {
     if (platform_pedal_link_take_frame(service->frame_buffer) &&
         pedal_frame_decode(service->frame_buffer, &service->receive_frame) == PEDAL_FRAME_VALID) {
-        uint32_t timeout_ms = PEDAL_SAMPLE_TIMEOUT_MS;
-        if (service->startup_frame_count < PEDAL_STARTUP_FRAME_COUNT) {
-            service->startup_frame_count++;
-            timeout_ms = PEDAL_INITIAL_SAMPLE_TIMEOUT_MS;
-        }
-        service->deadline_ms = now_ms + timeout_ms;
-        if (pedal_input_decode(&service->receive_frame, &service->input)) {
+        if (pedal_v3_apply_report(&service->receive_frame, service->auxiliary_locked, &service->v3,
+                                  &service->input)) {
+            uint32_t timeout_ms = PEDAL_SAMPLE_TIMEOUT_MS;
+            if (service->startup_frame_count < PEDAL_STARTUP_FRAME_COUNT) {
+                service->startup_frame_count++;
+                timeout_ms = PEDAL_INITIAL_SAMPLE_TIMEOUT_MS;
+            }
+            service->deadline_ms = now_ms + timeout_ms;
             service->input.axes[1] =
-                pedal_input_scale_brake(service->input.axes[1], service->brake_force_percent);
+                service->v3.primary_calibration || service->v3.secondary_calibration
+                    ? service->v3.raw_brake
+                    : pedal_input_scale_brake(service->v3.raw_brake, service->brake_force_percent);
             service->connected = true;
         }
     }
@@ -194,18 +327,7 @@ static void service_v3_stream(PedalService *service, uint32_t now_ms) {
         return;
     }
 
-    const PedalProtocolStatus *status = &service->protocol_status;
-    const PedalProtocolStatus *transmitted = &service->transmitted_status;
-    bool changed = status->value != transmitted->value || status->first != transmitted->first ||
-                   status->second != transmitted->second || status->scale != transmitted->scale;
-    if (!service->status_transmitted || changed || now_ms > service->next_status_ms) {
-        pedal_v3_build_status(status, &service->transmit_frame);
-        if (send_frame(service)) {
-            service->transmitted_status = service->protocol_status;
-            service->status_transmitted = true;
-            service->next_status_ms = now_ms + PEDAL_STATUS_INTERVAL_MS;
-        }
-    }
+    service_v3_output(service, now_ms);
 }
 
 void pedal_service_run(PedalService *service, uint32_t now_ms) {
@@ -259,6 +381,8 @@ void pedal_service_run(PedalService *service, uint32_t now_ms) {
             service->deadline_ms = now_ms + PEDAL_INITIAL_SAMPLE_TIMEOUT_MS;
             service->recovery_handshake = false;
             service->status_transmitted = false;
+            service->next_input_command_ms = 0;
+            service->next_keepalive_ms = 0;
         }
         break;
     case PEDAL_SERVICE_V3_STREAM:
@@ -277,3 +401,5 @@ void pedal_service_run(PedalService *service, uint32_t now_ms) {
 }
 
 const PedalInput *pedal_service_input(const PedalService *service) { return &service->input; }
+
+const PedalV3State *pedal_service_v3_state(const PedalService *service) { return &service->v3; }
