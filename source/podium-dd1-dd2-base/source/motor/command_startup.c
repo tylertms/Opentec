@@ -20,20 +20,20 @@ void motor_command_startup_init(MotorCommandStartup *startup) {
 /**
  * @brief Advances the motor-command mailbox startup sequence.
  *
- * Owns the shared transport as identifier 0x20, requests the remote length, then sequences reset,
- * digest, and command-5 information selectors 3 and 4. Completion releases the transport after
- * both information responses are observed. A restart input returns the sequence to its reset phase
- * immediately.
+ * Owns the shared transport as identifier 0x20, schedules the initial status write, then sequences
+ * reset, digest, and command-5 information selectors 3 and 4. Completion releases the transport
+ * after both information responses are observed. A restart input returns the sequence to its reset
+ * phase immediately.
  *
  * @param[in,out] startup Startup state to advance.
  * @param[in,out] transport Shared command transport used by the sequence.
- * @param[in] input Current command, response, length-read, and restart state.
+ * @param[in] input Current command, response, status-write, and restart state.
  * @return Next protocol action, or no action while an expected event is pending.
  */
 MotorCommandStartupAction motor_command_startup_run(MotorCommandStartup *startup,
                                                     CommandTransport *transport,
                                                     const MotorCommandStartupInput *input) {
-    MotorCommandStartupAction action = {MOTOR_COMMAND_STARTUP_ACTION_NONE, 0, 0};
+    MotorCommandStartupAction action = {.type = MOTOR_COMMAND_STARTUP_ACTION_NONE};
     if (input->restart) {
         motor_command_startup_init(startup);
     }
@@ -46,14 +46,14 @@ MotorCommandStartupAction motor_command_startup_run(MotorCommandStartup *startup
     case MOTOR_COMMAND_STARTUP_CLAIM:
         command_transport_claim(transport, MOTOR_COMMAND_STARTUP_OWNER);
         startup->active = true;
-        startup->phase = MOTOR_COMMAND_STARTUP_READ_LENGTH;
+        startup->phase = MOTOR_COMMAND_STARTUP_WRITE_STATUS;
         break;
-    case MOTOR_COMMAND_STARTUP_READ_LENGTH:
-        startup->phase = MOTOR_COMMAND_STARTUP_WAIT_LENGTH;
-        action.type = MOTOR_COMMAND_STARTUP_ACTION_READ_LENGTH;
+    case MOTOR_COMMAND_STARTUP_WRITE_STATUS:
+        startup->phase = MOTOR_COMMAND_STARTUP_WAIT_STATUS;
+        action.type = MOTOR_COMMAND_STARTUP_ACTION_WRITE_STATUS;
         break;
-    case MOTOR_COMMAND_STARTUP_WAIT_LENGTH:
-        if (!input->length_read_pending) {
+    case MOTOR_COMMAND_STARTUP_WAIT_STATUS:
+        if (!input->status_write_pending) {
             startup->phase = MOTOR_COMMAND_STARTUP_WAIT_RESET;
             action.type = MOTOR_COMMAND_STARTUP_ACTION_SEND_COMMAND;
             action.command = MOTOR_COMMAND_STARTUP_SEQUENCE_RESET_COMMAND;
