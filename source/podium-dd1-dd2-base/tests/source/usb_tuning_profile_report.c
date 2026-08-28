@@ -25,7 +25,7 @@ static void test_round_trips_manual_rotation(void) {
     tuning_profile_defaults(&expected);
     expected.automatic_rotation = 0;
     expected.rotation_degrees = 1080;
-    expected.vibration_strength = 73;
+    expected.vibration_strength = 12;
     expected.natural_friction = 42;
     expected.full_force_enabled = 1;
     decoded = expected;

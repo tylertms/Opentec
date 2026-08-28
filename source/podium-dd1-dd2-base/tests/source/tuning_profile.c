@@ -93,7 +93,7 @@ static void test_modes(void) {
 
     tuning_profile_normalize(&profile);
     assert(profile.automatic_rotation == 1);
-    assert(profile.vibration_strength == 100);
+    assert(profile.vibration_strength == TUNING_VIBRATION_STRENGTH_MAX);
     assert(profile.force_scale == TUNING_FORCE_SCALE_LINEAR);
     assert(profile.drift_compensation == 1);
     assert(profile.multi_position_mode == TUNING_MULTI_POSITION_AUTOMATIC);

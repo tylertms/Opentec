@@ -33,7 +33,7 @@ static void test_applies_and_selects_profile(void) {
     assert(bank.selected_slot == 3);
     assert(bank.active_slot == 3);
     assert(bank.slots[3].force_feedback_strength == 80);
-    assert(bank.slots[3].vibration_strength == 73);
+    assert(bank.slots[3].vibration_strength == TUNING_VIBRATION_STRENGTH_MAX);
     assert(usb_tuning_profile_service_response_pending(&service));
 
     arguments[0] = 1;

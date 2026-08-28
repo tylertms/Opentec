@@ -3,6 +3,10 @@
 
 #include <stdint.h>
 
+enum {
+    TUNING_VIBRATION_STRENGTH_MAX = 12,
+};
+
 typedef enum {
     TUNING_FORCE_SCALE_LINEAR,
     TUNING_FORCE_SCALE_PEAK,
