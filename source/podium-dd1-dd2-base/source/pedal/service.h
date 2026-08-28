@@ -7,12 +7,16 @@
 #include "pedal/analog.h"
 #include "pedal/frame.h"
 #include "pedal/input.h"
+#include "pedal/protocol.h"
 
 typedef enum {
     PEDAL_SERVICE_DETECT_REQUEST,
     PEDAL_SERVICE_DETECT_RESPONSE,
     PEDAL_SERVICE_PROTOCOL_REQUEST,
     PEDAL_SERVICE_PROTOCOL_RESPONSE,
+    PEDAL_SERVICE_SELECT_PROTOCOL,
+    PEDAL_SERVICE_LEGACY_REQUEST,
+    PEDAL_SERVICE_LEGACY_RESPONSE,
     PEDAL_SERVICE_V3_SWITCH_WAIT,
     PEDAL_SERVICE_V3_START,
     PEDAL_SERVICE_V3_STREAM,
@@ -20,12 +24,6 @@ typedef enum {
     PEDAL_SERVICE_ANALOG,
     PEDAL_SERVICE_V4_UNSUPPORTED,
 } PedalServicePhase;
-
-typedef enum {
-    PEDAL_DEVICE_NONE,
-    PEDAL_DEVICE_V3 = 0x1a,
-    PEDAL_DEVICE_V4 = 0x2a,
-} PedalDevice;
 
 typedef struct {
     PedalInput input;
@@ -40,6 +38,10 @@ typedef struct {
     uint8_t response;
     uint8_t brake_force_percent;
     uint8_t startup_frame_count;
+    uint8_t legacy_protocol_first;
+    uint8_t legacy_protocol_second;
+    uint8_t legacy_retries[PEDAL_LEGACY_CHANNEL_COUNT];
+    PedalLegacyChannel legacy_channel;
     uint16_t analog_samples[PEDAL_INPUT_AXIS_COUNT];
     bool analog_samples_ready;
     bool connected;

@@ -90,12 +90,15 @@ static void connect_v3(PedalService *service) {
     assert(sent_byte == 0x05);
     receive_byte(0x15);
     pedal_service_run(service, 3);
-    assert(framed_receive_count == 0);
-    pedal_service_run(service, 7);
+    assert(service->phase == PEDAL_SERVICE_SELECT_PROTOCOL);
+    pedal_service_run(service, 4);
+    assert(service->phase == PEDAL_SERVICE_V3_SWITCH_WAIT);
     assert(framed_receive_count == 0);
     pedal_service_run(service, 8);
-    assert(framed_receive_count == 1);
+    assert(framed_receive_count == 0);
     pedal_service_run(service, 9);
+    assert(framed_receive_count == 1);
+    pedal_service_run(service, 10);
     assert(service->phase == PEDAL_SERVICE_V3_STREAM);
 }
 
@@ -117,7 +120,7 @@ static void test_connects_and_publishes_v3_input(void) {
         .payload = {0x34, 0x12, 0x78, 0x56, 0xbc, 0x9a, 0, 0xde},
     };
     receive_frame(&sample);
-    pedal_service_run(&service, 10);
+    pedal_service_run(&service, 11);
 
     const PedalInput *input = pedal_service_input(&service);
     assert(service.connected);
@@ -139,7 +142,7 @@ static void test_applies_active_brake_force(void) {
     connect_v3(&service);
 
     receive_frame(&sample);
-    pedal_service_run(&service, 10);
+    pedal_service_run(&service, 11);
 
     const PedalInput *input = pedal_service_input(&service);
     assert(input->axes[0] == 1);
@@ -158,12 +161,12 @@ static void test_uses_long_timeout_during_stream_startup(void) {
         .payload = {1, 0, 2, 0, 3, 0, 0, 4},
     };
     receive_frame(&sample);
-    pedal_service_run(&service, 10);
-    pedal_service_run(&service, 1010);
+    pedal_service_run(&service, 11);
+    pedal_service_run(&service, 1011);
 
     assert(service.connected);
     assert(service.phase == PEDAL_SERVICE_V3_STREAM);
-    pedal_service_run(&service, 15010);
+    pedal_service_run(&service, 15011);
 
     const PedalInput *input = pedal_service_input(&service);
     assert(!service.connected);
@@ -174,9 +177,9 @@ static void test_uses_long_timeout_during_stream_startup(void) {
     assert(input->auxiliary == 0);
     assert(discovery_count == 1);
 
-    pedal_service_run(&service, 15559);
-    assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
     pedal_service_run(&service, 15560);
+    assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
+    pedal_service_run(&service, 15561);
     assert(service.phase == PEDAL_SERVICE_DETECT_REQUEST);
 }
 
@@ -192,17 +195,17 @@ static void test_tightens_timeout_after_stream_startup(void) {
 
     for (uint16_t frame = 0; frame < 250; frame++) {
         receive_frame(&sample);
-        pedal_service_run(&service, 10);
+        pedal_service_run(&service, 11);
     }
-    pedal_service_run(&service, 1010);
+    pedal_service_run(&service, 1011);
     assert(service.connected);
     assert(service.phase == PEDAL_SERVICE_V3_STREAM);
 
     receive_frame(&sample);
-    pedal_service_run(&service, 1011);
-    pedal_service_run(&service, 2010);
-    assert(service.connected);
+    pedal_service_run(&service, 1012);
     pedal_service_run(&service, 2011);
+    assert(service.connected);
+    pedal_service_run(&service, 2012);
     assert(!service.connected);
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
 }
@@ -219,10 +222,50 @@ static void test_identifies_unsupported_v4_transport(void) {
     assert(sent_byte == 0x06);
     receive_byte(0x26);
     pedal_service_run(&service, 3);
+    pedal_service_run(&service, 4);
 
     assert(service.device == PEDAL_DEVICE_V4);
     assert(service.phase == PEDAL_SERVICE_V4_UNSUPPORTED);
     assert(!service.connected);
+}
+
+static void test_polls_legacy_pedal_channels(void) {
+    PedalService service;
+    reset_link();
+    pedal_service_init(&service);
+
+    pedal_service_run(&service, 0);
+    receive_byte(PEDAL_DEVICE_V3);
+    pedal_service_run(&service, 1);
+    pedal_service_run(&service, 2);
+    receive_byte(0x14);
+    pedal_service_run(&service, 3);
+    pedal_service_run(&service, 4);
+
+    pedal_service_run(&service, 5);
+    assert(sent_byte == 0x40);
+    receive_byte(0xa5);
+    pedal_service_run(&service, 6);
+    pedal_service_run(&service, 7);
+    assert(sent_byte == 0x80);
+    receive_byte(0);
+    pedal_service_run(&service, 8);
+    pedal_service_run(&service, 9);
+    assert(sent_byte == 0xc0);
+    receive_byte(0xff);
+    pedal_service_run(&service, 10);
+    pedal_service_run(&service, 11);
+    assert(sent_byte == 0);
+    receive_byte(0x35);
+    pedal_service_run(&service, 12);
+
+    const PedalInput *input = pedal_service_input(&service);
+    assert(input->axes[0] == 0x5a00);
+    assert(input->axes[1] == 0xff00);
+    assert(input->axes[2] == 0);
+    assert(input->auxiliary == 0x35);
+    assert(service.connected);
+    assert(service.phase == PEDAL_SERVICE_LEGACY_REQUEST);
 }
 
 static void test_retries_after_discovery_timeout(void) {
@@ -263,6 +306,7 @@ int main(void) {
     test_uses_long_timeout_during_stream_startup();
     test_tightens_timeout_after_stream_startup();
     test_identifies_unsupported_v4_transport();
+    test_polls_legacy_pedal_channels();
     test_retries_after_discovery_timeout();
     test_selects_analog_input_after_discovery_timeout();
     return 0;

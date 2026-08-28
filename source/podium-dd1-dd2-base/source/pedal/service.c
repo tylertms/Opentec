@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "pedal/frame.h"
+#include "pedal/protocol.h"
 #include "platform/pedal_link.h"
 #include "platform/time.h"
 
@@ -11,8 +12,6 @@ enum {
     PEDAL_DETECT_COMMAND = 0x0a,
     PEDAL_V3_PROTOCOL_COMMAND = 0x05,
     PEDAL_V4_PROTOCOL_COMMAND = 0x06,
-    PEDAL_V3_PROTOCOL_RESPONSE = 0x15,
-    PEDAL_V4_PROTOCOL_RESPONSE = 0x26,
     PEDAL_HANDSHAKE_FRAME = 2,
     PEDAL_STATUS_FRAME = 0,
     PEDAL_DISCOVERY_TIMEOUT_MS = 100,
@@ -22,6 +21,9 @@ enum {
     PEDAL_STARTUP_FRAME_COUNT = 250,
     PEDAL_RECONNECT_DELAY_MS = 550,
     PEDAL_STATUS_INTERVAL_MS = 500,
+    PEDAL_LEGACY_RESPONSE_TIMEOUT_MS = 17,
+    PEDAL_LEGACY_AXIS_1_RETRY_LIMIT = 5,
+    PEDAL_LEGACY_RETRY_LIMIT = 6,
 };
 
 static void reconnect(PedalService *service, uint32_t now_ms) {
@@ -29,6 +31,10 @@ static void reconnect(PedalService *service, uint32_t now_ms) {
     service->connected = false;
     service->device = PEDAL_DEVICE_NONE;
     service->startup_frame_count = 0;
+    service->legacy_channel = PEDAL_LEGACY_AXIS_1;
+    for (uint8_t channel = 0; channel < PEDAL_LEGACY_CHANNEL_COUNT; channel++) {
+        service->legacy_retries[channel] = 0;
+    }
     if (service->analog_samples_ready && pedal_analog_detect(service->analog_samples[2])) {
         platform_pedal_link_begin_analog();
         pedal_analog_update(&service->analog, service->analog_samples, &service->input);
@@ -57,8 +63,15 @@ void pedal_service_init(PedalService *service) {
     service->device = PEDAL_DEVICE_NONE;
     service->deadline_ms = 0;
     service->next_status_ms = 0;
+    service->response = 0;
     service->brake_force_percent = 100;
     service->startup_frame_count = 0;
+    service->legacy_protocol_first = 0;
+    service->legacy_protocol_second = 0;
+    service->legacy_channel = PEDAL_LEGACY_AXIS_1;
+    for (uint8_t channel = 0; channel < PEDAL_LEGACY_CHANNEL_COUNT; channel++) {
+        service->legacy_retries[channel] = 0;
+    }
     service->analog_samples_ready = false;
     service->connected = false;
 }
@@ -93,19 +106,70 @@ static void service_detect_response(PedalService *service, uint32_t now_ms) {
 
 static void service_protocol_response(PedalService *service, uint32_t now_ms) {
     if (platform_pedal_link_take_byte(&service->response)) {
-        if (service->device == PEDAL_DEVICE_V3 && service->response == PEDAL_V3_PROTOCOL_RESPONSE) {
-            service->phase = PEDAL_SERVICE_V3_SWITCH_WAIT;
-            service->deadline_ms = now_ms + PEDAL_V3_BAUD_SWITCH_DELAY_MS;
-            return;
-        }
-        if (service->device == PEDAL_DEVICE_V4 && service->response == PEDAL_V4_PROTOCOL_RESPONSE) {
-            service->phase = PEDAL_SERVICE_V4_UNSUPPORTED;
-            return;
-        }
+        service->phase = PEDAL_SERVICE_SELECT_PROTOCOL;
+        return;
     }
     if (platform_time_reached(now_ms, service->deadline_ms)) {
         reconnect(service, now_ms);
     }
+}
+
+static void service_select_protocol(PedalService *service, uint32_t now_ms) {
+    switch (pedal_protocol_select(service->device, service->response)) {
+    case PEDAL_PROTOCOL_V3:
+        service->phase = PEDAL_SERVICE_V3_SWITCH_WAIT;
+        service->deadline_ms = now_ms + PEDAL_V3_BAUD_SWITCH_DELAY_MS;
+        break;
+    case PEDAL_PROTOCOL_V4:
+        service->phase = PEDAL_SERVICE_V4_UNSUPPORTED;
+        break;
+    case PEDAL_PROTOCOL_LEGACY:
+        service->legacy_channel = PEDAL_LEGACY_AXIS_1;
+        service->phase = PEDAL_SERVICE_LEGACY_REQUEST;
+        break;
+    case PEDAL_PROTOCOL_REDISCOVER:
+        service->phase = PEDAL_SERVICE_DETECT_REQUEST;
+        break;
+    }
+}
+
+static void advance_legacy_channel(PedalService *service) {
+    service->legacy_channel =
+        (PedalLegacyChannel)((service->legacy_channel + 1) % PEDAL_LEGACY_CHANNEL_COUNT);
+    service->phase = PEDAL_SERVICE_LEGACY_REQUEST;
+}
+
+static void service_legacy_response(PedalService *service, uint32_t now_ms) {
+    if (platform_pedal_link_take_byte(&service->response)) {
+        pedal_legacy_apply_response(service->legacy_channel, service->response, false,
+                                    &service->input);
+        service->legacy_retries[service->legacy_channel] = 0;
+        if (service->legacy_channel == PEDAL_LEGACY_AUXILIARY) {
+            service->connected = true;
+        }
+        advance_legacy_channel(service);
+        return;
+    }
+    if (!platform_time_reached(now_ms, service->deadline_ms)) {
+        return;
+    }
+
+    uint8_t limit = service->legacy_channel == PEDAL_LEGACY_AXIS_1 ? PEDAL_LEGACY_AXIS_1_RETRY_LIMIT
+                                                                   : PEDAL_LEGACY_RETRY_LIMIT;
+    uint8_t *retries = &service->legacy_retries[service->legacy_channel];
+    if (*retries < limit) {
+        (*retries)++;
+        advance_legacy_channel(service);
+        return;
+    }
+
+    if (service->legacy_channel < PEDAL_LEGACY_AUXILIARY) {
+        service->input.axes[service->legacy_channel] = 0;
+    } else {
+        service->input.auxiliary = 0;
+    }
+    *retries = 0;
+    reconnect(service, now_ms);
 }
 
 static void service_v3_stream(PedalService *service, uint32_t now_ms) {
@@ -156,6 +220,20 @@ void pedal_service_run(PedalService *service, uint32_t now_ms) {
     }
     case PEDAL_SERVICE_PROTOCOL_RESPONSE:
         service_protocol_response(service, now_ms);
+        break;
+    case PEDAL_SERVICE_SELECT_PROTOCOL:
+        service_select_protocol(service, now_ms);
+        break;
+    case PEDAL_SERVICE_LEGACY_REQUEST:
+        if (platform_pedal_link_send_byte(pedal_legacy_request(service->legacy_channel,
+                                                               service->legacy_protocol_first,
+                                                               service->legacy_protocol_second))) {
+            service->phase = PEDAL_SERVICE_LEGACY_RESPONSE;
+            service->deadline_ms = now_ms + PEDAL_LEGACY_RESPONSE_TIMEOUT_MS;
+        }
+        break;
+    case PEDAL_SERVICE_LEGACY_RESPONSE:
+        service_legacy_response(service, now_ms);
         break;
     case PEDAL_SERVICE_V3_SWITCH_WAIT:
         if (platform_time_reached(now_ms, service->deadline_ms)) {
