@@ -1,48 +1,54 @@
 #include "motor/probe.h"
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "platform/aux_bus.h"
+#include "platform/time.h"
 
 enum {
     MOTOR_AUX_BUS_ADDRESS = 0x78,
     MOTOR_STATUS_REGISTER = 0,
     MOTOR_VERSION_REGISTER = 1,
-    MOTOR_PROBE_FAILURE_LIMIT = 3,
+    MOTOR_PROBE_TIMEOUT_MS = 1000,
 };
 
+/**
+ * @brief Resets motor-controller identification state.
+ * @param[out] probe Motor-controller probe state.
+ */
 void motor_probe_init(MotorProbe *probe) {
     probe->phase = MOTOR_PROBE_IDLE;
-    probe->failures = 0;
+    probe->deadline_ms = 0;
+    probe->status = 0;
+    for (uint8_t index = 0; index < sizeof(probe->version); index++) {
+        probe->version[index] = 0;
+    }
     probe->transfer_active = false;
 }
 
-void motor_probe_start(MotorProbe *probe) {
+/**
+ * @brief Starts the one-second motor-controller identification window.
+ * @param[in,out] probe Motor-controller probe state.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+void motor_probe_start(MotorProbe *probe, uint32_t now_ms) {
     if (probe->transfer_active) {
         return;
     }
 
     probe->phase = MOTOR_PROBE_STATUS;
-    probe->failures = 0;
-}
-
-static void fail_or_retry(MotorProbe *probe) {
-    probe->failures++;
-    if (probe->failures >= MOTOR_PROBE_FAILURE_LIMIT) {
-        probe->phase = MOTOR_PROBE_FAILED;
-    }
+    probe->deadline_ms = now_ms + MOTOR_PROBE_TIMEOUT_MS;
 }
 
 static void complete_transfer(MotorProbe *probe, bool succeeded) {
     platform_aux_bus_clear();
     probe->transfer_active = false;
 
-    if (!succeeded) {
-        fail_or_retry(probe);
+    if (!succeeded || probe->phase == MOTOR_PROBE_FAILED) {
         return;
     }
 
-    probe->failures = 0;
     if (probe->phase == MOTOR_PROBE_STATUS) {
         probe->phase = MOTOR_PROBE_VERSION;
     } else if (motor_identity_decode(probe->status, probe->version, &probe->identity)) {
@@ -52,14 +58,27 @@ static void complete_transfer(MotorProbe *probe, bool succeeded) {
     }
 }
 
-void motor_probe_run(MotorProbe *probe) {
+/**
+ * @brief Advances status and version reads until identification succeeds or its deadline expires.
+ * @param[in,out] probe Motor-controller probe state and decoded identity.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+void motor_probe_run(MotorProbe *probe, uint32_t now_ms) {
     PlatformAuxBusStatus bus_status = platform_aux_bus_status();
     if (probe->transfer_active) {
         if (bus_status == PLATFORM_AUX_BUS_BUSY) {
+            if (platform_time_reached(now_ms, probe->deadline_ms)) {
+                probe->phase = MOTOR_PROBE_FAILED;
+            }
             return;
         }
         complete_transfer(probe, bus_status == PLATFORM_AUX_BUS_SUCCEEDED);
         bus_status = PLATFORM_AUX_BUS_IDLE;
+    }
+
+    if (probe->phase != MOTOR_PROBE_COMPLETE && probe->phase != MOTOR_PROBE_FAILED &&
+        probe->phase != MOTOR_PROBE_IDLE && platform_time_reached(now_ms, probe->deadline_ms)) {
+        probe->phase = MOTOR_PROBE_FAILED;
     }
 
     if (bus_status != PLATFORM_AUX_BUS_IDLE) {
@@ -73,13 +92,13 @@ void motor_probe_run(MotorProbe *probe) {
         probe->transfer_active = platform_aux_bus_start_read(
             MOTOR_AUX_BUS_ADDRESS, MOTOR_VERSION_REGISTER, probe->version, sizeof(probe->version));
     }
-
-    if (!probe->transfer_active &&
-        (probe->phase == MOTOR_PROBE_STATUS || probe->phase == MOTOR_PROBE_VERSION)) {
-        fail_or_retry(probe);
-    }
 }
 
+/**
+ * @brief Returns the identified motor controller after a successful probe.
+ * @param[in] probe Motor-controller probe state.
+ * @return Decoded identity, or null before completion and after failure.
+ */
 const MotorIdentity *motor_probe_identity(const MotorProbe *probe) {
     return probe->phase == MOTOR_PROBE_COMPLETE ? &probe->identity : 0;
 }

@@ -521,6 +521,7 @@ if not meson.is_cross_build()
     'tests/source/motor_probe.c',
     motor_probe_sources,
     motor_identity_sources,
+    platform_time_sources,
     build_by_default: false,
     include_directories: base_include,
   )

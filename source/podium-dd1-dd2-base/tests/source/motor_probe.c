@@ -51,22 +51,22 @@ static void test_discovers_motor(void) {
     MotorProbe probe;
     reset_bus();
     motor_probe_init(&probe);
-    motor_probe_start(&probe);
+    motor_probe_start(&probe, 100);
 
-    motor_probe_run(&probe);
+    motor_probe_run(&probe, 100);
     assert(requested_address == 0x78);
     assert(requested_register == 0);
     assert(requested_length == 1);
 
     const uint8_t status[1] = {0x95};
     finish_read(status);
-    motor_probe_run(&probe);
+    motor_probe_run(&probe, 101);
     assert(requested_register == 1);
     assert(requested_length == 4);
 
     const uint8_t version[4] = {0x2a, 1, 2, 3};
     finish_read(version);
-    motor_probe_run(&probe);
+    motor_probe_run(&probe, 102);
 
     const MotorIdentity *identity = motor_probe_identity(&probe);
     assert(identity != 0);
@@ -76,43 +76,63 @@ static void test_discovers_motor(void) {
     assert(start_count == 2);
 }
 
-static void test_retries_failed_transfer(void) {
+static void test_retries_until_deadline(void) {
     MotorProbe probe;
     reset_bus();
     motor_probe_init(&probe);
-    motor_probe_start(&probe);
+    motor_probe_start(&probe, 100);
 
     for (uint8_t failure = 0; failure < 3; failure++) {
-        motor_probe_run(&probe);
+        motor_probe_run(&probe, 100 + failure);
         bus_status = PLATFORM_AUX_BUS_FAILED;
-        motor_probe_run(&probe);
+        motor_probe_run(&probe, 100 + failure);
     }
 
+    assert(probe.phase == MOTOR_PROBE_STATUS);
+    assert(start_count == 4);
+
+    bus_status = PLATFORM_AUX_BUS_FAILED;
+    motor_probe_run(&probe, 1100);
     assert(probe.phase == MOTOR_PROBE_FAILED);
     assert(motor_probe_identity(&probe) == 0);
-    assert(start_count == 3);
 }
 
 static void test_rejects_invalid_protocol(void) {
     MotorProbe probe;
     reset_bus();
     motor_probe_init(&probe);
-    motor_probe_start(&probe);
+    motor_probe_start(&probe, 0);
 
-    motor_probe_run(&probe);
+    motor_probe_run(&probe, 0);
     const uint8_t status[1] = {0x83};
     finish_read(status);
-    motor_probe_run(&probe);
+    motor_probe_run(&probe, 1);
     const uint8_t version[4] = {0};
     finish_read(version);
-    motor_probe_run(&probe);
+    motor_probe_run(&probe, 2);
 
     assert(probe.phase == MOTOR_PROBE_FAILED);
 }
 
+static void test_busy_transfer_expires_at_deadline(void) {
+    MotorProbe probe;
+    reset_bus();
+    motor_probe_init(&probe);
+    motor_probe_start(&probe, UINT32_MAX - 500);
+
+    motor_probe_run(&probe, UINT32_MAX - 500);
+    motor_probe_run(&probe, 498);
+    assert(probe.phase == MOTOR_PROBE_STATUS);
+
+    motor_probe_run(&probe, 499);
+    assert(probe.phase == MOTOR_PROBE_FAILED);
+    assert(motor_probe_identity(&probe) == 0);
+}
+
 int main(void) {
     test_discovers_motor();
-    test_retries_failed_transfer();
+    test_retries_until_deadline();
     test_rejects_invalid_protocol();
+    test_busy_transfer_expires_at_deadline();
     return 0;
 }

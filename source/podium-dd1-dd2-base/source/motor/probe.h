@@ -17,15 +17,15 @@ typedef enum {
 typedef struct {
     MotorIdentity identity;
     MotorProbePhase phase;
+    uint32_t deadline_ms;
     uint8_t status;
     uint8_t version[4];
-    uint8_t failures;
     bool transfer_active;
 } MotorProbe;
 
 void motor_probe_init(MotorProbe *probe);
-void motor_probe_start(MotorProbe *probe);
-void motor_probe_run(MotorProbe *probe);
+void motor_probe_start(MotorProbe *probe, uint32_t now_ms);
+void motor_probe_run(MotorProbe *probe, uint32_t now_ms);
 const MotorIdentity *motor_probe_identity(const MotorProbe *probe);
 
 #endif

@@ -193,13 +193,13 @@ static void initialize_motor(void) {
         .calibration_active = 0,
     };
     motor_probe_init(&motor_probe);
-    motor_probe_start(&motor_probe);
+    motor_probe_start(&motor_probe, platform_time_ms());
     motor_tuning_ready = false;
 }
 
 static void service_motor(void) {
     base_settings_persistence_service(&settings_persistence, &base_settings, platform_time_ms());
-    motor_probe_run(&motor_probe);
+    motor_probe_run(&motor_probe, platform_time_ms());
     const MotorIdentity *identity = motor_probe_identity(&motor_probe);
     if (!motor_tuning_ready && identity != 0) {
         motor_telemetry_service_init(&motor_telemetry_service, identity);
