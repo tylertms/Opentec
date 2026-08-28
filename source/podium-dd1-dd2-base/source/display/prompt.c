@@ -33,6 +33,16 @@ static const Glyph glyphs[] = {
     {'R', {0x1e, 0x11, 0x11, 0x1e, 0x14, 0x12, 0x11}},
     {'T', {0x1f, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04}},
     {'U', {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0e}},
+    {'0', {0x0e, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0e}},
+    {'1', {0x04, 0x0c, 0x04, 0x04, 0x04, 0x04, 0x0e}},
+    {'2', {0x0e, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1f}},
+    {'3', {0x1e, 0x01, 0x01, 0x0e, 0x01, 0x01, 0x1e}},
+    {'4', {0x02, 0x06, 0x0a, 0x12, 0x1f, 0x02, 0x02}},
+    {'5', {0x1f, 0x10, 0x10, 0x1e, 0x01, 0x01, 0x1e}},
+    {'6', {0x0e, 0x10, 0x10, 0x1e, 0x11, 0x11, 0x0e}},
+    {'7', {0x1f, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08}},
+    {'8', {0x0e, 0x11, 0x11, 0x0e, 0x11, 0x11, 0x0e}},
+    {'9', {0x0e, 0x11, 0x11, 0x0f, 0x01, 0x01, 0x0e}},
 };
 
 static const Glyph *find_glyph(char character) {
@@ -82,6 +92,37 @@ void display_prompt_render(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], bool v
     }
     draw_text(framebuffer, "ATTENTION", 10);
     draw_text(framebuffer, "ENABLE TORQUE?", 38);
+}
+
+/**
+ * @brief Renders the active paddle bite-point value.
+ *
+ * Clears the framebuffer and, while visible, renders the unpadded decimal percentage
+ * right-aligned in a centered three-character field.
+ *
+ * @param[out] framebuffer Complete local-display framebuffer.
+ * @param[in] visible True while paddle bite-point adjustment owns the display.
+ * @param[in] percent Current bite-point percentage from zero through one hundred.
+ */
+void display_prompt_render_bite_point(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], bool visible,
+                                      uint8_t percent) {
+    display_framebuffer_clear(framebuffer);
+    if (!visible) {
+        return;
+    }
+
+    char text[4] = {' ', ' ', '0', '\0'};
+    if (percent >= 100) {
+        text[0] = '1';
+        text[1] = '0';
+        text[2] = '0';
+    } else if (percent >= 10) {
+        text[1] = (char)('0' + percent / 10);
+        text[2] = (char)('0' + percent % 10);
+    } else {
+        text[2] = (char)('0' + percent);
+    }
+    draw_text(framebuffer, text, (DISPLAY_FRAMEBUFFER_HEIGHT - GLYPH_HEIGHT * GLYPH_SCALE) / 2);
 }
 
 /**

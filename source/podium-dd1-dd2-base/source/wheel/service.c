@@ -321,6 +321,24 @@ bool wheel_service_take_bite_point_report(WheelService *service, uint8_t *update
 }
 
 /**
+ * @brief Reports the active attached-wheel bite-point adjustment.
+ *
+ * Returns the live percentage while the analog paddle remains in adjustment mode.
+ *
+ * @param[in] service Attached-wheel service and protocol state.
+ * @param[out] percent Current bite-point percentage.
+ * @return True while bite-point adjustment is active.
+ */
+bool wheel_service_bite_point_adjustment(const WheelService *service, uint8_t *percent) {
+    if (service->protocol.axis_override_processor.paddle_clutch_phase !=
+        WHEEL_PADDLE_CLUTCH_ADJUSTING) {
+        return false;
+    }
+    *percent = service->protocol.paddle_bite_point_percent;
+    return true;
+}
+
+/**
  * @brief Reports whether command-2 protocol traffic is active.
  *
  * Treats authentication and negotiated packet exchange as active protocol phases.

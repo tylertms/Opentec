@@ -183,10 +183,16 @@ static bool usb_wheel_transfer_response_ready;
 static bool usb_tuning_menu_response_ready;
 static bool usb_tuning_profile_response_ready;
 static bool usb_wheel_transfer_response_pending[WHEEL_TRANSFER_REQUEST_COUNT];
+static uint8_t local_display_page;
+static uint8_t local_display_rendered_bite_point_percent;
+static uint8_t wheel_bite_point_display_percent;
 
 enum {
     FAN_STARTUP_DUTY_PERCENT = 25,
     USB_MOTOR_BUFFER_SIZE = MEMORY_TRANSFER_MAX_READ_SIZE,
+    LOCAL_DISPLAY_PAGE_CLEAR = 0,
+    LOCAL_DISPLAY_PAGE_TORQUE_PROMPT = 1,
+    LOCAL_DISPLAY_PAGE_BITE_POINT = 2,
 };
 
 static uint8_t usb_motor_upload_assembly[USB_MOTOR_BUFFER_SIZE];
@@ -985,13 +991,48 @@ static void service_shifter_display(uint32_t now_ms) {
     }
 }
 
+/**
+ * @brief Applies a force-output prompt visibility action.
+ *
+ * Retains the current display state when no action is requested and otherwise shows or hides the
+ * torque-confirmation prompt.
+ *
+ * @param[in] action Requested prompt visibility transition.
+ */
 static void apply_force_output_prompt_action(ForceOutputEnableAction action) {
     if (action == FORCE_OUTPUT_ENABLE_ACTION_NONE) {
         return;
     }
     force_output_prompt_visible = action == FORCE_OUTPUT_ENABLE_ACTION_SHOW_PROMPT;
-    display_prompt_render(display_framebuffer, force_output_prompt_visible);
+}
+
+/**
+ * @brief Updates the local display when its active page changes.
+ *
+ * Gives the torque-confirmation prompt priority over paddle bite-point adjustment. Changes to the
+ * active percentage redraw the bite-point page, and leaving both states clears the display.
+ */
+static void service_local_display(void) {
+    bool bite_point_visible =
+        wheel_service_bite_point_adjustment(&wheel_service, &wheel_bite_point_display_percent);
+    uint8_t page = force_output_prompt_visible ? LOCAL_DISPLAY_PAGE_TORQUE_PROMPT
+                   : bite_point_visible        ? LOCAL_DISPLAY_PAGE_BITE_POINT
+                                               : LOCAL_DISPLAY_PAGE_CLEAR;
+    if (page == local_display_page &&
+        (page != LOCAL_DISPLAY_PAGE_BITE_POINT ||
+         wheel_bite_point_display_percent == local_display_rendered_bite_point_percent)) {
+        return;
+    }
+
+    if (page == LOCAL_DISPLAY_PAGE_TORQUE_PROMPT) {
+        display_prompt_render(display_framebuffer, true);
+    } else {
+        display_prompt_render_bite_point(display_framebuffer, page == LOCAL_DISPLAY_PAGE_BITE_POINT,
+                                         wheel_bite_point_display_percent);
+    }
     platform_display_write_frame(display_framebuffer);
+    local_display_page = page;
+    local_display_rendered_bite_point_percent = wheel_bite_point_display_percent;
 }
 
 static void service_force_output_enable(void) {
@@ -1083,6 +1124,7 @@ int main(void) {
             (void)motor_command_serial_submit(&command_transport, &serial_service, now_ms);
         }
         service_force_output_enable();
+        service_local_display();
         service_shifter_display(now_ms);
         service_usb_input(now_ms);
         service_motor();

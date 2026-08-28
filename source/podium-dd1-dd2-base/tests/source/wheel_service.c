@@ -657,6 +657,18 @@ static void test_exposes_axis_overrides(void) {
     assert(overrides->axis_6.value == 0x5a);
 }
 
+static void test_reports_bite_point_adjustment(void) {
+    WheelService service;
+    initialize_service(&service);
+    uint8_t percent = 0;
+
+    assert(!wheel_service_bite_point_adjustment(&service, &percent));
+    service.protocol.axis_override_processor.paddle_clutch_phase = WHEEL_PADDLE_CLUTCH_ADJUSTING;
+    service.protocol.paddle_bite_point_percent = 62;
+    assert(wheel_service_bite_point_adjustment(&service, &percent));
+    assert(percent == 62);
+}
+
 int main(void) {
     test_maps_primary_scan_bits();
     test_maps_secondary_scan_bit();
@@ -679,5 +691,6 @@ int main(void) {
     test_reports_calibration_availability();
     test_reports_mode_gated_input_capability();
     test_exposes_axis_overrides();
+    test_reports_bite_point_adjustment();
     return 0;
 }
