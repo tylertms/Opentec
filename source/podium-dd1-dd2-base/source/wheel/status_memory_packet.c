@@ -15,10 +15,13 @@ enum {
     WHEEL_STATUS_MEMORY_DIGEST_LENGTH = 20,
     WHEEL_STATUS_MEMORY_COMMAND_BODY_LENGTH = 6,
     WHEEL_STATUS_MEMORY_DIGEST_RESPONSE_COMMAND = 0x87,
+    WHEEL_STATUS_MEMORY_INFO_RESPONSE_COMMAND = 0x85,
     WHEEL_STATUS_MEMORY_FRAGMENT_MASK = 7,
     WHEEL_STATUS_MEMORY_FRAGMENT_OFFSET = 3,
     WHEEL_STATUS_MEMORY_COMMAND_OFFSET = 4,
+    WHEEL_STATUS_MEMORY_SELECTOR_OFFSET = 6,
     WHEEL_STATUS_MEMORY_DIGEST_SOURCE_OFFSET = 9,
+    WHEEL_STATUS_MEMORY_INFO_SOURCE_OFFSET = 9,
     WHEEL_STATUS_MEMORY_CHECKSUM_SIZE = 2,
     WHEEL_STATUS_MEMORY_MIN_PACKET_SIZE = 3,
 };
@@ -81,6 +84,29 @@ static bool checksum_valid(const uint8_t *input, uint16_t length) {
         value = update_checksum(value, input[index]);
     }
     return input[length - 2] == (uint8_t)(value >> 8) && input[length - 1] == (uint8_t)value;
+}
+
+/**
+ * @brief Validates a normal wheel-status command envelope.
+ *
+ * Checks the packet checksum, normal-mode header, prior sequence, unfragmented marker, command,
+ * and caller-selected minimum length.
+ *
+ * @param[in] previous_sequence Expected prior two-bit sequence.
+ * @param[in] input Received wheel-status packet.
+ * @param[in] length Received byte count.
+ * @param[in] command Expected response command.
+ * @param[in] minimum_length Minimum safe packet length.
+ * @return True when the command envelope is valid.
+ */
+static bool command_valid(uint8_t previous_sequence, const uint8_t *input, uint16_t length,
+                          uint8_t command, uint16_t minimum_length) {
+    return length >= minimum_length && checksum_valid(input, length) &&
+           (input[0] & (WHEEL_STATUS_MEMORY_RESPONSE_FLAG | WHEEL_STATUS_MEMORY_MODE_MASK)) == 0 &&
+           (input[0] & WHEEL_STATUS_MEMORY_SEQUENCE_MASK) ==
+               (previous_sequence & WHEEL_STATUS_MEMORY_SEQUENCE_MASK) &&
+           (input[WHEEL_STATUS_MEMORY_FRAGMENT_OFFSET] & WHEEL_STATUS_MEMORY_FRAGMENT_MASK) == 0 &&
+           input[WHEEL_STATUS_MEMORY_COMMAND_OFFSET] == command;
 }
 
 /**
@@ -212,18 +238,42 @@ bool wheel_status_memory_digest_response_decode(uint8_t previous_sequence, const
                                                 uint16_t length,
                                                 uint8_t source[WHEEL_STATUS_DIGEST_SOURCE_SIZE]) {
     if (source == 0 ||
-        length < WHEEL_STATUS_MEMORY_DIGEST_SOURCE_OFFSET + WHEEL_STATUS_DIGEST_SOURCE_SIZE +
-                     WHEEL_STATUS_MEMORY_CHECKSUM_SIZE ||
-        !checksum_valid(input, length) ||
-        (input[0] & (WHEEL_STATUS_MEMORY_RESPONSE_FLAG | WHEEL_STATUS_MEMORY_MODE_MASK)) != 0 ||
-        (input[0] & WHEEL_STATUS_MEMORY_SEQUENCE_MASK) !=
-            (previous_sequence & WHEEL_STATUS_MEMORY_SEQUENCE_MASK) ||
-        (input[WHEEL_STATUS_MEMORY_FRAGMENT_OFFSET] & WHEEL_STATUS_MEMORY_FRAGMENT_MASK) != 0 ||
-        input[WHEEL_STATUS_MEMORY_COMMAND_OFFSET] != WHEEL_STATUS_MEMORY_DIGEST_RESPONSE_COMMAND) {
+        !command_valid(previous_sequence, input, length,
+                       WHEEL_STATUS_MEMORY_DIGEST_RESPONSE_COMMAND,
+                       WHEEL_STATUS_MEMORY_DIGEST_SOURCE_OFFSET + WHEEL_STATUS_DIGEST_SOURCE_SIZE +
+                           WHEEL_STATUS_MEMORY_CHECKSUM_SIZE)) {
         return false;
     }
     for (uint8_t index = 0; index < WHEEL_STATUS_DIGEST_SOURCE_SIZE; index++) {
         source[index] = input[WHEEL_STATUS_MEMORY_DIGEST_SOURCE_OFFSET + index];
     }
+    return true;
+}
+
+/**
+ * @brief Decodes a two-byte wheel-status information response.
+ *
+ * Accepts a checksum-valid, unfragmented command 0x85 for selector 3 or 4 and combines its two
+ * data bytes in big-endian order.
+ *
+ * @param[in] previous_sequence Expected prior two-bit sequence.
+ * @param[in] expected_selector Expected information selector, 3 or 4.
+ * @param[in] input Received wheel-status packet.
+ * @param[in] length Received byte count.
+ * @param[out] value Decoded 16-bit information value.
+ * @return True when the packet contains the expected information response.
+ */
+bool wheel_status_memory_info_word_response_decode(uint8_t previous_sequence,
+                                                   uint8_t expected_selector, const uint8_t *input,
+                                                   uint16_t length, uint16_t *value) {
+    if (value == 0 || (expected_selector != 3 && expected_selector != 4) ||
+        !command_valid(previous_sequence, input, length, WHEEL_STATUS_MEMORY_INFO_RESPONSE_COMMAND,
+                       WHEEL_STATUS_MEMORY_INFO_SOURCE_OFFSET + 2 +
+                           WHEEL_STATUS_MEMORY_CHECKSUM_SIZE) ||
+        input[WHEEL_STATUS_MEMORY_SELECTOR_OFFSET] != expected_selector) {
+        return false;
+    }
+    *value = (uint16_t)((uint16_t)input[WHEEL_STATUS_MEMORY_INFO_SOURCE_OFFSET] << 8) |
+             input[WHEEL_STATUS_MEMORY_INFO_SOURCE_OFFSET + 1];
     return true;
 }

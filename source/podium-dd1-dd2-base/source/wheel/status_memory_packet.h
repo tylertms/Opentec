@@ -26,5 +26,8 @@ void wheel_status_memory_sequence_reset_encode(
 bool wheel_status_memory_digest_response_decode(uint8_t previous_sequence, const uint8_t *input,
                                                 uint16_t length,
                                                 uint8_t source[WHEEL_STATUS_DIGEST_SOURCE_SIZE]);
+bool wheel_status_memory_info_word_response_decode(uint8_t previous_sequence,
+                                                   uint8_t expected_selector, const uint8_t *input,
+                                                   uint16_t length, uint16_t *value);
 
 #endif

@@ -77,11 +77,25 @@ static void test_rejects_invalid_digest_responses(void) {
     assert(!wheel_status_memory_digest_response_decode(3, packet, sizeof(packet), source));
 }
 
+static void test_decodes_information_word_response(void) {
+    static const uint8_t packet[] = {
+        0x03, 0x00, 0x08, 0x00, 0x85, 0x00, 0x03, 0x00, 0x02, 0x12, 0x34, 0x8e, 0x35,
+    };
+    uint16_t value;
+
+    assert(wheel_status_memory_info_word_response_decode(3, 3, packet, sizeof(packet), &value));
+    assert(value == 0x1234);
+    assert(!wheel_status_memory_info_word_response_decode(3, 4, packet, sizeof(packet), &value));
+    assert(!wheel_status_memory_info_word_response_decode(3, 2, packet, sizeof(packet), &value));
+    assert(!wheel_status_memory_info_word_response_decode(2, 3, packet, sizeof(packet), &value));
+}
+
 int main(void) {
     test_encodes_digest_request();
     test_encodes_control_responses();
     test_encodes_information_requests();
     test_decodes_digest_response();
     test_rejects_invalid_digest_responses();
+    test_decodes_information_word_response();
     return 0;
 }
