@@ -168,7 +168,13 @@ static void capture_request(WheelProtocol *protocol,
         wheel_packet_crc_prepare(&protocol->crc_input, protocol->mode, protocol->interface_mode);
         wheel_packet_crc_filter(&protocol->crc_filter, &protocol->crc_input);
         wheel_packet_crc_normalize_direct(&protocol->crc_input, protocol->mode,
-                                          protocol->interface_mode, snapshot);
+                                          protocol->interface_mode);
+        wheel_axis_override_process_packet(
+            &protocol->axis_override_processor, protocol->configured_axis_override_mode,
+            protocol->mode, protocol->interface_mode, protocol->crc_input.axis_limit,
+            protocol->axis_calibration_value, protocol->crc_input.controls,
+            protocol->crc_input.axis_outputs);
+        wheel_packet_crc_snapshot(&protocol->crc_input, snapshot);
         protocol->acknowledgement_input_active =
             crc_acknowledgement_input_active(&protocol->crc_input);
         bool changed = false;

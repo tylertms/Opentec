@@ -260,16 +260,14 @@ void wheel_packet_crc_filter(WheelPacketCrcFilter *filter, WheelPacketCrcInput *
  * @brief Normalizes direct-connected CRC-family wheel input.
  *
  * Applies the standard or Xbox interface button map without adapter input, retains the defined
- * control bits, and emits the 30-byte protocol request view.
+ * control bits.
  *
  * @param[in,out] input Filtered CRC-family input updated to its normalized values.
  * @param[in] wheel_mode Selected attached-wheel mode.
  * @param[in] interface_mode Active wheel interface mode.
- * @param[out] snapshot Normalized 30-byte protocol request view.
  */
 void wheel_packet_crc_normalize_direct(WheelPacketCrcInput *input, uint8_t wheel_mode,
-                                       uint8_t interface_mode,
-                                       uint8_t snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE]) {
+                                       uint8_t interface_mode) {
     if (interface_mode == INTERFACE_MODE_XBOX_GIP) {
         map_xbox_buttons(input);
     } else {
@@ -286,6 +284,19 @@ void wheel_packet_crc_normalize_direct(WheelPacketCrcInput *input, uint8_t wheel
     input->controls[1] &= 0x80u;
     input->controls[2] = 0;
     input->controls[3] = 0;
+}
+
+/**
+ * @brief Encodes normalized CRC-family input as a protocol request view.
+ *
+ * Writes the logical button, axis, motion, control, report, and capability fields into their
+ * 30-byte payload positions.
+ *
+ * @param[in] input Normalized CRC-family input to encode.
+ * @param[out] snapshot Thirty-byte protocol request view.
+ */
+void wheel_packet_crc_snapshot(const WheelPacketCrcInput *input,
+                               uint8_t snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE]) {
     write_snapshot(input, snapshot);
 }
 

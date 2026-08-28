@@ -608,6 +608,31 @@ static void test_captures_crc_family_requests(void) {
     assert(wheel_protocol_acknowledgement_input_active(&protocol));
 }
 
+static void test_applies_crc_family_axis_controls(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    wheel_protocol_set_axis_processing(&protocol, 0, WHEEL_AXIS_OVERRIDE_MODE_SECONDARY, 0);
+    synchronize(&protocol, request);
+    select_mode(&protocol, request, 6);
+
+    request[13] = 0x20;
+    request[14] = 0x40;
+    request[15] = 1;
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+    wheel_protocol_accept(&protocol, request);
+
+    const WheelPacketCrcInput *input = wheel_protocol_crc_input(&protocol);
+    assert(input->controls[5] == 0x80);
+    assert(input->controls[6] == 0x80);
+    const WheelAxisOverrideProcessor *axes = wheel_protocol_axis_overrides(&protocol);
+    assert(axes->overrides.axis_7.enabled);
+    assert(axes->overrides.axis_7.value == 0xbf);
+    assert(axes->overrides.auxiliary.enabled);
+    assert(axes->overrides.auxiliary.value == 0x7f);
+    assert(axes->packet_axis_report_enabled);
+}
+
 static void test_rejects_out_of_range_mode(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -652,6 +677,7 @@ int main(void) {
     test_builds_mode_four_active_response();
     test_builds_crc_family_active_response();
     test_captures_crc_family_requests();
+    test_applies_crc_family_axis_controls();
     test_rejects_out_of_range_mode();
     test_crc8_vectors();
     return 0;

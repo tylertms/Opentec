@@ -34,11 +34,16 @@ typedef struct {
     uint8_t multiplex_phase;
     bool x_available;
     bool y_available;
+    bool packet_axis_report_enabled;
 } WheelAxisOverrideProcessor;
 
 void wheel_axis_override_processor_init(WheelAxisOverrideProcessor *processor);
 void wheel_axis_override_process(WheelAxisOverrideProcessor *processor, uint8_t mode,
                                  uint8_t wheel_mode, uint8_t interface_mode, bool enabled,
                                  uint8_t calibration_value, uint8_t x, uint8_t y, uint8_t axes[2]);
+void wheel_axis_override_process_packet(WheelAxisOverrideProcessor *processor, uint8_t mode,
+                                        uint8_t wheel_mode, uint8_t interface_mode,
+                                        uint8_t axis_limit, uint8_t calibration_value,
+                                        uint8_t controls[8], uint8_t axes[2]);
 
 #endif

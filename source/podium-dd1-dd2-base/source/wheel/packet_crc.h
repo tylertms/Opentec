@@ -56,8 +56,9 @@ void wheel_packet_crc_prepare(WheelPacketCrcInput *input, uint8_t wheel_mode,
                               uint8_t interface_mode);
 void wheel_packet_crc_filter(WheelPacketCrcFilter *filter, WheelPacketCrcInput *input);
 void wheel_packet_crc_normalize_direct(WheelPacketCrcInput *input, uint8_t wheel_mode,
-                                       uint8_t interface_mode,
-                                       uint8_t snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE]);
+                                       uint8_t interface_mode);
+void wheel_packet_crc_snapshot(const WheelPacketCrcInput *input,
+                               uint8_t snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE]);
 void wheel_packet_crc_encode(uint8_t wheel_mode, WheelPacketCrcOutput *output,
                              uint8_t response[WHEEL_PACKET_CRC_RESPONSE_SIZE]);
 
