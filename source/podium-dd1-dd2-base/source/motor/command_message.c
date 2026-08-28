@@ -43,6 +43,8 @@ bool motor_command_message_decode(const uint8_t *payload, uint16_t length,
         *message = (MotorCommandMessage){
             .kind = MOTOR_COMMAND_MESSAGE_VENDOR_CONTINUATION,
             .command = payload[0],
+            .payload = payload,
+            .payload_length = length,
             .data = payload,
             .data_length = length,
         };
@@ -51,6 +53,8 @@ bool motor_command_message_decode(const uint8_t *payload, uint16_t length,
         *message = (MotorCommandMessage){
             .kind = MOTOR_COMMAND_MESSAGE_VENDOR_FINAL,
             .command = payload[0],
+            .payload = payload,
+            .payload_length = length,
             .data = payload,
             .data_length = length,
         };
@@ -70,6 +74,8 @@ bool motor_command_message_decode(const uint8_t *payload, uint16_t length,
         .kind = kind,
         .command = payload[0],
         .selector = payload[MOTOR_COMMAND_MESSAGE_SELECTOR_OFFSET],
+        .payload = payload,
+        .payload_length = length,
         .data = payload + MOTOR_COMMAND_MESSAGE_DATA_OFFSET,
         .data_length = data_length,
     };

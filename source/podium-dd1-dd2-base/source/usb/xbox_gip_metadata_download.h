@@ -4,21 +4,16 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "usb/feature_download.h"
 #include "usb/xbox_gip_metadata.h"
 
 enum {
     USB_XBOX_GIP_METADATA_REPORT_ID = 4,
-    USB_XBOX_GIP_METADATA_PACKET_SIZE = 64,
-    USB_XBOX_GIP_METADATA_ACKNOWLEDGEMENT_SIZE = 13,
+    USB_XBOX_GIP_METADATA_PACKET_SIZE = USB_FEATURE_DOWNLOAD_PACKET_SIZE,
+    USB_XBOX_GIP_METADATA_ACKNOWLEDGEMENT_SIZE = USB_FEATURE_DOWNLOAD_ACKNOWLEDGEMENT_SIZE,
 };
 
-typedef struct {
-    uint16_t offset;
-    uint8_t sequence;
-    uint8_t continuation_count;
-    bool awaiting_acknowledgement;
-    bool complete;
-} UsbXboxGipMetadataDownload;
+typedef UsbFeatureDownload UsbXboxGipMetadataDownload;
 
 void usb_xbox_gip_metadata_download_init(UsbXboxGipMetadataDownload *download, uint8_t sequence);
 uint8_t usb_xbox_gip_metadata_download_next(UsbXboxGipMetadataDownload *download,

@@ -47,8 +47,8 @@ MotorCommandApplicationEvent motor_command_application_apply(MotorCommandApplica
             event.result = MOTOR_COMMAND_APPLICATION_INFORMATION;
         } else if (result == MOTOR_COMMAND_INFORMATION_FORWARD) {
             event.result = MOTOR_COMMAND_APPLICATION_FORWARD;
-            event.forward_data = message->data;
-            event.forward_length = message->data_length;
+            event.forward_data = message->payload;
+            event.forward_length = message->payload_length;
         }
         return event;
     }
@@ -69,8 +69,8 @@ MotorCommandApplicationEvent motor_command_application_apply(MotorCommandApplica
             return event;
         }
         event.result = MOTOR_COMMAND_APPLICATION_FORWARD;
-        event.forward_data = message->data;
-        event.forward_length = message->data_length;
+        event.forward_data = message->payload;
+        event.forward_length = message->payload_length;
     }
     return event;
 }

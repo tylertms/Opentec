@@ -43,24 +43,28 @@ static void test_derives_calibration_digest(void) {
 }
 
 static void test_exposes_forwarded_responses(void) {
-    static const uint8_t information_data[20] = {0};
+    static const uint8_t information_payload[25] = {0x85, 0, 2, 0, 20};
     static const uint8_t vendor_data[] = {0xc1, 0x12, 0x34};
     MotorCommandApplication application;
     motor_command_application_init(&application);
     MotorCommandMessage message = {
         .kind = MOTOR_COMMAND_MESSAGE_INFORMATION,
         .selector = 2,
-        .data = information_data,
-        .data_length = sizeof(information_data),
+        .payload = information_payload,
+        .payload_length = sizeof(information_payload),
+        .data = information_payload + 5,
+        .data_length = sizeof(information_payload) - 5,
     };
 
     MotorCommandApplicationEvent event = motor_command_application_apply(&application, &message);
     assert(event.result == MOTOR_COMMAND_APPLICATION_FORWARD);
-    assert(event.forward_data == information_data);
-    assert(event.forward_length == sizeof(information_data));
+    assert(event.forward_data == information_payload);
+    assert(event.forward_length == sizeof(information_payload));
 
     message = (MotorCommandMessage){
         .kind = MOTOR_COMMAND_MESSAGE_VENDOR_FINAL,
+        .payload = vendor_data,
+        .payload_length = sizeof(vendor_data),
         .data = vendor_data,
         .data_length = sizeof(vendor_data),
     };

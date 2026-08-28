@@ -11,6 +11,8 @@ static void test_decodes_information_message(void) {
     assert(message.kind == MOTOR_COMMAND_MESSAGE_INFORMATION);
     assert(message.command == 0x85);
     assert(message.selector == 3);
+    assert(message.payload == payload);
+    assert(message.payload_length == sizeof(payload));
     assert(message.data_length == 2);
     assert(message.data[0] == 0x12);
     assert(message.data[1] == 0x34);
@@ -35,6 +37,8 @@ static void test_decodes_vendor_messages(void) {
 
     assert(motor_command_message_decode(continuation, sizeof(continuation), &message));
     assert(message.kind == MOTOR_COMMAND_MESSAGE_VENDOR_CONTINUATION);
+    assert(message.payload == continuation);
+    assert(message.payload_length == sizeof(continuation));
     assert(message.data == continuation);
     assert(message.data_length == sizeof(continuation));
     assert(motor_command_message_decode(final, sizeof(final), &message));

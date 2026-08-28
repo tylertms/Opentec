@@ -15,6 +15,8 @@ typedef struct {
     MotorCommandMessageKind kind;
     uint8_t command;
     uint8_t selector;
+    const uint8_t *payload;
+    uint16_t payload_length;
     const uint8_t *data;
     uint16_t data_length;
 } MotorCommandMessage;

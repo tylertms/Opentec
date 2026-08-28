@@ -49,6 +49,8 @@ usb_compatibility_report_descriptor_sources = files(
 )
 usb_compatibility_descriptor_sources = files('source/usb/compatibility_descriptor.c')
 usb_console_descriptor_sources = files('source/usb/console_descriptor.c')
+usb_feature_download_sources = files('source/usb/feature_download.c')
+usb_motor_response_download_sources = files('source/usb/motor_response_download.c')
 usb_xbox_gip_discovery_sources = files('source/usb/xbox_gip_discovery.c')
 usb_xbox_gip_metadata_sources = files('source/usb/xbox_gip_metadata.c')
 usb_xbox_gip_metadata_download_sources = files('source/usb/xbox_gip_metadata_download.c')
@@ -187,6 +189,8 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'usb-compatibility-report-descriptor': 'source/usb/compatibility_report_descriptor.c',
     'usb-compatibility-descriptor': 'source/usb/compatibility_descriptor.c',
     'usb-console-descriptor': 'source/usb/console_descriptor.c',
+    'usb-feature-download': 'source/usb/feature_download.c',
+    'usb-motor-response-download': 'source/usb/motor_response_download.c',
     'usb-xbox-gip-discovery': 'source/usb/xbox_gip_discovery.c',
     'usb-xbox-gip-metadata': 'source/usb/xbox_gip_metadata.c',
     'usb-xbox-gip-metadata-download': 'source/usb/xbox_gip_metadata_download.c',
@@ -769,6 +773,7 @@ if not meson.is_cross_build()
   usb_xbox_gip_metadata_download_test = executable(
     'base-usb-xbox-gip-metadata-download-test',
     'tests/source/xbox_gip_metadata_download.c',
+    usb_feature_download_sources,
     usb_xbox_gip_metadata_sources,
     usb_xbox_gip_metadata_download_sources,
     build_by_default: false,
@@ -804,6 +809,7 @@ if not meson.is_cross_build()
     'base-usb-xbox-gip-service-test',
     'tests/source/xbox_gip_service.c',
     usb_console_descriptor_sources,
+    usb_feature_download_sources,
     usb_xbox_gip_discovery_sources,
     usb_xbox_gip_metadata_sources,
     usb_xbox_gip_metadata_download_sources,
@@ -882,6 +888,7 @@ if not meson.is_cross_build()
     usb_compatibility_descriptor_sources,
     usb_compatibility_report_descriptor_sources,
     usb_console_descriptor_sources,
+    usb_feature_download_sources,
     usb_xbox_gip_discovery_sources,
     usb_xbox_gip_metadata_sources,
     usb_xbox_gip_metadata_download_sources,
@@ -890,6 +897,15 @@ if not meson.is_cross_build()
     usb_xbox_gip_session_sources,
     usb_updater_descriptor_sources,
     usb_updater_control_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  usb_motor_response_download_test = executable(
+    'base-usb-motor-response-download-test',
+    'tests/source/usb_motor_response_download.c',
+    usb_feature_download_sources,
+    usb_motor_response_download_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -1629,6 +1645,11 @@ if not meson.is_cross_build()
   test('base-usb-xbox-gip-session', usb_xbox_gip_session_test, suite: ['base', 'usb'])
   test('base-usb-xbox-gip-response', usb_xbox_gip_response_test, suite: ['base', 'usb'])
   test('base-usb-xbox-gip-service', usb_xbox_gip_service_test, suite: ['base', 'usb'])
+  test(
+    'base-usb-motor-response-download',
+    usb_motor_response_download_test,
+    suite: ['base', 'usb', 'motor'],
+  )
   test('base-usb-updater-descriptor', usb_updater_descriptor_test, suite: ['base', 'usb'])
   test('base-usb-updater-control', usb_updater_control_test, suite: ['base', 'usb'])
   test('base-usb-descriptor', usb_descriptor_test, suite: ['base', 'usb'])
