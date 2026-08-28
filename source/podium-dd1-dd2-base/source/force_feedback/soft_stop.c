@@ -1,76 +1,76 @@
 #include "force_feedback/soft_stop.h"
 
+#include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
-static uint8_t deadline_reached(uint32_t now, uint32_t deadline) {
-    return (int32_t)(now - deadline) >= 0;
-}
+enum {
+    FORCE_SOFT_STOP_ONSET_MARGIN = 1000,
+    FORCE_SOFT_STOP_FULL_FORCE_SPAN = 0x19b1,
+    FORCE_SOFT_STOP_TARGET = 0xffff,
+    FORCE_SOFT_STOP_RAMP_INTERVAL_MS = 50,
+    FORCE_SOFT_STOP_RAMP_RESET_DISTANCE = 494,
+    FORCE_SOFT_STOP_RAMP_MAXIMUM = 100,
+};
 
-static int32_t force_boundary(const ForceSoftStopConfig *config) {
-    return config->travel_limit + config->onset_margin;
-}
+void force_soft_stop_reset(ForceSoftStopState *state) { memset(state, 0, sizeof(*state)); }
 
-static void update_ramp(ForceSoftStopState *state, const ForceSoftStopConfig *config,
-                        uint32_t now_ms) {
-    int32_t boundary = force_boundary(config);
-    if (state->initialized == 0) {
-        force_soft_stop_reset(state, config, now_ms);
-    } else if (state->previous_limit - boundary > config->ramp_reset_distance) {
-        state->ramp_percent = 0;
-        state->next_ramp_ms = now_ms + config->ramp_step_interval_ms;
-    }
-    state->previous_limit = boundary;
-
-    if (state->ramp_percent < 100 &&
-        (config->ramp_step_interval_ms == 0 || deadline_reached(now_ms, state->next_ramp_ms))) {
-        ++state->ramp_percent;
-        state->next_ramp_ms = now_ms + config->ramp_step_interval_ms;
-    }
-}
-
-static int32_t calculate_force(const ForceSoftStopConfig *config, int32_t position,
-                               uint8_t ramp_percent) {
-    if (config->full_force_span == 0 || config->maximum_force == 0 || ramp_percent == 0) {
-        return 0;
-    }
-
-    int32_t boundary = force_boundary(config);
-    int32_t penetration;
-    int32_t direction;
-    if (position > boundary) {
-        penetration = position - boundary;
-        direction = -1;
-    } else if (position < -boundary) {
-        penetration = -boundary - position;
-        direction = 1;
-    } else {
-        return 0;
-    }
-
-    if (penetration > config->full_force_span) {
-        penetration = config->full_force_span;
-    }
-
-    int64_t force = (int64_t)config->maximum_force * penetration * ramp_percent;
-    return direction * (int32_t)(force / config->full_force_span / 100);
-}
-
-void force_soft_stop_reset(ForceSoftStopState *state, const ForceSoftStopConfig *config,
-                           uint32_t now_ms) {
-    state->previous_limit = force_boundary(config);
-    state->next_ramp_ms = now_ms + config->ramp_step_interval_ms;
-    state->ramp_percent = 0;
-    state->initialized = 1;
-}
-
+/**
+ * @brief Apply the wheel-range end stop to an accumulated force value.
+ *
+ * Starts force 1000 counts beyond the configured travel limit and blends the accumulator toward
+ * positive or negative 65535 across 6577 counts. The blend ramps by one percent after each elapsed
+ * 50-millisecond deadline. Reducing the boundary by at least 494 counts restarts that ramp. A
+ * disabled secondary output suppresses both the force addition and the outside-travel state.
+ *
+ * @param[in,out] state End-stop ramp and previous-boundary state.
+ * @param[in] config Current one-sided wheel travel limit.
+ * @param[in] position Centered wheel position.
+ * @param[in] accumulated_force Force accumulated before the end stop is applied.
+ * @param[in] output_disabled True when the secondary force output is disabled.
+ * @param[in] now_ms Current system time in milliseconds.
+ * @return Updated accumulated force and the end-stop activity state.
+ */
 ForceSoftStopResult force_soft_stop_update(ForceSoftStopState *state,
                                            const ForceSoftStopConfig *config, int32_t position,
+                                           int32_t accumulated_force, bool output_disabled,
                                            uint32_t now_ms) {
-    update_ramp(state, config, now_ms);
+    int32_t boundary = config->travel_limit + FORCE_SOFT_STOP_ONSET_MARGIN;
+    if (state->previous_boundary - boundary >= FORCE_SOFT_STOP_RAMP_RESET_DISTANCE) {
+        state->ramp_percent = 0;
+    }
+    state->previous_boundary = boundary;
 
-    ForceSoftStopResult result = {
-        .force = calculate_force(config, position, state->ramp_percent),
-        .outside_travel = position > config->travel_limit || position < -config->travel_limit,
-    };
+    if (state->ramp_percent < FORCE_SOFT_STOP_RAMP_MAXIMUM && now_ms > state->next_ramp_ms) {
+        ++state->ramp_percent;
+        state->next_ramp_ms = now_ms + FORCE_SOFT_STOP_RAMP_INTERVAL_MS;
+    }
+
+    ForceSoftStopResult result = {.force = accumulated_force};
+    if (output_disabled) {
+        return result;
+    }
+
+    int32_t penetration = 0;
+    int32_t target = 0;
+    if (position > boundary) {
+        int64_t distance = (int64_t)position - boundary;
+        penetration = distance > FORCE_SOFT_STOP_FULL_FORCE_SPAN ? FORCE_SOFT_STOP_FULL_FORCE_SPAN
+                                                                 : (int32_t)distance;
+        target = -FORCE_SOFT_STOP_TARGET;
+    } else if (position < -boundary) {
+        int64_t distance = -(int64_t)boundary - position;
+        penetration = distance > FORCE_SOFT_STOP_FULL_FORCE_SPAN ? FORCE_SOFT_STOP_FULL_FORCE_SPAN
+                                                                 : (int32_t)distance;
+        target = FORCE_SOFT_STOP_TARGET;
+    }
+
+    if (penetration != 0) {
+        int32_t gradient = (target - accumulated_force) / FORCE_SOFT_STOP_FULL_FORCE_SPAN;
+        int64_t ramped_force =
+            (int64_t)gradient * penetration * state->ramp_percent / FORCE_SOFT_STOP_RAMP_MAXIMUM;
+        result.force += (int32_t)ramped_force;
+    }
+    result.outside_travel = position > config->travel_limit || position < -config->travel_limit;
     return result;
 }

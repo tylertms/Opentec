@@ -27,7 +27,7 @@ typedef struct {
 } ForceFeedbackController;
 
 void force_feedback_controller_init(ForceFeedbackController *controller,
-                                    const ForceFeedbackConfig *config, uint32_t now_ms);
+                                    const ForceFeedbackConfig *config);
 void force_feedback_controller_set_permitted(ForceFeedbackController *controller, bool permitted);
 ForceEffectBank *force_feedback_controller_effects(ForceFeedbackController *controller);
 ForceOutputCommand force_feedback_controller_update(ForceFeedbackController *controller,

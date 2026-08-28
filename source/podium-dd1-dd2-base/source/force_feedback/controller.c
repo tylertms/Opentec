@@ -4,9 +4,8 @@
 #include <stdint.h>
 
 void force_feedback_controller_init(ForceFeedbackController *controller,
-                                    const ForceFeedbackConfig *config, uint32_t now_ms) {
+                                    const ForceFeedbackConfig *config) {
     controller->config = *config;
-    controller->config.soft_stop.maximum_force = config->maximum_force;
     controller->output_limits = (ForceOutputLimits){
         .maximum_magnitude = config->maximum_force,
         .maximum_step = config->maximum_step,
@@ -14,7 +13,7 @@ void force_feedback_controller_init(ForceFeedbackController *controller,
     controller->permitted = false;
     force_effect_bank_reset(&controller->effects, config->maximum_force);
     force_filter_configure(&controller->filter, config->filter_intensity);
-    force_soft_stop_reset(&controller->soft_stop, &controller->config.soft_stop, now_ms);
+    force_soft_stop_reset(&controller->soft_stop);
     force_output_reset(&controller->output);
 }
 
@@ -34,8 +33,8 @@ ForceOutputCommand force_feedback_controller_update(ForceFeedbackController *con
                                                     uint32_t now_ms) {
     int32_t force = force_effect_bank_evaluate(&controller->effects, position, velocity);
     ForceSoftStopResult soft_stop = force_soft_stop_update(
-        &controller->soft_stop, &controller->config.soft_stop, position, now_ms);
-    force = force_effect_mix(force, soft_stop.force, controller->config.maximum_force);
+        &controller->soft_stop, &controller->config.soft_stop, position, force, false, now_ms);
+    force = soft_stop.force;
     force = force_filter_update(&controller->filter, force);
 
     return force_output_step(&controller->output, force, controller->permitted,

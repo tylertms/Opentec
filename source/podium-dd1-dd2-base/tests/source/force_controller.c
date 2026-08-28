@@ -12,11 +12,6 @@ static ForceFeedbackConfig default_config(void) {
         .soft_stop =
             {
                 .travel_limit = 5000,
-                .onset_margin = 1000,
-                .full_force_span = 1000,
-                .maximum_force = 0,
-                .ramp_step_interval_ms = 50,
-                .ramp_reset_distance = 500,
             },
     };
     return config;
@@ -26,7 +21,7 @@ static void test_interlock(void) {
     ForceFeedbackController controller;
     ForceFeedbackConfig config = default_config();
 
-    force_feedback_controller_init(&controller, &config, 0);
+    force_feedback_controller_init(&controller, &config);
     ForceEffectBank *effects = force_feedback_controller_effects(&controller);
     assert(force_effect_bank_set_constant(effects, 0, 5000, FORCE_EFFECT_MAXIMUM_GAIN));
     assert(force_effect_bank_start(effects, 0));
@@ -50,7 +45,7 @@ static void test_effect_mixing_and_limit(void) {
     ForceFeedbackController controller;
     ForceFeedbackConfig config = default_config();
 
-    force_feedback_controller_init(&controller, &config, 0);
+    force_feedback_controller_init(&controller, &config);
     force_feedback_controller_set_permitted(&controller, true);
     ForceEffectBank *effects = force_feedback_controller_effects(&controller);
     assert(force_effect_bank_set_constant(effects, 0, 8000, FORCE_EFFECT_MAXIMUM_GAIN));
@@ -67,13 +62,13 @@ static void test_soft_stop(void) {
     ForceFeedbackController controller;
     ForceFeedbackConfig config = default_config();
 
-    force_feedback_controller_init(&controller, &config, 0);
+    force_feedback_controller_init(&controller, &config);
     force_feedback_controller_set_permitted(&controller, true);
     controller.soft_stop.ramp_percent = 100;
 
     ForceOutputCommand output = force_feedback_controller_update(&controller, 6500, 0, 0);
     assert(output.active);
-    assert(output.magnitude == 5000);
+    assert(output.magnitude == 4500);
     assert(output.negative);
 }
 
@@ -82,7 +77,7 @@ static void test_slew_limit(void) {
     ForceFeedbackConfig config = default_config();
     config.maximum_step = 100;
 
-    force_feedback_controller_init(&controller, &config, 0);
+    force_feedback_controller_init(&controller, &config);
     force_feedback_controller_set_permitted(&controller, true);
     ForceEffectBank *effects = force_feedback_controller_effects(&controller);
     assert(force_effect_bank_set_constant(effects, 0, -1000, FORCE_EFFECT_MAXIMUM_GAIN));
