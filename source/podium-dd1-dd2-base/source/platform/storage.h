@@ -10,7 +10,7 @@ typedef enum {
     PLATFORM_STORAGE_SLOT_COUNT,
 } PlatformStorageSlot;
 
-enum { PLATFORM_STORAGE_SLOT_SIZE = 192 };
+enum { PLATFORM_STORAGE_SLOT_SIZE = 384 };
 
 bool platform_storage_read(PlatformStorageSlot slot, uint8_t *data, uint16_t size);
 bool platform_storage_replace(PlatformStorageSlot slot, const uint8_t *data, uint16_t size);

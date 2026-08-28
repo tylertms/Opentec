@@ -120,6 +120,43 @@ static void test_wheel_reference_is_persisted(void) {
     assert(restored.wheel_position.center == 25000);
 }
 
+static void test_shifter_calibration_is_persisted(void) {
+    reset_storage();
+    BaseSettingsPersistence persistence;
+    BaseSettings settings;
+    base_settings_persistence_load(&persistence, &settings, 0);
+    settings.h_pattern_shifter = (HPatternSettings){
+        .calibration =
+            {
+                .reverse_first_boundary = 800,
+                .first_third_boundary = 600,
+                .second_fourth_boundary = 590,
+                .third_fifth_boundary = 400,
+                .fourth_sixth_boundary = 390,
+                .fifth_seventh_boundary = 200,
+                .upper_row_threshold = 700,
+                .lower_row_threshold = 300,
+            },
+        .calibrated = true,
+    };
+    base_settings_persistence_mark_dirty(&persistence, 100);
+    assert(base_settings_persistence_service(&persistence, &settings, 1100) ==
+           BASE_SETTINGS_PERSISTENCE_SAVED);
+
+    BaseSettingsPersistence loaded;
+    BaseSettings restored;
+    assert(base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(restored.h_pattern_shifter.calibrated);
+    assert(restored.h_pattern_shifter.calibration.reverse_first_boundary == 800);
+    assert(restored.h_pattern_shifter.calibration.first_third_boundary == 600);
+    assert(restored.h_pattern_shifter.calibration.second_fourth_boundary == 590);
+    assert(restored.h_pattern_shifter.calibration.third_fifth_boundary == 400);
+    assert(restored.h_pattern_shifter.calibration.fourth_sixth_boundary == 390);
+    assert(restored.h_pattern_shifter.calibration.fifth_seventh_boundary == 200);
+    assert(restored.h_pattern_shifter.calibration.upper_row_threshold == 700);
+    assert(restored.h_pattern_shifter.calibration.lower_row_threshold == 300);
+}
+
 static void test_profile_only_record_is_upgraded(void) {
     enum { HEADER_SIZE = 12, PROFILE_ONLY_VERSION = 1 };
     reset_storage();
@@ -146,6 +183,33 @@ static void test_profile_only_record_is_upgraded(void) {
            BASE_SETTINGS_PERSISTENCE_IDLE);
     assert(base_settings_persistence_service(&loaded, &restored, 3000) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
+}
+
+static void test_wheel_reference_record_is_upgraded(void) {
+    enum { HEADER_SIZE = 12, WHEEL_REFERENCE_VERSION = 2, WHEEL_REFERENCE_SIZE = 5 };
+    reset_storage();
+    BaseSettingsPersistence persistence;
+    BaseSettings settings;
+    base_settings_persistence_load(&persistence, &settings, 0);
+    assert(wheel_position_reference_capture(&settings.wheel_position, 12345));
+    settings.h_pattern_shifter.calibrated = true;
+    assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
+           BASE_SETTINGS_PERSISTENCE_SAVED);
+
+    uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
+    uint16_t payload_size = TUNING_PROFILE_RECORD_SIZE + WHEEL_REFERENCE_SIZE;
+    uint16_t data_size = HEADER_SIZE + payload_size;
+    record[4] = WHEEL_REFERENCE_VERSION;
+    write_u16(record, 6, payload_size);
+    write_u16(record, data_size, checksum(record, data_size));
+
+    BaseSettingsPersistence loaded;
+    BaseSettings restored;
+    assert(base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(loaded.dirty);
+    assert(restored.wheel_position.calibrated);
+    assert(restored.wheel_position.center == 12345);
+    assert(!restored.h_pattern_shifter.calibrated);
 }
 
 static void test_interrupted_replacement_preserves_previous_record(void) {
@@ -204,7 +268,9 @@ int main(void) {
     test_defaults_are_saved_after_delay();
     test_dirty_changes_are_coalesced();
     test_wheel_reference_is_persisted();
+    test_shifter_calibration_is_persisted();
     test_profile_only_record_is_upgraded();
+    test_wheel_reference_record_is_upgraded();
     test_interrupted_replacement_preserves_previous_record();
     test_corrupted_new_record_falls_back_to_previous_record();
     test_deadline_wraps_safely();

@@ -1,6 +1,7 @@
 #ifndef OPENTEC_BASE_SHIFTER_H_PATTERN_H
 #define OPENTEC_BASE_SHIFTER_H_PATTERN_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 typedef enum {
@@ -25,6 +26,11 @@ typedef struct {
     uint16_t upper_row_threshold;
     uint16_t lower_row_threshold;
 } HPatternCalibration;
+
+typedef struct {
+    HPatternCalibration calibration;
+    bool calibrated;
+} HPatternSettings;
 
 typedef struct {
     uint16_t neutral_longitudinal;
