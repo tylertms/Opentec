@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "wheel/authentication.h"
+#include "wheel/capability.h"
 #include "wheel/packet_crc.h"
 #include "wheel/packet_mode_four.h"
 #include "wheel/packet_mode_one.h"
@@ -125,6 +126,9 @@ static void capture_request(WheelProtocol *protocol,
         protocol->mode_one_report_state.report_capabilities =
             protocol->mode_one_input.report_capabilities;
         protocol->mode_one_report_state.axis_limit = protocol->mode_one_input.axis_limit;
+        wheel_capability_update(&protocol->capabilities, protocol->mode,
+                                protocol->mode_one_input.report_mode,
+                                protocol->mode_one_input.report_capabilities);
         wheel_packet_mode_one_filter_buttons(&protocol->mode_one_button_filter,
                                              &protocol->mode_one_input);
         protocol->acknowledgement_input_active =
@@ -151,6 +155,9 @@ static void capture_request(WheelProtocol *protocol,
     } else if (protocol->mode == 4) {
         uint8_t snapshot[WHEEL_PACKET_MODE_FOUR_SNAPSHOT_SIZE];
         wheel_packet_mode_four_decode(request, &protocol->mode_four_input);
+        wheel_capability_update(&protocol->capabilities, protocol->mode,
+                                protocol->mode_four_input.report_mode,
+                                protocol->mode_four_input.report_capabilities);
         wheel_packet_mode_four_filter(&protocol->mode_four_filter, &protocol->mode_four_input);
         wheel_packet_mode_four_normalize(&protocol->mode_four_input, protocol->interface_mode,
                                          &protocol->mode_four_runtime, snapshot);
@@ -165,6 +172,9 @@ static void capture_request(WheelProtocol *protocol,
     } else if (wheel_packet_crc_applies(protocol->mode)) {
         uint8_t snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE];
         wheel_packet_crc_decode(request, &protocol->crc_input);
+        wheel_capability_update(&protocol->capabilities, protocol->mode,
+                                protocol->crc_input.report_mode,
+                                protocol->crc_input.report_capabilities);
         wheel_packet_crc_prepare(&protocol->crc_input, protocol->mode, protocol->interface_mode);
         wheel_packet_crc_filter(&protocol->crc_filter, &protocol->crc_input);
         wheel_packet_crc_normalize(&protocol->crc_input, protocol->mode, protocol->interface_mode,
@@ -244,6 +254,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     const WheelPacketCrcInput empty_crc_input = {0};
     const WheelPacketCrcOutput empty_crc_output = {0};
     const WheelPacketCrcAdapter empty_crc_adapter = {0};
+    const WheelCapabilityState empty_capabilities = {0};
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
     clear(protocol->request, WHEEL_PROTOCOL_SNAPSHOT_SIZE);
     wheel_axis_override_processor_init(&protocol->axis_override_processor);
@@ -260,6 +271,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     protocol->crc_input = empty_crc_input;
     protocol->crc_output = empty_crc_output;
     protocol->crc_adapter = empty_crc_adapter;
+    protocol->capabilities = empty_capabilities;
     wheel_authentication_init(&protocol->authentication, WHEEL_MODE_UNKNOWN);
     protocol->phase = WHEEL_PROTOCOL_WAITING;
     protocol->mode = WHEEL_MODE_UNKNOWN;
@@ -395,6 +407,10 @@ wheel_protocol_mode_one_report_state(const WheelProtocol *protocol) {
 
 const WheelAxisOverrideProcessor *wheel_protocol_axis_overrides(const WheelProtocol *protocol) {
     return &protocol->axis_override_processor;
+}
+
+const WheelCapabilityState *wheel_protocol_capabilities(const WheelProtocol *protocol) {
+    return &protocol->capabilities;
 }
 
 bool wheel_protocol_request_changed(WheelProtocol *protocol) {

@@ -89,6 +89,7 @@ platform_time_sources = files('source/platform/time.c')
 wheel_position_sources = files('source/wheel/position.c')
 wheel_axis_override_sources = files('source/wheel/axis_override.c')
 wheel_authentication_sources = files('source/wheel/authentication.c')
+wheel_capability_sources = files('source/wheel/capability.c')
 wheel_display_output_sources = files('source/wheel/display_output.c')
 wheel_packet_crc_sources = files('source/wheel/packet_crc.c')
 wheel_packet_mode_one_sources = files('source/wheel/packet_mode_one.c')
@@ -217,6 +218,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'wheel-position': 'source/wheel/position.c',
     'wheel-axis-override': 'source/wheel/axis_override.c',
     'wheel-authentication': 'source/wheel/authentication.c',
+    'wheel-capability': 'source/wheel/capability.c',
     'wheel-display-output': 'source/wheel/display_output.c',
     'wheel-packet-crc': 'source/wheel/packet_crc.c',
     'wheel-packet-mode-one': 'source/wheel/packet_mode_one.c',
@@ -1098,12 +1100,21 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_capability_test = executable(
+    'base-wheel-capability-test',
+    'tests/source/wheel_capability.c',
+    wheel_capability_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_protocol_test = executable(
     'base-wheel-protocol-test',
     'tests/source/wheel_protocol.c',
     wheel_protocol_sources,
     wheel_authentication_sources,
     wheel_axis_override_sources,
+    wheel_capability_sources,
     wheel_packet_crc_sources,
     wheel_packet_mode_one_sources,
     wheel_packet_mode_four_sources,
@@ -1118,6 +1129,7 @@ if not meson.is_cross_build()
     wheel_display_output_sources,
     wheel_authentication_sources,
     wheel_axis_override_sources,
+    wheel_capability_sources,
     wheel_packet_crc_sources,
     wheel_packet_mode_one_sources,
     wheel_packet_mode_four_sources,
@@ -1362,6 +1374,7 @@ if not meson.is_cross_build()
     suite: ['base', 'wheel', 'display'],
   )
   test('base-wheel-protocol', wheel_protocol_test, suite: ['base', 'wheel', 'protocol'])
+  test('base-wheel-capability', wheel_capability_test, suite: ['base', 'wheel', 'input'])
   test(
     'base-wheel-packet-crc',
     wheel_packet_crc_test,

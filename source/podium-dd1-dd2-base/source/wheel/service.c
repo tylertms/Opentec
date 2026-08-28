@@ -184,6 +184,7 @@ static void reset_connection(WheelService *service) {
     WheelPacketCrcFilter crc_filter = service->protocol.crc_filter;
     WheelPacketCrcOutput crc_output = service->protocol.crc_output;
     WheelPacketCrcAdapter crc_adapter = service->protocol.crc_adapter;
+    WheelCapabilityState capabilities = service->protocol.capabilities;
     uint8_t interface_mode = service->protocol.interface_mode;
     uint8_t axis_override_mode = service->protocol.configured_axis_override_mode;
     uint8_t axis_calibration_value = service->protocol.axis_calibration_value;
@@ -203,6 +204,7 @@ static void reset_connection(WheelService *service) {
     service->protocol.crc_filter = crc_filter;
     service->protocol.crc_output = crc_output;
     service->protocol.crc_adapter = crc_adapter;
+    service->protocol.capabilities = capabilities;
     wheel_protocol_set_axis_processing(&service->protocol, interface_mode, axis_override_mode,
                                        axis_calibration_value);
     service->protocol.axis_override_processor.multiplex_phase = axis_multiplex_phase;

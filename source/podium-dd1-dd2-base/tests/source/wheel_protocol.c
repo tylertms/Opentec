@@ -593,6 +593,8 @@ static void test_captures_crc_family_requests(void) {
     request[2] = 0x80;
     request[8] = 0x08;
     request[12] = 0x02;
+    request[28] = 0x34;
+    request[30] = 0x3f;
     request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
     for (uint8_t sample = 0; sample < WHEEL_PACKET_CRC_HISTORY_DEPTH; sample++) {
         wheel_protocol_accept(&protocol, request);
@@ -606,6 +608,10 @@ static void test_captures_crc_family_requests(void) {
     assert(wheel_protocol_request(&protocol)[0] == 0x80);
     assert(wheel_protocol_request(&protocol)[1] == 0x08);
     assert(wheel_protocol_acknowledgement_input_active(&protocol));
+    const WheelCapabilityState *capabilities = wheel_protocol_capabilities(&protocol);
+    assert(capabilities->capability_flags == 0x3f34);
+    assert(capabilities->calibration_available);
+    assert(capabilities->tuning_menu_available);
 }
 
 static void test_applies_crc_family_axis_controls(void) {
