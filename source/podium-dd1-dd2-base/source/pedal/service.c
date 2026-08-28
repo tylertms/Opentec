@@ -19,6 +19,7 @@ enum {
     PEDAL_V3_BAUD_SWITCH_DELAY_MS = 5,
     PEDAL_INITIAL_SAMPLE_TIMEOUT_MS = 15000,
     PEDAL_SAMPLE_TIMEOUT_MS = 1000,
+    PEDAL_STARTUP_FRAME_COUNT = 250,
     PEDAL_RECONNECT_DELAY_MS = 550,
     PEDAL_STATUS_INTERVAL_MS = 500,
 };
@@ -27,6 +28,7 @@ static void reconnect(PedalService *service, uint32_t now_ms) {
     pedal_input_release(&service->input);
     service->connected = false;
     service->device = PEDAL_DEVICE_NONE;
+    service->startup_frame_count = 0;
     if (service->analog_samples_ready && pedal_analog_detect(service->analog_samples[2])) {
         platform_pedal_link_begin_analog();
         pedal_analog_update(&service->analog, service->analog_samples, &service->input);
@@ -55,6 +57,7 @@ void pedal_service_init(PedalService *service) {
     service->device = PEDAL_DEVICE_NONE;
     service->deadline_ms = 0;
     service->next_status_ms = 0;
+    service->startup_frame_count = 0;
     service->analog_samples_ready = false;
     service->connected = false;
 }
@@ -103,7 +106,12 @@ static void service_protocol_response(PedalService *service, uint32_t now_ms) {
 static void service_v3_stream(PedalService *service, uint32_t now_ms) {
     if (platform_pedal_link_take_frame(service->frame_buffer) &&
         pedal_frame_decode(service->frame_buffer, &service->receive_frame) == PEDAL_FRAME_VALID) {
-        service->deadline_ms = now_ms + PEDAL_SAMPLE_TIMEOUT_MS;
+        uint32_t timeout_ms = PEDAL_SAMPLE_TIMEOUT_MS;
+        if (service->startup_frame_count < PEDAL_STARTUP_FRAME_COUNT) {
+            service->startup_frame_count++;
+            timeout_ms = PEDAL_INITIAL_SAMPLE_TIMEOUT_MS;
+        }
+        service->deadline_ms = now_ms + timeout_ms;
         if (pedal_input_decode(&service->receive_frame, &service->input)) {
             service->connected = true;
         }
@@ -150,6 +158,7 @@ void pedal_service_run(PedalService *service, uint32_t now_ms) {
         break;
     case PEDAL_SERVICE_V3_START:
         if (send_frame(service, PEDAL_HANDSHAKE_FRAME, 0xff, 0)) {
+            service->startup_frame_count = 0;
             service->phase = PEDAL_SERVICE_V3_STREAM;
             service->deadline_ms = now_ms + PEDAL_INITIAL_SAMPLE_TIMEOUT_MS;
             service->next_status_ms = now_ms + PEDAL_STATUS_INTERVAL_MS;

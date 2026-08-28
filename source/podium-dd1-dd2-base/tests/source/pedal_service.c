@@ -127,7 +127,7 @@ static void test_connects_and_publishes_v3_input(void) {
     assert(input->auxiliary == 0xde);
 }
 
-static void test_releases_input_after_stream_timeout(void) {
+static void test_uses_long_timeout_during_stream_startup(void) {
     PedalService service;
     reset_link();
     pedal_service_init(&service);
@@ -141,6 +141,10 @@ static void test_releases_input_after_stream_timeout(void) {
     pedal_service_run(&service, 10);
     pedal_service_run(&service, 1010);
 
+    assert(service.connected);
+    assert(service.phase == PEDAL_SERVICE_V3_STREAM);
+    pedal_service_run(&service, 15010);
+
     const PedalInput *input = pedal_service_input(&service);
     assert(!service.connected);
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
@@ -150,10 +154,37 @@ static void test_releases_input_after_stream_timeout(void) {
     assert(input->auxiliary == 0);
     assert(discovery_count == 1);
 
-    pedal_service_run(&service, 1559);
+    pedal_service_run(&service, 15559);
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
-    pedal_service_run(&service, 1560);
+    pedal_service_run(&service, 15560);
     assert(service.phase == PEDAL_SERVICE_DETECT_REQUEST);
+}
+
+static void test_tightens_timeout_after_stream_startup(void) {
+    PedalService service;
+    const PedalFrame sample = {
+        .type = PEDAL_FRAME_AXIS_SAMPLE,
+        .payload = {1, 0, 2, 0, 3, 0, 0, 4},
+    };
+    reset_link();
+    pedal_service_init(&service);
+    connect_v3(&service);
+
+    for (uint16_t frame = 0; frame < 250; frame++) {
+        receive_frame(&sample);
+        pedal_service_run(&service, 10);
+    }
+    pedal_service_run(&service, 1010);
+    assert(service.connected);
+    assert(service.phase == PEDAL_SERVICE_V3_STREAM);
+
+    receive_frame(&sample);
+    pedal_service_run(&service, 1011);
+    pedal_service_run(&service, 2010);
+    assert(service.connected);
+    pedal_service_run(&service, 2011);
+    assert(!service.connected);
+    assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
 }
 
 static void test_identifies_unsupported_v4_transport(void) {
@@ -208,7 +239,8 @@ static void test_selects_analog_input_after_discovery_timeout(void) {
 
 int main(void) {
     test_connects_and_publishes_v3_input();
-    test_releases_input_after_stream_timeout();
+    test_uses_long_timeout_during_stream_startup();
+    test_tightens_timeout_after_stream_startup();
     test_identifies_unsupported_v4_transport();
     test_retries_after_discovery_timeout();
     test_selects_analog_input_after_discovery_timeout();

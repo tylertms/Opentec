@@ -38,6 +38,7 @@ typedef struct {
     PedalFrame receive_frame;
     uint8_t frame_buffer[PEDAL_FRAME_SIZE];
     uint8_t response;
+    uint8_t startup_frame_count;
     uint16_t analog_samples[PEDAL_INPUT_AXIS_COUNT];
     bool analog_samples_ready;
     bool connected;

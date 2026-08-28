@@ -66,6 +66,15 @@ static ShifterGear select_lower_row(const HPatternCalibration *calibration,
     return SHIFTER_GEAR_SIXTH;
 }
 
+/**
+ * Classifies one calibrated H-pattern shifter sample with row hysteresis.
+ *
+ * @param shifter Persistent neutral reference, last accepted row position, and gear.
+ * @param calibration Ordered lateral gear boundaries and longitudinal row thresholds.
+ * @param lateral_position Current lateral axis sample.
+ * @param longitudinal_position Current longitudinal axis sample.
+ * @return Latched or newly classified neutral, reverse, or forward gear.
+ */
 ShifterGear h_pattern_shifter_update(HPatternShifter *shifter,
                                      const HPatternCalibration *calibration,
                                      uint16_t lateral_position, uint16_t longitudinal_position) {
