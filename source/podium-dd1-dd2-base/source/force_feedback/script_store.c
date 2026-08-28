@@ -33,6 +33,14 @@ static void move_left(uint8_t *data, uint16_t start, uint16_t end, uint16_t dist
     }
 }
 
+/**
+ * @brief Initialize force-feedback script storage.
+ *
+ * Clears the shared 2,048-byte buffer, all 16 allocation records, the used-byte count, and the
+ * pending position-request marker.
+ *
+ * @param[out] store Script storage to initialize.
+ */
 void force_feedback_script_store_init(ForceFeedbackScriptStore *store) {
     if (store != NULL) {
         *store = (ForceFeedbackScriptStore){0};

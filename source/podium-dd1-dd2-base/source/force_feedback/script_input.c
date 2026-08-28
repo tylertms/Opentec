@@ -78,6 +78,14 @@ bool force_feedback_script_samples_apply(ForceFeedbackScriptSamples *samples, co
     return true;
 }
 
+/**
+ * @brief Initialize the live force-feedback script inputs.
+ *
+ * Selects position input status, clears the deadline, sample count, shared position, values, and
+ * durations, and marks each of the three input slots unused.
+ *
+ * @param[out] inputs Live script-input state to initialize.
+ */
 void force_feedback_script_inputs_init(ForceFeedbackScriptInputs *inputs) {
     if (inputs == NULL) {
         return;

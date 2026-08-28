@@ -27,6 +27,7 @@ force_script_math_sources = files('source/force_feedback/script_math.c')
 force_script_operand_sources = files('source/force_feedback/script_operand.c')
 force_script_operation_sources = files('source/force_feedback/script_operation.c')
 force_script_range_sources = files('source/force_feedback/script_range.c')
+force_script_runtime_sources = files('source/force_feedback/script_runtime.c')
 force_script_sample_sources = files('source/force_feedback/script_sample.c')
 force_script_service_sources = files('source/force_feedback/script_service.c')
 force_script_store_sources = files('source/force_feedback/script_store.c')
@@ -126,6 +127,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'force-script-operand': 'source/force_feedback/script_operand.c',
     'force-script-operation': 'source/force_feedback/script_operation.c',
     'force-script-range': 'source/force_feedback/script_range.c',
+    'force-script-runtime': 'source/force_feedback/script_runtime.c',
     'force-script-sample': 'source/force_feedback/script_sample.c',
     'force-script-service': 'source/force_feedback/script_service.c',
     'force-script-store': 'source/force_feedback/script_store.c',
@@ -414,6 +416,16 @@ if not meson.is_cross_build()
     force_script_math_sources,
     force_script_range_sources,
     force_script_sample_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  force_script_runtime_test = executable(
+    'base-force-script-runtime-test',
+    'tests/source/force_script_runtime.c',
+    force_script_runtime_sources,
+    force_script_input_sources,
+    force_script_store_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -1045,6 +1057,11 @@ if not meson.is_cross_build()
   test(
     'base-force-script-service',
     force_script_service_test,
+    suite: ['base', 'force-feedback', 'script'],
+  )
+  test(
+    'base-force-script-runtime',
+    force_script_runtime_test,
     suite: ['base', 'force-feedback', 'script'],
   )
   test(
