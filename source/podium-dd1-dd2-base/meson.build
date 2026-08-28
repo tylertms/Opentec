@@ -19,6 +19,7 @@ force_output_scale_sources = files('source/force_feedback/output_scale.c')
 force_script_bits_sources = files('source/force_feedback/script_bits.c')
 force_script_compare_sources = files('source/force_feedback/script_compare.c')
 force_script_control_sources = files('source/force_feedback/script_control.c')
+force_script_executor_sources = files('source/force_feedback/script_executor.c')
 force_script_input_sources = files('source/force_feedback/script_input.c')
 force_script_integer_sources = files('source/force_feedback/script_integer.c')
 force_script_logic_sources = files('source/force_feedback/script_logic.c')
@@ -116,6 +117,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'force-script-bits': 'source/force_feedback/script_bits.c',
     'force-script-compare': 'source/force_feedback/script_compare.c',
     'force-script-control': 'source/force_feedback/script_control.c',
+    'force-script-executor': 'source/force_feedback/script_executor.c',
     'force-script-input': 'source/force_feedback/script_input.c',
     'force-script-integer': 'source/force_feedback/script_integer.c',
     'force-script-logic': 'source/force_feedback/script_logic.c',
@@ -374,6 +376,23 @@ if not meson.is_cross_build()
     'base-force-script-control-test',
     'tests/source/force_script_control.c',
     force_script_control_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  force_script_executor_test = executable(
+    'base-force-script-executor-test',
+    'tests/source/force_script_executor.c',
+    force_script_executor_sources,
+    force_script_operation_sources,
+    force_script_operand_sources,
+    force_script_bits_sources,
+    force_script_compare_sources,
+    force_script_integer_sources,
+    force_script_logic_sources,
+    force_script_math_sources,
+    force_script_range_sources,
+    force_script_sample_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -995,6 +1014,11 @@ if not meson.is_cross_build()
   test(
     'base-force-script-control',
     force_script_control_test,
+    suite: ['base', 'force-feedback', 'script'],
+  )
+  test(
+    'base-force-script-executor',
+    force_script_executor_test,
     suite: ['base', 'force-feedback', 'script'],
   )
   test(

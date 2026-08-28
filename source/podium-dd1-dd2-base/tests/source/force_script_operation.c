@@ -20,10 +20,10 @@ static uint32_t float_bits(float value) {
 
 static void execute(ForceFeedbackScriptRuntime *runtime, uint8_t operation, const uint8_t *script,
                     size_t length) {
-    size_t cursor = 0;
-    assert(
-        force_feedback_script_operation_execute(runtime, operation, script, length, &cursor, true));
-    assert(cursor == length);
+    ForceFeedbackScriptDestinationResult result =
+        force_feedback_script_operation_execute(runtime, operation, script, length, 0, true);
+    assert(result.valid);
+    assert(result.cursor == length);
 }
 
 static void test_executes_float_operation_groups(void) {
@@ -115,30 +115,30 @@ static void test_scales_rotation_from_runtime_range(void) {
 static void test_consumes_without_committing(void) {
     ForceFeedbackScriptRuntime runtime = {0};
     const uint8_t script[] = {0x01, 0x01, 0x20};
-    size_t cursor = 0;
-    assert(force_feedback_script_operation_execute(&runtime, FORCE_FEEDBACK_SCRIPT_MATH_ADD, script,
-                                                   sizeof(script), &cursor, false));
-    assert(cursor == sizeof(script));
+    ForceFeedbackScriptDestinationResult result = force_feedback_script_operation_execute(
+        &runtime, FORCE_FEEDBACK_SCRIPT_MATH_ADD, script, sizeof(script), 0, false);
+    assert(result.valid);
+    assert(result.cursor == sizeof(script));
     assert(runtime.variables[0] == 0);
 }
 
 static void test_rejects_invalid_records(void) {
     ForceFeedbackScriptRuntime runtime = {0};
     const uint8_t divide_by_zero[] = {0x02, 0x00, 0x20};
-    size_t cursor = 0;
-    assert(!force_feedback_script_operation_execute(&runtime, FORCE_FEEDBACK_SCRIPT_MATH_DIVIDE,
-                                                    divide_by_zero, sizeof(divide_by_zero), &cursor,
-                                                    true));
+    ForceFeedbackScriptDestinationResult result =
+        force_feedback_script_operation_execute(&runtime, FORCE_FEEDBACK_SCRIPT_MATH_DIVIDE,
+                                                divide_by_zero, sizeof(divide_by_zero), 0, true);
+    assert(!result.valid);
 
-    cursor = 0;
     const uint8_t invalid_bit[] = {0x20, 0x10, 32};
-    assert(!force_feedback_script_operation_execute(
-        &runtime, FORCE_FEEDBACK_SCRIPT_SET_BIT, invalid_bit, sizeof(invalid_bit), &cursor, true));
+    result = force_feedback_script_operation_execute(&runtime, FORCE_FEEDBACK_SCRIPT_SET_BIT,
+                                                     invalid_bit, sizeof(invalid_bit), 0, true);
+    assert(!result.valid);
 
-    cursor = 0;
     const uint8_t incomplete[] = {0x01};
-    assert(!force_feedback_script_operation_execute(&runtime, FORCE_FEEDBACK_SCRIPT_MATH_ADD,
-                                                    incomplete, sizeof(incomplete), &cursor, true));
+    result = force_feedback_script_operation_execute(&runtime, FORCE_FEEDBACK_SCRIPT_MATH_ADD,
+                                                     incomplete, sizeof(incomplete), 0, true);
+    assert(!result.valid);
 }
 
 int main(void) {

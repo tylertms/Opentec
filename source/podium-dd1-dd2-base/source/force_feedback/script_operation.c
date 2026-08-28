@@ -27,28 +27,23 @@ typedef union {
     uint32_t bits;
 } OperationValue;
 
-static ForceFeedbackScriptOperandResult read_value(const ForceFeedbackScriptRuntime *runtime,
-                                                   const uint8_t *script, size_t length,
-                                                   size_t *cursor) {
-    ForceFeedbackScriptOperandResult result =
-        force_feedback_script_operand_read(runtime, script, length, *cursor);
-    *cursor = result.cursor;
-    return result;
+static ForceFeedbackScriptDestinationResult operation_result(size_t cursor, bool valid) {
+    return (ForceFeedbackScriptDestinationResult){.cursor = cursor, .valid = valid};
 }
 
-static bool write_value(ForceFeedbackScriptRuntime *runtime, const uint8_t *script, size_t length,
-                        size_t *cursor, uint32_t value, bool commit) {
-    ForceFeedbackScriptDestinationResult result =
-        force_feedback_script_operand_write(runtime, script, length, *cursor, value, commit);
-    *cursor = result.cursor;
-    return result.valid;
+static ForceFeedbackScriptDestinationResult write_value(ForceFeedbackScriptRuntime *runtime,
+                                                        const uint8_t *script, size_t length,
+                                                        size_t cursor, uint32_t value,
+                                                        bool commit) {
+    return force_feedback_script_operand_write(runtime, script, length, cursor, value, commit);
 }
 
 static ForceFeedbackScriptOperandResult read_sample_base(const ForceFeedbackScriptRuntime *runtime,
                                                          const uint8_t *script, size_t length,
-                                                         size_t *cursor) {
-    size_t offset = *cursor;
-    ForceFeedbackScriptOperandResult result = read_value(runtime, script, length, cursor);
+                                                         size_t cursor) {
+    size_t offset = cursor;
+    ForceFeedbackScriptOperandResult result =
+        force_feedback_script_operand_read(runtime, script, length, cursor);
     if (!result.valid) {
         return result;
     }
@@ -65,40 +60,54 @@ static bool math_is_binary(uint8_t operation) {
            operation >= FORCE_FEEDBACK_SCRIPT_MATH_VECTOR_MAGNITUDE;
 }
 
-static bool execute_math(ForceFeedbackScriptRuntime *runtime, uint8_t operation,
-                         const uint8_t *script, size_t length, size_t *cursor, bool commit) {
-    ForceFeedbackScriptOperandResult first = read_value(runtime, script, length, cursor);
+static ForceFeedbackScriptDestinationResult execute_math(ForceFeedbackScriptRuntime *runtime,
+                                                         uint8_t operation, const uint8_t *script,
+                                                         size_t length, size_t cursor,
+                                                         bool commit) {
+    ForceFeedbackScriptOperandResult first =
+        force_feedback_script_operand_read(runtime, script, length, cursor);
     if (!first.valid) {
-        return false;
+        return operation_result(first.cursor, false);
     }
-    ForceFeedbackScriptOperandResult second = {.valid = true};
+    cursor = first.cursor;
+
+    ForceFeedbackScriptOperandResult second = {.valid = true, .cursor = cursor};
     if (math_is_binary(operation)) {
-        second = read_value(runtime, script, length, cursor);
+        second = force_feedback_script_operand_read(runtime, script, length, cursor);
+        cursor = second.cursor;
     }
     if (!second.valid) {
-        return false;
+        return operation_result(cursor, false);
     }
+
     ForceFeedbackScriptMathResult result =
         force_feedback_script_math_evaluate(operation, (OperationValue){.bits = first.value}.number,
                                             (OperationValue){.bits = second.value}.number);
-    return result.writes_value &&
-           write_value(runtime, script, length, cursor,
-                       (OperationValue){.number = result.value}.bits, commit);
+    return result.writes_value ? write_value(runtime, script, length, cursor,
+                                             (OperationValue){.number = result.value}.bits, commit)
+                               : operation_result(cursor, false);
 }
 
-static bool execute_logic(ForceFeedbackScriptRuntime *runtime, uint8_t operation,
-                          const uint8_t *script, size_t length, size_t *cursor, bool commit) {
-    ForceFeedbackScriptOperandResult first = read_value(runtime, script, length, cursor);
+static ForceFeedbackScriptDestinationResult execute_logic(ForceFeedbackScriptRuntime *runtime,
+                                                          uint8_t operation, const uint8_t *script,
+                                                          size_t length, size_t cursor,
+                                                          bool commit) {
+    ForceFeedbackScriptOperandResult first =
+        force_feedback_script_operand_read(runtime, script, length, cursor);
     if (!first.valid) {
-        return false;
+        return operation_result(first.cursor, false);
     }
-    ForceFeedbackScriptOperandResult second = {.valid = true};
+    cursor = first.cursor;
+
+    ForceFeedbackScriptOperandResult second = {.valid = true, .cursor = cursor};
     if (operation != FORCE_FEEDBACK_SCRIPT_LOGICAL_NOT) {
-        second = read_value(runtime, script, length, cursor);
+        second = force_feedback_script_operand_read(runtime, script, length, cursor);
+        cursor = second.cursor;
     }
     if (!second.valid) {
-        return false;
+        return operation_result(cursor, false);
     }
+
     float result = force_feedback_script_logic_evaluate(
         operation, (OperationValue){.bits = first.value}.number,
         (OperationValue){.bits = second.value}.number);
@@ -106,19 +115,26 @@ static bool execute_logic(ForceFeedbackScriptRuntime *runtime, uint8_t operation
                        commit);
 }
 
-static bool execute_comparison(ForceFeedbackScriptRuntime *runtime, uint8_t operation,
-                               const uint8_t *script, size_t length, size_t *cursor, bool commit) {
-    ForceFeedbackScriptOperandResult first = read_value(runtime, script, length, cursor);
+static ForceFeedbackScriptDestinationResult execute_comparison(ForceFeedbackScriptRuntime *runtime,
+                                                               uint8_t operation,
+                                                               const uint8_t *script, size_t length,
+                                                               size_t cursor, bool commit) {
+    ForceFeedbackScriptOperandResult first =
+        force_feedback_script_operand_read(runtime, script, length, cursor);
     if (!first.valid) {
-        return false;
+        return operation_result(first.cursor, false);
     }
-    ForceFeedbackScriptOperandResult second = {.valid = true};
+    cursor = first.cursor;
+
+    ForceFeedbackScriptOperandResult second = {.valid = true, .cursor = cursor};
     if (operation <= FORCE_FEEDBACK_SCRIPT_LESS_OR_EQUAL) {
-        second = read_value(runtime, script, length, cursor);
+        second = force_feedback_script_operand_read(runtime, script, length, cursor);
+        cursor = second.cursor;
     }
     if (!second.valid) {
-        return false;
+        return operation_result(cursor, false);
     }
+
     float result =
         force_feedback_script_compare(operation, (OperationValue){.bits = first.value}.number,
                                       (OperationValue){.bits = second.value}.number);
@@ -135,29 +151,37 @@ static bool bit_updates_source(uint8_t operation) {
            operation == FORCE_FEEDBACK_SCRIPT_CLEAR_BIT;
 }
 
-static bool execute_bits(ForceFeedbackScriptRuntime *runtime, uint8_t operation,
-                         const uint8_t *script, size_t length, size_t *cursor, bool commit) {
-    size_t source_cursor = *cursor;
-    ForceFeedbackScriptOperandResult first = read_value(runtime, script, length, cursor);
+static ForceFeedbackScriptDestinationResult execute_bits(ForceFeedbackScriptRuntime *runtime,
+                                                         uint8_t operation, const uint8_t *script,
+                                                         size_t length, size_t cursor,
+                                                         bool commit) {
+    size_t source_cursor = cursor;
+    ForceFeedbackScriptOperandResult first =
+        force_feedback_script_operand_read(runtime, script, length, cursor);
     if (!first.valid) {
-        return false;
+        return operation_result(first.cursor, false);
     }
-    ForceFeedbackScriptOperandResult second = {.valid = true};
+    cursor = first.cursor;
+
+    ForceFeedbackScriptOperandResult second = {.valid = true, .cursor = cursor};
     if (!bit_is_unary(operation)) {
-        second = read_value(runtime, script, length, cursor);
+        second = force_feedback_script_operand_read(runtime, script, length, cursor);
+        cursor = second.cursor;
     }
     if (!second.valid) {
-        return false;
+        return operation_result(cursor, false);
     }
+
     ForceFeedbackScriptBitResult result =
         force_feedback_script_bits_evaluate(operation, first.value, second.value);
     if (!result.writes_value) {
-        return false;
+        return operation_result(cursor, false);
     }
     if (bit_updates_source(operation)) {
-        return force_feedback_script_operand_write(runtime, script, length, source_cursor,
-                                                   result.value, commit)
-            .valid;
+        ForceFeedbackScriptDestinationResult write = force_feedback_script_operand_write(
+            runtime, script, length, source_cursor, result.value, commit);
+        write.cursor = cursor;
+        return write;
     }
     return write_value(runtime, script, length, cursor, result.value, commit);
 }
@@ -167,48 +191,64 @@ static bool integer_is_binary(uint8_t operation) {
            operation <= FORCE_FEEDBACK_SCRIPT_INTEGER_MODULO;
 }
 
-static bool execute_integer(ForceFeedbackScriptRuntime *runtime, uint8_t operation,
-                            const uint8_t *script, size_t length, size_t *cursor, bool commit) {
-    ForceFeedbackScriptOperandResult first = read_value(runtime, script, length, cursor);
+static ForceFeedbackScriptDestinationResult execute_integer(ForceFeedbackScriptRuntime *runtime,
+                                                            uint8_t operation,
+                                                            const uint8_t *script, size_t length,
+                                                            size_t cursor, bool commit) {
+    ForceFeedbackScriptOperandResult first =
+        force_feedback_script_operand_read(runtime, script, length, cursor);
     if (!first.valid) {
-        return false;
+        return operation_result(first.cursor, false);
     }
-    ForceFeedbackScriptOperandResult second = {.valid = true};
+    cursor = first.cursor;
+
+    ForceFeedbackScriptOperandResult second = {.valid = true, .cursor = cursor};
     if (integer_is_binary(operation)) {
-        second = read_value(runtime, script, length, cursor);
+        second = force_feedback_script_operand_read(runtime, script, length, cursor);
+        cursor = second.cursor;
     }
     if (!second.valid) {
-        return false;
+        return operation_result(cursor, false);
     }
+
     ForceFeedbackScriptIntegerResult result =
         force_feedback_script_integer_evaluate(operation, first.value, second.value);
-    return result.writes_value &&
-           write_value(runtime, script, length, cursor, result.value, commit);
+    return result.writes_value ? write_value(runtime, script, length, cursor, result.value, commit)
+                               : operation_result(cursor, false);
 }
 
-static bool execute_sample(ForceFeedbackScriptRuntime *runtime, uint8_t operation,
-                           const uint8_t *script, size_t length, size_t *cursor, bool commit) {
-    ForceFeedbackScriptOperandResult base = operation == OPERATION_COPY
-                                                ? read_value(runtime, script, length, cursor)
-                                                : read_sample_base(runtime, script, length, cursor);
+static ForceFeedbackScriptDestinationResult execute_sample(ForceFeedbackScriptRuntime *runtime,
+                                                           uint8_t operation, const uint8_t *script,
+                                                           size_t length, size_t cursor,
+                                                           bool commit) {
+    ForceFeedbackScriptOperandResult base =
+        operation == OPERATION_COPY
+            ? force_feedback_script_operand_read(runtime, script, length, cursor)
+            : read_sample_base(runtime, script, length, cursor);
     if (!base.valid) {
-        return false;
+        return operation_result(base.cursor, false);
     }
+    cursor = base.cursor;
+
     ForceFeedbackScriptSampleResult result;
     if (operation == OPERATION_COPY) {
         result = (ForceFeedbackScriptSampleResult){.value = base.value, .writes_value = true};
     } else {
-        ForceFeedbackScriptOperandResult second = read_value(runtime, script, length, cursor);
+        ForceFeedbackScriptOperandResult second =
+            force_feedback_script_operand_read(runtime, script, length, cursor);
         if (!second.valid) {
-            return false;
+            return operation_result(second.cursor, false);
         }
+        cursor = second.cursor;
         if (operation == OPERATION_SAMPLE) {
             result = force_feedback_script_sample_read(&runtime->samples, base.value, second.value);
         } else {
-            ForceFeedbackScriptOperandResult third = read_value(runtime, script, length, cursor);
+            ForceFeedbackScriptOperandResult third =
+                force_feedback_script_operand_read(runtime, script, length, cursor);
             if (!third.valid) {
-                return false;
+                return operation_result(third.cursor, false);
             }
+            cursor = third.cursor;
             if (operation == OPERATION_SAMPLE_WRAPPED) {
                 result = force_feedback_script_sample_read_wrapped(&runtime->samples, base.value,
                                                                    second.value, third.value);
@@ -219,36 +259,49 @@ static bool execute_sample(ForceFeedbackScriptRuntime *runtime, uint8_t operatio
             }
         }
     }
-    return result.writes_value &&
-           write_value(runtime, script, length, cursor, result.value, commit);
+    return result.writes_value ? write_value(runtime, script, length, cursor, result.value, commit)
+                               : operation_result(cursor, false);
 }
 
-static bool execute_range(ForceFeedbackScriptRuntime *runtime, uint8_t operation,
-                          const uint8_t *script, size_t length, size_t *cursor, bool commit) {
-    ForceFeedbackScriptOperandResult lower = read_value(runtime, script, length, cursor);
-    ForceFeedbackScriptOperandResult upper = read_value(runtime, script, length, cursor);
-    ForceFeedbackScriptOperandResult value = read_value(runtime, script, length, cursor);
-    if (!lower.valid || !upper.valid || !value.valid) {
-        return false;
+static ForceFeedbackScriptDestinationResult execute_range(ForceFeedbackScriptRuntime *runtime,
+                                                          uint8_t operation, const uint8_t *script,
+                                                          size_t length, size_t cursor,
+                                                          bool commit) {
+    ForceFeedbackScriptOperandResult lower =
+        force_feedback_script_operand_read(runtime, script, length, cursor);
+    if (!lower.valid) {
+        return operation_result(lower.cursor, false);
+    }
+    ForceFeedbackScriptOperandResult upper =
+        force_feedback_script_operand_read(runtime, script, length, lower.cursor);
+    if (!upper.valid) {
+        return operation_result(upper.cursor, false);
+    }
+    ForceFeedbackScriptOperandResult value =
+        force_feedback_script_operand_read(runtime, script, length, upper.cursor);
+    if (!value.valid) {
+        return operation_result(value.cursor, false);
     }
     float result = force_feedback_script_range_evaluate(
         operation, (OperationValue){.bits = lower.value}.number,
         (OperationValue){.bits = upper.value}.number, (OperationValue){.bits = value.value}.number);
-    return write_value(runtime, script, length, cursor, (OperationValue){.number = result}.bits,
-                       commit);
+    return write_value(runtime, script, length, value.cursor,
+                       (OperationValue){.number = result}.bits, commit);
 }
 
-static bool execute_rotation_scale(ForceFeedbackScriptRuntime *runtime, const uint8_t *script,
-                                   size_t length, size_t *cursor, bool commit) {
-    ForceFeedbackScriptOperandResult value = read_value(runtime, script, length, cursor);
+static ForceFeedbackScriptDestinationResult
+execute_rotation_scale(ForceFeedbackScriptRuntime *runtime, const uint8_t *script, size_t length,
+                       size_t cursor, bool commit) {
+    ForceFeedbackScriptOperandResult value =
+        force_feedback_script_operand_read(runtime, script, length, cursor);
     if (!value.valid) {
-        return false;
+        return operation_result(value.cursor, false);
     }
     float result = force_feedback_script_rotation_scale(
         (OperationValue){.bits = value.value}.number, runtime->rotation_range_code,
         runtime->extended_rotation_range);
-    return write_value(runtime, script, length, cursor, (OperationValue){.number = result}.bits,
-                       commit);
+    return write_value(runtime, script, length, value.cursor,
+                       (OperationValue){.number = result}.bits, commit);
 }
 
 /**
@@ -263,14 +316,15 @@ static bool execute_rotation_scale(ForceFeedbackScriptRuntime *runtime, const ui
  * @param[in] operation Operation byte preceding the operand sequence.
  * @param[in] script Complete script byte sequence containing the operands.
  * @param[in] length Number of available script bytes.
- * @param[in,out] cursor Offset of the first operand on entry and the next record on success.
+ * @param[in] cursor Offset of the first operand.
  * @param[in] commit true to write the result; false to consume the record without writing.
- * @return true when the operation and every operand are valid; otherwise false.
- * @pre runtime, script, and cursor point to valid objects.
+ * @return The following cursor and whether the operation and every operand are valid.
+ * @pre runtime and script point to valid objects.
  */
-bool force_feedback_script_operation_execute(ForceFeedbackScriptRuntime *runtime, uint8_t operation,
-                                             const uint8_t *script, size_t length, size_t *cursor,
-                                             bool commit) {
+ForceFeedbackScriptDestinationResult
+force_feedback_script_operation_execute(ForceFeedbackScriptRuntime *runtime, uint8_t operation,
+                                        const uint8_t *script, size_t length, size_t cursor,
+                                        bool commit) {
     if ((operation >= FORCE_FEEDBACK_SCRIPT_MATH_ADD &&
          operation <= FORCE_FEEDBACK_SCRIPT_MATH_RECIPROCAL) ||
         (operation >= FORCE_FEEDBACK_SCRIPT_MATH_SINE &&
@@ -307,5 +361,5 @@ bool force_feedback_script_operation_execute(ForceFeedbackScriptRuntime *runtime
     if (operation == OPERATION_ROTATION_SCALE) {
         return execute_rotation_scale(runtime, script, length, cursor, commit);
     }
-    return false;
+    return operation_result(cursor, false);
 }
