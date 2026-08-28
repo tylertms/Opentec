@@ -315,7 +315,6 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     const WheelPacketCrcInput empty_crc_input = {0};
     const WheelPacketCrcOutput empty_crc_output = {0};
     const WheelPacketCrcAdapter empty_crc_adapter = {0};
-    const WheelCapabilityState empty_capabilities = {0};
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
     clear(protocol->request, WHEEL_PROTOCOL_SNAPSHOT_SIZE);
     wheel_axis_override_processor_init(&protocol->axis_override_processor);
@@ -335,7 +334,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     protocol->crc_adapter = empty_crc_adapter;
     wheel_packet_remote_tuning_init(&protocol->remote_tuning_output);
     wheel_output_reports_init(&protocol->output_reports);
-    protocol->capabilities = empty_capabilities;
+    wheel_capability_init(&protocol->capabilities);
     wheel_authentication_init(&protocol->authentication, WHEEL_MODE_UNKNOWN);
     protocol->phase = WHEEL_PROTOCOL_WAITING;
     protocol->mode = WHEEL_MODE_UNKNOWN;

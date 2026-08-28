@@ -41,8 +41,79 @@ static void test_applies_calibration_mode_defaults(void) {
     assert(!state.calibration_available);
 }
 
+static UsbOperatingModeCommand multi_position_command(uint8_t selector, uint8_t mode) {
+    UsbOperatingModeCommand command = {.opcode = 1};
+    command.parameters[0] = selector;
+    command.parameters[1] = mode;
+    return command;
+}
+
+static void test_applies_multi_position_override_commands(void) {
+    WheelCapabilityState state;
+    wheel_capability_init(&state);
+    assert(state.multi_position_override == UINT8_MAX);
+
+    UsbOperatingModeCommand command = multi_position_command(0x16, 2);
+    assert(wheel_capability_apply_multi_position_command(&state, &command));
+    assert(state.multi_position_override == 2);
+
+    command.parameters[1] = TUNING_MULTI_POSITION_AUTOMATIC;
+    assert(wheel_capability_apply_multi_position_command(&state, &command));
+    assert(state.multi_position_override == UINT8_MAX);
+}
+
+static void test_rejects_other_multi_position_commands(void) {
+    WheelCapabilityState state;
+    wheel_capability_init(&state);
+    UsbOperatingModeCommand command = multi_position_command(0x15, 2);
+    assert(!wheel_capability_apply_multi_position_command(&state, &command));
+    command.parameters[0] = 0x16;
+    command.opcode = 0;
+    assert(!wheel_capability_apply_multi_position_command(&state, &command));
+    assert(!wheel_capability_apply_multi_position_command(NULL, &command));
+    assert(!wheel_capability_apply_multi_position_command(&state, NULL));
+}
+
+static void test_resolves_multi_position_mode(void) {
+    WheelCapabilityState state;
+    wheel_capability_init(&state);
+    assert(wheel_capability_multi_position_mode(&state, TUNING_MULTI_POSITION_ENCODER, 9, true) ==
+           TUNING_MULTI_POSITION_ENCODER);
+    assert(wheel_capability_multi_position_mode(&state, TUNING_MULTI_POSITION_PULSE, 9, true) ==
+           TUNING_MULTI_POSITION_PULSE);
+    assert(wheel_capability_multi_position_mode(&state, TUNING_MULTI_POSITION_CONSTANT, 9, true) ==
+           TUNING_MULTI_POSITION_CONSTANT);
+    assert(wheel_capability_multi_position_mode(&state, TUNING_MULTI_POSITION_AUTOMATIC, 9, true) ==
+           TUNING_MULTI_POSITION_PULSE);
+    assert(wheel_capability_multi_position_mode(&state, TUNING_MULTI_POSITION_AUTOMATIC, 8, true) ==
+           TUNING_MULTI_POSITION_ENCODER);
+
+    state.multi_position_override = TUNING_MULTI_POSITION_CONSTANT;
+    assert(wheel_capability_multi_position_mode(&state, TUNING_MULTI_POSITION_AUTOMATIC, 9, true) ==
+           TUNING_MULTI_POSITION_CONSTANT);
+    assert(wheel_capability_multi_position_mode(&state, TUNING_MULTI_POSITION_CONSTANT, 4, false) ==
+           TUNING_MULTI_POSITION_ENCODER);
+    assert(wheel_capability_multi_position_mode(NULL, TUNING_MULTI_POSITION_CONSTANT, 9, true) ==
+           TUNING_MULTI_POSITION_ENCODER);
+    assert(wheel_capability_multi_position_mode(&state, (TuningMultiPositionMode)4, 9, true) ==
+           TUNING_MULTI_POSITION_ENCODER);
+    assert(wheel_capability_multi_position_mode(&state, TUNING_MULTI_POSITION_CONSTANT, 4, true) ==
+           TUNING_MULTI_POSITION_CONSTANT);
+    assert(wheel_capability_multi_position_mode(&state, TUNING_MULTI_POSITION_CONSTANT, 6, false) ==
+           TUNING_MULTI_POSITION_ENCODER);
+    assert(wheel_capability_multi_position_mode(&state, TUNING_MULTI_POSITION_CONSTANT, 10,
+                                                false) == TUNING_MULTI_POSITION_CONSTANT);
+    assert(wheel_capability_multi_position_mode(&state, TUNING_MULTI_POSITION_CONSTANT, 29,
+                                                false) == TUNING_MULTI_POSITION_CONSTANT);
+    assert(wheel_capability_multi_position_mode(&state, TUNING_MULTI_POSITION_CONSTANT, 30, true) ==
+           TUNING_MULTI_POSITION_ENCODER);
+}
+
 int main(void) {
     test_caches_and_maps_report_capabilities();
     test_applies_calibration_mode_defaults();
+    test_applies_multi_position_override_commands();
+    test_rejects_other_multi_position_commands();
+    test_resolves_multi_position_mode();
     return 0;
 }

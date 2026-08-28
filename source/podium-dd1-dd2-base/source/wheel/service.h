@@ -40,6 +40,10 @@ void wheel_service_set_crc_adapter(WheelService *service, const WheelPacketCrcAd
 bool wheel_service_queue_remote_tuning_response(WheelService *service,
                                                 const RemoteTuningResponse *response);
 bool wheel_service_remote_tuning_response_pending(const WheelService *service);
+bool wheel_service_apply_multi_position_command(WheelService *service,
+                                                const UsbOperatingModeCommand *command);
+uint8_t wheel_service_multi_position_mode(const WheelService *service,
+                                          TuningMultiPositionMode configured_mode);
 void wheel_service_apply_output_report(WheelService *service, const uint8_t *arguments,
                                        bool display_blink_active);
 void wheel_service_queue_report_seventeen(

@@ -412,6 +412,41 @@ bool wheel_service_remote_tuning_response_pending(const WheelService *service) {
 }
 
 /**
+ * @brief Applies a host multi-position reporting override.
+ *
+ * Routes selector 0x16 to the capability state retained across attached-wheel reconnections.
+ *
+ * @param[in,out] service Attached-wheel service and capability state.
+ * @param[in] command Decoded F8 09 operating-mode command.
+ * @return True when the command selects the multi-position override.
+ */
+bool wheel_service_apply_multi_position_command(WheelService *service,
+                                                const UsbOperatingModeCommand *command) {
+    return service != NULL &&
+           wheel_capability_apply_multi_position_command(&service->protocol.capabilities, command);
+}
+
+/**
+ * @brief Resolves the attached wheel's effective multi-position reporting mode.
+ *
+ * Combines the active profile setting with the retained host override, negotiated wheel mode, and
+ * current attached-wheel input activity.
+ *
+ * @param[in] service Attached-wheel service and capability state.
+ * @param[in] configured_mode Multi-position mode from the active tuning profile.
+ * @return Effective reporting-mode byte.
+ */
+uint8_t wheel_service_multi_position_mode(const WheelService *service,
+                                          TuningMultiPositionMode configured_mode) {
+    if (service == NULL) {
+        return TUNING_MULTI_POSITION_ENCODER;
+    }
+    return wheel_capability_multi_position_mode(&service->protocol.capabilities, configured_mode,
+                                                service->protocol.mode,
+                                                service->protocol.request_ready);
+}
+
+/**
  * @brief Applies a host-provided attached-wheel output report.
  *
  * Uses the negotiated wheel mode, current adapter mode, and display blink state to retain or

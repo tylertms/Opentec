@@ -479,6 +479,29 @@ static void test_defers_next_request_for_shared_serial_work(void) {
     assert(request().type_flags == 2);
 }
 
+static void test_routes_multi_position_mode(void) {
+    WheelService service;
+    initialize_service(&service);
+    service.protocol.mode = 9;
+
+    assert(wheel_service_multi_position_mode(&service, TUNING_MULTI_POSITION_AUTOMATIC) ==
+           TUNING_MULTI_POSITION_PULSE);
+
+    UsbOperatingModeCommand command = {.opcode = 1, .parameters = {0x16, 2}};
+    assert(wheel_service_apply_multi_position_command(&service, &command));
+    assert(wheel_service_multi_position_mode(&service, TUNING_MULTI_POSITION_AUTOMATIC) ==
+           TUNING_MULTI_POSITION_CONSTANT);
+
+    service.protocol.mode = 4;
+    assert(wheel_service_multi_position_mode(&service, TUNING_MULTI_POSITION_CONSTANT) ==
+           TUNING_MULTI_POSITION_ENCODER);
+    service.protocol.request_ready = true;
+    assert(wheel_service_multi_position_mode(&service, TUNING_MULTI_POSITION_CONSTANT) ==
+           TUNING_MULTI_POSITION_CONSTANT);
+    assert(wheel_service_multi_position_mode(NULL, TUNING_MULTI_POSITION_CONSTANT) ==
+           TUNING_MULTI_POSITION_ENCODER);
+}
+
 int main(void) {
     test_maps_primary_scan_bits();
     test_maps_secondary_scan_bit();
@@ -491,5 +514,6 @@ int main(void) {
     test_ready_packet_refreshes_activity_at_deadline();
     test_restarts_discovery_after_scan_timeout();
     test_defers_next_request_for_shared_serial_work();
+    test_routes_multi_position_mode();
     return 0;
 }

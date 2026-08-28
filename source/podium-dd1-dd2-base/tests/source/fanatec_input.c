@@ -110,6 +110,19 @@ static void test_restricted_wheel_control_mapping(void) {
     assert(state.transfer_code == 0x87);
 }
 
+static void test_multi_position_mode_mapping(void) {
+    fanatec_input_state state = {.transfer_code = 0xcf};
+
+    fanatec_input_apply_multi_position_mode(&state, 0);
+    assert(state.transfer_code == 0xcf);
+    fanatec_input_apply_multi_position_mode(&state, 1);
+    assert(state.transfer_code == 0xdf);
+    fanatec_input_apply_multi_position_mode(&state, 2);
+    assert(state.transfer_code == 0xef);
+    fanatec_input_apply_multi_position_mode(&state, 7);
+    assert(state.transfer_code == 0xff);
+}
+
 static void test_h_pattern_shifter_mapping(void) {
     fanatec_input_state state = {
         .button_banks = {0, 0x80, 0xff, 0, 0xff},
@@ -151,6 +164,7 @@ int main(void) {
     test_compatibility_encode();
     test_wheel_control_mapping();
     test_restricted_wheel_control_mapping();
+    test_multi_position_mode_mapping();
     test_h_pattern_shifter_mapping();
     test_sequential_shifter_mapping();
     return 0;

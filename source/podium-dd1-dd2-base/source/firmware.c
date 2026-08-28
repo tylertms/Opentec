@@ -750,6 +750,9 @@ static void service_usb_output(void) {
         } else if (pedal_protocol_command_decode(&usb_operating_mode_command,
                                                  &pedal_protocol_command)) {
             pedal_service_apply_protocol_command(&pedal_service, &pedal_protocol_command);
+        } else if (wheel_service_apply_multi_position_command(&wheel_service,
+                                                              &usb_operating_mode_command)) {
+            return;
         } else if (wheel_steering_limit_command_decode(&usb_operating_mode_command,
                                                        &wheel_steering_limit_command)) {
             if (wheel_steering_limits_apply(
@@ -847,6 +850,9 @@ static void service_usb_input(void) {
                                            wheel_service_mode(&wheel_service) !=
                                                WHEEL_MODE_CRC_AUTHENTICATED);
     }
+    fanatec_input_apply_multi_position_mode(
+        &usb_input_state.fanatec,
+        wheel_service_multi_position_mode(&wheel_service, tuning_profile->multi_position_mode));
     const uint8_t *wheel_buttons = wheel_service_buttons(&wheel_service);
     for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {
         usb_input_state.fanatec.button_banks[bank] = wheel_buttons[bank];
