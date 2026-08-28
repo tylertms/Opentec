@@ -127,9 +127,12 @@ static TransferSessionResult receive_status(TransferSession *session, uint16_t c
 
 /**
  * @brief Starts a transfer session with transport, data, and clock callbacks.
- * @param session Session state to initialize.
- * @param callbacks Required send, ready, data, and clock callbacks.
- * @param callback_context Opaque value passed to every callback.
+ *
+ * Initializes transfer sequencing, retry counters, and activity deadlines.
+ *
+ * @param[out] session Session state to initialize.
+ * @param[in] callbacks Required send, ready, data, and clock callbacks.
+ * @param[in] callback_context Opaque value passed to every callback.
  * @return True when all callbacks are present and the session starts.
  */
 bool transfer_session_init(TransferSession *session, const TransferSessionCallbacks *callbacks,
@@ -151,10 +154,13 @@ bool transfer_session_init(TransferSession *session, const TransferSessionCallba
 
 /**
  * @brief Sends one complete transfer data message and waits for its status response.
- * @param session Active transfer session.
- * @param data Payload bytes.
- * @param length Payload length from zero through 124 bytes.
- * @param group Two-bit transfer group.
+ *
+ * Encodes and submits one single-frame payload when the session and lower transport are available.
+ *
+ * @param[in,out] session Active transfer session.
+ * @param[in] data Payload bytes.
+ * @param[in] length Payload length from zero through 124 bytes.
+ * @param[in] group Two-bit transfer group.
  * @return True when the frame is accepted by the transport.
  */
 bool transfer_session_send(TransferSession *session, const uint8_t *data, uint8_t length,
@@ -176,9 +182,12 @@ bool transfer_session_send(TransferSession *session, const uint8_t *data, uint8_
 
 /**
  * @brief Processes one complete encoded frame and advances transfer state.
- * @param session Active transfer session.
- * @param data Encoded frame including boundary markers.
- * @param length Encoded frame length.
+ *
+ * Validates the frame, handles data or status sequencing, and refreshes activity deadlines.
+ *
+ * @param[in,out] session Active transfer session.
+ * @param[in] data Encoded frame including boundary markers.
+ * @param[in] length Encoded frame length.
  * @return Processing result for delivery, sequencing, remote errors, or invalid data.
  */
 TransferSessionResult transfer_session_receive(TransferSession *session, const uint8_t *data,
@@ -222,7 +231,10 @@ TransferSessionResult transfer_session_receive(TransferSession *session, const u
 
 /**
  * @brief Checks the transfer activity and data deadlines.
- * @param session Transfer session to service.
+ *
+ * Stops the session after either strict 200-millisecond deadline expires.
+ *
+ * @param[in,out] session Transfer session to service.
  * @return Okay while active, timed out after either 200 ms deadline, or inactive.
  */
 TransferSessionResult transfer_session_poll(TransferSession *session) {

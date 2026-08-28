@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "transfer/command.h"
+
 enum {
     MOTOR_COMMAND_STARTUP_OWNER = 0x20,
     MOTOR_COMMAND_STARTUP_SEQUENCE_RESET_COMMAND = 0xfe,
@@ -29,8 +31,6 @@ typedef enum {
 
 typedef enum {
     MOTOR_COMMAND_STARTUP_ACTION_NONE,
-    MOTOR_COMMAND_STARTUP_ACTION_CLAIM,
-    MOTOR_COMMAND_STARTUP_ACTION_RELEASE,
     MOTOR_COMMAND_STARTUP_ACTION_READ_LENGTH,
     MOTOR_COMMAND_STARTUP_ACTION_SEND_COMMAND,
 } MotorCommandStartupActionType;
@@ -56,6 +56,7 @@ typedef struct {
 
 void motor_command_startup_init(MotorCommandStartup *startup);
 MotorCommandStartupAction motor_command_startup_run(MotorCommandStartup *startup,
+                                                    CommandTransport *transport,
                                                     const MotorCommandStartupInput *input);
 
 #endif

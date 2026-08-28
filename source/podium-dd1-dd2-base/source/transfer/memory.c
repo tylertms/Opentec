@@ -112,7 +112,8 @@ MemoryTransferResult memory_transfer_decode_read(const uint8_t *response, uint16
     if (result != MEMORY_TRANSFER_ACCEPTED) {
         return result;
     }
-    if (output == 0 || response_length != output_length + MEMORY_TRANSFER_READ_DATA_OFFSET) {
+    if ((output == 0 && output_length != 0) ||
+        response_length != output_length + MEMORY_TRANSFER_READ_DATA_OFFSET) {
         return MEMORY_TRANSFER_INVALID_RESPONSE;
     }
     for (uint16_t index = 0; index < output_length; index++) {

@@ -94,6 +94,7 @@ pedal_v4_status_sources = files('source/pedal/v4_status.c')
 pedal_v4_tuning_sources = files('source/pedal/v4_tuning.c')
 transfer_frame_sources = files('source/transfer/frame.c')
 transfer_session_sources = files('source/transfer/session.c')
+transfer_command_sources = files('source/transfer/command.c')
 profile_bank_sources = files('source/profile/bank.c')
 profile_record_sources = files('source/profile/record.c')
 profile_tuning_sources = files('source/profile/tuning.c')
@@ -252,6 +253,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'wheel-capability': 'source/wheel/capability.c',
     'wheel-display-output': 'source/wheel/display_output.c',
     'transfer-memory': 'source/transfer/memory.c',
+    'transfer-command': 'source/transfer/command.c',
     'wheel-motion': 'source/wheel/motion.c',
     'wheel-packet-crc': 'source/wheel/packet_crc.c',
     'wheel-packet-mode-one': 'source/wheel/packet_mode_one.c',
@@ -1238,6 +1240,15 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  transfer_command_test = executable(
+    'base-transfer-command-test',
+    'tests/source/transfer_command.c',
+    transfer_command_sources,
+    transfer_memory_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   motor_command_packet_test = executable(
     'base-motor-command-packet-test',
     'tests/source/motor_command_packet.c',
@@ -1250,6 +1261,8 @@ if not meson.is_cross_build()
     'base-motor-command-startup-test',
     'tests/source/motor_command_startup.c',
     motor_command_startup_sources,
+    transfer_command_sources,
+    transfer_memory_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -1597,6 +1610,11 @@ if not meson.is_cross_build()
   test(
     'base-transfer-memory',
     transfer_memory_test,
+    suite: ['base', 'transfer'],
+  )
+  test(
+    'base-transfer-command',
+    transfer_command_test,
     suite: ['base', 'transfer'],
   )
   test(

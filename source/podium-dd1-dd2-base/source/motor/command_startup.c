@@ -20,16 +20,18 @@ void motor_command_startup_init(MotorCommandStartup *startup) {
 /**
  * @brief Advances the motor-command mailbox startup sequence.
  *
- * Claims transport owner 0x20, requests the remote length, then sequences reset, digest, and
- * command-5 information selectors 3 and 4. Completion releases the transport after both
- * information responses are observed. A restart input returns the sequence to its reset phase
+ * Owns the shared transport as identifier 0x20, requests the remote length, then sequences reset,
+ * digest, and command-5 information selectors 3 and 4. Completion releases the transport after
+ * both information responses are observed. A restart input returns the sequence to its reset phase
  * immediately.
  *
  * @param[in,out] startup Startup state to advance.
+ * @param[in,out] transport Shared command transport used by the sequence.
  * @param[in] input Current command, response, length-read, and restart state.
- * @return Next transport or command action, or no action while an expected event is pending.
+ * @return Next protocol action, or no action while an expected event is pending.
  */
 MotorCommandStartupAction motor_command_startup_run(MotorCommandStartup *startup,
+                                                    CommandTransport *transport,
                                                     const MotorCommandStartupInput *input) {
     MotorCommandStartupAction action = {MOTOR_COMMAND_STARTUP_ACTION_NONE, 0, 0};
     if (input->restart) {
@@ -38,13 +40,13 @@ MotorCommandStartupAction motor_command_startup_run(MotorCommandStartup *startup
 
     switch (startup->phase) {
     case MOTOR_COMMAND_STARTUP_RESET:
+        command_transport_release(transport, MOTOR_COMMAND_STARTUP_OWNER);
         startup->phase = MOTOR_COMMAND_STARTUP_CLAIM;
-        action.type = MOTOR_COMMAND_STARTUP_ACTION_RELEASE;
         break;
     case MOTOR_COMMAND_STARTUP_CLAIM:
+        command_transport_claim(transport, MOTOR_COMMAND_STARTUP_OWNER);
         startup->active = true;
         startup->phase = MOTOR_COMMAND_STARTUP_READ_LENGTH;
-        action.type = MOTOR_COMMAND_STARTUP_ACTION_CLAIM;
         break;
     case MOTOR_COMMAND_STARTUP_READ_LENGTH:
         startup->phase = MOTOR_COMMAND_STARTUP_WAIT_LENGTH;
@@ -91,10 +93,10 @@ MotorCommandStartupAction motor_command_startup_run(MotorCommandStartup *startup
         }
         break;
     case MOTOR_COMMAND_STARTUP_FINISH:
+        command_transport_release(transport, MOTOR_COMMAND_STARTUP_OWNER);
         startup->active = false;
         startup->complete = true;
         startup->phase = MOTOR_COMMAND_STARTUP_DONE;
-        action.type = MOTOR_COMMAND_STARTUP_ACTION_RELEASE;
         break;
     case MOTOR_COMMAND_STARTUP_DONE:
         break;
