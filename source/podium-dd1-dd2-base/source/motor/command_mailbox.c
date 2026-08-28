@@ -177,19 +177,38 @@ bool motor_command_mailbox_exchange_init(MotorCommandMailboxExchange *exchange,
 }
 
 /**
+ * @brief Resets a motor-command mailbox exchange.
+ *
+ * Discards pending transfers and retry state while retaining the caller-owned receive storage.
+ *
+ * @param[in,out] exchange Mailbox exchange to reset.
+ */
+void motor_command_mailbox_exchange_reset(MotorCommandMailboxExchange *exchange) {
+    uint8_t *read_buffer = exchange->read_buffer;
+    uint16_t read_capacity = exchange->read_capacity;
+    *exchange = (MotorCommandMailboxExchange){
+        .read_buffer = read_buffer,
+        .read_capacity = read_capacity,
+    };
+}
+
+/**
  * @brief Queues a packet for the remote motor-command mailbox.
  *
- * Retains the caller-owned packet until the exchange reports that the payload write completed.
+ * Retains the caller-owned packet until the exchange reports that the payload write completed. A
+ * replacement using the same storage can update the packet until its payload write starts.
  *
  * @param[in,out] exchange Mailbox exchange receiving the packet.
  * @param[in] packet Packet bytes to write.
  * @param[in] length Packet byte count.
- * @return True when no other packet is pending and the packet fits one command transfer.
+ * @return True when the packet was queued or replaced and fits one command transfer.
  */
 bool motor_command_mailbox_exchange_queue(MotorCommandMailboxExchange *exchange,
                                           const uint8_t *packet, uint16_t length) {
     if (exchange == 0 || packet == 0 || length == 0 || length > MEMORY_TRANSFER_MAX_WRITE_SIZE ||
-        exchange->write_packet != 0) {
+        (exchange->write_packet != 0 &&
+         (exchange->write_packet != packet ||
+          exchange->phase == MOTOR_COMMAND_MAILBOX_EXCHANGE_PAYLOAD_WRITE_WAIT))) {
         return false;
     }
     exchange->write_packet = packet;

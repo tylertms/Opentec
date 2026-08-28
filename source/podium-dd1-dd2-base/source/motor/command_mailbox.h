@@ -76,6 +76,7 @@ bool motor_command_mailbox_control_decode(const uint8_t record[MOTOR_COMMAND_MAI
                                           MotorCommandMailboxControl *control);
 bool motor_command_mailbox_exchange_init(MotorCommandMailboxExchange *exchange,
                                          uint8_t *read_buffer, uint16_t read_capacity);
+void motor_command_mailbox_exchange_reset(MotorCommandMailboxExchange *exchange);
 bool motor_command_mailbox_exchange_queue(MotorCommandMailboxExchange *exchange,
                                           const uint8_t *packet, uint16_t length);
 MotorCommandMailboxExchangeResult

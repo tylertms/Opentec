@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "motor/command_application.h"
+#include "motor/command_mailbox.h"
 #include "motor/command_message.h"
 #include "motor/command_packet.h"
 #include "motor/command_receiver.h"
@@ -195,6 +196,49 @@ UsbMotorVendorServiceResult usb_motor_vendor_service_accept_usb(
 }
 
 /**
+ * @brief Accepts a USB motor request through the command mailbox.
+ *
+ * Applies report 6 ownership, resets both packet and mailbox state for restart requests, releases
+ * the channel when requested, and queues completed motor packets for owner 0x20 transport.
+ *
+ * @param[in,out] service Active motor vendor service.
+ * @param[in,out] exchange Motor-command mailbox exchange.
+ * @param[in,out] transport Shared command transport.
+ * @param[in] request Sixty-four-byte USB feature request.
+ * @param[in] length Received request byte count.
+ * @param[out] usb_packet Destination for an upload acknowledgement.
+ * @return USB, ownership, motor-write, and mailbox actions produced by the request.
+ */
+UsbMotorVendorServiceResult usb_motor_vendor_service_accept_usb_mailbox(
+    UsbMotorVendorService *service, MotorCommandMailboxExchange *exchange,
+    CommandTransport *transport, const uint8_t request[USB_FEATURE_UPLOAD_PACKET_SIZE],
+    uint8_t length, uint8_t usb_packet[USB_FEATURE_UPLOAD_PACKET_SIZE]) {
+    UsbMotorVendorServiceResult result =
+        usb_motor_vendor_service_accept_usb(service, request, length, usb_packet);
+    if (exchange == 0 || transport == 0) {
+        result.mailbox_event = MOTOR_COMMAND_MAILBOX_EXCHANGE_FAILED;
+        return result;
+    }
+    if ((result.actions & USB_MOTOR_VENDOR_ACTION_CLAIM) != 0) {
+        command_transport_claim(transport, MOTOR_COMMAND_MAILBOX_OWNER);
+    }
+    if ((result.actions & USB_MOTOR_VENDOR_ACTION_RESTART) != 0) {
+        motor_command_mailbox_exchange_reset(exchange);
+    }
+    if ((result.actions & USB_MOTOR_VENDOR_ACTION_RELEASE) != 0) {
+        motor_command_mailbox_exchange_reset(exchange);
+        command_transport_release(transport, MOTOR_COMMAND_MAILBOX_OWNER);
+        return result;
+    }
+    if ((result.actions & USB_MOTOR_VENDOR_ACTION_WRITE_MOTOR) != 0 &&
+        !motor_command_mailbox_exchange_queue(exchange, result.motor_packet,
+                                              result.motor_packet_length)) {
+        result.mailbox_event = MOTOR_COMMAND_MAILBOX_EXCHANGE_FAILED;
+    }
+    return result;
+}
+
+/**
  * @brief Accepts one packet from the motor command channel.
  *
  * Applies sequence and fragment handling, acknowledges accepted payloads, retries invalid packets,
@@ -277,6 +321,43 @@ UsbMotorVendorServiceResult usb_motor_vendor_service_accept_motor(UsbMotorVendor
         result.actions =
             (UsbMotorVendorAction)(result.actions | USB_MOTOR_VENDOR_ACTION_RESPONSE_READY);
     }
+    return result;
+}
+
+/**
+ * @brief Advances the USB motor channel over the command mailbox.
+ *
+ * Polls only while owner 0x20 holds the transport, passes received mailbox packets through the
+ * motor command protocol, and queues any acknowledgement, retry, or rebuilt command it produces.
+ *
+ * @param[in,out] service Active motor vendor service.
+ * @param[in,out] exchange Motor-command mailbox exchange.
+ * @param[in,out] transport Shared command transport.
+ * @return USB, motor-write, mailbox, and status events produced by this service call.
+ */
+UsbMotorVendorServiceResult
+usb_motor_vendor_service_run_mailbox(UsbMotorVendorService *service,
+                                     MotorCommandMailboxExchange *exchange,
+                                     CommandTransport *transport) {
+    UsbMotorVendorServiceResult result = {0};
+    if (service == 0 || exchange == 0 || transport == 0 ||
+        !command_transport_is_owner(transport, MOTOR_COMMAND_MAILBOX_OWNER)) {
+        return result;
+    }
+
+    MotorCommandMailboxExchangeResult mailbox =
+        motor_command_mailbox_exchange_run(exchange, transport);
+    if (mailbox.event == MOTOR_COMMAND_MAILBOX_EXCHANGE_PACKET_READ) {
+        result =
+            usb_motor_vendor_service_accept_motor(service, mailbox.packet, mailbox.packet_length);
+        if ((result.actions & USB_MOTOR_VENDOR_ACTION_WRITE_MOTOR) != 0 &&
+            !motor_command_mailbox_exchange_queue(exchange, result.motor_packet,
+                                                  result.motor_packet_length)) {
+            mailbox.event = MOTOR_COMMAND_MAILBOX_EXCHANGE_FAILED;
+        }
+    }
+    result.mailbox_event = mailbox.event;
+    result.motor_status = mailbox.status;
     return result;
 }
 

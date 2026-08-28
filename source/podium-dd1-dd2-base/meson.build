@@ -963,6 +963,7 @@ if not meson.is_cross_build()
     usb_feature_download_sources,
     usb_feature_upload_acknowledgement_sources,
     motor_command_application_sources,
+    motor_command_mailbox_sources,
     motor_command_digest_sources,
     motor_command_fragment_sources,
     motor_command_information_sources,
@@ -970,6 +971,8 @@ if not meson.is_cross_build()
     motor_command_packet_sources,
     motor_command_receiver_sources,
     motor_command_sequence_sources,
+    transfer_command_sources,
+    transfer_memory_sources,
     build_by_default: false,
     include_directories: base_include,
   )

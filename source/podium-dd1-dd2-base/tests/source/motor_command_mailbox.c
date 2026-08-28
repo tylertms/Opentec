@@ -112,7 +112,9 @@ static void test_exchanges_outgoing_packet(void) {
     command_transport_init(&transport);
     assert(motor_command_mailbox_exchange_init(&exchange, read_buffer, sizeof(read_buffer)));
     assert(motor_command_mailbox_exchange_queue(&exchange, packet, sizeof(packet)));
-    assert(!motor_command_mailbox_exchange_queue(&exchange, packet, sizeof(packet)));
+    assert(motor_command_mailbox_exchange_queue(&exchange, packet, 2));
+    assert(exchange.write_length == 2);
+    exchange.write_length = sizeof(packet);
 
     assert(motor_command_mailbox_exchange_run(&exchange, &transport).event ==
            MOTOR_COMMAND_MAILBOX_EXCHANGE_NONE);

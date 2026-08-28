@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "motor/command_application.h"
+#include "motor/command_mailbox.h"
 #include "motor/command_receiver.h"
 #include "usb/motor_command_upload.h"
 #include "usb/motor_response_download.h"
@@ -49,7 +50,9 @@ typedef struct {
     UsbMotorVendorAction actions;
     const uint8_t *motor_packet;
     uint16_t motor_packet_length;
+    uint32_t motor_status;
     uint8_t usb_packet_length;
+    MotorCommandMailboxExchangeEvent mailbox_event;
 } UsbMotorVendorServiceResult;
 
 bool usb_motor_vendor_service_init(UsbMotorVendorService *service,
@@ -57,9 +60,17 @@ bool usb_motor_vendor_service_init(UsbMotorVendorService *service,
 UsbMotorVendorServiceResult usb_motor_vendor_service_accept_usb(
     UsbMotorVendorService *service, const uint8_t request[USB_FEATURE_UPLOAD_PACKET_SIZE],
     uint8_t length, uint8_t usb_packet[USB_FEATURE_UPLOAD_PACKET_SIZE]);
+UsbMotorVendorServiceResult usb_motor_vendor_service_accept_usb_mailbox(
+    UsbMotorVendorService *service, MotorCommandMailboxExchange *exchange,
+    CommandTransport *transport, const uint8_t request[USB_FEATURE_UPLOAD_PACKET_SIZE],
+    uint8_t length, uint8_t usb_packet[USB_FEATURE_UPLOAD_PACKET_SIZE]);
 UsbMotorVendorServiceResult usb_motor_vendor_service_accept_motor(UsbMotorVendorService *service,
                                                                   const uint8_t *packet,
                                                                   uint16_t length);
+UsbMotorVendorServiceResult
+usb_motor_vendor_service_run_mailbox(UsbMotorVendorService *service,
+                                     MotorCommandMailboxExchange *exchange,
+                                     CommandTransport *transport);
 uint8_t usb_motor_vendor_service_next_response(UsbMotorVendorService *service,
                                                uint8_t packet[USB_MOTOR_RESPONSE_PACKET_SIZE]);
 bool usb_motor_vendor_service_acknowledge_response(

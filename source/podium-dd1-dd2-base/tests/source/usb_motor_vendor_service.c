@@ -8,8 +8,11 @@
 
 typedef struct {
     UsbMotorVendorService service;
+    MotorCommandMailboxExchange exchange;
+    CommandTransport transport;
     uint8_t upload_assembly[128];
     uint8_t receive_assembly[128];
+    uint8_t mailbox_receive[128];
     uint8_t motor_transmit[128];
     uint8_t application_data[128];
     uint8_t usb_packet[USB_FEATURE_UPLOAD_PACKET_SIZE];
@@ -28,6 +31,16 @@ static void fixture_init(Fixture *fixture) {
         .application_data_capacity = sizeof(fixture->application_data),
     };
     assert(usb_motor_vendor_service_init(&fixture->service, &buffers));
+    assert(motor_command_mailbox_exchange_init(&fixture->exchange, fixture->mailbox_receive,
+                                               sizeof(fixture->mailbox_receive)));
+    command_transport_init(&fixture->transport);
+}
+
+static void complete_mailbox_read(Fixture *fixture, const uint8_t *data, uint16_t length) {
+    uint8_t response[MEMORY_TRANSFER_MAX_READ_SIZE + 2] = {1, 0};
+    memcpy(response + 2, data, length);
+    assert(command_transport_request_sent(&fixture->transport));
+    command_transport_receive(&fixture->transport, response, length + 2);
 }
 
 static void test_bridges_compact_command_and_response(void) {
@@ -118,9 +131,75 @@ static void test_maps_restart_release_and_retry(void) {
     assert(motor_command_packet_checksum_valid(fixture.motor_transmit, result.motor_packet_length));
 }
 
+static void test_runs_usb_channel_through_mailbox(void) {
+    Fixture fixture;
+    fixture_init(&fixture);
+    uint8_t request[USB_FEATURE_UPLOAD_PACKET_SIZE] = {6, 0x30, 0x2a, 12, 0, 0xc1, 0x12, 0x34};
+
+    UsbMotorVendorServiceResult result = usb_motor_vendor_service_accept_usb_mailbox(
+        &fixture.service, &fixture.exchange, &fixture.transport, request, sizeof(request),
+        fixture.usb_packet);
+    assert(command_transport_is_owner(&fixture.transport, MOTOR_COMMAND_MAILBOX_OWNER));
+    assert(fixture.exchange.write_packet == fixture.motor_transmit);
+    assert(fixture.exchange.write_length == 9);
+
+    result = usb_motor_vendor_service_run_mailbox(&fixture.service, &fixture.exchange,
+                                                  &fixture.transport);
+    assert(result.mailbox_event == MOTOR_COMMAND_MAILBOX_EXCHANGE_NONE);
+
+    static const uint8_t motor_payload[] = {0xc1, 0xaa, 0xbb};
+    uint8_t motor_response[16];
+    uint16_t motor_response_length;
+    assert(motor_command_packet_payload_encode(0, 0, 0, motor_payload, sizeof(motor_payload),
+                                               motor_response, sizeof(motor_response),
+                                               &motor_response_length));
+    uint8_t control[MOTOR_COMMAND_MAILBOX_CONTROL_SIZE] = {
+        MOTOR_COMMAND_MAILBOX_CONTROL_PAYLOAD_AVAILABLE,
+        0,
+        (uint8_t)(motor_response_length >> 8),
+        (uint8_t)motor_response_length,
+    };
+    complete_mailbox_read(&fixture, control, sizeof(control));
+    (void)usb_motor_vendor_service_run_mailbox(&fixture.service, &fixture.exchange,
+                                               &fixture.transport);
+    complete_mailbox_read(&fixture, motor_response, motor_response_length);
+
+    result = usb_motor_vendor_service_run_mailbox(&fixture.service, &fixture.exchange,
+                                                  &fixture.transport);
+    assert(result.mailbox_event == MOTOR_COMMAND_MAILBOX_EXCHANGE_PACKET_READ);
+    assert((result.actions & USB_MOTOR_VENDOR_ACTION_RESPONSE_READY) != 0);
+    assert((result.actions & USB_MOTOR_VENDOR_ACTION_WRITE_MOTOR) != 0);
+    assert(fixture.exchange.write_packet == fixture.motor_transmit);
+    assert(fixture.exchange.write_length == MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE);
+}
+
+static void test_applies_mailbox_restart_and_release(void) {
+    Fixture fixture;
+    fixture_init(&fixture);
+    static const uint8_t pending[] = {1, 2, 3};
+    assert(motor_command_mailbox_exchange_queue(&fixture.exchange, pending, sizeof(pending)));
+    uint8_t request[USB_FEATURE_UPLOAD_PACKET_SIZE] = {6, 0x30, 1, 9, 1, 1};
+
+    UsbMotorVendorServiceResult result = usb_motor_vendor_service_accept_usb_mailbox(
+        &fixture.service, &fixture.exchange, &fixture.transport, request, sizeof(request),
+        fixture.usb_packet);
+    assert((result.actions & USB_MOTOR_VENDOR_ACTION_RESTART) != 0);
+    assert(command_transport_is_owner(&fixture.transport, MOTOR_COMMAND_MAILBOX_OWNER));
+    assert(fixture.exchange.write_packet == 0);
+
+    request[5] = 0;
+    result = usb_motor_vendor_service_accept_usb_mailbox(&fixture.service, &fixture.exchange,
+                                                         &fixture.transport, request,
+                                                         sizeof(request), fixture.usb_packet);
+    assert((result.actions & USB_MOTOR_VENDOR_ACTION_RELEASE) != 0);
+    assert(!command_transport_is_owner(&fixture.transport, MOTOR_COMMAND_MAILBOX_OWNER));
+}
+
 int main(void) {
     test_bridges_compact_command_and_response();
     test_acknowledges_segmented_upload_progress();
     test_maps_restart_release_and_retry();
+    test_runs_usb_channel_through_mailbox();
+    test_applies_mailbox_restart_and_release();
     return 0;
 }
