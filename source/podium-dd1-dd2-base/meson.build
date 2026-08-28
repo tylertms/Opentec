@@ -117,6 +117,7 @@ motor_command_digest_sources = files('source/motor/command_digest.c')
 motor_command_fragment_sources = files('source/motor/command_fragment.c')
 motor_command_mailbox_sources = files('source/motor/command_mailbox.c')
 motor_command_packet_sources = files('source/motor/command_packet.c')
+motor_command_scheduler_sources = files('source/motor/command_scheduler.c')
 motor_command_sequence_sources = files('source/motor/command_sequence.c')
 motor_command_startup_sources = files('source/motor/command_startup.c')
 wheel_transport_frame_sources = files('source/wheel/transport_frame.c')
@@ -267,6 +268,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'motor-command-fragment': 'source/motor/command_fragment.c',
     'motor-command-mailbox': 'source/motor/command_mailbox.c',
     'motor-command-packet': 'source/motor/command_packet.c',
+    'motor-command-scheduler': 'source/motor/command_scheduler.c',
     'motor-command-sequence': 'source/motor/command_sequence.c',
     'motor-command-startup': 'source/motor/command_startup.c',
     'wheel-transport-frame': 'source/wheel/transport_frame.c',
@@ -1291,6 +1293,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  motor_command_scheduler_test = executable(
+    'base-motor-command-scheduler-test',
+    'tests/source/motor_command_scheduler.c',
+    motor_command_scheduler_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   motor_command_startup_test = executable(
     'base-motor-command-startup-test',
     'tests/source/motor_command_startup.c',
@@ -1669,6 +1679,11 @@ if not meson.is_cross_build()
   test(
     'base-motor-command-sequence',
     motor_command_sequence_test,
+    suite: ['base', 'motor'],
+  )
+  test(
+    'base-motor-command-scheduler',
+    motor_command_scheduler_test,
     suite: ['base', 'motor'],
   )
   test(
