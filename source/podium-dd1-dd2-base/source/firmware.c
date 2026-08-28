@@ -3,6 +3,7 @@
 
 #include "board/identity.h"
 #include "board/status_led.h"
+#include "cooling/controller.h"
 #include "cooling/tachometer.h"
 #include "cooling/temperature.h"
 #include "force_feedback/output.h"
@@ -83,6 +84,7 @@ static MotorLiveFrame motor_live_frame;
 static uint8_t motor_received_frame[MOTOR_LIVE_FRAME_SIZE];
 static uint8_t motor_transmitted_frame[MOTOR_LIVE_FRAME_SIZE];
 static StatusLed status_led;
+static CoolingController cooling_controller;
 static CoolingTemperatureMonitor cooling_temperature_monitor;
 static PlatformFanTachometer fan_tachometer;
 static uint16_t fan_speed_rpm[2];
@@ -92,11 +94,23 @@ enum {
 };
 
 static void initialize_cooling(void) {
+    cooling_controller_init(&cooling_controller, board_identity.mode_bits == 7);
     cooling_temperature_monitor_init(&cooling_temperature_monitor);
     fan_speed_rpm[PLATFORM_FAN_PRIMARY] = 0;
     fan_speed_rpm[PLATFORM_FAN_SECONDARY] = 0;
     platform_cooling_init(board_identity.mode_bits != 7);
     platform_cooling_set_duty(FAN_STARTUP_DUTY_PERCENT, FAN_STARTUP_DUTY_PERCENT, false);
+}
+
+static void service_cooling(uint32_t now_ms) {
+    const MotorTelemetry *telemetry =
+        motor_tuning_ready ? motor_telemetry_service_value(&motor_telemetry_service) : 0;
+    float motor_temperature = telemetry != 0 && telemetry->motor_temperature_valid
+                                  ? (float)(int16_t)telemetry->motor_temperature
+                                  : 0.0f;
+    cooling_controller_update(&cooling_controller, motor_temperature, false, false, now_ms);
+    platform_cooling_set_duty(cooling_controller.primary_duty_percent,
+                              cooling_controller.secondary_duty_percent, false);
 }
 
 static void update_fan_speed(PlatformFan fan) {
@@ -264,5 +278,6 @@ int main(void) {
         service_shifter_display(now_ms);
         service_usb_input();
         service_motor();
+        service_cooling(now_ms);
     }
 }

@@ -3,6 +3,7 @@ base_source_path = meson.current_source_dir() / 'source'
 common_source_path = meson.project_source_root() / 'source'
 analog_axis_sources = files('source/analog/axis.c')
 analog_samples_sources = files('source/analog/samples.c')
+cooling_controller_sources = files('source/cooling/controller.c')
 cooling_pwm_sources = files('source/cooling/pwm.c')
 cooling_tachometer_sources = files('source/cooling/tachometer.c')
 cooling_temperature_sources = files('source/cooling/temperature.c')
@@ -82,6 +83,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
   foreach name, source : {
     'analog-axis': 'source/analog/axis.c',
     'analog-samples': 'source/analog/samples.c',
+    'cooling-controller': 'source/cooling/controller.c',
     'cooling-pwm': 'source/cooling/pwm.c',
     'cooling-tachometer': 'source/cooling/tachometer.c',
     'cooling-temperature': 'source/cooling/temperature.c',
@@ -227,6 +229,14 @@ if not meson.is_cross_build()
     'base-cooling-tachometer-test',
     'tests/source/cooling_tachometer.c',
     cooling_tachometer_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  cooling_controller_test = executable(
+    'base-cooling-controller-test',
+    'tests/source/cooling_controller.c',
+    cooling_controller_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -747,6 +757,11 @@ if not meson.is_cross_build()
   )
 
   test('base-analog-axis', analog_axis_test, suite: ['base', 'analog'])
+  test(
+    'base-cooling-controller',
+    cooling_controller_test,
+    suite: ['base', 'cooling'],
+  )
   test(
     'base-cooling-tachometer',
     cooling_tachometer_test,
