@@ -23,7 +23,7 @@ static int8_t command_kind(uint8_t opcode, const uint8_t *payload) {
     case 3:
         return USB_VENDOR_COMMAND_DEVICE_CONTROL_UPDATE;
     case 4:
-        return USB_VENDOR_COMMAND_ACKNOWLEDGEMENT;
+        return USB_VENDOR_COMMAND_DIAGNOSTIC_SNAPSHOT;
     case 5:
         return USB_VENDOR_COMMAND_OPERATING_MODE_TRANSITION;
     case 8:

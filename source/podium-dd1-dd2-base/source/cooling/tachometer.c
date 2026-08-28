@@ -9,6 +9,10 @@ enum {
 
 /**
  * @brief Converts two consecutive two-pulse-per-revolution fan captures to RPM.
+ *
+ * Divides the 60 MHz timer rate by the wrapping capture interval and applies the capture-to-RPM
+ * factor with the device's 16-bit truncation.
+ *
  * @param[in] previous_capture Earlier 32-bit capture timestamp.
  * @param[in] current_capture Later 32-bit capture timestamp.
  * @return Fan speed in RPM, including timer wraparound and 16-bit arithmetic truncation.

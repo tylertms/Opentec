@@ -46,6 +46,10 @@ static const float resistance_lookup[COOLING_TEMPERATURE_LOOKUP_COUNT] = {
 
 /**
  * @brief Converts thermistor resistance through the board's 5-degree calibration curve.
+ *
+ * Interpolates between adjacent resistance entries and returns the defined sentinel outside the
+ * supported calibration range.
+ *
  * @param[in] resistance_ohms Thermistor resistance in ohms.
  * @return Interpolated temperature in degrees Celsius, or the out-of-range sentinel.
  */
@@ -70,6 +74,10 @@ float cooling_temperature_from_resistance(float resistance_ohms) {
 
 /**
  * @brief Converts one 1,000-sample thermistor ADC total to an integer temperature.
+ *
+ * Converts the averaged ADC count through the 3.3-volt divider and calibrated resistance lookup,
+ * then truncates the resulting temperature.
+ *
  * @param[in] adc_total Sum of 1,000 12-bit ADC samples.
  * @return Truncated calibrated temperature in degrees Celsius.
  */
@@ -87,6 +95,10 @@ void cooling_temperature_monitor_init(CoolingTemperatureMonitor *monitor) {
 
 /**
  * @brief Accumulates both thermistor channels and publishes temperatures every 1,000 samples.
+ *
+ * Adds one sample per channel, converts a complete window, and clears both accumulators before the
+ * next window begins.
+ *
  * @param[in,out] monitor Temperature accumulators and latest converted values.
  * @param[in] primary_adc Primary 12-bit thermistor ADC sample.
  * @param[in] secondary_adc Secondary 12-bit thermistor ADC sample.

@@ -21,10 +21,10 @@ typedef struct {
 } WheelPositionCalibration;
 
 typedef struct {
-    int32_t previous_position;
-    int32_t velocity;
-    uint32_t previous_time_ms;
-    uint8_t initialized;
+    float filtered_position;
+    float filtered_velocity;
+    uint32_t next_update_ms;
+    int32_t scaled_velocity;
 } WheelVelocityEstimator;
 
 int32_t wheel_position_center(int32_t sample, int32_t center);
@@ -38,7 +38,7 @@ WheelPositionCalibration wheel_position_calibration_build(const WheelPositionRef
                                                           uint16_t rotation_degrees,
                                                           uint8_t deadzone);
 void wheel_velocity_reset(WheelVelocityEstimator *estimator);
-int32_t wheel_velocity_update(WheelVelocityEstimator *estimator, int32_t position, uint32_t time_ms,
-                              uint8_t response_percent);
+int32_t wheel_velocity_update(WheelVelocityEstimator *estimator, int32_t position,
+                              uint32_t time_ms);
 
 #endif

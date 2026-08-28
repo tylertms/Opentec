@@ -9,6 +9,9 @@ void motor_telemetry_init(MotorTelemetry *telemetry) { *telemetry = (MotorTeleme
 
 /**
  * @brief Publishes a valid big-endian motor-temperature response.
+ *
+ * Decodes the two-byte value and retains the previous telemetry when the response is 0xFFFF.
+ *
  * @param[in,out] telemetry Motor telemetry values and validity flags.
  * @param[in] data Two-byte temperature response.
  */
@@ -22,6 +25,9 @@ void motor_telemetry_set_motor_temperature(MotorTelemetry *telemetry, const uint
 
 /**
  * @brief Publishes a valid big-endian driver-temperature response.
+ *
+ * Decodes the two-byte value and retains the previous telemetry when the response is 0xFFFF.
+ *
  * @param[in,out] telemetry Motor telemetry values and validity flags.
  * @param[in] data Two-byte temperature response.
  */
@@ -35,6 +41,9 @@ void motor_telemetry_set_driver_temperature(MotorTelemetry *telemetry, const uin
 
 /**
  * @brief Publishes a valid big-endian motor-runtime response.
+ *
+ * Decodes the four-byte value and retains the previous telemetry when the response is 0xFFFFFFFF.
+ *
  * @param[in,out] telemetry Motor telemetry values and validity flags.
  * @param[in] data Four-byte runtime response.
  */
@@ -49,6 +58,9 @@ void motor_telemetry_set_runtime(MotorTelemetry *telemetry, const uint8_t data[4
 
 /**
  * @brief Publishes an available motor-accessory type response.
+ *
+ * Stores the accessory type and marks it available unless the response is 0xFF.
+ *
  * @param[in,out] telemetry Motor telemetry values and validity flags.
  * @param[in] value Accessory type response byte.
  */

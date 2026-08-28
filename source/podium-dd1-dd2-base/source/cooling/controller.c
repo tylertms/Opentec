@@ -156,6 +156,10 @@ static void update_force_scale(CoolingController *controller, float temperature,
 
 /**
  * @brief Initializes the thermal controller with the firmware startup phase and fan duty.
+ *
+ * Clears the controller, starts both fan requests at 25 percent, and selects the standard or
+ * dual-fan duty map.
+ *
  * @param[out] controller Thermal fan and force-derating state.
  * @param[in] dual_fan_mode True for the alternate two-output fan duty map.
  */
@@ -169,6 +173,10 @@ void cooling_controller_init(CoolingController *controller, bool dual_fan_mode) 
 
 /**
  * @brief Updates the low managed-motor thermal threshold offset when it is in range.
+ *
+ * Stores adjustments from minus five through five degrees and leaves the previous setting
+ * unchanged for values outside that range.
+ *
  * @param[in,out] controller Thermal controller state.
  * @param[in] offset Signed threshold adjustment from -5 through 5 degrees.
  */
@@ -180,6 +188,10 @@ void cooling_controller_set_low_threshold_offset(CoolingController *controller, 
 
 /**
  * @brief Updates the high managed-motor thermal threshold offset when it is in range.
+ *
+ * Stores adjustments from minus five through five degrees and leaves the previous setting
+ * unchanged for values outside that range.
+ *
  * @param[in,out] controller Thermal controller state.
  * @param[in] offset Signed threshold adjustment from -5 through 5 degrees.
  */
@@ -191,6 +203,10 @@ void cooling_controller_set_high_threshold_offset(CoolingController *controller,
 
 /**
  * @brief Updates the primary managed-motor time offset when it is in range.
+ *
+ * Accepts signed second values from minus 120 through 120 and stores the corresponding millisecond
+ * delay.
+ *
  * @param[in,out] controller Thermal controller state.
  * @param[in] seconds Signed delay adjustment from -120 through 120 seconds.
  */
@@ -202,6 +218,10 @@ void cooling_controller_set_primary_delay_seconds(CoolingController *controller,
 
 /**
  * @brief Updates the secondary managed-motor time offset when it is in range.
+ *
+ * Accepts signed second values from minus 120 through 120 and stores the corresponding millisecond
+ * delay.
+ *
  * @param[in,out] controller Thermal controller state.
  * @param[in] seconds Signed delay adjustment from -120 through 120 seconds.
  */
@@ -213,6 +233,9 @@ void cooling_controller_set_secondary_delay_seconds(CoolingController *controlle
 
 /**
  * @brief Suspends automatic thermal control only for the protocol's 0xFF request value.
+ *
+ * Enables suspension for 0xFF and clears suspension for every other request value.
+ *
  * @param[in,out] controller Thermal controller state.
  * @param[in] request Suspend request byte.
  */
@@ -222,6 +245,10 @@ void cooling_controller_set_suspend_request(CoolingController *controller, uint8
 
 /**
  * @brief Advances fan output, thermal phase, timed limits, and force-feedback derating.
+ *
+ * Leaves suspended state unchanged; otherwise updates the fan profile and output-strength scale
+ * from the current motor temperature and availability state.
+ *
  * @param[in,out] controller Thermal controller state and resulting output percentages.
  * @param[in] motor_temperature_c Current motor temperature in degrees Celsius.
  * @param[in] managed_motor_present True after a motor controller is identified.

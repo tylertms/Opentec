@@ -13,6 +13,23 @@ static int32_t clamp_position(int64_t position) {
     return (int32_t)position;
 }
 
+/**
+ * @brief Detects either filter sentinel bit pattern.
+ *
+ * Interprets the floating-point value as its 32-bit representation and matches the two values the
+ * position filter treats as invalid.
+ *
+ * @param[in] value Floating-point filter value.
+ * @return True when the value has either invalid sentinel representation.
+ */
+static bool filter_value_is_invalid(float value) {
+    union {
+        float value;
+        uint32_t bits;
+    } representation = {.value = value};
+    return representation.bits == UINT32_C(0x7fffffff) || representation.bits == UINT32_MAX;
+}
+
 int32_t wheel_position_center(int32_t sample, int32_t center) {
     return clamp_position((int64_t)sample - center);
 }
@@ -87,33 +104,52 @@ WheelPositionCalibration wheel_position_calibration_build(const WheelPositionRef
     };
 }
 
+/**
+ * @brief Clears the wheel-velocity filter state.
+ *
+ * Resets the filtered position, filtered velocity, update deadline, and last scaled output.
+ *
+ * @param[out] estimator Velocity filter state to initialize.
+ */
 void wheel_velocity_reset(WheelVelocityEstimator *estimator) {
     memset(estimator, 0, sizeof(*estimator));
 }
 
-int32_t wheel_velocity_update(WheelVelocityEstimator *estimator, int32_t position, uint32_t time_ms,
-                              uint8_t response_percent) {
-    position = clamp_position(position);
-    if (estimator->initialized == 0) {
-        estimator->previous_position = position;
-        estimator->previous_time_ms = time_ms;
-        estimator->initialized = 1;
-        return 0;
+/**
+ * @brief Updates the filtered wheel velocity at one-millisecond intervals.
+ *
+ * Predicts position from the previous filter state, corrects position by half the residual, and
+ * corrects velocity by sixty times the residual. The signed result uses the device scale of 132
+ * filter units per reported velocity unit.
+ *
+ * @param[in,out] estimator Position and velocity filter state.
+ * @param[in] position Current centered wheel position.
+ * @param[in] time_ms Current monotonic time in milliseconds.
+ * @return Latest signed and scaled wheel velocity.
+ */
+int32_t wheel_velocity_update(WheelVelocityEstimator *estimator, int32_t position,
+                              uint32_t time_ms) {
+    if (time_ms < estimator->next_update_ms) {
+        return estimator->scaled_velocity;
     }
 
-    uint32_t elapsed_ms = time_ms - estimator->previous_time_ms;
-    if (elapsed_ms == 0) {
-        return estimator->velocity;
-    }
-    if (response_percent > 100) {
-        response_percent = 100;
+    estimator->next_update_ms = time_ms + 1;
+    float predicted_position = estimator->filtered_position + estimator->filtered_velocity * 0.001f;
+    float residual = (float)position - predicted_position;
+    if (filter_value_is_invalid(residual)) {
+        residual = 0.0f;
     }
 
-    int32_t distance = position - estimator->previous_position;
-    int32_t measured_velocity = distance * 1000 / (int32_t)elapsed_ms;
-    int32_t correction = measured_velocity - estimator->velocity;
-    estimator->velocity += (int32_t)((int64_t)correction * response_percent / 100);
-    estimator->previous_position = position;
-    estimator->previous_time_ms = time_ms;
-    return estimator->velocity;
+    estimator->filtered_position = predicted_position + residual * 0.5f;
+    if (filter_value_is_invalid(estimator->filtered_position)) {
+        estimator->filtered_position = (float)position;
+    }
+
+    estimator->filtered_velocity += residual * 0.06f / 0.001f;
+    if (filter_value_is_invalid(estimator->filtered_velocity)) {
+        estimator->filtered_velocity = 0.0f;
+    }
+
+    estimator->scaled_velocity = -(int32_t)estimator->filtered_velocity / 132;
+    return estimator->scaled_velocity;
 }

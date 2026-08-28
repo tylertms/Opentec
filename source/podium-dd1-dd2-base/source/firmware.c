@@ -48,6 +48,7 @@
 #include "shifter/input.h"
 #include "usb/connection.h"
 #include "usb/device.h"
+#include "usb/diagnostic_report.h"
 #include "usb/fanatec_input.h"
 #include "usb/input_report.h"
 #include "usb/motor_vendor_service.h"
@@ -100,6 +101,7 @@ static bool motor_command_request_pending;
 static MotorPositionReport motor_position_report;
 static bool motor_position_ready;
 static WheelPositionCalibration wheel_position_calibration;
+static WheelVelocityEstimator wheel_velocity_estimator;
 static PedalService pedal_service;
 static SerialService serial_service;
 static WheelService wheel_service;
@@ -113,6 +115,9 @@ static uint8_t usb_input_report[USB_INPUT_REPORT_MAX_SIZE];
 static uint8_t usb_motor_acknowledgement[USB_DEVICE_REPORT_SIZE];
 static uint8_t usb_motor_response[USB_DEVICE_REPORT_SIZE];
 static uint8_t usb_wheel_transfer_response[USB_DEVICE_REPORT_SIZE];
+static UsbDiagnosticReportService usb_diagnostic_report_service;
+static UsbDiagnosticSnapshot usb_diagnostic_snapshot;
+static uint8_t usb_diagnostic_report[USB_DEVICE_REPORT_SIZE];
 static UsbDeviceOutputReport usb_device_output_report;
 static UsbConnectionMonitor usb_connection_monitor;
 static UsbOutputCommand usb_output_command;
@@ -318,11 +323,84 @@ static void initialize_usb_command_bridge(void) {
                                               sizeof(usb_motor_mailbox_receive));
     (void)usb_motor_vendor_service_init(&usb_motor_vendor_service, &usb_motor_buffers);
     wheel_transfer_service_init(&wheel_transfer_service);
+    usb_diagnostic_report_service_init(&usb_diagnostic_report_service);
     usb_motor_acknowledgement_ready = false;
     usb_motor_response_ready = false;
     usb_wheel_transfer_response_ready = false;
     for (uint8_t request = 0; request < WHEEL_TRANSFER_REQUEST_COUNT; request++) {
         usb_wheel_transfer_response_pending[request] = false;
+    }
+}
+
+/**
+ * @brief Builds the current host diagnostic snapshot.
+ *
+ * Collects board, motor, attached-wheel, cooling, fan, auxiliary-position, and centered wheel
+ * motion state in the order used by vendor report route four.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void update_usb_diagnostic_snapshot(uint32_t now_ms) {
+    usb_diagnostic_snapshot = (UsbDiagnosticSnapshot){
+        .base_mode = board_identity.mode_bits,
+        .base_temperatures_c =
+            {
+                cooling_temperature_monitor.temperatures_c[0],
+                cooling_temperature_monitor.temperatures_c[1],
+            },
+        .system_seconds = now_ms / 1000,
+        .transport_error_count = serial_service_error_count(&serial_service),
+        .cooling =
+            {
+                .phase = (uint8_t)cooling_controller.phase,
+                .output_duty_percent = cooling_controller.primary_duty_percent,
+                .primary_delay_seconds = (int8_t)(cooling_controller.primary_delay_ms / 1000),
+                .secondary_delay_seconds = (int8_t)(cooling_controller.secondary_delay_ms / 1000),
+                .low_threshold_offset = cooling_controller.low_threshold_offset,
+                .high_threshold_offset = cooling_controller.high_threshold_offset,
+            },
+        .pwm =
+            {
+                .secondary_duty_percent = cooling_controller.secondary_duty_percent,
+                .primary_duty_percent = cooling_controller.primary_duty_percent,
+            },
+        .pulse =
+            {
+                fan_speed_rpm[PLATFORM_FAN_PRIMARY],
+                fan_speed_rpm[PLATFORM_FAN_SECONDARY],
+            },
+    };
+
+    const MotorIdentity *identity = motor_probe_identity(&motor_probe);
+    if (identity != 0) {
+        usb_diagnostic_snapshot.motor.version = identity->transfer_code;
+        usb_diagnostic_snapshot.motor.initial_status = (int8_t)identity->initial_status;
+    }
+    if (motor_tuning_ready) {
+        const MotorTelemetry *telemetry = motor_telemetry_service_value(&motor_telemetry_service);
+        if (telemetry->motor_temperature_valid) {
+            usb_diagnostic_snapshot.motor.motor_temperature = telemetry->motor_temperature;
+        }
+        if (telemetry->driver_temperature_valid) {
+            usb_diagnostic_snapshot.motor.driver_temperature = telemetry->driver_temperature;
+        }
+        if (telemetry->runtime_valid) {
+            usb_diagnostic_snapshot.motor.runtime_seconds = telemetry->runtime_seconds;
+        }
+    }
+
+    usb_diagnostic_snapshot.wheel_status = *wheel_status_service_snapshot(&wheel_status_service);
+    if (motor_position_ready) {
+        int32_t centered_position = wheel_position_center(motor_position_report.wheel_position,
+                                                          base_settings.wheel_position.center);
+        usb_diagnostic_snapshot.motor.motor_torque = motor_position_report.motor_torque;
+        usb_diagnostic_snapshot.auxiliary_position.direction =
+            motor_position_report.auxiliary_negative ? 1 : 0;
+        usb_diagnostic_snapshot.auxiliary_position.position =
+            motor_position_report.auxiliary_position;
+        usb_diagnostic_snapshot.wheel_position = centered_position;
+        usb_diagnostic_snapshot.wheel_velocity =
+            wheel_velocity_update(&wheel_velocity_estimator, centered_position, now_ms);
     }
 }
 
@@ -391,12 +469,21 @@ static void service_usb_command_bridge(uint32_t now_ms) {
             usb_wheel_transfer_response_ready = true;
         }
     }
+    update_usb_diagnostic_snapshot(now_ms);
+    bool usb_diagnostic_report_ready = usb_diagnostic_report_prepare(
+        &usb_diagnostic_report_service, &usb_diagnostic_snapshot, usb_diagnostic_report);
     if (!usb_motor_acknowledgement_ready && usb_wheel_transfer_response_ready &&
         usb_device_send_vendor_report(usb_wheel_transfer_response)) {
         usb_wheel_transfer_response_ready = false;
     }
     if (!usb_motor_acknowledgement_ready && !usb_wheel_transfer_response_ready &&
-        usb_motor_response_ready && usb_device_send_vendor_report(usb_motor_response)) {
+        usb_diagnostic_report_ready && usb_device_send_vendor_report(usb_diagnostic_report)) {
+        usb_diagnostic_report_commit(&usb_diagnostic_report_service, usb_diagnostic_report);
+        usb_diagnostic_report_ready = false;
+    }
+    if (!usb_motor_acknowledgement_ready && !usb_wheel_transfer_response_ready &&
+        !usb_diagnostic_report_ready && usb_motor_response_ready &&
+        usb_device_send_vendor_report(usb_motor_response)) {
         usb_motor_response_ready = false;
     }
 }
@@ -518,6 +605,10 @@ static void service_usb_output(void) {
     }
 
     if (usb_vendor_command_decode(&usb_output_command, &usb_vendor_command)) {
+        if (usb_diagnostic_report_apply_command(&usb_diagnostic_report_service,
+                                                &usb_vendor_command)) {
+            return;
+        }
         if (usb_vendor_command_requests_motor_command(&usb_vendor_command)) {
             motor_command_request_pending = true;
         } else if (usb_vendor_command_decode_wheel_transfer(&usb_vendor_command,
@@ -664,6 +755,7 @@ int main(void) {
     wheel_service_init(&wheel_service, &serial_service);
     wheel_status_service_init(&wheel_status_service, &serial_service);
     initialize_usb_command_bridge();
+    wheel_velocity_reset(&wheel_velocity_estimator);
     initialize_motor_link();
     initialize_motor();
     initialize_force_feedback_script();
