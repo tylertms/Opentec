@@ -47,6 +47,29 @@ static void clear(uint8_t *data, uint8_t length) {
 }
 
 /**
+ * @brief Adds the legacy wheel-status fields used for display rotation.
+ *
+ * Mode 0x0E receives the signed angle in bytes 9 and 10 when profile rotation is enabled, followed
+ * by state code 6, a clear adapter flag, and the idle pedal-status pair.
+ *
+ * @param[in] protocol Active attached-wheel protocol state.
+ * @param[in,out] response Cleared response receiving the legacy status fields.
+ */
+static void encode_legacy_status(const WheelProtocol *protocol, uint8_t *response) {
+    if (protocol->mode != WHEEL_MODE_REMOTE_TUNING_LEGACY) {
+        return;
+    }
+    if (protocol->display_rotation_enabled) {
+        response[9] = (uint8_t)protocol->display_rotation_angle;
+        response[10] = (uint8_t)((uint16_t)protocol->display_rotation_angle >> 8);
+    }
+    response[12] = 6;
+    response[13] = 0;
+    response[14] = 0;
+    response[15] = 0;
+}
+
+/**
  * @brief Builds the wheel-mode selection acknowledgement.
  *
  * Clears the response, writes command A5 and its checksum, and preserves the transport flag byte.
@@ -96,12 +119,28 @@ static void build_active_response(WheelProtocol *protocol) {
         protocol->response[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
     }
     if (!remote_tuning_response) {
+        encode_legacy_status(protocol, protocol->response);
         (void)wheel_output_reports_encode_next(&protocol->output_reports, protocol->mode,
                                                protocol->response);
     }
     protocol->response[WHEEL_PROTOCOL_CHECKSUM_OFFSET] =
         crc8(protocol->response, WHEEL_PROTOCOL_CONTENT_SIZE);
     protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] = flags;
+}
+
+/**
+ * @brief Selects the attached-wheel display rotation output.
+ *
+ * Retains the active profile flag and current signed angle for the next legacy remote-tuning
+ * response.
+ *
+ * @param[in,out] protocol Attached-wheel protocol state.
+ * @param[in] enabled True to include the display angle.
+ * @param[in] angle Signed angle in hundredths of a degree.
+ */
+void wheel_protocol_set_display_rotation(WheelProtocol *protocol, bool enabled, int16_t angle) {
+    protocol->display_rotation_enabled = enabled;
+    protocol->display_rotation_angle = angle;
 }
 
 /**

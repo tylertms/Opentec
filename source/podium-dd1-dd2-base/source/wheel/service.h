@@ -74,6 +74,7 @@ bool wheel_service_queue_remote_telemetry(
     WheelService *service, const uint8_t payload[WHEEL_OUTPUT_REMOTE_TELEMETRY_SIZE]);
 bool wheel_service_remote_telemetry_pending(const WheelService *service);
 void wheel_service_set_button_illumination(WheelService *service, bool enabled);
+void wheel_service_set_display_rotation(WheelService *service, bool enabled, int16_t angle);
 const uint8_t *wheel_service_buttons(const WheelService *service);
 uint8_t wheel_service_axis_limit(const WheelService *service);
 const uint8_t *wheel_service_clutch_paddles(const WheelService *service);

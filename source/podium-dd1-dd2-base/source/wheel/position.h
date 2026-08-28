@@ -31,6 +31,8 @@ int32_t wheel_position_center(int32_t sample, int32_t center);
 int32_t wheel_position_filter(int32_t sample, const WheelPositionCalibration *calibration);
 int16_t wheel_position_axis(int32_t sample, const WheelPositionCalibration *calibration);
 uint16_t wheel_position_hid_axis(int32_t sample, const WheelPositionCalibration *calibration);
+int16_t wheel_position_display_rotation(int32_t sample,
+                                        const WheelPositionCalibration *calibration);
 void wheel_position_reference_reset(WheelPositionReference *reference);
 bool wheel_position_reference_capture(WheelPositionReference *reference, int32_t sample);
 uint32_t wheel_position_travel_from_degrees(uint16_t rotation_degrees);

@@ -227,6 +227,7 @@ static void reset_connection(WheelService *service) {
     uint8_t interface_mode = service->protocol.interface_mode;
     uint8_t axis_override_mode = service->protocol.configured_axis_override_mode;
     uint8_t paddle_bite_point_percent = service->protocol.paddle_bite_point_percent;
+    int16_t display_rotation_angle = service->protocol.display_rotation_angle;
     uint32_t paddle_adjustment_deadline_ms =
         service->protocol.axis_override_processor.paddle_adjustment_deadline_ms;
     uint8_t axis_multiplex_phase = service->protocol.axis_override_processor.multiplex_phase;
@@ -240,6 +241,7 @@ static void reset_connection(WheelService *service) {
     bool paddle_bite_point_commit_pending =
         service->protocol.axis_override_processor.paddle_bite_point_commit_pending;
     bool button_latch_enabled = service->protocol.button_latch_enabled;
+    bool display_rotation_enabled = service->protocol.display_rotation_enabled;
     bool profile_transition_pending = service->protocol.profile_transition_pending;
     wheel_protocol_init(&service->protocol);
     service->protocol.mode_one_button_filter = mode_one_button_filter;
@@ -269,6 +271,8 @@ static void reset_connection(WheelService *service) {
         paddle_bite_point_commit_pending;
     wheel_protocol_set_button_latch(&service->protocol, button_latch_enabled,
                                     profile_transition_pending);
+    wheel_protocol_set_display_rotation(&service->protocol, display_rotation_enabled,
+                                        display_rotation_angle);
     clear_scan_filter(service);
     service->protocol_deadline_ms = 0;
     service->protocol_deadline_active = false;
@@ -699,6 +703,19 @@ bool wheel_service_remote_telemetry_pending(const WheelService *service) {
  */
 void wheel_service_set_button_illumination(WheelService *service, bool enabled) {
     wheel_output_reports_set_button_illumination(&service->protocol.output_reports, enabled);
+}
+
+/**
+ * @brief Applies active-profile display rotation to the attached wheel.
+ *
+ * Retains the profile flag and current signed angle for legacy remote-tuning wheel responses.
+ *
+ * @param[in,out] service Attached-wheel service that owns the protocol state.
+ * @param[in] enabled True to include display rotation output.
+ * @param[in] angle Signed angle in hundredths of a degree.
+ */
+void wheel_service_set_display_rotation(WheelService *service, bool enabled, int16_t angle) {
+    wheel_protocol_set_display_rotation(&service->protocol, enabled, angle);
 }
 
 /**

@@ -863,9 +863,6 @@ static void service_usb_input(uint32_t now_ms) {
     }
 
     const MotorIdentity *motor_identity = motor_probe_identity(&motor_probe);
-    wheel_position_calibration = wheel_position_calibration_build(
-        &base_settings.wheel_position, tuning_profile->rotation_degrees,
-        tuning_profile->steering_deadzone);
     usb_input_state = (UsbInputReportState){
         .fanatec =
             {
@@ -1114,6 +1111,13 @@ int main(void) {
             wheel_steering_limits_active(&base_settings.steering_limits,
                                          base_settings.tuning_profiles.active_slot),
             now_ms);
+        wheel_position_calibration = wheel_position_calibration_build(
+            &base_settings.wheel_position, tuning_profile->rotation_degrees,
+            tuning_profile->steering_deadzone);
+        wheel_service_set_display_rotation(
+            &wheel_service, tuning_profile->display_rotation_enabled != 0,
+            wheel_position_display_rotation(motor_position_report.wheel_position,
+                                            &wheel_position_calibration));
         wheel_service_run(&wheel_service, now_ms, !serial_command_waiting());
         if (wheel_service_take_bite_point(&wheel_service, &wheel_adjusted_bite_point_percent)) {
             wheel_steering_limit_command = (WheelSteeringLimitCommand){

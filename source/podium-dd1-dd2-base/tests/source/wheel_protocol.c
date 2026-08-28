@@ -717,6 +717,36 @@ static void test_forwards_remote_telemetry_in_legacy_mode(void) {
     assert(wheel_protocol_message_valid(wheel_protocol_response(&protocol)));
 }
 
+static void test_encodes_legacy_display_rotation_status(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    protocol.mode = WHEEL_MODE_REMOTE_TUNING_LEGACY;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    wheel_protocol_set_display_rotation(&protocol, true, -1234);
+
+    request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    mark_ready(request);
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+    wheel_protocol_accept(&protocol, request);
+
+    const uint8_t *response = wheel_protocol_response(&protocol);
+    assert(response[9] == 0x2e);
+    assert(response[10] == 0xfb);
+    assert(response[12] == 6);
+    assert(response[13] == 0);
+    assert(response[14] == 0);
+    assert(response[15] == 0);
+    assert(wheel_protocol_message_valid(response));
+
+    protocol.mode = WHEEL_MODE_REMOTE_TUNING_EXTENDED;
+    wheel_protocol_accept(&protocol, request);
+    response = wheel_protocol_response(&protocol);
+    assert(response[9] == 0);
+    assert(response[10] == 0);
+    assert(response[12] == 0);
+}
+
 static void test_rejects_remote_tuning_link_mismatch(void) {
     WheelProtocol protocol;
     wheel_protocol_init(&protocol);
@@ -884,6 +914,7 @@ int main(void) {
     test_builds_crc_family_active_response();
     test_builds_remote_tuning_responses();
     test_forwards_remote_telemetry_in_legacy_mode();
+    test_encodes_legacy_display_rotation_status();
     test_rejects_remote_tuning_link_mismatch();
     test_forwards_one_pending_host_report();
     test_captures_crc_family_requests();

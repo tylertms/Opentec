@@ -90,6 +90,23 @@ static void test_range_conversion(void) {
     assert(wheel_position_travel_from_degrees(UINT16_MAX) == WHEEL_POSITION_SAMPLE_LIMIT);
 }
 
+static void test_display_rotation(void) {
+    const WheelPositionCalibration calibration = {
+        .center = 1000,
+        .travel = 35520,
+        .deadband = 0,
+    };
+
+    assert(wheel_position_display_rotation(1000, &calibration) == 0);
+    assert(wheel_position_display_rotation(1000 + 5920, &calibration) == 8999);
+    assert(wheel_position_display_rotation(1000 + 35520, &calibration) == 17999);
+    assert(wheel_position_display_rotation(1000 - 35520, &calibration) == -18000);
+
+    WheelPositionCalibration deadband = calibration;
+    deadband.deadband = 10;
+    assert(wheel_position_display_rotation(1010, &deadband) == 0);
+}
+
 static void test_velocity(void) {
     WheelVelocityEstimator estimator;
     wheel_velocity_reset(&estimator);
@@ -109,6 +126,7 @@ int main(void) {
     test_reference_capture();
     test_calibration_building();
     test_range_conversion();
+    test_display_rotation();
     test_velocity();
     return 0;
 }

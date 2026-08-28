@@ -68,6 +68,34 @@ uint16_t wheel_position_hid_axis(int32_t sample, const WheelPositionCalibration 
     return (uint16_t)((int32_t)wheel_position_axis(sample, calibration) + 32768);
 }
 
+/**
+ * @brief Calculates the attached-wheel display rotation angle.
+ *
+ * Converts the centered, deadband-adjusted position to hundredths of a degree, clamps it to the
+ * configured steering travel, and folds successive half turns into the signed range from -18000
+ * through 18000.
+ *
+ * @param[in] sample Current absolute wheel-position sample.
+ * @param[in] calibration Active wheel center, travel, and deadband.
+ * @return Signed display angle in hundredths of a degree.
+ */
+int16_t wheel_position_display_rotation(int32_t sample,
+                                        const WheelPositionCalibration *calibration) {
+    int16_t axis = wheel_position_axis(sample, calibration);
+    uint32_t travel = calibration->travel > WHEEL_POSITION_SAMPLE_LIMIT
+                          ? WHEEL_POSITION_SAMPLE_LIMIT
+                          : calibration->travel;
+    int32_t angle =
+        (int32_t)((int64_t)axis * travel * 72000 / (WHEEL_POSITION_COUNTS_PER_REVOLUTION * 65535));
+    while (angle > 18000) {
+        angle -= 36000;
+    }
+    while (angle < -18000) {
+        angle += 36000;
+    }
+    return (int16_t)angle;
+}
+
 void wheel_position_reference_reset(WheelPositionReference *reference) {
     reference->center = 0;
     reference->calibrated = false;
