@@ -7,7 +7,9 @@
 #include "cooling/effect_limit.h"
 #include "cooling/tachometer.h"
 #include "cooling/temperature.h"
+#include "force_feedback/command.h"
 #include "force_feedback/output.h"
+#include "force_feedback/state.h"
 #include "motor/live_frame.h"
 #include "motor/probe.h"
 #include "motor/status_service.h"
@@ -89,6 +91,8 @@ static uint8_t usb_input_report[FANATEC_INPUT_REPORT_SIZE];
 static UsbDeviceOutputReport usb_device_output_report;
 static UsbOutputCommand usb_output_command;
 static UsbVendorCommand usb_vendor_command;
+static ForceFeedbackCommand force_feedback_command;
+static ForceFeedbackState force_feedback_state;
 static ForceOutputReport motor_output_report;
 static MotorLiveFrame motor_live_frame;
 static uint8_t motor_received_frame[MOTOR_LIVE_FRAME_SIZE];
@@ -180,6 +184,7 @@ static void service_motor_link(void) {
 
 static void initialize_motor(void) {
     base_settings_persistence_load(&settings_persistence, &base_settings, platform_time_ms());
+    force_feedback_state_init(&force_feedback_state);
     runtime_tuning_profile = *tuning_profile_bank_active(&base_settings.tuning_profiles);
     tuning_profile = &runtime_tuning_profile;
     cooling_effect_strengths = (CoolingEffectStrengths){
@@ -229,9 +234,19 @@ static void service_motor(void) {
 }
 
 static void service_usb_output(void) {
-    if (usb_device_take_output(&usb_device_output_report) &&
-        usb_output_command_decode(&usb_device_output_report, &usb_output_command) &&
-        usb_vendor_command_decode(&usb_output_command, &usb_vendor_command) &&
+    if (!usb_device_take_output(&usb_device_output_report) ||
+        !usb_output_command_decode(&usb_device_output_report, &usb_output_command)) {
+        return;
+    }
+
+    if (force_feedback_command_decode(&usb_output_command, &force_feedback_command)) {
+        force_feedback_state_apply(
+            &force_feedback_state, &force_feedback_command,
+            (int32_t)wheel_position_travel_from_degrees(tuning_profile->rotation_degrees));
+        return;
+    }
+
+    if (usb_vendor_command_decode(&usb_output_command, &usb_vendor_command) &&
         usb_vendor_command_requests_motor_command(&usb_vendor_command)) {
         motor_command_request_pending = true;
     }
