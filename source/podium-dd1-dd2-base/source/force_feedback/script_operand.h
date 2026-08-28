@@ -21,14 +21,27 @@ typedef struct {
     uint32_t axes[FORCE_FEEDBACK_SCRIPT_AXIS_VALUE_COUNT];
     ForceFeedbackScriptSamples samples;
     ForceFeedbackScriptSlot slots[FORCE_FEEDBACK_SCRIPT_SLOT_COUNT];
+    uint16_t extended_rotation_range;
+    uint8_t rotation_range_code;
     uint8_t active_slot;
 } ForceFeedbackScriptRuntime;
 
-bool force_feedback_script_operand_read(const ForceFeedbackScriptRuntime *runtime,
-                                        const uint8_t *script, size_t length, size_t *cursor,
-                                        uint32_t *value);
-bool force_feedback_script_operand_write(ForceFeedbackScriptRuntime *runtime, const uint8_t *script,
-                                         size_t length, size_t *cursor, uint32_t value,
-                                         bool commit);
+typedef struct {
+    uint32_t value;
+    size_t cursor;
+    bool valid;
+} ForceFeedbackScriptOperandResult;
+
+typedef struct {
+    size_t cursor;
+    bool valid;
+} ForceFeedbackScriptDestinationResult;
+
+ForceFeedbackScriptOperandResult
+force_feedback_script_operand_read(const ForceFeedbackScriptRuntime *runtime, const uint8_t *script,
+                                   size_t length, size_t cursor);
+ForceFeedbackScriptDestinationResult
+force_feedback_script_operand_write(ForceFeedbackScriptRuntime *runtime, const uint8_t *script,
+                                    size_t length, size_t cursor, uint32_t value, bool commit);
 
 #endif

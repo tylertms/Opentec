@@ -15,9 +15,11 @@ static uint32_t float_bits(float value) {
 
 static uint32_t read_operand(const ForceFeedbackScriptRuntime *runtime, const uint8_t *script,
                              size_t length, size_t *cursor) {
-    uint32_t value = 0;
-    assert(force_feedback_script_operand_read(runtime, script, length, cursor, &value));
-    return value;
+    ForceFeedbackScriptOperandResult result =
+        force_feedback_script_operand_read(runtime, script, length, *cursor);
+    assert(result.valid);
+    *cursor = result.cursor;
+    return result.value;
 }
 
 static void test_reads_constants_and_immediates(void) {
@@ -127,8 +129,10 @@ static void test_reads_runtime_banks(void) {
 static void write_operand(ForceFeedbackScriptRuntime *runtime, const uint8_t *script, size_t length,
                           uint32_t value) {
     size_t cursor = 0;
-    assert(force_feedback_script_operand_write(runtime, script, length, &cursor, value, true));
-    assert(cursor == length);
+    ForceFeedbackScriptDestinationResult result =
+        force_feedback_script_operand_write(runtime, script, length, cursor, value, true);
+    assert(result.valid);
+    assert(result.cursor == length);
 }
 
 static void test_writes_runtime_banks(void) {
@@ -192,40 +196,44 @@ static void test_skips_destinations_without_writing(void) {
     const uint8_t script[] = {0xff, 0x14, 42};
     size_t cursor = 0;
 
-    assert(
-        force_feedback_script_operand_write(&runtime, script, sizeof(script), &cursor, 7, false));
-    assert(cursor == 1);
-    assert(
-        force_feedback_script_operand_write(&runtime, script, sizeof(script), &cursor, 8, false));
-    assert(cursor == sizeof(script));
+    ForceFeedbackScriptDestinationResult result =
+        force_feedback_script_operand_write(&runtime, script, sizeof(script), cursor, 7, false);
+    assert(result.valid);
+    assert(result.cursor == 1);
+    result = force_feedback_script_operand_write(&runtime, script, sizeof(script), result.cursor, 8,
+                                                 false);
+    assert(result.valid);
+    assert(result.cursor == sizeof(script));
     assert(memcmp(&runtime, &before, sizeof(runtime)) == 0);
 }
 
 static void test_rejects_invalid_or_incomplete_operands(void) {
     ForceFeedbackScriptRuntime runtime = {0};
-    uint32_t value = 0;
     size_t cursor = 0;
     const uint8_t invalid[] = {0x05};
-    assert(
-        !force_feedback_script_operand_read(&runtime, invalid, sizeof(invalid), &cursor, &value));
-    assert(cursor == sizeof(invalid));
+    ForceFeedbackScriptOperandResult read =
+        force_feedback_script_operand_read(&runtime, invalid, sizeof(invalid), cursor);
+    assert(!read.valid);
+    assert(read.cursor == sizeof(invalid));
 
     cursor = 0;
     const uint8_t incomplete[] = {0x13, 1, 2, 3};
-    assert(!force_feedback_script_operand_read(&runtime, incomplete, sizeof(incomplete), &cursor,
-                                               &value));
-    assert(cursor == sizeof(incomplete));
+    read = force_feedback_script_operand_read(&runtime, incomplete, sizeof(incomplete), cursor);
+    assert(!read.valid);
+    assert(read.cursor == sizeof(incomplete));
 
     cursor = 0;
     const uint8_t read_only[] = {0x2b};
-    assert(!force_feedback_script_operand_write(&runtime, read_only, sizeof(read_only), &cursor, 1,
-                                                true));
-    assert(cursor == sizeof(read_only));
+    ForceFeedbackScriptDestinationResult write = force_feedback_script_operand_write(
+        &runtime, read_only, sizeof(read_only), cursor, 1, true);
+    assert(!write.valid);
+    assert(write.cursor == sizeof(read_only));
 
     runtime.active_slot = FORCE_FEEDBACK_SCRIPT_SLOT_COUNT;
     cursor = 0;
     const uint8_t slot[] = {0x40};
-    assert(!force_feedback_script_operand_read(&runtime, slot, sizeof(slot), &cursor, &value));
+    read = force_feedback_script_operand_read(&runtime, slot, sizeof(slot), cursor);
+    assert(!read.valid);
 }
 
 int main(void) {

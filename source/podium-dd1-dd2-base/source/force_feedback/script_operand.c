@@ -5,10 +5,6 @@
 #include <stdint.h>
 
 enum {
-    OPERAND_CONSTANT_ZERO = 0x00,
-    OPERAND_CONSTANT_ONE = 0x01,
-    OPERAND_CONSTANT_FLOAT_ONE = 0x02,
-    OPERAND_CONSTANT_MAXIMUM = 0x03,
     OPERAND_CONSTANT_FLOAT_NEGATIVE_ONE = 0x04,
     OPERAND_IMMEDIATE_FIRST = 0x10,
     OPERAND_IMMEDIATE_LAST = 0x13,
@@ -44,13 +40,24 @@ typedef union {
     uint32_t bits;
 } OperandValue;
 
-static bool consume(size_t length, size_t *cursor, size_t size) {
-    if (*cursor > length || size > length - *cursor) {
-        *cursor = length;
-        return false;
-    }
-    *cursor += size;
-    return true;
+static bool available(size_t length, size_t cursor, size_t size) {
+    return cursor <= length && size <= length - cursor;
+}
+
+static ForceFeedbackScriptOperandResult invalid_operand(size_t cursor) {
+    return (ForceFeedbackScriptOperandResult){.cursor = cursor};
+}
+
+static ForceFeedbackScriptOperandResult operand_value(uint32_t value, size_t cursor) {
+    return (ForceFeedbackScriptOperandResult){
+        .value = value,
+        .cursor = cursor,
+        .valid = true,
+    };
+}
+
+static ForceFeedbackScriptDestinationResult destination_result(size_t cursor, bool valid) {
+    return (ForceFeedbackScriptDestinationResult){.cursor = cursor, .valid = valid};
 }
 
 static uint32_t read_big_endian(const uint8_t *data, size_t size) {
@@ -65,33 +72,16 @@ static uint32_t scaled_immediate(const uint8_t *data, size_t size, float scale) 
     return (OperandValue){.number = (float)read_big_endian(data, size) / scale}.bits;
 }
 
-static bool read_constant(uint8_t opcode, uint32_t *value) {
-    static const uint32_t constants[] = {
-        0, 1, UINT32_C(0x3f800000), UINT32_MAX, UINT32_C(0xbf800000),
-    };
-    if (opcode > OPERAND_CONSTANT_FLOAT_NEGATIVE_ONE) {
-        return false;
-    }
-    *value = constants[opcode];
-    return true;
-}
-
-static bool read_slot_metric(const ForceFeedbackScriptSlot *slot, uint8_t opcode, uint32_t *value) {
+static uint32_t slot_metric(const ForceFeedbackScriptSlot *slot, uint8_t opcode) {
     switch (opcode) {
     case OPERAND_SLOT_DELTA_RATE:
-        *value = slot->delta_rate;
-        return true;
+        return slot->delta_rate;
     case OPERAND_SLOT_AVERAGE_RATE:
-        *value = slot->average_rate;
-        return true;
+        return slot->average_rate;
     case OPERAND_SLOT_EXECUTION_COUNT:
-        *value = slot->execution_count;
-        return true;
-    case OPERAND_SLOT_TICK_SNAPSHOT:
-        *value = slot->tick_snapshot;
-        return true;
+        return slot->execution_count;
     default:
-        return false;
+        return slot->tick_snapshot;
     }
 }
 
@@ -99,98 +89,88 @@ static bool read_slot_metric(const ForceFeedbackScriptSlot *slot, uint8_t opcode
  * @brief Read one encoded script operand.
  *
  * Resolves constants, big-endian immediates, scaled numeric literals, samples, variables, active
- * slot values and metrics, motion values, and axes. The cursor advances past the complete operand.
- * Invalid or incomplete operands return false; incomplete input moves the cursor to the end.
+ * slot values and metrics, motion values, and axes. The returned cursor follows the complete
+ * operand. Invalid or incomplete operands return an invalid result; incomplete input moves the
+ * returned cursor to the end.
  *
  * @param[in] runtime Script state referenced by indirect operands.
  * @param[in] script Encoded script bytes.
  * @param[in] length Number of available script bytes.
- * @param[in,out] cursor Offset of the operand on entry and the next byte on success.
- * @param[out] value Resolved raw 32-bit value.
- * @return true when the operand is complete and valid; otherwise false.
- * @pre runtime, script, cursor, and value point to valid objects.
+ * @param[in] cursor Offset of the operand.
+ * @return The resolved raw value, following cursor, and validity state.
+ * @pre runtime and script point to valid objects.
  */
-bool force_feedback_script_operand_read(const ForceFeedbackScriptRuntime *runtime,
-                                        const uint8_t *script, size_t length, size_t *cursor,
-                                        uint32_t *value) {
-    size_t offset = *cursor;
-    if (!consume(length, cursor, 1)) {
-        return false;
+ForceFeedbackScriptOperandResult
+force_feedback_script_operand_read(const ForceFeedbackScriptRuntime *runtime, const uint8_t *script,
+                                   size_t length, size_t cursor) {
+    static const uint32_t constants[] = {
+        0, 1, UINT32_C(0x3f800000), UINT32_MAX, UINT32_C(0xbf800000),
+    };
+    if (!available(length, cursor, 1)) {
+        return invalid_operand(length);
     }
 
-    uint8_t opcode = script[offset];
-    if (read_constant(opcode, value)) {
-        return true;
+    uint8_t opcode = script[cursor++];
+    if (opcode <= OPERAND_CONSTANT_FLOAT_NEGATIVE_ONE) {
+        return operand_value(constants[opcode], cursor);
     }
     if (opcode >= OPERAND_IMMEDIATE_FIRST && opcode <= OPERAND_IMMEDIATE_LAST) {
         size_t size = (size_t)(opcode - OPERAND_IMMEDIATE_FIRST) + 1;
-        offset = *cursor;
-        return consume(length, cursor, size)
-                   ? (*value = read_big_endian(script + offset, size), true)
-                   : false;
+        if (!available(length, cursor, size)) {
+            return invalid_operand(length);
+        }
+        return operand_value(read_big_endian(script + cursor, size), cursor + size);
     }
     if (opcode == OPERAND_SAMPLE_LOW || opcode == OPERAND_SAMPLE_HIGH) {
-        offset = *cursor;
-        if (!consume(length, cursor, 1)) {
-            return false;
+        if (!available(length, cursor, 1)) {
+            return invalid_operand(length);
         }
-        size_t index = script[offset] + (opcode == OPERAND_SAMPLE_HIGH ? 256u : 0u);
-        *value = runtime->samples.values[index];
-        return true;
+        size_t index = script[cursor] + (opcode == OPERAND_SAMPLE_HIGH ? 256u : 0u);
+        return operand_value(runtime->samples.values[index], cursor + 1);
     }
     if (opcode >= OPERAND_PERCENT && opcode <= OPERAND_NEGATIVE_PERCENT) {
-        offset = *cursor;
-        if (!consume(length, cursor, 1)) {
-            return false;
+        if (!available(length, cursor, 1)) {
+            return invalid_operand(length);
         }
         float scale = opcode == OPERAND_PERCENT ? 100.0f : -100.0f;
-        *value = scaled_immediate(script + offset, 1, scale);
-        return true;
+        return operand_value(scaled_immediate(script + cursor, 1, scale), cursor + 1);
     }
     if (opcode >= OPERAND_PER_MILLE && opcode <= OPERAND_NEGATIVE_PER_MILLE) {
-        offset = *cursor;
-        if (!consume(length, cursor, 2)) {
-            return false;
+        if (!available(length, cursor, 2)) {
+            return invalid_operand(length);
         }
         float scale = opcode == OPERAND_PER_MILLE ? 1000.0f : -1000.0f;
-        *value = scaled_immediate(script + offset, 2, scale);
-        return true;
+        return operand_value(scaled_immediate(script + cursor, 2, scale), cursor + 2);
     }
     if (opcode >= OPERAND_VARIABLE_FIRST && opcode <= OPERAND_VARIABLE_LAST) {
-        *value = runtime->variables[opcode - OPERAND_VARIABLE_FIRST];
-        return true;
+        return operand_value(runtime->variables[opcode - OPERAND_VARIABLE_FIRST], cursor);
     }
     if (opcode >= OPERAND_VARIABLE_SAMPLE_FIRST && opcode <= OPERAND_VARIABLE_SAMPLE_LAST) {
         size_t variable = opcode - OPERAND_VARIABLE_SAMPLE_FIRST;
-        *value = runtime->samples.values[(uint8_t)runtime->variables[variable]];
-        return true;
+        return operand_value(runtime->samples.values[(uint8_t)runtime->variables[variable]],
+                             cursor);
     }
-
     if (opcode >= OPERAND_SLOT_VALUE_FIRST && opcode <= OPERAND_SLOT_TICK_SNAPSHOT) {
         if (runtime->active_slot >= FORCE_FEEDBACK_SCRIPT_SLOT_COUNT) {
-            return false;
+            return invalid_operand(cursor);
         }
         const ForceFeedbackScriptSlot *slot = &runtime->slots[runtime->active_slot];
         if (opcode <= OPERAND_SLOT_VALUE_LAST) {
-            *value = slot->values[opcode - OPERAND_SLOT_VALUE_FIRST];
-            return true;
+            return operand_value(slot->values[opcode - OPERAND_SLOT_VALUE_FIRST], cursor);
         }
         if (opcode <= OPERAND_SLOT_SAMPLE_LAST) {
             size_t bank = opcode - OPERAND_SLOT_SAMPLE_FIRST;
-            *value = runtime->samples.values[(uint8_t)slot->values[bank]];
-            return true;
+            return operand_value(runtime->samples.values[(uint8_t)slot->values[bank]], cursor);
         }
-        return read_slot_metric(slot, opcode, value);
+        return operand_value(slot_metric(slot, opcode), cursor);
     }
     if (opcode >= OPERAND_MOTION_FIRST && opcode <= OPERAND_MOTION_LAST) {
-        *value = runtime->motion[opcode - OPERAND_MOTION_FIRST];
-        return true;
+        return operand_value(runtime->motion[opcode - OPERAND_MOTION_FIRST], cursor);
     }
     if (opcode >= OPERAND_AXIS_FIRST && opcode <= OPERAND_AXIS_LAST) {
-        *value = runtime->axes[opcode - OPERAND_AXIS_FIRST];
-        return true;
+        return operand_value(runtime->axes[opcode - OPERAND_AXIS_FIRST], cursor);
     }
-    return false;
+    return invalid_operand(cursor);
 }
 
 static float clamp_force(float value) {
@@ -248,56 +228,49 @@ static bool write_motion_operand(ForceFeedbackScriptRuntime *runtime, uint8_t op
  * @param[in,out] runtime Script state selected by the destination.
  * @param[in] script Encoded script bytes.
  * @param[in] length Number of available script bytes.
- * @param[in,out] cursor Offset of the destination on entry and the next byte on return.
+ * @param[in] cursor Offset of the destination.
  * @param[in] value Raw 32-bit value to store.
  * @param[in] commit true to change runtime state; false to consume without writing.
- * @return true when the destination was consumed and accepted; otherwise false.
- * @pre runtime, script, and cursor point to valid objects.
+ * @return The following cursor and whether the destination was consumed and accepted.
+ * @pre runtime and script point to valid objects.
  */
-bool force_feedback_script_operand_write(ForceFeedbackScriptRuntime *runtime, const uint8_t *script,
-                                         size_t length, size_t *cursor, uint32_t value,
-                                         bool commit) {
-    size_t offset = *cursor;
-    if (!consume(length, cursor, 1)) {
-        return false;
+ForceFeedbackScriptDestinationResult
+force_feedback_script_operand_write(ForceFeedbackScriptRuntime *runtime, const uint8_t *script,
+                                    size_t length, size_t cursor, uint32_t value, bool commit) {
+    if (!available(length, cursor, 1)) {
+        return destination_result(length, false);
     }
 
-    uint8_t opcode = script[offset];
+    uint8_t opcode = script[cursor++];
     uint8_t sample = 0;
     if (opcode == OPERAND_SAMPLE_LOW || opcode == OPERAND_SAMPLE_HIGH) {
-        offset = *cursor;
-        if (!consume(length, cursor, 1)) {
-            return false;
+        if (!available(length, cursor, 1)) {
+            return destination_result(length, false);
         }
-        sample = script[offset];
+        sample = script[cursor++];
     }
     if (!commit) {
-        return true;
+        return destination_result(cursor, true);
     }
+
+    bool valid = true;
     if (opcode == OPERAND_SAMPLE_LOW || opcode == OPERAND_SAMPLE_HIGH) {
         size_t index = sample + (opcode == OPERAND_SAMPLE_HIGH ? 256u : 0u);
         runtime->samples.values[index] = value;
-        return true;
-    }
-    if (opcode >= OPERAND_VARIABLE_FIRST &&
-        opcode < OPERAND_VARIABLE_FIRST + FORCE_FEEDBACK_SCRIPT_WRITABLE_VARIABLE_COUNT) {
+    } else if (opcode >= OPERAND_VARIABLE_FIRST &&
+               opcode < OPERAND_VARIABLE_FIRST + FORCE_FEEDBACK_SCRIPT_WRITABLE_VARIABLE_COUNT) {
         runtime->variables[opcode - OPERAND_VARIABLE_FIRST] = value;
-        return true;
-    }
-    if (opcode >= OPERAND_VARIABLE_SAMPLE_FIRST && opcode <= OPERAND_VARIABLE_SAMPLE_LAST) {
+    } else if (opcode >= OPERAND_VARIABLE_SAMPLE_FIRST && opcode <= OPERAND_VARIABLE_SAMPLE_LAST) {
         size_t variable = opcode - OPERAND_VARIABLE_SAMPLE_FIRST;
         runtime->samples.values[(uint8_t)runtime->variables[variable]] = value;
-        return true;
-    }
-    if (opcode >= OPERAND_SLOT_VALUE_FIRST && opcode <= OPERAND_SLOT_SAMPLE_LAST) {
-        return write_slot_operand(runtime, opcode, value);
-    }
-    if (opcode >= OPERAND_MOTION_FIRST && opcode <= OPERAND_MOTION_LAST) {
-        return write_motion_operand(runtime, opcode, value);
-    }
-    if (opcode >= OPERAND_AXIS_FIRST && opcode <= OPERAND_AXIS_LAST) {
+    } else if (opcode >= OPERAND_SLOT_VALUE_FIRST && opcode <= OPERAND_SLOT_SAMPLE_LAST) {
+        valid = write_slot_operand(runtime, opcode, value);
+    } else if (opcode >= OPERAND_MOTION_FIRST && opcode <= OPERAND_MOTION_LAST) {
+        valid = write_motion_operand(runtime, opcode, value);
+    } else if (opcode >= OPERAND_AXIS_FIRST && opcode <= OPERAND_AXIS_LAST) {
         runtime->axes[opcode - OPERAND_AXIS_FIRST] = value;
-        return true;
+    } else {
+        valid = false;
     }
-    return false;
+    return destination_result(cursor, valid);
 }
