@@ -40,6 +40,7 @@ void wheel_service_set_crc_adapter(WheelService *service, const WheelPacketCrcAd
 const uint8_t *wheel_service_buttons(const WheelService *service);
 uint8_t wheel_service_axis_limit(const WheelService *service);
 const uint8_t *wheel_service_clutch_paddles(const WheelService *service);
+bool wheel_service_controls(const WheelService *service, uint8_t controls[8]);
 int8_t wheel_service_take_encoder_delta(WheelService *service);
 bool wheel_service_acknowledgement_input_active(const WheelService *service);
 uint8_t wheel_service_mode(const WheelService *service);

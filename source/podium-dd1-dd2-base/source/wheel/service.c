@@ -385,6 +385,19 @@ const uint8_t *wheel_service_clutch_paddles(const WheelService *service) {
 }
 
 /**
+ * @brief Copies the attached wheel's eight control bytes.
+ *
+ * Returns the normalized controls from the current supported packet-family input report.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @param[out] controls Eight control bytes, cleared when unavailable.
+ * @return True when controls were available.
+ */
+bool wheel_service_controls(const WheelService *service, uint8_t controls[8]) {
+    return wheel_protocol_controls(&service->protocol, controls);
+}
+
+/**
  * @brief Takes one queued attached-wheel encoder step.
  *
  * Consumes one signed step from the motion accumulated by valid wheel protocol reports.

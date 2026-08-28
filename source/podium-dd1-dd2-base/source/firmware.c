@@ -383,6 +383,12 @@ static void service_usb_input(void) {
         usb_input_state.clutch_paddles[0] = clutch_paddles[0];
         usb_input_state.clutch_paddles[1] = clutch_paddles[1];
     }
+    uint8_t wheel_controls[8];
+    if (wheel_service_controls(&wheel_service, wheel_controls)) {
+        fanatec_input_apply_wheel_controls(&usb_input_state, wheel_controls,
+                                           wheel_service_mode(&wheel_service) !=
+                                               WHEEL_MODE_CRC_AUTHENTICATED);
+    }
     const uint8_t *wheel_buttons = wheel_service_buttons(&wheel_service);
     for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {
         usb_input_state.button_banks[bank] = wheel_buttons[bank];

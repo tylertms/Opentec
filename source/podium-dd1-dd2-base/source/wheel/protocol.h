@@ -28,6 +28,7 @@ enum {
     WHEEL_MODE_UNKNOWN = 0x00,
     WHEEL_MODE_SCAN_PRIMARY = 0x07,
     WHEEL_MODE_SCAN_SECONDARY = 0x08,
+    WHEEL_MODE_CRC_AUTHENTICATED = 0x15,
     WHEEL_MODE_MAXIMUM = 0x1e,
 };
 
@@ -99,6 +100,7 @@ const WheelAxisOverrideProcessor *wheel_protocol_axis_overrides(const WheelProto
 const WheelCapabilityState *wheel_protocol_capabilities(const WheelProtocol *protocol);
 uint8_t wheel_protocol_axis_limit(const WheelProtocol *protocol);
 const uint8_t *wheel_protocol_axis_outputs(const WheelProtocol *protocol);
+bool wheel_protocol_controls(const WheelProtocol *protocol, uint8_t controls[8]);
 int8_t wheel_protocol_take_motion(WheelProtocol *protocol);
 bool wheel_protocol_request_changed(WheelProtocol *protocol);
 bool wheel_protocol_acknowledgement_input_active(const WheelProtocol *protocol);

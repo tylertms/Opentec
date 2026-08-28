@@ -50,6 +50,37 @@ static void test_validation(void) {
     assert(!fanatec_input_encode(report, NULL));
 }
 
+static void test_wheel_control_mapping(void) {
+    fanatec_input_state state = {.accessory = {0, 0, 0, 0, 0xa0}};
+    const uint8_t controls[8] = {0x10, 0x21, 0x32, 0x43, 0x54, 0x65, 0xf6, 0x87};
+
+    fanatec_input_apply_wheel_controls(&state, controls, true);
+
+    assert(memcmp(state.rotary, controls, sizeof(state.rotary)) == 0);
+    assert(state.accessory[0] == 0x65);
+    assert(state.accessory[4] == 0xa6);
+    assert(state.transfer_code == 0x87);
+}
+
+static void test_restricted_wheel_control_mapping(void) {
+    fanatec_input_state state = {
+        .rotary = {1, 2, 3, 4, 5},
+        .accessory = {6, 7, 8, 9, 10},
+    };
+    const uint8_t controls[8] = {0x10, 0x21, 0x32, 0x43, 0x54, 0x65, 0x76, 0x87};
+
+    fanatec_input_apply_wheel_controls(&state, controls, false);
+
+    assert(state.rotary[0] == 0x10);
+    assert(state.rotary[1] == 0x21);
+    assert(state.rotary[2] == 3);
+    assert(state.rotary[3] == 4);
+    assert(state.rotary[4] == 5);
+    assert(state.accessory[0] == 6);
+    assert(state.accessory[4] == 10);
+    assert(state.transfer_code == 0x87);
+}
+
 static void test_h_pattern_shifter_mapping(void) {
     fanatec_input_state state = {
         .button_banks = {0, 0x80, 0xff, 0, 0xff},
@@ -88,6 +119,8 @@ int main(void) {
     test_encode();
     test_zero_state();
     test_validation();
+    test_wheel_control_mapping();
+    test_restricted_wheel_control_mapping();
     test_h_pattern_shifter_mapping();
     test_sequential_shifter_mapping();
     return 0;

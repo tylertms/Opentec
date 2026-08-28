@@ -462,6 +462,49 @@ const uint8_t *wheel_protocol_axis_outputs(const WheelProtocol *protocol) {
 }
 
 /**
+ * @brief Copies the attached wheel's eight control bytes.
+ *
+ * Selects normalized mode-one, mode-four, or CRC-family controls. Mode-four control and
+ * control-data groups are joined in their packet order. The destination is cleared when no
+ * supported input report is ready.
+ *
+ * @param[in] protocol Attached-wheel protocol state.
+ * @param[out] controls Eight control bytes.
+ * @return True when controls were available.
+ */
+bool wheel_protocol_controls(const WheelProtocol *protocol, uint8_t controls[8]) {
+    clear(controls, 8);
+    const WheelPacketModeOneInput *mode_one = wheel_protocol_mode_one_input(protocol);
+    if (mode_one != 0) {
+        controls[0] = mode_one->controls.values[0];
+        controls[1] = mode_one->controls.values[1];
+        controls[2] = mode_one->controls.enabled;
+        controls[3] = mode_one->controls.latch_flags;
+        controls[4] = mode_one->controls.x;
+        controls[5] = mode_one->controls.y;
+        controls[6] = mode_one->controls.mode;
+        controls[7] = mode_one->controls.packed_values;
+        return true;
+    }
+    const WheelPacketModeFourInput *mode_four = wheel_protocol_mode_four_input(protocol);
+    if (mode_four != 0) {
+        for (uint8_t index = 0; index < WHEEL_PACKET_MODE_FOUR_CONTROL_COUNT; index++) {
+            controls[index] = mode_four->controls[index];
+            controls[index + WHEEL_PACKET_MODE_FOUR_CONTROL_COUNT] = mode_four->control_data[index];
+        }
+        return true;
+    }
+    const WheelPacketCrcInput *crc = wheel_protocol_crc_input(protocol);
+    if (crc == 0) {
+        return false;
+    }
+    for (uint8_t index = 0; index < WHEEL_PACKET_CRC_CONTROL_COUNT; index++) {
+        controls[index] = crc->controls[index];
+    }
+    return true;
+}
+
+/**
  * @brief Takes one queued attached-wheel motion step.
  *
  * Moves the protocol's primary wrapping motion counter one position toward zero.

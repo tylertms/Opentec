@@ -314,6 +314,8 @@ static void test_keeps_protocol_transport_for_packet_modes(void) {
     const uint8_t *clutch_paddles = wheel_service_clutch_paddles(&service);
     assert(clutch_paddles[0] == 0x27);
     assert(clutch_paddles[1] == 0x91);
+    uint8_t controls[8];
+    assert(wheel_service_controls(&service, controls));
     WheelTransportFrame frame = request();
     assert(frame.command == 2);
     assert(frame.length == WHEEL_PROTOCOL_PACKET_SIZE);

@@ -327,6 +327,9 @@ static void test_captures_normalized_active_requests(void) {
     wheel_protocol_init(&protocol);
     assert(wheel_protocol_axis_limit(&protocol) == 0);
     assert(wheel_protocol_axis_outputs(&protocol) == 0);
+    uint8_t controls[8];
+    assert(!wheel_protocol_controls(&protocol, controls));
+    assert(memcmp(controls, (uint8_t[8]){0}, sizeof(controls)) == 0);
     synchronize(&protocol, request);
     select_mode(&protocol, request, 1);
 
@@ -351,6 +354,9 @@ static void test_captures_normalized_active_requests(void) {
     assert(input->motion == 7);
     assert(input->axis_values[0] == 0);
     assert(wheel_protocol_axis_outputs(&protocol) == input->axis_outputs);
+    assert(wheel_protocol_controls(&protocol, controls));
+    assert(controls[0] == input->controls.values[0]);
+    assert(controls[7] == input->controls.packed_values);
     assert(input->axis_limit == 31);
     assert(wheel_protocol_axis_limit(&protocol) == 31);
     const WheelPacketModeOneReportState *report_state =
@@ -493,6 +499,11 @@ static void test_captures_mode_four_requests(void) {
     assert(input->buttons[2] == 0x20);
     assert(wheel_protocol_axis_outputs(&protocol)[0] == 0x31);
     assert(wheel_protocol_axis_outputs(&protocol)[1] == 0xc2);
+    uint8_t controls[8];
+    assert(wheel_protocol_controls(&protocol, controls));
+    assert(memcmp(controls, input->controls, WHEEL_PACKET_MODE_FOUR_CONTROL_COUNT) == 0);
+    assert(memcmp(controls + WHEEL_PACKET_MODE_FOUR_CONTROL_COUNT, input->control_data,
+                  WHEEL_PACKET_MODE_FOUR_CONTROL_DATA_COUNT) == 0);
     assert(input->axis_values[0] == 0x1234);
     assert(input->control_data[0] == 0x61);
     assert(input->axis_limit == 0x74);
@@ -637,6 +648,9 @@ static void test_captures_crc_family_requests(void) {
     assert(input->buttons[1] == 0x08);
     assert(wheel_protocol_axis_outputs(&protocol)[0] == 0x52);
     assert(wheel_protocol_axis_outputs(&protocol)[1] == 0xa4);
+    uint8_t controls[8];
+    assert(wheel_protocol_controls(&protocol, controls));
+    assert(memcmp(controls, input->controls, sizeof(controls)) == 0);
     assert(input->controls[4] == 0x02);
     assert(wheel_protocol_axis_limit(&protocol) == 0x62);
     assert(wheel_protocol_request(&protocol)[0] == 0x80);

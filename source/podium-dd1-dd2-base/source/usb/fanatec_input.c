@@ -33,6 +33,32 @@ static void write_u16(uint8_t *destination, uint16_t value) {
 }
 
 /**
+ * @brief Applies attached-wheel controls to the Fanatec input fields.
+ *
+ * Always copies the first two rotary values and the transfer byte. When extended controls are
+ * enabled, also copies the remaining rotary values, the first accessory byte, and the low nibble
+ * of the final accessory byte.
+ *
+ * @param[in,out] state Input report state to update.
+ * @param[in] controls Eight attached-wheel control bytes.
+ * @param[in] include_extended True to include control bytes two through six.
+ */
+void fanatec_input_apply_wheel_controls(fanatec_input_state *state, const uint8_t controls[8],
+                                        bool include_extended) {
+    state->rotary[0] = controls[0];
+    state->rotary[1] = controls[1];
+    state->transfer_code = controls[7];
+    if (!include_extended) {
+        return;
+    }
+    state->rotary[2] = controls[2];
+    state->rotary[3] = controls[3];
+    state->rotary[4] = controls[4];
+    state->accessory[0] = controls[5];
+    state->accessory[4] = (uint8_t)((state->accessory[4] & 0xf0u) | (controls[6] & 0x0fu));
+}
+
+/**
  * @brief Applies shifter input to the Fanatec button fields.
  *
  * Places the current H-pattern gear or sequential transition buttons according to the two shifter
