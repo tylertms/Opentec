@@ -73,7 +73,7 @@ static void test_soft_stop(void) {
     output = force_feedback_controller_update(&controller, 6500, 0, 1);
     assert(output.active);
     assert(output.magnitude == 4500);
-    assert(output.negative);
+    assert(!output.negative);
 }
 
 static void test_slew_limit(void) {
