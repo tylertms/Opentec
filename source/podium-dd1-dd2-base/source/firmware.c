@@ -2,6 +2,7 @@
 #include <xc.h>
 
 #include "board/identity.h"
+#include "board/status_led.h"
 #include "cooling/fan.h"
 #include "force_feedback/output.h"
 #include "motor/live_frame.h"
@@ -19,6 +20,7 @@
 #include "platform/pedal_link.h"
 #include "platform/pin_mux.h"
 #include "platform/shifter.h"
+#include "platform/status_led.h"
 #include "platform/time.h"
 #include "platform/wheel_link.h"
 #include "profile/bank.h"
@@ -80,6 +82,7 @@ static MotorLiveFrame motor_live_frame;
 static uint8_t motor_received_frame[MOTOR_LIVE_FRAME_SIZE];
 static uint8_t motor_transmitted_frame[MOTOR_LIVE_FRAME_SIZE];
 static FanController fan_controller;
+static StatusLed status_led;
 static PlatformFanTachometer fan_tachometer;
 static uint16_t fan_speed_rpm[2];
 static uint32_t next_cooling_update_ms;
@@ -249,6 +252,8 @@ int main(void) {
     board_identity = platform_board_identity_read();
     platform_pin_mux_init();
     platform_time_init();
+    platform_status_led_init();
+    status_led_init(&status_led);
     initialize_cooling();
     platform_adc_init();
     platform_shifter_init();
@@ -266,6 +271,7 @@ int main(void) {
         usb_device_service();
         platform_aux_bus_service();
         uint32_t now_ms = platform_time_ms();
+        platform_status_led_set(status_led_update(&status_led, now_ms));
         platform_cooling_service(now_ms);
         service_analog_input();
         service_motor_link();

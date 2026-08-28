@@ -21,6 +21,7 @@ usb_device_control_sources = files('source/usb/device_control.c')
 usb_device_sources = files('source/usb/device.c')
 podium_report_descriptor_sources = files('source/usb/podium_report_descriptor.c')
 board_identity_sources = files('source/board/identity.c')
+status_led_sources = files('source/board/status_led.c')
 h_pattern_shifter_sources = files('source/shifter/h_pattern.c')
 shifter_display_sources = files('source/shifter/display.c')
 logitech_input_sources = files('source/usb/logitech_input.c')
@@ -87,6 +88,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'usb-device': 'source/usb/device.c',
     'podium-report-descriptor': 'source/usb/podium_report_descriptor.c',
     'board-identity': 'source/board/identity.c',
+    'status-led': 'source/board/status_led.c',
     'firmware': 'source/firmware.c',
     'h-pattern-shifter': 'source/shifter/h_pattern.c',
     'shifter-display': 'source/shifter/display.c',
@@ -113,6 +115,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'platform-pedal-link': 'source/platform/dspic33e/pedal_link.c',
     'platform-pin-mux': 'source/platform/dspic33e/pin_mux.c',
     'platform-storage': 'source/platform/dspic33e/storage.c',
+    'platform-status-led': 'source/platform/dspic33e/status_led.c',
     'platform-shifter': 'source/platform/dspic33e/shifter.c',
     'platform-time': 'source/platform/dspic33e/time.c',
     'platform-usb': 'source/platform/dspic33e/usb.c',
@@ -339,6 +342,14 @@ if not meson.is_cross_build()
     'base-board-identity-test',
     'tests/source/board_identity.c',
     board_identity_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  status_led_test = executable(
+    'base-status-led-test',
+    'tests/source/status_led.c',
+    status_led_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -637,6 +648,7 @@ if not meson.is_cross_build()
     suite: ['base', 'usb'],
   )
   test('base-board-identity', board_identity_test, suite: ['base', 'board'])
+  test('base-status-led', status_led_test, suite: ['base', 'board', 'led'])
   test('base-h-pattern-shifter', h_pattern_shifter_test, suite: ['base', 'shifter'])
   test('base-shifter-display', shifter_display_test, suite: ['base', 'shifter', 'display'])
   test('base-logitech-input', logitech_input_test, suite: ['base', 'usb', 'input'])
