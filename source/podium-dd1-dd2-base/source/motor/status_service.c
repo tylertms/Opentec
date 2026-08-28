@@ -25,6 +25,10 @@ static bool status_exchange_supported(const MotorIdentity *identity) {
 
 /**
  * @brief Initializes the motor-command handshake, status exchange, and output interlock.
+ *
+ * Selects the protocol-specific starting phase and clears all pending command, transfer, event,
+ * and interlock state.
+ *
  * @param[out] service Motor status service state.
  * @param[in] identity Identified motor-controller protocol.
  */
@@ -47,6 +51,9 @@ void motor_status_service_init(MotorStatusService *service, const MotorIdentity 
 
 /**
  * @brief Marks the extended motor-command handshake pending.
+ *
+ * Causes the next idle command-register cycle to submit the fixed ABCD request word.
+ *
  * @param[in,out] service Motor status service state.
  */
 void motor_status_service_request_command(MotorStatusService *service) {
@@ -135,6 +142,10 @@ static void start_transfer(MotorStatusService *service) {
 
 /**
  * @brief Services the motor-command handshake and periodic motor status exchange.
+ *
+ * Completes an active auxiliary-bus transfer, advances the command or status phase, and starts the
+ * next eligible transfer. Successful status reads repeat every 200 milliseconds.
+ *
  * @param[in,out] service Motor status synchronization and interlock state.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -162,6 +173,9 @@ void motor_status_service_run(MotorStatusService *service, uint32_t now_ms) {
 
 /**
  * @brief Returns the most recent system event produced by the motor-command handshake.
+ *
+ * Exposes the event retained after the last completed command-register read.
+ *
  * @param[in] service Motor status service state.
  * @return None, command acknowledged, command requested, or command fault.
  */
@@ -171,6 +185,9 @@ MotorStatusEvent motor_status_service_event(const MotorStatusService *service) {
 
 /**
  * @brief Reports whether a motor command or status response has latched the output interlock.
+ *
+ * Reads the irreversible inhibit latch owned by the motor status service.
+ *
  * @param[in] service Motor status service state.
  * @return True after a protocol-specific inhibit response is received.
  */

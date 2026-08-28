@@ -178,13 +178,16 @@ static void initialize_motor_link(void) {
 /**
  * @brief Builds the motor controller's force-feedback status byte.
  *
- * Selects remote motor-side effect processing and mirrors the primary and secondary output gates
- * into status bits 4 and 5.
+ * Selects remote motor-side effect processing, reports whether the motor output interlock permits
+ * force, and mirrors the primary and secondary output gates.
  *
  * @return Current force-feedback status bits for the next motor-link packet.
  */
 static uint8_t motor_force_feedback_status(void) {
     uint8_t status = MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS;
+    if (motor_tuning_ready && !motor_status_service_output_inhibited(&motor_status_service)) {
+        status |= MOTOR_OUTPUT_STATUS_ENABLED;
+    }
     if (force_feedback_state.primary_output_disabled) {
         status |= MOTOR_OUTPUT_STATUS_PRIMARY_DISABLED;
     }

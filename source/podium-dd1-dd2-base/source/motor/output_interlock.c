@@ -13,12 +13,19 @@ enum {
 
 /**
  * @brief Clears the latched motor-output interlock.
+ *
+ * Starts the current boot with motor force output permitted.
+ *
  * @param[out] interlock Motor-output interlock state.
  */
 void motor_output_interlock_init(MotorOutputInterlock *interlock) { interlock->engaged = false; }
 
 /**
  * @brief Latches the motor-output interlock for the extended command fault response.
+ *
+ * Treats response BBBB from a controller with extended parameters as an irreversible output
+ * inhibit for the current boot.
+ *
  * @param[in,out] interlock Motor-output interlock state.
  * @param[in] identity Identified motor-controller protocol.
  * @param[in] response Completed motor-command response word.
@@ -33,6 +40,10 @@ void motor_output_interlock_accept_command(MotorOutputInterlock *interlock,
 
 /**
  * @brief Latches the motor-output interlock for the protocol-specific status fault response.
+ *
+ * Ignores legacy controllers, accepts AA from extended controllers, and accepts FF from standard
+ * controllers as an irreversible output inhibit for the current boot.
+ *
  * @param[in,out] interlock Motor-output interlock state.
  * @param[in] identity Identified motor-controller protocol.
  * @param[in] response Completed motor-status response byte.
@@ -52,6 +63,9 @@ void motor_output_interlock_accept_status(MotorOutputInterlock *interlock,
 
 /**
  * @brief Reports whether motor output has been irreversibly inhibited for this boot.
+ *
+ * Returns the latch set by a qualifying command or status response.
+ *
  * @param[in] interlock Motor-output interlock state.
  * @return True after a qualifying command or status response is accepted.
  */
