@@ -8,7 +8,7 @@
 #include "usb/buffer_descriptor.h"
 
 enum {
-    USB_ENDPOINT_COUNT = 2,
+    USB_ENDPOINT_COUNT = 5,
     USB_BANK_COUNT = 2,
     USB_DIRECTION_COUNT = 2,
     USB_DESCRIPTOR_COUNT = USB_ENDPOINT_COUNT * USB_BANK_COUNT * USB_DIRECTION_COUNT,
@@ -20,8 +20,11 @@ enum {
     USB_TRANSACTION_INPUT = 0x08,
     USB_TRANSACTION_ENDPOINT_MASK = 0xf0,
     USB_ENDPOINT_STALL = 0x02,
-    USB_ENDPOINT_CONTROL = 0x0d,
-    USB_ENDPOINT_INTERRUPT = 0x1d,
+    USB_ENDPOINT_HANDSHAKE = 0x01,
+    USB_ENDPOINT_TRANSMIT = 0x04,
+    USB_ENDPOINT_RECEIVE = 0x08,
+    USB_ENDPOINT_CONTROL_DISABLE = 0x10,
+    USB_ENDPOINT_CONTROL = USB_ENDPOINT_HANDSHAKE | USB_ENDPOINT_TRANSMIT | USB_ENDPOINT_RECEIVE,
 };
 
 static const uint32_t USB_RESTART_DELAY_CYCLES = 0x9000UL * 0x0c81UL * 2UL;
@@ -73,8 +76,10 @@ static void push_event(PlatformUsbEventType type, uint8_t endpoint, const volati
 static void reset_controller(void) {
     U1CONbits.PPBRST = 1;
     U1ADDR = 0;
-    U1EP0 = USB_ENDPOINT_CONTROL;
-    U1EP1 = 0;
+    for (uint8_t endpoint = 0; endpoint < USB_ENDPOINT_COUNT; endpoint++) {
+        volatile uint16_t *endpoint_control = &U1EP0 + endpoint;
+        *endpoint_control = endpoint == 0 ? USB_ENDPOINT_CONTROL : 0;
+    }
     event_head = 0;
     event_tail = 0;
     clear_descriptors();
@@ -97,8 +102,10 @@ void platform_usb_init(void) {
     U1IE = 0;
     U1EIR = 0xff;
     U1IR = 0xff;
-    U1EP0 = 0;
-    U1EP1 = 0;
+    for (uint8_t endpoint = 0; endpoint < USB_ENDPOINT_COUNT; endpoint++) {
+        volatile uint16_t *endpoint_control = &U1EP0 + endpoint;
+        *endpoint_control = 0;
+    }
     U1CNFG1 = 0;
     U1EIE = 0x9f;
     U1PWRCbits.USBPWR = 1;
@@ -219,17 +226,51 @@ void platform_usb_control_ready(void) {
 
 void platform_usb_set_address(uint8_t address) { U1ADDR = address & 0x7f; }
 
-void platform_usb_configure_hid_endpoint(void) { U1EP1 = USB_ENDPOINT_INTERRUPT; }
+/**
+ * @brief Configures a non-control USB endpoint.
+ *
+ * Enables handshake processing and the selected device-to-host and host-to-device transfer
+ * directions while disabling control transfers on the endpoint.
+ *
+ * @param[in] endpoint Endpoint number from 1 through 4.
+ * @param[in] input True to enable device-to-host transfers.
+ * @param[in] output True to enable host-to-device transfers.
+ */
+void platform_usb_configure_endpoint(uint8_t endpoint, bool input, bool output) {
+    if (endpoint == 0 || endpoint >= USB_ENDPOINT_COUNT) {
+        return;
+    }
+    uint16_t control = USB_ENDPOINT_HANDSHAKE | USB_ENDPOINT_CONTROL_DISABLE;
+    if (input) {
+        control |= USB_ENDPOINT_TRANSMIT;
+    }
+    if (output) {
+        control |= USB_ENDPOINT_RECEIVE;
+    }
+    volatile uint16_t *endpoint_control = &U1EP0 + endpoint;
+    *endpoint_control = control;
+}
 
-void platform_usb_unconfigure_hid_endpoint(void) {
+/**
+ * @brief Unconfigures a non-control USB endpoint.
+ *
+ * Disables the endpoint, clears both directions and banks, and resets its next-bank selection.
+ *
+ * @param[in] endpoint Endpoint number from 1 through 4.
+ */
+void platform_usb_unconfigure_endpoint(uint8_t endpoint) {
+    if (endpoint == 0 || endpoint >= USB_ENDPOINT_COUNT) {
+        return;
+    }
     bool interrupt_enabled = IEC5bits.USB1IE != 0;
     IEC5bits.USB1IE = 0;
-    U1EP1 = 0;
+    volatile uint16_t *endpoint_control = &U1EP0 + endpoint;
+    *endpoint_control = 0;
     for (uint8_t direction = 0; direction < USB_DIRECTION_COUNT; direction++) {
         for (uint8_t bank = 0; bank < USB_BANK_COUNT; bank++) {
-            usb_buffer_descriptor_clear(descriptor(1, direction != 0, bank != 0));
+            usb_buffer_descriptor_clear(descriptor(endpoint, direction != 0, bank != 0));
         }
-        next_bank[1][direction] = 0;
+        next_bank[endpoint][direction] = 0;
     }
     IEC5bits.USB1IE = interrupt_enabled;
 }

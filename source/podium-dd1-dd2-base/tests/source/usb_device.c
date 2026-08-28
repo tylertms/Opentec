@@ -98,8 +98,14 @@ bool platform_usb_receive(uint8_t endpoint, uint8_t length, bool data_one) {
 
 void platform_usb_control_ready(void) { control_ready_count++; }
 void platform_usb_set_address(uint8_t value) { address = value; }
-void platform_usb_configure_hid_endpoint(void) { hid_configured = true; }
-void platform_usb_unconfigure_hid_endpoint(void) { hid_configured = false; }
+void platform_usb_configure_endpoint(uint8_t endpoint, bool input, bool output) {
+    hid_configured = endpoint == 1 && input && output;
+}
+void platform_usb_unconfigure_endpoint(uint8_t endpoint) {
+    if (endpoint == 1) {
+        hid_configured = false;
+    }
+}
 void platform_usb_stall(uint8_t endpoint) { stalled = endpoint == 0; }
 
 static void complete_control_input(void) {

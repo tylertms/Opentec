@@ -31,8 +31,8 @@ bool platform_usb_send(uint8_t endpoint, const uint8_t *data, uint8_t length, bo
 bool platform_usb_receive(uint8_t endpoint, uint8_t length, bool data_one);
 void platform_usb_control_ready(void);
 void platform_usb_set_address(uint8_t address);
-void platform_usb_configure_hid_endpoint(void);
-void platform_usb_unconfigure_hid_endpoint(void);
+void platform_usb_configure_endpoint(uint8_t endpoint, bool input, bool output);
+void platform_usb_unconfigure_endpoint(uint8_t endpoint);
 void platform_usb_stall(uint8_t endpoint);
 
 #endif

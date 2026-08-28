@@ -310,7 +310,7 @@ static void handle_setup(void) {
 static void configure_hid_endpoint(void) {
     input_data_one = false;
     output_data_one = false;
-    platform_usb_configure_hid_endpoint();
+    platform_usb_configure_endpoint(USB_HID_ENDPOINT, true, true);
     if (platform_usb_receive(USB_HID_ENDPOINT, USB_DEVICE_REPORT_SIZE, output_data_one)) {
         output_data_one = !output_data_one;
     }
@@ -328,7 +328,7 @@ static void complete_control_change(void) {
         if (usb_device_control_configured(&device_control)) {
             configure_hid_endpoint();
         } else {
-            platform_usb_unconfigure_hid_endpoint();
+            platform_usb_unconfigure_endpoint(USB_HID_ENDPOINT);
         }
     }
 }
