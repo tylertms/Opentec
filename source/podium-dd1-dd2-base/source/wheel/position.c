@@ -63,16 +63,26 @@ bool wheel_position_reference_capture(WheelPositionReference *reference, int32_t
     return changed;
 }
 
+/**
+ * @brief Convert a configured wheel range to a one-sided position limit.
+ *
+ * The device represents one full revolution with 23680 position counts and limits the configured
+ * range to 2520 degrees. The returned limit is the distance from center to either end stop.
+ *
+ * @param[in] rotation_degrees Configured lock-to-lock wheel range in degrees.
+ * @return One-sided position limit in wheel counts, capped at the 2520-degree device limit.
+ */
+uint32_t wheel_position_travel_from_degrees(uint16_t rotation_degrees) {
+    uint32_t travel = (uint32_t)rotation_degrees * WHEEL_POSITION_COUNTS_PER_REVOLUTION / 720;
+    return travel > WHEEL_POSITION_SAMPLE_LIMIT ? WHEEL_POSITION_SAMPLE_LIMIT : travel;
+}
+
 WheelPositionCalibration wheel_position_calibration_build(const WheelPositionReference *reference,
                                                           uint16_t rotation_degrees,
                                                           uint8_t deadzone) {
-    uint32_t travel = (uint32_t)rotation_degrees * WHEEL_POSITION_COUNTS_PER_REVOLUTION / 720;
-    if (travel > WHEEL_POSITION_SAMPLE_LIMIT) {
-        travel = WHEEL_POSITION_SAMPLE_LIMIT;
-    }
     return (WheelPositionCalibration){
         .center = reference->center,
-        .travel = reference->calibrated ? travel : 0,
+        .travel = reference->calibrated ? wheel_position_travel_from_degrees(rotation_degrees) : 0,
         .deadband = (uint32_t)deadzone * 10,
     };
 }

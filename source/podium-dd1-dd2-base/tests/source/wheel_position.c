@@ -70,7 +70,7 @@ static void test_calibration_building(void) {
     WheelPositionReference reference = {.center = 1234, .calibrated = true};
     WheelPositionCalibration calibration = wheel_position_calibration_build(&reference, 900, 4);
     assert(calibration.center == 1234);
-    assert(calibration.travel == 30000);
+    assert(calibration.travel == 29600);
     assert(calibration.deadband == 40);
 
     calibration = wheel_position_calibration_build(&reference, 2520, 0);
@@ -80,6 +80,14 @@ static void test_calibration_building(void) {
     calibration = wheel_position_calibration_build(&reference, 900, 0);
     assert(calibration.travel == 0);
     assert(wheel_position_hid_axis(INT32_MAX, &calibration) == 32768);
+}
+
+static void test_range_conversion(void) {
+    assert(wheel_position_travel_from_degrees(0) == 0);
+    assert(wheel_position_travel_from_degrees(900) == 29600);
+    assert(wheel_position_travel_from_degrees(1080) == 35520);
+    assert(wheel_position_travel_from_degrees(2520) == WHEEL_POSITION_SAMPLE_LIMIT);
+    assert(wheel_position_travel_from_degrees(UINT16_MAX) == WHEEL_POSITION_SAMPLE_LIMIT);
 }
 
 static void test_velocity(void) {
@@ -101,6 +109,7 @@ int main(void) {
     test_invalid_travel();
     test_reference_capture();
     test_calibration_building();
+    test_range_conversion();
     test_velocity();
     return 0;
 }

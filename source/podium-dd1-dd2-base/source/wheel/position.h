@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 enum {
-    WHEEL_POSITION_COUNTS_PER_REVOLUTION = 24000,
+    WHEEL_POSITION_COUNTS_PER_REVOLUTION = 23680,
     WHEEL_POSITION_SAMPLE_LIMIT = 82880,
 };
 
@@ -33,6 +33,7 @@ int16_t wheel_position_axis(int32_t sample, const WheelPositionCalibration *cali
 uint16_t wheel_position_hid_axis(int32_t sample, const WheelPositionCalibration *calibration);
 void wheel_position_reference_reset(WheelPositionReference *reference);
 bool wheel_position_reference_capture(WheelPositionReference *reference, int32_t sample);
+uint32_t wheel_position_travel_from_degrees(uint16_t rotation_degrees);
 WheelPositionCalibration wheel_position_calibration_build(const WheelPositionReference *reference,
                                                           uint16_t rotation_degrees,
                                                           uint8_t deadzone);
