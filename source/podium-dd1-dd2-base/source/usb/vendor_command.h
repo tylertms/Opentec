@@ -1,0 +1,31 @@
+#ifndef OPENTEC_BASE_USB_VENDOR_COMMAND_H
+#define OPENTEC_BASE_USB_VENDOR_COMMAND_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "usb/output_command.h"
+
+typedef enum {
+    USB_VENDOR_COMMAND_DEVICE_CONTROL_RESPONSE,
+    USB_VENDOR_COMMAND_RESPONSE_PREPARATION,
+    USB_VENDOR_COMMAND_DEVICE_CONTROL_UPDATE,
+    USB_VENDOR_COMMAND_ACKNOWLEDGEMENT,
+    USB_VENDOR_COMMAND_OPERATING_MODE_TRANSITION,
+    USB_VENDOR_COMMAND_STATUS_RESPONSE,
+    USB_VENDOR_COMMAND_EXTENDED_RESET,
+    USB_VENDOR_COMMAND_EDS_WRITE,
+    USB_VENDOR_COMMAND_EDS_TRANSFER,
+    USB_VENDOR_COMMAND_EXTENDED,
+} UsbVendorCommandKind;
+
+typedef struct {
+    UsbVendorCommandKind kind;
+    uint8_t opcode;
+    const uint8_t *arguments;
+    uint8_t length;
+} UsbVendorCommand;
+
+bool usb_vendor_command_decode(const UsbOutputCommand *output, UsbVendorCommand *command);
+
+#endif
