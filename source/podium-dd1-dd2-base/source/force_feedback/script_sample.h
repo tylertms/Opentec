@@ -17,5 +17,8 @@ force_feedback_script_sample_read(const ForceFeedbackScriptSamples *samples, uin
 ForceFeedbackScriptSampleResult
 force_feedback_script_sample_read_wrapped(const ForceFeedbackScriptSamples *samples, uint32_t base,
                                           uint32_t value, uint32_t period);
+ForceFeedbackScriptSampleResult
+force_feedback_script_sample_interpolate(const ForceFeedbackScriptSamples *samples, uint32_t base,
+                                         uint32_t point_count, float target);
 
 #endif
