@@ -10,6 +10,7 @@ enum {
     WHEEL_OUTPUT_REPORT_FOUR_SIZE = 25,
     WHEEL_OUTPUT_REPORT_FIVE_SIZE = 16,
     WHEEL_OUTPUT_REPORT_SEVENTEEN_SIZE = 61,
+    WHEEL_OUTPUT_REMOTE_TELEMETRY_SIZE = 30,
 };
 
 /** @brief Retained attached-wheel output report payloads and pending state. */
@@ -19,7 +20,9 @@ typedef struct {
     uint8_t report_four[WHEEL_OUTPUT_REPORT_FOUR_SIZE];
     uint8_t report_five[WHEEL_OUTPUT_REPORT_FIVE_SIZE];
     uint8_t report_seventeen[WHEEL_OUTPUT_REPORT_SEVENTEEN_SIZE];
+    uint8_t remote_telemetry[WHEEL_OUTPUT_REMOTE_TELEMETRY_SIZE];
     uint8_t report_seventeen_sequence;
+    uint8_t remote_telemetry_transmissions;
     uint8_t pending;
 } WheelOutputReports;
 
@@ -29,6 +32,9 @@ void wheel_output_reports_apply(WheelOutputReports *reports, const uint8_t *argu
                                 bool display_blink_active);
 void wheel_output_reports_queue_seventeen(
     WheelOutputReports *reports, const uint8_t payload[WHEEL_OUTPUT_REPORT_SEVENTEEN_SIZE]);
+bool wheel_output_reports_queue_remote_telemetry(
+    WheelOutputReports *reports, const uint8_t payload[WHEEL_OUTPUT_REMOTE_TELEMETRY_SIZE]);
+bool wheel_output_reports_remote_telemetry_pending(const WheelOutputReports *reports);
 bool wheel_output_reports_encode_next(WheelOutputReports *reports, uint8_t *frame);
 
 #endif

@@ -128,11 +128,44 @@ static void test_streams_report_seventeen_after_direct_reports(void) {
     assert(!wheel_output_reports_encode_next(&reports, frame));
 }
 
+static void test_repeats_remote_telemetry_after_report_seventeen(void) {
+    WheelOutputReports reports;
+    wheel_output_reports_init(&reports);
+    uint8_t report_seventeen[WHEEL_OUTPUT_REPORT_SEVENTEEN_SIZE] = {0};
+    uint8_t telemetry[WHEEL_OUTPUT_REMOTE_TELEMETRY_SIZE];
+    uint8_t replacement[WHEEL_OUTPUT_REMOTE_TELEMETRY_SIZE] = {0};
+    uint8_t frame[33] = {0};
+
+    for (uint8_t index = 0; index < WHEEL_OUTPUT_REMOTE_TELEMETRY_SIZE; index++) {
+        telemetry[index] = (uint8_t)(0x60 + index);
+    }
+    wheel_output_reports_queue_seventeen(&reports, report_seventeen);
+    assert(wheel_output_reports_queue_remote_telemetry(&reports, telemetry));
+    assert(wheel_output_reports_remote_telemetry_pending(&reports));
+    assert(!wheel_output_reports_queue_remote_telemetry(&reports, replacement));
+
+    for (uint8_t index = 0; index < 3; index++) {
+        assert(wheel_output_reports_encode_next(&reports, frame));
+    }
+    assert(wheel_output_reports_remote_telemetry_pending(&reports));
+
+    for (uint8_t transmission = 0; transmission < 3; transmission++) {
+        assert(wheel_output_reports_encode_next(&reports, frame));
+        assert(frame[1] == 3);
+        for (uint8_t index = 0; index < WHEEL_OUTPUT_REMOTE_TELEMETRY_SIZE; index++) {
+            assert(frame[index + 2] == telemetry[index]);
+        }
+    }
+    assert(!wheel_output_reports_remote_telemetry_pending(&reports));
+    assert(!wheel_output_reports_encode_next(&reports, frame));
+}
+
 int main(void) {
     test_encodes_reports_in_priority_order();
     test_suppresses_legacy_report_two_outside_blink_phase();
     test_gates_extended_reports();
     test_ignores_unknown_actions();
     test_streams_report_seventeen_after_direct_reports();
+    test_repeats_remote_telemetry_after_report_seventeen();
     return 0;
 }

@@ -14,10 +14,13 @@ enum {
     WHEEL_OUTPUT_REPORT_FOUR_PENDING = 1u << 2,
     WHEEL_OUTPUT_REPORT_FIVE_PENDING = 1u << 3,
     WHEEL_OUTPUT_REPORT_SEVENTEEN_PENDING = 1u << 4,
+    WHEEL_OUTPUT_REMOTE_TELEMETRY_PENDING = 1u << 5,
     WHEEL_OUTPUT_REPORT_SEVENTEEN_COMMAND = 3,
     WHEEL_OUTPUT_REPORT_SEVENTEEN_CHUNK_SIZE = 30,
     WHEEL_OUTPUT_REPORT_SEVENTEEN_HEADER_STEP = 0x0f,
     WHEEL_OUTPUT_REPORT_SEVENTEEN_LAST_SEQUENCE = 1,
+    WHEEL_OUTPUT_REMOTE_TELEMETRY_COMMAND = 3,
+    WHEEL_OUTPUT_REMOTE_TELEMETRY_TRANSMISSIONS = 3,
     WHEEL_MODE_LEGACY_ALTERNATE = 0x0f,
     WHEEL_MODE_LEGACY_COMPATIBILITY = 0x17,
 };
@@ -47,6 +50,41 @@ void wheel_output_reports_queue_seventeen(
     memcpy(reports->report_seventeen, payload, sizeof(reports->report_seventeen));
     reports->report_seventeen_sequence = 0;
     reports->pending |= WHEEL_OUTPUT_REPORT_SEVENTEEN_PENDING;
+}
+
+/**
+ * @brief Queues one remote telemetry report for the attached wheel.
+ *
+ * Retains the complete 30-byte report only when no earlier telemetry report is pending. An
+ * accepted report is scheduled after direct reports and report 17 for three transmissions.
+ *
+ * @param[in,out] reports Retained report payloads and pending state.
+ * @param[in] payload Complete remote telemetry report.
+ * @return True when the report was retained.
+ */
+bool wheel_output_reports_queue_remote_telemetry(
+    WheelOutputReports *reports, const uint8_t payload[WHEEL_OUTPUT_REMOTE_TELEMETRY_SIZE]) {
+    if (reports == NULL || payload == NULL ||
+        (reports->pending & WHEEL_OUTPUT_REMOTE_TELEMETRY_PENDING) != 0) {
+        return false;
+    }
+
+    memcpy(reports->remote_telemetry, payload, sizeof(reports->remote_telemetry));
+    reports->remote_telemetry_transmissions = WHEEL_OUTPUT_REMOTE_TELEMETRY_TRANSMISSIONS;
+    reports->pending |= WHEEL_OUTPUT_REMOTE_TELEMETRY_PENDING;
+    return true;
+}
+
+/**
+ * @brief Reports whether remote telemetry awaits attached-wheel transfer.
+ *
+ * Tests the remote telemetry pending state without consuming a transmission.
+ *
+ * @param[in] reports Retained report payloads and pending state.
+ * @return True while a remote telemetry report remains queued.
+ */
+bool wheel_output_reports_remote_telemetry_pending(const WheelOutputReports *reports) {
+    return reports != NULL && (reports->pending & WHEEL_OUTPUT_REMOTE_TELEMETRY_PENDING) != 0;
 }
 
 /**
@@ -123,9 +161,11 @@ void wheel_output_reports_apply(WheelOutputReports *reports, const uint8_t *argu
 /**
  * @brief Encodes the next pending attached-wheel output report.
  *
- * Selects reports in the order 1, 2, 4, 5, and 17. Single-frame reports write their report number
- * and retained payload at frame offsets one and two, then consume their pending state. Report 17
- * emits its next segmented transfer frame. The caller supplies the command byte and checksum.
+ * Selects reports in the order 1, 2, 4, 5, 17, and remote telemetry. Single-frame reports write
+ * their report number and retained payload at frame offsets one and two, then consume their pending
+ * state. Report 17 emits its next segmented transfer frame. Remote telemetry writes command 3 and
+ * its 30-byte payload for three successive selections. The caller supplies the command byte and
+ * checksum.
  *
  * @param[in,out] reports Retained report payloads and pending state.
  * @param[in,out] frame Attached-wheel frame receiving the report number and payload.
@@ -159,6 +199,14 @@ bool wheel_output_reports_encode_next(WheelOutputReports *reports, uint8_t *fram
         pending = WHEEL_OUTPUT_REPORT_FIVE_PENDING;
     } else if ((reports->pending & WHEEL_OUTPUT_REPORT_SEVENTEEN_PENDING) != 0) {
         encode_report_seventeen(reports, frame);
+        return true;
+    } else if ((reports->pending & WHEEL_OUTPUT_REMOTE_TELEMETRY_PENDING) != 0) {
+        frame[1] = WHEEL_OUTPUT_REMOTE_TELEMETRY_COMMAND;
+        memcpy(frame + 2, reports->remote_telemetry, sizeof(reports->remote_telemetry));
+        reports->remote_telemetry_transmissions--;
+        if (reports->remote_telemetry_transmissions == 0) {
+            reports->pending &= (uint8_t)~WHEEL_OUTPUT_REMOTE_TELEMETRY_PENDING;
+        }
         return true;
     } else {
         return false;
