@@ -55,6 +55,22 @@ static void test_validates_extended_reset_signature(void) {
     assert(command.kind == USB_VENDOR_COMMAND_EXTENDED_RESET);
 }
 
+static void test_identifies_motor_command_request(void) {
+    uint8_t payload[63] = {0xff, 0, 1, 1};
+    UsbOutputCommand output = make_output(payload, 0xff);
+    UsbVendorCommand command;
+
+    assert(usb_vendor_command_decode(&output, &command));
+    assert(usb_vendor_command_requests_motor_command(&command));
+
+    payload[3] = 0;
+    assert(!usb_vendor_command_requests_motor_command(&command));
+    command.kind = USB_VENDOR_COMMAND_STATUS_RESPONSE;
+    payload[3] = 1;
+    assert(!usb_vendor_command_requests_motor_command(&command));
+    assert(!usb_vendor_command_requests_motor_command(NULL));
+}
+
 static void test_rejects_unhandled_payloads(void) {
     uint8_t payload[63] = {0};
     UsbOutputCommand output = make_output(payload, 6);
@@ -76,6 +92,7 @@ static void test_rejects_unhandled_payloads(void) {
 int main(void) {
     test_classifies_direct_command_routes();
     test_validates_extended_reset_signature();
+    test_identifies_motor_command_request();
     test_rejects_unhandled_payloads();
     return 0;
 }

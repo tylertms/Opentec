@@ -27,5 +27,6 @@ typedef struct {
 } UsbVendorCommand;
 
 bool usb_vendor_command_decode(const UsbOutputCommand *output, UsbVendorCommand *command);
+bool usb_vendor_command_requests_motor_command(const UsbVendorCommand *command);
 
 #endif

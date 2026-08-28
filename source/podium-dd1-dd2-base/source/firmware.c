@@ -36,6 +36,8 @@
 #include "shifter/input.h"
 #include "usb/device.h"
 #include "usb/fanatec_input.h"
+#include "usb/output_command.h"
+#include "usb/vendor_command.h"
 #include "wheel/position.h"
 #include "wheel/service.h"
 
@@ -72,6 +74,7 @@ static TuningProfile runtime_tuning_profile;
 static const TuningProfile *tuning_profile;
 static MotorTuningContext motor_tuning_context;
 static bool motor_tuning_ready;
+static bool motor_command_request_pending;
 static MotorPositionReport motor_position_report;
 static bool motor_position_ready;
 static WheelPositionCalibration wheel_position_calibration;
@@ -83,6 +86,9 @@ static ShifterInputState shifter_input;
 static ShifterDisplay shifter_display;
 static fanatec_input_state usb_input_state;
 static uint8_t usb_input_report[FANATEC_INPUT_REPORT_SIZE];
+static UsbDeviceOutputReport usb_device_output_report;
+static UsbOutputCommand usb_output_command;
+static UsbVendorCommand usb_vendor_command;
 static ForceOutputReport motor_output_report;
 static MotorLiveFrame motor_live_frame;
 static uint8_t motor_received_frame[MOTOR_LIVE_FRAME_SIZE];
@@ -211,10 +217,23 @@ static void service_motor(void) {
         motor_tuning_service_init(&motor_tuning_service, tuning_profile, &motor_tuning_context);
         motor_tuning_ready = true;
     }
+    if (motor_tuning_ready && motor_command_request_pending) {
+        motor_status_service_request_command(&motor_status_service);
+        motor_command_request_pending = false;
+    }
     if (motor_tuning_ready) {
         motor_telemetry_service_run(&motor_telemetry_service, platform_time_ms());
         motor_status_service_run(&motor_status_service, platform_time_ms());
         motor_tuning_service_run(&motor_tuning_service);
+    }
+}
+
+static void service_usb_output(void) {
+    if (usb_device_take_output(&usb_device_output_report) &&
+        usb_output_command_decode(&usb_device_output_report, &usb_output_command) &&
+        usb_vendor_command_decode(&usb_output_command, &usb_vendor_command) &&
+        usb_vendor_command_requests_motor_command(&usb_vendor_command)) {
+        motor_command_request_pending = true;
     }
 }
 
@@ -299,6 +318,7 @@ int main(void) {
     usb_device_init(board_identity.variant);
     for (;;) {
         usb_device_service();
+        service_usb_output();
         platform_aux_bus_service();
         uint32_t now_ms = platform_time_ms();
         platform_status_led_set(status_led_update(&status_led, now_ms));

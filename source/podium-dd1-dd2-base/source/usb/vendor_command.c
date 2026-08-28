@@ -69,3 +69,14 @@ bool usb_vendor_command_decode(const UsbOutputCommand *output, UsbVendorCommand 
     };
     return true;
 }
+
+/**
+ * @brief Identifies the extended vendor request that starts the motor-command handshake.
+ * @param[in] command Decoded vendor command.
+ * @return True for extended arguments 00 01 01.
+ */
+bool usb_vendor_command_requests_motor_command(const UsbVendorCommand *command) {
+    return command != NULL && command->kind == USB_VENDOR_COMMAND_EXTENDED &&
+           command->arguments != NULL && command->length >= 3 && command->arguments[0] == 0 &&
+           command->arguments[1] == 1 && command->arguments[2] == 1;
+}
