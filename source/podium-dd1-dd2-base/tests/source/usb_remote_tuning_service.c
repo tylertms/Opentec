@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "usb/remote_tuning_service.h"
 #include "wheel/protocol.h"
@@ -239,6 +240,107 @@ static void claims_unknown_remote_packets(void) {
     assert(!usb_remote_tuning_service_apply(&service, &command, 100, 1, true, false));
 }
 
+static void selects_telemetry_and_frames_host_records(void) {
+    static const struct {
+        UsbRemoteTuningHost host;
+        uint8_t marker;
+    } cases[] = {
+        {USB_REMOTE_TUNING_HOST_NATIVE, 0xff},
+        {USB_REMOTE_TUNING_HOST_PLAYSTATION, 0x35},
+        {USB_REMOTE_TUNING_HOST_XBOX, 0x36},
+    };
+
+    for (uint8_t index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {
+        UsbRemoteTuningService service;
+        usb_remote_tuning_service_init(&service);
+        uint8_t active_arguments[] = {2, 1};
+        UsbVendorCommand active_command = command_for(active_arguments, sizeof(active_arguments));
+        assert(usb_remote_tuning_service_apply(&service, &active_command, 100, 1, true, false));
+        uint8_t selection_arguments[] = {4, 2, 1};
+        UsbVendorCommand selection_command =
+            command_for(selection_arguments, sizeof(selection_arguments));
+        assert(usb_remote_tuning_service_apply(&service, &selection_command, 100, 1, true, false));
+        assert(service.telemetry.metric == REMOTE_TELEMETRY_SPEED);
+        assert(service.command_type == 0);
+        assert(service.multi_position_selection == 0);
+
+        uint8_t report[USB_REMOTE_TUNING_HOST_REPORT_SIZE];
+        assert(usb_remote_tuning_service_take_host_report(&service, 1, cases[index].host, report));
+        const uint8_t expected[] = {2, 0x80, 1, 0, 0x34};
+        assert(report[0] == cases[index].marker);
+        assert(report[1] == 5);
+        assert(report[2] == 1);
+        assert(memcmp(report + 3, expected, sizeof(expected)) == 0);
+        assert(!usb_remote_tuning_service_take_host_report(&service, 1, cases[index].host, report));
+    }
+}
+
+static void clears_selected_telemetry(void) {
+    UsbRemoteTuningService service;
+    usb_remote_tuning_service_init(&service);
+    uint8_t active_arguments[] = {2, 1};
+    UsbVendorCommand active_command = command_for(active_arguments, sizeof(active_arguments));
+    assert(usb_remote_tuning_service_apply(&service, &active_command, 100, 1, true, false));
+    uint8_t selection_arguments[] = {4, 2, 1};
+    UsbVendorCommand selection_command =
+        command_for(selection_arguments, sizeof(selection_arguments));
+    assert(usb_remote_tuning_service_apply(&service, &selection_command, 100, 1, true, false));
+    uint8_t report[USB_REMOTE_TUNING_HOST_REPORT_SIZE];
+    assert(usb_remote_tuning_service_take_host_report(&service, 1, USB_REMOTE_TUNING_HOST_NATIVE,
+                                                      report));
+
+    selection_arguments[2] = 11;
+    assert(usb_remote_tuning_service_apply(&service, &selection_command, 100, 1, true, false));
+    assert(service.telemetry.metric == REMOTE_TELEMETRY_NONE);
+    assert(usb_remote_tuning_service_take_host_report(&service, 1, USB_REMOTE_TUNING_HOST_NATIVE,
+                                                      report));
+    const uint8_t clear[] = {2, 0x80, 0xff, 0xff, 0x34};
+    assert(memcmp(report + 3, clear, sizeof(clear)) == 0);
+}
+
+static void converts_local_records_to_wheel_telemetry(void) {
+    UsbRemoteTuningService service;
+    usb_remote_tuning_service_init(&service);
+    uint8_t active_arguments[] = {2, 1};
+    UsbVendorCommand active_command = command_for(active_arguments, sizeof(active_arguments));
+    assert(usb_remote_tuning_service_apply(&service, &active_command, 100, 1, true, false));
+    uint8_t selection_arguments[] = {4, 2, 1};
+    UsbVendorCommand selection_command =
+        command_for(selection_arguments, sizeof(selection_arguments));
+    assert(usb_remote_tuning_service_apply(&service, &selection_command, 100, 1, true, false));
+
+    uint8_t host_report[USB_REMOTE_TUNING_HOST_REPORT_SIZE];
+    assert(usb_remote_tuning_service_take_host_report(&service, 1, USB_REMOTE_TUNING_HOST_NATIVE,
+                                                      host_report));
+    uint8_t record_arguments[] = {
+        1, 2, 0x00, 1, 0, 2, 123, 0, 2, 0x80, 1, 0, 3, 'm', 'p', 'h',
+    };
+    UsbVendorCommand record_command = command_for(record_arguments, sizeof(record_arguments));
+    assert(usb_remote_tuning_service_apply(&service, &record_command, 100, 1, true, false));
+
+    uint8_t wheel_report[REMOTE_TELEMETRY_REPORT_SIZE];
+    assert(usb_remote_tuning_service_take_telemetry_report(&service, 1, wheel_report));
+    assert(wheel_report[0] == 1);
+    assert(wheel_report[1] == 6);
+    assert(memcmp(wheel_report + 2, "123mph", 6) == 0);
+    assert(service.records.count == 0);
+    assert(!usb_remote_tuning_service_take_telemetry_report(&service, 1, wheel_report));
+}
+
+static void retains_local_records_in_extended_mode(void) {
+    UsbRemoteTuningService service;
+    usb_remote_tuning_service_init(&service);
+    uint8_t arguments[] = {1, 2, 0, 1, 0, 2, 123, 0};
+    UsbVendorCommand command = command_for(arguments, sizeof(arguments));
+    assert(usb_remote_tuning_service_apply(&service, &command, 100,
+                                           WHEEL_MODE_REMOTE_TUNING_EXTENDED, true, false));
+
+    uint8_t report[REMOTE_TELEMETRY_REPORT_SIZE];
+    assert(!usb_remote_tuning_service_take_telemetry_report(
+        &service, WHEEL_MODE_REMOTE_TUNING_EXTENDED, report));
+    assert(service.records.count == 1);
+}
+
 int main(void) {
     retains_records_and_extends_the_session();
     applies_active_state_and_routes_responses();
@@ -249,5 +351,9 @@ int main(void) {
     takes_pending_responses();
     routes_generic_records_outside_extended_mode();
     claims_unknown_remote_packets();
+    selects_telemetry_and_frames_host_records();
+    clears_selected_telemetry();
+    converts_local_records_to_wheel_telemetry();
+    retains_local_records_in_extended_mode();
     return 0;
 }

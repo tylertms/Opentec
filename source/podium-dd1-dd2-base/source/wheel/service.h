@@ -44,6 +44,9 @@ void wheel_service_apply_output_report(WheelService *service, const uint8_t *arg
                                        bool display_blink_active);
 void wheel_service_queue_report_seventeen(
     WheelService *service, const uint8_t payload[WHEEL_OUTPUT_REPORT_SEVENTEEN_SIZE]);
+bool wheel_service_queue_remote_telemetry(
+    WheelService *service, const uint8_t payload[WHEEL_OUTPUT_REMOTE_TELEMETRY_SIZE]);
+bool wheel_service_remote_telemetry_pending(const WheelService *service);
 const uint8_t *wheel_service_buttons(const WheelService *service);
 uint8_t wheel_service_axis_limit(const WheelService *service);
 const uint8_t *wheel_service_clutch_paddles(const WheelService *service);

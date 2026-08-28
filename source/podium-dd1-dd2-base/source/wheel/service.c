@@ -441,6 +441,35 @@ void wheel_service_queue_report_seventeen(
 }
 
 /**
+ * @brief Queues one remote telemetry report for the attached wheel.
+ *
+ * Retains the complete report only when no earlier telemetry report remains pending in the wheel
+ * protocol output scheduler.
+ *
+ * @param[in,out] service Attached-wheel service that owns the report queue.
+ * @param[in] payload Complete 30-byte telemetry report.
+ * @return True when the report was queued.
+ */
+bool wheel_service_queue_remote_telemetry(
+    WheelService *service, const uint8_t payload[WHEEL_OUTPUT_REMOTE_TELEMETRY_SIZE]) {
+    return service != 0 &&
+           wheel_output_reports_queue_remote_telemetry(&service->protocol.output_reports, payload);
+}
+
+/**
+ * @brief Reports whether remote telemetry awaits attached-wheel transfer.
+ *
+ * Tests the wheel protocol output scheduler without consuming a transmission.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return True while a telemetry report remains queued.
+ */
+bool wheel_service_remote_telemetry_pending(const WheelService *service) {
+    return service != 0 &&
+           wheel_output_reports_remote_telemetry_pending(&service->protocol.output_reports);
+}
+
+/**
  * @brief Advances attached-wheel protocol traffic.
  *
  * Applies a completed type-two or type-three response, maintains protocol activity state, and

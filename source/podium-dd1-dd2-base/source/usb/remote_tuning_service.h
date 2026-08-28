@@ -5,15 +5,25 @@
 #include <stdint.h>
 
 #include "remote_tuning/response.h"
+#include "remote_tuning/telemetry.h"
 #include "usb/remote_tuning_records.h"
 
 enum {
     USB_REMOTE_TUNING_SESSION_TIMEOUT_MS = 60000,
+    USB_REMOTE_TUNING_HOST_REPORT_SIZE = 64,
 };
+
+/** @brief Host transport framing used for telemetry subscription reports. */
+typedef enum {
+    USB_REMOTE_TUNING_HOST_NATIVE,
+    USB_REMOTE_TUNING_HOST_PLAYSTATION,
+    USB_REMOTE_TUNING_HOST_XBOX,
+} UsbRemoteTuningHost;
 
 /** @brief Host remote-tuning session and retained downstream work. */
 typedef struct {
     UsbRemoteTuningRecords records;
+    RemoteTelemetry telemetry;
     uint32_t session_deadline_ms;
     uint16_t encoder_counter;
     uint8_t command_type;
@@ -42,5 +52,11 @@ bool usb_remote_tuning_service_take_response(UsbRemoteTuningService *service, ui
 bool usb_remote_tuning_service_take_forward_batch(
     UsbRemoteTuningService *service, uint8_t wheel_mode,
     uint8_t output[USB_REMOTE_TUNING_FORWARD_BATCH_SIZE], uint8_t *length);
+bool usb_remote_tuning_service_take_host_report(UsbRemoteTuningService *service, uint8_t wheel_mode,
+                                                UsbRemoteTuningHost host,
+                                                uint8_t output[USB_REMOTE_TUNING_HOST_REPORT_SIZE]);
+bool usb_remote_tuning_service_take_telemetry_report(UsbRemoteTuningService *service,
+                                                     uint8_t wheel_mode,
+                                                     uint8_t output[REMOTE_TELEMETRY_REPORT_SIZE]);
 
 #endif

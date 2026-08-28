@@ -204,6 +204,30 @@ static void keeps_forwarded_records_within_the_transfer_area(void) {
     assert(records.count == 0);
 }
 
+static void consumes_both_local_telemetry_banks(void) {
+    UsbRemoteTuningRecords records;
+    RemoteTelemetry telemetry;
+    usb_remote_tuning_records_init(&records);
+    remote_telemetry_init(&telemetry);
+    assert(remote_telemetry_select(&telemetry, REMOTE_TELEMETRY_SPEED));
+    uint8_t arguments[] = {
+        1, 2, 0x00, 1, 0, 2, 123, 0, 3, 0x01, 0x34, 0x12, 0, 2, 0x80, 1, 0, 3, 'm', 'p', 'h',
+    };
+    UsbVendorCommand command = command_for(arguments, sizeof(arguments));
+    assert(usb_remote_tuning_records_apply(&records, &command));
+
+    assert(usb_remote_tuning_records_consume_telemetry(&records, &telemetry) == 2);
+    assert(records.count == 1);
+    assert(records.records[0].type == 3);
+    assert(records.records[0].selector == 1);
+
+    uint8_t report[REMOTE_TELEMETRY_REPORT_SIZE];
+    assert(remote_telemetry_take_report(&telemetry, report));
+    assert(report[0] == 1);
+    assert(report[1] == 6);
+    assert(memcmp(report + 2, "123mph", 6) == 0);
+}
+
 int main(void) {
     stores_records_in_arrival_order();
     accepts_alternate_record_packets();
@@ -214,5 +238,6 @@ int main(void) {
     keeps_complete_records_within_each_response();
     forwards_route_three_records_from_both_selector_banks();
     keeps_forwarded_records_within_the_transfer_area();
+    consumes_both_local_telemetry_banks();
     return 0;
 }

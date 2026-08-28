@@ -65,10 +65,9 @@ static void build_selection_response(WheelProtocol *protocol) {
 /**
  * @brief Builds the next active attached-wheel response.
  *
- * Encodes the selected input/output packet family or consumes one pending remote-tuning response,
- * overlays the highest-priority pending host report for ordinary packet families, and then writes
- * the checksum while preserving the transport acknowledgement flags. A remote-tuning mode leaves
- * the current response unchanged when no remote response is pending.
+ * Consumes a pending remote-tuning response before any host output report. Otherwise, encodes the
+ * selected packet family or a blank A6 remote-tuning frame and overlays the highest-priority host
+ * output report. The checksum is updated while transport acknowledgement flags are preserved.
  *
  * @param[in,out] protocol Active protocol state and response storage.
  */
@@ -79,24 +78,24 @@ static void build_active_response(WheelProtocol *protocol) {
         !wheel_packet_crc_applies(protocol->mode) && !remote_tuning_mode) {
         return;
     }
-    if (remote_tuning_mode &&
-        !wheel_packet_remote_tuning_pending(&protocol->remote_tuning_output)) {
-        return;
-    }
+    bool remote_tuning_response =
+        remote_tuning_mode && wheel_packet_remote_tuning_pending(&protocol->remote_tuning_output);
     uint8_t flags = protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET];
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
-    if (remote_tuning_mode) {
+    if (remote_tuning_response) {
         (void)wheel_packet_remote_tuning_encode(&protocol->remote_tuning_output,
                                                 protocol->response);
     } else if (wheel_packet_crc_applies(protocol->mode)) {
         wheel_packet_crc_encode(protocol->mode, &protocol->crc_output, protocol->response);
     } else if (protocol->mode == 4) {
         wheel_packet_mode_four_encode(&protocol->mode_four_output, protocol->response);
-    } else {
+    } else if (!remote_tuning_mode) {
         wheel_packet_mode_one_encode(protocol->mode, &protocol->mode_one_output,
                                      protocol->response);
+    } else {
+        protocol->response[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
     }
-    if (!remote_tuning_mode) {
+    if (!remote_tuning_response) {
         (void)wheel_output_reports_encode_next(&protocol->output_reports, protocol->response);
     }
     protocol->response[WHEEL_PROTOCOL_CHECKSUM_OFFSET] =

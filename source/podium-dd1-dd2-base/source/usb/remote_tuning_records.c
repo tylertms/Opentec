@@ -7,6 +7,7 @@ enum {
     REMOTE_TUNING_PACKET_RECORDS = 1,
     REMOTE_TUNING_PACKET_ALTERNATE_RECORDS = 3,
     REMOTE_TUNING_RECORD_HEADER_SIZE = 5,
+    REMOTE_TUNING_RECORD_ROUTE_TWO = 2,
     REMOTE_TUNING_RECORD_ROUTE_THREE = 3,
     REMOTE_TUNING_RECORD_ROUTE_FOUR = 4,
     REMOTE_TUNING_ALTERNATE_RECORD_FLAG = 0x80,
@@ -243,4 +244,47 @@ bool usb_remote_tuning_records_take_forward_batch(
     }
     return take_matching(records, REMOTE_TUNING_RECORD_ROUTE_THREE, 0, 0, output,
                          USB_REMOTE_TUNING_FORWARD_BATCH_SIZE, length);
+}
+
+/**
+ * @brief Applies and consumes locally routed telemetry records.
+ *
+ * Applies route-two records from both selector banks in arrival order. The selector low nibble
+ * chooses the telemetry channel and bit seven chooses primary or overlay content. Every matching
+ * record is consumed after one pass, while all other routes retain their relative order.
+ *
+ * @param[in,out] records Arrival-order remote-tuning record store.
+ * @param[in,out] telemetry Selected telemetry mappings and report state.
+ * @return Number of route-two records consumed.
+ */
+uint8_t usb_remote_tuning_records_consume_telemetry(UsbRemoteTuningRecords *records,
+                                                    RemoteTelemetry *telemetry) {
+    if (records == NULL || telemetry == NULL) {
+        return 0;
+    }
+
+    uint8_t retained = 0;
+    uint8_t consumed = 0;
+    for (uint8_t index = 0; index < records->count; index++) {
+        UsbRemoteTuningRecord *record = &records->records[index];
+        if (record->type != REMOTE_TUNING_RECORD_ROUTE_TWO) {
+            records->records[retained++] = *record;
+            continue;
+        }
+
+        uint8_t channel = record->selector & 0x0f;
+        if ((record->selector & REMOTE_TUNING_ALTERNATE_RECORD_FLAG) != 0) {
+            (void)remote_telemetry_apply_overlay(telemetry, channel, record->value, record->payload,
+                                                 record->payload_length);
+        } else {
+            (void)remote_telemetry_apply_primary(telemetry, channel, record->value, record->payload,
+                                                 record->payload_length);
+        }
+        consumed++;
+    }
+
+    memset(records->records + retained, 0,
+           (records->count - retained) * sizeof(records->records[0]));
+    records->count = retained;
+    return consumed;
 }

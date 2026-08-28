@@ -1027,6 +1027,7 @@ if not meson.is_cross_build()
     'base-usb-remote-tuning-records-test',
     'tests/source/usb_remote_tuning_records.c',
     usb_remote_tuning_records_sources,
+    remote_tuning_telemetry_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -1036,6 +1037,7 @@ if not meson.is_cross_build()
     'tests/source/usb_remote_tuning_service.c',
     usb_remote_tuning_service_sources,
     usb_remote_tuning_records_sources,
+    remote_tuning_telemetry_sources,
     build_by_default: false,
     include_directories: base_include,
   )

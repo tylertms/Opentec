@@ -669,7 +669,51 @@ static void test_builds_remote_tuning_responses(void) {
         assert(wheel_protocol_message_valid(response));
         assert(!wheel_protocol_remote_tuning_response_pending(&protocol));
         assert(!wheel_packet_remote_tuning_pending(&protocol.remote_tuning_output));
+
+        wheel_protocol_accept(&protocol, request);
+        response = wheel_protocol_response(&protocol);
+        assert(response[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
+        assert(response[1] == 1);
+        assert(response[2] == 0x55);
+        assert(wheel_protocol_message_valid(response));
+
+        wheel_protocol_accept(&protocol, request);
+        response = wheel_protocol_response(&protocol);
+        assert(response[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
+        assert(response[1] == 0);
+        assert(wheel_protocol_message_valid(response));
     }
+}
+
+static void test_forwards_remote_telemetry_in_legacy_mode(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    uint8_t telemetry[WHEEL_OUTPUT_REMOTE_TELEMETRY_SIZE];
+    wheel_protocol_init(&protocol);
+    protocol.mode = WHEEL_MODE_REMOTE_TUNING_LEGACY;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    for (uint8_t index = 0; index < sizeof(telemetry); index++) {
+        telemetry[index] = (uint8_t)(0x40 + index);
+    }
+    assert(wheel_output_reports_queue_remote_telemetry(&protocol.output_reports, telemetry));
+
+    request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    mark_ready(request);
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+    for (uint8_t transmission = 0; transmission < 3; transmission++) {
+        wheel_protocol_accept(&protocol, request);
+        const uint8_t *response = wheel_protocol_response(&protocol);
+        assert(response[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
+        assert(response[1] == 3);
+        assert(memcmp(response + 2, telemetry, sizeof(telemetry)) == 0);
+        assert(wheel_protocol_message_valid(response));
+    }
+    assert(!wheel_output_reports_remote_telemetry_pending(&protocol.output_reports));
+
+    wheel_protocol_accept(&protocol, request);
+    assert(wheel_protocol_response(&protocol)[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
+    assert(wheel_protocol_response(&protocol)[1] == 0);
+    assert(wheel_protocol_message_valid(wheel_protocol_response(&protocol)));
 }
 
 static void test_rejects_remote_tuning_link_mismatch(void) {
@@ -836,6 +880,7 @@ int main(void) {
     test_builds_mode_four_active_response();
     test_builds_crc_family_active_response();
     test_builds_remote_tuning_responses();
+    test_forwards_remote_telemetry_in_legacy_mode();
     test_rejects_remote_tuning_link_mismatch();
     test_forwards_one_pending_host_report();
     test_captures_crc_family_requests();
