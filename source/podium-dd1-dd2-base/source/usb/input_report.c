@@ -22,8 +22,12 @@ uint8_t usb_input_report_encode(UsbInputReportMode mode, uint8_t report[USB_INPU
 
     switch (mode) {
     case USB_INPUT_REPORT_MODE_FANATEC:
-    case USB_INPUT_REPORT_MODE_FANATEC_COMPATIBILITY:
         return fanatec_input_encode(report, &state->fanatec) ? FANATEC_INPUT_REPORT_SIZE : 0;
+
+    case USB_INPUT_REPORT_MODE_FANATEC_COMPATIBILITY:
+        return fanatec_input_compatibility_encode(report, &state->fanatec)
+                   ? FANATEC_INPUT_COMPATIBILITY_REPORT_SIZE
+                   : 0;
 
     case USB_INPUT_REPORT_MODE_DRIVING_FORCE_EX:
         return logitech_driving_force_ex_encode(report, &state->logitech)

@@ -10,6 +10,7 @@
 enum {
     FANATEC_INPUT_REPORT_ID = 1,
     FANATEC_INPUT_REPORT_SIZE = 34,
+    FANATEC_INPUT_COMPATIBILITY_REPORT_SIZE = 33,
     FANATEC_INPUT_BUTTON_BANKS = 5,
     FANATEC_INPUT_ROTARY_BYTES = 5,
     FANATEC_INPUT_ACCESSORY_BYTES = 5,
@@ -34,6 +35,8 @@ typedef struct {
 
 bool fanatec_input_encode(uint8_t report[FANATEC_INPUT_REPORT_SIZE],
                           const fanatec_input_state *state);
+bool fanatec_input_compatibility_encode(uint8_t report[FANATEC_INPUT_COMPATIBILITY_REPORT_SIZE],
+                                        const fanatec_input_state *state);
 void fanatec_input_apply_wheel_controls(fanatec_input_state *state, const uint8_t controls[8],
                                         bool include_extended);
 void fanatec_input_apply_shifter(fanatec_input_state *state, const ShifterInputState *shifter,

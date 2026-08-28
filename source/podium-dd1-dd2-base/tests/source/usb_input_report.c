@@ -40,9 +40,18 @@ static void test_fanatec_modes(void) {
     assert(usb_input_report_encode(USB_INPUT_REPORT_MODE_FANATEC, report, &state) ==
            FANATEC_INPUT_REPORT_SIZE);
     assert(memcmp(report, expected, sizeof(expected)) == 0);
-    memset(report, 0, sizeof(report));
+}
+
+static void test_fanatec_compatibility_mode(void) {
+    const uint8_t expected[FANATEC_INPUT_COMPATIBILITY_REPORT_SIZE] = {
+        0x10, 0x21, 0x32, 0x43, 0x54, 0x65, 0x76, 0x87, 0x98, 0xa9, 0xba,
+        0xcb, 0xdc, 0xed, 0xfe, 0x0f, 0x34, 0x12, 0x45, 0x23, 0x56, 0x34,
+        0x67, 0x45, 0x56, 0x67, 0x78, 0xf9, 0x89, 0x9a, 0xab, 0x09, 0x03,
+    };
+    uint8_t report[USB_INPUT_REPORT_MAX_SIZE];
+
     assert(usb_input_report_encode(USB_INPUT_REPORT_MODE_FANATEC_COMPATIBILITY, report, &state) ==
-           FANATEC_INPUT_REPORT_SIZE);
+           FANATEC_INPUT_COMPATIBILITY_REPORT_SIZE);
     assert(memcmp(report, expected, sizeof(expected)) == 0);
 }
 
@@ -89,6 +98,7 @@ static void test_validation(void) {
 
 int main(void) {
     test_fanatec_modes();
+    test_fanatec_compatibility_mode();
     test_driving_force_ex_mode();
     test_driving_force_pro_mode();
     test_g27_mode();

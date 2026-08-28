@@ -4,20 +4,20 @@
 #include <string.h>
 
 enum {
-    BUTTONS_OFFSET = 1,
-    ROTARY_OFFSET = 6,
-    ACCESSORY_OFFSET = 11,
-    TRANSFER_CODE_OFFSET = 16,
-    STEERING_OFFSET = 17,
-    PEDALS_OFFSET = 19,
-    CLUTCH_PADDLES_OFFSET = 25,
-    AUXILIARY_PEDAL_OFFSET = 27,
-    ENCODER_OFFSET = 28,
-    STATUS_OFFSET = 29,
-    MODE_OFFSET = 30,
-    AXIS_LIMIT_OFFSET = 31,
-    USAGE_PAGE_OFFSET = 32,
-    USAGE_OFFSET = 33,
+    BUTTONS_OFFSET = 0,
+    ROTARY_OFFSET = 5,
+    ACCESSORY_OFFSET = 10,
+    TRANSFER_CODE_OFFSET = 15,
+    STEERING_OFFSET = 16,
+    PEDALS_OFFSET = 18,
+    CLUTCH_PADDLES_OFFSET = 24,
+    AUXILIARY_PEDAL_OFFSET = 26,
+    ENCODER_OFFSET = 27,
+    STATUS_OFFSET = 28,
+    MODE_OFFSET = 29,
+    AXIS_LIMIT_OFFSET = 30,
+    USAGE_PAGE_OFFSET = 31,
+    USAGE_OFFSET = 32,
     BUTTON_USAGE_PAGE = 9,
     BUTTON_USAGE = 3,
     SHIFTER_TRANSITION_BUTTON_BANK = 1,
@@ -94,16 +94,10 @@ void fanatec_input_apply_shifter(fanatec_input_state *state, const ShifterInputS
     }
 }
 
-bool fanatec_input_encode(uint8_t report[FANATEC_INPUT_REPORT_SIZE],
-                          const fanatec_input_state *state) {
+static void encode_payload(uint8_t report[FANATEC_INPUT_COMPATIBILITY_REPORT_SIZE],
+                           const fanatec_input_state *state) {
     size_t pedal;
 
-    if (report == NULL || state == NULL) {
-        return false;
-    }
-
-    memset(report, 0, FANATEC_INPUT_REPORT_SIZE);
-    report[0] = FANATEC_INPUT_REPORT_ID;
     memcpy(report + BUTTONS_OFFSET, state->button_banks, sizeof(state->button_banks));
     memcpy(report + ROTARY_OFFSET, state->rotary, sizeof(state->rotary));
     memcpy(report + ACCESSORY_OFFSET, state->accessory, sizeof(state->accessory));
@@ -120,5 +114,43 @@ bool fanatec_input_encode(uint8_t report[FANATEC_INPUT_REPORT_SIZE],
     report[AXIS_LIMIT_OFFSET] = state->axis_limit;
     report[USAGE_PAGE_OFFSET] = BUTTON_USAGE_PAGE;
     report[USAGE_OFFSET] = BUTTON_USAGE;
+}
+
+/**
+ * @brief Encodes the native Fanatec input report.
+ *
+ * Writes report ID one followed by the complete thirty-three-byte Fanatec input payload.
+ *
+ * @param[out] report Buffer that receives the encoded report.
+ * @param[in] state Logical Fanatec input values.
+ * @return True when the report was encoded; otherwise false.
+ */
+bool fanatec_input_encode(uint8_t report[FANATEC_INPUT_REPORT_SIZE],
+                          const fanatec_input_state *state) {
+    if (report == NULL || state == NULL) {
+        return false;
+    }
+
+    report[0] = FANATEC_INPUT_REPORT_ID;
+    encode_payload(report + 1, state);
+    return true;
+}
+
+/**
+ * @brief Encodes the Fanatec compatibility input report.
+ *
+ * Writes the complete Fanatec input payload without a leading HID report ID.
+ *
+ * @param[out] report Buffer that receives the encoded report.
+ * @param[in] state Logical Fanatec input values.
+ * @return True when the report was encoded; otherwise false.
+ */
+bool fanatec_input_compatibility_encode(uint8_t report[FANATEC_INPUT_COMPATIBILITY_REPORT_SIZE],
+                                        const fanatec_input_state *state) {
+    if (report == NULL || state == NULL) {
+        return false;
+    }
+
+    encode_payload(report, state);
     return true;
 }
