@@ -12,10 +12,14 @@
 #include "usb/descriptor.h"
 #include "usb/device_control.h"
 #include "usb/podium_report_descriptor.h"
+#include "usb/updater_control.h"
+#include "usb/updater_descriptor.h"
 
 enum {
     USB_CONTROL_ENDPOINT = 0,
     USB_HID_ENDPOINT = 1,
+    USB_UPDATER_NOTIFICATION_ENDPOINT = 2,
+    USB_UPDATER_DATA_ENDPOINT = 3,
     USB_HID_DESCRIPTOR_OFFSET = 18,
     USB_HID_DESCRIPTOR_SIZE = 9,
     USB_STRING_COUNT = 9,
@@ -27,12 +31,13 @@ typedef enum {
     USB_CONTROL_STAGE_IDLE,
     USB_CONTROL_STAGE_DATA_IN,
     USB_CONTROL_STAGE_DATA_OUT,
+    USB_CONTROL_STAGE_UPDATER_LINE_CODING_OUT,
     USB_CONTROL_STAGE_STATUS_IN,
     USB_CONTROL_STAGE_STATUS_OUT,
 } UsbControlStage;
 
 static uint8_t device_descriptor[USB_DEVICE_DESCRIPTOR_SIZE];
-static uint8_t configuration_descriptor[USB_HID_CONFIGURATION_DESCRIPTOR_SIZE];
+static uint8_t configuration_descriptor[USB_UPDATER_CONFIGURATION_DESCRIPTOR_SIZE];
 static uint8_t report_descriptor[USB_PODIUM_REPORT_DESCRIPTOR_SIZE];
 static uint8_t language_descriptor[4];
 static uint8_t manufacturer_descriptor[USB_MANUFACTURER_DESCRIPTOR_SIZE];
@@ -50,16 +55,23 @@ static UsbControlTransfer control_transfer;
 static PlatformUsbEvent usb_event;
 static UsbDeviceOutputReport output_report;
 static uint8_t value_data[2];
+static uint8_t updater_line_coding[USB_UPDATER_LINE_CODING_SIZE];
 static uint8_t input_report[USB_DEVICE_REPORT_SIZE];
 static uint8_t input_report_length;
 static uint8_t control_report_type;
 static uint8_t control_report_id;
 static UsbControlStage control_stage;
 static bool output_ready;
+static bool updater_packet_ready;
 static bool input_data_one;
 static bool output_data_one;
+static bool updater_input_data_one;
+static bool updater_output_data_one;
 static BoardVariant board_variant;
 static UsbInputReportMode input_mode;
+static UsbOperatingMode operating_mode;
+static UsbUpdaterControl updater_control;
+static UsbDeviceUpdaterPacket updater_packet;
 
 static bool input_report_matches(const uint8_t *report, uint8_t length) {
     if (input_report_length != length) {
@@ -73,12 +85,13 @@ static bool input_report_matches(const uint8_t *report, uint8_t length) {
     return true;
 }
 
-static bool build_descriptors(BoardVariant variant, UsbInputReportMode mode) {
+static bool build_descriptors(BoardVariant variant, UsbOperatingMode mode) {
     const char *product;
     uint8_t product_index;
+    size_t configuration_length;
     size_t report_length;
 
-    if (mode == USB_INPUT_REPORT_MODE_FANATEC) {
+    if (mode == USB_OPERATING_MODE_FANATEC) {
         descriptor_identity = (UsbDeviceIdentity){
             .usb_version = 0x0200,
             .vendor_id = 0x0eb7,
@@ -103,27 +116,43 @@ static bool build_descriptors(BoardVariant variant, UsbInputReportMode mode) {
                                                : "FANATEC Podium Wheel Base DD2";
         product_index = 3;
         usb_podium_report_descriptor_encode(report_descriptor);
+        configuration_length = USB_HID_CONFIGURATION_DESCRIPTOR_SIZE;
         report_length = USB_PODIUM_REPORT_DESCRIPTOR_SIZE;
-    } else {
-        if (!usb_compatibility_descriptor_profile(mode, &descriptor_identity, &hid_configuration)) {
+    } else if (mode <= USB_OPERATING_MODE_G27) {
+        UsbInputReportMode report_mode = (UsbInputReportMode)mode;
+        if (!usb_compatibility_descriptor_profile(report_mode, &descriptor_identity,
+                                                  &hid_configuration)) {
             return false;
         }
-        report_length = usb_compatibility_report_descriptor_encode(mode, report_descriptor,
+        report_length = usb_compatibility_report_descriptor_encode(report_mode, report_descriptor,
                                                                    sizeof(report_descriptor));
         if (report_length == 0) {
             return false;
         }
-        if (mode == USB_INPUT_REPORT_MODE_FANATEC_COMPATIBILITY) {
+        configuration_length = USB_HID_CONFIGURATION_DESCRIPTOR_SIZE;
+        if (mode == USB_OPERATING_MODE_FANATEC_COMPATIBILITY) {
             product = "FANATEC CSL Elite Wheel Base";
             product_index = 8;
         } else {
             product = "G27 Racing Wheel";
             product_index = 2;
         }
+    } else if (mode == USB_OPERATING_MODE_UPDATER) {
+        descriptor_identity = usb_updater_device_identity();
+        product = usb_updater_product_name();
+        product_index = descriptor_identity.product_string;
+        usb_updater_configuration_descriptor_encode(configuration_descriptor);
+        usb_updater_control_init(&updater_control);
+        configuration_length = USB_UPDATER_CONFIGURATION_DESCRIPTOR_SIZE;
+        report_length = 0;
+    } else {
+        return false;
     }
 
     usb_device_descriptor_encode(&descriptor_identity, device_descriptor);
-    usb_hid_configuration_descriptor_encode(&hid_configuration, configuration_descriptor);
+    if (mode <= USB_OPERATING_MODE_G27) {
+        usb_hid_configuration_descriptor_encode(&hid_configuration, configuration_descriptor);
+    }
     size_t language_length =
         usb_language_descriptor_encode(0x0409, language_descriptor, sizeof(language_descriptor));
     size_t manufacturer_length = usb_string_descriptor_encode("Fanatec", manufacturer_descriptor,
@@ -147,18 +176,23 @@ static bool build_descriptors(BoardVariant variant, UsbInputReportMode mode) {
         .configuration =
             {
                 .data = configuration_descriptor,
-                .length = sizeof(configuration_descriptor),
+                .length = (uint16_t)configuration_length,
             },
         .hid =
             {
-                .data = &configuration_descriptor[USB_HID_DESCRIPTOR_OFFSET],
-                .length = USB_HID_DESCRIPTOR_SIZE,
+                .data =
+                    report_length == 0 ? 0 : &configuration_descriptor[USB_HID_DESCRIPTOR_OFFSET],
+                .length = report_length == 0 ? 0 : USB_HID_DESCRIPTOR_SIZE,
             },
-        .report = {.data = report_descriptor, .length = (uint16_t)report_length},
+        .report = {.data = report_length == 0 ? 0 : report_descriptor,
+                   .length = (uint16_t)report_length},
         .strings = strings,
         .string_count = USB_STRING_COUNT,
     };
-    input_mode = mode;
+    operating_mode = mode;
+    if (mode <= USB_OPERATING_MODE_G27) {
+        input_mode = (UsbInputReportMode)mode;
+    }
     return true;
 }
 
@@ -167,13 +201,16 @@ static void reset_state(void) {
     control_stage = USB_CONTROL_STAGE_IDLE;
     input_report_length = 0;
     output_ready = false;
+    updater_packet_ready = false;
     input_data_one = false;
     output_data_one = false;
+    updater_input_data_one = false;
+    updater_output_data_one = false;
 }
 
 void usb_device_init(BoardVariant variant) {
     board_variant = variant;
-    (void)build_descriptors(variant, USB_INPUT_REPORT_MODE_FANATEC);
+    (void)build_descriptors(variant, USB_OPERATING_MODE_FANATEC);
     reset_state();
     platform_usb_init();
     platform_usb_control_ready();
@@ -191,6 +228,22 @@ void usb_device_init(BoardVariant variant) {
  */
 bool usb_device_set_input_mode(UsbInputReportMode mode) {
     if (mode > USB_INPUT_REPORT_MODE_G27) {
+        return false;
+    }
+    return usb_device_set_operating_mode((UsbOperatingMode)mode);
+}
+
+/**
+ * @brief Selects the active USB operating mode.
+ *
+ * Rebuilds and activates the descriptor and endpoint profile for primary HID modes zero through
+ * four or the motor updater CDC mode five.
+ *
+ * @param[in] mode USB operating-mode selector.
+ * @return True when the mode has a complete transport profile; otherwise false.
+ */
+bool usb_device_set_operating_mode(UsbOperatingMode mode) {
+    if (mode > USB_OPERATING_MODE_UPDATER) {
         return false;
     }
     platform_usb_detach();
@@ -212,6 +265,15 @@ bool usb_device_set_input_mode(UsbInputReportMode mode) {
  * @return Active primary USB operating-mode selector.
  */
 UsbInputReportMode usb_device_input_mode(void) { return input_mode; }
+
+/**
+ * @brief Returns the active USB operating mode.
+ *
+ * Reports the selector used for enumeration, control requests, and endpoint routing.
+ *
+ * @return Active USB operating-mode selector.
+ */
+UsbOperatingMode usb_device_operating_mode(void) { return operating_mode; }
 
 static void stall_control(void) {
     control_stage = USB_CONTROL_STAGE_IDLE;
@@ -302,6 +364,32 @@ static void handle_setup(void) {
         stall_control();
         return;
     }
+    if (operating_mode == USB_OPERATING_MODE_UPDATER) {
+        if (control_request.kind == USB_CONTROL_CDC_GET_LINE_CODING) {
+            usb_updater_line_coding_encode(&updater_control, updater_line_coding);
+            begin_control_input((UsbDescriptorView){.data = updater_line_coding,
+                                                    .length = sizeof(updater_line_coding)},
+                                control_request.length);
+            return;
+        }
+        if (control_request.kind == USB_CONTROL_CDC_SET_LINE_CODING) {
+            if (platform_usb_receive(USB_CONTROL_ENDPOINT, USB_UPDATER_LINE_CODING_SIZE, true)) {
+                control_stage = USB_CONTROL_STAGE_UPDATER_LINE_CODING_OUT;
+                return;
+            }
+            stall_control();
+            return;
+        }
+        if (control_request.kind == USB_CONTROL_CDC_SET_CONTROL_LINE_STATE) {
+            usb_updater_control_set_lines(&updater_control, (uint8_t)control_request.value);
+            if (platform_usb_send(USB_CONTROL_ENDPOINT, 0, 0, true)) {
+                control_stage = USB_CONTROL_STAGE_STATUS_IN;
+            } else {
+                stall_control();
+            }
+            return;
+        }
+    }
     control_transfer =
         usb_device_control_handle(&device_control, &control_request, &descriptor_catalog);
     handle_control_transfer();
@@ -319,6 +407,27 @@ static void configure_hid_endpoint(void) {
     }
 }
 
+/**
+ * @brief Configures the motor updater USB endpoints.
+ *
+ * Enables interrupt input endpoint 2, enables both directions on bulk endpoint 3, and arms both
+ * endpoint 3 output banks for 64-byte transfers.
+ */
+static void configure_updater_endpoints(void) {
+    updater_input_data_one = false;
+    updater_output_data_one = false;
+    platform_usb_configure_endpoint(USB_UPDATER_NOTIFICATION_ENDPOINT, true, false);
+    platform_usb_configure_endpoint(USB_UPDATER_DATA_ENDPOINT, true, true);
+    if (platform_usb_receive(USB_UPDATER_DATA_ENDPOINT, USB_DEVICE_REPORT_SIZE,
+                             updater_output_data_one)) {
+        updater_output_data_one = !updater_output_data_one;
+    }
+    if (platform_usb_receive(USB_UPDATER_DATA_ENDPOINT, USB_DEVICE_REPORT_SIZE,
+                             updater_output_data_one)) {
+        updater_output_data_one = !updater_output_data_one;
+    }
+}
+
 static void complete_control_change(void) {
     UsbDevicePendingChange pending_change = device_control.pending_change;
     usb_device_control_complete(&device_control);
@@ -326,9 +435,18 @@ static void complete_control_change(void) {
         platform_usb_set_address(device_control.address);
     } else if (pending_change == USB_DEVICE_PENDING_CONFIGURATION) {
         if (usb_device_control_configured(&device_control)) {
-            configure_hid_endpoint();
+            if (operating_mode == USB_OPERATING_MODE_UPDATER) {
+                configure_updater_endpoints();
+            } else {
+                configure_hid_endpoint();
+            }
         } else {
-            platform_usb_unconfigure_endpoint(USB_HID_ENDPOINT);
+            if (operating_mode == USB_OPERATING_MODE_UPDATER) {
+                platform_usb_unconfigure_endpoint(USB_UPDATER_NOTIFICATION_ENDPOINT);
+                platform_usb_unconfigure_endpoint(USB_UPDATER_DATA_ENDPOINT);
+            } else {
+                platform_usb_unconfigure_endpoint(USB_HID_ENDPOINT);
+            }
         }
     }
 }
@@ -369,6 +487,18 @@ static void handle_control_output(void) {
         platform_usb_control_ready();
         return;
     }
+    if (control_stage == USB_CONTROL_STAGE_UPDATER_LINE_CODING_OUT) {
+        if (!usb_updater_line_coding_decode(&updater_control, usb_event.data, usb_event.length)) {
+            stall_control();
+            return;
+        }
+        if (platform_usb_send(USB_CONTROL_ENDPOINT, 0, 0, true)) {
+            control_stage = USB_CONTROL_STAGE_STATUS_IN;
+        } else {
+            stall_control();
+        }
+        return;
+    }
     if (control_stage == USB_CONTROL_STAGE_DATA_OUT) {
         store_output_report(control_report_type, control_report_id, usb_event.data,
                             usb_event.length);
@@ -393,6 +523,18 @@ static void handle_hid_output(void) {
     }
 }
 
+static void handle_updater_output(void) {
+    updater_packet.length = usb_event.length;
+    for (uint8_t index = 0; index < usb_event.length; index++) {
+        updater_packet.data[index] = usb_event.data[index];
+    }
+    updater_packet_ready = true;
+    if (platform_usb_receive(USB_UPDATER_DATA_ENDPOINT, USB_DEVICE_REPORT_SIZE,
+                             updater_output_data_one)) {
+        updater_output_data_one = !updater_output_data_one;
+    }
+}
+
 static void handle_reset(void) {
     reset_state();
     platform_usb_control_ready();
@@ -411,6 +553,9 @@ static void handle_event(void) {
             handle_control_output();
         } else if (usb_event.endpoint == USB_HID_ENDPOINT) {
             handle_hid_output();
+        } else if (operating_mode == USB_OPERATING_MODE_UPDATER &&
+                   usb_event.endpoint == USB_UPDATER_DATA_ENDPOINT) {
+            handle_updater_output();
         }
         break;
     case PLATFORM_USB_EVENT_IN_COMPLETE:
@@ -441,7 +586,8 @@ bool usb_device_take_output(UsbDeviceOutputReport *report) {
 }
 
 bool usb_device_send_input(const uint8_t *report, uint8_t length) {
-    if (!usb_device_configured() || report == 0 || length == 0 || length > USB_DEVICE_REPORT_SIZE) {
+    if (operating_mode > USB_OPERATING_MODE_G27 || !usb_device_configured() || report == 0 ||
+        length == 0 || length > USB_DEVICE_REPORT_SIZE) {
         return false;
     }
     if (input_report_matches(report, length)) {
@@ -455,5 +601,26 @@ bool usb_device_send_input(const uint8_t *report, uint8_t length) {
     }
     input_report_length = length;
     input_data_one = !input_data_one;
+    return true;
+}
+
+bool usb_device_take_updater_packet(UsbDeviceUpdaterPacket *packet) {
+    if (!updater_packet_ready || packet == 0) {
+        return false;
+    }
+    *packet = updater_packet;
+    updater_packet_ready = false;
+    return true;
+}
+
+bool usb_device_send_updater_packet(const uint8_t *data, uint8_t length) {
+    if (operating_mode != USB_OPERATING_MODE_UPDATER || !usb_device_configured() || data == 0 ||
+        length == 0 || length > USB_DEVICE_REPORT_SIZE) {
+        return false;
+    }
+    if (!platform_usb_send(USB_UPDATER_DATA_ENDPOINT, data, length, updater_input_data_one)) {
+        return false;
+    }
+    updater_input_data_one = !updater_input_data_one;
     return true;
 }

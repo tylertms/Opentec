@@ -6,7 +6,7 @@
 #include "platform/usb.h"
 #include "usb/device.h"
 
-enum { EVENT_CAPACITY = 16 };
+enum { EVENT_CAPACITY = 32 };
 
 typedef struct {
     uint8_t endpoint;
@@ -26,6 +26,8 @@ static uint8_t address;
 static uint8_t control_ready_count;
 static bool attached;
 static bool hid_configured;
+static bool endpoint_input[5];
+static bool endpoint_output[5];
 static bool stalled;
 static uint8_t restart_count;
 
@@ -41,6 +43,8 @@ static void reset_platform(void) {
     control_ready_count = 0;
     attached = false;
     hid_configured = false;
+    memset(endpoint_input, 0, sizeof(endpoint_input));
+    memset(endpoint_output, 0, sizeof(endpoint_output));
     stalled = false;
     restart_count = 0;
 }
@@ -66,6 +70,9 @@ void platform_usb_restart(void) {
     event_head = 0;
     event_tail = 0;
     receive_count = 0;
+    hid_configured = false;
+    memset(endpoint_input, 0, sizeof(endpoint_input));
+    memset(endpoint_output, 0, sizeof(endpoint_output));
     attached = true;
 }
 
@@ -99,9 +106,13 @@ bool platform_usb_receive(uint8_t endpoint, uint8_t length, bool data_one) {
 void platform_usb_control_ready(void) { control_ready_count++; }
 void platform_usb_set_address(uint8_t value) { address = value; }
 void platform_usb_configure_endpoint(uint8_t endpoint, bool input, bool output) {
+    endpoint_input[endpoint] = input;
+    endpoint_output[endpoint] = output;
     hid_configured = endpoint == 1 && input && output;
 }
 void platform_usb_unconfigure_endpoint(uint8_t endpoint) {
+    endpoint_input[endpoint] = false;
+    endpoint_output[endpoint] = false;
     if (endpoint == 1) {
         hid_configured = false;
     }
@@ -258,9 +269,79 @@ static void test_reenumerates_compatibility_modes(void) {
     assert(memcmp(report.data, unnumbered_output, sizeof(unnumbered_output)) == 0);
 }
 
+static void test_exchanges_updater_packets(void) {
+    static const uint8_t get_device_descriptor[] = {0x80, 6, 0, 1, 0, 0, 18, 0};
+    static const uint8_t get_configuration_descriptor[] = {0x80, 6, 0, 2, 0, 0, 64, 0};
+    static const uint8_t get_line_coding[] = {0xa1, 0x21, 0, 0, 0, 0, 7, 0};
+    static const uint8_t set_line_coding[] = {0x21, 0x20, 0, 0, 0, 0, 7, 0};
+    static const uint8_t set_configuration[] = {0x00, 9, 1, 0, 0, 0, 0, 0};
+    static const uint8_t updated_line_coding[] = {0x00, 0xc2, 0x01, 0x00, 0, 0, 8};
+    static const uint8_t bulk_output[] = {0x12, 0x34, 0x56};
+    static const uint8_t bulk_input[] = {0x78, 0x9a};
+
+    usb_device_init(BOARD_VARIANT_DD1);
+    assert(usb_device_set_operating_mode(USB_OPERATING_MODE_UPDATER));
+    assert(usb_device_operating_mode() == USB_OPERATING_MODE_UPDATER);
+    assert(!usb_device_send_input(bulk_input, sizeof(bulk_input)));
+
+    push_setup(get_device_descriptor);
+    usb_device_service();
+    assert(sent.data[4] == 0x02);
+    assert(sent.data[10] == 0x18 && sent.data[11] == 0x07);
+    assert(sent.data[15] == 7);
+    complete_control_input();
+
+    push_setup(get_configuration_descriptor);
+    usb_device_service();
+    assert(sent.length == 64);
+    assert(sent.data[0] == 9 && sent.data[1] == 2 && sent.data[2] == 67);
+    assert(sent.data[4] == 2);
+    complete_control_input();
+    assert_string_descriptor(7, "FANATEC EBLDC Updater");
+
+    push_setup(get_line_coding);
+    usb_device_service();
+    const uint8_t default_line_coding[] = {0x00, 0x4b, 0x00, 0x00, 0, 0, 8};
+    assert(sent.length == sizeof(default_line_coding));
+    assert(memcmp(sent.data, default_line_coding, sizeof(default_line_coding)) == 0);
+    complete_control_input();
+
+    receive_count = 0;
+    push_setup(set_line_coding);
+    usb_device_service();
+    assert(receive_count == 1 && received[0].endpoint == 0 && received[0].length == 7);
+    push_event(PLATFORM_USB_EVENT_OUT, 0, updated_line_coding, sizeof(updated_line_coding));
+    usb_device_service();
+    assert(sent.endpoint == 0 && sent.length == 0);
+
+    receive_count = 0;
+    push_setup(set_configuration);
+    usb_device_service();
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 0, 0, 0);
+    usb_device_service();
+    assert(endpoint_input[2] && !endpoint_output[2]);
+    assert(endpoint_input[3] && endpoint_output[3]);
+    assert(receive_count == 2);
+    assert(received[0].endpoint == 3 && received[0].length == 64);
+    assert(received[1].endpoint == 3 && received[1].length == 64);
+
+    push_event(PLATFORM_USB_EVENT_OUT, 3, bulk_output, sizeof(bulk_output));
+    usb_device_service();
+    UsbDeviceUpdaterPacket packet;
+    assert(usb_device_take_updater_packet(&packet));
+    assert(packet.length == sizeof(bulk_output));
+    assert(memcmp(packet.data, bulk_output, sizeof(bulk_output)) == 0);
+    assert(!usb_device_take_updater_packet(&packet));
+
+    assert(usb_device_send_updater_packet(bulk_input, sizeof(bulk_input)));
+    assert(sent.endpoint == 3 && sent.length == sizeof(bulk_input));
+    assert(memcmp(sent.data, bulk_input, sizeof(bulk_input)) == 0);
+}
+
 int main(void) {
     test_enumerates_podium_device();
     test_exchanges_hid_reports();
     test_reenumerates_compatibility_modes();
+    test_exchanges_updater_packets();
     return 0;
 }

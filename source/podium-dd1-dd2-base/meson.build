@@ -777,6 +777,8 @@ if not meson.is_cross_build()
     podium_report_descriptor_sources,
     usb_compatibility_descriptor_sources,
     usb_compatibility_report_descriptor_sources,
+    usb_updater_descriptor_sources,
+    usb_updater_control_sources,
     build_by_default: false,
     include_directories: base_include,
   )

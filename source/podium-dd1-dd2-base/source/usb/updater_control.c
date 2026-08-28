@@ -46,7 +46,7 @@ void usb_updater_line_coding_encode(const UsbUpdaterControl *control,
  *
  * Replaces all serial format fields from a complete seven-byte CDC line-coding payload.
  *
- * @param[out] control Updater serial control state.
+ * @param[in,out] control Updater serial control state.
  * @param[in] data CDC line-coding payload.
  * @param[in] length Payload length in bytes.
  * @return True when a complete payload was decoded; otherwise false.
@@ -69,7 +69,7 @@ bool usb_updater_line_coding_decode(UsbUpdaterControl *control, const uint8_t *d
  *
  * Retains the low request byte supplied with the CDC control-line-state command.
  *
- * @param[out] control Updater serial control state.
+ * @param[in,out] control Updater serial control state.
  * @param[in] state Low control-line-state request byte.
  */
 void usb_updater_control_set_lines(UsbUpdaterControl *control, uint8_t state) {

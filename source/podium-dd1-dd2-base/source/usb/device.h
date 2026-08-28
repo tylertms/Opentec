@@ -14,6 +14,17 @@ enum {
     USB_DEVICE_HID_REPORT_FEATURE = 3,
 };
 
+typedef enum {
+    USB_OPERATING_MODE_FANATEC = 0,
+    USB_OPERATING_MODE_FANATEC_COMPATIBILITY = 1,
+    USB_OPERATING_MODE_DRIVING_FORCE_EX = 2,
+    USB_OPERATING_MODE_DRIVING_FORCE_PRO = 3,
+    USB_OPERATING_MODE_G27 = 4,
+    USB_OPERATING_MODE_UPDATER = 5,
+    USB_OPERATING_MODE_XBOX_GIP = 6,
+    USB_OPERATING_MODE_PLAYSTATION = 7,
+} UsbOperatingMode;
+
 typedef struct {
     uint8_t report_type;
     uint8_t report_id;
@@ -21,12 +32,21 @@ typedef struct {
     uint8_t data[USB_DEVICE_REPORT_SIZE];
 } UsbDeviceOutputReport;
 
+typedef struct {
+    uint8_t length;
+    uint8_t data[USB_DEVICE_REPORT_SIZE];
+} UsbDeviceUpdaterPacket;
+
 void usb_device_init(BoardVariant variant);
 bool usb_device_set_input_mode(UsbInputReportMode mode);
 UsbInputReportMode usb_device_input_mode(void);
+bool usb_device_set_operating_mode(UsbOperatingMode mode);
+UsbOperatingMode usb_device_operating_mode(void);
 void usb_device_service(void);
 bool usb_device_configured(void);
 bool usb_device_take_output(UsbDeviceOutputReport *report);
 bool usb_device_send_input(const uint8_t *report, uint8_t length);
+bool usb_device_take_updater_packet(UsbDeviceUpdaterPacket *packet);
+bool usb_device_send_updater_packet(const uint8_t *data, uint8_t length);
 
 #endif
