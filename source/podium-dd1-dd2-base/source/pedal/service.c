@@ -6,6 +6,7 @@
 #include "pedal/frame.h"
 #include "pedal/protocol.h"
 #include "pedal/v4_status.h"
+#include "pedal/v4_tuning.h"
 #include "platform/pedal_link.h"
 #include "platform/time.h"
 #include "transfer/session.h"
@@ -52,8 +53,9 @@ static void reconnect(PedalService *service, uint32_t now_ms) {
     service->v4.active = false;
     clear_v3_outbound(service);
     service->connected = false;
-    service->v4_request_pending = false;
-    service->v4_status_received = false;
+    service->v4_phase = PEDAL_V4_PHASE_STATUS;
+    service->v4_request_active = false;
+    service->v4_response_received = false;
     service->device = PEDAL_DEVICE_NONE;
     service->startup_frame_count = 0;
     service->legacy_channel = PEDAL_LEGACY_AXIS_1;
@@ -92,9 +94,13 @@ void pedal_service_init(PedalService *service) {
     service->brake_force_percent = 100;
     service->startup_frame_count = 0;
     service->configuration_brake_force = 0;
+    service->v4_tuning_pending = 0;
+    service->v4_sent_value = 0;
     service->legacy_channel = PEDAL_LEGACY_AXIS_1;
     service->protocol_status = (PedalProtocolStatus){0};
     service->transmitted_status = (PedalProtocolStatus){0};
+    service->v4_tuning = (PedalV4Tuning){0};
+    service->v4_phase = PEDAL_V4_PHASE_STATUS;
     for (uint8_t channel = 0; channel < PEDAL_LEGACY_CHANNEL_COUNT; channel++) {
         service->legacy_retries[channel] = 0;
     }
@@ -103,8 +109,8 @@ void pedal_service_init(PedalService *service) {
     service->auxiliary_locked = false;
     service->recovery_handshake = false;
     service->status_transmitted = false;
-    service->v4_request_pending = false;
-    service->v4_status_received = false;
+    service->v4_request_active = false;
+    service->v4_response_received = false;
     service->clock_ms = 0;
     clear_v3_outbound(service);
 }
@@ -123,13 +129,14 @@ static void apply_v4_status(void *context, const uint8_t *data, uint8_t length, 
                             bool complete) {
     PedalService *service = context;
     (void)complete;
-    if (group != 0 || !service->v4_request_pending) {
+    if (group != 0 || !service->v4_request_active) {
         return;
     }
-    pedal_v4_status_parse(data, length, service->input.axes);
+    if (service->v4_phase == PEDAL_V4_PHASE_STATUS) {
+        pedal_v4_status_parse(data, length, service->input.axes);
+    }
     service->connected = true;
-    service->v4_request_pending = false;
-    service->v4_status_received = true;
+    service->v4_response_received = true;
 }
 
 static uint32_t read_v4_clock(void *context) {
@@ -157,6 +164,25 @@ void pedal_service_set_analog_samples(PedalService *service,
 
 void pedal_service_set_brake_force(PedalService *service, uint8_t force_percent) {
     service->brake_force_percent = force_percent > 100 ? 100 : force_percent;
+}
+
+static void update_v4_tuning_value(uint8_t *current, uint8_t value, uint8_t setting,
+                                   uint8_t *pending) {
+    if (*current != value) {
+        *current = value;
+        *pending |= (uint8_t)(1u << (setting - 1));
+    }
+}
+
+void pedal_service_set_v4_tuning(PedalService *service, PedalV4Tuning tuning) {
+    update_v4_tuning_value(&service->v4_tuning.brake_force, tuning.brake_force,
+                           PEDAL_V4_TUNING_BRAKE_FORCE, &service->v4_tuning_pending);
+    update_v4_tuning_value(&service->v4_tuning.clutch_curve, tuning.clutch_curve,
+                           PEDAL_V4_TUNING_CLUTCH_CURVE, &service->v4_tuning_pending);
+    update_v4_tuning_value(&service->v4_tuning.brake_curve, tuning.brake_curve,
+                           PEDAL_V4_TUNING_BRAKE_CURVE, &service->v4_tuning_pending);
+    update_v4_tuning_value(&service->v4_tuning.throttle_curve, tuning.throttle_curve,
+                           PEDAL_V4_TUNING_THROTTLE_CURVE, &service->v4_tuning_pending);
 }
 
 void pedal_service_set_auxiliary_locked(PedalService *service, bool locked) {
@@ -227,8 +253,121 @@ static void service_select_protocol(PedalService *service, uint32_t now_ms) {
     }
 }
 
+static uint8_t v4_setting_mask(PedalV4TuningSetting setting) {
+    return (uint8_t)(1u << (setting - 1));
+}
+
+static PedalV4TuningSetting v4_phase_setting(PedalV4Phase phase) {
+    switch (phase) {
+    case PEDAL_V4_PHASE_BRAKE_FORCE:
+        return PEDAL_V4_TUNING_BRAKE_FORCE;
+    case PEDAL_V4_PHASE_CLUTCH_CURVE:
+        return PEDAL_V4_TUNING_CLUTCH_CURVE;
+    case PEDAL_V4_PHASE_BRAKE_CURVE:
+        return PEDAL_V4_TUNING_BRAKE_CURVE;
+    case PEDAL_V4_PHASE_THROTTLE_CURVE:
+        return PEDAL_V4_TUNING_THROTTLE_CURVE;
+    case PEDAL_V4_PHASE_STATUS:
+    case PEDAL_V4_PHASE_SELECT:
+        return 0;
+    }
+    return 0;
+}
+
+static uint8_t v4_tuning_value(const PedalV4Tuning *tuning, PedalV4TuningSetting setting) {
+    switch (setting) {
+    case PEDAL_V4_TUNING_THROTTLE_CURVE:
+        return tuning->throttle_curve;
+    case PEDAL_V4_TUNING_BRAKE_CURVE:
+        return tuning->brake_curve;
+    case PEDAL_V4_TUNING_CLUTCH_CURVE:
+        return tuning->clutch_curve;
+    case PEDAL_V4_TUNING_BRAKE_FORCE:
+        return tuning->brake_force;
+    }
+    return 0;
+}
+
+static PedalV4Phase next_v4_phase(PedalV4Phase phase) {
+    switch (phase) {
+    case PEDAL_V4_PHASE_BRAKE_FORCE:
+        return PEDAL_V4_PHASE_CLUTCH_CURVE;
+    case PEDAL_V4_PHASE_CLUTCH_CURVE:
+        return PEDAL_V4_PHASE_BRAKE_CURVE;
+    case PEDAL_V4_PHASE_BRAKE_CURVE:
+        return PEDAL_V4_PHASE_THROTTLE_CURVE;
+    case PEDAL_V4_PHASE_THROTTLE_CURVE:
+        return PEDAL_V4_PHASE_STATUS;
+    case PEDAL_V4_PHASE_STATUS:
+        return PEDAL_V4_PHASE_SELECT;
+    case PEDAL_V4_PHASE_SELECT:
+        return PEDAL_V4_PHASE_SELECT;
+    }
+    return PEDAL_V4_PHASE_SELECT;
+}
+
+static void complete_v4_response(PedalService *service) {
+    PedalV4TuningSetting setting = v4_phase_setting(service->v4_phase);
+    if (setting != 0 && v4_tuning_value(&service->v4_tuning, setting) == service->v4_sent_value) {
+        uint8_t mask = v4_setting_mask(setting);
+        service->v4_tuning_pending = (uint8_t)(service->v4_tuning_pending & (uint8_t)~mask);
+    }
+    service->v4_phase = next_v4_phase(service->v4_phase);
+    service->v4_response_received = false;
+    service->v4_request_active = false;
+}
+
+static void select_v4_phase(PedalService *service) {
+    uint8_t pending = service->v4_tuning_pending;
+    if ((pending & v4_setting_mask(PEDAL_V4_TUNING_BRAKE_FORCE)) != 0) {
+        service->v4_phase = PEDAL_V4_PHASE_BRAKE_FORCE;
+    } else if ((pending & v4_setting_mask(PEDAL_V4_TUNING_CLUTCH_CURVE)) != 0) {
+        service->v4_phase = PEDAL_V4_PHASE_CLUTCH_CURVE;
+    } else if ((pending & v4_setting_mask(PEDAL_V4_TUNING_THROTTLE_CURVE)) != 0) {
+        service->v4_phase = PEDAL_V4_PHASE_THROTTLE_CURVE;
+    } else if ((pending & v4_setting_mask(PEDAL_V4_TUNING_BRAKE_CURVE)) != 0) {
+        service->v4_phase = PEDAL_V4_PHASE_BRAKE_CURVE;
+    } else {
+        service->v4_phase = PEDAL_V4_PHASE_STATUS;
+    }
+}
+
+static void send_v4_request(PedalService *service, uint32_t now_ms) {
+    if (service->v4_phase == PEDAL_V4_PHASE_SELECT) {
+        select_v4_phase(service);
+        return;
+    }
+    if (service->v4_phase == PEDAL_V4_PHASE_STATUS) {
+        if (now_ms > service->next_status_ms &&
+            transfer_session_send(&service->v4, pedal_v4_status_request,
+                                  (uint8_t)sizeof(pedal_v4_status_request), 0)) {
+            service->v4_request_active = true;
+            service->next_status_ms = now_ms + PEDAL_V4_STATUS_INTERVAL_MS;
+        }
+        return;
+    }
+
+    PedalV4TuningSetting setting = v4_phase_setting(service->v4_phase);
+    if (setting == 0) {
+        return;
+    }
+    uint8_t mask = v4_setting_mask(setting);
+    if ((service->v4_tuning_pending & mask) == 0) {
+        service->v4_phase = next_v4_phase(service->v4_phase);
+        return;
+    }
+
+    uint8_t value = v4_tuning_value(&service->v4_tuning, setting);
+    if (pedal_v4_tuning_request(setting, value, service->v4_tuning_request) &&
+        transfer_session_send(&service->v4, service->v4_tuning_request,
+                              (uint8_t)PEDAL_V4_TUNING_REQUEST_SIZE, 0)) {
+        service->v4_sent_value = value;
+        service->v4_request_active = true;
+    }
+}
+
 /**
- * @brief Services V4 transfers and polls status after each strict 15-millisecond deadline.
+ * @brief Services V4 tuning writes and status polls in their protocol order.
  * @param service Pedal state, transfer session, and published axes to update.
  * @param now_ms Current monotonic time in milliseconds.
  */
@@ -243,16 +382,14 @@ static void service_v4_stream(PedalService *service, uint32_t now_ms) {
         reconnect(service, now_ms);
         return;
     }
-    if (service->v4_status_received) {
-        service->v4_status_received = false;
+    if (service->v4_response_received) {
+        complete_v4_response(service);
         return;
     }
-    if (!service->v4_request_pending && now_ms > service->next_status_ms &&
-        transfer_session_send(&service->v4, pedal_v4_status_request,
-                              (uint8_t)sizeof(pedal_v4_status_request), 0)) {
-        service->v4_request_pending = true;
-        service->next_status_ms = now_ms + PEDAL_V4_STATUS_INTERVAL_MS;
+    if (service->v4_request_active) {
+        return;
     }
+    send_v4_request(service, now_ms);
 }
 
 static void advance_legacy_channel(PedalService *service) {
@@ -472,8 +609,9 @@ void pedal_service_run(PedalService *service, uint32_t now_ms) {
         if (transfer_session_init(&service->v4, &v4_callbacks, service)) {
             service->phase = PEDAL_SERVICE_V4_STREAM;
             service->next_status_ms = 0;
-            service->v4_request_pending = false;
-            service->v4_status_received = false;
+            service->v4_phase = PEDAL_V4_PHASE_STATUS;
+            service->v4_request_active = false;
+            service->v4_response_received = false;
         } else {
             reconnect(service, now_ms);
         }

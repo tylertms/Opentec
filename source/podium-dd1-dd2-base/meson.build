@@ -45,6 +45,7 @@ pedal_input_sources = files('source/pedal/input.c')
 pedal_protocol_sources = files('source/pedal/protocol.c')
 pedal_service_sources = files('source/pedal/service.c')
 pedal_v4_status_sources = files('source/pedal/v4_status.c')
+pedal_v4_tuning_sources = files('source/pedal/v4_tuning.c')
 transfer_frame_sources = files('source/transfer/frame.c')
 transfer_session_sources = files('source/transfer/session.c')
 profile_bank_sources = files('source/profile/bank.c')
@@ -122,6 +123,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'pedal-protocol': 'source/pedal/protocol.c',
     'pedal-service': 'source/pedal/service.c',
     'pedal-v4-status': 'source/pedal/v4_status.c',
+    'pedal-v4-tuning': 'source/pedal/v4_tuning.c',
     'transfer-frame': 'source/transfer/frame.c',
     'transfer-session': 'source/transfer/session.c',
     'platform-clock': 'source/platform/dspic33e/clock.c',
@@ -569,6 +571,7 @@ if not meson.is_cross_build()
     'tests/source/pedal_service.c',
     pedal_service_sources,
     pedal_v4_status_sources,
+    pedal_v4_tuning_sources,
     pedal_analog_sources,
     pedal_axis_sources,
     pedal_input_sources,
@@ -586,6 +589,14 @@ if not meson.is_cross_build()
     'base-pedal-v4-status-test',
     'tests/source/pedal_v4_status.c',
     pedal_v4_status_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  pedal_v4_tuning_test = executable(
+    'base-pedal-v4-tuning-test',
+    'tests/source/pedal_v4_tuning.c',
+    pedal_v4_tuning_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -776,6 +787,7 @@ if not meson.is_cross_build()
   test('base-pedal-protocol', pedal_protocol_test, suite: ['base', 'pedal', 'transport'])
   test('base-pedal-service', pedal_service_test, suite: ['base', 'pedal'])
   test('base-pedal-v4-status', pedal_v4_status_test, suite: ['base', 'pedal'])
+  test('base-pedal-v4-tuning', pedal_v4_tuning_test, suite: ['base', 'pedal'])
   test('base-profile-tuning', profile_tuning_test, suite: ['base', 'profile'])
   test('base-profile-bank', profile_bank_test, suite: ['base', 'profile'])
   test('base-profile-record', profile_record_test, suite: ['base', 'profile', 'persistence'])

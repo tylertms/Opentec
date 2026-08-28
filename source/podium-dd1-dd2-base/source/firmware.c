@@ -164,6 +164,13 @@ static void initialize_motor(void) {
     base_settings_persistence_load(&settings_persistence, &base_settings, platform_time_ms());
     tuning_profile = tuning_profile_bank_active(&base_settings.tuning_profiles);
     pedal_service_set_brake_force(&pedal_service, tuning_profile->brake_force);
+    PedalV4Tuning pedal_tuning = {
+        .brake_force = tuning_profile->brake_force,
+        .clutch_curve = (uint8_t)tuning_profile->clutch_pedal_curve,
+        .brake_curve = (uint8_t)tuning_profile->brake_pedal_curve,
+        .throttle_curve = (uint8_t)tuning_profile->throttle_pedal_curve,
+    };
+    pedal_service_set_v4_tuning(&pedal_service, pedal_tuning);
     motor_tuning_context = (MotorTuningContext){
         .automatic_rotation_degrees = tuning_profile->rotation_degrees,
         .ramp_percent = 0,

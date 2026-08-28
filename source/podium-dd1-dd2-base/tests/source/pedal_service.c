@@ -125,6 +125,23 @@ static void receive_transfer(uint16_t command, const uint8_t *payload, uint8_t p
         transfer_frame_encode_values(command, payload, payload_length, received_transfer);
 }
 
+static void complete_v4_request(PedalService *service, uint32_t ack_time, uint32_t response_time) {
+    receive_transfer(transfer_status_command(0, 0), NULL, 0);
+    pedal_service_run(service, ack_time);
+    receive_transfer(transfer_data_command(0, 0, 0), NULL, 0);
+    pedal_service_run(service, response_time);
+}
+
+static void assert_v4_tuning_request(uint8_t offset, uint8_t value) {
+    TransferFrame request;
+    assert(transfer_frame_decode(sent_transfer, sent_transfer_length, &request) ==
+           TRANSFER_FRAME_VALID);
+    assert(request.command == transfer_data_command(0, 0, 0));
+    assert(request.payload_length == PEDAL_V4_TUNING_REQUEST_SIZE);
+    assert(request.payload[19] == offset);
+    assert(request.payload[20] == value);
+}
+
 static void connect_v3(PedalService *service) {
     pedal_service_run(service, 0);
     assert(sent_byte == 0x0a);
@@ -486,10 +503,68 @@ static void test_polls_and_publishes_v4_input(void) {
     assert(service.input.axes[2] == 0x56);
     assert(transfer_send_count == 2);
 
+    pedal_service_run(&service, 20);
+    assert(transfer_send_count == 2);
     pedal_service_run(&service, 21);
     assert(transfer_send_count == 2);
     pedal_service_run(&service, 22);
     assert(transfer_send_count == 3);
+}
+
+static void test_sends_v4_tuning_in_protocol_order(void) {
+    PedalService service;
+    const PedalV4Tuning tuning = {
+        .brake_force = 50,
+        .clutch_curve = 3,
+        .brake_curve = 2,
+        .throttle_curve = 5,
+    };
+    reset_link();
+    pedal_service_init(&service);
+    pedal_service_set_v4_tuning(&service, tuning);
+    connect_v4(&service);
+
+    pedal_service_run(&service, 6);
+    complete_v4_request(&service, 7, 8);
+    pedal_service_run(&service, 9);
+
+    pedal_service_run(&service, 10);
+    assert_v4_tuning_request(32, 50);
+    complete_v4_request(&service, 11, 12);
+
+    pedal_service_run(&service, 13);
+    assert_v4_tuning_request(24, 3);
+    complete_v4_request(&service, 14, 15);
+
+    pedal_service_run(&service, 16);
+    assert_v4_tuning_request(16, 2);
+    complete_v4_request(&service, 17, 18);
+
+    pedal_service_run(&service, 19);
+    assert_v4_tuning_request(8, 5);
+    complete_v4_request(&service, 20, 21);
+
+    assert(service.v4_tuning_pending == 0);
+    assert(service.v4_phase == PEDAL_V4_PHASE_STATUS);
+}
+
+static void test_prioritizes_throttle_before_brake_at_v4_selection(void) {
+    PedalService service;
+    const PedalV4Tuning tuning = {
+        .brake_curve = 2,
+        .throttle_curve = 5,
+    };
+    reset_link();
+    pedal_service_init(&service);
+    pedal_service_set_v4_tuning(&service, tuning);
+    connect_v4(&service);
+
+    pedal_service_run(&service, 6);
+    complete_v4_request(&service, 7, 8);
+    pedal_service_run(&service, 9);
+    pedal_service_run(&service, 10);
+
+    assert_v4_tuning_request(8, 5);
 }
 
 static void test_reconnects_after_v4_transfer_timeout(void) {
@@ -588,6 +663,8 @@ int main(void) {
     test_uses_long_timeout_during_stream_startup();
     test_tightens_timeout_after_stream_startup();
     test_polls_and_publishes_v4_input();
+    test_sends_v4_tuning_in_protocol_order();
+    test_prioritizes_throttle_before_brake_at_v4_selection();
     test_reconnects_after_v4_transfer_timeout();
     test_polls_legacy_pedal_channels();
     test_retries_after_discovery_timeout();
