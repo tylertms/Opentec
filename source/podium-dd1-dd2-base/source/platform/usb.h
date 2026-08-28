@@ -22,6 +22,7 @@ typedef struct {
 } PlatformUsbEvent;
 
 void platform_usb_init(void);
+bool platform_usb_connected(void);
 void platform_usb_attach(void);
 void platform_usb_detach(void);
 bool platform_usb_take_event(PlatformUsbEvent *event);

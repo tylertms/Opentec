@@ -50,7 +50,7 @@ usb_operating_mode_command_sources = files('source/usb/operating_mode_command.c'
 usb_vendor_command_sources = files('source/usb/vendor_command.c')
 podium_report_descriptor_sources = files('source/usb/podium_report_descriptor.c')
 board_identity_sources = files('source/board/identity.c')
-power_button_sources = files('source/board/power_button.c')
+usb_connection_sources = files('source/usb/connection.c')
 status_led_sources = files('source/board/status_led.c')
 h_pattern_shifter_sources = files('source/shifter/h_pattern.c')
 shifter_display_sources = files('source/shifter/display.c')
@@ -155,7 +155,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'usb-vendor-command': 'source/usb/vendor_command.c',
     'podium-report-descriptor': 'source/usb/podium_report_descriptor.c',
     'board-identity': 'source/board/identity.c',
-    'power-button': 'source/board/power_button.c',
+    'usb-connection': 'source/usb/connection.c',
     'status-led': 'source/board/status_led.c',
     'firmware': 'source/firmware.c',
     'h-pattern-shifter': 'source/shifter/h_pattern.c',
@@ -714,10 +714,10 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
-  power_button_test = executable(
-    'base-power-button-test',
-    'tests/source/power_button.c',
-    power_button_sources,
+  usb_connection_test = executable(
+    'base-usb-connection-test',
+    'tests/source/usb_connection.c',
+    usb_connection_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -1242,7 +1242,7 @@ if not meson.is_cross_build()
     suite: ['base', 'usb'],
   )
   test('base-board-identity', board_identity_test, suite: ['base', 'board'])
-  test('base-power-button', power_button_test, suite: ['base', 'board', 'input'])
+  test('base-usb-connection', usb_connection_test, suite: ['base', 'usb', 'connection'])
   test('base-status-led', status_led_test, suite: ['base', 'board', 'led'])
   test('base-h-pattern-shifter', h_pattern_shifter_test, suite: ['base', 'shifter'])
   test('base-shifter-display', shifter_display_test, suite: ['base', 'shifter', 'display'])

@@ -31,6 +31,7 @@
 #include "platform/shifter.h"
 #include "platform/status_led.h"
 #include "platform/time.h"
+#include "platform/usb.h"
 #include "platform/wheel_link.h"
 #include "profile/bank.h"
 #include "profile/tuning.h"
@@ -39,6 +40,7 @@
 #include "shifter/display.h"
 #include "shifter/h_pattern.h"
 #include "shifter/input.h"
+#include "usb/connection.h"
 #include "usb/device.h"
 #include "usb/fanatec_input.h"
 #include "usb/output_command.h"
@@ -92,6 +94,7 @@ static ShifterDisplay shifter_display;
 static fanatec_input_state usb_input_state;
 static uint8_t usb_input_report[FANATEC_INPUT_REPORT_SIZE];
 static UsbDeviceOutputReport usb_device_output_report;
+static UsbConnectionMonitor usb_connection_monitor;
 static UsbOutputCommand usb_output_command;
 static UsbVendorCommand usb_vendor_command;
 static ForceFeedbackCommand force_feedback_command;
@@ -178,14 +181,15 @@ static void initialize_motor_link(void) {
 /**
  * @brief Builds the motor controller's force-feedback status byte.
  *
- * Selects remote motor-side effect processing, reports whether the motor output interlock permits
- * force, and mirrors the primary and secondary output gates.
+ * Selects remote motor-side effect processing, reports whether the motor output interlock and USB
+ * connection permit force, and mirrors the primary and secondary output gates.
  *
  * @return Current force-feedback status bits for the next motor-link packet.
  */
 static uint8_t motor_force_feedback_status(void) {
     uint8_t status = MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS;
-    if (motor_tuning_ready && !motor_status_service_output_inhibited(&motor_status_service)) {
+    if (motor_tuning_ready && !motor_status_service_output_inhibited(&motor_status_service) &&
+        !usb_connection_monitor.disconnected) {
         status |= MOTOR_OUTPUT_STATUS_ENABLED;
     }
     if (force_feedback_state.primary_output_disabled) {
@@ -193,6 +197,9 @@ static uint8_t motor_force_feedback_status(void) {
     }
     if (force_feedback_state.secondary_output_disabled) {
         status |= MOTOR_OUTPUT_STATUS_SECONDARY_DISABLED;
+    }
+    if (usb_connection_monitor.disconnected) {
+        status |= MOTOR_OUTPUT_STATUS_USB_DISCONNECTED;
     }
     return status;
 }
@@ -428,11 +435,14 @@ int main(void) {
     initialize_motor();
     initialize_force_feedback_script();
     usb_device_init(board_identity.variant);
+    usb_connection_monitor_init(&usb_connection_monitor);
     for (;;) {
         usb_device_service();
         service_usb_output();
         platform_aux_bus_service();
         uint32_t now_ms = platform_time_ms();
+        (void)usb_connection_monitor_update(&usb_connection_monitor, platform_usb_connected(), true,
+                                            now_ms);
         platform_status_led_set(status_led_update(&status_led, now_ms));
         platform_cooling_service(now_ms);
         update_fan_speed(PLATFORM_FAN_PRIMARY);

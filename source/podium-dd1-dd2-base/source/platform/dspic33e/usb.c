@@ -87,6 +87,8 @@ static void reset_controller(void) {
 
 void platform_usb_init(void) {
     IEC5bits.USB1IE = 0;
+    ANSELBbits.ANSB1 = 0;
+    TRISBbits.TRISB1 = 1;
     PMD4bits.USB1MD = 0;
     U1CON = 0;
     U1IE = 0;
@@ -102,6 +104,15 @@ void platform_usb_init(void) {
     IPC21bits.USB1IP = USB_INTERRUPT_PRIORITY;
     IFS5bits.USB1IF = 0;
 }
+
+/**
+ * @brief Reads the USB VBUS connection input.
+ *
+ * Reports the active-high connection sense sampled on PORTB bit 1.
+ *
+ * @return True while USB VBUS is present.
+ */
+bool platform_usb_connected(void) { return PORTBbits.RB1 != 0; }
 
 void platform_usb_attach(void) {
     U1IR = 0xff;
