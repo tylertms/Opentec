@@ -121,6 +121,8 @@ static HPatternShifter h_pattern_shifter;
 static ShifterInputState shifter_input;
 static ShifterDisplay shifter_display;
 static UsbInputReportState usb_input_state;
+static WheelMultiPositionInput wheel_multi_position_input;
+static fanatec_multi_position_input fanatec_multi_position_input_state;
 static uint8_t usb_input_report[USB_INPUT_REPORT_MAX_SIZE];
 static uint8_t usb_motor_acknowledgement[USB_DEVICE_REPORT_SIZE];
 static uint8_t usb_motor_response[USB_DEVICE_REPORT_SIZE];
@@ -822,7 +824,15 @@ static void service_usb_output(void) {
     }
 }
 
-static void service_usb_input(void) {
+/**
+ * @brief Builds and submits the current USB input report.
+ *
+ * Combines calibrated motor position, attached-wheel controls and rotary selectors, shifter
+ * state, and pedal axes into the active USB input format.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_usb_input(uint32_t now_ms) {
     if (!motor_position_ready) {
         return;
     }
@@ -850,9 +860,24 @@ static void service_usb_input(void) {
                                            wheel_service_mode(&wheel_service) !=
                                                WHEEL_MODE_CRC_AUTHENTICATED);
     }
-    fanatec_input_apply_multi_position_mode(
-        &usb_input_state.fanatec,
-        wheel_service_multi_position_mode(&wheel_service, tuning_profile->multi_position_mode));
+    uint8_t multi_position_mode =
+        wheel_service_multi_position_mode(&wheel_service, tuning_profile->multi_position_mode);
+    fanatec_input_apply_multi_position_mode(&usb_input_state.fanatec, multi_position_mode);
+    if (wheel_service_multi_position_input(&wheel_service, now_ms, &wheel_multi_position_input)) {
+        fanatec_multi_position_input_state = (fanatec_multi_position_input){
+            .remap_selectors = wheel_multi_position_input.remap_selectors,
+        };
+        for (uint8_t channel = 0; channel < FANATEC_INPUT_MULTI_POSITION_CHANNELS; channel++) {
+            fanatec_multi_position_input_state.channels[channel].position =
+                wheel_multi_position_input.channels[channel].position;
+            fanatec_multi_position_input_state.channels[channel].event =
+                (uint8_t)wheel_multi_position_input.channels[channel].event;
+            fanatec_multi_position_input_state.channels[channel].active =
+                wheel_multi_position_input.channels[channel].active;
+        }
+        fanatec_input_apply_multi_position_rotaries(&usb_input_state.fanatec, multi_position_mode,
+                                                    &fanatec_multi_position_input_state);
+    }
     const uint8_t *wheel_buttons = wheel_service_buttons(&wheel_service);
     for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {
         usb_input_state.fanatec.button_banks[bank] = wheel_buttons[bank];
@@ -1008,7 +1033,7 @@ int main(void) {
         }
         service_force_output_enable();
         service_shifter_display(now_ms);
-        service_usb_input();
+        service_usb_input(now_ms);
         service_motor();
         service_cooling(now_ms);
     }

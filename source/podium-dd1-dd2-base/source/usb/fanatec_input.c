@@ -25,8 +25,19 @@ enum {
     SHIFTER_SEQUENTIAL_BUTTON_BANK = 4,
     SHIFTER_TRANSITION_BUTTON_0 = 1 << 0,
     SHIFTER_TRANSITION_BUTTON_1 = 1 << 1,
+    MULTI_POSITION_ENCODER_MODE = 0,
+    MULTI_POSITION_PULSE_MODE = 1,
+    MULTI_POSITION_CONSTANT_MODE = 2,
 };
 
+/**
+ * @brief Writes a little-endian sixteen-bit value.
+ *
+ * Stores the low byte first and the high byte second.
+ *
+ * @param[out] destination Two-byte destination.
+ * @param[in] value Value to write.
+ */
 static void write_u16(uint8_t *destination, uint16_t value) {
     destination[0] = (uint8_t)value;
     destination[1] = (uint8_t)(value >> 8);
@@ -73,6 +84,90 @@ void fanatec_input_apply_multi_position_mode(fanatec_input_state *state, uint8_t
 }
 
 /**
+ * @brief Converts a rotary position to its report selector.
+ *
+ * Produces one bit for positions one through twelve. The alternate layout moves positions one
+ * through four behind positions five through twelve.
+ *
+ * @param[in] position One-based rotary position.
+ * @param[in] remap True to use the alternate selector layout.
+ * @return Twelve-bit selector, or zero when the position is outside the supported range.
+ */
+static uint16_t multi_position_selector(uint8_t position, bool remap) {
+    if (position == 0 || position > 12) {
+        return 0;
+    }
+
+    uint16_t selector = (uint16_t)(1u << (position - 1));
+    if (!remap) {
+        return selector;
+    }
+    return selector <= 8 ? (uint16_t)(selector << 8) : (uint16_t)(selector >> 4);
+}
+
+/**
+ * @brief Packs one rotary selector into the Fanatec rotary fields.
+ *
+ * Places each channel in its twelve-bit report slot without changing bits outside that slot.
+ *
+ * @param[in,out] state Input report state to update.
+ * @param[in] channel Rotary channel index.
+ * @param[in] selector Twelve-bit one-hot selector.
+ */
+static void apply_multi_position_selector(fanatec_input_state *state, uint8_t channel,
+                                          uint16_t selector) {
+    if (channel == 0) {
+        state->rotary[0] = (uint8_t)selector;
+        state->rotary[1] |= (uint8_t)((selector >> 8) & 0x0fu);
+    } else if (channel == 1) {
+        state->rotary[1] |= (uint8_t)((selector << 4) & 0xf0u);
+        state->rotary[2] = (uint8_t)(selector >> 4);
+    } else {
+        state->rotary[3] |= (uint8_t)((selector << 4) & 0xf0u);
+        state->rotary[4] = (uint8_t)(selector >> 4);
+    }
+}
+
+/**
+ * @brief Applies multi-position rotary values to the Fanatec input state.
+ *
+ * Encoder mode emits direction events. Pulse mode emits a position while its transition event is
+ * active. Constant mode continuously emits each active position. Other modes leave all rotary
+ * fields clear.
+ *
+ * @param[in,out] state Input report state to update.
+ * @param[in] mode Effective multi-position reporting mode.
+ * @param[in] input Logical rotary channels and selector layout.
+ */
+void fanatec_input_apply_multi_position_rotaries(fanatec_input_state *state, uint8_t mode,
+                                                 const fanatec_multi_position_input *input) {
+    memset(state->rotary, 0, sizeof(state->rotary));
+
+    for (uint8_t channel = 0; channel < FANATEC_INPUT_MULTI_POSITION_CHANNELS; ++channel) {
+        const fanatec_multi_position_channel *source = &input->channels[channel];
+        if (!source->active) {
+            continue;
+        }
+        if (mode == MULTI_POSITION_ENCODER_MODE) {
+            if (channel == 0) {
+                state->rotary[0] = source->event;
+            } else if (channel == 1) {
+                state->rotary[1] = (uint8_t)(source->event << 4);
+            } else {
+                state->rotary[3] = (uint8_t)(source->event << 4);
+            }
+            continue;
+        }
+        if (mode != MULTI_POSITION_CONSTANT_MODE &&
+            (mode != MULTI_POSITION_PULSE_MODE || source->event == 0)) {
+            continue;
+        }
+        apply_multi_position_selector(
+            state, channel, multi_position_selector(source->position, input->remap_selectors));
+    }
+}
+
+/**
  * @brief Applies shifter input to the Fanatec button fields.
  *
  * Places the current H-pattern gear or sequential transition buttons according to the two shifter
@@ -108,6 +203,14 @@ void fanatec_input_apply_shifter(fanatec_input_state *state, const ShifterInputS
     }
 }
 
+/**
+ * @brief Encodes the shared Fanatec input payload.
+ *
+ * Writes every logical input field and the fixed button usage identifiers without a report ID.
+ *
+ * @param[out] report Buffer that receives the encoded payload.
+ * @param[in] state Logical Fanatec input values.
+ */
 static void encode_payload(uint8_t report[FANATEC_INPUT_COMPATIBILITY_REPORT_SIZE],
                            const fanatec_input_state *state) {
     size_t pedal;

@@ -512,6 +512,80 @@ static void test_routes_multi_position_mode(void) {
            TUNING_MULTI_POSITION_ENCODER);
 }
 
+static void test_builds_direct_multi_position_input(void) {
+    WheelService service;
+    initialize_service(&service);
+    service.protocol.request_ready = true;
+    service.protocol.mode = 0x0f;
+    service.protocol.request[6] = 3;
+    service.protocol.request[7] = 10;
+    service.protocol.request[14] = 0xac;
+    WheelMultiPositionInput input;
+
+    assert(wheel_service_multi_position_input(&service, 0, &input));
+    assert(input.channels[0].position == 3);
+    assert(input.channels[1].position == 10);
+    assert(input.channels[2].position == 12);
+    assert(input.channels[0].event == WHEEL_ROTARY_EVENT_NONE);
+    assert(input.channels[1].event == WHEEL_ROTARY_EVENT_NONE);
+    assert(input.channels[2].event == WHEEL_ROTARY_EVENT_NONE);
+    assert(input.channels[0].active);
+    assert(input.channels[1].active);
+    assert(input.channels[2].active);
+
+    service.protocol.request[6] = 4;
+    service.protocol.request[7] = 9;
+    service.protocol.request[14] = 1;
+    assert(wheel_service_multi_position_input(&service, 1, &input));
+    assert(input.channels[0].event == WHEEL_ROTARY_EVENT_FORWARD);
+    assert(input.channels[1].event == WHEEL_ROTARY_EVENT_BACKWARD);
+    assert(input.channels[2].event == WHEEL_ROTARY_EVENT_FORWARD);
+}
+
+static void test_builds_adapter_multi_position_input(void) {
+    WheelService service;
+    initialize_service(&service);
+    service.protocol.request_ready = true;
+    service.protocol.mode = WHEEL_MODE_CRC_AUTHENTICATED;
+    service.protocol.request[6] = 1;
+    service.protocol.request[7] = 2;
+    service.protocol.request[14] = 3;
+    service.protocol.crc_adapter.connected = true;
+    service.protocol.crc_adapter.mode = 1;
+    service.protocol.crc_adapter.rotary_positions[0] = 5;
+    service.protocol.crc_adapter.rotary_positions[1] = 6;
+    service.protocol.crc_adapter.rotary_positions[2] = 7;
+    WheelMultiPositionInput input;
+
+    assert(wheel_service_multi_position_input(&service, 0, &input));
+    assert(input.channels[0].position == 5);
+    assert(input.channels[1].position == 6);
+    assert(input.channels[2].position == 7);
+    assert(input.channels[2].active);
+}
+
+static void test_marks_extended_multi_position_layout(void) {
+    WheelService service;
+    initialize_service(&service);
+    service.protocol.request_ready = true;
+    service.protocol.mode = WHEEL_MODE_REMOTE_TUNING_EXTENDED;
+    WheelMultiPositionInput input;
+
+    assert(wheel_service_multi_position_input(&service, 0, &input));
+    assert(input.remap_selectors);
+    assert(input.channels[2].active);
+}
+
+static void test_rejects_unavailable_multi_position_input(void) {
+    WheelService service;
+    initialize_service(&service);
+    WheelMultiPositionInput input;
+
+    assert(!wheel_service_multi_position_input(&service, 0, &input));
+    assert(!wheel_service_multi_position_input(NULL, 0, &input));
+    assert(!wheel_service_multi_position_input(&service, 0, NULL));
+}
+
 int main(void) {
     test_maps_primary_scan_bits();
     test_maps_secondary_scan_bit();
@@ -526,5 +600,9 @@ int main(void) {
     test_defers_next_request_for_shared_serial_work();
     test_initializes_rotary_input();
     test_routes_multi_position_mode();
+    test_builds_direct_multi_position_input();
+    test_builds_adapter_multi_position_input();
+    test_marks_extended_multi_position_layout();
+    test_rejects_unavailable_multi_position_input();
     return 0;
 }

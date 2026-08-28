@@ -15,6 +15,7 @@ enum {
     WHEEL_PACKET_CRC_CONTROL_COUNT = 8,
     WHEEL_PACKET_CRC_HISTORY_DEPTH = 3,
     WHEEL_PACKET_CRC_AXIS_VALUE_COUNT = 2,
+    WHEEL_PACKET_CRC_ADAPTER_ROTARY_COUNT = 3,
 };
 
 typedef struct {
@@ -53,6 +54,7 @@ typedef struct {
 typedef struct {
     uint8_t buttons[3];
     uint8_t axes[2];
+    uint8_t rotary_positions[WHEEL_PACKET_CRC_ADAPTER_ROTARY_COUNT];
     uint16_t mode;
     int8_t primary_delta;
     bool connected;

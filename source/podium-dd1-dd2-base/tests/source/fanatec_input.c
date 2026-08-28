@@ -124,6 +124,75 @@ static void test_multi_position_mode_mapping(void) {
     assert(state.transfer_code == 0x87);
 }
 
+static void test_multi_position_encoder_mapping(void) {
+    fanatec_input_state state = {.rotary = {0xff, 0xff, 0xff, 0xff, 0xff}};
+    const fanatec_multi_position_input input = {
+        .channels = {{.event = 1, .active = true},
+                     {.event = 2, .active = true},
+                     {.event = 1, .active = true}},
+    };
+    const uint8_t expected[FANATEC_INPUT_ROTARY_BYTES] = {1, 0x20, 0, 0x10, 0};
+
+    fanatec_input_apply_multi_position_rotaries(&state, 0, &input);
+
+    assert(memcmp(state.rotary, expected, sizeof(expected)) == 0);
+}
+
+static void test_multi_position_pulse_mapping(void) {
+    fanatec_input_state state = {.rotary = {0xff, 0xff, 0xff, 0xff, 0xff}};
+    const fanatec_multi_position_input input = {
+        .channels = {{.position = 1, .active = true},
+                     {.position = 5, .event = 2, .active = true},
+                     {.position = 12, .event = 1}},
+    };
+    const uint8_t expected[FANATEC_INPUT_ROTARY_BYTES] = {0, 0, 1, 0, 0};
+
+    fanatec_input_apply_multi_position_rotaries(&state, 1, &input);
+
+    assert(memcmp(state.rotary, expected, sizeof(expected)) == 0);
+}
+
+static void test_multi_position_constant_mapping(void) {
+    fanatec_input_state state = {0};
+    const fanatec_multi_position_input input = {
+        .channels = {{.position = 12, .active = true},
+                     {.position = 4, .active = true},
+                     {.position = 9, .active = true}},
+    };
+    const uint8_t expected[FANATEC_INPUT_ROTARY_BYTES] = {0, 0x88, 0, 0, 0x10};
+
+    fanatec_input_apply_multi_position_rotaries(&state, 2, &input);
+
+    assert(memcmp(state.rotary, expected, sizeof(expected)) == 0);
+}
+
+static void test_multi_position_remapped_selector_layout(void) {
+    fanatec_input_state state = {0};
+    const fanatec_multi_position_input input = {
+        .channels = {{.position = 1, .active = true},
+                     {.position = 5, .active = true},
+                     {.position = 12, .active = true}},
+        .remap_selectors = true,
+    };
+    const uint8_t expected[FANATEC_INPUT_ROTARY_BYTES] = {0, 0x11, 0, 0, 8};
+
+    fanatec_input_apply_multi_position_rotaries(&state, 2, &input);
+
+    assert(memcmp(state.rotary, expected, sizeof(expected)) == 0);
+}
+
+static void test_unsupported_multi_position_mode_clears_rotaries(void) {
+    fanatec_input_state state = {.rotary = {1, 2, 3, 4, 5}};
+    const fanatec_multi_position_input input = {
+        .channels = {{.position = 1, .event = 1, .active = true}},
+    };
+    const uint8_t expected[FANATEC_INPUT_ROTARY_BYTES] = {0};
+
+    fanatec_input_apply_multi_position_rotaries(&state, 3, &input);
+
+    assert(memcmp(state.rotary, expected, sizeof(expected)) == 0);
+}
+
 static void test_h_pattern_shifter_mapping(void) {
     fanatec_input_state state = {
         .button_banks = {0, 0x80, 0xff, 0, 0xff},
@@ -166,6 +235,11 @@ int main(void) {
     test_wheel_control_mapping();
     test_restricted_wheel_control_mapping();
     test_multi_position_mode_mapping();
+    test_multi_position_encoder_mapping();
+    test_multi_position_pulse_mapping();
+    test_multi_position_constant_mapping();
+    test_multi_position_remapped_selector_layout();
+    test_unsupported_multi_position_mode_clears_rotaries();
     test_h_pattern_shifter_mapping();
     test_sequential_shifter_mapping();
     return 0;

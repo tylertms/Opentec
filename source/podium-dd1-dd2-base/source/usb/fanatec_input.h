@@ -13,6 +13,7 @@ enum {
     FANATEC_INPUT_COMPATIBILITY_REPORT_SIZE = 33,
     FANATEC_INPUT_BUTTON_BANKS = 5,
     FANATEC_INPUT_ROTARY_BYTES = 5,
+    FANATEC_INPUT_MULTI_POSITION_CHANNELS = 3,
     FANATEC_INPUT_ACCESSORY_BYTES = 5,
     FANATEC_INPUT_PEDAL_AXES = 3,
     FANATEC_INPUT_DIRECT_DRIVE_MODE = 0xfe
@@ -33,6 +34,17 @@ typedef struct {
     uint8_t axis_limit;
 } fanatec_input_state;
 
+typedef struct {
+    uint8_t position;
+    uint8_t event;
+    bool active;
+} fanatec_multi_position_channel;
+
+typedef struct {
+    fanatec_multi_position_channel channels[FANATEC_INPUT_MULTI_POSITION_CHANNELS];
+    bool remap_selectors;
+} fanatec_multi_position_input;
+
 bool fanatec_input_encode(uint8_t report[FANATEC_INPUT_REPORT_SIZE],
                           const fanatec_input_state *state);
 bool fanatec_input_compatibility_encode(uint8_t report[FANATEC_INPUT_COMPATIBILITY_REPORT_SIZE],
@@ -40,6 +52,8 @@ bool fanatec_input_compatibility_encode(uint8_t report[FANATEC_INPUT_COMPATIBILI
 void fanatec_input_apply_wheel_controls(fanatec_input_state *state, const uint8_t controls[8],
                                         bool include_extended);
 void fanatec_input_apply_multi_position_mode(fanatec_input_state *state, uint8_t mode);
+void fanatec_input_apply_multi_position_rotaries(fanatec_input_state *state, uint8_t mode,
+                                                 const fanatec_multi_position_input *input);
 void fanatec_input_apply_shifter(fanatec_input_state *state, const ShifterInputState *shifter,
                                  ShifterGear gear);
 

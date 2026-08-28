@@ -389,7 +389,8 @@ void wheel_protocol_set_crc_output(WheelProtocol *protocol, const WheelPacketCrc
 /**
  * @brief Configures CRC-family adapter packet handling.
  *
- * Retains the adapter identifier, mode, and variant used by the CRC-family codec.
+ * Retains adapter buttons, axes, rotary positions, mode, connection state, and pending motion used
+ * by attached-wheel input processing.
  *
  * @param[in,out] protocol Wheel protocol state to configure.
  * @param[in] adapter CRC-family adapter configuration.

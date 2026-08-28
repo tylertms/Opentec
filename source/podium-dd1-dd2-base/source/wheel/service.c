@@ -20,8 +20,21 @@ enum {
     WHEEL_BUTTON_RESPONSE_MASK = 0xe0,
     WHEEL_BUTTON_VALUE_MASK = 0x1f,
     WHEEL_PROTOCOL_ACTIVITY_TIMEOUT_MS = 2000,
+    WHEEL_MULTI_POSITION_PRIMARY_OFFSET = 6,
+    WHEEL_MULTI_POSITION_SECONDARY_OFFSET = 7,
+    WHEEL_MULTI_POSITION_PACKED_OFFSET = 14,
 };
 
+/**
+ * @brief Assigns one source bit to a destination bit.
+ *
+ * Replaces the selected destination bit while preserving every other bit.
+ *
+ * @param[in,out] value Destination byte to update.
+ * @param[in] target Destination bit index.
+ * @param[in] source Source byte.
+ * @param[in] source_bit Source bit index.
+ */
 static void assign(uint8_t *value, uint8_t target, uint8_t source, uint8_t source_bit) {
     uint8_t mask = (uint8_t)(1u << target);
     *value = (*value & (uint8_t)~mask) | (((source >> source_bit) & 1u) << target);
@@ -376,7 +389,8 @@ void wheel_service_set_display_output(WheelService *service, const WheelDisplayO
 /**
  * @brief Configures the attached-wheel CRC packet adapter.
  *
- * Retains the adapter identifier, mode, and variant used to encode and decode CRC-family packets.
+ * Retains adapter buttons, axes, rotary positions, mode, connection state, and pending motion used
+ * by attached-wheel input processing.
  *
  * @param[in,out] service Attached-wheel service to configure.
  * @param[in] adapter CRC packet adapter configuration.
@@ -445,6 +459,93 @@ uint8_t wheel_service_multi_position_mode(const WheelService *service,
     return wheel_capability_multi_position_mode(&service->protocol.capabilities, configured_mode,
                                                 service->protocol.mode,
                                                 service->protocol.request_ready);
+}
+
+/**
+ * @brief Tests whether the attached adapter supplies rotary positions.
+ *
+ * Selects the wheel modes that replace the direct rotary bytes with the three adapter selectors
+ * while the adapter is connected.
+ *
+ * @param[in] service Attached-wheel service and adapter state.
+ * @return True when adapter rotary positions are the active source.
+ */
+static bool adapter_supplies_multi_position_input(const WheelService *service) {
+    if (!service->protocol.crc_adapter.connected) {
+        return false;
+    }
+    switch (service->protocol.mode) {
+    case 4:
+    case 6:
+    case 12:
+    case WHEEL_MODE_CRC_AUTHENTICATED:
+        return true;
+    default:
+        return false;
+    }
+}
+
+/**
+ * @brief Tests whether the third multi-position channel is exposed.
+ *
+ * Enables the third direct selector for its three wheel modes and the third adapter selector for
+ * adapter mode one.
+ *
+ * @param[in] service Attached-wheel service and adapter state.
+ * @param[in] adapter_source True when rotary positions come from the attached adapter.
+ * @return True when the third channel contributes to the input report.
+ */
+static bool third_multi_position_channel_active(const WheelService *service, bool adapter_source) {
+    return service->protocol.mode == 0x0f || service->protocol.mode == 0x17 ||
+           service->protocol.mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED ||
+           (adapter_source && service->protocol.crc_adapter.mode == 1);
+}
+
+/**
+ * @brief Builds the current multi-position rotary input.
+ *
+ * Selects direct protocol positions or adapter selectors, advances the three rotary transition
+ * channels, and marks the alternate selector layout used by extended remote-tuning wheels.
+ *
+ * @param[in,out] service Attached-wheel service and rotary transition state.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[out] input Three logical rotary channels and selector-layout state.
+ * @return True when a supported attached-wheel request is available.
+ */
+bool wheel_service_multi_position_input(WheelService *service, uint32_t now_ms,
+                                        WheelMultiPositionInput *input) {
+    if (service == NULL || input == NULL) {
+        return false;
+    }
+    *input = (WheelMultiPositionInput){0};
+    const uint8_t *request = wheel_protocol_request(&service->protocol);
+    if (request == NULL) {
+        return false;
+    }
+
+    bool adapter_source = adapter_supplies_multi_position_input(service);
+    if (adapter_source) {
+        for (uint8_t channel = 0; channel < WHEEL_MULTI_POSITION_CHANNEL_COUNT; channel++) {
+            input->channels[channel].position =
+                service->protocol.crc_adapter.rotary_positions[channel];
+        }
+    } else {
+        input->channels[0].position = request[WHEEL_MULTI_POSITION_PRIMARY_OFFSET];
+        input->channels[1].position = request[WHEEL_MULTI_POSITION_SECONDARY_OFFSET];
+        input->channels[2].position = request[WHEEL_MULTI_POSITION_PACKED_OFFSET] & 0x0fu;
+    }
+
+    input->channels[0].active = true;
+    input->channels[1].active = true;
+    input->channels[2].active = third_multi_position_channel_active(service, adapter_source);
+    input->remap_selectors = service->protocol.mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED;
+    for (uint8_t channel = 0; channel < WHEEL_MULTI_POSITION_CHANNEL_COUNT; channel++) {
+        if (input->channels[channel].active) {
+            input->channels[channel].event = wheel_rotary_input_update(
+                &service->rotary_input, channel, input->channels[channel].position, now_ms);
+        }
+    }
+    return true;
 }
 
 /**

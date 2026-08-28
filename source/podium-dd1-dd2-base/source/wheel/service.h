@@ -12,6 +12,7 @@
 enum {
     WHEEL_BUTTON_BANK_COUNT = 3,
     WHEEL_SCAN_SAMPLE_DEPTH = 3,
+    WHEEL_MULTI_POSITION_CHANNEL_COUNT = 3,
 };
 
 typedef enum {
@@ -19,6 +20,17 @@ typedef enum {
     WHEEL_SERVICE_REQUEST_PROTOCOL,
     WHEEL_SERVICE_REQUEST_BUTTONS,
 } WheelServiceRequest;
+
+typedef struct {
+    uint8_t position;
+    WheelRotaryEvent event;
+    bool active;
+} WheelMultiPositionChannel;
+
+typedef struct {
+    WheelMultiPositionChannel channels[WHEEL_MULTI_POSITION_CHANNEL_COUNT];
+    bool remap_selectors;
+} WheelMultiPositionInput;
 
 typedef struct {
     SerialService *transport;
@@ -46,6 +58,8 @@ bool wheel_service_apply_multi_position_command(WheelService *service,
                                                 const UsbOperatingModeCommand *command);
 uint8_t wheel_service_multi_position_mode(const WheelService *service,
                                           TuningMultiPositionMode configured_mode);
+bool wheel_service_multi_position_input(WheelService *service, uint32_t now_ms,
+                                        WheelMultiPositionInput *input);
 void wheel_service_apply_output_report(WheelService *service, const uint8_t *arguments,
                                        bool display_blink_active);
 void wheel_service_queue_report_seventeen(
