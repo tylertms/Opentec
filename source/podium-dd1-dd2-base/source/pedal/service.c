@@ -164,7 +164,7 @@ void pedal_service_set_analog_samples(PedalService *service,
 }
 
 void pedal_service_set_brake_force(PedalService *service, uint8_t force_percent) {
-    service->brake_force_percent = force_percent > 100 ? 100 : force_percent;
+    service->brake_force_percent = force_percent;
 }
 
 static void update_v4_tuning_value(uint8_t *current, uint8_t value, uint8_t setting,

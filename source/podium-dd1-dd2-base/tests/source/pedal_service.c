@@ -211,6 +211,23 @@ static void test_applies_active_brake_force(void) {
     assert(input->axes[2] == 3);
 }
 
+static void test_preserves_signed_brake_force_setting(void) {
+    PedalService service;
+    const PedalFrame sample = {
+        .type = PEDAL_FRAME_AXIS_SAMPLE,
+        .payload = {1, 0, 0xe8, 3, 3, 0, 0, 4},
+    };
+    reset_link();
+    pedal_service_init(&service);
+    pedal_service_set_brake_force(&service, 101);
+    connect_v3(&service);
+
+    receive_frame(&sample);
+    pedal_service_run(&service, 11);
+
+    assert(pedal_service_input(&service)->axes[1] == 960);
+}
+
 static void test_uses_raw_brake_during_v3_calibration(void) {
     PedalService service;
     const PedalFrame sample = {
@@ -665,6 +682,7 @@ static void test_selects_analog_input_after_discovery_timeout(void) {
 int main(void) {
     test_connects_and_publishes_v3_input();
     test_applies_active_brake_force();
+    test_preserves_signed_brake_force_setting();
     test_uses_raw_brake_during_v3_calibration();
     test_ignores_unknown_v3_reports_for_timeout();
     test_sends_v3_status_on_change_and_interval();
