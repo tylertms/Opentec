@@ -55,6 +55,8 @@ typedef struct {
     WheelPacketModeFourInput mode_four_input;
     WheelPacketModeFourRuntime mode_four_runtime;
     WheelPacketModeFourOutput mode_four_output;
+    WheelPacketCrcFilter crc_filter;
+    WheelPacketCrcInput crc_input;
     WheelPacketCrcOutput crc_output;
     WheelProtocolPhase phase;
     uint8_t mode;
@@ -84,6 +86,7 @@ const uint8_t *wheel_protocol_response(const WheelProtocol *protocol);
 const uint8_t *wheel_protocol_request(const WheelProtocol *protocol);
 const WheelPacketModeOneInput *wheel_protocol_mode_one_input(const WheelProtocol *protocol);
 const WheelPacketModeFourInput *wheel_protocol_mode_four_input(const WheelProtocol *protocol);
+const WheelPacketCrcInput *wheel_protocol_crc_input(const WheelProtocol *protocol);
 const WheelPacketModeOneReportState *
 wheel_protocol_mode_one_report_state(const WheelProtocol *protocol);
 const WheelAxisOverrideProcessor *wheel_protocol_axis_overrides(const WheelProtocol *protocol);

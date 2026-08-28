@@ -92,6 +92,20 @@ static bool mode_four_acknowledgement_input_active(const WheelPacketModeFourInpu
 }
 
 /**
+ * @brief Detects CRC-family input eligible to acknowledge a display overlay.
+ *
+ * Accepts any filtered directional or button bit and payload byte 10, which is enabled for modes
+ * 6 and 0x15 by the overlay input gate.
+ *
+ * @param[in] input Filtered and normalized CRC-family request.
+ * @return True while an eligible input is active.
+ */
+static bool crc_acknowledgement_input_active(const WheelPacketCrcInput *input) {
+    bool button_active = input->buttons[0] != 0 || input->buttons[1] != 0 || input->buttons[2] != 0;
+    return button_active || input->controls[4] != 0;
+}
+
+/**
  * @brief Captures an active attached-wheel request.
  *
  * Decodes and normalizes the selected mode's request, records display-acknowledgement input,
@@ -142,6 +156,21 @@ static void capture_request(WheelProtocol *protocol,
                                          &protocol->mode_four_runtime, snapshot);
         protocol->acknowledgement_input_active =
             mode_four_acknowledgement_input_active(&protocol->mode_four_input);
+        bool changed = false;
+        for (uint8_t index = 0; index < WHEEL_PROTOCOL_SNAPSHOT_SIZE; index++) {
+            changed |= protocol->request[index] != snapshot[index];
+            protocol->request[index] = snapshot[index];
+        }
+        protocol->request_changed |= changed;
+    } else if (wheel_packet_crc_applies(protocol->mode)) {
+        uint8_t snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE];
+        wheel_packet_crc_decode(request, &protocol->crc_input);
+        wheel_packet_crc_prepare(&protocol->crc_input, protocol->mode, protocol->interface_mode);
+        wheel_packet_crc_filter(&protocol->crc_filter, &protocol->crc_input);
+        wheel_packet_crc_normalize_direct(&protocol->crc_input, protocol->mode,
+                                          protocol->interface_mode, snapshot);
+        protocol->acknowledgement_input_active =
+            crc_acknowledgement_input_active(&protocol->crc_input);
         bool changed = false;
         for (uint8_t index = 0; index < WHEEL_PROTOCOL_SNAPSHOT_SIZE; index++) {
             changed |= protocol->request[index] != snapshot[index];
@@ -206,6 +235,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     const WheelPacketModeFourInput empty_mode_four_input = {0};
     const WheelPacketModeFourRuntime empty_mode_four_runtime = {0};
     const WheelPacketModeFourOutput empty_mode_four_output = {0};
+    const WheelPacketCrcInput empty_crc_input = {0};
     const WheelPacketCrcOutput empty_crc_output = {0};
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
     clear(protocol->request, WHEEL_PROTOCOL_SNAPSHOT_SIZE);
@@ -219,6 +249,8 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     protocol->mode_four_input = empty_mode_four_input;
     protocol->mode_four_runtime = empty_mode_four_runtime;
     protocol->mode_four_output = empty_mode_four_output;
+    wheel_packet_crc_filter_init(&protocol->crc_filter);
+    protocol->crc_input = empty_crc_input;
     protocol->crc_output = empty_crc_output;
     wheel_authentication_init(&protocol->authentication, WHEEL_MODE_UNKNOWN);
     protocol->phase = WHEEL_PROTOCOL_WAITING;
@@ -336,6 +368,12 @@ const WheelPacketModeFourInput *wheel_protocol_mode_four_input(const WheelProtoc
     return protocol->request_ready && protocol->mode == 4 ? &protocol->mode_four_input : 0;
 }
 
+const WheelPacketCrcInput *wheel_protocol_crc_input(const WheelProtocol *protocol) {
+    return protocol->request_ready && wheel_packet_crc_applies(protocol->mode)
+               ? &protocol->crc_input
+               : 0;
+}
+
 const WheelPacketModeOneReportState *
 wheel_protocol_mode_one_report_state(const WheelProtocol *protocol) {
     return protocol->request_ready && wheel_packet_mode_one_applies(protocol->mode)
@@ -364,7 +402,8 @@ bool wheel_protocol_request_changed(WheelProtocol *protocol) {
  */
 bool wheel_protocol_acknowledgement_input_active(const WheelProtocol *protocol) {
     return protocol->request_ready &&
-           (wheel_packet_mode_one_applies(protocol->mode) || protocol->mode == 4) &&
+           (wheel_packet_mode_one_applies(protocol->mode) || protocol->mode == 4 ||
+            wheel_packet_crc_applies(protocol->mode)) &&
            protocol->acknowledgement_input_active;
 }
 

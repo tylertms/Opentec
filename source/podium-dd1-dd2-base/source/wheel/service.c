@@ -181,6 +181,7 @@ static void reset_connection(WheelService *service) {
     WheelPacketModeOneOutput mode_one_output = service->protocol.mode_one_output;
     WheelPacketModeFourFilter mode_four_filter = service->protocol.mode_four_filter;
     WheelPacketModeFourOutput mode_four_output = service->protocol.mode_four_output;
+    WheelPacketCrcFilter crc_filter = service->protocol.crc_filter;
     WheelPacketCrcOutput crc_output = service->protocol.crc_output;
     uint8_t interface_mode = service->protocol.interface_mode;
     uint8_t axis_override_mode = service->protocol.configured_axis_override_mode;
@@ -196,6 +197,7 @@ static void reset_connection(WheelService *service) {
     service->protocol.mode_one_output = mode_one_output;
     service->protocol.mode_four_filter = mode_four_filter;
     service->protocol.mode_four_output = mode_four_output;
+    service->protocol.crc_filter = crc_filter;
     service->protocol.crc_output = crc_output;
     wheel_protocol_set_axis_processing(&service->protocol, interface_mode, axis_override_mode,
                                        axis_calibration_value);
@@ -325,8 +327,9 @@ void wheel_service_run(WheelService *service, uint32_t now_ms) {
 /**
  * @brief Returns the current attached-wheel button banks.
  *
- * Selects decoded mode-one or mode-four packet buttons after the wheel protocol becomes active.
- * Scan-mode wheels use the three filtered button banks assembled from command-3 responses.
+ * Selects decoded mode-one, mode-four, or CRC-family packet buttons after the wheel protocol
+ * becomes active. Scan-mode wheels use the three filtered button banks assembled from command-3
+ * responses.
  *
  * @param[in] service Attached-wheel service state.
  * @return Three current button bytes.
@@ -338,21 +341,26 @@ const uint8_t *wheel_service_buttons(const WheelService *service) {
     }
     const WheelPacketModeFourInput *mode_four_input =
         wheel_protocol_mode_four_input(&service->protocol);
-    return mode_four_input != 0 ? mode_four_input->buttons : service->button_banks;
+    if (mode_four_input != 0) {
+        return mode_four_input->buttons;
+    }
+    const WheelPacketCrcInput *crc_input = wheel_protocol_crc_input(&service->protocol);
+    return crc_input != 0 ? crc_input->buttons : service->button_banks;
 }
 
 /**
  * @brief Reports attached-wheel input eligible to acknowledge a display overlay.
  *
- * Uses mode-one or mode-four directional, button, and auxiliary input state. Scan-mode wheels
- * report active when any filtered button bank is nonzero.
+ * Uses mode-one, mode-four, or CRC-family directional, button, and auxiliary input state. Scan-mode
+ * wheels report active when any filtered button bank is nonzero.
  *
  * @param[in] service Attached-wheel service state.
  * @return True while an eligible input is active.
  */
 bool wheel_service_acknowledgement_input_active(const WheelService *service) {
     if (wheel_protocol_mode_one_input(&service->protocol) != 0 ||
-        wheel_protocol_mode_four_input(&service->protocol) != 0) {
+        wheel_protocol_mode_four_input(&service->protocol) != 0 ||
+        wheel_protocol_crc_input(&service->protocol) != 0) {
         return wheel_protocol_acknowledgement_input_active(&service->protocol);
     }
     for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {

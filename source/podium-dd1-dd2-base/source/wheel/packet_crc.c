@@ -21,10 +21,112 @@ enum {
     REQUEST_RESERVED_REPORT_OFFSET = 27,
     REQUEST_REPORT_CAPABILITIES_OFFSET = 28,
     REQUEST_AXIS_LIMIT_OFFSET = 29,
+    INTERFACE_MODE_PODIUM_DD = 0,
+    INTERFACE_MODE_XBOX_GIP = 6,
+    INTERFACE_MODE_PLAYSTATION_4 = 7,
 };
 
 static uint16_t read_little_endian_u16(const uint8_t *data) {
     return (uint16_t)data[0] | (uint16_t)data[1] << 8;
+}
+
+static uint8_t read_bit(uint8_t value, uint8_t bit) { return (value >> bit) & 1u; }
+
+static void assign_bit(uint8_t *value, uint8_t destination_bit, uint8_t source) {
+    uint8_t mask = (uint8_t)(1u << destination_bit);
+    *value = (uint8_t)((*value & (uint8_t)~mask) | ((source & 1u) << destination_bit));
+}
+
+static void merge_bit(uint8_t *value, uint8_t destination_bit, uint8_t source) {
+    *value |= (uint8_t)((source & 1u) << destination_bit);
+}
+
+static void map_standard_buttons(WheelPacketCrcInput *input) {
+    static const uint8_t first_destinations[8] = {3, 0, 4, 1, 5, 2, 6, 7};
+    static const uint8_t second_destinations[8] = {5, 7, 6, 0, 3, 1, 2, 4};
+    for (uint8_t bit = 0; bit < 8; bit++) {
+        merge_bit(&input->buttons[1], first_destinations[bit], read_bit(input->controls[2], bit));
+        merge_bit(&input->buttons[0], second_destinations[bit], read_bit(input->controls[3], bit));
+    }
+}
+
+static void map_xbox_direct_buttons(WheelPacketCrcInput *input) {
+    assign_bit(&input->buttons[1], 7,
+               read_bit(input->controls[1], 1) | read_bit(input->controls[2], 7));
+    assign_bit(&input->buttons[0], 4,
+               read_bit(input->controls[1], 2) | read_bit(input->controls[2], 6));
+    assign_bit(&input->buttons[0], 6,
+               read_bit(input->controls[1], 3) | read_bit(input->controls[3], 2));
+    assign_bit(&input->buttons[1], 1,
+               read_bit(input->controls[1], 4) | read_bit(input->controls[2], 3));
+    assign_bit(&input->buttons[1], 2,
+               read_bit(input->controls[1], 6) | read_bit(input->controls[2], 5));
+    assign_bit(&input->buttons[1], 5,
+               read_bit(input->controls[0], 0) | read_bit(input->controls[2], 4));
+    assign_bit(&input->buttons[2], 6,
+               read_bit(input->controls[2], 1) | read_bit(input->controls[1], 5));
+    assign_bit(&input->buttons[2], 7,
+               read_bit(input->controls[2], 0) | read_bit(input->controls[0], 1));
+    assign_bit(&input->buttons[1], 4,
+               read_bit(input->controls[1], 2) | read_bit(input->controls[2], 2));
+    assign_bit(&input->buttons[0], 7,
+               read_bit(input->controls[1], 6) | read_bit(input->controls[3], 1));
+    assign_bit(&input->buttons[0], 5,
+               read_bit(input->controls[1], 7) | read_bit(input->controls[3], 0));
+    assign_bit(&input->buttons[1], 6,
+               read_bit(input->controls[1], 0) | read_bit(input->controls[2], 6));
+    merge_bit(&input->buttons[2], 3, read_bit(input->controls[1], 4));
+}
+
+static void map_xbox_buttons(WheelPacketCrcInput *input) {
+    static const uint8_t first_destinations[6] = {4, 1, 5, 2, 6, 7};
+    for (uint8_t bit = 2; bit < 8; bit++) {
+        assign_bit(&input->buttons[1], first_destinations[bit - 2],
+                   read_bit(input->controls[2], bit));
+    }
+    static const uint8_t second_destinations[3] = {5, 7, 6};
+    for (uint8_t bit = 0; bit < 3; bit++) {
+        assign_bit(&input->buttons[0], second_destinations[bit], read_bit(input->controls[3], bit));
+    }
+    static const uint8_t merged_destinations[4] = {1, 2, 0, 3};
+    static const uint8_t merged_sources[4] = {5, 6, 3, 4};
+    for (uint8_t index = 0; index < 4; index++) {
+        merge_bit(&input->buttons[0], merged_destinations[index],
+                  read_bit(input->controls[3], merged_sources[index]));
+    }
+    assign_bit(&input->buttons[0], 4, read_bit(input->controls[3], 7));
+    map_xbox_direct_buttons(input);
+    merge_bit(&input->buttons[1], 3, read_bit(input->controls[4], 1));
+    merge_bit(&input->buttons[1], 0, read_bit(input->controls[4], 3));
+}
+
+static void write_snapshot(const WheelPacketCrcInput *input,
+                           uint8_t snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE]) {
+    for (uint8_t index = 0; index < WHEEL_PACKET_CRC_BUTTON_COUNT; index++) {
+        snapshot[index] = input->buttons[index];
+    }
+    snapshot[REQUEST_AXIS_OUTPUTS_OFFSET] = input->axis_outputs[0];
+    snapshot[REQUEST_AXIS_OUTPUTS_OFFSET + 1] = input->axis_outputs[1];
+    snapshot[REQUEST_MOTION_OFFSET] = (uint8_t)input->motion;
+    for (uint8_t index = 0; index < WHEEL_PACKET_CRC_CONTROL_COUNT; index++) {
+        snapshot[REQUEST_CONTROLS_OFFSET + index] = input->controls[index];
+    }
+    snapshot[REQUEST_RESERVED_AXES_OFFSET] = input->reserved_axes[0];
+    snapshot[REQUEST_RESERVED_AXES_OFFSET + 1] = input->reserved_axes[1];
+    for (uint8_t index = 0; index < WHEEL_PACKET_CRC_AXIS_VALUE_COUNT; index++) {
+        snapshot[REQUEST_AXIS_VALUES_OFFSET + index * 2] = (uint8_t)input->axis_values[index];
+        snapshot[REQUEST_AXIS_VALUES_OFFSET + index * 2 + 1] =
+            (uint8_t)(input->axis_values[index] >> 8);
+    }
+    snapshot[REQUEST_MODE_BUTTONS_OFFSET] = input->mode_buttons;
+    snapshot[REQUEST_AXIS_REPORT_ENABLED_OFFSET] = input->axis_report_enabled;
+    for (uint8_t index = 0; index < 4; index++) {
+        snapshot[REQUEST_AUXILIARY_DATA_OFFSET + index] = input->auxiliary_data[index];
+    }
+    snapshot[REQUEST_REPORT_MODE_OFFSET] = input->report_mode;
+    snapshot[REQUEST_RESERVED_REPORT_OFFSET] = input->reserved_report;
+    snapshot[REQUEST_REPORT_CAPABILITIES_OFFSET] = input->report_capabilities;
+    snapshot[REQUEST_AXIS_LIMIT_OFFSET] = input->axis_limit;
 }
 
 /**
@@ -99,6 +201,29 @@ void wheel_packet_crc_decode(const uint8_t request[WHEEL_PACKET_CRC_REQUEST_SIZE
 }
 
 /**
+ * @brief Prepares CRC-family input for history filtering.
+ *
+ * In authenticated mode on the Podium DD interface, moves two auxiliary button bits into the third
+ * primary button byte and clears their original and superseded positions.
+ *
+ * @param[in,out] input Decoded CRC-family input updated before filtering.
+ * @param[in] wheel_mode Selected attached-wheel mode.
+ * @param[in] interface_mode Active wheel interface mode.
+ */
+void wheel_packet_crc_prepare(WheelPacketCrcInput *input, uint8_t wheel_mode,
+                              uint8_t interface_mode) {
+    if (interface_mode != INTERFACE_MODE_PODIUM_DD ||
+        wheel_mode != WHEEL_PACKET_CRC_AUTHENTICATED_MODE) {
+        return;
+    }
+    assign_bit(&input->buttons[2], 2, read_bit(input->controls[1], 5));
+    assign_bit(&input->buttons[2], 3, read_bit(input->controls[0], 1));
+    input->buttons[1] &= 0xf6u;
+    input->controls[1] &= 0xdfu;
+    input->controls[0] &= 0xfdu;
+}
+
+/**
  * @brief Filters CRC-family buttons and auxiliary controls.
  *
  * Keeps bits present in all three recent samples of the three primary button bytes and the first
@@ -132,18 +257,36 @@ void wheel_packet_crc_filter(WheelPacketCrcFilter *filter, WheelPacketCrcInput *
 }
 
 /**
- * @brief Reduces CRC-family control bytes to their retained protocol bits.
+ * @brief Normalizes direct-connected CRC-family wheel input.
  *
- * Keeps bits 3 through 5 of the first control byte and bit 7 of the second, clears the next two
- * control bytes, and leaves the remaining four bytes unchanged.
+ * Applies the standard or Xbox interface button map without adapter input, retains the defined
+ * control bits, and emits the 30-byte protocol request view.
  *
- * @param[in,out] input CRC-family input whose control bytes are sanitized in place.
+ * @param[in,out] input Filtered CRC-family input updated to its normalized values.
+ * @param[in] wheel_mode Selected attached-wheel mode.
+ * @param[in] interface_mode Active wheel interface mode.
+ * @param[out] snapshot Normalized 30-byte protocol request view.
  */
-void wheel_packet_crc_sanitize_controls(WheelPacketCrcInput *input) {
+void wheel_packet_crc_normalize_direct(WheelPacketCrcInput *input, uint8_t wheel_mode,
+                                       uint8_t interface_mode,
+                                       uint8_t snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE]) {
+    if (interface_mode == INTERFACE_MODE_XBOX_GIP) {
+        map_xbox_buttons(input);
+    } else {
+        map_standard_buttons(input);
+        if (wheel_mode != WHEEL_PACKET_CRC_AUTHENTICATED_MODE) {
+            merge_bit(&input->buttons[2], 2, read_bit(input->controls[1], 3));
+        }
+        if (interface_mode == INTERFACE_MODE_PLAYSTATION_4) {
+            merge_bit(&input->buttons[1], 3, read_bit(input->controls[4], 1));
+            merge_bit(&input->buttons[1], 0, read_bit(input->controls[4], 3));
+        }
+    }
     input->controls[0] &= 0x38u;
     input->controls[1] &= 0x80u;
     input->controls[2] = 0;
     input->controls[3] = 0;
+    write_snapshot(input, snapshot);
 }
 
 /**
