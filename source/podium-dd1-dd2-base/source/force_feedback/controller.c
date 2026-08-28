@@ -12,6 +12,7 @@ void force_feedback_controller_init(ForceFeedbackController *controller,
     };
     controller->permitted = false;
     force_effect_bank_reset(&controller->effects, config->maximum_force);
+    controller->filter = (ForceFilter){0};
     force_filter_configure(&controller->filter, config->filter_intensity);
     force_soft_stop_reset(&controller->soft_stop);
     force_output_reset(&controller->output);
@@ -35,7 +36,7 @@ ForceOutputCommand force_feedback_controller_update(ForceFeedbackController *con
     ForceSoftStopResult soft_stop = force_soft_stop_update(
         &controller->soft_stop, &controller->config.soft_stop, position, force, false, now_ms);
     force = soft_stop.force;
-    force = force_filter_update(&controller->filter, force);
+    force = force_filter_update(&controller->filter, force, now_ms);
 
     return force_output_step(&controller->output, force, controller->permitted,
                              &controller->output_limits);

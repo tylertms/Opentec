@@ -30,13 +30,13 @@ static void test_interlock(void) {
     assert(!output.active);
 
     force_feedback_controller_set_permitted(&controller, true);
-    output = force_feedback_controller_update(&controller, 0, 0, 0);
+    output = force_feedback_controller_update(&controller, 0, 0, 1);
     assert(output.active);
     assert(output.magnitude == 5000);
     assert(!output.negative);
 
     force_feedback_controller_set_permitted(&controller, false);
-    output = force_feedback_controller_update(&controller, 0, 0, 0);
+    output = force_feedback_controller_update(&controller, 0, 0, 2);
     assert(!output.active);
     assert(controller.output.value == 0);
 }
@@ -54,6 +54,8 @@ static void test_effect_mixing_and_limit(void) {
     assert(force_effect_bank_start(effects, 1));
 
     ForceOutputCommand output = force_feedback_controller_update(&controller, 0, 0, 0);
+    assert(!output.active);
+    output = force_feedback_controller_update(&controller, 0, 0, 1);
     assert(output.magnitude == 10000);
     assert(!output.negative);
 }
@@ -67,6 +69,8 @@ static void test_soft_stop(void) {
     controller.soft_stop.ramp_percent = 100;
 
     ForceOutputCommand output = force_feedback_controller_update(&controller, 6500, 0, 0);
+    assert(!output.active);
+    output = force_feedback_controller_update(&controller, 6500, 0, 1);
     assert(output.active);
     assert(output.magnitude == 4500);
     assert(output.negative);
@@ -84,6 +88,8 @@ static void test_slew_limit(void) {
     assert(force_effect_bank_start(effects, 0));
 
     ForceOutputCommand output = force_feedback_controller_update(&controller, 0, 0, 0);
+    assert(!output.active);
+    output = force_feedback_controller_update(&controller, 0, 0, 1);
     assert(output.magnitude == 100);
     assert(output.negative);
 }
