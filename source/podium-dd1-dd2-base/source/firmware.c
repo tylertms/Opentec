@@ -9,6 +9,7 @@
 #include "cooling/temperature.h"
 #include "force_feedback/command.h"
 #include "force_feedback/output.h"
+#include "force_feedback/script_runtime.h"
 #include "force_feedback/state.h"
 #include "motor/live_frame.h"
 #include "motor/probe.h"
@@ -22,6 +23,7 @@
 #include "platform/board_identity.h"
 #include "platform/clock.h"
 #include "platform/cooling.h"
+#include "platform/force_feedback_timer.h"
 #include "platform/motor_link.h"
 #include "platform/pedal_link.h"
 #include "platform/pin_mux.h"
@@ -93,6 +95,7 @@ static UsbOutputCommand usb_output_command;
 static UsbVendorCommand usb_vendor_command;
 static ForceFeedbackCommand force_feedback_command;
 static ForceFeedbackState force_feedback_state;
+static ForceFeedbackScriptSystem force_feedback_script_system;
 static ForceOutputReport motor_output_report;
 static MotorLiveFrame motor_live_frame;
 static uint8_t motor_received_frame[MOTOR_LIVE_FRAME_SIZE];
@@ -210,6 +213,31 @@ static void initialize_motor(void) {
     motor_probe_init(&motor_probe);
     motor_probe_start(&motor_probe, platform_time_ms());
     motor_tuning_ready = false;
+}
+
+/**
+ * @brief Advance the force-feedback script clocks for one Timer 2 interrupt.
+ *
+ * Advances the shared engine clock in active and zero-output modes, advances the selected slot
+ * clock while a script is executing, and always advances the motion-sampling clock.
+ *
+ * @param[in,out] context Initialized force-feedback script runtime supplied to the timer service.
+ */
+static void handle_force_feedback_timer_tick(void *context) {
+    ForceFeedbackScriptSystem *system = context;
+    force_feedback_script_clock_tick(&system->clock, system->mode);
+}
+
+/**
+ * @brief Initialize force-feedback script state and its runtime clock.
+ *
+ * Resets the complete script runtime in position-only mode before starting the dedicated Timer 2
+ * clock used for engine, slot, and wheel-motion timing.
+ */
+static void initialize_force_feedback_script(void) {
+    force_feedback_script_runtime_init(&force_feedback_script_system);
+    platform_force_feedback_timer_init(handle_force_feedback_timer_tick,
+                                       &force_feedback_script_system);
 }
 
 static void service_motor(void) {
@@ -330,6 +358,7 @@ int main(void) {
     wheel_service_init(&wheel_service);
     initialize_motor_link();
     initialize_motor();
+    initialize_force_feedback_script();
     usb_device_init(board_identity.variant);
     for (;;) {
         usb_device_service();

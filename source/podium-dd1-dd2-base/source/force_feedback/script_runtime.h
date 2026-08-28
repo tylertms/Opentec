@@ -19,7 +19,7 @@ typedef struct {
     ForceFeedbackScriptScheduler scheduler;
     uint32_t host_tick_snapshot;
     uint32_t idle_tick_snapshot;
-    ForceFeedbackRuntimeMode mode;
+    volatile ForceFeedbackRuntimeMode mode;
 } ForceFeedbackScriptSystem;
 
 void force_feedback_script_runtime_init(ForceFeedbackScriptSystem *system);

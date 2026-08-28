@@ -63,11 +63,11 @@ typedef struct {
 } ForceFeedbackScriptSlot;
 
 typedef struct {
-    uint32_t ticks;
-    uint32_t slot_ticks[FORCE_FEEDBACK_SCRIPT_SLOT_COUNT];
-    uint32_t motion_ticks;
-    uint8_t active_slot;
-    bool script_executing;
+    volatile uint32_t ticks;
+    volatile uint32_t slot_ticks[FORCE_FEEDBACK_SCRIPT_SLOT_COUNT];
+    volatile uint32_t motion_ticks;
+    volatile uint8_t active_slot;
+    volatile bool script_executing;
 } ForceFeedbackScriptClock;
 
 ForceFeedbackScriptControlResult force_feedback_script_control_decode(const uint8_t *packet,

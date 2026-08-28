@@ -182,6 +182,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'transfer-session': 'source/transfer/session.c',
     'platform-clock': 'source/platform/dspic33e/clock.c',
     'platform-cooling': 'source/platform/dspic33e/cooling.c',
+    'platform-force-feedback-timer': 'source/platform/dspic33e/force_feedback_timer.c',
     'platform-board-identity': 'source/platform/dspic33e/board_identity.c',
     'platform-adc': 'source/platform/dspic33e/adc.c',
     'platform-aux-bus': 'source/platform/dspic33e/aux_bus.c',
