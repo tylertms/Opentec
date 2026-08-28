@@ -80,7 +80,7 @@ static void test_rejects_unhandled_payloads(void) {
     output.length = 62;
     assert(!usb_vendor_command_decode(&output, &command));
     output.length = 63;
-    output.kind = USB_OUTPUT_COMMAND_OPERATING_MODE;
+    output.kind = USB_OUTPUT_COMMAND_SHORT;
     assert(!usb_vendor_command_decode(&output, &command));
     output.kind = USB_OUTPUT_COMMAND_VENDOR_TRANSFER;
     output.payload = NULL;

@@ -4,18 +4,21 @@
 #include <stdint.h>
 
 enum {
-    OPERATING_MODE_REPORT_ID = 1,
-    OPERATING_MODE_PAYLOAD_SIZE = 7,
+    SHORT_REPORT_ID = 1,
+    SHORT_REPORT_PAYLOAD_SIZE = 7,
     VENDOR_TRANSFER_REPORT_ID = 0xff,
     VENDOR_TRANSFER_PAYLOAD_SIZE = 63,
 };
 
 /**
- * Classifies a complete Podium HID output report and exposes its command payload.
+ * @brief Classifies a complete Podium HID output report.
  *
- * @param report HID output report including its leading report ID.
- * @param command Destination for the command kind, payload, and payload length.
- * @return True for the short operating-mode report or the full vendor-transfer report.
+ * Exposes the seven-byte shared command payload or the 63-byte vendor-transfer payload after
+ * checking the report type, report ID, leading byte, and exact transfer length.
+ *
+ * @param[in] report HID output report including its leading report ID.
+ * @param[out] command Destination for the command kind, payload, and payload length.
+ * @return True for the shared short report or the full vendor-transfer report.
  */
 bool usb_output_command_decode(const UsbDeviceOutputReport *report, UsbOutputCommand *command) {
     if (report == NULL || command == NULL || report->report_type != USB_DEVICE_HID_REPORT_OUTPUT ||
@@ -23,12 +26,11 @@ bool usb_output_command_decode(const UsbDeviceOutputReport *report, UsbOutputCom
         return false;
     }
 
-    if (report->report_id == OPERATING_MODE_REPORT_ID &&
-        report->length == OPERATING_MODE_PAYLOAD_SIZE + 1) {
+    if (report->report_id == SHORT_REPORT_ID && report->length == SHORT_REPORT_PAYLOAD_SIZE + 1) {
         *command = (UsbOutputCommand){
-            .kind = USB_OUTPUT_COMMAND_OPERATING_MODE,
+            .kind = USB_OUTPUT_COMMAND_SHORT,
             .payload = report->data + 1,
-            .length = OPERATING_MODE_PAYLOAD_SIZE,
+            .length = SHORT_REPORT_PAYLOAD_SIZE,
         };
         return true;
     }

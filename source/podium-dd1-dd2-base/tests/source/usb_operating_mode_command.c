@@ -7,7 +7,7 @@
 static void test_decodes_command_envelope(void) {
     const uint8_t payload[] = {0xf8, 9, 5, 0x11, 0x22, 0x33, 0x44};
     UsbOutputCommand output = {
-        .kind = USB_OUTPUT_COMMAND_OPERATING_MODE,
+        .kind = USB_OUTPUT_COMMAND_SHORT,
         .payload = payload,
         .length = sizeof(payload),
     };
@@ -24,7 +24,7 @@ static void test_decodes_command_envelope(void) {
 static void test_rejects_other_envelopes(void) {
     uint8_t payload[] = {0xf8, 9, 5, 0, 0, 0, 0};
     UsbOutputCommand output = {
-        .kind = USB_OUTPUT_COMMAND_OPERATING_MODE,
+        .kind = USB_OUTPUT_COMMAND_SHORT,
         .payload = payload,
         .length = sizeof(payload),
     };
@@ -41,7 +41,7 @@ static void test_rejects_other_envelopes(void) {
     output.length = 7;
     output.kind = USB_OUTPUT_COMMAND_VENDOR_TRANSFER;
     assert(!usb_operating_mode_command_decode(&output, &command));
-    output.kind = USB_OUTPUT_COMMAND_OPERATING_MODE;
+    output.kind = USB_OUTPUT_COMMAND_SHORT;
     output.payload = NULL;
     assert(!usb_operating_mode_command_decode(&output, &command));
     assert(!usb_operating_mode_command_decode(NULL, &command));

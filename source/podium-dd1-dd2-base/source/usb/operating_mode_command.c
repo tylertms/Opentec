@@ -12,15 +12,18 @@ enum {
 };
 
 /**
- * Decodes the fixed operating-mode command envelope from a short HID output report.
+ * @brief Decodes the operating-mode envelope from a short HID output report.
  *
- * @param output Classified short output report containing the command bytes.
- * @param command Destination for the opcode and four command parameters.
+ * Accepts only the F8 09 family and format prefix, then exposes its opcode and four parameter
+ * bytes without interpreting the opcode-specific payload.
+ *
+ * @param[in] output Classified short output report containing the command bytes.
+ * @param[out] command Destination for the opcode and four command parameters.
  * @return True when the report kind, size, family, and format fields are accepted.
  */
 bool usb_operating_mode_command_decode(const UsbOutputCommand *output,
                                        UsbOperatingModeCommand *command) {
-    if (output == NULL || command == NULL || output->kind != USB_OUTPUT_COMMAND_OPERATING_MODE ||
+    if (output == NULL || command == NULL || output->kind != USB_OUTPUT_COMMAND_SHORT ||
         output->payload == NULL || output->length != OPERATING_MODE_COMMAND_SIZE ||
         output->payload[0] != OPERATING_MODE_COMMAND_FAMILY ||
         output->payload[1] != OPERATING_MODE_COMMAND_FORMAT) {

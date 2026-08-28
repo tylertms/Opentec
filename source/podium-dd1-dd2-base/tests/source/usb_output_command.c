@@ -17,12 +17,12 @@ static UsbDeviceOutputReport make_report(uint8_t report_id, uint8_t length) {
     return report;
 }
 
-static void test_decodes_operating_mode_report(void) {
+static void test_decodes_short_report(void) {
     UsbDeviceOutputReport report = make_report(1, 8);
     UsbOutputCommand command;
 
     assert(usb_output_command_decode(&report, &command));
-    assert(command.kind == USB_OUTPUT_COMMAND_OPERATING_MODE);
+    assert(command.kind == USB_OUTPUT_COMMAND_SHORT);
     assert(command.payload == report.data + 1);
     assert(command.length == 7);
     assert(command.payload[0] == 1);
@@ -65,7 +65,7 @@ static void test_rejects_unhandled_reports(void) {
 }
 
 int main(void) {
-    test_decodes_operating_mode_report();
+    test_decodes_short_report();
     test_decodes_vendor_transfer_report();
     test_rejects_unhandled_reports();
     return 0;

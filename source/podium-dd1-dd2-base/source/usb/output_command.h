@@ -7,7 +7,7 @@
 #include "usb/device.h"
 
 typedef enum {
-    USB_OUTPUT_COMMAND_OPERATING_MODE,
+    USB_OUTPUT_COMMAND_SHORT,
     USB_OUTPUT_COMMAND_VENDOR_TRANSFER,
 } UsbOutputCommandKind;
 
