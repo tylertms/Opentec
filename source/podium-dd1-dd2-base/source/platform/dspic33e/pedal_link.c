@@ -19,6 +19,7 @@ static volatile uint8_t received_byte;
 static volatile bool byte_ready;
 static volatile bool frame_ready;
 static volatile bool transmit_active;
+static volatile bool resynchronizing;
 
 static void clear_receive_fifo(void) {
     while (U2STAbits.URXDA != 0) {
@@ -79,6 +80,7 @@ void platform_pedal_link_init(void) {
     byte_ready = false;
     frame_ready = false;
     transmit_active = false;
+    resynchronizing = false;
     configure_uart();
     configure_receive_dma();
     configure_transmit_dma();
@@ -97,6 +99,7 @@ void platform_pedal_link_begin_discovery(void) {
     clear_receive_fifo();
     byte_ready = false;
     frame_ready = false;
+    resynchronizing = false;
     IFS1bits.U2RXIF = 0;
     IEC1bits.U2RXIE = 1;
 }
@@ -113,6 +116,7 @@ void platform_pedal_link_begin_analog(void) {
     TRISFbits.TRISF1 = 1;
     byte_ready = false;
     frame_ready = false;
+    resynchronizing = false;
 }
 
 void platform_pedal_link_begin_framed_receive(void) {
@@ -122,6 +126,7 @@ void platform_pedal_link_begin_framed_receive(void) {
     clear_receive_fifo();
     byte_ready = false;
     frame_ready = false;
+    resynchronizing = false;
     DMA1CNT = PEDAL_FRAME_SIZE - 1;
     IFS0bits.DMA1IF = 0;
     IEC0bits.DMA1IE = 1;
@@ -135,6 +140,7 @@ static bool begin_send(uint8_t length) {
         return false;
     }
     DMA2CONbits.CHEN = 0;
+    IEC1bits.U2RXIE = 0;
     DMA2CNT = length - 1;
     IFS1bits.DMA2IF = 0;
     transmit_active = true;
@@ -186,9 +192,23 @@ bool platform_pedal_link_take_frame(uint8_t frame[PEDAL_FRAME_SIZE]) {
     return ready;
 }
 
+/**
+ * Captures discovery bytes or resumes framed reception after an end delimiter.
+ */
 void __attribute__((interrupt, no_auto_psv)) _U2RXInterrupt(void) {
+    uint8_t last = 0;
+    bool received = false;
     while (U2STAbits.URXDA != 0) {
-        received_byte = (uint8_t)U2RXREG;
+        last = (uint8_t)U2RXREG;
+        received = true;
+    }
+    if (resynchronizing) {
+        if (received && last == PEDAL_FRAME_END) {
+            resynchronizing = false;
+            DMA1CONbits.CHEN = 1;
+        }
+    } else if (received) {
+        received_byte = last;
         byte_ready = true;
     }
     if (U2STAbits.OERR) {
@@ -197,17 +217,25 @@ void __attribute__((interrupt, no_auto_psv)) _U2RXInterrupt(void) {
     IFS1bits.U2RXIF = 0;
 }
 
+/**
+ * Publishes a boundary-aligned pedal frame or enters delimiter resynchronization.
+ */
 void __attribute__((interrupt, no_auto_psv)) _DMA1Interrupt(void) {
-    for (uint8_t index = 0; index < PEDAL_FRAME_SIZE; index++) {
-        received_frame[index] = received_dma[index];
+    if (received_dma[0] == PEDAL_FRAME_START &&
+        received_dma[PEDAL_FRAME_SIZE - 1] == PEDAL_FRAME_END) {
+        for (uint8_t index = 0; index < PEDAL_FRAME_SIZE; index++) {
+            received_frame[index] = received_dma[index];
+        }
+        frame_ready = true;
+        DMA1CONbits.CHEN = 1;
+    } else {
+        resynchronizing = true;
     }
-    frame_ready = true;
-    DMA1CONbits.CHEN = 0;
-    DMA1CONbits.CHEN = 1;
     IFS0bits.DMA1IF = 0;
 }
 
 void __attribute__((interrupt, no_auto_psv)) _DMA2Interrupt(void) {
     transmit_active = false;
     IFS1bits.DMA2IF = 0;
+    IEC1bits.U2RXIE = 1;
 }
