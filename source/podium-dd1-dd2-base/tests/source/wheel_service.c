@@ -479,6 +479,16 @@ static void test_defers_next_request_for_shared_serial_work(void) {
     assert(request().type_flags == 2);
 }
 
+static void test_initializes_rotary_input(void) {
+    WheelService service;
+    initialize_service(&service);
+
+    for (uint8_t channel = 0; channel < WHEEL_ROTARY_INPUT_CHANNEL_COUNT; channel++) {
+        assert(service.rotary_input.channels[channel].position == UINT8_MAX);
+        assert(service.rotary_input.channels[channel].phase == WHEEL_ROTARY_PHASE_IDLE);
+    }
+}
+
 static void test_routes_multi_position_mode(void) {
     WheelService service;
     initialize_service(&service);
@@ -514,6 +524,7 @@ int main(void) {
     test_ready_packet_refreshes_activity_at_deadline();
     test_restarts_discovery_after_scan_timeout();
     test_defers_next_request_for_shared_serial_work();
+    test_initializes_rotary_input();
     test_routes_multi_position_mode();
     return 0;
 }

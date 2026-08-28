@@ -129,6 +129,7 @@ wheel_display_output_sources = files('source/wheel/display_output.c')
 wheel_output_reports_sources = files('source/wheel/output_reports.c')
 transfer_memory_sources = files('source/transfer/memory.c')
 wheel_motion_sources = files('source/wheel/motion.c')
+wheel_rotary_input_sources = files('source/wheel/rotary_input.c')
 wheel_packet_crc_sources = files('source/wheel/packet_crc.c')
 wheel_packet_mode_one_sources = files('source/wheel/packet_mode_one.c')
 wheel_packet_mode_four_sources = files('source/wheel/packet_mode_four.c')
@@ -309,6 +310,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'transfer-memory': 'source/transfer/memory.c',
     'transfer-command': 'source/transfer/command.c',
     'wheel-motion': 'source/wheel/motion.c',
+    'wheel-rotary-input': 'source/wheel/rotary_input.c',
     'wheel-packet-crc': 'source/wheel/packet_crc.c',
     'wheel-packet-mode-one': 'source/wheel/packet_mode_one.c',
     'wheel-packet-mode-four': 'source/wheel/packet_mode_four.c',
@@ -1689,6 +1691,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_rotary_input_test = executable(
+    'base-wheel-rotary-input-test',
+    'tests/source/wheel_rotary_input.c',
+    wheel_rotary_input_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_protocol_test = executable(
     'base-wheel-protocol-test',
     'tests/source/wheel_protocol.c',
@@ -1715,6 +1725,7 @@ if not meson.is_cross_build()
     wheel_axis_override_sources,
     wheel_capability_sources,
     wheel_motion_sources,
+    wheel_rotary_input_sources,
     wheel_output_reports_sources,
     wheel_packet_crc_sources,
     wheel_packet_mode_one_sources,
@@ -2146,6 +2157,7 @@ if not meson.is_cross_build()
     suite: ['base', 'wheel', 'transfer'],
   )
   test('base-wheel-motion', wheel_motion_test, suite: ['base', 'wheel', 'input'])
+  test('base-wheel-rotary-input', wheel_rotary_input_test, suite: ['base', 'wheel', 'input'])
   test(
     'base-wheel-packet-crc',
     wheel_packet_crc_test,

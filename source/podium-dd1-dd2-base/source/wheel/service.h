@@ -7,6 +7,7 @@
 #include "serial/service.h"
 #include "wheel/display_output.h"
 #include "wheel/protocol.h"
+#include "wheel/rotary_input.h"
 
 enum {
     WHEEL_BUTTON_BANK_COUNT = 3,
@@ -22,6 +23,7 @@ typedef enum {
 typedef struct {
     SerialService *transport;
     WheelProtocol protocol;
+    WheelRotaryInput rotary_input;
     WheelDisplayOutput display_output;
     uint8_t request[SERIAL_PACKET_MAX_PAYLOAD_SIZE];
     uint8_t button_banks[WHEEL_BUTTON_BANK_COUNT];

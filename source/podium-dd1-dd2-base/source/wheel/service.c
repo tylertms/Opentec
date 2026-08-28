@@ -330,8 +330,8 @@ static bool scan_active(const WheelService *service) {
 /**
  * @brief Initializes attached-wheel protocol service state.
  *
- * Attaches the shared serial service and resets protocol, display, scan filter, request, and
- * activity-deadline state.
+ * Attaches the shared serial service and resets protocol, rotary transitions, display, scan
+ * filter, request, and activity-deadline state.
  *
  * @param[out] service Wheel service to initialize.
  * @param[in,out] transport Shared serial service used for type-two and type-three traffic.
@@ -339,6 +339,7 @@ static bool scan_active(const WheelService *service) {
 void wheel_service_init(WheelService *service, SerialService *transport) {
     service->transport = transport;
     wheel_protocol_init(&service->protocol);
+    wheel_rotary_input_init(&service->rotary_input);
     clear_scan_filter(service);
     for (uint8_t index = 0; index < WHEEL_DISPLAY_GLYPH_COUNT; index++) {
         service->display_output.glyphs[index] = 0;
