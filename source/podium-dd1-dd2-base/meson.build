@@ -111,6 +111,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'platform-pedal-link': 'source/platform/dspic33e/pedal_link.c',
     'platform-pin-mux': 'source/platform/dspic33e/pin_mux.c',
     'platform-storage': 'source/platform/dspic33e/storage.c',
+    'platform-shifter': 'source/platform/dspic33e/shifter.c',
     'platform-time': 'source/platform/dspic33e/time.c',
     'platform-usb': 'source/platform/dspic33e/usb.c',
     'platform-wheel-link': 'source/platform/dspic33e/wheel_link.c',

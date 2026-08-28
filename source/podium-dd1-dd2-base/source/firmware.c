@@ -18,12 +18,15 @@
 #include "platform/motor_link.h"
 #include "platform/pedal_link.h"
 #include "platform/pin_mux.h"
+#include "platform/shifter.h"
 #include "platform/time.h"
 #include "platform/wheel_link.h"
 #include "profile/bank.h"
 #include "profile/tuning.h"
 #include "settings/persistence.h"
 #include "settings/state.h"
+#include "shifter/h_pattern.h"
+#include "shifter/input.h"
 #include "usb/device.h"
 #include "usb/fanatec_input.h"
 #include "wheel/position.h"
@@ -66,6 +69,8 @@ static WheelPositionCalibration wheel_position_calibration;
 static PedalService pedal_service;
 static WheelService wheel_service;
 static AnalogSamples analog_samples;
+static HPatternShifter h_pattern_shifter;
+static ShifterInputState shifter_input;
 static fanatec_input_state usb_input_state;
 static uint8_t usb_input_report[FANATEC_INPUT_REPORT_SIZE];
 static ForceOutputCommand motor_output_command;
@@ -197,6 +202,7 @@ static void service_usb_input(void) {
     for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {
         usb_input_state.button_banks[bank] = wheel_buttons[bank];
     }
+    fanatec_input_apply_shifter(&usb_input_state, &shifter_input, h_pattern_shifter.gear);
     const PedalInput *pedal_input = pedal_service_input(&pedal_service);
     for (uint8_t axis = 0; axis < FANATEC_INPUT_PEDAL_AXES; axis++) {
         usb_input_state.pedals[axis] = pedal_input_hid_axis(pedal_input->axes[axis]);
@@ -208,8 +214,22 @@ static void service_usb_input(void) {
 }
 
 static void service_analog_input(void) {
+    platform_shifter_read(&shifter_input);
     if (platform_adc_read(&analog_samples)) {
         pedal_service_set_analog_samples(&pedal_service, analog_samples.pedal_axes);
+        if (!base_settings.h_pattern_shifter.calibrated) {
+            h_pattern_shifter = (HPatternShifter){0};
+        } else if (shifter_input.primary_mode == SHIFTER_INPUT_H_PATTERN) {
+            h_pattern_shifter_update(
+                &h_pattern_shifter, &base_settings.h_pattern_shifter.calibration,
+                analog_samples.primary_shifter_x, analog_samples.primary_shifter_y);
+        } else if (shifter_input.secondary_mode == SHIFTER_INPUT_H_PATTERN) {
+            h_pattern_shifter_update(
+                &h_pattern_shifter, &base_settings.h_pattern_shifter.calibration,
+                analog_samples.secondary_shifter_x, analog_samples.secondary_shifter_y);
+        } else {
+            h_pattern_shifter = (HPatternShifter){0};
+        }
     }
 }
 
@@ -220,6 +240,8 @@ int main(void) {
     platform_time_init();
     initialize_cooling();
     platform_adc_init();
+    platform_shifter_init();
+    platform_shifter_read(&shifter_input);
     platform_aux_bus_init();
     platform_pedal_link_init();
     pedal_service_init(&pedal_service);

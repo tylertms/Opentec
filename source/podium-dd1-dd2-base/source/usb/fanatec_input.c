@@ -19,12 +19,50 @@ enum {
     USAGE_PAGE_OFFSET = 32,
     USAGE_OFFSET = 33,
     BUTTON_USAGE_PAGE = 9,
-    BUTTON_USAGE = 3
+    BUTTON_USAGE = 3,
+    SHIFTER_TRANSITION_BUTTON_BANK = 1,
+    SHIFTER_GEAR_BUTTON_BANK = 2,
+    SHIFTER_SEQUENTIAL_BUTTON_BANK = 4,
+    SHIFTER_TRANSITION_BUTTON_0 = 1 << 0,
+    SHIFTER_TRANSITION_BUTTON_1 = 1 << 1,
 };
 
 static void write_u16(uint8_t *destination, uint16_t value) {
     destination[0] = (uint8_t)value;
     destination[1] = (uint8_t)(value >> 8);
+}
+
+/**
+ * Places H-pattern gears and sequential transitions in the Fanatec button fields.
+ *
+ * @param state Input report state to update.
+ * @param shifter Mode and transition state for both shifter ports.
+ * @param gear Current H-pattern gear bit, or neutral.
+ */
+void fanatec_input_apply_shifter(fanatec_input_state *state, const ShifterInputState *shifter,
+                                 ShifterGear gear) {
+    bool sequential_only = shifter->primary_mode == SHIFTER_INPUT_SEQUENTIAL &&
+                           shifter->secondary_mode == SHIFTER_INPUT_SEQUENTIAL;
+    if (sequential_only) {
+        uint8_t transitions = (shifter->primary_transition ? SHIFTER_TRANSITION_BUTTON_1 : 0) |
+                              (shifter->secondary_transition ? SHIFTER_TRANSITION_BUTTON_0 : 0);
+        state->button_banks[SHIFTER_GEAR_BUTTON_BANK] = 0;
+        state->button_banks[SHIFTER_SEQUENTIAL_BUTTON_BANK] =
+            (state->button_banks[SHIFTER_SEQUENTIAL_BUTTON_BANK] &
+             (uint8_t)~(SHIFTER_TRANSITION_BUTTON_0 | SHIFTER_TRANSITION_BUTTON_1)) |
+            transitions;
+        return;
+    }
+
+    state->button_banks[SHIFTER_GEAR_BUTTON_BANK] = (uint8_t)gear;
+    state->button_banks[SHIFTER_SEQUENTIAL_BUTTON_BANK] &=
+        (uint8_t)~(SHIFTER_TRANSITION_BUTTON_0 | SHIFTER_TRANSITION_BUTTON_1);
+    if (shifter->primary_transition) {
+        state->button_banks[SHIFTER_TRANSITION_BUTTON_BANK] |= SHIFTER_TRANSITION_BUTTON_0;
+    }
+    if (shifter->secondary_transition) {
+        state->button_banks[SHIFTER_TRANSITION_BUTTON_BANK] |= SHIFTER_TRANSITION_BUTTON_1;
+    }
 }
 
 bool fanatec_input_encode(uint8_t report[FANATEC_INPUT_REPORT_SIZE],

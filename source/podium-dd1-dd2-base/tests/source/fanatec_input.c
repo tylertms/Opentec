@@ -50,9 +50,45 @@ static void test_validation(void) {
     assert(!fanatec_input_encode(report, NULL));
 }
 
+static void test_h_pattern_shifter_mapping(void) {
+    fanatec_input_state state = {
+        .button_banks = {0, 0x80, 0xff, 0, 0xff},
+    };
+    ShifterInputState shifter = {
+        .primary_mode = SHIFTER_INPUT_H_PATTERN,
+        .secondary_mode = SHIFTER_INPUT_SEQUENTIAL,
+        .secondary_transition = true,
+    };
+
+    fanatec_input_apply_shifter(&state, &shifter, SHIFTER_GEAR_THIRD);
+
+    assert(state.button_banks[1] == 0x82);
+    assert(state.button_banks[2] == SHIFTER_GEAR_THIRD);
+    assert(state.button_banks[4] == 0xfc);
+}
+
+static void test_sequential_shifter_mapping(void) {
+    fanatec_input_state state = {
+        .button_banks = {0, 0x83, 0xff, 0, 0xfc},
+    };
+    ShifterInputState shifter = {
+        .primary_mode = SHIFTER_INPUT_SEQUENTIAL,
+        .secondary_mode = SHIFTER_INPUT_SEQUENTIAL,
+        .primary_transition = true,
+    };
+
+    fanatec_input_apply_shifter(&state, &shifter, SHIFTER_GEAR_FIFTH);
+
+    assert(state.button_banks[1] == 0x83);
+    assert(state.button_banks[2] == 0);
+    assert(state.button_banks[4] == 0xfe);
+}
+
 int main(void) {
     test_encode();
     test_zero_state();
     test_validation();
+    test_h_pattern_shifter_mapping();
+    test_sequential_shifter_mapping();
     return 0;
 }

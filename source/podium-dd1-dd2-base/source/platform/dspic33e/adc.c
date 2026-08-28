@@ -42,8 +42,6 @@ void platform_adc_init(void) {
     ANSELBbits.ANSB0 = 1;
     ANSELBbits.ANSB6 = 1;
     ANSELBbits.ANSB8 = 1;
-    ANSELBbits.ANSB9 = 1;
-    ANSELBbits.ANSB10 = 1;
 
     IEC0bits.AD1IE = 0;
     IFS0bits.AD1IF = 0;

@@ -4,6 +4,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "shifter/h_pattern.h"
+#include "shifter/input.h"
+
 enum {
     FANATEC_INPUT_REPORT_ID = 1,
     FANATEC_INPUT_REPORT_SIZE = 34,
@@ -30,5 +33,7 @@ typedef struct {
 
 bool fanatec_input_encode(uint8_t report[FANATEC_INPUT_REPORT_SIZE],
                           const fanatec_input_state *state);
+void fanatec_input_apply_shifter(fanatec_input_state *state, const ShifterInputState *shifter,
+                                 ShifterGear gear);
 
 #endif
