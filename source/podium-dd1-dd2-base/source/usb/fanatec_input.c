@@ -61,15 +61,15 @@ void fanatec_input_apply_wheel_controls(fanatec_input_state *state, const uint8_
 /**
  * @brief Applies the multi-position reporting mode to the Fanatec input state.
  *
- * Replaces bits four and five of the transfer byte with the low two bits of the effective mode.
+ * Replaces bits four and five of the final accessory byte with the low two bits of the effective
+ * mode.
  *
  * @param[in,out] state Input report state to update.
  * @param[in] mode Effective multi-position reporting mode.
  */
 void fanatec_input_apply_multi_position_mode(fanatec_input_state *state, uint8_t mode) {
     const uint8_t mask = 0x30;
-    state->transfer_code =
-        (uint8_t)((state->transfer_code & (uint8_t)~mask) | ((mode << 4) & mask));
+    state->accessory[4] = (uint8_t)((state->accessory[4] & (uint8_t)~mask) | ((mode << 4) & mask));
 }
 
 /**

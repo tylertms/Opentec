@@ -111,16 +111,17 @@ static void test_restricted_wheel_control_mapping(void) {
 }
 
 static void test_multi_position_mode_mapping(void) {
-    fanatec_input_state state = {.transfer_code = 0xcf};
+    fanatec_input_state state = {.accessory = {0, 0, 0, 0, 0xcf}, .transfer_code = 0x87};
 
     fanatec_input_apply_multi_position_mode(&state, 0);
-    assert(state.transfer_code == 0xcf);
+    assert(state.accessory[4] == 0xcf);
     fanatec_input_apply_multi_position_mode(&state, 1);
-    assert(state.transfer_code == 0xdf);
+    assert(state.accessory[4] == 0xdf);
     fanatec_input_apply_multi_position_mode(&state, 2);
-    assert(state.transfer_code == 0xef);
+    assert(state.accessory[4] == 0xef);
     fanatec_input_apply_multi_position_mode(&state, 7);
-    assert(state.transfer_code == 0xff);
+    assert(state.accessory[4] == 0xff);
+    assert(state.transfer_code == 0x87);
 }
 
 static void test_h_pattern_shifter_mapping(void) {
