@@ -106,6 +106,7 @@ pedal_analog_sources = files('source/pedal/analog.c')
 pedal_calibration_command_sources = files('source/pedal/calibration_command.c')
 pedal_input_sources = files('source/pedal/input.c')
 pedal_protocol_sources = files('source/pedal/protocol.c')
+pedal_protocol_command_sources = files('source/pedal/protocol_command.c')
 pedal_service_sources = files('source/pedal/service.c')
 pedal_v4_status_sources = files('source/pedal/v4_status.c')
 pedal_v4_tuning_sources = files('source/pedal/v4_tuning.c')
@@ -268,6 +269,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'pedal-calibration-command': 'source/pedal/calibration_command.c',
     'pedal-input': 'source/pedal/input.c',
     'pedal-protocol': 'source/pedal/protocol.c',
+    'pedal-protocol-command': 'source/pedal/protocol_command.c',
     'pedal-service': 'source/pedal/service.c',
     'pedal-v4-status': 'source/pedal/v4_status.c',
     'pedal-v4-tuning': 'source/pedal/v4_tuning.c',
@@ -1323,6 +1325,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  pedal_protocol_command_test = executable(
+    'base-pedal-protocol-command-test',
+    'tests/source/pedal_protocol_command.c',
+    pedal_protocol_command_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   pedal_service_test = executable(
     'base-pedal-service-test',
     'tests/source/pedal_service.c',
@@ -2017,6 +2027,11 @@ if not meson.is_cross_build()
   )
   test('base-pedal-analog', pedal_analog_test, suite: ['base', 'pedal', 'analog'])
   test('base-pedal-protocol', pedal_protocol_test, suite: ['base', 'pedal', 'transport'])
+  test(
+    'base-pedal-protocol-command',
+    pedal_protocol_command_test,
+    suite: ['base', 'pedal', 'transport'],
+  )
   test('base-pedal-service', pedal_service_test, suite: ['base', 'pedal'])
   test('base-pedal-v4-status', pedal_v4_status_test, suite: ['base', 'pedal'])
   test('base-pedal-v4-tuning', pedal_v4_tuning_test, suite: ['base', 'pedal'])

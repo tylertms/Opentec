@@ -715,6 +715,46 @@ static void test_selects_auxiliary_automatic_calibration_from_pedal_state(void) 
     assert(!pedal_service_auxiliary_automatic_calibration(&service));
 }
 
+static void test_applies_pedal_protocol_commands(void) {
+    PedalService service;
+    reset_link();
+    pedal_service_init(&service);
+    service.protocol_status = (PedalProtocolStatus){
+        .value = 0x10,
+        .first = 0x20,
+        .second = 0x30,
+        .scale = 0x40,
+    };
+
+    PedalProtocolCommand command = {
+        .kind = PEDAL_PROTOCOL_COMMAND_UPDATE,
+        .value = 0x11,
+        .first = 0x22,
+        .second = 0x33,
+    };
+    pedal_service_apply_protocol_command(&service, &command);
+    assert(service.protocol_status.value == 0x11);
+    assert(service.protocol_status.first == 0x22);
+    assert(service.protocol_status.second == 0x33);
+    assert(service.protocol_status.scale == 0x40);
+
+    command.value = 0x66;
+    command.first = 0x55;
+    command.second = 0x77;
+    pedal_service_apply_protocol_command(&service, &command);
+    assert(service.protocol_status.value == 0x11);
+    assert(service.protocol_status.first == 0x55);
+    assert(service.protocol_status.second == 0x33);
+
+    command.kind = PEDAL_PROTOCOL_COMMAND_LEGACY_SCALE;
+    command.value = 0x88;
+    pedal_service_apply_protocol_command(&service, &command);
+    assert(service.protocol_status.scale == 0x40);
+    service.phase = PEDAL_SERVICE_LEGACY_REQUEST;
+    pedal_service_apply_protocol_command(&service, &command);
+    assert(service.protocol_status.scale == 0x88);
+}
+
 int main(void) {
     test_connects_and_publishes_v3_input();
     test_applies_active_brake_force();
@@ -734,5 +774,6 @@ int main(void) {
     test_selects_analog_input_after_discovery_timeout();
     test_local_auxiliary_override_restores_the_remote_value();
     test_selects_auxiliary_automatic_calibration_from_pedal_state();
+    test_applies_pedal_protocol_commands();
     return 0;
 }

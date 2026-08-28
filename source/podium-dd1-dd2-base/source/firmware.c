@@ -24,6 +24,7 @@
 #include "motor/tuning_service.h"
 #include "pedal/calibration_command.h"
 #include "pedal/input.h"
+#include "pedal/protocol_command.h"
 #include "pedal/service.h"
 #include "platform/adc.h"
 #include "platform/aux_bus.h"
@@ -143,6 +144,7 @@ static UsbOutputCommand usb_output_command;
 static UsbOperatingModeCommand usb_operating_mode_command;
 static PedalCalibrationCommand pedal_calibration_command;
 static PedalCalibrationActions pedal_calibration_actions;
+static PedalProtocolCommand pedal_protocol_command;
 static UsbVendorCommand usb_vendor_command;
 static UsbWheelTransferCommand usb_wheel_transfer_command;
 static ForceFeedbackCommand force_feedback_command;
@@ -743,6 +745,9 @@ static void service_usb_output(void) {
                 &pedal_calibration_command, pedal_service_calibration_active(&pedal_service),
                 auxiliary_axis.active);
             apply_pedal_calibration_actions(&pedal_calibration_actions);
+        } else if (pedal_protocol_command_decode(&usb_operating_mode_command,
+                                                 &pedal_protocol_command)) {
+            pedal_service_apply_protocol_command(&pedal_service, &pedal_protocol_command);
         }
         return;
     }

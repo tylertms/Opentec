@@ -28,6 +28,7 @@ enum {
     PEDAL_LEGACY_RESPONSE_TIMEOUT_MS = 17,
     PEDAL_LEGACY_AXIS_1_RETRY_LIMIT = 5,
     PEDAL_LEGACY_RETRY_LIMIT = 6,
+    PEDAL_PROTOCOL_PRESERVE_VALUE = 0x66,
 };
 
 static const uint8_t pedal_v4_status_request[] = {
@@ -237,8 +238,44 @@ bool pedal_service_auxiliary_automatic_calibration(const PedalService *service) 
     return pedal_service_calibration_active(service) && (service->v3.connection_flags & 0xaa) == 0;
 }
 
+/**
+ * @brief Replaces the complete pedal protocol status.
+ *
+ * Stores the value, selectors, and scale used by legacy polling and V3 status reports.
+ *
+ * @param[in,out] service Pedal service and protocol status to update.
+ * @param[in] status Complete replacement protocol status.
+ */
 void pedal_service_set_protocol_status(PedalService *service, const PedalProtocolStatus *status) {
     service->protocol_status = *status;
+}
+
+/**
+ * @brief Applies a host update to the pedal protocol status.
+ *
+ * Protocol updates always replace the first selector. Value 0x66 preserves the current value and
+ * second selector; other values replace both. Legacy-scale updates are accepted only while the
+ * byte-oriented legacy transport is active.
+ *
+ * @param[in,out] service Pedal transport and protocol status to update.
+ * @param[in] command Decoded protocol tuple or legacy-scale command.
+ */
+void pedal_service_apply_protocol_command(PedalService *service,
+                                          const PedalProtocolCommand *command) {
+    if (command->kind == PEDAL_PROTOCOL_COMMAND_UPDATE) {
+        service->protocol_status.first = command->first;
+        if (command->value != PEDAL_PROTOCOL_PRESERVE_VALUE) {
+            service->protocol_status.value = command->value;
+            service->protocol_status.second = command->second;
+        }
+        return;
+    }
+
+    bool legacy = service->phase == PEDAL_SERVICE_LEGACY_REQUEST ||
+                  service->phase == PEDAL_SERVICE_LEGACY_RESPONSE;
+    if (legacy) {
+        service->protocol_status.scale = command->value;
+    }
 }
 
 /**

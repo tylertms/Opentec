@@ -8,6 +8,7 @@
 #include "pedal/frame.h"
 #include "pedal/input.h"
 #include "pedal/protocol.h"
+#include "pedal/protocol_command.h"
 #include "pedal/v4_tuning.h"
 #include "transfer/session.h"
 
@@ -92,6 +93,8 @@ void pedal_service_set_auxiliary_override(PedalService *service, bool active, ui
 bool pedal_service_calibration_active(const PedalService *service);
 bool pedal_service_auxiliary_automatic_calibration(const PedalService *service);
 void pedal_service_set_protocol_status(PedalService *service, const PedalProtocolStatus *status);
+void pedal_service_apply_protocol_command(PedalService *service,
+                                          const PedalProtocolCommand *command);
 void pedal_service_request_control(PedalService *service, PedalV3Control control);
 void pedal_service_request_input_command(PedalService *service,
                                          const uint8_t values[PEDAL_INPUT_AXIS_COUNT]);
