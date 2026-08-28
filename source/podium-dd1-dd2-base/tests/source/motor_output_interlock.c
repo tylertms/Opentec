@@ -47,17 +47,17 @@ static void test_extended_status_response(void) {
     assert(motor_output_interlock_engaged(&interlock));
 }
 
-static void test_standard_status_response(void) {
+static void test_non_extended_status_response(void) {
     MotorOutputInterlock interlock;
     MotorIdentity legacy = identity(MOTOR_PROTOCOL_LEGACY);
     MotorIdentity standard = identity(MOTOR_PROTOCOL_STANDARD);
 
     motor_output_interlock_init(&interlock);
-    motor_output_interlock_accept_status(&interlock, &legacy, 0xaa);
+    motor_output_interlock_accept_status(&interlock, &legacy, 0xff);
     motor_output_interlock_accept_status(&interlock, &standard, 0xaa);
     assert(!motor_output_interlock_engaged(&interlock));
 
-    motor_output_interlock_accept_status(&interlock, &legacy, 0xff);
+    motor_output_interlock_accept_status(&interlock, &standard, 0xff);
     assert(motor_output_interlock_engaged(&interlock));
 }
 
@@ -65,6 +65,6 @@ int main(void) {
     test_initial_state();
     test_extended_command_response();
     test_extended_status_response();
-    test_standard_status_response();
+    test_non_extended_status_response();
     return 0;
 }

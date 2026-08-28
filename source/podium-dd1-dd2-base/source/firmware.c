@@ -10,6 +10,7 @@
 #include "force_feedback/output.h"
 #include "motor/live_frame.h"
 #include "motor/probe.h"
+#include "motor/status_service.h"
 #include "motor/telemetry_service.h"
 #include "motor/tuning_service.h"
 #include "pedal/input.h"
@@ -62,6 +63,7 @@
 
 static BoardIdentity board_identity;
 static MotorProbe motor_probe;
+static MotorStatusService motor_status_service;
 static MotorTelemetryService motor_telemetry_service;
 static MotorTuningService motor_tuning_service;
 static BaseSettings base_settings;
@@ -114,8 +116,10 @@ static void service_cooling(uint32_t now_ms) {
     float motor_temperature = telemetry != 0 && telemetry->motor_temperature_valid
                                   ? (float)(int16_t)telemetry->motor_temperature
                                   : 0.0f;
-    cooling_controller_update(&cooling_controller, motor_temperature, managed_motor_present, false,
-                              now_ms);
+    bool output_inhibited =
+        motor_tuning_ready && motor_status_service_output_inhibited(&motor_status_service);
+    cooling_controller_update(&cooling_controller, motor_temperature, managed_motor_present,
+                              output_inhibited, now_ms);
     CoolingEffectStrengths previous_strengths = cooling_effect_strengths;
     cooling_effect_limit_update(&cooling_effect_limit, &cooling_effect_strengths,
                                 &cooling_controller, motor_temperature, managed_motor_present,
@@ -203,11 +207,13 @@ static void service_motor(void) {
     const MotorIdentity *identity = motor_probe_identity(&motor_probe);
     if (!motor_tuning_ready && identity != 0) {
         motor_telemetry_service_init(&motor_telemetry_service, identity);
+        motor_status_service_init(&motor_status_service, identity);
         motor_tuning_service_init(&motor_tuning_service, tuning_profile, &motor_tuning_context);
         motor_tuning_ready = true;
     }
     if (motor_tuning_ready) {
         motor_telemetry_service_run(&motor_telemetry_service, platform_time_ms());
+        motor_status_service_run(&motor_status_service, platform_time_ms());
         motor_tuning_service_run(&motor_tuning_service);
     }
 }

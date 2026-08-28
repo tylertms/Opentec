@@ -39,6 +39,9 @@ void motor_output_interlock_accept_command(MotorOutputInterlock *interlock,
  */
 void motor_output_interlock_accept_status(MotorOutputInterlock *interlock,
                                           const MotorIdentity *identity, uint8_t response) {
+    if (identity->protocol == MOTOR_PROTOCOL_LEGACY) {
+        return;
+    }
     uint8_t inhibit_response = motor_identity_has_extended_parameters(identity)
                                    ? MOTOR_EXTENDED_STATUS_INHIBIT_RESPONSE
                                    : MOTOR_STANDARD_STATUS_INHIBIT_RESPONSE;
