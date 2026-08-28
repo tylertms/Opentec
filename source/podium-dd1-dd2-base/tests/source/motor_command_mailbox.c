@@ -13,164 +13,90 @@ static void assert_request(CommandTransport *transport, const uint8_t *expected,
     assert(memcmp(request, expected, length) == 0);
 }
 
+static void test_queues_payload_read(void) {
+    CommandTransport transport;
+    uint8_t payload[16];
+    command_transport_init(&transport);
+
+    assert(motor_command_mailbox_queue_payload_read(&transport, payload, sizeof(payload)) ==
+           COMMAND_TRANSPORT_COMPLETE);
+    static const uint8_t expected[] = {2, 0x41, 0x80, 0x10, 0};
+    assert_request(&transport, expected, sizeof(expected));
+}
+
 static void test_queues_payload_write(void) {
-    static const uint8_t payload[] = {0x11, 0x22, 0x33};
-    static const uint8_t expected[] = {0x02, 0x40, 0x80, 0x11, 0x22, 0x33};
     CommandTransport transport;
+    static const uint8_t payload[] = {0xaa, 0xbb, 0xcc};
     command_transport_init(&transport);
 
-    assert(motor_command_mailbox_queue_payload(&transport, payload, sizeof(payload)) ==
+    assert(motor_command_mailbox_queue_payload_write(&transport, payload, sizeof(payload)) ==
            COMMAND_TRANSPORT_COMPLETE);
+    static const uint8_t expected[] = {2, 0x40, 0x80, 0xaa, 0xbb, 0xcc};
     assert_request(&transport, expected, sizeof(expected));
 }
 
-static void test_queues_response_read(void) {
-    static const uint8_t expected[] = {0x02, 0x41, 0x80, 0x03, 0x00};
-    uint8_t response[3];
+static void test_queues_length_read(void) {
     CommandTransport transport;
+    uint8_t length[MOTOR_COMMAND_MAILBOX_LENGTH_SIZE];
     command_transport_init(&transport);
 
-    assert(motor_command_mailbox_queue_response(&transport, response, sizeof(response)) ==
+    assert(motor_command_mailbox_queue_length_read(&transport, length) ==
            COMMAND_TRANSPORT_COMPLETE);
+    static const uint8_t expected[] = {2, 0x41, 0x81, 2, 0};
     assert_request(&transport, expected, sizeof(expected));
 }
 
-static void test_queues_status_write(void) {
-    static const uint8_t status[] = {0x34, 0x12};
-    static const uint8_t expected[] = {0x02, 0x40, 0x81, 0x34, 0x12};
+static void test_queues_control_read(void) {
     CommandTransport transport;
+    uint8_t control[MOTOR_COMMAND_MAILBOX_CONTROL_SIZE];
     command_transport_init(&transport);
 
-    assert(motor_command_mailbox_queue_status(&transport, status) == COMMAND_TRANSPORT_COMPLETE);
-    assert_request(&transport, expected, sizeof(expected));
-}
-
-static void test_queues_control_write(void) {
-    static const uint8_t control[] = {0x80, 0x01, 0x02, 0x03};
-    static const uint8_t expected[] = {0x02, 0x40, 0x82, 0x80, 0x01, 0x02, 0x03};
-    CommandTransport transport;
-    command_transport_init(&transport);
-
-    assert(motor_command_mailbox_queue_control(&transport, control) == COMMAND_TRANSPORT_COMPLETE);
-    assert_request(&transport, expected, sizeof(expected));
-}
-
-static void test_queues_command_write(void) {
-    static const uint8_t command[] = {0x00, 0x00, 0x00, 0x90};
-    static const uint8_t expected[] = {0x02, 0x40, 0x90, 0x00, 0x00, 0x00, 0x90};
-    CommandTransport transport;
-    command_transport_init(&transport);
-
-    assert(motor_command_mailbox_queue_command(&transport, command) == COMMAND_TRANSPORT_COMPLETE);
-    assert_request(&transport, expected, sizeof(expected));
-}
-
-static void test_reports_busy_transport(void) {
-    static const uint8_t payload[] = {0x11};
-    CommandTransport transport;
-    command_transport_init(&transport);
-
-    assert(motor_command_mailbox_queue_payload(&transport, payload, sizeof(payload)) ==
+    assert(motor_command_mailbox_queue_control_read(&transport, control) ==
            COMMAND_TRANSPORT_COMPLETE);
-    assert(motor_command_mailbox_queue_payload(&transport, payload, sizeof(payload)) ==
-           COMMAND_TRANSPORT_BUSY);
-}
-
-static void test_consumes_previous_rejection_before_queueing(void) {
-    static const uint8_t command[] = {0, 0, 0, 0};
-    static const uint8_t control[] = {0x80, 0, 0, 0};
-    static const uint8_t rejected[] = {0};
-    static const uint8_t expected[] = {0x02, 0x40, 0x82, 0x80, 0, 0, 0};
-    CommandTransport transport;
-    command_transport_init(&transport);
-
-    assert(motor_command_mailbox_queue_command(&transport, command) == COMMAND_TRANSPORT_COMPLETE);
-    assert(command_transport_request_sent(&transport));
-    command_transport_receive(&transport, rejected, sizeof(rejected));
-    assert(motor_command_mailbox_queue_control(&transport, control) == COMMAND_TRANSPORT_COMPLETE);
+    static const uint8_t expected[] = {2, 0x41, 0x82, 4, 0};
     assert_request(&transport, expected, sizeof(expected));
 }
 
-static void test_rejects_oversized_response_transfer(void) {
-    static uint8_t response[MEMORY_TRANSFER_MAX_READ_SIZE + 1];
+static void test_queues_status_read(void) {
     CommandTransport transport;
+    uint8_t status[MOTOR_COMMAND_MAILBOX_STATUS_SIZE];
     command_transport_init(&transport);
 
-    assert(motor_command_mailbox_queue_response(&transport, response, sizeof(response)) ==
-           COMMAND_TRANSPORT_TOO_LONG);
+    assert(motor_command_mailbox_queue_status_read(&transport, status) ==
+           COMMAND_TRANSPORT_COMPLETE);
+    static const uint8_t expected[] = {2, 0x41, 0x90, 4, 0};
+    assert_request(&transport, expected, sizeof(expected));
 }
 
-static void test_completes_command_register_write(void) {
-    static const uint8_t command[] = {0x12, 0x34, 0x56, 0x78};
-    static const uint8_t accepted[] = {1};
+static void test_waits_for_active_transport(void) {
     CommandTransport transport;
-    MotorCommandMailboxWrite write;
-    uint32_t command_value = 0;
+    uint8_t control[MOTOR_COMMAND_MAILBOX_CONTROL_SIZE];
     command_transport_init(&transport);
-    motor_command_mailbox_write_init(&write, MOTOR_COMMAND_MAILBOX_COMMAND_WRITE);
 
-    assert(motor_command_mailbox_write_run(&write, &transport, command, &command_value) ==
-           MOTOR_COMMAND_MAILBOX_WRITE_NONE);
-    assert(write.phase == MOTOR_COMMAND_MAILBOX_WRITE_WAIT);
-    assert(command_transport_request_sent(&transport));
-    assert(motor_command_mailbox_write_run(&write, &transport, command, &command_value) ==
-           MOTOR_COMMAND_MAILBOX_WRITE_NONE);
-    command_transport_receive(&transport, accepted, sizeof(accepted));
-    assert(motor_command_mailbox_write_run(&write, &transport, command, &command_value) ==
-           MOTOR_COMMAND_MAILBOX_WRITE_COMPLETE);
-    assert(command_value == 0x12345678);
-    assert(write.phase == MOTOR_COMMAND_MAILBOX_WRITE_QUEUE);
+    assert(motor_command_mailbox_queue_control_read(&transport, control) ==
+           COMMAND_TRANSPORT_COMPLETE);
+    assert(motor_command_mailbox_queue_status_read(&transport, control) == COMMAND_TRANSPORT_BUSY);
 }
 
-static void test_completes_status_register_write(void) {
-    static const uint8_t status[] = {0x34, 0x12};
-    static const uint8_t accepted[] = {1};
-    CommandTransport transport;
-    MotorCommandMailboxWrite write;
-    uint32_t accepted_value = 0;
-    command_transport_init(&transport);
-    motor_command_mailbox_write_init(&write, MOTOR_COMMAND_MAILBOX_STATUS_WRITE);
+static void test_decodes_control(void) {
+    static const uint8_t record[] = {0x40, 0xa5, 0x01, 0xf4};
+    MotorCommandMailboxControl control;
 
-    assert(motor_command_mailbox_write_run(&write, &transport, status, &accepted_value) ==
-           MOTOR_COMMAND_MAILBOX_WRITE_NONE);
-    assert(command_transport_request_sent(&transport));
-    command_transport_receive(&transport, accepted, sizeof(accepted));
-    assert(motor_command_mailbox_write_run(&write, &transport, status, &accepted_value) ==
-           MOTOR_COMMAND_MAILBOX_WRITE_COMPLETE);
-    assert(accepted_value == 0x3412);
-}
-
-static void test_reports_rejected_register_write(void) {
-    static const uint8_t control[] = {0x80, 0, 0, 0};
-    static const uint8_t rejected[] = {0};
-    CommandTransport transport;
-    MotorCommandMailboxWrite write;
-    command_transport_init(&transport);
-    motor_command_mailbox_write_init(&write, MOTOR_COMMAND_MAILBOX_CONTROL_WRITE);
-
-    assert(motor_command_mailbox_write_run(&write, &transport, control, 0) ==
-           MOTOR_COMMAND_MAILBOX_WRITE_NONE);
-    assert(command_transport_request_sent(&transport));
-    command_transport_receive(&transport, rejected, sizeof(rejected));
-    assert(motor_command_mailbox_write_run(&write, &transport, control, 0) ==
-           MOTOR_COMMAND_MAILBOX_WRITE_NONE);
-    assert(write.phase == MOTOR_COMMAND_MAILBOX_WRITE_REPORT_FAILURE);
-    assert(motor_command_mailbox_write_run(&write, &transport, control, 0) ==
-           MOTOR_COMMAND_MAILBOX_WRITE_FAILED);
-    assert(write.phase == MOTOR_COMMAND_MAILBOX_WRITE_QUEUE);
+    assert(motor_command_mailbox_control_decode(record, &control));
+    assert(control.flags == 0x40);
+    assert(control.reserved == 0xa5);
+    assert(control.payload_length == 500);
+    assert(!motor_command_mailbox_control_decode(0, &control));
+    assert(!motor_command_mailbox_control_decode(record, 0));
 }
 
 int main(void) {
+    test_queues_payload_read();
     test_queues_payload_write();
-    test_queues_response_read();
-    test_queues_status_write();
-    test_queues_control_write();
-    test_queues_command_write();
-    test_reports_busy_transport();
-    test_consumes_previous_rejection_before_queueing();
-    test_rejects_oversized_response_transfer();
-    test_completes_command_register_write();
-    test_completes_status_register_write();
-    test_reports_rejected_register_write();
+    test_queues_length_read();
+    test_queues_control_read();
+    test_queues_status_read();
+    test_waits_for_active_transport();
+    test_decodes_control();
     return 0;
 }

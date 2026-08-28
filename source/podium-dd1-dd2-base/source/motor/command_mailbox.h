@@ -1,57 +1,39 @@
 #ifndef OPENTEC_BASE_MOTOR_COMMAND_MAILBOX_H
 #define OPENTEC_BASE_MOTOR_COMMAND_MAILBOX_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "transfer/command.h"
 
 enum {
     MOTOR_COMMAND_MAILBOX_OWNER = 0x20,
-    MOTOR_COMMAND_MAILBOX_REGISTER_SIZE = 4,
-    MOTOR_COMMAND_MAILBOX_STATUS_SIZE = 2,
+    MOTOR_COMMAND_MAILBOX_CONTROL_SIZE = 4,
+    MOTOR_COMMAND_MAILBOX_LENGTH_SIZE = 2,
+    MOTOR_COMMAND_MAILBOX_STATUS_SIZE = 4,
 };
 
-typedef enum {
-    MOTOR_COMMAND_MAILBOX_STATUS_WRITE,
-    MOTOR_COMMAND_MAILBOX_CONTROL_WRITE,
-    MOTOR_COMMAND_MAILBOX_COMMAND_WRITE,
-} MotorCommandMailboxWriteKind;
-
-typedef enum {
-    MOTOR_COMMAND_MAILBOX_WRITE_QUEUE,
-    MOTOR_COMMAND_MAILBOX_WRITE_WAIT,
-    MOTOR_COMMAND_MAILBOX_WRITE_REPORT_FAILURE,
-} MotorCommandMailboxWritePhase;
-
-typedef enum {
-    MOTOR_COMMAND_MAILBOX_WRITE_NONE,
-    MOTOR_COMMAND_MAILBOX_WRITE_COMPLETE,
-    MOTOR_COMMAND_MAILBOX_WRITE_FAILED,
-} MotorCommandMailboxWriteResult;
-
 typedef struct {
-    MotorCommandMailboxWriteKind kind;
-    MotorCommandMailboxWritePhase phase;
-} MotorCommandMailboxWrite;
+    uint16_t payload_length;
+    uint8_t flags;
+    uint8_t reserved;
+} MotorCommandMailboxControl;
 
-CommandTransportResult motor_command_mailbox_queue_payload(CommandTransport *transport,
-                                                           const uint8_t *payload, uint16_t length);
-CommandTransportResult motor_command_mailbox_queue_response(CommandTransport *transport,
-                                                            uint8_t *response, uint16_t length);
+CommandTransportResult motor_command_mailbox_queue_payload_read(CommandTransport *transport,
+                                                                uint8_t *payload, uint16_t length);
+CommandTransportResult motor_command_mailbox_queue_payload_write(CommandTransport *transport,
+                                                                 const uint8_t *payload,
+                                                                 uint16_t length);
 CommandTransportResult
-motor_command_mailbox_queue_status(CommandTransport *transport,
-                                   const uint8_t status[MOTOR_COMMAND_MAILBOX_STATUS_SIZE]);
+motor_command_mailbox_queue_length_read(CommandTransport *transport,
+                                        uint8_t length[MOTOR_COMMAND_MAILBOX_LENGTH_SIZE]);
 CommandTransportResult
-motor_command_mailbox_queue_control(CommandTransport *transport,
-                                    const uint8_t control[MOTOR_COMMAND_MAILBOX_REGISTER_SIZE]);
+motor_command_mailbox_queue_control_read(CommandTransport *transport,
+                                         uint8_t control[MOTOR_COMMAND_MAILBOX_CONTROL_SIZE]);
 CommandTransportResult
-motor_command_mailbox_queue_command(CommandTransport *transport,
-                                    const uint8_t command[MOTOR_COMMAND_MAILBOX_REGISTER_SIZE]);
-void motor_command_mailbox_write_init(MotorCommandMailboxWrite *write,
-                                      MotorCommandMailboxWriteKind kind);
-MotorCommandMailboxWriteResult motor_command_mailbox_write_run(MotorCommandMailboxWrite *write,
-                                                               CommandTransport *transport,
-                                                               const uint8_t *record,
-                                                               uint32_t *accepted_value);
+motor_command_mailbox_queue_status_read(CommandTransport *transport,
+                                        uint8_t status[MOTOR_COMMAND_MAILBOX_STATUS_SIZE]);
+bool motor_command_mailbox_control_decode(const uint8_t record[MOTOR_COMMAND_MAILBOX_CONTROL_SIZE],
+                                          MotorCommandMailboxControl *control);
 
 #endif
