@@ -29,13 +29,14 @@ static void encode_header(uint8_t owner, uint8_t direction, uint8_t offset, uint
 /**
  * @brief Encodes an attached-wheel memory read request.
  *
- * Writes the control command, owner and read flag, memory offset, and little-endian transfer count.
+ * Writes the control command, owner and read flag, memory offset, and little-endian transfer count
+ * for a request of up to 512 bytes.
  *
  * @param[in] owner Transfer owner identifier.
  * @param[in] offset Attached-wheel memory offset.
  * @param[in] length Requested byte count.
  * @param[out] output Five-byte request payload.
- * @return Five when the requested count fits one response frame; otherwise zero.
+ * @return Five when the requested count is supported; otherwise zero.
  */
 uint8_t wheel_memory_transfer_encode_read(uint8_t owner, uint8_t offset, uint16_t length,
                                           uint8_t output[WHEEL_MEMORY_TRANSFER_READ_REQUEST_SIZE]) {
@@ -51,8 +52,7 @@ uint8_t wheel_memory_transfer_encode_read(uint8_t owner, uint8_t offset, uint16_
 /**
  * @brief Encodes an attached-wheel memory write request.
  *
- * Writes the control command, owner and write flag, memory offset, and payload into one transport
- * frame.
+ * Writes the control command, owner and write flag, memory offset, and up to 512 payload bytes.
  *
  * @param[in] owner Transfer owner identifier.
  * @param[in] offset Attached-wheel memory offset.
@@ -61,14 +61,15 @@ uint8_t wheel_memory_transfer_encode_read(uint8_t owner, uint8_t offset, uint16_
  * @param[out] output Encoded request payload.
  * @return Encoded byte count, or zero when the payload is invalid or too long.
  */
-uint8_t wheel_memory_transfer_encode_write(uint8_t owner, uint8_t offset, const uint8_t *data,
-                                           uint8_t length,
-                                           uint8_t output[WHEEL_TRANSPORT_PAYLOAD_SIZE]) {
+uint16_t
+wheel_memory_transfer_encode_write(uint8_t owner, uint8_t offset, const uint8_t *data,
+                                   uint16_t length,
+                                   uint8_t output[WHEEL_MEMORY_TRANSFER_MAX_REQUEST_SIZE]) {
     if (length > WHEEL_MEMORY_TRANSFER_MAX_WRITE_SIZE || (data == 0 && length != 0)) {
         return 0;
     }
     encode_header(owner, 0, offset, output);
-    for (uint8_t index = 0; index < length; index++) {
+    for (uint16_t index = 0; index < length; index++) {
         output[WHEEL_MEMORY_TRANSFER_HEADER_SIZE + index] = data[index];
     }
     return WHEEL_MEMORY_TRANSFER_HEADER_SIZE + length;
@@ -83,7 +84,7 @@ uint8_t wheel_memory_transfer_encode_write(uint8_t owner, uint8_t offset, const 
  * @param[in] response_length Received byte count.
  * @return Accepted, rejected, or invalid-response status.
  */
-static WheelMemoryTransferResult decode_status(const uint8_t *response, uint8_t response_length) {
+static WheelMemoryTransferResult decode_status(const uint8_t *response, uint16_t response_length) {
     if (response == 0 || response_length == 0) {
         return WHEEL_MEMORY_TRANSFER_INVALID_RESPONSE;
     }
@@ -108,9 +109,9 @@ static WheelMemoryTransferResult decode_status(const uint8_t *response, uint8_t 
  * @return Accepted, rejected, or invalid-response status.
  */
 WheelMemoryTransferResult wheel_memory_transfer_decode_read(const uint8_t *response,
-                                                            uint8_t response_length,
+                                                            uint16_t response_length,
                                                             uint8_t *output,
-                                                            uint8_t output_length) {
+                                                            uint16_t output_length) {
     WheelMemoryTransferResult result = decode_status(response, response_length);
     if (result != WHEEL_MEMORY_TRANSFER_ACCEPTED) {
         return result;
@@ -118,7 +119,7 @@ WheelMemoryTransferResult wheel_memory_transfer_decode_read(const uint8_t *respo
     if (output == 0 || response_length != output_length + WHEEL_MEMORY_TRANSFER_READ_DATA_OFFSET) {
         return WHEEL_MEMORY_TRANSFER_INVALID_RESPONSE;
     }
-    for (uint8_t index = 0; index < output_length; index++) {
+    for (uint16_t index = 0; index < output_length; index++) {
         output[index] = response[WHEEL_MEMORY_TRANSFER_READ_DATA_OFFSET + index];
     }
     return WHEEL_MEMORY_TRANSFER_ACCEPTED;
@@ -134,6 +135,6 @@ WheelMemoryTransferResult wheel_memory_transfer_decode_read(const uint8_t *respo
  * @return Accepted, rejected, or invalid-response status.
  */
 WheelMemoryTransferResult wheel_memory_transfer_decode_write(const uint8_t *response,
-                                                             uint8_t response_length) {
+                                                             uint16_t response_length) {
     return decode_status(response, response_length);
 }

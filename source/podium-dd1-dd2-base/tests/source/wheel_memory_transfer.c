@@ -16,13 +16,38 @@ static void test_encodes_read_request(void) {
 
 static void test_encodes_write_request(void) {
     static const uint8_t data[] = {0xaa, 0xbb};
-    uint8_t request[WHEEL_TRANSPORT_PAYLOAD_SIZE];
+    uint8_t request[WHEEL_MEMORY_TRANSFER_MAX_REQUEST_SIZE];
 
     assert(wheel_memory_transfer_encode_write(0x12, 0xb0, data, sizeof(data), request) == 5);
     static const uint8_t expected[] = {2, 0x24, 0xb0, 0xaa, 0xbb};
     assert(memcmp(request, expected, sizeof(expected)) == 0);
     assert(wheel_memory_transfer_encode_write(0x12, 0xb0, 0, WHEEL_MEMORY_TRANSFER_MAX_WRITE_SIZE,
                                               request) == 0);
+}
+
+static void test_encodes_maximum_write_request(void) {
+    uint8_t data[WHEEL_MEMORY_TRANSFER_MAX_WRITE_SIZE];
+    uint8_t request[WHEEL_MEMORY_TRANSFER_MAX_REQUEST_SIZE];
+    for (uint16_t index = 0; index < sizeof(data); index++) {
+        data[index] = (uint8_t)index;
+    }
+
+    assert(wheel_memory_transfer_encode_write(0x20, 0x80, data, sizeof(data), request) ==
+           sizeof(request));
+    assert(request[0] == 2);
+    assert(request[1] == 0x40);
+    assert(request[2] == 0x80);
+    assert(memcmp(request + WHEEL_MEMORY_TRANSFER_HEADER_SIZE, data, sizeof(data)) == 0);
+    assert(wheel_memory_transfer_encode_write(0x20, 0x80, data, sizeof(data) + 1, request) == 0);
+}
+
+static void test_encodes_maximum_read_request(void) {
+    uint8_t request[WHEEL_MEMORY_TRANSFER_READ_REQUEST_SIZE];
+
+    assert(wheel_memory_transfer_encode_read(0x20, 0x80, WHEEL_MEMORY_TRANSFER_MAX_READ_SIZE,
+                                             request) == sizeof(request));
+    assert(request[3] == 0);
+    assert(request[4] == 2);
 }
 
 static void test_decodes_responses(void) {
@@ -49,6 +74,8 @@ static void test_decodes_responses(void) {
 int main(void) {
     test_encodes_read_request();
     test_encodes_write_request();
+    test_encodes_maximum_write_request();
+    test_encodes_maximum_read_request();
     test_decodes_responses();
     return 0;
 }
