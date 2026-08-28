@@ -18,7 +18,7 @@ enum {
 typedef enum {
     MOTOR_COMMAND_STARTUP_RESET,
     MOTOR_COMMAND_STARTUP_CLAIM,
-    MOTOR_COMMAND_STARTUP_WRITE_STATUS,
+    MOTOR_COMMAND_STARTUP_READ_STATUS,
     MOTOR_COMMAND_STARTUP_WAIT_STATUS,
     MOTOR_COMMAND_STARTUP_WAIT_RESET,
     MOTOR_COMMAND_STARTUP_WAIT_DIGEST,
@@ -31,20 +31,19 @@ typedef enum {
 
 typedef enum {
     MOTOR_COMMAND_STARTUP_ACTION_NONE,
-    MOTOR_COMMAND_STARTUP_ACTION_WRITE_STATUS,
+    MOTOR_COMMAND_STARTUP_ACTION_READ_STATUS,
     MOTOR_COMMAND_STARTUP_ACTION_SEND_COMMAND,
 } MotorCommandStartupActionType;
 
 typedef struct {
     MotorCommandStartupActionType type;
-    uint16_t status;
     uint8_t command;
     uint8_t selector;
 } MotorCommandStartupAction;
 
 typedef struct {
     uint8_t command;
-    bool status_write_pending;
+    bool status_read_pending;
     bool response_ready;
     bool restart;
 } MotorCommandStartupInput;

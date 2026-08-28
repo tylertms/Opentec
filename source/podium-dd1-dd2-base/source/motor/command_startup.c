@@ -20,7 +20,7 @@ void motor_command_startup_init(MotorCommandStartup *startup) {
 /**
  * @brief Advances the motor-command mailbox startup sequence.
  *
- * Owns the shared transport as identifier 0x20, schedules the initial status write, then sequences
+ * Owns the shared transport as identifier 0x20, schedules the initial status read, then sequences
  * reset, digest, and command-5 information selectors 3 and 4. Completion releases the transport
  * after both information responses are observed. A restart input returns the sequence to its reset
  * phase immediately.
@@ -46,14 +46,14 @@ MotorCommandStartupAction motor_command_startup_run(MotorCommandStartup *startup
     case MOTOR_COMMAND_STARTUP_CLAIM:
         command_transport_claim(transport, MOTOR_COMMAND_STARTUP_OWNER);
         startup->active = true;
-        startup->phase = MOTOR_COMMAND_STARTUP_WRITE_STATUS;
+        startup->phase = MOTOR_COMMAND_STARTUP_READ_STATUS;
         break;
-    case MOTOR_COMMAND_STARTUP_WRITE_STATUS:
+    case MOTOR_COMMAND_STARTUP_READ_STATUS:
         startup->phase = MOTOR_COMMAND_STARTUP_WAIT_STATUS;
-        action.type = MOTOR_COMMAND_STARTUP_ACTION_WRITE_STATUS;
+        action.type = MOTOR_COMMAND_STARTUP_ACTION_READ_STATUS;
         break;
     case MOTOR_COMMAND_STARTUP_WAIT_STATUS:
-        if (!input->status_write_pending) {
+        if (!input->status_read_pending) {
             startup->phase = MOTOR_COMMAND_STARTUP_WAIT_RESET;
             action.type = MOTOR_COMMAND_STARTUP_ACTION_SEND_COMMAND;
             action.command = MOTOR_COMMAND_STARTUP_SEQUENCE_RESET_COMMAND;

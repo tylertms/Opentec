@@ -25,8 +25,7 @@ static void test_sequences_startup_actions(void) {
     assert(command_transport_is_owner(&transport, MOTOR_COMMAND_STARTUP_OWNER));
     assert(startup.active);
     MotorCommandStartupAction action = run(&startup, &transport, 0, false, false, false);
-    assert(action.type == MOTOR_COMMAND_STARTUP_ACTION_WRITE_STATUS);
-    assert(action.status == 0);
+    assert(action.type == MOTOR_COMMAND_STARTUP_ACTION_READ_STATUS);
     assert(run(&startup, &transport, 0, true, false, false).type ==
            MOTOR_COMMAND_STARTUP_ACTION_NONE);
 
