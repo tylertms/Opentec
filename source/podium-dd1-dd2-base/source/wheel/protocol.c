@@ -99,6 +99,21 @@ static void select_mode(WheelProtocol *protocol,
     build_selection_response(protocol);
 }
 
+/**
+ * Checks the command byte accepted by the active attached-wheel exchange.
+ *
+ * @param protocol Protocol state with the active operating mode.
+ * @param command Received command byte.
+ * @return True for A6 or A7 in authenticated modes, or A5 in other modes.
+ */
+static bool active_command_valid(const WheelProtocol *protocol, uint8_t command) {
+    if (wheel_authentication_required(protocol->mode_one_output.operating_mode)) {
+        return command == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE ||
+               command == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE_REPLY;
+    }
+    return command == WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
+}
+
 void wheel_protocol_init(WheelProtocol *protocol) {
     const WheelPacketModeOneOutput empty_output = {0};
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
@@ -156,11 +171,19 @@ void wheel_protocol_accept(WheelProtocol *protocol,
         }
         return;
     case WHEEL_PROTOCOL_ACTIVE:
-        if (ready && request[0] == WHEEL_PROTOCOL_COMMAND_SELECT_MODE &&
-            wheel_protocol_message_valid(request)) {
-            capture_request(protocol, request);
-            build_active_response(protocol);
+        if (!ready) {
+            return;
         }
+        if (wheel_protocol_message_valid(request)) {
+            if (active_command_valid(protocol, request[0])) {
+                capture_request(protocol, request);
+            } else if (wheel_authentication_required(protocol->mode_one_output.operating_mode)) {
+                wheel_authentication_init(&protocol->authentication,
+                                          protocol->mode_one_output.operating_mode);
+                protocol->phase = WHEEL_PROTOCOL_AUTHENTICATING;
+            }
+        }
+        build_active_response(protocol);
         return;
     case WHEEL_PROTOCOL_UNSUPPORTED:
     case WHEEL_PROTOCOL_SCANNING_PRIMARY:

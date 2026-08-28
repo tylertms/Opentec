@@ -55,6 +55,21 @@ static void begin_authentication(WheelProtocol *protocol,
     wheel_protocol_accept(protocol, request);
 }
 
+static void complete_mode_10_authentication(WheelProtocol *protocol,
+                                            uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE]) {
+    static const uint8_t encrypted_proof[WHEEL_PROTOCOL_CONTENT_SIZE] = {
+        0xbf, 0xd4, 0x29, 0xc4, 0x2b, 0xd6, 0x73, 0xf4, 0x4c, 0x15, 0x73,
+        0xc4, 0x4b, 0x01, 0xd6, 0x85, 0xcb, 0xba, 0x7a, 0x8b, 0x92, 0xf2,
+        0xb5, 0x14, 0xfb, 0xaf, 0x35, 0x42, 0xfa, 0xf8, 0x7b, 0x36,
+    };
+    begin_authentication(protocol, request, 0x10);
+    memset(request, 0, WHEEL_PROTOCOL_PACKET_SIZE);
+    memcpy(request, encrypted_proof, sizeof(encrypted_proof));
+    mark_ready(request);
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+    wheel_protocol_accept(protocol, request);
+}
+
 static void test_synchronizes_and_selects_mode(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -253,6 +268,57 @@ static void test_echoes_token_from_wrong_encrypted_command(void) {
     assert(wheel_protocol_response(&protocol)[WHEEL_PROTOCOL_CHECKSUM_OFFSET] == 0x8b);
 }
 
+static void test_accepts_authenticated_active_commands_and_restarts_authentication(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    complete_mode_10_authentication(&protocol, request);
+    assert(protocol.phase == WHEEL_PROTOCOL_ACTIVE);
+
+    memset(request, 0, sizeof(request));
+    request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    request[2] = 0x41;
+    mark_ready(request);
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+    wheel_protocol_accept(&protocol, request);
+
+    assert(protocol.phase == WHEEL_PROTOCOL_ACTIVE);
+    assert(wheel_protocol_request(&protocol) != 0);
+    assert(wheel_protocol_request(&protocol)[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
+    assert(wheel_protocol_request(&protocol)[2] == 0x41);
+
+    request[0] = WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+    wheel_protocol_accept(&protocol, request);
+
+    assert(protocol.phase == WHEEL_PROTOCOL_AUTHENTICATING);
+    assert(protocol.authentication.stage == WHEEL_AUTHENTICATION_AWAITING_CHALLENGE);
+    assert(wheel_protocol_response(&protocol)[0] == WHEEL_PROTOCOL_COMMAND_SELECT_MODE);
+    assert(wheel_protocol_message_valid(wheel_protocol_response(&protocol)));
+}
+
+static void test_refreshes_active_response_after_invalid_checksum(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    synchronize(&protocol, request);
+    select_mode(&protocol, request, 1);
+
+    const WheelPacketModeOneOutput output = {
+        .display = {.glyphs = {0x12, 0x34, 0x56}},
+    };
+    wheel_protocol_set_mode_one_output(&protocol, &output);
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] =
+        (uint8_t)(wheel_protocol_message_checksum(request) ^ UINT8_MAX);
+    wheel_protocol_accept(&protocol, request);
+
+    assert(protocol.phase == WHEEL_PROTOCOL_ACTIVE);
+    assert(wheel_protocol_request(&protocol) == 0);
+    assert(wheel_protocol_response(&protocol)[2] == 0x12);
+    assert(wheel_protocol_response(&protocol)[3] == 0x34);
+    assert(wheel_protocol_response(&protocol)[4] == 0x56);
+    assert(wheel_protocol_message_valid(wheel_protocol_response(&protocol)));
+}
+
 static void test_restarts_synchronization_when_ready_drops(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -351,6 +417,8 @@ int main(void) {
     test_retries_invalid_authentication_challenge();
     test_retries_invalid_encrypted_proof();
     test_echoes_token_from_wrong_encrypted_command();
+    test_accepts_authenticated_active_commands_and_restarts_authentication();
+    test_refreshes_active_response_after_invalid_checksum();
     test_restarts_synchronization_when_ready_drops();
     test_captures_raw_active_requests();
     test_builds_mode_one_active_response();
