@@ -16,6 +16,7 @@ enum {
     PEDAL_HANDSHAKE_FRAME = 2,
     PEDAL_STATUS_FRAME = 0,
     PEDAL_DISCOVERY_TIMEOUT_MS = 100,
+    PEDAL_V3_BAUD_SWITCH_DELAY_MS = 5,
     PEDAL_INITIAL_SAMPLE_TIMEOUT_MS = 15000,
     PEDAL_SAMPLE_TIMEOUT_MS = 1000,
     PEDAL_RECONNECT_DELAY_MS = 550,
@@ -85,8 +86,8 @@ static void service_detect_response(PedalService *service, uint32_t now_ms) {
 static void service_protocol_response(PedalService *service, uint32_t now_ms) {
     if (platform_pedal_link_take_byte(&service->response)) {
         if (service->device == PEDAL_DEVICE_V3 && service->response == PEDAL_V3_PROTOCOL_RESPONSE) {
-            platform_pedal_link_begin_framed_receive();
-            service->phase = PEDAL_SERVICE_V3_START;
+            service->phase = PEDAL_SERVICE_V3_SWITCH_WAIT;
+            service->deadline_ms = now_ms + PEDAL_V3_BAUD_SWITCH_DELAY_MS;
             return;
         }
         if (service->device == PEDAL_DEVICE_V4 && service->response == PEDAL_V4_PROTOCOL_RESPONSE) {
@@ -140,6 +141,12 @@ void pedal_service_run(PedalService *service, uint32_t now_ms) {
     }
     case PEDAL_SERVICE_PROTOCOL_RESPONSE:
         service_protocol_response(service, now_ms);
+        break;
+    case PEDAL_SERVICE_V3_SWITCH_WAIT:
+        if (platform_time_reached(now_ms, service->deadline_ms)) {
+            platform_pedal_link_begin_framed_receive();
+            service->phase = PEDAL_SERVICE_V3_START;
+        }
         break;
     case PEDAL_SERVICE_V3_START:
         if (send_frame(service, PEDAL_HANDSHAKE_FRAME, 0xff, 0)) {

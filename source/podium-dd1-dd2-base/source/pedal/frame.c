@@ -13,6 +13,12 @@ static uint8_t pedal_checksum(const uint8_t *input) {
     return crc;
 }
 
+/**
+ * Encodes a pedal protocol message into its 12-byte framed representation.
+ *
+ * @param frame Message type and eight-byte payload to encode.
+ * @param output Destination for the framed message.
+ */
 void pedal_frame_encode(const PedalFrame *frame, uint8_t output[PEDAL_FRAME_SIZE]) {
     output[0] = PEDAL_FRAME_START;
     output[1] = frame->type;
@@ -23,6 +29,13 @@ void pedal_frame_encode(const PedalFrame *frame, uint8_t output[PEDAL_FRAME_SIZE
     output[11] = PEDAL_FRAME_END;
 }
 
+/**
+ * Validates and decodes a 12-byte pedal protocol message.
+ *
+ * @param input Complete framed message.
+ * @param frame Destination for the decoded message type and payload.
+ * @return Frame status identifying boundary or checksum failures.
+ */
 PedalFrameResult pedal_frame_decode(const uint8_t input[PEDAL_FRAME_SIZE], PedalFrame *frame) {
     if (input[0] != PEDAL_FRAME_START || input[11] != PEDAL_FRAME_END) {
         return PEDAL_FRAME_INVALID_BOUNDARY;

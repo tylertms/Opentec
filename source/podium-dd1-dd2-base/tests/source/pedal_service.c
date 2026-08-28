@@ -90,8 +90,12 @@ static void connect_v3(PedalService *service) {
     assert(sent_byte == 0x05);
     receive_byte(0x15);
     pedal_service_run(service, 3);
+    assert(framed_receive_count == 0);
+    pedal_service_run(service, 7);
+    assert(framed_receive_count == 0);
+    pedal_service_run(service, 8);
     assert(framed_receive_count == 1);
-    pedal_service_run(service, 4);
+    pedal_service_run(service, 9);
     assert(service->phase == PEDAL_SERVICE_V3_STREAM);
 }
 
@@ -113,7 +117,7 @@ static void test_connects_and_publishes_v3_input(void) {
         .payload = {0x34, 0x12, 0x78, 0x56, 0xbc, 0x9a, 0, 0xde},
     };
     receive_frame(&sample);
-    pedal_service_run(&service, 5);
+    pedal_service_run(&service, 10);
 
     const PedalInput *input = pedal_service_input(&service);
     assert(service.connected);
@@ -134,8 +138,8 @@ static void test_releases_input_after_stream_timeout(void) {
         .payload = {1, 0, 2, 0, 3, 0, 0, 4},
     };
     receive_frame(&sample);
-    pedal_service_run(&service, 5);
-    pedal_service_run(&service, 1005);
+    pedal_service_run(&service, 10);
+    pedal_service_run(&service, 1010);
 
     const PedalInput *input = pedal_service_input(&service);
     assert(!service.connected);
@@ -146,9 +150,9 @@ static void test_releases_input_after_stream_timeout(void) {
     assert(input->auxiliary == 0);
     assert(discovery_count == 1);
 
-    pedal_service_run(&service, 1554);
+    pedal_service_run(&service, 1559);
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
-    pedal_service_run(&service, 1555);
+    pedal_service_run(&service, 1560);
     assert(service.phase == PEDAL_SERVICE_DETECT_REQUEST);
 }
 
