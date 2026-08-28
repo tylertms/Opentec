@@ -325,6 +325,7 @@ static void test_captures_normalized_active_requests(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
     wheel_protocol_init(&protocol);
+    assert(wheel_protocol_axis_limit(&protocol) == 0);
     synchronize(&protocol, request);
     select_mode(&protocol, request, 1);
 
@@ -349,6 +350,7 @@ static void test_captures_normalized_active_requests(void) {
     assert(input->motion == 7);
     assert(input->axis_values[0] == 0);
     assert(input->axis_limit == 31);
+    assert(wheel_protocol_axis_limit(&protocol) == 31);
     const WheelPacketModeOneReportState *report_state =
         wheel_protocol_mode_one_report_state(&protocol);
     assert(report_state != 0);
@@ -488,6 +490,7 @@ static void test_captures_mode_four_requests(void) {
     assert(input->axis_values[0] == 0x1234);
     assert(input->control_data[0] == 0x61);
     assert(input->axis_limit == 0x74);
+    assert(wheel_protocol_axis_limit(&protocol) == 0x74);
     assert(wheel_protocol_acknowledgement_input_active(&protocol));
     assert(wheel_protocol_request_changed(&protocol));
     assert(!wheel_protocol_request_changed(&protocol));
@@ -614,6 +617,7 @@ static void test_captures_crc_family_requests(void) {
     request[12] = 0x02;
     request[28] = 0x34;
     request[30] = 0x3f;
+    request[31] = 0x62;
     request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
     for (uint8_t sample = 0; sample < WHEEL_PACKET_CRC_HISTORY_DEPTH * 2 - 1; sample++) {
         wheel_protocol_accept(&protocol, request);
@@ -624,6 +628,7 @@ static void test_captures_crc_family_requests(void) {
     assert(input->buttons[0] == 0x80);
     assert(input->buttons[1] == 0x08);
     assert(input->controls[4] == 0x02);
+    assert(wheel_protocol_axis_limit(&protocol) == 0x62);
     assert(wheel_protocol_request(&protocol)[0] == 0x80);
     assert(wheel_protocol_request(&protocol)[1] == 0x08);
     assert(wheel_protocol_acknowledgement_input_active(&protocol));

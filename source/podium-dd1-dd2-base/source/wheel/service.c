@@ -361,6 +361,18 @@ const uint8_t *wheel_service_buttons(const WheelService *service) {
 }
 
 /**
+ * @brief Returns the attached wheel's axis-limit value.
+ *
+ * Reads the axis-limit byte retained from the current supported packet-family input report.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return Current axis-limit value, or zero when unavailable.
+ */
+uint8_t wheel_service_axis_limit(const WheelService *service) {
+    return wheel_protocol_axis_limit(&service->protocol);
+}
+
+/**
  * @brief Takes one queued attached-wheel encoder step.
  *
  * Consumes one signed step from the motion accumulated by valid wheel protocol reports.

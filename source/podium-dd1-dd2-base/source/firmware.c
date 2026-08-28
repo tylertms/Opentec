@@ -375,6 +375,8 @@ static void service_usb_input(void) {
     usb_input_state = (fanatec_input_state){
         .steering = wheel_position_hid_axis(motor_position_report.wheel_position,
                                             &wheel_position_calibration),
+        .wheel_mode = FANATEC_INPUT_DIRECT_DRIVE_MODE,
+        .axis_limit = wheel_service_axis_limit(&wheel_service),
     };
     const uint8_t *wheel_buttons = wheel_service_buttons(&wheel_service);
     for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {

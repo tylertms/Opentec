@@ -299,6 +299,7 @@ static void test_keeps_protocol_transport_for_packet_modes(void) {
         .length = WHEEL_PROTOCOL_PACKET_SIZE,
     };
     active.data[0] = WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
+    active.data[31] = 0x73;
     active.data[WHEEL_PROTOCOL_FLAGS_OFFSET] = WHEEL_PROTOCOL_REQUEST_READY;
     active.data[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(active.data);
     respond_frame(&active);
@@ -306,6 +307,7 @@ static void test_keeps_protocol_transport_for_packet_modes(void) {
 
     assert(wheel_service_protocol_phase(&service) == WHEEL_PROTOCOL_ACTIVE);
     assert(wheel_service_mode(&service) == 1);
+    assert(wheel_service_axis_limit(&service) == 0x73);
     WheelTransportFrame frame = request();
     assert(frame.command == 2);
     assert(frame.length == WHEEL_PROTOCOL_PACKET_SIZE);

@@ -419,6 +419,28 @@ const WheelCapabilityState *wheel_protocol_capabilities(const WheelProtocol *pro
 }
 
 /**
+ * @brief Returns the attached wheel's axis-limit value.
+ *
+ * Selects the value from the current mode-one, mode-four, or CRC-family input report. Returns zero
+ * until a supported input report is ready.
+ *
+ * @param[in] protocol Attached-wheel protocol state.
+ * @return Current axis-limit value, or zero when unavailable.
+ */
+uint8_t wheel_protocol_axis_limit(const WheelProtocol *protocol) {
+    const WheelPacketModeOneInput *mode_one = wheel_protocol_mode_one_input(protocol);
+    if (mode_one != 0) {
+        return mode_one->axis_limit;
+    }
+    const WheelPacketModeFourInput *mode_four = wheel_protocol_mode_four_input(protocol);
+    if (mode_four != 0) {
+        return mode_four->axis_limit;
+    }
+    const WheelPacketCrcInput *crc = wheel_protocol_crc_input(protocol);
+    return crc != 0 ? crc->axis_limit : 0;
+}
+
+/**
  * @brief Takes one queued attached-wheel motion step.
  *
  * Moves the protocol's primary wrapping motion counter one position toward zero.
