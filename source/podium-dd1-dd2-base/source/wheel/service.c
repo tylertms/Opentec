@@ -350,6 +350,19 @@ void wheel_service_apply_output_report(WheelService *service, const uint8_t *arg
 }
 
 /**
+ * @brief Queues a tuning-menu report for the attached wheel.
+ *
+ * Retains the complete report 17 payload in the wheel protocol and restarts its segmented transfer.
+ *
+ * @param[in,out] service Attached-wheel service that owns the report queue.
+ * @param[in] payload Complete 61-byte report payload.
+ */
+void wheel_service_queue_report_seventeen(
+    WheelService *service, const uint8_t payload[WHEEL_OUTPUT_REPORT_SEVENTEEN_SIZE]) {
+    wheel_output_reports_queue_seventeen(&service->protocol.output_reports, payload);
+}
+
+/**
  * @brief Advances attached-wheel protocol traffic.
  *
  * Applies a completed type-two or type-three response, maintains protocol activity state, and

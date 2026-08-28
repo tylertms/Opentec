@@ -89,10 +89,50 @@ static void test_ignores_unknown_actions(void) {
     assert(!wheel_output_reports_encode_next(&reports, frame));
 }
 
+static void test_streams_report_seventeen_after_direct_reports(void) {
+    WheelOutputReports reports;
+    wheel_output_reports_init(&reports);
+    uint8_t payload[WHEEL_OUTPUT_REPORT_SEVENTEEN_SIZE];
+    uint8_t arguments[26];
+    uint8_t frame[33] = {0};
+
+    for (uint8_t index = 0; index < WHEEL_OUTPUT_REPORT_SEVENTEEN_SIZE; index++) {
+        payload[index] = index;
+    }
+    wheel_output_reports_queue_seventeen(&reports, payload);
+    fill_arguments(arguments, 1, 0x80);
+    wheel_output_reports_apply(&reports, arguments, 0, 0, false);
+
+    assert(wheel_output_reports_encode_next(&reports, frame));
+    assert(frame[1] == 1);
+
+    assert(wheel_output_reports_encode_next(&reports, frame));
+    assert(frame[1] == 3);
+    assert(frame[2] == 0x0f);
+    for (uint8_t index = 1; index < 30; index++) {
+        assert(frame[index + 2] == index);
+    }
+
+    assert(wheel_output_reports_encode_next(&reports, frame));
+    assert(frame[1] == 3);
+    for (uint8_t index = 0; index < 30; index++) {
+        assert(frame[index + 2] == (uint8_t)(index + 30));
+    }
+
+    assert(wheel_output_reports_encode_next(&reports, frame));
+    assert(frame[1] == 3);
+    assert(frame[2] == 0x1e);
+    for (uint8_t index = 1; index < 30; index++) {
+        assert(frame[index + 2] == index);
+    }
+    assert(!wheel_output_reports_encode_next(&reports, frame));
+}
+
 int main(void) {
     test_encodes_reports_in_priority_order();
     test_suppresses_legacy_report_two_outside_blink_phase();
     test_gates_extended_reports();
     test_ignores_unknown_actions();
+    test_streams_report_seventeen_after_direct_reports();
     return 0;
 }

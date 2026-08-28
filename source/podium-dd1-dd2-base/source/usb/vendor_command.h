@@ -9,7 +9,7 @@
 
 typedef enum {
     USB_VENDOR_COMMAND_WHEEL_OUTPUT_REPORT,
-    USB_VENDOR_COMMAND_RESPONSE_PREPARATION,
+    USB_VENDOR_COMMAND_TUNING_MENU,
     USB_VENDOR_COMMAND_DEVICE_CONTROL_UPDATE,
     USB_VENDOR_COMMAND_DIAGNOSTIC_SNAPSHOT,
     USB_VENDOR_COMMAND_OPERATING_MODE_TRANSITION,
@@ -41,6 +41,7 @@ bool usb_vendor_command_decode(const UsbOutputCommand *output, UsbVendorCommand 
 bool usb_vendor_command_requests_motor_command(const UsbVendorCommand *command);
 bool usb_vendor_command_decode_wheel_transfer(const UsbVendorCommand *command,
                                               UsbWheelTransferCommand *transfer);
+const uint8_t *usb_vendor_command_decode_wheel_report_seventeen(const UsbVendorCommand *command);
 void usb_vendor_command_encode_wheel_transfer_response(WheelTransferRequest request,
                                                        WheelTransferStatus status,
                                                        uint8_t output[USB_DEVICE_REPORT_SIZE]);

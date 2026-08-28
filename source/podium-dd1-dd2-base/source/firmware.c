@@ -636,6 +636,12 @@ static void service_usb_output(void) {
             wheel_service_apply_output_report(&wheel_service, usb_vendor_command.arguments, false);
             return;
         }
+        const uint8_t *wheel_report_seventeen =
+            usb_vendor_command_decode_wheel_report_seventeen(&usb_vendor_command);
+        if (wheel_report_seventeen != 0) {
+            wheel_service_queue_report_seventeen(&wheel_service, wheel_report_seventeen);
+            return;
+        }
         if (usb_diagnostic_report_apply_command(&usb_diagnostic_report_service,
                                                 &usb_vendor_command)) {
             return;

@@ -39,6 +39,8 @@ void wheel_service_set_display_output(WheelService *service, const WheelDisplayO
 void wheel_service_set_crc_adapter(WheelService *service, const WheelPacketCrcAdapter *adapter);
 void wheel_service_apply_output_report(WheelService *service, const uint8_t *arguments,
                                        bool display_blink_active);
+void wheel_service_queue_report_seventeen(
+    WheelService *service, const uint8_t payload[WHEEL_OUTPUT_REPORT_SEVENTEEN_SIZE]);
 const uint8_t *wheel_service_buttons(const WheelService *service);
 uint8_t wheel_service_axis_limit(const WheelService *service);
 const uint8_t *wheel_service_clutch_paddles(const WheelService *service);

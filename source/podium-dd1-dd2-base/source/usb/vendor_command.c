@@ -12,14 +12,25 @@ enum {
     VENDOR_COMMAND_WHEEL_TRANSFER = 0xe0,
     VENDOR_COMMAND_WHEEL_TRANSFER_WRITE = 0x0402,
     VENDOR_COMMAND_WHEEL_TRANSFER_READ = 0x0502,
+    VENDOR_COMMAND_TUNING_MENU_REPORT = 1,
 };
 
+/**
+ * @brief Selects the route for a vendor command opcode.
+ *
+ * Maps each supported top-level opcode to its clean command category and rejects an extended reset
+ * unless its group and selector match the reset signature.
+ *
+ * @param[in] opcode Top-level vendor command opcode.
+ * @param[in] payload Complete 63-byte vendor command payload.
+ * @return Command category value, or negative one when the command is unsupported.
+ */
 static int8_t command_kind(uint8_t opcode, const uint8_t *payload) {
     switch (opcode) {
     case 1:
         return USB_VENDOR_COMMAND_WHEEL_OUTPUT_REPORT;
     case 2:
-        return USB_VENDOR_COMMAND_RESPONSE_PREPARATION;
+        return USB_VENDOR_COMMAND_TUNING_MENU;
     case 3:
         return USB_VENDOR_COMMAND_DEVICE_CONTROL_UPDATE;
     case 4:
@@ -119,6 +130,24 @@ bool usb_vendor_command_decode_wheel_transfer(const UsbVendorCommand *command,
         value == VENDOR_COMMAND_WHEEL_TRANSFER_READ ? WHEEL_TRANSFER_READ : WHEEL_TRANSFER_WRITE;
     transfer->action = (UsbWheelTransferAction)action;
     return true;
+}
+
+/**
+ * @brief Decodes a tuning-menu attached-wheel report transfer.
+ *
+ * Accepts tuning-menu action one and exposes its complete 61-byte report payload.
+ *
+ * @param[in] command Decoded vendor command.
+ * @return Complete report 17 payload, or null when the command does not contain tuning-menu action
+ * one and all 61 payload bytes.
+ */
+const uint8_t *usb_vendor_command_decode_wheel_report_seventeen(const UsbVendorCommand *command) {
+    if (command == NULL || command->kind != USB_VENDOR_COMMAND_TUNING_MENU ||
+        command->arguments == NULL || command->length < VENDOR_COMMAND_ARGUMENT_SIZE ||
+        command->arguments[0] != VENDOR_COMMAND_TUNING_MENU_REPORT) {
+        return NULL;
+    }
+    return command->arguments + 1;
 }
 
 /**

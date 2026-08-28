@@ -13,6 +13,11 @@ enum {
     WHEEL_OUTPUT_REPORT_TWO_PENDING = 1u << 1,
     WHEEL_OUTPUT_REPORT_FOUR_PENDING = 1u << 2,
     WHEEL_OUTPUT_REPORT_FIVE_PENDING = 1u << 3,
+    WHEEL_OUTPUT_REPORT_SEVENTEEN_PENDING = 1u << 4,
+    WHEEL_OUTPUT_REPORT_SEVENTEEN_COMMAND = 3,
+    WHEEL_OUTPUT_REPORT_SEVENTEEN_CHUNK_SIZE = 30,
+    WHEEL_OUTPUT_REPORT_SEVENTEEN_HEADER_STEP = 0x0f,
+    WHEEL_OUTPUT_REPORT_SEVENTEEN_LAST_SEQUENCE = 1,
     WHEEL_MODE_LEGACY_ALTERNATE = 0x0f,
     WHEEL_MODE_LEGACY_COMPATIBILITY = 0x17,
 };
@@ -20,12 +25,55 @@ enum {
 /**
  * @brief Initializes retained attached-wheel output reports.
  *
- * Clears all four report payloads and their pending state.
+ * Clears all retained report payloads, transfer sequence, and pending state.
  *
  * @param[out] reports Report storage to initialize.
  */
 void wheel_output_reports_init(WheelOutputReports *reports) {
     memset(reports, 0, sizeof(*reports));
+}
+
+/**
+ * @brief Queues a segmented attached-wheel report 17 transfer.
+ *
+ * Retains all 61 host-provided bytes, resets the transfer sequence, and makes the transfer the
+ * lowest-priority pending attached-wheel output report.
+ *
+ * @param[in,out] reports Retained report payloads, sequence, and pending state.
+ * @param[in] payload Complete 61-byte report payload.
+ */
+void wheel_output_reports_queue_seventeen(
+    WheelOutputReports *reports, const uint8_t payload[WHEEL_OUTPUT_REPORT_SEVENTEEN_SIZE]) {
+    memcpy(reports->report_seventeen, payload, sizeof(reports->report_seventeen));
+    reports->report_seventeen_sequence = 0;
+    reports->pending |= WHEEL_OUTPUT_REPORT_SEVENTEEN_PENDING;
+}
+
+/**
+ * @brief Encodes the next report 17 transfer segment.
+ *
+ * Writes command 3 and one 30-byte payload half. Sequence zero advances the retained first byte by
+ * 0x0F before sending bytes 0 through 29, and sequence one sends bytes 30 through 59. A subsequent
+ * call clears the pending state, restarts at sequence zero, and emits the restarted first half.
+ *
+ * @param[in,out] reports Retained report payload, sequence, and pending state.
+ * @param[in,out] frame Attached-wheel frame receiving the command and payload segment.
+ */
+static void encode_report_seventeen(WheelOutputReports *reports, uint8_t *frame) {
+    if (reports->report_seventeen_sequence > WHEEL_OUTPUT_REPORT_SEVENTEEN_LAST_SEQUENCE) {
+        reports->report_seventeen_sequence = 0;
+        reports->pending &= (uint8_t)~WHEEL_OUTPUT_REPORT_SEVENTEEN_PENDING;
+    }
+
+    const uint8_t *payload = reports->report_seventeen;
+    frame[1] = WHEEL_OUTPUT_REPORT_SEVENTEEN_COMMAND;
+    if (reports->report_seventeen_sequence == 0) {
+        reports->report_seventeen[0] += WHEEL_OUTPUT_REPORT_SEVENTEEN_HEADER_STEP;
+    } else {
+        payload += WHEEL_OUTPUT_REPORT_SEVENTEEN_CHUNK_SIZE;
+    }
+    memcpy(frame + 2, payload, WHEEL_OUTPUT_REPORT_SEVENTEEN_CHUNK_SIZE);
+    reports->report_seventeen_sequence++;
 }
 
 /**
@@ -75,9 +123,9 @@ void wheel_output_reports_apply(WheelOutputReports *reports, const uint8_t *argu
 /**
  * @brief Encodes the next pending attached-wheel output report.
  *
- * Selects reports in the order 1, 2, 4, and 5, writes the report number and retained payload at
- * frame offsets one and two, and consumes the selected pending state. The caller supplies the
- * command byte and checksum.
+ * Selects reports in the order 1, 2, 4, 5, and 17. Single-frame reports write their report number
+ * and retained payload at frame offsets one and two, then consume their pending state. Report 17
+ * emits its next segmented transfer frame. The caller supplies the command byte and checksum.
  *
  * @param[in,out] reports Retained report payloads and pending state.
  * @param[in,out] frame Attached-wheel frame receiving the report number and payload.
@@ -109,6 +157,9 @@ bool wheel_output_reports_encode_next(WheelOutputReports *reports, uint8_t *fram
         payload = reports->report_five;
         size = sizeof(reports->report_five);
         pending = WHEEL_OUTPUT_REPORT_FIVE_PENDING;
+    } else if ((reports->pending & WHEEL_OUTPUT_REPORT_SEVENTEEN_PENDING) != 0) {
+        encode_report_seventeen(reports, frame);
+        return true;
     } else {
         return false;
     }

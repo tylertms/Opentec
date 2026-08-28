@@ -9,6 +9,7 @@ enum {
     WHEEL_OUTPUT_REPORT_TWO_SIZE = 18,
     WHEEL_OUTPUT_REPORT_FOUR_SIZE = 25,
     WHEEL_OUTPUT_REPORT_FIVE_SIZE = 16,
+    WHEEL_OUTPUT_REPORT_SEVENTEEN_SIZE = 61,
 };
 
 /** @brief Retained attached-wheel output report payloads and pending state. */
@@ -17,6 +18,8 @@ typedef struct {
     uint8_t report_two[WHEEL_OUTPUT_REPORT_TWO_SIZE];
     uint8_t report_four[WHEEL_OUTPUT_REPORT_FOUR_SIZE];
     uint8_t report_five[WHEEL_OUTPUT_REPORT_FIVE_SIZE];
+    uint8_t report_seventeen[WHEEL_OUTPUT_REPORT_SEVENTEEN_SIZE];
+    uint8_t report_seventeen_sequence;
     uint8_t pending;
 } WheelOutputReports;
 
@@ -24,6 +27,8 @@ void wheel_output_reports_init(WheelOutputReports *reports);
 void wheel_output_reports_apply(WheelOutputReports *reports, const uint8_t *arguments,
                                 uint8_t wheel_mode, uint16_t adapter_mode,
                                 bool display_blink_active);
+void wheel_output_reports_queue_seventeen(
+    WheelOutputReports *reports, const uint8_t payload[WHEEL_OUTPUT_REPORT_SEVENTEEN_SIZE]);
 bool wheel_output_reports_encode_next(WheelOutputReports *reports, uint8_t *frame);
 
 #endif

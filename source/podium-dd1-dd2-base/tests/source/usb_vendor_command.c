@@ -20,7 +20,7 @@ static void test_classifies_direct_command_routes(void) {
         UsbVendorCommandKind kind;
     } cases[] = {
         {1, USB_VENDOR_COMMAND_WHEEL_OUTPUT_REPORT},
-        {2, USB_VENDOR_COMMAND_RESPONSE_PREPARATION},
+        {2, USB_VENDOR_COMMAND_TUNING_MENU},
         {3, USB_VENDOR_COMMAND_DEVICE_CONTROL_UPDATE},
         {4, USB_VENDOR_COMMAND_DIAGNOSTIC_SNAPSHOT},
         {5, USB_VENDOR_COMMAND_OPERATING_MODE_TRANSITION},
@@ -98,6 +98,22 @@ static void test_decodes_wheel_transfer_commands(void) {
     assert(!usb_vendor_command_decode_wheel_transfer(&command, NULL));
 }
 
+static void test_decodes_tuning_menu_wheel_report(void) {
+    uint8_t payload[63] = {2, 1};
+    UsbOutputCommand output = make_output(payload, 2);
+    UsbVendorCommand command;
+
+    assert(usb_vendor_command_decode(&output, &command));
+    assert(usb_vendor_command_decode_wheel_report_seventeen(&command) == payload + 2);
+
+    payload[1] = 2;
+    assert(usb_vendor_command_decode_wheel_report_seventeen(&command) == NULL);
+    payload[1] = 1;
+    command.length--;
+    assert(usb_vendor_command_decode_wheel_report_seventeen(&command) == NULL);
+    assert(usb_vendor_command_decode_wheel_report_seventeen(NULL) == NULL);
+}
+
 static void test_encodes_wheel_transfer_status(void) {
     uint8_t report[USB_DEVICE_REPORT_SIZE];
 
@@ -138,6 +154,7 @@ int main(void) {
     test_validates_extended_reset_signature();
     test_identifies_motor_command_request();
     test_decodes_wheel_transfer_commands();
+    test_decodes_tuning_menu_wheel_report();
     test_encodes_wheel_transfer_status();
     test_rejects_unhandled_payloads();
     return 0;
