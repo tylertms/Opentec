@@ -36,7 +36,7 @@ static int8_t command_kind(uint8_t opcode, const uint8_t *payload) {
     case 4:
         return USB_VENDOR_COMMAND_DIAGNOSTIC_SNAPSHOT;
     case 5:
-        return USB_VENDOR_COMMAND_OPERATING_MODE_TRANSITION;
+        return USB_VENDOR_COMMAND_REMOTE_TUNING;
     case 8:
         return USB_VENDOR_COMMAND_STATUS_RESPONSE;
     case VENDOR_COMMAND_EXTENDED_RESET:
