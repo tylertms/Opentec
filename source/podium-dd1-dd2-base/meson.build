@@ -132,6 +132,7 @@ motor_command_receiver_sources = files('source/motor/command_receiver.c')
 motor_command_scheduler_sources = files('source/motor/command_scheduler.c')
 motor_command_sequence_sources = files('source/motor/command_sequence.c')
 motor_command_startup_sources = files('source/motor/command_startup.c')
+motor_serial_packet_sources = files('source/motor/serial_packet.c')
 wheel_transport_frame_sources = files('source/wheel/transport_frame.c')
 wheel_transport_service_sources = files('source/wheel/transport_service.c')
 
@@ -293,6 +294,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'motor-command-scheduler': 'source/motor/command_scheduler.c',
     'motor-command-sequence': 'source/motor/command_sequence.c',
     'motor-command-startup': 'source/motor/command_startup.c',
+    'motor-serial-packet': 'source/motor/serial_packet.c',
     'wheel-transport-frame': 'source/wheel/transport_frame.c',
     'wheel-transport-service': 'source/wheel/transport_service.c',
   }
@@ -1428,6 +1430,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  motor_serial_packet_test = executable(
+    'base-motor-serial-packet-test',
+    'tests/source/motor_serial_packet.c',
+    motor_serial_packet_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_transport_frame_test = executable(
     'base-wheel-transport-frame-test',
     'tests/source/wheel_transport_frame.c',
@@ -1849,6 +1859,7 @@ if not meson.is_cross_build()
     motor_command_startup_test,
     suite: ['base', 'motor'],
   )
+  test('base-motor-serial-packet', motor_serial_packet_test, suite: ['base', 'motor'])
   test('base-wheel-protocol', wheel_protocol_test, suite: ['base', 'wheel', 'protocol'])
   test('base-wheel-capability', wheel_capability_test, suite: ['base', 'wheel', 'input'])
   test('base-wheel-motion', wheel_motion_test, suite: ['base', 'wheel', 'input'])
