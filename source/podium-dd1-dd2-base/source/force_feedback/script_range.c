@@ -1,5 +1,7 @@
 #include "force_feedback/script_range.h"
 
+static const float script_pi = 3.1415927f;
+
 /**
  * @brief Evaluate a script range operation.
  *
@@ -31,4 +33,24 @@ float force_feedback_script_range_evaluate(ForceFeedbackScriptRangeOperation ope
         return (value - lower) / (upper - lower);
     }
     return 0.0f;
+}
+
+/**
+ * @brief Scale a script rotation value by the active control range.
+ *
+ * Interprets the raw range code as a signed byte. Codes 126 and 127 select the unsigned extended
+ * range; every other code uses the sign-extended code itself. The selected range is multiplied by
+ * 5, then the operation evaluates value * pi * range / 180 using pi encoded by 0x40490FDB.
+ *
+ * @param[in] value Script rotation value to scale.
+ * @param[in] range_code Raw active control-range code.
+ * @param[in] extended_range Extended control range selected by codes 126 and 127.
+ * @return The scaled rotation in radians.
+ */
+float force_feedback_script_rotation_scale(float value, uint8_t range_code,
+                                           uint16_t extended_range) {
+    int32_t selected_range =
+        (int8_t)range_code > 125 ? (int32_t)extended_range : (int8_t)range_code;
+    float range_scale = (float)selected_range * 5.0f;
+    return value * script_pi * range_scale / 180.0f;
 }

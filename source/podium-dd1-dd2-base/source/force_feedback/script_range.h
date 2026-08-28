@@ -13,5 +13,7 @@ enum {
 
 float force_feedback_script_range_evaluate(ForceFeedbackScriptRangeOperation operation, float lower,
                                            float upper, float value);
+float force_feedback_script_rotation_scale(float value, uint8_t range_code,
+                                           uint16_t extended_range);
 
 #endif
