@@ -4,6 +4,7 @@
 #include "board/identity.h"
 #include "board/status_led.h"
 #include "cooling/controller.h"
+#include "cooling/effect_limit.h"
 #include "cooling/tachometer.h"
 #include "cooling/temperature.h"
 #include "force_feedback/output.h"
@@ -65,6 +66,7 @@ static MotorTelemetryService motor_telemetry_service;
 static MotorTuningService motor_tuning_service;
 static BaseSettings base_settings;
 static BaseSettingsPersistence settings_persistence;
+static TuningProfile runtime_tuning_profile;
 static const TuningProfile *tuning_profile;
 static MotorTuningContext motor_tuning_context;
 static bool motor_tuning_ready;
@@ -85,6 +87,8 @@ static uint8_t motor_received_frame[MOTOR_LIVE_FRAME_SIZE];
 static uint8_t motor_transmitted_frame[MOTOR_LIVE_FRAME_SIZE];
 static StatusLed status_led;
 static CoolingController cooling_controller;
+static CoolingEffectLimit cooling_effect_limit;
+static CoolingEffectStrengths cooling_effect_strengths;
 static CoolingTemperatureMonitor cooling_temperature_monitor;
 static PlatformFanTachometer fan_tachometer;
 static uint16_t fan_speed_rpm[2];
@@ -95,6 +99,7 @@ enum {
 
 static void initialize_cooling(void) {
     cooling_controller_init(&cooling_controller, board_identity.mode_bits == 7);
+    cooling_effect_limit_init(&cooling_effect_limit);
     cooling_temperature_monitor_init(&cooling_temperature_monitor);
     fan_speed_rpm[PLATFORM_FAN_PRIMARY] = 0;
     fan_speed_rpm[PLATFORM_FAN_SECONDARY] = 0;
@@ -109,6 +114,20 @@ static void service_cooling(uint32_t now_ms) {
                                   ? (float)(int16_t)telemetry->motor_temperature
                                   : 0.0f;
     cooling_controller_update(&cooling_controller, motor_temperature, false, false, now_ms);
+    CoolingEffectStrengths previous_strengths = cooling_effect_strengths;
+    cooling_effect_limit_update(&cooling_effect_limit, &cooling_effect_strengths,
+                                &cooling_controller, motor_temperature, false, now_ms);
+    if (cooling_effect_strengths.force != previous_strengths.force ||
+        cooling_effect_strengths.spring != previous_strengths.spring ||
+        cooling_effect_strengths.damper != previous_strengths.damper) {
+        runtime_tuning_profile.force_effect_strength = cooling_effect_strengths.force;
+        runtime_tuning_profile.spring_effect_strength = cooling_effect_strengths.spring;
+        runtime_tuning_profile.damper_effect_strength = cooling_effect_strengths.damper;
+        if (motor_tuning_ready) {
+            motor_tuning_service_refresh(&motor_tuning_service, tuning_profile,
+                                         &motor_tuning_context);
+        }
+    }
     platform_cooling_set_duty(cooling_controller.primary_duty_percent,
                               cooling_controller.secondary_duty_percent, false);
 }
@@ -148,7 +167,13 @@ static void service_motor_link(void) {
 
 static void initialize_motor(void) {
     base_settings_persistence_load(&settings_persistence, &base_settings, platform_time_ms());
-    tuning_profile = tuning_profile_bank_active(&base_settings.tuning_profiles);
+    runtime_tuning_profile = *tuning_profile_bank_active(&base_settings.tuning_profiles);
+    tuning_profile = &runtime_tuning_profile;
+    cooling_effect_strengths = (CoolingEffectStrengths){
+        .force = tuning_profile->force_effect_strength,
+        .spring = tuning_profile->spring_effect_strength,
+        .damper = tuning_profile->damper_effect_strength,
+    };
     pedal_service_set_brake_force(&pedal_service, tuning_profile->brake_force);
     PedalV4Tuning pedal_tuning = {
         .brake_force = tuning_profile->brake_force,
