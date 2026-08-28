@@ -7,6 +7,13 @@ enum {
     COOLING_EFFECT_STRENGTH_LIMIT = 10,
 };
 
+/**
+ * @brief Clamps all thermally managed effect strengths.
+ *
+ * Reduces force, spring, and damper strengths above ten to ten and leaves lower values unchanged.
+ *
+ * @param[in,out] strengths Effect strengths to constrain.
+ */
 static void clamp_strengths(CoolingEffectStrengths *strengths) {
     if (strengths->damper > COOLING_EFFECT_STRENGTH_LIMIT) {
         strengths->damper = COOLING_EFFECT_STRENGTH_LIMIT;
@@ -19,10 +26,21 @@ static void clamp_strengths(CoolingEffectStrengths *strengths) {
     }
 }
 
+/**
+ * @brief Initializes the thermal effect-strength limit.
+ *
+ * Starts in the inactive phase with no saved strengths and no active limit indication.
+ *
+ * @param[out] limit Effect-limit state to initialize.
+ */
 void cooling_effect_limit_init(CoolingEffectLimit *limit) { *limit = (CoolingEffectLimit){0}; }
 
 /**
  * @brief Applies and releases the standalone or managed-motor thermal effect-strength limit.
+ *
+ * Captures the current strengths when a limit starts, constrains them on subsequent updates, and
+ * restores the captured values when the applicable release threshold is crossed.
+ *
  * @param[in,out] limit Thermal effect-limit phase, snapshot, and active indication.
  * @param[in,out] strengths Current force, spring, and damper tuning strengths.
  * @param[in] controller Cooling phase, thresholds, deadline, and delay configuration.

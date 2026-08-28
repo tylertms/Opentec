@@ -57,5 +57,6 @@ void fanatec_input_apply_multi_position_rotaries(fanatec_input_state *state, uin
                                                  const fanatec_multi_position_input *input);
 void fanatec_input_apply_shifter(fanatec_input_state *state, const ShifterInputState *shifter,
                                  ShifterGear gear);
+void fanatec_input_apply_thermal_limit(fanatec_input_state *state, bool active);
 
 #endif

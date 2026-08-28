@@ -830,7 +830,7 @@ static void service_usb_output(void) {
  * @brief Builds and submits the current USB input report.
  *
  * Combines calibrated motor position, attached-wheel controls and rotary selectors, shifter
- * state, and pedal axes into the active USB input format.
+ * state, thermal limit state, and pedal axes into the active USB input format.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -895,6 +895,7 @@ static void service_usb_input(uint32_t now_ms) {
         (void)wheel_service_take_encoder_step(&wheel_service);
     }
     fanatec_input_apply_shifter(&usb_input_state.fanatec, &shifter_input, h_pattern_shifter.gear);
+    fanatec_input_apply_thermal_limit(&usb_input_state.fanatec, cooling_effect_limit.active);
     const PedalInput *pedal_input = pedal_service_input(&pedal_service);
     for (uint8_t axis = 0; axis < FANATEC_INPUT_PEDAL_AXES; axis++) {
         usb_input_state.fanatec.pedals[axis] = pedal_input_hid_axis(pedal_input->axes[axis]);

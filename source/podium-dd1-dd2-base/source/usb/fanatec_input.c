@@ -26,6 +26,7 @@ enum {
     SHIFTER_TRANSITION_BUTTON_0 = 1 << 0,
     SHIFTER_TRANSITION_BUTTON_1 = 1 << 1,
     STATUS_SEQUENTIAL_SHIFTERS = 1 << 0,
+    STATUS_THERMAL_EFFECT_LIMIT = 1 << 4,
     MULTI_POSITION_ENCODER_MODE = 0,
     MULTI_POSITION_PULSE_MODE = 1,
     MULTI_POSITION_CONSTANT_MODE = 2,
@@ -214,6 +215,20 @@ void fanatec_input_apply_shifter(fanatec_input_state *state, const ShifterInputS
     if (shifter->secondary_transition) {
         state->button_banks[SHIFTER_TRANSITION_BUTTON_BANK] |= SHIFTER_TRANSITION_BUTTON_1;
     }
+}
+
+/**
+ * @brief Applies the thermal effect-limit indication to the Fanatec input state.
+ *
+ * Replaces status bit four with the current effect-strength limit state while preserving every
+ * other status bit.
+ *
+ * @param[in,out] state Input report state to update.
+ * @param[in] active True while thermal management limits the effect strengths.
+ */
+void fanatec_input_apply_thermal_limit(fanatec_input_state *state, bool active) {
+    state->status_flags = (uint8_t)((state->status_flags & (uint8_t)~STATUS_THERMAL_EFFECT_LIMIT) |
+                                    (active ? STATUS_THERMAL_EFFECT_LIMIT : 0));
 }
 
 /**
