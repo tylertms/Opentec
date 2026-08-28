@@ -58,6 +58,7 @@ typedef struct {
     bool profile_transition_pending;
     bool request_ready;
     bool request_changed;
+    bool acknowledgement_input_active;
 } WheelProtocol;
 
 void wheel_protocol_init(WheelProtocol *protocol);
@@ -76,6 +77,7 @@ const WheelPacketModeOneReportState *
 wheel_protocol_mode_one_report_state(const WheelProtocol *protocol);
 const WheelAxisOverrideProcessor *wheel_protocol_axis_overrides(const WheelProtocol *protocol);
 bool wheel_protocol_request_changed(WheelProtocol *protocol);
+bool wheel_protocol_acknowledgement_input_active(const WheelProtocol *protocol);
 uint8_t wheel_protocol_message_checksum(const uint8_t packet[WHEEL_PROTOCOL_PACKET_SIZE]);
 bool wheel_protocol_message_valid(const uint8_t packet[WHEEL_PROTOCOL_PACKET_SIZE]);
 

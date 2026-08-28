@@ -139,6 +139,7 @@ static void assert_scan_mapping(const ScanMapping *mapping) {
 
     const uint8_t *buttons = wheel_service_buttons(&service);
     assert(memcmp(buttons, mapping->buttons, sizeof(mapping->buttons)) == 0);
+    assert(wheel_service_acknowledgement_input_active(&service));
 }
 
 static void test_maps_primary_scan_bits(void) {
@@ -333,6 +334,7 @@ static void test_publishes_packet_mode_buttons(void) {
     assert(buttons[0] == 0x20);
     assert(buttons[1] == 0x04);
     assert(buttons[2] == 0x02);
+    assert(wheel_service_acknowledgement_input_active(&service));
 }
 
 static void test_restarts_inactive_packet_mode_at_deadline(void) {

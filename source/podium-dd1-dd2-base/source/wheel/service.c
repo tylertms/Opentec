@@ -324,6 +324,27 @@ const uint8_t *wheel_service_buttons(const WheelService *service) {
     return input != 0 ? input->buttons : service->button_banks;
 }
 
+/**
+ * @brief Reports attached-wheel input eligible to acknowledge a display overlay.
+ *
+ * Uses the packet protocol's directional, button, auxiliary, and interface-gated input state.
+ * Scan-mode wheels report active when any filtered button bank is nonzero.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return True while an eligible input is active.
+ */
+bool wheel_service_acknowledgement_input_active(const WheelService *service) {
+    if (wheel_protocol_mode_one_input(&service->protocol) != 0) {
+        return wheel_protocol_acknowledgement_input_active(&service->protocol);
+    }
+    for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {
+        if (service->button_banks[bank] != 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 uint8_t wheel_service_mode(const WheelService *service) { return service->protocol.mode; }
 
 WheelProtocolPhase wheel_service_protocol_phase(const WheelService *service) {

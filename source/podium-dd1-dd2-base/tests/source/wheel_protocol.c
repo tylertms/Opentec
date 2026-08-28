@@ -420,6 +420,49 @@ static void test_averages_control_axes_only_for_authenticated_operating_modes(vo
     assert(input->controls.y == 0);
 }
 
+static void accept_active_request(WheelProtocol *protocol,
+                                  uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE]) {
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+    wheel_protocol_accept(protocol, request);
+}
+
+static void test_tracks_display_acknowledgement_input(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    protocol.mode = 1;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    request[0] = WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
+    request[WHEEL_PROTOCOL_FLAGS_OFFSET] = WHEEL_PROTOCOL_REQUEST_READY;
+
+    accept_active_request(&protocol, request);
+    assert(!wheel_protocol_acknowledgement_input_active(&protocol));
+
+    request[11] = 1;
+    accept_active_request(&protocol, request);
+    assert(wheel_protocol_acknowledgement_input_active(&protocol));
+    request[11] = 0;
+
+    request[12] = 1;
+    const uint8_t gated_modes[] = {4, 6, 0x15};
+    for (uint8_t index = 0; index < sizeof(gated_modes) / sizeof(gated_modes[0]); index++) {
+        wheel_protocol_set_axis_processing(&protocol, gated_modes[index],
+                                           WHEEL_AXIS_OVERRIDE_MODE_NONE, 0);
+        accept_active_request(&protocol, request);
+        assert(wheel_protocol_acknowledgement_input_active(&protocol));
+    }
+    wheel_protocol_set_axis_processing(&protocol, 5, WHEEL_AXIS_OVERRIDE_MODE_NONE, 0);
+    accept_active_request(&protocol, request);
+    assert(!wheel_protocol_acknowledgement_input_active(&protocol));
+    request[12] = 0;
+
+    request[2] = 0x80;
+    accept_active_request(&protocol, request);
+    accept_active_request(&protocol, request);
+    accept_active_request(&protocol, request);
+    assert(wheel_protocol_acknowledgement_input_active(&protocol));
+}
+
 static void test_applies_authenticated_axis_overrides(void) {
     WheelProtocol protocol;
     wheel_protocol_init(&protocol);
@@ -511,6 +554,7 @@ int main(void) {
     test_restarts_synchronization_when_ready_drops();
     test_captures_normalized_active_requests();
     test_averages_control_axes_only_for_authenticated_operating_modes();
+    test_tracks_display_acknowledgement_input();
     test_applies_authenticated_axis_overrides();
     test_builds_mode_one_active_response();
     test_rejects_out_of_range_mode();

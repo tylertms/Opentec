@@ -6,11 +6,19 @@
 #include "wheel/authentication.h"
 #include "wheel/packet_mode_one.h"
 
+enum {
+    WHEEL_INTERFACE_MODE_VENDOR_04 = 0x04,
+    WHEEL_INTERFACE_MODE_VENDOR_06 = 0x06,
+    WHEEL_INTERFACE_MODE_ANALOG_AXES = 0x15,
+};
+
 /**
- * Calculates the attached-wheel message CRC-8 with an initial value of 0xFF.
+ * @brief Calculates the attached-wheel message CRC-8.
  *
- * @param data First byte covered by the checksum.
- * @param length Number of bytes to process.
+ * Starts at 0xFF and applies the reflected 0x8C polynomial to each input byte.
+ *
+ * @param[in] data First byte covered by the checksum.
+ * @param[in] length Number of bytes to process.
  * @return Reflected CRC-8 value using polynomial 0x8C.
  */
 static uint8_t crc8(const uint8_t *data, uint8_t length) {
@@ -52,10 +60,46 @@ static void build_active_response(WheelProtocol *protocol) {
 }
 
 /**
- * Stores the first 30 bytes of an active attached-wheel request and detects changes.
+ * @brief Tests whether an interface mode enables the gated overlay input.
  *
- * @param protocol Protocol state that owns the request snapshot and change latch.
- * @param request Complete 57-byte attached-wheel request.
+ * Enables the secondary auxiliary input for interface modes 4, 6, and 0x15.
+ *
+ * @param[in] interface_mode Current wheel input interface mode.
+ * @return True when the gated input participates in overlay acknowledgement.
+ */
+static bool interface_mode_uses_gated_acknowledgement_input(uint8_t interface_mode) {
+    return interface_mode == WHEEL_INTERFACE_MODE_VENDOR_04 ||
+           interface_mode == WHEEL_INTERFACE_MODE_VENDOR_06 ||
+           interface_mode == WHEEL_INTERFACE_MODE_ANALOG_AXES;
+}
+
+/**
+ * @brief Detects input eligible to acknowledge a display overlay.
+ *
+ * Accepts any directional or button bit, the first auxiliary byte, and the second auxiliary byte
+ * only in interface modes 4, 6, and 0x15.
+ *
+ * @param[in] protocol Protocol state with the active interface mode.
+ * @param[in] input Decoded and button-filtered attached-wheel request.
+ * @return True while an eligible input is active.
+ */
+static bool acknowledgement_input_active(const WheelProtocol *protocol,
+                                         const WheelPacketModeOneInput *input) {
+    bool button_active = input->buttons[0] != 0 || input->buttons[1] != 0 || input->buttons[2] != 0;
+    bool gated_input_active =
+        input->controls.x != 0 &&
+        interface_mode_uses_gated_acknowledgement_input(protocol->interface_mode);
+    return button_active || input->controls.latch_flags != 0 || gated_input_active;
+}
+
+/**
+ * @brief Captures an active attached-wheel request.
+ *
+ * Decodes and normalizes the standard request, records display-acknowledgement input, updates the
+ * change snapshot, and preserves the report fields consumed outside the normalized input view.
+ *
+ * @param[in,out] protocol Protocol state that owns the request snapshot and change latch.
+ * @param[in] request Complete 57-byte attached-wheel request.
  */
 static void capture_request(WheelProtocol *protocol,
                             const uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE]) {
@@ -70,6 +114,8 @@ static void capture_request(WheelProtocol *protocol,
         protocol->mode_one_report_state.axis_limit = protocol->mode_one_input.axis_limit;
         wheel_packet_mode_one_filter_buttons(&protocol->mode_one_button_filter,
                                              &protocol->mode_one_input);
+        protocol->acknowledgement_input_active =
+            acknowledgement_input_active(protocol, &protocol->mode_one_input);
         if (protocol->mode_one_output.operating_mode == 0x13 ||
             protocol->mode_one_output.operating_mode == 0x14) {
             wheel_packet_mode_one_filter_control_axes(&protocol->mode_one_control_axis_filter,
@@ -128,10 +174,12 @@ static void select_mode(WheelProtocol *protocol,
 }
 
 /**
- * Checks the command byte accepted by the active attached-wheel exchange.
+ * @brief Checks a command byte for the active attached-wheel exchange.
  *
- * @param protocol Protocol state with the active operating mode.
- * @param command Received command byte.
+ * Selects the authenticated or standard command set from the current operating mode.
+ *
+ * @param[in] protocol Protocol state with the active operating mode.
+ * @param[in] command Received command byte.
  * @return True for A6 or A7 in authenticated modes, or A5 in other modes.
  */
 static bool active_command_valid(const WheelProtocol *protocol, uint8_t command) {
@@ -164,6 +212,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     protocol->profile_transition_pending = false;
     protocol->request_ready = false;
     protocol->request_changed = false;
+    protocol->acknowledgement_input_active = false;
 }
 
 void wheel_protocol_set_mode_one_output(WheelProtocol *protocol,
@@ -272,6 +321,19 @@ bool wheel_protocol_request_changed(WheelProtocol *protocol) {
     bool changed = protocol->request_changed;
     protocol->request_changed = false;
     return changed;
+}
+
+/**
+ * @brief Reports display-acknowledgement input from the current wheel packet.
+ *
+ * Returns the directional, button, auxiliary, and interface-gated input state captured before
+ * request normalization clears transient fields.
+ *
+ * @param[in] protocol Attached-wheel protocol state.
+ * @return True while an eligible input is active.
+ */
+bool wheel_protocol_acknowledgement_input_active(const WheelProtocol *protocol) {
+    return protocol->request_ready && protocol->acknowledgement_input_active;
 }
 
 uint8_t wheel_protocol_message_checksum(const uint8_t packet[WHEEL_PROTOCOL_PACKET_SIZE]) {

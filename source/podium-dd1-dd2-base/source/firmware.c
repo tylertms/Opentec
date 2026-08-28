@@ -423,16 +423,6 @@ static void service_shifter_display(uint32_t now_ms) {
     }
 }
 
-static bool wheel_prompt_input_active(void) {
-    const uint8_t *buttons = wheel_service_buttons(&wheel_service);
-    for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {
-        if (buttons[bank] != 0) {
-            return true;
-        }
-    }
-    return false;
-}
-
 static void apply_force_output_prompt_action(ForceOutputEnableAction action) {
     if (action == FORCE_OUTPUT_ENABLE_ACTION_NONE) {
         return;
@@ -455,7 +445,7 @@ static void service_force_output_enable(void) {
     }
 
     if (display_prompt_update(&display_prompt, force_output_prompt_visible,
-                              wheel_prompt_input_active())) {
+                              wheel_service_acknowledgement_input_active(&wheel_service))) {
         force_output_enable_set_response(&force_output_enable, 1);
     }
 
