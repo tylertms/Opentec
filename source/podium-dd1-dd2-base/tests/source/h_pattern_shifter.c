@@ -18,6 +18,45 @@ static ShifterGear update(HPatternShifter *shifter, uint16_t lateral, uint16_t l
     return h_pattern_shifter_update(shifter, &calibration, lateral, longitudinal);
 }
 
+static HPatternCalibrationSamples calibration_samples(void) {
+    return (HPatternCalibrationSamples){
+        .neutral_longitudinal = 500,
+        .reverse_lateral = 900,
+        .reverse_longitudinal = 900,
+        .first_lateral = 700,
+        .second_lateral = 650,
+        .second_longitudinal = 100,
+        .third_lateral = 500,
+        .fourth_lateral = 450,
+        .fifth_lateral = 300,
+        .sixth_lateral = 250,
+        .seventh_lateral = 100,
+    };
+}
+
+static void test_calibration_thresholds(void) {
+    HPatternCalibrationSamples samples = calibration_samples();
+    HPatternCalibration result = h_pattern_calibration_build(&samples);
+
+    assert(result.reverse_first_boundary == 800);
+    assert(result.first_third_boundary == 600);
+    assert(result.second_fourth_boundary == 550);
+    assert(result.third_fifth_boundary == 400);
+    assert(result.fourth_sixth_boundary == 350);
+    assert(result.fifth_seventh_boundary == 200);
+    assert(result.upper_row_threshold == 700);
+    assert(result.lower_row_threshold == 300);
+}
+
+static void test_seventh_gear_boundary_fallback(void) {
+    HPatternCalibrationSamples samples = calibration_samples();
+    samples.seventh_lateral = 295;
+    assert(h_pattern_calibration_build(&samples).fifth_seventh_boundary == 280);
+
+    samples.seventh_lateral = 294;
+    assert(h_pattern_calibration_build(&samples).fifth_seventh_boundary == 297);
+}
+
 static void test_gear_map(void) {
     HPatternShifter shifter = {0};
 
@@ -76,6 +115,8 @@ static void test_neutral_hysteresis(void) {
 }
 
 int main(void) {
+    test_calibration_thresholds();
+    test_seventh_gear_boundary_fallback();
     test_gear_map();
     test_row_hysteresis();
     test_neutral_hysteresis();

@@ -3,6 +3,43 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+enum {
+    SEVENTH_BOUNDARY_MINIMUM_SPAN = 5,
+    SEVENTH_BOUNDARY_FALLBACK_OFFSET = 20,
+};
+
+static uint16_t midpoint(uint16_t first, uint16_t second) {
+    uint16_t sum = first + second;
+    return sum >> 1;
+}
+
+/**
+ * Derives the H-pattern row thresholds and lateral gear boundaries from calibration samples.
+ *
+ * @param samples Neutral, reverse, and seven forward-gear axis samples.
+ * @return Calibration thresholds used to classify subsequent shifter positions.
+ */
+HPatternCalibration h_pattern_calibration_build(const HPatternCalibrationSamples *samples) {
+    uint16_t fifth_seventh_span = samples->fifth_lateral - samples->seventh_lateral;
+    uint16_t fifth_seventh_boundary =
+        fifth_seventh_span <= SEVENTH_BOUNDARY_MINIMUM_SPAN
+            ? samples->fifth_lateral - SEVENTH_BOUNDARY_FALLBACK_OFFSET
+            : midpoint(samples->fifth_lateral, samples->seventh_lateral);
+
+    return (HPatternCalibration){
+        .reverse_first_boundary = midpoint(samples->reverse_lateral, samples->first_lateral),
+        .first_third_boundary = midpoint(samples->first_lateral, samples->third_lateral),
+        .second_fourth_boundary = midpoint(samples->second_lateral, samples->fourth_lateral),
+        .third_fifth_boundary = midpoint(samples->third_lateral, samples->fifth_lateral),
+        .fourth_sixth_boundary = midpoint(samples->fourth_lateral, samples->sixth_lateral),
+        .fifth_seventh_boundary = fifth_seventh_boundary,
+        .upper_row_threshold =
+            midpoint(samples->neutral_longitudinal, samples->reverse_longitudinal),
+        .lower_row_threshold =
+            midpoint(samples->neutral_longitudinal, samples->second_longitudinal),
+    };
+}
+
 static bool is_upper_row_gear(ShifterGear gear) {
     return gear == SHIFTER_GEAR_REVERSE || gear == SHIFTER_GEAR_FIRST ||
            gear == SHIFTER_GEAR_THIRD || gear == SHIFTER_GEAR_FIFTH || gear == SHIFTER_GEAR_SEVENTH;

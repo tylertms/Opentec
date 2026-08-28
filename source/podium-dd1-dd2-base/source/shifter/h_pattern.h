@@ -27,11 +27,26 @@ typedef struct {
 } HPatternCalibration;
 
 typedef struct {
+    uint16_t neutral_longitudinal;
+    uint16_t reverse_lateral;
+    uint16_t reverse_longitudinal;
+    uint16_t first_lateral;
+    uint16_t second_lateral;
+    uint16_t second_longitudinal;
+    uint16_t third_lateral;
+    uint16_t fourth_lateral;
+    uint16_t fifth_lateral;
+    uint16_t sixth_lateral;
+    uint16_t seventh_lateral;
+} HPatternCalibrationSamples;
+
+typedef struct {
     uint16_t neutral_position;
     uint16_t latched_position;
     ShifterGear gear;
 } HPatternShifter;
 
+HPatternCalibration h_pattern_calibration_build(const HPatternCalibrationSamples *samples);
 ShifterGear h_pattern_shifter_update(HPatternShifter *shifter,
                                      const HPatternCalibration *calibration,
                                      uint16_t lateral_position, uint16_t longitudinal_position);
