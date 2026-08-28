@@ -405,7 +405,7 @@ static void service_usb_input(void) {
     }
     usb_input_state.fanatec.auxiliary_pedal = pedal_input_hid_auxiliary(pedal_input->auxiliary);
     uint8_t report_size =
-        usb_input_report_encode(USB_INPUT_REPORT_MODE_FANATEC, usb_input_report, &usb_input_state);
+        usb_input_report_encode(usb_device_input_mode(), usb_input_report, &usb_input_state);
     if (report_size != 0) {
         usb_device_send_input(usb_input_report, report_size);
     }

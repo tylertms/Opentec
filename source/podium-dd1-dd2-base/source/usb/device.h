@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "board/identity.h"
+#include "usb/input_report.h"
 
 enum {
     USB_DEVICE_REPORT_SIZE = 64,
@@ -21,6 +22,8 @@ typedef struct {
 } UsbDeviceOutputReport;
 
 void usb_device_init(BoardVariant variant);
+bool usb_device_set_input_mode(UsbInputReportMode mode);
+UsbInputReportMode usb_device_input_mode(void);
 void usb_device_service(void);
 bool usb_device_configured(void);
 bool usb_device_take_output(UsbDeviceOutputReport *report);

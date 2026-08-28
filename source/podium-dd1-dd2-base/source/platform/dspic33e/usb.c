@@ -1,5 +1,6 @@
 #include "platform/usb.h"
 
+#include <libpic30.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <xc.h>
@@ -22,6 +23,8 @@ enum {
     USB_ENDPOINT_CONTROL = 0x0d,
     USB_ENDPOINT_INTERRUPT = 0x1d,
 };
+
+static const uint32_t USB_RESTART_DELAY_CYCLES = 0x9000UL * 0x0c81UL * 2UL;
 
 static volatile UsbBufferDescriptor descriptors[USB_DESCRIPTOR_COUNT] __attribute__((aligned(512)));
 static volatile uint8_t buffers[USB_ENDPOINT_COUNT][USB_DIRECTION_COUNT][USB_BANK_COUNT]
@@ -126,6 +129,21 @@ void platform_usb_detach(void) {
     IEC5bits.USB1IE = 0;
     U1CONbits.USBEN = 0;
     U1IE = 0;
+}
+
+/**
+ * @brief Restarts the USB device controller after its reattachment delay.
+ *
+ * Disables the controller, discards queued transfers, waits for 0x9000 groups of 0x0c81
+ * two-cycle delay operations, resets both endpoint banks, and reconnects to the bus.
+ */
+void platform_usb_restart(void) {
+    platform_usb_detach();
+    event_head = 0;
+    event_tail = 0;
+    __delay32(USB_RESTART_DELAY_CYCLES);
+    reset_controller();
+    platform_usb_attach();
 }
 
 bool platform_usb_take_event(PlatformUsbEvent *event) {

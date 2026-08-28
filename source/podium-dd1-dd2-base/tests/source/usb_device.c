@@ -27,6 +27,7 @@ static uint8_t control_ready_count;
 static bool attached;
 static bool hid_configured;
 static bool stalled;
+static uint8_t restart_count;
 
 static void reset_platform(void) {
     memset(events, 0, sizeof(events));
@@ -41,6 +42,7 @@ static void reset_platform(void) {
     attached = false;
     hid_configured = false;
     stalled = false;
+    restart_count = 0;
 }
 
 static void push_event(PlatformUsbEventType type, uint8_t endpoint, const uint8_t *data,
@@ -59,6 +61,13 @@ static void push_setup(const uint8_t data[8]) { push_event(PLATFORM_USB_EVENT_SE
 void platform_usb_init(void) { reset_platform(); }
 void platform_usb_attach(void) { attached = true; }
 void platform_usb_detach(void) { attached = false; }
+void platform_usb_restart(void) {
+    restart_count++;
+    event_head = 0;
+    event_tail = 0;
+    receive_count = 0;
+    attached = true;
+}
 
 bool platform_usb_take_event(PlatformUsbEvent *event) {
     if (event_tail == event_head) {
@@ -102,6 +111,20 @@ static void complete_control_input(void) {
 
     push_event(PLATFORM_USB_EVENT_OUT, 0, 0, 0);
     usb_device_service();
+}
+
+static void assert_string_descriptor(uint8_t index, const char *expected) {
+    uint8_t request[] = {0x80, 6, index, 3, 0x09, 0x04, 64, 0};
+    push_setup(request);
+    usb_device_service();
+    size_t length = strlen(expected);
+    assert(sent.length == length * 2 + 2);
+    assert(sent.data[0] == sent.length && sent.data[1] == 3);
+    for (size_t character = 0; character < length; character++) {
+        assert(sent.data[character * 2 + 2] == (uint8_t)expected[character]);
+        assert(sent.data[character * 2 + 3] == 0);
+    }
+    complete_control_input();
 }
 
 static void test_enumerates_podium_device(void) {
@@ -174,8 +197,50 @@ static void test_exchanges_hid_reports(void) {
     assert(!usb_device_take_output(&report));
 }
 
+static void test_reenumerates_compatibility_modes(void) {
+    static const uint8_t get_device_descriptor[] = {0x80, 6, 0, 1, 0, 0, 18, 0};
+    static const uint8_t get_configuration_descriptor[] = {0x80, 6, 0, 2, 0, 0, 41, 0};
+    static const uint16_t vendor_ids[] = {0x0eb7, 0x046d, 0x046d, 0x046d};
+    static const uint16_t product_ids[] = {0x0e03, 0xc294, 0xc298, 0xc29b};
+    static const uint16_t report_sizes[] = {133, 130, 97, 133};
+    static const uint8_t product_indices[] = {8, 2, 2, 2};
+    static const char *products[] = {
+        "FANATEC CSL Elite Wheel Base",
+        "G27 Racing Wheel",
+        "G27 Racing Wheel",
+        "G27 Racing Wheel",
+    };
+
+    usb_device_init(BOARD_VARIANT_DD1);
+    for (uint8_t index = 0; index < 4; index++) {
+        UsbInputReportMode mode = (UsbInputReportMode)(index + 1);
+        assert(usb_device_set_input_mode(mode));
+        assert(attached && restart_count == index + 1);
+        assert(usb_device_input_mode() == mode);
+
+        push_setup(get_device_descriptor);
+        usb_device_service();
+        uint16_t vendor_id = (uint16_t)sent.data[8] | (uint16_t)sent.data[9] << 8;
+        uint16_t product_id = (uint16_t)sent.data[10] | (uint16_t)sent.data[11] << 8;
+        assert(vendor_id == vendor_ids[index]);
+        assert(product_id == product_ids[index]);
+        complete_control_input();
+
+        push_setup(get_configuration_descriptor);
+        usb_device_service();
+        uint16_t report_size = (uint16_t)sent.data[25] | (uint16_t)sent.data[26] << 8;
+        assert(report_size == report_sizes[index]);
+        complete_control_input();
+
+        assert_string_descriptor(product_indices[index], products[index]);
+    }
+    assert(!usb_device_set_input_mode((UsbInputReportMode)5));
+    assert(usb_device_input_mode() == USB_INPUT_REPORT_MODE_G27);
+}
+
 int main(void) {
     test_enumerates_podium_device();
     test_exchanges_hid_reports();
+    test_reenumerates_compatibility_modes();
     return 0;
 }

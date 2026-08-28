@@ -5,6 +5,8 @@
 #include <stdint.h>
 
 #include "platform/usb.h"
+#include "usb/compatibility_descriptor.h"
+#include "usb/compatibility_report_descriptor.h"
 #include "usb/control_pipe.h"
 #include "usb/control_request.h"
 #include "usb/descriptor.h"
@@ -16,7 +18,7 @@ enum {
     USB_HID_ENDPOINT = 1,
     USB_HID_DESCRIPTOR_OFFSET = 18,
     USB_HID_DESCRIPTOR_SIZE = 9,
-    USB_STRING_COUNT = 4,
+    USB_STRING_COUNT = 9,
     USB_MANUFACTURER_DESCRIPTOR_SIZE = 16,
     USB_PRODUCT_DESCRIPTOR_SIZE = 60,
 };
@@ -56,6 +58,8 @@ static UsbControlStage control_stage;
 static bool output_ready;
 static bool input_data_one;
 static bool output_data_one;
+static BoardVariant board_variant;
+static UsbInputReportMode input_mode;
 
 static bool input_report_matches(const uint8_t *report, uint8_t length) {
     if (input_report_length != length) {
@@ -69,33 +73,57 @@ static bool input_report_matches(const uint8_t *report, uint8_t length) {
     return true;
 }
 
-static void build_descriptors(BoardVariant variant) {
-    descriptor_identity = (UsbDeviceIdentity){
-        .usb_version = 0x0200,
-        .vendor_id = 0x0eb7,
-        .product_id = 0x0004,
-        .device_version = 0x0523,
-        .control_packet_size = PLATFORM_USB_PACKET_SIZE,
-        .manufacturer_string = 1,
-        .product_string = 3,
-    };
-    hid_configuration = (UsbHidConfiguration){
-        .hid_version = 0x0111,
-        .report_descriptor_size = USB_PODIUM_REPORT_DESCRIPTOR_SIZE,
-        .endpoint_packet_size = PLATFORM_USB_PACKET_SIZE,
-        .maximum_power_ma = 80,
-        .country_code = 0x21,
-        .input_endpoint = 0x81,
-        .output_endpoint = 0x01,
-        .poll_interval_ms = 1,
-        .self_powered = true,
-    };
-    const char *product = variant == BOARD_VARIANT_DD1 ? "FANATEC Podium Wheel Base DD1"
-                                                       : "FANATEC Podium Wheel Base DD2";
+static bool build_descriptors(BoardVariant variant, UsbInputReportMode mode) {
+    const char *product;
+    uint8_t product_index;
+    size_t report_length;
+
+    if (mode == USB_INPUT_REPORT_MODE_FANATEC) {
+        descriptor_identity = (UsbDeviceIdentity){
+            .usb_version = 0x0200,
+            .vendor_id = 0x0eb7,
+            .product_id = 0x0004,
+            .device_version = 0x0523,
+            .control_packet_size = PLATFORM_USB_PACKET_SIZE,
+            .manufacturer_string = 1,
+            .product_string = 3,
+        };
+        hid_configuration = (UsbHidConfiguration){
+            .hid_version = 0x0111,
+            .report_descriptor_size = USB_PODIUM_REPORT_DESCRIPTOR_SIZE,
+            .endpoint_packet_size = PLATFORM_USB_PACKET_SIZE,
+            .maximum_power_ma = 80,
+            .country_code = 0x21,
+            .input_endpoint = 0x81,
+            .output_endpoint = 0x01,
+            .poll_interval_ms = 1,
+            .self_powered = true,
+        };
+        product = variant == BOARD_VARIANT_DD1 ? "FANATEC Podium Wheel Base DD1"
+                                               : "FANATEC Podium Wheel Base DD2";
+        product_index = 3;
+        usb_podium_report_descriptor_encode(report_descriptor);
+        report_length = USB_PODIUM_REPORT_DESCRIPTOR_SIZE;
+    } else {
+        if (!usb_compatibility_descriptor_profile(mode, &descriptor_identity, &hid_configuration)) {
+            return false;
+        }
+        report_length = usb_compatibility_report_descriptor_encode(mode, report_descriptor,
+                                                                   sizeof(report_descriptor));
+        if (report_length == 0) {
+            return false;
+        }
+        if (mode == USB_INPUT_REPORT_MODE_FANATEC_COMPATIBILITY) {
+            product = "FANATEC CSL Elite Wheel Base";
+            product_index = 8;
+        } else {
+            product = "G27 Racing Wheel";
+            product_index = 2;
+        }
+    }
 
     usb_device_descriptor_encode(&descriptor_identity, device_descriptor);
     usb_hid_configuration_descriptor_encode(&hid_configuration, configuration_descriptor);
-    usb_podium_report_descriptor_encode(report_descriptor);
     size_t language_length =
         usb_language_descriptor_encode(0x0409, language_descriptor, sizeof(language_descriptor));
     size_t manufacturer_length = usb_string_descriptor_encode("Fanatec", manufacturer_descriptor,
@@ -103,12 +131,16 @@ static void build_descriptors(BoardVariant variant) {
     size_t product_length =
         usb_string_descriptor_encode(product, product_descriptor, sizeof(product_descriptor));
 
+    for (uint8_t index = 0; index < USB_STRING_COUNT; index++) {
+        strings[index] = (UsbDescriptorView){0};
+    }
     strings[0] =
         (UsbDescriptorView){.data = language_descriptor, .length = (uint16_t)language_length};
-    strings[1] = (UsbDescriptorView){.data = manufacturer_descriptor,
-                                     .length = (uint16_t)manufacturer_length};
-    strings[2] = (UsbDescriptorView){0};
-    strings[3] =
+    if (descriptor_identity.manufacturer_string != 0) {
+        strings[descriptor_identity.manufacturer_string] = (UsbDescriptorView){
+            .data = manufacturer_descriptor, .length = (uint16_t)manufacturer_length};
+    }
+    strings[product_index] =
         (UsbDescriptorView){.data = product_descriptor, .length = (uint16_t)product_length};
     descriptor_catalog = (UsbDescriptorCatalog){
         .device = {.data = device_descriptor, .length = sizeof(device_descriptor)},
@@ -122,10 +154,12 @@ static void build_descriptors(BoardVariant variant) {
                 .data = &configuration_descriptor[USB_HID_DESCRIPTOR_OFFSET],
                 .length = USB_HID_DESCRIPTOR_SIZE,
             },
-        .report = {.data = report_descriptor, .length = sizeof(report_descriptor)},
+        .report = {.data = report_descriptor, .length = (uint16_t)report_length},
         .strings = strings,
         .string_count = USB_STRING_COUNT,
     };
+    input_mode = mode;
+    return true;
 }
 
 static void reset_state(void) {
@@ -138,12 +172,46 @@ static void reset_state(void) {
 }
 
 void usb_device_init(BoardVariant variant) {
-    build_descriptors(variant);
+    board_variant = variant;
+    (void)build_descriptors(variant, USB_INPUT_REPORT_MODE_FANATEC);
     reset_state();
     platform_usb_init();
     platform_usb_control_ready();
     platform_usb_attach();
 }
+
+/**
+ * @brief Selects the primary USB input-report operating mode.
+ *
+ * Rebuilds the device, configuration, string, and report descriptors for modes 0 through 4,
+ * clears the control and HID transfer state, and restarts the USB controller.
+ *
+ * @param[in] mode Primary USB operating-mode selector.
+ * @return True when the mode has a complete descriptor profile; otherwise false.
+ */
+bool usb_device_set_input_mode(UsbInputReportMode mode) {
+    if (mode > USB_INPUT_REPORT_MODE_G27) {
+        return false;
+    }
+    platform_usb_detach();
+    if (!build_descriptors(board_variant, mode)) {
+        platform_usb_attach();
+        return false;
+    }
+    reset_state();
+    platform_usb_control_ready();
+    platform_usb_restart();
+    return true;
+}
+
+/**
+ * @brief Returns the active primary USB input-report operating mode.
+ *
+ * Reports the selector used for descriptor enumeration and primary input-report encoding.
+ *
+ * @return Active primary USB operating-mode selector.
+ */
+UsbInputReportMode usb_device_input_mode(void) { return input_mode; }
 
 static void stall_control(void) {
     control_stage = USB_CONTROL_STAGE_IDLE;
@@ -176,7 +244,10 @@ static void begin_value_input(void) {
 
 static bool report_matches_request(void) {
     return control_transfer.report_type == USB_DEVICE_HID_REPORT_INPUT &&
-           input_report_length != 0 && input_report[0] == control_transfer.report_id;
+           input_report_length != 0 &&
+           (input_mode == USB_INPUT_REPORT_MODE_FANATEC
+                ? input_report[0] == control_transfer.report_id
+                : control_transfer.report_id == 0);
 }
 
 static void handle_control_transfer(void) {
