@@ -5,6 +5,7 @@
 
 #include "wheel/authentication.h"
 #include "wheel/capability.h"
+#include "wheel/output_reports.h"
 #include "wheel/packet_crc.h"
 #include "wheel/packet_mode_four.h"
 #include "wheel/packet_mode_one.h"
@@ -44,6 +45,14 @@ static void build_selection_response(WheelProtocol *protocol) {
     protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] = flags;
 }
 
+/**
+ * @brief Builds the next active attached-wheel response.
+ *
+ * Encodes the selected packet family, overlays the highest-priority pending host report, and then
+ * writes the checksum while preserving the transport acknowledgement flags.
+ *
+ * @param[in,out] protocol Active protocol state and response storage.
+ */
 static void build_active_response(WheelProtocol *protocol) {
     if (!wheel_packet_mode_one_applies(protocol->mode) && protocol->mode != 4 &&
         !wheel_packet_crc_applies(protocol->mode)) {
@@ -59,6 +68,7 @@ static void build_active_response(WheelProtocol *protocol) {
         wheel_packet_mode_one_encode(protocol->mode, &protocol->mode_one_output,
                                      protocol->response);
     }
+    (void)wheel_output_reports_encode_next(&protocol->output_reports, protocol->response);
     protocol->response[WHEEL_PROTOCOL_CHECKSUM_OFFSET] =
         crc8(protocol->response, WHEEL_PROTOCOL_CONTENT_SIZE);
     protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] = flags;
@@ -276,6 +286,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     protocol->crc_input = empty_crc_input;
     protocol->crc_output = empty_crc_output;
     protocol->crc_adapter = empty_crc_adapter;
+    wheel_output_reports_init(&protocol->output_reports);
     protocol->capabilities = empty_capabilities;
     wheel_authentication_init(&protocol->authentication, WHEEL_MODE_UNKNOWN);
     protocol->phase = WHEEL_PROTOCOL_WAITING;

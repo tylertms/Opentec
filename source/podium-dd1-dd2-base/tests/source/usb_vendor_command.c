@@ -19,7 +19,7 @@ static void test_classifies_direct_command_routes(void) {
         uint8_t opcode;
         UsbVendorCommandKind kind;
     } cases[] = {
-        {1, USB_VENDOR_COMMAND_DEVICE_CONTROL_RESPONSE},
+        {1, USB_VENDOR_COMMAND_WHEEL_OUTPUT_REPORT},
         {2, USB_VENDOR_COMMAND_RESPONSE_PREPARATION},
         {3, USB_VENDOR_COMMAND_DEVICE_CONTROL_UPDATE},
         {4, USB_VENDOR_COMMAND_DIAGNOSTIC_SNAPSHOT},

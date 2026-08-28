@@ -17,7 +17,7 @@ enum {
 static int8_t command_kind(uint8_t opcode, const uint8_t *payload) {
     switch (opcode) {
     case 1:
-        return USB_VENDOR_COMMAND_DEVICE_CONTROL_RESPONSE;
+        return USB_VENDOR_COMMAND_WHEEL_OUTPUT_REPORT;
     case 2:
         return USB_VENDOR_COMMAND_RESPONSE_PREPARATION;
     case 3:

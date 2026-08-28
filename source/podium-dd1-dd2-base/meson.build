@@ -117,6 +117,7 @@ wheel_axis_override_sources = files('source/wheel/axis_override.c')
 wheel_authentication_sources = files('source/wheel/authentication.c')
 wheel_capability_sources = files('source/wheel/capability.c')
 wheel_display_output_sources = files('source/wheel/display_output.c')
+wheel_output_reports_sources = files('source/wheel/output_reports.c')
 transfer_memory_sources = files('source/transfer/memory.c')
 wheel_motion_sources = files('source/wheel/motion.c')
 wheel_packet_crc_sources = files('source/wheel/packet_crc.c')
@@ -285,6 +286,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'wheel-authentication': 'source/wheel/authentication.c',
     'wheel-capability': 'source/wheel/capability.c',
     'wheel-display-output': 'source/wheel/display_output.c',
+    'wheel-output-reports': 'source/wheel/output_reports.c',
     'transfer-memory': 'source/transfer/memory.c',
     'transfer-command': 'source/transfer/command.c',
     'wheel-motion': 'source/wheel/motion.c',
@@ -1360,6 +1362,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_output_reports_test = executable(
+    'base-wheel-output-reports-test',
+    'tests/source/wheel_output_reports.c',
+    wheel_output_reports_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   motor_command_digest_test = executable(
     'base-motor-command-digest-test',
     'tests/source/motor_command_digest.c',
@@ -1578,6 +1588,7 @@ if not meson.is_cross_build()
     wheel_axis_override_sources,
     wheel_capability_sources,
     wheel_motion_sources,
+    wheel_output_reports_sources,
     wheel_packet_crc_sources,
     wheel_packet_mode_one_sources,
     wheel_packet_mode_four_sources,
@@ -1594,6 +1605,7 @@ if not meson.is_cross_build()
     wheel_axis_override_sources,
     wheel_capability_sources,
     wheel_motion_sources,
+    wheel_output_reports_sources,
     wheel_packet_crc_sources,
     wheel_packet_mode_one_sources,
     wheel_packet_mode_four_sources,
@@ -1907,6 +1919,11 @@ if not meson.is_cross_build()
     'base-wheel-display-output',
     wheel_display_output_test,
     suite: ['base', 'wheel', 'display'],
+  )
+  test(
+    'base-wheel-output-reports',
+    wheel_output_reports_test,
+    suite: ['base', 'wheel', 'output'],
   )
   test('base-motor-command-digest', motor_command_digest_test, suite: ['base', 'motor'])
   test(

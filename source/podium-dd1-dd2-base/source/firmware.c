@@ -632,6 +632,10 @@ static void service_usb_output(void) {
     }
 
     if (usb_vendor_command_decode(&usb_output_command, &usb_vendor_command)) {
+        if (usb_vendor_command.kind == USB_VENDOR_COMMAND_WHEEL_OUTPUT_REPORT) {
+            wheel_service_apply_output_report(&wheel_service, usb_vendor_command.arguments, false);
+            return;
+        }
         if (usb_diagnostic_report_apply_command(&usb_diagnostic_report_service,
                                                 &usb_vendor_command)) {
             return;

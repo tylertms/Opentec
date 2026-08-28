@@ -1,0 +1,98 @@
+#include <assert.h>
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "wheel/output_reports.h"
+
+static void fill_arguments(uint8_t arguments[26], uint8_t action, uint8_t first) {
+    arguments[0] = action;
+    for (uint8_t index = 1; index < 26; index++) {
+        arguments[index] = (uint8_t)(first + index - 1);
+    }
+}
+
+static void test_encodes_reports_in_priority_order(void) {
+    WheelOutputReports reports;
+    wheel_output_reports_init(&reports);
+    uint8_t arguments[26];
+    uint8_t frame[33] = {0};
+
+    fill_arguments(arguments, 0, 0x20);
+    wheel_output_reports_apply(&reports, arguments, 0, 0, false);
+    fill_arguments(arguments, 1, 0x10);
+    wheel_output_reports_apply(&reports, arguments, 0, 0, false);
+
+    assert(wheel_output_reports_encode_next(&reports, frame));
+    assert(frame[1] == 1);
+    for (uint8_t index = 0; index < WHEEL_OUTPUT_REPORT_ONE_SIZE; index++) {
+        assert(frame[index + 2] == (uint8_t)(0x10 + index));
+    }
+
+    assert(wheel_output_reports_encode_next(&reports, frame));
+    assert(frame[1] == 2);
+    for (uint8_t index = 0; index < WHEEL_OUTPUT_REPORT_TWO_SIZE; index++) {
+        assert(frame[index + 2] == (uint8_t)(0x20 + index));
+    }
+    assert(!wheel_output_reports_encode_next(&reports, frame));
+}
+
+static void test_suppresses_legacy_report_two_outside_blink_phase(void) {
+    WheelOutputReports reports;
+    wheel_output_reports_init(&reports);
+    uint8_t arguments[26];
+    uint8_t frame[33] = {0};
+
+    fill_arguments(arguments, 0, 0x30);
+    wheel_output_reports_apply(&reports, arguments, 0x0f, 0, false);
+    assert(!wheel_output_reports_encode_next(&reports, frame));
+
+    wheel_output_reports_apply(&reports, arguments, 0x17, 0, true);
+    assert(wheel_output_reports_encode_next(&reports, frame));
+    assert(frame[1] == 2);
+}
+
+static void test_gates_extended_reports(void) {
+    WheelOutputReports reports;
+    wheel_output_reports_init(&reports);
+    uint8_t arguments[26];
+    uint8_t frame[33] = {0};
+
+    fill_arguments(arguments, 2, 0x40);
+    wheel_output_reports_apply(&reports, arguments, 0, 0, false);
+    fill_arguments(arguments, 3, 0x50);
+    wheel_output_reports_apply(&reports, arguments, 0, 0, false);
+    assert(!wheel_output_reports_encode_next(&reports, frame));
+
+    wheel_output_reports_apply(&reports, arguments, 0, 1, false);
+    fill_arguments(arguments, 2, 0x40);
+    wheel_output_reports_apply(&reports, arguments, 0x0f, 0, false);
+
+    assert(wheel_output_reports_encode_next(&reports, frame));
+    assert(frame[1] == 4);
+    for (uint8_t index = 0; index < WHEEL_OUTPUT_REPORT_FOUR_SIZE; index++) {
+        assert(frame[index + 2] == (uint8_t)(0x40 + index));
+    }
+    assert(wheel_output_reports_encode_next(&reports, frame));
+    assert(frame[1] == 5);
+    for (uint8_t index = 0; index < WHEEL_OUTPUT_REPORT_FIVE_SIZE; index++) {
+        assert(frame[index + 2] == (uint8_t)(0x50 + index));
+    }
+}
+
+static void test_ignores_unknown_actions(void) {
+    WheelOutputReports reports;
+    wheel_output_reports_init(&reports);
+    uint8_t arguments[26] = {4};
+    uint8_t frame[33] = {0};
+
+    wheel_output_reports_apply(&reports, arguments, 0x0f, 1, false);
+    assert(!wheel_output_reports_encode_next(&reports, frame));
+}
+
+int main(void) {
+    test_encodes_reports_in_priority_order();
+    test_suppresses_legacy_report_two_outside_blink_phase();
+    test_gates_extended_reports();
+    test_ignores_unknown_actions();
+    return 0;
+}

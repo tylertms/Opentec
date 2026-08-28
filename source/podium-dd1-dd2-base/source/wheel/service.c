@@ -7,6 +7,7 @@
 #include "serial/message.h"
 #include "serial/service.h"
 #include "wheel/display_output.h"
+#include "wheel/output_reports.h"
 #include "wheel/protocol.h"
 
 enum {
@@ -185,6 +186,7 @@ static void reset_connection(WheelService *service) {
     WheelPacketCrcFilter crc_filter = service->protocol.crc_filter;
     WheelPacketCrcOutput crc_output = service->protocol.crc_output;
     WheelPacketCrcAdapter crc_adapter = service->protocol.crc_adapter;
+    WheelOutputReports output_reports = service->protocol.output_reports;
     WheelCapabilityState capabilities = service->protocol.capabilities;
     uint8_t interface_mode = service->protocol.interface_mode;
     uint8_t axis_override_mode = service->protocol.configured_axis_override_mode;
@@ -205,6 +207,7 @@ static void reset_connection(WheelService *service) {
     service->protocol.crc_filter = crc_filter;
     service->protocol.crc_output = crc_output;
     service->protocol.crc_adapter = crc_adapter;
+    service->protocol.output_reports = output_reports;
     service->protocol.capabilities = capabilities;
     wheel_protocol_set_axis_processing(&service->protocol, interface_mode, axis_override_mode,
                                        axis_calibration_value);
@@ -328,6 +331,22 @@ void wheel_service_set_display_output(WheelService *service, const WheelDisplayO
 
 void wheel_service_set_crc_adapter(WheelService *service, const WheelPacketCrcAdapter *adapter) {
     wheel_protocol_set_crc_adapter(&service->protocol, adapter);
+}
+
+/**
+ * @brief Applies a host-provided attached-wheel output report.
+ *
+ * Uses the negotiated wheel mode, current adapter mode, and display blink state to retain or
+ * suppress the selected report for the next protocol response.
+ *
+ * @param[in,out] service Attached-wheel service that owns the report queue.
+ * @param[in] arguments Action byte followed by the report payload.
+ * @param[in] display_blink_active True while the local legacy display blink phase is active.
+ */
+void wheel_service_apply_output_report(WheelService *service, const uint8_t *arguments,
+                                       bool display_blink_active) {
+    wheel_output_reports_apply(&service->protocol.output_reports, arguments, service->protocol.mode,
+                               service->protocol.crc_adapter.mode, display_blink_active);
 }
 
 /**

@@ -12,6 +12,15 @@ enum {
     GLYPH_REVERSE = 0x50,
 };
 
+/**
+ * @brief Selects the display glyph for an H-pattern gear.
+ *
+ * Maps reverse to its raw glyph and forward gears one through seven to the corresponding digit.
+ * Neutral and unsupported values do not select a glyph.
+ *
+ * @param[in] gear H-pattern gear to display.
+ * @return Seven-segment glyph, or zero when the gear has no display glyph.
+ */
 static uint8_t gear_glyph(ShifterGear gear) {
     static const uint8_t digits[] = {0x00, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07};
     switch (gear) {
@@ -36,26 +45,51 @@ static uint8_t gear_glyph(ShifterGear gear) {
     }
 }
 
+/**
+ * @brief Determines whether the attached-wheel glyph display is idle.
+ *
+ * The display is idle only when all three glyph positions are clear.
+ *
+ * @param[in] output Current attached-wheel display output.
+ * @return True when all three glyphs are clear.
+ */
 static bool display_idle(const WheelDisplayOutput *output) {
     return output->glyphs[0] == 0 && output->glyphs[1] == 0 && output->glyphs[2] == 0;
 }
 
+/**
+ * @brief Clears the attached-wheel glyph display.
+ *
+ * Sets all three glyph positions to zero without changing auxiliary display state.
+ *
+ * @param[out] output Attached-wheel display output to clear.
+ */
 static void clear_glyphs(WheelDisplayOutput *output) {
     output->glyphs[0] = 0;
     output->glyphs[1] = 0;
     output->glyphs[2] = 0;
 }
 
+/**
+ * @brief Initializes H-pattern gear display state.
+ *
+ * Clears the display phase, retained gear, and clear deadline.
+ *
+ * @param[out] display Persistent gear display state to initialize.
+ */
 void shifter_display_init(ShifterDisplay *display) { *display = (ShifterDisplay){0}; }
 
 /**
- * Shows a changed non-neutral gear in the center display position for one second.
+ * @brief Updates the temporary H-pattern gear display.
  *
- * @param display Persistent display phase, last gear, and clear deadline.
- * @param gear Current H-pattern gear bit, or neutral.
- * @param wheel_active Whether the attached-wheel display connection is active.
- * @param now_ms Current millisecond counter.
- * @param output Current display output, updated when a gear is shown or cleared.
+ * Shows a changed non-neutral gear in the center glyph position for one second when the display is
+ * idle. Neutral clears a shown gear, and connection loss returns the service to its waiting phase.
+ *
+ * @param[in,out] display Persistent display phase, last gear, and clear deadline.
+ * @param[in] gear Current H-pattern gear, or neutral.
+ * @param[in] wheel_active True while the attached-wheel display connection is active.
+ * @param[in] now_ms Current millisecond counter.
+ * @param[in,out] output Current display output, updated when a gear is shown or cleared.
  * @return True when the display output changed.
  */
 bool shifter_display_update(ShifterDisplay *display, ShifterGear gear, bool wheel_active,

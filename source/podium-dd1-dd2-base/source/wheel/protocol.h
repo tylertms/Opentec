@@ -8,6 +8,7 @@
 #include "wheel/axis_override.h"
 #include "wheel/capability.h"
 #include "wheel/motion.h"
+#include "wheel/output_reports.h"
 #include "wheel/packet_crc.h"
 #include "wheel/packet_mode_four.h"
 #include "wheel/packet_mode_one.h"
@@ -64,6 +65,7 @@ typedef struct {
     WheelPacketCrcInput crc_input;
     WheelPacketCrcOutput crc_output;
     WheelPacketCrcAdapter crc_adapter;
+    WheelOutputReports output_reports;
     WheelProtocolPhase phase;
     uint8_t mode;
     uint8_t interface_mode;

@@ -3,10 +3,13 @@
 #include <stdint.h>
 
 /**
- * Encodes the active display output for an attached-wheel scan phase.
+ * @brief Encodes the active display output for an attached-wheel scan phase.
  *
- * @param output Three display glyphs, the auxiliary byte, and the phase-4 marker state.
- * @param phase Scan phase bit field. Lower phases take priority when multiple bits are set.
+ * Selects one of three display glyphs or the auxiliary byte, permutes glyph segments into scan
+ * order, and adds the phase-four marker when requested. Lower phase bits take priority.
+ *
+ * @param[in] output Three display glyphs, the auxiliary byte, and the phase-four marker state.
+ * @param[in] phase Scan phase bit field.
  * @return Permuted glyph byte, auxiliary byte, or zero when no scan phase is selected.
  */
 uint8_t wheel_display_output_encode(const WheelDisplayOutput *output, uint8_t phase) {
