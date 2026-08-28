@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "platform/time.h"
 #include "wheel/display_output.h"
 #include "wheel/protocol.h"
 #include "wheel/transport_service.h"
@@ -16,6 +17,7 @@ enum {
     WHEEL_BUTTON_SECONDARY_RESPONSE = 0xc0,
     WHEEL_BUTTON_RESPONSE_MASK = 0xe0,
     WHEEL_BUTTON_VALUE_MASK = 0x1f,
+    WHEEL_PROTOCOL_ACTIVITY_TIMEOUT_MS = 2000,
 };
 
 static void assign(uint8_t *value, uint8_t target, uint8_t source, uint8_t source_bit) {
@@ -159,7 +161,25 @@ static void reset_connection(WheelService *service) {
     wheel_protocol_set_button_latch(&service->protocol, button_latch_enabled,
                                     profile_transition_pending);
     clear_buttons(service);
+    service->protocol_deadline_ms = 0;
+    service->protocol_deadline_active = false;
     service->scan_phase = 0;
+}
+
+static bool protocol_exchange_active(const WheelService *service) {
+    return service->protocol.phase == WHEEL_PROTOCOL_AUTHENTICATING ||
+           service->protocol.phase == WHEEL_PROTOCOL_ACTIVE;
+}
+
+/**
+ * Extends the command-2 activity deadline after an attached wheel marks a packet ready.
+ *
+ * @param service Wheel service that owns the command-2 exchange.
+ * @param now_ms Current monotonic time in milliseconds.
+ */
+static void refresh_protocol_deadline(WheelService *service, uint32_t now_ms) {
+    service->protocol_deadline_ms = now_ms + WHEEL_PROTOCOL_ACTIVITY_TIMEOUT_MS;
+    service->protocol_deadline_active = true;
 }
 
 static void start_scan(WheelService *service, uint32_t now_ms) {
@@ -204,8 +224,10 @@ void wheel_service_init(WheelService *service) {
     }
     service->display_output.auxiliary = 0;
     service->display_output.third_glyph_marker = false;
+    service->protocol_deadline_ms = 0;
     service->scan_phase = 0;
     service->request_kind = WHEEL_SERVICE_REQUEST_NONE;
+    service->protocol_deadline_active = false;
 }
 
 void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output) {
@@ -225,10 +247,19 @@ void wheel_service_run(WheelService *service, uint32_t now_ms) {
         if (service->request_kind == WHEEL_SERVICE_REQUEST_PROTOCOL && response != 0 &&
             response->length == WHEEL_PROTOCOL_PACKET_SIZE) {
             wheel_protocol_accept(&service->protocol, response->data);
+            if ((response->data[WHEEL_PROTOCOL_FLAGS_OFFSET] & WHEEL_PROTOCOL_REQUEST_READY) != 0 &&
+                protocol_exchange_active(service)) {
+                refresh_protocol_deadline(service, now_ms);
+            }
         } else if (service->request_kind == WHEEL_SERVICE_REQUEST_BUTTONS) {
             apply_scan_response(service, response);
         }
     } else if (service->transport.status == WHEEL_TRANSPORT_FAILED) {
+        reset_connection(service);
+    }
+
+    if (service->protocol_deadline_active && protocol_exchange_active(service) &&
+        platform_time_reached(now_ms, service->protocol_deadline_ms)) {
         reset_connection(service);
     }
 

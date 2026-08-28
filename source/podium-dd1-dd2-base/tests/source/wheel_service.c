@@ -68,6 +68,17 @@ static void respond_protocol(uint8_t command, uint8_t mode) {
     respond_frame(&frame);
 }
 
+static void respond_active(uint8_t flags) {
+    WheelTransportFrame frame = {
+        .command = 2,
+        .length = WHEEL_PROTOCOL_PACKET_SIZE,
+    };
+    frame.data[0] = WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
+    frame.data[WHEEL_PROTOCOL_FLAGS_OFFSET] = flags;
+    frame.data[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(frame.data);
+    respond_frame(&frame);
+}
+
 static uint32_t begin_scan_mode(WheelService *service, uint8_t command) {
     wheel_service_init(service);
     wheel_service_run(service, 0);
@@ -271,6 +282,57 @@ static void test_keeps_protocol_transport_for_packet_modes(void) {
     assert(wheel_protocol_message_valid(frame.data));
 }
 
+static void test_restarts_inactive_packet_mode_at_deadline(void) {
+    WheelService service;
+    received_ready = false;
+    wheel_service_init(&service);
+    wheel_service_run(&service, 0);
+    for (uint32_t now_ms = 1; now_ms <= 3; now_ms++) {
+        respond_protocol(0, 0);
+        wheel_service_run(&service, now_ms);
+    }
+    respond_protocol(WHEEL_PROTOCOL_COMMAND_SELECT_MODE, 1);
+    wheel_service_run(&service, 4);
+    respond_active(WHEEL_PROTOCOL_REQUEST_READY);
+    wheel_service_run(&service, 5);
+
+    respond_active(0);
+    wheel_service_run(&service, 2004);
+    assert(wheel_service_protocol_phase(&service) == WHEEL_PROTOCOL_ACTIVE);
+
+    respond_active(0);
+    wheel_service_run(&service, 2005);
+    assert(wheel_service_protocol_phase(&service) == WHEEL_PROTOCOL_WAITING);
+    assert(request().command == 2);
+}
+
+static void test_ready_packet_refreshes_activity_at_deadline(void) {
+    WheelService service;
+    received_ready = false;
+    wheel_service_init(&service);
+    wheel_service_run(&service, 0);
+    for (uint32_t now_ms = 1; now_ms <= 3; now_ms++) {
+        respond_protocol(0, 0);
+        wheel_service_run(&service, now_ms);
+    }
+    respond_protocol(WHEEL_PROTOCOL_COMMAND_SELECT_MODE, 1);
+    wheel_service_run(&service, 4);
+    respond_active(WHEEL_PROTOCOL_REQUEST_READY);
+    wheel_service_run(&service, 5);
+
+    respond_active(WHEEL_PROTOCOL_REQUEST_READY);
+    wheel_service_run(&service, 2005);
+    assert(wheel_service_protocol_phase(&service) == WHEEL_PROTOCOL_ACTIVE);
+
+    respond_active(0);
+    wheel_service_run(&service, 4004);
+    assert(wheel_service_protocol_phase(&service) == WHEEL_PROTOCOL_ACTIVE);
+
+    respond_active(0);
+    wheel_service_run(&service, 4005);
+    assert(wheel_service_protocol_phase(&service) == WHEEL_PROTOCOL_WAITING);
+}
+
 static void test_restarts_discovery_after_scan_timeout(void) {
     WheelService service;
     received_ready = false;
@@ -317,6 +379,8 @@ int main(void) {
     test_negotiates_before_scanning_and_maps_buttons();
     test_sends_display_output_with_each_scan_phase();
     test_keeps_protocol_transport_for_packet_modes();
+    test_restarts_inactive_packet_mode_at_deadline();
+    test_ready_packet_refreshes_activity_at_deadline();
     test_restarts_discovery_after_scan_timeout();
     return 0;
 }

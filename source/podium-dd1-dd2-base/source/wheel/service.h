@@ -22,8 +22,10 @@ typedef struct {
     WheelDisplayOutput display_output;
     uint8_t request[WHEEL_TRANSPORT_PAYLOAD_SIZE];
     uint8_t button_banks[WHEEL_BUTTON_BANK_COUNT];
+    uint32_t protocol_deadline_ms;
     uint8_t scan_phase;
     WheelServiceRequest request_kind;
+    bool protocol_deadline_active;
 } WheelService;
 
 void wheel_service_init(WheelService *service);
