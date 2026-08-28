@@ -43,6 +43,7 @@ settings_persistence_sources = files('source/settings/persistence.c')
 settings_state_sources = files('source/settings/state.c')
 platform_time_sources = files('source/platform/time.c')
 wheel_position_sources = files('source/wheel/position.c')
+wheel_axis_override_sources = files('source/wheel/axis_override.c')
 wheel_authentication_sources = files('source/wheel/authentication.c')
 wheel_display_output_sources = files('source/wheel/display_output.c')
 wheel_packet_mode_one_sources = files('source/wheel/packet_mode_one.c')
@@ -120,6 +121,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'settings-persistence': 'source/settings/persistence.c',
     'settings-state': 'source/settings/state.c',
     'wheel-position': 'source/wheel/position.c',
+    'wheel-axis-override': 'source/wheel/axis_override.c',
     'wheel-authentication': 'source/wheel/authentication.c',
     'wheel-display-output': 'source/wheel/display_output.c',
     'wheel-packet-mode-one': 'source/wheel/packet_mode_one.c',
@@ -527,6 +529,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_axis_override_test = executable(
+    'base-wheel-axis-override-test',
+    'tests/source/wheel_axis_override.c',
+    wheel_axis_override_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_display_output_test = executable(
     'base-wheel-display-output-test',
     'tests/source/wheel_display_output.c',
@@ -556,6 +566,7 @@ if not meson.is_cross_build()
     'tests/source/wheel_protocol.c',
     wheel_protocol_sources,
     wheel_authentication_sources,
+    wheel_axis_override_sources,
     wheel_packet_mode_one_sources,
     build_by_default: false,
     include_directories: base_include,
@@ -567,6 +578,7 @@ if not meson.is_cross_build()
     wheel_service_sources,
     wheel_display_output_sources,
     wheel_authentication_sources,
+    wheel_axis_override_sources,
     wheel_packet_mode_one_sources,
     wheel_protocol_sources,
     wheel_transport_service_sources,
@@ -638,6 +650,7 @@ if not meson.is_cross_build()
   )
   test('base-platform-time', platform_time_test, suite: ['base', 'platform'])
   test('base-wheel-position', wheel_position_test, suite: ['base', 'wheel-position'])
+  test('base-wheel-axis-override', wheel_axis_override_test, suite: ['base', 'wheel', 'input'])
   test(
     'base-wheel-display-output',
     wheel_display_output_test,

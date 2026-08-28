@@ -139,10 +139,21 @@ static void reset_connection(WheelService *service) {
     WheelPacketModeOneControlAxisFilter mode_one_control_axis_filter =
         service->protocol.mode_one_control_axis_filter;
     WheelPacketModeOneOutput mode_one_output = service->protocol.mode_one_output;
+    uint8_t interface_mode = service->protocol.interface_mode;
+    uint8_t axis_override_mode = service->protocol.configured_axis_override_mode;
+    uint8_t axis_calibration_value = service->protocol.axis_calibration_value;
+    uint8_t axis_multiplex_phase = service->protocol.axis_override_processor.multiplex_phase;
+    bool axis_x_available = service->protocol.axis_override_processor.x_available;
+    bool axis_y_available = service->protocol.axis_override_processor.y_available;
     wheel_protocol_init(&service->protocol);
     service->protocol.mode_one_button_filter = mode_one_button_filter;
     service->protocol.mode_one_control_axis_filter = mode_one_control_axis_filter;
     service->protocol.mode_one_output = mode_one_output;
+    wheel_protocol_set_axis_processing(&service->protocol, interface_mode, axis_override_mode,
+                                       axis_calibration_value);
+    service->protocol.axis_override_processor.multiplex_phase = axis_multiplex_phase;
+    service->protocol.axis_override_processor.x_available = axis_x_available;
+    service->protocol.axis_override_processor.y_available = axis_y_available;
     clear_buttons(service);
     service->scan_phase = 0;
 }

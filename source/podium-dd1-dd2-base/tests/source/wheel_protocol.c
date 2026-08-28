@@ -405,6 +405,36 @@ static void test_averages_control_axes_only_for_authenticated_operating_modes(vo
     assert(input->controls.y == 30);
 }
 
+static void test_applies_authenticated_axis_overrides(void) {
+    WheelProtocol protocol;
+    wheel_protocol_init(&protocol);
+    WheelPacketModeOneOutput output = {.operating_mode = 0x13};
+    wheel_protocol_set_mode_one_output(&protocol, &output);
+    wheel_protocol_set_axis_processing(&protocol, 0, WHEEL_AXIS_OVERRIDE_MODE_SECONDARY, 0);
+    protocol.mode = 1;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    request[5] = 0x31;
+    request[6] = 0xc2;
+    request[10] = 1;
+    request[12] = 0x30;
+    request[13] = 0x60;
+    request[WHEEL_PROTOCOL_FLAGS_OFFSET] = WHEEL_PROTOCOL_REQUEST_READY;
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+    wheel_protocol_accept(&protocol, request);
+
+    const WheelPacketModeOneInput *decoded = wheel_protocol_mode_one_input(&protocol);
+    assert(decoded->axis_outputs[0] == 0x4e);
+    assert(decoded->axis_outputs[1] == 0x42);
+    const WheelAxisOverrideProcessor *axes = wheel_protocol_axis_overrides(&protocol);
+    assert(axes->overrides.axis_7.enabled);
+    assert(axes->overrides.axis_7.value == 0x10);
+    assert(axes->overrides.auxiliary.enabled);
+    assert(axes->overrides.auxiliary.value == 0x20);
+}
+
 static void test_builds_mode_one_active_response(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -466,6 +496,7 @@ int main(void) {
     test_restarts_synchronization_when_ready_drops();
     test_captures_raw_active_requests();
     test_averages_control_axes_only_for_authenticated_operating_modes();
+    test_applies_authenticated_axis_overrides();
     test_builds_mode_one_active_response();
     test_rejects_out_of_range_mode();
     test_crc8_vectors();

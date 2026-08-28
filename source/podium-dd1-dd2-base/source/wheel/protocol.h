@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "wheel/authentication.h"
+#include "wheel/axis_override.h"
 #include "wheel/packet_mode_one.h"
 
 enum {
@@ -42,12 +43,16 @@ typedef struct {
     uint8_t response[WHEEL_PROTOCOL_PACKET_SIZE];
     uint8_t request[WHEEL_PROTOCOL_SNAPSHOT_SIZE];
     WheelAuthentication authentication;
+    WheelAxisOverrideProcessor axis_override_processor;
     WheelPacketModeOneButtonFilter mode_one_button_filter;
     WheelPacketModeOneControlAxisFilter mode_one_control_axis_filter;
     WheelPacketModeOneInput mode_one_input;
     WheelPacketModeOneOutput mode_one_output;
     WheelProtocolPhase phase;
     uint8_t mode;
+    uint8_t interface_mode;
+    uint8_t configured_axis_override_mode;
+    uint8_t axis_calibration_value;
     bool request_ready;
     bool request_changed;
 } WheelProtocol;
@@ -55,11 +60,14 @@ typedef struct {
 void wheel_protocol_init(WheelProtocol *protocol);
 void wheel_protocol_set_mode_one_output(WheelProtocol *protocol,
                                         const WheelPacketModeOneOutput *output);
+void wheel_protocol_set_axis_processing(WheelProtocol *protocol, uint8_t interface_mode,
+                                        uint8_t override_mode, uint8_t calibration_value);
 void wheel_protocol_accept(WheelProtocol *protocol,
                            const uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE]);
 const uint8_t *wheel_protocol_response(const WheelProtocol *protocol);
 const uint8_t *wheel_protocol_request(const WheelProtocol *protocol);
 const WheelPacketModeOneInput *wheel_protocol_mode_one_input(const WheelProtocol *protocol);
+const WheelAxisOverrideProcessor *wheel_protocol_axis_overrides(const WheelProtocol *protocol);
 bool wheel_protocol_request_changed(WheelProtocol *protocol);
 uint8_t wheel_protocol_message_checksum(const uint8_t packet[WHEEL_PROTOCOL_PACKET_SIZE]);
 bool wheel_protocol_message_valid(const uint8_t packet[WHEEL_PROTOCOL_PACKET_SIZE]);

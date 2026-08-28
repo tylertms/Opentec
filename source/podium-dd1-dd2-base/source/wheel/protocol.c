@@ -72,6 +72,12 @@ static void capture_request(WheelProtocol *protocol,
             protocol->mode_one_output.operating_mode == 0x14) {
             wheel_packet_mode_one_filter_control_axes(&protocol->mode_one_control_axis_filter,
                                                       &protocol->mode_one_input);
+            wheel_axis_override_process(
+                &protocol->axis_override_processor, protocol->configured_axis_override_mode,
+                protocol->mode_one_output.operating_mode, protocol->interface_mode,
+                protocol->mode_one_input.controls.enabled != 0, protocol->axis_calibration_value,
+                protocol->mode_one_input.controls.x, protocol->mode_one_input.controls.y,
+                protocol->mode_one_input.axis_outputs);
         }
     }
     protocol->request_ready = true;
@@ -129,6 +135,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     const WheelPacketModeOneOutput empty_output = {0};
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
     clear(protocol->request, WHEEL_PROTOCOL_SNAPSHOT_SIZE);
+    wheel_axis_override_processor_init(&protocol->axis_override_processor);
     wheel_packet_mode_one_button_filter_init(&protocol->mode_one_button_filter);
     wheel_packet_mode_one_control_axis_filter_init(&protocol->mode_one_control_axis_filter);
     protocol->mode_one_input = empty_input;
@@ -136,6 +143,9 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     wheel_authentication_init(&protocol->authentication, WHEEL_MODE_UNKNOWN);
     protocol->phase = WHEEL_PROTOCOL_WAITING;
     protocol->mode = WHEEL_MODE_UNKNOWN;
+    protocol->interface_mode = 0;
+    protocol->configured_axis_override_mode = WHEEL_AXIS_OVERRIDE_MODE_NONE;
+    protocol->axis_calibration_value = 0;
     protocol->request_ready = false;
     protocol->request_changed = false;
 }
@@ -143,6 +153,13 @@ void wheel_protocol_init(WheelProtocol *protocol) {
 void wheel_protocol_set_mode_one_output(WheelProtocol *protocol,
                                         const WheelPacketModeOneOutput *output) {
     protocol->mode_one_output = *output;
+}
+
+void wheel_protocol_set_axis_processing(WheelProtocol *protocol, uint8_t interface_mode,
+                                        uint8_t override_mode, uint8_t calibration_value) {
+    protocol->interface_mode = interface_mode;
+    protocol->configured_axis_override_mode = override_mode;
+    protocol->axis_calibration_value = calibration_value;
 }
 
 void wheel_protocol_accept(WheelProtocol *protocol,
@@ -216,6 +233,10 @@ const WheelPacketModeOneInput *wheel_protocol_mode_one_input(const WheelProtocol
     return protocol->request_ready && wheel_packet_mode_one_applies(protocol->mode)
                ? &protocol->mode_one_input
                : 0;
+}
+
+const WheelAxisOverrideProcessor *wheel_protocol_axis_overrides(const WheelProtocol *protocol) {
+    return &protocol->axis_override_processor;
 }
 
 bool wheel_protocol_request_changed(WheelProtocol *protocol) {
