@@ -9,9 +9,17 @@ enum {
     WHEEL_STATUS_MEMORY_MODE_SHIFT = 5,
     WHEEL_STATUS_MEMORY_RESPONSE_FLAG = 0x80,
     WHEEL_STATUS_MEMORY_RESET_FLAG = 0x40,
+    WHEEL_STATUS_MEMORY_MODE_MASK = 0x60,
     WHEEL_STATUS_MEMORY_DIGEST_COMMAND = 7,
     WHEEL_STATUS_MEMORY_DIGEST_LENGTH = 20,
     WHEEL_STATUS_MEMORY_COMMAND_BODY_LENGTH = 6,
+    WHEEL_STATUS_MEMORY_DIGEST_RESPONSE_COMMAND = 0x87,
+    WHEEL_STATUS_MEMORY_FRAGMENT_MASK = 7,
+    WHEEL_STATUS_MEMORY_FRAGMENT_OFFSET = 3,
+    WHEEL_STATUS_MEMORY_COMMAND_OFFSET = 4,
+    WHEEL_STATUS_MEMORY_DIGEST_SOURCE_OFFSET = 9,
+    WHEEL_STATUS_MEMORY_CHECKSUM_SIZE = 2,
+    WHEEL_STATUS_MEMORY_MIN_PACKET_SIZE = 3,
 };
 
 /**
@@ -48,6 +56,28 @@ static uint16_t checksum(const uint8_t *data, uint8_t length) {
         value = update_checksum(value, data[index]);
     }
     return value;
+}
+
+/**
+ * @brief Validates a wheel-status packet checksum.
+ *
+ * Rejects packets outside the supported mailbox size and compares the trailing checksum in
+ * high-byte-first order against the checksum of all preceding bytes.
+ *
+ * @param[in] input Received packet.
+ * @param[in] length Received byte count.
+ * @return True when the packet length and checksum are valid.
+ */
+static bool checksum_valid(const uint8_t *input, uint16_t length) {
+    if (input == 0 || length < WHEEL_STATUS_MEMORY_MIN_PACKET_SIZE ||
+        length > WHEEL_STATUS_MEMORY_MAX_PACKET_SIZE) {
+        return false;
+    }
+    uint16_t value = 0;
+    for (uint16_t index = 0; index < length - WHEEL_STATUS_MEMORY_CHECKSUM_SIZE; index++) {
+        value = update_checksum(value, input[index]);
+    }
+    return input[length - 2] == (uint8_t)(value >> 8) && input[length - 1] == (uint8_t)value;
 }
 
 /**
@@ -125,4 +155,36 @@ void wheel_status_memory_sequence_reset_encode(
     output[1] = 0;
     output[2] = 0;
     finish(output, WHEEL_STATUS_MEMORY_CONTROL_PACKET_SIZE - 2);
+}
+
+/**
+ * @brief Decodes a wheel-status digest response.
+ *
+ * Accepts a checksum-valid, unfragmented command 0x87 carrying the expected prior sequence and
+ * copies its sixteen-byte digest source.
+ *
+ * @param[in] previous_sequence Expected prior two-bit sequence.
+ * @param[in] input Received wheel-status packet.
+ * @param[in] length Received byte count.
+ * @param[out] source Sixteen-byte digest source.
+ * @return True when the packet contains a valid digest response.
+ */
+bool wheel_status_memory_digest_response_decode(uint8_t previous_sequence, const uint8_t *input,
+                                                uint16_t length,
+                                                uint8_t source[WHEEL_STATUS_DIGEST_SOURCE_SIZE]) {
+    if (source == 0 ||
+        length < WHEEL_STATUS_MEMORY_DIGEST_SOURCE_OFFSET + WHEEL_STATUS_DIGEST_SOURCE_SIZE +
+                     WHEEL_STATUS_MEMORY_CHECKSUM_SIZE ||
+        !checksum_valid(input, length) ||
+        (input[0] & (WHEEL_STATUS_MEMORY_RESPONSE_FLAG | WHEEL_STATUS_MEMORY_MODE_MASK)) != 0 ||
+        (input[0] & WHEEL_STATUS_MEMORY_SEQUENCE_MASK) !=
+            (previous_sequence & WHEEL_STATUS_MEMORY_SEQUENCE_MASK) ||
+        (input[WHEEL_STATUS_MEMORY_FRAGMENT_OFFSET] & WHEEL_STATUS_MEMORY_FRAGMENT_MASK) != 0 ||
+        input[WHEEL_STATUS_MEMORY_COMMAND_OFFSET] != WHEEL_STATUS_MEMORY_DIGEST_RESPONSE_COMMAND) {
+        return false;
+    }
+    for (uint8_t index = 0; index < WHEEL_STATUS_DIGEST_SOURCE_SIZE; index++) {
+        source[index] = input[WHEEL_STATUS_MEMORY_DIGEST_SOURCE_OFFSET + index];
+    }
+    return true;
 }

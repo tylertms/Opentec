@@ -26,8 +26,44 @@ static void test_encodes_control_responses(void) {
     assert(memcmp(packet, expected_reset, sizeof(expected_reset)) == 0);
 }
 
+static void test_decodes_digest_response(void) {
+    static const uint8_t packet[] = {
+        0x03, 0x00, 0x1a, 0x00, 0x87, 0x00, 0x00, 0x00, 0x14, 0x00, 0x01,
+        0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c,
+        0x0d, 0x0e, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x93, 0xb3,
+    };
+    uint8_t source[WHEEL_STATUS_DIGEST_SOURCE_SIZE];
+
+    assert(wheel_status_memory_digest_response_decode(3, packet, sizeof(packet), source));
+    for (uint8_t index = 0; index < sizeof(source); index++) {
+        assert(source[index] == index);
+    }
+}
+
+static void test_rejects_invalid_digest_responses(void) {
+    static const uint8_t valid[] = {
+        0x03, 0x00, 0x1a, 0x00, 0x87, 0x00, 0x00, 0x00, 0x14, 0x00, 0x01,
+        0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c,
+        0x0d, 0x0e, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x93, 0xb3,
+    };
+    uint8_t packet[sizeof(valid)];
+    uint8_t source[WHEEL_STATUS_DIGEST_SOURCE_SIZE];
+
+    memcpy(packet, valid, sizeof(packet));
+    packet[sizeof(packet) - 1] ^= 1;
+    assert(!wheel_status_memory_digest_response_decode(3, packet, sizeof(packet), source));
+    assert(!wheel_status_memory_digest_response_decode(2, valid, sizeof(valid), source));
+    assert(!wheel_status_memory_digest_response_decode(3, valid, 3, source));
+
+    memcpy(packet, valid, sizeof(packet));
+    packet[3] = 1;
+    assert(!wheel_status_memory_digest_response_decode(3, packet, sizeof(packet), source));
+}
+
 int main(void) {
     test_encodes_digest_request();
     test_encodes_control_responses();
+    test_decodes_digest_response();
+    test_rejects_invalid_digest_responses();
     return 0;
 }
