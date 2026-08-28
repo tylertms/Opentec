@@ -34,6 +34,9 @@ static void test_initializes_complete_runtime(void) {
     assert(system.clock.motion_ticks == 0);
     assert(system.clock.active_slot == 0);
     assert(!system.clock.script_executing);
+    assert(system.motion.tick_snapshot == 0);
+    assert(system.motion.previous_position == 0.0f);
+    assert(system.motion.previous_velocity == 0.0f);
 }
 
 static void test_applies_controls_and_compacts_storage(void) {

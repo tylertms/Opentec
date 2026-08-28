@@ -24,6 +24,7 @@ force_script_input_sources = files('source/force_feedback/script_input.c')
 force_script_integer_sources = files('source/force_feedback/script_integer.c')
 force_script_logic_sources = files('source/force_feedback/script_logic.c')
 force_script_math_sources = files('source/force_feedback/script_math.c')
+force_script_motion_sources = files('source/force_feedback/script_motion.c')
 force_script_operand_sources = files('source/force_feedback/script_operand.c')
 force_script_operation_sources = files('source/force_feedback/script_operation.c')
 force_script_range_sources = files('source/force_feedback/script_range.c')
@@ -124,6 +125,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'force-script-integer': 'source/force_feedback/script_integer.c',
     'force-script-logic': 'source/force_feedback/script_logic.c',
     'force-script-math': 'source/force_feedback/script_math.c',
+    'force-script-motion': 'source/force_feedback/script_motion.c',
     'force-script-operand': 'source/force_feedback/script_operand.c',
     'force-script-operation': 'source/force_feedback/script_operation.c',
     'force-script-range': 'source/force_feedback/script_range.c',
@@ -467,6 +469,16 @@ if not meson.is_cross_build()
     'base-force-script-math-test',
     'tests/source/force_script_math.c',
     force_script_math_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  force_script_motion_test = executable(
+    'base-force-script-motion-test',
+    'tests/source/force_script_motion.c',
+    force_script_motion_sources,
+    force_script_range_sources,
+    force_script_input_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -1088,6 +1100,11 @@ if not meson.is_cross_build()
   test(
     'base-force-script-math',
     force_script_math_test,
+    suite: ['base', 'force-feedback', 'script'],
+  )
+  test(
+    'base-force-script-motion',
+    force_script_motion_test,
     suite: ['base', 'force-feedback', 'script'],
   )
   test(
