@@ -22,18 +22,18 @@ static void test_encodes_reports_in_priority_order(void) {
     fill_arguments(arguments, 1, 0x10);
     wheel_output_reports_apply(&reports, arguments, 0, 0, false);
 
-    assert(wheel_output_reports_encode_next(&reports, frame));
+    assert(wheel_output_reports_encode_next(&reports, 0, frame));
     assert(frame[1] == 1);
     for (uint8_t index = 0; index < WHEEL_OUTPUT_REPORT_ONE_SIZE; index++) {
         assert(frame[index + 2] == (uint8_t)(0x10 + index));
     }
 
-    assert(wheel_output_reports_encode_next(&reports, frame));
+    assert(wheel_output_reports_encode_next(&reports, 0, frame));
     assert(frame[1] == 2);
     for (uint8_t index = 0; index < WHEEL_OUTPUT_REPORT_TWO_SIZE; index++) {
         assert(frame[index + 2] == (uint8_t)(0x20 + index));
     }
-    assert(!wheel_output_reports_encode_next(&reports, frame));
+    assert(!wheel_output_reports_encode_next(&reports, 0, frame));
 }
 
 static void test_suppresses_legacy_report_two_outside_blink_phase(void) {
@@ -44,10 +44,10 @@ static void test_suppresses_legacy_report_two_outside_blink_phase(void) {
 
     fill_arguments(arguments, 0, 0x30);
     wheel_output_reports_apply(&reports, arguments, 0x0f, 0, false);
-    assert(!wheel_output_reports_encode_next(&reports, frame));
+    assert(!wheel_output_reports_encode_next(&reports, 0, frame));
 
     wheel_output_reports_apply(&reports, arguments, 0x17, 0, true);
-    assert(wheel_output_reports_encode_next(&reports, frame));
+    assert(wheel_output_reports_encode_next(&reports, 0, frame));
     assert(frame[1] == 2);
 }
 
@@ -61,18 +61,18 @@ static void test_gates_extended_reports(void) {
     wheel_output_reports_apply(&reports, arguments, 0, 0, false);
     fill_arguments(arguments, 3, 0x50);
     wheel_output_reports_apply(&reports, arguments, 0, 0, false);
-    assert(!wheel_output_reports_encode_next(&reports, frame));
+    assert(!wheel_output_reports_encode_next(&reports, 0, frame));
 
     wheel_output_reports_apply(&reports, arguments, 0, 1, false);
     fill_arguments(arguments, 2, 0x40);
     wheel_output_reports_apply(&reports, arguments, 0x0f, 0, false);
 
-    assert(wheel_output_reports_encode_next(&reports, frame));
+    assert(wheel_output_reports_encode_next(&reports, 0, frame));
     assert(frame[1] == 4);
     for (uint8_t index = 0; index < WHEEL_OUTPUT_REPORT_FOUR_SIZE; index++) {
         assert(frame[index + 2] == (uint8_t)(0x40 + index));
     }
-    assert(wheel_output_reports_encode_next(&reports, frame));
+    assert(wheel_output_reports_encode_next(&reports, 0, frame));
     assert(frame[1] == 5);
     for (uint8_t index = 0; index < WHEEL_OUTPUT_REPORT_FIVE_SIZE; index++) {
         assert(frame[index + 2] == (uint8_t)(0x50 + index));
@@ -86,7 +86,7 @@ static void test_ignores_unknown_actions(void) {
     uint8_t frame[33] = {0};
 
     wheel_output_reports_apply(&reports, arguments, 0x0f, 1, false);
-    assert(!wheel_output_reports_encode_next(&reports, frame));
+    assert(!wheel_output_reports_encode_next(&reports, 0, frame));
 }
 
 static void test_streams_report_seventeen_after_direct_reports(void) {
@@ -103,29 +103,29 @@ static void test_streams_report_seventeen_after_direct_reports(void) {
     fill_arguments(arguments, 1, 0x80);
     wheel_output_reports_apply(&reports, arguments, 0, 0, false);
 
-    assert(wheel_output_reports_encode_next(&reports, frame));
+    assert(wheel_output_reports_encode_next(&reports, 0, frame));
     assert(frame[1] == 1);
 
-    assert(wheel_output_reports_encode_next(&reports, frame));
+    assert(wheel_output_reports_encode_next(&reports, 0, frame));
     assert(frame[1] == 3);
     assert(frame[2] == 0x0f);
     for (uint8_t index = 1; index < 30; index++) {
         assert(frame[index + 2] == index);
     }
 
-    assert(wheel_output_reports_encode_next(&reports, frame));
+    assert(wheel_output_reports_encode_next(&reports, 0, frame));
     assert(frame[1] == 3);
     for (uint8_t index = 0; index < 30; index++) {
         assert(frame[index + 2] == (uint8_t)(index + 30));
     }
 
-    assert(wheel_output_reports_encode_next(&reports, frame));
+    assert(wheel_output_reports_encode_next(&reports, 0, frame));
     assert(frame[1] == 3);
     assert(frame[2] == 0x1e);
     for (uint8_t index = 1; index < 30; index++) {
         assert(frame[index + 2] == index);
     }
-    assert(!wheel_output_reports_encode_next(&reports, frame));
+    assert(!wheel_output_reports_encode_next(&reports, 0, frame));
 }
 
 static void test_repeats_remote_telemetry_after_report_seventeen(void) {
@@ -145,19 +145,38 @@ static void test_repeats_remote_telemetry_after_report_seventeen(void) {
     assert(!wheel_output_reports_queue_remote_telemetry(&reports, replacement));
 
     for (uint8_t index = 0; index < 3; index++) {
-        assert(wheel_output_reports_encode_next(&reports, frame));
+        assert(wheel_output_reports_encode_next(&reports, 0, frame));
     }
     assert(wheel_output_reports_remote_telemetry_pending(&reports));
 
     for (uint8_t transmission = 0; transmission < 3; transmission++) {
-        assert(wheel_output_reports_encode_next(&reports, frame));
+        assert(wheel_output_reports_encode_next(&reports, 0, frame));
         assert(frame[1] == 3);
         for (uint8_t index = 0; index < WHEEL_OUTPUT_REMOTE_TELEMETRY_SIZE; index++) {
             assert(frame[index + 2] == telemetry[index]);
         }
     }
     assert(!wheel_output_reports_remote_telemetry_pending(&reports));
-    assert(!wheel_output_reports_encode_next(&reports, frame));
+    assert(!wheel_output_reports_encode_next(&reports, 0, frame));
+}
+
+static void test_sends_button_illumination_changes_to_remote_tuning_modes(void) {
+    WheelOutputReports reports;
+    wheel_output_reports_init(&reports);
+    uint8_t frame[33] = {0};
+
+    wheel_output_reports_set_button_illumination(&reports, true);
+    assert(!wheel_output_reports_encode_next(&reports, 0, frame));
+    assert(wheel_output_reports_encode_next(&reports, 0x0e, frame));
+    assert(frame[1] == 0x16);
+    assert(frame[2] == 1);
+    assert(!wheel_output_reports_encode_next(&reports, 0x0e, frame));
+
+    wheel_output_reports_set_button_illumination(&reports, false);
+    assert(!wheel_output_reports_encode_next(&reports, 0, frame));
+    assert(wheel_output_reports_encode_next(&reports, 0x1c, frame));
+    assert(frame[1] == 0x16);
+    assert(frame[2] == 0);
 }
 
 int main(void) {
@@ -167,5 +186,6 @@ int main(void) {
     test_ignores_unknown_actions();
     test_streams_report_seventeen_after_direct_reports();
     test_repeats_remote_telemetry_after_report_seventeen();
+    test_sends_button_illumination_changes_to_remote_tuning_modes();
     return 0;
 }

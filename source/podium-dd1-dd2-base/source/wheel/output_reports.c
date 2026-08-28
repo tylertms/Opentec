@@ -21,6 +21,9 @@ enum {
     WHEEL_OUTPUT_REPORT_SEVENTEEN_LAST_SEQUENCE = 1,
     WHEEL_OUTPUT_REMOTE_TELEMETRY_COMMAND = 3,
     WHEEL_OUTPUT_REMOTE_TELEMETRY_TRANSMISSIONS = 3,
+    WHEEL_OUTPUT_BUTTON_ILLUMINATION_COMMAND = 0x16,
+    WHEEL_MODE_REMOTE_TUNING_LEGACY = 0x0e,
+    WHEEL_MODE_REMOTE_TUNING_EXTENDED = 0x1c,
     WHEEL_MODE_LEGACY_ALTERNATE = 0x0f,
     WHEEL_MODE_LEGACY_COMPATIBILITY = 0x17,
 };
@@ -85,6 +88,19 @@ bool wheel_output_reports_queue_remote_telemetry(
  */
 bool wheel_output_reports_remote_telemetry_pending(const WheelOutputReports *reports) {
     return reports != NULL && (reports->pending & WHEEL_OUTPUT_REMOTE_TELEMETRY_PENDING) != 0;
+}
+
+/**
+ * @brief Selects the attached-wheel button illumination state.
+ *
+ * Normalizes the active profile flag and retains it until a compatible wheel receives the changed
+ * value through its profile-mode command.
+ *
+ * @param[in,out] reports Retained report payloads and profile-mode state.
+ * @param[in] enabled True to enable attached-wheel button illumination.
+ */
+void wheel_output_reports_set_button_illumination(WheelOutputReports *reports, bool enabled) {
+    reports->button_illumination = enabled;
 }
 
 /**
@@ -161,17 +177,20 @@ void wheel_output_reports_apply(WheelOutputReports *reports, const uint8_t *argu
 /**
  * @brief Encodes the next pending attached-wheel output report.
  *
- * Selects reports in the order 1, 2, 4, 5, 17, and remote telemetry. Single-frame reports write
- * their report number and retained payload at frame offsets one and two, then consume their pending
- * state. Report 17 emits its next segmented transfer frame. Remote telemetry writes command 3 and
- * its 30-byte payload for three successive selections. The caller supplies the command byte and
- * checksum.
+ * Selects reports in the order 1, 2, 4, 5, 17, remote telemetry, and changed button illumination.
+ * Single-frame reports write their report number and retained payload at frame offsets one and two,
+ * then consume their pending state. Report 17 emits its next segmented transfer frame. Remote
+ * telemetry writes command 3 and its 30-byte payload for three successive selections. Button
+ * illumination uses command 0x16 only in remote-tuning wheel modes. The caller supplies the command
+ * byte and checksum.
  *
  * @param[in,out] reports Retained report payloads and pending state.
+ * @param[in] wheel_mode Negotiated attached-wheel mode.
  * @param[in,out] frame Attached-wheel frame receiving the report number and payload.
  * @return True when a pending report was encoded.
  */
-bool wheel_output_reports_encode_next(WheelOutputReports *reports, uint8_t *frame) {
+bool wheel_output_reports_encode_next(WheelOutputReports *reports, uint8_t wheel_mode,
+                                      uint8_t *frame) {
     uint8_t report;
     const uint8_t *payload;
     uint8_t size;
@@ -207,6 +226,13 @@ bool wheel_output_reports_encode_next(WheelOutputReports *reports, uint8_t *fram
         if (reports->remote_telemetry_transmissions == 0) {
             reports->pending &= (uint8_t)~WHEEL_OUTPUT_REMOTE_TELEMETRY_PENDING;
         }
+        return true;
+    } else if ((wheel_mode == WHEEL_MODE_REMOTE_TUNING_LEGACY ||
+                wheel_mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED) &&
+               reports->button_illumination != reports->sent_button_illumination) {
+        frame[1] = WHEEL_OUTPUT_BUTTON_ILLUMINATION_COMMAND;
+        frame[2] = reports->button_illumination ? 1 : 0;
+        reports->sent_button_illumination = reports->button_illumination;
         return true;
     } else {
         return false;

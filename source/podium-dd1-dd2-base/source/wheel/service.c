@@ -689,6 +689,19 @@ bool wheel_service_remote_telemetry_pending(const WheelService *service) {
 }
 
 /**
+ * @brief Applies active-profile button illumination to the attached wheel.
+ *
+ * Retains the normalized setting in the wheel protocol so compatible remote-tuning wheel modes
+ * receive it after higher-priority output transfers.
+ *
+ * @param[in,out] service Attached-wheel service that owns the output scheduler.
+ * @param[in] enabled True to enable attached-wheel button illumination.
+ */
+void wheel_service_set_button_illumination(WheelService *service, bool enabled) {
+    wheel_output_reports_set_button_illumination(&service->protocol.output_reports, enabled);
+}
+
+/**
  * @brief Advances attached-wheel protocol traffic.
  *
  * Applies a completed type-two or type-three response, maintains protocol activity state, and

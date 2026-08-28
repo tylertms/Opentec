@@ -96,7 +96,8 @@ static void build_active_response(WheelProtocol *protocol) {
         protocol->response[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
     }
     if (!remote_tuning_response) {
-        (void)wheel_output_reports_encode_next(&protocol->output_reports, protocol->response);
+        (void)wheel_output_reports_encode_next(&protocol->output_reports, protocol->mode,
+                                               protocol->response);
     }
     protocol->response[WHEEL_PROTOCOL_CHECKSUM_OFFSET] =
         crc8(protocol->response, WHEEL_PROTOCOL_CONTENT_SIZE);

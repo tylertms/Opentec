@@ -24,6 +24,8 @@ typedef struct {
     uint8_t report_seventeen_sequence;
     uint8_t remote_telemetry_transmissions;
     uint8_t pending;
+    bool button_illumination;
+    bool sent_button_illumination;
 } WheelOutputReports;
 
 void wheel_output_reports_init(WheelOutputReports *reports);
@@ -35,6 +37,8 @@ void wheel_output_reports_queue_seventeen(
 bool wheel_output_reports_queue_remote_telemetry(
     WheelOutputReports *reports, const uint8_t payload[WHEEL_OUTPUT_REMOTE_TELEMETRY_SIZE]);
 bool wheel_output_reports_remote_telemetry_pending(const WheelOutputReports *reports);
-bool wheel_output_reports_encode_next(WheelOutputReports *reports, uint8_t *frame);
+void wheel_output_reports_set_button_illumination(WheelOutputReports *reports, bool enabled);
+bool wheel_output_reports_encode_next(WheelOutputReports *reports, uint8_t wheel_mode,
+                                      uint8_t *frame);
 
 #endif

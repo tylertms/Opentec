@@ -337,6 +337,8 @@ static void apply_active_tuning_profile(void) {
         .throttle_curve = (uint8_t)tuning_profile->throttle_pedal_curve,
     };
     pedal_service_set_v4_tuning(&pedal_service, pedal_tuning);
+    wheel_service_set_button_illumination(&wheel_service,
+                                          tuning_profile->button_illumination_enabled != 0);
     motor_tuning_context.automatic_rotation_degrees = tuning_profile->rotation_degrees;
     if (motor_tuning_ready) {
         motor_tuning_service_refresh(&motor_tuning_service, tuning_profile, &motor_tuning_context);
