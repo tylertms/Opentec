@@ -30,12 +30,27 @@ static uint8_t crc8(const uint8_t *data, uint8_t length) {
     return crc;
 }
 
+/**
+ * @brief Clears a wheel protocol byte range.
+ *
+ * Writes zero to each byte in the selected range.
+ *
+ * @param[out] data First byte to clear.
+ * @param[in] length Number of bytes to clear.
+ */
 static void clear(uint8_t *data, uint8_t length) {
     for (uint8_t index = 0; index < length; index++) {
         data[index] = 0;
     }
 }
 
+/**
+ * @brief Builds the wheel-mode selection acknowledgement.
+ *
+ * Clears the response, writes command A5 and its checksum, and preserves the transport flag byte.
+ *
+ * @param[in,out] protocol Wheel protocol state and response storage.
+ */
 static void build_selection_response(WheelProtocol *protocol) {
     uint8_t flags = protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET];
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
@@ -211,6 +226,16 @@ static void capture_request(WheelProtocol *protocol,
     protocol->request_ready = true;
 }
 
+/**
+ * @brief Selects the attached-wheel packet mode.
+ *
+ * Recognizes the two scan commands and command A5. Supported A5 modes enter authentication or
+ * active traffic, unsupported mode values enter the unsupported phase, and recognized selections
+ * produce an acknowledgement response.
+ *
+ * @param[in,out] protocol Wheel protocol state to update.
+ * @param[in] request Complete attached-wheel selection request.
+ */
 static void select_mode(WheelProtocol *protocol,
                         const uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE]) {
     switch (request[0]) {
@@ -258,6 +283,14 @@ static bool active_command_valid(const WheelProtocol *protocol, uint8_t command)
     return command == WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
 }
 
+/**
+ * @brief Initializes the attached-wheel protocol.
+ *
+ * Clears packet state, initializes every packet-family processor, and starts the handshake in the
+ * waiting phase with an unknown mode.
+ *
+ * @param[out] protocol Wheel protocol state to initialize.
+ */
 void wheel_protocol_init(WheelProtocol *protocol) {
     const WheelPacketModeOneInput empty_input = {0};
     const WheelPacketModeOneReportState empty_report_state = {0};
@@ -301,24 +334,67 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     protocol->acknowledgement_input_active = false;
 }
 
+/**
+ * @brief Updates standard packet-family wheel output.
+ *
+ * Replaces the display, display-state, and link-status output encoded for mode-one packets.
+ *
+ * @param[in,out] protocol Wheel protocol state to update.
+ * @param[in] output Standard packet-family output state.
+ */
 void wheel_protocol_set_mode_one_output(WheelProtocol *protocol,
                                         const WheelPacketModeOneOutput *output) {
     protocol->mode_one_output = *output;
 }
 
+/**
+ * @brief Updates mode-four wheel output.
+ *
+ * Replaces the display, display-state, and legacy-axis output encoded for mode-four packets.
+ *
+ * @param[in,out] protocol Wheel protocol state to update.
+ * @param[in] output Mode-four output state.
+ */
 void wheel_protocol_set_mode_four_output(WheelProtocol *protocol,
                                          const WheelPacketModeFourOutput *output) {
     protocol->mode_four_output = *output;
 }
 
+/**
+ * @brief Updates CRC-family wheel output.
+ *
+ * Replaces the display, legacy-axis, and report-status output encoded for CRC-family packets.
+ *
+ * @param[in,out] protocol Wheel protocol state to update.
+ * @param[in] output CRC-family output state.
+ */
 void wheel_protocol_set_crc_output(WheelProtocol *protocol, const WheelPacketCrcOutput *output) {
     protocol->crc_output = *output;
 }
 
+/**
+ * @brief Configures CRC-family adapter packet handling.
+ *
+ * Retains the adapter identifier, mode, and variant used by the CRC-family codec.
+ *
+ * @param[in,out] protocol Wheel protocol state to configure.
+ * @param[in] adapter CRC-family adapter configuration.
+ */
 void wheel_protocol_set_crc_adapter(WheelProtocol *protocol, const WheelPacketCrcAdapter *adapter) {
     protocol->crc_adapter = *adapter;
 }
 
+/**
+ * @brief Configures attached-wheel axis processing.
+ *
+ * Retains the host interface mode, axis override mode, and calibration byte applied to incoming
+ * mode-one and CRC-family controls.
+ *
+ * @param[in,out] protocol Wheel protocol state to configure.
+ * @param[in] interface_mode Active host interface mode.
+ * @param[in] override_mode Configured wheel-axis override mode.
+ * @param[in] calibration_value Axis calibration byte.
+ */
 void wheel_protocol_set_axis_processing(WheelProtocol *protocol, uint8_t interface_mode,
                                         uint8_t override_mode, uint8_t calibration_value) {
     protocol->interface_mode = interface_mode;
@@ -326,12 +402,32 @@ void wheel_protocol_set_axis_processing(WheelProtocol *protocol, uint8_t interfa
     protocol->axis_calibration_value = calibration_value;
 }
 
+/**
+ * @brief Configures standard-packet button latching.
+ *
+ * Retains the button-latch enable and profile-transition state used while normalizing mode-one
+ * input.
+ *
+ * @param[in,out] protocol Wheel protocol state to configure.
+ * @param[in] enabled Enables standard-packet button latching.
+ * @param[in] profile_transition_pending Suppresses latching during a profile transition.
+ */
 void wheel_protocol_set_button_latch(WheelProtocol *protocol, bool enabled,
                                      bool profile_transition_pending) {
     protocol->button_latch_enabled = enabled;
     protocol->profile_transition_pending = profile_transition_pending;
 }
 
+/**
+ * @brief Applies one attached-wheel protocol request.
+ *
+ * Advances the ready-and-acknowledge handshake, selects or authenticates the requested packet
+ * family, captures valid active input, and builds the corresponding response. Scan modes remain
+ * under the separate scan service.
+ *
+ * @param[in,out] protocol Wheel protocol state and response storage.
+ * @param[in] request Complete 57-byte attached-wheel request.
+ */
 void wheel_protocol_accept(WheelProtocol *protocol,
                            const uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE]) {
     bool ready = (request[WHEEL_PROTOCOL_FLAGS_OFFSET] & WHEEL_PROTOCOL_REQUEST_READY) != 0;
@@ -392,28 +488,77 @@ void wheel_protocol_accept(WheelProtocol *protocol,
     }
 }
 
+/**
+ * @brief Returns the current attached-wheel response.
+ *
+ * Exposes the complete response packet prepared by the handshake or active packet encoder.
+ *
+ * @param[in] protocol Wheel protocol state.
+ * @return Current 57-byte attached-wheel response.
+ */
 const uint8_t *wheel_protocol_response(const WheelProtocol *protocol) { return protocol->response; }
 
+/**
+ * @brief Returns the normalized attached-wheel request snapshot.
+ *
+ * Exposes the current 30-byte input snapshot after a supported active request has been captured.
+ *
+ * @param[in] protocol Wheel protocol state.
+ * @return Current request snapshot, or null before supported input is ready.
+ */
 const uint8_t *wheel_protocol_request(const WheelProtocol *protocol) {
     return protocol->request_ready ? protocol->request : 0;
 }
 
+/**
+ * @brief Returns the current standard packet-family input.
+ *
+ * Exposes decoded mode-one input only after a supported standard request has been captured.
+ *
+ * @param[in] protocol Wheel protocol state.
+ * @return Current standard input, or null when unavailable.
+ */
 const WheelPacketModeOneInput *wheel_protocol_mode_one_input(const WheelProtocol *protocol) {
     return protocol->request_ready && wheel_packet_mode_one_applies(protocol->mode)
                ? &protocol->mode_one_input
                : 0;
 }
 
+/**
+ * @brief Returns the current mode-four input.
+ *
+ * Exposes decoded mode-four input only after a mode-four request has been captured.
+ *
+ * @param[in] protocol Wheel protocol state.
+ * @return Current mode-four input, or null when unavailable.
+ */
 const WheelPacketModeFourInput *wheel_protocol_mode_four_input(const WheelProtocol *protocol) {
     return protocol->request_ready && protocol->mode == 4 ? &protocol->mode_four_input : 0;
 }
 
+/**
+ * @brief Returns the current CRC-family input.
+ *
+ * Exposes decoded CRC-family input only after a supported CRC request has been captured.
+ *
+ * @param[in] protocol Wheel protocol state.
+ * @return Current CRC-family input, or null when unavailable.
+ */
 const WheelPacketCrcInput *wheel_protocol_crc_input(const WheelProtocol *protocol) {
     return protocol->request_ready && wheel_packet_crc_applies(protocol->mode)
                ? &protocol->crc_input
                : 0;
 }
 
+/**
+ * @brief Returns separately retained standard report fields.
+ *
+ * Exposes axis, report-mode, capability, and limit fields retained before standard input
+ * normalization.
+ *
+ * @param[in] protocol Wheel protocol state.
+ * @return Current standard report state, or null when unavailable.
+ */
 const WheelPacketModeOneReportState *
 wheel_protocol_mode_one_report_state(const WheelProtocol *protocol) {
     return protocol->request_ready && wheel_packet_mode_one_applies(protocol->mode)
@@ -421,10 +566,26 @@ wheel_protocol_mode_one_report_state(const WheelProtocol *protocol) {
                : 0;
 }
 
+/**
+ * @brief Returns the attached-wheel axis override processor.
+ *
+ * Exposes the current override state maintained while normalizing supported wheel packets.
+ *
+ * @param[in] protocol Wheel protocol state.
+ * @return Current wheel-axis override processor.
+ */
 const WheelAxisOverrideProcessor *wheel_protocol_axis_overrides(const WheelProtocol *protocol) {
     return &protocol->axis_override_processor;
 }
 
+/**
+ * @brief Returns the attached-wheel capability state.
+ *
+ * Exposes capabilities retained from supported active wheel reports.
+ *
+ * @param[in] protocol Wheel protocol state.
+ * @return Current attached-wheel capability state.
+ */
 const WheelCapabilityState *wheel_protocol_capabilities(const WheelProtocol *protocol) {
     return &protocol->capabilities;
 }
@@ -561,6 +722,14 @@ int8_t wheel_protocol_take_motion(WheelProtocol *protocol) {
     return wheel_motion_take_primary(&protocol->motion);
 }
 
+/**
+ * @brief Takes the attached-wheel request-change latch.
+ *
+ * Returns whether the normalized request changed since the previous take and clears the latch.
+ *
+ * @param[in,out] protocol Wheel protocol state.
+ * @return True when a normalized request change was pending.
+ */
 bool wheel_protocol_request_changed(WheelProtocol *protocol) {
     bool changed = protocol->request_changed;
     protocol->request_changed = false;
@@ -583,10 +752,26 @@ bool wheel_protocol_acknowledgement_input_active(const WheelProtocol *protocol) 
            protocol->acknowledgement_input_active;
 }
 
+/**
+ * @brief Calculates an attached-wheel packet checksum.
+ *
+ * Applies the wheel CRC-8 to the first 32 bytes of a complete protocol packet.
+ *
+ * @param[in] packet Complete attached-wheel protocol packet.
+ * @return CRC-8 for the packet content region.
+ */
 uint8_t wheel_protocol_message_checksum(const uint8_t packet[WHEEL_PROTOCOL_PACKET_SIZE]) {
     return crc8(packet, WHEEL_PROTOCOL_CONTENT_SIZE);
 }
 
+/**
+ * @brief Validates an attached-wheel packet checksum.
+ *
+ * Compares the packet checksum byte with the CRC-8 calculated over its 32-byte content region.
+ *
+ * @param[in] packet Complete attached-wheel protocol packet.
+ * @return True when the packet checksum matches.
+ */
 bool wheel_protocol_message_valid(const uint8_t packet[WHEEL_PROTOCOL_PACKET_SIZE]) {
     return packet[WHEEL_PROTOCOL_CHECKSUM_OFFSET] == wheel_protocol_message_checksum(packet);
 }
