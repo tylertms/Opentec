@@ -77,16 +77,13 @@ void usb_xbox_gip_metadata_download_init(UsbXboxGipMetadataDownload *download, u
  * @param[in,out] download Active metadata download state.
  * @param[in] metadata Encoded 449-byte metadata document.
  * @param[out] packet Destination for the next packet.
- * @param[out] packet_length Number of bytes written to the packet.
- * @return True when a packet is produced; false while waiting or after completion.
+ * @return Number of packet bytes produced, or zero while waiting or after completion.
  */
-bool usb_xbox_gip_metadata_download_next(UsbXboxGipMetadataDownload *download,
-                                         const uint8_t metadata[USB_XBOX_GIP_METADATA_SIZE],
-                                         uint8_t packet[USB_XBOX_GIP_METADATA_PACKET_SIZE],
-                                         uint8_t *packet_length) {
-    *packet_length = 0;
+uint8_t usb_xbox_gip_metadata_download_next(UsbXboxGipMetadataDownload *download,
+                                            const uint8_t metadata[USB_XBOX_GIP_METADATA_SIZE],
+                                            uint8_t packet[USB_XBOX_GIP_METADATA_PACKET_SIZE]) {
     if (download->awaiting_acknowledgement || download->complete) {
-        return false;
+        return 0;
     }
 
     packet[0] = USB_XBOX_GIP_METADATA_REPORT_ID;
@@ -98,8 +95,7 @@ bool usb_xbox_gip_metadata_download_next(UsbXboxGipMetadataDownload *download,
         memcpy(&packet[METADATA_PACKET_HEADER_SIZE], metadata, METADATA_PACKET_PAYLOAD_SIZE);
         download->offset = METADATA_PACKET_PAYLOAD_SIZE;
         download->awaiting_acknowledgement = true;
-        *packet_length = USB_XBOX_GIP_METADATA_PACKET_SIZE;
-        return true;
+        return USB_XBOX_GIP_METADATA_PACKET_SIZE;
     }
 
     uint16_t remaining = USB_XBOX_GIP_METADATA_SIZE - download->offset;
@@ -116,8 +112,7 @@ bool usb_xbox_gip_metadata_download_next(UsbXboxGipMetadataDownload *download,
         if (acknowledgement_due) {
             download->continuation_count = 0;
         }
-        *packet_length = USB_XBOX_GIP_METADATA_PACKET_SIZE;
-        return true;
+        return USB_XBOX_GIP_METADATA_PACKET_SIZE;
     }
 
     if (remaining != 0) {
@@ -127,16 +122,14 @@ bool usb_xbox_gip_metadata_download_next(UsbXboxGipMetadataDownload *download,
         memcpy(&packet[METADATA_PACKET_HEADER_SIZE], &metadata[download->offset], remaining);
         download->offset += remaining;
         download->awaiting_acknowledgement = true;
-        *packet_length = (uint8_t)(remaining + METADATA_PACKET_HEADER_SIZE);
-        return true;
+        return (uint8_t)(remaining + METADATA_PACKET_HEADER_SIZE);
     }
 
     packet[1] = METADATA_TRANSFER_CONTINUE;
     packet[3] = 0;
     encode_offset(USB_XBOX_GIP_METADATA_SIZE, &packet[4], &packet[5]);
     download->complete = true;
-    *packet_length = METADATA_PACKET_HEADER_SIZE;
-    return true;
+    return METADATA_PACKET_HEADER_SIZE;
 }
 
 /**

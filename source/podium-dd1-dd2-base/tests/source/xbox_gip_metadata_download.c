@@ -46,8 +46,8 @@ static void test_emits_complete_metadata_exchange(void) {
     usb_xbox_gip_metadata_download_init(&download, 0x2a);
 
     for (size_t index = 0; index < sizeof(expected) / sizeof(expected[0]); index++) {
-        uint8_t packet_length;
-        assert(usb_xbox_gip_metadata_download_next(&download, metadata, packet, &packet_length));
+        uint8_t packet_length = usb_xbox_gip_metadata_download_next(&download, metadata, packet);
+        assert(packet_length != 0);
         assert(packet[0] == USB_XBOX_GIP_METADATA_REPORT_ID);
         assert(packet[1] == expected[index].transfer_type);
         assert(packet[2] == 0x2a);
@@ -59,8 +59,7 @@ static void test_emits_complete_metadata_exchange(void) {
         metadata_offset += expected[index].payload_length;
 
         if (expected[index].acknowledgement_due) {
-            assert(
-                !usb_xbox_gip_metadata_download_next(&download, metadata, packet, &packet_length));
+            assert(usb_xbox_gip_metadata_download_next(&download, metadata, packet) == 0);
             build_acknowledgement(acknowledgement, metadata_offset);
             assert(usb_xbox_gip_metadata_download_acknowledge(&download, acknowledgement));
         }
@@ -68,8 +67,7 @@ static void test_emits_complete_metadata_exchange(void) {
 
     assert(metadata_offset == USB_XBOX_GIP_METADATA_SIZE);
     assert(download.complete);
-    uint8_t packet_length;
-    assert(!usb_xbox_gip_metadata_download_next(&download, metadata, packet, &packet_length));
+    assert(usb_xbox_gip_metadata_download_next(&download, metadata, packet) == 0);
 }
 
 static void test_rejects_mismatched_acknowledgement(void) {
@@ -81,7 +79,8 @@ static void test_rejects_mismatched_acknowledgement(void) {
 
     usb_xbox_gip_metadata_encode(metadata);
     usb_xbox_gip_metadata_download_init(&download, 1);
-    assert(usb_xbox_gip_metadata_download_next(&download, metadata, packet, &packet_length));
+    packet_length = usb_xbox_gip_metadata_download_next(&download, metadata, packet);
+    assert(packet_length != 0);
 
     build_acknowledgement(acknowledgement, 58);
     acknowledgement[5] = 6;

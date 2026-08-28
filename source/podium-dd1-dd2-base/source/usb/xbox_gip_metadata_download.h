@@ -21,10 +21,9 @@ typedef struct {
 } UsbXboxGipMetadataDownload;
 
 void usb_xbox_gip_metadata_download_init(UsbXboxGipMetadataDownload *download, uint8_t sequence);
-bool usb_xbox_gip_metadata_download_next(UsbXboxGipMetadataDownload *download,
-                                         const uint8_t metadata[USB_XBOX_GIP_METADATA_SIZE],
-                                         uint8_t packet[USB_XBOX_GIP_METADATA_PACKET_SIZE],
-                                         uint8_t *packet_length);
+uint8_t usb_xbox_gip_metadata_download_next(UsbXboxGipMetadataDownload *download,
+                                            const uint8_t metadata[USB_XBOX_GIP_METADATA_SIZE],
+                                            uint8_t packet[USB_XBOX_GIP_METADATA_PACKET_SIZE]);
 bool usb_xbox_gip_metadata_download_acknowledge(
     UsbXboxGipMetadataDownload *download,
     const uint8_t acknowledgement[USB_XBOX_GIP_METADATA_ACKNOWLEDGEMENT_SIZE]);
