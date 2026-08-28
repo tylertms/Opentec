@@ -48,9 +48,27 @@ static void test_maps_base_and_extended_status_modes(void) {
     assert(output[24] == 4);
 }
 
+static void test_encodes_session_responses(void) {
+    static const uint8_t expected_ready[USB_XBOX_GIP_READY_RESPONSE_SIZE] = {
+        0x03, 0x20, 0x2a, 0x04, 0x80, 0x01, 0x00, 0x00,
+    };
+    static const uint8_t expected_status[USB_XBOX_GIP_TRANSFER_STATUS_RESPONSE_SIZE] = {
+        0x01, 0x20, 0x2a, 0x09, 0x02, 0x05, 0x99, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    };
+    const uint8_t request[] = {5, 0x99};
+    uint8_t ready[USB_XBOX_GIP_READY_RESPONSE_SIZE];
+    uint8_t status[USB_XBOX_GIP_TRANSFER_STATUS_RESPONSE_SIZE];
+
+    usb_xbox_gip_ready_response_encode(0x2a, ready);
+    usb_xbox_gip_transfer_status_response_encode(0x2a, request, status);
+    assert(memcmp(ready, expected_ready, sizeof(expected_ready)) == 0);
+    assert(memcmp(status, expected_status, sizeof(expected_status)) == 0);
+}
+
 int main(void) {
     test_advances_and_wraps_response_sequence();
     test_encodes_digest_response();
     test_maps_base_and_extended_status_modes();
+    test_encodes_session_responses();
     return 0;
 }

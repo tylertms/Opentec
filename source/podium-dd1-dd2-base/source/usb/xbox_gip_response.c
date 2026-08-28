@@ -7,8 +7,13 @@
 
 enum {
     XBOX_GIP_DIGEST_RESPONSE = 2,
+    XBOX_GIP_TRANSFER_STATUS_RESPONSE = 1,
+    XBOX_GIP_READY_RESPONSE = 3,
     XBOX_GIP_SEQUENCE_SUBCOMMAND = 0x20,
     XBOX_GIP_DIGEST_PAYLOAD_SIZE = 0x1c,
+    XBOX_GIP_READY_PAYLOAD_SIZE = 4,
+    XBOX_GIP_TRANSFER_STATUS_PAYLOAD_SIZE = 9,
+    XBOX_GIP_TRANSFER_STATUS_ERROR = 2,
     XBOX_GIP_EXTENDED_STATUS_WHEEL_MODE = 0x1d,
 };
 
@@ -68,4 +73,47 @@ void usb_xbox_gip_digest_response_encode(BoardVariant variant, uint8_t wheel_mod
     output[26] = 1;
     output[28] = 1;
     output[30] = 1;
+}
+
+/**
+ * @brief Encodes the Xbox GIP ready response.
+ *
+ * Emits the eight-byte response returned after accepted activation, pause, suspend, and reset
+ * session commands.
+ *
+ * @param[in] sequence Response sequence value.
+ * @param[out] output Destination for the ready response.
+ */
+void usb_xbox_gip_ready_response_encode(uint8_t sequence,
+                                        uint8_t output[USB_XBOX_GIP_READY_RESPONSE_SIZE]) {
+    memset(output, 0, USB_XBOX_GIP_READY_RESPONSE_SIZE);
+    output[0] = XBOX_GIP_READY_RESPONSE;
+    output[1] = XBOX_GIP_SEQUENCE_SUBCOMMAND;
+    output[2] = sequence;
+    output[3] = XBOX_GIP_READY_PAYLOAD_SIZE;
+    output[4] = 0x80;
+    output[5] = 1;
+}
+
+/**
+ * @brief Encodes the Xbox GIP transfer-status response.
+ *
+ * Echoes the first two request bytes and reports transfer status 2 with zero transferred and
+ * remaining counts.
+ *
+ * @param[in] sequence Current response sequence value without advancing it.
+ * @param[in] request First two bytes of the triggering session request.
+ * @param[out] output Destination for the transfer-status response.
+ */
+void usb_xbox_gip_transfer_status_response_encode(
+    uint8_t sequence, const uint8_t request[2],
+    uint8_t output[USB_XBOX_GIP_TRANSFER_STATUS_RESPONSE_SIZE]) {
+    memset(output, 0, USB_XBOX_GIP_TRANSFER_STATUS_RESPONSE_SIZE);
+    output[0] = XBOX_GIP_TRANSFER_STATUS_RESPONSE;
+    output[1] = XBOX_GIP_SEQUENCE_SUBCOMMAND;
+    output[2] = sequence;
+    output[3] = XBOX_GIP_TRANSFER_STATUS_PAYLOAD_SIZE;
+    output[4] = XBOX_GIP_TRANSFER_STATUS_ERROR;
+    output[5] = request[0];
+    output[6] = request[1];
 }
