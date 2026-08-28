@@ -97,12 +97,12 @@ bool pedal_v3_apply_report(const PedalFrame *frame, bool auxiliary_locked, Pedal
 /**
  * Applies the active brake-force gain to a digital pedal sample.
  *
- * @param value Raw brake-axis sample.
- * @param force_percent Configured brake force from zero to 100 percent.
+ * @param[in] value Raw brake-axis sample.
+ * @param[in] force_percent Signed one-byte brake-force setting.
  * @return Scaled brake sample saturated to the 16-bit axis range.
  */
 uint16_t pedal_input_scale_brake(uint16_t value, uint8_t force_percent) {
-    uint8_t force = force_percent > 100 ? 100 : force_percent;
+    int16_t force = (int8_t)force_percent;
     float gain = 1.0f + (float)(100 - force) * 0.04f;
     uint32_t scaled = (uint32_t)((float)value * gain);
     return scaled > UINT16_MAX ? UINT16_MAX : (uint16_t)scaled;

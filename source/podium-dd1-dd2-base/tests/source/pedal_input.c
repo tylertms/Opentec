@@ -118,7 +118,8 @@ static void test_scales_brake_force(void) {
     assert(pedal_input_scale_brake(1000, 0) == 5000);
     assert(pedal_input_scale_brake(30000, 50) == UINT16_MAX);
     assert(pedal_input_scale_brake(225, 99) == 233);
-    assert(pedal_input_scale_brake(1000, 101) == 1000);
+    assert(pedal_input_scale_brake(1000, 101) == 960);
+    assert(pedal_input_scale_brake(1000, UINT8_MAX) == 5040);
 }
 
 static void test_released_hid_axes_are_high(void) {
