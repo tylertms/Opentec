@@ -2,6 +2,7 @@ base_include = include_directories('source')
 base_source_path = meson.current_source_dir() / 'source'
 common_source_path = meson.project_source_root() / 'source'
 analog_axis_sources = files('source/analog/axis.c')
+auxiliary_axis_sources = files('source/analog/auxiliary_axis.c')
 analog_samples_sources = files('source/analog/samples.c')
 cooling_controller_sources = files('source/cooling/controller.c')
 cooling_effect_limit_sources = files('source/cooling/effect_limit.c')
@@ -165,6 +166,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
   firmware_objects = []
   foreach name, source : {
     'analog-axis': 'source/analog/axis.c',
+    'auxiliary-axis': 'source/analog/auxiliary_axis.c',
     'analog-samples': 'source/analog/samples.c',
     'cooling-controller': 'source/cooling/controller.c',
     'cooling-effect-limit': 'source/cooling/effect_limit.c',
@@ -368,6 +370,15 @@ if not meson.is_cross_build()
   analog_axis_test = executable(
     'base-analog-axis-test',
     'tests/source/analog_axis.c',
+    analog_axis_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  auxiliary_axis_test = executable(
+    'base-auxiliary-axis-test',
+    'tests/source/auxiliary_axis.c',
+    auxiliary_axis_sources,
     analog_axis_sources,
     build_by_default: false,
     include_directories: base_include,
@@ -1369,6 +1380,8 @@ if not meson.is_cross_build()
     'tests/source/base_settings_persistence.c',
     settings_persistence_sources,
     settings_state_sources,
+    auxiliary_axis_sources,
+    analog_axis_sources,
     profile_record_sources,
     profile_bank_sources,
     profile_tuning_sources,
@@ -1710,6 +1723,7 @@ if not meson.is_cross_build()
   )
 
   test('base-analog-axis', analog_axis_test, suite: ['base', 'analog'])
+  test('base-auxiliary-axis', auxiliary_axis_test, suite: ['base', 'analog'])
   test(
     'base-cooling-controller',
     cooling_controller_test,

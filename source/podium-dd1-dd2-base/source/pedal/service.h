@@ -62,6 +62,8 @@ typedef struct {
     uint8_t configuration_brake_force;
     uint8_t v4_tuning_pending;
     uint8_t v4_sent_value;
+    uint8_t remote_auxiliary;
+    uint8_t auxiliary_override;
     uint8_t legacy_retries[PEDAL_LEGACY_CHANNEL_COUNT];
     PedalLegacyChannel legacy_channel;
     PedalProtocolStatus protocol_status;
@@ -71,7 +73,7 @@ typedef struct {
     uint16_t analog_samples[PEDAL_INPUT_AXIS_COUNT];
     bool analog_samples_ready;
     bool connected;
-    bool auxiliary_locked;
+    bool auxiliary_override_active;
     bool input_command_pending;
     bool configuration_pending;
     bool configuration_reset_pending;
@@ -86,7 +88,8 @@ void pedal_service_set_analog_samples(PedalService *service,
                                       const uint16_t samples[PEDAL_INPUT_AXIS_COUNT]);
 void pedal_service_set_brake_force(PedalService *service, uint8_t force_percent);
 void pedal_service_set_v4_tuning(PedalService *service, PedalV4Tuning tuning);
-void pedal_service_set_auxiliary_locked(PedalService *service, bool locked);
+void pedal_service_set_auxiliary_override(PedalService *service, bool active, uint8_t value);
+bool pedal_service_auxiliary_automatic_calibration(const PedalService *service);
 void pedal_service_set_protocol_status(PedalService *service, const PedalProtocolStatus *status);
 void pedal_service_request_control(PedalService *service, PedalV3Control control);
 void pedal_service_request_input_command(PedalService *service,

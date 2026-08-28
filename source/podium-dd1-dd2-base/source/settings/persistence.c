@@ -15,12 +15,16 @@ enum {
     PERSISTENCE_MAGIC_3 = 'S',
     PERSISTENCE_PROFILE_ONLY_VERSION = 1,
     PERSISTENCE_WHEEL_REFERENCE_VERSION = 2,
-    PERSISTENCE_VERSION = 3,
+    PERSISTENCE_H_PATTERN_VERSION = 3,
+    PERSISTENCE_VERSION = 4,
     PERSISTENCE_HEADER_SIZE = 12,
     PERSISTENCE_REFERENCE_SIZE = 5,
     PERSISTENCE_H_PATTERN_SIZE = 17,
+    PERSISTENCE_AUXILIARY_AXIS_SIZE = 5,
     PERSISTENCE_REFERENCE_PAYLOAD_SIZE = TUNING_PROFILE_RECORD_SIZE + PERSISTENCE_REFERENCE_SIZE,
-    PERSISTENCE_PAYLOAD_SIZE = PERSISTENCE_REFERENCE_PAYLOAD_SIZE + PERSISTENCE_H_PATTERN_SIZE,
+    PERSISTENCE_H_PATTERN_PAYLOAD_SIZE =
+        PERSISTENCE_REFERENCE_PAYLOAD_SIZE + PERSISTENCE_H_PATTERN_SIZE,
+    PERSISTENCE_PAYLOAD_SIZE = PERSISTENCE_H_PATTERN_PAYLOAD_SIZE + PERSISTENCE_AUXILIARY_AXIS_SIZE,
     PERSISTENCE_DATA_SIZE = PERSISTENCE_HEADER_SIZE + PERSISTENCE_PAYLOAD_SIZE,
     PERSISTENCE_CHECKSUM_SIZE = 2,
     PERSISTENCE_RECORD_SIZE = PERSISTENCE_DATA_SIZE + PERSISTENCE_CHECKSUM_SIZE,
@@ -79,13 +83,15 @@ static bool deadline_reached(uint32_t now_ms, uint32_t deadline_ms) {
 static bool header_valid(const uint8_t *data, uint16_t payload_size) {
     uint8_t version = data[4];
     bool current = version == PERSISTENCE_VERSION && payload_size == PERSISTENCE_PAYLOAD_SIZE;
+    bool h_pattern = version == PERSISTENCE_H_PATTERN_VERSION &&
+                     payload_size == PERSISTENCE_H_PATTERN_PAYLOAD_SIZE;
     bool wheel_reference = version == PERSISTENCE_WHEEL_REFERENCE_VERSION &&
                            payload_size == PERSISTENCE_REFERENCE_PAYLOAD_SIZE;
     bool profile_only =
         version == PERSISTENCE_PROFILE_ONLY_VERSION && payload_size == TUNING_PROFILE_RECORD_SIZE;
     return data[0] == PERSISTENCE_MAGIC_0 && data[1] == PERSISTENCE_MAGIC_1 &&
            data[2] == PERSISTENCE_MAGIC_2 && data[3] == PERSISTENCE_MAGIC_3 && data[5] == 0 &&
-           (current || wheel_reference || profile_only);
+           (current || h_pattern || wheel_reference || profile_only);
 }
 
 static void h_pattern_calibration_decode(const uint8_t *data, HPatternSettings *settings) {
@@ -110,6 +116,39 @@ static void h_pattern_calibration_encode(const HPatternSettings *settings, uint8
     write_u16(data, 11, settings->calibration.fifth_seventh_boundary);
     write_u16(data, 13, settings->calibration.upper_row_threshold);
     write_u16(data, 15, settings->calibration.lower_row_threshold);
+}
+
+/**
+ * @brief Decodes retained auxiliary-axis endpoint settings.
+ *
+ * Restores the minimum, maximum, and startup-learning flag from the compact settings payload.
+ *
+ * @param[in] data Five-byte encoded auxiliary settings.
+ * @param[out] settings Auxiliary settings destination.
+ * @return True when the startup-learning flag is valid.
+ */
+static bool auxiliary_axis_settings_decode(const uint8_t *data, AuxiliaryAxisSettings *settings) {
+    if (data[4] > 1) {
+        return false;
+    }
+    settings->minimum = read_u16(data, 0);
+    settings->maximum = read_u16(data, 2);
+    settings->reset_on_start = data[4] == 1;
+    return true;
+}
+
+/**
+ * @brief Encodes retained auxiliary-axis endpoint settings.
+ *
+ * Stores the minimum, maximum, and startup-learning flag in the compact settings payload.
+ *
+ * @param[in] settings Auxiliary settings to encode.
+ * @param[out] data Five-byte encoded auxiliary settings.
+ */
+static void auxiliary_axis_settings_encode(const AuxiliaryAxisSettings *settings, uint8_t *data) {
+    write_u16(data, 0, settings->minimum);
+    write_u16(data, 2, settings->maximum);
+    data[4] = settings->reset_on_start ? 1 : 0;
 }
 
 static bool record_decode(const uint8_t data[PERSISTENCE_RECORD_SIZE], StoredSettings *stored) {
@@ -137,7 +176,7 @@ static bool record_decode(const uint8_t data[PERSISTENCE_RECORD_SIZE], StoredSet
         stored->settings.wheel_position.calibrated = data[reference_offset] == 1;
         stored->settings.wheel_position.center = (int32_t)read_u32(data, reference_offset + 1);
     }
-    if (version == PERSISTENCE_VERSION) {
+    if (version == PERSISTENCE_H_PATTERN_VERSION || version == PERSISTENCE_VERSION) {
         uint16_t calibration_offset = PERSISTENCE_HEADER_SIZE + PERSISTENCE_REFERENCE_PAYLOAD_SIZE;
         if (data[calibration_offset] > 1) {
             stored->valid = false;
@@ -147,6 +186,16 @@ static bool record_decode(const uint8_t data[PERSISTENCE_RECORD_SIZE], StoredSet
                                      &stored->settings.h_pattern_shifter);
     } else {
         stored->settings.h_pattern_shifter = (HPatternSettings){0};
+    }
+    if (version == PERSISTENCE_VERSION) {
+        uint16_t auxiliary_offset = PERSISTENCE_HEADER_SIZE + PERSISTENCE_H_PATTERN_PAYLOAD_SIZE;
+        if (!auxiliary_axis_settings_decode(&data[auxiliary_offset],
+                                            &stored->settings.auxiliary_axis)) {
+            stored->valid = false;
+            return false;
+        }
+    } else {
+        auxiliary_axis_settings_defaults(&stored->settings.auxiliary_axis);
     }
     stored->valid = true;
     return true;
@@ -179,6 +228,8 @@ static bool record_encode(const BaseSettings *settings, uint32_t generation,
     write_u32(data, reference_offset + 1, (uint32_t)settings->wheel_position.center);
     uint16_t calibration_offset = PERSISTENCE_HEADER_SIZE + PERSISTENCE_REFERENCE_PAYLOAD_SIZE;
     h_pattern_calibration_encode(&settings->h_pattern_shifter, &data[calibration_offset]);
+    uint16_t auxiliary_offset = PERSISTENCE_HEADER_SIZE + PERSISTENCE_H_PATTERN_PAYLOAD_SIZE;
+    auxiliary_axis_settings_encode(&settings->auxiliary_axis, &data[auxiliary_offset]);
     write_u16(data, PERSISTENCE_DATA_SIZE, persistence_checksum(data, PERSISTENCE_DATA_SIZE));
     return true;
 }

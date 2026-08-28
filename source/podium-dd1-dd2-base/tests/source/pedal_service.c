@@ -679,6 +679,38 @@ static void test_selects_analog_input_after_discovery_timeout(void) {
     assert(discovery_count == 1);
 }
 
+static void test_local_auxiliary_override_restores_the_remote_value(void) {
+    PedalService service;
+    reset_link();
+    pedal_service_init(&service);
+    service.remote_auxiliary = 0x35;
+    service.input.auxiliary = service.remote_auxiliary;
+
+    pedal_service_set_auxiliary_override(&service, true, 0x78);
+    assert(pedal_service_input(&service)->auxiliary == 0x78);
+
+    service.remote_auxiliary = 0x42;
+    pedal_service_set_auxiliary_override(&service, false, 0);
+    assert(pedal_service_input(&service)->auxiliary == 0x42);
+}
+
+static void test_selects_auxiliary_automatic_calibration_from_pedal_state(void) {
+    PedalService service;
+    reset_link();
+    pedal_service_init(&service);
+    assert(!pedal_service_auxiliary_automatic_calibration(&service));
+
+    service.phase = PEDAL_SERVICE_LEGACY_REQUEST;
+    assert(pedal_service_auxiliary_automatic_calibration(&service));
+
+    service.phase = PEDAL_SERVICE_V3_STREAM;
+    service.v3.primary_calibration = true;
+    assert(pedal_service_auxiliary_automatic_calibration(&service));
+
+    service.v3.connection_flags = 0x02;
+    assert(!pedal_service_auxiliary_automatic_calibration(&service));
+}
+
 int main(void) {
     test_connects_and_publishes_v3_input();
     test_applies_active_brake_force();
@@ -696,5 +728,7 @@ int main(void) {
     test_polls_legacy_pedal_channels();
     test_retries_after_discovery_timeout();
     test_selects_analog_input_after_discovery_timeout();
+    test_local_auxiliary_override_restores_the_remote_value();
+    test_selects_auxiliary_automatic_calibration_from_pedal_state();
     return 0;
 }

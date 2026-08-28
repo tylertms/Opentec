@@ -1,6 +1,7 @@
 #include <stdbool.h>
 #include <xc.h>
 
+#include "analog/auxiliary_axis.h"
 #include "board/identity.h"
 #include "board/status_led.h"
 #include "cooling/controller.h"
@@ -112,6 +113,7 @@ static SerialService serial_service;
 static WheelService wheel_service;
 static WheelStatusService wheel_status_service;
 static AnalogSamples analog_samples;
+static AuxiliaryAxis auxiliary_axis;
 static HPatternShifter h_pattern_shifter;
 static ShifterInputState shifter_input;
 static ShifterDisplay shifter_display;
@@ -322,8 +324,18 @@ static void apply_active_tuning_profile(void) {
     }
 }
 
-static void initialize_motor(void) {
+/**
+ * @brief Loads retained base settings and initializes their runtime consumers.
+ *
+ * Selects the newest valid settings record and initializes the local auxiliary input from its
+ * retained endpoint calibration.
+ */
+static void initialize_base_settings(void) {
     base_settings_persistence_load(&settings_persistence, &base_settings, platform_time_ms());
+    auxiliary_axis_init(&auxiliary_axis, &base_settings.auxiliary_axis);
+}
+
+static void initialize_motor(void) {
     force_feedback_state_init(&force_feedback_state);
     motor_tuning_context = (MotorTuningContext){
         .ramp_percent = 0,
@@ -800,13 +812,33 @@ static void service_usb_input(void) {
     }
 }
 
-static void service_analog_input(void) {
+/**
+ * @brief Samples and publishes all base-side analog inputs.
+ *
+ * Updates cooling temperatures, pedal fallback samples, the local auxiliary override, and the
+ * active H-pattern shifter. Changed auxiliary endpoint settings enter the shared delayed
+ * persistence path.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_analog_input(uint32_t now_ms) {
     platform_shifter_read(&shifter_input);
     if (platform_adc_read(&analog_samples)) {
         cooling_temperature_monitor_add(&cooling_temperature_monitor,
                                         analog_samples.primary_thermistor,
                                         analog_samples.secondary_thermistor);
         pedal_service_set_analog_samples(&pedal_service, analog_samples.pedal_axes);
+        AuxiliaryAxisCalibrationMode auxiliary_mode =
+            pedal_service_auxiliary_automatic_calibration(&pedal_service)
+                ? AUXILIARY_AXIS_AUTOMATIC_CALIBRATION
+                : AUXILIARY_AXIS_MANUAL_CALIBRATION;
+        AuxiliaryAxisReading auxiliary = auxiliary_axis_update(
+            &auxiliary_axis, analog_samples.auxiliary_axis, auxiliary_mode, now_ms);
+        pedal_service_set_auxiliary_override(&pedal_service, auxiliary.active, auxiliary.value);
+        if (auxiliary_axis_take_settings(&auxiliary_axis, auxiliary_mode,
+                                         &base_settings.auxiliary_axis)) {
+            base_settings_persistence_mark_dirty(&settings_persistence, now_ms);
+        }
         if (!base_settings.h_pattern_shifter.calibrated) {
             h_pattern_shifter = (HPatternShifter){0};
         } else if (shifter_input.primary_mode == SHIFTER_INPUT_H_PATTERN) {
@@ -889,6 +921,7 @@ int main(void) {
     initialize_usb_command_bridge();
     wheel_velocity_reset(&wheel_velocity_estimator);
     initialize_motor_link();
+    initialize_base_settings();
     initialize_motor();
     initialize_force_feedback_script();
     usb_device_init(board_identity.variant);
@@ -904,7 +937,7 @@ int main(void) {
         platform_cooling_service(now_ms);
         update_fan_speed(PLATFORM_FAN_PRIMARY);
         update_fan_speed(PLATFORM_FAN_SECONDARY);
-        service_analog_input();
+        service_analog_input(now_ms);
         service_motor_link();
         pedal_service_run(&pedal_service, now_ms);
         serial_service_run(&serial_service, now_ms);

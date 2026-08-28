@@ -35,6 +35,19 @@ static const uint8_t pedal_v4_status_request[] = {
     0x00, 0x01, 0x20, 0x00, 0x00, 0x08, 0xaa, 0x00, 0x00, 0x01,
 };
 
+/**
+ * @brief Publishes the selected auxiliary input source.
+ *
+ * Chooses the local override while it is active and otherwise restores the latest remote pedal
+ * value.
+ *
+ * @param[in,out] service Pedal input and auxiliary source state to update.
+ */
+static void publish_auxiliary(PedalService *service) {
+    service->input.auxiliary = service->auxiliary_override_active ? service->auxiliary_override
+                                                                  : service->remote_auxiliary;
+}
+
 static void clear_v3_outbound(PedalService *service) {
     service->pending_control = 0;
     for (uint8_t axis = 0; axis < PEDAL_INPUT_AXIS_COUNT; axis++) {
@@ -49,6 +62,8 @@ static void clear_v3_outbound(PedalService *service) {
 
 static void reconnect(PedalService *service, uint32_t now_ms) {
     pedal_input_release(&service->input);
+    service->remote_auxiliary = 0;
+    publish_auxiliary(service);
     pedal_v3_state_init(&service->v3);
     service->v4.active = false;
     clear_v3_outbound(service);
@@ -64,6 +79,8 @@ static void reconnect(PedalService *service, uint32_t now_ms) {
     }
     if (service->analog_samples_ready &&
         pedal_analog_update(&service->analog, service->analog_samples, &service->input)) {
+        service->remote_auxiliary = service->input.auxiliary;
+        publish_auxiliary(service);
         platform_pedal_link_begin_analog();
         service->connected = true;
         service->phase = PEDAL_SERVICE_ANALOG;
@@ -96,6 +113,8 @@ void pedal_service_init(PedalService *service) {
     service->configuration_brake_force = 0;
     service->v4_tuning_pending = 0;
     service->v4_sent_value = 0;
+    service->remote_auxiliary = 0;
+    service->auxiliary_override = 0;
     service->legacy_channel = PEDAL_LEGACY_AXIS_1;
     service->protocol_status = (PedalProtocolStatus){0};
     service->transmitted_status = (PedalProtocolStatus){0};
@@ -106,7 +125,7 @@ void pedal_service_init(PedalService *service) {
     }
     service->analog_samples_ready = false;
     service->connected = false;
-    service->auxiliary_locked = false;
+    service->auxiliary_override_active = false;
     service->recovery_handshake = false;
     service->status_transmitted = false;
     service->v4_request_active = false;
@@ -160,6 +179,9 @@ void pedal_service_set_analog_samples(PedalService *service,
     if (service->phase == PEDAL_SERVICE_ANALOG &&
         !pedal_analog_update(&service->analog, service->analog_samples, &service->input)) {
         reconnect(service, service->clock_ms);
+    } else if (service->phase == PEDAL_SERVICE_ANALOG) {
+        service->remote_auxiliary = service->input.auxiliary;
+        publish_auxiliary(service);
     }
 }
 
@@ -186,8 +208,37 @@ void pedal_service_set_v4_tuning(PedalService *service, PedalV4Tuning tuning) {
                            PEDAL_V4_TUNING_THROTTLE_CURVE, &service->v4_tuning_pending);
 }
 
-void pedal_service_set_auxiliary_locked(PedalService *service, bool locked) {
-    service->auxiliary_locked = locked;
+/**
+ * @brief Selects the local or remote auxiliary input source.
+ *
+ * Publishes the supplied local byte while active. Releasing the override immediately restores the
+ * most recent auxiliary value received from the attached pedal source.
+ *
+ * @param[in,out] service Pedal input and auxiliary source state to update.
+ * @param[in] active True when the local analog input owns the auxiliary axis.
+ * @param[in] value Calibrated local auxiliary byte.
+ */
+void pedal_service_set_auxiliary_override(PedalService *service, bool active, uint8_t value) {
+    service->auxiliary_override_active = active;
+    service->auxiliary_override = value;
+    publish_auxiliary(service);
+}
+
+/**
+ * @brief Selects automatic auxiliary endpoint calibration from pedal state.
+ *
+ * Enables automatic settling while legacy pedal transport or either V3 calibration path is active
+ * and no primary or secondary connection flag is asserted.
+ *
+ * @param[in] service Current pedal protocol, connection, and calibration state.
+ * @return True when the auxiliary input uses automatic endpoint settling.
+ */
+bool pedal_service_auxiliary_automatic_calibration(const PedalService *service) {
+    bool legacy = service->phase == PEDAL_SERVICE_LEGACY_REQUEST ||
+                  service->phase == PEDAL_SERVICE_LEGACY_RESPONSE;
+    bool calibrating =
+        legacy || service->v3.primary_calibration || service->v3.secondary_calibration;
+    return calibrating && (service->v3.connection_flags & 0xaa) == 0;
 }
 
 void pedal_service_set_protocol_status(PedalService *service, const PedalProtocolStatus *status) {
@@ -401,8 +452,12 @@ static void advance_legacy_channel(PedalService *service) {
 
 static void service_legacy_response(PedalService *service, uint32_t now_ms) {
     if (platform_pedal_link_take_byte(&service->response)) {
-        pedal_legacy_apply_response(service->legacy_channel, service->response,
-                                    service->auxiliary_locked, &service->input);
+        pedal_legacy_apply_response(service->legacy_channel, service->response, false,
+                                    &service->input);
+        if (service->legacy_channel == PEDAL_LEGACY_AUXILIARY) {
+            service->remote_auxiliary = service->input.auxiliary;
+            publish_auxiliary(service);
+        }
         service->legacy_retries[service->legacy_channel] = 0;
         if (service->legacy_channel == PEDAL_LEGACY_AUXILIARY) {
             service->connected = true;
@@ -426,7 +481,8 @@ static void service_legacy_response(PedalService *service, uint32_t now_ms) {
     if (service->legacy_channel < PEDAL_LEGACY_AUXILIARY) {
         service->input.axes[service->legacy_channel] = 0;
     } else {
-        service->input.auxiliary = 0;
+        service->remote_auxiliary = 0;
+        publish_auxiliary(service);
     }
     *retries = 0;
     reconnect(service, now_ms);
@@ -521,8 +577,11 @@ static void service_v3_output(PedalService *service, uint32_t now_ms) {
 static void service_v3_stream(PedalService *service, uint32_t now_ms) {
     if (platform_pedal_link_take_frame(service->frame_buffer) &&
         pedal_frame_decode(service->frame_buffer, &service->receive_frame) == PEDAL_FRAME_VALID) {
-        if (pedal_v3_apply_report(&service->receive_frame, service->auxiliary_locked, &service->v3,
-                                  &service->input)) {
+        if (pedal_v3_apply_report(&service->receive_frame, false, &service->v3, &service->input)) {
+            if (service->receive_frame.type == PEDAL_FRAME_AXIS_SAMPLE) {
+                service->remote_auxiliary = service->input.auxiliary;
+                publish_auxiliary(service);
+            }
             uint32_t timeout_ms = PEDAL_SAMPLE_TIMEOUT_MS;
             if (service->startup_frame_count < PEDAL_STARTUP_FRAME_COUNT) {
                 service->startup_frame_count++;
