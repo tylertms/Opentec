@@ -380,6 +380,7 @@ static void service_usb_input(void) {
     for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {
         usb_input_state.button_banks[bank] = wheel_buttons[bank];
     }
+    usb_input_state.encoder_delta = wheel_service_take_encoder_delta(&wheel_service);
     fanatec_input_apply_shifter(&usb_input_state, &shifter_input, h_pattern_shifter.gear);
     const PedalInput *pedal_input = pedal_service_input(&pedal_service);
     for (uint8_t axis = 0; axis < FANATEC_INPUT_PEDAL_AXES; axis++) {

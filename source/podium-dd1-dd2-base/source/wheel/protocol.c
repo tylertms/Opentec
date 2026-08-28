@@ -120,6 +120,7 @@ static void capture_request(WheelProtocol *protocol,
     if (wheel_packet_mode_one_applies(protocol->mode)) {
         uint8_t snapshot[WHEEL_PACKET_MODE_ONE_SNAPSHOT_SIZE];
         wheel_packet_mode_one_decode(request, &protocol->mode_one_input);
+        wheel_motion_accumulate_primary(&protocol->motion, protocol->mode_one_input.motion);
         protocol->mode_one_report_state.axis_values[0] = protocol->mode_one_input.axis_values[0];
         protocol->mode_one_report_state.axis_values[1] = protocol->mode_one_input.axis_values[1];
         protocol->mode_one_report_state.report_mode = protocol->mode_one_input.report_mode;
@@ -155,6 +156,7 @@ static void capture_request(WheelProtocol *protocol,
     } else if (protocol->mode == 4) {
         uint8_t snapshot[WHEEL_PACKET_MODE_FOUR_SNAPSHOT_SIZE];
         wheel_packet_mode_four_decode(request, &protocol->mode_four_input);
+        wheel_motion_accumulate_primary(&protocol->motion, protocol->mode_four_input.motion);
         wheel_capability_update(&protocol->capabilities, protocol->mode,
                                 protocol->mode_four_input.report_mode,
                                 protocol->mode_four_input.report_capabilities);
@@ -172,6 +174,7 @@ static void capture_request(WheelProtocol *protocol,
     } else if (wheel_packet_crc_applies(protocol->mode)) {
         uint8_t snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE];
         wheel_packet_crc_decode(request, &protocol->crc_input);
+        wheel_motion_accumulate_primary(&protocol->motion, protocol->crc_input.motion);
         wheel_capability_update(&protocol->capabilities, protocol->mode,
                                 protocol->crc_input.report_mode,
                                 protocol->crc_input.report_capabilities);
@@ -259,6 +262,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
     clear(protocol->request, WHEEL_PROTOCOL_SNAPSHOT_SIZE);
     wheel_axis_override_processor_init(&protocol->axis_override_processor);
+    wheel_motion_init(&protocol->motion);
     wheel_packet_mode_one_button_filter_init(&protocol->mode_one_button_filter);
     wheel_packet_mode_one_control_axis_filter_init(&protocol->mode_one_control_axis_filter);
     protocol->mode_one_input = empty_input;
@@ -412,6 +416,18 @@ const WheelAxisOverrideProcessor *wheel_protocol_axis_overrides(const WheelProto
 
 const WheelCapabilityState *wheel_protocol_capabilities(const WheelProtocol *protocol) {
     return &protocol->capabilities;
+}
+
+/**
+ * @brief Takes one queued attached-wheel motion step.
+ *
+ * Moves the protocol's primary wrapping motion counter one position toward zero.
+ *
+ * @param[in,out] protocol Attached-wheel protocol state.
+ * @return Negative one, zero, or positive one.
+ */
+int8_t wheel_protocol_take_motion(WheelProtocol *protocol) {
+    return wheel_motion_take_primary(&protocol->motion);
 }
 
 bool wheel_protocol_request_changed(WheelProtocol *protocol) {

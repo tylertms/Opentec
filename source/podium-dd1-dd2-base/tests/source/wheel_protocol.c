@@ -411,6 +411,25 @@ static void accept_active_request(WheelProtocol *protocol,
     wheel_protocol_accept(protocol, request);
 }
 
+static void test_accumulates_motion_from_packet_modes(void) {
+    static const uint8_t modes[] = {1, 4, 6};
+    for (uint8_t index = 0; index < sizeof(modes); index++) {
+        WheelProtocol protocol;
+        uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+        wheel_protocol_init(&protocol);
+        protocol.mode = modes[index];
+        protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+        request[0] = WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
+        request[7] = 0x7f;
+        request[WHEEL_PROTOCOL_FLAGS_OFFSET] = WHEEL_PROTOCOL_REQUEST_READY;
+
+        accept_active_request(&protocol, request);
+
+        assert(wheel_protocol_take_motion(&protocol) == 1);
+        assert(wheel_protocol_take_motion(&protocol) == 0);
+    }
+}
+
 static void test_tracks_display_acknowledgement_input(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -676,6 +695,7 @@ int main(void) {
     test_restarts_synchronization_when_ready_drops();
     test_captures_normalized_active_requests();
     test_averages_control_axes_only_for_authenticated_wheel_modes();
+    test_accumulates_motion_from_packet_modes();
     test_tracks_display_acknowledgement_input();
     test_captures_mode_four_requests();
     test_applies_authenticated_axis_overrides();

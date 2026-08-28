@@ -361,6 +361,18 @@ const uint8_t *wheel_service_buttons(const WheelService *service) {
 }
 
 /**
+ * @brief Takes one queued attached-wheel encoder step.
+ *
+ * Consumes one signed step from the motion accumulated by valid wheel protocol reports.
+ *
+ * @param[in,out] service Attached-wheel service state.
+ * @return Negative one, zero, or positive one.
+ */
+int8_t wheel_service_take_encoder_delta(WheelService *service) {
+    return wheel_protocol_take_motion(&service->protocol);
+}
+
+/**
  * @brief Reports attached-wheel input eligible to acknowledge a display overlay.
  *
  * Uses mode-one, mode-four, or CRC-family directional, button, and auxiliary input state. Scan-mode

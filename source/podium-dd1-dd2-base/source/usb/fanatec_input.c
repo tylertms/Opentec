@@ -33,11 +33,14 @@ static void write_u16(uint8_t *destination, uint16_t value) {
 }
 
 /**
- * Places H-pattern gears and sequential transitions in the Fanatec button fields.
+ * @brief Applies shifter input to the Fanatec button fields.
  *
- * @param state Input report state to update.
- * @param shifter Mode and transition state for both shifter ports.
- * @param gear Current H-pattern gear bit, or neutral.
+ * Places the current H-pattern gear or sequential transition buttons according to the two shifter
+ * port modes.
+ *
+ * @param[in,out] state Input report state to update.
+ * @param[in] shifter Mode and transition state for both shifter ports.
+ * @param[in] gear Current H-pattern gear bit, or neutral.
  */
 void fanatec_input_apply_shifter(fanatec_input_state *state, const ShifterInputState *shifter,
                                  ShifterGear gear) {

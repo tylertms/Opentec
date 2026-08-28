@@ -38,6 +38,7 @@ void wheel_service_run(WheelService *service, uint32_t now_ms);
 void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output);
 void wheel_service_set_crc_adapter(WheelService *service, const WheelPacketCrcAdapter *adapter);
 const uint8_t *wheel_service_buttons(const WheelService *service);
+int8_t wheel_service_take_encoder_delta(WheelService *service);
 bool wheel_service_acknowledgement_input_active(const WheelService *service);
 uint8_t wheel_service_mode(const WheelService *service);
 WheelProtocolPhase wheel_service_protocol_phase(const WheelService *service);

@@ -7,6 +7,7 @@
 #include "wheel/authentication.h"
 #include "wheel/axis_override.h"
 #include "wheel/capability.h"
+#include "wheel/motion.h"
 #include "wheel/packet_crc.h"
 #include "wheel/packet_mode_four.h"
 #include "wheel/packet_mode_one.h"
@@ -47,6 +48,7 @@ typedef struct {
     uint8_t request[WHEEL_PROTOCOL_SNAPSHOT_SIZE];
     WheelAuthentication authentication;
     WheelCapabilityState capabilities;
+    WheelMotion motion;
     WheelAxisOverrideProcessor axis_override_processor;
     WheelPacketModeOneButtonFilter mode_one_button_filter;
     WheelPacketModeOneControlAxisFilter mode_one_control_axis_filter;
@@ -95,6 +97,7 @@ const WheelPacketModeOneReportState *
 wheel_protocol_mode_one_report_state(const WheelProtocol *protocol);
 const WheelAxisOverrideProcessor *wheel_protocol_axis_overrides(const WheelProtocol *protocol);
 const WheelCapabilityState *wheel_protocol_capabilities(const WheelProtocol *protocol);
+int8_t wheel_protocol_take_motion(WheelProtocol *protocol);
 bool wheel_protocol_request_changed(WheelProtocol *protocol);
 bool wheel_protocol_acknowledgement_input_active(const WheelProtocol *protocol);
 uint8_t wheel_protocol_message_checksum(const uint8_t packet[WHEEL_PROTOCOL_PACKET_SIZE]);
