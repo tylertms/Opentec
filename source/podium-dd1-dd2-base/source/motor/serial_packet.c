@@ -87,6 +87,36 @@ bool motor_serial_packet_encode(uint8_t type_flags, uint8_t sequence, const uint
 }
 
 /**
+ * @brief Encodes a fixed motor serial packet with a one-byte payload.
+ *
+ * Clears all sixty-four bytes, writes the boundaries, type and fragment flags, sequence, single
+ * payload byte, and checksum without requiring an address for the payload value.
+ *
+ * @param[in] type_flags Low-nibble packet type and optional fragment flags.
+ * @param[in] sequence Transport sequence byte.
+ * @param[in] payload Single packet payload byte.
+ * @param[out] output Encoded sixty-four-byte packet.
+ * @return True when the destination is usable.
+ */
+bool motor_serial_packet_encode_byte(uint8_t type_flags, uint8_t sequence, uint8_t payload,
+                                     uint8_t output[MOTOR_SERIAL_PACKET_SIZE]) {
+    if (output == 0) {
+        return false;
+    }
+    memset(output, 0, MOTOR_SERIAL_PACKET_SIZE);
+    output[0] = MOTOR_SERIAL_PACKET_START;
+    output[MOTOR_SERIAL_PACKET_TYPE_OFFSET] = type_flags;
+    output[MOTOR_SERIAL_PACKET_SEQUENCE_OFFSET] = sequence;
+    output[MOTOR_SERIAL_PACKET_LENGTH_OFFSET] = 1;
+    output[MOTOR_SERIAL_PACKET_PAYLOAD_OFFSET] = payload;
+    uint16_t value = checksum(output + MOTOR_SERIAL_PACKET_TYPE_OFFSET);
+    output[MOTOR_SERIAL_PACKET_CHECKSUM_LOW_OFFSET] = (uint8_t)value;
+    output[MOTOR_SERIAL_PACKET_CHECKSUM_HIGH_OFFSET] = (uint8_t)(value >> 8);
+    output[MOTOR_SERIAL_PACKET_SIZE - 1] = MOTOR_SERIAL_PACKET_END;
+    return true;
+}
+
+/**
  * @brief Validates and decodes one fixed motor serial transport packet.
  *
  * Checks both boundaries, the bounded payload length, and the checksum across the fixed sixty-byte

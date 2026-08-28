@@ -34,5 +34,7 @@ MotorSerialMessageResult motor_serial_message_accept(MotorSerialMessageAssembly 
                                                      const MotorSerialPacket *packet);
 bool motor_serial_message_acknowledgement_encode(uint8_t sequence,
                                                  uint8_t output[MOTOR_SERIAL_PACKET_SIZE]);
+bool motor_serial_message_resynchronization_encode(uint8_t sequence, uint8_t current_type,
+                                                   uint8_t output[MOTOR_SERIAL_PACKET_SIZE]);
 
 #endif

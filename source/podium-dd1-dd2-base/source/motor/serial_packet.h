@@ -29,6 +29,8 @@ typedef struct {
 
 bool motor_serial_packet_encode(uint8_t type_flags, uint8_t sequence, const uint8_t *payload,
                                 uint8_t payload_length, uint8_t output[MOTOR_SERIAL_PACKET_SIZE]);
+bool motor_serial_packet_encode_byte(uint8_t type_flags, uint8_t sequence, uint8_t payload,
+                                     uint8_t output[MOTOR_SERIAL_PACKET_SIZE]);
 MotorSerialPacketResult motor_serial_packet_decode(const uint8_t input[MOTOR_SERIAL_PACKET_SIZE],
                                                    MotorSerialPacket *packet);
 

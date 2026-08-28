@@ -32,8 +32,9 @@ void motor_serial_message_assembly_reset(MotorSerialMessageAssembly *assembly) {
  * @param[in] message_length Logical message length from one through 512 bytes.
  * @param[in] offset Byte offset of the fragment to encode.
  * @param[out] output Encoded sixty-four-byte packet.
- * @param[out] next_offset Offset immediately after the encoded fragment.
- * @param[out] acknowledgement_required True for first and continuation fragments.
+ * @param[out] next_offset Offset immediately after the encoded fragment, or null when unused.
+ * @param[out] acknowledgement_required True for first and continuation fragments, or null when
+ * unused.
  * @return True when the message, offset, and output arguments are usable.
  */
 bool motor_serial_message_fragment_encode(uint8_t type, uint8_t sequence, const uint8_t *message,
@@ -42,7 +43,7 @@ bool motor_serial_message_fragment_encode(uint8_t type, uint8_t sequence, const 
                                           uint16_t *next_offset, bool *acknowledgement_required) {
     if (type < MOTOR_SERIAL_MESSAGE_FIRST_TYPE || type > MOTOR_SERIAL_MESSAGE_LAST_TYPE ||
         message == 0 || message_length == 0 || message_length > MOTOR_SERIAL_MESSAGE_MAX_SIZE ||
-        offset >= message_length || next_offset == 0 || acknowledgement_required == 0) {
+        offset >= message_length) {
         return false;
     }
 
@@ -65,9 +66,13 @@ bool motor_serial_message_fragment_encode(uint8_t type, uint8_t sequence, const 
                                     output)) {
         return false;
     }
-    *next_offset = offset + payload_length;
-    *acknowledgement_required = fragment == MOTOR_SERIAL_PACKET_FIRST_FRAGMENT ||
-                                fragment == MOTOR_SERIAL_PACKET_CONTINUATION_FRAGMENT;
+    if (next_offset != 0) {
+        *next_offset = offset + payload_length;
+    }
+    if (acknowledgement_required != 0) {
+        *acknowledgement_required = fragment == MOTOR_SERIAL_PACKET_FIRST_FRAGMENT ||
+                                    fragment == MOTOR_SERIAL_PACKET_CONTINUATION_FRAGMENT;
+    }
     return true;
 }
 
@@ -119,6 +124,20 @@ MotorSerialMessageResult motor_serial_message_accept(MotorSerialMessageAssembly 
  */
 bool motor_serial_message_acknowledgement_encode(uint8_t sequence,
                                                  uint8_t output[MOTOR_SERIAL_PACKET_SIZE]) {
-    static const uint8_t acknowledgement = 1;
-    return motor_serial_packet_encode(1, sequence, &acknowledgement, 1, output);
+    return motor_serial_packet_encode_byte(1, sequence, 1, output);
+}
+
+/**
+ * @brief Encodes a motor serial resynchronization packet.
+ *
+ * Builds a type-zero packet whose one-byte payload identifies the current transport packet type.
+ *
+ * @param[in] sequence Transport sequence byte.
+ * @param[in] current_type Current transport packet type.
+ * @param[out] output Encoded sixty-four-byte packet.
+ * @return True when the destination is usable.
+ */
+bool motor_serial_message_resynchronization_encode(uint8_t sequence, uint8_t current_type,
+                                                   uint8_t output[MOTOR_SERIAL_PACKET_SIZE]) {
+    return motor_serial_packet_encode_byte(0, sequence, current_type, output);
 }
