@@ -7,11 +7,14 @@
 static void test_packs_commands(void) {
     uint16_t data = transfer_data_command(2, 3, 5);
     assert(data == 0x061d);
+    assert(transfer_empty_command() == 0);
+    assert(transfer_command_type(data) == 1);
     assert(transfer_command_group(data) == 2);
     assert(transfer_command_sequence(data) == 3);
     assert(transfer_command_parameter(data) == 5);
     assert(transfer_status_command(3, 6) == 0x0b06);
     assert(transfer_progress_command(1, 2, 0x1f) == 0x09fa);
+    assert(transfer_command_progress(0x09fa) == 0x1f);
 }
 
 static void test_encodes_and_decodes_markers(void) {

@@ -1,5 +1,6 @@
 #include "transfer/frame.h"
 
+#include <stddef.h>
 #include <stdint.h>
 
 enum {
@@ -42,12 +43,30 @@ uint8_t transfer_command_group(uint16_t command) {
 }
 
 /**
+ * @brief Extracts the three-bit command type.
+ * @param command Packed transfer command.
+ * @return Command type from zero through seven.
+ */
+uint8_t transfer_command_type(uint16_t command) {
+    return (uint8_t)(command >> TRANSFER_COMMAND_TYPE_SHIFT) & TRANSFER_COMMAND_PARAMETER_MASK;
+}
+
+/**
  * @brief Extracts the three-bit data sequence from a command.
  * @param command Packed transfer command.
  * @return Sequence value from zero through seven.
  */
 uint8_t transfer_command_sequence(uint16_t command) {
     return (uint8_t)(command >> TRANSFER_COMMAND_SEQUENCE_SHIFT) & TRANSFER_COMMAND_SEQUENCE_MASK;
+}
+
+/**
+ * @brief Extracts the five-bit progress or error value from a command.
+ * @param command Packed transfer command.
+ * @return Progress or error value from zero through 31.
+ */
+uint8_t transfer_command_progress(uint16_t command) {
+    return (uint8_t)(command >> TRANSFER_COMMAND_SEQUENCE_SHIFT) & TRANSFER_COMMAND_PROGRESS_MASK;
 }
 
 /**
@@ -58,6 +77,12 @@ uint8_t transfer_command_sequence(uint16_t command) {
 uint8_t transfer_command_parameter(uint16_t command) {
     return (uint8_t)command & TRANSFER_COMMAND_PARAMETER_MASK;
 }
+
+/**
+ * @brief Builds the empty transfer command.
+ * @return Zero-valued command.
+ */
+uint16_t transfer_empty_command(void) { return 0; }
 
 /**
  * @brief Packs a transfer data command.
@@ -119,32 +144,48 @@ static uint16_t append_encoded(uint8_t value, uint8_t *output, uint16_t output_l
 
 /**
  * @brief Encodes one transfer command, payload, and checksum with marker escaping.
- * @param frame Command and payload to encode; payload length must not exceed 124 bytes.
+ * @param command Packed transfer command.
+ * @param payload Payload bytes, or null when the payload length is zero.
+ * @param payload_length Payload length from zero through 124 bytes.
  * @param output Destination with room for the maximum encoded frame.
- * @return Encoded byte count, or zero when the payload is too long.
+ * @return Encoded byte count, or zero when the payload is invalid or too long.
  */
-uint16_t transfer_frame_encode(const TransferFrame *frame,
-                               uint8_t output[TRANSFER_FRAME_MAX_ENCODED_SIZE]) {
-    if (frame->payload_length > TRANSFER_FRAME_MAX_SEND_PAYLOAD_SIZE) {
+uint16_t transfer_frame_encode_values(uint16_t command, const uint8_t *payload,
+                                      uint8_t payload_length,
+                                      uint8_t output[TRANSFER_FRAME_MAX_ENCODED_SIZE]) {
+    if (payload_length > TRANSFER_FRAME_MAX_SEND_PAYLOAD_SIZE ||
+        (payload_length != 0 && payload == NULL)) {
         return 0;
     }
 
     uint8_t decoded[TRANSFER_FRAME_MAX_SEND_PAYLOAD_SIZE + 2];
-    decoded[0] = (uint8_t)(frame->command >> 8);
-    decoded[1] = (uint8_t)frame->command;
-    for (uint8_t index = 0; index < frame->payload_length; index++) {
-        decoded[index + 2] = frame->payload[index];
+    decoded[0] = (uint8_t)(command >> 8);
+    decoded[1] = (uint8_t)command;
+    for (uint8_t index = 0; index < payload_length; index++) {
+        decoded[index + 2] = payload[index];
     }
 
     uint16_t output_length = 1;
     output[0] = TRANSFER_FRAME_START;
-    uint8_t decoded_length = frame->payload_length + 2;
+    uint8_t decoded_length = payload_length + 2;
     for (uint8_t index = 0; index < decoded_length; index++) {
         output_length = append_encoded(decoded[index], output, output_length);
     }
     output_length = append_encoded(checksum(decoded, decoded_length), output, output_length);
     output[output_length++] = TRANSFER_FRAME_END;
     return output_length;
+}
+
+/**
+ * @brief Encodes one transfer frame with marker escaping.
+ * @param frame Command and payload to encode; payload length must not exceed 124 bytes.
+ * @param output Destination with room for the maximum encoded frame.
+ * @return Encoded byte count, or zero when the payload is too long.
+ */
+uint16_t transfer_frame_encode(const TransferFrame *frame,
+                               uint8_t output[TRANSFER_FRAME_MAX_ENCODED_SIZE]) {
+    return transfer_frame_encode_values(frame->command, frame->payload, frame->payload_length,
+                                        output);
 }
 
 static uint16_t decode_byte(uint8_t value) {

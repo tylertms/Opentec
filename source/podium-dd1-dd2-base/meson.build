@@ -46,6 +46,7 @@ pedal_protocol_sources = files('source/pedal/protocol.c')
 pedal_service_sources = files('source/pedal/service.c')
 pedal_v4_status_sources = files('source/pedal/v4_status.c')
 transfer_frame_sources = files('source/transfer/frame.c')
+transfer_session_sources = files('source/transfer/session.c')
 profile_bank_sources = files('source/profile/bank.c')
 profile_record_sources = files('source/profile/record.c')
 profile_tuning_sources = files('source/profile/tuning.c')
@@ -122,6 +123,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'pedal-service': 'source/pedal/service.c',
     'pedal-v4-status': 'source/pedal/v4_status.c',
     'transfer-frame': 'source/transfer/frame.c',
+    'transfer-session': 'source/transfer/session.c',
     'platform-clock': 'source/platform/dspic33e/clock.c',
     'platform-cooling': 'source/platform/dspic33e/cooling.c',
     'platform-board-identity': 'source/platform/dspic33e/board_identity.c',
@@ -517,6 +519,15 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  transfer_session_test = executable(
+    'base-transfer-session-test',
+    'tests/source/transfer_session.c',
+    transfer_frame_sources,
+    transfer_session_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   pedal_axis_test = executable(
     'base-pedal-axis-test',
     'tests/source/pedal_axis.c',
@@ -755,6 +766,7 @@ if not meson.is_cross_build()
   test('base-motor-tuning-service', motor_tuning_service_test, suite: ['base', 'motor'])
   test('base-pedal-frame', pedal_frame_test, suite: ['base', 'pedal', 'transport'])
   test('base-transfer-frame', transfer_frame_test, suite: ['base', 'transfer'])
+  test('base-transfer-session', transfer_session_test, suite: ['base', 'transfer'])
   test('base-pedal-axis', pedal_axis_test, suite: ['base', 'pedal', 'analog'])
   test('base-pedal-input', pedal_input_test, suite: ['base', 'pedal', 'input'])
   test('base-pedal-analog', pedal_analog_test, suite: ['base', 'pedal', 'analog'])
