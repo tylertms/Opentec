@@ -201,8 +201,9 @@ static void clear_scan_filter(WheelService *service) {
  * @brief Restarts attached-wheel connection discovery.
  *
  * Reinitializes handshake and input state while preserving configured outputs, input filters,
- * adapter state, capabilities, pending remote-tuning work, and axis-processing configuration.
- * Scan input and activity timing restart from their initial states.
+ * adapter state, report capabilities, pending remote-tuning work, and axis-processing
+ * configuration. The transient input-capability latch, scan input, and activity timing restart
+ * from their initial states.
  *
  * @param[in,out] service Attached-wheel service to restart.
  */
@@ -220,6 +221,7 @@ static void reset_connection(WheelService *service) {
     WheelPacketRemoteTuningOutput remote_tuning_output = service->protocol.remote_tuning_output;
     WheelOutputReports output_reports = service->protocol.output_reports;
     WheelCapabilityState capabilities = service->protocol.capabilities;
+    capabilities.input_available = false;
     uint8_t interface_mode = service->protocol.interface_mode;
     uint8_t axis_override_mode = service->protocol.configured_axis_override_mode;
     uint8_t axis_calibration_value = service->protocol.axis_calibration_value;
@@ -836,6 +838,19 @@ bool wheel_service_adapter_connected(const WheelService *service) {
  */
 bool wheel_service_calibration_available(const WheelService *service) {
     return wheel_protocol_capabilities(&service->protocol)->calibration_available;
+}
+
+/**
+ * @brief Reports the effective attached-wheel input capability.
+ *
+ * Applies the negotiated wheel mode's report eligibility to the retained input-capability latch.
+ *
+ * @param[in] service Attached-wheel service and capability state.
+ * @return True when the current wheel mode exposes a latched input capability.
+ */
+bool wheel_service_input_capability_available(const WheelService *service) {
+    return wheel_capability_input_available(wheel_protocol_capabilities(&service->protocol),
+                                            service->protocol.mode);
 }
 
 /**

@@ -75,7 +75,7 @@ static bool calibration_forced_unavailable(uint8_t wheel_mode) {
 /**
  * @brief Initializes attached-wheel capability state.
  *
- * Clears report and feature capabilities and selects automatic multi-position reporting.
+ * Clears report, feature, and input capabilities and selects automatic multi-position reporting.
  *
  * @param[out] state Attached-wheel capability state to initialize.
  */
@@ -106,6 +106,39 @@ void wheel_capability_update(WheelCapabilityState *state, uint8_t wheel_mode, ui
         state->calibration_available = (report_capabilities & 1u) != 0;
     }
     state->tuning_menu_available = (report_capabilities & 2u) != 0;
+}
+
+/**
+ * @brief Reports the effective attached-wheel input capability.
+ *
+ * Exposes the retained input-capability latch only for wheel modes that publish it through the
+ * primary input report.
+ *
+ * @param[in] state Persistent attached-wheel capability state.
+ * @param[in] wheel_mode Negotiated attached-wheel mode.
+ * @return True when the current wheel mode exposes a latched input capability.
+ */
+bool wheel_capability_input_available(const WheelCapabilityState *state, uint8_t wheel_mode) {
+    if (state == NULL || !state->input_available) {
+        return false;
+    }
+
+    switch (wheel_mode) {
+    case 4:
+    case 6:
+    case 12:
+    case 14:
+    case 15:
+    case 19:
+    case 20:
+    case 21:
+    case 22:
+    case 23:
+    case 28:
+        return true;
+    default:
+        return false;
+    }
 }
 
 /**

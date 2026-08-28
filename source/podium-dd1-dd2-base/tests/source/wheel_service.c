@@ -438,6 +438,7 @@ static void test_restarts_discovery_after_scan_timeout(void) {
     service.protocol.axis_override_processor.y_available = true;
     service.protocol.axis_override_processor.overrides.axis_5.enabled = true;
     service.protocol.axis_override_processor.overrides.axis_5.value = 0x7d;
+    service.protocol.capabilities.input_available = true;
     wheel_protocol_set_button_latch(&service.protocol, true, true);
     run_service(&service, now_ms + 10);
     run_service(&service, now_ms + 20);
@@ -462,6 +463,7 @@ static void test_restarts_discovery_after_scan_timeout(void) {
     assert(service.protocol.axis_override_processor.y_available);
     assert(!service.protocol.axis_override_processor.overrides.axis_5.enabled);
     assert(service.protocol.axis_override_processor.overrides.axis_5.value == 0);
+    assert(!service.protocol.capabilities.input_available);
     assert(service.protocol.button_latch_enabled);
     assert(service.protocol.profile_transition_pending);
     assert(request().type_flags == 2);
@@ -618,6 +620,18 @@ static void test_reports_calibration_availability(void) {
     assert(wheel_service_calibration_available(&service));
 }
 
+static void test_reports_mode_gated_input_capability(void) {
+    WheelService service;
+    initialize_service(&service);
+
+    assert(!wheel_service_input_capability_available(&service));
+    service.protocol.capabilities.input_available = true;
+    service.protocol.mode = 4;
+    assert(wheel_service_input_capability_available(&service));
+    service.protocol.mode = 1;
+    assert(!wheel_service_input_capability_available(&service));
+}
+
 int main(void) {
     test_maps_primary_scan_bits();
     test_maps_secondary_scan_bit();
@@ -638,5 +652,6 @@ int main(void) {
     test_rejects_unavailable_multi_position_input();
     test_selects_extended_report_fields();
     test_reports_calibration_availability();
+    test_reports_mode_gated_input_capability();
     return 0;
 }

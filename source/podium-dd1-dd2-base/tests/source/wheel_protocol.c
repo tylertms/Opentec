@@ -520,6 +520,7 @@ static void test_captures_mode_four_requests(void) {
     assert(input->axis_limit == 0x74);
     assert(wheel_protocol_axis_limit(&protocol) == 0x74);
     assert(wheel_protocol_acknowledgement_input_active(&protocol));
+    assert(wheel_protocol_capabilities(&protocol)->input_available);
     assert(wheel_protocol_request_changed(&protocol));
     assert(!wheel_protocol_request_changed(&protocol));
 
@@ -773,6 +774,7 @@ static void test_captures_crc_family_requests(void) {
     request[5] = 0x52;
     request[6] = 0xa4;
     request[8] = 0x08;
+    request[10] = 0x01;
     request[12] = 0x02;
     request[18] = 0x34;
     request[19] = 0x12;
@@ -808,6 +810,7 @@ static void test_captures_crc_family_requests(void) {
     assert(capabilities->capability_flags == 0x3f34);
     assert(capabilities->calibration_available);
     assert(capabilities->tuning_menu_available);
+    assert(capabilities->input_available);
 }
 
 static void test_applies_crc_family_axis_controls(void) {

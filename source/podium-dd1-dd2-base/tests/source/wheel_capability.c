@@ -41,6 +41,23 @@ static void test_applies_calibration_mode_defaults(void) {
     assert(!state.calibration_available);
 }
 
+static void test_gates_latched_input_capability_by_wheel_mode(void) {
+    static const uint8_t supported_modes[] = {4, 6, 12, 14, 15, 19, 20, 21, 22, 23, 28};
+    WheelCapabilityState state = {.input_available = true};
+
+    for (uint8_t mode = 0; mode <= 30; mode++) {
+        bool expected = false;
+        for (uint8_t index = 0; index < sizeof(supported_modes); index++) {
+            expected |= mode == supported_modes[index];
+        }
+        assert(wheel_capability_input_available(&state, mode) == expected);
+    }
+
+    state.input_available = false;
+    assert(!wheel_capability_input_available(&state, 4));
+    assert(!wheel_capability_input_available(NULL, 4));
+}
+
 static UsbOperatingModeCommand multi_position_command(uint8_t selector, uint8_t mode) {
     UsbOperatingModeCommand command = {.opcode = 1};
     command.parameters[0] = selector;
@@ -112,6 +129,7 @@ static void test_resolves_multi_position_mode(void) {
 int main(void) {
     test_caches_and_maps_report_capabilities();
     test_applies_calibration_mode_defaults();
+    test_gates_latched_input_capability_by_wheel_mode();
     test_applies_multi_position_override_commands();
     test_rejects_other_multi_position_commands();
     test_resolves_multi_position_mode();

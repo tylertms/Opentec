@@ -149,7 +149,8 @@ static bool crc_acknowledgement_input_active(const WheelPacketCrcInput *input) {
  * @brief Captures an active attached-wheel request.
  *
  * Decodes and normalizes the selected mode's request, records display-acknowledgement input,
- * updates the change snapshot, and preserves separately consumed report fields.
+ * latches attached-wheel input capability, updates the change snapshot, and preserves separately
+ * consumed report fields.
  *
  * @param[in,out] protocol Protocol state that owns the request snapshot and change latch.
  * @param[in] request Complete 57-byte attached-wheel request.
@@ -169,6 +170,9 @@ static void capture_request(WheelProtocol *protocol,
         wheel_capability_update(&protocol->capabilities, protocol->mode,
                                 protocol->mode_one_input.report_mode,
                                 protocol->mode_one_input.report_capabilities);
+        protocol->capabilities.input_available |=
+            protocol->mode_one_input.controls.enabled != 0 ||
+            protocol->mode_one_input.controls.latch_flags != 0;
         wheel_packet_mode_one_filter_buttons(&protocol->mode_one_button_filter,
                                              &protocol->mode_one_input);
         protocol->acknowledgement_input_active =
@@ -199,6 +203,11 @@ static void capture_request(WheelProtocol *protocol,
         wheel_capability_update(&protocol->capabilities, protocol->mode,
                                 protocol->mode_four_input.report_mode,
                                 protocol->mode_four_input.report_capabilities);
+        protocol->capabilities.input_available |=
+            protocol->mode_four_input.controls[2] != 0 ||
+            protocol->mode_four_input.controls[3] != 0 ||
+            protocol->mode_four_input.mode_buttons != 0 ||
+            protocol->mode_four_input.axis_report_enabled != 0;
         wheel_packet_mode_four_filter(&protocol->mode_four_filter, &protocol->mode_four_input);
         wheel_packet_mode_four_normalize(&protocol->mode_four_input, protocol->interface_mode,
                                          &protocol->mode_four_runtime, snapshot);
@@ -217,6 +226,13 @@ static void capture_request(WheelProtocol *protocol,
         wheel_capability_update(&protocol->capabilities, protocol->mode,
                                 protocol->crc_input.report_mode,
                                 protocol->crc_input.report_capabilities);
+        if (protocol->mode == WHEEL_MODE_CRC_AUTHENTICATED &&
+            (!protocol->crc_adapter.connected || protocol->crc_adapter.mode != 1)) {
+            protocol->capabilities.input_available = false;
+        }
+        protocol->capabilities.input_available |=
+            protocol->crc_input.controls[2] != 0 || protocol->crc_input.controls[3] != 0 ||
+            (protocol->crc_adapter.connected && protocol->crc_adapter.mode == 1);
         wheel_packet_crc_prepare(&protocol->crc_input, protocol->mode, protocol->interface_mode);
         wheel_packet_crc_filter(&protocol->crc_filter, &protocol->crc_input);
         wheel_packet_crc_normalize(&protocol->crc_input, protocol->mode, protocol->interface_mode,

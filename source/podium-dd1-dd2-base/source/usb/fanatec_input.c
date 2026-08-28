@@ -28,6 +28,7 @@ enum {
     STATUS_SEQUENTIAL_SHIFTERS = 1 << 0,
     STATUS_THERMAL_EFFECT_LIMIT = 1 << 4,
     STATUS_WHEEL_CALIBRATION_AVAILABLE = 1 << 6,
+    STATUS_WHEEL_INPUT_CAPABILITY = 1 << 7,
     MULTI_POSITION_ENCODER_MODE = 0,
     MULTI_POSITION_PULSE_MODE = 1,
     MULTI_POSITION_CONSTANT_MODE = 2,
@@ -245,6 +246,21 @@ void fanatec_input_apply_wheel_calibration(fanatec_input_state *state, bool avai
     state->status_flags =
         (uint8_t)((state->status_flags & (uint8_t)~STATUS_WHEEL_CALIBRATION_AVAILABLE) |
                   (available ? STATUS_WHEEL_CALIBRATION_AVAILABLE : 0));
+}
+
+/**
+ * @brief Applies attached-wheel input capability to the Fanatec input state.
+ *
+ * Replaces status bit seven with the effective wheel capability while preserving every other
+ * status bit.
+ *
+ * @param[in,out] state Input report state to update.
+ * @param[in] available True when the attached wheel exposes its latched input capability.
+ */
+void fanatec_input_apply_wheel_input_capability(fanatec_input_state *state, bool available) {
+    state->status_flags =
+        (uint8_t)((state->status_flags & (uint8_t)~STATUS_WHEEL_INPUT_CAPABILITY) |
+                  (available ? STATUS_WHEEL_INPUT_CAPABILITY : 0));
 }
 
 /**
