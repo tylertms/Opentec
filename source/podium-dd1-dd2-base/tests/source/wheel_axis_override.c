@@ -69,6 +69,9 @@ static void test_adjusts_and_publishes_paddle_clutch_bite_point(void) {
     assert(value.bite_point_percent == 50);
     assert(value.buttons == 0);
     assert(processor.overrides.axis_7.value == 128);
+    uint8_t report_percent = 0;
+    assert(!wheel_axis_override_take_bite_point_report(&processor, value.bite_point_percent,
+                                                       &report_percent));
 
     value.now_ms = 1000;
     value.buttons = 1;
@@ -76,12 +79,20 @@ static void test_adjusts_and_publishes_paddle_clutch_bite_point(void) {
     assert(value.bite_point_percent == 51);
     assert(processor.paddle_adjustment_deadline_ms == 1800);
     assert(processor.overrides.axis_7.value == 125);
+    assert(wheel_axis_override_take_bite_point_report(&processor, value.bite_point_percent,
+                                                      &report_percent));
+    assert(report_percent == 51);
+    assert(!wheel_axis_override_take_bite_point_report(&processor, value.bite_point_percent,
+                                                       &report_percent));
 
     value.now_ms = 1800;
     value.motion = -1;
     process(&processor, &value, axes);
     assert(value.bite_point_percent == 50);
     assert(value.motion == 0);
+    assert(wheel_axis_override_take_bite_point_report(&processor, value.bite_point_percent,
+                                                      &report_percent));
+    assert(report_percent == 50);
 
     value.now_ms = 1801;
     process(&processor, &value, axes);
@@ -90,6 +101,9 @@ static void test_adjusts_and_publishes_paddle_clutch_bite_point(void) {
     value.motion = 1;
     process(&processor, &value, axes);
     assert(value.bite_point_percent == 51);
+    assert(wheel_axis_override_take_bite_point_report(&processor, value.bite_point_percent,
+                                                      &report_percent));
+    assert(report_percent == 51);
 
     value.now_ms = 1803;
     value.x = 11;

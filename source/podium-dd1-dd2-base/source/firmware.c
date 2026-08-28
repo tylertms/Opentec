@@ -152,6 +152,7 @@ static PedalCalibrationActions pedal_calibration_actions;
 static PedalProtocolCommand pedal_protocol_command;
 static WheelSteeringLimitCommand wheel_steering_limit_command;
 static uint8_t wheel_adjusted_bite_point_percent;
+static uint8_t wheel_bite_point_report_percent;
 static UsbVendorCommand usb_vendor_command;
 static UsbWheelTransferCommand usb_wheel_transfer_command;
 static ForceFeedbackCommand force_feedback_command;
@@ -843,7 +844,8 @@ static void service_usb_output(void) {
  * @brief Builds and submits the current USB input report.
  *
  * Combines calibrated motor position, attached-wheel controls and rotary selectors, shifter
- * state, thermal limit state, and pedal axes into the active USB input format.
+ * state, thermal limit state, pedal axes, and pending bite-point updates into the active USB input
+ * format.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -913,6 +915,10 @@ static void service_usb_input(uint32_t now_ms) {
                                           wheel_service_calibration_available(&wheel_service));
     fanatec_input_apply_wheel_input_capability(
         &usb_input_state.fanatec, wheel_service_input_capability_available(&wheel_service));
+    if (wheel_service_take_bite_point_report(&wheel_service, &wheel_bite_point_report_percent)) {
+        fanatec_input_apply_bite_point_update(&usb_input_state.fanatec,
+                                              wheel_bite_point_report_percent);
+    }
     const PedalInput *pedal_input = pedal_service_input(&pedal_service);
     for (uint8_t axis = 0; axis < FANATEC_INPUT_PEDAL_AXES; axis++) {
         usb_input_state.fanatec.pedals[axis] = pedal_input_hid_axis(pedal_input->axes[axis]);

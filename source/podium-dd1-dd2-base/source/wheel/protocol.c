@@ -491,6 +491,20 @@ bool wheel_protocol_take_bite_point(WheelProtocol *protocol, uint8_t *updated_pe
 }
 
 /**
+ * @brief Takes an attached-wheel bite-point report update.
+ *
+ * Forwards each accepted percentage change once for presentation in the primary input report.
+ *
+ * @param[in,out] protocol Wheel protocol and analog-paddle state.
+ * @param[out] updated_percent Percentage to publish in the next input report.
+ * @return True when a new percentage was available.
+ */
+bool wheel_protocol_take_bite_point_report(WheelProtocol *protocol, uint8_t *updated_percent) {
+    return wheel_axis_override_take_bite_point_report(
+        &protocol->axis_override_processor, protocol->paddle_bite_point_percent, updated_percent);
+}
+
+/**
  * @brief Configures standard-packet button latching.
  *
  * Retains the button-latch enable and profile-transition state used while normalizing mode-one

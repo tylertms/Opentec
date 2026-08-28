@@ -237,11 +237,13 @@ static uint8_t process_paddle_clutch(WheelAxisOverrideProcessor *processor, uint
             if ((*buttons & PADDLE_ADJUST_BUTTON_INCREASE) != 0 || *motion > 0) {
                 if (*bite_point_percent < PADDLE_CLUTCH_PERCENT_MAXIMUM) {
                     (*bite_point_percent)++;
+                    processor->paddle_bite_point_report_pending = true;
                 }
                 processor->paddle_adjustment_deadline_ms = now_ms + PADDLE_ADJUST_REPEAT_DELAY_MS;
             } else if ((*buttons & PADDLE_ADJUST_BUTTON_DECREASE) != 0 || *motion < 0) {
                 if (*bite_point_percent != 0) {
                     (*bite_point_percent)--;
+                    processor->paddle_bite_point_report_pending = true;
                 }
                 processor->paddle_adjustment_deadline_ms = now_ms + PADDLE_ADJUST_REPEAT_DELAY_MS;
             }
@@ -436,6 +438,7 @@ void wheel_axis_override_processor_init(WheelAxisOverrideProcessor *processor) {
     processor->x_available = false;
     processor->y_available = false;
     processor->packet_axis_report_enabled = false;
+    processor->paddle_bite_point_report_pending = false;
     processor->paddle_bite_point_commit_pending = false;
 }
 
@@ -553,6 +556,27 @@ bool wheel_axis_override_take_bite_point(WheelAxisOverrideProcessor *processor,
         return false;
     }
     processor->paddle_bite_point_commit_pending = false;
+    *updated_percent = bite_point_percent;
+    return true;
+}
+
+/**
+ * @brief Takes a wheel-side bite-point report update.
+ *
+ * Returns the adjusted percentage once after an accepted increment or decrement.
+ *
+ * @param[in,out] processor Persistent paddle-clutch state.
+ * @param[in] bite_point_percent Current adjusted bite-point percentage.
+ * @param[out] updated_percent Percentage to publish in the next input report.
+ * @return True when a new percentage was available.
+ */
+bool wheel_axis_override_take_bite_point_report(WheelAxisOverrideProcessor *processor,
+                                                uint8_t bite_point_percent,
+                                                uint8_t *updated_percent) {
+    if (!processor->paddle_bite_point_report_pending) {
+        return false;
+    }
+    processor->paddle_bite_point_report_pending = false;
     *updated_percent = bite_point_percent;
     return true;
 }

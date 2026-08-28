@@ -55,6 +55,7 @@ void wheel_service_configure_axis_processing(WheelService *service, uint8_t inte
                                              uint8_t paddle_mode, uint8_t bite_point_percent,
                                              uint32_t now_ms);
 bool wheel_service_take_bite_point(WheelService *service, uint8_t *updated_percent);
+bool wheel_service_take_bite_point_report(WheelService *service, uint8_t *updated_percent);
 bool wheel_service_queue_remote_tuning_response(WheelService *service,
                                                 const RemoteTuningResponse *response);
 bool wheel_service_remote_tuning_response_pending(const WheelService *service);

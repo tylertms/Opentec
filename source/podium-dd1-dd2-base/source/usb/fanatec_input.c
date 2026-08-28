@@ -20,6 +20,9 @@ enum {
     USAGE_OFFSET = 32,
     BUTTON_USAGE_PAGE = 9,
     BUTTON_USAGE = 3,
+    BITE_POINT_UPDATE_OFFSET = 30,
+    BITE_POINT_UPDATE_MARKER = 0xff,
+    BITE_POINT_UPDATE_TYPE = 2,
     SHIFTER_TRANSITION_BUTTON_BANK = 1,
     SHIFTER_GEAR_BUTTON_BANK = 2,
     SHIFTER_SEQUENTIAL_BUTTON_BANK = 4,
@@ -293,6 +296,20 @@ void fanatec_input_apply_wheel_axis_overrides(fanatec_input_state *state,
 }
 
 /**
+ * @brief Applies a live bite-point update to the native Fanatec report.
+ *
+ * Marks the next report to replace its final four bytes with the bite-point update marker, type,
+ * percentage, and trailing zero.
+ *
+ * @param[in,out] state Input report state to update.
+ * @param[in] percent Current bite-point percentage.
+ */
+void fanatec_input_apply_bite_point_update(fanatec_input_state *state, uint8_t percent) {
+    state->bite_point_percent = percent;
+    state->bite_point_update = true;
+}
+
+/**
  * @brief Encodes the shared Fanatec input payload.
  *
  * Writes every logical input field and the fixed button usage identifiers without a report ID.
@@ -325,7 +342,9 @@ static void encode_payload(uint8_t report[FANATEC_INPUT_COMPATIBILITY_REPORT_SIZ
 /**
  * @brief Encodes the native Fanatec input report.
  *
- * Writes report ID one followed by the complete thirty-three-byte Fanatec input payload.
+ * Writes report ID one followed by the complete thirty-three-byte Fanatec input payload. A live
+ * bite-point update replaces the report's final four bytes with its marker, type, percentage, and
+ * trailing zero.
  *
  * @param[out] report Buffer that receives the encoded report.
  * @param[in] state Logical Fanatec input values.
@@ -339,6 +358,12 @@ bool fanatec_input_encode(uint8_t report[FANATEC_INPUT_REPORT_SIZE],
 
     report[0] = FANATEC_INPUT_REPORT_ID;
     encode_payload(report + 1, state);
+    if (state->bite_point_update) {
+        report[BITE_POINT_UPDATE_OFFSET] = BITE_POINT_UPDATE_MARKER;
+        report[BITE_POINT_UPDATE_OFFSET + 1] = BITE_POINT_UPDATE_TYPE;
+        report[BITE_POINT_UPDATE_OFFSET + 2] = state->bite_point_percent;
+        report[BITE_POINT_UPDATE_OFFSET + 3] = 0;
+    }
     return true;
 }
 

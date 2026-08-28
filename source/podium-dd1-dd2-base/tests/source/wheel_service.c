@@ -435,6 +435,7 @@ static void test_restarts_discovery_after_scan_timeout(void) {
     service.protocol.axis_override_processor.multiplex_phase = WHEEL_AXIS_MULTIPLEX_Y;
     service.protocol.axis_override_processor.paddle_clutch_phase = WHEEL_PADDLE_CLUTCH_ACTIVE;
     service.protocol.axis_override_processor.paddle_adjustment_deadline_ms = 456;
+    service.protocol.axis_override_processor.paddle_bite_point_report_pending = true;
     service.protocol.axis_override_processor.paddle_bite_point_commit_pending = true;
     service.protocol.axis_override_processor.x_available = true;
     service.protocol.axis_override_processor.y_available = true;
@@ -466,6 +467,8 @@ static void test_restarts_discovery_after_scan_timeout(void) {
            WHEEL_PADDLE_CLUTCH_ACTIVE);
     assert(service.protocol.axis_override_processor.paddle_adjustment_deadline_ms == 456);
     uint8_t adjusted_bite_point_percent = 0;
+    assert(wheel_service_take_bite_point_report(&service, &adjusted_bite_point_percent));
+    assert(adjusted_bite_point_percent == 60);
     assert(wheel_service_take_bite_point(&service, &adjusted_bite_point_percent));
     assert(adjusted_bite_point_percent == 60);
     assert(service.protocol.axis_override_processor.x_available);

@@ -42,6 +42,28 @@ static void test_zero_state(void) {
     }
 }
 
+static void test_bite_point_update(void) {
+    fanatec_input_state state = {
+        .wheel_mode = 0xfe,
+        .axis_limit = 0x17,
+    };
+    uint8_t report[FANATEC_INPUT_REPORT_SIZE];
+    uint8_t compatibility_report[FANATEC_INPUT_COMPATIBILITY_REPORT_SIZE];
+
+    fanatec_input_apply_bite_point_update(&state, 73);
+    assert(fanatec_input_encode(report, &state));
+    assert(report[30] == 0xff);
+    assert(report[31] == 2);
+    assert(report[32] == 73);
+    assert(report[33] == 0);
+
+    assert(fanatec_input_compatibility_encode(compatibility_report, &state));
+    assert(compatibility_report[29] == 0xfe);
+    assert(compatibility_report[30] == 0x17);
+    assert(compatibility_report[31] == 9);
+    assert(compatibility_report[32] == 3);
+}
+
 static void test_validation(void) {
     fanatec_input_state state = {0};
     uint8_t report[FANATEC_INPUT_REPORT_SIZE];
@@ -305,6 +327,7 @@ static void test_wheel_axis_override_mapping(void) {
 int main(void) {
     test_encode();
     test_zero_state();
+    test_bite_point_update();
     test_validation();
     test_compatibility_encode();
     test_wheel_control_mapping();

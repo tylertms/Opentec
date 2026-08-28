@@ -33,6 +33,8 @@ typedef struct {
     uint8_t status_flags;
     uint8_t wheel_mode;
     uint8_t axis_limit;
+    uint8_t bite_point_percent;
+    bool bite_point_update;
 } fanatec_input_state;
 
 typedef struct {
@@ -63,5 +65,6 @@ void fanatec_input_apply_wheel_calibration(fanatec_input_state *state, bool avai
 void fanatec_input_apply_wheel_input_capability(fanatec_input_state *state, bool available);
 void fanatec_input_apply_wheel_axis_overrides(fanatec_input_state *state,
                                               const WheelAxisOverrides *overrides);
+void fanatec_input_apply_bite_point_update(fanatec_input_state *state, uint8_t percent);
 
 #endif

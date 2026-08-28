@@ -202,8 +202,9 @@ static void clear_scan_filter(WheelService *service) {
  *
  * Reinitializes handshake and input state while preserving configured outputs, input filters,
  * adapter state, report capabilities, pending remote-tuning work, and axis-processing
- * configuration. The transient input-capability latch, scan input, and activity timing restart
- * from their initial states.
+ * configuration, including an in-progress bite-point adjustment and its pending notifications.
+ * The transient input-capability latch, scan input, and activity timing restart from their initial
+ * states.
  *
  * @param[in,out] service Attached-wheel service to restart.
  */
@@ -234,6 +235,8 @@ static void reset_connection(WheelService *service) {
     bool axis_y_available = service->protocol.axis_override_processor.y_available;
     bool packet_axis_report_enabled =
         service->protocol.axis_override_processor.packet_axis_report_enabled;
+    bool paddle_bite_point_report_pending =
+        service->protocol.axis_override_processor.paddle_bite_point_report_pending;
     bool paddle_bite_point_commit_pending =
         service->protocol.axis_override_processor.paddle_bite_point_commit_pending;
     bool button_latch_enabled = service->protocol.button_latch_enabled;
@@ -260,6 +263,8 @@ static void reset_connection(WheelService *service) {
     service->protocol.axis_override_processor.y_available = axis_y_available;
     service->protocol.axis_override_processor.packet_axis_report_enabled =
         packet_axis_report_enabled;
+    service->protocol.axis_override_processor.paddle_bite_point_report_pending =
+        paddle_bite_point_report_pending;
     service->protocol.axis_override_processor.paddle_bite_point_commit_pending =
         paddle_bite_point_commit_pending;
     wheel_protocol_set_button_latch(&service->protocol, button_latch_enabled,
@@ -300,6 +305,19 @@ void wheel_service_configure_axis_processing(WheelService *service, uint8_t inte
  */
 bool wheel_service_take_bite_point(WheelService *service, uint8_t *updated_percent) {
     return wheel_protocol_take_bite_point(&service->protocol, updated_percent);
+}
+
+/**
+ * @brief Takes an attached-wheel bite-point report update.
+ *
+ * Returns each accepted percentage change once for presentation in the primary input report.
+ *
+ * @param[in,out] service Attached-wheel service and protocol state.
+ * @param[out] updated_percent Percentage to publish in the next input report.
+ * @return True when a new percentage was available.
+ */
+bool wheel_service_take_bite_point_report(WheelService *service, uint8_t *updated_percent) {
+    return wheel_protocol_take_bite_point_report(&service->protocol, updated_percent);
 }
 
 /**

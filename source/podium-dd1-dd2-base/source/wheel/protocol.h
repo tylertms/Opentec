@@ -97,6 +97,7 @@ void wheel_protocol_set_axis_processing(WheelProtocol *protocol, uint8_t interfa
                                         uint8_t override_mode, uint8_t bite_point_percent,
                                         uint32_t now_ms);
 bool wheel_protocol_take_bite_point(WheelProtocol *protocol, uint8_t *updated_percent);
+bool wheel_protocol_take_bite_point_report(WheelProtocol *protocol, uint8_t *updated_percent);
 void wheel_protocol_set_button_latch(WheelProtocol *protocol, bool enabled,
                                      bool profile_transition_pending);
 void wheel_protocol_accept(WheelProtocol *protocol,

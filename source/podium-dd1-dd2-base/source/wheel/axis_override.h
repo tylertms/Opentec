@@ -41,6 +41,7 @@ typedef struct {
     bool x_available;
     bool y_available;
     bool packet_axis_report_enabled;
+    bool paddle_bite_point_report_pending;
     bool paddle_bite_point_commit_pending;
 } WheelAxisOverrideProcessor;
 
@@ -56,5 +57,8 @@ void wheel_axis_override_process_packet(WheelAxisOverrideProcessor *processor, u
                                         int8_t *motion, uint8_t controls[8], uint8_t axes[2]);
 bool wheel_axis_override_take_bite_point(WheelAxisOverrideProcessor *processor,
                                          uint8_t bite_point_percent, uint8_t *updated_percent);
+bool wheel_axis_override_take_bite_point_report(WheelAxisOverrideProcessor *processor,
+                                                uint8_t bite_point_percent,
+                                                uint8_t *updated_percent);
 
 #endif
