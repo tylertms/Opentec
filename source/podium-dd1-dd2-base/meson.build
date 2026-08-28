@@ -17,6 +17,8 @@ force_output_sources = files('source/force_feedback/output.c')
 force_output_report_sources = files('source/force_feedback/output_report.c')
 force_output_scale_sources = files('source/force_feedback/output_scale.c')
 force_script_control_sources = files('source/force_feedback/script_control.c')
+force_script_input_sources = files('source/force_feedback/script_input.c')
+force_script_store_sources = files('source/force_feedback/script_store.c')
 force_filter_sources = files('source/force_feedback/filter.c')
 force_safety_sources = files('source/force_feedback/safety.c')
 force_soft_stop_sources = files('source/force_feedback/soft_stop.c')
@@ -103,6 +105,8 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'force-output-report': 'source/force_feedback/output_report.c',
     'force-output-scale': 'source/force_feedback/output_scale.c',
     'force-script-control': 'source/force_feedback/script_control.c',
+    'force-script-input': 'source/force_feedback/script_input.c',
+    'force-script-store': 'source/force_feedback/script_store.c',
     'force-filter': 'source/force_feedback/filter.c',
     'force-safety': 'source/force_feedback/safety.c',
     'force-soft-stop': 'source/force_feedback/soft_stop.c',
@@ -351,6 +355,23 @@ if not meson.is_cross_build()
   force_script_control_test = executable(
     'base-force-script-control-test',
     'tests/source/force_script_control.c',
+    force_script_control_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  force_script_input_test = executable(
+    'base-force-script-input-test',
+    'tests/source/force_script_input.c',
+    force_script_input_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  force_script_store_test = executable(
+    'base-force-script-store-test',
+    'tests/source/force_script_store.c',
+    force_script_store_sources,
     force_script_control_sources,
     build_by_default: false,
     include_directories: base_include,
@@ -877,6 +898,16 @@ if not meson.is_cross_build()
     'base-force-script-control',
     force_script_control_test,
     suite: ['base', 'force-feedback', 'script'],
+  )
+  test(
+    'base-force-script-input',
+    force_script_input_test,
+    suite: ['base', 'force-feedback', 'script', 'usb'],
+  )
+  test(
+    'base-force-script-store',
+    force_script_store_test,
+    suite: ['base', 'force-feedback', 'script', 'usb'],
   )
   test('base-force-filter', force_filter_test, suite: ['base', 'force-feedback'])
   test('base-force-safety', force_safety_test, suite: ['base', 'force-feedback'])

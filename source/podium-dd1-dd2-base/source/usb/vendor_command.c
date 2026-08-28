@@ -44,10 +44,13 @@ static int8_t command_kind(uint8_t opcode, const uint8_t *payload) {
 }
 
 /**
- * Classifies a complete vendor-transfer payload by its top-level command opcode.
+ * @brief Classify a complete vendor-transfer payload.
  *
- * @param output Classified vendor-transfer output containing 63 command bytes.
- * @param command Destination for the command route, opcode, and remaining arguments.
+ * Selects the command route from the top-level opcode and exposes the remaining 62 bytes as its
+ * arguments. Extended reset packets are accepted only with group 1 and selector 0x1A.
+ *
+ * @param[in] output Classified vendor-transfer output containing 63 command bytes.
+ * @param[out] command Destination for the command route, opcode, and remaining arguments.
  * @return True when the opcode selects one of the supported vendor command routes.
  */
 bool usb_vendor_command_decode(const UsbOutputCommand *output, UsbVendorCommand *command) {
@@ -72,6 +75,9 @@ bool usb_vendor_command_decode(const UsbOutputCommand *output, UsbVendorCommand 
 
 /**
  * @brief Identifies the extended vendor request that starts the motor-command handshake.
+ *
+ * Matches an extended request whose first three argument bytes are 0, 1, and 1.
+ *
  * @param[in] command Decoded vendor command.
  * @return True for extended arguments 00 01 01.
  */
