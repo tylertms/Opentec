@@ -56,6 +56,7 @@ usb_feature_upload_acknowledgement_sources = files(
 )
 usb_motor_command_upload_sources = files('source/usb/motor_command_upload.c')
 usb_motor_response_download_sources = files('source/usb/motor_response_download.c')
+usb_motor_vendor_service_sources = files('source/usb/motor_vendor_service.c')
 usb_xbox_gip_discovery_sources = files('source/usb/xbox_gip_discovery.c')
 usb_xbox_gip_metadata_sources = files('source/usb/xbox_gip_metadata.c')
 usb_xbox_gip_metadata_download_sources = files('source/usb/xbox_gip_metadata_download.c')
@@ -199,6 +200,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'usb-feature-upload-acknowledgement': 'source/usb/feature_upload_acknowledgement.c',
     'usb-motor-command-upload': 'source/usb/motor_command_upload.c',
     'usb-motor-response-download': 'source/usb/motor_response_download.c',
+    'usb-motor-vendor-service': 'source/usb/motor_vendor_service.c',
     'usb-xbox-gip-discovery': 'source/usb/xbox_gip_discovery.c',
     'usb-xbox-gip-metadata': 'source/usb/xbox_gip_metadata.c',
     'usb-xbox-gip-metadata-download': 'source/usb/xbox_gip_metadata_download.c',
@@ -939,6 +941,27 @@ if not meson.is_cross_build()
     'tests/source/usb_motor_command_upload.c',
     usb_feature_upload_sources,
     usb_motor_command_upload_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  usb_motor_vendor_service_test = executable(
+    'base-usb-motor-vendor-service-test',
+    'tests/source/usb_motor_vendor_service.c',
+    usb_motor_vendor_service_sources,
+    usb_motor_command_upload_sources,
+    usb_motor_response_download_sources,
+    usb_feature_upload_sources,
+    usb_feature_download_sources,
+    usb_feature_upload_acknowledgement_sources,
+    motor_command_application_sources,
+    motor_command_digest_sources,
+    motor_command_fragment_sources,
+    motor_command_information_sources,
+    motor_command_message_sources,
+    motor_command_packet_sources,
+    motor_command_receiver_sources,
+    motor_command_sequence_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -1692,6 +1715,11 @@ if not meson.is_cross_build()
   test(
     'base-usb-motor-command-upload',
     usb_motor_command_upload_test,
+    suite: ['base', 'usb', 'motor'],
+  )
+  test(
+    'base-usb-motor-vendor-service',
+    usb_motor_vendor_service_test,
     suite: ['base', 'usb', 'motor'],
   )
   test('base-usb-updater-descriptor', usb_updater_descriptor_test, suite: ['base', 'usb'])
