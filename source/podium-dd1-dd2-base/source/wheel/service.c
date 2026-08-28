@@ -385,6 +385,19 @@ const uint8_t *wheel_service_clutch_paddles(const WheelService *service) {
 }
 
 /**
+ * @brief Copies the attached wheel's two 16-bit axis values.
+ *
+ * Returns the values retained from the current supported packet-family input report.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @param[out] values Two 16-bit axis values, cleared when unavailable.
+ * @return True when axis values were available.
+ */
+bool wheel_service_axis_values(const WheelService *service, uint16_t values[2]) {
+    return wheel_protocol_axis_values(&service->protocol, values);
+}
+
+/**
  * @brief Copies the attached wheel's eight control bytes.
  *
  * Returns the normalized controls from the current supported packet-family input report.

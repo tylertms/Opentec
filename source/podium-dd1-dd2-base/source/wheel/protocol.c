@@ -462,6 +462,40 @@ const uint8_t *wheel_protocol_axis_outputs(const WheelProtocol *protocol) {
 }
 
 /**
+ * @brief Copies the attached wheel's two 16-bit axis values.
+ *
+ * Selects the separately retained standard-packet values or the normalized mode-four and
+ * CRC-family values. The destination is cleared when no supported input report is ready.
+ *
+ * @param[in] protocol Attached-wheel protocol state.
+ * @param[out] values Two 16-bit axis values.
+ * @return True when axis values were available.
+ */
+bool wheel_protocol_axis_values(const WheelProtocol *protocol, uint16_t values[2]) {
+    values[0] = 0;
+    values[1] = 0;
+    const WheelPacketModeOneReportState *mode_one = wheel_protocol_mode_one_report_state(protocol);
+    if (mode_one != 0) {
+        values[0] = mode_one->axis_values[0];
+        values[1] = mode_one->axis_values[1];
+        return true;
+    }
+    const WheelPacketModeFourInput *mode_four = wheel_protocol_mode_four_input(protocol);
+    if (mode_four != 0) {
+        values[0] = mode_four->axis_values[0];
+        values[1] = mode_four->axis_values[1];
+        return true;
+    }
+    const WheelPacketCrcInput *crc = wheel_protocol_crc_input(protocol);
+    if (crc == 0) {
+        return false;
+    }
+    values[0] = crc->axis_values[0];
+    values[1] = crc->axis_values[1];
+    return true;
+}
+
+/**
  * @brief Copies the attached wheel's eight control bytes.
  *
  * Selects normalized mode-one, mode-four, or CRC-family controls. Mode-four control and

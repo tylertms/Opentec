@@ -288,6 +288,10 @@ static void test_keeps_protocol_transport_for_packet_modes(void) {
     received_ready = false;
     wheel_service_init(&service);
     assert(wheel_service_clutch_paddles(&service) == 0);
+    uint16_t wheel_axes[2] = {UINT16_MAX, UINT16_MAX};
+    assert(!wheel_service_axis_values(&service, wheel_axes));
+    assert(wheel_axes[0] == 0);
+    assert(wheel_axes[1] == 0);
     wheel_service_run(&service, 0);
     for (uint32_t now_ms = 1; now_ms <= 3; now_ms++) {
         respond_protocol(0, 0);
@@ -302,6 +306,10 @@ static void test_keeps_protocol_transport_for_packet_modes(void) {
     active.data[0] = WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
     active.data[5] = 0x27;
     active.data[6] = 0x91;
+    active.data[18] = 0x34;
+    active.data[19] = 0x12;
+    active.data[20] = 0x78;
+    active.data[21] = 0x56;
     active.data[31] = 0x73;
     active.data[WHEEL_PROTOCOL_FLAGS_OFFSET] = WHEEL_PROTOCOL_REQUEST_READY;
     active.data[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(active.data);
@@ -314,6 +322,9 @@ static void test_keeps_protocol_transport_for_packet_modes(void) {
     const uint8_t *clutch_paddles = wheel_service_clutch_paddles(&service);
     assert(clutch_paddles[0] == 0x27);
     assert(clutch_paddles[1] == 0x91);
+    assert(wheel_service_axis_values(&service, wheel_axes));
+    assert(wheel_axes[0] == 0x1234);
+    assert(wheel_axes[1] == 0x5678);
     uint8_t controls[8];
     assert(wheel_service_controls(&service, controls));
     WheelTransportFrame frame = request();

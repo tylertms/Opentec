@@ -327,6 +327,10 @@ static void test_captures_normalized_active_requests(void) {
     wheel_protocol_init(&protocol);
     assert(wheel_protocol_axis_limit(&protocol) == 0);
     assert(wheel_protocol_axis_outputs(&protocol) == 0);
+    uint16_t axis_values[2] = {UINT16_MAX, UINT16_MAX};
+    assert(!wheel_protocol_axis_values(&protocol, axis_values));
+    assert(axis_values[0] == 0);
+    assert(axis_values[1] == 0);
     uint8_t controls[8];
     assert(!wheel_protocol_controls(&protocol, controls));
     assert(memcmp(controls, (uint8_t[8]){0}, sizeof(controls)) == 0);
@@ -364,6 +368,9 @@ static void test_captures_normalized_active_requests(void) {
     assert(report_state != 0);
     assert(report_state->axis_values[0] == 0x1312);
     assert(report_state->axis_values[1] == 0x1514);
+    assert(wheel_protocol_axis_values(&protocol, axis_values));
+    assert(axis_values[0] == 0x1312);
+    assert(axis_values[1] == 0x1514);
     assert(report_state->report_mode == 28);
     assert(report_state->report_capabilities == 30);
     assert(report_state->axis_limit == 31);
@@ -505,6 +512,10 @@ static void test_captures_mode_four_requests(void) {
     assert(memcmp(controls + WHEEL_PACKET_MODE_FOUR_CONTROL_COUNT, input->control_data,
                   WHEEL_PACKET_MODE_FOUR_CONTROL_DATA_COUNT) == 0);
     assert(input->axis_values[0] == 0x1234);
+    uint16_t axis_values[2];
+    assert(wheel_protocol_axis_values(&protocol, axis_values));
+    assert(axis_values[0] == 0x1234);
+    assert(axis_values[1] == 0);
     assert(input->control_data[0] == 0x61);
     assert(input->axis_limit == 0x74);
     assert(wheel_protocol_axis_limit(&protocol) == 0x74);
@@ -634,6 +645,10 @@ static void test_captures_crc_family_requests(void) {
     request[6] = 0xa4;
     request[8] = 0x08;
     request[12] = 0x02;
+    request[18] = 0x34;
+    request[19] = 0x12;
+    request[20] = 0x78;
+    request[21] = 0x56;
     request[28] = 0x34;
     request[30] = 0x3f;
     request[31] = 0x62;
@@ -648,6 +663,10 @@ static void test_captures_crc_family_requests(void) {
     assert(input->buttons[1] == 0x08);
     assert(wheel_protocol_axis_outputs(&protocol)[0] == 0x52);
     assert(wheel_protocol_axis_outputs(&protocol)[1] == 0xa4);
+    uint16_t axis_values[2];
+    assert(wheel_protocol_axis_values(&protocol, axis_values));
+    assert(axis_values[0] == 0x1234);
+    assert(axis_values[1] == 0x5678);
     uint8_t controls[8];
     assert(wheel_protocol_controls(&protocol, controls));
     assert(memcmp(controls, input->controls, sizeof(controls)) == 0);
