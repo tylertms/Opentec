@@ -1,0 +1,224 @@
+#include "platform/resistance.h"
+
+#include <stdbool.h>
+#include <stdint.h>
+#include <xc.h>
+
+#include "analog/resistance_output.h"
+#include "platform/time.h"
+
+enum {
+    RESISTANCE_PWM_PERIOD = 3192,
+    RESISTANCE_PWM_REGISTER_PERIOD = RESISTANCE_PWM_PERIOD - 1,
+    RESISTANCE_CAPTURE_INTERVAL_MS = 50,
+    RESISTANCE_CAPTURE_INTERRUPT_PRIORITY = 5,
+};
+
+typedef struct {
+    volatile uint32_t previous;
+    volatile uint32_t current;
+    volatile bool ready;
+    volatile bool present;
+    volatile bool active;
+} ResistanceCaptureState;
+
+static ResistanceCaptureState captures[2];
+static bool pwm_inverted;
+static PlatformResistanceChannel next_channel;
+static uint32_t next_capture_ms;
+
+static void configure_pwm(void) {
+    LATFbits.LATF12 = 0;
+    LATFbits.LATF13 = 0;
+    TRISFbits.TRISF12 = 0;
+    TRISFbits.TRISF13 = 0;
+
+    OC5CON1 = 0;
+    OC5CON2 = 0;
+    OC5R = 0;
+    OC5RS = RESISTANCE_PWM_REGISTER_PERIOD;
+    OC5CON1bits.OCTSEL = 7;
+    OC5CON1bits.OCM = 6;
+    OC5CON2bits.SYNCSEL = 0x1f;
+
+    OC1CON1 = 0;
+    OC1CON2 = 0;
+    OC1R = 0;
+    OC1RS = RESISTANCE_PWM_REGISTER_PERIOD;
+    OC1CON1bits.OCTSEL = 7;
+    OC1CON1bits.OCM = 6;
+    OC1CON2bits.SYNCSEL = 0x1f;
+}
+
+static void configure_primary_capture(void) {
+    TRISAbits.TRISA1 = 1;
+    IC1CON1 = 0;
+    IC2CON1 = 0;
+    IC1CON2 = 0;
+    IC2CON2 = 0;
+    IC1CON1bits.ICTSEL = 7;
+    IC2CON1bits.ICTSEL = 7;
+    IC1CON1bits.ICI = 1;
+    IC2CON1bits.ICI = 1;
+    IC1CON2bits.IC32 = 1;
+    IC2CON2bits.IC32 = 1;
+    IC1CON2bits.ICTRIG = 1;
+    IC2CON2bits.ICTRIG = 1;
+    IPC0bits.IC1IP = RESISTANCE_CAPTURE_INTERRUPT_PRIORITY;
+    IFS0bits.IC1IF = 0;
+    IEC0bits.IC1IE = 1;
+}
+
+static void configure_secondary_capture(void) {
+    TRISDbits.TRISD14 = 1;
+    IC3CON1 = 0;
+    IC4CON1 = 0;
+    IC3CON2 = 0;
+    IC4CON2 = 0;
+    IC3CON1bits.ICTSEL = 7;
+    IC4CON1bits.ICTSEL = 7;
+    IC3CON1bits.ICI = 1;
+    IC4CON1bits.ICI = 1;
+    IC3CON2bits.IC32 = 1;
+    IC4CON2bits.IC32 = 1;
+    IC3CON2bits.ICTRIG = 1;
+    IC4CON2bits.ICTRIG = 1;
+    IPC9bits.IC3IP = RESISTANCE_CAPTURE_INTERRUPT_PRIORITY;
+    IFS2bits.IC3IF = 0;
+    IEC2bits.IC3IE = 1;
+}
+
+static void arm_primary_capture(void) {
+    IC1CON2bits.TRIGSTAT = 1;
+    IC2CON2bits.TRIGSTAT = 1;
+    IC1CON1bits.ICM = 3;
+    IC2CON1bits.ICM = 3;
+}
+
+static void arm_secondary_capture(void) {
+    IC3CON2bits.TRIGSTAT = 1;
+    IC4CON2bits.TRIGSTAT = 1;
+    IC3CON1bits.ICM = 3;
+    IC4CON1bits.ICM = 3;
+}
+
+/**
+ * @brief Configures both resistance PWM outputs and their paired pulse-capture inputs.
+ * @param[in] inverted_pwm True when increasing duty requires a decreasing compare value.
+ */
+void platform_resistance_init(bool inverted_pwm) {
+    captures[PLATFORM_RESISTANCE_PRIMARY] = (ResistanceCaptureState){0};
+    captures[PLATFORM_RESISTANCE_SECONDARY] = (ResistanceCaptureState){0};
+    pwm_inverted = inverted_pwm;
+    next_channel = PLATFORM_RESISTANCE_PRIMARY;
+    next_capture_ms = platform_time_ms() + RESISTANCE_CAPTURE_INTERVAL_MS;
+    configure_pwm();
+    configure_primary_capture();
+    configure_secondary_capture();
+}
+
+/**
+ * @brief Applies clamped duty percentages to the two resistance PWM outputs.
+ * @param[in] primary_percent Primary output duty from 0 through 100 percent.
+ * @param[in] secondary_percent Secondary output duty from 0 through 100 percent.
+ * @param[in] outputs_disabled True to force both outputs to their inactive compare value.
+ */
+void platform_resistance_set_duty(uint16_t primary_percent, uint16_t secondary_percent,
+                                  bool outputs_disabled) {
+    OC5R = resistance_output_compare(primary_percent, pwm_inverted, outputs_disabled);
+    OC1R = resistance_output_compare(secondary_percent, pwm_inverted, outputs_disabled);
+}
+
+/**
+ * @brief Alternately checks and rearms one resistance pulse-capture channel every 50 milliseconds.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+void platform_resistance_service(uint32_t now_ms) {
+    if (!platform_time_reached(now_ms, next_capture_ms)) {
+        return;
+    }
+
+    ResistanceCaptureState *capture = &captures[next_channel];
+    if (!capture->active) {
+        capture->present = false;
+        capture->ready = true;
+    }
+    capture->active = false;
+
+    if (next_channel == PLATFORM_RESISTANCE_PRIMARY) {
+        arm_primary_capture();
+        next_channel = PLATFORM_RESISTANCE_SECONDARY;
+    } else {
+        arm_secondary_capture();
+        next_channel = PLATFORM_RESISTANCE_PRIMARY;
+    }
+    next_capture_ms = now_ms + RESISTANCE_CAPTURE_INTERVAL_MS;
+}
+
+/**
+ * @brief Consumes the newest completed or missing pulse-capture result for one channel.
+ * @param[in] channel Resistance pulse-capture channel to inspect.
+ * @param[out] capture Consecutive timestamps and signal-presence state.
+ * @return True when a new capture result was consumed.
+ */
+bool platform_resistance_take_capture(PlatformResistanceChannel channel,
+                                      PlatformResistanceCapture *capture) {
+    if (channel != PLATFORM_RESISTANCE_PRIMARY && channel != PLATFORM_RESISTANCE_SECONDARY) {
+        return false;
+    }
+
+    ResistanceCaptureState *state = &captures[channel];
+    if (!state->ready) {
+        return false;
+    }
+
+    capture->previous_capture = state->previous;
+    capture->current_capture = state->current;
+    capture->present = state->present;
+    state->ready = false;
+    return true;
+}
+
+/**
+ * @brief Captures two consecutive primary input periods and stops the paired capture units.
+ */
+void __attribute__((interrupt, no_auto_psv)) _IC1Interrupt(void) {
+    ResistanceCaptureState *capture = &captures[PLATFORM_RESISTANCE_PRIMARY];
+
+    IFS0bits.IC1IF = 0;
+    uint16_t previous_low = IC1BUF;
+    uint16_t previous_high = IC2BUF;
+    uint16_t current_low = IC1BUF;
+    uint16_t current_high = IC2BUF;
+    capture->previous = (uint32_t)previous_low | (uint32_t)previous_high << 16;
+    capture->current = (uint32_t)current_low | (uint32_t)current_high << 16;
+    IC1CON2bits.TRIGSTAT = 0;
+    IC2CON2bits.TRIGSTAT = 0;
+    IC1CON1bits.ICM = 0;
+    IC2CON1bits.ICM = 0;
+    capture->ready = true;
+    capture->present = true;
+    capture->active = true;
+}
+
+/**
+ * @brief Captures two consecutive secondary input periods and stops the paired capture units.
+ */
+void __attribute__((interrupt, no_auto_psv)) _IC3Interrupt(void) {
+    ResistanceCaptureState *capture = &captures[PLATFORM_RESISTANCE_SECONDARY];
+
+    IFS2bits.IC3IF = 0;
+    uint16_t previous_low = IC3BUF;
+    uint16_t previous_high = IC4BUF;
+    uint16_t current_low = IC3BUF;
+    uint16_t current_high = IC4BUF;
+    capture->previous = (uint32_t)previous_low | (uint32_t)previous_high << 16;
+    capture->current = (uint32_t)current_low | (uint32_t)current_high << 16;
+    IC3CON2bits.TRIGSTAT = 0;
+    IC4CON2bits.TRIGSTAT = 0;
+    IC3CON1bits.ICM = 0;
+    IC4CON1bits.ICM = 0;
+    capture->ready = true;
+    capture->present = true;
+    capture->active = true;
+}

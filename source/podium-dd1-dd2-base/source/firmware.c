@@ -1,9 +1,9 @@
 #include <stdbool.h>
 #include <xc.h>
 
+#include "analog/pulse_measurement.h"
 #include "board/identity.h"
 #include "board/status_led.h"
-#include "cooling/fan.h"
 #include "force_feedback/output.h"
 #include "motor/live_frame.h"
 #include "motor/probe.h"
@@ -15,10 +15,10 @@
 #include "platform/aux_bus.h"
 #include "platform/board_identity.h"
 #include "platform/clock.h"
-#include "platform/cooling.h"
 #include "platform/motor_link.h"
 #include "platform/pedal_link.h"
 #include "platform/pin_mux.h"
+#include "platform/resistance.h"
 #include "platform/shifter.h"
 #include "platform/status_led.h"
 #include "platform/time.h"
@@ -81,61 +81,31 @@ static ForceOutputReport motor_output_report;
 static MotorLiveFrame motor_live_frame;
 static uint8_t motor_received_frame[MOTOR_LIVE_FRAME_SIZE];
 static uint8_t motor_transmitted_frame[MOTOR_LIVE_FRAME_SIZE];
-static FanController fan_controller;
 static StatusLed status_led;
-static PlatformFanTachometer fan_tachometer;
-static uint16_t fan_speed_rpm[2];
-static uint32_t next_cooling_update_ms;
+static PlatformResistanceCapture resistance_capture;
+static uint16_t resistance_pulse_units[2];
 
 enum {
-    COOLING_UPDATE_INTERVAL_MS = 1000,
-    FAN_TACHOMETER_TIMER_HZ = 60000000,
-    FAN_TACHOMETER_PULSES_PER_REVOLUTION = 2,
+    RESISTANCE_STARTUP_DUTY_PERCENT = 25,
 };
 
-static void set_cooling_duty(uint8_t duty_percent) {
-    if (board_identity.mode_bits == 7) {
-        platform_cooling_set_duty(duty_percent, duty_percent);
-    } else {
-        platform_cooling_set_duty(duty_percent, 0);
-    }
+static void initialize_resistance_measurement(void) {
+    resistance_pulse_units[PLATFORM_RESISTANCE_PRIMARY] = 0;
+    resistance_pulse_units[PLATFORM_RESISTANCE_SECONDARY] = 0;
+    platform_resistance_init(board_identity.mode_bits != 7);
+    platform_resistance_set_duty(RESISTANCE_STARTUP_DUTY_PERCENT, RESISTANCE_STARTUP_DUTY_PERCENT,
+                                 false);
 }
 
-static void initialize_cooling(void) {
-    fan_controller_init(&fan_controller);
-    fan_speed_rpm[PLATFORM_FAN_PRIMARY] = 0;
-    fan_speed_rpm[PLATFORM_FAN_SECONDARY] = 0;
-    next_cooling_update_ms = 0;
-    platform_cooling_init(board_identity.mode_bits != 7);
-    set_cooling_duty(fan_controller.duty_percent);
-}
-
-static void update_fan_speed(PlatformFan fan) {
-    if (!platform_cooling_take_tachometer(fan, &fan_tachometer)) {
+static void update_resistance_pulse_units(PlatformResistanceChannel channel) {
+    if (!platform_resistance_take_capture(channel, &resistance_capture)) {
         return;
     }
 
-    fan_speed_rpm[fan] =
-        fan_tachometer.present
-            ? fan_tachometer_rpm(fan_tachometer.previous_capture, fan_tachometer.current_capture,
-                                 FAN_TACHOMETER_TIMER_HZ, FAN_TACHOMETER_PULSES_PER_REVOLUTION)
-            : 0;
-}
-
-static void service_cooling(uint32_t now_ms) {
-    update_fan_speed(PLATFORM_FAN_PRIMARY);
-    update_fan_speed(PLATFORM_FAN_SECONDARY);
-    if (!platform_time_reached(now_ms, next_cooling_update_ms)) {
-        return;
-    }
-
-    const MotorTelemetry *telemetry =
-        motor_tuning_ready ? motor_telemetry_service_value(&motor_telemetry_service) : 0;
-    bool temperature_valid = telemetry != 0 && telemetry->motor_temperature_valid;
-    int16_t temperature = temperature_valid ? (int16_t)telemetry->motor_temperature : 0;
-    uint8_t duty = fan_controller_update(&fan_controller, temperature, temperature_valid, true);
-    set_cooling_duty(duty);
-    next_cooling_update_ms = now_ms + COOLING_UPDATE_INTERVAL_MS;
+    resistance_pulse_units[channel] =
+        resistance_capture.present ? pulse_measurement_units(resistance_capture.previous_capture,
+                                                             resistance_capture.current_capture)
+                                   : 0;
 }
 
 static void initialize_motor_link(void) {
@@ -261,7 +231,7 @@ int main(void) {
     platform_time_init();
     platform_status_led_init();
     status_led_init(&status_led);
-    initialize_cooling();
+    initialize_resistance_measurement();
     platform_adc_init();
     platform_shifter_init();
     platform_shifter_read(&shifter_input);
@@ -279,7 +249,9 @@ int main(void) {
         platform_aux_bus_service();
         uint32_t now_ms = platform_time_ms();
         platform_status_led_set(status_led_update(&status_led, now_ms));
-        platform_cooling_service(now_ms);
+        platform_resistance_service(now_ms);
+        update_resistance_pulse_units(PLATFORM_RESISTANCE_PRIMARY);
+        update_resistance_pulse_units(PLATFORM_RESISTANCE_SECONDARY);
         service_analog_input();
         service_motor_link();
         pedal_service_run(&pedal_service, now_ms);
@@ -287,6 +259,5 @@ int main(void) {
         service_shifter_display(now_ms);
         service_usb_input();
         service_motor();
-        service_cooling(now_ms);
     }
 }

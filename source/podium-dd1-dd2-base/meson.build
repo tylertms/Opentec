@@ -2,10 +2,11 @@ base_include = include_directories('source')
 base_source_path = meson.current_source_dir() / 'source'
 common_source_path = meson.project_source_root() / 'source'
 analog_axis_sources = files('source/analog/axis.c')
+analog_pulse_measurement_sources = files('source/analog/pulse_measurement.c')
+analog_resistance_output_sources = files('source/analog/resistance_output.c')
 analog_samples_sources = files('source/analog/samples.c')
 force_effect_bank_sources = files('source/force_feedback/bank.c')
 force_controller_sources = files('source/force_feedback/controller.c')
-cooling_fan_sources = files('source/cooling/fan.c')
 force_effect_sources = files('source/force_feedback/effect.c')
 force_output_sources = files('source/force_feedback/output.c')
 force_output_report_sources = files('source/force_feedback/output_report.c')
@@ -79,8 +80,9 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
   firmware_objects = []
   foreach name, source : {
     'analog-axis': 'source/analog/axis.c',
+    'analog-pulse-measurement': 'source/analog/pulse_measurement.c',
+    'analog-resistance-output': 'source/analog/resistance_output.c',
     'analog-samples': 'source/analog/samples.c',
-    'cooling-fan': 'source/cooling/fan.c',
     'force-effect-bank': 'source/force_feedback/bank.c',
     'force-controller': 'source/force_feedback/controller.c',
     'force-effect': 'source/force_feedback/effect.c',
@@ -127,7 +129,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'transfer-frame': 'source/transfer/frame.c',
     'transfer-session': 'source/transfer/session.c',
     'platform-clock': 'source/platform/dspic33e/clock.c',
-    'platform-cooling': 'source/platform/dspic33e/cooling.c',
+    'platform-resistance': 'source/platform/dspic33e/resistance.c',
     'platform-board-identity': 'source/platform/dspic33e/board_identity.c',
     'platform-adc': 'source/platform/dspic33e/adc.c',
     'platform-aux-bus': 'source/platform/dspic33e/aux_bus.c',
@@ -219,10 +221,18 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
-  cooling_fan_test = executable(
-    'base-cooling-fan-test',
-    'tests/source/cooling_fan.c',
-    cooling_fan_sources,
+  analog_pulse_measurement_test = executable(
+    'base-analog-pulse-measurement-test',
+    'tests/source/pulse_measurement.c',
+    analog_pulse_measurement_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  analog_resistance_output_test = executable(
+    'base-analog-resistance-output-test',
+    'tests/source/resistance_output.c',
+    analog_resistance_output_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -727,8 +737,17 @@ if not meson.is_cross_build()
   )
 
   test('base-analog-axis', analog_axis_test, suite: ['base', 'analog'])
+  test(
+    'base-analog-pulse-measurement',
+    analog_pulse_measurement_test,
+    suite: ['base', 'analog'],
+  )
+  test(
+    'base-analog-resistance-output',
+    analog_resistance_output_test,
+    suite: ['base', 'analog'],
+  )
   test('base-analog-samples', analog_samples_test, suite: ['base', 'analog'])
-  test('base-cooling-fan', cooling_fan_test, suite: ['base', 'cooling'])
   test('base-force-effect', force_effect_test, suite: ['base', 'force-feedback'])
   test('base-force-effect-bank', force_effect_bank_test, suite: ['base', 'force-feedback'])
   test('base-force-controller', force_controller_test, suite: ['base', 'force-feedback'])
