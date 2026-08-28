@@ -56,6 +56,7 @@
 #include "usb/vendor_command.h"
 #include "wheel/position.h"
 #include "wheel/service.h"
+#include "wheel/status_service.h"
 #include "wheel/transfer_service.h"
 
 #pragma config GWRP = OFF
@@ -102,6 +103,7 @@ static WheelPositionCalibration wheel_position_calibration;
 static PedalService pedal_service;
 static SerialService serial_service;
 static WheelService wheel_service;
+static WheelStatusService wheel_status_service;
 static AnalogSamples analog_samples;
 static HPatternShifter h_pattern_shifter;
 static ShifterInputState shifter_input;
@@ -660,6 +662,7 @@ int main(void) {
     platform_serial_link_init();
     serial_service_init(&serial_service);
     wheel_service_init(&wheel_service, &serial_service);
+    wheel_status_service_init(&wheel_status_service, &serial_service);
     initialize_usb_command_bridge();
     initialize_motor_link();
     initialize_motor();
@@ -682,6 +685,7 @@ int main(void) {
         pedal_service_run(&pedal_service, now_ms);
         serial_service_run(&serial_service, now_ms);
         service_usb_command_bridge(now_ms);
+        wheel_status_service_run(&wheel_status_service, now_ms, !serial_command_waiting());
         wheel_service_run(&wheel_service, now_ms, !serial_command_waiting());
         if (serial_service.status == SERIAL_SERVICE_IDLE) {
             (void)motor_command_serial_submit(&command_transport, &serial_service, now_ms);
