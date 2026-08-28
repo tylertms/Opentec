@@ -837,6 +837,7 @@ static void service_usb_input(uint32_t now_ms) {
         return;
     }
 
+    const MotorIdentity *motor_identity = motor_probe_identity(&motor_probe);
     wheel_position_calibration = wheel_position_calibration_build(
         &base_settings.wheel_position, tuning_profile->rotation_degrees,
         tuning_profile->steering_deadzone);
@@ -845,6 +846,7 @@ static void service_usb_input(uint32_t now_ms) {
             {
                 .steering = wheel_position_hid_axis(motor_position_report.wheel_position,
                                                     &wheel_position_calibration),
+                .transfer_code = motor_identity_input_transfer_code(motor_identity),
                 .wheel_mode = FANATEC_INPUT_DIRECT_DRIVE_MODE,
                 .axis_limit = wheel_service_axis_limit(&wheel_service),
             },
@@ -856,9 +858,13 @@ static void service_usb_input(uint32_t now_ms) {
     }
     uint8_t wheel_controls[8];
     if (wheel_service_controls(&wheel_service, wheel_controls)) {
+        bool include_extended = wheel_service_extended_report_fields(&wheel_service);
         fanatec_input_apply_wheel_controls(&usb_input_state.fanatec, wheel_controls,
-                                           wheel_service_mode(&wheel_service) !=
-                                               WHEEL_MODE_CRC_AUTHENTICATED);
+                                           include_extended);
+        if (include_extended) {
+            fanatec_input_apply_wheel_accessory(&usb_input_state.fanatec,
+                                                wheel_service_accessory_flags(&wheel_service));
+        }
     }
     uint8_t multi_position_mode =
         wheel_service_multi_position_mode(&wheel_service, tuning_profile->multi_position_mode);

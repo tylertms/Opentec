@@ -21,5 +21,6 @@ typedef struct {
 
 bool motor_identity_decode(uint8_t status, const uint8_t version[4], MotorIdentity *identity);
 bool motor_identity_has_extended_parameters(const MotorIdentity *identity);
+uint8_t motor_identity_input_transfer_code(const MotorIdentity *identity);
 
 #endif

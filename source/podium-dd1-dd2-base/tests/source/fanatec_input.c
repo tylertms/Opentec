@@ -80,21 +80,25 @@ static void test_compatibility_encode(void) {
 }
 
 static void test_wheel_control_mapping(void) {
-    fanatec_input_state state = {.accessory = {0, 0, 0, 0, 0xa0}};
+    fanatec_input_state state = {
+        .accessory = {0, 0, 0, 0, 0xaf},
+        .transfer_code = 0x91,
+    };
     const uint8_t controls[8] = {0x10, 0x21, 0x32, 0x43, 0x54, 0x65, 0xf6, 0x87};
 
     fanatec_input_apply_wheel_controls(&state, controls, true);
 
     assert(memcmp(state.rotary, controls, sizeof(state.rotary)) == 0);
     assert(state.accessory[0] == 0x65);
-    assert(state.accessory[4] == 0xa6);
-    assert(state.transfer_code == 0x87);
+    assert(state.accessory[4] == 0xaf);
+    assert(state.transfer_code == 0x91);
 }
 
 static void test_restricted_wheel_control_mapping(void) {
     fanatec_input_state state = {
         .rotary = {1, 2, 3, 4, 5},
         .accessory = {6, 7, 8, 9, 10},
+        .transfer_code = 0x91,
     };
     const uint8_t controls[8] = {0x10, 0x21, 0x32, 0x43, 0x54, 0x65, 0x76, 0x87};
 
@@ -107,7 +111,15 @@ static void test_restricted_wheel_control_mapping(void) {
     assert(state.rotary[4] == 5);
     assert(state.accessory[0] == 6);
     assert(state.accessory[4] == 10);
-    assert(state.transfer_code == 0x87);
+    assert(state.transfer_code == 0x91);
+}
+
+static void test_wheel_accessory_mapping(void) {
+    fanatec_input_state state = {.accessory = {0, 0, 0, 0, 0xa5}};
+
+    fanatec_input_apply_wheel_accessory(&state, 0xf6);
+
+    assert(state.accessory[4] == 0xa6);
 }
 
 static void test_multi_position_mode_mapping(void) {
@@ -234,6 +246,7 @@ int main(void) {
     test_compatibility_encode();
     test_wheel_control_mapping();
     test_restricted_wheel_control_mapping();
+    test_wheel_accessory_mapping();
     test_multi_position_mode_mapping();
     test_multi_position_encoder_mapping();
     test_multi_position_pulse_mapping();

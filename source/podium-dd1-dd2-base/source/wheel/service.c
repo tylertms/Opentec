@@ -23,6 +23,7 @@ enum {
     WHEEL_MULTI_POSITION_PRIMARY_OFFSET = 6,
     WHEEL_MULTI_POSITION_SECONDARY_OFFSET = 7,
     WHEEL_MULTI_POSITION_PACKED_OFFSET = 14,
+    WHEEL_ACCESSORY_FLAGS_OFFSET = 15,
 };
 
 /**
@@ -730,6 +731,39 @@ bool wheel_service_axis_values(const WheelService *service, uint16_t values[2]) 
  */
 bool wheel_service_controls(const WheelService *service, uint8_t controls[8]) {
     return wheel_protocol_controls(&service->protocol, controls);
+}
+
+/**
+ * @brief Reports whether attached-wheel extended fields feed the input report.
+ *
+ * Suppresses the extended fields for authenticated CRC wheels and while modes four or six use the
+ * attached adapter. Other supported packet modes retain their extended fields.
+ *
+ * @param[in] service Attached-wheel service and adapter state.
+ * @return True when extended attached-wheel fields contribute to the input report.
+ */
+bool wheel_service_extended_report_fields(const WheelService *service) {
+    if (wheel_protocol_request(&service->protocol) == 0) {
+        return false;
+    }
+    uint8_t mode = service->protocol.mode;
+    if (mode == WHEEL_MODE_CRC_AUTHENTICATED) {
+        return false;
+    }
+    return !service->protocol.crc_adapter.connected || (mode != 4 && mode != 6);
+}
+
+/**
+ * @brief Returns the attached-wheel accessory flags.
+ *
+ * Reads the low-nibble accessory field retained in the normalized request view.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return Current accessory flags, or zero when input is unavailable.
+ */
+uint8_t wheel_service_accessory_flags(const WheelService *service) {
+    const uint8_t *request = wheel_protocol_request(&service->protocol);
+    return request != 0 ? request[WHEEL_ACCESSORY_FLAGS_OFFSET] & 0x0fu : 0;
 }
 
 /**

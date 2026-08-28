@@ -51,6 +51,7 @@ bool fanatec_input_compatibility_encode(uint8_t report[FANATEC_INPUT_COMPATIBILI
                                         const fanatec_input_state *state);
 void fanatec_input_apply_wheel_controls(fanatec_input_state *state, const uint8_t controls[8],
                                         bool include_extended);
+void fanatec_input_apply_wheel_accessory(fanatec_input_state *state, uint8_t flags);
 void fanatec_input_apply_multi_position_mode(fanatec_input_state *state, uint8_t mode);
 void fanatec_input_apply_multi_position_rotaries(fanatec_input_state *state, uint8_t mode,
                                                  const fanatec_multi_position_input *input);

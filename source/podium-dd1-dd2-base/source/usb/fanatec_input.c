@@ -46,19 +46,17 @@ static void write_u16(uint8_t *destination, uint16_t value) {
 /**
  * @brief Applies attached-wheel controls to the Fanatec input fields.
  *
- * Always copies the first two rotary values and the transfer byte. When extended controls are
- * enabled, also copies the remaining rotary values, the first accessory byte, and the low nibble
- * of the final accessory byte.
+ * Always copies the first two rotary values. When extended controls are enabled, also copies the
+ * remaining rotary values and the first accessory byte.
  *
  * @param[in,out] state Input report state to update.
  * @param[in] controls Eight attached-wheel control bytes.
- * @param[in] include_extended True to include control bytes two through six.
+ * @param[in] include_extended True to include control bytes two through five.
  */
 void fanatec_input_apply_wheel_controls(fanatec_input_state *state, const uint8_t controls[8],
                                         bool include_extended) {
     state->rotary[0] = controls[0];
     state->rotary[1] = controls[1];
-    state->transfer_code = controls[7];
     if (!include_extended) {
         return;
     }
@@ -66,7 +64,19 @@ void fanatec_input_apply_wheel_controls(fanatec_input_state *state, const uint8_
     state->rotary[3] = controls[3];
     state->rotary[4] = controls[4];
     state->accessory[0] = controls[5];
-    state->accessory[4] = (uint8_t)((state->accessory[4] & 0xf0u) | (controls[6] & 0x0fu));
+}
+
+/**
+ * @brief Applies attached-wheel accessory flags to the Fanatec input state.
+ *
+ * Replaces the low nibble of the final accessory byte while preserving the reporting-mode bits in
+ * its high nibble.
+ *
+ * @param[in,out] state Input report state to update.
+ * @param[in] flags Attached-wheel accessory flags.
+ */
+void fanatec_input_apply_wheel_accessory(fanatec_input_state *state, uint8_t flags) {
+    state->accessory[4] = (uint8_t)((state->accessory[4] & 0xf0u) | (flags & 0x0fu));
 }
 
 /**

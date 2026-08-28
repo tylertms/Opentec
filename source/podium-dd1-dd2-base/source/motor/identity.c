@@ -55,3 +55,17 @@ bool motor_identity_has_extended_parameters(const MotorIdentity *identity) {
     return identity->protocol == MOTOR_PROTOCOL_POSITION_A ||
            identity->protocol == MOTOR_PROTOCOL_POSITION_B;
 }
+
+/**
+ * @brief Selects the motor-controller code published in the input report.
+ *
+ * Returns the low six-bit identification code for standard and position-capable controllers.
+ * Legacy and unavailable controllers publish zero.
+ *
+ * @param[in] identity Decoded motor-controller identity, or null when unavailable.
+ * @return Input-report transfer code.
+ */
+uint8_t motor_identity_input_transfer_code(const MotorIdentity *identity) {
+    return identity != 0 && identity->protocol != MOTOR_PROTOCOL_LEGACY ? identity->transfer_code
+                                                                        : 0;
+}

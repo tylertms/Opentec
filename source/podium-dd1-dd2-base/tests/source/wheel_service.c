@@ -586,6 +586,29 @@ static void test_rejects_unavailable_multi_position_input(void) {
     assert(!wheel_service_multi_position_input(&service, 0, NULL));
 }
 
+static void test_selects_extended_report_fields(void) {
+    WheelService service;
+    initialize_service(&service);
+
+    assert(!wheel_service_extended_report_fields(&service));
+    assert(wheel_service_accessory_flags(&service) == 0);
+
+    service.protocol.request_ready = true;
+    service.protocol.request[15] = 0xab;
+    service.protocol.mode = 4;
+    assert(wheel_service_extended_report_fields(&service));
+    assert(wheel_service_accessory_flags(&service) == 0x0b);
+
+    service.protocol.crc_adapter.connected = true;
+    assert(!wheel_service_extended_report_fields(&service));
+    service.protocol.mode = 6;
+    assert(!wheel_service_extended_report_fields(&service));
+    service.protocol.mode = 1;
+    assert(wheel_service_extended_report_fields(&service));
+    service.protocol.mode = WHEEL_MODE_CRC_AUTHENTICATED;
+    assert(!wheel_service_extended_report_fields(&service));
+}
+
 int main(void) {
     test_maps_primary_scan_bits();
     test_maps_secondary_scan_bit();
@@ -604,5 +627,6 @@ int main(void) {
     test_builds_adapter_multi_position_input();
     test_marks_extended_multi_position_layout();
     test_rejects_unavailable_multi_position_input();
+    test_selects_extended_report_fields();
     return 0;
 }
