@@ -53,7 +53,7 @@ static void encode_configuration(const UsbHidConfiguration *configuration, uint8
     output[8] = power_units > UINT8_MAX ? UINT8_MAX : (uint8_t)power_units;
 }
 
-static void encode_interface(uint8_t *output) {
+static void encode_interface(const UsbHidConfiguration *configuration, uint8_t *output) {
     output[0] = 9;
     output[1] = USB_DESCRIPTOR_INTERFACE;
     output[2] = 0;
@@ -61,7 +61,7 @@ static void encode_interface(uint8_t *output) {
     output[4] = 2;
     output[5] = USB_CLASS_HID;
     output[6] = 0;
-    output[7] = 0;
+    output[7] = configuration->interface_protocol;
     output[8] = 0;
 }
 
@@ -89,7 +89,7 @@ void usb_hid_configuration_descriptor_encode(
     const UsbHidConfiguration *configuration,
     uint8_t output[USB_HID_CONFIGURATION_DESCRIPTOR_SIZE]) {
     encode_configuration(configuration, output);
-    encode_interface(&output[9]);
+    encode_interface(configuration, &output[9]);
     encode_hid(configuration, &output[18]);
     encode_endpoint(configuration->input_endpoint, configuration, &output[27]);
     encode_endpoint(configuration->output_endpoint, configuration, &output[34]);

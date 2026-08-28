@@ -33,6 +33,7 @@ typedef struct {
     uint8_t input_endpoint;
     uint8_t output_endpoint;
     uint8_t poll_interval_ms;
+    uint8_t interface_protocol;
     bool self_powered;
     bool remote_wakeup;
 } UsbHidConfiguration;
