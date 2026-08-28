@@ -131,6 +131,7 @@ motor_command_packet_sources = files('source/motor/command_packet.c')
 motor_command_receiver_sources = files('source/motor/command_receiver.c')
 motor_command_scheduler_sources = files('source/motor/command_scheduler.c')
 motor_command_sequence_sources = files('source/motor/command_sequence.c')
+motor_command_serial_sources = files('source/motor/command_serial.c')
 motor_command_startup_sources = files('source/motor/command_startup.c')
 motor_serial_message_sources = files('source/motor/serial_message.c')
 motor_serial_packet_sources = files('source/motor/serial_packet.c')
@@ -295,6 +296,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'motor-command-receiver': 'source/motor/command_receiver.c',
     'motor-command-scheduler': 'source/motor/command_scheduler.c',
     'motor-command-sequence': 'source/motor/command_sequence.c',
+    'motor-command-serial': 'source/motor/command_serial.c',
     'motor-command-startup': 'source/motor/command_startup.c',
     'motor-serial-message': 'source/motor/serial_message.c',
     'motor-serial-packet': 'source/motor/serial_packet.c',
@@ -1461,6 +1463,19 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  motor_command_serial_test = executable(
+    'base-motor-command-serial-test',
+    'tests/source/motor_command_serial.c',
+    motor_command_serial_sources,
+    motor_serial_session_sources,
+    motor_serial_message_sources,
+    motor_serial_packet_sources,
+    transfer_command_sources,
+    transfer_memory_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_transport_frame_test = executable(
     'base-wheel-transport-frame-test',
     'tests/source/wheel_transport_frame.c',
@@ -1885,6 +1900,7 @@ if not meson.is_cross_build()
   test('base-motor-serial-packet', motor_serial_packet_test, suite: ['base', 'motor'])
   test('base-motor-serial-message', motor_serial_message_test, suite: ['base', 'motor'])
   test('base-motor-serial-session', motor_serial_session_test, suite: ['base', 'motor'])
+  test('base-motor-command-serial', motor_command_serial_test, suite: ['base', 'motor'])
   test('base-wheel-protocol', wheel_protocol_test, suite: ['base', 'wheel', 'protocol'])
   test('base-wheel-capability', wheel_capability_test, suite: ['base', 'wheel', 'input'])
   test('base-wheel-motion', wheel_motion_test, suite: ['base', 'wheel', 'input'])
