@@ -1,6 +1,7 @@
 #include "platform/pedal_link.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <xc.h>
 
@@ -14,12 +15,19 @@ enum {
 
 static volatile uint8_t received_dma[PEDAL_FRAME_SIZE];
 static volatile uint8_t received_frame[PEDAL_FRAME_SIZE];
-static volatile uint8_t transmitted_dma[PEDAL_FRAME_SIZE];
+static volatile uint8_t received_transfer[TRANSFER_FRAME_MAX_RECEIVED_SIZE];
+static volatile uint8_t transfer_buffer[TRANSFER_FRAME_MAX_RECEIVED_SIZE];
+static volatile uint8_t transmitted_dma[TRANSFER_FRAME_MAX_ENCODED_SIZE];
 static volatile uint8_t received_byte;
+static volatile uint16_t received_transfer_length;
+static volatile uint16_t transfer_buffer_length;
 static volatile bool byte_ready;
 static volatile bool frame_ready;
+static volatile bool transfer_ready;
 static volatile bool transmit_active;
 static volatile bool resynchronizing;
+static volatile bool transfer_receiving;
+static volatile bool transfer_receive_enabled;
 
 static void clear_receive_fifo(void) {
     while (U2STAbits.URXDA != 0) {
@@ -79,8 +87,13 @@ static void configure_interrupts(void) {
 void platform_pedal_link_init(void) {
     byte_ready = false;
     frame_ready = false;
+    transfer_ready = false;
     transmit_active = false;
     resynchronizing = false;
+    transfer_receiving = false;
+    transfer_receive_enabled = false;
+    received_transfer_length = 0;
+    transfer_buffer_length = 0;
     configure_uart();
     configure_receive_dma();
     configure_transmit_dma();
@@ -99,7 +112,10 @@ void platform_pedal_link_begin_discovery(void) {
     clear_receive_fifo();
     byte_ready = false;
     frame_ready = false;
+    transfer_ready = false;
     resynchronizing = false;
+    transfer_receiving = false;
+    transfer_receive_enabled = false;
     IFS1bits.U2RXIF = 0;
     IEC1bits.U2RXIE = 1;
 }
@@ -116,7 +132,10 @@ void platform_pedal_link_begin_analog(void) {
     TRISFbits.TRISF1 = 1;
     byte_ready = false;
     frame_ready = false;
+    transfer_ready = false;
     resynchronizing = false;
+    transfer_receiving = false;
+    transfer_receive_enabled = false;
 }
 
 void platform_pedal_link_begin_framed_receive(void) {
@@ -126,14 +145,34 @@ void platform_pedal_link_begin_framed_receive(void) {
     clear_receive_fifo();
     byte_ready = false;
     frame_ready = false;
+    transfer_ready = false;
     resynchronizing = false;
+    transfer_receiving = false;
+    transfer_receive_enabled = false;
     DMA1CNT = PEDAL_FRAME_SIZE - 1;
     IFS0bits.DMA1IF = 0;
     IEC0bits.DMA1IE = 1;
     DMA1CONbits.CHEN = 1;
 }
 
-static bool begin_send(uint8_t length) {
+void platform_pedal_link_begin_transfer_receive(void) {
+    IEC0bits.DMA1IE = 0;
+    DMA1CONbits.CHEN = 0;
+    U2BRG = PEDAL_MODERN_BAUD_PERIOD;
+    clear_receive_fifo();
+    byte_ready = false;
+    frame_ready = false;
+    transfer_ready = false;
+    resynchronizing = false;
+    transfer_receiving = false;
+    transfer_receive_enabled = true;
+    received_transfer_length = 0;
+    transfer_buffer_length = 0;
+    IFS1bits.U2RXIF = 0;
+    IEC1bits.U2RXIE = 1;
+}
+
+static bool begin_send(uint16_t length) {
     IEC1bits.DMA2IE = 0;
     if (transmit_active) {
         IEC1bits.DMA2IE = 1;
@@ -168,6 +207,19 @@ bool platform_pedal_link_send_frame(const uint8_t frame[PEDAL_FRAME_SIZE]) {
     return begin_send(PEDAL_FRAME_SIZE);
 }
 
+bool platform_pedal_link_send_transfer(const uint8_t *data, uint16_t length) {
+    if (data == NULL || length == 0 || length > TRANSFER_FRAME_MAX_ENCODED_SIZE ||
+        transmit_active) {
+        return false;
+    }
+    for (uint16_t index = 0; index < length; index++) {
+        transmitted_dma[index] = data[index];
+    }
+    return begin_send(length);
+}
+
+bool platform_pedal_link_transmit_busy(void) { return transmit_active; }
+
 bool platform_pedal_link_take_byte(uint8_t *value) {
     IEC1bits.U2RXIE = 0;
     bool ready = byte_ready;
@@ -192,8 +244,54 @@ bool platform_pedal_link_take_frame(uint8_t frame[PEDAL_FRAME_SIZE]) {
     return ready;
 }
 
+uint16_t platform_pedal_link_take_transfer(uint8_t *data, uint16_t capacity) {
+    IEC1bits.U2RXIE = 0;
+    uint16_t length =
+        transfer_ready && received_transfer_length <= capacity ? received_transfer_length : 0;
+    if (length != 0) {
+        for (uint16_t index = 0; index < length; index++) {
+            data[index] = received_transfer[index];
+        }
+        transfer_ready = false;
+    }
+    IEC1bits.U2RXIE = 1;
+    return length;
+}
+
+static void receive_transfer_byte(uint8_t value) {
+    if (value == TRANSFER_FRAME_START) {
+        transfer_buffer[0] = value;
+        transfer_buffer_length = 1;
+        transfer_receiving = true;
+        return;
+    }
+    if (!transfer_receiving) {
+        return;
+    }
+    if (transfer_buffer_length >= TRANSFER_FRAME_MAX_RECEIVED_SIZE) {
+        transfer_buffer_length = 0;
+        transfer_receiving = false;
+        return;
+    }
+
+    transfer_buffer[transfer_buffer_length++] = value;
+    if (value != TRANSFER_FRAME_END) {
+        return;
+    }
+
+    if (!transfer_ready) {
+        for (uint16_t index = 0; index < transfer_buffer_length; index++) {
+            received_transfer[index] = transfer_buffer[index];
+        }
+        received_transfer_length = transfer_buffer_length;
+        transfer_ready = true;
+    }
+    transfer_buffer_length = 0;
+    transfer_receiving = false;
+}
+
 /**
- * Captures discovery bytes or resumes framed reception after an end delimiter.
+ * @brief Captures discovery bytes, V4 transfer frames, or V3 resynchronization markers.
  */
 void __attribute__((interrupt, no_auto_psv)) _U2RXInterrupt(void) {
     uint8_t last = 0;
@@ -201,13 +299,16 @@ void __attribute__((interrupt, no_auto_psv)) _U2RXInterrupt(void) {
     while (U2STAbits.URXDA != 0) {
         last = (uint8_t)U2RXREG;
         received = true;
+        if (transfer_receive_enabled) {
+            receive_transfer_byte(last);
+        }
     }
-    if (resynchronizing) {
+    if (!transfer_receive_enabled && resynchronizing) {
         if (received && last == PEDAL_FRAME_END) {
             resynchronizing = false;
             DMA1CONbits.CHEN = 1;
         }
-    } else if (received) {
+    } else if (!transfer_receive_enabled && received) {
         received_byte = last;
         byte_ready = true;
     }

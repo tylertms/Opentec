@@ -5,8 +5,10 @@
 
 #include "pedal/frame.h"
 #include "pedal/protocol.h"
+#include "pedal/v4_status.h"
 #include "platform/pedal_link.h"
 #include "platform/time.h"
+#include "transfer/session.h"
 
 enum {
     PEDAL_DETECT_COMMAND = 0x0a,
@@ -21,9 +23,15 @@ enum {
     PEDAL_STATUS_INTERVAL_MS = 500,
     PEDAL_INPUT_COMMAND_INTERVAL_MS = 500,
     PEDAL_KEEPALIVE_INTERVAL_MS = 2500,
+    PEDAL_V4_STATUS_INTERVAL_MS = 15,
     PEDAL_LEGACY_RESPONSE_TIMEOUT_MS = 17,
     PEDAL_LEGACY_AXIS_1_RETRY_LIMIT = 5,
     PEDAL_LEGACY_RETRY_LIMIT = 6,
+};
+
+static const uint8_t pedal_v4_status_request[] = {
+    0x12, 0x0a, 0x00, 0x00, 0x02, 0x08, 0x00, 0x00, 0x02, 0x18, 0x00,
+    0x00, 0x01, 0x20, 0x00, 0x00, 0x08, 0xaa, 0x00, 0x00, 0x01,
 };
 
 static void clear_v3_outbound(PedalService *service) {
@@ -41,8 +49,11 @@ static void clear_v3_outbound(PedalService *service) {
 static void reconnect(PedalService *service, uint32_t now_ms) {
     pedal_input_release(&service->input);
     pedal_v3_state_init(&service->v3);
+    service->v4.active = false;
     clear_v3_outbound(service);
     service->connected = false;
+    service->v4_request_pending = false;
+    service->v4_status_received = false;
     service->device = PEDAL_DEVICE_NONE;
     service->startup_frame_count = 0;
     service->legacy_channel = PEDAL_LEGACY_AXIS_1;
@@ -69,6 +80,7 @@ static bool send_frame(PedalService *service) {
 void pedal_service_init(PedalService *service) {
     pedal_input_release(&service->input);
     pedal_v3_state_init(&service->v3);
+    service->v4.active = false;
     pedal_analog_init(&service->analog);
     service->phase = PEDAL_SERVICE_DETECT_REQUEST;
     service->device = PEDAL_DEVICE_NONE;
@@ -91,8 +103,46 @@ void pedal_service_init(PedalService *service) {
     service->auxiliary_locked = false;
     service->recovery_handshake = false;
     service->status_transmitted = false;
+    service->v4_request_pending = false;
+    service->v4_status_received = false;
+    service->clock_ms = 0;
     clear_v3_outbound(service);
 }
+
+static void send_v4_transfer(void *context, const uint8_t *data, uint16_t length) {
+    (void)context;
+    (void)platform_pedal_link_send_transfer(data, length);
+}
+
+static bool v4_transfer_busy(void *context) {
+    (void)context;
+    return platform_pedal_link_transmit_busy();
+}
+
+static void apply_v4_status(void *context, const uint8_t *data, uint8_t length, uint8_t group,
+                            bool complete) {
+    PedalService *service = context;
+    (void)complete;
+    if (group != 0 || !service->v4_request_pending) {
+        return;
+    }
+    pedal_v4_status_parse(data, length, service->input.axes);
+    service->connected = true;
+    service->v4_request_pending = false;
+    service->v4_status_received = true;
+}
+
+static uint32_t read_v4_clock(void *context) {
+    const PedalService *service = context;
+    return service->clock_ms;
+}
+
+static const TransferSessionCallbacks v4_callbacks = {
+    .send = send_v4_transfer,
+    .ready = v4_transfer_busy,
+    .data = apply_v4_status,
+    .clock = read_v4_clock,
+};
 
 void pedal_service_set_analog_samples(PedalService *service,
                                       const uint16_t samples[PEDAL_INPUT_AXIS_COUNT]) {
@@ -165,7 +215,7 @@ static void service_select_protocol(PedalService *service, uint32_t now_ms) {
         service->deadline_ms = now_ms + PEDAL_V3_BAUD_SWITCH_DELAY_MS;
         break;
     case PEDAL_PROTOCOL_V4:
-        service->phase = PEDAL_SERVICE_V4_UNSUPPORTED;
+        service->phase = PEDAL_SERVICE_V4_START;
         break;
     case PEDAL_PROTOCOL_LEGACY:
         service->legacy_channel = PEDAL_LEGACY_AXIS_1;
@@ -174,6 +224,34 @@ static void service_select_protocol(PedalService *service, uint32_t now_ms) {
     case PEDAL_PROTOCOL_REDISCOVER:
         service->phase = PEDAL_SERVICE_DETECT_REQUEST;
         break;
+    }
+}
+
+/**
+ * @brief Services V4 transfers and polls status after each strict 15-millisecond deadline.
+ * @param service Pedal state, transfer session, and published axes to update.
+ * @param now_ms Current monotonic time in milliseconds.
+ */
+static void service_v4_stream(PedalService *service, uint32_t now_ms) {
+    uint16_t length = platform_pedal_link_take_transfer(service->transfer_buffer,
+                                                        sizeof(service->transfer_buffer));
+    if (length != 0) {
+        (void)transfer_session_receive(&service->v4, service->transfer_buffer, length);
+    }
+
+    if (transfer_session_poll(&service->v4) != TRANSFER_SESSION_OK) {
+        reconnect(service, now_ms);
+        return;
+    }
+    if (service->v4_status_received) {
+        service->v4_status_received = false;
+        return;
+    }
+    if (!service->v4_request_pending && now_ms > service->next_status_ms &&
+        transfer_session_send(&service->v4, pedal_v4_status_request,
+                              (uint8_t)sizeof(pedal_v4_status_request), 0)) {
+        service->v4_request_pending = true;
+        service->next_status_ms = now_ms + PEDAL_V4_STATUS_INTERVAL_MS;
     }
 }
 
@@ -331,6 +409,7 @@ static void service_v3_stream(PedalService *service, uint32_t now_ms) {
 }
 
 void pedal_service_run(PedalService *service, uint32_t now_ms) {
+    service->clock_ms = now_ms;
     switch (service->phase) {
     case PEDAL_SERVICE_DETECT_REQUEST:
         if (platform_pedal_link_send_byte(PEDAL_DETECT_COMMAND)) {
@@ -388,14 +467,26 @@ void pedal_service_run(PedalService *service, uint32_t now_ms) {
     case PEDAL_SERVICE_V3_STREAM:
         service_v3_stream(service, now_ms);
         break;
+    case PEDAL_SERVICE_V4_START:
+        platform_pedal_link_begin_transfer_receive();
+        if (transfer_session_init(&service->v4, &v4_callbacks, service)) {
+            service->phase = PEDAL_SERVICE_V4_STREAM;
+            service->next_status_ms = 0;
+            service->v4_request_pending = false;
+            service->v4_status_received = false;
+        } else {
+            reconnect(service, now_ms);
+        }
+        break;
+    case PEDAL_SERVICE_V4_STREAM:
+        service_v4_stream(service, now_ms);
+        break;
     case PEDAL_SERVICE_RECONNECT_WAIT:
         if (platform_time_reached(now_ms, service->deadline_ms)) {
             service->phase = PEDAL_SERVICE_DETECT_REQUEST;
         }
         break;
     case PEDAL_SERVICE_ANALOG:
-        break;
-    case PEDAL_SERVICE_V4_UNSUPPORTED:
         break;
     }
 }

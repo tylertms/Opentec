@@ -6,18 +6,26 @@
 #include "pedal/frame.h"
 #include "pedal/service.h"
 #include "platform/pedal_link.h"
+#include "transfer/frame.h"
 
 static uint8_t sent_byte;
 static uint8_t sent_frame[PEDAL_FRAME_SIZE];
 static uint8_t received_byte;
 static uint8_t received_frame[PEDAL_FRAME_SIZE];
+static uint8_t sent_transfer[TRANSFER_FRAME_MAX_ENCODED_SIZE];
+static uint8_t received_transfer[TRANSFER_FRAME_MAX_RECEIVED_SIZE];
+static uint16_t sent_transfer_length;
+static uint16_t received_transfer_length;
 static uint8_t byte_send_count;
 static uint8_t frame_send_count;
 static uint8_t discovery_count;
 static uint8_t analog_count;
 static uint8_t framed_receive_count;
+static uint8_t transfer_receive_count;
+static uint8_t transfer_send_count;
 static bool byte_ready;
 static bool frame_ready;
+static bool transfer_busy;
 
 void platform_pedal_link_init(void) {}
 
@@ -26,6 +34,8 @@ void platform_pedal_link_begin_analog(void) { analog_count++; }
 void platform_pedal_link_begin_discovery(void) { discovery_count++; }
 
 void platform_pedal_link_begin_framed_receive(void) { framed_receive_count++; }
+
+void platform_pedal_link_begin_transfer_receive(void) { transfer_receive_count++; }
 
 bool platform_pedal_link_send_byte(uint8_t value) {
     sent_byte = value;
@@ -38,6 +48,18 @@ bool platform_pedal_link_send_frame(const uint8_t frame[PEDAL_FRAME_SIZE]) {
     frame_send_count++;
     return true;
 }
+
+bool platform_pedal_link_send_transfer(const uint8_t *data, uint16_t length) {
+    if (transfer_busy || length > sizeof(sent_transfer)) {
+        return false;
+    }
+    memcpy(sent_transfer, data, length);
+    sent_transfer_length = length;
+    transfer_send_count++;
+    return true;
+}
+
+bool platform_pedal_link_transmit_busy(void) { return transfer_busy; }
 
 bool platform_pedal_link_take_byte(uint8_t *value) {
     if (!byte_ready) {
@@ -57,18 +79,35 @@ bool platform_pedal_link_take_frame(uint8_t frame[PEDAL_FRAME_SIZE]) {
     return true;
 }
 
+uint16_t platform_pedal_link_take_transfer(uint8_t *data, uint16_t capacity) {
+    if (received_transfer_length == 0 || received_transfer_length > capacity) {
+        return 0;
+    }
+    uint16_t length = received_transfer_length;
+    memcpy(data, received_transfer, length);
+    received_transfer_length = 0;
+    return length;
+}
+
 static void reset_link(void) {
     sent_byte = 0;
     memset(sent_frame, 0, sizeof(sent_frame));
     received_byte = 0;
     memset(received_frame, 0, sizeof(received_frame));
+    memset(sent_transfer, 0, sizeof(sent_transfer));
+    memset(received_transfer, 0, sizeof(received_transfer));
+    sent_transfer_length = 0;
+    received_transfer_length = 0;
     byte_send_count = 0;
     frame_send_count = 0;
     discovery_count = 0;
     analog_count = 0;
     framed_receive_count = 0;
+    transfer_receive_count = 0;
+    transfer_send_count = 0;
     byte_ready = false;
     frame_ready = false;
+    transfer_busy = false;
 }
 
 static void receive_byte(uint8_t value) {
@@ -79,6 +118,11 @@ static void receive_byte(uint8_t value) {
 static void receive_frame(const PedalFrame *frame) {
     pedal_frame_encode(frame, received_frame);
     frame_ready = true;
+}
+
+static void receive_transfer(uint16_t command, const uint8_t *payload, uint8_t payload_length) {
+    received_transfer_length =
+        transfer_frame_encode_values(command, payload, payload_length, received_transfer);
 }
 
 static void connect_v3(PedalService *service) {
@@ -372,23 +416,95 @@ static void test_tightens_timeout_after_stream_startup(void) {
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
 }
 
-static void test_identifies_unsupported_v4_transport(void) {
+static void connect_v4(PedalService *service) {
+    pedal_service_run(service, 0);
+    receive_byte(PEDAL_DEVICE_V4);
+    pedal_service_run(service, 1);
+    pedal_service_run(service, 2);
+    assert(sent_byte == 0x06);
+    receive_byte(0x26);
+    pedal_service_run(service, 3);
+    pedal_service_run(service, 4);
+    assert(service->phase == PEDAL_SERVICE_V4_START);
+    pedal_service_run(service, 5);
+    assert(service->phase == PEDAL_SERVICE_V4_STREAM);
+    assert(transfer_receive_count == 1);
+}
+
+static void test_polls_and_publishes_v4_input(void) {
+    PedalService service;
+    TransferFrame request;
+    static const uint8_t expected_request[] = {
+        0x12, 0x0a, 0x00, 0x00, 0x02, 0x08, 0x00, 0x00, 0x02, 0x18, 0x00,
+        0x00, 0x01, 0x20, 0x00, 0x00, 0x08, 0xaa, 0x00, 0x00, 0x01,
+    };
+    uint8_t status[45] = {0};
+    status[25] = 0x0a;
+    status[26] = 5;
+    status[27] = 0x08;
+    status[28] = 2;
+    status[29] = 0x10;
+    status[30] = 0xb4;
+    status[31] = 0x24;
+    status[32] = 0x0a;
+    status[33] = 5;
+    status[34] = 0x08;
+    status[35] = 1;
+    status[36] = 0x10;
+    status[37] = 0xe8;
+    status[38] = 0x07;
+    status[39] = 0x0a;
+    status[40] = 4;
+    status[41] = 0x08;
+    status[42] = 3;
+    status[43] = 0x10;
+    status[44] = 0x56;
+    reset_link();
+    pedal_service_init(&service);
+    connect_v4(&service);
+
+    pedal_service_run(&service, 6);
+    assert(transfer_send_count == 1);
+    assert(transfer_frame_decode(sent_transfer, sent_transfer_length, &request) ==
+           TRANSFER_FRAME_VALID);
+    assert(request.command == transfer_data_command(0, 0, 0));
+    assert(request.payload_length == sizeof(expected_request));
+    assert(memcmp(request.payload, expected_request, sizeof(expected_request)) == 0);
+
+    receive_transfer(transfer_status_command(0, 0), NULL, 0);
+    pedal_service_run(&service, 7);
+    assert(service.v4.outbound_pending == false);
+
+    receive_transfer(transfer_data_command(0, 0, 0), status, sizeof(status));
+    pedal_service_run(&service, 8);
+
+    assert(service.device == PEDAL_DEVICE_V4);
+    assert(service.phase == PEDAL_SERVICE_V4_STREAM);
+    assert(service.connected);
+    assert(service.input.axes[0] == 0x1234);
+    assert(service.input.axes[1] == 0x03e8);
+    assert(service.input.axes[2] == 0x56);
+    assert(transfer_send_count == 2);
+
+    pedal_service_run(&service, 21);
+    assert(transfer_send_count == 2);
+    pedal_service_run(&service, 22);
+    assert(transfer_send_count == 3);
+}
+
+static void test_reconnects_after_v4_transfer_timeout(void) {
     PedalService service;
     reset_link();
     pedal_service_init(&service);
+    connect_v4(&service);
 
-    pedal_service_run(&service, 0);
-    receive_byte(PEDAL_DEVICE_V4);
-    pedal_service_run(&service, 1);
-    pedal_service_run(&service, 2);
-    assert(sent_byte == 0x06);
-    receive_byte(0x26);
-    pedal_service_run(&service, 3);
-    pedal_service_run(&service, 4);
+    pedal_service_run(&service, 205);
+    assert(service.phase == PEDAL_SERVICE_V4_STREAM);
+    pedal_service_run(&service, 206);
 
-    assert(service.device == PEDAL_DEVICE_V4);
-    assert(service.phase == PEDAL_SERVICE_V4_UNSUPPORTED);
+    assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
     assert(!service.connected);
+    assert(discovery_count == 1);
 }
 
 static void test_polls_legacy_pedal_channels(void) {
@@ -471,7 +587,8 @@ int main(void) {
     test_schedules_v3_commands_and_calibration_frames();
     test_uses_long_timeout_during_stream_startup();
     test_tightens_timeout_after_stream_startup();
-    test_identifies_unsupported_v4_transport();
+    test_polls_and_publishes_v4_input();
+    test_reconnects_after_v4_transfer_timeout();
     test_polls_legacy_pedal_channels();
     test_retries_after_discovery_timeout();
     test_selects_analog_input_after_discovery_timeout();

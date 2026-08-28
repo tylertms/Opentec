@@ -8,6 +8,7 @@
 #include "pedal/frame.h"
 #include "pedal/input.h"
 #include "pedal/protocol.h"
+#include "transfer/session.h"
 
 typedef enum {
     PEDAL_SERVICE_DETECT_REQUEST,
@@ -20,14 +21,16 @@ typedef enum {
     PEDAL_SERVICE_V3_SWITCH_WAIT,
     PEDAL_SERVICE_V3_START,
     PEDAL_SERVICE_V3_STREAM,
+    PEDAL_SERVICE_V4_START,
+    PEDAL_SERVICE_V4_STREAM,
     PEDAL_SERVICE_RECONNECT_WAIT,
     PEDAL_SERVICE_ANALOG,
-    PEDAL_SERVICE_V4_UNSUPPORTED,
 } PedalServicePhase;
 
 typedef struct {
     PedalInput input;
     PedalV3State v3;
+    TransferSession v4;
     PedalAnalog analog;
     PedalServicePhase phase;
     PedalDevice device;
@@ -35,9 +38,11 @@ typedef struct {
     uint32_t next_status_ms;
     uint32_t next_input_command_ms;
     uint32_t next_keepalive_ms;
+    uint32_t clock_ms;
     PedalFrame transmit_frame;
     PedalFrame receive_frame;
     uint8_t frame_buffer[PEDAL_FRAME_SIZE];
+    uint8_t transfer_buffer[TRANSFER_FRAME_MAX_RECEIVED_SIZE];
     uint8_t response;
     uint8_t brake_force_percent;
     uint8_t startup_frame_count;
@@ -57,6 +62,8 @@ typedef struct {
     bool configuration_reset_pending;
     bool recovery_handshake;
     bool status_transmitted;
+    bool v4_request_pending;
+    bool v4_status_received;
 } PedalService;
 
 void pedal_service_init(PedalService *service);
