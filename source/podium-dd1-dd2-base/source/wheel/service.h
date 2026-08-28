@@ -71,6 +71,7 @@ const uint8_t *wheel_service_buttons(const WheelService *service);
 uint8_t wheel_service_axis_limit(const WheelService *service);
 const uint8_t *wheel_service_clutch_paddles(const WheelService *service);
 bool wheel_service_axis_values(const WheelService *service, uint16_t values[2]);
+const WheelAxisOverrides *wheel_service_axis_overrides(const WheelService *service);
 bool wheel_service_controls(const WheelService *service, uint8_t controls[8]);
 bool wheel_service_extended_report_fields(const WheelService *service);
 uint8_t wheel_service_accessory_flags(const WheelService *service);

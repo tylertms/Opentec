@@ -264,6 +264,35 @@ void fanatec_input_apply_wheel_input_capability(fanatec_input_state *state, bool
 }
 
 /**
+ * @brief Merges attached-wheel axes into the Fanatec pedal fields.
+ *
+ * Expands enabled wheel axis bytes across the sixteen-bit pedal range and retains the lower value
+ * from each wheel and pedal source. The auxiliary channel applies the same rule at eight bits.
+ *
+ * @param[in,out] state Input report state whose pedal fields receive the merged values.
+ * @param[in] overrides Attached-wheel axis channels and availability flags.
+ */
+void fanatec_input_apply_wheel_axis_overrides(fanatec_input_state *state,
+                                              const WheelAxisOverrides *overrides) {
+    const WheelAxisOverride *pedal_overrides[FANATEC_INPUT_PEDAL_AXES] = {
+        &overrides->axis_5,
+        &overrides->axis_6,
+        &overrides->axis_7,
+    };
+    for (uint8_t axis = 0; axis < FANATEC_INPUT_PEDAL_AXES; axis++) {
+        if (pedal_overrides[axis]->enabled) {
+            uint16_t value = (uint16_t)pedal_overrides[axis]->value * 0x0101u;
+            if (value < state->pedals[axis]) {
+                state->pedals[axis] = value;
+            }
+        }
+    }
+    if (overrides->auxiliary.enabled && overrides->auxiliary.value < state->auxiliary_pedal) {
+        state->auxiliary_pedal = overrides->auxiliary.value;
+    }
+}
+
+/**
  * @brief Encodes the shared Fanatec input payload.
  *
  * Writes every logical input field and the fixed button usage identifiers without a report ID.

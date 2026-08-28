@@ -723,6 +723,18 @@ bool wheel_service_axis_values(const WheelService *service, uint16_t values[2]) 
 }
 
 /**
+ * @brief Returns the attached wheel's pedal-axis overrides.
+ *
+ * Exposes the four logical override channels produced by the current wheel axis mode.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return Current pedal and auxiliary override channels.
+ */
+const WheelAxisOverrides *wheel_service_axis_overrides(const WheelService *service) {
+    return &service->protocol.axis_override_processor.overrides;
+}
+
+/**
  * @brief Copies the attached wheel's eight control bytes.
  *
  * Returns the normalized controls from the current supported packet-family input report.

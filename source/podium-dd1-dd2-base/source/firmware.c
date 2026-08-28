@@ -905,6 +905,8 @@ static void service_usb_input(uint32_t now_ms) {
         usb_input_state.fanatec.pedals[axis] = pedal_input_hid_axis(pedal_input->axes[axis]);
     }
     usb_input_state.fanatec.auxiliary_pedal = pedal_input_hid_auxiliary(pedal_input->auxiliary);
+    fanatec_input_apply_wheel_axis_overrides(&usb_input_state.fanatec,
+                                             wheel_service_axis_overrides(&wheel_service));
     uint8_t report_size =
         usb_input_report_encode(usb_device_input_mode(), usb_input_report, &usb_input_state);
     if (report_size != 0) {

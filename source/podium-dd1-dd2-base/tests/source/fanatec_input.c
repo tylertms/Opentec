@@ -273,6 +273,35 @@ static void test_wheel_input_capability_status(void) {
     assert(state.status_flags == 0x51);
 }
 
+static void test_wheel_axis_override_mapping(void) {
+    fanatec_input_state state = {
+        .pedals = {0x8080, 0x4040, 0x2020},
+        .auxiliary_pedal = 0x70,
+    };
+    WheelAxisOverrides overrides = {
+        .axis_5 = {.enabled = true, .value = 0x30},
+        .axis_6 = {.enabled = true, .value = 0x50},
+        .axis_7 = {.value = 0x10},
+        .auxiliary = {.enabled = true, .value = 0x60},
+    };
+
+    fanatec_input_apply_wheel_axis_overrides(&state, &overrides);
+
+    assert(state.pedals[0] == 0x3030);
+    assert(state.pedals[1] == 0x4040);
+    assert(state.pedals[2] == 0x2020);
+    assert(state.auxiliary_pedal == 0x60);
+
+    overrides.axis_6.value = 0x20;
+    overrides.axis_7.enabled = true;
+    overrides.auxiliary.value = 0x80;
+    fanatec_input_apply_wheel_axis_overrides(&state, &overrides);
+
+    assert(state.pedals[1] == 0x2020);
+    assert(state.pedals[2] == 0x1010);
+    assert(state.auxiliary_pedal == 0x60);
+}
+
 int main(void) {
     test_encode();
     test_zero_state();
@@ -292,5 +321,6 @@ int main(void) {
     test_thermal_effect_limit_status();
     test_wheel_calibration_status();
     test_wheel_input_capability_status();
+    test_wheel_axis_override_mapping();
     return 0;
 }

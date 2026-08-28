@@ -632,6 +632,19 @@ static void test_reports_mode_gated_input_capability(void) {
     assert(!wheel_service_input_capability_available(&service));
 }
 
+static void test_exposes_axis_overrides(void) {
+    WheelService service;
+    initialize_service(&service);
+    service.protocol.axis_override_processor.overrides.axis_6.enabled = true;
+    service.protocol.axis_override_processor.overrides.axis_6.value = 0x5a;
+
+    const WheelAxisOverrides *overrides = wheel_service_axis_overrides(&service);
+
+    assert(overrides == &service.protocol.axis_override_processor.overrides);
+    assert(overrides->axis_6.enabled);
+    assert(overrides->axis_6.value == 0x5a);
+}
+
 int main(void) {
     test_maps_primary_scan_bits();
     test_maps_secondary_scan_bit();
@@ -653,5 +666,6 @@ int main(void) {
     test_selects_extended_report_fields();
     test_reports_calibration_availability();
     test_reports_mode_gated_input_capability();
+    test_exposes_axis_overrides();
     return 0;
 }

@@ -6,6 +6,7 @@
 
 #include "shifter/h_pattern.h"
 #include "shifter/input.h"
+#include "wheel/axis_override.h"
 
 enum {
     FANATEC_INPUT_REPORT_ID = 1,
@@ -60,5 +61,7 @@ void fanatec_input_apply_shifter(fanatec_input_state *state, const ShifterInputS
 void fanatec_input_apply_thermal_limit(fanatec_input_state *state, bool active);
 void fanatec_input_apply_wheel_calibration(fanatec_input_state *state, bool available);
 void fanatec_input_apply_wheel_input_capability(fanatec_input_state *state, bool available);
+void fanatec_input_apply_wheel_axis_overrides(fanatec_input_state *state,
+                                              const WheelAxisOverrides *overrides);
 
 #endif
