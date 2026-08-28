@@ -66,6 +66,7 @@
 #include "wheel/position.h"
 #include "wheel/service.h"
 #include "wheel/status_service.h"
+#include "wheel/steering_limit.h"
 #include "wheel/transfer_service.h"
 
 #pragma config GWRP = OFF
@@ -145,6 +146,7 @@ static UsbOperatingModeCommand usb_operating_mode_command;
 static PedalCalibrationCommand pedal_calibration_command;
 static PedalCalibrationActions pedal_calibration_actions;
 static PedalProtocolCommand pedal_protocol_command;
+static WheelSteeringLimitCommand wheel_steering_limit_command;
 static UsbVendorCommand usb_vendor_command;
 static UsbWheelTransferCommand usb_wheel_transfer_command;
 static ForceFeedbackCommand force_feedback_command;
@@ -748,6 +750,13 @@ static void service_usb_output(void) {
         } else if (pedal_protocol_command_decode(&usb_operating_mode_command,
                                                  &pedal_protocol_command)) {
             pedal_service_apply_protocol_command(&pedal_service, &pedal_protocol_command);
+        } else if (wheel_steering_limit_command_decode(&usb_operating_mode_command,
+                                                       &wheel_steering_limit_command)) {
+            if (wheel_steering_limits_apply(
+                    &base_settings.steering_limits, base_settings.tuning_profiles.active_slot,
+                    &wheel_steering_limit_command) == WHEEL_STEERING_LIMIT_CHANGED) {
+                base_settings_persistence_mark_dirty(&settings_persistence, platform_time_ms());
+            }
         }
         return;
     }

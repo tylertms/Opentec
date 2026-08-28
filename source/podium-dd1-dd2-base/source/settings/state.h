@@ -5,12 +5,14 @@
 #include "profile/bank.h"
 #include "shifter/h_pattern.h"
 #include "wheel/position.h"
+#include "wheel/steering_limit.h"
 
 typedef struct {
     TuningProfileBank tuning_profiles;
     WheelPositionReference wheel_position;
     HPatternSettings h_pattern_shifter;
     AuxiliaryAxisSettings auxiliary_axis;
+    WheelSteeringLimits steering_limits;
 } BaseSettings;
 
 void base_settings_defaults(BaseSettings *settings);

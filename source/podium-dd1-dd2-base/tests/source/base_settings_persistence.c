@@ -81,6 +81,7 @@ static void test_defaults_are_saved_after_delay(void) {
     assert(restored.auxiliary_axis.minimum == 0x0f38);
     assert(restored.auxiliary_axis.maximum == 0x00c8);
     assert(restored.auxiliary_axis.reset_on_start);
+    assert(wheel_steering_limits_active(&restored.steering_limits, 0) == 100);
 }
 
 static void test_dirty_changes_are_coalesced(void) {
@@ -182,6 +183,25 @@ static void test_auxiliary_axis_settings_are_persisted(void) {
     assert(!restored.auxiliary_axis.reset_on_start);
 }
 
+static void test_steering_limit_settings_are_persisted(void) {
+    reset_storage();
+    BaseSettingsPersistence persistence;
+    BaseSettings settings;
+    base_settings_persistence_load(&persistence, &settings, 0);
+    settings.steering_limits.percent[0] = 35;
+    settings.steering_limits.percent[5] = 80;
+    base_settings_persistence_mark_dirty(&persistence, 100);
+    assert(base_settings_persistence_service(&persistence, &settings, 1100) ==
+           BASE_SETTINGS_PERSISTENCE_SAVED);
+
+    BaseSettingsPersistence loaded;
+    BaseSettings restored;
+    assert(base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(restored.steering_limits.percent[0] == 35);
+    assert(restored.steering_limits.percent[5] == 80);
+    assert(restored.steering_limits.percent[1] == 100);
+}
+
 static void test_profile_only_record_is_upgraded(void) {
     enum { HEADER_SIZE = 12, PROFILE_ONLY_VERSION = 1 };
     reset_storage();
@@ -274,6 +294,45 @@ static void test_h_pattern_record_is_upgraded(void) {
     assert(restored.auxiliary_axis.reset_on_start);
 }
 
+static void test_auxiliary_axis_record_is_upgraded(void) {
+    enum {
+        HEADER_SIZE = 12,
+        AUXILIARY_AXIS_VERSION = 4,
+        WHEEL_REFERENCE_SIZE = 5,
+        H_PATTERN_SIZE = 17,
+        AUXILIARY_AXIS_SIZE = 5,
+    };
+    reset_storage();
+    BaseSettingsPersistence persistence;
+    BaseSettings settings;
+    base_settings_persistence_load(&persistence, &settings, 0);
+    settings.auxiliary_axis = (AuxiliaryAxisSettings){
+        .minimum = 300,
+        .maximum = 3700,
+        .reset_on_start = false,
+    };
+    settings.steering_limits.percent[0] = 25;
+    assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
+           BASE_SETTINGS_PERSISTENCE_SAVED);
+
+    uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
+    uint16_t payload_size =
+        TUNING_PROFILE_RECORD_SIZE + WHEEL_REFERENCE_SIZE + H_PATTERN_SIZE + AUXILIARY_AXIS_SIZE;
+    uint16_t data_size = HEADER_SIZE + payload_size;
+    record[4] = AUXILIARY_AXIS_VERSION;
+    write_u16(record, 6, payload_size);
+    write_u16(record, data_size, checksum(record, data_size));
+
+    BaseSettingsPersistence loaded;
+    BaseSettings restored;
+    assert(base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(loaded.dirty);
+    assert(restored.auxiliary_axis.minimum == 300);
+    assert(restored.auxiliary_axis.maximum == 3700);
+    assert(!restored.auxiliary_axis.reset_on_start);
+    assert(restored.steering_limits.percent[0] == 100);
+}
+
 static void test_interrupted_replacement_preserves_previous_record(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
@@ -344,9 +403,11 @@ int main(void) {
     test_wheel_reference_is_persisted();
     test_shifter_calibration_is_persisted();
     test_auxiliary_axis_settings_are_persisted();
+    test_steering_limit_settings_are_persisted();
     test_profile_only_record_is_upgraded();
     test_wheel_reference_record_is_upgraded();
     test_h_pattern_record_is_upgraded();
+    test_auxiliary_axis_record_is_upgraded();
     test_interrupted_replacement_preserves_previous_record();
     test_corrupted_new_record_falls_back_to_previous_record();
     test_deadline_wraps_safely();

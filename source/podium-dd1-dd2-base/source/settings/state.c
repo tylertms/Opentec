@@ -13,4 +13,5 @@ void base_settings_defaults(BaseSettings *settings) {
     wheel_position_reference_reset(&settings->wheel_position);
     settings->h_pattern_shifter = (HPatternSettings){0};
     auxiliary_axis_settings_defaults(&settings->auxiliary_axis);
+    wheel_steering_limits_defaults(&settings->steering_limits);
 }
