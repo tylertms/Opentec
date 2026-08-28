@@ -12,6 +12,7 @@ enum {
 };
 
 typedef enum {
+    MOTOR_COMMAND_MAILBOX_STATUS_WRITE,
     MOTOR_COMMAND_MAILBOX_CONTROL_WRITE,
     MOTOR_COMMAND_MAILBOX_COMMAND_WRITE,
 } MotorCommandMailboxWriteKind;
@@ -48,9 +49,9 @@ motor_command_mailbox_queue_command(CommandTransport *transport,
                                     const uint8_t command[MOTOR_COMMAND_MAILBOX_REGISTER_SIZE]);
 void motor_command_mailbox_write_init(MotorCommandMailboxWrite *write,
                                       MotorCommandMailboxWriteKind kind);
-MotorCommandMailboxWriteResult
-motor_command_mailbox_write_run(MotorCommandMailboxWrite *write, CommandTransport *transport,
-                                const uint8_t record[MOTOR_COMMAND_MAILBOX_REGISTER_SIZE],
-                                uint32_t *command_value);
+MotorCommandMailboxWriteResult motor_command_mailbox_write_run(MotorCommandMailboxWrite *write,
+                                                               CommandTransport *transport,
+                                                               const uint8_t *record,
+                                                               uint32_t *accepted_value);
 
 #endif

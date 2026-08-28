@@ -122,6 +122,24 @@ static void test_completes_command_register_write(void) {
     assert(write.phase == MOTOR_COMMAND_MAILBOX_WRITE_QUEUE);
 }
 
+static void test_completes_status_register_write(void) {
+    static const uint8_t status[] = {0x34, 0x12};
+    static const uint8_t accepted[] = {1};
+    CommandTransport transport;
+    MotorCommandMailboxWrite write;
+    uint32_t accepted_value = 0;
+    command_transport_init(&transport);
+    motor_command_mailbox_write_init(&write, MOTOR_COMMAND_MAILBOX_STATUS_WRITE);
+
+    assert(motor_command_mailbox_write_run(&write, &transport, status, &accepted_value) ==
+           MOTOR_COMMAND_MAILBOX_WRITE_NONE);
+    assert(command_transport_request_sent(&transport));
+    command_transport_receive(&transport, accepted, sizeof(accepted));
+    assert(motor_command_mailbox_write_run(&write, &transport, status, &accepted_value) ==
+           MOTOR_COMMAND_MAILBOX_WRITE_COMPLETE);
+    assert(accepted_value == 0x3412);
+}
+
 static void test_reports_rejected_register_write(void) {
     static const uint8_t control[] = {0x80, 0, 0, 0};
     static const uint8_t rejected[] = {0};
@@ -152,6 +170,7 @@ int main(void) {
     test_consumes_previous_rejection_before_queueing();
     test_rejects_oversized_response_transfer();
     test_completes_command_register_write();
+    test_completes_status_register_write();
     test_reports_rejected_register_write();
     return 0;
 }
