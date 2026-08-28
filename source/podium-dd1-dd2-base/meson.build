@@ -91,6 +91,7 @@ wheel_axis_override_sources = files('source/wheel/axis_override.c')
 wheel_authentication_sources = files('source/wheel/authentication.c')
 wheel_display_output_sources = files('source/wheel/display_output.c')
 wheel_packet_mode_one_sources = files('source/wheel/packet_mode_one.c')
+wheel_packet_mode_four_sources = files('source/wheel/packet_mode_four.c')
 wheel_protocol_sources = files('source/wheel/protocol.c')
 wheel_service_sources = files('source/wheel/service.c')
 wheel_transport_frame_sources = files('source/wheel/transport_frame.c')
@@ -217,6 +218,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'wheel-authentication': 'source/wheel/authentication.c',
     'wheel-display-output': 'source/wheel/display_output.c',
     'wheel-packet-mode-one': 'source/wheel/packet_mode_one.c',
+    'wheel-packet-mode-four': 'source/wheel/packet_mode_four.c',
     'wheel-protocol': 'source/wheel/protocol.c',
     'wheel-service': 'source/wheel/service.c',
     'wheel-transport-frame': 'source/wheel/transport_frame.c',
@@ -1078,6 +1080,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_packet_mode_four_test = executable(
+    'base-wheel-packet-mode-four-test',
+    'tests/source/wheel_packet_mode_four.c',
+    wheel_packet_mode_four_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_protocol_test = executable(
     'base-wheel-protocol-test',
     'tests/source/wheel_protocol.c',
@@ -1085,6 +1095,7 @@ if not meson.is_cross_build()
     wheel_authentication_sources,
     wheel_axis_override_sources,
     wheel_packet_mode_one_sources,
+    wheel_packet_mode_four_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -1097,6 +1108,7 @@ if not meson.is_cross_build()
     wheel_authentication_sources,
     wheel_axis_override_sources,
     wheel_packet_mode_one_sources,
+    wheel_packet_mode_four_sources,
     wheel_protocol_sources,
     wheel_transport_service_sources,
     wheel_transport_frame_sources,
@@ -1341,6 +1353,11 @@ if not meson.is_cross_build()
   test(
     'base-wheel-packet-mode-one',
     wheel_packet_mode_one_test,
+    suite: ['base', 'wheel', 'protocol'],
+  )
+  test(
+    'base-wheel-packet-mode-four',
+    wheel_packet_mode_four_test,
     suite: ['base', 'wheel', 'protocol'],
   )
   test('base-wheel-service', wheel_service_test, suite: ['base', 'wheel', 'input'])

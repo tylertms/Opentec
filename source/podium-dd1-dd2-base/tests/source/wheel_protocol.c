@@ -435,6 +435,75 @@ static void test_tracks_display_acknowledgement_input(void) {
     assert(wheel_protocol_acknowledgement_input_active(&protocol));
 }
 
+static void test_captures_mode_four_requests(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    wheel_protocol_set_axis_processing(&protocol, 6, WHEEL_AXIS_OVERRIDE_MODE_NONE, 0);
+    protocol.mode = 4;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    request[0] = WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
+    request[2] = 0x80;
+    request[3] = 0x40;
+    request[4] = 0x20;
+    request[8] = 0xff;
+    request[9] = 0xff;
+    request[10] = 0xff;
+    request[11] = 0xff;
+    request[12] = 0x61;
+    request[18] = 0x34;
+    request[19] = 0x12;
+    request[31] = 0x74;
+    request[WHEEL_PROTOCOL_FLAGS_OFFSET] = WHEEL_PROTOCOL_REQUEST_READY;
+
+    accept_active_request(&protocol, request);
+    accept_active_request(&protocol, request);
+    assert(wheel_protocol_mode_four_input(&protocol)->buttons[0] == 0);
+    accept_active_request(&protocol, request);
+
+    const WheelPacketModeFourInput *input = wheel_protocol_mode_four_input(&protocol);
+    assert(input != 0);
+    assert(input->buttons[0] == 0x80);
+    assert(input->buttons[1] == 0x40);
+    assert(input->buttons[2] == 0x20);
+    assert(input->axis_values[0] == 0x1234);
+    assert(input->control_data[0] == 0x61);
+    assert(input->axis_limit == 0x74);
+    assert(wheel_protocol_acknowledgement_input_active(&protocol));
+    assert(wheel_protocol_request_changed(&protocol));
+    assert(!wheel_protocol_request_changed(&protocol));
+
+    accept_active_request(&protocol, request);
+    assert(input->controls[0] == 0x38);
+    assert(input->controls[1] == 0x80);
+    assert(input->controls[2] == 0);
+    assert(input->controls[3] == 0);
+}
+
+static void test_builds_mode_four_active_response(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    const WheelPacketModeFourOutput output = {
+        .display = {.glyphs = {0x11, 0x22, 0x33}, .third_glyph_marker = true},
+        .display_state = {0x44, 0x55},
+        .legacy_axes = {0x66, 0x77},
+    };
+    wheel_protocol_init(&protocol);
+    wheel_protocol_set_mode_four_output(&protocol, &output);
+    synchronize(&protocol, request);
+    select_mode(&protocol, request, 4);
+
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+    wheel_protocol_accept(&protocol, request);
+
+    const uint8_t *response = wheel_protocol_response(&protocol);
+    const uint8_t expected[WHEEL_PACKET_MODE_FOUR_RESPONSE_SIZE] = {
+        0xa5, 0x00, 0x11, 0x22, 0xb3, 0x44, 0x55, 0x66, 0x77,
+    };
+    assert(memcmp(response, expected, sizeof(expected)) == 0);
+    assert(wheel_protocol_message_valid(response));
+}
+
 static void test_applies_authenticated_axis_overrides(void) {
     WheelProtocol protocol;
     wheel_protocol_init(&protocol);
@@ -525,8 +594,10 @@ int main(void) {
     test_captures_normalized_active_requests();
     test_averages_control_axes_only_for_authenticated_wheel_modes();
     test_tracks_display_acknowledgement_input();
+    test_captures_mode_four_requests();
     test_applies_authenticated_axis_overrides();
     test_builds_mode_one_active_response();
+    test_builds_mode_four_active_response();
     test_rejects_out_of_range_mode();
     test_crc8_vectors();
     return 0;

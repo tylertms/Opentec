@@ -179,6 +179,8 @@ static void reset_connection(WheelService *service) {
     WheelPacketModeOneControlAxisFilter mode_one_control_axis_filter =
         service->protocol.mode_one_control_axis_filter;
     WheelPacketModeOneOutput mode_one_output = service->protocol.mode_one_output;
+    WheelPacketModeFourFilter mode_four_filter = service->protocol.mode_four_filter;
+    WheelPacketModeFourOutput mode_four_output = service->protocol.mode_four_output;
     uint8_t interface_mode = service->protocol.interface_mode;
     uint8_t axis_override_mode = service->protocol.configured_axis_override_mode;
     uint8_t axis_calibration_value = service->protocol.axis_calibration_value;
@@ -191,6 +193,8 @@ static void reset_connection(WheelService *service) {
     service->protocol.mode_one_button_filter = mode_one_button_filter;
     service->protocol.mode_one_control_axis_filter = mode_one_control_axis_filter;
     service->protocol.mode_one_output = mode_one_output;
+    service->protocol.mode_four_filter = mode_four_filter;
+    service->protocol.mode_four_output = mode_four_output;
     wheel_protocol_set_axis_processing(&service->protocol, interface_mode, axis_override_mode,
                                        axis_calibration_value);
     service->protocol.axis_override_processor.multiplex_phase = axis_multiplex_phase;
@@ -275,6 +279,9 @@ void wheel_service_set_display_output(WheelService *service, const WheelDisplayO
     WheelPacketModeOneOutput mode_one_output = service->protocol.mode_one_output;
     mode_one_output.display = *output;
     service->protocol.mode_one_output = mode_one_output;
+    WheelPacketModeFourOutput mode_four_output = service->protocol.mode_four_output;
+    mode_four_output.display = *output;
+    service->protocol.mode_four_output = mode_four_output;
 }
 
 void wheel_service_run(WheelService *service, uint32_t now_ms) {
@@ -313,28 +320,34 @@ void wheel_service_run(WheelService *service, uint32_t now_ms) {
 /**
  * @brief Returns the current attached-wheel button banks.
  *
- * Selects decoded packet buttons after a standard wheel protocol request becomes active. Scan-mode
- * wheels continue to use the three filtered button banks assembled from command-3 responses.
+ * Selects decoded mode-one or mode-four packet buttons after the wheel protocol becomes active.
+ * Scan-mode wheels use the three filtered button banks assembled from command-3 responses.
  *
  * @param[in] service Attached-wheel service state.
  * @return Three current button bytes.
  */
 const uint8_t *wheel_service_buttons(const WheelService *service) {
     const WheelPacketModeOneInput *input = wheel_protocol_mode_one_input(&service->protocol);
-    return input != 0 ? input->buttons : service->button_banks;
+    if (input != 0) {
+        return input->buttons;
+    }
+    const WheelPacketModeFourInput *mode_four_input =
+        wheel_protocol_mode_four_input(&service->protocol);
+    return mode_four_input != 0 ? mode_four_input->buttons : service->button_banks;
 }
 
 /**
  * @brief Reports attached-wheel input eligible to acknowledge a display overlay.
  *
- * Uses the standard packet protocol's directional, button, and auxiliary input state. Scan-mode
- * wheels report active when any filtered button bank is nonzero.
+ * Uses mode-one or mode-four directional, button, and auxiliary input state. Scan-mode wheels
+ * report active when any filtered button bank is nonzero.
  *
  * @param[in] service Attached-wheel service state.
  * @return True while an eligible input is active.
  */
 bool wheel_service_acknowledgement_input_active(const WheelService *service) {
-    if (wheel_protocol_mode_one_input(&service->protocol) != 0) {
+    if (wheel_protocol_mode_one_input(&service->protocol) != 0 ||
+        wheel_protocol_mode_four_input(&service->protocol) != 0) {
         return wheel_protocol_acknowledgement_input_active(&service->protocol);
     }
     for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {

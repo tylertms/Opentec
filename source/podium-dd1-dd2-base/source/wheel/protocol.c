@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "wheel/authentication.h"
+#include "wheel/packet_mode_four.h"
 #include "wheel/packet_mode_one.h"
 
 /**
@@ -42,12 +43,17 @@ static void build_selection_response(WheelProtocol *protocol) {
 }
 
 static void build_active_response(WheelProtocol *protocol) {
-    if (!wheel_packet_mode_one_applies(protocol->mode)) {
+    if (!wheel_packet_mode_one_applies(protocol->mode) && protocol->mode != 4) {
         return;
     }
     uint8_t flags = protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET];
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
-    wheel_packet_mode_one_encode(protocol->mode, &protocol->mode_one_output, protocol->response);
+    if (protocol->mode == 4) {
+        wheel_packet_mode_four_encode(&protocol->mode_four_output, protocol->response);
+    } else {
+        wheel_packet_mode_one_encode(protocol->mode, &protocol->mode_one_output,
+                                     protocol->response);
+    }
     protocol->response[WHEEL_PROTOCOL_CHECKSUM_OFFSET] =
         crc8(protocol->response, WHEEL_PROTOCOL_CONTENT_SIZE);
     protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] = flags;
@@ -62,16 +68,30 @@ static void build_active_response(WheelProtocol *protocol) {
  * @param[in] input Decoded and button-filtered attached-wheel request.
  * @return True while an eligible input is active.
  */
-static bool acknowledgement_input_active(const WheelPacketModeOneInput *input) {
+static bool mode_one_acknowledgement_input_active(const WheelPacketModeOneInput *input) {
     bool button_active = input->buttons[0] != 0 || input->buttons[1] != 0 || input->buttons[2] != 0;
     return button_active || input->controls.latch_flags != 0;
 }
 
 /**
+ * @brief Detects mode-4 input eligible to acknowledge a display overlay.
+ *
+ * Accepts any filtered directional or button bit and payload byte 10, which is enabled for mode 4
+ * by the overlay input gate.
+ *
+ * @param[in] input Filtered and normalized mode-4 request.
+ * @return True while an eligible input is active.
+ */
+static bool mode_four_acknowledgement_input_active(const WheelPacketModeFourInput *input) {
+    bool button_active = input->buttons[0] != 0 || input->buttons[1] != 0 || input->buttons[2] != 0;
+    return button_active || input->control_data[0] != 0;
+}
+
+/**
  * @brief Captures an active attached-wheel request.
  *
- * Decodes and normalizes the standard request, records display-acknowledgement input, updates the
- * change snapshot, and preserves the report fields consumed outside the normalized input view.
+ * Decodes and normalizes the selected mode's request, records display-acknowledgement input,
+ * updates the change snapshot, and preserves separately consumed report fields.
  *
  * @param[in,out] protocol Protocol state that owns the request snapshot and change latch.
  * @param[in] request Complete 57-byte attached-wheel request.
@@ -90,7 +110,7 @@ static void capture_request(WheelProtocol *protocol,
         wheel_packet_mode_one_filter_buttons(&protocol->mode_one_button_filter,
                                              &protocol->mode_one_input);
         protocol->acknowledgement_input_active =
-            acknowledgement_input_active(&protocol->mode_one_input);
+            mode_one_acknowledgement_input_active(&protocol->mode_one_input);
         if (protocol->mode == 0x13 || protocol->mode == 0x14) {
             wheel_packet_mode_one_filter_control_axes(&protocol->mode_one_control_axis_filter,
                                                       &protocol->mode_one_input);
@@ -104,6 +124,20 @@ static void capture_request(WheelProtocol *protocol,
         wheel_packet_mode_one_normalize(
             &protocol->mode_one_input, protocol->mode == 0x13 || protocol->mode == 0x14,
             protocol->button_latch_enabled, protocol->profile_transition_pending, snapshot);
+        bool changed = false;
+        for (uint8_t index = 0; index < WHEEL_PROTOCOL_SNAPSHOT_SIZE; index++) {
+            changed |= protocol->request[index] != snapshot[index];
+            protocol->request[index] = snapshot[index];
+        }
+        protocol->request_changed |= changed;
+    } else if (protocol->mode == 4) {
+        uint8_t snapshot[WHEEL_PACKET_MODE_FOUR_SNAPSHOT_SIZE];
+        wheel_packet_mode_four_decode(request, &protocol->mode_four_input);
+        wheel_packet_mode_four_filter(&protocol->mode_four_filter, &protocol->mode_four_input);
+        wheel_packet_mode_four_normalize(&protocol->mode_four_input, protocol->interface_mode,
+                                         &protocol->mode_four_runtime, snapshot);
+        protocol->acknowledgement_input_active =
+            mode_four_acknowledgement_input_active(&protocol->mode_four_input);
         bool changed = false;
         for (uint8_t index = 0; index < WHEEL_PROTOCOL_SNAPSHOT_SIZE; index++) {
             changed |= protocol->request[index] != snapshot[index];
@@ -165,6 +199,9 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     const WheelPacketModeOneInput empty_input = {0};
     const WheelPacketModeOneReportState empty_report_state = {0};
     const WheelPacketModeOneOutput empty_output = {0};
+    const WheelPacketModeFourInput empty_mode_four_input = {0};
+    const WheelPacketModeFourRuntime empty_mode_four_runtime = {0};
+    const WheelPacketModeFourOutput empty_mode_four_output = {0};
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
     clear(protocol->request, WHEEL_PROTOCOL_SNAPSHOT_SIZE);
     wheel_axis_override_processor_init(&protocol->axis_override_processor);
@@ -173,6 +210,10 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     protocol->mode_one_input = empty_input;
     protocol->mode_one_report_state = empty_report_state;
     protocol->mode_one_output = empty_output;
+    wheel_packet_mode_four_filter_init(&protocol->mode_four_filter);
+    protocol->mode_four_input = empty_mode_four_input;
+    protocol->mode_four_runtime = empty_mode_four_runtime;
+    protocol->mode_four_output = empty_mode_four_output;
     wheel_authentication_init(&protocol->authentication, WHEEL_MODE_UNKNOWN);
     protocol->phase = WHEEL_PROTOCOL_WAITING;
     protocol->mode = WHEEL_MODE_UNKNOWN;
@@ -189,6 +230,11 @@ void wheel_protocol_init(WheelProtocol *protocol) {
 void wheel_protocol_set_mode_one_output(WheelProtocol *protocol,
                                         const WheelPacketModeOneOutput *output) {
     protocol->mode_one_output = *output;
+}
+
+void wheel_protocol_set_mode_four_output(WheelProtocol *protocol,
+                                         const WheelPacketModeFourOutput *output) {
+    protocol->mode_four_output = *output;
 }
 
 void wheel_protocol_set_axis_processing(WheelProtocol *protocol, uint8_t interface_mode,
@@ -276,6 +322,10 @@ const WheelPacketModeOneInput *wheel_protocol_mode_one_input(const WheelProtocol
                : 0;
 }
 
+const WheelPacketModeFourInput *wheel_protocol_mode_four_input(const WheelProtocol *protocol) {
+    return protocol->request_ready && protocol->mode == 4 ? &protocol->mode_four_input : 0;
+}
+
 const WheelPacketModeOneReportState *
 wheel_protocol_mode_one_report_state(const WheelProtocol *protocol) {
     return protocol->request_ready && wheel_packet_mode_one_applies(protocol->mode)
@@ -296,14 +346,15 @@ bool wheel_protocol_request_changed(WheelProtocol *protocol) {
 /**
  * @brief Reports display-acknowledgement input from the current wheel packet.
  *
- * Returns the directional, button, and auxiliary input state captured before request normalization
- * clears transient fields.
+ * Returns the directional, button, and mode-specific auxiliary input state captured from mode-one
+ * or mode-four requests.
  *
  * @param[in] protocol Attached-wheel protocol state.
  * @return True while an eligible input is active.
  */
 bool wheel_protocol_acknowledgement_input_active(const WheelProtocol *protocol) {
-    return protocol->request_ready && wheel_packet_mode_one_applies(protocol->mode) &&
+    return protocol->request_ready &&
+           (wheel_packet_mode_one_applies(protocol->mode) || protocol->mode == 4) &&
            protocol->acknowledgement_input_active;
 }
 
