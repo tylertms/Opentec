@@ -9,6 +9,8 @@ cooling_pwm_sources = files('source/cooling/pwm.c')
 cooling_tachometer_sources = files('source/cooling/tachometer.c')
 cooling_temperature_sources = files('source/cooling/temperature.c')
 display_controller_sources = files('source/display/controller.c')
+display_framebuffer_sources = files('source/display/framebuffer.c')
+display_prompt_sources = files('source/display/prompt.c')
 force_effect_bank_sources = files('source/force_feedback/bank.c')
 force_feedback_command_sources = files('source/force_feedback/command.c')
 force_feedback_state_sources = files('source/force_feedback/state.c')
@@ -116,12 +118,15 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'cooling-tachometer': 'source/cooling/tachometer.c',
     'cooling-temperature': 'source/cooling/temperature.c',
     'display-controller': 'source/display/controller.c',
+    'display-framebuffer': 'source/display/framebuffer.c',
+    'display-prompt': 'source/display/prompt.c',
     'force-effect-bank': 'source/force_feedback/bank.c',
     'force-feedback-command': 'source/force_feedback/command.c',
     'force-feedback-state': 'source/force_feedback/state.c',
     'force-controller': 'source/force_feedback/controller.c',
     'force-effect': 'source/force_feedback/effect.c',
     'force-output': 'source/force_feedback/output.c',
+    'force-output-enable': 'source/force_feedback/output_enable.c',
     'force-output-report': 'source/force_feedback/output_report.c',
     'force-output-scale': 'source/force_feedback/output_scale.c',
     'force-script-bits': 'source/force_feedback/script_bits.c',
@@ -325,6 +330,23 @@ if not meson.is_cross_build()
     'base-display-controller-test',
     'tests/source/display_controller.c',
     display_controller_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  display_framebuffer_test = executable(
+    'base-display-framebuffer-test',
+    'tests/source/display_framebuffer.c',
+    display_framebuffer_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  display_prompt_test = executable(
+    'base-display-prompt-test',
+    'tests/source/display_prompt.c',
+    display_prompt_sources,
+    display_framebuffer_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -1120,6 +1142,8 @@ if not meson.is_cross_build()
     suite: ['base', 'cooling'],
   )
   test('base-display-controller', display_controller_test, suite: ['base', 'display'])
+  test('base-display-framebuffer', display_framebuffer_test, suite: ['base', 'display'])
+  test('base-display-prompt', display_prompt_test, suite: ['base', 'display'])
   test('base-analog-samples', analog_samples_test, suite: ['base', 'analog'])
   test('base-force-effect', force_effect_test, suite: ['base', 'force-feedback'])
   test('base-force-effect-bank', force_effect_bank_test, suite: ['base', 'force-feedback'])

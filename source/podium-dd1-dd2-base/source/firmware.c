@@ -7,8 +7,10 @@
 #include "cooling/effect_limit.h"
 #include "cooling/tachometer.h"
 #include "cooling/temperature.h"
+#include "display/prompt.h"
 #include "force_feedback/command.h"
 #include "force_feedback/output.h"
+#include "force_feedback/output_enable.h"
 #include "force_feedback/script_runtime.h"
 #include "force_feedback/state.h"
 #include "motor/live_frame.h"
@@ -113,7 +115,12 @@ static CoolingEffectStrengths cooling_effect_strengths;
 static CoolingTemperatureMonitor cooling_temperature_monitor;
 static PlatformFanTachometer fan_tachometer;
 static uint16_t fan_speed_rpm[2];
-static uint8_t display_framebuffer[PLATFORM_DISPLAY_FRAMEBUFFER_SIZE];
+static uint8_t display_framebuffer[DISPLAY_FRAMEBUFFER_SIZE];
+static DisplayPrompt display_prompt;
+static ForceOutputEnable force_output_enable;
+static ForceOutputEnableAction force_output_enable_action;
+static bool force_output_enabled;
+static bool force_output_prompt_visible;
 
 enum {
     FAN_STARTUP_DUTY_PERCENT = 25,
@@ -183,15 +190,15 @@ static void initialize_motor_link(void) {
 /**
  * @brief Builds the motor controller's force-feedback status byte.
  *
- * Selects remote motor-side effect processing, reports whether the motor output interlock and USB
- * connection permit force, and mirrors the primary and secondary output gates.
+ * Selects remote motor-side effect processing, reports whether motor safety, USB connection, and
+ * operator confirmation permit force, and mirrors the primary and secondary output gates.
  *
  * @return Current force-feedback status bits for the next motor-link packet.
  */
 static uint8_t motor_force_feedback_status(void) {
     uint8_t status = MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS;
     if (motor_tuning_ready && !motor_status_service_output_inhibited(&motor_status_service) &&
-        !usb_connection_monitor.disconnected) {
+        !usb_connection_monitor.disconnected && force_output_enabled) {
         status |= MOTOR_OUTPUT_STATUS_ENABLED;
     }
     if (force_feedback_state.primary_output_disabled) {
@@ -416,6 +423,49 @@ static void service_shifter_display(uint32_t now_ms) {
     }
 }
 
+static bool wheel_prompt_input_active(void) {
+    const uint8_t *buttons = wheel_service_buttons(&wheel_service);
+    for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {
+        if (buttons[bank] != 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void apply_force_output_prompt_action(ForceOutputEnableAction action) {
+    if (action == FORCE_OUTPUT_ENABLE_ACTION_NONE) {
+        return;
+    }
+    force_output_prompt_visible = action == FORCE_OUTPUT_ENABLE_ACTION_SHOW_PROMPT;
+    display_prompt_render(display_framebuffer, force_output_prompt_visible);
+    platform_display_write_frame(display_framebuffer);
+}
+
+static void service_force_output_enable(void) {
+    WheelProtocolPhase wheel_phase = wheel_service_protocol_phase(&wheel_service);
+    bool wheel_protocol_ready = wheel_phase >= WHEEL_PROTOCOL_AUTHENTICATING;
+    bool usb_connected = !usb_connection_monitor.disconnected;
+
+    if (force_output_enabled && (!wheel_protocol_ready || !usb_connected)) {
+        force_output_enabled = false;
+    }
+    if (force_output_enabled) {
+        return;
+    }
+
+    if (display_prompt_update(&display_prompt, force_output_prompt_visible,
+                              wheel_prompt_input_active())) {
+        force_output_enable_set_response(&force_output_enable, 1);
+    }
+
+    bool interlocked =
+        force_output_enable_service(&force_output_enable, wheel_protocol_ready, usb_connected, true,
+                                    &force_output_enable_action);
+    apply_force_output_prompt_action(force_output_enable_action);
+    force_output_enabled = !interlocked;
+}
+
 int main(void) {
     platform_clock_init();
     board_identity = platform_board_identity_read();
@@ -455,6 +505,7 @@ int main(void) {
         service_motor_link();
         pedal_service_run(&pedal_service, now_ms);
         wheel_service_run(&wheel_service, now_ms);
+        service_force_output_enable();
         service_shifter_display(now_ms);
         service_usb_input();
         service_motor();

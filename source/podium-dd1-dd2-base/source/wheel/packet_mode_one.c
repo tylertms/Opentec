@@ -26,9 +26,11 @@ static uint16_t read_little_endian_u16(const uint8_t *data) {
 }
 
 /**
- * Tests whether an attached-wheel mode uses the mode-1 packet codec.
+ * @brief Tests whether an attached-wheel mode uses the mode-1 packet codec.
  *
- * @param wheel_mode Selected attached-wheel mode.
+ * Recognizes the four modes that share the standard packet layout.
+ *
+ * @param[in] wheel_mode Selected attached-wheel mode.
  * @return True for modes 1, 3, 0x13, and 0x14; otherwise false.
  */
 bool wheel_packet_mode_one_applies(uint8_t wheel_mode) {
@@ -36,9 +38,11 @@ bool wheel_packet_mode_one_applies(uint8_t wheel_mode) {
 }
 
 /**
- * Clears the standard attached-wheel button history.
+ * @brief Clears the standard attached-wheel button history.
  *
- * @param filter Three-sample button filter to initialize.
+ * Zeros all three samples and resets the insertion position.
+ *
+ * @param[out] filter Three-sample button filter to initialize.
  */
 void wheel_packet_mode_one_button_filter_init(WheelPacketModeOneButtonFilter *filter) {
     for (uint8_t sample = 0; sample < WHEEL_PACKET_MODE_ONE_BUTTON_HISTORY_DEPTH; sample++) {
@@ -50,10 +54,12 @@ void wheel_packet_mode_one_button_filter_init(WheelPacketModeOneButtonFilter *fi
 }
 
 /**
- * Accepts one button sample and keeps only bits present in all three recent samples.
+ * @brief Filters one standard attached-wheel button sample.
  *
- * @param filter Three-sample history and insertion position.
- * @param input Input whose button bytes are added to the history and filtered in place.
+ * Keeps only button bits present in all three recent samples and advances the insertion position.
+ *
+ * @param[in,out] filter Three-sample history and insertion position.
+ * @param[in,out] input Input whose button bytes are added to the history and filtered in place.
  */
 void wheel_packet_mode_one_filter_buttons(WheelPacketModeOneButtonFilter *filter,
                                           WheelPacketModeOneInput *input) {
@@ -69,9 +75,11 @@ void wheel_packet_mode_one_filter_buttons(WheelPacketModeOneButtonFilter *filter
 }
 
 /**
- * Clears the authenticated attached-wheel control-axis history.
+ * @brief Clears the authenticated attached-wheel control-axis history.
  *
- * @param filter Three-sample control-axis filter to initialize.
+ * Zeros both axes in all three samples and resets the insertion position.
+ *
+ * @param[out] filter Three-sample control-axis filter to initialize.
  */
 void wheel_packet_mode_one_control_axis_filter_init(WheelPacketModeOneControlAxisFilter *filter) {
     for (uint8_t sample = 0; sample < WHEEL_PACKET_MODE_ONE_CONTROL_AXIS_HISTORY_DEPTH; sample++) {
@@ -83,10 +91,13 @@ void wheel_packet_mode_one_control_axis_filter_init(WheelPacketModeOneControlAxi
 }
 
 /**
- * Replaces both control axes with their unsigned three-sample moving averages.
+ * @brief Filters authenticated attached-wheel control axes.
  *
- * @param filter Three-sample history and insertion position.
- * @param input Input whose control axes are added to the history and averaged in place.
+ * Replaces both axes with their unsigned three-sample moving averages and advances the insertion
+ * position.
+ *
+ * @param[in,out] filter Three-sample history and insertion position.
+ * @param[in,out] input Input whose control axes are added to the history and averaged in place.
  */
 void wheel_packet_mode_one_filter_control_axes(WheelPacketModeOneControlAxisFilter *filter,
                                                WheelPacketModeOneInput *input) {
@@ -109,10 +120,12 @@ void wheel_packet_mode_one_filter_control_axes(WheelPacketModeOneControlAxisFilt
 }
 
 /**
- * Decodes the standard attached-wheel input fields from a command-2 request.
+ * @brief Decodes a standard attached-wheel command-2 request.
  *
- * @param request First 32 request bytes, including the command and reserved prefix.
- * @param input Logical input fields populated from the request payload.
+ * Reads the standard button, axis, motion, control, mode, and report fields from the request.
+ *
+ * @param[in] request First 32 request bytes, including the command and reserved prefix.
+ * @param[out] input Logical input fields populated from the request payload.
  */
 void wheel_packet_mode_one_decode(const uint8_t request[WHEEL_PACKET_MODE_ONE_REQUEST_SIZE],
                                   WheelPacketModeOneInput *input) {
@@ -155,13 +168,17 @@ static void synchronize_latched_buttons(WheelPacketModeOneInput *input) {
 }
 
 /**
- * Normalizes standard attached-wheel input and builds its change-detection snapshot.
+ * @brief Normalizes standard attached-wheel input.
  *
- * @param input Decoded input updated to the normalized logical values.
- * @param authenticated True for operating modes 0x13 and 0x14.
- * @param button_latch_enabled True when alternate button latching is active.
- * @param profile_transition_pending True while a profile transition suppresses button latching.
- * @param snapshot Thirty-byte normalized destination.
+ * Applies authenticated button latching, clears unsupported logical fields, and builds the
+ * thirty-byte change-detection snapshot.
+ *
+ * @param[in,out] input Decoded input updated to the normalized logical values.
+ * @param[in] authenticated True for operating modes 0x13 and 0x14.
+ * @param[in] button_latch_enabled True when alternate button latching is active.
+ * @param[in] profile_transition_pending True while a profile transition suppresses button
+ * latching.
+ * @param[out] snapshot Thirty-byte normalized destination.
  */
 void wheel_packet_mode_one_normalize(WheelPacketModeOneInput *input, bool authenticated,
                                      bool button_latch_enabled, bool profile_transition_pending,
@@ -202,10 +219,13 @@ void wheel_packet_mode_one_normalize(WheelPacketModeOneInput *input, bool authen
 }
 
 /**
- * Encodes the shared nine-byte output used by attached-wheel modes 1, 3, 0x13, and 0x14.
+ * @brief Encodes the shared standard attached-wheel response.
  *
- * @param output Current operating mode, display output, display state, and link status.
- * @param response Nine-byte destination buffer.
+ * Writes the command, display output, display state, and link status for modes 1, 3, 0x13, and
+ * 0x14.
+ *
+ * @param[in] output Current operating mode, display output, display state, and link status.
+ * @param[out] response Nine-byte destination buffer.
  */
 void wheel_packet_mode_one_encode(const WheelPacketModeOneOutput *output,
                                   uint8_t response[WHEEL_PACKET_MODE_ONE_RESPONSE_SIZE]) {

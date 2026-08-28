@@ -90,7 +90,7 @@ static void start_dma(const uint8_t *framebuffer) {
     DMA10CONbits.MODE = 1;
     DMA10REQbits.IRQSEL = DISPLAY_DMA_REQUEST;
     DMA10PAD = (uint16_t)&PMDIN1;
-    DMA10CNT = PLATFORM_DISPLAY_FRAMEBUFFER_SIZE - 1;
+    DMA10CNT = DISPLAY_FRAMEBUFFER_SIZE - 1;
     DMA10STAL = (uint16_t)framebuffer;
     DMA10STAH = 0;
     IPC30bits.DMA10IP = DISPLAY_INTERRUPT_PRIORITY;
@@ -127,7 +127,7 @@ void platform_display_init(void) {
  *
  * @param[in] framebuffer Complete packed four-bit grayscale framebuffer in DMA-accessible memory.
  */
-void platform_display_write_frame(const uint8_t framebuffer[PLATFORM_DISPLAY_FRAMEBUFFER_SIZE]) {
+void platform_display_write_frame(const uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE]) {
     display_controller_begin_frame(write_byte, &display_bus);
     LATDbits.LATD3 = 1;
     __builtin_nop();

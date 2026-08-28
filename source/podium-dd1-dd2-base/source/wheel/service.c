@@ -26,10 +26,12 @@ static void assign(uint8_t *value, uint8_t target, uint8_t source, uint8_t sourc
 }
 
 /**
- * Maps a native-mode phase-8 sample into the base button banks.
+ * @brief Maps a native-mode phase-8 sample into the base button banks.
  *
- * @param banks Three sampled button banks to update.
- * @param sample Five input bits returned by the attached device.
+ * Applies the auxiliary scan-phase bit mapping to one sample set.
+ *
+ * @param[in,out] banks Three sampled button banks to update.
+ * @param[in] sample Five input bits returned by the attached device.
  */
 static void apply_auxiliary(uint8_t banks[WHEEL_BUTTON_BANK_COUNT], uint8_t sample) {
     assign(&banks[0], 3, sample, 3);
@@ -40,11 +42,13 @@ static void apply_auxiliary(uint8_t banks[WHEEL_BUTTON_BANK_COUNT], uint8_t samp
 }
 
 /**
- * Maps a native-mode phase-1 sample into the base button banks.
+ * @brief Maps a native-mode phase-1 sample into the base button banks.
  *
- * @param banks Three sampled button banks to update.
- * @param sample Five input bits returned by the attached device.
- * @param secondary Adds the secondary-channel mapping for sample bit 1 when true.
+ * Applies the first scan-phase bit mapping to one sample set.
+ *
+ * @param[in,out] banks Three sampled button banks to update.
+ * @param[in] sample Five input bits returned by the attached device.
+ * @param[in] secondary Adds the secondary-channel mapping for sample bit 1 when true.
  */
 static void apply_first(uint8_t banks[WHEEL_BUTTON_BANK_COUNT], uint8_t sample, bool secondary) {
     assign(&banks[2], 5, sample, 0);
@@ -57,10 +61,12 @@ static void apply_first(uint8_t banks[WHEEL_BUTTON_BANK_COUNT], uint8_t sample, 
 }
 
 /**
- * Maps a native-mode phase-2 sample into the base button banks.
+ * @brief Maps a native-mode phase-2 sample into the base button banks.
  *
- * @param banks Three sampled button banks to update.
- * @param sample Five input bits returned by the attached device.
+ * Applies the second scan-phase bit mapping to one sample set.
+ *
+ * @param[in,out] banks Three sampled button banks to update.
+ * @param[in] sample Five input bits returned by the attached device.
  */
 static void apply_second(uint8_t banks[WHEEL_BUTTON_BANK_COUNT], uint8_t sample) {
     assign(&banks[1], 3, sample, 0);
@@ -71,10 +77,12 @@ static void apply_second(uint8_t banks[WHEEL_BUTTON_BANK_COUNT], uint8_t sample)
 }
 
 /**
- * Maps a native-mode phase-4 sample into the base button banks.
+ * @brief Maps a native-mode phase-4 sample into the base button banks.
  *
- * @param banks Three sampled button banks to update.
- * @param sample Five input bits returned by the attached device.
+ * Applies the third scan-phase bit mapping to one sample set.
+ *
+ * @param[in,out] banks Three sampled button banks to update.
+ * @param[in] sample Five input bits returned by the attached device.
  */
 static void apply_third(uint8_t banks[WHEEL_BUTTON_BANK_COUNT], uint8_t sample) {
     assign(&banks[0], 4, sample, 2);
@@ -85,9 +93,11 @@ static void apply_third(uint8_t banks[WHEEL_BUTTON_BANK_COUNT], uint8_t sample) 
 }
 
 /**
- * Publishes the bitwise intersection of the three interleaved command-3 samples.
+ * @brief Publishes the filtered command-3 button samples.
  *
- * @param service Wheel service that owns the sample history and output banks.
+ * Intersects the three interleaved sample sets and advances the sample insertion position.
+ *
+ * @param[in,out] service Wheel service that owns the sample history and output banks.
  */
 static void publish_scan_samples(WheelService *service) {
     for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {
@@ -102,9 +112,11 @@ static void publish_scan_samples(WheelService *service) {
 }
 
 /**
- * Selects the response prefix for the active scan channel.
+ * @brief Selects the response prefix for the active scan channel.
  *
- * @param service Wheel service with the negotiated scan channel.
+ * Uses the negotiated primary or secondary scan phase to select its response marker.
+ *
+ * @param[in] service Wheel service with the negotiated scan channel.
  * @return 0xE0 for the primary channel or 0xC0 for the secondary channel.
  */
 static uint8_t expected_scan_response(const WheelService *service) {
@@ -114,10 +126,13 @@ static uint8_t expected_scan_response(const WheelService *service) {
 }
 
 /**
- * Validates a command-3 response and applies its five-bit sample to the active phase.
+ * @brief Accepts a command-3 button response.
  *
- * @param service Wheel service that owns the scan phase and output banks.
- * @param response Received transport frame, or null when no frame is available.
+ * Validates the response marker and ready bit, maps its five input bits for the active scan phase,
+ * and publishes the updated three-sample filter.
+ *
+ * @param[in,out] service Wheel service that owns the scan phase and output banks.
+ * @param[in] response Received transport frame, or null when no frame is available.
  */
 static void apply_scan_response(WheelService *service, const WheelTransportFrame *response) {
     if (response == 0 || response->length != WHEEL_TRANSPORT_PAYLOAD_SIZE ||
@@ -195,10 +210,12 @@ static bool protocol_exchange_active(const WheelService *service) {
 }
 
 /**
- * Extends the command-2 activity deadline after an attached wheel marks a packet ready.
+ * @brief Extends the active command-2 exchange deadline.
  *
- * @param service Wheel service that owns the command-2 exchange.
- * @param now_ms Current monotonic time in milliseconds.
+ * Starts a new two-second activity window after an attached wheel marks a packet ready.
+ *
+ * @param[in,out] service Wheel service that owns the command-2 exchange.
+ * @param[in] now_ms Current monotonic time in milliseconds.
  */
 static void refresh_protocol_deadline(WheelService *service, uint32_t now_ms) {
     service->protocol_deadline_ms = now_ms + WHEEL_PROTOCOL_ACTIVITY_TIMEOUT_MS;
@@ -293,7 +310,19 @@ void wheel_service_run(WheelService *service, uint32_t now_ms) {
     }
 }
 
-const uint8_t *wheel_service_buttons(const WheelService *service) { return service->button_banks; }
+/**
+ * @brief Returns the current attached-wheel button banks.
+ *
+ * Selects decoded packet buttons after a standard wheel protocol request becomes active. Scan-mode
+ * wheels continue to use the three filtered button banks assembled from command-3 responses.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return Three current button bytes.
+ */
+const uint8_t *wheel_service_buttons(const WheelService *service) {
+    const WheelPacketModeOneInput *input = wheel_protocol_mode_one_input(&service->protocol);
+    return input != 0 ? input->buttons : service->button_banks;
+}
 
 uint8_t wheel_service_mode(const WheelService *service) { return service->protocol.mode; }
 
