@@ -1,6 +1,7 @@
 #include "wheel/protocol.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "wheel/authentication.h"
@@ -9,6 +10,7 @@
 #include "wheel/packet_crc.h"
 #include "wheel/packet_mode_four.h"
 #include "wheel/packet_mode_one.h"
+#include "wheel/packet_remote_tuning.h"
 
 /**
  * @brief Calculates the attached-wheel message CRC-8.
@@ -63,19 +65,30 @@ static void build_selection_response(WheelProtocol *protocol) {
 /**
  * @brief Builds the next active attached-wheel response.
  *
- * Encodes the selected packet family, overlays the highest-priority pending host report, and then
- * writes the checksum while preserving the transport acknowledgement flags.
+ * Encodes the selected input/output packet family or consumes one pending remote-tuning response,
+ * overlays the highest-priority pending host report for ordinary packet families, and then writes
+ * the checksum while preserving the transport acknowledgement flags. A remote-tuning mode leaves
+ * the current response unchanged when no remote response is pending.
  *
  * @param[in,out] protocol Active protocol state and response storage.
  */
 static void build_active_response(WheelProtocol *protocol) {
+    bool remote_tuning_mode = protocol->mode == WHEEL_MODE_REMOTE_TUNING_LEGACY ||
+                              protocol->mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED;
     if (!wheel_packet_mode_one_applies(protocol->mode) && protocol->mode != 4 &&
-        !wheel_packet_crc_applies(protocol->mode)) {
+        !wheel_packet_crc_applies(protocol->mode) && !remote_tuning_mode) {
+        return;
+    }
+    if (remote_tuning_mode &&
+        !wheel_packet_remote_tuning_pending(&protocol->remote_tuning_output)) {
         return;
     }
     uint8_t flags = protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET];
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
-    if (wheel_packet_crc_applies(protocol->mode)) {
+    if (remote_tuning_mode) {
+        (void)wheel_packet_remote_tuning_encode(&protocol->remote_tuning_output,
+                                                protocol->response);
+    } else if (wheel_packet_crc_applies(protocol->mode)) {
         wheel_packet_crc_encode(protocol->mode, &protocol->crc_output, protocol->response);
     } else if (protocol->mode == 4) {
         wheel_packet_mode_four_encode(&protocol->mode_four_output, protocol->response);
@@ -83,7 +96,9 @@ static void build_active_response(WheelProtocol *protocol) {
         wheel_packet_mode_one_encode(protocol->mode, &protocol->mode_one_output,
                                      protocol->response);
     }
-    (void)wheel_output_reports_encode_next(&protocol->output_reports, protocol->response);
+    if (!remote_tuning_mode) {
+        (void)wheel_output_reports_encode_next(&protocol->output_reports, protocol->response);
+    }
     protocol->response[WHEEL_PROTOCOL_CHECKSUM_OFFSET] =
         crc8(protocol->response, WHEEL_PROTOCOL_CONTENT_SIZE);
     protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] = flags;
@@ -319,6 +334,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     protocol->crc_input = empty_crc_input;
     protocol->crc_output = empty_crc_output;
     protocol->crc_adapter = empty_crc_adapter;
+    wheel_packet_remote_tuning_init(&protocol->remote_tuning_output);
     wheel_output_reports_init(&protocol->output_reports);
     protocol->capabilities = empty_capabilities;
     wheel_authentication_init(&protocol->authentication, WHEEL_MODE_UNKNOWN);
@@ -382,6 +398,29 @@ void wheel_protocol_set_crc_output(WheelProtocol *protocol, const WheelPacketCrc
  */
 void wheel_protocol_set_crc_adapter(WheelProtocol *protocol, const WheelPacketCrcAdapter *adapter) {
     protocol->crc_adapter = *adapter;
+}
+
+/**
+ * @brief Queues a remote-tuning response for the negotiated attached-wheel link.
+ *
+ * Accepts a supported response only when its legacy or extended link matches wheel mode 0x0E or
+ * 0x1C respectively.
+ *
+ * @param[in,out] protocol Wheel protocol that owns the remote-tuning output queue.
+ * @param[in] response Remote-tuning link, response code, and value.
+ * @return True when the response was queued for the active wheel mode.
+ */
+bool wheel_protocol_queue_remote_tuning_response(WheelProtocol *protocol,
+                                                 const RemoteTuningResponse *response) {
+    if (protocol == NULL || response == NULL) {
+        return false;
+    }
+    bool matching_link = (protocol->mode == WHEEL_MODE_REMOTE_TUNING_LEGACY &&
+                          response->link == REMOTE_TUNING_LINK_LEGACY) ||
+                         (protocol->mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED &&
+                          response->link == REMOTE_TUNING_LINK_EXTENDED);
+    return matching_link &&
+           wheel_packet_remote_tuning_queue(&protocol->remote_tuning_output, response);
 }
 
 /**

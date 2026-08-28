@@ -632,6 +632,56 @@ static void test_builds_crc_family_active_response(void) {
     assert(wheel_protocol_response(&protocol)[10] == 0);
 }
 
+static void test_builds_remote_tuning_responses(void) {
+    static const struct {
+        uint8_t mode;
+        RemoteTuningLink link;
+    } cases[] = {
+        {WHEEL_MODE_REMOTE_TUNING_LEGACY, REMOTE_TUNING_LINK_LEGACY},
+        {WHEEL_MODE_REMOTE_TUNING_EXTENDED, REMOTE_TUNING_LINK_EXTENDED},
+    };
+
+    for (uint8_t index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {
+        WheelProtocol protocol;
+        wheel_protocol_init(&protocol);
+        protocol.mode = cases[index].mode;
+        protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+        RemoteTuningResponse pending = {
+            .link = cases[index].link,
+            .code = REMOTE_TUNING_RESPONSE_SETUP,
+            .value = 5,
+        };
+        assert(wheel_protocol_queue_remote_tuning_response(&protocol, &pending));
+        uint8_t report_arguments[26] = {1, 0x55};
+        wheel_output_reports_apply(&protocol.output_reports, report_arguments, 0, 0, false);
+
+        uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+        request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+        mark_ready(request);
+        request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+        wheel_protocol_accept(&protocol, request);
+
+        const uint8_t *response = wheel_protocol_response(&protocol);
+        assert(response[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE_REPLY);
+        assert(response[1] == REMOTE_TUNING_RESPONSE_SETUP);
+        assert(response[2] == 5);
+        assert(wheel_protocol_message_valid(response));
+        assert(!wheel_packet_remote_tuning_pending(&protocol.remote_tuning_output));
+    }
+}
+
+static void test_rejects_remote_tuning_link_mismatch(void) {
+    WheelProtocol protocol;
+    wheel_protocol_init(&protocol);
+    protocol.mode = WHEEL_MODE_REMOTE_TUNING_LEGACY;
+    RemoteTuningResponse response = {
+        .link = REMOTE_TUNING_LINK_EXTENDED,
+        .code = REMOTE_TUNING_RESPONSE_ACTIVE,
+        .value = 1,
+    };
+    assert(!wheel_protocol_queue_remote_tuning_response(&protocol, &response));
+}
+
 static void test_forwards_one_pending_host_report(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -783,6 +833,8 @@ int main(void) {
     test_builds_mode_one_active_response();
     test_builds_mode_four_active_response();
     test_builds_crc_family_active_response();
+    test_builds_remote_tuning_responses();
+    test_rejects_remote_tuning_link_mismatch();
     test_forwards_one_pending_host_report();
     test_captures_crc_family_requests();
     test_applies_crc_family_axis_controls();

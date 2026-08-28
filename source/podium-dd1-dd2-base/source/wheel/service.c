@@ -165,6 +165,14 @@ static void apply_scan_response(WheelService *service, const SerialMessageAssemb
     publish_scan_samples(service);
 }
 
+/**
+ * @brief Clears scan-mode button filtering.
+ *
+ * Zeros all three published button banks and their three-sample histories, then resets the sample
+ * insertion position.
+ *
+ * @param[out] service Attached-wheel service whose scan filter is cleared.
+ */
 static void clear_scan_filter(WheelService *service) {
     for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {
         service->button_banks[bank] = 0;
@@ -175,6 +183,15 @@ static void clear_scan_filter(WheelService *service) {
     service->scan_sample_index = 0;
 }
 
+/**
+ * @brief Restarts attached-wheel connection discovery.
+ *
+ * Reinitializes handshake and input state while preserving configured outputs, input filters,
+ * adapter state, capabilities, pending remote-tuning work, and axis-processing configuration.
+ * Scan input and activity timing restart from their initial states.
+ *
+ * @param[in,out] service Attached-wheel service to restart.
+ */
 static void reset_connection(WheelService *service) {
     WheelPacketModeOneButtonFilter mode_one_button_filter =
         service->protocol.mode_one_button_filter;
@@ -186,6 +203,7 @@ static void reset_connection(WheelService *service) {
     WheelPacketCrcFilter crc_filter = service->protocol.crc_filter;
     WheelPacketCrcOutput crc_output = service->protocol.crc_output;
     WheelPacketCrcAdapter crc_adapter = service->protocol.crc_adapter;
+    WheelPacketRemoteTuningOutput remote_tuning_output = service->protocol.remote_tuning_output;
     WheelOutputReports output_reports = service->protocol.output_reports;
     WheelCapabilityState capabilities = service->protocol.capabilities;
     uint8_t interface_mode = service->protocol.interface_mode;
@@ -207,6 +225,7 @@ static void reset_connection(WheelService *service) {
     service->protocol.crc_filter = crc_filter;
     service->protocol.crc_output = crc_output;
     service->protocol.crc_adapter = crc_adapter;
+    service->protocol.remote_tuning_output = remote_tuning_output;
     service->protocol.output_reports = output_reports;
     service->protocol.capabilities = capabilities;
     wheel_protocol_set_axis_processing(&service->protocol, interface_mode, axis_override_mode,
@@ -224,6 +243,14 @@ static void reset_connection(WheelService *service) {
     service->scan_phase = 0;
 }
 
+/**
+ * @brief Reports whether command-2 protocol traffic is active.
+ *
+ * Treats authentication and negotiated packet exchange as active protocol phases.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return True during authentication or active packet exchange.
+ */
 static bool protocol_exchange_active(const WheelService *service) {
     return service->protocol.phase == WHEEL_PROTOCOL_AUTHENTICATING ||
            service->protocol.phase == WHEEL_PROTOCOL_ACTIVE;
@@ -287,6 +314,14 @@ static void start_protocol(WheelService *service, uint32_t now_ms) {
     }
 }
 
+/**
+ * @brief Reports whether scan-mode button polling is active.
+ *
+ * Accepts either primary or secondary scan mode.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return True during primary or secondary scan polling.
+ */
 static bool scan_active(const WheelService *service) {
     return service->protocol.phase == WHEEL_PROTOCOL_SCANNING_PRIMARY ||
            service->protocol.phase == WHEEL_PROTOCOL_SCANNING_SECONDARY;
@@ -347,6 +382,21 @@ void wheel_service_set_display_output(WheelService *service, const WheelDisplayO
  */
 void wheel_service_set_crc_adapter(WheelService *service, const WheelPacketCrcAdapter *adapter) {
     wheel_protocol_set_crc_adapter(&service->protocol, adapter);
+}
+
+/**
+ * @brief Queues a remote-tuning response for the attached wheel.
+ *
+ * Retains the response only when its selected legacy or extended link matches the currently
+ * negotiated remote-tuning wheel mode.
+ *
+ * @param[in,out] service Attached-wheel service that owns protocol output.
+ * @param[in] response Remote-tuning link, response code, and value.
+ * @return True when the response was queued.
+ */
+bool wheel_service_queue_remote_tuning_response(WheelService *service,
+                                                const RemoteTuningResponse *response) {
+    return wheel_protocol_queue_remote_tuning_response(&service->protocol, response);
 }
 
 /**

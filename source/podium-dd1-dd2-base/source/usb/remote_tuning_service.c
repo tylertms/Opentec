@@ -40,14 +40,22 @@ static bool selection_valid(uint8_t value, uint8_t maximum) {
  * @param[in,out] service Remote-tuning session state.
  * @param[in] wheel_mode Current attached-wheel mode.
  * @param[in] response Remote-tuning response code.
+ * @param[in] value Single-byte response value.
  */
-static void queue_response(UsbRemoteTuningService *service, uint8_t wheel_mode, uint8_t response) {
+static void queue_response(UsbRemoteTuningService *service, uint8_t wheel_mode,
+                           RemoteTuningResponseCode response, uint8_t value) {
     if (wheel_mode == WHEEL_MODE_REMOTE_TUNING_LEGACY) {
-        service->pending_response = response;
-        service->response_target = USB_REMOTE_TUNING_RESPONSE_TARGET_LEGACY;
+        service->pending_response = (RemoteTuningResponse){
+            .link = REMOTE_TUNING_LINK_LEGACY,
+            .code = response,
+            .value = value,
+        };
     } else if (wheel_mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED) {
-        service->pending_response = response;
-        service->response_target = USB_REMOTE_TUNING_RESPONSE_TARGET_EXTENDED;
+        service->pending_response = (RemoteTuningResponse){
+            .link = REMOTE_TUNING_LINK_EXTENDED,
+            .code = response,
+            .value = value,
+        };
     }
 }
 
@@ -70,8 +78,8 @@ static void apply_active(UsbRemoteTuningService *service, bool active, uint8_t w
     }
     service->active = active;
     queue_response(service, wheel_mode,
-                   active ? USB_REMOTE_TUNING_RESPONSE_ACTIVE
-                          : USB_REMOTE_TUNING_RESPONSE_INACTIVE);
+                   active ? REMOTE_TUNING_RESPONSE_ACTIVE : REMOTE_TUNING_RESPONSE_INACTIVE,
+                   active ? 1 : 0);
     if (adapter_connected) {
         service->active_sync_pending = true;
     }
@@ -81,8 +89,9 @@ static void apply_active(UsbRemoteTuningService *service, bool active, uint8_t w
  * @brief Applies a remote-tuning selection packet.
  *
  * Retains menu selections 1 through 6 and multi-position selections 1 through 11. Setup selections
- * use values 1 through 6, with extended mode routing them to its setup page only while local setup
- * selection is allowed. Encoder selection is retained without range conversion in legacy mode.
+ * use values 1 through 6, with extended mode routing them only while local setup selection is
+ * allowed. Extended values 1 through 5 replace the reported setup page, while value 6 preserves
+ * the prior page. Encoder selection is retained without range conversion in legacy mode.
  * Unsupported selection kinds clear the three non-encoder selections.
  *
  * @param[in,out] service Remote-tuning session and pending work.
@@ -114,7 +123,11 @@ static void apply_selection(UsbRemoteTuningService *service, uint8_t command, ui
                 service->setup_index = value;
                 service->encoder_counter = value;
                 service->command_type = 0;
-                queue_response(service, wheel_mode, USB_REMOTE_TUNING_RESPONSE_SETUP);
+                if (value <= 5) {
+                    service->setup_page = value;
+                }
+                queue_response(service, wheel_mode, REMOTE_TUNING_RESPONSE_SETUP,
+                               service->setup_page);
             }
             break;
         }
@@ -131,7 +144,7 @@ static void apply_selection(UsbRemoteTuningService *service, uint8_t command, ui
         if (wheel_mode == WHEEL_MODE_REMOTE_TUNING_LEGACY) {
             service->encoder_selection = value;
             service->encoder_counter = value;
-            queue_response(service, wheel_mode, USB_REMOTE_TUNING_RESPONSE_SETUP);
+            queue_response(service, wheel_mode, REMOTE_TUNING_RESPONSE_SETUP, value);
             break;
         }
         service->setup_selection = 0;
@@ -164,7 +177,8 @@ static void apply_refresh(UsbRemoteTuningService *service, uint8_t value, uint8_
     }
     if (wheel_mode == WHEEL_MODE_REMOTE_TUNING_LEGACY ||
         wheel_mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED) {
-        queue_response(service, wheel_mode, USB_REMOTE_TUNING_RESPONSE_REFRESH);
+        queue_response(service, wheel_mode, REMOTE_TUNING_RESPONSE_REFRESH,
+                       service->refresh_requested ? 1 : 0);
     }
     service->refresh_sync_pending = true;
 }
@@ -227,5 +241,26 @@ bool usb_remote_tuning_service_apply(UsbRemoteTuningService *service,
         }
         break;
     }
+    return true;
+}
+
+/**
+ * @brief Takes the pending attached-wheel remote-tuning response.
+ *
+ * Copies the retained link, response code, and value, then clears the pending response. Session
+ * state and downstream synchronization latches remain unchanged.
+ *
+ * @param[in,out] service Remote-tuning session that owns the pending response.
+ * @param[out] response Pending attached-wheel response.
+ * @return True when a response was taken.
+ */
+bool usb_remote_tuning_service_take_response(UsbRemoteTuningService *service,
+                                             RemoteTuningResponse *response) {
+    if (service == NULL || response == NULL ||
+        service->pending_response.code == REMOTE_TUNING_RESPONSE_NONE) {
+        return false;
+    }
+    *response = service->pending_response;
+    service->pending_response = (RemoteTuningResponse){0};
     return true;
 }

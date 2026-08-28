@@ -126,6 +126,7 @@ wheel_motion_sources = files('source/wheel/motion.c')
 wheel_packet_crc_sources = files('source/wheel/packet_crc.c')
 wheel_packet_mode_one_sources = files('source/wheel/packet_mode_one.c')
 wheel_packet_mode_four_sources = files('source/wheel/packet_mode_four.c')
+wheel_packet_remote_tuning_sources = files('source/wheel/packet_remote_tuning.c')
 wheel_protocol_sources = files('source/wheel/protocol.c')
 wheel_service_sources = files('source/wheel/service.c')
 wheel_status_service_sources = files('source/wheel/status_service.c')
@@ -299,6 +300,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'wheel-packet-crc': 'source/wheel/packet_crc.c',
     'wheel-packet-mode-one': 'source/wheel/packet_mode_one.c',
     'wheel-packet-mode-four': 'source/wheel/packet_mode_four.c',
+    'wheel-packet-remote-tuning': 'source/wheel/packet_remote_tuning.c',
     'wheel-protocol': 'source/wheel/protocol.c',
     'wheel-service': 'source/wheel/service.c',
     'wheel-status-service': 'source/wheel/status_service.c',
@@ -1595,6 +1597,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_packet_remote_tuning_test = executable(
+    'base-wheel-packet-remote-tuning-test',
+    'tests/source/wheel_packet_remote_tuning.c',
+    wheel_packet_remote_tuning_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_capability_test = executable(
     'base-wheel-capability-test',
     'tests/source/wheel_capability.c',
@@ -1623,6 +1633,7 @@ if not meson.is_cross_build()
     wheel_packet_crc_sources,
     wheel_packet_mode_one_sources,
     wheel_packet_mode_four_sources,
+    wheel_packet_remote_tuning_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -1640,6 +1651,7 @@ if not meson.is_cross_build()
     wheel_packet_crc_sources,
     wheel_packet_mode_one_sources,
     wheel_packet_mode_four_sources,
+    wheel_packet_remote_tuning_sources,
     wheel_protocol_sources,
     serial_service_sources,
     serial_session_sources,
@@ -2043,6 +2055,11 @@ if not meson.is_cross_build()
   test(
     'base-wheel-packet-crc',
     wheel_packet_crc_test,
+    suite: ['base', 'wheel', 'protocol'],
+  )
+  test(
+    'base-wheel-packet-remote-tuning',
+    wheel_packet_remote_tuning_test,
     suite: ['base', 'wheel', 'protocol'],
   )
   test(

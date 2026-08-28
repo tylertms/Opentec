@@ -4,23 +4,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "remote_tuning/response.h"
 #include "usb/remote_tuning_records.h"
 
 enum {
     USB_REMOTE_TUNING_SESSION_TIMEOUT_MS = 60000,
-    USB_REMOTE_TUNING_RESPONSE_NONE = 0,
-    USB_REMOTE_TUNING_RESPONSE_ACTIVE = 2,
-    USB_REMOTE_TUNING_RESPONSE_SETUP = 4,
-    USB_REMOTE_TUNING_RESPONSE_REFRESH = 5,
-    USB_REMOTE_TUNING_RESPONSE_INACTIVE = 0xff,
 };
-
-/** @brief Attached-wheel transport selected for a pending remote-tuning response. */
-typedef enum {
-    USB_REMOTE_TUNING_RESPONSE_TARGET_NONE,
-    USB_REMOTE_TUNING_RESPONSE_TARGET_LEGACY,
-    USB_REMOTE_TUNING_RESPONSE_TARGET_EXTENDED,
-} UsbRemoteTuningResponseTarget;
 
 /** @brief Host remote-tuning session and retained downstream work. */
 typedef struct {
@@ -32,9 +21,9 @@ typedef struct {
     uint8_t menu_selection;
     uint8_t multi_position_selection;
     uint8_t setup_index;
+    uint8_t setup_page;
     uint8_t encoder_selection;
-    uint8_t pending_response;
-    UsbRemoteTuningResponseTarget response_target;
+    RemoteTuningResponse pending_response;
     bool active;
     bool refresh_requested;
     bool vendor_response_pending;
@@ -48,5 +37,7 @@ bool usb_remote_tuning_service_apply(UsbRemoteTuningService *service,
                                      const UsbVendorCommand *command, uint32_t now_ms,
                                      uint8_t wheel_mode, bool setup_selection_allowed,
                                      bool adapter_connected);
+bool usb_remote_tuning_service_take_response(UsbRemoteTuningService *service,
+                                             RemoteTuningResponse *response);
 
 #endif

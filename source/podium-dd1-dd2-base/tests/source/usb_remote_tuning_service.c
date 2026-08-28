@@ -34,22 +34,24 @@ static void applies_active_state_and_routes_responses(void) {
     assert(usb_remote_tuning_service_apply(&service, &command, 100, WHEEL_MODE_REMOTE_TUNING_LEGACY,
                                            true, false));
     assert(service.active);
-    assert(service.pending_response == USB_REMOTE_TUNING_RESPONSE_ACTIVE);
-    assert(service.response_target == USB_REMOTE_TUNING_RESPONSE_TARGET_LEGACY);
+    assert(service.pending_response.code == REMOTE_TUNING_RESPONSE_ACTIVE);
+    assert(service.pending_response.link == REMOTE_TUNING_LINK_LEGACY);
+    assert(service.pending_response.value == 1);
     assert(!service.active_sync_pending);
 
     arguments[1] = 0;
     assert(usb_remote_tuning_service_apply(&service, &command, 100, WHEEL_MODE_REMOTE_TUNING_LEGACY,
                                            true, false));
     assert(!service.active);
-    assert(service.pending_response == USB_REMOTE_TUNING_RESPONSE_INACTIVE);
+    assert(service.pending_response.code == REMOTE_TUNING_RESPONSE_INACTIVE);
+    assert(service.pending_response.value == 0);
     assert(service.active_sync_pending);
 
     usb_remote_tuning_service_init(&service);
     arguments[1] = 1;
     assert(usb_remote_tuning_service_apply(&service, &command, 100,
                                            WHEEL_MODE_REMOTE_TUNING_EXTENDED, true, true));
-    assert(service.response_target == USB_REMOTE_TUNING_RESPONSE_TARGET_EXTENDED);
+    assert(service.pending_response.link == REMOTE_TUNING_LINK_EXTENDED);
     assert(service.active_sync_pending);
 }
 
@@ -101,9 +103,18 @@ static void applies_setup_selections(void) {
                                            WHEEL_MODE_REMOTE_TUNING_EXTENDED, true, false));
     assert(service.command_type == 0);
     assert(service.setup_index == 4);
+    assert(service.setup_page == 4);
     assert(service.encoder_counter == 4);
-    assert(service.pending_response == USB_REMOTE_TUNING_RESPONSE_SETUP);
-    assert(service.response_target == USB_REMOTE_TUNING_RESPONSE_TARGET_EXTENDED);
+    assert(service.pending_response.code == REMOTE_TUNING_RESPONSE_SETUP);
+    assert(service.pending_response.link == REMOTE_TUNING_LINK_EXTENDED);
+    assert(service.pending_response.value == 4);
+
+    arguments[2] = 6;
+    assert(usb_remote_tuning_service_apply(&service, &command, 100,
+                                           WHEEL_MODE_REMOTE_TUNING_EXTENDED, true, false));
+    assert(service.setup_index == 6);
+    assert(service.setup_page == 4);
+    assert(service.pending_response.value == 4);
 
     usb_remote_tuning_service_init(&service);
     arguments[2] = 5;
@@ -111,7 +122,7 @@ static void applies_setup_selections(void) {
                                            WHEEL_MODE_REMOTE_TUNING_EXTENDED, false, false));
     assert(service.command_type == 3);
     assert(service.setup_index == 0);
-    assert(service.pending_response == USB_REMOTE_TUNING_RESPONSE_NONE);
+    assert(service.pending_response.code == REMOTE_TUNING_RESPONSE_NONE);
 }
 
 static void applies_encoder_selection_and_clears_other_modes(void) {
@@ -123,8 +134,9 @@ static void applies_encoder_selection_and_clears_other_modes(void) {
                                            true, false));
     assert(service.encoder_selection == 12);
     assert(service.encoder_counter == 12);
-    assert(service.pending_response == USB_REMOTE_TUNING_RESPONSE_SETUP);
-    assert(service.response_target == USB_REMOTE_TUNING_RESPONSE_TARGET_LEGACY);
+    assert(service.pending_response.code == REMOTE_TUNING_RESPONSE_SETUP);
+    assert(service.pending_response.link == REMOTE_TUNING_LINK_LEGACY);
+    assert(service.pending_response.value == 12);
 
     service.setup_selection = 1;
     service.menu_selection = 2;
@@ -143,7 +155,7 @@ static void applies_refresh_requests(void) {
     assert(usb_remote_tuning_service_apply(&service, &command, 100, 1, true, false));
     assert(!service.refresh_requested);
     assert(service.refresh_sync_pending);
-    assert(service.pending_response == USB_REMOTE_TUNING_RESPONSE_NONE);
+    assert(service.pending_response.code == REMOTE_TUNING_RESPONSE_NONE);
 
     arguments[1] = 1;
     assert(usb_remote_tuning_service_apply(&service, &command, 100, 1, true, false));
@@ -154,8 +166,25 @@ static void applies_refresh_requests(void) {
     assert(usb_remote_tuning_service_apply(&service, &command, 100, WHEEL_MODE_REMOTE_TUNING_LEGACY,
                                            true, false));
     assert(service.refresh_requested);
-    assert(service.pending_response == USB_REMOTE_TUNING_RESPONSE_REFRESH);
-    assert(service.response_target == USB_REMOTE_TUNING_RESPONSE_TARGET_LEGACY);
+    assert(service.pending_response.code == REMOTE_TUNING_RESPONSE_REFRESH);
+    assert(service.pending_response.link == REMOTE_TUNING_LINK_LEGACY);
+    assert(service.pending_response.value == 1);
+}
+
+static void takes_pending_responses(void) {
+    UsbRemoteTuningService service;
+    usb_remote_tuning_service_init(&service);
+    uint8_t arguments[] = {2, 1};
+    UsbVendorCommand command = command_for(arguments, sizeof(arguments));
+    assert(usb_remote_tuning_service_apply(&service, &command, 100,
+                                           WHEEL_MODE_REMOTE_TUNING_EXTENDED, true, false));
+
+    RemoteTuningResponse response;
+    assert(usb_remote_tuning_service_take_response(&service, &response));
+    assert(response.link == REMOTE_TUNING_LINK_EXTENDED);
+    assert(response.code == REMOTE_TUNING_RESPONSE_ACTIVE);
+    assert(response.value == 1);
+    assert(!usb_remote_tuning_service_take_response(&service, &response));
 }
 
 static void claims_unknown_remote_packets(void) {
@@ -177,6 +206,7 @@ int main(void) {
     applies_setup_selections();
     applies_encoder_selection_and_clears_other_modes();
     applies_refresh_requests();
+    takes_pending_responses();
     claims_unknown_remote_packets();
     return 0;
 }

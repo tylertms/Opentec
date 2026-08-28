@@ -121,6 +121,7 @@ static uint8_t usb_motor_response[USB_DEVICE_REPORT_SIZE];
 static uint8_t usb_wheel_transfer_response[USB_DEVICE_REPORT_SIZE];
 static UsbDiagnosticReportService usb_diagnostic_report_service;
 static UsbRemoteTuningService usb_remote_tuning_service;
+static RemoteTuningResponse usb_remote_tuning_response;
 static UsbTuningMenuService usb_tuning_menu_service;
 static UsbTuningProfileService usb_tuning_profile_service;
 static UsbDiagnosticSnapshot usb_diagnostic_snapshot;
@@ -677,6 +678,11 @@ static void service_usb_output(void) {
         if (usb_remote_tuning_service_apply(&usb_remote_tuning_service, &usb_vendor_command, now_ms,
                                             wheel_service_mode(&wheel_service), true,
                                             wheel_service_adapter_connected(&wheel_service))) {
+            if (usb_remote_tuning_service_take_response(&usb_remote_tuning_service,
+                                                        &usb_remote_tuning_response)) {
+                (void)wheel_service_queue_remote_tuning_response(&wheel_service,
+                                                                 &usb_remote_tuning_response);
+            }
             return;
         }
         UsbTuningProfileAction tuning_action = usb_tuning_profile_service_apply(
