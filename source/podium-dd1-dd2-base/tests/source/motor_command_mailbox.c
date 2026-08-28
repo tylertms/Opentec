@@ -24,6 +24,27 @@ static void test_queues_payload_write(void) {
     assert_request(&transport, expected, sizeof(expected));
 }
 
+static void test_queues_response_read(void) {
+    static const uint8_t expected[] = {0x02, 0x41, 0x80, 0x03, 0x00};
+    uint8_t response[3];
+    CommandTransport transport;
+    command_transport_init(&transport);
+
+    assert(motor_command_mailbox_queue_response(&transport, response, sizeof(response)) ==
+           COMMAND_TRANSPORT_COMPLETE);
+    assert_request(&transport, expected, sizeof(expected));
+}
+
+static void test_queues_status_write(void) {
+    static const uint8_t status[] = {0x34, 0x12};
+    static const uint8_t expected[] = {0x02, 0x40, 0x81, 0x34, 0x12};
+    CommandTransport transport;
+    command_transport_init(&transport);
+
+    assert(motor_command_mailbox_queue_status(&transport, status) == COMMAND_TRANSPORT_COMPLETE);
+    assert_request(&transport, expected, sizeof(expected));
+}
+
 static void test_queues_control_write(void) {
     static const uint8_t control[] = {0x80, 0x01, 0x02, 0x03};
     static const uint8_t expected[] = {0x02, 0x40, 0x82, 0x80, 0x01, 0x02, 0x03};
@@ -53,6 +74,30 @@ static void test_reports_busy_transport(void) {
            COMMAND_TRANSPORT_COMPLETE);
     assert(motor_command_mailbox_queue_payload(&transport, payload, sizeof(payload)) ==
            COMMAND_TRANSPORT_BUSY);
+}
+
+static void test_consumes_previous_rejection_before_queueing(void) {
+    static const uint8_t command[] = {0, 0, 0, 0};
+    static const uint8_t control[] = {0x80, 0, 0, 0};
+    static const uint8_t rejected[] = {0};
+    static const uint8_t expected[] = {0x02, 0x40, 0x82, 0x80, 0, 0, 0};
+    CommandTransport transport;
+    command_transport_init(&transport);
+
+    assert(motor_command_mailbox_queue_command(&transport, command) == COMMAND_TRANSPORT_COMPLETE);
+    assert(command_transport_request_sent(&transport));
+    command_transport_receive(&transport, rejected, sizeof(rejected));
+    assert(motor_command_mailbox_queue_control(&transport, control) == COMMAND_TRANSPORT_COMPLETE);
+    assert_request(&transport, expected, sizeof(expected));
+}
+
+static void test_rejects_oversized_response_transfer(void) {
+    static uint8_t response[MEMORY_TRANSFER_MAX_READ_SIZE + 1];
+    CommandTransport transport;
+    command_transport_init(&transport);
+
+    assert(motor_command_mailbox_queue_response(&transport, response, sizeof(response)) ==
+           COMMAND_TRANSPORT_TOO_LONG);
 }
 
 static void test_completes_command_register_write(void) {
@@ -99,9 +144,13 @@ static void test_reports_rejected_register_write(void) {
 
 int main(void) {
     test_queues_payload_write();
+    test_queues_response_read();
+    test_queues_status_write();
     test_queues_control_write();
     test_queues_command_write();
     test_reports_busy_transport();
+    test_consumes_previous_rejection_before_queueing();
+    test_rejects_oversized_response_transfer();
     test_completes_command_register_write();
     test_reports_rejected_register_write();
     return 0;

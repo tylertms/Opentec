@@ -8,6 +8,7 @@
 enum {
     MOTOR_COMMAND_MAILBOX_OWNER = 0x20,
     MOTOR_COMMAND_MAILBOX_REGISTER_SIZE = 4,
+    MOTOR_COMMAND_MAILBOX_STATUS_SIZE = 2,
 };
 
 typedef enum {
@@ -34,6 +35,11 @@ typedef struct {
 
 CommandTransportResult motor_command_mailbox_queue_payload(CommandTransport *transport,
                                                            const uint8_t *payload, uint16_t length);
+CommandTransportResult motor_command_mailbox_queue_response(CommandTransport *transport,
+                                                            uint8_t *response, uint16_t length);
+CommandTransportResult
+motor_command_mailbox_queue_status(CommandTransport *transport,
+                                   const uint8_t status[MOTOR_COMMAND_MAILBOX_STATUS_SIZE]);
 CommandTransportResult
 motor_command_mailbox_queue_control(CommandTransport *transport,
                                     const uint8_t control[MOTOR_COMMAND_MAILBOX_REGISTER_SIZE]);

@@ -6,9 +6,25 @@
 
 enum {
     MOTOR_COMMAND_MAILBOX_PAYLOAD_OFFSET = 0x80,
+    MOTOR_COMMAND_MAILBOX_STATUS_OFFSET = 0x81,
     MOTOR_COMMAND_MAILBOX_CONTROL_OFFSET = 0x82,
     MOTOR_COMMAND_MAILBOX_COMMAND_OFFSET = 0x90,
 };
+
+/**
+ * @brief Prepares the motor-command mailbox transport for another request.
+ *
+ * Consumes any completed or rejected request result and reports busy only while the shared
+ * transport still has an active operation or a different owner.
+ *
+ * @param[in,out] transport Shared command transport to inspect.
+ * @return Complete when another mailbox request can be queued, or busy while unavailable.
+ */
+static CommandTransportResult prepare_transport(CommandTransport *transport) {
+    return command_transport_poll(transport, MOTOR_COMMAND_MAILBOX_OWNER) == COMMAND_TRANSPORT_BUSY
+               ? COMMAND_TRANSPORT_BUSY
+               : COMMAND_TRANSPORT_COMPLETE;
+}
 
 /**
  * @brief Queues a motor-command mailbox payload write.
@@ -24,8 +40,55 @@ enum {
 CommandTransportResult motor_command_mailbox_queue_payload(CommandTransport *transport,
                                                            const uint8_t *payload,
                                                            uint16_t length) {
+    CommandTransportResult result = prepare_transport(transport);
+    if (result != COMMAND_TRANSPORT_COMPLETE) {
+        return result;
+    }
     return command_transport_queue_write(transport, MOTOR_COMMAND_MAILBOX_OWNER,
                                          MOTOR_COMMAND_MAILBOX_PAYLOAD_OFFSET, payload, length);
+}
+
+/**
+ * @brief Queues a motor-command mailbox response read.
+ *
+ * Reads the requested response bytes through command-transport owner 0x20 at remote mailbox
+ * offset 0x80. The shared transport applies its per-transfer limit.
+ *
+ * @param[in,out] transport Shared command transport receiving the read request.
+ * @param[out] response Destination for the response bytes.
+ * @param[in] length Requested response byte count.
+ * @return Command-transport queue result.
+ */
+CommandTransportResult motor_command_mailbox_queue_response(CommandTransport *transport,
+                                                            uint8_t *response, uint16_t length) {
+    CommandTransportResult result = prepare_transport(transport);
+    if (result != COMMAND_TRANSPORT_COMPLETE) {
+        return result;
+    }
+    return command_transport_queue_read(transport, MOTOR_COMMAND_MAILBOX_OWNER,
+                                        MOTOR_COMMAND_MAILBOX_PAYLOAD_OFFSET, response, length);
+}
+
+/**
+ * @brief Queues a motor-command mailbox status write.
+ *
+ * Writes the two-byte status record through command-transport owner 0x20 at remote mailbox offset
+ * 0x81.
+ *
+ * @param[in,out] transport Shared command transport receiving the write request.
+ * @param[in] status Two-byte motor-command status record.
+ * @return Command-transport queue result.
+ */
+CommandTransportResult
+motor_command_mailbox_queue_status(CommandTransport *transport,
+                                   const uint8_t status[MOTOR_COMMAND_MAILBOX_STATUS_SIZE]) {
+    CommandTransportResult result = prepare_transport(transport);
+    if (result != COMMAND_TRANSPORT_COMPLETE) {
+        return result;
+    }
+    return command_transport_queue_write(transport, MOTOR_COMMAND_MAILBOX_OWNER,
+                                         MOTOR_COMMAND_MAILBOX_STATUS_OFFSET, status,
+                                         MOTOR_COMMAND_MAILBOX_STATUS_SIZE);
 }
 
 /**
@@ -41,6 +104,10 @@ CommandTransportResult motor_command_mailbox_queue_payload(CommandTransport *tra
 CommandTransportResult
 motor_command_mailbox_queue_control(CommandTransport *transport,
                                     const uint8_t control[MOTOR_COMMAND_MAILBOX_REGISTER_SIZE]) {
+    CommandTransportResult result = prepare_transport(transport);
+    if (result != COMMAND_TRANSPORT_COMPLETE) {
+        return result;
+    }
     return command_transport_queue_write(transport, MOTOR_COMMAND_MAILBOX_OWNER,
                                          MOTOR_COMMAND_MAILBOX_CONTROL_OFFSET, control,
                                          MOTOR_COMMAND_MAILBOX_REGISTER_SIZE);
@@ -59,6 +126,10 @@ motor_command_mailbox_queue_control(CommandTransport *transport,
 CommandTransportResult
 motor_command_mailbox_queue_command(CommandTransport *transport,
                                     const uint8_t command[MOTOR_COMMAND_MAILBOX_REGISTER_SIZE]) {
+    CommandTransportResult result = prepare_transport(transport);
+    if (result != COMMAND_TRANSPORT_COMPLETE) {
+        return result;
+    }
     return command_transport_queue_write(transport, MOTOR_COMMAND_MAILBOX_OWNER,
                                          MOTOR_COMMAND_MAILBOX_COMMAND_OFFSET, command,
                                          MOTOR_COMMAND_MAILBOX_REGISTER_SIZE);
