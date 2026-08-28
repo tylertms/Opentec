@@ -50,6 +50,7 @@ usb_compatibility_report_descriptor_sources = files(
 usb_compatibility_descriptor_sources = files('source/usb/compatibility_descriptor.c')
 usb_console_descriptor_sources = files('source/usb/console_descriptor.c')
 usb_feature_download_sources = files('source/usb/feature_download.c')
+usb_feature_upload_sources = files('source/usb/feature_upload.c')
 usb_motor_response_download_sources = files('source/usb/motor_response_download.c')
 usb_xbox_gip_discovery_sources = files('source/usb/xbox_gip_discovery.c')
 usb_xbox_gip_metadata_sources = files('source/usb/xbox_gip_metadata.c')
@@ -190,6 +191,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'usb-compatibility-descriptor': 'source/usb/compatibility_descriptor.c',
     'usb-console-descriptor': 'source/usb/console_descriptor.c',
     'usb-feature-download': 'source/usb/feature_download.c',
+    'usb-feature-upload': 'source/usb/feature_upload.c',
     'usb-motor-response-download': 'source/usb/motor_response_download.c',
     'usb-xbox-gip-discovery': 'source/usb/xbox_gip_discovery.c',
     'usb-xbox-gip-metadata': 'source/usb/xbox_gip_metadata.c',
@@ -906,6 +908,14 @@ if not meson.is_cross_build()
     'tests/source/usb_motor_response_download.c',
     usb_feature_download_sources,
     usb_motor_response_download_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  usb_feature_upload_test = executable(
+    'base-usb-feature-upload-test',
+    'tests/source/usb_feature_upload.c',
+    usb_feature_upload_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -1650,6 +1660,7 @@ if not meson.is_cross_build()
     usb_motor_response_download_test,
     suite: ['base', 'usb', 'motor'],
   )
+  test('base-usb-feature-upload', usb_feature_upload_test, suite: ['base', 'usb'])
   test('base-usb-updater-descriptor', usb_updater_descriptor_test, suite: ['base', 'usb'])
   test('base-usb-updater-control', usb_updater_control_test, suite: ['base', 'usb'])
   test('base-usb-descriptor', usb_descriptor_test, suite: ['base', 'usb'])
