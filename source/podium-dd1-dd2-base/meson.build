@@ -105,6 +105,7 @@ wheel_axis_override_sources = files('source/wheel/axis_override.c')
 wheel_authentication_sources = files('source/wheel/authentication.c')
 wheel_capability_sources = files('source/wheel/capability.c')
 wheel_display_output_sources = files('source/wheel/display_output.c')
+wheel_memory_transfer_sources = files('source/wheel/memory_transfer.c')
 wheel_motion_sources = files('source/wheel/motion.c')
 wheel_packet_crc_sources = files('source/wheel/packet_crc.c')
 wheel_packet_mode_one_sources = files('source/wheel/packet_mode_one.c')
@@ -248,6 +249,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'wheel-authentication': 'source/wheel/authentication.c',
     'wheel-capability': 'source/wheel/capability.c',
     'wheel-display-output': 'source/wheel/display_output.c',
+    'wheel-memory-transfer': 'source/wheel/memory_transfer.c',
     'wheel-motion': 'source/wheel/motion.c',
     'wheel-packet-crc': 'source/wheel/packet_crc.c',
     'wheel-packet-mode-one': 'source/wheel/packet_mode_one.c',
@@ -1224,6 +1226,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_memory_transfer_test = executable(
+    'base-wheel-memory-transfer-test',
+    'tests/source/wheel_memory_transfer.c',
+    wheel_memory_transfer_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_transport_frame_test = executable(
     'base-wheel-transport-frame-test',
     'tests/source/wheel_transport_frame.c',
@@ -1564,6 +1574,11 @@ if not meson.is_cross_build()
     suite: ['base', 'wheel', 'display'],
   )
   test('base-wheel-status-digest', wheel_status_digest_test, suite: ['base', 'wheel', 'status'])
+  test(
+    'base-wheel-memory-transfer',
+    wheel_memory_transfer_test,
+    suite: ['base', 'wheel', 'transport'],
+  )
   test('base-wheel-protocol', wheel_protocol_test, suite: ['base', 'wheel', 'protocol'])
   test('base-wheel-capability', wheel_capability_test, suite: ['base', 'wheel', 'input'])
   test('base-wheel-motion', wheel_motion_test, suite: ['base', 'wheel', 'input'])
