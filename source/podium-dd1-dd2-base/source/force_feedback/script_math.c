@@ -17,11 +17,13 @@ static ForceFeedbackScriptMathResult skipped_result(void) {
  * @brief Evaluate a script arithmetic operation.
  *
  * Implements VM arithmetic opcodes 0x10 through 0x1A, trigonometric opcodes 0x20 through 0x22,
- * and angle opcodes 0x2A through 0x2D. Binary operations consume both operands; unary operations
- * consume only the first. Division and modulo by zero, square root of a negative value, reciprocal
- * of zero, and a tangent result outside the inclusive range -22875900 through 22875900 skip the
- * destination write. Modulo uses a floored quotient. Angle conversion uses 180 and the float value
- * of pi encoded as 0x40490FDB.
+ * angle opcodes 0x2A through 0x2D, and vector/trigonometric opcodes 0xB0 through 0xB2. Binary
+ * operations consume both operands; unary operations consume only the first. Vector magnitude
+ * evaluates sqrt(first * first + second * second). The multiply-cosine and multiply-sine operations
+ * treat the first operand as an amplitude and the second as an angle. Division and modulo by zero,
+ * square root of a negative value, reciprocal of zero, and a tangent result outside the inclusive
+ * range -22875900 through 22875900 skip the destination write. Modulo uses a floored quotient.
+ * Angle conversion uses 180 and the float value of pi encoded as 0x40490FDB.
  *
  * @param[in] operation Arithmetic opcode to evaluate.
  * @param[in] first First or only operand.
@@ -72,6 +74,12 @@ force_feedback_script_math_evaluate(ForceFeedbackScriptMathOperation operation, 
         return value_result(first * script_pi / 180.0f);
     case FORCE_FEEDBACK_SCRIPT_MATH_RADIANS_TO_DEGREES:
         return value_result(first * 180.0f / script_pi);
+    case FORCE_FEEDBACK_SCRIPT_MATH_VECTOR_MAGNITUDE:
+        return value_result(sqrtf(first * first + second * second));
+    case FORCE_FEEDBACK_SCRIPT_MATH_MULTIPLY_COSINE:
+        return value_result(first * cosf(second));
+    case FORCE_FEEDBACK_SCRIPT_MATH_MULTIPLY_SINE:
+        return value_result(first * sinf(second));
     default:
         return skipped_result();
     }

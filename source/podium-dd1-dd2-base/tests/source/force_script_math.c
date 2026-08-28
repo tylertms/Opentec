@@ -57,6 +57,12 @@ static void test_trigonometric_operations(void) {
     assert_value(FORCE_FEEDBACK_SCRIPT_MATH_RADIANS_TO_DEGREES, multiplied.value, 99.0f, 180.0f);
 }
 
+static void test_vector_operations(void) {
+    assert_value(FORCE_FEEDBACK_SCRIPT_MATH_VECTOR_MAGNITUDE, 3.0f, 4.0f, 5.0f);
+    assert_value(FORCE_FEEDBACK_SCRIPT_MATH_MULTIPLY_COSINE, 7.0f, 0.0f, 7.0f);
+    assert_value(FORCE_FEEDBACK_SCRIPT_MATH_MULTIPLY_SINE, 7.0f, 0.0f, 0.0f);
+}
+
 static void test_skipped_writes(void) {
     assert(!force_feedback_script_math_evaluate(FORCE_FEEDBACK_SCRIPT_MATH_DIVIDE, 1.0f, 0.0f)
                 .writes_value);
@@ -75,6 +81,7 @@ int main(void) {
     test_binary_operations();
     test_unary_operations();
     test_trigonometric_operations();
+    test_vector_operations();
     test_skipped_writes();
     return 0;
 }
