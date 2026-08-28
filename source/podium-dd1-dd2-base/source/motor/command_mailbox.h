@@ -10,6 +10,28 @@ enum {
     MOTOR_COMMAND_MAILBOX_REGISTER_SIZE = 4,
 };
 
+typedef enum {
+    MOTOR_COMMAND_MAILBOX_CONTROL_WRITE,
+    MOTOR_COMMAND_MAILBOX_COMMAND_WRITE,
+} MotorCommandMailboxWriteKind;
+
+typedef enum {
+    MOTOR_COMMAND_MAILBOX_WRITE_QUEUE,
+    MOTOR_COMMAND_MAILBOX_WRITE_WAIT,
+    MOTOR_COMMAND_MAILBOX_WRITE_REPORT_FAILURE,
+} MotorCommandMailboxWritePhase;
+
+typedef enum {
+    MOTOR_COMMAND_MAILBOX_WRITE_NONE,
+    MOTOR_COMMAND_MAILBOX_WRITE_COMPLETE,
+    MOTOR_COMMAND_MAILBOX_WRITE_FAILED,
+} MotorCommandMailboxWriteResult;
+
+typedef struct {
+    MotorCommandMailboxWriteKind kind;
+    MotorCommandMailboxWritePhase phase;
+} MotorCommandMailboxWrite;
+
 CommandTransportResult motor_command_mailbox_queue_payload(CommandTransport *transport,
                                                            const uint8_t *payload, uint16_t length);
 CommandTransportResult
@@ -18,5 +40,11 @@ motor_command_mailbox_queue_control(CommandTransport *transport,
 CommandTransportResult
 motor_command_mailbox_queue_command(CommandTransport *transport,
                                     const uint8_t command[MOTOR_COMMAND_MAILBOX_REGISTER_SIZE]);
+void motor_command_mailbox_write_init(MotorCommandMailboxWrite *write,
+                                      MotorCommandMailboxWriteKind kind);
+MotorCommandMailboxWriteResult
+motor_command_mailbox_write_run(MotorCommandMailboxWrite *write, CommandTransport *transport,
+                                const uint8_t record[MOTOR_COMMAND_MAILBOX_REGISTER_SIZE],
+                                uint32_t *command_value);
 
 #endif
