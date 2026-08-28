@@ -1046,6 +1046,11 @@ int main(void) {
         serial_service_run(&serial_service, now_ms);
         service_usb_command_bridge(now_ms);
         wheel_status_service_run(&wheel_status_service, now_ms, !serial_command_waiting());
+        wheel_service_configure_axis_processing(
+            &wheel_service, (uint8_t)usb_device_operating_mode(),
+            (uint8_t)tuning_profile->paddle_mode,
+            wheel_steering_limits_active(&base_settings.steering_limits,
+                                         base_settings.tuning_profiles.active_slot));
         wheel_service_run(&wheel_service, now_ms, !serial_command_waiting());
         if (serial_service.status == SERIAL_SERVICE_IDLE) {
             (void)motor_command_serial_submit(&command_transport, &serial_service, now_ms);

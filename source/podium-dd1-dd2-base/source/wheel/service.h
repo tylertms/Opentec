@@ -51,6 +51,8 @@ void wheel_service_init(WheelService *service, SerialService *transport);
 void wheel_service_run(WheelService *service, uint32_t now_ms, bool start_allowed);
 void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output);
 void wheel_service_set_crc_adapter(WheelService *service, const WheelPacketCrcAdapter *adapter);
+void wheel_service_configure_axis_processing(WheelService *service, uint8_t interface_mode,
+                                             uint8_t paddle_mode, uint8_t bite_point_percent);
 bool wheel_service_queue_remote_tuning_response(WheelService *service,
                                                 const RemoteTuningResponse *response);
 bool wheel_service_remote_tuning_response_pending(const WheelService *service);

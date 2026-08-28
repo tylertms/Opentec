@@ -74,7 +74,7 @@ typedef struct {
     uint8_t mode;
     uint8_t interface_mode;
     uint8_t configured_axis_override_mode;
-    uint8_t axis_calibration_value;
+    uint8_t paddle_bite_point_percent;
     bool button_latch_enabled;
     bool profile_transition_pending;
     bool request_ready;
@@ -93,7 +93,7 @@ bool wheel_protocol_queue_remote_tuning_response(WheelProtocol *protocol,
                                                  const RemoteTuningResponse *response);
 bool wheel_protocol_remote_tuning_response_pending(const WheelProtocol *protocol);
 void wheel_protocol_set_axis_processing(WheelProtocol *protocol, uint8_t interface_mode,
-                                        uint8_t override_mode, uint8_t calibration_value);
+                                        uint8_t override_mode, uint8_t bite_point_percent);
 void wheel_protocol_set_button_latch(WheelProtocol *protocol, bool enabled,
                                      bool profile_transition_pending);
 void wheel_protocol_accept(WheelProtocol *protocol,

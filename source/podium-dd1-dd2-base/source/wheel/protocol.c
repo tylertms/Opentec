@@ -183,7 +183,7 @@ static void capture_request(WheelProtocol *protocol,
             wheel_axis_override_process(
                 &protocol->axis_override_processor, protocol->configured_axis_override_mode,
                 protocol->mode, protocol->interface_mode,
-                protocol->mode_one_input.controls.enabled != 0, protocol->axis_calibration_value,
+                protocol->mode_one_input.controls.enabled != 0, protocol->paddle_bite_point_percent,
                 protocol->mode_one_input.controls.x, protocol->mode_one_input.controls.y,
                 protocol->mode_one_input.axis_outputs);
         }
@@ -240,7 +240,7 @@ static void capture_request(WheelProtocol *protocol,
         wheel_axis_override_process_packet(
             &protocol->axis_override_processor, protocol->configured_axis_override_mode,
             protocol->mode, protocol->interface_mode, protocol->crc_input.axis_limit,
-            protocol->axis_calibration_value, protocol->crc_input.controls,
+            protocol->paddle_bite_point_percent, protocol->crc_input.controls,
             protocol->crc_input.axis_outputs);
         wheel_packet_crc_smooth_axes(&protocol->crc_filter, &protocol->crc_input);
         wheel_packet_crc_snapshot(&protocol->crc_input, snapshot);
@@ -356,7 +356,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     protocol->mode = WHEEL_MODE_UNKNOWN;
     protocol->interface_mode = 0;
     protocol->configured_axis_override_mode = WHEEL_AXIS_OVERRIDE_MODE_NONE;
-    protocol->axis_calibration_value = 0;
+    protocol->paddle_bite_point_percent = 100;
     protocol->button_latch_enabled = false;
     protocol->profile_transition_pending = false;
     protocol->request_ready = false;
@@ -453,19 +453,19 @@ bool wheel_protocol_remote_tuning_response_pending(const WheelProtocol *protocol
 /**
  * @brief Configures attached-wheel axis processing.
  *
- * Retains the host interface mode, axis override mode, and calibration byte applied to incoming
- * mode-one and CRC-family controls.
+ * Retains the host interface mode, analog-paddle mode, and bite-point percentage applied to
+ * incoming mode-one and CRC-family controls.
  *
  * @param[in,out] protocol Wheel protocol state to configure.
  * @param[in] interface_mode Active host interface mode.
- * @param[in] override_mode Configured wheel-axis override mode.
- * @param[in] calibration_value Axis calibration byte.
+ * @param[in] override_mode Configured analog-paddle mode.
+ * @param[in] bite_point_percent Active profile bite-point percentage.
  */
 void wheel_protocol_set_axis_processing(WheelProtocol *protocol, uint8_t interface_mode,
-                                        uint8_t override_mode, uint8_t calibration_value) {
+                                        uint8_t override_mode, uint8_t bite_point_percent) {
     protocol->interface_mode = interface_mode;
     protocol->configured_axis_override_mode = override_mode;
-    protocol->axis_calibration_value = calibration_value;
+    protocol->paddle_bite_point_percent = bite_point_percent;
 }
 
 /**

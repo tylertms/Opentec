@@ -224,8 +224,9 @@ static void reset_connection(WheelService *service) {
     capabilities.input_available = false;
     uint8_t interface_mode = service->protocol.interface_mode;
     uint8_t axis_override_mode = service->protocol.configured_axis_override_mode;
-    uint8_t axis_calibration_value = service->protocol.axis_calibration_value;
+    uint8_t paddle_bite_point_percent = service->protocol.paddle_bite_point_percent;
     uint8_t axis_multiplex_phase = service->protocol.axis_override_processor.multiplex_phase;
+    uint8_t paddle_clutch_phase = service->protocol.axis_override_processor.paddle_clutch_phase;
     bool axis_x_available = service->protocol.axis_override_processor.x_available;
     bool axis_y_available = service->protocol.axis_override_processor.y_available;
     bool packet_axis_report_enabled =
@@ -245,8 +246,9 @@ static void reset_connection(WheelService *service) {
     service->protocol.output_reports = output_reports;
     service->protocol.capabilities = capabilities;
     wheel_protocol_set_axis_processing(&service->protocol, interface_mode, axis_override_mode,
-                                       axis_calibration_value);
+                                       paddle_bite_point_percent);
     service->protocol.axis_override_processor.multiplex_phase = axis_multiplex_phase;
+    service->protocol.axis_override_processor.paddle_clutch_phase = paddle_clutch_phase;
     service->protocol.axis_override_processor.x_available = axis_x_available;
     service->protocol.axis_override_processor.y_available = axis_y_available;
     service->protocol.axis_override_processor.packet_axis_report_enabled =
@@ -257,6 +259,23 @@ static void reset_connection(WheelService *service) {
     service->protocol_deadline_ms = 0;
     service->protocol_deadline_active = false;
     service->scan_phase = 0;
+}
+
+/**
+ * @brief Configures attached-wheel analog-paddle processing.
+ *
+ * Applies the active host interface, tuning-profile paddle mode, and per-profile bite-point
+ * percentage to subsequent attached-wheel input packets.
+ *
+ * @param[in,out] service Attached-wheel service to configure.
+ * @param[in] interface_mode Active host interface mode.
+ * @param[in] paddle_mode Active tuning-profile analog-paddle mode.
+ * @param[in] bite_point_percent Active profile bite-point percentage.
+ */
+void wheel_service_configure_axis_processing(WheelService *service, uint8_t interface_mode,
+                                             uint8_t paddle_mode, uint8_t bite_point_percent) {
+    wheel_protocol_set_axis_processing(&service->protocol, interface_mode, paddle_mode,
+                                       bite_point_percent);
 }
 
 /**

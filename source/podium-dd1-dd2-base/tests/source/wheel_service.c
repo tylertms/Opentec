@@ -431,9 +431,9 @@ static void test_restarts_discovery_after_scan_timeout(void) {
     service.protocol.mode_one_button_filter.next_sample = 2;
     service.protocol.mode_one_control_axis_filter.samples[2][1] = 0x6b;
     service.protocol.mode_one_control_axis_filter.next_sample = 1;
-    wheel_protocol_set_axis_processing(&service.protocol, 7, WHEEL_AXIS_OVERRIDE_MODE_PRIMARY,
-                                       0x3c);
+    wheel_service_configure_axis_processing(&service, 7, WHEEL_AXIS_OVERRIDE_MODE_PRIMARY, 60);
     service.protocol.axis_override_processor.multiplex_phase = WHEEL_AXIS_MULTIPLEX_Y;
+    service.protocol.axis_override_processor.paddle_clutch_phase = WHEEL_PADDLE_CLUTCH_ACTIVE;
     service.protocol.axis_override_processor.x_available = true;
     service.protocol.axis_override_processor.y_available = true;
     service.protocol.axis_override_processor.overrides.axis_5.enabled = true;
@@ -457,8 +457,10 @@ static void test_restarts_discovery_after_scan_timeout(void) {
     assert(service.protocol.mode_one_control_axis_filter.next_sample == 1);
     assert(service.protocol.interface_mode == 7);
     assert(service.protocol.configured_axis_override_mode == WHEEL_AXIS_OVERRIDE_MODE_PRIMARY);
-    assert(service.protocol.axis_calibration_value == 0x3c);
+    assert(service.protocol.paddle_bite_point_percent == 60);
     assert(service.protocol.axis_override_processor.multiplex_phase == WHEEL_AXIS_MULTIPLEX_Y);
+    assert(service.protocol.axis_override_processor.paddle_clutch_phase ==
+           WHEEL_PADDLE_CLUTCH_ACTIVE);
     assert(service.protocol.axis_override_processor.x_available);
     assert(service.protocol.axis_override_processor.y_available);
     assert(!service.protocol.axis_override_processor.overrides.axis_5.enabled);
