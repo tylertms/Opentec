@@ -20,6 +20,7 @@ usb_buffer_descriptor_sources = files('source/usb/buffer_descriptor.c')
 usb_device_control_sources = files('source/usb/device_control.c')
 usb_device_sources = files('source/usb/device.c')
 usb_output_command_sources = files('source/usb/output_command.c')
+usb_operating_mode_command_sources = files('source/usb/operating_mode_command.c')
 podium_report_descriptor_sources = files('source/usb/podium_report_descriptor.c')
 board_identity_sources = files('source/board/identity.c')
 status_led_sources = files('source/board/status_led.c')
@@ -88,6 +89,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'usb-device-control': 'source/usb/device_control.c',
     'usb-device': 'source/usb/device.c',
     'usb-output-command': 'source/usb/output_command.c',
+    'usb-operating-mode-command': 'source/usb/operating_mode_command.c',
     'podium-report-descriptor': 'source/usb/podium_report_descriptor.c',
     'board-identity': 'source/board/identity.c',
     'status-led': 'source/board/status_led.c',
@@ -336,6 +338,14 @@ if not meson.is_cross_build()
     'base-usb-output-command-test',
     'tests/source/usb_output_command.c',
     usb_output_command_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  usb_operating_mode_command_test = executable(
+    'base-usb-operating-mode-command-test',
+    'tests/source/usb_operating_mode_command.c',
+    usb_operating_mode_command_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -653,6 +663,11 @@ if not meson.is_cross_build()
   test('base-usb-device-control', usb_device_control_test, suite: ['base', 'usb'])
   test('base-usb-device', usb_device_test, suite: ['base', 'usb'])
   test('base-usb-output-command', usb_output_command_test, suite: ['base', 'usb', 'output'])
+  test(
+    'base-usb-operating-mode-command',
+    usb_operating_mode_command_test,
+    suite: ['base', 'usb', 'output'],
+  )
   test(
     'base-podium-report-descriptor',
     podium_report_descriptor_test,
