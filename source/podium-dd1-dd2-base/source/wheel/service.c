@@ -826,6 +826,19 @@ bool wheel_service_adapter_connected(const WheelService *service) {
 }
 
 /**
+ * @brief Reports whether the attached wheel exposes calibration controls.
+ *
+ * Returns the effective capability after applying the negotiated wheel mode's forced availability
+ * rules to the report capability bit.
+ *
+ * @param[in] service Attached-wheel service and capability state.
+ * @return True when attached-wheel calibration is available.
+ */
+bool wheel_service_calibration_available(const WheelService *service) {
+    return wheel_protocol_capabilities(&service->protocol)->calibration_available;
+}
+
+/**
  * @brief Returns the negotiated attached-wheel mode.
  *
  * Reads the mode selected by the attached-wheel protocol handshake.

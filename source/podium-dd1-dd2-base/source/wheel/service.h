@@ -78,6 +78,7 @@ int8_t wheel_service_encoder_direction(const WheelService *service);
 int8_t wheel_service_take_encoder_step(WheelService *service);
 bool wheel_service_acknowledgement_input_active(const WheelService *service);
 bool wheel_service_adapter_connected(const WheelService *service);
+bool wheel_service_calibration_available(const WheelService *service);
 uint8_t wheel_service_mode(const WheelService *service);
 WheelProtocolPhase wheel_service_protocol_phase(const WheelService *service);
 

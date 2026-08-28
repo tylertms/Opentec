@@ -253,6 +253,16 @@ static void test_thermal_effect_limit_status(void) {
     assert(state.status_flags == 0xa1);
 }
 
+static void test_wheel_calibration_status(void) {
+    fanatec_input_state state = {.status_flags = 0x91};
+
+    fanatec_input_apply_wheel_calibration(&state, true);
+    assert(state.status_flags == 0xd1);
+
+    fanatec_input_apply_wheel_calibration(&state, false);
+    assert(state.status_flags == 0x91);
+}
+
 int main(void) {
     test_encode();
     test_zero_state();
@@ -270,5 +280,6 @@ int main(void) {
     test_h_pattern_shifter_mapping();
     test_sequential_shifter_mapping();
     test_thermal_effect_limit_status();
+    test_wheel_calibration_status();
     return 0;
 }

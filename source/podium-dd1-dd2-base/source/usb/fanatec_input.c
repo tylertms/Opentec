@@ -27,6 +27,7 @@ enum {
     SHIFTER_TRANSITION_BUTTON_1 = 1 << 1,
     STATUS_SEQUENTIAL_SHIFTERS = 1 << 0,
     STATUS_THERMAL_EFFECT_LIMIT = 1 << 4,
+    STATUS_WHEEL_CALIBRATION_AVAILABLE = 1 << 6,
     MULTI_POSITION_ENCODER_MODE = 0,
     MULTI_POSITION_PULSE_MODE = 1,
     MULTI_POSITION_CONSTANT_MODE = 2,
@@ -229,6 +230,21 @@ void fanatec_input_apply_shifter(fanatec_input_state *state, const ShifterInputS
 void fanatec_input_apply_thermal_limit(fanatec_input_state *state, bool active) {
     state->status_flags = (uint8_t)((state->status_flags & (uint8_t)~STATUS_THERMAL_EFFECT_LIMIT) |
                                     (active ? STATUS_THERMAL_EFFECT_LIMIT : 0));
+}
+
+/**
+ * @brief Applies attached-wheel calibration availability to the Fanatec input state.
+ *
+ * Replaces status bit six with the effective wheel capability while preserving every other status
+ * bit.
+ *
+ * @param[in,out] state Input report state to update.
+ * @param[in] available True when the attached wheel exposes calibration controls.
+ */
+void fanatec_input_apply_wheel_calibration(fanatec_input_state *state, bool available) {
+    state->status_flags =
+        (uint8_t)((state->status_flags & (uint8_t)~STATUS_WHEEL_CALIBRATION_AVAILABLE) |
+                  (available ? STATUS_WHEEL_CALIBRATION_AVAILABLE : 0));
 }
 
 /**

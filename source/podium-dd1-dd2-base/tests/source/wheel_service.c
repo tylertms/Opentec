@@ -609,6 +609,15 @@ static void test_selects_extended_report_fields(void) {
     assert(!wheel_service_extended_report_fields(&service));
 }
 
+static void test_reports_calibration_availability(void) {
+    WheelService service;
+    initialize_service(&service);
+
+    assert(!wheel_service_calibration_available(&service));
+    service.protocol.capabilities.calibration_available = true;
+    assert(wheel_service_calibration_available(&service));
+}
+
 int main(void) {
     test_maps_primary_scan_bits();
     test_maps_secondary_scan_bit();
@@ -628,5 +637,6 @@ int main(void) {
     test_marks_extended_multi_position_layout();
     test_rejects_unavailable_multi_position_input();
     test_selects_extended_report_fields();
+    test_reports_calibration_availability();
     return 0;
 }
