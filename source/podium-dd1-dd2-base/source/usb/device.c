@@ -769,6 +769,24 @@ bool usb_device_send_input(const uint8_t *report, uint8_t length) {
     return true;
 }
 
+/**
+ * @brief Sends one native vendor HID report.
+ *
+ * Submits all 64 bytes to endpoint 1 without comparing them with prior input, so repeated vendor
+ * responses remain observable by the host.
+ *
+ * @param[in] report Complete native vendor report.
+ * @return True when the configured native HID endpoint accepted the transfer.
+ */
+bool usb_device_send_vendor_report(const uint8_t report[USB_DEVICE_REPORT_SIZE]) {
+    if (operating_mode != USB_OPERATING_MODE_FANATEC || !usb_device_configured() || report == 0 ||
+        !platform_usb_send(USB_HID_ENDPOINT, report, USB_DEVICE_REPORT_SIZE, input_data_one)) {
+        return false;
+    }
+    input_data_one = !input_data_one;
+    return true;
+}
+
 bool usb_device_take_updater_packet(UsbDeviceUpdaterPacket *packet) {
     if (!updater_packet_ready || packet == 0) {
         return false;
