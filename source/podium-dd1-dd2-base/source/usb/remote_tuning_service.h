@@ -39,5 +39,8 @@ bool usb_remote_tuning_service_apply(UsbRemoteTuningService *service,
                                      bool adapter_connected);
 bool usb_remote_tuning_service_take_response(UsbRemoteTuningService *service, uint8_t wheel_mode,
                                              RemoteTuningResponse *response);
+bool usb_remote_tuning_service_take_forward_batch(
+    UsbRemoteTuningService *service, uint8_t wheel_mode,
+    uint8_t output[USB_REMOTE_TUNING_FORWARD_BATCH_SIZE], uint8_t *length);
 
 #endif

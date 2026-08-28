@@ -153,6 +153,57 @@ static void keeps_complete_records_within_each_response(void) {
     assert(records.count == 0);
 }
 
+static void forwards_route_three_records_from_both_selector_banks(void) {
+    UsbRemoteTuningRecords records;
+    usb_remote_tuning_records_init(&records);
+    uint8_t arguments[] = {
+        1, 3, 0x01, 0x34, 0x12, 2, 0xaa, 0xbb, 4,    0x02, 0x78, 0x56,
+        0, 3, 0x83, 0xbc, 0x9a, 1, 0xcc, 2,    0x04, 0x11, 0x22, 0,
+    };
+    UsbVendorCommand command = command_for(arguments, sizeof(arguments));
+    assert(usb_remote_tuning_records_apply(&records, &command));
+
+    uint8_t output[USB_REMOTE_TUNING_FORWARD_BATCH_SIZE] = {0};
+    uint8_t length = 0;
+    assert(usb_remote_tuning_records_take_forward_batch(&records, output, &length));
+    assert(length == 13);
+    assert(memcmp(output, arguments + 1, 7) == 0);
+    assert(memcmp(output + 7, arguments + 13, 6) == 0);
+    assert(records.count == 2);
+    assert(records.records[0].type == 4);
+    assert(records.records[1].type == 2);
+}
+
+static void keeps_forwarded_records_within_the_transfer_area(void) {
+    UsbRemoteTuningRecords records;
+    usb_remote_tuning_records_init(&records);
+    uint8_t arguments[81] = {1};
+    for (uint8_t record = 0; record < 4; record++) {
+        uint8_t offset = 1 + record * 20;
+        arguments[offset] = 3;
+        arguments[offset + 1] = record + 1;
+        arguments[offset + 4] = 15;
+        memset(arguments + offset + 5, 0xa0 + record, 15);
+    }
+    UsbVendorCommand command = command_for(arguments, sizeof(arguments));
+    assert(usb_remote_tuning_records_apply(&records, &command));
+
+    uint8_t output[USB_REMOTE_TUNING_FORWARD_BATCH_SIZE] = {0};
+    uint8_t length = 0;
+    assert(usb_remote_tuning_records_take_forward_batch(&records, output, &length));
+    assert(length == 60);
+    assert(output[1] == 1);
+    assert(output[21] == 2);
+    assert(output[41] == 3);
+    assert(records.count == 1);
+    assert(records.records[0].selector == 4);
+
+    assert(usb_remote_tuning_records_take_forward_batch(&records, output, &length));
+    assert(length == 20);
+    assert(output[1] == 4);
+    assert(records.count == 0);
+}
+
 int main(void) {
     stores_records_in_arrival_order();
     accepts_alternate_record_packets();
@@ -161,5 +212,7 @@ int main(void) {
     drops_records_after_the_store_is_full();
     routes_records_by_link_and_selector_bank();
     keeps_complete_records_within_each_response();
+    forwards_route_three_records_from_both_selector_banks();
+    keeps_forwarded_records_within_the_transfer_area();
     return 0;
 }

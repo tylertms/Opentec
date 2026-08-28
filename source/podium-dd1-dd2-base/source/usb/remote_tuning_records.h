@@ -10,6 +10,7 @@
 enum {
     USB_REMOTE_TUNING_RECORD_COUNT = 32,
     USB_REMOTE_TUNING_RECORD_PAYLOAD_SIZE = 15,
+    USB_REMOTE_TUNING_FORWARD_BATCH_SIZE = 61,
 };
 
 /** @brief One logical remote-tuning control record. */
@@ -32,5 +33,8 @@ bool usb_remote_tuning_records_apply(UsbRemoteTuningRecords *records,
                                      const UsbVendorCommand *command);
 bool usb_remote_tuning_records_take_response(UsbRemoteTuningRecords *records, RemoteTuningLink link,
                                              RemoteTuningResponse *response);
+bool usb_remote_tuning_records_take_forward_batch(
+    UsbRemoteTuningRecords *records, uint8_t output[USB_REMOTE_TUNING_FORWARD_BATCH_SIZE],
+    uint8_t *length);
 
 #endif

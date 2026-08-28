@@ -7,8 +7,8 @@ enum {
     REMOTE_TUNING_PACKET_RECORDS = 1,
     REMOTE_TUNING_PACKET_ALTERNATE_RECORDS = 3,
     REMOTE_TUNING_RECORD_HEADER_SIZE = 5,
-    REMOTE_TUNING_RECORD_ROUTE_EXTENDED = 3,
-    REMOTE_TUNING_RECORD_ROUTE_LEGACY = 4,
+    REMOTE_TUNING_RECORD_ROUTE_THREE = 3,
+    REMOTE_TUNING_RECORD_ROUTE_FOUR = 4,
     REMOTE_TUNING_ALTERNATE_RECORD_FLAG = 0x80,
 };
 
@@ -35,43 +35,84 @@ static void store_record(UsbRemoteTuningRecords *records, const uint8_t *input) 
 }
 
 /**
- * @brief Tests whether a record belongs to one attached-wheel response channel.
+ * @brief Tests whether a record belongs to a selected route and selector bank.
  *
- * Legacy transport accepts route-four records from both selector banks. Extended transport accepts
- * route-three records and separates selectors by bit 7.
+ * Matches the route exactly and compares only the selector bits selected by the mask.
  *
  * @param[in] record Retained remote-tuning record.
- * @param[in] link Attached-wheel response link.
- * @param[in] alternate Extended selector-bank choice.
- * @return True when the record belongs to the selected channel.
+ * @param[in] route Required record route.
+ * @param[in] selector_mask Selector bits to compare.
+ * @param[in] selector_value Required value of the selected bits.
+ * @return True when the route and selected selector bits match.
  */
-static bool record_matches(const UsbRemoteTuningRecord *record, RemoteTuningLink link,
-                           bool alternate) {
-    if (link == REMOTE_TUNING_LINK_LEGACY) {
-        return record->type == REMOTE_TUNING_RECORD_ROUTE_LEGACY;
-    }
-    return link == REMOTE_TUNING_LINK_EXTENDED &&
-           record->type == REMOTE_TUNING_RECORD_ROUTE_EXTENDED &&
-           ((record->selector & REMOTE_TUNING_ALTERNATE_RECORD_FLAG) != 0) == alternate;
+static bool record_matches(const UsbRemoteTuningRecord *record, uint8_t route,
+                           uint8_t selector_mask, uint8_t selector_value) {
+    return record->type == route && (record->selector & selector_mask) == selector_value;
 }
 
 /**
- * @brief Appends one complete record to attached-wheel response data.
+ * @brief Appends one complete record to a serialized record batch.
  *
  * Writes the type, selector, little-endian value, payload length, and payload without padding.
  *
  * @param[in] record Logical record to serialize.
- * @param[in,out] response Response receiving the serialized record.
+ * @param[out] output Serialized record destination.
+ * @param[in,out] length Number of bytes already stored and updated result length.
  */
-static void append_record(const UsbRemoteTuningRecord *record, RemoteTuningResponse *response) {
-    uint8_t *output = response->record_data + response->record_data_length;
-    output[0] = record->type;
-    output[1] = record->selector;
-    output[2] = (uint8_t)record->value;
-    output[3] = (uint8_t)(record->value >> 8);
-    output[4] = record->payload_length;
-    memcpy(output + REMOTE_TUNING_RECORD_HEADER_SIZE, record->payload, record->payload_length);
-    response->record_data_length += REMOTE_TUNING_RECORD_HEADER_SIZE + record->payload_length;
+static void append_record(const UsbRemoteTuningRecord *record, uint8_t *output, uint8_t *length) {
+    uint8_t *destination = output + *length;
+    destination[0] = record->type;
+    destination[1] = record->selector;
+    destination[2] = (uint8_t)record->value;
+    destination[3] = (uint8_t)(record->value >> 8);
+    destination[4] = record->payload_length;
+    memcpy(destination + REMOTE_TUNING_RECORD_HEADER_SIZE, record->payload, record->payload_length);
+    *length += REMOTE_TUNING_RECORD_HEADER_SIZE + record->payload_length;
+}
+
+/**
+ * @brief Takes one bounded batch of matching records.
+ *
+ * Serializes complete matching records in arrival order. The first matching record that does not
+ * fit ends the batch. Consumed records are removed while every retained record keeps its order.
+ *
+ * @param[in,out] records Arrival-order record store.
+ * @param[in] route Record route to select.
+ * @param[in] selector_mask Selector bits used to choose a bank.
+ * @param[in] selector_value Required value of the selected bits.
+ * @param[out] output Serialized record destination.
+ * @param[in] capacity Maximum serialized byte count.
+ * @param[out] length Produced serialized byte count.
+ * @return True when at least one record was consumed.
+ */
+static bool take_matching(UsbRemoteTuningRecords *records, uint8_t route, uint8_t selector_mask,
+                          uint8_t selector_value, uint8_t *output, uint8_t capacity,
+                          uint8_t *length) {
+    *length = 0;
+    uint8_t retained = 0;
+    bool full = false;
+
+    for (uint8_t index = 0; index < records->count; index++) {
+        UsbRemoteTuningRecord *record = &records->records[index];
+        uint8_t record_size = REMOTE_TUNING_RECORD_HEADER_SIZE + record->payload_length;
+        bool consume = !full && record_matches(record, route, selector_mask, selector_value);
+        if (consume && record_size <= capacity - *length) {
+            append_record(record, output, length);
+            continue;
+        }
+        if (consume) {
+            full = true;
+        }
+        records->records[retained++] = *record;
+    }
+
+    if (*length == 0) {
+        return false;
+    }
+    memset(records->records + retained, 0,
+           (records->count - retained) * sizeof(records->records[0]));
+    records->count = retained;
+    return true;
 }
 
 /**
@@ -92,31 +133,13 @@ static bool take_channel(UsbRemoteTuningRecords *records, RemoteTuningLink link,
     response->link = link;
     response->code =
         alternate ? REMOTE_TUNING_RESPONSE_ALTERNATE_RECORDS : REMOTE_TUNING_RESPONSE_RECORDS;
-    uint8_t retained = 0;
-    bool full = false;
-
-    for (uint8_t index = 0; index < records->count; index++) {
-        UsbRemoteTuningRecord *record = &records->records[index];
-        uint8_t record_size = REMOTE_TUNING_RECORD_HEADER_SIZE + record->payload_length;
-        bool consume = !full && record_matches(record, link, alternate);
-        if (consume &&
-            record_size <= REMOTE_TUNING_RECORD_DATA_SIZE - response->record_data_length) {
-            append_record(record, response);
-            continue;
-        }
-        if (consume) {
-            full = true;
-        }
-        records->records[retained++] = *record;
-    }
-
-    if (response->record_data_length == 0) {
-        return false;
-    }
-    memset(records->records + retained, 0,
-           (records->count - retained) * sizeof(records->records[0]));
-    records->count = retained;
-    return true;
+    uint8_t route = link == REMOTE_TUNING_LINK_LEGACY ? REMOTE_TUNING_RECORD_ROUTE_FOUR
+                                                      : REMOTE_TUNING_RECORD_ROUTE_THREE;
+    uint8_t selector_mask =
+        link == REMOTE_TUNING_LINK_EXTENDED ? REMOTE_TUNING_ALTERNATE_RECORD_FLAG : 0;
+    uint8_t selector_value = alternate ? REMOTE_TUNING_ALTERNATE_RECORD_FLAG : 0;
+    return take_matching(records, route, selector_mask, selector_value, response->record_data,
+                         sizeof(response->record_data), &response->record_data_length);
 }
 
 /**
@@ -135,7 +158,7 @@ void usb_remote_tuning_records_init(UsbRemoteTuningRecords *records) {
  *
  * Accepts packet types one and three and reads consecutive five-byte record headers with payloads
  * up to 15 bytes. Parsing stops at a zero type-and-selector pair, an oversized payload, or an
- * incomplete record. Complete records are retained from slot 31 downward until the store is full.
+ * incomplete record. Complete records are retained in arrival order until the store is full.
  *
  * @param[in,out] records Remote-tuning record store.
  * @param[in] command Decoded vendor command containing a remote-tuning packet.
@@ -199,4 +222,25 @@ bool usb_remote_tuning_records_take_response(UsbRemoteTuningRecords *records, Re
                take_channel(records, link, true, response);
     }
     return false;
+}
+
+/**
+ * @brief Takes the next generic attached-device command batch.
+ *
+ * Selects route-three records from both selector banks and serializes complete records in arrival
+ * order into the 61-byte attached-device transfer area. Other routes remain retained.
+ *
+ * @param[in,out] records Arrival-order record store.
+ * @param[out] output Serialized command records.
+ * @param[out] length Produced byte count.
+ * @return True when a nonempty batch was produced.
+ */
+bool usb_remote_tuning_records_take_forward_batch(
+    UsbRemoteTuningRecords *records, uint8_t output[USB_REMOTE_TUNING_FORWARD_BATCH_SIZE],
+    uint8_t *length) {
+    if (records == NULL || output == NULL || length == NULL) {
+        return false;
+    }
+    return take_matching(records, REMOTE_TUNING_RECORD_ROUTE_THREE, 0, 0, output,
+                         USB_REMOTE_TUNING_FORWARD_BATCH_SIZE, length);
 }

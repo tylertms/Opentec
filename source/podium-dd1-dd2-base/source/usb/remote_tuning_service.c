@@ -275,3 +275,24 @@ bool usb_remote_tuning_service_take_response(UsbRemoteTuningService *service, ui
     }
     return usb_remote_tuning_records_take_response(&service->records, link, response);
 }
+
+/**
+ * @brief Takes the next generic attached-device command batch.
+ *
+ * Routes ordinary and legacy-mode route-three records to the generic attached-device transport.
+ * Extended remote-tuning mode retains route-three records for its wheel response channel.
+ *
+ * @param[in,out] service Remote-tuning session containing retained records.
+ * @param[in] wheel_mode Current attached-wheel mode.
+ * @param[out] output Serialized command records.
+ * @param[out] length Produced byte count.
+ * @return True when a nonempty forwarding batch was produced.
+ */
+bool usb_remote_tuning_service_take_forward_batch(
+    UsbRemoteTuningService *service, uint8_t wheel_mode,
+    uint8_t output[USB_REMOTE_TUNING_FORWARD_BATCH_SIZE], uint8_t *length) {
+    if (service == NULL || wheel_mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED) {
+        return false;
+    }
+    return usb_remote_tuning_records_take_forward_batch(&service->records, output, length);
+}
