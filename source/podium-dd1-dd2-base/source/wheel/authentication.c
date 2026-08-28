@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 enum {
     AES_BLOCK_SIZE = 16,
@@ -111,25 +112,46 @@ static const uint8_t mode_key_pair[] = {
     3,
 };
 
-static void clear_bytes(uint8_t *data, uint8_t length) {
-    for (uint8_t index = 0; index < length; index++) {
-        data[index] = 0;
-    }
-}
-
+/**
+ * @brief Copies a short byte sequence.
+ *
+ * Copies exactly the requested number of bytes from a nonoverlapping source to its target.
+ *
+ * @param[out] target Destination byte sequence.
+ * @param[in] source Source byte sequence.
+ * @param[in] length Number of bytes to copy.
+ */
 static void copy_bytes(uint8_t *target, const uint8_t *source, uint8_t length) {
     for (uint8_t index = 0; index < length; index++) {
         target[index] = source[index];
     }
 }
 
+/**
+ * @brief Multiplies one byte by x in the AES finite field.
+ *
+ * Shifts the byte left and applies the AES reduction polynomial when the original high bit was
+ * set.
+ *
+ * @param[in] value Field element to multiply.
+ * @return Product of the field element and x.
+ */
 static uint8_t multiply_by_x(uint8_t value) {
     return (uint8_t)((value << 1) ^ ((value & 0x80u) != 0 ? 0x1bu : 0));
 }
 
+/**
+ * @brief Expands one AES-128 key into its round-key schedule.
+ *
+ * Copies the initial key and derives the remaining 40 words with the AES rotation, substitution,
+ * round-constant, and preceding-word transformations.
+ *
+ * @param[out] round_keys Complete 176-byte AES-128 round-key schedule.
+ * @param[in] key Sixteen-byte AES-128 key.
+ */
 static void expand_key(uint8_t round_keys[WHEEL_AUTHENTICATION_ROUND_KEY_SIZE],
                        const uint8_t key[WHEEL_AUTHENTICATION_KEY_SIZE]) {
-    copy_bytes(round_keys, key, WHEEL_AUTHENTICATION_KEY_SIZE);
+    memcpy(round_keys, key, WHEEL_AUTHENTICATION_KEY_SIZE);
     uint8_t generated = WHEEL_AUTHENTICATION_KEY_SIZE;
     uint8_t round_constant = 1;
     uint8_t word[4];
@@ -152,18 +174,40 @@ static void expand_key(uint8_t round_keys[WHEEL_AUTHENTICATION_ROUND_KEY_SIZE],
     }
 }
 
+/**
+ * @brief Applies one AES round key to the state.
+ *
+ * XORs the sixteen round-key bytes into the corresponding state bytes.
+ *
+ * @param[in,out] state AES state block.
+ * @param[in] round_key Sixteen-byte round key.
+ */
 static void add_round_key(uint8_t state[AES_BLOCK_SIZE], const uint8_t *round_key) {
     for (uint8_t index = 0; index < AES_BLOCK_SIZE; index++) {
         state[index] ^= round_key[index];
     }
 }
 
+/**
+ * @brief Substitutes every AES state byte.
+ *
+ * Replaces each byte with the corresponding AES S-box value.
+ *
+ * @param[in,out] state AES state block.
+ */
 static void substitute_bytes(uint8_t state[AES_BLOCK_SIZE]) {
     for (uint8_t index = 0; index < AES_BLOCK_SIZE; index++) {
         state[index] = aes_s_box[state[index]];
     }
 }
 
+/**
+ * @brief Rotates the AES state rows.
+ *
+ * Leaves row zero unchanged and cyclically shifts rows one through three by their row index.
+ *
+ * @param[in,out] state AES state block.
+ */
 static void shift_rows(uint8_t state[AES_BLOCK_SIZE]) {
     uint8_t shifted[AES_BLOCK_SIZE];
     shifted[0] = state[0];
@@ -185,6 +229,13 @@ static void shift_rows(uint8_t state[AES_BLOCK_SIZE]) {
     copy_bytes(state, shifted, AES_BLOCK_SIZE);
 }
 
+/**
+ * @brief Mixes the four AES state columns.
+ *
+ * Applies the AES matrix transformation to each consecutive four-byte column.
+ *
+ * @param[in,out] state AES state block.
+ */
 static void mix_columns(uint8_t state[AES_BLOCK_SIZE]) {
     for (uint8_t column = 0; column < AES_BLOCK_SIZE; column += 4) {
         uint8_t first = state[column];
@@ -197,6 +248,14 @@ static void mix_columns(uint8_t state[AES_BLOCK_SIZE]) {
     }
 }
 
+/**
+ * @brief Encrypts one AES-128 block.
+ *
+ * Applies the initial key, nine complete rounds, and the final round without column mixing.
+ *
+ * @param[in] round_keys Complete AES-128 round-key schedule.
+ * @param[in,out] state Sixteen-byte plaintext replaced by ciphertext.
+ */
 static void encrypt_block(const uint8_t round_keys[WHEEL_AUTHENTICATION_ROUND_KEY_SIZE],
                           uint8_t state[AES_BLOCK_SIZE]) {
     add_round_key(state, round_keys);
@@ -227,6 +286,16 @@ static void increment_counter(uint8_t *counter) {
     }
 }
 
+/**
+ * @brief Applies the authentication AES counter stream in place.
+ *
+ * Encrypts two successive counter blocks, advances the leading eight-byte sequence after each
+ * block, and XORs the resulting stream with the 32-byte content area.
+ *
+ * @param[in] round_keys Complete AES-128 round-key schedule.
+ * @param[in,out] counter Sixteen-byte counter with an eight-byte incrementing prefix.
+ * @param[in,out] content Authentication content to transform.
+ */
 static void xcrypt_content(const uint8_t round_keys[WHEEL_AUTHENTICATION_ROUND_KEY_SIZE],
                            uint8_t counter[WHEEL_AUTHENTICATION_COUNTER_SIZE],
                            uint8_t content[WHEEL_AUTHENTICATION_CONTENT_SIZE]) {
@@ -241,6 +310,14 @@ static void xcrypt_content(const uint8_t round_keys[WHEEL_AUTHENTICATION_ROUND_K
     }
 }
 
+/**
+ * @brief Selects the authentication key pair for a wheel mode.
+ *
+ * Maps supported modes 0x0A through 0x1E to their shared or distinct transmit and receive keys.
+ *
+ * @param[in] wheel_mode Attached-wheel mode.
+ * @return Selected key pair, or null when the mode does not authenticate.
+ */
 static const WheelAuthenticationKeys *keys_for_mode(uint8_t wheel_mode) {
     if (wheel_mode < 0x0a || wheel_mode > 0x1e) {
         return 0;
@@ -249,41 +326,60 @@ static const WheelAuthenticationKeys *keys_for_mode(uint8_t wheel_mode) {
     return key_pair == KEY_PAIR_UNSUPPORTED ? 0 : &key_pairs[key_pair];
 }
 
+/**
+ * @brief Initializes both authentication cipher directions.
+ *
+ * Builds transmit and receive key schedules and initializes both counters from request bytes two
+ * through nine followed by eight zero bytes.
+ *
+ * @param[in,out] authentication Authentication exchange state.
+ * @param[in] request Challenge content containing the eight-byte counter prefix.
+ * @return True when the selected wheel mode has a key pair.
+ */
 static bool initialize_ciphers(WheelAuthentication *authentication,
                                const uint8_t request[WHEEL_AUTHENTICATION_CONTENT_SIZE]) {
     const WheelAuthenticationKeys *keys = keys_for_mode(authentication->wheel_mode);
     if (keys == 0) {
         return false;
     }
-    copy_bytes(authentication->transmit_counter, &request[AUTHENTICATION_NONCE_OFFSET],
-               AUTHENTICATION_NONCE_SIZE);
-    clear_bytes(&authentication->transmit_counter[AUTHENTICATION_NONCE_SIZE],
-                WHEEL_AUTHENTICATION_COUNTER_SIZE - AUTHENTICATION_NONCE_SIZE);
-    copy_bytes(authentication->receive_counter, authentication->transmit_counter,
-               WHEEL_AUTHENTICATION_COUNTER_SIZE);
+    memcpy(authentication->transmit_counter, &request[AUTHENTICATION_NONCE_OFFSET],
+           AUTHENTICATION_NONCE_SIZE);
+    memset(&authentication->transmit_counter[AUTHENTICATION_NONCE_SIZE], 0,
+           WHEEL_AUTHENTICATION_COUNTER_SIZE - AUTHENTICATION_NONCE_SIZE);
+    memcpy(authentication->receive_counter, authentication->transmit_counter,
+           WHEEL_AUTHENTICATION_COUNTER_SIZE);
     expand_key(authentication->transmit_round_keys, keys->transmit);
     expand_key(authentication->receive_round_keys, keys->receive);
     return true;
 }
 
-static void advance_retry_counter(WheelAuthentication *authentication) {
-    increment_counter(authentication->retry_counter);
-}
-
+/**
+ * @brief Processes an authentication challenge.
+ *
+ * A valid A6 challenge initializes both cipher directions, prepares an encrypted response with
+ * marker 0xAA, and advances to the proof stage. A checksum failure advances the retry sequence and
+ * clears the response tail.
+ *
+ * @param[in,out] authentication Authentication exchange state.
+ * @param[in] request Challenge content.
+ * @param[in] checksum_valid True when the request checksum matches its content.
+ * @param[in,out] response Persistent response content.
+ * @return False because a challenge never completes authentication.
+ */
 static bool accept_challenge(WheelAuthentication *authentication,
                              const uint8_t request[WHEEL_AUTHENTICATION_CONTENT_SIZE],
                              bool checksum_valid,
                              uint8_t response[WHEEL_AUTHENTICATION_CONTENT_SIZE]) {
     if (!checksum_valid) {
-        advance_retry_counter(authentication);
-        clear_bytes(&response[AUTHENTICATION_NONCE_OFFSET],
-                    WHEEL_AUTHENTICATION_CONTENT_SIZE - AUTHENTICATION_NONCE_OFFSET);
+        increment_counter(authentication->retry_counter);
+        memset(&response[AUTHENTICATION_NONCE_OFFSET], 0,
+               WHEEL_AUTHENTICATION_CONTENT_SIZE - AUTHENTICATION_NONCE_OFFSET);
         return false;
     }
 
     response[1] = AUTHENTICATION_CHALLENGE_MARKER;
-    clear_bytes(&response[AUTHENTICATION_NONCE_OFFSET],
-                WHEEL_AUTHENTICATION_CONTENT_SIZE - AUTHENTICATION_NONCE_OFFSET);
+    memset(&response[AUTHENTICATION_NONCE_OFFSET], 0,
+           WHEEL_AUTHENTICATION_CONTENT_SIZE - AUTHENTICATION_NONCE_OFFSET);
     if (request[0] != AUTHENTICATION_COMMAND_CHALLENGE) {
         return false;
     }
@@ -296,13 +392,26 @@ static bool accept_challenge(WheelAuthentication *authentication,
     return false;
 }
 
+/**
+ * @brief Processes an encrypted authentication proof.
+ *
+ * Decrypts a valid request and completes authentication for command A7. Other decrypted commands
+ * receive an encrypted A5 response containing their eight-byte token. A checksum failure advances
+ * the retry sequence and encrypts the retained response prefix with a cleared tail.
+ *
+ * @param[in,out] authentication Authentication exchange state.
+ * @param[in] request Encrypted proof content.
+ * @param[in] checksum_valid True when the encrypted request checksum matches its content.
+ * @param[in,out] response Persistent response content.
+ * @return True only when the decrypted command is A7.
+ */
 static bool accept_proof(WheelAuthentication *authentication,
                          const uint8_t request[WHEEL_AUTHENTICATION_CONTENT_SIZE],
                          bool checksum_valid, uint8_t response[WHEEL_AUTHENTICATION_CONTENT_SIZE]) {
     if (!checksum_valid) {
-        advance_retry_counter(authentication);
-        clear_bytes(&response[AUTHENTICATION_REPLY_PREFIX_SIZE],
-                    WHEEL_AUTHENTICATION_CONTENT_SIZE - AUTHENTICATION_REPLY_PREFIX_SIZE);
+        increment_counter(authentication->retry_counter);
+        memset(&response[AUTHENTICATION_REPLY_PREFIX_SIZE], 0,
+               WHEEL_AUTHENTICATION_CONTENT_SIZE - AUTHENTICATION_REPLY_PREFIX_SIZE);
         xcrypt_content(authentication->transmit_round_keys, authentication->transmit_counter,
                        response);
         return false;
@@ -312,8 +421,8 @@ static bool accept_proof(WheelAuthentication *authentication,
     copy_bytes(decoded, request, WHEEL_AUTHENTICATION_CONTENT_SIZE);
     xcrypt_content(authentication->receive_round_keys, authentication->receive_counter, decoded);
     if (decoded[0] == AUTHENTICATION_COMMAND_PROOF) {
-        clear_bytes(&response[AUTHENTICATION_NONCE_OFFSET],
-                    WHEEL_AUTHENTICATION_CONTENT_SIZE - AUTHENTICATION_NONCE_OFFSET);
+        memset(&response[AUTHENTICATION_NONCE_OFFSET], 0,
+               WHEEL_AUTHENTICATION_CONTENT_SIZE - AUTHENTICATION_NONCE_OFFSET);
         return true;
     }
 
@@ -321,8 +430,8 @@ static bool accept_proof(WheelAuthentication *authentication,
     response[1] = 0;
     copy_bytes(&response[AUTHENTICATION_NONCE_OFFSET], &decoded[AUTHENTICATION_NONCE_OFFSET],
                AUTHENTICATION_NONCE_SIZE);
-    clear_bytes(&response[AUTHENTICATION_REPLY_PREFIX_SIZE],
-                WHEEL_AUTHENTICATION_CONTENT_SIZE - AUTHENTICATION_REPLY_PREFIX_SIZE);
+    memset(&response[AUTHENTICATION_REPLY_PREFIX_SIZE], 0,
+           WHEEL_AUTHENTICATION_CONTENT_SIZE - AUTHENTICATION_REPLY_PREFIX_SIZE);
     xcrypt_content(authentication->transmit_round_keys, authentication->transmit_counter, response);
     return false;
 }
@@ -346,11 +455,7 @@ bool wheel_authentication_required(uint8_t wheel_mode) { return keys_for_mode(wh
  * @param[in] wheel_mode Selected attached-wheel mode.
  */
 void wheel_authentication_init(WheelAuthentication *authentication, uint8_t wheel_mode) {
-    clear_bytes(authentication->transmit_round_keys, WHEEL_AUTHENTICATION_ROUND_KEY_SIZE);
-    clear_bytes(authentication->receive_round_keys, WHEEL_AUTHENTICATION_ROUND_KEY_SIZE);
-    clear_bytes(authentication->transmit_counter, WHEEL_AUTHENTICATION_COUNTER_SIZE);
-    clear_bytes(authentication->receive_counter, WHEEL_AUTHENTICATION_COUNTER_SIZE);
-    clear_bytes(authentication->retry_counter, WHEEL_AUTHENTICATION_RETRY_COUNTER_SIZE);
+    memset(authentication, 0, sizeof(*authentication));
     authentication->wheel_mode = wheel_mode;
     authentication->stage = WHEEL_AUTHENTICATION_AWAITING_CHALLENGE;
 }
