@@ -15,11 +15,14 @@ enum {
 };
 
 /**
- * Decodes all 16 packed force-feedback script slot commands and the shared runtime mode.
+ * @brief Decode the script-slot controls and force-feedback runtime mode.
  *
- * @param packet Feature-command packet beginning with the script-control opcode.
- * @param length Number of available packet bytes.
- * @param control Destination for the per-slot commands and runtime mode.
+ * Reads two four-bit slot commands from each of bytes 4 through 11 and reads the shared runtime
+ * mode from byte 12 of a script-control feature packet.
+ *
+ * @param[in] packet Feature-command packet beginning with the script-control opcode.
+ * @param[in] length Number of available packet bytes.
+ * @param[out] control Destination for the per-slot commands and runtime mode.
  * @return True when the packet contains the complete script-control command.
  */
 bool force_feedback_script_control_decode(const uint8_t *packet, size_t length,
@@ -39,11 +42,14 @@ bool force_feedback_script_control_decode(const uint8_t *packet, size_t length,
 }
 
 /**
- * Writes the 16 script slot states and runtime mode into a feature response.
+ * @brief Encode script-slot states and the force-feedback runtime mode.
  *
- * @param status Current per-slot states and shared runtime mode.
- * @param response Destination feature response whose five-byte prefix is already prepared.
- * @param length Number of writable response bytes.
+ * Writes the 16 slot states at response bytes 5 through 20 and the runtime mode at byte 21. An
+ * internal fault state is serialized as state 4.
+ *
+ * @param[in] status Current per-slot states and shared runtime mode.
+ * @param[out] response Destination feature response whose five-byte prefix is already prepared.
+ * @param[in] length Number of writable response bytes.
  * @return True when the complete status fields fit in the response.
  */
 bool force_feedback_script_status_encode(const ForceFeedbackScriptStatus *status, uint8_t *response,
@@ -63,53 +69,56 @@ bool force_feedback_script_status_encode(const ForceFeedbackScriptStatus *status
 }
 
 /**
- * Applies one force-feedback script slot command to its logical runtime state.
+ * @brief Apply a lifecycle command to one force-feedback script slot.
  *
- * @param current Current script slot state.
- * @param command Requested clear, start, stop, pause, or resume operation.
- * @param transition Destination for the resulting state and runtime-reset request.
- * @return True when the command is accepted in the current state.
+ * Clear always empties the slot. Start is ignored for an empty slot; otherwise it clears all four
+ * slot values and all four timing metrics before activating the slot. Stop is ignored for an empty
+ * slot. Pause and resume apply only to active and paused slots, respectively.
+ *
+ * @param[in,out] slot Script slot to update.
+ * @param[in] command Requested clear, start, stop, pause, or resume operation.
+ * @return True when the command changes or clears the slot state.
  */
-bool force_feedback_script_slot_transition(ForceFeedbackScriptSlotState current,
-                                           ForceFeedbackScriptSlotCommand command,
-                                           ForceFeedbackScriptSlotTransition *transition) {
-    if (transition == NULL) {
+bool force_feedback_script_slot_apply(ForceFeedbackScriptSlot *slot,
+                                      ForceFeedbackScriptSlotCommand command) {
+    if (slot == NULL) {
         return false;
     }
 
-    *transition = (ForceFeedbackScriptSlotTransition){
-        .state = current,
-        .reset_runtime = false,
-    };
-
     switch (command) {
     case FORCE_FEEDBACK_SCRIPT_SLOT_CLEAR:
-        transition->state = FORCE_FEEDBACK_SCRIPT_SLOT_EMPTY;
+        slot->state = FORCE_FEEDBACK_SCRIPT_SLOT_EMPTY;
         return true;
     case FORCE_FEEDBACK_SCRIPT_SLOT_START:
-        if (current == FORCE_FEEDBACK_SCRIPT_SLOT_EMPTY) {
+        if (slot->state == FORCE_FEEDBACK_SCRIPT_SLOT_EMPTY) {
             return false;
         }
-        transition->state = FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE;
-        transition->reset_runtime = true;
+        for (uint8_t index = 0; index < 4; ++index) {
+            slot->values[index] = 0;
+        }
+        slot->average_rate = 0;
+        slot->delta_rate = 0;
+        slot->execution_count = 0;
+        slot->tick_snapshot = 0;
+        slot->state = FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE;
         return true;
     case FORCE_FEEDBACK_SCRIPT_SLOT_STOP:
-        if (current == FORCE_FEEDBACK_SCRIPT_SLOT_EMPTY) {
+        if (slot->state == FORCE_FEEDBACK_SCRIPT_SLOT_EMPTY) {
             return false;
         }
-        transition->state = FORCE_FEEDBACK_SCRIPT_SLOT_INACTIVE;
+        slot->state = FORCE_FEEDBACK_SCRIPT_SLOT_INACTIVE;
         return true;
     case FORCE_FEEDBACK_SCRIPT_SLOT_PAUSE:
-        if (current != FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE) {
+        if (slot->state != FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE) {
             return false;
         }
-        transition->state = FORCE_FEEDBACK_SCRIPT_SLOT_PAUSED;
+        slot->state = FORCE_FEEDBACK_SCRIPT_SLOT_PAUSED;
         return true;
     case FORCE_FEEDBACK_SCRIPT_SLOT_RESUME:
-        if (current != FORCE_FEEDBACK_SCRIPT_SLOT_PAUSED) {
+        if (slot->state != FORCE_FEEDBACK_SCRIPT_SLOT_PAUSED) {
             return false;
         }
-        transition->state = FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE;
+        slot->state = FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE;
         return true;
     default:
         return false;
@@ -117,10 +126,13 @@ bool force_feedback_script_slot_transition(ForceFeedbackScriptSlotState current,
 }
 
 /**
- * Advances the force-feedback engine clock and the currently executing script slot clock.
+ * @brief Advance the force-feedback timer state by one interrupt.
  *
- * @param clock Runtime clock state containing the engine and per-slot tick counters.
- * @param mode Current force-feedback runtime mode.
+ * Advances the engine clock in active and zero-output modes, advances the active slot clock while
+ * a script is executing, and always advances the motion clock.
+ *
+ * @param[in,out] clock Runtime clock state containing engine, slot, and motion counters.
+ * @param[in] mode Current force-feedback runtime mode.
  */
 void force_feedback_script_clock_tick(ForceFeedbackScriptClock *clock,
                                       ForceFeedbackRuntimeMode mode) {
@@ -134,4 +146,5 @@ void force_feedback_script_clock_tick(ForceFeedbackScriptClock *clock,
     if (clock->script_executing && clock->active_slot < FORCE_FEEDBACK_SCRIPT_SLOT_COUNT) {
         clock->slot_ticks[clock->active_slot]++;
     }
+    clock->motion_ticks++;
 }

@@ -50,12 +50,17 @@ typedef struct {
 
 typedef struct {
     ForceFeedbackScriptSlotState state;
-    bool reset_runtime;
-} ForceFeedbackScriptSlotTransition;
+    uint32_t values[4];
+    uint32_t average_rate;
+    uint32_t delta_rate;
+    uint32_t execution_count;
+    uint32_t tick_snapshot;
+} ForceFeedbackScriptSlot;
 
 typedef struct {
     uint32_t ticks;
     uint32_t slot_ticks[FORCE_FEEDBACK_SCRIPT_SLOT_COUNT];
+    uint32_t motion_ticks;
     uint8_t active_slot;
     bool script_executing;
 } ForceFeedbackScriptClock;
@@ -64,9 +69,8 @@ bool force_feedback_script_control_decode(const uint8_t *packet, size_t length,
                                           ForceFeedbackScriptControl *control);
 bool force_feedback_script_status_encode(const ForceFeedbackScriptStatus *status, uint8_t *response,
                                          size_t length);
-bool force_feedback_script_slot_transition(ForceFeedbackScriptSlotState current,
-                                           ForceFeedbackScriptSlotCommand command,
-                                           ForceFeedbackScriptSlotTransition *transition);
+bool force_feedback_script_slot_apply(ForceFeedbackScriptSlot *slot,
+                                      ForceFeedbackScriptSlotCommand command);
 void force_feedback_script_clock_tick(ForceFeedbackScriptClock *clock,
                                       ForceFeedbackRuntimeMode mode);
 

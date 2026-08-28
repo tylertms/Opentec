@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "force_feedback/script_control.h"
 
@@ -73,34 +74,37 @@ static void test_encodes_slot_status_and_preserves_response_prefix(void) {
     assert(!force_feedback_script_status_encode(&status, NULL, sizeof(response)));
 }
 
-static ForceFeedbackScriptSlotTransition transition(ForceFeedbackScriptSlotState state,
-                                                    ForceFeedbackScriptSlotCommand command,
-                                                    bool accepted) {
-    ForceFeedbackScriptSlotTransition result;
-    assert(force_feedback_script_slot_transition(state, command, &result) == accepted);
-    return result;
-}
-
 static void test_applies_slot_lifecycle(void) {
-    ForceFeedbackScriptSlotTransition result =
-        transition(FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE, FORCE_FEEDBACK_SCRIPT_SLOT_CLEAR, true);
-    assert(result.state == FORCE_FEEDBACK_SCRIPT_SLOT_EMPTY);
-    assert(!result.reset_runtime);
+    ForceFeedbackScriptSlot slot = {
+        .state = FORCE_FEEDBACK_SCRIPT_SLOT_INACTIVE,
+        .values = {1, 2, 3, 4},
+        .average_rate = 5,
+        .delta_rate = 6,
+        .execution_count = 7,
+        .tick_snapshot = 8,
+    };
 
-    result =
-        transition(FORCE_FEEDBACK_SCRIPT_SLOT_INACTIVE, FORCE_FEEDBACK_SCRIPT_SLOT_START, true);
-    assert(result.state == FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE);
-    assert(result.reset_runtime);
+    assert(force_feedback_script_slot_apply(&slot, FORCE_FEEDBACK_SCRIPT_SLOT_START));
+    assert(slot.state == FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE);
+    for (uint8_t index = 0; index < 4; ++index) {
+        assert(slot.values[index] == 0);
+    }
+    assert(slot.average_rate == 0);
+    assert(slot.delta_rate == 0);
+    assert(slot.execution_count == 0);
+    assert(slot.tick_snapshot == 0);
 
-    result = transition(FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE, FORCE_FEEDBACK_SCRIPT_SLOT_STOP, true);
-    assert(result.state == FORCE_FEEDBACK_SCRIPT_SLOT_INACTIVE);
-    assert(!result.reset_runtime);
+    assert(force_feedback_script_slot_apply(&slot, FORCE_FEEDBACK_SCRIPT_SLOT_PAUSE));
+    assert(slot.state == FORCE_FEEDBACK_SCRIPT_SLOT_PAUSED);
+    assert(force_feedback_script_slot_apply(&slot, FORCE_FEEDBACK_SCRIPT_SLOT_RESUME));
+    assert(slot.state == FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE);
+    assert(force_feedback_script_slot_apply(&slot, FORCE_FEEDBACK_SCRIPT_SLOT_STOP));
+    assert(slot.state == FORCE_FEEDBACK_SCRIPT_SLOT_INACTIVE);
 
-    result = transition(FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE, FORCE_FEEDBACK_SCRIPT_SLOT_PAUSE, true);
-    assert(result.state == FORCE_FEEDBACK_SCRIPT_SLOT_PAUSED);
-
-    result = transition(FORCE_FEEDBACK_SCRIPT_SLOT_PAUSED, FORCE_FEEDBACK_SCRIPT_SLOT_RESUME, true);
-    assert(result.state == FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE);
+    slot.values[0] = 123;
+    assert(force_feedback_script_slot_apply(&slot, FORCE_FEEDBACK_SCRIPT_SLOT_CLEAR));
+    assert(slot.state == FORCE_FEEDBACK_SCRIPT_SLOT_EMPTY);
+    assert(slot.values[0] == 123);
 }
 
 static void test_preserves_state_for_rejected_transitions(void) {
@@ -116,19 +120,26 @@ static void test_preserves_state_for_rejected_transitions(void) {
     };
 
     for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {
-        ForceFeedbackScriptSlotTransition result =
-            transition(cases[index].state, cases[index].command, false);
-        assert(result.state == cases[index].state);
-        assert(!result.reset_runtime);
+        ForceFeedbackScriptSlot slot = {
+            .state = cases[index].state,
+            .values = {1, 2, 3, 4},
+            .average_rate = 5,
+            .delta_rate = 6,
+            .execution_count = 7,
+            .tick_snapshot = 8,
+        };
+        ForceFeedbackScriptSlot before = slot;
+        assert(!force_feedback_script_slot_apply(&slot, cases[index].command));
+        assert(memcmp(&slot, &before, sizeof(slot)) == 0);
     }
-    assert(!force_feedback_script_slot_transition(FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE,
-                                                  FORCE_FEEDBACK_SCRIPT_SLOT_START, NULL));
+    assert(!force_feedback_script_slot_apply(NULL, FORCE_FEEDBACK_SCRIPT_SLOT_START));
 }
 
 static void test_advances_script_clocks(void) {
     ForceFeedbackScriptClock clock = {
         .ticks = UINT32_MAX,
         .slot_ticks = {[6] = UINT32_MAX},
+        .motion_ticks = UINT32_MAX,
         .active_slot = 6,
         .script_executing = true,
     };
@@ -136,24 +147,29 @@ static void test_advances_script_clocks(void) {
     force_feedback_script_clock_tick(&clock, FORCE_FEEDBACK_RUNTIME_ACTIVE);
     assert(clock.ticks == 0);
     assert(clock.slot_ticks[6] == 0);
+    assert(clock.motion_ticks == 0);
 
     force_feedback_script_clock_tick(&clock, FORCE_FEEDBACK_RUNTIME_ZERO_OUTPUT);
     assert(clock.ticks == 1);
     assert(clock.slot_ticks[6] == 1);
+    assert(clock.motion_ticks == 1);
 
     force_feedback_script_clock_tick(&clock, FORCE_FEEDBACK_RUNTIME_POSITION_ONLY);
     assert(clock.ticks == 1);
     assert(clock.slot_ticks[6] == 2);
+    assert(clock.motion_ticks == 2);
 
     clock.script_executing = false;
     force_feedback_script_clock_tick(&clock, 3);
     assert(clock.ticks == 1);
     assert(clock.slot_ticks[6] == 2);
+    assert(clock.motion_ticks == 3);
 
     clock.script_executing = true;
     clock.active_slot = FORCE_FEEDBACK_SCRIPT_SLOT_COUNT;
     force_feedback_script_clock_tick(&clock, FORCE_FEEDBACK_RUNTIME_ACTIVE);
     assert(clock.ticks == 2);
+    assert(clock.motion_ticks == 4);
     force_feedback_script_clock_tick(NULL, FORCE_FEEDBACK_RUNTIME_ACTIVE);
 }
 
