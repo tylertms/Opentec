@@ -98,7 +98,7 @@ static void test_maps_standard_buttons_and_builds_snapshot(void) {
     };
     uint8_t snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE];
 
-    wheel_packet_crc_normalize_direct(&input, 6, 7);
+    wheel_packet_crc_normalize(&input, 6, 7, 0);
     wheel_packet_crc_snapshot(&input, snapshot);
 
     assert(input.buttons[0] == 0xff);
@@ -121,7 +121,7 @@ static void test_maps_standard_buttons_and_builds_snapshot(void) {
 static void test_maps_direct_xbox_buttons(void) {
     WheelPacketCrcInput input = {.controls = {0xff, 0xff, 0xff, 0xff, 0xff}};
 
-    wheel_packet_crc_normalize_direct(&input, 6, 6);
+    wheel_packet_crc_normalize(&input, 6, 6, 0);
 
     assert(input.buttons[0] == 0xff);
     assert(input.buttons[1] == 0xff);
@@ -129,14 +129,14 @@ static void test_maps_direct_xbox_buttons(void) {
 
     memset(&input, 0, sizeof(input));
     input.controls[1] = 0x04;
-    wheel_packet_crc_normalize_direct(&input, 6, 6);
+    wheel_packet_crc_normalize(&input, 6, 6, 0);
     assert(input.buttons[0] == 0x10);
     assert(input.buttons[1] == 0x10);
     assert(input.buttons[2] == 0);
 
     memset(&input, 0, sizeof(input));
     input.controls[3] = 0x20;
-    wheel_packet_crc_normalize_direct(&input, 6, 6);
+    wheel_packet_crc_normalize(&input, 6, 6, 0);
     assert(input.buttons[0] == 0x02);
     assert(input.buttons[1] == 0);
     assert(input.buttons[2] == 0);
@@ -145,9 +145,52 @@ static void test_maps_direct_xbox_buttons(void) {
 static void test_does_not_map_authenticated_standard_auxiliary_bit(void) {
     WheelPacketCrcInput input = {.controls = {0, 0x08}};
 
-    wheel_packet_crc_normalize_direct(&input, 0x15, 0);
+    wheel_packet_crc_normalize(&input, 0x15, 0, 0);
 
     assert(input.buttons[2] == 0);
+}
+
+static void test_merges_adapter_buttons_axes_and_motion(void) {
+    WheelPacketCrcInput input = {.buttons = {0xf0, 0xf0, 0}};
+    WheelPacketCrcAdapter adapter = {
+        .buttons = {0x8f, 0x23, 0x1c},
+        .axes = {0x10, 0x20},
+        .mode = 2,
+        .primary_delta = 2,
+        .connected = true,
+    };
+
+    wheel_packet_crc_normalize(&input, 6, 0, &adapter);
+
+    assert(input.buttons[0] == 0x4f);
+    assert(input.buttons[1] == 0xc4);
+    assert(input.buttons[2] == 0x64);
+    assert(input.axis_outputs[0] == 0x5f);
+    assert(input.axis_outputs[1] == 0x6f);
+    assert(input.motion == 1);
+    assert(adapter.primary_delta == 1);
+    assert(adapter.buttons_active);
+
+    memset(&input, 0, sizeof(input));
+    adapter.mode = 1;
+    adapter.primary_delta = -1;
+    wheel_packet_crc_normalize(&input, 6, 0, &adapter);
+    assert(input.buttons[0] == 0x0f);
+    assert(input.buttons[1] == 0x80);
+    assert(input.buttons[2] == 0x20);
+    assert(input.motion == -1);
+    assert(adapter.primary_delta == 0);
+}
+
+static void test_uses_adapter_xbox_button_sources(void) {
+    WheelPacketCrcInput input = {.controls = {0, 0, 0x03}};
+    WheelPacketCrcAdapter adapter = {.connected = true, .mode = 1};
+
+    wheel_packet_crc_normalize(&input, 6, 6, &adapter);
+
+    assert(input.buttons[0] == 0);
+    assert(input.buttons[1] == 0);
+    assert(input.buttons[2] == 0xc0);
 }
 
 static void test_encodes_standard_and_authenticated_responses(void) {
@@ -179,6 +222,8 @@ int main(void) {
     test_maps_standard_buttons_and_builds_snapshot();
     test_maps_direct_xbox_buttons();
     test_does_not_map_authenticated_standard_auxiliary_bit();
+    test_merges_adapter_buttons_axes_and_motion();
+    test_uses_adapter_xbox_button_sources();
     test_encodes_standard_and_authenticated_responses();
     return 0;
 }

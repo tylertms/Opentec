@@ -167,8 +167,8 @@ static void capture_request(WheelProtocol *protocol,
         wheel_packet_crc_decode(request, &protocol->crc_input);
         wheel_packet_crc_prepare(&protocol->crc_input, protocol->mode, protocol->interface_mode);
         wheel_packet_crc_filter(&protocol->crc_filter, &protocol->crc_input);
-        wheel_packet_crc_normalize_direct(&protocol->crc_input, protocol->mode,
-                                          protocol->interface_mode);
+        wheel_packet_crc_normalize(&protocol->crc_input, protocol->mode, protocol->interface_mode,
+                                   &protocol->crc_adapter);
         wheel_axis_override_process_packet(
             &protocol->axis_override_processor, protocol->configured_axis_override_mode,
             protocol->mode, protocol->interface_mode, protocol->crc_input.axis_limit,
@@ -243,6 +243,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     const WheelPacketModeFourOutput empty_mode_four_output = {0};
     const WheelPacketCrcInput empty_crc_input = {0};
     const WheelPacketCrcOutput empty_crc_output = {0};
+    const WheelPacketCrcAdapter empty_crc_adapter = {0};
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
     clear(protocol->request, WHEEL_PROTOCOL_SNAPSHOT_SIZE);
     wheel_axis_override_processor_init(&protocol->axis_override_processor);
@@ -258,6 +259,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     wheel_packet_crc_filter_init(&protocol->crc_filter);
     protocol->crc_input = empty_crc_input;
     protocol->crc_output = empty_crc_output;
+    protocol->crc_adapter = empty_crc_adapter;
     wheel_authentication_init(&protocol->authentication, WHEEL_MODE_UNKNOWN);
     protocol->phase = WHEEL_PROTOCOL_WAITING;
     protocol->mode = WHEEL_MODE_UNKNOWN;
@@ -283,6 +285,10 @@ void wheel_protocol_set_mode_four_output(WheelProtocol *protocol,
 
 void wheel_protocol_set_crc_output(WheelProtocol *protocol, const WheelPacketCrcOutput *output) {
     protocol->crc_output = *output;
+}
+
+void wheel_protocol_set_crc_adapter(WheelProtocol *protocol, const WheelPacketCrcAdapter *adapter) {
+    protocol->crc_adapter = *adapter;
 }
 
 void wheel_protocol_set_axis_processing(WheelProtocol *protocol, uint8_t interface_mode,

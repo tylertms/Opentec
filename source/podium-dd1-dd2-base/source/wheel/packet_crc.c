@@ -78,7 +78,7 @@ static void map_xbox_direct_buttons(WheelPacketCrcInput *input) {
     merge_bit(&input->buttons[2], 3, read_bit(input->controls[1], 4));
 }
 
-static void map_xbox_buttons(WheelPacketCrcInput *input) {
+static void map_xbox_buttons(WheelPacketCrcInput *input, bool adapter_connected) {
     static const uint8_t first_destinations[6] = {4, 1, 5, 2, 6, 7};
     for (uint8_t bit = 2; bit < 8; bit++) {
         assign_bit(&input->buttons[1], first_destinations[bit - 2],
@@ -95,9 +95,51 @@ static void map_xbox_buttons(WheelPacketCrcInput *input) {
                   read_bit(input->controls[3], merged_sources[index]));
     }
     assign_bit(&input->buttons[0], 4, read_bit(input->controls[3], 7));
-    map_xbox_direct_buttons(input);
+    if (adapter_connected) {
+        assign_bit(&input->buttons[2], 6, read_bit(input->controls[2], 1));
+        assign_bit(&input->buttons[2], 7, read_bit(input->controls[2], 0));
+    } else {
+        map_xbox_direct_buttons(input);
+    }
     merge_bit(&input->buttons[1], 3, read_bit(input->controls[4], 1));
     merge_bit(&input->buttons[1], 0, read_bit(input->controls[4], 3));
+}
+
+static void merge_adapter_input(WheelPacketCrcInput *input, uint8_t interface_mode,
+                                WheelPacketCrcAdapter *adapter) {
+    merge_bit(&input->buttons[0], 1, read_bit(adapter->buttons[0], 1));
+    merge_bit(&input->buttons[0], 2, read_bit(adapter->buttons[0], 2));
+    merge_bit(&input->buttons[0], 0, read_bit(adapter->buttons[0], 0));
+    merge_bit(&input->buttons[0], 3, read_bit(adapter->buttons[0], 3));
+    merge_bit(&input->buttons[2], 5, read_bit(adapter->buttons[2], 4));
+    if (adapter->mode != 1) {
+        merge_bit(&input->buttons[2], 2, read_bit(adapter->buttons[2], 2));
+        merge_bit(&input->buttons[2], 6, read_bit(adapter->buttons[2], 3));
+        merge_bit(&input->buttons[1], 6, read_bit(adapter->buttons[1], 0));
+    }
+    merge_bit(&input->buttons[1], 7, read_bit(adapter->buttons[1], 5));
+    if (adapter->mode != 1) {
+        if (interface_mode == INTERFACE_MODE_XBOX_GIP) {
+            merge_bit(&input->buttons[0], 7, read_bit(adapter->buttons[1], 1));
+        } else {
+            merge_bit(&input->buttons[0], 6, read_bit(adapter->buttons[1], 1));
+            merge_bit(&input->buttons[1], 2, read_bit(adapter->buttons[0], 7));
+        }
+    }
+
+    input->axis_outputs[0] = (uint8_t)(0x7fu - adapter->axes[1]);
+    input->axis_outputs[1] = (uint8_t)(0x7fu - adapter->axes[0]);
+    adapter->buttons_active =
+        adapter->buttons[0] != 0 || adapter->buttons[1] != 0 || adapter->buttons[2] != 0;
+    if (adapter->primary_delta > 0) {
+        input->motion = 1;
+        adapter->primary_delta--;
+    } else if (adapter->primary_delta < 0) {
+        input->motion = -1;
+        adapter->primary_delta++;
+    } else {
+        input->motion = 0;
+    }
 }
 
 static void write_snapshot(const WheelPacketCrcInput *input,
@@ -257,19 +299,25 @@ void wheel_packet_crc_filter(WheelPacketCrcFilter *filter, WheelPacketCrcInput *
 }
 
 /**
- * @brief Normalizes direct-connected CRC-family wheel input.
+ * @brief Normalizes CRC-family wheel and adapter input.
  *
- * Applies the standard or Xbox interface button map without adapter input, retains the defined
- * control bits.
+ * Applies the standard or Xbox interface button map, masks primary buttons when an adapter is
+ * connected, retains the defined control bits, and merges adapter buttons, axes, and motion.
  *
  * @param[in,out] input Filtered CRC-family input updated to its normalized values.
  * @param[in] wheel_mode Selected attached-wheel mode.
  * @param[in] interface_mode Active wheel interface mode.
+ * @param[in,out] adapter Adapter input and its consumed motion delta, or null for a direct wheel.
  */
-void wheel_packet_crc_normalize_direct(WheelPacketCrcInput *input, uint8_t wheel_mode,
-                                       uint8_t interface_mode) {
+void wheel_packet_crc_normalize(WheelPacketCrcInput *input, uint8_t wheel_mode,
+                                uint8_t interface_mode, WheelPacketCrcAdapter *adapter) {
+    bool adapter_connected = adapter != 0 && adapter->connected;
+    if (adapter_connected) {
+        input->buttons[0] &= 0x0fu;
+        input->buttons[1] &= 0x09u;
+    }
     if (interface_mode == INTERFACE_MODE_XBOX_GIP) {
-        map_xbox_buttons(input);
+        map_xbox_buttons(input, adapter_connected);
     } else {
         map_standard_buttons(input);
         if (wheel_mode != WHEEL_PACKET_CRC_AUTHENTICATED_MODE) {
@@ -284,6 +332,9 @@ void wheel_packet_crc_normalize_direct(WheelPacketCrcInput *input, uint8_t wheel
     input->controls[1] &= 0x80u;
     input->controls[2] = 0;
     input->controls[3] = 0;
+    if (adapter_connected) {
+        merge_adapter_input(input, interface_mode, adapter);
+    }
 }
 
 /**

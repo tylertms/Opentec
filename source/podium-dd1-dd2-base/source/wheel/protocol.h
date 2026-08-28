@@ -58,6 +58,7 @@ typedef struct {
     WheelPacketCrcFilter crc_filter;
     WheelPacketCrcInput crc_input;
     WheelPacketCrcOutput crc_output;
+    WheelPacketCrcAdapter crc_adapter;
     WheelProtocolPhase phase;
     uint8_t mode;
     uint8_t interface_mode;
@@ -76,6 +77,7 @@ void wheel_protocol_set_mode_one_output(WheelProtocol *protocol,
 void wheel_protocol_set_mode_four_output(WheelProtocol *protocol,
                                          const WheelPacketModeFourOutput *output);
 void wheel_protocol_set_crc_output(WheelProtocol *protocol, const WheelPacketCrcOutput *output);
+void wheel_protocol_set_crc_adapter(WheelProtocol *protocol, const WheelPacketCrcAdapter *adapter);
 void wheel_protocol_set_axis_processing(WheelProtocol *protocol, uint8_t interface_mode,
                                         uint8_t override_mode, uint8_t calibration_value);
 void wheel_protocol_set_button_latch(WheelProtocol *protocol, bool enabled,
