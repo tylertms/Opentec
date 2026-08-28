@@ -182,6 +182,18 @@ static void test_enumerates_podium_device(void) {
     assert(received[1].endpoint == 1 && received[1].length == 64 && received[1].data_one);
 }
 
+static void test_returns_xbox_security_descriptor(void) {
+    static const uint8_t request[] = {0xc0, 0x90, 0, 0, 4, 0, 40, 0};
+    usb_device_init(BOARD_VARIANT_DD1);
+    push_setup(request);
+    usb_device_service();
+    assert(!stalled);
+    assert(sent.endpoint == 0 && sent.length == 40 && sent.data_one);
+    assert(sent.data[0] == 40);
+    assert(memcmp(&sent.data[18], "XGIP10", 6) == 0);
+    complete_control_input();
+}
+
 static void test_exchanges_hid_reports(void) {
     static const uint8_t set_configuration[] = {0x00, 9, 1, 0, 0, 0, 0, 0};
     static const uint8_t input[] = {1, 2, 3, 4};
@@ -340,6 +352,7 @@ static void test_exchanges_updater_packets(void) {
 
 int main(void) {
     test_enumerates_podium_device();
+    test_returns_xbox_security_descriptor();
     test_exchanges_hid_reports();
     test_reenumerates_compatibility_modes();
     test_exchanges_updater_packets();

@@ -83,6 +83,21 @@ static void test_classifies_cdc_requests(void) {
     assert(request.value == 3);
 }
 
+static void test_classifies_xbox_security_request(void) {
+    const uint8_t data[] = {0xc0, 0x90, 0x00, 0x00, 0x04, 0x00, 0x28, 0x00};
+    UsbControlRequest request;
+    UsbSetupPacket packet = decode(data);
+    assert(usb_control_request_classify(&packet, &request));
+    assert(request.kind == USB_CONTROL_XBOX_SECURITY_DESCRIPTOR);
+    assert(request.index == 4 && request.length == 40);
+
+    packet.request_type = 0x40;
+    assert(!usb_control_request_classify(&packet, &request));
+    packet.request_type = 0xc0;
+    packet.index = 3;
+    assert(!usb_control_request_classify(&packet, &request));
+}
+
 static void test_rejects_invalid_requests(void) {
     const uint8_t invalid_address[] = {0x00, 0x05, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00};
     const uint8_t invalid_protocol[] = {0x21, 0x0b, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -103,6 +118,7 @@ int main(void) {
     test_classifies_enumeration_state_changes();
     test_classifies_hid_requests();
     test_classifies_cdc_requests();
+    test_classifies_xbox_security_request();
     test_rejects_invalid_requests();
     return 0;
 }

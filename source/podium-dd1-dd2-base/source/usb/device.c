@@ -7,6 +7,7 @@
 #include "platform/usb.h"
 #include "usb/compatibility_descriptor.h"
 #include "usb/compatibility_report_descriptor.h"
+#include "usb/console_descriptor.h"
 #include "usb/control_pipe.h"
 #include "usb/control_request.h"
 #include "usb/descriptor.h"
@@ -56,6 +57,8 @@ static PlatformUsbEvent usb_event;
 static UsbDeviceOutputReport output_report;
 static uint8_t value_data[2];
 static uint8_t updater_line_coding[USB_UPDATER_LINE_CODING_SIZE];
+static uint8_t xbox_security_descriptor[USB_XBOX_GIP_SECURITY_DESCRIPTOR_SIZE];
+static uint8_t xbox_os_string_descriptor[USB_XBOX_GIP_OS_STRING_DESCRIPTOR_SIZE];
 static uint8_t input_report[USB_DEVICE_REPORT_SIZE];
 static uint8_t input_report_length;
 static uint8_t control_report_type;
@@ -210,6 +213,8 @@ static void reset_state(void) {
 
 void usb_device_init(BoardVariant variant) {
     board_variant = variant;
+    usb_xbox_gip_security_descriptor_encode(xbox_security_descriptor);
+    usb_xbox_gip_os_string_descriptor_encode(xbox_os_string_descriptor);
     (void)build_descriptors(variant, USB_OPERATING_MODE_FANATEC);
     reset_state();
     platform_usb_init();
@@ -362,6 +367,20 @@ static void handle_setup(void) {
         !usb_setup_packet_decode(usb_event.data, &setup_packet) ||
         !usb_control_request_classify(&setup_packet, &control_request)) {
         stall_control();
+        return;
+    }
+    if (control_request.kind == USB_CONTROL_XBOX_SECURITY_DESCRIPTOR) {
+        begin_control_input((UsbDescriptorView){.data = xbox_security_descriptor,
+                                                .length = sizeof(xbox_security_descriptor)},
+                            control_request.length);
+        return;
+    }
+    if (operating_mode == USB_OPERATING_MODE_XBOX_GIP &&
+        control_request.kind == USB_CONTROL_GET_DESCRIPTOR &&
+        control_request.descriptor_type == 3 && control_request.descriptor_index == 0xee) {
+        begin_control_input((UsbDescriptorView){.data = xbox_os_string_descriptor,
+                                                .length = sizeof(xbox_os_string_descriptor)},
+                            control_request.length);
         return;
     }
     if (operating_mode == USB_OPERATING_MODE_UPDATER) {

@@ -7,6 +7,7 @@ enum {
     USB_DIRECTION_IN = 0x80,
     USB_TYPE_STANDARD = 0x00,
     USB_TYPE_CLASS = 0x20,
+    USB_TYPE_VENDOR = 0x40,
     USB_RECIPIENT_DEVICE = 0x00,
     USB_RECIPIENT_INTERFACE = 0x01,
     USB_REQUEST_GET_STATUS = 0,
@@ -25,6 +26,7 @@ enum {
     USB_CDC_SET_LINE_CODING = 0x20,
     USB_CDC_GET_LINE_CODING = 0x21,
     USB_CDC_SET_CONTROL_LINE_STATE = 0x22,
+    USB_XBOX_SECURITY_REQUEST = 0x90,
 };
 
 static uint16_t read_u16(const uint8_t *data) { return (uint16_t)data[0] | (uint16_t)data[1] << 8; }
@@ -177,6 +179,22 @@ static bool classify_cdc(const UsbSetupPacket *packet, UsbControlRequest *reques
     }
 }
 
+/**
+ * @brief Classifies the Xbox GIP security descriptor request.
+ *
+ * Accepts vendor input request 0x90 for device index 4 and retains the host-requested response
+ * length.
+ *
+ * @param[in] packet Decoded USB setup packet.
+ * @param[out] request Classified control request.
+ * @return True for the Xbox GIP security descriptor request; otherwise false.
+ */
+static bool classify_vendor(const UsbSetupPacket *packet, UsbControlRequest *request) {
+    return packet->request_type == (USB_DIRECTION_IN | USB_TYPE_VENDOR | USB_RECIPIENT_DEVICE) &&
+           packet->request == USB_XBOX_SECURITY_REQUEST && packet->index == 4 &&
+           set_request(packet, request, USB_CONTROL_XBOX_SECURITY_DESCRIPTOR);
+}
+
 bool usb_control_request_classify(const UsbSetupPacket *packet, UsbControlRequest *request) {
     if (packet == 0 || request == 0) {
         return false;
@@ -188,6 +206,9 @@ bool usb_control_request_classify(const UsbSetupPacket *packet, UsbControlReques
     }
     if (type == USB_TYPE_CLASS) {
         return classify_cdc(packet, request) || classify_hid(packet, request);
+    }
+    if (type == USB_TYPE_VENDOR) {
+        return classify_vendor(packet, request);
     }
     return false;
 }
