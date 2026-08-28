@@ -137,6 +137,34 @@ static void test_controls_position_effect_and_output_gates(void) {
     assert(!state.secondary_output_disabled);
 }
 
+static void test_rescales_all_kind_2_positions(void) {
+    ForceFeedbackState state;
+    force_feedback_state_init(&state);
+    ForceFeedbackCommand command = {
+        .kind = FORCE_FEEDBACK_COMMAND_CONFIGURE_KIND_2,
+        .slot = 4,
+        .positions = {64, 192},
+    };
+    assert(force_feedback_state_apply(&state, &command, 256));
+    state.effects[4].active = false;
+    state.effects[FORCE_FEEDBACK_POSITION_EFFECT_SLOT].kind_2.positions[0] = -3;
+    state.effects[FORCE_FEEDBACK_POSITION_EFFECT_SLOT].kind_2.positions[1] = 3;
+
+    assert(force_feedback_state_rescale_positions(&state, 256, 512));
+    assert(state.effects[4].kind_2.positions[0] == -256);
+    assert(state.effects[4].kind_2.positions[1] == 256);
+    assert(!state.effects[4].active);
+    assert(state.effects[FORCE_FEEDBACK_POSITION_EFFECT_SLOT].kind_2.positions[0] == -6);
+    assert(state.effects[FORCE_FEEDBACK_POSITION_EFFECT_SLOT].kind_2.positions[1] == 6);
+
+    state.effects[0].kind = FORCE_FEEDBACK_EFFECT_KIND_1;
+    state.effects[0].kind_1.magnitude = 123;
+    assert(force_feedback_state_rescale_positions(&state, 512, 512));
+    assert(state.effects[0].kind_1.magnitude == 123);
+    assert(!force_feedback_state_rescale_positions(&state, 1, 256));
+    assert(!force_feedback_state_rescale_positions(0, 256, 512));
+}
+
 static void test_rejects_invalid_inputs(void) {
     ForceFeedbackState state;
     force_feedback_state_init(&state);
@@ -161,6 +189,7 @@ int main(void) {
     test_configures_centered_kind_2();
     test_configures_kind_3();
     test_controls_position_effect_and_output_gates();
+    test_rescales_all_kind_2_positions();
     test_rejects_invalid_inputs();
     return 0;
 }

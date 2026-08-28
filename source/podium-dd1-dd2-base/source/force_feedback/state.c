@@ -129,3 +129,43 @@ bool force_feedback_state_apply(ForceFeedbackState *state, const ForceFeedbackCo
 
     return false;
 }
+
+/**
+ * @brief Rescales all kind-2 effect positions after the wheel-position scale changes.
+ *
+ * Visits the 16 host-controlled effects and built-in slot 16 regardless of active state. Each
+ * stored position is multiplied by the new scale shifted right by seven, then divided by the old
+ * scale shifted right by seven with truncation toward zero.
+ *
+ * @param[in,out] state Force-feedback state containing the positions to update.
+ * @param[in] previous_scale Wheel-position scale used to configure the stored positions.
+ * @param[in] current_scale Replacement wheel-position scale.
+ * @return True when the state is accepted and the previous scaled divisor is nonzero.
+ */
+bool force_feedback_state_rescale_positions(ForceFeedbackState *state, int32_t previous_scale,
+                                            int32_t current_scale) {
+    if (state == NULL) {
+        return false;
+    }
+    if (previous_scale == current_scale) {
+        return true;
+    }
+
+    int32_t previous = previous_scale >> 7;
+    if (previous == 0) {
+        return false;
+    }
+    int32_t current = current_scale >> 7;
+
+    for (uint8_t slot = 0; slot < FORCE_FEEDBACK_STATE_EFFECT_COUNT; ++slot) {
+        ForceFeedbackEffectState *effect = &state->effects[slot];
+        if (effect->kind != FORCE_FEEDBACK_EFFECT_KIND_2) {
+            continue;
+        }
+        effect->kind_2.positions[0] =
+            (int32_t)((int64_t)effect->kind_2.positions[0] * current / previous);
+        effect->kind_2.positions[1] =
+            (int32_t)((int64_t)effect->kind_2.positions[1] * current / previous);
+    }
+    return true;
+}
