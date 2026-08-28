@@ -186,7 +186,7 @@ bool wheel_packet_crc_applies(uint8_t wheel_mode) {
 /**
  * @brief Clears the CRC-family input histories.
  *
- * Zeros the three primary-button samples and three five-byte control samples, then resets both
+ * Zeros the three primary-button, five-byte control, and two-byte axis histories, then resets all
  * insertion positions.
  *
  * @param[out] filter CRC-family filter state to initialize.
@@ -199,9 +199,13 @@ void wheel_packet_crc_filter_init(WheelPacketCrcFilter *filter) {
         for (uint8_t control = 0; control < WHEEL_PACKET_CRC_FILTERED_CONTROL_COUNT; control++) {
             filter->control_samples[sample][control] = 0;
         }
+        for (uint8_t axis = 0; axis < WHEEL_PACKET_CRC_AXIS_VALUE_COUNT; axis++) {
+            filter->axis_samples[sample][axis] = 0;
+        }
     }
     filter->next_button_sample = 0;
     filter->next_control_sample = 0;
+    filter->next_axis_sample = 0;
 }
 
 /**
@@ -295,6 +299,30 @@ void wheel_packet_crc_filter(WheelPacketCrcFilter *filter, WheelPacketCrcInput *
     filter->next_control_sample++;
     if (filter->next_control_sample == WHEEL_PACKET_CRC_HISTORY_DEPTH) {
         filter->next_control_sample = 0;
+    }
+}
+
+/**
+ * @brief Smooths the CRC-family auxiliary axis pair.
+ *
+ * Stores the current two axis bytes in a three-sample circular history and replaces each byte with
+ * the unsigned arithmetic mean of its history. Empty startup samples contribute zero.
+ *
+ * @param[in,out] filter Axis histories and their shared insertion position.
+ * @param[in,out] input Normalized CRC-family input whose two axis bytes are averaged in place.
+ */
+void wheel_packet_crc_smooth_axes(WheelPacketCrcFilter *filter, WheelPacketCrcInput *input) {
+    for (uint8_t axis = 0; axis < WHEEL_PACKET_CRC_AXIS_VALUE_COUNT; axis++) {
+        filter->axis_samples[filter->next_axis_sample][axis] = input->controls[axis + 4];
+        uint16_t total = 0;
+        for (uint8_t sample = 0; sample < WHEEL_PACKET_CRC_HISTORY_DEPTH; sample++) {
+            total += filter->axis_samples[sample][axis];
+        }
+        input->controls[axis + 4] = (uint8_t)(total / WHEEL_PACKET_CRC_HISTORY_DEPTH);
+    }
+    filter->next_axis_sample++;
+    if (filter->next_axis_sample == WHEEL_PACKET_CRC_HISTORY_DEPTH) {
+        filter->next_axis_sample = 0;
     }
 }
 

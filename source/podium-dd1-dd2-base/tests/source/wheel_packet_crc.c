@@ -66,6 +66,36 @@ static void test_filters_three_button_and_five_control_bytes(void) {
     assert(input.controls[4] == 0x7f);
 }
 
+static void test_averages_three_axis_control_samples(void) {
+    WheelPacketCrcFilter filter;
+    WheelPacketCrcInput input = {0};
+    wheel_packet_crc_filter_init(&filter);
+
+    input.controls[4] = 30;
+    input.controls[5] = 60;
+    wheel_packet_crc_smooth_axes(&filter, &input);
+    assert(input.controls[4] == 10);
+    assert(input.controls[5] == 20);
+
+    input.controls[4] = 30;
+    input.controls[5] = 90;
+    wheel_packet_crc_smooth_axes(&filter, &input);
+    assert(input.controls[4] == 20);
+    assert(input.controls[5] == 50);
+
+    input.controls[4] = 30;
+    input.controls[5] = 120;
+    wheel_packet_crc_smooth_axes(&filter, &input);
+    assert(input.controls[4] == 30);
+    assert(input.controls[5] == 90);
+
+    input.controls[4] = 15;
+    input.controls[5] = 30;
+    wheel_packet_crc_smooth_axes(&filter, &input);
+    assert(input.controls[4] == 25);
+    assert(input.controls[5] == 80);
+}
+
 static void test_prepares_authenticated_podium_buttons(void) {
     WheelPacketCrcInput input = {
         .buttons = {0, 0xff, 0},
@@ -218,6 +248,7 @@ int main(void) {
     test_selects_crc_modes();
     test_decodes_crc_fields();
     test_filters_three_button_and_five_control_bytes();
+    test_averages_three_axis_control_samples();
     test_prepares_authenticated_podium_buttons();
     test_maps_standard_buttons_and_builds_snapshot();
     test_maps_direct_xbox_buttons();

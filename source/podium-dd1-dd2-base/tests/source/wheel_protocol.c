@@ -596,7 +596,7 @@ static void test_captures_crc_family_requests(void) {
     request[28] = 0x34;
     request[30] = 0x3f;
     request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
-    for (uint8_t sample = 0; sample < WHEEL_PACKET_CRC_HISTORY_DEPTH; sample++) {
+    for (uint8_t sample = 0; sample < WHEEL_PACKET_CRC_HISTORY_DEPTH * 2 - 1; sample++) {
         wheel_protocol_accept(&protocol, request);
     }
 
@@ -629,7 +629,7 @@ static void test_applies_crc_family_axis_controls(void) {
     wheel_protocol_accept(&protocol, request);
 
     const WheelPacketCrcInput *input = wheel_protocol_crc_input(&protocol);
-    assert(input->controls[5] == 0x80);
+    assert(input->controls[5] == 0x2a);
     assert(input->controls[6] == 0x80);
     const WheelAxisOverrideProcessor *axes = wheel_protocol_axis_overrides(&protocol);
     assert(axes->overrides.axis_7.enabled);

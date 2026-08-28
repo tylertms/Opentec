@@ -184,6 +184,7 @@ static void capture_request(WheelProtocol *protocol,
             protocol->mode, protocol->interface_mode, protocol->crc_input.axis_limit,
             protocol->axis_calibration_value, protocol->crc_input.controls,
             protocol->crc_input.axis_outputs);
+        wheel_packet_crc_smooth_axes(&protocol->crc_filter, &protocol->crc_input);
         wheel_packet_crc_snapshot(&protocol->crc_input, snapshot);
         protocol->acknowledgement_input_active =
             crc_acknowledgement_input_active(&protocol->crc_input);

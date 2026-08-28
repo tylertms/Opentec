@@ -37,8 +37,10 @@ typedef struct {
     uint8_t button_samples[WHEEL_PACKET_CRC_HISTORY_DEPTH][WHEEL_PACKET_CRC_BUTTON_COUNT];
     uint8_t control_samples[WHEEL_PACKET_CRC_HISTORY_DEPTH]
                            [WHEEL_PACKET_CRC_FILTERED_CONTROL_COUNT];
+    uint8_t axis_samples[WHEEL_PACKET_CRC_HISTORY_DEPTH][WHEEL_PACKET_CRC_AXIS_VALUE_COUNT];
     uint8_t next_button_sample;
     uint8_t next_control_sample;
+    uint8_t next_axis_sample;
 } WheelPacketCrcFilter;
 
 typedef struct {
@@ -64,6 +66,7 @@ void wheel_packet_crc_decode(const uint8_t request[WHEEL_PACKET_CRC_REQUEST_SIZE
 void wheel_packet_crc_prepare(WheelPacketCrcInput *input, uint8_t wheel_mode,
                               uint8_t interface_mode);
 void wheel_packet_crc_filter(WheelPacketCrcFilter *filter, WheelPacketCrcInput *input);
+void wheel_packet_crc_smooth_axes(WheelPacketCrcFilter *filter, WheelPacketCrcInput *input);
 void wheel_packet_crc_normalize(WheelPacketCrcInput *input, uint8_t wheel_mode,
                                 uint8_t interface_mode, WheelPacketCrcAdapter *adapter);
 void wheel_packet_crc_snapshot(const WheelPacketCrcInput *input,
