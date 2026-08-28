@@ -18,7 +18,7 @@ static void test_decode_position(void) {
     assert(report.wheel_position == 0x08070605);
     assert(report.motor_torque == 0xabcd);
     assert(!report.auxiliary_negative);
-    assert(report.auxiliary_magnitude == 0x2468);
+    assert(report.auxiliary_position == 0x48d0);
 }
 
 static void test_decode_replay(void) {
@@ -34,20 +34,20 @@ static void test_decode_replay(void) {
     assert(report.wheel_position == (int32_t)0xefbeaddeu);
     assert(report.motor_torque == 0x2468);
     assert(report.auxiliary_negative);
-    assert(report.auxiliary_magnitude == 0x2ce0);
+    assert(report.auxiliary_position == 0x59c0);
 }
 
 static void test_encode_force(void) {
-    const ForceOutputCommand command = {
-        .magnitude = 0x1234,
-        .negative = true,
-        .active = true,
+    const ForceOutputReport report = {
+        .positive_direction = false,
+        .primary_magnitude = 0x1234,
+        .secondary_magnitude = 0x5678,
     };
     MotorLiveFrame frame;
     MotorLiveFrame decoded;
     uint8_t encoded[MOTOR_LIVE_FRAME_SIZE];
 
-    motor_force_frame_init(-321, &command, 0x5678, &frame);
+    motor_live_force_frame_init(-321, &report, &frame);
     motor_live_frame_encode(&frame, encoded);
 
     assert(encoded[0] == MOTOR_LIVE_FRAME_START);

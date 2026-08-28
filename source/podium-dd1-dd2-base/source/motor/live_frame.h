@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "force_feedback/output.h"
+#include "force_feedback/output_report.h"
 
 enum {
     MOTOR_LIVE_FRAME_SIZE = 13,
@@ -32,14 +32,14 @@ typedef struct {
     int32_t wheel_position;
     uint16_t motor_torque;
     bool auxiliary_negative;
-    uint16_t auxiliary_magnitude;
+    uint16_t auxiliary_position;
 } MotorPositionReport;
 
 void motor_live_frame_encode(const MotorLiveFrame *frame, uint8_t output[MOTOR_LIVE_FRAME_SIZE]);
 MotorLiveFrameResult motor_live_frame_decode(const uint8_t input[MOTOR_LIVE_FRAME_SIZE],
                                              MotorLiveFrame *frame);
 bool motor_position_report_decode(const MotorLiveFrame *frame, MotorPositionReport *report);
-void motor_force_frame_init(int16_t center_position, const ForceOutputCommand *command,
-                            uint16_t secondary_magnitude, MotorLiveFrame *frame);
+void motor_live_force_frame_init(int16_t center_position, const ForceOutputReport *report,
+                                 MotorLiveFrame *frame);
 
 #endif

@@ -42,6 +42,11 @@ static void write_u16(uint8_t *output, uint16_t value) {
     output[1] = (uint8_t)(value >> 8);
 }
 
+/**
+ * @brief Encodes one framed motor-link packet and its CRC-16/CCITT checksum.
+ * @param frame Packet type and eight-byte payload.
+ * @param output Thirteen-byte framed packet.
+ */
 void motor_live_frame_encode(const MotorLiveFrame *frame, uint8_t output[MOTOR_LIVE_FRAME_SIZE]) {
     output[0] = MOTOR_LIVE_FRAME_START;
     output[1] = frame->type;
@@ -53,6 +58,12 @@ void motor_live_frame_encode(const MotorLiveFrame *frame, uint8_t output[MOTOR_L
     output[12] = MOTOR_LIVE_FRAME_END;
 }
 
+/**
+ * @brief Checks and decodes one complete motor-link packet.
+ * @param input Thirteen-byte packet received from the motor controller.
+ * @param frame Decoded packet type and payload when the packet is valid.
+ * @return The boundary or checksum result.
+ */
 MotorLiveFrameResult motor_live_frame_decode(const uint8_t input[MOTOR_LIVE_FRAME_SIZE],
                                              MotorLiveFrame *frame) {
     if (input[0] != MOTOR_LIVE_FRAME_START || input[12] != MOTOR_LIVE_FRAME_END) {
@@ -71,6 +82,12 @@ MotorLiveFrameResult motor_live_frame_decode(const uint8_t input[MOTOR_LIVE_FRAM
     return MOTOR_LIVE_FRAME_VALID;
 }
 
+/**
+ * @brief Decodes a current or replayed wheel-position packet.
+ * @param frame Decoded motor-link packet.
+ * @param report Wheel position, measured torque, and auxiliary position fields.
+ * @return True for position and replay packet types; otherwise false.
+ */
 bool motor_position_report_decode(const MotorLiveFrame *frame, MotorPositionReport *report) {
     if ((frame->type & ~MOTOR_LIVE_REPLAY_FLAG) != MOTOR_LIVE_POSITION_TYPE) {
         return false;
@@ -81,14 +98,20 @@ bool motor_position_report_decode(const MotorLiveFrame *frame, MotorPositionRepo
     report->wheel_position = read_i32(frame->payload);
     report->motor_torque = read_u16(frame->payload + 4);
     report->auxiliary_negative = (auxiliary & MOTOR_POSITION_AUXILIARY_DIRECTION) != 0;
-    report->auxiliary_magnitude = auxiliary & ~MOTOR_POSITION_AUXILIARY_DIRECTION;
+    report->auxiliary_position = (uint16_t)(auxiliary << 1);
     return true;
 }
 
-void motor_force_frame_init(int16_t center_position, const ForceOutputCommand *command,
-                            uint16_t secondary_magnitude, MotorLiveFrame *frame) {
+/**
+ * @brief Builds the live force-output payload returned during the motor-link exchange.
+ * @param center_position Stored wheel-center position.
+ * @param report Final direction and force magnitudes.
+ * @param frame Initialized live packet ready for framing.
+ */
+void motor_live_force_frame_init(int16_t center_position, const ForceOutputReport *report,
+                                 MotorLiveFrame *frame) {
     frame->type = MOTOR_LIVE_POSITION_TYPE;
     write_u16(frame->payload, (uint16_t)center_position);
-    force_output_report_encode(command, secondary_magnitude, frame->payload + 2);
+    force_output_report_encode(report, frame->payload + 2);
     frame->payload[7] = 0;
 }

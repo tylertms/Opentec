@@ -77,7 +77,7 @@ static ShifterInputState shifter_input;
 static ShifterDisplay shifter_display;
 static fanatec_input_state usb_input_state;
 static uint8_t usb_input_report[FANATEC_INPUT_REPORT_SIZE];
-static ForceOutputCommand motor_output_command;
+static ForceOutputReport motor_output_report;
 static MotorLiveFrame motor_live_frame;
 static uint8_t motor_received_frame[MOTOR_LIVE_FRAME_SIZE];
 static uint8_t motor_transmitted_frame[MOTOR_LIVE_FRAME_SIZE];
@@ -139,8 +139,8 @@ static void service_cooling(uint32_t now_ms) {
 }
 
 static void initialize_motor_link(void) {
-    motor_output_command = (ForceOutputCommand){0};
-    motor_force_frame_init(0, &motor_output_command, 0, &motor_live_frame);
+    motor_output_report = (ForceOutputReport){0};
+    motor_live_force_frame_init(0, &motor_output_report, &motor_live_frame);
     motor_live_frame_encode(&motor_live_frame, motor_transmitted_frame);
     platform_motor_link_init(motor_transmitted_frame);
     motor_position_ready = false;
