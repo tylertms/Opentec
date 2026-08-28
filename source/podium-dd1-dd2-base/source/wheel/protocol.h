@@ -71,6 +71,7 @@ typedef struct {
     WheelPacketRemoteTuningOutput remote_tuning_output;
     WheelOutputReports output_reports;
     WheelProtocolPhase phase;
+    uint32_t now_ms;
     uint8_t mode;
     uint8_t interface_mode;
     uint8_t configured_axis_override_mode;
@@ -93,7 +94,9 @@ bool wheel_protocol_queue_remote_tuning_response(WheelProtocol *protocol,
                                                  const RemoteTuningResponse *response);
 bool wheel_protocol_remote_tuning_response_pending(const WheelProtocol *protocol);
 void wheel_protocol_set_axis_processing(WheelProtocol *protocol, uint8_t interface_mode,
-                                        uint8_t override_mode, uint8_t bite_point_percent);
+                                        uint8_t override_mode, uint8_t bite_point_percent,
+                                        uint32_t now_ms);
+bool wheel_protocol_take_bite_point(WheelProtocol *protocol, uint8_t *updated_percent);
 void wheel_protocol_set_button_latch(WheelProtocol *protocol, bool enabled,
                                      bool profile_transition_pending);
 void wheel_protocol_accept(WheelProtocol *protocol,

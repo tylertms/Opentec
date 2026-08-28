@@ -151,6 +151,7 @@ static PedalCalibrationCommand pedal_calibration_command;
 static PedalCalibrationActions pedal_calibration_actions;
 static PedalProtocolCommand pedal_protocol_command;
 static WheelSteeringLimitCommand wheel_steering_limit_command;
+static uint8_t wheel_adjusted_bite_point_percent;
 static UsbVendorCommand usb_vendor_command;
 static UsbWheelTransferCommand usb_wheel_transfer_command;
 static ForceFeedbackCommand force_feedback_command;
@@ -722,6 +723,22 @@ static void apply_pedal_calibration_actions(const PedalCalibrationActions *actio
     }
 }
 
+/**
+ * @brief Applies an active-profile wheel percentage command.
+ *
+ * Updates the selected profile or resets all profile values, then schedules settings persistence
+ * when the effective configuration changes.
+ *
+ * @param[in] command Decoded percentage update or reset request.
+ */
+static void apply_wheel_steering_limit_command(const WheelSteeringLimitCommand *command) {
+    if (wheel_steering_limits_apply(&base_settings.steering_limits,
+                                    base_settings.tuning_profiles.active_slot,
+                                    command) == WHEEL_STEERING_LIMIT_CHANGED) {
+        base_settings_persistence_mark_dirty(&settings_persistence, platform_time_ms());
+    }
+}
+
 static void service_usb_output(void) {
     if (!usb_device_take_output(&usb_device_output_report)) {
         return;
@@ -759,11 +776,7 @@ static void service_usb_output(void) {
             return;
         } else if (wheel_steering_limit_command_decode(&usb_operating_mode_command,
                                                        &wheel_steering_limit_command)) {
-            if (wheel_steering_limits_apply(
-                    &base_settings.steering_limits, base_settings.tuning_profiles.active_slot,
-                    &wheel_steering_limit_command) == WHEEL_STEERING_LIMIT_CHANGED) {
-                base_settings_persistence_mark_dirty(&settings_persistence, platform_time_ms());
-            }
+            apply_wheel_steering_limit_command(&wheel_steering_limit_command);
         }
         return;
     }
@@ -1050,8 +1063,16 @@ int main(void) {
             &wheel_service, (uint8_t)usb_device_operating_mode(),
             (uint8_t)tuning_profile->paddle_mode,
             wheel_steering_limits_active(&base_settings.steering_limits,
-                                         base_settings.tuning_profiles.active_slot));
+                                         base_settings.tuning_profiles.active_slot),
+            now_ms);
         wheel_service_run(&wheel_service, now_ms, !serial_command_waiting());
+        if (wheel_service_take_bite_point(&wheel_service, &wheel_adjusted_bite_point_percent)) {
+            wheel_steering_limit_command = (WheelSteeringLimitCommand){
+                .percent = wheel_adjusted_bite_point_percent,
+                .reset_all = false,
+            };
+            apply_wheel_steering_limit_command(&wheel_steering_limit_command);
+        }
         if (serial_service.status == SERIAL_SERVICE_IDLE) {
             (void)motor_command_serial_submit(&command_transport, &serial_service, now_ms);
         }

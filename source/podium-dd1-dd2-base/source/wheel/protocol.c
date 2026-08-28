@@ -160,7 +160,6 @@ static void capture_request(WheelProtocol *protocol,
     if (wheel_packet_mode_one_applies(protocol->mode)) {
         uint8_t snapshot[WHEEL_PACKET_MODE_ONE_SNAPSHOT_SIZE];
         wheel_packet_mode_one_decode(request, &protocol->mode_one_input);
-        wheel_motion_accumulate_primary(&protocol->motion, protocol->mode_one_input.motion);
         protocol->mode_one_report_state.axis_values[0] = protocol->mode_one_input.axis_values[0];
         protocol->mode_one_report_state.axis_values[1] = protocol->mode_one_input.axis_values[1];
         protocol->mode_one_report_state.report_mode = protocol->mode_one_input.report_mode;
@@ -183,10 +182,12 @@ static void capture_request(WheelProtocol *protocol,
             wheel_axis_override_process(
                 &protocol->axis_override_processor, protocol->configured_axis_override_mode,
                 protocol->mode, protocol->interface_mode,
-                protocol->mode_one_input.controls.enabled != 0, protocol->paddle_bite_point_percent,
-                protocol->mode_one_input.controls.x, protocol->mode_one_input.controls.y,
-                protocol->mode_one_input.axis_outputs);
+                protocol->mode_one_input.controls.enabled != 0, protocol->now_ms,
+                &protocol->paddle_bite_point_percent, &protocol->mode_one_input.buttons[0],
+                &protocol->mode_one_input.motion, protocol->mode_one_input.controls.x,
+                protocol->mode_one_input.controls.y, protocol->mode_one_input.axis_outputs);
         }
+        wheel_motion_accumulate_primary(&protocol->motion, protocol->mode_one_input.motion);
         wheel_packet_mode_one_normalize(
             &protocol->mode_one_input, protocol->mode == 0x13 || protocol->mode == 0x14,
             protocol->button_latch_enabled, protocol->profile_transition_pending, snapshot);
@@ -222,7 +223,6 @@ static void capture_request(WheelProtocol *protocol,
     } else if (wheel_packet_crc_applies(protocol->mode)) {
         uint8_t snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE];
         wheel_packet_crc_decode(request, &protocol->crc_input);
-        wheel_motion_accumulate_primary(&protocol->motion, protocol->crc_input.motion);
         wheel_capability_update(&protocol->capabilities, protocol->mode,
                                 protocol->crc_input.report_mode,
                                 protocol->crc_input.report_capabilities);
@@ -240,8 +240,10 @@ static void capture_request(WheelProtocol *protocol,
         wheel_axis_override_process_packet(
             &protocol->axis_override_processor, protocol->configured_axis_override_mode,
             protocol->mode, protocol->interface_mode, protocol->crc_input.axis_limit,
-            protocol->paddle_bite_point_percent, protocol->crc_input.controls,
+            protocol->now_ms, &protocol->paddle_bite_point_percent, &protocol->crc_input.buttons[0],
+            &protocol->crc_input.motion, protocol->crc_input.controls,
             protocol->crc_input.axis_outputs);
+        wheel_motion_accumulate_primary(&protocol->motion, protocol->crc_input.motion);
         wheel_packet_crc_smooth_axes(&protocol->crc_filter, &protocol->crc_input);
         wheel_packet_crc_snapshot(&protocol->crc_input, snapshot);
         protocol->acknowledgement_input_active =
@@ -353,6 +355,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     wheel_capability_init(&protocol->capabilities);
     wheel_authentication_init(&protocol->authentication, WHEEL_MODE_UNKNOWN);
     protocol->phase = WHEEL_PROTOCOL_WAITING;
+    protocol->now_ms = 0;
     protocol->mode = WHEEL_MODE_UNKNOWN;
     protocol->interface_mode = 0;
     protocol->configured_axis_override_mode = WHEEL_AXIS_OVERRIDE_MODE_NONE;
@@ -460,12 +463,31 @@ bool wheel_protocol_remote_tuning_response_pending(const WheelProtocol *protocol
  * @param[in] interface_mode Active host interface mode.
  * @param[in] override_mode Configured analog-paddle mode.
  * @param[in] bite_point_percent Active profile bite-point percentage.
+ * @param[in] now_ms Current monotonic time in milliseconds.
  */
 void wheel_protocol_set_axis_processing(WheelProtocol *protocol, uint8_t interface_mode,
-                                        uint8_t override_mode, uint8_t bite_point_percent) {
+                                        uint8_t override_mode, uint8_t bite_point_percent,
+                                        uint32_t now_ms) {
+    protocol->now_ms = now_ms;
     protocol->interface_mode = interface_mode;
     protocol->configured_axis_override_mode = override_mode;
-    protocol->paddle_bite_point_percent = bite_point_percent;
+    if (protocol->axis_override_processor.paddle_clutch_phase != WHEEL_PADDLE_CLUTCH_ADJUSTING) {
+        protocol->paddle_bite_point_percent = bite_point_percent;
+    }
+}
+
+/**
+ * @brief Takes a completed attached-wheel bite-point adjustment.
+ *
+ * Forwards the adjusted percentage once after the wheel protocol exits its adjustment phase.
+ *
+ * @param[in,out] protocol Wheel protocol and analog-paddle state.
+ * @param[out] updated_percent Completed percentage to persist.
+ * @return True when a completed adjustment was available.
+ */
+bool wheel_protocol_take_bite_point(WheelProtocol *protocol, uint8_t *updated_percent) {
+    return wheel_axis_override_take_bite_point(
+        &protocol->axis_override_processor, protocol->paddle_bite_point_percent, updated_percent);
 }
 
 /**

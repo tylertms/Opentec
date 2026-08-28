@@ -431,9 +431,11 @@ static void test_restarts_discovery_after_scan_timeout(void) {
     service.protocol.mode_one_button_filter.next_sample = 2;
     service.protocol.mode_one_control_axis_filter.samples[2][1] = 0x6b;
     service.protocol.mode_one_control_axis_filter.next_sample = 1;
-    wheel_service_configure_axis_processing(&service, 7, WHEEL_AXIS_OVERRIDE_MODE_PRIMARY, 60);
+    wheel_service_configure_axis_processing(&service, 7, WHEEL_AXIS_OVERRIDE_MODE_PRIMARY, 60, 123);
     service.protocol.axis_override_processor.multiplex_phase = WHEEL_AXIS_MULTIPLEX_Y;
     service.protocol.axis_override_processor.paddle_clutch_phase = WHEEL_PADDLE_CLUTCH_ACTIVE;
+    service.protocol.axis_override_processor.paddle_adjustment_deadline_ms = 456;
+    service.protocol.axis_override_processor.paddle_bite_point_commit_pending = true;
     service.protocol.axis_override_processor.x_available = true;
     service.protocol.axis_override_processor.y_available = true;
     service.protocol.axis_override_processor.overrides.axis_5.enabled = true;
@@ -458,9 +460,14 @@ static void test_restarts_discovery_after_scan_timeout(void) {
     assert(service.protocol.interface_mode == 7);
     assert(service.protocol.configured_axis_override_mode == WHEEL_AXIS_OVERRIDE_MODE_PRIMARY);
     assert(service.protocol.paddle_bite_point_percent == 60);
+    assert(service.protocol.now_ms == 123);
     assert(service.protocol.axis_override_processor.multiplex_phase == WHEEL_AXIS_MULTIPLEX_Y);
     assert(service.protocol.axis_override_processor.paddle_clutch_phase ==
            WHEEL_PADDLE_CLUTCH_ACTIVE);
+    assert(service.protocol.axis_override_processor.paddle_adjustment_deadline_ms == 456);
+    uint8_t adjusted_bite_point_percent = 0;
+    assert(wheel_service_take_bite_point(&service, &adjusted_bite_point_percent));
+    assert(adjusted_bite_point_percent == 60);
     assert(service.protocol.axis_override_processor.x_available);
     assert(service.protocol.axis_override_processor.y_available);
     assert(!service.protocol.axis_override_processor.overrides.axis_5.enabled);

@@ -222,15 +222,20 @@ static void reset_connection(WheelService *service) {
     WheelOutputReports output_reports = service->protocol.output_reports;
     WheelCapabilityState capabilities = service->protocol.capabilities;
     capabilities.input_available = false;
+    uint32_t now_ms = service->protocol.now_ms;
     uint8_t interface_mode = service->protocol.interface_mode;
     uint8_t axis_override_mode = service->protocol.configured_axis_override_mode;
     uint8_t paddle_bite_point_percent = service->protocol.paddle_bite_point_percent;
+    uint32_t paddle_adjustment_deadline_ms =
+        service->protocol.axis_override_processor.paddle_adjustment_deadline_ms;
     uint8_t axis_multiplex_phase = service->protocol.axis_override_processor.multiplex_phase;
     uint8_t paddle_clutch_phase = service->protocol.axis_override_processor.paddle_clutch_phase;
     bool axis_x_available = service->protocol.axis_override_processor.x_available;
     bool axis_y_available = service->protocol.axis_override_processor.y_available;
     bool packet_axis_report_enabled =
         service->protocol.axis_override_processor.packet_axis_report_enabled;
+    bool paddle_bite_point_commit_pending =
+        service->protocol.axis_override_processor.paddle_bite_point_commit_pending;
     bool button_latch_enabled = service->protocol.button_latch_enabled;
     bool profile_transition_pending = service->protocol.profile_transition_pending;
     wheel_protocol_init(&service->protocol);
@@ -246,13 +251,17 @@ static void reset_connection(WheelService *service) {
     service->protocol.output_reports = output_reports;
     service->protocol.capabilities = capabilities;
     wheel_protocol_set_axis_processing(&service->protocol, interface_mode, axis_override_mode,
-                                       paddle_bite_point_percent);
+                                       paddle_bite_point_percent, now_ms);
+    service->protocol.axis_override_processor.paddle_adjustment_deadline_ms =
+        paddle_adjustment_deadline_ms;
     service->protocol.axis_override_processor.multiplex_phase = axis_multiplex_phase;
     service->protocol.axis_override_processor.paddle_clutch_phase = paddle_clutch_phase;
     service->protocol.axis_override_processor.x_available = axis_x_available;
     service->protocol.axis_override_processor.y_available = axis_y_available;
     service->protocol.axis_override_processor.packet_axis_report_enabled =
         packet_axis_report_enabled;
+    service->protocol.axis_override_processor.paddle_bite_point_commit_pending =
+        paddle_bite_point_commit_pending;
     wheel_protocol_set_button_latch(&service->protocol, button_latch_enabled,
                                     profile_transition_pending);
     clear_scan_filter(service);
@@ -271,11 +280,26 @@ static void reset_connection(WheelService *service) {
  * @param[in] interface_mode Active host interface mode.
  * @param[in] paddle_mode Active tuning-profile analog-paddle mode.
  * @param[in] bite_point_percent Active profile bite-point percentage.
+ * @param[in] now_ms Current monotonic time in milliseconds.
  */
 void wheel_service_configure_axis_processing(WheelService *service, uint8_t interface_mode,
-                                             uint8_t paddle_mode, uint8_t bite_point_percent) {
+                                             uint8_t paddle_mode, uint8_t bite_point_percent,
+                                             uint32_t now_ms) {
     wheel_protocol_set_axis_processing(&service->protocol, interface_mode, paddle_mode,
-                                       bite_point_percent);
+                                       bite_point_percent, now_ms);
+}
+
+/**
+ * @brief Takes a completed attached-wheel bite-point adjustment.
+ *
+ * Returns the adjusted active-profile percentage once after the paddle adjustment gesture ends.
+ *
+ * @param[in,out] service Attached-wheel service and protocol state.
+ * @param[out] updated_percent Completed percentage to persist.
+ * @return True when a completed adjustment was available.
+ */
+bool wheel_service_take_bite_point(WheelService *service, uint8_t *updated_percent) {
+    return wheel_protocol_take_bite_point(&service->protocol, updated_percent);
 }
 
 /**

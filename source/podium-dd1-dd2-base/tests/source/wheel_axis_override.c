@@ -10,6 +10,9 @@ typedef struct {
     uint8_t interface_mode;
     bool enabled;
     uint8_t bite_point_percent;
+    uint32_t now_ms;
+    uint8_t buttons;
+    int8_t motion;
     uint8_t x;
     uint8_t y;
 } TestInput;
@@ -21,17 +24,84 @@ static TestInput input(uint8_t mode) {
         .interface_mode = 0,
         .enabled = true,
         .bite_point_percent = 50,
+        .now_ms = 0,
+        .buttons = 0,
+        .motion = 0,
         .x = 0x24,
         .y = 0x68,
     };
     return value;
 }
 
-static void process(WheelAxisOverrideProcessor *processor, const TestInput *value,
-                    uint8_t axes[2]) {
+static void process(WheelAxisOverrideProcessor *processor, TestInput *value, uint8_t axes[2]) {
     wheel_axis_override_process(processor, value->mode, value->operating_mode,
-                                value->interface_mode, value->enabled, value->bite_point_percent,
+                                value->interface_mode, value->enabled, value->now_ms,
+                                &value->bite_point_percent, &value->buttons, &value->motion,
                                 value->x, value->y, axes);
+}
+
+static void process_packet(WheelAxisOverrideProcessor *processor, uint8_t mode, uint8_t wheel_mode,
+                           uint8_t interface_mode, uint8_t axis_limit, uint8_t bite_point_percent,
+                           uint8_t controls[8], uint8_t axes[2]) {
+    uint8_t buttons = 0;
+    int8_t motion = 0;
+    wheel_axis_override_process_packet(processor, mode, wheel_mode, interface_mode, axis_limit, 0,
+                                       &bite_point_percent, &buttons, &motion, controls, axes);
+}
+
+static void test_adjusts_and_publishes_paddle_clutch_bite_point(void) {
+    WheelAxisOverrideProcessor processor;
+    wheel_axis_override_processor_init(&processor);
+    TestInput value = input(WHEEL_AXIS_OVERRIDE_MODE_CALIBRATED);
+    uint8_t axes[2] = {0};
+
+    value.x = 0;
+    value.y = 100;
+    value.buttons = UINT8_MAX;
+    process(&processor, &value, axes);
+    assert(processor.paddle_clutch_phase == WHEEL_PADDLE_CLUTCH_ADJUSTING);
+    assert(processor.paddle_adjustment_deadline_ms == 1000);
+    assert(value.buttons == 0xf6);
+
+    value.now_ms = 999;
+    value.buttons = 1;
+    process(&processor, &value, axes);
+    assert(value.bite_point_percent == 50);
+    assert(value.buttons == 0);
+    assert(processor.overrides.axis_7.value == 128);
+
+    value.now_ms = 1000;
+    value.buttons = 1;
+    process(&processor, &value, axes);
+    assert(value.bite_point_percent == 51);
+    assert(processor.paddle_adjustment_deadline_ms == 1800);
+    assert(processor.overrides.axis_7.value == 125);
+
+    value.now_ms = 1800;
+    value.motion = -1;
+    process(&processor, &value, axes);
+    assert(value.bite_point_percent == 50);
+    assert(value.motion == 0);
+
+    value.now_ms = 1801;
+    process(&processor, &value, axes);
+    assert(processor.paddle_adjustment_deadline_ms == 1801);
+    value.now_ms = 1802;
+    value.motion = 1;
+    process(&processor, &value, axes);
+    assert(value.bite_point_percent == 51);
+
+    value.now_ms = 1803;
+    value.x = 11;
+    value.motion = 0;
+    process(&processor, &value, axes);
+    assert(processor.paddle_clutch_phase == WHEEL_PADDLE_CLUTCH_IDLE);
+    uint8_t updated_percent = 0;
+    assert(wheel_axis_override_take_bite_point(&processor, value.bite_point_percent,
+                                               &updated_percent));
+    assert(updated_percent == 51);
+    assert(!wheel_axis_override_take_bite_point(&processor, value.bite_point_percent,
+                                                &updated_percent));
 }
 
 static void test_selects_axis_overrides(void) {
@@ -210,8 +280,7 @@ static void test_normalizes_crc_packet_axis_controls(void) {
     uint8_t controls[8] = {0, 0, 0, 0, 0, 0x20, 0x40, 0};
     uint8_t axes[2] = {0x11, 0x22};
 
-    wheel_axis_override_process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_NONE, 6, 0, 0x17, 0,
-                                       controls, axes);
+    process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_NONE, 6, 0, 0x17, 0, controls, axes);
     assert(controls[5] == 0xbf);
     assert(controls[6] == 0x7f);
     assert(axes[0] == 0x11);
@@ -219,22 +288,19 @@ static void test_normalizes_crc_packet_axis_controls(void) {
 
     controls[5] = 0x20;
     controls[6] = 0x40;
-    wheel_axis_override_process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_NONE, 6, 0, 0x18, 0,
-                                       controls, axes);
+    process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_NONE, 6, 0, 0x18, 0, controls, axes);
     assert(controls[5] == 0xdf);
     assert(controls[6] == 0xbf);
 
     controls[5] = 0x7f;
     controls[6] = 0x7e;
-    wheel_axis_override_process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_NONE, 6, 0, 0x17, 0,
-                                       controls, axes);
+    process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_NONE, 6, 0, 0x17, 0, controls, axes);
     assert(controls[5] == 0);
     assert(controls[6] == 0x03);
 
     controls[5] = 0x20;
     controls[6] = 0x40;
-    wheel_axis_override_process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_NONE, 0x15, 0, 0, 0,
-                                       controls, axes);
+    process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_NONE, 0x15, 0, 0, 0, controls, axes);
     assert(controls[5] == 0x20);
     assert(controls[6] == 0x40);
 }
@@ -246,17 +312,14 @@ static void test_tracks_crc_packet_axis_report_availability(void) {
     uint8_t axes[2] = {0};
 
     controls[7] = 1;
-    wheel_axis_override_process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_NONE, 6, 0, 0, 0,
-                                       controls, axes);
+    process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_NONE, 6, 0, 0, 0, controls, axes);
     assert(processor.packet_axis_report_enabled);
 
     controls[7] = 0;
-    wheel_axis_override_process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_NONE, 6, 0, 0, 0,
-                                       controls, axes);
+    process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_NONE, 6, 0, 0, 0, controls, axes);
     assert(processor.packet_axis_report_enabled);
 
-    wheel_axis_override_process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_NONE, 0x15, 0, 0, 0,
-                                       controls, axes);
+    process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_NONE, 0x15, 0, 0, 0, controls, axes);
     assert(!processor.packet_axis_report_enabled);
 }
 
@@ -266,8 +329,7 @@ static void test_publishes_crc_packet_overrides(void) {
     uint8_t controls[8] = {0, 0, 0, 0, 0, 0x20, 0x40, 1};
     uint8_t axes[2] = {0x11, 0x22};
 
-    wheel_axis_override_process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_CALIBRATED, 0x15, 0, 0,
-                                       50, controls, axes);
+    process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_CALIBRATED, 0x15, 0, 0, 50, controls, axes);
     assert(processor.overrides.axis_7.enabled);
     assert(processor.overrides.axis_7.value == 0x20);
     assert(controls[5] == 0x80);
@@ -275,8 +337,7 @@ static void test_publishes_crc_packet_overrides(void) {
 
     controls[5] = 0x20;
     controls[6] = 0x40;
-    wheel_axis_override_process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_SECONDARY, 0x15, 0, 0,
-                                       0, controls, axes);
+    process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_SECONDARY, 0x15, 0, 0, 0, controls, axes);
     assert(processor.overrides.axis_7.enabled);
     assert(processor.overrides.axis_7.value == 0x20);
     assert(processor.overrides.auxiliary.enabled);
@@ -284,8 +345,7 @@ static void test_publishes_crc_packet_overrides(void) {
 
     controls[5] = 0x20;
     controls[6] = 0x40;
-    wheel_axis_override_process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_PRIMARY, 0x15, 0, 0, 0,
-                                       controls, axes);
+    process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_PRIMARY, 0x15, 0, 0, 0, controls, axes);
     assert(processor.overrides.axis_6.enabled);
     assert(processor.overrides.axis_6.value == 0x20);
     assert(processor.overrides.axis_5.enabled);
@@ -298,23 +358,18 @@ static void test_multiplexes_crc_packet_axes(void) {
     uint8_t controls[8] = {0, 0, 0, 0, 0, 0x20, 0x40, 1};
     uint8_t axes[2] = {0x11, 0x22};
 
-    wheel_axis_override_process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 6, 0,
-                                       0, controls, axes);
+    process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 6, 0, 0, controls, axes);
     assert(processor.multiplex_phase == WHEEL_AXIS_MULTIPLEX_X);
     assert(axes[0] == 0x11);
-    wheel_axis_override_process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 6, 0,
-                                       0, controls, axes);
+    process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 6, 0, 0, controls, axes);
     assert(axes[0] == 0x70);
 
     controls[5] = UINT8_MAX;
-    wheel_axis_override_process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 6, 0,
-                                       0, controls, axes);
+    process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 6, 0, 0, controls, axes);
     assert(processor.multiplex_phase == WHEEL_AXIS_MULTIPLEX_SELECT);
-    wheel_axis_override_process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 6, 0,
-                                       0, controls, axes);
+    process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 6, 0, 0, controls, axes);
     assert(processor.multiplex_phase == WHEEL_AXIS_MULTIPLEX_Y);
-    wheel_axis_override_process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 6, 0,
-                                       0, controls, axes);
+    process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 6, 0, 0, controls, axes);
     assert(axes[0] == 0xa1);
 
     wheel_axis_override_processor_init(&processor);
@@ -322,25 +377,21 @@ static void test_multiplexes_crc_packet_axes(void) {
     controls[6] = UINT8_MAX;
     axes[0] = 0;
     axes[1] = 0x22;
-    wheel_axis_override_process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 7, 0,
-                                       0, controls, axes);
+    process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 7, 0, 0, controls, axes);
     assert(axes[0] == UINT8_MAX);
     assert(axes[1] == 0);
 
     wheel_axis_override_processor_init(&processor);
     controls[5] = UINT8_MAX;
     controls[6] = 0x40;
-    wheel_axis_override_process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 8, 0,
-                                       0, controls, axes);
-    wheel_axis_override_process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 8, 0,
-                                       0, controls, axes);
+    process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 8, 0, 0, controls, axes);
+    process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 8, 0, 0, controls, axes);
     assert(axes[0] == 0xdf);
 
     wheel_axis_override_processor_init(&processor);
     controls[5] = 0x20;
     controls[6] = 0x40;
-    wheel_axis_override_process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 0, 0,
-                                       0, controls, axes);
+    process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 0, 0, 0, controls, axes);
     assert(axes[0] == 0xa0);
     assert(axes[1] == 0xc0);
     assert(controls[5] == 0xa0);
@@ -350,6 +401,7 @@ static void test_multiplexes_crc_packet_axes(void) {
 int main(void) {
     test_selects_axis_overrides();
     test_applies_paddle_clutch_bite_point_sequence();
+    test_adjusts_and_publishes_paddle_clutch_bite_point();
     test_handles_disabled_and_fixed_axis_modes();
     test_maps_direct_multiplexed_axes();
     test_multiplexes_x_and_y_across_samples();

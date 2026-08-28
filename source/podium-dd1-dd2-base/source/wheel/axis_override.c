@@ -15,8 +15,15 @@ enum {
     PACKET_AXIS_LIMIT_THRESHOLD = 0x17,
     PACKET_AXIS_VALUE_LIMIT = 0x7e,
     PADDLE_CLUTCH_PRESSED_THRESHOLD = 5,
+    PADDLE_CLUTCH_EXIT_THRESHOLD = 10,
     PADDLE_CLUTCH_RELEASED_THRESHOLD = 0xf5,
     PADDLE_CLUTCH_PERCENT_MAXIMUM = 100,
+    PADDLE_ADJUST_BUTTON_INCREASE = 0x01,
+    PADDLE_ADJUST_BUTTON_DECREASE = 0x08,
+    PADDLE_ADJUST_BUTTON_MASK = 0x09,
+    PADDLE_ADJUST_CONSUMED_BUTTON_MASK = 0x0f,
+    PADDLE_ADJUST_INITIAL_DELAY_MS = 1000,
+    PADDLE_ADJUST_REPEAT_DELAY_MS = 800,
 };
 
 /**
@@ -199,13 +206,17 @@ static uint8_t scale_paddle_clutch(uint8_t value, uint8_t percent) {
  * sequence; releasing either paddle activates the configured bite point until both are released.
  *
  * @param[in,out] processor Persistent paddle-clutch phase.
- * @param[in] bite_point_percent Active profile bite-point percentage.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[in,out] bite_point_percent Active profile bite-point percentage.
+ * @param[in,out] buttons Primary attached-wheel button bank.
+ * @param[in,out] motion Primary attached-wheel rotary motion.
  * @param[in] x First analog-paddle value.
  * @param[in] y Second analog-paddle value.
  * @return Combined active-low clutch axis value.
  */
-static uint8_t process_paddle_clutch(WheelAxisOverrideProcessor *processor,
-                                     uint8_t bite_point_percent, uint8_t x, uint8_t y) {
+static uint8_t process_paddle_clutch(WheelAxisOverrideProcessor *processor, uint32_t now_ms,
+                                     uint8_t *bite_point_percent, uint8_t *buttons, int8_t *motion,
+                                     uint8_t x, uint8_t y) {
     uint8_t lower = x < y ? x : y;
     uint8_t upper = x < y ? y : x;
     uint8_t output = lower;
@@ -214,6 +225,36 @@ static uint8_t process_paddle_clutch(WheelAxisOverrideProcessor *processor,
     case WHEEL_PADDLE_CLUTCH_IDLE:
         if (lower <= PADDLE_CLUTCH_PRESSED_THRESHOLD && upper <= PADDLE_CLUTCH_PRESSED_THRESHOLD) {
             processor->paddle_clutch_phase = WHEEL_PADDLE_CLUTCH_ARMED;
+        } else if (lower <= PADDLE_CLUTCH_PRESSED_THRESHOLD &&
+                   (*buttons & PADDLE_ADJUST_BUTTON_MASK) != 0) {
+            processor->paddle_clutch_phase = WHEEL_PADDLE_CLUTCH_ADJUSTING;
+            processor->paddle_adjustment_deadline_ms = now_ms + PADDLE_ADJUST_INITIAL_DELAY_MS;
+            *buttons &= (uint8_t)~PADDLE_ADJUST_BUTTON_MASK;
+        }
+        break;
+    case WHEEL_PADDLE_CLUTCH_ADJUSTING:
+        if ((int32_t)(now_ms - processor->paddle_adjustment_deadline_ms) >= 0) {
+            if ((*buttons & PADDLE_ADJUST_BUTTON_INCREASE) != 0 || *motion > 0) {
+                if (*bite_point_percent < PADDLE_CLUTCH_PERCENT_MAXIMUM) {
+                    (*bite_point_percent)++;
+                }
+                processor->paddle_adjustment_deadline_ms = now_ms + PADDLE_ADJUST_REPEAT_DELAY_MS;
+            } else if ((*buttons & PADDLE_ADJUST_BUTTON_DECREASE) != 0 || *motion < 0) {
+                if (*bite_point_percent != 0) {
+                    (*bite_point_percent)--;
+                }
+                processor->paddle_adjustment_deadline_ms = now_ms + PADDLE_ADJUST_REPEAT_DELAY_MS;
+            }
+        }
+        if ((*buttons & PADDLE_ADJUST_BUTTON_MASK) == 0 && *motion == 0) {
+            processor->paddle_adjustment_deadline_ms = now_ms;
+        }
+        output = scale_paddle_clutch(0, *bite_point_percent);
+        *buttons &= (uint8_t)~PADDLE_ADJUST_CONSUMED_BUTTON_MASK;
+        *motion = 0;
+        if (lower > PADDLE_CLUTCH_EXIT_THRESHOLD) {
+            processor->paddle_clutch_phase = WHEEL_PADDLE_CLUTCH_IDLE;
+            processor->paddle_bite_point_commit_pending = true;
         }
         break;
     case WHEEL_PADDLE_CLUTCH_ARMED:
@@ -222,7 +263,7 @@ static uint8_t process_paddle_clutch(WheelAxisOverrideProcessor *processor,
         }
         break;
     case WHEEL_PADDLE_CLUTCH_ACTIVE:
-        output = scale_paddle_clutch(lower, bite_point_percent);
+        output = scale_paddle_clutch(lower, *bite_point_percent);
         if (lower == UINT8_MAX) {
             processor->paddle_clutch_phase = WHEEL_PADDLE_CLUTCH_IDLE;
         }
@@ -278,11 +319,15 @@ static void normalize_packet_axes(uint8_t wheel_mode, uint8_t axis_limit, uint8_
  *
  * @param[in,out] processor Persistent override and clutch state.
  * @param[in] mode Selected axis override mode.
- * @param[in] bite_point_percent Active profile bite-point percentage.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[in,out] bite_point_percent Active profile bite-point percentage.
+ * @param[in,out] buttons Primary attached-wheel button bank.
+ * @param[in,out] motion Primary attached-wheel rotary motion.
  * @param[in,out] controls Eight CRC-family control bytes.
  */
 static void publish_packet_overrides(WheelAxisOverrideProcessor *processor, uint8_t mode,
-                                     uint8_t bite_point_percent, uint8_t controls[8]) {
+                                     uint32_t now_ms, uint8_t *bite_point_percent, uint8_t *buttons,
+                                     int8_t *motion, uint8_t controls[8]) {
     uint8_t x = controls[PACKET_AXIS_X];
     uint8_t y = controls[PACKET_AXIS_Y];
     clear_overrides(&processor->overrides);
@@ -290,7 +335,7 @@ static void publish_packet_overrides(WheelAxisOverrideProcessor *processor, uint
     case WHEEL_AXIS_OVERRIDE_MODE_CALIBRATED:
         processor->overrides.axis_7.enabled = true;
         processor->overrides.axis_7.value =
-            process_paddle_clutch(processor, bite_point_percent, x, y);
+            process_paddle_clutch(processor, now_ms, bite_point_percent, buttons, motion, x, y);
         break;
     case WHEEL_AXIS_OVERRIDE_MODE_SECONDARY:
         processor->overrides.axis_7.enabled = true;
@@ -385,11 +430,13 @@ static void process_packet_multiplexed_axes(WheelAxisOverrideProcessor *processo
  */
 void wheel_axis_override_processor_init(WheelAxisOverrideProcessor *processor) {
     clear_overrides(&processor->overrides);
+    processor->paddle_adjustment_deadline_ms = 0;
     processor->multiplex_phase = WHEEL_AXIS_MULTIPLEX_SELECT;
     processor->paddle_clutch_phase = WHEEL_PADDLE_CLUTCH_IDLE;
     processor->x_available = false;
     processor->y_available = false;
     processor->packet_axis_report_enabled = false;
+    processor->paddle_bite_point_commit_pending = false;
 }
 
 /**
@@ -403,15 +450,18 @@ void wheel_axis_override_processor_init(WheelAxisOverrideProcessor *processor) {
  * @param[in] wheel_mode Selected attached-wheel mode.
  * @param[in] interface_mode Current input-report interface mode.
  * @param[in] enabled True when the attached device provides axis overrides.
- * @param[in] bite_point_percent Active profile bite-point percentage.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[in,out] bite_point_percent Active profile bite-point percentage.
+ * @param[in,out] buttons Primary attached-wheel button bank.
+ * @param[in,out] motion Primary attached-wheel rotary motion.
  * @param[in] x First attached-device axis value.
  * @param[in] y Second attached-device axis value.
  * @param[in,out] axes Two report axes updated in place.
  */
 void wheel_axis_override_process(WheelAxisOverrideProcessor *processor, uint8_t mode,
                                  uint8_t wheel_mode, uint8_t interface_mode, bool enabled,
-                                 uint8_t bite_point_percent, uint8_t x, uint8_t y,
-                                 uint8_t axes[2]) {
+                                 uint32_t now_ms, uint8_t *bite_point_percent, uint8_t *buttons,
+                                 int8_t *motion, uint8_t x, uint8_t y, uint8_t axes[2]) {
     clear_overrides(&processor->overrides);
     if (!enabled) {
         convert_standard_axes(axes);
@@ -422,7 +472,7 @@ void wheel_axis_override_process(WheelAxisOverrideProcessor *processor, uint8_t 
     case WHEEL_AXIS_OVERRIDE_MODE_CALIBRATED:
         processor->overrides.axis_7.enabled = true;
         processor->overrides.axis_7.value =
-            process_paddle_clutch(processor, bite_point_percent, x, y);
+            process_paddle_clutch(processor, now_ms, bite_point_percent, buttons, motion, x, y);
         convert_enabled_axes(wheel_mode, axes);
         break;
     case WHEEL_AXIS_OVERRIDE_MODE_SECONDARY:
@@ -459,14 +509,18 @@ void wheel_axis_override_process(WheelAxisOverrideProcessor *processor, uint8_t 
  * @param[in] wheel_mode Selected attached-wheel mode.
  * @param[in] interface_mode Current input-report interface mode.
  * @param[in] axis_limit Attached-wheel axis-limit capability value.
- * @param[in] bite_point_percent Active profile bite-point percentage.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[in,out] bite_point_percent Active profile bite-point percentage.
+ * @param[in,out] buttons Primary attached-wheel button bank.
+ * @param[in,out] motion Primary attached-wheel rotary motion.
  * @param[in,out] controls Eight CRC-family control bytes updated in place.
  * @param[in,out] axes Two packet output axes updated in place when required by the mode.
  */
 void wheel_axis_override_process_packet(WheelAxisOverrideProcessor *processor, uint8_t mode,
                                         uint8_t wheel_mode, uint8_t interface_mode,
-                                        uint8_t axis_limit, uint8_t bite_point_percent,
-                                        uint8_t controls[8], uint8_t axes[2]) {
+                                        uint8_t axis_limit, uint32_t now_ms,
+                                        uint8_t *bite_point_percent, uint8_t *buttons,
+                                        int8_t *motion, uint8_t controls[8], uint8_t axes[2]) {
     normalize_packet_axes(wheel_mode, axis_limit, controls);
     if (wheel_mode == WHEEL_MODE_CRC_AUTHENTICATED && controls[PACKET_AXIS_ENABLED] != 1) {
         processor->packet_axis_report_enabled = false;
@@ -476,8 +530,29 @@ void wheel_axis_override_process_packet(WheelAxisOverrideProcessor *processor, u
     }
 
     if (mode >= WHEEL_AXIS_OVERRIDE_MODE_CALIBRATED && mode <= WHEEL_AXIS_OVERRIDE_MODE_PRIMARY) {
-        publish_packet_overrides(processor, mode, bite_point_percent, controls);
+        publish_packet_overrides(processor, mode, now_ms, bite_point_percent, buttons, motion,
+                                 controls);
     } else if (mode == WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED) {
         process_packet_multiplexed_axes(processor, interface_mode, controls, axes);
     }
+}
+
+/**
+ * @brief Takes a completed wheel-side bite-point adjustment.
+ *
+ * Returns the adjusted percentage once after the analog paddle is released from adjustment mode.
+ *
+ * @param[in,out] processor Persistent paddle-clutch state.
+ * @param[in] bite_point_percent Current adjusted bite-point percentage.
+ * @param[out] updated_percent Completed percentage to persist.
+ * @return True when a completed adjustment was available.
+ */
+bool wheel_axis_override_take_bite_point(WheelAxisOverrideProcessor *processor,
+                                         uint8_t bite_point_percent, uint8_t *updated_percent) {
+    if (!processor->paddle_bite_point_commit_pending) {
+        return false;
+    }
+    processor->paddle_bite_point_commit_pending = false;
+    *updated_percent = bite_point_percent;
+    return true;
 }

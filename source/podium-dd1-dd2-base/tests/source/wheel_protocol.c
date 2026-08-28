@@ -475,7 +475,7 @@ static void test_captures_mode_four_requests(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
     wheel_protocol_init(&protocol);
-    wheel_protocol_set_axis_processing(&protocol, 6, WHEEL_AXIS_OVERRIDE_MODE_NONE, 0);
+    wheel_protocol_set_axis_processing(&protocol, 6, WHEEL_AXIS_OVERRIDE_MODE_NONE, 0, 0);
     protocol.mode = 4;
     protocol.phase = WHEEL_PROTOCOL_ACTIVE;
     request[0] = WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
@@ -558,7 +558,7 @@ static void test_builds_mode_four_active_response(void) {
 static void test_applies_authenticated_axis_overrides(void) {
     WheelProtocol protocol;
     wheel_protocol_init(&protocol);
-    wheel_protocol_set_axis_processing(&protocol, 0, WHEEL_AXIS_OVERRIDE_MODE_SECONDARY, 0);
+    wheel_protocol_set_axis_processing(&protocol, 0, WHEEL_AXIS_OVERRIDE_MODE_SECONDARY, 0, 0);
     protocol.mode = 0x13;
     protocol.phase = WHEEL_PROTOCOL_ACTIVE;
 
@@ -766,7 +766,7 @@ static void test_captures_crc_family_requests(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
     wheel_protocol_init(&protocol);
-    wheel_protocol_set_axis_processing(&protocol, 7, WHEEL_AXIS_OVERRIDE_MODE_NONE, 0);
+    wheel_protocol_set_axis_processing(&protocol, 7, WHEEL_AXIS_OVERRIDE_MODE_NONE, 0, 0);
     synchronize(&protocol, request);
     select_mode(&protocol, request, 6);
 
@@ -817,7 +817,7 @@ static void test_applies_crc_family_axis_controls(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
     wheel_protocol_init(&protocol);
-    wheel_protocol_set_axis_processing(&protocol, 0, WHEEL_AXIS_OVERRIDE_MODE_SECONDARY, 0);
+    wheel_protocol_set_axis_processing(&protocol, 0, WHEEL_AXIS_OVERRIDE_MODE_SECONDARY, 0, 0);
     synchronize(&protocol, request);
     select_mode(&protocol, request, 6);
 
