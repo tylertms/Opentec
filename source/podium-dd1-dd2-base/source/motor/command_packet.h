@@ -23,9 +23,15 @@ void motor_command_packet_acknowledgement_encode(
     uint8_t previous_sequence, uint8_t output[MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE]);
 void motor_command_packet_sequence_reset_encode(
     uint8_t output[MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE]);
+void motor_command_packet_retry_encode(uint8_t next_sequence,
+                                       uint8_t output[MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE]);
 bool motor_command_packet_digest_response_decode(uint8_t previous_sequence, const uint8_t *input,
                                                  uint16_t length,
                                                  uint8_t source[MOTOR_COMMAND_DIGEST_SOURCE_SIZE]);
+uint8_t motor_command_packet_info_response_decode(uint8_t previous_sequence,
+                                                  uint8_t expected_selector, const uint8_t *input,
+                                                  uint16_t length, uint8_t *output,
+                                                  uint8_t output_capacity);
 bool motor_command_packet_info_word_response_decode(uint8_t previous_sequence,
                                                     uint8_t expected_selector, const uint8_t *input,
                                                     uint16_t length, uint16_t *value);

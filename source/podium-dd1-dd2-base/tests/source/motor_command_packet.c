@@ -18,12 +18,18 @@ static void test_encodes_digest_request(void) {
 static void test_encodes_control_responses(void) {
     static const uint8_t expected_acknowledgement[] = {0x83, 0, 0, 0xe3, 0x88};
     static const uint8_t expected_reset[] = {0xc0, 0, 0, 0x0a, 0x9a};
+    static const uint8_t expected_retry_zero[] = {0xa0, 0, 0, 0x0f, 0xd7};
+    static const uint8_t expected_retry_three[] = {0xa3, 0, 0, 0xe0, 0xb3};
     uint8_t packet[MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE];
 
     motor_command_packet_acknowledgement_encode(3, packet);
     assert(memcmp(packet, expected_acknowledgement, sizeof(expected_acknowledgement)) == 0);
     motor_command_packet_sequence_reset_encode(packet);
     assert(memcmp(packet, expected_reset, sizeof(expected_reset)) == 0);
+    motor_command_packet_retry_encode(0, packet);
+    assert(memcmp(packet, expected_retry_zero, sizeof(expected_retry_zero)) == 0);
+    motor_command_packet_retry_encode(7, packet);
+    assert(memcmp(packet, expected_retry_three, sizeof(expected_retry_three)) == 0);
 }
 
 static void test_encodes_information_requests(void) {
@@ -90,6 +96,29 @@ static void test_decodes_information_word_response(void) {
     assert(!motor_command_packet_info_word_response_decode(2, 3, packet, sizeof(packet), &value));
 }
 
+static void test_decodes_information_payloads(void) {
+    static const uint8_t selector_five[] = {0x03, 0x00, 0x07, 0x00, 0x85, 0x00,
+                                            0x05, 0x00, 0x01, 0x42, 0xef, 0xdb};
+    static const uint8_t selector_seven[] = {
+        0x03, 0x00, 0x16, 0x00, 0x85, 0x00, 0x07, 0x00, 0x10, 0x00, 0x01, 0x02, 0x03, 0x04,
+        0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x2d, 0x0a,
+    };
+    uint8_t output[16];
+
+    assert(motor_command_packet_info_response_decode(3, 5, selector_five, sizeof(selector_five),
+                                                     output, sizeof(output)) == 1);
+    assert(output[0] == 0x42);
+    assert(motor_command_packet_info_response_decode(3, 7, selector_seven, sizeof(selector_seven),
+                                                     output, sizeof(output)) == sizeof(output));
+    for (uint8_t index = 0; index < sizeof(output); index++) {
+        assert(output[index] == index);
+    }
+    assert(motor_command_packet_info_response_decode(3, 7, selector_seven, sizeof(selector_seven),
+                                                     output, sizeof(output) - 1) == 0);
+    assert(motor_command_packet_info_response_decode(3, 8, selector_seven, sizeof(selector_seven),
+                                                     output, sizeof(output)) == 0);
+}
+
 int main(void) {
     test_encodes_digest_request();
     test_encodes_control_responses();
@@ -97,5 +126,6 @@ int main(void) {
     test_decodes_digest_response();
     test_rejects_invalid_digest_responses();
     test_decodes_information_word_response();
+    test_decodes_information_payloads();
     return 0;
 }
