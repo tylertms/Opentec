@@ -1,0 +1,214 @@
+#include "transfer/frame.h"
+
+#include <stdint.h>
+
+enum {
+    TRANSFER_FRAME_START = 0x3c,
+    TRANSFER_FRAME_ESCAPE = 0x3d,
+    TRANSFER_FRAME_END = 0x3e,
+    TRANSFER_FRAME_ESCAPED_START = 0x28,
+    TRANSFER_FRAME_ESCAPED_END = 0x29,
+    TRANSFER_FRAME_MIN_ENCODED_SIZE = 5,
+    TRANSFER_FRAME_MAX_RECEIVED_SIZE = 135,
+    TRANSFER_COMMAND_DATA = 1,
+    TRANSFER_COMMAND_STATUS = 2,
+    TRANSFER_COMMAND_TYPE_SHIFT = 10,
+    TRANSFER_COMMAND_GROUP_SHIFT = 8,
+    TRANSFER_COMMAND_SEQUENCE_SHIFT = 3,
+    TRANSFER_COMMAND_GROUP_MASK = 0x03,
+    TRANSFER_COMMAND_SEQUENCE_MASK = 0x07,
+    TRANSFER_COMMAND_PROGRESS_MASK = 0x1f,
+    TRANSFER_COMMAND_PARAMETER_MASK = 0x07,
+};
+
+static uint8_t checksum(const uint8_t *data, uint8_t length) {
+    uint8_t crc = UINT8_MAX;
+    for (uint8_t index = 0; index < length; index++) {
+        crc ^= data[index];
+        for (uint8_t bit = 0; bit < 8; bit++) {
+            crc = (crc & 1u) != 0 ? (uint8_t)((crc >> 1) ^ 0x8cu) : (uint8_t)(crc >> 1);
+        }
+    }
+    return crc;
+}
+
+/**
+ * @brief Extracts the two-bit transfer group from a command.
+ * @param command Packed transfer command.
+ * @return Group value from zero through three.
+ */
+uint8_t transfer_command_group(uint16_t command) {
+    return (uint8_t)(command >> TRANSFER_COMMAND_GROUP_SHIFT) & TRANSFER_COMMAND_GROUP_MASK;
+}
+
+/**
+ * @brief Extracts the three-bit data sequence from a command.
+ * @param command Packed transfer command.
+ * @return Sequence value from zero through seven.
+ */
+uint8_t transfer_command_sequence(uint16_t command) {
+    return (uint8_t)(command >> TRANSFER_COMMAND_SEQUENCE_SHIFT) & TRANSFER_COMMAND_SEQUENCE_MASK;
+}
+
+/**
+ * @brief Extracts the three-bit parameter from a command.
+ * @param command Packed transfer command.
+ * @return Parameter value from zero through seven.
+ */
+uint8_t transfer_command_parameter(uint16_t command) {
+    return (uint8_t)command & TRANSFER_COMMAND_PARAMETER_MASK;
+}
+
+/**
+ * @brief Packs a transfer data command.
+ * @param group Two-bit transfer group.
+ * @param sequence Three-bit data sequence.
+ * @param parameter Three-bit fragment parameter.
+ * @return Packed command value.
+ */
+uint16_t transfer_data_command(uint8_t group, uint8_t sequence, uint8_t parameter) {
+    return (uint16_t)TRANSFER_COMMAND_DATA << TRANSFER_COMMAND_TYPE_SHIFT |
+           ((uint16_t)group & TRANSFER_COMMAND_GROUP_MASK) << TRANSFER_COMMAND_GROUP_SHIFT |
+           ((uint16_t)sequence & TRANSFER_COMMAND_SEQUENCE_MASK)
+               << TRANSFER_COMMAND_SEQUENCE_SHIFT |
+           ((uint16_t)parameter & TRANSFER_COMMAND_PARAMETER_MASK);
+}
+
+/**
+ * @brief Packs a transfer acknowledgement command.
+ * @param group Two-bit transfer group.
+ * @param parameter Three-bit acknowledged fragment parameter.
+ * @return Packed command value.
+ */
+uint16_t transfer_status_command(uint8_t group, uint8_t parameter) {
+    return (uint16_t)TRANSFER_COMMAND_STATUS << TRANSFER_COMMAND_TYPE_SHIFT |
+           ((uint16_t)group & TRANSFER_COMMAND_GROUP_MASK) << TRANSFER_COMMAND_GROUP_SHIFT |
+           ((uint16_t)parameter & TRANSFER_COMMAND_PARAMETER_MASK);
+}
+
+/**
+ * @brief Packs a transfer progress or error command.
+ * @param group Two-bit transfer group.
+ * @param parameter Three-bit fragment parameter.
+ * @param sequence Five-bit progress or error value.
+ * @return Packed command value.
+ */
+uint16_t transfer_progress_command(uint8_t group, uint8_t parameter, uint8_t sequence) {
+    return (uint16_t)TRANSFER_COMMAND_STATUS << TRANSFER_COMMAND_TYPE_SHIFT |
+           ((uint16_t)group & TRANSFER_COMMAND_GROUP_MASK) << TRANSFER_COMMAND_GROUP_SHIFT |
+           ((uint16_t)sequence & TRANSFER_COMMAND_PROGRESS_MASK)
+               << TRANSFER_COMMAND_SEQUENCE_SHIFT |
+           ((uint16_t)parameter & TRANSFER_COMMAND_PARAMETER_MASK);
+}
+
+static uint16_t append_encoded(uint8_t value, uint8_t *output, uint16_t output_length) {
+    if (value == TRANSFER_FRAME_ESCAPE) {
+        output[output_length++] = TRANSFER_FRAME_ESCAPE;
+        output[output_length++] = TRANSFER_FRAME_ESCAPE;
+    } else if (value == TRANSFER_FRAME_START) {
+        output[output_length++] = TRANSFER_FRAME_ESCAPE;
+        output[output_length++] = TRANSFER_FRAME_ESCAPED_START;
+    } else if (value == TRANSFER_FRAME_END) {
+        output[output_length++] = TRANSFER_FRAME_ESCAPE;
+        output[output_length++] = TRANSFER_FRAME_ESCAPED_END;
+    } else {
+        output[output_length++] = value;
+    }
+    return output_length;
+}
+
+/**
+ * @brief Encodes one transfer command, payload, and checksum with marker escaping.
+ * @param frame Command and payload to encode; payload length must not exceed 124 bytes.
+ * @param output Destination with room for the maximum encoded frame.
+ * @return Encoded byte count, or zero when the payload is too long.
+ */
+uint16_t transfer_frame_encode(const TransferFrame *frame,
+                               uint8_t output[TRANSFER_FRAME_MAX_ENCODED_SIZE]) {
+    if (frame->payload_length > TRANSFER_FRAME_MAX_SEND_PAYLOAD_SIZE) {
+        return 0;
+    }
+
+    uint8_t decoded[TRANSFER_FRAME_MAX_SEND_PAYLOAD_SIZE + 2];
+    decoded[0] = (uint8_t)(frame->command >> 8);
+    decoded[1] = (uint8_t)frame->command;
+    for (uint8_t index = 0; index < frame->payload_length; index++) {
+        decoded[index + 2] = frame->payload[index];
+    }
+
+    uint16_t output_length = 1;
+    output[0] = TRANSFER_FRAME_START;
+    uint8_t decoded_length = frame->payload_length + 2;
+    for (uint8_t index = 0; index < decoded_length; index++) {
+        output_length = append_encoded(decoded[index], output, output_length);
+    }
+    output_length = append_encoded(checksum(decoded, decoded_length), output, output_length);
+    output[output_length++] = TRANSFER_FRAME_END;
+    return output_length;
+}
+
+static uint16_t decode_byte(uint8_t value) {
+    if (value == TRANSFER_FRAME_ESCAPE) {
+        return TRANSFER_FRAME_ESCAPE;
+    }
+    if (value == TRANSFER_FRAME_ESCAPED_START) {
+        return TRANSFER_FRAME_START;
+    }
+    if (value == TRANSFER_FRAME_ESCAPED_END) {
+        return TRANSFER_FRAME_END;
+    }
+    return UINT16_MAX;
+}
+
+/**
+ * @brief Validates and decodes one escaped transfer frame.
+ * @param input Complete encoded frame including boundary markers.
+ * @param input_length Encoded byte count from 5 through 135.
+ * @param frame Destination for the command and up to 125 payload bytes.
+ * @return Frame status identifying length, boundary, escape, or checksum failures.
+ */
+TransferFrameResult transfer_frame_decode(const uint8_t *input, uint16_t input_length,
+                                          TransferFrame *frame) {
+    if (input_length < TRANSFER_FRAME_MIN_ENCODED_SIZE ||
+        input_length > TRANSFER_FRAME_MAX_RECEIVED_SIZE) {
+        return TRANSFER_FRAME_INVALID_LENGTH;
+    }
+    if (input[0] != TRANSFER_FRAME_START || input[input_length - 1] != TRANSFER_FRAME_END) {
+        return TRANSFER_FRAME_INVALID_BOUNDARY;
+    }
+
+    uint8_t decoded[TRANSFER_FRAME_MAX_PAYLOAD_SIZE + 3];
+    uint8_t decoded_length = 0;
+    for (uint16_t index = 1; index < input_length - 1; index++) {
+        uint8_t value = input[index];
+        if (value == TRANSFER_FRAME_ESCAPE) {
+            index++;
+            if (index >= input_length - 1) {
+                return TRANSFER_FRAME_INVALID_ESCAPE;
+            }
+            uint16_t escaped_value = decode_byte(input[index]);
+            if (escaped_value > UINT8_MAX) {
+                return TRANSFER_FRAME_INVALID_ESCAPE;
+            }
+            value = (uint8_t)escaped_value;
+        }
+        if (decoded_length == sizeof(decoded)) {
+            return TRANSFER_FRAME_INVALID_LENGTH;
+        }
+        decoded[decoded_length++] = value;
+    }
+
+    if (decoded_length < 3 || decoded_length - 3 > TRANSFER_FRAME_MAX_PAYLOAD_SIZE) {
+        return TRANSFER_FRAME_INVALID_LENGTH;
+    }
+    if (checksum(decoded, decoded_length - 1) != decoded[decoded_length - 1]) {
+        return TRANSFER_FRAME_INVALID_CHECKSUM;
+    }
+
+    frame->command = (uint16_t)decoded[0] << 8 | decoded[1];
+    frame->payload_length = decoded_length - 3;
+    for (uint8_t index = 0; index < frame->payload_length; index++) {
+        frame->payload[index] = decoded[index + 2];
+    }
+    return TRANSFER_FRAME_VALID;
+}
