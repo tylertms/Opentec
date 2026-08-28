@@ -41,9 +41,47 @@ static void test_applies_legacy_responses(void) {
     assert(input.auxiliary == 0x35);
 }
 
+static void test_builds_v3_handshakes(void) {
+    PedalFrame frame;
+    pedal_v3_build_handshake(false, &frame);
+    assert(frame.type == 2);
+    assert(frame.payload[0] == 0xff);
+    assert(frame.payload[1] == 0);
+    for (uint8_t index = 2; index < PEDAL_FRAME_PAYLOAD_SIZE; index++) {
+        assert(frame.payload[index] == 0);
+    }
+
+    pedal_v3_build_handshake(true, &frame);
+    assert(frame.type == 2);
+    assert(frame.payload[0] == 0);
+    assert(frame.payload[1] == 0xff);
+}
+
+static void test_builds_v3_status(void) {
+    const PedalProtocolStatus status = {
+        .value = 0x11,
+        .first = 0x22,
+        .second = 0x33,
+        .scale = 0x44,
+    };
+    PedalFrame frame;
+    pedal_v3_build_status(&status, &frame);
+
+    assert(frame.type == 0);
+    assert(frame.payload[0] == 0x11);
+    assert(frame.payload[1] == 0x22);
+    assert(frame.payload[2] == 0x33);
+    assert(frame.payload[3] == 0x44);
+    for (uint8_t index = 4; index < PEDAL_FRAME_PAYLOAD_SIZE; index++) {
+        assert(frame.payload[index] == 0);
+    }
+}
+
 int main(void) {
     test_selects_protocol();
     test_builds_legacy_requests();
     test_applies_legacy_responses();
+    test_builds_v3_handshakes();
+    test_builds_v3_status();
     return 0;
 }

@@ -150,6 +150,46 @@ static void test_applies_active_brake_force(void) {
     assert(input->axes[2] == 3);
 }
 
+static void test_sends_v3_status_on_change_and_interval(void) {
+    PedalService service;
+    PedalFrame frame;
+    const PedalProtocolStatus initial = {
+        .value = 0x11,
+        .first = 0x22,
+        .second = 0x33,
+        .scale = 0x44,
+    };
+    reset_link();
+    pedal_service_init(&service);
+    pedal_service_set_protocol_status(&service, &initial);
+    connect_v3(&service);
+
+    pedal_service_run(&service, 11);
+    assert(frame_send_count == 2);
+    assert(pedal_frame_decode(sent_frame, &frame) == PEDAL_FRAME_VALID);
+    assert(frame.type == 0);
+    assert(frame.payload[0] == 0x11);
+    assert(frame.payload[1] == 0x22);
+    assert(frame.payload[2] == 0x33);
+    assert(frame.payload[3] == 0x44);
+
+    pedal_service_run(&service, 12);
+    assert(frame_send_count == 2);
+
+    PedalProtocolStatus changed = initial;
+    changed.scale = 0x55;
+    pedal_service_set_protocol_status(&service, &changed);
+    pedal_service_run(&service, 13);
+    assert(frame_send_count == 3);
+    assert(pedal_frame_decode(sent_frame, &frame) == PEDAL_FRAME_VALID);
+    assert(frame.payload[3] == 0x55);
+
+    pedal_service_run(&service, 513);
+    assert(frame_send_count == 3);
+    pedal_service_run(&service, 514);
+    assert(frame_send_count == 4);
+}
+
 static void test_uses_long_timeout_during_stream_startup(void) {
     PedalService service;
     reset_link();
@@ -171,6 +211,7 @@ static void test_uses_long_timeout_during_stream_startup(void) {
     const PedalInput *input = pedal_service_input(&service);
     assert(!service.connected);
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
+    assert(service.recovery_handshake);
     assert(input->axes[0] == 0);
     assert(input->axes[1] == 0);
     assert(input->axes[2] == 0);
@@ -303,6 +344,7 @@ static void test_selects_analog_input_after_discovery_timeout(void) {
 int main(void) {
     test_connects_and_publishes_v3_input();
     test_applies_active_brake_force();
+    test_sends_v3_status_on_change_and_interval();
     test_uses_long_timeout_during_stream_startup();
     test_tightens_timeout_after_stream_startup();
     test_identifies_unsupported_v4_transport();

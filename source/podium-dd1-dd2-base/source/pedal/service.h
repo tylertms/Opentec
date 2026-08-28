@@ -38,19 +38,22 @@ typedef struct {
     uint8_t response;
     uint8_t brake_force_percent;
     uint8_t startup_frame_count;
-    uint8_t legacy_protocol_first;
-    uint8_t legacy_protocol_second;
     uint8_t legacy_retries[PEDAL_LEGACY_CHANNEL_COUNT];
     PedalLegacyChannel legacy_channel;
+    PedalProtocolStatus protocol_status;
+    PedalProtocolStatus transmitted_status;
     uint16_t analog_samples[PEDAL_INPUT_AXIS_COUNT];
     bool analog_samples_ready;
     bool connected;
+    bool recovery_handshake;
+    bool status_transmitted;
 } PedalService;
 
 void pedal_service_init(PedalService *service);
 void pedal_service_set_analog_samples(PedalService *service,
                                       const uint16_t samples[PEDAL_INPUT_AXIS_COUNT]);
 void pedal_service_set_brake_force(PedalService *service, uint8_t force_percent);
+void pedal_service_set_protocol_status(PedalService *service, const PedalProtocolStatus *status);
 void pedal_service_run(PedalService *service, uint32_t now_ms);
 const PedalInput *pedal_service_input(const PedalService *service);
 

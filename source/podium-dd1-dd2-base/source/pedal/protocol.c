@@ -10,6 +10,8 @@ enum {
     PEDAL_LEGACY_AXIS_2_COMMAND = 0x80,
     PEDAL_LEGACY_AXIS_3_COMMAND = 0xc0,
     PEDAL_LEGACY_CHANNEL_MASK = 0x3f,
+    PEDAL_V3_HANDSHAKE_FRAME = 2,
+    PEDAL_V3_STATUS_FRAME = 0,
 };
 
 /**
@@ -69,4 +71,28 @@ void pedal_legacy_apply_response(PedalLegacyChannel channel, uint8_t response,
     } else if (channel == PEDAL_LEGACY_AUXILIARY && !auxiliary_locked) {
         input->auxiliary = response;
     }
+}
+
+/**
+ * @brief Builds the V3 startup or recovery handshake frame.
+ * @param recovering True for the recovery handshake sent after a stream failure.
+ * @param frame Destination for the message type and payload.
+ */
+void pedal_v3_build_handshake(bool recovering, PedalFrame *frame) {
+    *frame = (PedalFrame){
+        .type = PEDAL_V3_HANDSHAKE_FRAME,
+        .payload = {recovering ? 0 : UINT8_MAX, recovering ? UINT8_MAX : 0},
+    };
+}
+
+/**
+ * @brief Builds the V3 protocol-status frame.
+ * @param status Protocol value, channel selectors, and scale to publish.
+ * @param frame Destination for the message type and payload.
+ */
+void pedal_v3_build_status(const PedalProtocolStatus *status, PedalFrame *frame) {
+    *frame = (PedalFrame){
+        .type = PEDAL_V3_STATUS_FRAME,
+        .payload = {status->value, status->first, status->second, status->scale},
+    };
 }

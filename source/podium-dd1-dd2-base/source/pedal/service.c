@@ -12,8 +12,6 @@ enum {
     PEDAL_DETECT_COMMAND = 0x0a,
     PEDAL_V3_PROTOCOL_COMMAND = 0x05,
     PEDAL_V4_PROTOCOL_COMMAND = 0x06,
-    PEDAL_HANDSHAKE_FRAME = 2,
-    PEDAL_STATUS_FRAME = 0,
     PEDAL_DISCOVERY_TIMEOUT_MS = 100,
     PEDAL_V3_BAUD_SWITCH_DELAY_MS = 5,
     PEDAL_INITIAL_SAMPLE_TIMEOUT_MS = 15000,
@@ -47,11 +45,7 @@ static void reconnect(PedalService *service, uint32_t now_ms) {
     platform_pedal_link_begin_discovery();
 }
 
-static bool send_frame(PedalService *service, uint8_t type, uint8_t first, uint8_t second) {
-    service->transmit_frame = (PedalFrame){
-        .type = type,
-        .payload = {first, second, 0, 0, 0, 0, 0, 0},
-    };
+static bool send_frame(PedalService *service) {
     pedal_frame_encode(&service->transmit_frame, service->frame_buffer);
     return platform_pedal_link_send_frame(service->frame_buffer);
 }
@@ -66,14 +60,16 @@ void pedal_service_init(PedalService *service) {
     service->response = 0;
     service->brake_force_percent = 100;
     service->startup_frame_count = 0;
-    service->legacy_protocol_first = 0;
-    service->legacy_protocol_second = 0;
     service->legacy_channel = PEDAL_LEGACY_AXIS_1;
+    service->protocol_status = (PedalProtocolStatus){0};
+    service->transmitted_status = (PedalProtocolStatus){0};
     for (uint8_t channel = 0; channel < PEDAL_LEGACY_CHANNEL_COUNT; channel++) {
         service->legacy_retries[channel] = 0;
     }
     service->analog_samples_ready = false;
     service->connected = false;
+    service->recovery_handshake = false;
+    service->status_transmitted = false;
 }
 
 void pedal_service_set_analog_samples(PedalService *service,
@@ -89,6 +85,10 @@ void pedal_service_set_analog_samples(PedalService *service,
 
 void pedal_service_set_brake_force(PedalService *service, uint8_t force_percent) {
     service->brake_force_percent = force_percent > 100 ? 100 : force_percent;
+}
+
+void pedal_service_set_protocol_status(PedalService *service, const PedalProtocolStatus *status) {
+    service->protocol_status = *status;
 }
 
 static void service_detect_response(PedalService *service, uint32_t now_ms) {
@@ -189,12 +189,22 @@ static void service_v3_stream(PedalService *service, uint32_t now_ms) {
     }
 
     if (platform_time_reached(now_ms, service->deadline_ms)) {
+        service->recovery_handshake = true;
         reconnect(service, now_ms);
         return;
     }
-    if (platform_time_reached(now_ms, service->next_status_ms) &&
-        send_frame(service, PEDAL_STATUS_FRAME, 0, 0)) {
-        service->next_status_ms = now_ms + PEDAL_STATUS_INTERVAL_MS;
+
+    const PedalProtocolStatus *status = &service->protocol_status;
+    const PedalProtocolStatus *transmitted = &service->transmitted_status;
+    bool changed = status->value != transmitted->value || status->first != transmitted->first ||
+                   status->second != transmitted->second || status->scale != transmitted->scale;
+    if (!service->status_transmitted || changed || now_ms > service->next_status_ms) {
+        pedal_v3_build_status(status, &service->transmit_frame);
+        if (send_frame(service)) {
+            service->transmitted_status = service->protocol_status;
+            service->status_transmitted = true;
+            service->next_status_ms = now_ms + PEDAL_STATUS_INTERVAL_MS;
+        }
     }
 }
 
@@ -226,8 +236,8 @@ void pedal_service_run(PedalService *service, uint32_t now_ms) {
         break;
     case PEDAL_SERVICE_LEGACY_REQUEST:
         if (platform_pedal_link_send_byte(pedal_legacy_request(service->legacy_channel,
-                                                               service->legacy_protocol_first,
-                                                               service->legacy_protocol_second))) {
+                                                               service->protocol_status.first,
+                                                               service->protocol_status.second))) {
             service->phase = PEDAL_SERVICE_LEGACY_RESPONSE;
             service->deadline_ms = now_ms + PEDAL_LEGACY_RESPONSE_TIMEOUT_MS;
         }
@@ -242,11 +252,13 @@ void pedal_service_run(PedalService *service, uint32_t now_ms) {
         }
         break;
     case PEDAL_SERVICE_V3_START:
-        if (send_frame(service, PEDAL_HANDSHAKE_FRAME, 0xff, 0)) {
+        pedal_v3_build_handshake(service->recovery_handshake, &service->transmit_frame);
+        if (send_frame(service)) {
             service->startup_frame_count = 0;
             service->phase = PEDAL_SERVICE_V3_STREAM;
             service->deadline_ms = now_ms + PEDAL_INITIAL_SAMPLE_TIMEOUT_MS;
-            service->next_status_ms = now_ms + PEDAL_STATUS_INTERVAL_MS;
+            service->recovery_handshake = false;
+            service->status_transmitted = false;
         }
         break;
     case PEDAL_SERVICE_V3_STREAM:

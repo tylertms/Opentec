@@ -28,10 +28,19 @@ typedef enum {
     PEDAL_LEGACY_CHANNEL_COUNT,
 } PedalLegacyChannel;
 
+typedef struct {
+    uint8_t value;
+    uint8_t first;
+    uint8_t second;
+    uint8_t scale;
+} PedalProtocolStatus;
+
 PedalProtocol pedal_protocol_select(uint8_t device, uint8_t response);
 uint8_t pedal_legacy_request(PedalLegacyChannel channel, uint8_t protocol_first,
                              uint8_t protocol_second);
 void pedal_legacy_apply_response(PedalLegacyChannel channel, uint8_t response,
                                  bool auxiliary_locked, PedalInput *input);
+void pedal_v3_build_handshake(bool recovering, PedalFrame *frame);
+void pedal_v3_build_status(const PedalProtocolStatus *status, PedalFrame *frame);
 
 #endif
