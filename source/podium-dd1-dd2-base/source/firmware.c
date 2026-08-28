@@ -153,6 +153,7 @@ static void service_motor_link(void) {
 static void initialize_motor(void) {
     base_settings_persistence_load(&settings_persistence, &base_settings, platform_time_ms());
     tuning_profile = tuning_profile_bank_active(&base_settings.tuning_profiles);
+    pedal_service_set_brake_force(&pedal_service, tuning_profile->brake_force);
     motor_tuning_context = (MotorTuningContext){
         .automatic_rotation_degrees = tuning_profile->rotation_degrees,
         .ramp_percent = 0,

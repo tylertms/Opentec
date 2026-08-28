@@ -18,6 +18,7 @@ typedef struct {
 
 void pedal_input_release(PedalInput *input);
 bool pedal_input_decode(const PedalFrame *frame, PedalInput *input);
+uint16_t pedal_input_scale_brake(uint16_t value, uint8_t force_percent);
 uint16_t pedal_input_hid_axis(uint16_t value);
 uint8_t pedal_input_hid_auxiliary(uint8_t value);
 

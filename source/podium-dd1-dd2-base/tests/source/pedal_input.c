@@ -34,6 +34,14 @@ static void test_ignores_other_frames(void) {
     assert(input.auxiliary == 4);
 }
 
+static void test_scales_brake_force(void) {
+    assert(pedal_input_scale_brake(1000, 100) == 1000);
+    assert(pedal_input_scale_brake(1000, 50) == 3000);
+    assert(pedal_input_scale_brake(1000, 0) == 5000);
+    assert(pedal_input_scale_brake(30000, 50) == UINT16_MAX);
+    assert(pedal_input_scale_brake(1000, 101) == 1000);
+}
+
 static void test_released_hid_axes_are_high(void) {
     PedalInput input = {
         .axes = {1, 2, 3},
@@ -54,6 +62,7 @@ static void test_released_hid_axes_are_high(void) {
 int main(void) {
     test_decodes_axis_sample();
     test_ignores_other_frames();
+    test_scales_brake_force();
     test_released_hid_axes_are_high();
     return 0;
 }

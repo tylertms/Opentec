@@ -127,6 +127,26 @@ static void test_connects_and_publishes_v3_input(void) {
     assert(input->auxiliary == 0xde);
 }
 
+static void test_applies_active_brake_force(void) {
+    PedalService service;
+    const PedalFrame sample = {
+        .type = PEDAL_FRAME_AXIS_SAMPLE,
+        .payload = {1, 0, 0xe8, 3, 3, 0, 0, 4},
+    };
+    reset_link();
+    pedal_service_init(&service);
+    pedal_service_set_brake_force(&service, 50);
+    connect_v3(&service);
+
+    receive_frame(&sample);
+    pedal_service_run(&service, 10);
+
+    const PedalInput *input = pedal_service_input(&service);
+    assert(input->axes[0] == 1);
+    assert(input->axes[1] == 3000);
+    assert(input->axes[2] == 3);
+}
+
 static void test_uses_long_timeout_during_stream_startup(void) {
     PedalService service;
     reset_link();
@@ -239,6 +259,7 @@ static void test_selects_analog_input_after_discovery_timeout(void) {
 
 int main(void) {
     test_connects_and_publishes_v3_input();
+    test_applies_active_brake_force();
     test_uses_long_timeout_during_stream_startup();
     test_tightens_timeout_after_stream_startup();
     test_identifies_unsupported_v4_transport();

@@ -57,6 +57,7 @@ void pedal_service_init(PedalService *service) {
     service->device = PEDAL_DEVICE_NONE;
     service->deadline_ms = 0;
     service->next_status_ms = 0;
+    service->brake_force_percent = 100;
     service->startup_frame_count = 0;
     service->analog_samples_ready = false;
     service->connected = false;
@@ -71,6 +72,10 @@ void pedal_service_set_analog_samples(PedalService *service,
     if (service->phase == PEDAL_SERVICE_ANALOG) {
         pedal_analog_update(&service->analog, service->analog_samples, &service->input);
     }
+}
+
+void pedal_service_set_brake_force(PedalService *service, uint8_t force_percent) {
+    service->brake_force_percent = force_percent > 100 ? 100 : force_percent;
 }
 
 static void service_detect_response(PedalService *service, uint32_t now_ms) {
@@ -113,6 +118,8 @@ static void service_v3_stream(PedalService *service, uint32_t now_ms) {
         }
         service->deadline_ms = now_ms + timeout_ms;
         if (pedal_input_decode(&service->receive_frame, &service->input)) {
+            service->input.axes[1] =
+                pedal_input_scale_brake(service->input.axes[1], service->brake_force_percent);
             service->connected = true;
         }
     }

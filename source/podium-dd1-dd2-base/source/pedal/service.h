@@ -38,6 +38,7 @@ typedef struct {
     PedalFrame receive_frame;
     uint8_t frame_buffer[PEDAL_FRAME_SIZE];
     uint8_t response;
+    uint8_t brake_force_percent;
     uint8_t startup_frame_count;
     uint16_t analog_samples[PEDAL_INPUT_AXIS_COUNT];
     bool analog_samples_ready;
@@ -47,6 +48,7 @@ typedef struct {
 void pedal_service_init(PedalService *service);
 void pedal_service_set_analog_samples(PedalService *service,
                                       const uint16_t samples[PEDAL_INPUT_AXIS_COUNT]);
+void pedal_service_set_brake_force(PedalService *service, uint8_t force_percent);
 void pedal_service_run(PedalService *service, uint32_t now_ms);
 const PedalInput *pedal_service_input(const PedalService *service);
 
