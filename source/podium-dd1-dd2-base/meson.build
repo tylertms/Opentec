@@ -113,6 +113,7 @@ wheel_packet_mode_four_sources = files('source/wheel/packet_mode_four.c')
 wheel_protocol_sources = files('source/wheel/protocol.c')
 wheel_service_sources = files('source/wheel/service.c')
 wheel_status_digest_sources = files('source/wheel/status_digest.c')
+wheel_status_memory_packet_sources = files('source/wheel/status_memory_packet.c')
 wheel_transport_frame_sources = files('source/wheel/transport_frame.c')
 wheel_transport_service_sources = files('source/wheel/transport_service.c')
 
@@ -257,6 +258,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'wheel-protocol': 'source/wheel/protocol.c',
     'wheel-service': 'source/wheel/service.c',
     'wheel-status-digest': 'source/wheel/status_digest.c',
+    'wheel-status-memory-packet': 'source/wheel/status_memory_packet.c',
     'wheel-transport-frame': 'source/wheel/transport_frame.c',
     'wheel-transport-service': 'source/wheel/transport_service.c',
   }
@@ -1234,6 +1236,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_status_memory_packet_test = executable(
+    'base-wheel-status-memory-packet-test',
+    'tests/source/wheel_status_memory_packet.c',
+    wheel_status_memory_packet_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_transport_frame_test = executable(
     'base-wheel-transport-frame-test',
     'tests/source/wheel_transport_frame.c',
@@ -1578,6 +1588,11 @@ if not meson.is_cross_build()
     'base-wheel-memory-transfer',
     wheel_memory_transfer_test,
     suite: ['base', 'wheel', 'transport'],
+  )
+  test(
+    'base-wheel-status-memory-packet',
+    wheel_status_memory_packet_test,
+    suite: ['base', 'wheel', 'status'],
   )
   test('base-wheel-protocol', wheel_protocol_test, suite: ['base', 'wheel', 'protocol'])
   test('base-wheel-capability', wheel_capability_test, suite: ['base', 'wheel', 'input'])
