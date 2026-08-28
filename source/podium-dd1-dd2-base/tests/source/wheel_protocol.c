@@ -32,6 +32,29 @@ static void select_mode(WheelProtocol *protocol, uint8_t request[WHEEL_PROTOCOL_
     wheel_protocol_accept(protocol, request);
 }
 
+static void set_operating_mode(WheelProtocol *protocol, uint8_t operating_mode) {
+    WheelPacketModeOneOutput output = {0};
+    output.operating_mode = operating_mode;
+    wheel_protocol_set_mode_one_output(protocol, &output);
+}
+
+static void begin_authentication(WheelProtocol *protocol,
+                                 uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE],
+                                 uint8_t operating_mode) {
+    static const uint8_t nonce[] = {0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80};
+    wheel_protocol_init(protocol);
+    set_operating_mode(protocol, operating_mode);
+    synchronize(protocol, request);
+    select_mode(protocol, request, 1);
+
+    memset(request, 0, WHEEL_PROTOCOL_PACKET_SIZE);
+    request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    memcpy(&request[2], nonce, sizeof(nonce));
+    mark_ready(request);
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+    wheel_protocol_accept(protocol, request);
+}
+
 static void test_synchronizes_and_selects_mode(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -40,7 +63,7 @@ static void test_synchronizes_and_selects_mode(void) {
     synchronize(&protocol, request);
     select_mode(&protocol, request, 1);
 
-    assert(protocol.phase == WHEEL_PROTOCOL_SELECTED);
+    assert(protocol.phase == WHEEL_PROTOCOL_ACTIVE);
     assert(protocol.mode == 1);
     assert(wheel_protocol_response(&protocol)[0] == WHEEL_PROTOCOL_COMMAND_SELECT_MODE);
     assert(wheel_protocol_response(&protocol)[WHEEL_PROTOCOL_CHECKSUM_OFFSET] == 0x9a);
@@ -67,19 +90,167 @@ static void test_selects_scan_variants(void) {
     assert(protocol.mode == WHEEL_MODE_SCAN_SECONDARY);
 }
 
-static void test_detects_authentication_command(void) {
+static void test_selects_authentication_from_operating_mode(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
     wheel_protocol_init(&protocol);
+    set_operating_mode(&protocol, 0x10);
+    synchronize(&protocol, request);
+    select_mode(&protocol, request, 1);
+
+    assert(protocol.phase == WHEEL_PROTOCOL_AUTHENTICATING);
+    assert(protocol.mode == 1);
+
+    wheel_protocol_init(&protocol);
+    memset(request, 0, sizeof(request));
     synchronize(&protocol, request);
     select_mode(&protocol, request, 0x10);
 
+    assert(protocol.phase == WHEEL_PROTOCOL_ACTIVE);
+    assert(protocol.mode == 0x10);
+}
+
+static void test_authentication_mode_set(void) {
+    for (uint16_t mode = 0; mode <= UINT8_MAX; mode++) {
+        bool expected = (mode >= 0x0a && mode <= 0x0c) || (mode >= 0x0e && mode <= 0x17) ||
+                        (mode >= 0x1b && mode <= 0x1e);
+        assert(wheel_authentication_required((uint8_t)mode) == expected);
+    }
+}
+
+static void test_selects_authentication_keys_for_each_operating_mode(void) {
+    static const struct {
+        uint8_t operating_mode;
+        uint8_t response_prefix[4];
+    } cases[] = {
+        {0x0a, {0xb5, 0x8e, 0x45, 0x9b}}, {0x0b, {0xb5, 0x8e, 0x45, 0x9b}},
+        {0x0c, {0x24, 0x9c, 0x63, 0xd4}}, {0x0e, {0x4e, 0x2b, 0xce, 0x4e}},
+        {0x0f, {0xef, 0x40, 0xb4, 0x3e}}, {0x10, {0xdf, 0x6b, 0xb6, 0x58}},
+        {0x11, {0xc9, 0x8e, 0xd6, 0xa3}}, {0x12, {0x19, 0x8d, 0x07, 0xea}},
+        {0x13, {0xc8, 0x2d, 0xce, 0x0d}}, {0x14, {0x8e, 0xa8, 0xd7, 0xd3}},
+        {0x15, {0x1d, 0xdb, 0xe6, 0x33}}, {0x16, {0x46, 0x50, 0xc4, 0x43}},
+        {0x17, {0xef, 0x40, 0xb4, 0x3e}}, {0x1b, {0xb5, 0x8e, 0x45, 0x9b}},
+        {0x1c, {0xb5, 0x8e, 0x45, 0x9b}}, {0x1d, {0xb5, 0x8e, 0x45, 0x9b}},
+        {0x1e, {0xdf, 0x6b, 0xb6, 0x58}},
+    };
+
+    for (uint8_t index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {
+        WheelProtocol protocol;
+        uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+        begin_authentication(&protocol, request, cases[index].operating_mode);
+        assert(memcmp(wheel_protocol_response(&protocol), cases[index].response_prefix,
+                      sizeof(cases[index].response_prefix)) == 0);
+    }
+}
+
+static void test_completes_encrypted_authentication_exchange(void) {
+    static const uint8_t expected_challenge_response[WHEEL_PROTOCOL_CONTENT_SIZE] = {
+        0xdf, 0x6b, 0xb6, 0x58, 0xf4, 0xf6, 0x0e, 0xe4, 0x4b, 0x22, 0x58,
+        0x94, 0xea, 0xe6, 0x84, 0xde, 0xcb, 0x45, 0x88, 0xc4, 0x4a, 0x4c,
+        0x42, 0x94, 0xc1, 0xfa, 0x17, 0xb3, 0x57, 0x2c, 0x52, 0xa0,
+    };
+    static const uint8_t encrypted_proof[WHEEL_PROTOCOL_CONTENT_SIZE] = {
+        0xbf, 0xd4, 0x29, 0xc4, 0x2b, 0xd6, 0x73, 0xf4, 0x4c, 0x15, 0x73,
+        0xc4, 0x4b, 0x01, 0xd6, 0x85, 0xcb, 0xba, 0x7a, 0x8b, 0x92, 0xf2,
+        0xb5, 0x14, 0xfb, 0xaf, 0x35, 0x42, 0xfa, 0xf8, 0x7b, 0x36,
+    };
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    begin_authentication(&protocol, request, 0x10);
+
+    assert(protocol.phase == WHEEL_PROTOCOL_AUTHENTICATING);
+    assert(memcmp(wheel_protocol_response(&protocol), expected_challenge_response,
+                  sizeof(expected_challenge_response)) == 0);
+    assert(wheel_protocol_response(&protocol)[WHEEL_PROTOCOL_CHECKSUM_OFFSET] == 0xd0);
+
+    memset(request, 0, sizeof(request));
+    memcpy(request, encrypted_proof, sizeof(encrypted_proof));
+    mark_ready(request);
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+    wheel_protocol_accept(&protocol, request);
+
+    assert(protocol.phase == WHEEL_PROTOCOL_ACTIVE);
+    assert(wheel_protocol_response(&protocol)[0] == 0xdf);
+    assert(wheel_protocol_response(&protocol)[1] == 0x6b);
+    for (uint8_t index = 2; index < WHEEL_PROTOCOL_CONTENT_SIZE; index++) {
+        assert(wheel_protocol_response(&protocol)[index] == 0);
+    }
+    assert(wheel_protocol_response(&protocol)[WHEEL_PROTOCOL_CHECKSUM_OFFSET] == 0xbb);
+    assert(wheel_protocol_message_valid(wheel_protocol_response(&protocol)));
+}
+
+static void test_retries_invalid_authentication_challenge(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    set_operating_mode(&protocol, 0x10);
+    synchronize(&protocol, request);
+    select_mode(&protocol, request, 1);
+
+    memset(request, 0, sizeof(request));
     request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    mark_ready(request);
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] =
+        (uint8_t)(wheel_protocol_message_checksum(request) ^ UINT8_MAX);
+    wheel_protocol_accept(&protocol, request);
+
+    assert(protocol.phase == WHEEL_PROTOCOL_AUTHENTICATING);
+    assert(protocol.authentication.stage == WHEEL_AUTHENTICATION_AWAITING_CHALLENGE);
+    assert(protocol.authentication.retry_counter[7] == 1);
+    assert(wheel_protocol_response(&protocol)[0] == WHEEL_PROTOCOL_COMMAND_SELECT_MODE);
+    assert(wheel_protocol_response(&protocol)[1] == 0);
+    assert(wheel_protocol_response(&protocol)[WHEEL_PROTOCOL_CHECKSUM_OFFSET] == 0x9a);
+}
+
+static void test_retries_invalid_encrypted_proof(void) {
+    static const uint8_t expected_response[WHEEL_PROTOCOL_CONTENT_SIZE] = {
+        0xf1, 0x0e, 0x42, 0x81, 0xa0, 0xb8, 0xc5, 0x81, 0x4f, 0x34, 0xa0,
+        0x94, 0x07, 0x3f, 0x22, 0x42, 0x29, 0x6b, 0x55, 0x14, 0xf8, 0xc9,
+        0xe6, 0x16, 0xfd, 0x02, 0x82, 0x7d, 0x67, 0xb4, 0x1f, 0x20,
+    };
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    begin_authentication(&protocol, request, 0x10);
+
+    memset(request, 0, sizeof(request));
+    mark_ready(request);
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] =
+        (uint8_t)(wheel_protocol_message_checksum(request) ^ UINT8_MAX);
+    wheel_protocol_accept(&protocol, request);
+
+    assert(protocol.phase == WHEEL_PROTOCOL_AUTHENTICATING);
+    assert(protocol.authentication.stage == WHEEL_AUTHENTICATION_AWAITING_PROOF);
+    assert(protocol.authentication.retry_counter[7] == 1);
+    assert(memcmp(wheel_protocol_response(&protocol), expected_response,
+                  sizeof(expected_response)) == 0);
+    assert(wheel_protocol_response(&protocol)[WHEEL_PROTOCOL_CHECKSUM_OFFSET] == 0x4b);
+}
+
+static void test_echoes_token_from_wrong_encrypted_command(void) {
+    static const uint8_t encrypted_request[WHEEL_PROTOCOL_CONTENT_SIZE] = {
+        0xbe, 0xd4, 0x29, 0xc4, 0x2b, 0xd6, 0x73, 0xf4, 0x4c, 0x15, 0x73,
+        0xc4, 0x4b, 0x01, 0xd6, 0x85, 0xcb, 0xba, 0x7a, 0x8b, 0x92, 0xf2,
+        0xb5, 0x14, 0xfb, 0xaf, 0x35, 0x42, 0xfa, 0xf8, 0x7b, 0x36,
+    };
+    static const uint8_t expected_response[WHEEL_PROTOCOL_CONTENT_SIZE] = {
+        0x8b, 0x65, 0xe5, 0xfb, 0x67, 0x0a, 0x9e, 0x03, 0x73, 0x9e, 0xa0,
+        0x94, 0x07, 0x3f, 0x22, 0x42, 0x29, 0x6b, 0x55, 0x14, 0xf8, 0xc9,
+        0xe6, 0x16, 0xfd, 0x02, 0x82, 0x7d, 0x67, 0xb4, 0x1f, 0x20,
+    };
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    begin_authentication(&protocol, request, 0x10);
+
+    memset(request, 0, sizeof(request));
+    memcpy(request, encrypted_request, sizeof(encrypted_request));
+    mark_ready(request);
     request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
     wheel_protocol_accept(&protocol, request);
 
     assert(protocol.phase == WHEEL_PROTOCOL_AUTHENTICATING);
-    assert(protocol.mode == 0x10);
+    assert(memcmp(wheel_protocol_response(&protocol), expected_response,
+                  sizeof(expected_response)) == 0);
+    assert(wheel_protocol_response(&protocol)[WHEEL_PROTOCOL_CHECKSUM_OFFSET] == 0x8b);
 }
 
 static void test_restarts_synchronization_when_ready_drops(void) {
@@ -173,7 +344,13 @@ static void test_crc8_vectors(void) {
 int main(void) {
     test_synchronizes_and_selects_mode();
     test_selects_scan_variants();
-    test_detects_authentication_command();
+    test_selects_authentication_from_operating_mode();
+    test_authentication_mode_set();
+    test_selects_authentication_keys_for_each_operating_mode();
+    test_completes_encrypted_authentication_exchange();
+    test_retries_invalid_authentication_challenge();
+    test_retries_invalid_encrypted_proof();
+    test_echoes_token_from_wrong_encrypted_command();
     test_restarts_synchronization_when_ready_drops();
     test_captures_raw_active_requests();
     test_builds_mode_one_active_response();

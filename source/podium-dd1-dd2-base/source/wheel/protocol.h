@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "wheel/authentication.h"
 #include "wheel/packet_mode_one.h"
 
 enum {
@@ -30,9 +31,8 @@ typedef enum {
     WHEEL_PROTOCOL_SYNCHRONIZING,
     WHEEL_PROTOCOL_ACKNOWLEDGING,
     WHEEL_PROTOCOL_SELECTING,
-    WHEEL_PROTOCOL_SELECTED,
-    WHEEL_PROTOCOL_ACTIVE,
     WHEEL_PROTOCOL_AUTHENTICATING,
+    WHEEL_PROTOCOL_ACTIVE,
     WHEEL_PROTOCOL_UNSUPPORTED,
     WHEEL_PROTOCOL_SCANNING_PRIMARY,
     WHEEL_PROTOCOL_SCANNING_SECONDARY,
@@ -41,6 +41,7 @@ typedef enum {
 typedef struct {
     uint8_t response[WHEEL_PROTOCOL_PACKET_SIZE];
     uint8_t request[WHEEL_PROTOCOL_SNAPSHOT_SIZE];
+    WheelAuthentication authentication;
     WheelPacketModeOneOutput mode_one_output;
     WheelProtocolPhase phase;
     uint8_t mode;

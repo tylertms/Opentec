@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "wheel/authentication.h"
 #include "wheel/packet_mode_one.h"
 
 /**
@@ -84,7 +85,13 @@ static void select_mode(WheelProtocol *protocol,
             break;
         }
         protocol->mode = request[1];
-        protocol->phase = WHEEL_PROTOCOL_SELECTED;
+        if (wheel_authentication_required(protocol->mode_one_output.operating_mode)) {
+            wheel_authentication_init(&protocol->authentication,
+                                      protocol->mode_one_output.operating_mode);
+            protocol->phase = WHEEL_PROTOCOL_AUTHENTICATING;
+        } else {
+            protocol->phase = WHEEL_PROTOCOL_ACTIVE;
+        }
         break;
     default:
         return;
@@ -97,6 +104,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
     clear(protocol->request, WHEEL_PROTOCOL_SNAPSHOT_SIZE);
     protocol->mode_one_output = empty_output;
+    wheel_authentication_init(&protocol->authentication, WHEEL_MODE_UNKNOWN);
     protocol->phase = WHEEL_PROTOCOL_WAITING;
     protocol->mode = WHEEL_MODE_UNKNOWN;
     protocol->request_ready = false;
@@ -136,19 +144,15 @@ void wheel_protocol_accept(WheelProtocol *protocol,
         }
         select_mode(protocol, request);
         return;
-    case WHEEL_PROTOCOL_SELECTED:
-        if (!ready || !wheel_protocol_message_valid(request)) {
-            return;
-        }
-        if (request[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE ||
-            request[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE_REPLY) {
-            protocol->phase = WHEEL_PROTOCOL_AUTHENTICATING;
-            return;
-        }
-        if (request[0] == WHEEL_PROTOCOL_COMMAND_SELECT_MODE) {
-            capture_request(protocol, request);
-            build_active_response(protocol);
+    case WHEEL_PROTOCOL_AUTHENTICATING:
+        if (ready && wheel_authentication_accept(&protocol->authentication, request,
+                                                 wheel_protocol_message_valid(request),
+                                                 protocol->response)) {
             protocol->phase = WHEEL_PROTOCOL_ACTIVE;
+        }
+        if (ready) {
+            protocol->response[WHEEL_PROTOCOL_CHECKSUM_OFFSET] =
+                crc8(protocol->response, WHEEL_PROTOCOL_CONTENT_SIZE);
         }
         return;
     case WHEEL_PROTOCOL_ACTIVE:
@@ -158,7 +162,6 @@ void wheel_protocol_accept(WheelProtocol *protocol,
             build_active_response(protocol);
         }
         return;
-    case WHEEL_PROTOCOL_AUTHENTICATING:
     case WHEEL_PROTOCOL_UNSUPPORTED:
     case WHEEL_PROTOCOL_SCANNING_PRIMARY:
     case WHEEL_PROTOCOL_SCANNING_SECONDARY:
