@@ -11,8 +11,14 @@ enum {
     MOTOR_COMMAND_PACKET_DIGEST_REQUEST_SIZE = 11,
     MOTOR_COMMAND_PACKET_INFO_REQUEST_SIZE = 11,
     MOTOR_COMMAND_PACKET_MAX_PACKET_SIZE = 1009,
+    MOTOR_COMMAND_PACKET_MAX_PAYLOAD_SIZE = 1009,
+    MOTOR_COMMAND_PACKET_ENCODING_OVERHEAD = 6,
 };
 
+bool motor_command_packet_payload_encode(uint8_t mode, uint8_t sequence, uint8_t adjacent_sequence,
+                                         const uint8_t *payload, uint16_t payload_length,
+                                         uint8_t *output, uint16_t output_capacity,
+                                         uint16_t *output_length);
 void motor_command_packet_digest_request_encode(
     uint8_t sequence, uint8_t adjacent_sequence, bool retry,
     uint8_t output[MOTOR_COMMAND_PACKET_DIGEST_REQUEST_SIZE]);

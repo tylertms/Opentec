@@ -4,6 +4,58 @@
 
 #include "motor/command_packet.h"
 
+static void test_encodes_payload_packet(void) {
+    static const uint8_t payload[] = {0x11, 0x22, 0x33};
+    static const uint8_t expected[] = {0x03, 0x00, 0x04, 0x00, 0x11, 0x22, 0x33, 0x49, 0xac};
+    uint8_t packet[sizeof(expected)];
+    uint16_t length;
+
+    assert(motor_command_packet_payload_encode(0, 0, 3, payload, sizeof(payload), packet,
+                                               sizeof(packet), &length));
+    assert(length == sizeof(packet));
+    assert(memcmp(packet, expected, sizeof(packet)) == 0);
+}
+
+static void test_encodes_payload_packet_header_fields(void) {
+    static const uint8_t payload[] = {0xde, 0xad, 0xbe, 0xef, 0x42, 0x99};
+    static const uint8_t expected[] = {0x42, 0x00, 0x07, 0x00, 0xde, 0xad,
+                                       0xbe, 0xef, 0x42, 0x99, 0x8f, 0xcc};
+    uint8_t packet[sizeof(expected)];
+    uint16_t length;
+
+    assert(motor_command_packet_payload_encode(2, 5, 6, payload, sizeof(payload), packet,
+                                               sizeof(packet), &length));
+    assert(length == sizeof(packet));
+    assert(memcmp(packet, expected, sizeof(packet)) == 0);
+}
+
+static void test_rejects_invalid_payload_packet(void) {
+    uint8_t payload = 0;
+    uint8_t packet[8];
+    uint16_t length;
+
+    assert(!motor_command_packet_payload_encode(0, 0, 0, 0, 1, packet, sizeof(packet), &length));
+    assert(!motor_command_packet_payload_encode(0, 0, 0, &payload,
+                                                MOTOR_COMMAND_PACKET_MAX_PAYLOAD_SIZE + 1, packet,
+                                                sizeof(packet), &length));
+    assert(!motor_command_packet_payload_encode(0, 0, 0, &payload, 1, packet, 6, &length));
+}
+
+static void test_encodes_maximum_payload_packet(void) {
+    static const uint8_t payload[MOTOR_COMMAND_PACKET_MAX_PAYLOAD_SIZE] = {0};
+    static uint8_t
+        packet[MOTOR_COMMAND_PACKET_MAX_PAYLOAD_SIZE + MOTOR_COMMAND_PACKET_ENCODING_OVERHEAD];
+    uint16_t length;
+
+    assert(motor_command_packet_payload_encode(0, 0, 0, payload, sizeof(payload), packet,
+                                               sizeof(packet), &length));
+    assert(length == sizeof(packet));
+    assert(packet[1] == 0x03);
+    assert(packet[2] == 0xf2);
+    assert(packet[sizeof(packet) - 2] == 0x53);
+    assert(packet[sizeof(packet) - 1] == 0x83);
+}
+
 static void test_encodes_digest_request(void) {
     static const uint8_t expected[] = {
         0x03, 0x00, 0x06, 0x00, 0x07, 0x00, 0x00, 0x00, 0x14, 0xe8, 0xb3,
@@ -120,6 +172,10 @@ static void test_decodes_information_payloads(void) {
 }
 
 int main(void) {
+    test_encodes_payload_packet();
+    test_encodes_payload_packet_header_fields();
+    test_rejects_invalid_payload_packet();
+    test_encodes_maximum_payload_packet();
     test_encodes_digest_request();
     test_encodes_control_responses();
     test_encodes_information_requests();

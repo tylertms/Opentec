@@ -56,9 +56,9 @@ static uint16_t update_checksum(uint16_t checksum, uint8_t data) {
  * @param[in] length Prefix byte count.
  * @return Calculated checksum value.
  */
-static uint16_t checksum(const uint8_t *data, uint8_t length) {
+static uint16_t checksum(const uint8_t *data, uint16_t length) {
     uint16_t value = 0;
-    for (uint8_t index = 0; index < length; index++) {
+    for (uint16_t index = 0; index < length; index++) {
         value = update_checksum(value, data[index]);
     }
     return value;
@@ -120,10 +120,55 @@ static bool command_valid(uint8_t previous_sequence, const uint8_t *input, uint1
  * @param[in,out] output Packet body and checksum destination.
  * @param[in] body_length Packet body byte count.
  */
-static void finish(uint8_t *output, uint8_t body_length) {
+static void finish(uint8_t *output, uint16_t body_length) {
     uint16_t value = checksum(output, body_length);
     output[body_length] = (uint8_t)(value >> 8);
     output[body_length + 1] = (uint8_t)value;
+}
+
+/**
+ * @brief Encodes a motor-command payload packet.
+ *
+ * Builds the two-bit mode, current sequence, and adjacent sequence header, declares the fragment
+ * marker plus payload length in big-endian order, copies the payload after a zero fragment marker,
+ * and appends the packet checksum. An out-of-range current sequence resets to zero.
+ *
+ * @param[in] mode Two-bit packet mode.
+ * @param[in] sequence Current two-bit sequence, or an out-of-range value to reset it to zero.
+ * @param[in] adjacent_sequence Previous or next two-bit sequence selected by the packet mode.
+ * @param[in] payload Command payload.
+ * @param[in] payload_length Command payload byte count.
+ * @param[out] output Encoded packet destination.
+ * @param[in] output_capacity Available destination byte count.
+ * @param[out] output_length Encoded packet byte count.
+ * @return True when the payload and destination are valid.
+ */
+bool motor_command_packet_payload_encode(uint8_t mode, uint8_t sequence, uint8_t adjacent_sequence,
+                                         const uint8_t *payload, uint16_t payload_length,
+                                         uint8_t *output, uint16_t output_capacity,
+                                         uint16_t *output_length) {
+    uint16_t required_length = payload_length + MOTOR_COMMAND_PACKET_ENCODING_OVERHEAD;
+    if (payload == 0 || output == 0 || output_length == 0 ||
+        payload_length > MOTOR_COMMAND_PACKET_MAX_PAYLOAD_SIZE ||
+        output_capacity < required_length) {
+        return false;
+    }
+    if (sequence > MOTOR_COMMAND_PACKET_SEQUENCE_MASK) {
+        sequence = 0;
+    }
+    output[0] = (adjacent_sequence & MOTOR_COMMAND_PACKET_SEQUENCE_MASK) |
+                (sequence << MOTOR_COMMAND_PACKET_SEQUENCE_SHIFT) |
+                ((mode & MOTOR_COMMAND_PACKET_SEQUENCE_MASK) << MOTOR_COMMAND_PACKET_MODE_SHIFT);
+    uint16_t declared_length = payload_length + 1;
+    output[1] = (uint8_t)(declared_length >> 8);
+    output[2] = (uint8_t)declared_length;
+    output[MOTOR_COMMAND_PACKET_FRAGMENT_OFFSET] = 0;
+    for (uint16_t index = 0; index < payload_length; index++) {
+        output[MOTOR_COMMAND_PACKET_COMMAND_OFFSET + index] = payload[index];
+    }
+    finish(output, payload_length + MOTOR_COMMAND_PACKET_COMMAND_OFFSET);
+    *output_length = required_length;
+    return true;
 }
 
 /**
