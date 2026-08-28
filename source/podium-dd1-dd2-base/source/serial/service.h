@@ -17,6 +17,7 @@ typedef struct {
     SerialSession session;
     uint8_t packet[SERIAL_PACKET_SIZE];
     uint32_t deadline_ms;
+    uint32_t error_count;
     uint8_t request_type;
     uint8_t attempts;
     SerialServiceStatus status;
@@ -28,6 +29,7 @@ bool serial_service_start(SerialService *service, uint8_t type, const uint8_t *m
                           uint16_t length, uint32_t now_ms);
 void serial_service_run(SerialService *service, uint32_t now_ms);
 const SerialMessageAssembly *serial_service_response(const SerialService *service);
+uint32_t serial_service_error_count(const SerialService *service);
 void serial_service_release(SerialService *service);
 
 #endif

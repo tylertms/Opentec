@@ -97,6 +97,9 @@ void serial_service_run(SerialService *service, uint32_t now_ms) {
     if (service->packet_pending && platform_serial_link_take_received(service->packet)) {
         service->packet_pending = false;
         SerialSessionResult result = serial_session_accept(&service->session, service->packet);
+        if (result == SERIAL_SESSION_INVALID_PACKET || result == SERIAL_SESSION_MESSAGE_OVERFLOW) {
+            service->error_count++;
+        }
         if (result == SERIAL_SESSION_MESSAGE_COMPLETE) {
             const SerialMessageAssembly *message = serial_session_message(&service->session);
             service->status = message != 0 && message->type == service->request_type
@@ -110,6 +113,7 @@ void serial_service_run(SerialService *service, uint32_t now_ms) {
         return;
     }
     if (service->packet_pending && platform_time_reached(now_ms, service->deadline_ms)) {
+        service->error_count++;
         platform_serial_link_reset();
         if (service->attempts < SERIAL_SERVICE_MAX_ATTEMPTS &&
             platform_serial_link_start(service->packet)) {
@@ -134,6 +138,19 @@ const SerialMessageAssembly *serial_service_response(const SerialService *servic
     return service != 0 && service->status == SERIAL_SERVICE_SUCCEEDED
                ? serial_session_message(&service->session)
                : 0;
+}
+
+/**
+ * @brief Returns the attached-device serial error count.
+ *
+ * Reports the cumulative number of expired response windows and rejected incoming packets since
+ * serial service initialization.
+ *
+ * @param[in] service Serial service to inspect.
+ * @return Cumulative transport error count, or zero when the service is unavailable.
+ */
+uint32_t serial_service_error_count(const SerialService *service) {
+    return service != 0 ? service->error_count : 0;
 }
 
 /**

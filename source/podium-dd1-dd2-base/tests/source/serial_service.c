@@ -104,6 +104,19 @@ static void test_fails_mismatched_response(void) {
     assert(serial_service_response(&service) == 0);
 }
 
+static void test_counts_invalid_packets(void) {
+    SerialService service;
+    reset_link();
+    serial_service_init(&service);
+    const uint8_t data = 1;
+    assert(serial_service_start(&service, 3, &data, 1, 0));
+
+    received[0] = 0;
+    received_ready = true;
+    serial_service_run(&service, 1);
+    assert(serial_service_error_count(&service) == 1);
+}
+
 static void test_retries_four_timed_out_packets(void) {
     SerialService service;
     reset_link();
@@ -125,12 +138,14 @@ static void test_retries_four_timed_out_packets(void) {
     assert(service.status == SERIAL_SERVICE_FAILED);
     assert(reset_count == 4);
     assert(start_count == 4);
+    assert(serial_service_error_count(&service) == 4);
 }
 
 int main(void) {
     test_completes_matching_transaction();
     test_rejects_overlapping_transaction();
     test_fails_mismatched_response();
+    test_counts_invalid_packets();
     test_retries_four_timed_out_packets();
     return 0;
 }
