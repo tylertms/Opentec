@@ -780,6 +780,32 @@ static void test_applies_transport_specific_brake_indicator_selector(void) {
     assert(!pedal_service_legacy_transport_active(&service));
 }
 
+static void test_publishes_each_v3_alternate_brake_force_report_once(void) {
+    PedalService service;
+    reset_link();
+    pedal_service_init(&service);
+    connect_v3(&service);
+
+    const PedalFrame calibration = {
+        .type = 5,
+        .payload = {0x05, 0x62},
+    };
+    receive_frame(&calibration);
+    pedal_service_run(&service, 11);
+
+    const PedalFrame brake_force = {
+        .type = PEDAL_V3_BRAKE_FORCE_REPORT,
+        .payload = {13},
+    };
+    receive_frame(&brake_force);
+    pedal_service_run(&service, 12);
+
+    uint8_t value = pedal_service_take_alternate_brake_force(&service);
+    assert(value == 60);
+    assert(pedal_service_take_alternate_brake_force(&service) ==
+           PEDAL_ALTERNATE_BRAKE_FORCE_NO_UPDATE);
+}
+
 int main(void) {
     test_connects_and_publishes_v3_input();
     test_applies_active_brake_force();
@@ -801,5 +827,6 @@ int main(void) {
     test_selects_auxiliary_automatic_calibration_from_pedal_state();
     test_applies_pedal_protocol_commands();
     test_applies_transport_specific_brake_indicator_selector();
+    test_publishes_each_v3_alternate_brake_force_report_once();
     return 0;
 }

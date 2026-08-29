@@ -6,7 +6,6 @@
 enum {
     PEDAL_V3_CONNECTION_REPORT = 4,
     PEDAL_V3_CALIBRATION_REPORT = 5,
-    PEDAL_V3_BRAKE_FORCE_REPORT = 7,
     PEDAL_V3_SHARED_AXES_REPORT = 8,
     PEDAL_V3_PRIMARY_CALIBRATION = 0x6205,
     PEDAL_V3_LEGACY_CALIBRATION = 0x183b,
@@ -41,10 +40,14 @@ void pedal_v3_state_init(PedalV3State *state) { *state = (PedalV3State){0}; }
 
 /**
  * @brief Applies a recognized V3 input report to the pedal state.
- * @param frame Decoded V3 frame to process.
- * @param auxiliary_locked True when another input source owns the auxiliary axis.
- * @param state V3 connection, calibration, force, and shared-axis state to update.
- * @param input Published pedal axes to update for axis reports.
+ *
+ * Decodes axis, connection, calibration, brake-force, and shared-axis reports while preserving an
+ * auxiliary input owned by another source.
+ *
+ * @param[in] frame Decoded V3 frame to process.
+ * @param[in] auxiliary_locked True when another input source owns the auxiliary axis.
+ * @param[in,out] state V3 connection, calibration, force, and shared-axis state to update.
+ * @param[in,out] input Published pedal axes to update for axis reports.
  * @return True for a recognized V3 report type.
  */
 bool pedal_v3_apply_report(const PedalFrame *frame, bool auxiliary_locked, PedalV3State *state,
@@ -95,7 +98,10 @@ bool pedal_v3_apply_report(const PedalFrame *frame, bool auxiliary_locked, Pedal
 }
 
 /**
- * Applies the active brake-force gain to a digital pedal sample.
+ * @brief Applies the configured brake-force gain to a digital pedal sample.
+ *
+ * Increases the sample gain as the configured force decreases and saturates the result to the
+ * published 16-bit axis range.
  *
  * @param[in] value Raw brake-axis sample.
  * @param[in] force_percent Signed one-byte brake-force setting.

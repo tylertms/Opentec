@@ -9,6 +9,7 @@
 enum {
     PEDAL_INPUT_AXIS_COUNT = 3,
     PEDAL_FRAME_AXIS_SAMPLE = 1,
+    PEDAL_V3_BRAKE_FORCE_REPORT = 7,
 };
 
 typedef struct {

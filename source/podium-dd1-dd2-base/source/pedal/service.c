@@ -72,6 +72,7 @@ static void reconnect(PedalService *service, uint32_t now_ms) {
     service->v4_phase = PEDAL_V4_PHASE_STATUS;
     service->v4_request_active = false;
     service->v4_response_received = false;
+    service->alternate_brake_force_received = false;
     service->device = PEDAL_DEVICE_NONE;
     service->startup_frame_count = 0;
     service->legacy_channel = PEDAL_LEGACY_AXIS_1;
@@ -131,6 +132,7 @@ void pedal_service_init(PedalService *service) {
     service->status_transmitted = false;
     service->v4_request_active = false;
     service->v4_response_received = false;
+    service->alternate_brake_force_received = false;
     service->clock_ms = 0;
     clear_v3_outbound(service);
 }
@@ -346,10 +348,36 @@ void pedal_service_request_input_command(PedalService *service,
     service->input_command_pending = true;
 }
 
+/**
+ * @brief Queues the alternate brake-force configuration for a V3 pedal controller.
+ *
+ * Replaces the pending percentage and retains a reset request until the configuration frame is
+ * transmitted during an active calibration mode.
+ *
+ * @param[in,out] service Pedal service and pending configuration state to update.
+ * @param[in] brake_force Alternate brake-force percentage to transmit.
+ * @param[in] reset True to include the controller reset marker.
+ */
 void pedal_service_request_configuration(PedalService *service, uint8_t brake_force, bool reset) {
     service->configuration_brake_force = brake_force;
     service->configuration_pending = true;
     service->configuration_reset_pending |= reset;
+}
+
+/**
+ * @brief Takes the latest alternate brake-force value reported by a V3 pedal controller.
+ *
+ * Returns each received brake-force report once and clears its pending notification.
+ *
+ * @param[in,out] service Pedal service and report notification state to consume.
+ * @return Reported percentage, or PEDAL_ALTERNATE_BRAKE_FORCE_NO_UPDATE when none is pending.
+ */
+uint8_t pedal_service_take_alternate_brake_force(PedalService *service) {
+    if (!service->alternate_brake_force_received) {
+        return PEDAL_ALTERNATE_BRAKE_FORCE_NO_UPDATE;
+    }
+    service->alternate_brake_force_received = false;
+    return service->v3.alternate_brake_force;
 }
 
 static void service_detect_response(PedalService *service, uint32_t now_ms) {
@@ -667,6 +695,9 @@ static void service_v3_stream(PedalService *service, uint32_t now_ms) {
     if (platform_pedal_link_take_frame(service->frame_buffer) &&
         pedal_frame_decode(service->frame_buffer, &service->receive_frame) == PEDAL_FRAME_VALID) {
         if (pedal_v3_apply_report(&service->receive_frame, false, &service->v3, &service->input)) {
+            if (service->receive_frame.type == PEDAL_V3_BRAKE_FORCE_REPORT) {
+                service->alternate_brake_force_received = true;
+            }
             if (service->receive_frame.type == PEDAL_FRAME_AXIS_SAMPLE) {
                 service->remote_auxiliary = service->input.auxiliary;
                 publish_auxiliary(service);

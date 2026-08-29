@@ -334,6 +334,10 @@ static void apply_active_tuning_profile(void) {
         .damper = tuning_profile->damper_effect_strength,
     };
     pedal_service_set_brake_force(&pedal_service, tuning_profile->brake_force);
+    if (pedal_service_calibration_active(&pedal_service)) {
+        pedal_service_request_configuration(&pedal_service, tuning_profile->alternate_brake_force,
+                                            false);
+    }
     PedalV4Tuning pedal_tuning = {
         .brake_force = tuning_profile->brake_force,
         .clutch_curve = (uint8_t)tuning_profile->clutch_pedal_curve,
@@ -347,6 +351,27 @@ static void apply_active_tuning_profile(void) {
     if (motor_tuning_ready) {
         motor_tuning_service_refresh(&motor_tuning_service, tuning_profile, &motor_tuning_context);
     }
+}
+
+/**
+ * @brief Applies a brake-force value reported by the attached V3 pedal controller.
+ *
+ * Updates the active runtime and retained tuning profiles when the controller reports a changed
+ * alternate brake-force percentage, then schedules the shared settings record for persistence.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_alternate_brake_force(uint32_t now_ms) {
+    uint8_t brake_force = pedal_service_take_alternate_brake_force(&pedal_service);
+    if (brake_force == PEDAL_ALTERNATE_BRAKE_FORCE_NO_UPDATE ||
+        brake_force == tuning_profile->alternate_brake_force) {
+        return;
+    }
+
+    runtime_tuning_profile.alternate_brake_force = brake_force;
+    base_settings.tuning_profiles.slots[base_settings.tuning_profiles.active_slot]
+        .alternate_brake_force = brake_force;
+    base_settings_persistence_mark_dirty(&settings_persistence, now_ms);
 }
 
 /**
@@ -1107,6 +1132,7 @@ int main(void) {
         service_analog_input(now_ms);
         service_motor_link();
         pedal_service_run(&pedal_service, now_ms);
+        service_alternate_brake_force(now_ms);
         uint8_t brake_indicator_selector = pedal_brake_indicator_update(
             &pedal_brake_indicator, tuning_profile->brake_indicator_level,
             pedal_service_input(&pedal_service)->axes[1],

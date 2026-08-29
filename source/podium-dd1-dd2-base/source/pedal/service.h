@@ -12,6 +12,8 @@
 #include "pedal/v4_tuning.h"
 #include "transfer/session.h"
 
+enum { PEDAL_ALTERNATE_BRAKE_FORCE_NO_UPDATE = UINT8_MAX };
+
 typedef enum {
     PEDAL_SERVICE_DETECT_REQUEST,
     PEDAL_SERVICE_DETECT_RESPONSE,
@@ -82,6 +84,7 @@ typedef struct {
     bool status_transmitted;
     bool v4_request_active;
     bool v4_response_received;
+    bool alternate_brake_force_received;
 } PedalService;
 
 void pedal_service_init(PedalService *service);
@@ -101,6 +104,7 @@ void pedal_service_request_control(PedalService *service, PedalV3Control control
 void pedal_service_request_input_command(PedalService *service,
                                          const uint8_t values[PEDAL_INPUT_AXIS_COUNT]);
 void pedal_service_request_configuration(PedalService *service, uint8_t brake_force, bool reset);
+uint8_t pedal_service_take_alternate_brake_force(PedalService *service);
 void pedal_service_run(PedalService *service, uint32_t now_ms);
 const PedalInput *pedal_service_input(const PedalService *service);
 const PedalV3State *pedal_service_v3_state(const PedalService *service);
