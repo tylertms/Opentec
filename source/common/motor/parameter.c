@@ -6,6 +6,45 @@ enum {
 };
 
 /**
+ * @brief Initializes the official sixty-four-entry motor parameter bank.
+ *
+ * Defined entries receive their wire widths, access modes, and startup values. All remaining
+ * indices use the invalid value and zero-width metadata found in both product images.
+ *
+ * @param bank Parameter bank to initialize.
+ * @param identity Runtime board identity published at index zero.
+ */
+void motor_parameter_bank_initialize(MotorParameterBank *bank, uint8_t identity) {
+    for (uint32_t index = 0U; index < MOTOR_PARAMETER_COUNT; ++index) {
+        bank->entries[index] = (MotorParameter){.value = UINT32_MAX};
+    }
+
+    bank->entries[0] = (MotorParameter){.value = identity, .width = 1U};
+    bank->entries[1] = (MotorParameter){.value = UINT32_C(0x01010003), .width = 4U};
+    bank->entries[3] = (MotorParameter){.width = 2U, .writable = true};
+    bank->entries[4] = (MotorParameter){.value = 0xaaU, .width = 1U, .writable = true};
+    bank->entries[5] = (MotorParameter){.width = 2U, .writable = true};
+    bank->entries[6] = (MotorParameter){.width = 2U, .writable = true};
+    bank->entries[7] = (MotorParameter){.width = 1U};
+    bank->entries[8] = (MotorParameter){.width = 1U};
+    bank->entries[16] = (MotorParameter){.width = 2U};
+    bank->entries[17] = (MotorParameter){.width = 4U};
+    bank->entries[18] = (MotorParameter){.width = 2U};
+    bank->entries[19] = (MotorParameter){.width = 2U};
+    bank->entries[20] = (MotorParameter){.width = 2U};
+    bank->entries[32] = (MotorParameter){.value = 0xedU, .width = 1U, .writable = true};
+    bank->entries[33] = (MotorParameter){.value = 0x23U, .width = 1U, .writable = true};
+    bank->entries[34] = (MotorParameter){.width = 1U, .writable = true};
+    bank->entries[35] = (MotorParameter){.value = 0xffU, .width = 1U, .writable = true};
+    bank->entries[36] = (MotorParameter){.width = 2U, .writable = true};
+    bank->entries[37] = (MotorParameter){.width = 1U, .writable = true};
+    bank->entries[38] = (MotorParameter){.value = 6U, .width = 1U, .writable = true};
+    for (uint32_t index = 39U; index <= MOTOR_CONTROL_PARAMETER_LAST; ++index) {
+        bank->entries[index] = (MotorParameter){.value = 100U, .width = 1U, .writable = true};
+    }
+}
+
+/**
  * @brief Reads one entry from the official sixty-four-entry motor parameter bank.
  * @param bank Motor parameter values and access metadata.
  * @param index Parameter index requested by the base firmware.

@@ -2,6 +2,38 @@
 
 #include <assert.h>
 
+static void test_initialization(void) {
+    MotorParameterBank bank;
+    motor_parameter_bank_initialize(&bank, 0xd5U);
+
+    assert(bank.entries[0].value == 0xd5U);
+    assert(bank.entries[0].width == 1U);
+    assert(!bank.entries[0].writable);
+    assert(bank.entries[1].value == UINT32_C(0x01010003));
+    assert(bank.entries[1].width == 4U);
+    assert(bank.entries[2].value == UINT32_MAX);
+    assert(bank.entries[2].width == 0U);
+    assert(bank.entries[4].value == 0xaaU);
+    assert(bank.entries[4].writable);
+    assert(bank.entries[17].width == 4U);
+    assert(!bank.entries[17].writable);
+    assert(bank.entries[32].value == 0xedU);
+    assert(bank.entries[33].value == 0x23U);
+    assert(bank.entries[35].value == 0xffU);
+    assert(bank.entries[36].width == 2U);
+    assert(bank.entries[38].value == 6U);
+    for (uint32_t index = 39U; index <= 42U; ++index) {
+        assert(bank.entries[index].value == 100U);
+        assert(bank.entries[index].width == 1U);
+        assert(bank.entries[index].writable);
+    }
+    for (uint32_t index = 43U; index < MOTOR_PARAMETER_COUNT; ++index) {
+        assert(bank.entries[index].value == UINT32_MAX);
+        assert(bank.entries[index].width == 0U);
+        assert(!bank.entries[index].writable);
+    }
+}
+
 static void test_read(void) {
     MotorParameterBank bank = {0};
     bank.entries[12] = (MotorParameter){
@@ -68,6 +100,7 @@ static void test_wire_format(void) {
 }
 
 int main(void) {
+    test_initialization();
     test_read();
     test_write();
     test_wire_format();

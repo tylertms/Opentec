@@ -23,6 +23,7 @@ typedef struct {
     uint8_t width;
 } MotorParameterResponse;
 
+void motor_parameter_bank_initialize(MotorParameterBank *bank, uint8_t identity);
 bool motor_parameter_read(const MotorParameterBank *bank, uint8_t index,
                           MotorParameterResponse *response);
 bool motor_parameter_write(MotorParameterBank *bank, uint8_t index, uint32_t value, uint8_t width,
