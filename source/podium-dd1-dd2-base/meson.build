@@ -159,6 +159,7 @@ wheel_authentication_sources = files('source/wheel/authentication.c')
 wheel_capability_sources = files('source/wheel/capability.c')
 wheel_adapter_command_sources = files('source/wheel/adapter_commands.c')
 wheel_command_forwarder_sources = files('source/wheel/command_forwarder.c')
+wheel_protocol_bridge_service_sources = files('source/wheel/protocol_bridge_service.c')
 wheel_compatibility_alert_sources = files('source/wheel/compatibility_alert.c')
 wheel_auxiliary_output_sources = files('source/wheel/auxiliary_output.c')
 wheel_display_output_sources = files('source/wheel/display_output.c')
@@ -397,6 +398,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'wheel-capability': 'source/wheel/capability.c',
     'wheel-adapter-commands': 'source/wheel/adapter_commands.c',
     'wheel-command-forwarder': 'source/wheel/command_forwarder.c',
+    'wheel-protocol-bridge-service': 'source/wheel/protocol_bridge_service.c',
     'wheel-compatibility-alert': 'source/wheel/compatibility_alert.c',
     'wheel-auxiliary-output': 'source/wheel/auxiliary_output.c',
     'wheel-display-output': 'source/wheel/display_output.c',
@@ -2189,6 +2191,16 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_protocol_bridge_service_test = executable(
+    'base-wheel-protocol-bridge-service-test',
+    'tests/source/wheel_protocol_bridge_service.c',
+    wheel_protocol_bridge_service_sources,
+    transfer_command_sources,
+    transfer_memory_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_adapter_command_test = executable(
     'base-wheel-adapter-command-test',
     'tests/source/wheel_adapter_commands.c',
@@ -2845,6 +2857,11 @@ if not meson.is_cross_build()
   test(
     'base-wheel-command-forwarder',
     wheel_command_forwarder_test,
+    suite: ['base', 'wheel', 'transfer'],
+  )
+  test(
+    'base-wheel-protocol-bridge-service',
+    wheel_protocol_bridge_service_test,
     suite: ['base', 'wheel', 'transfer'],
   )
   test(
