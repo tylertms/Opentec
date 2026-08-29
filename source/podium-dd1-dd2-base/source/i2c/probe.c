@@ -283,3 +283,103 @@ bool i2c_probe_transfer_sequence_accept(I2cProbeTransferSequence *sequence) {
     }
     return true;
 }
+
+/**
+ * @brief Initializes one probe command exchange.
+ *
+ * Starts with the device-ready poll, clears its retry count, and marks the exchange pending.
+ *
+ * @param[out] exchange Command exchange to initialize.
+ */
+void i2c_probe_exchange_init(I2cProbeExchange *exchange) {
+    *exchange = (I2cProbeExchange){
+        .stage = I2C_PROBE_EXCHANGE_WAIT_READY,
+        .result = I2C_PROBE_EXCHANGE_PENDING,
+    };
+}
+
+/**
+ * @brief Processes a ready or command-acceptance status.
+ *
+ * During the initial ready poll, response 0x07 advances to command submission, response 0x17
+ * remains busy, and three unexpected responses are retried before the fourth fails. During command
+ * acceptance, response 0x07 advances to the final response, response 0x17 remains busy, and every
+ * other response fails immediately.
+ *
+ * @param[in,out] exchange Active command exchange.
+ * @param[in] response Device status byte.
+ * @return True when the exchange was waiting for this status; otherwise false.
+ */
+bool i2c_probe_exchange_status(I2cProbeExchange *exchange, uint8_t response) {
+    I2cProbeResponseResult status;
+    if (exchange->stage == I2C_PROBE_EXCHANGE_WAIT_READY) {
+        status = i2c_probe_handshake_evaluate(&exchange->readiness, response);
+        if (status == I2C_PROBE_RESPONSE_ACCEPTED) {
+            exchange->stage = I2C_PROBE_EXCHANGE_QUEUE_COMMAND;
+        } else if (status == I2C_PROBE_RESPONSE_REJECTED) {
+            exchange->stage = I2C_PROBE_EXCHANGE_FAILED;
+            exchange->result = I2C_PROBE_EXCHANGE_COMMAND_ERROR;
+        }
+        return true;
+    }
+    if (exchange->stage != I2C_PROBE_EXCHANGE_WAIT_ACCEPTANCE) {
+        return false;
+    }
+
+    status = i2c_probe_command_response_evaluate(response);
+    if (status == I2C_PROBE_RESPONSE_ACCEPTED) {
+        exchange->stage = I2C_PROBE_EXCHANGE_WAIT_RESPONSE;
+    } else if (status == I2C_PROBE_RESPONSE_REJECTED) {
+        exchange->stage = I2C_PROBE_EXCHANGE_FAILED;
+        exchange->result = I2C_PROBE_EXCHANGE_COMMAND_ERROR;
+    }
+    return true;
+}
+
+/**
+ * @brief Records successful submission of the probe command.
+ *
+ * Advances a queued command to acceptance polling. A busy transport leaves the exchange in the
+ * queue stage and should not call this function.
+ *
+ * @param[in,out] exchange Active command exchange.
+ * @return True when a command was waiting to be submitted; otherwise false.
+ */
+bool i2c_probe_exchange_command_queued(I2cProbeExchange *exchange) {
+    if (exchange->stage != I2C_PROBE_EXCHANGE_QUEUE_COMMAND) {
+        return false;
+    }
+    exchange->stage = I2C_PROBE_EXCHANGE_WAIT_ACCEPTANCE;
+    return true;
+}
+
+/**
+ * @brief Validates and completes the final probe response.
+ *
+ * Completes responses whose status bytes are zero and whose optional payload XOR matches. Status
+ * failures and checksum failures remain distinct for the transfer controller.
+ *
+ * @param[in,out] exchange Active command exchange.
+ * @param[in] response Final response payload, checksum, and status fields.
+ * @param[in] checksum_enabled True to validate the response payload XOR.
+ * @return True when the exchange was waiting for its final response; otherwise false.
+ */
+bool i2c_probe_exchange_finalize(I2cProbeExchange *exchange, const I2cProbeFinalResponse *response,
+                                 bool checksum_enabled) {
+    if (exchange->stage != I2C_PROBE_EXCHANGE_WAIT_RESPONSE) {
+        return false;
+    }
+
+    I2cProbeValidationResult validation =
+        i2c_probe_final_response_validate(response, checksum_enabled);
+    if (validation == I2C_PROBE_VALID) {
+        exchange->stage = I2C_PROBE_EXCHANGE_COMPLETE;
+        exchange->result = I2C_PROBE_EXCHANGE_SUCCEEDED;
+    } else {
+        exchange->stage = I2C_PROBE_EXCHANGE_FAILED;
+        exchange->result = validation == I2C_PROBE_CHECKSUM_ERROR
+                               ? I2C_PROBE_EXCHANGE_CHECKSUM_ERROR
+                               : I2C_PROBE_EXCHANGE_RESPONSE_ERROR;
+    }
+    return true;
+}

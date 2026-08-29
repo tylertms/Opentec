@@ -93,6 +93,29 @@ typedef struct {
     uint8_t chunk_length;
 } I2cProbeTransferStep;
 
+typedef enum {
+    I2C_PROBE_EXCHANGE_WAIT_READY,
+    I2C_PROBE_EXCHANGE_QUEUE_COMMAND,
+    I2C_PROBE_EXCHANGE_WAIT_ACCEPTANCE,
+    I2C_PROBE_EXCHANGE_WAIT_RESPONSE,
+    I2C_PROBE_EXCHANGE_COMPLETE,
+    I2C_PROBE_EXCHANGE_FAILED,
+} I2cProbeExchangeStage;
+
+typedef enum {
+    I2C_PROBE_EXCHANGE_PENDING,
+    I2C_PROBE_EXCHANGE_SUCCEEDED,
+    I2C_PROBE_EXCHANGE_COMMAND_ERROR,
+    I2C_PROBE_EXCHANGE_CHECKSUM_ERROR,
+    I2C_PROBE_EXCHANGE_RESPONSE_ERROR,
+} I2cProbeExchangeResult;
+
+typedef struct {
+    I2cProbeExchangeStage stage;
+    I2cProbeExchangeResult result;
+    I2cProbeHandshake readiness;
+} I2cProbeExchange;
+
 void i2c_probe_handshake_init(I2cProbeHandshake *handshake);
 I2cProbeResponseResult i2c_probe_handshake_evaluate(I2cProbeHandshake *handshake, uint8_t response);
 I2cProbeResponseResult i2c_probe_command_response_evaluate(uint8_t response);
@@ -106,5 +129,10 @@ void i2c_probe_transfer_sequence_init(I2cProbeTransferSequence *sequence, bool c
 bool i2c_probe_transfer_sequence_current(const I2cProbeTransferSequence *sequence,
                                          I2cProbeTransferStep *step);
 bool i2c_probe_transfer_sequence_accept(I2cProbeTransferSequence *sequence);
+void i2c_probe_exchange_init(I2cProbeExchange *exchange);
+bool i2c_probe_exchange_status(I2cProbeExchange *exchange, uint8_t response);
+bool i2c_probe_exchange_command_queued(I2cProbeExchange *exchange);
+bool i2c_probe_exchange_finalize(I2cProbeExchange *exchange, const I2cProbeFinalResponse *response,
+                                 bool checksum_enabled);
 
 #endif

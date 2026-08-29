@@ -275,6 +275,99 @@ static void test_sequences_checked_commands(void) {
     assert(step.command == I2C_PROBE_FINISH_CHECKED_TRANSFER);
 }
 
+static void test_completes_probe_exchange(void) {
+    static const uint8_t payload[] = {0x12, 0x34, 0x26};
+    I2cProbeFinalResponse response = {
+        .payload = payload,
+        .payload_length = sizeof(payload),
+        .expected_checksum = 0,
+    };
+    I2cProbeExchange exchange;
+
+    i2c_probe_exchange_init(&exchange);
+    assert(exchange.stage == I2C_PROBE_EXCHANGE_WAIT_READY);
+    assert(exchange.result == I2C_PROBE_EXCHANGE_PENDING);
+    assert(i2c_probe_exchange_status(&exchange, 0x07));
+    assert(exchange.stage == I2C_PROBE_EXCHANGE_QUEUE_COMMAND);
+    assert(i2c_probe_exchange_command_queued(&exchange));
+    assert(exchange.stage == I2C_PROBE_EXCHANGE_WAIT_ACCEPTANCE);
+    assert(i2c_probe_exchange_status(&exchange, 0x17));
+    assert(exchange.stage == I2C_PROBE_EXCHANGE_WAIT_ACCEPTANCE);
+    assert(i2c_probe_exchange_status(&exchange, 0x07));
+    assert(exchange.stage == I2C_PROBE_EXCHANGE_WAIT_RESPONSE);
+    assert(i2c_probe_exchange_finalize(&exchange, &response, true));
+    assert(exchange.stage == I2C_PROBE_EXCHANGE_COMPLETE);
+    assert(exchange.result == I2C_PROBE_EXCHANGE_SUCCEEDED);
+}
+
+static void test_limits_unexpected_ready_responses(void) {
+    I2cProbeExchange exchange;
+
+    i2c_probe_exchange_init(&exchange);
+    for (uint8_t attempt = 0; attempt < 3; ++attempt) {
+        assert(i2c_probe_exchange_status(&exchange, 0x41));
+        assert(exchange.stage == I2C_PROBE_EXCHANGE_WAIT_READY);
+    }
+    assert(i2c_probe_exchange_status(&exchange, 0x41));
+    assert(exchange.stage == I2C_PROBE_EXCHANGE_FAILED);
+    assert(exchange.result == I2C_PROBE_EXCHANGE_COMMAND_ERROR);
+
+    i2c_probe_exchange_init(&exchange);
+    for (uint8_t attempt = 0; attempt < 8; ++attempt) {
+        assert(i2c_probe_exchange_status(&exchange, 0x17));
+        assert(exchange.stage == I2C_PROBE_EXCHANGE_WAIT_READY);
+    }
+    assert(i2c_probe_exchange_status(&exchange, 0x07));
+    assert(exchange.readiness.retry_count == 0);
+}
+
+static void test_rejects_command_acceptance(void) {
+    I2cProbeExchange exchange;
+
+    i2c_probe_exchange_init(&exchange);
+    assert(i2c_probe_exchange_status(&exchange, 0x07));
+    assert(i2c_probe_exchange_command_queued(&exchange));
+    assert(i2c_probe_exchange_status(&exchange, 0x06));
+    assert(exchange.stage == I2C_PROBE_EXCHANGE_FAILED);
+    assert(exchange.result == I2C_PROBE_EXCHANGE_COMMAND_ERROR);
+}
+
+static void test_classifies_final_response_errors(void) {
+    static const uint8_t payload[] = {0x12, 0x34};
+    I2cProbeFinalResponse response = {
+        .payload = payload,
+        .payload_length = sizeof(payload),
+        .expected_checksum = 0,
+    };
+    I2cProbeExchange exchange;
+
+    i2c_probe_exchange_init(&exchange);
+    assert(i2c_probe_exchange_status(&exchange, 0x07));
+    assert(i2c_probe_exchange_command_queued(&exchange));
+    assert(i2c_probe_exchange_status(&exchange, 0x07));
+    assert(i2c_probe_exchange_finalize(&exchange, &response, true));
+    assert(exchange.result == I2C_PROBE_EXCHANGE_CHECKSUM_ERROR);
+
+    i2c_probe_exchange_init(&exchange);
+    assert(i2c_probe_exchange_status(&exchange, 0x07));
+    assert(i2c_probe_exchange_command_queued(&exchange));
+    assert(i2c_probe_exchange_status(&exchange, 0x07));
+    response.primary_status = 1;
+    assert(i2c_probe_exchange_finalize(&exchange, &response, false));
+    assert(exchange.result == I2C_PROBE_EXCHANGE_RESPONSE_ERROR);
+}
+
+static void test_rejects_out_of_order_exchange_events(void) {
+    I2cProbeExchange exchange;
+    I2cProbeFinalResponse response = {0};
+
+    i2c_probe_exchange_init(&exchange);
+    assert(!i2c_probe_exchange_command_queued(&exchange));
+    assert(!i2c_probe_exchange_finalize(&exchange, &response, false));
+    assert(i2c_probe_exchange_status(&exchange, 0x07));
+    assert(!i2c_probe_exchange_status(&exchange, 0x07));
+}
+
 int main(void) {
     test_accepts_handshake_and_clears_retry_count();
     test_busy_handshake_increments_without_rejection();
@@ -294,5 +387,10 @@ int main(void) {
     test_rejects_invalid_chunk_transfer();
     test_sequences_standard_transfer();
     test_sequences_checked_commands();
+    test_completes_probe_exchange();
+    test_limits_unexpected_ready_responses();
+    test_rejects_command_acceptance();
+    test_classifies_final_response_errors();
+    test_rejects_out_of_order_exchange_events();
     return 0;
 }
