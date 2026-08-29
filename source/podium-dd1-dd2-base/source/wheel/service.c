@@ -512,6 +512,8 @@ void wheel_service_run_adapter_commands(WheelService *service, CommandTransport 
             &service->adapter_commands, service->protocol.adapter_output.previous_display_report);
         service->protocol.adapter_output.display_update_pending = false;
     }
+    wheel_adapter_command_service_set_glyphs(&service->adapter_commands,
+                                             service->protocol.adapter_output.published_glyphs);
     wheel_adapter_command_service_run(&service->adapter_commands, &service->protocol.adapter,
                                       transport);
 }

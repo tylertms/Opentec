@@ -15,6 +15,7 @@ typedef enum {
     WHEEL_ADAPTER_COMMAND_BUTTONS_PENDING,
     WHEEL_ADAPTER_COMMAND_AXES_PENDING,
     WHEEL_ADAPTER_COMMAND_ROTARY_PENDING,
+    WHEEL_ADAPTER_COMMAND_GLYPHS_PENDING,
     WHEEL_ADAPTER_COMMAND_DISPLAY_PENDING,
 } WheelAdapterCommandPhase;
 
@@ -22,10 +23,12 @@ typedef enum {
 typedef struct {
     uint8_t probe[4];
     uint8_t status[2];
+    uint8_t glyphs[3];
     uint8_t display[3];
     uint8_t endpoint_index;
     uint8_t pending_inputs;
     WheelAdapterCommandPhase phase;
+    bool glyphs_pending;
     bool display_pending;
 } WheelAdapterCommandService;
 
@@ -33,6 +36,8 @@ void wheel_adapter_command_service_init(WheelAdapterCommandService *service,
                                         WheelAdapterInput *adapter);
 void wheel_adapter_command_service_queue_display(WheelAdapterCommandService *service,
                                                  uint16_t report);
+void wheel_adapter_command_service_set_glyphs(WheelAdapterCommandService *service,
+                                              const uint8_t glyphs[3]);
 void wheel_adapter_command_service_run(WheelAdapterCommandService *service,
                                        WheelAdapterInput *adapter, CommandTransport *transport);
 

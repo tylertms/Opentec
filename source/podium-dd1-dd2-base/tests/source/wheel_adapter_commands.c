@@ -141,6 +141,31 @@ static void writes_standard_endpoint_display_reports(void) {
     assert(transport.owner == 0);
 }
 
+static void writes_requested_glyphs(void) {
+    WheelAdapterCommandService service;
+    WheelAdapterInput adapter;
+    CommandTransport transport;
+    command_transport_init(&transport);
+    wheel_adapter_command_service_init(&service, &adapter);
+    complete_standard_probe(&service, &adapter, &transport);
+
+    const uint8_t glyphs[] = {0x11, 0x22, 0x33};
+    wheel_adapter_command_service_set_glyphs(&service, glyphs);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    assert(command_transport_request_sent(&transport));
+    const uint8_t status[] = {0x20, 0};
+    complete_read(&transport, status, sizeof(status));
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    assert(service.glyphs_pending);
+
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    const uint8_t expected[] = {2, 0x2a, 0x06, 0x11, 0x22, 0x33};
+    expect_request(&transport, expected, sizeof(expected));
+    assert(!service.glyphs_pending);
+    complete_write(&transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+}
+
 static void switches_endpoints_after_a_failed_transfer(void) {
     WheelAdapterCommandService service;
     WheelAdapterInput adapter;
@@ -180,6 +205,7 @@ int main(void) {
     polls_changed_adapter_inputs();
     applies_motion_direction_priority();
     writes_standard_endpoint_display_reports();
+    writes_requested_glyphs();
     switches_endpoints_after_a_failed_transfer();
     return 0;
 }

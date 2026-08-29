@@ -10,11 +10,13 @@ enum {
     WHEEL_ADAPTER_BUTTONS_OFFSET = 0x01,
     WHEEL_ADAPTER_AXES_OFFSET = 0x02,
     WHEEL_ADAPTER_ROTARY_OFFSET = 0x03,
+    WHEEL_ADAPTER_GLYPHS_OFFSET = 0x06,
     WHEEL_ADAPTER_PROBE_OFFSET = 0x0c,
     WHEEL_ADAPTER_DISPLAY_OFFSET = 0x0f,
     WHEEL_ADAPTER_BUTTONS_CHANGED = 0x01,
     WHEEL_ADAPTER_AXES_CHANGED = 0x02,
     WHEEL_ADAPTER_ROTARY_CHANGED = 0x04,
+    WHEEL_ADAPTER_GLYPHS_REQUESTED = 0x20,
     WHEEL_ADAPTER_INPUT_INCREMENT = 0x04,
     WHEEL_ADAPTER_INPUT_DECREMENT = 0x08,
     WHEEL_ADAPTER_SECURE_PROFILE = 0x80,
@@ -39,8 +41,8 @@ static uint8_t endpoint_target(const WheelAdapterCommandService *service) {
 /**
  * @brief Restarts adapter discovery on the alternate endpoint.
  *
- * Releases the local command owner, clears incomplete input work, marks the adapter disconnected,
- * and selects the other supported adapter mode.
+ * Releases the local command owner, clears incomplete input and output work, marks the adapter
+ * disconnected, and selects the other supported adapter mode.
  *
  * @param[in,out] service Adapter command service restarting discovery.
  * @param[in,out] adapter Logical adapter state to disconnect.
@@ -52,6 +54,8 @@ static void advance_endpoint(WheelAdapterCommandService *service, WheelAdapterIn
     service->endpoint_index =
         (uint8_t)((service->endpoint_index + 1u) % WHEEL_ADAPTER_ENDPOINT_COUNT);
     service->pending_inputs = 0;
+    service->glyphs_pending = false;
+    service->display_pending = false;
     service->phase = WHEEL_ADAPTER_COMMAND_DISCOVERING;
     adapter->mode = service->endpoint_index;
     adapter->profile_flags = 0;
@@ -61,9 +65,9 @@ static void advance_endpoint(WheelAdapterCommandService *service, WheelAdapterIn
 /**
  * @brief Applies the latest adapter input-status response.
  *
- * Retains the profile flags, coalesces changed button, axis, and rotary fields for later reads,
- * and records one signed primary motion step with increment taking priority over decrement.
- * Secure-profile status is retained without scheduling the normal component reads.
+ * Retains the profile flags, coalesces changed button, axis, rotary, and glyph work, and records
+ * one signed primary motion step with increment taking priority over decrement. Secure-profile
+ * status is retained without scheduling the normal component transfers.
  *
  * @param[in,out] service Adapter command service containing the received status bytes.
  * @param[in,out] adapter Logical adapter state receiving flags and motion.
@@ -74,6 +78,7 @@ static void apply_status(WheelAdapterCommandService *service, WheelAdapterInput 
         service->pending_inputs |=
             adapter->profile_flags & (WHEEL_ADAPTER_BUTTONS_CHANGED | WHEEL_ADAPTER_AXES_CHANGED |
                                       WHEEL_ADAPTER_ROTARY_CHANGED);
+        service->glyphs_pending |= (adapter->profile_flags & WHEEL_ADAPTER_GLYPHS_REQUESTED) != 0;
     }
     if ((service->status[1] & WHEEL_ADAPTER_INPUT_INCREMENT) != 0) {
         adapter->primary_delta = (int8_t)((uint8_t)adapter->primary_delta + 1u);
@@ -126,6 +131,7 @@ static bool finish_request(WheelAdapterCommandService *service, WheelAdapterInpu
     case WHEEL_ADAPTER_COMMAND_ROTARY_PENDING:
         service->pending_inputs &= (uint8_t)~WHEEL_ADAPTER_ROTARY_CHANGED;
         break;
+    case WHEEL_ADAPTER_COMMAND_GLYPHS_PENDING:
     case WHEEL_ADAPTER_COMMAND_DISPLAY_PENDING:
     case WHEEL_ADAPTER_COMMAND_DISCOVERING:
     case WHEEL_ADAPTER_COMMAND_READY:
@@ -140,8 +146,9 @@ static bool finish_request(WheelAdapterCommandService *service, WheelAdapterInpu
 /**
  * @brief Queues the next adapter command by priority.
  *
- * Probes an undiscovered endpoint first, then reads changed buttons, axes, or selectors, writes a
- * pending standard-endpoint display report, and otherwise requests the two-byte input status.
+ * Probes an undiscovered endpoint first, then reads changed buttons, axes, or selectors, writes
+ * requested glyphs or a pending standard-endpoint display report, and otherwise requests the
+ * two-byte input status.
  *
  * @param[in,out] service Adapter command service selecting work.
  * @param[in,out] adapter Logical adapter state receiving read results.
@@ -189,6 +196,16 @@ static CommandTransportResult queue_request(WheelAdapterCommandService *service,
             adapter->rotary_positions, endpoint_rotary_lengths[service->endpoint_index]);
         if (result == COMMAND_TRANSPORT_COMPLETE) {
             service->phase = WHEEL_ADAPTER_COMMAND_ROTARY_PENDING;
+        }
+        return result;
+    }
+    if (service->glyphs_pending) {
+        CommandTransportResult result = command_transport_queue_write_to(
+            transport, WHEEL_ADAPTER_COMMAND_OWNER, target, WHEEL_ADAPTER_GLYPHS_OFFSET,
+            service->glyphs, sizeof(service->glyphs));
+        if (result == COMMAND_TRANSPORT_COMPLETE) {
+            service->glyphs_pending = false;
+            service->phase = WHEEL_ADAPTER_COMMAND_GLYPHS_PENDING;
         }
         return result;
     }
@@ -247,6 +264,25 @@ void wheel_adapter_command_service_queue_display(WheelAdapterCommandService *ser
     service->display[1] = (uint8_t)(report >> 8);
     service->display[2] = 0;
     service->display_pending = true;
+}
+
+/**
+ * @brief Updates the glyph response available to the adapter.
+ *
+ * Retains the three glyph bytes most recently published by the adapter-oriented packet response.
+ * A status request controls when the retained bytes are written to the adapter.
+ *
+ * @param[in,out] service Adapter command service retaining the glyphs.
+ * @param[in] glyphs Three published display glyph bytes.
+ */
+void wheel_adapter_command_service_set_glyphs(WheelAdapterCommandService *service,
+                                              const uint8_t glyphs[3]) {
+    if (service == 0 || glyphs == 0) {
+        return;
+    }
+    for (uint8_t index = 0; index < sizeof(service->glyphs); index++) {
+        service->glyphs[index] = glyphs[index];
+    }
 }
 
 /**
