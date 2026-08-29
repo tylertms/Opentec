@@ -47,11 +47,10 @@ static void test_rejects_invalid_service_target_and_request(void) {
     wheel_updater_command_service_run(NULL, 0);
 }
 
-static void test_maps_all_remote_targets(void) {
+static void test_maps_command_targets(void) {
     static const WheelUpdaterTarget targets[] = {
         WHEEL_UPDATER_TARGET_USB,
         WHEEL_UPDATER_TARGET_PROTOCOL,
-        WHEEL_UPDATER_TARGET_AUXILIARY,
     };
     const uint8_t request[] = {0x5a, 0xa1};
     for (uint8_t index = 0; index < sizeof(targets) / sizeof(targets[0]); index++) {
@@ -115,17 +114,17 @@ static void test_exchanges_acknowledgement_response(void) {
     const uint8_t request[] = {0x5a, 0xb0, 0x33};
     command_transport_init(&transport);
     wheel_updater_command_service_init(&service, &transport);
-    assert(wheel_updater_command_service_start(&service, WHEEL_UPDATER_TARGET_AUXILIARY, request,
+    assert(wheel_updater_command_service_start(&service, WHEEL_UPDATER_TARGET_PROTOCOL, request,
                                                sizeof(request)));
 
     wheel_updater_command_service_run(&service, 100);
-    const uint8_t expected_write[] = {2, 0x40, 0, 0x5a, 0xb0, 0x33};
+    const uint8_t expected_write[] = {2, 0x24, 0, 0x5a, 0xb0, 0x33};
     submit(&transport, expected_write, sizeof(expected_write));
     complete_write(&transport, true);
     wheel_updater_command_service_run(&service, 100);
     wheel_updater_command_service_run(&service, 101);
     wheel_updater_command_service_run(&service, 102);
-    const uint8_t expected_read[] = {2, 0x41, 0, 1, 0};
+    const uint8_t expected_read[] = {2, 0x25, 0, 1, 0};
     submit(&transport, expected_read, sizeof(expected_read));
 
     const uint8_t marker[] = {0x5a};
@@ -148,7 +147,7 @@ static void test_exchanges_acknowledgement_response(void) {
 
 int main(void) {
     test_rejects_invalid_service_target_and_request();
-    test_maps_all_remote_targets();
+    test_maps_command_targets();
     test_retries_rejected_write();
     test_waits_for_other_command_owner();
     test_exchanges_acknowledgement_response();

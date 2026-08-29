@@ -10,6 +10,7 @@
 #include "usb/operating_mode_command.h"
 #include "usb/updater_identity.h"
 #include "usb/updater_protocol.h"
+#include "wheel/updater_aux_service.h"
 #include "wheel/updater_command_service.h"
 #include "wheel/updater_direct_service.h"
 
@@ -23,10 +24,21 @@ enum {
 static const uint8_t probe[USB_UPDATER_PROBE_SIZE] = {0x5a, 0xa7};
 
 /**
+ * @brief Reports whether a runtime mode uses the auxiliary bus.
+ *
+ * Selects the direct auxiliary updater endpoint for standard and recovery auxiliary modes.
+ *
+ * @param[in] mode Runtime updater route.
+ * @return True for either auxiliary mode; otherwise false.
+ */
+static bool auxiliary_route(UsbRuntimeMode mode) {
+    return mode == USB_RUNTIME_MODE_AUXILIARY || mode == USB_RUNTIME_MODE_AUXILIARY_RECOVERY;
+}
+
+/**
  * @brief Reports whether a runtime mode uses the raw attached-wheel link.
  *
- * Selects raw UART transport only for status bridge mode. Every other supported updater route
- * uses a shared command target.
+ * Selects raw UART transport only for status bridge mode.
  *
  * @param[in] mode Runtime updater route.
  * @return True for the raw status bridge; otherwise false.
@@ -36,16 +48,13 @@ static bool direct_route(UsbRuntimeMode mode) { return mode == USB_RUNTIME_MODE_
 /**
  * @brief Selects the shared command target for an updater runtime mode.
  *
- * Routes auxiliary modes to target 0x20, protocol bridge mode to target 0x12, and USB bridge and
- * protocol recovery modes to target 0x11.
+ * Routes protocol bridge mode to target 0x12 and USB bridge and protocol recovery modes to target
+ * 0x11.
  *
  * @param[in] mode Runtime updater route.
  * @return Shared command target for the selected route.
  */
 static WheelUpdaterTarget command_target(UsbRuntimeMode mode) {
-    if (mode == USB_RUNTIME_MODE_AUXILIARY || mode == USB_RUNTIME_MODE_AUXILIARY_RECOVERY) {
-        return WHEEL_UPDATER_TARGET_AUXILIARY;
-    }
     return mode == USB_RUNTIME_MODE_PROTOCOL_BRIDGE ? WHEEL_UPDATER_TARGET_PROTOCOL
                                                     : WHEEL_UPDATER_TARGET_USB;
 }
@@ -59,16 +68,19 @@ static WheelUpdaterTarget command_target(UsbRuntimeMode mode) {
  * @return True while its transport owns an exchange; otherwise false.
  */
 static bool exchange_active(const UsbUpdaterService *service) {
-    return direct_route(service->runtime_mode)
-               ? wheel_updater_direct_service_active(&service->route.direct)
-               : wheel_updater_command_service_active(&service->route.command);
+    if (auxiliary_route(service->runtime_mode)) {
+        return wheel_updater_aux_service_active(&service->route.auxiliary);
+    }
+    if (direct_route(service->runtime_mode)) {
+        return wheel_updater_direct_service_active(&service->route.direct);
+    }
+    return wheel_updater_command_service_active(&service->route.command);
 }
 
 /**
  * @brief Starts one request on the selected updater route.
  *
- * Dispatches to raw UART for status bridge mode or the mode-specific shared command target for all
- * other supported routes.
+ * Dispatches to the auxiliary bus, raw UART, or mode-specific shared command target.
  *
  * @param[in,out] service Idle updater session accepting the request.
  * @param[in] request Marker-prefixed updater request.
@@ -76,23 +88,28 @@ static bool exchange_active(const UsbUpdaterService *service) {
  * @return True when the selected route accepted the request; otherwise false.
  */
 static bool start_exchange(UsbUpdaterService *service, const uint8_t *request, uint8_t length) {
-    return direct_route(service->runtime_mode)
-               ? wheel_updater_direct_service_start(&service->route.direct, request, length)
-               : wheel_updater_command_service_start(&service->route.command,
-                                                     command_target(service->runtime_mode), request,
-                                                     length);
+    if (auxiliary_route(service->runtime_mode)) {
+        return wheel_updater_aux_service_start(&service->route.auxiliary, request, length);
+    }
+    if (direct_route(service->runtime_mode)) {
+        return wheel_updater_direct_service_start(&service->route.direct, request, length);
+    }
+    return wheel_updater_command_service_start(
+        &service->route.command, command_target(service->runtime_mode), request, length);
 }
 
 /**
  * @brief Advances the selected updater transport.
  *
- * Services only the raw or shared-command adapter initialized for the runtime route.
+ * Services only the auxiliary-bus, raw, or shared-command adapter initialized for the route.
  *
  * @param[in,out] service Active updater session.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 static void run_exchange(UsbUpdaterService *service, uint32_t now_ms) {
-    if (direct_route(service->runtime_mode)) {
+    if (auxiliary_route(service->runtime_mode)) {
+        wheel_updater_aux_service_run(&service->route.auxiliary, now_ms);
+    } else if (direct_route(service->runtime_mode)) {
         wheel_updater_direct_service_run(&service->route.direct, now_ms);
     } else {
         wheel_updater_command_service_run(&service->route.command, now_ms);
@@ -111,11 +128,13 @@ static void run_exchange(UsbUpdaterService *service, uint32_t now_ms) {
  */
 static bool take_exchange_response(UsbUpdaterService *service, const uint8_t **response,
                                    uint8_t *length) {
-    return direct_route(service->runtime_mode)
-               ? wheel_updater_direct_service_take_response(&service->route.direct, response,
-                                                            length)
-               : wheel_updater_command_service_take_response(&service->route.command, response,
-                                                             length);
+    if (auxiliary_route(service->runtime_mode)) {
+        return wheel_updater_aux_service_take_response(&service->route.auxiliary, response, length);
+    }
+    if (direct_route(service->runtime_mode)) {
+        return wheel_updater_direct_service_take_response(&service->route.direct, response, length);
+    }
+    return wheel_updater_command_service_take_response(&service->route.command, response, length);
 }
 
 /**
@@ -237,7 +256,7 @@ void usb_updater_service_init(UsbUpdaterService *service, CommandTransport *tran
  * @brief Selects and initializes an updater transport route.
  *
  * Accepts runtime modes one through six while idle, clears prior probe and host-response state,
- * and initializes raw UART or the matching shared command adapter.
+ * and initializes the auxiliary bus, raw UART, or matching shared command adapter.
  *
  * @param[in,out] service Idle updater service selecting a route.
  * @param[in] mode Requested updater runtime mode.
@@ -246,7 +265,7 @@ void usb_updater_service_init(UsbUpdaterService *service, CommandTransport *tran
 bool usb_updater_service_select_mode(UsbUpdaterService *service, UsbRuntimeMode mode) {
     if (service == NULL || mode < USB_RUNTIME_MODE_AUXILIARY ||
         mode > USB_RUNTIME_MODE_PROTOCOL_RECOVERY || exchange_active(service) ||
-        (!direct_route(mode) && service->command_transport == NULL)) {
+        (!auxiliary_route(mode) && !direct_route(mode) && service->command_transport == NULL)) {
         return false;
     }
     service->runtime_mode = mode;
@@ -256,12 +275,40 @@ bool usb_updater_service_select_mode(UsbUpdaterService *service, UsbRuntimeMode 
     service->exchange_is_probe = false;
     service->usb_active = false;
     service->reset_requested = false;
-    if (direct_route(mode)) {
+    if (auxiliary_route(mode)) {
+        wheel_updater_aux_service_init(&service->route.auxiliary);
+    } else if (direct_route(mode)) {
         wheel_updater_direct_service_init(&service->route.direct);
     } else {
         wheel_updater_command_service_init(&service->route.command, service->command_transport);
     }
     return true;
+}
+
+/**
+ * @brief Requests the prerequisite auxiliary shutdown handshake.
+ *
+ * Forwards the request only while an auxiliary updater route is selected.
+ *
+ * @param[in,out] service Configured updater service receiving the request.
+ */
+void usb_updater_service_request_auxiliary_handshake(UsbUpdaterService *service) {
+    if (service != NULL && auxiliary_route(service->runtime_mode)) {
+        wheel_updater_aux_service_request_handshake(&service->route.auxiliary);
+    }
+}
+
+/**
+ * @brief Reports whether the selected auxiliary route completed its shutdown handshake.
+ *
+ * Rejects non-auxiliary and null services without inspecting inactive union storage.
+ *
+ * @param[in] service Configured updater service to inspect.
+ * @return True after the auxiliary handshake succeeds; otherwise false.
+ */
+bool usb_updater_service_auxiliary_handshake_complete(const UsbUpdaterService *service) {
+    return service != NULL && auxiliary_route(service->runtime_mode) &&
+           wheel_updater_aux_service_handshake_complete(&service->route.auxiliary);
 }
 
 /**

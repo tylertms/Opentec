@@ -188,6 +188,7 @@ wheel_service_sources = files('source/wheel/service.c')
 wheel_status_service_sources = files('source/wheel/status_service.c')
 wheel_transfer_service_sources = files('source/wheel/transfer_service.c')
 wheel_updater_bridge_sources = files('source/wheel/updater_bridge.c')
+wheel_updater_aux_service_sources = files('source/wheel/updater_aux_service.c')
 wheel_updater_command_service_sources = files('source/wheel/updater_command_service.c')
 wheel_updater_direct_service_sources = files('source/wheel/updater_direct_service.c')
 wheel_vibration_sources = files('source/wheel/vibration.c')
@@ -429,6 +430,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'wheel-status-service': 'source/wheel/status_service.c',
     'wheel-transfer-service': 'source/wheel/transfer_service.c',
     'wheel-updater-bridge': 'source/wheel/updater_bridge.c',
+    'wheel-updater-aux-service': 'source/wheel/updater_aux_service.c',
     'wheel-updater-command-service': 'source/wheel/updater_command_service.c',
     'wheel-updater-direct-service': 'source/wheel/updater_direct_service.c',
     'wheel-vibration': 'source/wheel/vibration.c',
@@ -1085,6 +1087,7 @@ if not meson.is_cross_build()
     usb_updater_service_sources,
     usb_updater_protocol_sources,
     usb_updater_identity_sources,
+    wheel_updater_aux_service_sources,
     wheel_updater_command_service_sources,
     wheel_updater_direct_service_sources,
     wheel_updater_bridge_sources,
@@ -2350,6 +2353,16 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_updater_aux_service_test = executable(
+    'base-wheel-updater-aux-service-test',
+    'tests/source/wheel_updater_aux_service.c',
+    wheel_updater_aux_service_sources,
+    wheel_updater_bridge_sources,
+    platform_time_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_updater_direct_service_test = executable(
     'base-wheel-updater-direct-service-test',
     'tests/source/wheel_updater_direct_service.c',
@@ -2967,6 +2980,11 @@ if not meson.is_cross_build()
   test(
     'base-wheel-updater-command-service',
     wheel_updater_command_service_test,
+    suite: ['base', 'wheel', 'usb', 'update', 'transport'],
+  )
+  test(
+    'base-wheel-updater-aux-service',
+    wheel_updater_aux_service_test,
     suite: ['base', 'wheel', 'usb', 'update', 'transport'],
   )
   test(

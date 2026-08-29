@@ -10,6 +10,7 @@
 #include "usb/operating_mode_command.h"
 #include "usb/updater_identity.h"
 #include "usb/updater_protocol.h"
+#include "wheel/updater_aux_service.h"
 #include "wheel/updater_command_service.h"
 #include "wheel/updater_direct_service.h"
 
@@ -31,6 +32,7 @@ typedef struct {
 
 /** @brief Mutually exclusive updater transport selected by the runtime route. */
 typedef union {
+    WheelUpdaterAuxService auxiliary;
     WheelUpdaterCommandService command;
     WheelUpdaterDirectService direct;
 } UsbUpdaterTransport;
@@ -58,6 +60,8 @@ typedef struct {
 
 void usb_updater_service_init(UsbUpdaterService *service, CommandTransport *transport);
 bool usb_updater_service_select_mode(UsbUpdaterService *service, UsbRuntimeMode mode);
+void usb_updater_service_request_auxiliary_handshake(UsbUpdaterService *service);
+bool usb_updater_service_auxiliary_handshake_complete(const UsbUpdaterService *service);
 bool usb_updater_service_start_probe(UsbUpdaterService *service);
 void usb_updater_service_set_usb_active(UsbUpdaterService *service, bool active);
 void usb_updater_service_run(UsbUpdaterService *service, const UsbUpdaterServiceInput *input);

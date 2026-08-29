@@ -1530,14 +1530,17 @@ static RuntimeBridgeTransferStatus runtime_bridge_transfer_status(UsbUpdaterProb
 /**
  * @brief Applies runtime bridge operations to clean platform services.
  *
- * Marks the status handshake, detaches USB during its settling interval, selects the raw updater
- * link, starts the common route probe, and activates the updater descriptor and request service.
- * Transfer timer actions require no separate operation because the selected transport owns its
- * timing source.
+ * Requests the auxiliary shutdown handshake, marks the status handshake, detaches USB during its
+ * settling interval, selects the updater link, starts the common route probe, and activates the
+ * updater descriptor and request service. Transfer timer actions require no separate operation
+ * because the selected transport owns its timing source.
  *
  * @param[in] actions Independent runtime bridge action flags.
  */
 static void apply_runtime_bridge_actions(uint16_t actions) {
+    if ((actions & RUNTIME_BRIDGE_ACTION_REQUEST_AUXILIARY_HANDSHAKE) != 0) {
+        usb_updater_service_request_auxiliary_handshake(&usb_updater_service);
+    }
     if ((actions & RUNTIME_BRIDGE_ACTION_MARK_WHEEL_STATUS) != 0) {
         wheel_status_service_mark_next_request(&wheel_status_service);
     }
@@ -1562,22 +1565,28 @@ static void apply_runtime_bridge_actions(uint16_t actions) {
 /**
  * @brief Starts a supported attached-wheel updater transition.
  *
- * Decodes runtime operating-mode commands against the active host and wheel modes, accepts the
- * status, USB, or protocol bridge route, initializes its updater service, disables force output,
- * and applies the transition's initial action.
+ * Decodes runtime operating-mode commands against the active host, wheel, and motor modes, accepts
+ * auxiliary and attached-wheel bridge routes, persists settings when required, initializes the
+ * selected updater service, disables force output, and applies the transition's initial action.
  *
  * @param[in] command Decoded operating-mode command.
  * @return True when a supported updater transition started; otherwise false.
  */
 static bool start_runtime_bridge(const UsbOperatingModeCommand *command) {
-    if (!usb_operating_mode_command_decode_runtime(command, (uint8_t)usb_device_operating_mode(),
-                                                   wheel_service_mode(&wheel_service), 0,
-                                                   &usb_runtime_transition) ||
-        (usb_runtime_transition.mode != USB_RUNTIME_MODE_STATUS_BRIDGE &&
+    if (!usb_operating_mode_command_decode_runtime(
+            command, (uint8_t)usb_device_operating_mode(), wheel_service_mode(&wheel_service),
+            motor_identity_runtime_state(motor_probe_identity(&motor_probe)),
+            &usb_runtime_transition) ||
+        (usb_runtime_transition.mode != USB_RUNTIME_MODE_AUXILIARY &&
+         usb_runtime_transition.mode != USB_RUNTIME_MODE_AUXILIARY_RECOVERY &&
+         usb_runtime_transition.mode != USB_RUNTIME_MODE_STATUS_BRIDGE &&
          usb_runtime_transition.mode != USB_RUNTIME_MODE_USB_BRIDGE &&
          usb_runtime_transition.mode != USB_RUNTIME_MODE_PROTOCOL_BRIDGE) ||
         !usb_updater_service_select_mode(&usb_updater_service, usb_runtime_transition.mode)) {
         return false;
+    }
+    if (usb_runtime_transition.save_settings) {
+        save_base_settings(platform_time_ms());
     }
     if (usb_runtime_transition.mode == USB_RUNTIME_MODE_USB_BRIDGE) {
         wheel_usb_bridge_gate_init(&wheel_usb_bridge_gate);
@@ -1594,8 +1603,9 @@ static bool start_runtime_bridge(const UsbOperatingModeCommand *command) {
  * @brief Advances an active updater transition and service.
  *
  * Keeps the motor link on disabled zero-force frames, finishes any in-flight wheel exchange,
- * advances direct or command-routed updater probes, handles the protocol fallback callback,
- * services updater USB after activation, and applies guarded updater reset requests.
+ * advances auxiliary-bus, raw-link, or command-routed updater probes, handles the protocol
+ * fallback callback, services updater USB after activation, and applies guarded updater reset
+ * requests.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  * @return True while runtime bridge mode owns the main loop; otherwise false.
@@ -1605,8 +1615,10 @@ static bool service_runtime_bridge(uint32_t now_ms) {
         return false;
     }
     service_motor_link();
-    bool command_route = runtime_bridge.mode != USB_RUNTIME_MODE_STATUS_BRIDGE;
-    if (runtime_bridge.phase == RUNTIME_BRIDGE_WAIT_WHEEL_STATUS || command_route) {
+    bool serial_route = runtime_bridge.mode == USB_RUNTIME_MODE_USB_BRIDGE ||
+                        runtime_bridge.mode == USB_RUNTIME_MODE_PROTOCOL_BRIDGE ||
+                        runtime_bridge.mode == USB_RUNTIME_MODE_PROTOCOL_RECOVERY;
+    if (runtime_bridge.phase == RUNTIME_BRIDGE_WAIT_WHEEL_STATUS || serial_route) {
         serial_service_run(&serial_service, now_ms);
         (void)motor_command_serial_receive(&command_transport, &serial_service);
         wheel_service_run(&wheel_service, now_ms, false);
@@ -1641,12 +1653,14 @@ static bool service_runtime_bridge(uint32_t now_ms) {
             runtime_bridge_transfer_status(usb_updater_service_probe_status(&usb_updater_service)),
         .marked_wheel_status_received =
             wheel_status_service_take_marked_response(&wheel_status_service),
+        .auxiliary_handshake_complete =
+            usb_updater_service_auxiliary_handshake_complete(&usb_updater_service),
         .protocol_command_acknowledged =
             wheel_protocol_bridge_service_take_acknowledgement(&wheel_protocol_bridge_service),
         .usb_bridge_ready = usb_bridge_gate_result == WHEEL_USB_BRIDGE_GATE_RELEASE,
     };
     apply_runtime_bridge_actions(runtime_bridge_step(&runtime_bridge, &runtime_bridge_input));
-    if (command_route && serial_service.status == SERIAL_SERVICE_IDLE) {
+    if (serial_route && serial_service.status == SERIAL_SERVICE_IDLE) {
         if (runtime_bridge.phase == RUNTIME_BRIDGE_WAIT_USB_READY &&
             command_transport.phase == COMMAND_TRANSPORT_IDLE) {
             (void)wheel_service_start_protocol_exchange(&wheel_service, now_ms);

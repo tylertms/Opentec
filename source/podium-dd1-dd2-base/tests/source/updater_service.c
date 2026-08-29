@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "platform/aux_bus.h"
 #include "transfer/command.h"
 #include "usb/device.h"
 #include "usb/operating_mode_command.h"
@@ -19,6 +20,35 @@ static uint8_t transmitted[WHEEL_UPDATER_BRIDGE_MAX_REQUEST_SIZE];
 static uint8_t transmitted_length;
 static const uint8_t *direct_response;
 static uint8_t direct_response_length;
+static PlatformAuxBusStatus aux_bus_status;
+static uint8_t aux_address;
+static uint16_t aux_register;
+static uint8_t aux_data[WHEEL_UPDATER_BRIDGE_MAX_REQUEST_SIZE];
+static uint16_t aux_length;
+
+bool platform_aux_bus_start_write(uint8_t address, uint16_t register_address, const uint8_t *data,
+                                  uint16_t length) {
+    aux_address = address;
+    aux_register = register_address;
+    memcpy(aux_data, data, length);
+    aux_length = length;
+    aux_bus_status = PLATFORM_AUX_BUS_BUSY;
+    return true;
+}
+
+bool platform_aux_bus_start_read(uint8_t address, uint16_t register_address, uint8_t *data,
+                                 uint16_t length) {
+    (void)address;
+    (void)register_address;
+    (void)data;
+    (void)length;
+    aux_bus_status = PLATFORM_AUX_BUS_BUSY;
+    return true;
+}
+
+PlatformAuxBusStatus platform_aux_bus_status(void) { return aux_bus_status; }
+
+void platform_aux_bus_clear(void) { aux_bus_status = PLATFORM_AUX_BUS_IDLE; }
 
 bool usb_device_take_updater_packet(UsbDeviceUpdaterPacket *packet) {
     if (!host_packet_ready || packet == NULL) {
@@ -67,6 +97,10 @@ static void reset_fakes(void) {
     transmitted_length = 0;
     direct_response = NULL;
     direct_response_length = 0;
+    aux_bus_status = PLATFORM_AUX_BUS_IDLE;
+    aux_address = 0;
+    aux_register = 0;
+    aux_length = 0;
 }
 
 static void queue_host_packet(const uint8_t *data, uint8_t length) {
@@ -98,6 +132,7 @@ static void test_selects_supported_routes(void) {
     }
 
     usb_updater_service_init(&service, NULL);
+    assert(usb_updater_service_select_mode(&service, USB_RUNTIME_MODE_AUXILIARY));
     assert(usb_updater_service_select_mode(&service, USB_RUNTIME_MODE_STATUS_BRIDGE));
     assert(!usb_updater_service_select_mode(&service, USB_RUNTIME_MODE_USB_BRIDGE));
 }
@@ -126,6 +161,36 @@ static void test_services_device_information_on_strict_cadence(void) {
     static const uint8_t expected[] = {0xf8, 0x01, 'p', 'd', 'q', 'r'};
     assert(queued_response_length == sizeof(expected));
     assert(memcmp(queued_response, expected, sizeof(expected)) == 0);
+}
+
+static void test_routes_auxiliary_handshake_and_probe(void) {
+    UsbUpdaterService service;
+    reset_fakes();
+    usb_updater_service_init(&service, NULL);
+    assert(usb_updater_service_select_mode(&service, USB_RUNTIME_MODE_AUXILIARY));
+
+    usb_updater_service_request_auxiliary_handshake(&service);
+    assert(!usb_updater_service_auxiliary_handshake_complete(&service));
+    UsbUpdaterServiceInput input = input_at(0);
+    usb_updater_service_run(&service, &input);
+    const uint8_t expected_handshake[] = {0xfa, 0x05};
+    assert(aux_address == 0x78);
+    assert(aux_register == 3);
+    assert(aux_length == sizeof(expected_handshake));
+    assert(memcmp(aux_data, expected_handshake, sizeof(expected_handshake)) == 0);
+
+    aux_bus_status = PLATFORM_AUX_BUS_SUCCEEDED;
+    input.now_ms = 1;
+    usb_updater_service_run(&service, &input);
+    assert(usb_updater_service_auxiliary_handshake_complete(&service));
+    assert(usb_updater_service_start_probe(&service));
+    input.now_ms = 2;
+    usb_updater_service_run(&service, &input);
+    const uint8_t expected_probe[] = {0x5a, 0xa7};
+    assert(aux_address == 0x10);
+    assert(aux_register == 0);
+    assert(aux_length == sizeof(expected_probe));
+    assert(memcmp(aux_data, expected_probe, sizeof(expected_probe)) == 0);
 }
 
 static void test_latches_guarded_reset(void) {
@@ -222,6 +287,7 @@ static void test_routes_probe_to_protocol_target(void) {
 int main(void) {
     test_selects_supported_routes();
     test_services_device_information_on_strict_cadence();
+    test_routes_auxiliary_handshake_and_probe();
     test_latches_guarded_reset();
     test_probes_direct_route_and_selects_identity();
     test_forwards_host_bridge_response();

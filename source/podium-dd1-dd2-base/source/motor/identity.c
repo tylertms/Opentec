@@ -69,6 +69,19 @@ uint8_t motor_identity_input_transfer_code(const MotorIdentity *identity) {
 }
 
 /**
+ * @brief Selects the motor-controller state used by runtime transition commands.
+ *
+ * Maps unavailable, legacy, standard, and position-capable controllers to states zero through
+ * three respectively.
+ *
+ * @param[in] identity Decoded motor-controller identity, or null when unavailable.
+ * @return Runtime motor-controller state code.
+ */
+uint8_t motor_identity_runtime_state(const MotorIdentity *identity) {
+    return identity == 0 ? 0 : (uint8_t)identity->protocol + 1;
+}
+
+/**
  * @brief Selects the absolute-position modulus for a motor controller.
  *
  * Position-capable controllers whose model has bit one clear use 23,679 counts. Controllers with

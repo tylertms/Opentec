@@ -11,7 +11,6 @@
 typedef enum {
     WHEEL_UPDATER_TARGET_USB = 0x11,
     WHEEL_UPDATER_TARGET_PROTOCOL = 0x12,
-    WHEEL_UPDATER_TARGET_AUXILIARY = 0x20,
 } WheelUpdaterTarget;
 
 /** @brief Shared-command-transport adapter for the wheel updater protocol. */
