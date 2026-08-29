@@ -94,6 +94,16 @@ void ADC0_IRQHandler(void) { motor_adc_interrupt_dispatch(); }
 void ADC1_IRQHandler(void) { motor_adc_interrupt_dispatch(); }
 
 /**
+ * @brief Clears both official PDB ADC-channel status banks and resumes triggering.
+ */
+void PDB0_PDB1_IRQHandler(void) {
+    PDB_Enable(PDB0, false);
+    PDB_ClearADCPreTriggerStatusFlags(PDB0, kPDB_ADCTriggerChannel0, UINT32_C(0x00ff00ff));
+    PDB_ClearADCPreTriggerStatusFlags(PDB0, kPDB_ADCTriggerChannel1, UINT32_C(0x00ff00ff));
+    PDB_Enable(PDB0, true);
+}
+
+/**
  * @brief Configures the PDB timing used to trigger both ADC modules.
  */
 void motor_adc_trigger_initialize(void) {
@@ -109,8 +119,9 @@ void motor_adc_trigger_initialize(void) {
 
     PDB_GetDefaultConfig(&config);
     config.triggerInputSource = kPDB_TriggerInput8;
+    config.enableContinuousMode = true;
     PDB_Init(PDB0, &config);
-    PDB_EnableInterrupts(PDB0, kPDB_DelayInterruptEnable | kPDB_SequenceErrorInterruptEnable);
+    PDB_EnableInterrupts(PDB0, kPDB_DelayInterruptEnable);
     PDB_DoLoadValues(PDB0);
 }
 
