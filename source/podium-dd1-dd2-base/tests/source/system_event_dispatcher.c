@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "system/event_dispatcher.h"
@@ -24,6 +25,29 @@ static void test_dispatches_torque_notice_actions(void) {
            SYSTEM_EVENT_ACTION_DISMISS_TORQUE_DISABLED);
     assert(queue.pending_code == 0);
     assert(queue.last_code == 0x1b);
+}
+
+static void test_dispatches_motor_notice_actions(void) {
+    static const struct {
+        uint8_t code;
+        SystemEventAction action;
+    } cases[] = {
+        {3, SYSTEM_EVENT_ACTION_SHOW_POSITION_SENSOR_TEST_STARTED},
+        {4, SYSTEM_EVENT_ACTION_SHOW_POSITION_SENSOR_TEST_FAILED},
+        {5, SYSTEM_EVENT_ACTION_SHOW_TORQUE_REDUCED},
+    };
+
+    for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {
+        SystemEventDispatcher dispatcher;
+        SystemEventQueue queue;
+        system_event_dispatcher_init(&dispatcher);
+        system_event_queue_init(&queue);
+        assert(system_event_queue_try_push(&queue, cases[index].code));
+
+        assert(system_event_dispatcher_update(&dispatcher, &queue, 0) == cases[index].action);
+        assert(queue.pending_code == 0);
+        assert(queue.last_code == cases[index].code);
+    }
 }
 
 static void test_leaves_unowned_events_pending(void) {
@@ -56,6 +80,7 @@ static void test_preserves_cadence_across_counter_wrap(void) {
 
 int main(void) {
     test_dispatches_torque_notice_actions();
+    test_dispatches_motor_notice_actions();
     test_leaves_unowned_events_pending();
     test_preserves_cadence_across_counter_wrap();
     return 0;

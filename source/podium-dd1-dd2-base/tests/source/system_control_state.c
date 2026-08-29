@@ -55,6 +55,15 @@ static void test_retains_operating_feature_state(void) {
     assert(!state.operating_feature_enabled);
 }
 
+static void test_retains_active_event_code(void) {
+    SystemControlState state;
+    system_control_state_init(&state);
+
+    system_control_state_set_active_event(&state, 5);
+
+    assert(state.active_event_code == 5);
+}
+
 static void test_takes_each_wheel_response_once(void) {
     SystemControlState state;
     RemoteTuningResponse response;
@@ -119,6 +128,7 @@ int main(void) {
     test_takes_each_status_once();
     test_normalizes_mode_eighteen_status_range();
     test_retains_operating_feature_state();
+    test_retains_active_event_code();
     test_takes_each_wheel_response_once();
     test_applies_operating_status_by_wheel_mode();
     test_applies_extended_torque_transitions();

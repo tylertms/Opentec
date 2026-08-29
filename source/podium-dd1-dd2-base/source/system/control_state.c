@@ -50,6 +50,18 @@ void system_control_state_set_status(SystemControlState *state, uint8_t wheel_mo
 }
 
 /**
+ * @brief Stores the active system event code.
+ *
+ * Retains the most recently accepted event for status and attached-wheel consumers.
+ *
+ * @param[in,out] state System-control state receiving the event.
+ * @param[in] code Accepted nonzero system event code.
+ */
+void system_control_state_set_active_event(SystemControlState *state, uint8_t code) {
+    state->active_event_code = code;
+}
+
+/**
  * @brief Takes the pending attached-wheel status code.
  *
  * Returns the current code once and replaces it with the idle 0xFFFF marker used by the
@@ -142,7 +154,7 @@ void system_control_state_set_operating_status(SystemControlState *state, uint8_
 void system_control_state_apply_torque_transition(SystemControlState *state, uint8_t wheel_mode,
                                                   uint8_t setup_page,
                                                   const SystemTorqueTransitionAction *action) {
-    state->active_event_code = action->active_event_code;
+    system_control_state_set_active_event(state, action->active_event_code);
     if (action->feature_update) {
         system_control_state_set_operating_feature(state, action->feature_enabled);
     }

@@ -6,6 +6,9 @@
 #include "system/event_queue.h"
 
 enum {
+    SYSTEM_EVENT_POSITION_SENSOR_TEST_STARTED = 3,
+    SYSTEM_EVENT_POSITION_SENSOR_TEST_FAILED = 4,
+    SYSTEM_EVENT_TORQUE_REDUCED = 5,
     SYSTEM_EVENT_TORQUE_DISABLED = 0x0d,
     SYSTEM_EVENT_TORQUE_ENABLED = 0x1b,
     SYSTEM_EVENT_DISPATCH_INTERVAL_MS = 100,
@@ -37,11 +40,11 @@ void system_event_dispatcher_init(SystemEventDispatcher *dispatcher) {
 }
 
 /**
- * @brief Dispatches a queued power-button torque event.
+ * @brief Dispatches a queued system notice event.
  *
- * Event 0x0d requests the torque-disabled notice and event 0x1b dismisses it. Recognized events
- * complete their queue slot and start a 100-millisecond minimum interval. Other event codes remain
- * available for their owning dispatcher.
+ * Maps position-sensor, torque-reduction, and power-button event codes to display actions.
+ * Recognized events complete their queue slot and start a 100-millisecond minimum interval. Other
+ * event codes remain available for their owning dispatcher.
  *
  * @param[in,out] dispatcher Shared event dispatch cadence.
  * @param[in,out] queue Single-slot system event queue.
@@ -51,7 +54,13 @@ void system_event_dispatcher_init(SystemEventDispatcher *dispatcher) {
 SystemEventAction system_event_dispatcher_update(SystemEventDispatcher *dispatcher,
                                                  SystemEventQueue *queue, uint32_t now_ms) {
     SystemEventAction action;
-    if (queue->pending_code == SYSTEM_EVENT_TORQUE_DISABLED) {
+    if (queue->pending_code == SYSTEM_EVENT_POSITION_SENSOR_TEST_STARTED) {
+        action = SYSTEM_EVENT_ACTION_SHOW_POSITION_SENSOR_TEST_STARTED;
+    } else if (queue->pending_code == SYSTEM_EVENT_POSITION_SENSOR_TEST_FAILED) {
+        action = SYSTEM_EVENT_ACTION_SHOW_POSITION_SENSOR_TEST_FAILED;
+    } else if (queue->pending_code == SYSTEM_EVENT_TORQUE_REDUCED) {
+        action = SYSTEM_EVENT_ACTION_SHOW_TORQUE_REDUCED;
+    } else if (queue->pending_code == SYSTEM_EVENT_TORQUE_DISABLED) {
         action = SYSTEM_EVENT_ACTION_SHOW_TORQUE_DISABLED;
     } else if (queue->pending_code == SYSTEM_EVENT_TORQUE_ENABLED) {
         action = SYSTEM_EVENT_ACTION_DISMISS_TORQUE_DISABLED;

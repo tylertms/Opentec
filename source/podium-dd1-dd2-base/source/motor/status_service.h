@@ -17,9 +17,9 @@ typedef enum {
 
 typedef enum {
     MOTOR_STATUS_EVENT_NONE = 0,
-    MOTOR_STATUS_EVENT_COMMAND_ACKNOWLEDGED = 3,
-    MOTOR_STATUS_EVENT_COMMAND_REQUESTED = 4,
-    MOTOR_STATUS_EVENT_COMMAND_FAULT = 5,
+    MOTOR_STATUS_EVENT_POSITION_SENSOR_TEST_STARTED = 3,
+    MOTOR_STATUS_EVENT_POSITION_SENSOR_TEST_FAILED = 4,
+    MOTOR_STATUS_EVENT_TORQUE_REDUCED = 5,
 } MotorStatusEvent;
 
 typedef struct {
@@ -39,7 +39,7 @@ typedef struct {
 void motor_status_service_init(MotorStatusService *service, const MotorIdentity *identity);
 void motor_status_service_request_command(MotorStatusService *service);
 void motor_status_service_run(MotorStatusService *service, uint32_t now_ms);
-MotorStatusEvent motor_status_service_event(const MotorStatusService *service);
+MotorStatusEvent motor_status_service_take_event(MotorStatusService *service);
 bool motor_status_service_output_inhibited(const MotorStatusService *service);
 
 #endif

@@ -58,6 +58,7 @@
 #include "system/control_state.h"
 #include "system/event_dispatcher.h"
 #include "system/event_queue.h"
+#include "system/notice.h"
 #include "system/torque_transition.h"
 #include "usb/connection.h"
 #include "usb/device.h"
@@ -194,6 +195,7 @@ static SystemTorqueTransitionAction system_torque_action;
 static uint16_t pending_system_status_code;
 static SystemEventQueue system_event_queue;
 static SystemEventDispatcher system_event_dispatcher;
+static SystemNotice system_notice;
 static CoolingController cooling_controller;
 static CoolingEffectLimit cooling_effect_limit;
 static CoolingEffectStrengths cooling_effect_strengths;
@@ -217,6 +219,7 @@ static bool usb_tuning_profile_response_ready;
 static bool usb_wheel_transfer_response_pending[WHEEL_TRANSFER_REQUEST_COUNT];
 static uint8_t local_display_page;
 static uint8_t local_display_rendered_bite_point_percent;
+static SystemNoticeKind local_display_rendered_notice_kind;
 static uint8_t wheel_bite_point_display_percent;
 
 enum {
@@ -226,6 +229,7 @@ enum {
     LOCAL_DISPLAY_PAGE_TORQUE_DISABLED = 1,
     LOCAL_DISPLAY_PAGE_TORQUE_PROMPT = 2,
     LOCAL_DISPLAY_PAGE_BITE_POINT = 3,
+    LOCAL_DISPLAY_PAGE_SYSTEM_NOTICE = 4,
     USB_DISCONNECT_STATUS_CODE = 0x1c,
 };
 
@@ -311,17 +315,24 @@ static void service_power_torque_request(void) {
 }
 
 /**
- * @brief Services power-button torque notice events.
+ * @brief Services queued system notice events.
  *
- * Dispatches recognized torque events at the system cadence and retains the requested notice
- * visibility for the display owner.
+ * Expires timed notices, dispatches recognized events at the system cadence, and applies their
+ * semantic presentation changes to the local display owners.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 static void service_system_events(uint32_t now_ms) {
+    system_notice_update(&system_notice, now_ms);
     SystemEventAction action =
         system_event_dispatcher_update(&system_event_dispatcher, &system_event_queue, now_ms);
-    if (action == SYSTEM_EVENT_ACTION_SHOW_TORQUE_DISABLED) {
+    if (action == SYSTEM_EVENT_ACTION_SHOW_POSITION_SENSOR_TEST_STARTED) {
+        system_notice_show(&system_notice, SYSTEM_NOTICE_POSITION_SENSOR_TEST_STARTED, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_POSITION_SENSOR_TEST_FAILED) {
+        system_notice_show(&system_notice, SYSTEM_NOTICE_POSITION_SENSOR_TEST_FAILED, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_TORQUE_REDUCED) {
+        system_notice_show(&system_notice, SYSTEM_NOTICE_TORQUE_REDUCED, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_TORQUE_DISABLED) {
         torque_disabled_notice_visible = true;
     } else if (action == SYSTEM_EVENT_ACTION_DISMISS_TORQUE_DISABLED) {
         torque_disabled_notice_visible = false;
@@ -811,6 +822,29 @@ static void initialize_force_feedback_script(void) {
                                        &force_feedback_script_system);
 }
 
+/**
+ * @brief Publishes one pending motor status event to the system event queue.
+ *
+ * Waits for the single event slot, transfers the motor event exactly once, and retains the accepted
+ * code in shared control state for status consumers.
+ */
+static void publish_motor_status_event(void) {
+    if (system_event_queue.pending_code != 0) {
+        return;
+    }
+    MotorStatusEvent event = motor_status_service_take_event(&motor_status_service);
+    if (event != MOTOR_STATUS_EVENT_NONE &&
+        system_event_queue_try_push(&system_event_queue, (uint8_t)event)) {
+        system_control_state_set_active_event(&system_control_state, (uint8_t)event);
+    }
+}
+
+/**
+ * @brief Services motor discovery, configuration, telemetry, and status exchange.
+ *
+ * Initializes protocol-specific services after discovery, schedules calibration or normal bus
+ * users, and publishes motor-originated operator events through the shared event boundary.
+ */
 static void service_motor(void) {
     base_settings_persistence_service(&settings_persistence, &base_settings, platform_time_ms());
     motor_probe_run(&motor_probe, platform_time_ms());
@@ -826,6 +860,7 @@ static void service_motor(void) {
         motor_command_request_pending = false;
     }
     if (motor_tuning_ready) {
+        publish_motor_status_event();
         bool calibration_pending = motor_calibration_service_pending(&motor_calibration_service);
         bool calibration_can_run = motor_calibration_service_owns_bus(&motor_calibration_service) ||
                                    platform_aux_bus_status() == PLATFORM_AUX_BUS_IDLE;
@@ -838,6 +873,7 @@ static void service_motor(void) {
             motor_status_service_run(&motor_status_service, platform_time_ms());
             motor_tuning_service_run(&motor_tuning_service);
         }
+        publish_motor_status_event();
     }
 }
 
@@ -1248,24 +1284,29 @@ static void apply_force_output_prompt_action(ForceOutputEnableAction action) {
 /**
  * @brief Updates the local display when its active page changes.
  *
- * Gives the persistent torque-disabled notice priority over the torque-confirmation prompt and
- * paddle bite-point adjustment. Changes to the active percentage redraw the bite-point page, and
- * leaving all display owners clears the display.
+ * Gives motor-originated notices priority over the persistent torque-disabled notice,
+ * torque-confirmation prompt, and paddle bite-point adjustment. Changes to active notice content
+ * or percentage redraw their page, and leaving all display owners clears the display.
  */
 static void service_local_display(void) {
     bool bite_point_visible =
         wheel_service_bite_point_adjustment(&wheel_service, &wheel_bite_point_display_percent);
-    uint8_t page = torque_disabled_notice_visible ? LOCAL_DISPLAY_PAGE_TORQUE_DISABLED
-                   : force_output_prompt_visible  ? LOCAL_DISPLAY_PAGE_TORQUE_PROMPT
-                   : bite_point_visible           ? LOCAL_DISPLAY_PAGE_BITE_POINT
-                                                  : LOCAL_DISPLAY_PAGE_CLEAR;
+    uint8_t page = system_notice.kind != SYSTEM_NOTICE_NONE ? LOCAL_DISPLAY_PAGE_SYSTEM_NOTICE
+                   : torque_disabled_notice_visible         ? LOCAL_DISPLAY_PAGE_TORQUE_DISABLED
+                   : force_output_prompt_visible            ? LOCAL_DISPLAY_PAGE_TORQUE_PROMPT
+                   : bite_point_visible                     ? LOCAL_DISPLAY_PAGE_BITE_POINT
+                                                            : LOCAL_DISPLAY_PAGE_CLEAR;
     if (page == local_display_page &&
         (page != LOCAL_DISPLAY_PAGE_BITE_POINT ||
-         wheel_bite_point_display_percent == local_display_rendered_bite_point_percent)) {
+         wheel_bite_point_display_percent == local_display_rendered_bite_point_percent) &&
+        (page != LOCAL_DISPLAY_PAGE_SYSTEM_NOTICE ||
+         system_notice.kind == local_display_rendered_notice_kind)) {
         return;
     }
 
-    if (page == LOCAL_DISPLAY_PAGE_TORQUE_DISABLED) {
+    if (page == LOCAL_DISPLAY_PAGE_SYSTEM_NOTICE) {
+        display_notice_render_system(display_framebuffer, system_notice.kind);
+    } else if (page == LOCAL_DISPLAY_PAGE_TORQUE_DISABLED) {
         display_notice_render_torque_disabled(display_framebuffer, true);
     } else if (page == LOCAL_DISPLAY_PAGE_TORQUE_PROMPT) {
         display_prompt_render(display_framebuffer, true);
@@ -1276,6 +1317,7 @@ static void service_local_display(void) {
     platform_display_write_frame(display_framebuffer);
     local_display_page = page;
     local_display_rendered_bite_point_percent = wheel_bite_point_display_percent;
+    local_display_rendered_notice_kind = system_notice.kind;
 }
 
 static void service_force_output_enable(void) {
@@ -1312,6 +1354,7 @@ int main(void) {
     system_torque_transition_init(&system_torque_transition);
     system_event_queue_init(&system_event_queue);
     system_event_dispatcher_init(&system_event_dispatcher);
+    system_notice_init(&system_notice);
     service_power(0);
     platform_time_init();
     platform_display_init();

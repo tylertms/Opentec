@@ -19,6 +19,14 @@ enum {
     MOTOR_COMMAND_UNAVAILABLE = 0xffff,
 };
 
+/**
+ * @brief Tests whether the identified controller supports the status exchange.
+ *
+ * Legacy controllers omit the command and status registers used by this service.
+ *
+ * @param[in] identity Identified motor-controller protocol.
+ * @return True when command and status exchange is supported.
+ */
 static bool status_exchange_supported(const MotorIdentity *identity) {
     return identity->protocol != MOTOR_PROTOCOL_LEGACY;
 }
@@ -60,32 +68,55 @@ void motor_status_service_request_command(MotorStatusService *service) {
     service->command_pending = true;
 }
 
+/**
+ * @brief Selects the next status phase after a command exchange.
+ *
+ * Initializes the status register before the first read and otherwise resumes periodic reads.
+ *
+ * @param[in,out] service Motor status service state.
+ */
 static void continue_to_status(MotorStatusService *service) {
     service->phase = service->status_initialized ? MOTOR_STATUS_READ : MOTOR_STATUS_INITIALIZE;
 }
 
+/**
+ * @brief Decodes the little-endian motor command response.
+ *
+ * Combines the two command-register bytes into the controller response word.
+ *
+ * @param[in] service Motor status service state.
+ * @return Decoded command response word.
+ */
 static uint16_t command_response(const MotorStatusService *service) {
     return (uint16_t)service->command[0] | (uint16_t)service->command[1] << 8;
 }
 
+/**
+ * @brief Applies a completed motor command-register read.
+ *
+ * Advances the handshake, publishes the corresponding operator notice, and updates the output
+ * interlock from terminal controller responses.
+ *
+ * @param[in,out] service Motor status service state.
+ */
 static void finish_command_read(MotorStatusService *service) {
     uint16_t response = command_response(service);
     motor_output_interlock_accept_command(&service->interlock, service->identity, response);
 
     if (response == MOTOR_COMMAND_IDLE) {
         if (service->command_sent) {
-            service->event = MOTOR_STATUS_EVENT_COMMAND_ACKNOWLEDGED;
+            service->event = MOTOR_STATUS_EVENT_POSITION_SENSOR_TEST_STARTED;
             service->command_pending = false;
             service->command_sent = false;
             continue_to_status(service);
         } else if (service->command_pending) {
-            service->event = MOTOR_STATUS_EVENT_COMMAND_REQUESTED;
+            service->event = MOTOR_STATUS_EVENT_POSITION_SENSOR_TEST_FAILED;
             service->phase = MOTOR_STATUS_WRITE_COMMAND;
         } else {
             continue_to_status(service);
         }
     } else if (response == MOTOR_COMMAND_FAULT) {
-        service->event = MOTOR_STATUS_EVENT_COMMAND_FAULT;
+        service->event = MOTOR_STATUS_EVENT_TORQUE_REDUCED;
         service->command_pending = false;
         service->command_sent = false;
         continue_to_status(service);
@@ -94,6 +125,16 @@ static void finish_command_read(MotorStatusService *service) {
     }
 }
 
+/**
+ * @brief Completes the active auxiliary-bus transfer.
+ *
+ * Clears the bus transaction, advances successful command and status phases, and leaves failed
+ * phases eligible for retry.
+ *
+ * @param[in,out] service Motor status service state.
+ * @param[in] succeeded True when the transfer completed successfully.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 static void finish_transfer(MotorStatusService *service, bool succeeded, uint32_t now_ms) {
     MotorStatusPhase completed_phase = service->phase;
     platform_aux_bus_clear();
@@ -119,6 +160,13 @@ static void finish_transfer(MotorStatusService *service, bool succeeded, uint32_
     }
 }
 
+/**
+ * @brief Starts the transfer required by the current motor status phase.
+ *
+ * Reads command or status data and writes the fixed command request or initial status byte.
+ *
+ * @param[in,out] service Motor status service state.
+ */
 static void start_transfer(MotorStatusService *service) {
     if (service->phase == MOTOR_STATUS_READ_COMMAND) {
         service->transfer_active =
@@ -172,15 +220,18 @@ void motor_status_service_run(MotorStatusService *service, uint32_t now_ms) {
 }
 
 /**
- * @brief Returns the most recent system event produced by the motor-command handshake.
+ * @brief Takes the pending operator notice produced by the motor-command handshake.
  *
- * Exposes the event retained after the last completed command-register read.
+ * Returns the retained event once and clears it so the single-slot system event queue does not
+ * repeatedly publish the same notice.
  *
- * @param[in] service Motor status service state.
- * @return None, command acknowledged, command requested, or command fault.
+ * @param[in,out] service Motor status service state.
+ * @return Pending position-sensor or torque-reduction event, or none.
  */
-MotorStatusEvent motor_status_service_event(const MotorStatusService *service) {
-    return service->event;
+MotorStatusEvent motor_status_service_take_event(MotorStatusService *service) {
+    MotorStatusEvent event = service->event;
+    service->event = MOTOR_STATUS_EVENT_NONE;
+    return event;
 }
 
 /**
