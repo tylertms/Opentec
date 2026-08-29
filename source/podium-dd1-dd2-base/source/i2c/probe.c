@@ -100,29 +100,6 @@ uint8_t i2c_probe_checksum(const uint8_t *payload, uint8_t payload_length) {
 }
 
 /**
- * @brief Validates the final response from a probe exchange.
- *
- * Either nonzero status byte reports a status error. When checksum validation is enabled, the
- * payload XOR must equal the expected checksum. Disabled checksum validation accepts a response
- * whose status bytes are both zero.
- *
- * @param[in] response Final payload, checksum, and status fields.
- * @param[in] checksum_enabled True to compare the payload XOR with the expected checksum.
- * @return Valid, checksum-error, or status-error result.
- */
-I2cProbeValidationResult i2c_probe_final_response_validate(const I2cProbeFinalResponse *response,
-                                                           bool checksum_enabled) {
-    if (response->primary_status != 0 || response->secondary_status != 0) {
-        return I2C_PROBE_STATUS_ERROR;
-    }
-    if (checksum_enabled && i2c_probe_checksum(response->payload, response->payload_length) !=
-                                response->expected_checksum) {
-        return I2C_PROBE_CHECKSUM_ERROR;
-    }
-    return I2C_PROBE_VALID;
-}
-
-/**
  * @brief Encodes a fixed probe request.
  *
  * Maps the five session and identification commands to their I2C selector and exact response
@@ -213,12 +190,55 @@ bool i2c_probe_transfer_encode(I2cProbeCommand command, const I2cProbeTransferIn
     } else {
         if (checked) {
             frame->write_data[6] = 0x86;
+            frame->response_integrity_offset = 2;
+            frame->response_integrity_length = (uint8_t)(input->chunk_length + 2u);
         }
         frame->response_length = (uint8_t)(input->chunk_length + 4u);
         frame->response_payload_offset = 2;
         frame->response_payload_length = input->chunk_length;
     }
     return true;
+}
+
+/**
+ * @brief Parses one chunk-transfer response.
+ *
+ * Requires the exact response length encoded by the command. Read responses expose their payload
+ * from byte two. Checked reads additionally require the XOR of the payload and two-byte trailer to
+ * equal zero. Write and finish responses have no protocol payload or integrity field.
+ *
+ * @param[in] frame Encoded command and expected response layout.
+ * @param[in] response Received response bytes.
+ * @param[in] response_length Number of received bytes.
+ * @param[out] parsed_response Payload view produced for a valid response.
+ * @return Valid, checksum-error, or malformed-response result.
+ */
+I2cProbeValidationResult
+i2c_probe_transfer_response_parse(const I2cProbeTransferFrame *frame, const uint8_t *response,
+                                  uint8_t response_length,
+                                  I2cProbeTransferResponse *parsed_response) {
+    if (parsed_response == NULL) {
+        return I2C_PROBE_MALFORMED_RESPONSE;
+    }
+    *parsed_response = (I2cProbeTransferResponse){0};
+    if (frame == NULL || response == NULL || response_length != frame->response_length ||
+        (uint16_t)frame->response_payload_offset + frame->response_payload_length >
+            response_length ||
+        (uint16_t)frame->response_integrity_offset + frame->response_integrity_length >
+            response_length) {
+        return I2C_PROBE_MALFORMED_RESPONSE;
+    }
+
+    if (frame->response_integrity_length != 0 &&
+        i2c_probe_checksum(response + frame->response_integrity_offset,
+                           frame->response_integrity_length) != 0) {
+        return I2C_PROBE_CHECKSUM_ERROR;
+    }
+    if (frame->response_payload_length != 0) {
+        parsed_response->payload = response + frame->response_payload_offset;
+        parsed_response->payload_length = frame->response_payload_length;
+    }
+    return I2C_PROBE_VALID;
 }
 
 /**
@@ -381,22 +401,18 @@ bool i2c_probe_exchange_command_queued(I2cProbeExchange *exchange) {
 /**
  * @brief Validates and completes the final probe response.
  *
- * Completes responses whose status bytes are zero and whose optional payload XOR matches. Status
- * failures and checksum failures remain distinct for the transfer controller.
+ * Completes a valid response and preserves checksum and malformed-response failures as distinct
+ * protocol results for the transfer controller.
  *
  * @param[in,out] exchange Active command exchange.
- * @param[in] response Final response payload, checksum, and status fields.
- * @param[in] checksum_enabled True to validate the response payload XOR.
+ * @param[in] validation Parsed response disposition.
  * @return True when the exchange was waiting for its final response; otherwise false.
  */
-bool i2c_probe_exchange_finalize(I2cProbeExchange *exchange, const I2cProbeFinalResponse *response,
-                                 bool checksum_enabled) {
+bool i2c_probe_exchange_finalize(I2cProbeExchange *exchange, I2cProbeValidationResult validation) {
     if (exchange->stage != I2C_PROBE_EXCHANGE_WAIT_RESPONSE) {
         return false;
     }
 
-    I2cProbeValidationResult validation =
-        i2c_probe_final_response_validate(response, checksum_enabled);
     if (validation == I2C_PROBE_VALID) {
         exchange->stage = I2C_PROBE_EXCHANGE_COMPLETE;
         exchange->result = I2C_PROBE_EXCHANGE_SUCCEEDED;

@@ -79,6 +79,18 @@ static I2cProbeTransferFrame make_frame(void) {
     return frame;
 }
 
+static I2cProbeTransferFrame make_read_frame(bool checked) {
+    I2cProbeTransferInput input = {
+        .phase = 2,
+        .chunk_index = 1,
+        .chunk_length = 3,
+    };
+    I2cProbeTransferFrame frame;
+    assert(i2c_probe_transfer_encode(checked ? I2C_PROBE_READ_CHECKED_CHUNK : I2C_PROBE_READ_CHUNK,
+                                     &input, &frame));
+    return frame;
+}
+
 static void complete_read(uint8_t status) {
     assert(bus_call == BUS_CALL_READ);
     bus_read_data[1] = status;
@@ -114,32 +126,29 @@ static void advance_to_response(I2cProbeExchangeService *service) {
     assert(bus_length == service->frame.response_length);
 }
 
-static void test_completes_exchange_and_exposes_response(void) {
+static void test_completes_exchange_and_exposes_payload(void) {
     reset_bus();
     I2cProbeExchangeService service;
-    I2cProbeTransferFrame frame = make_frame();
+    I2cProbeTransferFrame frame = make_read_frame(false);
     i2c_probe_exchange_service_init(&service);
     assert(i2c_probe_exchange_service_start(&service, &frame));
 
     advance_to_response(&service);
-    bus_read_data[0] = 3;
-    bus_read_data[1] = 0x44;
+    bus_read_data[0] = 0x84;
+    bus_read_data[1] = 0x91;
+    bus_read_data[2] = 0x31;
+    bus_read_data[3] = 0x32;
+    bus_read_data[4] = 0x33;
     bus_status = PLATFORM_AUX_BUS_SUCCEEDED;
     i2c_probe_exchange_service_run(&service);
 
-    assert(i2c_probe_exchange_service_status(&service) ==
-           I2C_PROBE_EXCHANGE_SERVICE_RESPONSE_READY);
-    uint8_t length = 0;
-    const uint8_t *response = i2c_probe_exchange_service_response(&service, &length);
-    assert(response == service.response);
-    assert(length == frame.response_length);
-    assert(response[0] == 3);
-    assert(response[1] == 0x44);
-
-    I2cProbeFinalResponse final = {0};
-    assert(i2c_probe_exchange_service_finish(&service, &final, false));
     assert(i2c_probe_exchange_service_status(&service) == I2C_PROBE_EXCHANGE_SERVICE_COMPLETE);
     assert(i2c_probe_exchange_service_result(&service) == I2C_PROBE_EXCHANGE_SUCCEEDED);
+    uint8_t length = 0;
+    const uint8_t *payload = i2c_probe_exchange_service_payload(&service, &length);
+    assert(payload == service.response + 2);
+    assert(length == 3);
+    assert(memcmp(payload, "123", length) == 0);
 }
 
 static void test_waits_through_busy_statuses(void) {
@@ -174,7 +183,7 @@ static void test_retries_failed_bus_operation(void) {
     assert(bus_register == 0x07);
 }
 
-static void test_classifies_command_and_response_failures(void) {
+static void test_classifies_command_and_checksum_failures(void) {
     reset_bus();
     I2cProbeExchangeService service;
     I2cProbeTransferFrame frame = make_frame();
@@ -189,14 +198,14 @@ static void test_classifies_command_and_response_failures(void) {
     assert(i2c_probe_exchange_service_status(&service) == I2C_PROBE_EXCHANGE_SERVICE_FAILED);
     assert(i2c_probe_exchange_service_result(&service) == I2C_PROBE_EXCHANGE_COMMAND_ERROR);
 
+    frame = make_read_frame(true);
     assert(i2c_probe_exchange_service_start(&service, &frame));
     advance_to_response(&service);
+    bus_read_data[2] = 1;
     complete_operation();
     i2c_probe_exchange_service_run(&service);
-    I2cProbeFinalResponse final = {.primary_status = 1};
-    assert(i2c_probe_exchange_service_finish(&service, &final, false));
     assert(i2c_probe_exchange_service_status(&service) == I2C_PROBE_EXCHANGE_SERVICE_FAILED);
-    assert(i2c_probe_exchange_service_result(&service) == I2C_PROBE_EXCHANGE_RESPONSE_ERROR);
+    assert(i2c_probe_exchange_service_result(&service) == I2C_PROBE_EXCHANGE_CHECKSUM_ERROR);
 }
 
 static void test_rejects_invalid_or_overlapping_starts(void) {
@@ -212,14 +221,14 @@ static void test_rejects_invalid_or_overlapping_starts(void) {
     frame = make_frame();
     assert(i2c_probe_exchange_service_start(&service, &frame));
     assert(!i2c_probe_exchange_service_start(&service, &frame));
-    assert(i2c_probe_exchange_service_response(&service, &frame.response_length) == 0);
+    assert(i2c_probe_exchange_service_payload(&service, &frame.response_length) == 0);
 }
 
 int main(void) {
-    test_completes_exchange_and_exposes_response();
+    test_completes_exchange_and_exposes_payload();
     test_waits_through_busy_statuses();
     test_retries_failed_bus_operation();
-    test_classifies_command_and_response_failures();
+    test_classifies_command_and_checksum_failures();
     test_rejects_invalid_or_overlapping_starts();
     return 0;
 }

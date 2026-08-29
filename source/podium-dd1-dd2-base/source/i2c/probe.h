@@ -14,20 +14,12 @@ typedef enum {
 typedef enum {
     I2C_PROBE_VALID,
     I2C_PROBE_CHECKSUM_ERROR,
-    I2C_PROBE_STATUS_ERROR,
+    I2C_PROBE_MALFORMED_RESPONSE,
 } I2cProbeValidationResult;
 
 typedef struct {
     uint8_t retry_count;
 } I2cProbeHandshake;
-
-typedef struct {
-    const uint8_t *payload;
-    uint8_t payload_length;
-    uint8_t expected_checksum;
-    uint8_t primary_status;
-    uint8_t secondary_status;
-} I2cProbeFinalResponse;
 
 typedef enum {
     I2C_PROBE_BEGIN_SESSION = 1,
@@ -69,7 +61,14 @@ typedef struct {
     uint8_t response_length;
     uint8_t response_payload_offset;
     uint8_t response_payload_length;
+    uint8_t response_integrity_offset;
+    uint8_t response_integrity_length;
 } I2cProbeTransferFrame;
+
+typedef struct {
+    const uint8_t *payload;
+    uint8_t payload_length;
+} I2cProbeTransferResponse;
 
 typedef enum {
     I2C_PROBE_TRANSFER_WRITING,
@@ -135,12 +134,14 @@ void i2c_probe_handshake_init(I2cProbeHandshake *handshake);
 I2cProbeResponseResult i2c_probe_handshake_evaluate(I2cProbeHandshake *handshake, uint8_t response);
 I2cProbeResponseResult i2c_probe_command_response_evaluate(uint8_t response);
 uint8_t i2c_probe_checksum(const uint8_t *payload, uint8_t payload_length);
-I2cProbeValidationResult i2c_probe_final_response_validate(const I2cProbeFinalResponse *response,
-                                                           bool checksum_enabled);
 bool i2c_probe_request_encode(I2cProbeCommand command, I2cProbeRequest *request);
 const I2cProbeRequest *i2c_probe_request_lookup(I2cProbeCommand command);
 bool i2c_probe_transfer_encode(I2cProbeCommand command, const I2cProbeTransferInput *input,
                                I2cProbeTransferFrame *frame);
+I2cProbeValidationResult
+i2c_probe_transfer_response_parse(const I2cProbeTransferFrame *frame, const uint8_t *response,
+                                  uint8_t response_length,
+                                  I2cProbeTransferResponse *parsed_response);
 void i2c_probe_transfer_sequence_init(I2cProbeTransferSequence *sequence, bool checked);
 bool i2c_probe_transfer_sequence_current(const I2cProbeTransferSequence *sequence,
                                          I2cProbeTransferStep *step);
@@ -148,8 +149,7 @@ bool i2c_probe_transfer_sequence_accept(I2cProbeTransferSequence *sequence);
 void i2c_probe_exchange_init(I2cProbeExchange *exchange);
 bool i2c_probe_exchange_status(I2cProbeExchange *exchange, uint8_t response);
 bool i2c_probe_exchange_command_queued(I2cProbeExchange *exchange);
-bool i2c_probe_exchange_finalize(I2cProbeExchange *exchange, const I2cProbeFinalResponse *response,
-                                 bool checksum_enabled);
+bool i2c_probe_exchange_finalize(I2cProbeExchange *exchange, I2cProbeValidationResult validation);
 void i2c_probe_startup_init(I2cProbeStartup *startup);
 bool i2c_probe_startup_current(I2cProbeStartup *startup, uint32_t now_ms, I2cProbeCommand *command);
 bool i2c_probe_startup_accept(I2cProbeStartup *startup, I2cProbeCommand command,

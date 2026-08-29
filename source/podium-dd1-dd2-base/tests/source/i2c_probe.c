@@ -46,33 +46,51 @@ static void test_calculates_xor_checksum(void) {
     assert(i2c_probe_checksum(payload, sizeof(payload)) == 0x59);
 }
 
-static void test_rejects_nonzero_final_status_before_checksum(void) {
-    const uint8_t payload[] = {0x12, 0x34};
-    I2cProbeFinalResponse response = {
-        .payload = payload,
-        .payload_length = sizeof(payload),
-        .expected_checksum = 0x26,
-        .primary_status = 1,
-    };
+static void test_parses_unchecked_read_response(void) {
+    static const uint8_t response[] = {0x84, 0x91, 0x12, 0x34, 0xa5, 0x5a};
+    I2cProbeTransferInput input = {.chunk_length = 2};
+    I2cProbeTransferFrame frame;
+    I2cProbeTransferResponse parsed;
 
-    assert(i2c_probe_final_response_validate(&response, true) == I2C_PROBE_STATUS_ERROR);
-    response.primary_status = 0;
-    response.secondary_status = 1;
-    assert(i2c_probe_final_response_validate(&response, true) == I2C_PROBE_STATUS_ERROR);
+    assert(i2c_probe_transfer_encode(I2C_PROBE_READ_CHUNK, &input, &frame));
+    assert(i2c_probe_transfer_response_parse(&frame, response, sizeof(response), &parsed) ==
+           I2C_PROBE_VALID);
+    assert(parsed.payload == response + 2);
+    assert(parsed.payload_length == 2);
 }
 
-static void test_optionally_validates_final_checksum(void) {
-    const uint8_t payload[] = {0x12, 0x34};
-    I2cProbeFinalResponse response = {
-        .payload = payload,
-        .payload_length = sizeof(payload),
-        .expected_checksum = 0xff,
-    };
+static void test_validates_checked_read_response_xor(void) {
+    uint8_t response[] = {0x84, 0x91, 0x12, 0x34, 0x56, 0x70, 0xa5, 0xa5};
+    I2cProbeTransferInput input = {.chunk_length = 4};
+    I2cProbeTransferFrame frame;
+    I2cProbeTransferResponse parsed;
 
-    assert(i2c_probe_final_response_validate(&response, false) == I2C_PROBE_VALID);
-    assert(i2c_probe_final_response_validate(&response, true) == I2C_PROBE_CHECKSUM_ERROR);
-    response.expected_checksum = 0x26;
-    assert(i2c_probe_final_response_validate(&response, true) == I2C_PROBE_VALID);
+    assert(i2c_probe_transfer_encode(I2C_PROBE_READ_CHECKED_CHUNK, &input, &frame));
+    assert(frame.response_integrity_offset == 2);
+    assert(frame.response_integrity_length == 6);
+    assert(i2c_probe_transfer_response_parse(&frame, response, sizeof(response), &parsed) ==
+           I2C_PROBE_VALID);
+    assert(parsed.payload == response + 2);
+    assert(parsed.payload_length == 4);
+
+    response[3] ^= 1;
+    assert(i2c_probe_transfer_response_parse(&frame, response, sizeof(response), &parsed) ==
+           I2C_PROBE_CHECKSUM_ERROR);
+}
+
+static void test_rejects_malformed_transfer_response(void) {
+    static const uint8_t response[] = {0, 0, 0, 0};
+    I2cProbeTransferInput input = {.chunk_length = 0};
+    I2cProbeTransferFrame frame;
+    I2cProbeTransferResponse parsed;
+
+    assert(i2c_probe_transfer_encode(I2C_PROBE_READ_CHUNK, &input, &frame));
+    assert(i2c_probe_transfer_response_parse(&frame, response, sizeof(response) - 1, &parsed) ==
+           I2C_PROBE_MALFORMED_RESPONSE);
+    frame.response_payload_offset = sizeof(response);
+    frame.response_payload_length = 1;
+    assert(i2c_probe_transfer_response_parse(&frame, response, sizeof(response), &parsed) ==
+           I2C_PROBE_MALFORMED_RESPONSE);
 }
 
 static void test_encodes_fixed_requests(void) {
@@ -282,12 +300,6 @@ static void test_sequences_checked_commands(void) {
 }
 
 static void test_completes_probe_exchange(void) {
-    static const uint8_t payload[] = {0x12, 0x34, 0x26};
-    I2cProbeFinalResponse response = {
-        .payload = payload,
-        .payload_length = sizeof(payload),
-        .expected_checksum = 0,
-    };
     I2cProbeExchange exchange;
 
     i2c_probe_exchange_init(&exchange);
@@ -301,7 +313,7 @@ static void test_completes_probe_exchange(void) {
     assert(exchange.stage == I2C_PROBE_EXCHANGE_WAIT_ACCEPTANCE);
     assert(i2c_probe_exchange_status(&exchange, 0x07));
     assert(exchange.stage == I2C_PROBE_EXCHANGE_WAIT_RESPONSE);
-    assert(i2c_probe_exchange_finalize(&exchange, &response, true));
+    assert(i2c_probe_exchange_finalize(&exchange, I2C_PROBE_VALID));
     assert(exchange.stage == I2C_PROBE_EXCHANGE_COMPLETE);
     assert(exchange.result == I2C_PROBE_EXCHANGE_SUCCEEDED);
 }
@@ -339,37 +351,29 @@ static void test_rejects_command_acceptance(void) {
 }
 
 static void test_classifies_final_response_errors(void) {
-    static const uint8_t payload[] = {0x12, 0x34};
-    I2cProbeFinalResponse response = {
-        .payload = payload,
-        .payload_length = sizeof(payload),
-        .expected_checksum = 0,
-    };
     I2cProbeExchange exchange;
 
     i2c_probe_exchange_init(&exchange);
     assert(i2c_probe_exchange_status(&exchange, 0x07));
     assert(i2c_probe_exchange_command_queued(&exchange));
     assert(i2c_probe_exchange_status(&exchange, 0x07));
-    assert(i2c_probe_exchange_finalize(&exchange, &response, true));
+    assert(i2c_probe_exchange_finalize(&exchange, I2C_PROBE_CHECKSUM_ERROR));
     assert(exchange.result == I2C_PROBE_EXCHANGE_CHECKSUM_ERROR);
 
     i2c_probe_exchange_init(&exchange);
     assert(i2c_probe_exchange_status(&exchange, 0x07));
     assert(i2c_probe_exchange_command_queued(&exchange));
     assert(i2c_probe_exchange_status(&exchange, 0x07));
-    response.primary_status = 1;
-    assert(i2c_probe_exchange_finalize(&exchange, &response, false));
+    assert(i2c_probe_exchange_finalize(&exchange, I2C_PROBE_MALFORMED_RESPONSE));
     assert(exchange.result == I2C_PROBE_EXCHANGE_RESPONSE_ERROR);
 }
 
 static void test_rejects_out_of_order_exchange_events(void) {
     I2cProbeExchange exchange;
-    I2cProbeFinalResponse response = {0};
 
     i2c_probe_exchange_init(&exchange);
     assert(!i2c_probe_exchange_command_queued(&exchange));
-    assert(!i2c_probe_exchange_finalize(&exchange, &response, false));
+    assert(!i2c_probe_exchange_finalize(&exchange, I2C_PROBE_VALID));
     assert(i2c_probe_exchange_status(&exchange, 0x07));
     assert(!i2c_probe_exchange_status(&exchange, 0x07));
 }
@@ -511,8 +515,9 @@ int main(void) {
     test_rejects_fourth_unexpected_handshake_response();
     test_classifies_command_responses();
     test_calculates_xor_checksum();
-    test_rejects_nonzero_final_status_before_checksum();
-    test_optionally_validates_final_checksum();
+    test_parses_unchecked_read_response();
+    test_validates_checked_read_response_xor();
+    test_rejects_malformed_transfer_response();
     test_encodes_fixed_requests();
     test_rejects_reserved_requests();
     test_encodes_checksum_free_chunk_write();
