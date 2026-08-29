@@ -22,6 +22,7 @@ common_include = include_directories('source')
 motor_current_offset_calibration_sources = files('source/common/motor/calibration.c')
 motor_service_sources = files('source/common/motor/service.c')
 motor_control_sources = files(
+  'source/common/motor/board.c',
   'source/common/motor/foc.c',
   'source/common/motor/io.c',
   'source/common/motor/peripherals.c',
