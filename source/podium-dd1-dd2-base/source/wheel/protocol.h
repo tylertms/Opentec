@@ -14,6 +14,7 @@
 #include "wheel/packet_crc.h"
 #include "wheel/packet_display.h"
 #include "wheel/packet_extended.h"
+#include "wheel/packet_metadata.h"
 #include "wheel/packet_mode_four.h"
 #include "wheel/packet_mode_one.h"
 #include "wheel/packet_packed.h"
@@ -150,6 +151,7 @@ const WheelPacketAlternateInput *wheel_protocol_alternate_input(const WheelProto
 const WheelPacketPackedInput *wheel_protocol_packed_input(const WheelProtocol *protocol);
 const WheelPacketAxisModeInput *wheel_protocol_axis_mode_input(const WheelProtocol *protocol);
 const WheelPacketExtendedInput *wheel_protocol_extended_input(const WheelProtocol *protocol);
+const WheelPacketMetadataInput *wheel_protocol_metadata_input(const WheelProtocol *protocol);
 const WheelPacketCrcInput *wheel_protocol_crc_input(const WheelProtocol *protocol);
 const WheelPacketModeOneReportState *
 wheel_protocol_mode_one_report_state(const WheelProtocol *protocol);

@@ -13,6 +13,7 @@
 #include "wheel/packet_crc.h"
 #include "wheel/packet_display.h"
 #include "wheel/packet_extended.h"
+#include "wheel/packet_metadata.h"
 #include "wheel/packet_mode_four.h"
 #include "wheel/packet_mode_one.h"
 #include "wheel/packet_remapped.h"
@@ -121,6 +122,7 @@ static void build_active_response(WheelProtocol *protocol) {
         !wheel_packet_packed_applies(protocol->mode) &&
         !wheel_packet_axis_mode_applies(protocol->mode) &&
         !wheel_packet_extended_applies(protocol->mode) &&
+        !wheel_packet_metadata_applies(protocol->mode) &&
         !wheel_packet_crc_applies(protocol->mode) && !remote_tuning_mode) {
         return;
     }
@@ -160,7 +162,8 @@ static void build_active_response(WheelProtocol *protocol) {
     } else if (wheel_packet_display_applies(protocol->mode) ||
                wheel_packet_remapped_applies(protocol->mode) ||
                wheel_packet_axis_mode_applies(protocol->mode) ||
-               wheel_packet_extended_applies(protocol->mode)) {
+               wheel_packet_extended_applies(protocol->mode) ||
+               wheel_packet_metadata_applies(protocol->mode)) {
         wheel_packet_common_response_encode(
             &protocol->mode_one_output.display, protocol->mode_one_output.vibration,
             protocol->mode_one_output.legacy_axes, protocol->response);
@@ -631,6 +634,12 @@ static void capture_request(WheelProtocol *protocol,
             protocol->request[index] = snapshot[index];
         }
         protocol->request_changed |= changed;
+    } else if (wheel_packet_metadata_applies(protocol->mode)) {
+        wheel_packet_metadata_decode(request, &protocol->common_input);
+        wheel_capability_update(&protocol->capabilities, protocol->mode,
+                                protocol->common_input.report_mode,
+                                protocol->common_input.report_capabilities);
+        protocol->acknowledgement_input_active = false;
     } else if (wheel_packet_crc_applies(protocol->mode)) {
         uint8_t snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE];
         wheel_packet_crc_decode(request, &protocol->crc_input);
@@ -1221,6 +1230,20 @@ const WheelPacketExtendedInput *wheel_protocol_extended_input(const WheelProtoco
 }
 
 /**
+ * @brief Returns the current metadata-only packet input.
+ *
+ * Exposes the raw axis values and report metadata only after a mode 0x1E request has been captured.
+ *
+ * @param[in] protocol Wheel protocol state.
+ * @return Current metadata-only input, or null when unavailable.
+ */
+const WheelPacketMetadataInput *wheel_protocol_metadata_input(const WheelProtocol *protocol) {
+    return protocol->request_ready && wheel_packet_metadata_applies(protocol->mode)
+               ? &protocol->common_input
+               : 0;
+}
+
+/**
  * @brief Returns the current CRC-family input.
  *
  * Exposes decoded CRC-family input only after a supported CRC request has been captured.
@@ -1278,7 +1301,7 @@ const WheelCapabilityState *wheel_protocol_capabilities(const WheelProtocol *pro
  * @brief Returns the attached wheel's axis-limit value.
  *
  * Selects the value from the current mode-one, mode-four, display, remapped, alternate, packed,
- * axis-mode, extended, or CRC-family input report.
+ * axis-mode, extended, metadata-only, or CRC-family input report.
  * Returns zero until a supported input report is ready.
  *
  * @param[in] protocol Attached-wheel protocol state.
@@ -1316,6 +1339,10 @@ uint8_t wheel_protocol_axis_limit(const WheelProtocol *protocol) {
     const WheelPacketExtendedInput *extended = wheel_protocol_extended_input(protocol);
     if (extended != 0) {
         return extended->axis_limit;
+    }
+    const WheelPacketMetadataInput *metadata = wheel_protocol_metadata_input(protocol);
+    if (metadata != 0) {
+        return metadata->axis_limit;
     }
     const WheelPacketCrcInput *crc = wheel_protocol_crc_input(protocol);
     return crc != 0 ? crc->axis_limit : 0;
@@ -1464,8 +1491,8 @@ bool wheel_protocol_axis_report_enabled(const WheelProtocol *protocol) {
  * @brief Copies the attached wheel's two 16-bit axis values.
  *
  * Selects the separately retained standard-packet values or the mode-four, display, remapped,
- * alternate, packed, axis-mode, extended, and CRC-family values. The destination is cleared when
- * no supported input report is ready.
+ * alternate, packed, axis-mode, extended, metadata-only, and CRC-family values. The destination
+ * is cleared when no supported input report is ready.
  *
  * @param[in] protocol Attached-wheel protocol state.
  * @param[out] values Two 16-bit axis values.
@@ -1520,6 +1547,12 @@ bool wheel_protocol_axis_values(const WheelProtocol *protocol, uint16_t values[2
     if (extended != 0) {
         values[0] = extended->axis_values[0];
         values[1] = extended->axis_values[1];
+        return true;
+    }
+    const WheelPacketMetadataInput *metadata = wheel_protocol_metadata_input(protocol);
+    if (metadata != 0) {
+        values[0] = metadata->axis_values[0];
+        values[1] = metadata->axis_values[1];
         return true;
     }
     const WheelPacketCrcInput *crc = wheel_protocol_crc_input(protocol);
