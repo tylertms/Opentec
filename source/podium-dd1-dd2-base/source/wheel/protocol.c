@@ -900,6 +900,28 @@ const uint8_t *wheel_protocol_axis_outputs(const WheelProtocol *protocol) {
 }
 
 /**
+ * @brief Reports whether the attached wheel enabled its axis report.
+ *
+ * Selects the capability flag retained by the current mode-one, mode-four, or CRC-family input
+ * packet. Unsupported and inactive modes report disabled.
+ *
+ * @param[in] protocol Attached-wheel protocol state.
+ * @return True while the current input packet enables its axis report.
+ */
+bool wheel_protocol_axis_report_enabled(const WheelProtocol *protocol) {
+    const WheelPacketModeOneInput *mode_one = wheel_protocol_mode_one_input(protocol);
+    if (mode_one != 0) {
+        return mode_one->axis_report_enabled != 0;
+    }
+    const WheelPacketModeFourInput *mode_four = wheel_protocol_mode_four_input(protocol);
+    if (mode_four != 0) {
+        return mode_four->axis_report_enabled != 0;
+    }
+    const WheelPacketCrcInput *crc = wheel_protocol_crc_input(protocol);
+    return crc != 0 && crc->axis_report_enabled != 0;
+}
+
+/**
  * @brief Copies the attached wheel's two 16-bit axis values.
  *
  * Selects the separately retained standard-packet values or the normalized mode-four and

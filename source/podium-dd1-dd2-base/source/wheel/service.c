@@ -912,6 +912,31 @@ const uint8_t *wheel_service_clutch_paddles(const WheelService *service) {
 }
 
 /**
+ * @brief Reports whether the attached wheel enabled its axis report.
+ *
+ * Returns the capability flag from the current supported wheel packet family.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return True while the current input packet enables its axis report.
+ */
+bool wheel_service_axis_report_enabled(const WheelService *service) {
+    return wheel_protocol_axis_report_enabled(&service->protocol);
+}
+
+/**
+ * @brief Returns the current attached adapter input.
+ *
+ * Exposes the logical adapter buttons, axes, mode, motion, and connection state retained by the
+ * CRC-family wheel protocol.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return Current attached adapter input.
+ */
+const WheelPacketCrcAdapter *wheel_service_adapter(const WheelService *service) {
+    return &service->protocol.crc_adapter;
+}
+
+/**
  * @brief Copies the attached wheel's two 16-bit axis values.
  *
  * Returns the values retained from the current supported packet-family input report.

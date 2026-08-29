@@ -738,6 +738,28 @@ static void test_reports_host_capability_recovery_inputs(void) {
     assert(!wheel_service_adapter_requests_host_capability(&service));
 }
 
+static void test_exposes_playstation_wheel_inputs(void) {
+    WheelService service;
+    initialize_service(&service);
+
+    service.protocol.request_ready = true;
+    service.protocol.mode = 4;
+    service.protocol.mode_four_input.axis_report_enabled = 1;
+    service.protocol.crc_adapter = (WheelPacketCrcAdapter){
+        .buttons = {0x12, 0x34, 0x56},
+        .axes = {0x78, 0x9a},
+        .mode = 1,
+        .connected = true,
+    };
+
+    assert(wheel_service_axis_report_enabled(&service));
+    assert(wheel_service_adapter(&service) == &service.protocol.crc_adapter);
+    assert(wheel_service_adapter(&service)->buttons[2] == 0x56);
+    assert(wheel_service_adapter(&service)->axes[1] == 0x9a);
+    assert(wheel_service_adapter(&service)->mode == 1);
+    assert(wheel_service_adapter(&service)->connected);
+}
+
 int main(void) {
     test_maps_primary_scan_bits();
     test_maps_secondary_scan_bit();
@@ -764,5 +786,6 @@ int main(void) {
     test_reports_bite_point_adjustment();
     test_applies_vibration_to_every_packet_family();
     test_reports_host_capability_recovery_inputs();
+    test_exposes_playstation_wheel_inputs();
     return 0;
 }

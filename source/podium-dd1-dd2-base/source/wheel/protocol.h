@@ -128,6 +128,7 @@ const WheelCapabilityState *wheel_protocol_capabilities(const WheelProtocol *pro
 uint8_t wheel_protocol_axis_limit(const WheelProtocol *protocol);
 uint8_t wheel_protocol_mode_buttons(const WheelProtocol *protocol);
 const uint8_t *wheel_protocol_axis_outputs(const WheelProtocol *protocol);
+bool wheel_protocol_axis_report_enabled(const WheelProtocol *protocol);
 bool wheel_protocol_axis_values(const WheelProtocol *protocol, uint16_t values[2]);
 bool wheel_protocol_controls(const WheelProtocol *protocol, uint8_t controls[8]);
 int8_t wheel_protocol_motion_direction(const WheelProtocol *protocol);

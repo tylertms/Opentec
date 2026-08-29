@@ -4,6 +4,140 @@
 #include <stdint.h>
 #include <string.h>
 
+#define BUTTON(index) ((uint16_t)1u << (index))
+
+static void test_maps_standard_and_legacy_buttons(void) {
+    UsbPlaystationInputMapper mapper;
+    UsbPlaystationInputState state = {0};
+    usb_playstation_input_mapper_init(&mapper);
+
+    UsbPlaystationButtonInput input = {
+        .wheel_mode = 0x10,
+        .directional_buttons = 0xb0,
+        .secondary_buttons = 0x07fbu,
+    };
+    assert(usb_playstation_input_map_buttons(&mapper, &input, 0, &state));
+    assert(state.hat == 8);
+    assert(state.buttons == (BUTTON(0) | BUTTON(1) | BUTTON(3) | BUTTON(4) | BUTTON(5) | BUTTON(6) |
+                             BUTTON(7) | BUTTON(8) | BUTTON(9) | BUTTON(10) | BUTTON(12)));
+    assert(state.vendor_buttons == 0);
+
+    input = (UsbPlaystationButtonInput){
+        .wheel_mode = 0x0e,
+        .directional_buttons = 0xe0,
+        .secondary_buttons = 0x01fbu,
+        .auxiliary_history = 0x60,
+    };
+    assert(usb_playstation_input_map_buttons(&mapper, &input, 0, &state));
+    assert(state.buttons == 0x1fffu);
+}
+
+static void test_maps_alternate_button_modes(void) {
+    UsbPlaystationInputMapper mapper;
+    UsbPlaystationInputState state = {0};
+    usb_playstation_input_mapper_init(&mapper);
+
+    UsbPlaystationButtonInput input = {
+        .wheel_mode = 0x0f,
+        .directional_buttons = 0xd0,
+        .secondary_buttons = 0x05d6,
+        .adapter_mode = 2,
+    };
+    assert(usb_playstation_input_map_buttons(&mapper, &input, 0, &state));
+    assert(state.buttons == (BUTTON(1) | BUTTON(2) | BUTTON(3) | BUTTON(6) | BUTTON(7) | BUTTON(8) |
+                             BUTTON(9) | BUTTON(11) | BUTTON(12)));
+
+    input = (UsbPlaystationButtonInput){
+        .wheel_mode = 0x11,
+        .secondary_buttons = 0x0ef6,
+    };
+    assert(usb_playstation_input_map_buttons(&mapper, &input, 0, &state));
+    assert(state.buttons == (BUTTON(1) | BUTTON(6) | BUTTON(7) | BUTTON(8) | BUTTON(9) |
+                             BUTTON(10) | BUTTON(11) | BUTTON(12)));
+}
+
+static void test_maps_both_adapter_button_layouts(void) {
+    UsbPlaystationInputMapper mapper;
+    UsbPlaystationInputState state = {0};
+    usb_playstation_input_mapper_init(&mapper);
+
+    UsbPlaystationButtonInput input = {
+        .wheel_mode = 4,
+        .directional_buttons = 0xa0,
+        .secondary_buttons = 0x04fbu,
+        .adapter_buttons = {0xf0, 0x3f, 0x0c},
+        .adapter_connected = true,
+    };
+    assert(usb_playstation_input_map_buttons(&mapper, &input, 0, &state));
+    assert(state.buttons == 0x17ffu);
+
+    input.adapter_mode = 1;
+    input.adapter_buttons[1] = 0x7f;
+    assert(usb_playstation_input_map_buttons(&mapper, &input, 0, &state));
+    assert(state.buttons == 0x1fffu);
+}
+
+static void test_suppresses_hat_and_system_button(void) {
+    UsbPlaystationInputMapper mapper;
+    UsbPlaystationInputState state = {0};
+    usb_playstation_input_mapper_init(&mapper);
+
+    UsbPlaystationButtonInput input = {
+        .wheel_mode = 5,
+        .directional_buttons = 8,
+        .secondary_buttons = 0x0200,
+    };
+    assert(usb_playstation_input_map_buttons(&mapper, &input, 0, &state));
+    assert(state.hat == 4);
+    assert((state.buttons & BUTTON(12)) != 0);
+
+    input.hat_suppressed = true;
+    input.system_button_suppressed = true;
+    assert(usb_playstation_input_map_buttons(&mapper, &input, 0, &state));
+    assert(state.hat == 8);
+    assert((state.buttons & BUTTON(12)) == 0);
+
+    input.hat_suppressed = false;
+    input.system_button_suppressed = false;
+    input.secondary_buttons = 0x2000;
+    assert(usb_playstation_input_map_buttons(&mapper, &input, 0, &state));
+    assert(state.hat == 8);
+    assert((state.buttons & BUTTON(12)) == 0);
+}
+
+static void test_holds_mode_twelve_system_button(void) {
+    UsbPlaystationInputMapper mapper;
+    UsbPlaystationInputState state = {0};
+    usb_playstation_input_mapper_init(&mapper);
+    UsbPlaystationButtonInput input = {
+        .wheel_mode = 0x0c,
+        .secondary_buttons = 0x0080,
+    };
+
+    assert(usb_playstation_input_map_buttons(&mapper, &input, 100, &state));
+    assert((state.buttons & BUTTON(12)) == 0);
+    assert(usb_playstation_input_map_buttons(&mapper, &input, 3099, &state));
+    assert((state.buttons & BUTTON(12)) == 0);
+    assert(usb_playstation_input_map_buttons(&mapper, &input, 3100, &state));
+    assert((state.buttons & BUTTON(12)) != 0);
+
+    input.secondary_buttons = 0;
+    assert(usb_playstation_input_map_buttons(&mapper, &input, 3101, &state));
+    assert((state.buttons & BUTTON(12)) == 0);
+    assert(!mapper.system_button_hold_active);
+}
+
+static void test_rejects_invalid_button_mapping_arguments(void) {
+    UsbPlaystationInputMapper mapper;
+    UsbPlaystationButtonInput input = {0};
+    UsbPlaystationInputState state = {0};
+    usb_playstation_input_mapper_init(&mapper);
+
+    assert(!usb_playstation_input_map_buttons(0, &input, 0, &state));
+    assert(!usb_playstation_input_map_buttons(&mapper, 0, 0, &state));
+    assert(!usb_playstation_input_map_buttons(&mapper, &input, 0, 0));
+}
+
 static void test_maps_directional_buttons_to_hat(void) {
     static const uint8_t expected[16] = {8, 2, 6, 8, 4, 3, 5, 0, 0, 1, 7, 0, 8, 0, 2, 5};
     for (uint8_t input = 0; input < 16; input++) {
@@ -111,6 +245,12 @@ static void test_rejects_invalid_arguments(void) {
 }
 
 int main(void) {
+    test_maps_standard_and_legacy_buttons();
+    test_maps_alternate_button_modes();
+    test_maps_both_adapter_button_layouts();
+    test_suppresses_hat_and_system_button();
+    test_holds_mode_twelve_system_button();
+    test_rejects_invalid_button_mapping_arguments();
     test_maps_directional_buttons_to_hat();
     test_maps_single_clutch_axis();
     test_maps_adapter_clutch_axes();

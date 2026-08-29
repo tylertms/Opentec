@@ -97,6 +97,27 @@ static void test_selects_scan_variants(void) {
     assert(protocol.mode == WHEEL_MODE_SCAN_SECONDARY);
 }
 
+static void test_reports_axis_capability_for_active_packet_family(void) {
+    WheelProtocol protocol;
+    wheel_protocol_init(&protocol);
+    assert(!wheel_protocol_axis_report_enabled(&protocol));
+
+    protocol.request_ready = true;
+    protocol.mode = 1;
+    protocol.mode_one_input.axis_report_enabled = 1;
+    assert(wheel_protocol_axis_report_enabled(&protocol));
+    protocol.mode_one_input.axis_report_enabled = 0;
+    assert(!wheel_protocol_axis_report_enabled(&protocol));
+
+    protocol.mode = 4;
+    protocol.mode_four_input.axis_report_enabled = 2;
+    assert(wheel_protocol_axis_report_enabled(&protocol));
+
+    protocol.mode = WHEEL_MODE_CRC_AUTHENTICATED;
+    protocol.crc_input.axis_report_enabled = 3;
+    assert(wheel_protocol_axis_report_enabled(&protocol));
+}
+
 static void test_selects_authentication_from_wheel_mode(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -1020,6 +1041,7 @@ static void test_crc8_vectors(void) {
 int main(void) {
     test_synchronizes_and_selects_mode();
     test_selects_scan_variants();
+    test_reports_axis_capability_for_active_packet_family();
     test_selects_authentication_from_wheel_mode();
     test_authentication_mode_set();
     test_selects_authentication_keys_for_each_wheel_mode();
