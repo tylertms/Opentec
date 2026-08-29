@@ -1061,6 +1061,43 @@ bool wheel_service_adapter_connected(const WheelService *service) {
 }
 
 /**
+ * @brief Reports whether the attached adapter requests the Xbox host capability.
+ *
+ * Requires an attached CRC adapter and the high status bit carried by its second button byte.
+ *
+ * @param[in] service Attached-wheel service and adapter state.
+ * @return True when the adapter-specific host-capability condition is active.
+ */
+bool wheel_service_adapter_requests_host_capability(const WheelService *service) {
+    return service->protocol.crc_adapter.connected &&
+           (service->protocol.crc_adapter.buttons[1] & 0x80u) != 0;
+}
+
+/**
+ * @brief Returns the attached-wheel capability flags.
+ *
+ * Reads the retained capability word assembled from the current attached-wheel report.
+ *
+ * @param[in] service Attached-wheel service and capability state.
+ * @return Current attached-wheel capability flags.
+ */
+uint16_t wheel_service_capability_flags(const WheelService *service) {
+    return wheel_protocol_capabilities(&service->protocol)->capability_flags;
+}
+
+/**
+ * @brief Reports whether the Xbox host capability is enabled.
+ *
+ * Returns the persistent host-capability state applied to attached-wheel response packets.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return True after the host enables the capability and until it disables or resets it.
+ */
+bool wheel_service_host_capability_enabled(const WheelService *service) {
+    return service->protocol.host_capability_enabled;
+}
+
+/**
  * @brief Reports whether the attached wheel exposes calibration controls.
  *
  * Returns the effective capability after applying the negotiated wheel mode's forced availability

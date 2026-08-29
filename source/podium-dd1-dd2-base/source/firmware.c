@@ -74,6 +74,7 @@
 #include "usb/diagnostic_report.h"
 #include "usb/fanatec_encoder.h"
 #include "usb/fanatec_input.h"
+#include "usb/host_capability_recovery.h"
 #include "usb/input_report.h"
 #include "usb/motor_vendor_service.h"
 #include "usb/operating_mode_command.h"
@@ -200,6 +201,7 @@ static UsbTuningProfileService usb_tuning_profile_service;
 static UsbDiagnosticSnapshot usb_diagnostic_snapshot;
 static UsbDeviceOutputReport usb_device_output_report;
 static UsbConnectionMonitor usb_connection_monitor;
+static UsbHostCapabilityRecovery usb_host_capability_recovery;
 static UsbOutputCommand usb_output_command;
 static UsbOperatingModeCommand usb_operating_mode_command;
 static bool usb_operating_status_enabled;
@@ -2250,6 +2252,30 @@ static void service_wheel_compatibility_alert(uint32_t now_ms) {
     wheel_service_set_display_output(&wheel_service, &wheel_compatibility_display_output);
 }
 
+/**
+ * @brief Services Xbox host-capability recovery.
+ *
+ * Combines the current USB operating mode with attached-wheel and adapter capability state. When
+ * the recovery policy requests it, the USB controller emits resume signaling without rebuilding
+ * the active descriptors or endpoint state.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_usb_host_capability_recovery(uint32_t now_ms) {
+    const UsbHostCapabilityRecoveryInput input = {
+        .wheel_mode = wheel_service_mode(&wheel_service),
+        .wheel_capability_flags = wheel_service_capability_flags(&wheel_service),
+        .xbox_mode = usb_device_operating_mode() == USB_OPERATING_MODE_XBOX_GIP,
+        .host_capability_enabled = wheel_service_host_capability_enabled(&wheel_service),
+        .adapter_requests_capability =
+            wheel_service_adapter_requests_host_capability(&wheel_service),
+    };
+    if (usb_host_capability_recovery_update(&usb_host_capability_recovery, input, now_ms) ==
+        USB_HOST_CAPABILITY_RECOVERY_SIGNAL_RESUME) {
+        platform_usb_signal_resume();
+    }
+}
+
 int main(void) {
     platform_clock_init();
     board_identity = platform_board_identity_read();
@@ -2296,12 +2322,14 @@ int main(void) {
     initialize_force_feedback_script();
     usb_device_init(board_identity.variant);
     usb_connection_monitor_init(&usb_connection_monitor);
+    usb_host_capability_recovery_init(&usb_host_capability_recovery);
     for (;;) {
         usb_device_service();
         service_usb_xbox_session_actions();
         service_usb_output();
         platform_aux_bus_service();
         uint32_t now_ms = platform_time_ms();
+        service_usb_host_capability_recovery(now_ms);
         service_power(now_ms);
         service_power_torque_request();
         service_system_events(now_ms);

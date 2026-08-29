@@ -92,6 +92,7 @@ usb_vendor_command_sources = files('source/usb/vendor_command.c')
 podium_report_descriptor_sources = files('source/usb/podium_report_descriptor.c')
 board_identity_sources = files('source/board/identity.c')
 usb_connection_sources = files('source/usb/connection.c')
+usb_host_capability_recovery_sources = files('source/usb/host_capability_recovery.c')
 status_led_sources = files('source/board/status_led.c')
 power_controller_sources = files('source/board/power.c')
 torque_key_sources = files('source/board/torque_key.c')
@@ -281,6 +282,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'podium-report-descriptor': 'source/usb/podium_report_descriptor.c',
     'board-identity': 'source/board/identity.c',
     'usb-connection': 'source/usb/connection.c',
+    'usb-host-capability-recovery': 'source/usb/host_capability_recovery.c',
     'status-led': 'source/board/status_led.c',
     'power-controller': 'source/board/power.c',
     'torque-key': 'source/board/torque_key.c',
@@ -1233,6 +1235,14 @@ if not meson.is_cross_build()
     'base-usb-connection-test',
     'tests/source/usb_connection.c',
     usb_connection_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  usb_host_capability_recovery_test = executable(
+    'base-usb-host-capability-recovery-test',
+    'tests/source/usb_host_capability_recovery.c',
+    usb_host_capability_recovery_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2285,6 +2295,11 @@ if not meson.is_cross_build()
   )
   test('base-board-identity', board_identity_test, suite: ['base', 'board'])
   test('base-usb-connection', usb_connection_test, suite: ['base', 'usb', 'connection'])
+  test(
+    'base-usb-host-capability-recovery',
+    usb_host_capability_recovery_test,
+    suite: ['base', 'usb', 'xbox'],
+  )
   test('base-status-led', status_led_test, suite: ['base', 'board', 'led'])
   test('base-power-controller', power_controller_test, suite: ['base', 'board', 'power'])
   test('base-torque-key', torque_key_test, suite: ['base', 'board', 'safety'])

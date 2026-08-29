@@ -28,6 +28,8 @@ enum {
 };
 
 static const uint32_t USB_RESTART_DELAY_CYCLES = 0x9000UL * 0x0c81UL * 2UL;
+static const uint32_t USB_RESUME_PREPARE_DELAY_CYCLES = 0x0e10UL;
+static const uint32_t USB_RESUME_SIGNAL_DELAY_CYCLES = 0x09c4UL;
 
 static volatile UsbBufferDescriptor descriptors[USB_DESCRIPTOR_COUNT] __attribute__((aligned(512)));
 static volatile uint8_t buffers[USB_ENDPOINT_COUNT][USB_DIRECTION_COUNT][USB_BANK_COUNT]
@@ -151,6 +153,21 @@ void platform_usb_restart(void) {
     __delay32(USB_RESTART_DELAY_CYCLES);
     reset_controller();
     platform_usb_attach();
+}
+
+/**
+ * @brief Signals USB resume after a suspended Xbox host-capability exchange.
+ *
+ * Disables the USB interrupt, waits 0x0e10 delay cycles, asserts the controller resume bit for
+ * 0x09c4 delay cycles, clears the bit, and re-enables the USB interrupt.
+ */
+void platform_usb_signal_resume(void) {
+    IEC5bits.USB1IE = 0;
+    __delay32(USB_RESUME_PREPARE_DELAY_CYCLES);
+    U1CONbits.RESUME = 1;
+    __delay32(USB_RESUME_SIGNAL_DELAY_CYCLES);
+    U1CONbits.RESUME = 0;
+    IEC5bits.USB1IE = 1;
 }
 
 bool platform_usb_take_event(PlatformUsbEvent *event) {

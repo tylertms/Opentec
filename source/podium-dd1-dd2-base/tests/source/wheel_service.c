@@ -720,6 +720,24 @@ static void test_applies_vibration_to_every_packet_family(void) {
     assert(service.protocol.crc_output.vibration[1] == 0x56);
 }
 
+static void test_reports_host_capability_recovery_inputs(void) {
+    WheelService service;
+    initialize_service(&service);
+
+    service.protocol.capabilities.capability_flags = 0x0b00;
+    assert(wheel_service_capability_flags(&service) == 0x0b00);
+    assert(!wheel_service_host_capability_enabled(&service));
+    wheel_service_set_host_capability(&service, true);
+    assert(wheel_service_host_capability_enabled(&service));
+
+    service.protocol.crc_adapter.buttons[1] = 0x80;
+    assert(!wheel_service_adapter_requests_host_capability(&service));
+    service.protocol.crc_adapter.connected = true;
+    assert(wheel_service_adapter_requests_host_capability(&service));
+    service.protocol.crc_adapter.buttons[1] = 0x7f;
+    assert(!wheel_service_adapter_requests_host_capability(&service));
+}
+
 int main(void) {
     test_maps_primary_scan_bits();
     test_maps_secondary_scan_bit();
@@ -745,5 +763,6 @@ int main(void) {
     test_exposes_axis_overrides();
     test_reports_bite_point_adjustment();
     test_applies_vibration_to_every_packet_family();
+    test_reports_host_capability_recovery_inputs();
     return 0;
 }

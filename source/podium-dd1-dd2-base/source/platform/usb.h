@@ -26,6 +26,7 @@ bool platform_usb_connected(void);
 void platform_usb_attach(void);
 void platform_usb_detach(void);
 void platform_usb_restart(void);
+void platform_usb_signal_resume(void);
 bool platform_usb_take_event(PlatformUsbEvent *event);
 bool platform_usb_send(uint8_t endpoint, const uint8_t *data, uint8_t length, bool data_one);
 bool platform_usb_receive(uint8_t endpoint, uint8_t length, bool data_one);
