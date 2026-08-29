@@ -19,11 +19,21 @@ typedef struct {
     int16_t error;
 } MotorDriveInterpolationState;
 
+typedef struct {
+    int32_t anchor_position;
+    int32_t previous_raw;
+    uint32_t excursion_limit;
+    uint32_t output_scale;
+} MotorDriveFrictionState;
+
 MotorDriveCommand motor_drive_command_resolve(bool positive, uint32_t primary, int32_t secondary,
                                               uint8_t normal_output_percent, bool full_torque,
                                               bool reduced_controller, bool secondary_disabled);
 int16_t motor_drive_interpolation_step(MotorDriveInterpolationState *state, int16_t sample,
                                        uint8_t setting);
 int16_t motor_drive_motion_resistance_resolve(int16_t motion, uint8_t setting);
+void motor_drive_friction_initialize(MotorDriveFrictionState *state, uint32_t hardware_scale);
+int16_t motor_drive_friction_step(MotorDriveFrictionState *state, int32_t position,
+                                  uint16_t setting);
 
 #endif

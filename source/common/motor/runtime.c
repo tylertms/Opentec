@@ -43,6 +43,7 @@ enum {
     MOTOR_PARAMETER_STEERING_RANGE = 32,
     MOTOR_PARAMETER_OVERALL_GAIN = 33,
     MOTOR_PARAMETER_NATURAL_DAMPING = 35,
+    MOTOR_PARAMETER_NATURAL_FRICTION = 36,
     MOTOR_PARAMETER_NATURAL_INERTIA = 37,
     MOTOR_PARAMETER_INTERPOLATION = 38,
     MOTOR_PARAMETER_FILTER = 39,
@@ -73,10 +74,12 @@ typedef struct {
     MotorSpiTransferBuffers spi;
     MotorDriveCommand live_drive;
     MotorDriveInterpolationState drive_interpolation;
+    MotorDriveFrictionState drive_friction;
     MotorControlMode mode;
     uint32_t service_tick;
     int16_t electrical_angle;
     int16_t control_current;
+    int16_t friction_current;
     uint8_t identity;
     bool control_update_pending;
     bool current_calibration_started;
@@ -179,6 +182,7 @@ static int16_t motor_runtime_current_resolve(MotorRuntime *runtime) {
         runtime->motion_sample.filtered_position_delta,
         (uint8_t)runtime->parameters.entries[MOTOR_PARAMETER_NATURAL_DAMPING].value);
     int16_t current = MLIB_SubSat_F16(primary_current, damping);
+    current = MLIB_SubSat_F16(current, runtime->friction_current);
     current = MLIB_AddSat_F16(current, runtime->live_drive.secondary_current);
     int16_t inertia = motor_drive_motion_resistance_resolve(
         runtime->motion_sample.filtered_velocity_delta,
@@ -707,6 +711,8 @@ void motor_runtime_initialize(void) {
 
     motor_runtime.hardware =
         motor_hardware_profile_select(((motor_runtime.identity & 0x0fU) >> 3U) != 0U);
+    motor_drive_friction_initialize(&motor_runtime.drive_friction,
+                                    motor_runtime.hardware.secondary_scale);
     motor_runtime.mode = motor_control_mode_initialize();
     motor_runtime.position_filter.shift = 4U;
     motor_runtime.velocity_filter.shift = 6U;
@@ -765,6 +771,13 @@ void motor_runtime_poll(void) {
             &motor_runtime.drive_interpolation, motor_runtime.live_drive.primary_current,
             (uint8_t)motor_runtime.parameters.entries[MOTOR_PARAMETER_INTERPOLATION].value);
         motor_runtime.control_update_pending = false;
+    }
+
+    if (motor_runtime.mode == kMotorControlRun && motor_runtime.encoder_index_detected &&
+        motor_runtime.parameters.entries[MOTOR_PARAMETER_CALIBRATION_COMMAND].value != 0xaaaaU) {
+        motor_runtime.friction_current = motor_drive_friction_step(
+            &motor_runtime.drive_friction, motor_runtime.encoder.position,
+            (uint16_t)motor_runtime.parameters.entries[MOTOR_PARAMETER_NATURAL_FRICTION].value);
     }
 
     if (motor_auxiliary_samples_resolve(&motor_runtime.auxiliary_accumulator,

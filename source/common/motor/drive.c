@@ -14,6 +14,8 @@ enum {
     INTERPOLATION_ACCUMULATOR_GAIN = 0x001da12f,
     INTERPOLATION_ACCUMULATOR_OUTPUT_SCALE = 12,
     NATURAL_EFFECT_SCALE = 0x18000,
+    FRICTION_EXCURSION_SCALE = 0x190000,
+    FRICTION_SETTING_DIVISOR = 0xa0000,
 };
 
 static const uint32_t interpolation_coefficients[MOTOR_DRIVE_INTERPOLATION_SETTING_COUNT] = {
@@ -132,4 +134,55 @@ int16_t motor_drive_interpolation_step(MotorDriveInterpolationState *state, int1
 int16_t motor_drive_motion_resistance_resolve(int16_t motion, uint8_t setting) {
     int16_t weighted_motion = motor_q15_scale_wrap((uint32_t)setting << 7U, motion);
     return motor_q15_scale_saturate(NATURAL_EFFECT_SCALE, weighted_motion);
+}
+
+/**
+ * @brief Initializes the official natural-friction state.
+ *
+ * The board-selected fixed-point scale determines the retained excursion limit. The corresponding
+ * output scale maps that excursion toward the positive Q15 limit.
+ *
+ * @param state Persistent friction anchor, previous output, and profile-derived scales.
+ * @param hardware_scale Board-selected secondary motion scale.
+ */
+void motor_drive_friction_initialize(MotorDriveFrictionState *state, uint32_t hardware_scale) {
+    state->anchor_position = 0;
+    state->previous_raw = 0;
+    state->excursion_limit =
+        (uint32_t)(((uint64_t)hardware_scale * FRICTION_EXCURSION_SCALE) >> 30U);
+    state->output_scale = INT16_MAX / state->excursion_limit;
+}
+
+/**
+ * @brief Advances the official retained-position natural-friction effect.
+ *
+ * The tuning value limits displacement from a moving anchor. Direction reversals publish one zero
+ * sample before the newly signed current is allowed through.
+ *
+ * @param state Persistent friction anchor, previous output, and profile-derived scales.
+ * @param position Current extended encoder position.
+ * @param setting Unsigned sixteen-bit natural-friction tuning value.
+ * @return Signed current component that opposes retained encoder displacement.
+ */
+int16_t motor_drive_friction_step(MotorDriveFrictionState *state, int32_t position,
+                                  uint16_t setting) {
+    if (setting == 0U) {
+        return 0;
+    }
+
+    int32_t limit = (int32_t)(state->excursion_limit * setting / FRICTION_SETTING_DIVISOR);
+    int32_t displacement = position - state->anchor_position;
+    if (displacement > limit) {
+        state->anchor_position = position - limit;
+        displacement = limit;
+    } else if (displacement < -limit) {
+        state->anchor_position = position + limit;
+        displacement = -limit;
+    }
+
+    int32_t raw = (int32_t)state->output_scale * displacement;
+    bool direction_reversed =
+        (state->previous_raw < 0 && raw > 0) || (state->previous_raw > 0 && raw < 0);
+    state->previous_raw = raw;
+    return direction_reversed ? 0 : (int16_t)raw;
 }

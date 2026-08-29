@@ -54,10 +54,33 @@ static void test_natural_motion_resistance(void) {
     assert(motor_drive_motion_resistance_resolve(1000, 0U) == 0);
 }
 
+static void test_natural_friction(void) {
+    MotorDriveFrictionState state;
+    motor_drive_friction_initialize(&state, 0x0020e374U);
+    assert(state.excursion_limit == 3288U);
+    assert(state.output_scale == 9U);
+    assert(motor_drive_friction_step(&state, 500, 0U) == 0);
+    assert(state.anchor_position == 0);
+
+    assert(motor_drive_friction_step(&state, 1000, UINT16_MAX) == 2952);
+    assert(state.anchor_position == 672);
+    assert(motor_drive_friction_step(&state, 900, UINT16_MAX) == 2052);
+    assert(motor_drive_friction_step(&state, 600, UINT16_MAX) == 0);
+    assert(motor_drive_friction_step(&state, 500, UINT16_MAX) == -1548);
+    assert(motor_drive_friction_step(&state, 0, UINT16_MAX) == -2952);
+    assert(state.anchor_position == 328);
+
+    MotorDriveFrictionState alternate;
+    motor_drive_friction_initialize(&alternate, 0x002120a3U);
+    assert(alternate.excursion_limit == 3312U);
+    assert(alternate.output_scale == 9U);
+}
+
 int main(void) {
     test_normal_product_scales();
     test_full_torque_and_gates();
     test_interpolation_filter();
     test_natural_motion_resistance();
+    test_natural_friction();
     return 0;
 }
