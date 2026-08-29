@@ -15,6 +15,7 @@
 #include "force_feedback/command.h"
 #include "force_feedback/output.h"
 #include "force_feedback/output_enable.h"
+#include "force_feedback/script_report.h"
 #include "force_feedback/script_runtime.h"
 #include "force_feedback/script_tick.h"
 #include "force_feedback/state.h"
@@ -111,6 +112,12 @@
 #pragma config RSTPRI = PF
 #pragma config JTAGEN = OFF
 
+typedef enum {
+    FORCE_FEEDBACK_SCRIPT_REPORT_NONE,
+    FORCE_FEEDBACK_SCRIPT_REPORT_STATUS,
+    FORCE_FEEDBACK_SCRIPT_REPORT_VALUES,
+} ForceFeedbackScriptReportKind;
+
 static BoardIdentity board_identity;
 static MotorProbe motor_probe;
 static CommandTransport command_transport;
@@ -188,8 +195,8 @@ static ForceFeedbackState force_feedback_state;
 static ForceFeedbackScriptSystem force_feedback_script_system;
 static ForceFeedbackScriptOutputState force_feedback_script_output_state;
 static ForceFeedbackScriptOutputConfig force_feedback_script_output_config;
-static uint8_t force_feedback_script_status_sequence;
-static bool force_feedback_script_status_pending;
+static uint8_t force_feedback_script_response_sequence;
+static ForceFeedbackScriptReportKind force_feedback_script_report_pending;
 static uint32_t force_feedback_ramp_deadline_ms;
 static ForceOutputReport motor_output_report;
 static MotorLiveFrame motor_live_frame;
@@ -234,7 +241,7 @@ typedef enum {
     USB_VENDOR_RESPONSE_NONE,
     USB_VENDOR_RESPONSE_REMOTE_TUNING,
     USB_VENDOR_RESPONSE_WHEEL_TRANSFER,
-    USB_VENDOR_RESPONSE_SCRIPT_STATUS,
+    USB_VENDOR_RESPONSE_SCRIPT_REPORT,
     USB_VENDOR_RESPONSE_TUNING_PROFILE,
     USB_VENDOR_RESPONSE_TUNING_MENU,
     USB_VENDOR_RESPONSE_DIAGNOSTIC,
@@ -843,12 +850,12 @@ static bool accept_usb_motor_report(const UsbDeviceOutputReport *report) {
  * @brief Prepares the highest-priority pending vendor response.
  *
  * Retains sequence-bearing reports for endpoint retries. Native telemetry precedes wheel transfer,
- * script status, profile, menu, diagnostics, and motor responses in the same order used by the
+ * script reports, profile, menu, diagnostics, and motor responses in the same order used by the
  * host command service.
  */
 static void prepare_usb_vendor_response(void) {
     if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_REMOTE_TUNING ||
-        usb_vendor_response_kind == USB_VENDOR_RESPONSE_SCRIPT_STATUS) {
+        usb_vendor_response_kind == USB_VENDOR_RESPONSE_SCRIPT_REPORT) {
         return;
     }
     usb_vendor_response_kind = USB_VENDOR_RESPONSE_NONE;
@@ -874,14 +881,23 @@ static void prepare_usb_vendor_response(void) {
         usb_vendor_response_kind = USB_VENDOR_RESPONSE_WHEEL_TRANSFER;
         return;
     }
-    if (force_feedback_script_status_pending &&
-        force_feedback_script_status_encode(force_feedback_script_system.values.slots,
-                                            force_feedback_script_system.mode,
-                                            &force_feedback_script_status_sequence,
-                                            usb_vendor_response, sizeof(usb_vendor_response))) {
-        force_feedback_script_status_pending = false;
+    if (force_feedback_script_report_pending == FORCE_FEEDBACK_SCRIPT_REPORT_STATUS &&
+        force_feedback_script_status_report_encode(
+            &force_feedback_script_system.values, force_feedback_script_system.mode,
+            &force_feedback_script_response_sequence, usb_vendor_response,
+            sizeof(usb_vendor_response))) {
+        force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_NONE;
         usb_vendor_response_length = FORCE_FEEDBACK_SCRIPT_STATUS_RESPONSE_SIZE;
-        usb_vendor_response_kind = USB_VENDOR_RESPONSE_SCRIPT_STATUS;
+        usb_vendor_response_kind = USB_VENDOR_RESPONSE_SCRIPT_REPORT;
+        return;
+    }
+    if (force_feedback_script_report_pending == FORCE_FEEDBACK_SCRIPT_REPORT_VALUES &&
+        force_feedback_script_values_report_encode(
+            &force_feedback_script_system.values, &force_feedback_script_response_sequence,
+            usb_vendor_response, sizeof(usb_vendor_response))) {
+        force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_NONE;
+        usb_vendor_response_length = FORCE_FEEDBACK_SCRIPT_VALUES_RESPONSE_SIZE;
+        usb_vendor_response_kind = USB_VENDOR_RESPONSE_SCRIPT_REPORT;
         return;
     }
     if (usb_tuning_profile_service_response_pending(&usb_tuning_profile_service)) {
@@ -1019,8 +1035,8 @@ static void handle_force_feedback_timer_tick(void *context) {
 static void initialize_force_feedback_script(void) {
     force_feedback_script_runtime_init(&force_feedback_script_system);
     force_feedback_script_output_init(&force_feedback_script_output_state);
-    force_feedback_script_status_sequence = 1;
-    force_feedback_script_status_pending = false;
+    force_feedback_script_response_sequence = 1;
+    force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_NONE;
     force_feedback_ramp_deadline_ms = 0;
     platform_force_feedback_timer_init(handle_force_feedback_timer_tick,
                                        &force_feedback_script_system);
@@ -1320,7 +1336,11 @@ static void service_usb_output(void) {
 
     if (usb_vendor_command_decode(&usb_output_command, &usb_vendor_command)) {
         if (usb_vendor_command.kind == USB_VENDOR_COMMAND_SCRIPT_STATUS) {
-            force_feedback_script_status_pending = true;
+            force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_STATUS;
+            return;
+        }
+        if (usb_vendor_command.kind == USB_VENDOR_COMMAND_SCRIPT_VALUES) {
+            force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_VALUES;
             return;
         }
         if (usb_vendor_command.kind == USB_VENDOR_COMMAND_WHEEL_OUTPUT_REPORT) {

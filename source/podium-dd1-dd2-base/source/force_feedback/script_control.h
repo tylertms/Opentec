@@ -7,7 +7,6 @@
 
 enum {
     FORCE_FEEDBACK_SCRIPT_SLOT_COUNT = 16,
-    FORCE_FEEDBACK_SCRIPT_STATUS_RESPONSE_SIZE = 22,
 };
 
 typedef uint8_t ForceFeedbackRuntimeMode;
@@ -68,9 +67,6 @@ typedef struct {
 
 ForceFeedbackScriptControlResult force_feedback_script_control_decode(const uint8_t *packet,
                                                                       size_t length);
-bool force_feedback_script_status_encode(const ForceFeedbackScriptSlot *slots,
-                                         ForceFeedbackRuntimeMode mode, uint8_t *sequence,
-                                         uint8_t *response, size_t length);
 bool force_feedback_script_slot_apply(ForceFeedbackScriptSlot *slot,
                                       ForceFeedbackScriptSlotCommand command);
 void force_feedback_script_clock_tick(ForceFeedbackScriptClock *clock,
