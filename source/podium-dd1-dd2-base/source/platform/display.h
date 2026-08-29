@@ -6,6 +6,7 @@
 #include "display/framebuffer.h"
 
 void platform_display_init(void);
+void platform_display_reset(void);
 void platform_display_write_frame(ConstDisplayFramebuffer framebuffer);
 
 #endif

@@ -103,7 +103,7 @@ static void configure_parallel_port(void) {
  * it high through the recovery interval.
  *
  */
-static void reset_controller(void) {
+void platform_display_reset(void) {
     wait_past(DISPLAY_RESET_START_DELAY_MS);
     LATGbits.LATG14 = 0;
     wait_past(DISPLAY_RESET_LOW_MS);
@@ -154,7 +154,7 @@ void platform_display_init(void) {
     LATDbits.LATD3 = 1;
     display_bus.mode = DISPLAY_BUS_DATA;
     configure_parallel_port();
-    reset_controller();
+    platform_display_reset();
     display_controller_initialize(write_byte, &display_bus);
     LATDbits.LATD3 = 1;
     __builtin_nop();

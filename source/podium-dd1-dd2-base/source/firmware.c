@@ -1593,6 +1593,19 @@ static void apply_runtime_bridge_actions(uint16_t actions) {
 }
 
 /**
+ * @brief Transfers control to the wheel-base bootloader.
+ *
+ * Disconnects USB, completes the display-controller reset sequence, waits through the required
+ * settling interval, records the bootloader handoff request, and restarts the processor.
+ *
+ */
+static void enter_bootloader(void) {
+    platform_usb_detach();
+    platform_display_reset();
+    platform_system_enter_bootloader();
+}
+
+/**
  * @brief Selects the startup USB path after motor-controller discovery.
  *
  * Services the shared auxiliary bus through the one-second discovery window. A recognized
@@ -1621,21 +1634,27 @@ static void initialize_startup_usb(void) {
 }
 
 /**
- * @brief Starts a supported attached-wheel updater transition.
+ * @brief Starts an accepted runtime transition.
  *
- * Decodes runtime operating-mode commands against the active host, wheel, and motor modes, accepts
- * auxiliary and attached-wheel bridge routes, persists settings when required, initializes the
- * selected updater service, disables force output, and applies the transition's initial action.
+ * Handles reset requests immediately. For updater modes, decodes the route against the active
+ * host, wheel, and motor modes, persists settings when required, initializes the selected service,
+ * disables force output, and applies the transition's initial action.
  *
  * @param[in] command Decoded operating-mode command.
- * @return True when a supported updater transition started; otherwise false.
+ * @return True when an accepted runtime transition started; otherwise false.
  */
 static bool start_runtime_bridge(const UsbOperatingModeCommand *command) {
     if (!usb_operating_mode_command_decode_runtime(
             command, (uint8_t)usb_device_operating_mode(), wheel_service_mode(&wheel_service),
             motor_identity_runtime_state(motor_probe_identity(&motor_probe)),
-            &usb_runtime_transition) ||
-        (usb_runtime_transition.mode != USB_RUNTIME_MODE_AUXILIARY &&
+            &usb_runtime_transition)) {
+        return false;
+    }
+    if (usb_runtime_transition.mode == USB_RUNTIME_MODE_RESET) {
+        enter_bootloader();
+        return true;
+    }
+    if ((usb_runtime_transition.mode != USB_RUNTIME_MODE_AUXILIARY &&
          usb_runtime_transition.mode != USB_RUNTIME_MODE_AUXILIARY_RECOVERY &&
          usb_runtime_transition.mode != USB_RUNTIME_MODE_STATUS_BRIDGE &&
          usb_runtime_transition.mode != USB_RUNTIME_MODE_USB_BRIDGE &&
@@ -1727,7 +1746,7 @@ static bool service_runtime_bridge(uint32_t now_ms) {
         }
     }
     if (usb_updater_service_take_reset(&usb_updater_service)) {
-        platform_system_reset();
+        enter_bootloader();
     }
     return true;
 }
