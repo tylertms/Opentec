@@ -8,6 +8,7 @@
 #include "usb/console_descriptor.h"
 #include "usb/input_report.h"
 #include "usb/playstation_authentication.h"
+#include "usb/playstation_input.h"
 #include "usb/xbox_gip_response.h"
 #include "usb/xbox_gip_session.h"
 
@@ -68,5 +69,6 @@ bool usb_device_publish_playstation_authentication_response(const uint8_t *respo
                                                             uint16_t response_length);
 bool usb_device_playstation_authentication_response_active(void);
 void usb_device_fail_playstation_authentication(void);
+bool usb_device_send_playstation_input(const UsbPlaystationInputState *state);
 
 #endif

@@ -581,6 +581,25 @@ static void test_exchanges_playstation_authentication(void) {
                   USB_DEVICE_REPORT_SIZE - sizeof(playstation_output)) == 0);
     assert(received[receive_count - 1].endpoint == 3);
 
+    UsbPlaystationInputState input_state = {
+        .clutch_axes = {0x7f, 0x80},
+        .hat = 8,
+        .buttons = 0x1234,
+        .steering = 0x5678,
+        .pedals = {0x9abc, 0xdef0, 0x1357},
+        .wheel_hat = 0x81,
+        .auxiliary_axis = 0x2468,
+    };
+    uint8_t previous_send_count = send_count;
+    assert(usb_device_send_playstation_input(&input_state));
+    assert(send_count == previous_send_count + 1);
+    assert(sent.endpoint == 4 && sent.length == USB_PLAYSTATION_INPUT_REPORT_SIZE);
+    assert(sent.data[0] == 1 && sent.data[3] == 0x7f && sent.data[4] == 0x80);
+    assert(memcmp(sent.data + 0x2b, (uint8_t[]){0x78, 0x56, 0xbc, 0x9a, 0xf0, 0xde, 0x57, 0x13},
+                  8) == 0);
+    assert(usb_device_send_playstation_input(&input_state));
+    assert(send_count == previous_send_count + 1);
+
     push_setup(get_format_report);
     usb_device_service();
     assert(sent.length == 8);

@@ -14,6 +14,7 @@
 #include "usb/descriptor.h"
 #include "usb/device_control.h"
 #include "usb/playstation_authentication.h"
+#include "usb/playstation_input.h"
 #include "usb/podium_report_descriptor.h"
 #include "usb/updater_control.h"
 #include "usb/updater_descriptor.h"
@@ -1242,4 +1243,34 @@ void usb_device_fail_playstation_authentication(void) {
     if (operating_mode == USB_OPERATING_MODE_PLAYSTATION) {
         usb_playstation_authentication_fail(&console_workspace.playstation.authentication);
     }
+}
+
+/**
+ * @brief Encodes and sends the current PlayStation input state.
+ *
+ * Suppresses an unchanged 64-byte report and submits a changed report through endpoint four while
+ * the PlayStation interface is configured.
+ *
+ * @param[in] state Current logical PlayStation controls and axes.
+ * @return True when the report was unchanged or accepted by endpoint four; otherwise false.
+ */
+bool usb_device_send_playstation_input(const UsbPlaystationInputState *state) {
+    uint8_t *report = console_workspace.playstation.feature_report;
+    if (operating_mode != USB_OPERATING_MODE_PLAYSTATION || !usb_device_configured() ||
+        !usb_playstation_input_encode(report, state)) {
+        return false;
+    }
+    if (input_report_matches(report, USB_PLAYSTATION_INPUT_REPORT_SIZE)) {
+        return true;
+    }
+    if (!platform_usb_send(USB_PLAYSTATION_INPUT_ENDPOINT, report,
+                           USB_PLAYSTATION_INPUT_REPORT_SIZE, input_data_one)) {
+        return false;
+    }
+    for (uint8_t index = 0; index < USB_PLAYSTATION_INPUT_REPORT_SIZE; index++) {
+        input_report[index] = report[index];
+    }
+    input_report_length = USB_PLAYSTATION_INPUT_REPORT_SIZE;
+    input_data_one = !input_data_one;
+    return true;
 }
