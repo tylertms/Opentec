@@ -21,6 +21,18 @@ typedef struct {
     uint16_t auxiliary_axis;
 } UsbPlaystationInputState;
 
+/** @brief Clutch inputs used to produce the two PlayStation controller axes. */
+typedef struct {
+    uint8_t wheel_mode;
+    uint8_t paddle_mode;
+    uint8_t wheel_axes[2];
+    uint8_t adapter_axes[2];
+    bool wheel_axis_enabled;
+    bool adapter_connected;
+} UsbPlaystationClutchInput;
+
+uint8_t usb_playstation_input_map_hat(uint8_t directional_buttons);
+void usb_playstation_input_map_clutch(uint8_t axes[2], const UsbPlaystationClutchInput *input);
 bool usb_playstation_input_encode(uint8_t report[USB_PLAYSTATION_INPUT_REPORT_SIZE],
                                   const UsbPlaystationInputState *state);
 
