@@ -44,6 +44,7 @@ typedef struct {
 } UsbDeviceUpdaterPacket;
 
 void usb_device_init(BoardVariant variant);
+void usb_device_prepare(BoardVariant variant);
 bool usb_device_set_input_mode(UsbInputReportMode mode);
 UsbInputReportMode usb_device_input_mode(void);
 bool usb_device_set_operating_mode(UsbOperatingMode mode);

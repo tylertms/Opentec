@@ -137,7 +137,7 @@ static void test_exchanges_acknowledgement_response(void) {
     assert(!wheel_updater_aux_service_active(&service));
 }
 
-static void test_retries_failed_updater_operation(void) {
+static void test_stops_failed_updater_operation(void) {
     WheelUpdaterAuxService service;
     const uint8_t request[] = {0x5a, 0xa1};
     reset_bus();
@@ -149,15 +149,31 @@ static void test_retries_failed_updater_operation(void) {
     uint8_t starts_before_failure = start_count;
     bus_status = PLATFORM_AUX_BUS_FAILED;
     wheel_updater_aux_service_run(&service, 1);
-    assert(start_count == (uint8_t)(starts_before_failure + 1));
+    assert(start_count == starts_before_failure);
+    assert(!wheel_updater_aux_service_active(&service));
+}
+
+static void test_prepares_startup_recovery_without_handshake(void) {
+    WheelUpdaterAuxService service;
+    const uint8_t request[] = {0x5a, 0xa7};
+    reset_bus();
+    wheel_updater_aux_service_init(&service);
+    wheel_updater_aux_service_prepare_startup_recovery(&service);
+    assert(wheel_updater_aux_service_handshake_complete(&service));
+    assert(wheel_updater_aux_service_start(&service, request, sizeof(request)));
+
+    wheel_updater_aux_service_run(&service, 0);
     assert(requested_address == 0x10);
+    assert(requested_register == 0);
+    assert(requested_length == sizeof(request));
     assert(memcmp(requested_data, request, sizeof(request)) == 0);
 }
 
 int main(void) {
     test_retries_handshake_until_success();
     test_exchanges_acknowledgement_response();
-    test_retries_failed_updater_operation();
+    test_stops_failed_updater_operation();
+    test_prepares_startup_recovery_without_handshake();
     assert(!wheel_updater_aux_service_handshake_complete(NULL));
     assert(!wheel_updater_aux_service_active(NULL));
     return 0;

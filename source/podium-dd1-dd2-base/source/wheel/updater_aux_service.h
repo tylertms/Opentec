@@ -17,6 +17,7 @@ typedef struct {
 } WheelUpdaterAuxService;
 
 void wheel_updater_aux_service_init(WheelUpdaterAuxService *service);
+void wheel_updater_aux_service_prepare_startup_recovery(WheelUpdaterAuxService *service);
 void wheel_updater_aux_service_request_handshake(WheelUpdaterAuxService *service);
 bool wheel_updater_aux_service_handshake_complete(const WheelUpdaterAuxService *service);
 bool wheel_updater_aux_service_start(WheelUpdaterAuxService *service, const uint8_t *request,

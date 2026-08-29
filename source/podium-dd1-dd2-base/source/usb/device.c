@@ -316,14 +316,14 @@ static void reset_state(void) {
 }
 
 /**
- * @brief Initializes the wheel-base USB device.
+ * @brief Prepares the wheel-base USB device.
  *
  * Builds the native Fanatec descriptor profile, initializes console service data, resets transfer
- * state, and attaches the USB controller.
+ * state, and prepares the USB controller without attaching it to the host.
  *
  * @param[in] variant Wheel-base hardware variant.
  */
-void usb_device_init(BoardVariant variant) {
+void usb_device_prepare(BoardVariant variant) {
     board_variant = variant;
     xbox_identity_ready = false;
     usb_xbox_gip_security_descriptor_encode(xbox_security_descriptor);
@@ -338,6 +338,17 @@ void usb_device_init(BoardVariant variant) {
     reset_state();
     platform_usb_init();
     platform_usb_control_ready();
+}
+
+/**
+ * @brief Initializes the wheel-base USB device.
+ *
+ * Prepares the native Fanatec USB profile and attaches the controller to the host.
+ *
+ * @param[in] variant Wheel-base hardware variant.
+ */
+void usb_device_init(BoardVariant variant) {
+    usb_device_prepare(variant);
     platform_usb_attach();
 }
 

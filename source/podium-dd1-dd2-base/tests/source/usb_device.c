@@ -168,6 +168,13 @@ static void assert_string_descriptor(uint8_t index, const char *expected) {
     complete_control_input();
 }
 
+static void test_prepares_without_attaching(void) {
+    usb_device_prepare(BOARD_VARIANT_DD1);
+    assert(!attached);
+    assert(control_ready_count == 1);
+    assert(usb_device_operating_mode() == USB_OPERATING_MODE_FANATEC);
+}
+
 static void test_enumerates_podium_device(void) {
     static const uint8_t get_device_descriptor[] = {0x80, 6, 0, 1, 0, 0, 18, 0};
     static const uint8_t set_address[] = {0x00, 5, 42, 0, 0, 0, 0, 0};
@@ -696,6 +703,7 @@ static void test_exchanges_playstation_authentication(void) {
 }
 
 int main(void) {
+    test_prepares_without_attaching();
     test_enumerates_podium_device();
     test_returns_xbox_security_descriptor();
     test_exchanges_hid_reports();

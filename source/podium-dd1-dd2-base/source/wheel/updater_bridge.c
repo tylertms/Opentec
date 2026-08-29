@@ -130,9 +130,9 @@ bool wheel_updater_bridge_start(WheelUpdaterBridge *bridge, const uint8_t *reque
 /**
  * @brief Advances one updater request and response exchange.
  *
- * Retries failed wheel operations, waits two milliseconds after the request write, recognizes
- * response opcodes 0xA1, 0xA2, 0xA4, and 0xA7, assembles their fixed or variable fragments, and
- * ends an 0xA1 retry response on a zero marker or after 2000 milliseconds.
+ * Stops after a failed wheel operation, waits two milliseconds after the request write,
+ * recognizes response opcodes 0xA1, 0xA2, 0xA4, and 0xA7, assembles their fixed or variable
+ * fragments, and ends an 0xA1 retry response on a zero marker or after 2000 milliseconds.
  *
  * @param[in,out] bridge Active updater bridge to advance.
  * @param[in] io Current time and completion state of the preceding wheel operation.
@@ -142,6 +142,10 @@ WheelUpdaterOperation wheel_updater_bridge_step(WheelUpdaterBridge *bridge,
                                                 const WheelUpdaterIo *io) {
     if (bridge == NULL || io == NULL || bridge->phase == WHEEL_UPDATER_BRIDGE_IDLE ||
         bridge->phase == WHEEL_UPDATER_BRIDGE_RESPONSE_READY) {
+        return (WheelUpdaterOperation){0};
+    }
+    if (io->status == WHEEL_UPDATER_IO_FAILED) {
+        bridge->phase = WHEEL_UPDATER_BRIDGE_IDLE;
         return (WheelUpdaterOperation){0};
     }
 

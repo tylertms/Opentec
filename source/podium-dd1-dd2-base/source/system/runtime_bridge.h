@@ -27,6 +27,7 @@ typedef enum {
     RUNTIME_BRIDGE_ACTION_REQUEST_PROTOCOL_COMMAND = 1u << 7,
     RUNTIME_BRIDGE_ACTION_ACTIVATE_UPDATER_USB = 1u << 8,
     RUNTIME_BRIDGE_ACTION_SERVICE_UPDATER = 1u << 9,
+    RUNTIME_BRIDGE_ACTION_RESTORE_NORMAL_USB = 1u << 10,
 } RuntimeBridgeAction;
 
 /** @brief Current prerequisite and handshake signals for one bridge step. */
@@ -53,16 +54,18 @@ typedef enum {
     RUNTIME_BRIDGE_ACTIVE,
 } RuntimeBridgePhase;
 
-/** @brief Runtime bridge mode, phase, and transition deadlines. */
+/** @brief Runtime bridge mode, phase, transition deadlines, and startup fallback state. */
 typedef struct {
     UsbRuntimeMode mode;
     RuntimeBridgePhase phase;
     uint32_t start_deadline_ms;
     uint32_t settle_deadline_ms;
+    bool startup_recovery;
 } RuntimeBridge;
 
 void runtime_bridge_init(RuntimeBridge *bridge);
 uint16_t runtime_bridge_start(RuntimeBridge *bridge, UsbRuntimeMode mode);
+uint16_t runtime_bridge_start_auxiliary_recovery(RuntimeBridge *bridge, uint32_t now_ms);
 uint16_t runtime_bridge_step(RuntimeBridge *bridge, const RuntimeBridgeInput *input);
 bool runtime_bridge_active(const RuntimeBridge *bridge);
 

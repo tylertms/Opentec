@@ -71,7 +71,7 @@ static void test_maps_command_targets(void) {
     }
 }
 
-static void test_retries_rejected_write(void) {
+static void test_stops_rejected_write(void) {
     CommandTransport transport;
     WheelUpdaterCommandService service;
     const uint8_t request[] = {0x5a, 0xb0};
@@ -85,7 +85,8 @@ static void test_retries_rejected_write(void) {
     submit(&transport, expected, sizeof(expected));
     complete_write(&transport, false);
     wheel_updater_command_service_run(&service, 0);
-    submit(&transport, expected, sizeof(expected));
+    assert(!wheel_updater_command_service_active(&service));
+    assert(command_transport_is_owner(&transport, 0));
 }
 
 static void test_waits_for_other_command_owner(void) {
@@ -148,7 +149,7 @@ static void test_exchanges_acknowledgement_response(void) {
 int main(void) {
     test_rejects_invalid_service_target_and_request();
     test_maps_command_targets();
-    test_retries_rejected_write();
+    test_stops_rejected_write();
     test_waits_for_other_command_owner();
     test_exchanges_acknowledgement_response();
     return 0;

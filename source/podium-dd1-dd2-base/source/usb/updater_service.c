@@ -286,6 +286,23 @@ bool usb_updater_service_select_mode(UsbUpdaterService *service, UsbRuntimeMode 
 }
 
 /**
+ * @brief Selects auxiliary updater recovery after startup discovery fails.
+ *
+ * Initializes runtime mode two and satisfies its normal-controller shutdown prerequisite because
+ * the startup discovery window already established that the normal endpoint is unavailable.
+ *
+ * @param[in,out] service Idle updater service selecting startup recovery.
+ * @return True when the auxiliary recovery route was prepared; otherwise false.
+ */
+bool usb_updater_service_select_startup_recovery(UsbUpdaterService *service) {
+    if (!usb_updater_service_select_mode(service, USB_RUNTIME_MODE_AUXILIARY_RECOVERY)) {
+        return false;
+    }
+    wheel_updater_aux_service_prepare_startup_recovery(&service->route.auxiliary);
+    return true;
+}
+
+/**
  * @brief Requests the prerequisite auxiliary shutdown handshake.
  *
  * Forwards the request only while an auxiliary updater route is selected.

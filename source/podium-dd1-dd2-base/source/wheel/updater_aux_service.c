@@ -78,6 +78,22 @@ void wheel_updater_aux_service_init(WheelUpdaterAuxService *service) {
 }
 
 /**
+ * @brief Prepares auxiliary updater access after startup discovery fails.
+ *
+ * Treats the normal-controller shutdown prerequisite as complete because the discovery window
+ * found no active normal endpoint and the recovery updater is addressed separately.
+ *
+ * @param[in,out] service Idle auxiliary updater service entering startup recovery.
+ */
+void wheel_updater_aux_service_prepare_startup_recovery(WheelUpdaterAuxService *service) {
+    if (service != NULL && !service->transfer_active &&
+        !wheel_updater_bridge_active(&service->bridge)) {
+        service->handshake_requested = false;
+        service->handshake_complete = true;
+    }
+}
+
+/**
  * @brief Requests the auxiliary shutdown handshake.
  *
  * Schedules the two-byte 0x05FA token for parameter three and keeps the request pending until the

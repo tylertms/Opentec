@@ -60,6 +60,7 @@ typedef struct {
 
 void usb_updater_service_init(UsbUpdaterService *service, CommandTransport *transport);
 bool usb_updater_service_select_mode(UsbUpdaterService *service, UsbRuntimeMode mode);
+bool usb_updater_service_select_startup_recovery(UsbUpdaterService *service);
 void usb_updater_service_request_auxiliary_handshake(UsbUpdaterService *service);
 bool usb_updater_service_auxiliary_handshake_complete(const UsbUpdaterService *service);
 bool usb_updater_service_start_probe(UsbUpdaterService *service);

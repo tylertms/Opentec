@@ -16,7 +16,7 @@ enum {
  * @brief Converts shared command completion into updater protocol input.
  *
  * Reports idle before an operation is queued, pending while the shared transport is busy, and a
- * complete read fragment or retryable failure after the transport finishes.
+ * complete read fragment or terminal failure after the transport finishes.
  *
  * @param[in,out] service Updater command service polling its pending operation.
  * @param[in] now_ms Current monotonic time in milliseconds.

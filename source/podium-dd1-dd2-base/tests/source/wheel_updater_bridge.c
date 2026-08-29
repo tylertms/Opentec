@@ -90,17 +90,13 @@ static void test_accepts_maximum_request(void) {
     assert(memcmp(operation.data, request, sizeof(request)) == 0);
 }
 
-static void test_finishes_retry_request_after_write(void) {
+static void test_stops_after_failed_operation(void) {
     WheelUpdaterBridge bridge;
     const uint8_t request[] = {0x5a, 0xa1, 0x33};
     wheel_updater_bridge_init(&bridge);
 
     assert(wheel_updater_bridge_start(&bridge, request, sizeof(request)));
     assert_operation(step(&bridge, WHEEL_UPDATER_IO_FAILED, 10, NULL, 0),
-                     WHEEL_UPDATER_OPERATION_WRITE, sizeof(request));
-    assert_operation(step(&bridge, WHEEL_UPDATER_IO_PENDING, 10, NULL, 0),
-                     WHEEL_UPDATER_OPERATION_NONE, 0);
-    assert_operation(step(&bridge, WHEEL_UPDATER_IO_COMPLETE, 10, NULL, 0),
                      WHEEL_UPDATER_OPERATION_NONE, 0);
     assert(!wheel_updater_bridge_active(&bridge));
 }
@@ -115,8 +111,6 @@ static void test_retries_preamble_and_assembles_acknowledgement(void) {
     begin_response(&bridge, request, sizeof(request), 20);
 
     assert_operation(step(&bridge, WHEEL_UPDATER_IO_COMPLETE, 22, zero, sizeof(zero)),
-                     WHEEL_UPDATER_OPERATION_READ, 1);
-    assert_operation(step(&bridge, WHEEL_UPDATER_IO_FAILED, 22, NULL, 0),
                      WHEEL_UPDATER_OPERATION_READ, 1);
     assert_operation(step(&bridge, WHEEL_UPDATER_IO_COMPLETE, 22, invalid, sizeof(invalid)),
                      WHEEL_UPDATER_OPERATION_WRITE, sizeof(request));
@@ -234,7 +228,7 @@ static void test_finishes_retry_sequence_after_timeout(void) {
 int main(void) {
     test_rejects_invalid_requests_and_busy_start();
     test_accepts_maximum_request();
-    test_finishes_retry_request_after_write();
+    test_stops_after_failed_operation();
     test_retries_preamble_and_assembles_acknowledgement();
     test_assembles_fixed_response();
     test_assembles_variable_response_and_caps_payload();

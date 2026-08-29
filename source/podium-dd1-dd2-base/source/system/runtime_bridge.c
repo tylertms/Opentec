@@ -78,6 +78,7 @@ uint16_t runtime_bridge_start(RuntimeBridge *bridge, UsbRuntimeMode mode) {
     }
 
     bridge->mode = mode;
+    bridge->startup_recovery = false;
     if (mode == USB_RUNTIME_MODE_AUXILIARY || mode == USB_RUNTIME_MODE_AUXILIARY_RECOVERY) {
         bridge->phase = RUNTIME_BRIDGE_WAIT_AUXILIARY;
         return RUNTIME_BRIDGE_ACTION_REQUEST_AUXILIARY_HANDSHAKE;
@@ -97,6 +98,27 @@ uint16_t runtime_bridge_start(RuntimeBridge *bridge, UsbRuntimeMode mode) {
 
     bridge->mode = USB_RUNTIME_MODE_NORMAL;
     return RUNTIME_BRIDGE_ACTION_NONE;
+}
+
+/**
+ * @brief Starts the startup auxiliary-updater recovery path.
+ *
+ * Skips the normal-controller shutdown handshake after the startup discovery window found no
+ * controller, then applies the common ten-millisecond probe delay and 100-millisecond USB settling
+ * interval.
+ *
+ * @param[in,out] bridge Idle runtime bridge accepting the recovery path.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @return USB preparation and transfer-timer actions, or no actions when the bridge is busy.
+ */
+uint16_t runtime_bridge_start_auxiliary_recovery(RuntimeBridge *bridge, uint32_t now_ms) {
+    if (bridge == NULL || bridge->phase != RUNTIME_BRIDGE_IDLE) {
+        return RUNTIME_BRIDGE_ACTION_NONE;
+    }
+    bridge->mode = USB_RUNTIME_MODE_AUXILIARY_RECOVERY;
+    bridge->startup_recovery = true;
+    return prepare_transfer(bridge, now_ms, RUNTIME_BRIDGE_USB_START_DELAY_MS,
+                            RUNTIME_BRIDGE_STANDARD_SETTLE_MS);
 }
 
 /**
@@ -174,6 +196,13 @@ uint16_t runtime_bridge_step(RuntimeBridge *bridge, const RuntimeBridgeInput *in
     if (bridge->phase == RUNTIME_BRIDGE_WAIT_TRANSFER) {
         if (input->transfer_status == RUNTIME_BRIDGE_TRANSFER_COMPLETE) {
             bridge->phase = RUNTIME_BRIDGE_WAIT_SETTLE;
+        } else if (input->transfer_status == RUNTIME_BRIDGE_TRANSFER_FAILED &&
+                   bridge->startup_recovery) {
+            bridge->mode = USB_RUNTIME_MODE_NORMAL;
+            bridge->phase = RUNTIME_BRIDGE_IDLE;
+            bridge->startup_recovery = false;
+            return RUNTIME_BRIDGE_ACTION_DISABLE_TRANSFER_TIMER |
+                   RUNTIME_BRIDGE_ACTION_RESTORE_NORMAL_USB;
         } else if (bridge->mode == USB_RUNTIME_MODE_USB_BRIDGE &&
                    deadline_passed(input->now_ms, bridge->settle_deadline_ms)) {
             bridge->phase = RUNTIME_BRIDGE_WAIT_USB_READY;

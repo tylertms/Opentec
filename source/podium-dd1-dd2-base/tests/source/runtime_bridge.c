@@ -57,6 +57,24 @@ static void test_runs_auxiliary_transition(void) {
     assert(runtime_bridge_step(&bridge, &input) == RUNTIME_BRIDGE_ACTION_SERVICE_UPDATER);
 }
 
+static void test_runs_startup_auxiliary_recovery(void) {
+    RuntimeBridge bridge;
+    RuntimeBridgeInput input = input_at(1000);
+    runtime_bridge_init(&bridge);
+
+    assert(runtime_bridge_start_auxiliary_recovery(NULL, input.now_ms) == 0);
+    assert(runtime_bridge_start_auxiliary_recovery(&bridge, input.now_ms) ==
+           (RUNTIME_BRIDGE_ACTION_PREPARE_USB | RUNTIME_BRIDGE_ACTION_ENABLE_TRANSFER_TIMER));
+    assert(runtime_bridge_start_auxiliary_recovery(&bridge, input.now_ms) == 0);
+    input.now_ms = 1011;
+    assert(runtime_bridge_step(&bridge, &input) == RUNTIME_BRIDGE_ACTION_START_TRANSFER);
+    input.transfer_status = RUNTIME_BRIDGE_TRANSFER_FAILED;
+    assert(runtime_bridge_step(&bridge, &input) == (RUNTIME_BRIDGE_ACTION_DISABLE_TRANSFER_TIMER |
+                                                    RUNTIME_BRIDGE_ACTION_RESTORE_NORMAL_USB));
+    assert(bridge.mode == USB_RUNTIME_MODE_NORMAL);
+    assert(bridge.phase == RUNTIME_BRIDGE_IDLE);
+}
+
 static void test_runs_status_transition(void) {
     RuntimeBridge bridge;
     RuntimeBridgeInput input = input_at(20);
@@ -180,6 +198,7 @@ static void test_runs_protocol_fallback_after_timeout(void) {
 int main(void) {
     test_rejects_invalid_and_overlapping_transitions();
     test_runs_auxiliary_transition();
+    test_runs_startup_auxiliary_recovery();
     test_runs_status_transition();
     test_retries_usb_transition_after_300_milliseconds();
     test_runs_protocol_fast_path();

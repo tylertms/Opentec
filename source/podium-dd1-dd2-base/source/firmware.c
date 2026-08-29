@@ -1532,8 +1532,9 @@ static RuntimeBridgeTransferStatus runtime_bridge_transfer_status(UsbUpdaterProb
  *
  * Requests the auxiliary shutdown handshake, marks the status handshake, detaches USB during its
  * settling interval, selects the updater link, starts the common route probe, and activates the
- * updater descriptor and request service. Transfer timer actions require no separate operation
- * because the selected transport owns its timing source.
+ * updater descriptor and request service, or restores the prepared normal profile after a failed
+ * startup recovery probe. Transfer timer actions require no separate operation because the
+ * selected transport owns its timing source.
  *
  * @param[in] actions Independent runtime bridge action flags.
  */
@@ -1560,6 +1561,37 @@ static void apply_runtime_bridge_actions(uint16_t actions) {
         usb_device_set_operating_mode(USB_OPERATING_MODE_UPDATER)) {
         usb_updater_service_set_usb_active(&usb_updater_service, true);
     }
+    if ((actions & RUNTIME_BRIDGE_ACTION_RESTORE_NORMAL_USB) != 0) {
+        platform_usb_attach();
+    }
+}
+
+/**
+ * @brief Selects the startup USB path after motor-controller discovery.
+ *
+ * Services the shared auxiliary bus through the one-second discovery window. A recognized
+ * controller starts the normal USB profile immediately. A missing controller leaves that profile
+ * detached while runtime mode two probes the auxiliary updater endpoint; a rejected recovery setup
+ * falls back to the prepared normal profile.
+ */
+static void initialize_startup_usb(void) {
+    while (motor_probe.phase != MOTOR_PROBE_COMPLETE && motor_probe.phase != MOTOR_PROBE_FAILED) {
+        platform_aux_bus_service();
+        motor_probe_run(&motor_probe, platform_time_ms());
+    }
+    if (motor_probe_identity(&motor_probe) != NULL) {
+        usb_device_init(board_identity.variant);
+        return;
+    }
+
+    platform_aux_bus_clear();
+    usb_device_prepare(board_identity.variant);
+    if (!usb_updater_service_select_startup_recovery(&usb_updater_service)) {
+        platform_usb_attach();
+        return;
+    }
+    apply_runtime_bridge_actions(
+        runtime_bridge_start_auxiliary_recovery(&runtime_bridge, platform_time_ms()));
 }
 
 /**
@@ -2821,7 +2853,7 @@ int main(void) {
     initialize_base_settings();
     initialize_motor();
     initialize_force_feedback_script();
-    usb_device_init(board_identity.variant);
+    initialize_startup_usb();
     usb_connection_monitor_init(&usb_connection_monitor);
     usb_host_capability_recovery_init(&usb_host_capability_recovery);
     for (;;) {

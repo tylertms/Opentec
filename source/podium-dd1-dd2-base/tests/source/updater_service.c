@@ -193,6 +193,23 @@ static void test_routes_auxiliary_handshake_and_probe(void) {
     assert(memcmp(aux_data, expected_probe, sizeof(expected_probe)) == 0);
 }
 
+static void test_routes_startup_recovery_without_handshake(void) {
+    UsbUpdaterService service;
+    reset_fakes();
+    usb_updater_service_init(&service, NULL);
+    assert(usb_updater_service_select_startup_recovery(&service));
+    assert(usb_updater_service_auxiliary_handshake_complete(&service));
+    assert(usb_updater_service_start_probe(&service));
+
+    UsbUpdaterServiceInput input = input_at(0);
+    usb_updater_service_run(&service, &input);
+    const uint8_t expected_probe[] = {0x5a, 0xa7};
+    assert(aux_address == 0x10);
+    assert(aux_register == 0);
+    assert(aux_length == sizeof(expected_probe));
+    assert(memcmp(aux_data, expected_probe, sizeof(expected_probe)) == 0);
+}
+
 static void test_latches_guarded_reset(void) {
     static const uint8_t request[] = {0xf8, 0x09, 0x01, 0xfe};
     UsbUpdaterService service;
@@ -288,6 +305,7 @@ int main(void) {
     test_selects_supported_routes();
     test_services_device_information_on_strict_cadence();
     test_routes_auxiliary_handshake_and_probe();
+    test_routes_startup_recovery_without_handshake();
     test_latches_guarded_reset();
     test_probes_direct_route_and_selects_identity();
     test_forwards_host_bridge_response();
