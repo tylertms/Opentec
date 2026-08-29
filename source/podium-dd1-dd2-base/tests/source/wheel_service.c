@@ -670,7 +670,7 @@ static void test_mirrors_extended_adapter_output_reports(void) {
         arguments[index] = index;
     }
 
-    wheel_service_apply_output_report(&service, arguments, false);
+    wheel_service_apply_output_report(&service, arguments);
 
     assert(service.adapter_commands.report_four_pending);
     assert(memcmp(service.adapter_commands.report_four, arguments + 1,
@@ -695,6 +695,37 @@ static void test_routes_report_six_command(void) {
     assert(!wheel_service_apply_report_six_command(&service, &command));
     assert(!wheel_service_apply_report_six_command(NULL, &command));
     assert(!wheel_service_apply_report_six_command(&service, NULL));
+}
+
+static void test_routes_and_toggles_interface_mode_gate(void) {
+    WheelService service;
+    initialize_service(&service);
+    UsbOperatingModeCommand command = {.opcode = 0x0e, .parameters = {2}};
+
+    assert(wheel_service_apply_interface_mode_command(&service, &command));
+    assert(wheel_output_reports_interface_mode_gate(&service.protocol.output_reports));
+    command.parameters[0] = 0;
+    assert(wheel_service_apply_interface_mode_command(&service, &command));
+    assert(!wheel_output_reports_interface_mode_gate(&service.protocol.output_reports));
+
+    service.protocol.request_ready = true;
+    service.protocol.mode = WHEEL_MODE_LEGACY_ALTERNATE;
+    service.protocol.request[1] = 0;
+    service.protocol.request[2] = 0x90;
+    wheel_service_update_interface_mode_gate(&service, 1);
+    assert(wheel_output_reports_interface_mode_gate(&service.protocol.output_reports));
+
+    service.protocol.mode = 1;
+    service.protocol.request[1] = 0;
+    wheel_service_update_interface_mode_gate(&service, 202);
+    service.protocol.request[1] = 0x90;
+    wheel_service_update_interface_mode_gate(&service, 203);
+    assert(wheel_output_reports_interface_mode_gate(&service.protocol.output_reports));
+
+    command.opcode = 0x0f;
+    assert(!wheel_service_apply_interface_mode_command(&service, &command));
+    assert(!wheel_service_apply_interface_mode_command(NULL, &command));
+    assert(!wheel_service_apply_interface_mode_command(&service, NULL));
 }
 
 static void test_rejects_unavailable_multi_position_input(void) {
@@ -921,6 +952,7 @@ int main(void) {
     test_retains_adapter_display_state_across_command_resets();
     test_mirrors_extended_adapter_output_reports();
     test_routes_report_six_command();
+    test_routes_and_toggles_interface_mode_gate();
     test_rejects_unavailable_multi_position_input();
     test_selects_extended_report_fields();
     test_reports_calibration_availability();

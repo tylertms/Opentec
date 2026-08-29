@@ -23,6 +23,8 @@ enum {
     WHEEL_MODE_REMOTE_TUNING_EXTENDED = 0x1c,
     WHEEL_MODE_LEGACY_ALTERNATE = 0x0f,
     WHEEL_MODE_LEGACY_COMPATIBILITY = 0x17,
+    WHEEL_INTERFACE_MODE_BUTTON_CHORD = 0x9000,
+    WHEEL_INTERFACE_MODE_TOGGLE_DELAY_MS = 200,
 };
 
 /**
@@ -101,6 +103,61 @@ void wheel_output_reports_set_button_illumination(WheelOutputReports *reports, b
 }
 
 /**
+ * @brief Selects the legacy wheel interface-mode gate.
+ *
+ * Normalizes the requested state used by legacy report-two forwarding and the idle attached-wheel
+ * response flag.
+ *
+ * @param[in,out] reports Retained report and interface state.
+ * @param[in] enabled Requested interface-mode gate state.
+ */
+void wheel_output_reports_set_interface_mode_gate(WheelOutputReports *reports, bool enabled) {
+    if (reports != NULL) {
+        reports->interface_mode_gate = enabled;
+    }
+}
+
+/**
+ * @brief Updates the legacy wheel interface-mode gate from its local button chord.
+ *
+ * Toggles the gate once when secondary-button mask 0x9000 is newly held after the strict
+ * 200-millisecond deadline. Releasing either button rearms the chord without changing the gate.
+ *
+ * @param[in,out] reports Retained report, gate, latch, and deadline state.
+ * @param[in] secondary_buttons Current attached-wheel secondary buttons.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+void wheel_output_reports_update_interface_mode_gate(WheelOutputReports *reports,
+                                                     uint16_t secondary_buttons, uint32_t now_ms) {
+    if (reports == NULL) {
+        return;
+    }
+    if ((secondary_buttons & WHEEL_INTERFACE_MODE_BUTTON_CHORD) !=
+        WHEEL_INTERFACE_MODE_BUTTON_CHORD) {
+        reports->interface_mode_button_latched = false;
+        return;
+    }
+    if (!reports->interface_mode_button_latched &&
+        (int32_t)(now_ms - reports->interface_mode_toggle_deadline_ms) > 0) {
+        reports->interface_mode_gate = !reports->interface_mode_gate;
+        reports->interface_mode_toggle_deadline_ms = now_ms + WHEEL_INTERFACE_MODE_TOGGLE_DELAY_MS;
+        reports->interface_mode_button_latched = true;
+    }
+}
+
+/**
+ * @brief Returns the legacy wheel interface-mode gate.
+ *
+ * Exposes the normalized state without modifying its button latch or deadline.
+ *
+ * @param[in] reports Retained report and interface state.
+ * @return True while the interface-mode gate is open.
+ */
+bool wheel_output_reports_interface_mode_gate(const WheelOutputReports *reports) {
+    return reports != NULL && reports->interface_mode_gate;
+}
+
+/**
  * @brief Encodes the next report 17 transfer segment.
  *
  * Writes command 3 and one 30-byte payload half. Sequence zero advances the retained first byte by
@@ -130,7 +187,7 @@ static void encode_report_seventeen(WheelOutputReports *reports, uint8_t *frame)
 /**
  * @brief Applies an opcode-one attached-wheel output report.
  *
- * Retains report 1 or 2 unconditionally except while legacy display output suppresses report 2.
+ * Retains report 1 or 2 unconditionally except while the legacy interface gate suppresses report 2.
  * Reports 4 and 5 are retained only for the two legacy modes or adapter mode one. Replacing a
  * retained report keeps its corresponding output pending.
  *
@@ -138,16 +195,14 @@ static void encode_report_seventeen(WheelOutputReports *reports, uint8_t *frame)
  * @param[in] arguments Action byte followed by the report payload.
  * @param[in] wheel_mode Negotiated attached-wheel mode.
  * @param[in] adapter_mode Attached adapter mode.
- * @param[in] display_blink_active True while the local legacy display blink phase is active.
  */
 void wheel_output_reports_apply(WheelOutputReports *reports, const uint8_t *arguments,
-                                uint8_t wheel_mode, uint16_t adapter_mode,
-                                bool display_blink_active) {
+                                uint8_t wheel_mode, uint16_t adapter_mode) {
     bool legacy_mode =
         wheel_mode == WHEEL_MODE_LEGACY_ALTERNATE || wheel_mode == WHEEL_MODE_LEGACY_COMPATIBILITY;
     switch (arguments[0]) {
     case WHEEL_OUTPUT_REPORT_ACTION_TWO:
-        if (!legacy_mode || display_blink_active) {
+        if (!legacy_mode || reports->interface_mode_gate) {
             memcpy(reports->report_two, arguments + 1, sizeof(reports->report_two));
             reports->pending |= WHEEL_OUTPUT_REPORT_TWO_PENDING;
         }

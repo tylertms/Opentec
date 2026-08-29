@@ -18,9 +18,9 @@ static void test_encodes_reports_in_priority_order(void) {
     uint8_t frame[33] = {0};
 
     fill_arguments(arguments, 0, 0x20);
-    wheel_output_reports_apply(&reports, arguments, 0, 0, false);
+    wheel_output_reports_apply(&reports, arguments, 0, 0);
     fill_arguments(arguments, 1, 0x10);
-    wheel_output_reports_apply(&reports, arguments, 0, 0, false);
+    wheel_output_reports_apply(&reports, arguments, 0, 0);
 
     assert(wheel_output_reports_encode_next(&reports, 0, frame));
     assert(frame[1] == 1);
@@ -36,19 +36,38 @@ static void test_encodes_reports_in_priority_order(void) {
     assert(!wheel_output_reports_encode_next(&reports, 0, frame));
 }
 
-static void test_suppresses_legacy_report_two_outside_blink_phase(void) {
+static void test_suppresses_legacy_report_two_while_interface_gate_is_closed(void) {
     WheelOutputReports reports;
     wheel_output_reports_init(&reports);
     uint8_t arguments[26];
     uint8_t frame[33] = {0};
 
     fill_arguments(arguments, 0, 0x30);
-    wheel_output_reports_apply(&reports, arguments, 0x0f, 0, false);
+    wheel_output_reports_apply(&reports, arguments, 0x0f, 0);
     assert(!wheel_output_reports_encode_next(&reports, 0, frame));
 
-    wheel_output_reports_apply(&reports, arguments, 0x17, 0, true);
+    wheel_output_reports_set_interface_mode_gate(&reports, true);
+    wheel_output_reports_apply(&reports, arguments, 0x17, 0);
     assert(wheel_output_reports_encode_next(&reports, 0, frame));
     assert(frame[1] == 2);
+}
+
+static void test_toggles_interface_gate_from_legacy_button_chord(void) {
+    WheelOutputReports reports;
+    wheel_output_reports_init(&reports);
+
+    wheel_output_reports_update_interface_mode_gate(&reports, 0x9000, 0);
+    assert(!wheel_output_reports_interface_mode_gate(&reports));
+    wheel_output_reports_update_interface_mode_gate(&reports, 0x9000, 1);
+    assert(wheel_output_reports_interface_mode_gate(&reports));
+    wheel_output_reports_update_interface_mode_gate(&reports, 0x9000, 202);
+    assert(wheel_output_reports_interface_mode_gate(&reports));
+
+    wheel_output_reports_update_interface_mode_gate(&reports, 0x1000, 202);
+    wheel_output_reports_update_interface_mode_gate(&reports, 0x9000, 201);
+    assert(wheel_output_reports_interface_mode_gate(&reports));
+    wheel_output_reports_update_interface_mode_gate(&reports, 0x9000, 202);
+    assert(!wheel_output_reports_interface_mode_gate(&reports));
 }
 
 static void test_gates_extended_reports(void) {
@@ -58,14 +77,14 @@ static void test_gates_extended_reports(void) {
     uint8_t frame[33] = {0};
 
     fill_arguments(arguments, 2, 0x40);
-    wheel_output_reports_apply(&reports, arguments, 0, 0, false);
+    wheel_output_reports_apply(&reports, arguments, 0, 0);
     fill_arguments(arguments, 3, 0x50);
-    wheel_output_reports_apply(&reports, arguments, 0, 0, false);
+    wheel_output_reports_apply(&reports, arguments, 0, 0);
     assert(!wheel_output_reports_encode_next(&reports, 0, frame));
 
-    wheel_output_reports_apply(&reports, arguments, 0, 1, false);
+    wheel_output_reports_apply(&reports, arguments, 0, 1);
     fill_arguments(arguments, 2, 0x40);
-    wheel_output_reports_apply(&reports, arguments, 0x0f, 0, false);
+    wheel_output_reports_apply(&reports, arguments, 0x0f, 0);
 
     assert(wheel_output_reports_encode_next(&reports, 0, frame));
     assert(frame[1] == 4);
@@ -85,7 +104,7 @@ static void test_ignores_unknown_actions(void) {
     uint8_t arguments[26] = {4};
     uint8_t frame[33] = {0};
 
-    wheel_output_reports_apply(&reports, arguments, 0x0f, 1, false);
+    wheel_output_reports_apply(&reports, arguments, 0x0f, 1);
     assert(!wheel_output_reports_encode_next(&reports, 0, frame));
 }
 
@@ -96,7 +115,7 @@ static void test_queues_report_six_from_shared_report_four_payload(void) {
     uint8_t frame[33] = {0};
 
     fill_arguments(arguments, WHEEL_OUTPUT_REPORT_ACTION_FOUR, 0x40);
-    wheel_output_reports_apply(&reports, arguments, 0, 1, false);
+    wheel_output_reports_apply(&reports, arguments, 0, 1);
     wheel_output_reports_queue_six(&reports, 0xa5, 0x5a);
 
     assert(wheel_output_reports_encode_next(&reports, 0, frame));
@@ -129,7 +148,7 @@ static void test_streams_report_seventeen_after_direct_reports(void) {
     }
     wheel_output_reports_queue_seventeen(&reports, payload);
     fill_arguments(arguments, 1, 0x80);
-    wheel_output_reports_apply(&reports, arguments, 0, 0, false);
+    wheel_output_reports_apply(&reports, arguments, 0, 0);
 
     assert(wheel_output_reports_encode_next(&reports, 0, frame));
     assert(frame[1] == 1);
@@ -209,7 +228,8 @@ static void test_sends_button_illumination_changes_to_remote_tuning_modes(void) 
 
 int main(void) {
     test_encodes_reports_in_priority_order();
-    test_suppresses_legacy_report_two_outside_blink_phase();
+    test_suppresses_legacy_report_two_while_interface_gate_is_closed();
+    test_toggles_interface_gate_from_legacy_button_chord();
     test_gates_extended_reports();
     test_ignores_unknown_actions();
     test_queues_report_six_from_shared_report_four_payload();

@@ -803,6 +803,48 @@ bool wheel_service_apply_report_six_command(WheelService *service,
 }
 
 /**
+ * @brief Applies a host interface-mode gate update.
+ *
+ * Routes operating-mode opcode 0x0E parameter zero into the normalized legacy wheel interface
+ * state.
+ *
+ * @param[in,out] service Attached-wheel service and retained output state.
+ * @param[in] command Decoded F8 09 operating-mode command.
+ * @return True when the command carries an interface-mode gate update.
+ */
+bool wheel_service_apply_interface_mode_command(WheelService *service,
+                                                const UsbOperatingModeCommand *command) {
+    if (service == NULL || command == NULL || command->opcode != 0x0e) {
+        return false;
+    }
+    wheel_output_reports_set_interface_mode_gate(&service->protocol.output_reports,
+                                                 command->parameters[0] != 0);
+    return true;
+}
+
+/**
+ * @brief Updates the local legacy wheel interface-mode shortcut.
+ *
+ * Samples the current secondary buttons only in wheel modes 0x0F and 0x17, then advances the
+ * retained interface gate chord latch and deadline.
+ *
+ * @param[in,out] service Attached-wheel service and retained output state.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+void wheel_service_update_interface_mode_gate(WheelService *service, uint32_t now_ms) {
+    if (service == NULL || !service->protocol.request_ready ||
+        (service->protocol.mode != WHEEL_MODE_LEGACY_ALTERNATE &&
+         service->protocol.mode != WHEEL_MODE_LEGACY_COMPATIBILITY)) {
+        return;
+    }
+    uint16_t secondary_buttons =
+        (uint16_t)service->protocol.request[WHEEL_INPUT_SECONDARY_OFFSET] |
+        ((uint16_t)service->protocol.request[WHEEL_INPUT_SECONDARY_OFFSET + 1] << 8);
+    wheel_output_reports_update_interface_mode_gate(&service->protocol.output_reports,
+                                                    secondary_buttons, now_ms);
+}
+
+/**
  * @brief Resolves the attached wheel's effective multi-position reporting mode.
  *
  * Combines the active profile setting with the retained host override, negotiated wheel mode, and
@@ -926,18 +968,16 @@ bool wheel_service_multi_position_input(WheelService *service, uint32_t now_ms,
 /**
  * @brief Applies a host-provided attached-wheel output report.
  *
- * Uses the negotiated wheel mode, current adapter mode, and display blink state to retain or
+ * Uses the negotiated wheel mode, current adapter mode, and interface gate to retain or
  * suppress the selected report for the next protocol response. Extended-adapter report four and
  * five payloads are also forwarded to the adapter command service.
  *
  * @param[in,out] service Attached-wheel service that owns the report queue.
  * @param[in] arguments Action byte followed by the report payload.
- * @param[in] display_blink_active True while the local legacy display blink phase is active.
  */
-void wheel_service_apply_output_report(WheelService *service, const uint8_t *arguments,
-                                       bool display_blink_active) {
+void wheel_service_apply_output_report(WheelService *service, const uint8_t *arguments) {
     wheel_output_reports_apply(&service->protocol.output_reports, arguments, service->protocol.mode,
-                               service->protocol.adapter.mode, display_blink_active);
+                               service->protocol.adapter.mode);
     if (service->protocol.adapter.mode != 1) {
         return;
     }

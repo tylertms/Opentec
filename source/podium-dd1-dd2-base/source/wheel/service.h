@@ -90,13 +90,15 @@ bool wheel_service_apply_multi_position_command(WheelService *service,
                                                 const UsbOperatingModeCommand *command);
 bool wheel_service_apply_report_six_command(WheelService *service,
                                             const UsbOperatingModeCommand *command);
+bool wheel_service_apply_interface_mode_command(WheelService *service,
+                                                const UsbOperatingModeCommand *command);
+void wheel_service_update_interface_mode_gate(WheelService *service, uint32_t now_ms);
 uint8_t wheel_service_multi_position_mode(const WheelService *service,
                                           TuningMultiPositionMode configured_mode);
 bool wheel_service_multi_position_supported(const WheelService *service);
 bool wheel_service_multi_position_input(WheelService *service, uint32_t now_ms,
                                         WheelMultiPositionInput *input);
-void wheel_service_apply_output_report(WheelService *service, const uint8_t *arguments,
-                                       bool display_blink_active);
+void wheel_service_apply_output_report(WheelService *service, const uint8_t *arguments);
 void wheel_service_queue_report_seventeen(
     WheelService *service, const uint8_t payload[WHEEL_OUTPUT_REPORT_SEVENTEEN_SIZE]);
 bool wheel_service_queue_remote_telemetry(

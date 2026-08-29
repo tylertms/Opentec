@@ -857,6 +857,7 @@ static void test_builds_packed_family_active_response(void) {
     wheel_protocol_set_mode_one_output(&protocol, &output);
     protocol.mode = WHEEL_MODE_LEGACY_COMPATIBILITY;
     protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    wheel_output_reports_set_interface_mode_gate(&protocol.output_reports, true);
     request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
     mark_ready(request);
 
@@ -867,6 +868,35 @@ static void test_builds_packed_family_active_response(void) {
     };
     assert(memcmp(wheel_protocol_response(&protocol), expected, sizeof(expected)) == 0);
     assert(wheel_protocol_message_valid(wheel_protocol_response(&protocol)));
+}
+
+static void test_reports_legacy_interface_gate_on_idle_responses(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    protocol.mode = WHEEL_MODE_LEGACY_COMPATIBILITY;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    mark_ready(request);
+
+    accept_active_request(&protocol, request);
+    assert(wheel_protocol_response(&protocol)[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
+    for (uint8_t index = 1; index < WHEEL_PROTOCOL_CONTENT_SIZE; index++) {
+        assert(wheel_protocol_response(&protocol)[index] == 0);
+    }
+
+    wheel_output_reports_set_interface_mode_gate(&protocol.output_reports, true);
+
+    accept_active_request(&protocol, request);
+    assert((wheel_protocol_response(&protocol)[WHEEL_PROTOCOL_INTERFACE_MODE_GATE_OFFSET] & 1u) !=
+           0);
+
+    uint8_t arguments[1 + WHEEL_OUTPUT_REPORT_ONE_SIZE] = {WHEEL_OUTPUT_REPORT_ACTION_ONE};
+    wheel_output_reports_apply(&protocol.output_reports, arguments, protocol.mode, 0);
+    accept_active_request(&protocol, request);
+    assert(wheel_protocol_response(&protocol)[1] == 1);
+    assert((wheel_protocol_response(&protocol)[WHEEL_PROTOCOL_INTERFACE_MODE_GATE_OFFSET] & 1u) ==
+           0);
 }
 
 static void test_builds_crc_family_active_response(void) {
@@ -927,7 +957,7 @@ static void test_builds_remote_tuning_responses(void) {
         assert(wheel_protocol_queue_remote_tuning_response(&protocol, &pending));
         assert(wheel_protocol_remote_tuning_response_pending(&protocol));
         uint8_t report_arguments[26] = {1, 0x55};
-        wheel_output_reports_apply(&protocol.output_reports, report_arguments, 0, 0, false);
+        wheel_output_reports_apply(&protocol.output_reports, report_arguments, 0, 0);
 
         uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
         request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
@@ -1159,7 +1189,7 @@ static void test_forwards_one_pending_host_report(void) {
     for (uint8_t index = 0; index < WHEEL_OUTPUT_REPORT_ONE_SIZE; index++) {
         arguments[index + 1] = (uint8_t)(0x70 + index);
     }
-    wheel_output_reports_apply(&protocol.output_reports, arguments, 0, 0, false);
+    wheel_output_reports_apply(&protocol.output_reports, arguments, 0, 0);
 
     memset(request, 0, sizeof(request));
     request[0] = WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
@@ -1824,6 +1854,7 @@ int main(void) {
     test_builds_mode_one_active_response();
     test_builds_mode_four_active_response();
     test_builds_packed_family_active_response();
+    test_reports_legacy_interface_gate_on_idle_responses();
     test_builds_crc_family_active_response();
     test_builds_remote_tuning_responses();
     test_system_status_preempts_one_remote_tuning_response();

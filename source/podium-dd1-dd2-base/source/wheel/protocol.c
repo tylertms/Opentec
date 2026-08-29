@@ -108,8 +108,9 @@ static void build_selection_response(WheelProtocol *protocol) {
  * Consumes a pending system status before a system-owned control response, remote-tuning work, and
  * host output reports. A setup-page response schedules its corresponding status for the following
  * exchange. Otherwise, encodes the selected packet family or a blank A6 remote-tuning frame and
- * overlays the highest-priority host output report. The checksum is updated while transport
- * acknowledgement flags are preserved.
+ * overlays the highest-priority host output report. A closed interface gate blanks idle mode-0x0F
+ * and mode-0x17 content. The checksum is updated while transport acknowledgement flags are
+ * preserved.
  *
  * @param[in,out] protocol Active protocol state and response storage.
  */
@@ -185,8 +186,19 @@ static void build_active_response(WheelProtocol *protocol) {
     if (!system_control_response && !remote_tuning_response) {
         encode_legacy_status(protocol, protocol->response);
         if (!system_status_response) {
-            (void)wheel_output_reports_encode_next(&protocol->output_reports, protocol->mode,
-                                                   protocol->response);
+            bool report_encoded = wheel_output_reports_encode_next(
+                &protocol->output_reports, protocol->mode, protocol->response);
+            if (!report_encoded && (protocol->mode == WHEEL_MODE_LEGACY_ALTERNATE ||
+                                    protocol->mode == WHEEL_MODE_LEGACY_COMPATIBILITY)) {
+                bool interface_mode_gate =
+                    wheel_output_reports_interface_mode_gate(&protocol->output_reports);
+                if (!interface_mode_gate) {
+                    clear(protocol->response + 1, WHEEL_PROTOCOL_CONTENT_SIZE - 1);
+                }
+                protocol->response[WHEEL_PROTOCOL_INTERFACE_MODE_GATE_OFFSET] =
+                    (protocol->response[WHEEL_PROTOCOL_INTERFACE_MODE_GATE_OFFSET] & 0xfeu) |
+                    (interface_mode_gate ? 1u : 0u);
+            }
         }
     }
     if (system_status_response) {

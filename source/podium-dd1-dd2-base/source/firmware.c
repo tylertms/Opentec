@@ -1943,6 +1943,9 @@ static void service_usb_output(void) {
         } else if (wheel_service_apply_report_six_command(&wheel_service,
                                                           &usb_operating_mode_command)) {
             return;
+        } else if (wheel_service_apply_interface_mode_command(&wheel_service,
+                                                              &usb_operating_mode_command)) {
+            return;
         } else if (wheel_service_apply_multi_position_command(&wheel_service,
                                                               &usb_operating_mode_command)) {
             return;
@@ -1977,7 +1980,7 @@ static void service_usb_output(void) {
             return;
         }
         if (usb_vendor_command.kind == USB_VENDOR_COMMAND_WHEEL_OUTPUT_REPORT) {
-            wheel_service_apply_output_report(&wheel_service, usb_vendor_command.arguments, false);
+            wheel_service_apply_output_report(&wheel_service, usb_vendor_command.arguments);
             return;
         }
         const uint8_t *wheel_report_seventeen =
@@ -2641,6 +2644,7 @@ int main(void) {
                                                               &system_wheel_response);
         }
         wheel_service_run(&wheel_service, now_ms, !serial_command_waiting());
+        wheel_service_update_interface_mode_gate(&wheel_service, now_ms);
         if (wheel_service_take_bite_point(&wheel_service, &wheel_adjusted_bite_point_percent)) {
             wheel_steering_limit_command = (WheelSteeringLimitCommand){
                 .percent = wheel_adjusted_bite_point_percent,
