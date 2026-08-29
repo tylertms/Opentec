@@ -349,6 +349,24 @@ bool usb_remote_tuning_service_take_response(UsbRemoteTuningService *service, ui
 }
 
 /**
+ * @brief Takes a remote-tuning active state destined for the adapter.
+ *
+ * Returns the current session state and consumes its downstream synchronization latch.
+ *
+ * @param[in,out] service Remote-tuning service retaining the state.
+ * @param[out] active Current session state.
+ * @return True when a pending state was taken.
+ */
+bool usb_remote_tuning_service_take_adapter_active(UsbRemoteTuningService *service, bool *active) {
+    if (service == NULL || active == NULL || !service->active_sync_pending) {
+        return false;
+    }
+    *active = service->active;
+    service->active_sync_pending = false;
+    return true;
+}
+
+/**
  * @brief Takes a setup selection destined for the adapter.
  *
  * Returns the retained one-based setup selection and consumes the shared setup, menu, and

@@ -20,6 +20,7 @@ typedef enum {
     WHEEL_ADAPTER_COMMAND_AXES_PENDING,
     WHEEL_ADAPTER_COMMAND_ROTARY_PENDING,
     WHEEL_ADAPTER_COMMAND_HOST_CONTROLS_PENDING,
+    WHEEL_ADAPTER_COMMAND_REMOTE_TUNING_ACTIVE_PENDING,
     WHEEL_ADAPTER_COMMAND_SETUP_SELECTION_PENDING,
     WHEEL_ADAPTER_COMMAND_GLYPHS_PENDING,
     WHEEL_ADAPTER_COMMAND_DISPLAY_PENDING,
@@ -31,6 +32,7 @@ typedef struct {
     uint8_t status[2];
     uint8_t glyphs[3];
     uint8_t display[3];
+    uint8_t remote_tuning_active;
     uint8_t setup_selection;
     uint8_t host_controls[WHEEL_ADAPTER_HOST_CONTROLS_SIZE];
     uint8_t endpoint_index;
@@ -40,6 +42,7 @@ typedef struct {
     bool display_pending;
     bool host_controls_pending;
     bool host_controls_ready;
+    bool remote_tuning_active_pending;
     bool setup_selection_pending;
 } WheelAdapterCommandService;
 
@@ -49,6 +52,8 @@ void wheel_adapter_command_service_queue_display(WheelAdapterCommandService *ser
                                                  uint16_t report);
 void wheel_adapter_command_service_set_glyphs(WheelAdapterCommandService *service,
                                               const uint8_t glyphs[3]);
+void wheel_adapter_command_service_queue_remote_tuning_active(WheelAdapterCommandService *service,
+                                                              bool active);
 void wheel_adapter_command_service_queue_setup_selection(WheelAdapterCommandService *service,
                                                          uint8_t selection);
 bool wheel_adapter_command_service_take_host_controls(

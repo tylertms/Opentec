@@ -218,6 +218,23 @@ static void writes_remote_setup_selections(void) {
     wheel_adapter_command_service_run(&service, &adapter, &transport);
 }
 
+static void writes_remote_tuning_active_state(void) {
+    WheelAdapterCommandService service;
+    WheelAdapterInput adapter;
+    CommandTransport transport;
+    command_transport_init(&transport);
+    wheel_adapter_command_service_init(&service, &adapter);
+    complete_standard_probe(&service, &adapter, &transport);
+
+    wheel_adapter_command_service_queue_remote_tuning_active(&service, true);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    const uint8_t expected[] = {2, 0x2a, 0x0e, 1};
+    expect_request(&transport, expected, sizeof(expected));
+    assert(!service.remote_tuning_active_pending);
+    complete_write(&transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+}
+
 static void switches_endpoints_after_a_failed_transfer(void) {
     WheelAdapterCommandService service;
     WheelAdapterInput adapter;
@@ -259,6 +276,7 @@ int main(void) {
     writes_standard_endpoint_display_reports();
     writes_requested_glyphs();
     writes_remote_setup_selections();
+    writes_remote_tuning_active_state();
     forwards_requested_host_controls();
     switches_endpoints_after_a_failed_transfer();
     return 0;

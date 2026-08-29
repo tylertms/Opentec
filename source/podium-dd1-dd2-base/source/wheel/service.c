@@ -534,6 +534,57 @@ bool wheel_service_take_adapter_host_controls(WheelService *service,
 }
 
 /**
+ * @brief Tests whether the current wheel presents its own tuning display.
+ *
+ * Adapter-oriented modes 4, 6, 12, and 21 use the extended adapter endpoint as their local
+ * display. Modes 9, 10, 11, 14, 15, 16, 23, 27, 28, and 29 always provide a local display.
+ *
+ * @param[in] service Attached-wheel service and adapter state.
+ * @return True when remote tuning remains on the wheel-side display.
+ */
+static bool tuning_display_supported(const WheelService *service) {
+    switch (service->protocol.mode) {
+    case 4:
+    case 6:
+    case 12:
+    case WHEEL_MODE_CRC_AUTHENTICATED:
+        return service->protocol.adapter.connected && service->protocol.adapter.mode == 1;
+    case 9:
+    case 10:
+    case 11:
+    case WHEEL_MODE_REMOTE_TUNING_LEGACY:
+    case WHEEL_MODE_LEGACY_ALTERNATE:
+    case 16:
+    case WHEEL_MODE_LEGACY_COMPATIBILITY:
+    case 27:
+    case WHEEL_MODE_REMOTE_TUNING_EXTENDED:
+    case 29:
+        return true;
+    default:
+        return false;
+    }
+}
+
+/**
+ * @brief Queues the adapter's remote-tuning active state.
+ *
+ * Sends an active state only while an adapter is connected and the current wheel does not provide
+ * its own tuning display. All other conditions send an inactive state.
+ *
+ * @param[in,out] service Attached-wheel service receiving the state.
+ * @param[in] active Current host remote-tuning session state.
+ */
+void wheel_service_queue_adapter_remote_tuning_active(WheelService *service, bool active) {
+    if (service == 0) {
+        return;
+    }
+    bool adapter_active =
+        active && service->protocol.adapter.connected && !tuning_display_supported(service);
+    wheel_adapter_command_service_queue_remote_tuning_active(&service->adapter_commands,
+                                                             adapter_active);
+}
+
+/**
  * @brief Queues a remote setup selection for the attached adapter.
  *
  * Retains the newest one-based selection in the adapter command service for transmission at the

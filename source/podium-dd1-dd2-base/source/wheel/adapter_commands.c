@@ -11,6 +11,7 @@ enum {
     WHEEL_ADAPTER_AXES_OFFSET = 0x02,
     WHEEL_ADAPTER_ROTARY_OFFSET = 0x03,
     WHEEL_ADAPTER_GLYPHS_OFFSET = 0x06,
+    WHEEL_ADAPTER_REMOTE_TUNING_ACTIVE_OFFSET = 0x0e,
     WHEEL_ADAPTER_SETUP_SELECTION_OFFSET = 0xc0,
     WHEEL_ADAPTER_HOST_CONTROLS_OFFSET = 0xa0,
     WHEEL_ADAPTER_PROBE_OFFSET = 0x0c,
@@ -61,6 +62,7 @@ static void advance_endpoint(WheelAdapterCommandService *service, WheelAdapterIn
     service->display_pending = false;
     service->host_controls_pending = false;
     service->host_controls_ready = false;
+    service->remote_tuning_active_pending = false;
     service->setup_selection_pending = false;
     service->phase = WHEEL_ADAPTER_COMMAND_DISCOVERING;
     adapter->mode = service->endpoint_index;
@@ -143,6 +145,7 @@ static bool finish_request(WheelAdapterCommandService *service, WheelAdapterInpu
         service->host_controls_pending = false;
         service->host_controls_ready = true;
         break;
+    case WHEEL_ADAPTER_COMMAND_REMOTE_TUNING_ACTIVE_PENDING:
     case WHEEL_ADAPTER_COMMAND_SETUP_SELECTION_PENDING:
     case WHEEL_ADAPTER_COMMAND_GLYPHS_PENDING:
     case WHEEL_ADAPTER_COMMAND_DISPLAY_PENDING:
@@ -218,6 +221,17 @@ static CommandTransportResult queue_request(WheelAdapterCommandService *service,
             service->host_controls, sizeof(service->host_controls));
         if (result == COMMAND_TRANSPORT_COMPLETE) {
             service->phase = WHEEL_ADAPTER_COMMAND_HOST_CONTROLS_PENDING;
+        }
+        return result;
+    }
+    if (service->remote_tuning_active_pending) {
+        CommandTransportResult result = command_transport_queue_write_to(
+            transport, WHEEL_ADAPTER_COMMAND_OWNER, target,
+            WHEEL_ADAPTER_REMOTE_TUNING_ACTIVE_OFFSET, &service->remote_tuning_active,
+            sizeof(service->remote_tuning_active));
+        if (result == COMMAND_TRANSPORT_COMPLETE) {
+            service->remote_tuning_active_pending = false;
+            service->phase = WHEEL_ADAPTER_COMMAND_REMOTE_TUNING_ACTIVE_PENDING;
         }
         return result;
     }
@@ -315,6 +329,24 @@ void wheel_adapter_command_service_set_glyphs(WheelAdapterCommandService *servic
     for (uint8_t index = 0; index < sizeof(service->glyphs); index++) {
         service->glyphs[index] = glyphs[index];
     }
+}
+
+/**
+ * @brief Retains the adapter remote-tuning active state.
+ *
+ * Stores the newest Boolean state as a one-byte write to adapter offset 0x0E. A newer state
+ * replaces an older queued value.
+ *
+ * @param[in,out] service Adapter command service retaining the state.
+ * @param[in] active State sent to the adapter.
+ */
+void wheel_adapter_command_service_queue_remote_tuning_active(WheelAdapterCommandService *service,
+                                                              bool active) {
+    if (service == 0) {
+        return;
+    }
+    service->remote_tuning_active = active ? 1u : 0u;
+    service->remote_tuning_active_pending = true;
 }
 
 /**

@@ -48,6 +48,12 @@ static void applies_active_state_and_routes_responses(void) {
     assert(service.pending_response.value == 0);
     assert(service.active_sync_pending);
 
+    bool active = true;
+    assert(usb_remote_tuning_service_take_adapter_active(&service, &active));
+    assert(!active);
+    assert(!service.active_sync_pending);
+    assert(!usb_remote_tuning_service_take_adapter_active(&service, &active));
+
     usb_remote_tuning_service_init(&service);
     arguments[1] = 1;
     assert(usb_remote_tuning_service_apply(&service, &command, 100,

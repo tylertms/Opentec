@@ -620,6 +620,32 @@ static void test_marks_extended_multi_position_layout(void) {
     assert(input.channels[2].active);
 }
 
+static void test_filters_adapter_remote_tuning_active_state(void) {
+    WheelService service;
+    initialize_service(&service);
+    service.protocol.mode = 4;
+    service.protocol.adapter.connected = true;
+    service.protocol.adapter.mode = 0;
+
+    wheel_service_queue_adapter_remote_tuning_active(&service, true);
+    assert(service.adapter_commands.remote_tuning_active == 1);
+    assert(service.adapter_commands.remote_tuning_active_pending);
+
+    service.protocol.adapter.mode = 1;
+    wheel_service_queue_adapter_remote_tuning_active(&service, true);
+    assert(service.adapter_commands.remote_tuning_active == 0);
+
+    service.protocol.mode = WHEEL_MODE_REMOTE_TUNING_LEGACY;
+    service.protocol.adapter.mode = 0;
+    wheel_service_queue_adapter_remote_tuning_active(&service, true);
+    assert(service.adapter_commands.remote_tuning_active == 0);
+
+    service.protocol.adapter.connected = false;
+    service.protocol.mode = 4;
+    wheel_service_queue_adapter_remote_tuning_active(&service, true);
+    assert(service.adapter_commands.remote_tuning_active == 0);
+}
+
 static void test_rejects_unavailable_multi_position_input(void) {
     WheelService service;
     initialize_service(&service);
@@ -840,6 +866,7 @@ int main(void) {
     test_builds_direct_multi_position_input();
     test_builds_adapter_multi_position_input();
     test_marks_extended_multi_position_layout();
+    test_filters_adapter_remote_tuning_active_state();
     test_rejects_unavailable_multi_position_input();
     test_selects_extended_report_fields();
     test_reports_calibration_availability();
