@@ -7,8 +7,11 @@
 #include <string.h>
 
 static MotorSpiTransferBuffers *transfer_buffers;
+static MotorSpiPrepareHandler transfer_prepare_handler;
 static MotorSpiReceiveHandler transfer_receive_handler;
 static void *transfer_context;
+static bool transfer_active;
+static bool response_pending;
 
 static void motor_spi_controller_initialize(void) {
     CLOCK_EnableClock(kCLOCK_Spi0);
@@ -54,15 +57,19 @@ static void motor_spi_dma_initialize(void) {
 /**
  * @brief Configures SPI0 and two 13-byte DMA channels for full-duplex motor transfers.
  * @param buffers Persistent transmit and receive buffers used directly by DMA.
+ * @param prepare_handler Function that prepares the next response before a scheduled transfer.
  * @param receive_handler Function invoked when the receive DMA channel completes.
  * @param context Caller context passed to the receive handler.
  */
-void motor_spi_initialize(MotorSpiTransferBuffers *buffers, MotorSpiReceiveHandler receive_handler,
-                          void *context) {
+void motor_spi_initialize(MotorSpiTransferBuffers *buffers, MotorSpiPrepareHandler prepare_handler,
+                          MotorSpiReceiveHandler receive_handler, void *context) {
     memset(buffers, 0, sizeof(*buffers));
     transfer_buffers = buffers;
+    transfer_prepare_handler = prepare_handler;
     transfer_receive_handler = receive_handler;
     transfer_context = context;
+    transfer_active = false;
+    response_pending = false;
     DisableIRQ(DMA0_DMA4_IRQn);
     DisableIRQ(DMA1_DMA5_IRQn);
 
@@ -75,6 +82,29 @@ void motor_spi_initialize(MotorSpiTransferBuffers *buffers, MotorSpiReceiveHandl
 
     EnableIRQ(DMA0_DMA4_IRQn);
     EnableIRQ(DMA1_DMA5_IRQn);
+}
+
+/**
+ * @brief Enables or disables the official delayed motor-link response scheduler.
+ * @param active True after motor startup permits link responses.
+ */
+void motor_spi_link_active_set(bool active) { transfer_active = active; }
+
+/**
+ * @brief Starts one pending motor-link response on the official FTM4 cadence.
+ * @param context Unused timer callback context.
+ */
+void motor_spi_timeout_service(void *context) {
+    (void)context;
+    if (!transfer_active || !response_pending) {
+        return;
+    }
+
+    response_pending = false;
+    if (transfer_prepare_handler != NULL) {
+        transfer_prepare_handler(transfer_buffers->transmit, transfer_context);
+    }
+    motor_spi_transfer_restart();
 }
 
 /**
@@ -105,4 +135,5 @@ void DMA1_DMA5_IRQHandler(void) {
     if (transfer_receive_handler != NULL) {
         transfer_receive_handler(transfer_buffers->receive, transfer_context);
     }
+    response_pending = true;
 }
