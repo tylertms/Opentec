@@ -2,7 +2,7 @@ motor_target = (
   meson.is_cross_build()
   and host_machine.cpu_family() == 'arm'
   and host_machine.cpu() == 'cortex-m0plus'
-  and meson.get_external_property('motor_product', '') == 'dd1'
+  and meson.get_external_property('motor_product', '') == 'dd2'
 )
 
 if motor_target
@@ -49,7 +49,7 @@ if motor_target
   ]
 
   sdk_library = static_library(
-    'podium-dd1-motor-sdk',
+    'podium-dd2-motor-sdk',
     sdk_sources,
     build_by_default: false,
     c_args: freestanding_c_args,
@@ -60,7 +60,7 @@ if motor_target
   )
 
   freemaster_library = static_library(
-    'podium-dd1-motor-freemaster',
+    'podium-dd2-motor-freemaster',
     freemaster_sources,
     build_by_default: false,
     c_args: freestanding_c_args,
@@ -71,7 +71,7 @@ if motor_target
   )
 
   firmware = executable(
-    'podium-dd1-motor',
+    'podium-dd2-motor',
     'source/firmware.c',
     sdk_device['sources'],
     build_by_default: false,
@@ -107,13 +107,13 @@ if motor_target
   )
 
   checksummed_binary = custom_target(
-    'dd1-motor-checksum',
+    'dd2-motor-checksum',
     input: firmware_binary,
-    output: 'dd1-firmware.checksummed.bin',
+    output: 'dd2-firmware.checksummed.bin',
     command: [
       python,
       meson.project_source_root() / 'tools/motor_checksum.py',
-      'dd1',
+      'dd2',
       '@INPUT@',
       '@OUTPUT@',
     ],
@@ -121,9 +121,9 @@ if motor_target
   )
 
   firmware_hex = custom_target(
-    'dd1-motor-intel-hex',
+    'dd2-motor-intel-hex',
     input: checksummed_binary,
-    output: 'dd1-firmware.hex',
+    output: 'dd2-firmware.hex',
     command: [
       objcopy,
       '-I',
@@ -139,9 +139,9 @@ if motor_target
   )
 
   custom_target(
-    'podium-dd1-motor',
+    'podium-dd2-motor',
     input: firmware_hex,
-    output: 'podium-dd1-motor.hex',
+    output: 'podium-dd2-motor.hex',
     command: [
       python,
       meson.project_source_root() / 'tools/crypto.py',

@@ -10,7 +10,11 @@ project(
   ],
 )
 
-if meson.is_cross_build() and host_machine.cpu_family() == 'arm'
+if (
+  meson.is_cross_build()
+  and host_machine.cpu_family() == 'arm'
+  and host_machine.cpu() == 'cortex-m4'
+)
   add_languages('c', native: true)
 endif
 
@@ -19,4 +23,5 @@ wqr_frame_sources = files('source/common/wqr_frame.c')
 
 subdir('source/podium-dd1-dd2-wqr')
 subdir('source/podium-dd1-dd2-base')
-subdir('source/podium-dd1-dd2-motor')
+subdir('source/podium-dd1-motor')
+subdir('source/podium-dd2-motor')
