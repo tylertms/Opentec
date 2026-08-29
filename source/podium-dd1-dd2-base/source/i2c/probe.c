@@ -133,52 +133,62 @@ bool i2c_probe_request_encode(I2cProbeCommand command, I2cProbeRequest *request)
 }
 
 /**
- * @brief Encodes a checksum-free chunk-transfer frame.
+ * @brief Encodes a chunk-transfer frame.
  *
- * Builds write, read, and finish frames for the transfer mode without response-checksum fields.
- * The three-bit phase occupies selector bits 4 through 6. Chunk frames carry the fixed 0x80,
- * operation, and 0x40 header followed by the fragment index and length.
+ * Builds write, read, and finish frames in standard or checked mode. The three-bit phase occupies
+ * selector bits 4 through 6, and checked mode sets selector bit 2. Chunk frames carry the fixed
+ * 0x80, operation, and 0x40 header followed by the fragment index and length. Checked writes add
+ * two zero trailer bytes, while checked reads add the 0x86 control byte and a zero trailer byte.
  *
- * @param[in] command Write-chunk, read-chunk, or finish-transfer command.
+ * @param[in] command Standard or checked write-chunk, read-chunk, or finish-transfer command.
  * @param[in] input Transfer phase, fragment index, length, and optional write payload.
  * @param[out] frame Encoded write bytes and expected response layout.
  * @return True when the command and chunk input are valid; otherwise false.
  */
 bool i2c_probe_transfer_encode(I2cProbeCommand command, const I2cProbeTransferInput *input,
                                I2cProbeTransferFrame *frame) {
-    if ((command != I2C_PROBE_WRITE_CHUNK && command != I2C_PROBE_READ_CHUNK &&
-         command != I2C_PROBE_FINISH_TRANSFER) ||
-        input->chunk_length > I2C_PROBE_TRANSFER_CHUNK_CAPACITY ||
-        (command == I2C_PROBE_WRITE_CHUNK && input->chunk_length != 0 && input->chunk == NULL)) {
+    bool write = command == I2C_PROBE_WRITE_CHUNK || command == I2C_PROBE_WRITE_CHECKED_CHUNK;
+    bool read = command == I2C_PROBE_READ_CHUNK || command == I2C_PROBE_READ_CHECKED_CHUNK;
+    bool finish =
+        command == I2C_PROBE_FINISH_TRANSFER || command == I2C_PROBE_FINISH_CHECKED_TRANSFER;
+    bool checked = command == I2C_PROBE_WRITE_CHECKED_CHUNK ||
+                   command == I2C_PROBE_READ_CHECKED_CHUNK ||
+                   command == I2C_PROBE_FINISH_CHECKED_TRANSFER;
+
+    if ((!write && !read && !finish) || input->chunk_length > I2C_PROBE_TRANSFER_CHUNK_CAPACITY ||
+        (write && input->chunk_length != 0 && input->chunk == NULL)) {
         return false;
     }
 
     *frame = (I2cProbeTransferFrame){0};
-    frame->selector = (uint8_t)((input->phase & 0x07u) << 4);
+    frame->selector = (uint8_t)(((input->phase & 0x07u) << 4) | (checked ? 0x04u : 0u));
     frame->write_data[1] = 0x80;
 
-    if (command == I2C_PROBE_FINISH_TRANSFER) {
-        frame->write_data[0] = 5;
+    if (finish) {
+        frame->write_data[0] = checked ? 4 : 5;
         frame->write_data[2] = 0x48;
-        frame->write_length = 6;
-        frame->response_length = 4;
+        frame->write_length = checked ? 5 : 6;
+        frame->response_length = checked ? 5 : 4;
         return true;
     }
 
     frame->write_data[0] =
-        command == I2C_PROBE_WRITE_CHUNK ? (uint8_t)(input->chunk_length + 5u) : 5;
-    frame->write_data[2] = command == I2C_PROBE_WRITE_CHUNK ? 0x44 : 0x46;
+        write ? (uint8_t)(input->chunk_length + (checked ? 7u : 5u)) : (checked ? 7 : 5);
+    frame->write_data[2] = write ? 0x44 : 0x46;
     frame->write_data[3] = 0x40;
     frame->write_data[4] = input->chunk_index;
     frame->write_data[5] = input->chunk_length;
     frame->write_length = (uint8_t)(frame->write_data[0] + 1u);
 
-    if (command == I2C_PROBE_WRITE_CHUNK) {
+    if (write) {
         if (input->chunk_length != 0) {
             memcpy(frame->write_data + 6, input->chunk, input->chunk_length);
         }
-        frame->response_length = 4;
+        frame->response_length = checked ? 5 : 4;
     } else {
+        if (checked) {
+            frame->write_data[6] = 0x86;
+        }
         frame->response_length = (uint8_t)(input->chunk_length + 4u);
         frame->response_payload_offset = 2;
         frame->response_payload_length = input->chunk_length;
