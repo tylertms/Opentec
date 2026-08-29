@@ -585,6 +585,22 @@ void wheel_service_queue_adapter_remote_tuning_active(WheelService *service, boo
 }
 
 /**
+ * @brief Queues the adapter's refresh state.
+ *
+ * Retains the newest Boolean state in the adapter command service for transmission at the next
+ * available shared-transport boundary.
+ *
+ * @param[in,out] service Attached-wheel service receiving the state.
+ * @param[in] active Adapter refresh state.
+ */
+void wheel_service_queue_adapter_refresh_state(WheelService *service, bool active) {
+    if (service == 0) {
+        return;
+    }
+    wheel_adapter_command_service_queue_refresh_state(&service->adapter_commands, active);
+}
+
+/**
  * @brief Queues a remote setup selection for the attached adapter.
  *
  * Retains the newest one-based selection in the adapter command service for transmission at the

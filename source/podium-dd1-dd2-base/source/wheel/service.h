@@ -66,6 +66,7 @@ void wheel_service_run_adapter_commands(WheelService *service, CommandTransport 
 bool wheel_service_take_adapter_host_controls(WheelService *service,
                                               uint8_t output[WHEEL_ADAPTER_HOST_CONTROLS_SIZE]);
 void wheel_service_queue_adapter_remote_tuning_active(WheelService *service, bool active);
+void wheel_service_queue_adapter_refresh_state(WheelService *service, bool active);
 void wheel_service_queue_adapter_setup_selection(WheelService *service, uint8_t selection);
 void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output);
 void wheel_service_set_vibration_output(WheelService *service, const WheelVibrationOutput *output);

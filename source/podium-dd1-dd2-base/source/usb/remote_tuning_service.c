@@ -367,6 +367,31 @@ bool usb_remote_tuning_service_take_adapter_active(UsbRemoteTuningService *servi
 }
 
 /**
+ * @brief Takes the refresh state destined for the adapter.
+ *
+ * Promotes a pending refresh request into the persistent adapter state, clears the request latch,
+ * and consumes the downstream synchronization latch. Packets without a refresh request resend the
+ * previously promoted state.
+ *
+ * @param[in,out] service Remote-tuning service retaining refresh state.
+ * @param[out] active Adapter refresh state.
+ * @return True when a pending state was taken.
+ */
+bool usb_remote_tuning_service_take_adapter_refresh_state(UsbRemoteTuningService *service,
+                                                          bool *active) {
+    if (service == NULL || active == NULL || !service->refresh_sync_pending) {
+        return false;
+    }
+    if (service->refresh_requested) {
+        service->adapter_refresh_state = true;
+        service->refresh_requested = false;
+    }
+    *active = service->adapter_refresh_state;
+    service->refresh_sync_pending = false;
+    return true;
+}
+
+/**
  * @brief Takes a setup selection destined for the adapter.
  *
  * Returns the retained one-based setup selection and consumes the shared setup, menu, and

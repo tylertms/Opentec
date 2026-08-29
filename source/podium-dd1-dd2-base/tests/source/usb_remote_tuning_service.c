@@ -177,9 +177,18 @@ static void applies_refresh_requests(void) {
     assert(service.refresh_sync_pending);
     assert(service.pending_response.code == REMOTE_TUNING_RESPONSE_NONE);
 
+    bool refresh_state = true;
+    assert(usb_remote_tuning_service_take_adapter_refresh_state(&service, &refresh_state));
+    assert(!refresh_state);
+    assert(!service.refresh_sync_pending);
+
     arguments[1] = 1;
     assert(usb_remote_tuning_service_apply(&service, &command, 100, 1, true, false));
     assert(service.refresh_requested);
+    assert(usb_remote_tuning_service_take_adapter_refresh_state(&service, &refresh_state));
+    assert(refresh_state);
+    assert(!service.refresh_requested);
+    assert(!usb_remote_tuning_service_take_adapter_refresh_state(&service, &refresh_state));
 
     usb_remote_tuning_service_init(&service);
     arguments[1] = 0;

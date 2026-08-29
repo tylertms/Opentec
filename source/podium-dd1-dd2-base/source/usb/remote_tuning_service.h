@@ -36,6 +36,7 @@ typedef struct {
     RemoteTuningResponse pending_response;
     bool active;
     bool refresh_requested;
+    bool adapter_refresh_state;
     bool vendor_response_pending;
     bool active_sync_pending;
     bool setup_sync_pending;
@@ -50,6 +51,8 @@ bool usb_remote_tuning_service_apply(UsbRemoteTuningService *service,
 bool usb_remote_tuning_service_take_response(UsbRemoteTuningService *service, uint8_t wheel_mode,
                                              RemoteTuningResponse *response);
 bool usb_remote_tuning_service_take_adapter_active(UsbRemoteTuningService *service, bool *active);
+bool usb_remote_tuning_service_take_adapter_refresh_state(UsbRemoteTuningService *service,
+                                                          bool *active);
 bool usb_remote_tuning_service_take_adapter_setup_selection(UsbRemoteTuningService *service,
                                                             uint8_t *selection);
 uint8_t
