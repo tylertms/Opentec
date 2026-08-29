@@ -91,6 +91,7 @@ power_controller_sources = files('source/board/power.c')
 system_torque_transition_sources = files('source/system/torque_transition.c')
 system_event_queue_sources = files('source/system/event_queue.c')
 system_event_dispatcher_sources = files('source/system/event_dispatcher.c')
+system_control_state_sources = files('source/system/control_state.c')
 h_pattern_shifter_sources = files('source/shifter/h_pattern.c')
 h_pattern_calibration_sources = files('source/shifter/calibration.c')
 shifter_display_sources = files('source/shifter/display.c')
@@ -265,6 +266,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'system-torque-transition': 'source/system/torque_transition.c',
     'system-event-queue': 'source/system/event_queue.c',
     'system-event-dispatcher': 'source/system/event_dispatcher.c',
+    'system-control-state': 'source/system/control_state.c',
     'firmware': 'source/firmware.c',
     'h-pattern-shifter': 'source/shifter/h_pattern.c',
     'h-pattern-calibration': 'source/shifter/calibration.c',
@@ -1197,6 +1199,15 @@ if not meson.is_cross_build()
     'tests/source/system_event_dispatcher.c',
     system_event_dispatcher_sources,
     system_event_queue_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  system_control_state_test = executable(
+    'base-system-control-state-test',
+    'tests/source/system_control_state.c',
+    system_control_state_sources,
+    system_torque_transition_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2136,6 +2147,11 @@ if not meson.is_cross_build()
     'base-system-event-dispatcher',
     system_event_dispatcher_test,
     suite: ['base', 'system', 'event'],
+  )
+  test(
+    'base-system-control-state',
+    system_control_state_test,
+    suite: ['base', 'system', 'control'],
   )
   test('base-h-pattern-shifter', h_pattern_shifter_test, suite: ['base', 'shifter'])
   test(
