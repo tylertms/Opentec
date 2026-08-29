@@ -58,12 +58,18 @@ static void test_reference_capture(void) {
     WheelPositionReference reference;
     wheel_position_reference_reset(&reference);
     assert(!reference.calibrated);
-    assert(wheel_position_reference_capture(&reference, 25000));
+    assert(wheel_position_reference_capture(&reference, 25000, UINT32_C(0x5c7f)));
     assert(reference.calibrated);
-    assert(reference.center == 25000);
-    assert(!wheel_position_reference_capture(&reference, 25000));
-    assert(wheel_position_reference_capture(&reference, -25000));
-    assert(reference.center == -25000);
+    assert(reference.center == 1321);
+    assert(!wheel_position_reference_capture(&reference, 25000, UINT32_C(0x5c7f)));
+    assert(wheel_position_reference_capture(&reference, -25000, UINT32_C(0x5c7f)));
+    assert(reference.center == -1321);
+
+    assert(wheel_position_reference_capture(&reference, 23680, UINT32_C(0x5c7f)));
+    assert(reference.center == 1);
+    assert(!wheel_position_reference_capture(&reference, 1, UINT32_C(0x5c7f)));
+    assert(wheel_position_reference_capture(&reference, -23680, UINT32_C(0x5c7f)));
+    assert(reference.center == -1);
 }
 
 static void test_calibration_building(void) {

@@ -67,3 +67,21 @@ uint8_t motor_identity_input_transfer_code(const MotorIdentity *identity) {
     return identity != 0 && identity->protocol != MOTOR_PROTOCOL_LEGACY ? identity->transfer_code
                                                                         : 0;
 }
+
+/**
+ * @brief Selects the absolute-position modulus for a motor controller.
+ *
+ * Position-capable controllers whose model has bit one clear use 23,679 counts. Controllers with
+ * that bit set, standard controllers, legacy controllers, and unavailable identities use the
+ * 23,851-count default.
+ *
+ * @param[in] identity Decoded motor-controller identity, or null when unavailable.
+ * @return Signed-remainder modulus for retained wheel-center samples.
+ */
+uint32_t motor_identity_position_modulus(const MotorIdentity *identity) {
+    if (identity != 0 && identity->protocol == MOTOR_PROTOCOL_POSITION &&
+        (identity->model & 2u) == 0) {
+        return UINT32_C(0x5c7f);
+    }
+    return UINT32_C(0x5d2b);
+}

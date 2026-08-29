@@ -112,7 +112,7 @@ static void test_wheel_reference_is_persisted(void) {
     BaseSettingsPersistence persistence;
     BaseSettings settings;
     base_settings_persistence_load(&persistence, &settings, 0);
-    assert(wheel_position_reference_capture(&settings.wheel_position, 25000));
+    assert(wheel_position_reference_capture(&settings.wheel_position, 20000, UINT32_C(0x5d2b)));
     base_settings_persistence_mark_dirty(&persistence, 100);
     assert(base_settings_persistence_service(&persistence, &settings, 1100) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
@@ -121,7 +121,7 @@ static void test_wheel_reference_is_persisted(void) {
     BaseSettings restored;
     assert(base_settings_persistence_load(&loaded, &restored, 2000));
     assert(restored.wheel_position.calibrated);
-    assert(restored.wheel_position.center == 25000);
+    assert(restored.wheel_position.center == 20000);
 }
 
 static void test_shifter_calibration_is_persisted(void) {
@@ -236,7 +236,7 @@ static void test_wheel_reference_record_is_upgraded(void) {
     BaseSettingsPersistence persistence;
     BaseSettings settings;
     base_settings_persistence_load(&persistence, &settings, 0);
-    assert(wheel_position_reference_capture(&settings.wheel_position, 12345));
+    assert(wheel_position_reference_capture(&settings.wheel_position, 12345, UINT32_C(0x5d2b)));
     settings.h_pattern_shifter.calibrated = true;
     assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);

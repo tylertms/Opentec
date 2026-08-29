@@ -311,8 +311,9 @@ static void service_motor_link(void) {
             MOTOR_LIVE_FRAME_VALID &&
         motor_position_report_decode(&motor_live_frame, &motor_position_report)) {
         if (!base_settings.wheel_position.calibrated &&
-            wheel_position_reference_capture(&base_settings.wheel_position,
-                                             motor_position_report.wheel_position)) {
+            wheel_position_reference_capture(
+                &base_settings.wheel_position, motor_position_report.wheel_position,
+                motor_identity_position_modulus(motor_probe_identity(&motor_probe)))) {
             base_settings_persistence_mark_dirty(&settings_persistence, platform_time_ms());
         }
         motor_position_ready = true;

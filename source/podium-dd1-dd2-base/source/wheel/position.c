@@ -158,16 +158,19 @@ void wheel_position_reference_reset(WheelPositionReference *reference) {
 /**
  * @brief Captures an absolute wheel sample as the center reference.
  *
- * Stores the sample, marks the reference available, and reports whether persistence-visible state
- * changed.
+ * Reduces the sample with the motor controller's signed position modulus, stores the normalized
+ * value, marks the reference available, and reports whether persistence-visible state changed.
  *
  * @param[in,out] reference Wheel center reference to update.
  * @param[in] sample Absolute wheel-position sample to retain.
+ * @param[in] modulus Motor-controller position modulus.
  * @return True when the stored center or availability state changed.
  */
-bool wheel_position_reference_capture(WheelPositionReference *reference, int32_t sample) {
-    bool changed = !reference->calibrated || reference->center != sample;
-    reference->center = sample;
+bool wheel_position_reference_capture(WheelPositionReference *reference, int32_t sample,
+                                      uint32_t modulus) {
+    int32_t center = sample % (int32_t)modulus;
+    bool changed = !reference->calibrated || reference->center != center;
+    reference->center = center;
     reference->calibrated = true;
     return changed;
 }
