@@ -27,6 +27,13 @@ static bool pwm_inverted;
 static PlatformFan next_fan;
 static uint32_t next_capture_ms;
 
+/**
+ * @brief Configures both fan PWM channels.
+ *
+ * Drives the primary fan from OC5 on RF12 and the secondary fan from OC1 on RF13. Each channel
+ * uses a 3192-count self-synchronized PWM period.
+ *
+ */
 static void configure_pwm(void) {
     LATFbits.LATF12 = 0;
     LATFbits.LATF13 = 0;
@@ -50,6 +57,13 @@ static void configure_pwm(void) {
     OC1CON2bits.SYNCSEL = 0x1f;
 }
 
+/**
+ * @brief Configures the primary fan tachometer channel.
+ *
+ * Couples IC1 and IC2 into a triggered 32-bit capture pair on RA1 and enables the IC1 interrupt
+ * at priority five.
+ *
+ */
 static void configure_primary_capture(void) {
     TRISAbits.TRISA1 = 1;
     IC1CON1 = 0;
@@ -69,6 +83,13 @@ static void configure_primary_capture(void) {
     IEC0bits.IC1IE = 1;
 }
 
+/**
+ * @brief Configures the secondary fan tachometer channel.
+ *
+ * Couples IC3 and IC4 into a triggered 32-bit capture pair on RD14 and enables the IC3 interrupt
+ * at priority five.
+ *
+ */
 static void configure_secondary_capture(void) {
     TRISDbits.TRISD14 = 1;
     IC3CON1 = 0;
@@ -88,6 +109,12 @@ static void configure_secondary_capture(void) {
     IEC2bits.IC3IE = 1;
 }
 
+/**
+ * @brief Starts a primary fan capture window.
+ *
+ * Triggers the IC1 and IC2 pair and enables capture on every rising edge.
+ *
+ */
 static void arm_primary_capture(void) {
     IC1CON2bits.TRIGSTAT = 1;
     IC2CON2bits.TRIGSTAT = 1;
@@ -95,6 +122,12 @@ static void arm_primary_capture(void) {
     IC2CON1bits.ICM = 3;
 }
 
+/**
+ * @brief Starts a secondary fan capture window.
+ *
+ * Triggers the IC3 and IC4 pair and enables capture on every rising edge.
+ *
+ */
 static void arm_secondary_capture(void) {
     IC3CON2bits.TRIGSTAT = 1;
     IC4CON2bits.TRIGSTAT = 1;
@@ -104,6 +137,10 @@ static void arm_secondary_capture(void) {
 
 /**
  * @brief Configures both fan PWM outputs and their paired tachometer capture inputs.
+ *
+ * Resets the two capture states, selects the PWM polarity, and schedules the first primary fan
+ * capture after 50 milliseconds.
+ *
  * @param[in] inverted_pwm True when increasing duty requires a decreasing compare value.
  */
 void platform_cooling_init(bool inverted_pwm) {
@@ -119,6 +156,10 @@ void platform_cooling_init(bool inverted_pwm) {
 
 /**
  * @brief Applies clamped duty percentages to the two fan PWM outputs.
+ *
+ * Converts each requested duty to the configured PWM polarity and applies the inactive level when
+ * the outputs are disabled.
+ *
  * @param[in] primary_percent Primary output duty from 0 through 100 percent.
  * @param[in] secondary_percent Secondary output duty from 0 through 100 percent.
  * @param[in] outputs_disabled True to force both outputs to their inactive compare value.
@@ -131,6 +172,10 @@ void platform_cooling_set_duty(uint16_t primary_percent, uint16_t secondary_perc
 
 /**
  * @brief Alternately checks and rearms one fan tachometer capture every 50 milliseconds.
+ *
+ * Publishes a missing result when the preceding capture window produced no pair, then starts the
+ * next window. Each fan is therefore sampled once every 100 milliseconds.
+ *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 void platform_cooling_service(uint32_t now_ms) {
@@ -157,12 +202,16 @@ void platform_cooling_service(uint32_t now_ms) {
 
 /**
  * @brief Consumes the newest completed or missing tachometer result for one fan.
+ *
+ * Copies a pending result to the caller and clears its ready state. Invalid channels and output
+ * pointers are rejected without changing either capture state.
+ *
  * @param[in] fan Fan tachometer channel to inspect.
  * @param[out] tachometer Consecutive timestamps and signal-presence state.
  * @return True when a new capture result was consumed.
  */
 bool platform_cooling_take_tachometer(PlatformFan fan, PlatformFanTachometer *tachometer) {
-    if (fan != PLATFORM_FAN_PRIMARY && fan != PLATFORM_FAN_SECONDARY) {
+    if ((fan != PLATFORM_FAN_PRIMARY && fan != PLATFORM_FAN_SECONDARY) || tachometer == 0) {
         return false;
     }
 
@@ -179,7 +228,11 @@ bool platform_cooling_take_tachometer(PlatformFan fan, PlatformFanTachometer *ta
 }
 
 /**
- * @brief Captures two consecutive primary input periods and stops the paired capture units.
+ * @brief Captures two consecutive primary input timestamps and stops the paired capture units.
+ *
+ * Combines two low/high word pairs from IC1 and IC2 into consecutive 32-bit timestamps, publishes
+ * the result, and marks the primary input active.
+ *
  */
 void __attribute__((interrupt, no_auto_psv)) _IC1Interrupt(void) {
     FanCaptureState *capture = &captures[PLATFORM_FAN_PRIMARY];
@@ -201,7 +254,11 @@ void __attribute__((interrupt, no_auto_psv)) _IC1Interrupt(void) {
 }
 
 /**
- * @brief Captures two consecutive secondary input periods and stops the paired capture units.
+ * @brief Captures two consecutive secondary input timestamps and stops the paired capture units.
+ *
+ * Combines two low/high word pairs from IC3 and IC4 into consecutive 32-bit timestamps, publishes
+ * the result, and marks the secondary input active.
+ *
  */
 void __attribute__((interrupt, no_auto_psv)) _IC3Interrupt(void) {
     FanCaptureState *capture = &captures[PLATFORM_FAN_SECONDARY];
