@@ -18,6 +18,7 @@ static uint8_t motor_bus_transmit[MOTOR_PARAMETER_RESPONSE_SIZE];
 static MotorBusState motor_bus_state;
 static volatile bool motor_bus_active;
 static uint16_t motor_bus_active_ticks;
+static uint8_t motor_bus_receive_size;
 
 /**
  * @brief Restores the official idle parameter-selection buffer.
@@ -27,18 +28,21 @@ static uint16_t motor_bus_active_ticks;
 static void motor_bus_receive_reset(void) {
     memset(motor_bus_receive, 0, sizeof(motor_bus_receive));
     motor_bus_receive[0] = UINT8_MAX;
+    motor_bus_receive_size = 0U;
 }
 
 /**
  * @brief Prepares the selected parameter for one I2C read transaction.
  *
- * Invalid selections return a zero-valued five-byte response.
- *
  * @param transfer Active NXP SDK slave transfer descriptor.
  */
 static void motor_bus_transmit_prepare(i2c_slave_transfer_t *transfer) {
     MotorParameterResponse response = {0};
-    (void)motor_parameter_read(motor_bus_parameters, motor_bus_receive[0], &response);
+    if (!motor_parameter_read(motor_bus_parameters, motor_bus_receive[0], &response)) {
+        transfer->data = NULL;
+        transfer->dataSize = 0U;
+        return;
+    }
     motor_parameter_response_encode(&response, motor_bus_transmit);
     transfer->data = motor_bus_transmit;
     transfer->dataSize = sizeof(motor_bus_transmit);
@@ -54,9 +58,10 @@ static void motor_bus_transmit_prepare(i2c_slave_transfer_t *transfer) {
  */
 static void motor_bus_receive_complete(const i2c_slave_transfer_t *transfer) {
     bool control_settings_changed;
-    uint8_t received_size = transfer->transferredCount > sizeof(motor_bus_receive)
-                                ? sizeof(motor_bus_receive)
-                                : (uint8_t)transfer->transferredCount;
+    size_t transferred =
+        motor_bus_receive_size == 0U ? transfer->transferredCount : motor_bus_receive_size;
+    uint8_t received_size =
+        transferred > sizeof(motor_bus_receive) ? sizeof(motor_bus_receive) : (uint8_t)transferred;
     if (motor_parameter_request_apply(motor_bus_parameters, motor_bus_receive, received_size,
                                       &control_settings_changed) &&
         control_settings_changed && motor_bus_changed_handler != NULL) {
@@ -85,9 +90,13 @@ static void motor_bus_transfer_callback(I2C_Type *base, i2c_slave_transfer_t *tr
         motor_bus_active = true;
         break;
     case kI2C_SlaveReceiveEvent:
-        transfer->data = motor_bus_receive;
-        transfer->dataSize = sizeof(motor_bus_receive);
-        motor_bus_state = kMotorBusReceiving;
+        if (motor_bus_state == kMotorBusIdle) {
+            transfer->data = motor_bus_receive;
+            transfer->dataSize = sizeof(motor_bus_receive);
+            motor_bus_state = kMotorBusReceiving;
+        } else if (motor_bus_state == kMotorBusReceiving) {
+            motor_bus_receive_size = (uint8_t)transfer->transferredCount;
+        }
         break;
     case kI2C_SlaveTransmitEvent:
         motor_bus_transmit_prepare(transfer);

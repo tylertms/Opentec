@@ -74,7 +74,7 @@ bool motor_parameter_read(const MotorParameterBank *bank, uint8_t index,
 bool motor_parameter_write(MotorParameterBank *bank, uint8_t index, uint32_t value, uint8_t width,
                            bool *control_settings_changed) {
     *control_settings_changed = false;
-    if (index >= MOTOR_PARAMETER_COUNT || !bank->entries[index].writable || width == 0U ||
+    if (index >= MOTOR_PARAMETER_COUNT || !bank->entries[index].writable ||
         width > bank->entries[index].width) {
         return false;
     }
@@ -105,7 +105,7 @@ void motor_parameter_response_encode(const MotorParameterResponse *response,
 /**
  * @brief Applies one complete parameter write received over the motor I2C transport.
  *
- * The request contains a parameter index followed by one to four little-endian value bytes.
+ * The request contains a parameter index followed by zero to four little-endian value bytes.
  *
  * @param bank Parameter bank to update.
  * @param input Five-byte receive buffer containing the index and value.
@@ -116,7 +116,7 @@ void motor_parameter_response_encode(const MotorParameterResponse *response,
 bool motor_parameter_request_apply(MotorParameterBank *bank,
                                    const uint8_t input[MOTOR_PARAMETER_REQUEST_SIZE],
                                    uint8_t received_size, bool *control_settings_changed) {
-    if (received_size < 2U || received_size > MOTOR_PARAMETER_REQUEST_SIZE) {
+    if (received_size == 0U || received_size > MOTOR_PARAMETER_REQUEST_SIZE) {
         *control_settings_changed = false;
         return false;
     }

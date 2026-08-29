@@ -100,8 +100,9 @@ static void test_wire_format(void) {
     assert(motor_parameter_request_apply(&bank, request, 5U, &changed));
     assert(bank.entries[33].value == UINT32_C(0x12345678));
     assert(changed);
-    assert(!motor_parameter_request_apply(&bank, request, 1U, &changed));
-    assert(!changed);
+    assert(motor_parameter_request_apply(&bank, request, 1U, &changed));
+    assert(bank.entries[33].value == 0U);
+    assert(changed);
 }
 
 int main(void) {
