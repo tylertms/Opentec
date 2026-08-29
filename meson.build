@@ -30,6 +30,7 @@ motor_force_feedback_sources = files(
 motor_hardware_profile_sources = files('source/common/motor/profile.c')
 motor_link_frame_sources = files('source/common/motor/link_frame.c')
 motor_motion_sources = files('source/common/motor/motion.c')
+motor_parameter_sources = files('source/common/motor/parameter.c')
 motor_service_sources = files('source/common/motor/service.c')
 motor_auxiliary_telemetry_sources = files('source/common/motor/telemetry.c')
 motor_control_sources = files(
@@ -40,7 +41,7 @@ motor_control_sources = files(
   'source/common/motor/link.c',
   'source/common/motor/peripherals.c',
   'source/common/motor/spi.c',
-) + motor_current_offset_calibration_sources + motor_drive_sources + motor_force_feedback_sources + motor_hardware_profile_sources + motor_link_frame_sources + motor_motion_sources + motor_service_sources + motor_auxiliary_telemetry_sources
+) + motor_current_offset_calibration_sources + motor_drive_sources + motor_force_feedback_sources + motor_hardware_profile_sources + motor_link_frame_sources + motor_motion_sources + motor_parameter_sources + motor_service_sources + motor_auxiliary_telemetry_sources
 wqr_frame_sources = files('source/common/wqr_frame.c')
 
 subdir('source/podium-dd1-dd2-wqr')

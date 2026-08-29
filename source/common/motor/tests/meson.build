@@ -101,3 +101,16 @@ test(
   motor_telemetry_test,
   suite: ['motor', 'telemetry'],
 )
+
+motor_parameter_test = executable(
+  'motor-parameter-test',
+  'source/parameter.c',
+  motor_parameter_sources,
+  include_directories: common_include,
+)
+
+test(
+  'motor-parameter',
+  motor_parameter_test,
+  suite: ['motor', 'communication'],
+)
