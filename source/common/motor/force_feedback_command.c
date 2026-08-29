@@ -22,7 +22,9 @@ bool motor_force_feedback_command_apply(MotorForceFeedbackEngine *engine,
     uint8_t opcode = command[0] & 0x0fU;
     if (opcode == CONFIGURE_OPCODE) {
         bool configured;
-        if (command[1] == MOTOR_FORCE_FEEDBACK_EFFECT_CONSTANT) {
+        if (command[1] == MOTOR_FORCE_FEEDBACK_EFFECT_NONE) {
+            configured = true;
+        } else if (command[1] == MOTOR_FORCE_FEEDBACK_EFFECT_CONSTANT) {
             configured = motor_force_feedback_constant_configure(engine, slot, command + 2U);
         } else if (command[1] == MOTOR_FORCE_FEEDBACK_EFFECT_WINDOW) {
             configured = motor_force_feedback_window_configure(engine, slot, command + 2U);

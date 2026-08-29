@@ -243,6 +243,11 @@ static void test_commands(void) {
     command[0] = 0x23U;
     assert(motor_force_feedback_command_apply(&engine, command));
     assert(!engine.effects[2].active);
+    command[0] = 0x21U;
+    command[1] = MOTOR_FORCE_FEEDBACK_EFFECT_NONE;
+    assert(motor_force_feedback_command_apply(&engine, command));
+    assert(engine.effects[2].active);
+    assert(engine.effects[2].type == MOTOR_FORCE_FEEDBACK_EFFECT_CONSTANT);
 
     command[0] = 0x05U;
     assert(motor_force_feedback_command_apply(&engine, command));
