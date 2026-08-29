@@ -439,6 +439,21 @@ static void test_exchanges_xbox_gip_discovery(void) {
     assert(sent.endpoint == 1 && sent.length == sizeof(application_response));
     assert(sent.data[0] == 0x25 && sent.data[2] == 4 && sent.data[3] == 0x12);
 
+    assert(usb_device_queue_xbox_capabilities());
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 1, 0, 0);
+    usb_device_service();
+    assert(sent.endpoint == 1 && sent.length == USB_XBOX_GIP_CAPABILITY_RESPONSE_SIZE);
+    assert(sent.data[0] == 0x21 && sent.data[2] == 5 && sent.data[3] == 0x33);
+    assert(sent.data[4] == 0x10 && sent.data[9] == 0x5a && sent.data[14] == 0x48);
+
+    const uint8_t control_request[] = {0x0a, 0};
+    assert(usb_device_queue_xbox_transfer_status(control_request));
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 1, 0, 0);
+    usb_device_service();
+    assert(sent.endpoint == 1 && sent.length == USB_XBOX_GIP_TRANSFER_STATUS_RESPONSE_SIZE);
+    assert(sent.data[0] == 1 && sent.data[2] == 6 && sent.data[3] == 9);
+    assert(sent.data[4] == 2 && sent.data[5] == 0x0a && sent.data[6] == 0);
+
     uint8_t vendor_report[USB_DEVICE_REPORT_SIZE] = {0x36, 5, 1, 0xa5};
     assert(usb_device_queue_xbox_vendor_report(vendor_report));
     push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 1, 0, 0);

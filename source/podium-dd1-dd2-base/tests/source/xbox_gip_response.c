@@ -65,6 +65,16 @@ static void test_encodes_session_responses(void) {
     assert(memcmp(status, expected_status, sizeof(expected_status)) == 0);
 }
 
+static void test_encodes_capability_response(void) {
+    static const uint8_t expected[USB_XBOX_GIP_CAPABILITY_RESPONSE_SIZE] = {
+        0x21, 0x00, 0x2a, 0x33, 0x10, 0x10, 0x10, 0x10, 0x08, 0x5a, 0x00, 0x38, 0x04, 0x01, 0x48,
+    };
+    uint8_t output[USB_XBOX_GIP_CAPABILITY_RESPONSE_SIZE];
+
+    usb_xbox_gip_capability_response_encode(0x2a, output);
+    assert(memcmp(output, expected, sizeof(expected)) == 0);
+}
+
 static void test_encodes_input_response(void) {
     static const UsbXboxGipInputSnapshot snapshot = {
         .buttons = {0x12, 0x34},
@@ -100,6 +110,7 @@ int main(void) {
     test_encodes_digest_response();
     test_maps_base_and_extended_status_modes();
     test_encodes_session_responses();
+    test_encodes_capability_response();
     test_encodes_input_response();
     return 0;
 }

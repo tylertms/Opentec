@@ -174,6 +174,11 @@ static FanatecEncoder fanatec_encoder;
 static UsbXboxGipInputBuilder xbox_input_builder;
 static UsbXboxGipInputState xbox_input_state;
 static UsbXboxGipInputSnapshot xbox_input_snapshot;
+static WheelPositionCalibration xbox_position_calibration;
+static uint16_t xbox_steering_range_degrees;
+static uint16_t xbox_profile_steering_range_degrees;
+static uint8_t xbox_force_feedback_percent;
+static uint8_t xbox_profile_force_feedback_percent;
 static WheelMultiPositionInput wheel_multi_position_input;
 static fanatec_multi_position_input fanatec_multi_position_input_state;
 static uint8_t usb_input_report[USB_INPUT_REPORT_MAX_SIZE];
@@ -269,7 +274,15 @@ typedef enum {
     USB_VENDOR_RESPONSE_MOTOR,
 } UsbVendorResponseKind;
 
+typedef enum {
+    USB_XBOX_CONTROL_RESPONSE_NONE,
+    USB_XBOX_CONTROL_RESPONSE_CAPABILITIES,
+    USB_XBOX_CONTROL_RESPONSE_TRANSFER_STATUS,
+} UsbXboxControlResponseKind;
+
 static UsbVendorResponseKind usb_vendor_response_kind;
+static UsbXboxControlResponseKind usb_xbox_control_response_pending;
+static uint8_t usb_xbox_control_request[2];
 static WheelTransferRequest usb_vendor_wheel_response_request;
 
 enum {
@@ -783,8 +796,28 @@ static void initialize_usb_command_bridge(void) {
     usb_motor_acknowledgement_length = 0;
     usb_vendor_response_kind = USB_VENDOR_RESPONSE_NONE;
     usb_vendor_response_length = 0;
+    usb_xbox_control_response_pending = USB_XBOX_CONTROL_RESPONSE_NONE;
+    xbox_profile_steering_range_degrees = 0;
+    xbox_profile_force_feedback_percent = 0;
     for (uint8_t request = 0; request < WHEEL_TRANSFER_REQUEST_COUNT; request++) {
         usb_wheel_transfer_response_pending[request] = false;
+    }
+}
+
+/**
+ * @brief Synchronizes transient Xbox controls with the active tuning profile.
+ *
+ * Initializes the Xbox steering range and force level from the current profile. A changed profile
+ * replaces prior host overrides, while unchanged profile values leave active Xbox requests intact.
+ */
+static void synchronize_xbox_controls_with_profile(void) {
+    if (xbox_profile_steering_range_degrees != tuning_profile->rotation_degrees) {
+        xbox_profile_steering_range_degrees = tuning_profile->rotation_degrees;
+        xbox_steering_range_degrees = tuning_profile->rotation_degrees;
+    }
+    if (xbox_profile_force_feedback_percent != tuning_profile->force_feedback_strength) {
+        xbox_profile_force_feedback_percent = tuning_profile->force_feedback_strength;
+        xbox_force_feedback_percent = tuning_profile->force_feedback_strength;
     }
 }
 
@@ -928,6 +961,7 @@ static bool service_xbox_mode_startup(void) {
     if (result == MOTOR_COMMAND_STARTUP_SERVICE_COMPLETE) {
         const MotorCommandApplication *application =
             motor_command_channel_application(&motor_command_channel);
+        synchronize_xbox_controls_with_profile();
         (void)usb_device_set_xbox_mode(wheel_mode, application->digest);
     }
     return false;
@@ -977,6 +1011,33 @@ static uint8_t encode_pending_force_feedback_script_report(uint8_t *sequence, ui
         return 0;
     }
     return 0;
+}
+
+/**
+ * @brief Queues a pending Xbox GIP control response.
+ *
+ * Retains capability and transfer-status requests until the active Xbox endpoint can accept the
+ * corresponding response. Transfer status echoes the saved command packet type and group.
+ */
+static void prepare_usb_xbox_control_response(void) {
+    if (usb_device_operating_mode() != USB_OPERATING_MODE_XBOX_GIP) {
+        return;
+    }
+
+    bool queued = false;
+    switch (usb_xbox_control_response_pending) {
+    case USB_XBOX_CONTROL_RESPONSE_CAPABILITIES:
+        queued = usb_device_queue_xbox_capabilities();
+        break;
+    case USB_XBOX_CONTROL_RESPONSE_TRANSFER_STATUS:
+        queued = usb_device_queue_xbox_transfer_status(usb_xbox_control_request);
+        break;
+    case USB_XBOX_CONTROL_RESPONSE_NONE:
+        return;
+    }
+    if (queued) {
+        usb_xbox_control_response_pending = USB_XBOX_CONTROL_RESPONSE_NONE;
+    }
 }
 
 /**
@@ -1166,6 +1227,7 @@ static void service_usb_command_bridge(uint32_t now_ms) {
         usb_motor_acknowledgement_ready = false;
     }
     update_usb_diagnostic_snapshot(now_ms);
+    prepare_usb_xbox_control_response();
     prepare_usb_xbox_vendor_response();
     prepare_usb_xbox_script_response();
     prepare_usb_vendor_response();
@@ -1468,40 +1530,68 @@ static void apply_wheel_steering_limit_command(const WheelSteeringLimitCommand *
 }
 
 /**
- * @brief Routes one Xbox GIP script query to the shared report service.
+ * @brief Routes one Xbox GIP application command.
  *
- * Decodes group-zero command packet 0A and schedules its sample, slot, status, value, or axis
- * response. An earlier pending query is retained until it reaches the endpoint.
+ * Decodes group-zero command packet 0A, applies transient steering-range and force-level controls,
+ * and schedules capability, transfer-status, or script responses. Earlier pending responses are
+ * retained until they reach the endpoint.
  *
  * @param[in] report Complete USB output report containing the GIP packet.
- * @return True when the report belongs to the Xbox script-query path.
+ * @return True when the report belongs to the Xbox application-command path.
  */
-static bool route_xbox_gip_script_query(const UsbDeviceOutputReport *report) {
+static bool route_xbox_gip_command(const UsbDeviceOutputReport *report) {
     if (usb_device_operating_mode() != USB_OPERATING_MODE_XBOX_GIP ||
         !usb_xbox_gip_command_decode(report->data, report->length, &usb_xbox_gip_command)) {
         return false;
     }
-    if (force_feedback_script_report_pending != FORCE_FEEDBACK_SCRIPT_REPORT_NONE) {
-        return true;
-    }
 
     switch (usb_xbox_gip_command.kind) {
+    case USB_XBOX_GIP_COMMAND_CAPABILITIES:
+        if (usb_xbox_control_response_pending == USB_XBOX_CONTROL_RESPONSE_NONE) {
+            usb_xbox_control_response_pending = USB_XBOX_CONTROL_RESPONSE_CAPABILITIES;
+        }
+        break;
+    case USB_XBOX_GIP_COMMAND_STEERING_RANGE:
+        xbox_steering_range_degrees =
+            usb_xbox_gip_steering_range_normalize(usb_xbox_gip_command.parameter);
+        break;
+    case USB_XBOX_GIP_COMMAND_FORCE_FEEDBACK_STRENGTH:
+        xbox_force_feedback_percent =
+            usb_xbox_gip_force_feedback_strength_normalize((uint8_t)usb_xbox_gip_command.parameter);
+        break;
+    case USB_XBOX_GIP_COMMAND_TRANSFER_STATUS:
+        if (usb_xbox_control_response_pending == USB_XBOX_CONTROL_RESPONSE_NONE) {
+            usb_xbox_control_request[0] = report->data[0];
+            usb_xbox_control_request[1] = report->data[1];
+            usb_xbox_control_response_pending = USB_XBOX_CONTROL_RESPONSE_TRANSFER_STATUS;
+        }
+        break;
     case USB_XBOX_GIP_COMMAND_SCRIPT_SAMPLES:
-        force_feedback_script_sample_report_index = usb_xbox_gip_command.parameter;
-        force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_SAMPLES;
+        if (force_feedback_script_report_pending == FORCE_FEEDBACK_SCRIPT_REPORT_NONE) {
+            force_feedback_script_sample_report_index = usb_xbox_gip_command.parameter;
+            force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_SAMPLES;
+        }
         break;
     case USB_XBOX_GIP_COMMAND_SCRIPT_SLOT:
-        force_feedback_script_slot_report_index = (uint8_t)usb_xbox_gip_command.parameter;
-        force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_SLOT;
+        if (force_feedback_script_report_pending == FORCE_FEEDBACK_SCRIPT_REPORT_NONE) {
+            force_feedback_script_slot_report_index = (uint8_t)usb_xbox_gip_command.parameter;
+            force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_SLOT;
+        }
         break;
     case USB_XBOX_GIP_COMMAND_SCRIPT_STATUS:
-        force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_STATUS;
+        if (force_feedback_script_report_pending == FORCE_FEEDBACK_SCRIPT_REPORT_NONE) {
+            force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_STATUS;
+        }
         break;
     case USB_XBOX_GIP_COMMAND_SCRIPT_VALUES:
-        force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_VALUES;
+        if (force_feedback_script_report_pending == FORCE_FEEDBACK_SCRIPT_REPORT_NONE) {
+            force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_VALUES;
+        }
         break;
     case USB_XBOX_GIP_COMMAND_SCRIPT_AXES:
-        force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_AXES;
+        if (force_feedback_script_report_pending == FORCE_FEEDBACK_SCRIPT_REPORT_NONE) {
+            force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_AXES;
+        }
         break;
     }
     return true;
@@ -1521,7 +1611,7 @@ static void service_usb_output(void) {
     if (accept_usb_motor_report(&usb_device_output_report)) {
         return;
     }
-    if (route_xbox_gip_script_query(&usb_device_output_report)) {
+    if (route_xbox_gip_command(&usb_device_output_report)) {
         return;
     }
     if (force_feedback_script_runtime_apply_packet(&force_feedback_script_system,
@@ -1715,12 +1805,22 @@ static void service_usb_input(uint32_t now_ms) {
         return;
     }
 
+    bool xbox_mode = usb_device_operating_mode() == USB_OPERATING_MODE_XBOX_GIP;
+    const WheelPositionCalibration *input_calibration = &wheel_position_calibration;
+    if (xbox_mode) {
+        synchronize_xbox_controls_with_profile();
+        xbox_position_calibration = wheel_position_calibration_build(
+            &base_settings.wheel_position, xbox_steering_range_degrees,
+            tuning_profile->steering_deadzone);
+        input_calibration = &xbox_position_calibration;
+    }
+
     const MotorIdentity *motor_identity = motor_probe_identity(&motor_probe);
     usb_input_state = (UsbInputReportState){
         .fanatec =
             {
                 .steering = wheel_position_hid_axis(motor_position_report.wheel_position,
-                                                    &wheel_position_calibration),
+                                                    input_calibration),
                 .transfer_code = motor_identity_input_transfer_code(motor_identity),
                 .wheel_mode = FANATEC_INPUT_DIRECT_DRIVE_MODE,
                 .axis_limit = wheel_service_axis_limit(&wheel_service),
@@ -1784,7 +1884,7 @@ static void service_usb_input(uint32_t now_ms) {
     usb_input_state.fanatec.auxiliary_pedal = pedal_input_hid_auxiliary(pedal_input->auxiliary);
     const WheelAxisOverrides *axis_overrides = wheel_service_axis_overrides(&wheel_service);
     fanatec_input_apply_wheel_axis_overrides(&usb_input_state.fanatec, axis_overrides);
-    if (usb_device_operating_mode() == USB_OPERATING_MODE_XBOX_GIP) {
+    if (xbox_mode) {
         xbox_input_state = (UsbXboxGipInputState){
             .mode_buttons = wheel_service_mode_buttons(&wheel_service),
             .steering = usb_input_state.fanatec.steering,
@@ -1801,8 +1901,8 @@ static void service_usb_input(uint32_t now_ms) {
                              ? 2
                              : 0,
             .led_state = (uint8_t)(base_settings.tuning_profiles.active_slot + 1u),
-            .steering_range_degrees = tuning_profile->rotation_degrees,
-            .force_feedback_percent = tuning_profile->force_feedback_strength,
+            .steering_range_degrees = xbox_steering_range_degrees,
+            .force_feedback_percent = xbox_force_feedback_percent,
             .auxiliary_pedal_active =
                 pedal_service.auxiliary_override_active || axis_overrides->auxiliary.enabled,
         };

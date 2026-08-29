@@ -7,9 +7,15 @@
 enum {
     XBOX_GIP_COMMAND_PACKET = 0x0a,
     XBOX_GIP_COMMAND_GROUP_SCRIPT = 0,
+    XBOX_GIP_COMMAND_GROUP_CONTROL = 0x20,
     XBOX_GIP_COMMAND_SELECTOR_OFFSET = 4,
     XBOX_GIP_COMMAND_PARAMETER_OFFSET = 5,
     XBOX_GIP_COMMAND_MINIMUM_SIZE = 7,
+    XBOX_GIP_COMMAND_CAPABILITIES = 0,
+    XBOX_GIP_COMMAND_STEERING_RANGE = 1,
+    XBOX_GIP_COMMAND_FORCE_FEEDBACK_STRENGTH = 2,
+    XBOX_GIP_COMMAND_TRANSFER_STATUS = 3,
+    XBOX_GIP_COMMAND_CONTROL_TRANSFER_STATUS = 1,
     XBOX_GIP_COMMAND_SCRIPT_SAMPLES = 4,
     XBOX_GIP_COMMAND_SCRIPT_SLOT = 5,
     XBOX_GIP_COMMAND_SCRIPT_STATUS = 6,
@@ -17,6 +23,11 @@ enum {
     XBOX_GIP_COMMAND_SCRIPT_AXES = 8,
     XBOX_GIP_COMMAND_LAST_SAMPLE = 501,
     XBOX_GIP_COMMAND_EMPTY_SLOT = 15,
+    XBOX_GIP_STEERING_RANGE_MINIMUM_DEGREES = 90,
+    XBOX_GIP_STEERING_RANGE_MAXIMUM_DEGREES = 1080,
+    XBOX_GIP_STEERING_RANGE_STEP_DEGREES = 10,
+    XBOX_GIP_FORCE_FEEDBACK_LEVEL_MAXIMUM = 255,
+    XBOX_GIP_FORCE_FEEDBACK_PERCENT_MAXIMUM = 100,
 };
 
 /**
@@ -32,24 +43,51 @@ static uint16_t read_u16(const uint8_t input[2]) {
 }
 
 /**
- * @brief Decodes an Xbox GIP force-feedback script query.
+ * @brief Decodes an Xbox GIP application command.
  *
- * Accepts group-zero command packet 0A selectors 4 through 8. Sample queries allow first indices
- * through 501, and slot queries allow real slots through 14 plus the empty slot-15 response.
+ * Accepts group-zero command packet 0A selectors zero through eight and the group-20 transfer
+ * status selector. Control selectors request capabilities, steering range, force-feedback
+ * strength, or transfer status. Script selectors allow sample indices through 501 and real slots
+ * through 14 plus the empty slot-15 response.
  *
  * @param[in] packet Received Xbox GIP endpoint packet.
  * @param[in] length Number of available packet bytes.
- * @param[out] command Decoded query kind and little-endian parameter.
- * @return True when the packet contains a supported script query.
+ * @param[out] command Decoded command kind and parameter.
+ * @return True when the packet contains a supported application command.
  */
 bool usb_xbox_gip_command_decode(const uint8_t *packet, size_t length, UsbXboxGipCommand *command) {
     if (packet == NULL || command == NULL || length < XBOX_GIP_COMMAND_MINIMUM_SIZE ||
-        packet[0] != XBOX_GIP_COMMAND_PACKET || packet[1] != XBOX_GIP_COMMAND_GROUP_SCRIPT) {
+        packet[0] != XBOX_GIP_COMMAND_PACKET) {
         return false;
     }
 
     uint16_t parameter = read_u16(packet + XBOX_GIP_COMMAND_PARAMETER_OFFSET);
+    if (packet[1] == XBOX_GIP_COMMAND_GROUP_CONTROL) {
+        if (packet[XBOX_GIP_COMMAND_SELECTOR_OFFSET] != XBOX_GIP_COMMAND_CONTROL_TRANSFER_STATUS) {
+            return false;
+        }
+        command->kind = USB_XBOX_GIP_COMMAND_TRANSFER_STATUS;
+        command->parameter = parameter;
+        return true;
+    }
+    if (packet[1] != XBOX_GIP_COMMAND_GROUP_SCRIPT) {
+        return false;
+    }
+
     switch (packet[XBOX_GIP_COMMAND_SELECTOR_OFFSET]) {
+    case XBOX_GIP_COMMAND_CAPABILITIES:
+        command->kind = USB_XBOX_GIP_COMMAND_CAPABILITIES;
+        break;
+    case XBOX_GIP_COMMAND_STEERING_RANGE:
+        command->kind = USB_XBOX_GIP_COMMAND_STEERING_RANGE;
+        break;
+    case XBOX_GIP_COMMAND_FORCE_FEEDBACK_STRENGTH:
+        command->kind = USB_XBOX_GIP_COMMAND_FORCE_FEEDBACK_STRENGTH;
+        parameter = packet[XBOX_GIP_COMMAND_PARAMETER_OFFSET];
+        break;
+    case XBOX_GIP_COMMAND_TRANSFER_STATUS:
+        command->kind = USB_XBOX_GIP_COMMAND_TRANSFER_STATUS;
+        break;
     case XBOX_GIP_COMMAND_SCRIPT_SAMPLES:
         if (parameter > XBOX_GIP_COMMAND_LAST_SAMPLE) {
             return false;
@@ -76,4 +114,38 @@ bool usb_xbox_gip_command_decode(const uint8_t *packet, size_t length, UsbXboxGi
     }
     command->parameter = parameter;
     return true;
+}
+
+/**
+ * @brief Normalizes an Xbox steering-range request.
+ *
+ * Clamps requests to 90 through 1080 degrees and rounds accepted intermediate values down to the
+ * nearest ten-degree step.
+ *
+ * @param[in] requested_degrees Host-requested lock-to-lock steering range.
+ * @return Effective steering range in degrees.
+ */
+uint16_t usb_xbox_gip_steering_range_normalize(uint16_t requested_degrees) {
+    if (requested_degrees < XBOX_GIP_STEERING_RANGE_MINIMUM_DEGREES) {
+        return XBOX_GIP_STEERING_RANGE_MINIMUM_DEGREES;
+    }
+    if (requested_degrees > XBOX_GIP_STEERING_RANGE_MAXIMUM_DEGREES) {
+        return XBOX_GIP_STEERING_RANGE_MAXIMUM_DEGREES;
+    }
+    return requested_degrees / XBOX_GIP_STEERING_RANGE_STEP_DEGREES *
+           XBOX_GIP_STEERING_RANGE_STEP_DEGREES;
+}
+
+/**
+ * @brief Normalizes an Xbox force-feedback strength request.
+ *
+ * Converts the host's unsigned byte scale to the truncated zero-through-100 percentage stored in
+ * the controller state.
+ *
+ * @param[in] requested_level Host-requested force-feedback byte level.
+ * @return Effective whole percentage.
+ */
+uint8_t usb_xbox_gip_force_feedback_strength_normalize(uint8_t requested_level) {
+    return (uint8_t)((uint16_t)requested_level * XBOX_GIP_FORCE_FEEDBACK_PERCENT_MAXIMUM /
+                     XBOX_GIP_FORCE_FEEDBACK_LEVEL_MAXIMUM);
 }

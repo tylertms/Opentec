@@ -8,6 +8,7 @@
 enum {
     XBOX_GIP_DIGEST_RESPONSE = 2,
     XBOX_GIP_TRANSFER_STATUS_RESPONSE = 1,
+    XBOX_GIP_CAPABILITY_RESPONSE = 0x21,
     XBOX_GIP_READY_RESPONSE = 3,
     XBOX_GIP_INPUT_RESPONSE = 0x20,
     XBOX_GIP_SEQUENCE_SUBCOMMAND = 0x20,
@@ -15,6 +16,13 @@ enum {
     XBOX_GIP_READY_PAYLOAD_SIZE = 4,
     XBOX_GIP_TRANSFER_STATUS_PAYLOAD_SIZE = 9,
     XBOX_GIP_TRANSFER_STATUS_ERROR = 2,
+    XBOX_GIP_CAPABILITY_PAYLOAD_SIZE = 0x33,
+    XBOX_GIP_CAPABILITY_CLASS = 0x10,
+    XBOX_GIP_CAPABILITY_AXIS_COUNT = 8,
+    XBOX_GIP_CAPABILITY_RANGE_UPPER = 0x5a,
+    XBOX_GIP_CAPABILITY_RANGE_LOWER = 0x38,
+    XBOX_GIP_CAPABILITY_PEDAL_COUNT = 4,
+    XBOX_GIP_CAPABILITY_FLAGS = 0x48,
     XBOX_GIP_EXTENDED_STATUS_WHEEL_MODE = 0x1d,
     XBOX_GIP_INPUT_PAYLOAD_SIZE = 0x32,
     XBOX_GIP_INPUT_AXIS_MODE = 0x66,
@@ -124,6 +132,33 @@ void usb_xbox_gip_transfer_status_response_encode(
     output[4] = XBOX_GIP_TRANSFER_STATUS_ERROR;
     output[5] = request[0];
     output[6] = request[1];
+}
+
+/**
+ * @brief Encodes the Xbox GIP wheel capability response.
+ *
+ * Emits the 51-byte capability payload describing the wheel class, eight axes, fixed range fields,
+ * four pedals, and capability flags. Reserved payload bytes are cleared.
+ *
+ * @param[in] sequence Response sequence value.
+ * @param[out] output Destination for the capability response.
+ */
+void usb_xbox_gip_capability_response_encode(
+    uint8_t sequence, uint8_t output[USB_XBOX_GIP_CAPABILITY_RESPONSE_SIZE]) {
+    memset(output, 0, USB_XBOX_GIP_CAPABILITY_RESPONSE_SIZE);
+    output[0] = XBOX_GIP_CAPABILITY_RESPONSE;
+    output[2] = sequence;
+    output[3] = XBOX_GIP_CAPABILITY_PAYLOAD_SIZE;
+    output[4] = XBOX_GIP_CAPABILITY_CLASS;
+    output[5] = XBOX_GIP_CAPABILITY_CLASS;
+    output[6] = XBOX_GIP_CAPABILITY_CLASS;
+    output[7] = XBOX_GIP_CAPABILITY_CLASS;
+    output[8] = XBOX_GIP_CAPABILITY_AXIS_COUNT;
+    output[9] = XBOX_GIP_CAPABILITY_RANGE_UPPER;
+    output[11] = XBOX_GIP_CAPABILITY_RANGE_LOWER;
+    output[12] = XBOX_GIP_CAPABILITY_PEDAL_COUNT;
+    output[13] = 1;
+    output[14] = XBOX_GIP_CAPABILITY_FLAGS;
 }
 
 /**

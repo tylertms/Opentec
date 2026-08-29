@@ -10,6 +10,7 @@ enum {
     USB_XBOX_GIP_DIGEST_RESPONSE_SIZE = 32,
     USB_XBOX_GIP_READY_RESPONSE_SIZE = 8,
     USB_XBOX_GIP_TRANSFER_STATUS_RESPONSE_SIZE = 13,
+    USB_XBOX_GIP_CAPABILITY_RESPONSE_SIZE = 55,
     USB_XBOX_GIP_INPUT_RESPONSE_SIZE = 54,
     USB_XBOX_GIP_INPUT_PEDAL_COUNT = 3,
     USB_XBOX_GIP_INPUT_SELECTOR_COUNT = 6,
@@ -44,6 +45,8 @@ void usb_xbox_gip_ready_response_encode(uint8_t sequence,
 void usb_xbox_gip_transfer_status_response_encode(
     uint8_t sequence, const uint8_t request[2],
     uint8_t output[USB_XBOX_GIP_TRANSFER_STATUS_RESPONSE_SIZE]);
+void usb_xbox_gip_capability_response_encode(uint8_t sequence,
+                                             uint8_t output[USB_XBOX_GIP_CAPABILITY_RESPONSE_SIZE]);
 void usb_xbox_gip_input_response_encode(uint8_t sequence, const UsbXboxGipInputSnapshot *snapshot,
                                         uint8_t output[USB_XBOX_GIP_INPUT_RESPONSE_SIZE]);
 

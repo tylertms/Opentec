@@ -51,6 +51,8 @@ bool usb_device_configured(void);
 bool usb_device_take_output(UsbDeviceOutputReport *report);
 bool usb_device_send_input(const uint8_t *report, uint8_t length);
 bool usb_device_queue_xbox_input(const UsbXboxGipInputSnapshot *snapshot);
+bool usb_device_queue_xbox_capabilities(void);
+bool usb_device_queue_xbox_transfer_status(const uint8_t request[2]);
 bool usb_device_queue_xbox_response(const uint8_t *report, uint8_t length);
 bool usb_device_queue_xbox_vendor_report(const uint8_t report[USB_DEVICE_REPORT_SIZE]);
 bool usb_device_send_vendor_report(const uint8_t *report, uint8_t length);

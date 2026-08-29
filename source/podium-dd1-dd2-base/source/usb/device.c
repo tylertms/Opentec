@@ -809,6 +809,49 @@ bool usb_device_queue_xbox_input(const UsbXboxGipInputSnapshot *snapshot) {
 }
 
 /**
+ * @brief Queues the Xbox GIP wheel capability response.
+ *
+ * Encodes the fixed type-21 capability packet with the next shared sequence and retains it until
+ * endpoint 1 accepts the transfer. Existing endpoint responses keep priority.
+ *
+ * @return True when the capability response was queued.
+ */
+bool usb_device_queue_xbox_capabilities(void) {
+    if (operating_mode != USB_OPERATING_MODE_XBOX_GIP || !usb_device_configured() ||
+        xbox_service.session.state != USB_XBOX_GIP_SESSION_ACTIVE || xbox_response_ready) {
+        return false;
+    }
+    uint8_t sequence = usb_xbox_gip_sequence_take(&xbox_service.next_sequence);
+    usb_xbox_gip_capability_response_encode(sequence, xbox_response);
+    xbox_response_length = USB_XBOX_GIP_CAPABILITY_RESPONSE_SIZE;
+    xbox_response_ready = true;
+    return true;
+}
+
+/**
+ * @brief Queues an Xbox GIP command transfer-status response.
+ *
+ * Echoes the triggering packet type and group with the current shared sequence without consuming
+ * it, then retains the response until endpoint 1 accepts the transfer. Existing responses keep
+ * priority.
+ *
+ * @param[in] request First two bytes of the triggering command packet.
+ * @return True when the transfer-status response was queued.
+ */
+bool usb_device_queue_xbox_transfer_status(const uint8_t request[2]) {
+    if (operating_mode != USB_OPERATING_MODE_XBOX_GIP || !usb_device_configured() ||
+        xbox_service.session.state != USB_XBOX_GIP_SESSION_ACTIVE || request == NULL ||
+        xbox_response_ready) {
+        return false;
+    }
+    usb_xbox_gip_transfer_status_response_encode(xbox_service.next_sequence, request,
+                                                 xbox_response);
+    xbox_response_length = USB_XBOX_GIP_TRANSFER_STATUS_RESPONSE_SIZE;
+    xbox_response_ready = true;
+    return true;
+}
+
+/**
  * @brief Queues one Xbox GIP application response.
  *
  * Copies the complete response, replaces its envelope sequence with the next shared GIP sequence,
