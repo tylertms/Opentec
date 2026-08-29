@@ -1,6 +1,7 @@
 #include "common/motor/control.h"
 
 #include <assert.h>
+#include <limits.h>
 
 static void test_startup_sequence(void) {
     MotorControlMode mode = motor_control_mode_initialize();
@@ -49,10 +50,29 @@ static void test_startup_ramp(void) {
     assert(motor_control_startup_ramp_current(2001U) == 10000U);
 }
 
+static void test_current_reference(void) {
+    MotorControlCurrentReference reference = motor_control_current_reference(1000);
+    assert(reference.d == -1000);
+    assert(reference.q == 1000);
+
+    reference = motor_control_current_reference(-1000);
+    assert(reference.d == -1000);
+    assert(reference.q == -1000);
+
+    reference = motor_control_current_reference(10000);
+    assert(reference.d == -0x1999);
+    assert(reference.q == 10000);
+
+    reference = motor_control_current_reference(INT16_MIN);
+    assert(reference.d == INT16_MIN);
+    assert(reference.q == INT16_MIN);
+}
+
 int main(void) {
     test_startup_sequence();
     test_calibration_transitions();
     test_request_decode();
     test_startup_ramp();
+    test_current_reference();
     return 0;
 }

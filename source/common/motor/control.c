@@ -7,6 +7,7 @@ enum {
     MOTOR_STARTUP_RAMP_TICKS = 2000U,
     MOTOR_STARTUP_RAMP_STEP = 10U,
     MOTOR_STARTUP_RAMP_LIMIT = 10000U,
+    MOTOR_D_AXIS_CURRENT_LIMIT = 0x1999,
 };
 
 /**
@@ -89,4 +90,22 @@ uint16_t motor_control_startup_ramp_current(uint16_t ticks_remaining) {
     uint32_t elapsed = (uint16_t)(MOTOR_STARTUP_RAMP_TICKS - ticks_remaining);
     uint32_t current = elapsed * MOTOR_STARTUP_RAMP_STEP;
     return (uint16_t)(current < MOTOR_STARTUP_RAMP_LIMIT ? current : MOTOR_STARTUP_RAMP_LIMIT);
+}
+
+/**
+ * @brief Resolves the official D/Q references from a signed torque-current command.
+ * @param torque_current Signed Q-axis torque-current command.
+ * @return Q-axis torque current and limited negative D-axis magnitude.
+ */
+MotorControlCurrentReference motor_control_current_reference(int16_t torque_current) {
+    uint16_t sign = torque_current < 0 ? UINT16_MAX : 0U;
+    int16_t magnitude = (int16_t)(((uint16_t)torque_current + sign) ^ sign);
+    if (magnitude > MOTOR_D_AXIS_CURRENT_LIMIT) {
+        magnitude = MOTOR_D_AXIS_CURRENT_LIMIT;
+    }
+
+    return (MotorControlCurrentReference){
+        .d = (int16_t)-magnitude,
+        .q = torque_current,
+    };
 }
