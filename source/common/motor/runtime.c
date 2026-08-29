@@ -723,13 +723,17 @@ static void motor_runtime_spi_receive(const uint8_t frame[MOTOR_SPI_TRANSFER_SIZ
  * @brief Initializes the complete motor runtime and its interrupt graph.
  *
  * Board identity selects the hardware profile, product configuration selects normal output scale,
- * calibration flash is loaded, and all SDK peripherals are configured while global interrupts are
- * masked. Startup begins with the first interlock delay.
+ * watchdog-reset startup enters the safe state, calibration flash is loaded, and all SDK
+ * peripherals are configured while global interrupts are masked. Startup begins with the first
+ * interlock delay.
  */
 void motor_runtime_initialize(void) {
     memset(&motor_runtime, 0, sizeof(motor_runtime));
     motor_pins_initialize();
     motor_runtime.identity = motor_board_identity_read();
+    if ((RCM->SRS0 & RCM_SRS0_WDOG_MASK) != 0U) {
+        motor_runtime_fault();
+    }
 
     uint32_t interrupt_mask = DisableGlobalIRQ();
     if (motor_calibration_storage_initialize() != kStatus_Success) {
@@ -793,7 +797,8 @@ void motor_runtime_initialize(void) {
  * applied to the live FOC command.
  * Seven-ADC events advance the selected force interpolation response. Run mode publishes natural
  * friction and the complete product-scaled current command. Published temperature windows are
- * exposed through the read-only parameter bank.
+ * exposed through the read-only parameter bank. The hardware watchdog is refreshed after all
+ * deferred work completes.
  */
 void motor_runtime_poll(void) {
     if (motor_runtime.parameters.entries[MOTOR_PARAMETER_RESET_COMMAND].value == 0x05faU) {
@@ -830,4 +835,6 @@ void motor_runtime_poll(void) {
         motor_runtime.parameters.entries[MOTOR_PARAMETER_DRIVER_TEMPERATURE].value =
             (uint16_t)motor_runtime.auxiliary_telemetry.driver_temperature;
     }
+
+    WDOG_Refresh(WDOG);
 }
