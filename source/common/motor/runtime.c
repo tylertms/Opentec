@@ -30,6 +30,8 @@
 #include "common/motor/telemetry.h"
 
 enum {
+    MOTOR_PARAMETER_DIRECTION_COMMAND = 5,
+    MOTOR_PARAMETER_CALIBRATION_COMMAND = 6,
     MOTOR_PARAMETER_CALIBRATION_VERSION = 7,
     MOTOR_PARAMETER_TORQUE = 16,
     MOTOR_PARAMETER_SERVICE_TICK = 17,
@@ -328,6 +330,94 @@ static void motor_runtime_startup_gate_step(MotorRuntime *runtime) {
 }
 
 /**
+ * @brief Erases the persisted encoder correction record.
+ *
+ * Flash operations run with interrupts masked. The in-memory record, calibration command,
+ * published version, and correction enable are cleared after a successful erase.
+ *
+ * @param runtime Active motor runtime and calibration state.
+ */
+static void motor_runtime_encoder_calibration_erase(MotorRuntime *runtime) {
+    memset(&runtime->encoder_calibration.record, 0, sizeof(runtime->encoder_calibration.record));
+    uint32_t interrupt_mask = DisableGlobalIRQ();
+    status_t status = motor_calibration_storage_erase();
+    EnableGlobalIRQ(interrupt_mask);
+    if (status != kStatus_Success) {
+        motor_runtime_fault();
+    }
+
+    runtime->parameters.entries[MOTOR_PARAMETER_CALIBRATION_COMMAND].value = 0U;
+    runtime->parameters.entries[MOTOR_PARAMETER_CALIBRATION_VERSION].value = 0U;
+    runtime->calibration_valid = false;
+}
+
+/**
+ * @brief Applies one run-mode maintenance request.
+ *
+ * Erase has priority over the direction diagnostic. Encoder calibration remains in run mode until
+ * its independently recovered velocity controller is available.
+ *
+ * @param runtime Active motor runtime and writable parameter bank.
+ */
+static void motor_runtime_request_apply(MotorRuntime *runtime) {
+    MotorControlRequest request = motor_control_request_decode(
+        runtime->parameters.entries[MOTOR_PARAMETER_CALIBRATION_COMMAND].value,
+        runtime->parameters.entries[MOTOR_PARAMETER_DIRECTION_COMMAND].value);
+    if (request == kMotorControlRequestEraseEncoderCalibration) {
+        motor_runtime_encoder_calibration_erase(runtime);
+        return;
+    }
+    if (request != kMotorControlRequestCheckEncoderDirection) {
+        return;
+    }
+
+    motor_encoder_direction_initialize(&runtime->encoder_direction);
+    runtime->mode = motor_control_request_apply(runtime->mode, request);
+}
+
+/**
+ * @brief Advances the encoder-direction diagnostic.
+ *
+ * Two forward index searches establish one measured revolution. A valid revolution is followed by
+ * a reverse return to the captured start position. The writable direction parameter reports the
+ * running, failed, or completed status.
+ *
+ * @param runtime Active motor runtime, encoder state, and index-search countdown.
+ */
+static void motor_runtime_encoder_direction_step(MotorRuntime *runtime) {
+    motor_runtime_encoder_position_refresh(runtime);
+    motor_startup_interlock_outputs_apply(false, true);
+
+    MotorCountdown *countdown = &runtime->timing.countdowns[kMotorCountdownEncoderIndex];
+    MotorEncoderIndexSeekStep seek =
+        motor_encoder_index_seek_step(runtime->encoder_index_detected, countdown->ticks);
+    MotorEncoderDirectionStep step = motor_encoder_direction_check_step(
+        &runtime->encoder_direction, seek.complete, runtime->encoder.position,
+        (int32_t)runtime->hardware.encoder_modulus);
+
+    countdown->active = seek.countdown_active ? 1U : 0U;
+    runtime->parameters.entries[MOTOR_PARAMETER_DIRECTION_COMMAND].value = step.status;
+    if (step.reset_controller) {
+        motor_foc_initialize(&runtime->foc);
+    }
+    if (step.reset_position) {
+        motor_encoder_position_reset(&runtime->encoder);
+        runtime->motion.previous_counter = 0U;
+    }
+    if (step.restart_index_seek) {
+        motor_runtime_index_seek_restart(runtime);
+    }
+    if (step.result != kMotorEncoderDirectionPending) {
+        countdown->active = 0U;
+        motor_encoder_index_interrupt_disable();
+        runtime->mode = motor_control_mode_complete(runtime->mode);
+    }
+
+    runtime->control_current = step.drive_current;
+    motor_runtime_control_cycle(runtime, runtime->control_current, false);
+}
+
+/**
  * @brief Runs one normal motor-control interrupt cycle.
  *
  * The encoder position is refreshed, live current plus calibration correction is resolved, and the
@@ -337,6 +427,7 @@ static void motor_runtime_startup_gate_step(MotorRuntime *runtime) {
  */
 static void motor_runtime_run_step(MotorRuntime *runtime) {
     motor_runtime_encoder_position_refresh(runtime);
+    motor_runtime_request_apply(runtime);
     motor_startup_interlock_outputs_apply(false, true);
     runtime->control_current = motor_runtime_current_resolve(runtime);
     motor_runtime_control_cycle(runtime, runtime->control_current, false);
@@ -375,9 +466,11 @@ static void motor_runtime_adc_handler(int16_t electrical_angle, bool control_upd
     case kMotorControlRun:
         motor_runtime_run_step(runtime);
         break;
+    case kMotorControlEncoderDirectionCheck:
+        motor_runtime_encoder_direction_step(runtime);
+        break;
     case kMotorControlInactive:
     case kMotorControlEncoderCalibration:
-    case kMotorControlEncoderDirectionCheck:
     default:
         break;
     }

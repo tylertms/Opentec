@@ -74,6 +74,8 @@ static void test_direction_check_pass(void) {
     MotorEncoderDirectionStep step = motor_encoder_direction_check_step(&state, false, 100, 0x5c7f);
     assert(step.result == kMotorEncoderDirectionPending);
     assert(step.restart_index_seek);
+    assert(step.reset_controller);
+    assert(step.reset_position);
     assert(step.status == 0xaaaaU);
 
     step = motor_encoder_direction_check_step(&state, false, 110, 0x5c7f);
@@ -81,6 +83,8 @@ static void test_direction_check_pass(void) {
 
     step = motor_encoder_direction_check_step(&state, true, 120, 0x5c7f);
     assert(step.restart_index_seek);
+    assert(!step.reset_controller);
+    assert(step.reset_position);
 
     step = motor_encoder_direction_check_step(&state, false, 0x5c7f, 0x5c7f);
     assert(step.drive_current == 491);

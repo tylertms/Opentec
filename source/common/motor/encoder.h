@@ -40,6 +40,8 @@ typedef struct {
     MotorEncoderDirectionResult result;
     int16_t drive_current;
     uint16_t status;
+    bool reset_controller;
+    bool reset_position;
     bool restart_index_seek;
 } MotorEncoderDirectionStep;
 
