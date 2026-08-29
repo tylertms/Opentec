@@ -49,7 +49,7 @@ void usb_device_service(void);
 bool usb_device_configured(void);
 bool usb_device_take_output(UsbDeviceOutputReport *report);
 bool usb_device_send_input(const uint8_t *report, uint8_t length);
-bool usb_device_send_vendor_report(const uint8_t report[USB_DEVICE_REPORT_SIZE]);
+bool usb_device_send_vendor_report(const uint8_t *report, uint8_t length);
 bool usb_device_take_updater_packet(UsbDeviceUpdaterPacket *packet);
 bool usb_device_send_updater_packet(const uint8_t *data, uint8_t length);
 UsbXboxGipSessionAction usb_device_take_xbox_session_actions(void);

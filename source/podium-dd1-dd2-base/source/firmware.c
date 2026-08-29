@@ -156,7 +156,9 @@ static WheelMultiPositionInput wheel_multi_position_input;
 static fanatec_multi_position_input fanatec_multi_position_input_state;
 static uint8_t usb_input_report[USB_INPUT_REPORT_MAX_SIZE];
 static uint8_t usb_motor_acknowledgement[USB_DEVICE_REPORT_SIZE];
+static uint8_t usb_motor_acknowledgement_length;
 static uint8_t usb_vendor_response[USB_DEVICE_REPORT_SIZE];
+static uint8_t usb_vendor_response_length;
 static UsbDiagnosticReportService usb_diagnostic_report_service;
 static UsbRemoteTuningService usb_remote_tuning_service;
 static WheelCommandForwarder wheel_command_forwarder;
@@ -186,6 +188,8 @@ static ForceFeedbackState force_feedback_state;
 static ForceFeedbackScriptSystem force_feedback_script_system;
 static ForceFeedbackScriptOutputState force_feedback_script_output_state;
 static ForceFeedbackScriptOutputConfig force_feedback_script_output_config;
+static uint8_t force_feedback_script_status_sequence;
+static bool force_feedback_script_status_pending;
 static uint32_t force_feedback_ramp_deadline_ms;
 static ForceOutputReport motor_output_report;
 static MotorLiveFrame motor_live_frame;
@@ -230,6 +234,7 @@ typedef enum {
     USB_VENDOR_RESPONSE_NONE,
     USB_VENDOR_RESPONSE_REMOTE_TUNING,
     USB_VENDOR_RESPONSE_WHEEL_TRANSFER,
+    USB_VENDOR_RESPONSE_SCRIPT_STATUS,
     USB_VENDOR_RESPONSE_TUNING_PROFILE,
     USB_VENDOR_RESPONSE_TUNING_MENU,
     USB_VENDOR_RESPONSE_DIAGNOSTIC,
@@ -726,7 +731,9 @@ static void initialize_usb_command_bridge(void) {
     usb_tuning_menu_service_init(&usb_tuning_menu_service);
     usb_tuning_profile_service_init(&usb_tuning_profile_service);
     usb_motor_acknowledgement_ready = false;
+    usb_motor_acknowledgement_length = 0;
     usb_vendor_response_kind = USB_VENDOR_RESPONSE_NONE;
+    usb_vendor_response_length = 0;
     for (uint8_t request = 0; request < WHEEL_TRANSFER_REQUEST_COUNT; request++) {
         usb_wheel_transfer_response_pending[request] = false;
     }
@@ -827,6 +834,7 @@ static bool accept_usb_motor_report(const UsbDeviceOutputReport *report) {
         report->length, usb_motor_acknowledgement);
     if ((result.actions & USB_MOTOR_VENDOR_ACTION_WRITE_USB) != 0) {
         usb_motor_acknowledgement_ready = true;
+        usb_motor_acknowledgement_length = result.usb_packet_length;
     }
     return (result.actions & USB_MOTOR_VENDOR_ACTION_CLAIM) != 0;
 }
@@ -834,12 +842,13 @@ static bool accept_usb_motor_report(const UsbDeviceOutputReport *report) {
 /**
  * @brief Prepares the highest-priority pending vendor response.
  *
- * Retains one complete report for endpoint retries. Native telemetry precedes wheel transfer,
- * profile, menu, diagnostics, and motor responses in the same order used by the host command
- * service.
+ * Retains sequence-bearing reports for endpoint retries. Native telemetry precedes wheel transfer,
+ * script status, profile, menu, diagnostics, and motor responses in the same order used by the
+ * host command service.
  */
 static void prepare_usb_vendor_response(void) {
-    if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_REMOTE_TUNING) {
+    if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_REMOTE_TUNING ||
+        usb_vendor_response_kind == USB_VENDOR_RESPONSE_SCRIPT_STATUS) {
         return;
     }
     usb_vendor_response_kind = USB_VENDOR_RESPONSE_NONE;
@@ -847,6 +856,7 @@ static void prepare_usb_vendor_response(void) {
         usb_remote_tuning_service_take_host_report(
             &usb_remote_tuning_service, wheel_service_mode(&wheel_service),
             USB_REMOTE_TUNING_HOST_NATIVE, usb_vendor_response)) {
+        usb_vendor_response_length = USB_REMOTE_TUNING_HOST_REPORT_SIZE;
         usb_vendor_response_kind = USB_VENDOR_RESPONSE_REMOTE_TUNING;
         return;
     }
@@ -859,28 +869,43 @@ static void prepare_usb_vendor_response(void) {
         usb_vendor_command_encode_wheel_transfer_response(
             request, wheel_transfer_service_status(&wheel_transfer_service, request),
             usb_vendor_response);
+        usb_vendor_response_length = USB_DEVICE_REPORT_SIZE;
         usb_vendor_wheel_response_request = request;
         usb_vendor_response_kind = USB_VENDOR_RESPONSE_WHEEL_TRANSFER;
+        return;
+    }
+    if (force_feedback_script_status_pending &&
+        force_feedback_script_status_encode(force_feedback_script_system.values.slots,
+                                            force_feedback_script_system.mode,
+                                            &force_feedback_script_status_sequence,
+                                            usb_vendor_response, sizeof(usb_vendor_response))) {
+        force_feedback_script_status_pending = false;
+        usb_vendor_response_length = FORCE_FEEDBACK_SCRIPT_STATUS_RESPONSE_SIZE;
+        usb_vendor_response_kind = USB_VENDOR_RESPONSE_SCRIPT_STATUS;
         return;
     }
     if (usb_tuning_profile_service_response_pending(&usb_tuning_profile_service)) {
         usb_tuning_profile_report_encode_response(&base_settings.tuning_profiles,
                                                   usb_vendor_response);
+        usb_vendor_response_length = USB_DEVICE_REPORT_SIZE;
         usb_vendor_response_kind = USB_VENDOR_RESPONSE_TUNING_PROFILE;
         return;
     }
     if (usb_tuning_menu_service_response_pending(&usb_tuning_menu_service)) {
         usb_tuning_menu_service_encode_response(&usb_tuning_menu_service, usb_vendor_response);
+        usb_vendor_response_length = USB_DEVICE_REPORT_SIZE;
         usb_vendor_response_kind = USB_VENDOR_RESPONSE_TUNING_MENU;
         return;
     }
     if (usb_diagnostic_report_prepare(&usb_diagnostic_report_service, &usb_diagnostic_snapshot,
                                       usb_vendor_response)) {
+        usb_vendor_response_length = USB_DEVICE_REPORT_SIZE;
         usb_vendor_response_kind = USB_VENDOR_RESPONSE_DIAGNOSTIC;
         return;
     }
-    if (usb_motor_vendor_service_prepare_response(&usb_motor_vendor_service, usb_vendor_response) !=
-        0) {
+    usb_vendor_response_length =
+        usb_motor_vendor_service_prepare_response(&usb_motor_vendor_service, usb_vendor_response);
+    if (usb_vendor_response_length != 0) {
         usb_vendor_response_kind = USB_VENDOR_RESPONSE_MOTOR;
     }
 }
@@ -947,13 +972,14 @@ static void service_usb_command_bridge(uint32_t now_ms) {
     }
 
     if (usb_motor_acknowledgement_ready &&
-        usb_device_send_vendor_report(usb_motor_acknowledgement)) {
+        usb_device_send_vendor_report(usb_motor_acknowledgement,
+                                      usb_motor_acknowledgement_length)) {
         usb_motor_acknowledgement_ready = false;
     }
     update_usb_diagnostic_snapshot(now_ms);
     prepare_usb_vendor_response();
     if (!usb_motor_acknowledgement_ready && usb_vendor_response_kind != USB_VENDOR_RESPONSE_NONE &&
-        usb_device_send_vendor_report(usb_vendor_response)) {
+        usb_device_send_vendor_report(usb_vendor_response, usb_vendor_response_length)) {
         complete_usb_vendor_response();
     }
 }
@@ -993,6 +1019,8 @@ static void handle_force_feedback_timer_tick(void *context) {
 static void initialize_force_feedback_script(void) {
     force_feedback_script_runtime_init(&force_feedback_script_system);
     force_feedback_script_output_init(&force_feedback_script_output_state);
+    force_feedback_script_status_sequence = 1;
+    force_feedback_script_status_pending = false;
     force_feedback_ramp_deadline_ms = 0;
     platform_force_feedback_timer_init(handle_force_feedback_timer_tick,
                                        &force_feedback_script_system);
@@ -1291,6 +1319,10 @@ static void service_usb_output(void) {
     }
 
     if (usb_vendor_command_decode(&usb_output_command, &usb_vendor_command)) {
+        if (usb_vendor_command.kind == USB_VENDOR_COMMAND_SCRIPT_STATUS) {
+            force_feedback_script_status_pending = true;
+            return;
+        }
         if (usb_vendor_command.kind == USB_VENDOR_COMMAND_WHEEL_OUTPUT_REPORT) {
             wheel_service_apply_output_report(&wheel_service, usb_vendor_command.arguments, false);
             return;

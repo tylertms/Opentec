@@ -220,11 +220,14 @@ static void test_exchanges_hid_reports(void) {
     assert(send_count == 2 && sent.data_one);
 
     uint8_t vendor_report[USB_DEVICE_REPORT_SIZE] = {6, 0x30, 1, 9};
-    assert(usb_device_send_vendor_report(vendor_report));
+    assert(usb_device_send_vendor_report(vendor_report, USB_DEVICE_REPORT_SIZE));
     assert(send_count == 3 && sent.endpoint == 1 && sent.length == USB_DEVICE_REPORT_SIZE);
     assert(!sent.data_one && memcmp(sent.data, vendor_report, sizeof(vendor_report)) == 0);
-    assert(usb_device_send_vendor_report(vendor_report));
+    assert(usb_device_send_vendor_report(vendor_report, 22));
     assert(send_count == 4 && sent.data_one);
+    assert(sent.length == 22);
+    assert(!usb_device_send_vendor_report(vendor_report, 0));
+    assert(!usb_device_send_vendor_report(vendor_report, USB_DEVICE_REPORT_SIZE + 1));
 
     push_event(PLATFORM_USB_EVENT_OUT, 1, output, sizeof(output));
     usb_device_service();

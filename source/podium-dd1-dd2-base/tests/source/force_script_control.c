@@ -32,45 +32,56 @@ static void test_rejects_incomplete_commands(void) {
     assert(!force_feedback_script_control_decode(NULL, sizeof(packet)).valid);
 }
 
-static void test_encodes_slot_status_and_preserves_response_prefix(void) {
-    ForceFeedbackScriptStatus status = {
-        .slots =
-            {
-                FORCE_FEEDBACK_SCRIPT_SLOT_EMPTY,
-                FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE,
-                FORCE_FEEDBACK_SCRIPT_SLOT_INACTIVE,
-                FORCE_FEEDBACK_SCRIPT_SLOT_PAUSED,
-                FORCE_FEEDBACK_SCRIPT_SLOT_FAULT,
-                5,
-                6,
-                7,
-                8,
-                9,
-                10,
-                11,
-                12,
-                13,
-                14,
-                15,
-            },
-        .runtime_mode = FORCE_FEEDBACK_RUNTIME_POSITION_ONLY,
+static void test_encodes_complete_slot_status_response(void) {
+    ForceFeedbackScriptSlot slots[FORCE_FEEDBACK_SCRIPT_SLOT_COUNT] = {0};
+    static const ForceFeedbackScriptSlotState states[FORCE_FEEDBACK_SCRIPT_SLOT_COUNT] = {
+        FORCE_FEEDBACK_SCRIPT_SLOT_EMPTY,
+        FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE,
+        FORCE_FEEDBACK_SCRIPT_SLOT_INACTIVE,
+        FORCE_FEEDBACK_SCRIPT_SLOT_PAUSED,
+        FORCE_FEEDBACK_SCRIPT_SLOT_FAULT,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
     };
-    uint8_t response[22] = {0xa5, 0xa5, 0xa5, 0xa5, 0xa5};
+    uint8_t sequence = 1;
+    uint8_t response[FORCE_FEEDBACK_SCRIPT_STATUS_RESPONSE_SIZE] = {0};
+    static const uint8_t expected_envelope[] = {0x25, 0, 2, 0x12, 6};
 
-    assert(force_feedback_script_status_encode(&status, response, sizeof(response)));
-    for (uint8_t index = 0; index < 5; index++) {
-        assert(response[index] == 0xa5);
-    }
     for (uint8_t slot = 0; slot < FORCE_FEEDBACK_SCRIPT_SLOT_COUNT; slot++) {
-        uint8_t expected =
-            slot == 4 ? FORCE_FEEDBACK_SCRIPT_SLOT_SERIALIZED_FAULT : status.slots[slot];
+        slots[slot].state = states[slot];
+    }
+    assert(force_feedback_script_status_encode(slots, FORCE_FEEDBACK_RUNTIME_POSITION_ONLY,
+                                               &sequence, response, sizeof(response)));
+    assert(sequence == 2);
+    assert(memcmp(response, expected_envelope, sizeof(expected_envelope)) == 0);
+    for (uint8_t slot = 0; slot < FORCE_FEEDBACK_SCRIPT_SLOT_COUNT; slot++) {
+        uint8_t expected = slot == 4 ? FORCE_FEEDBACK_SCRIPT_SLOT_SERIALIZED_FAULT : states[slot];
         assert(response[5 + slot] == expected);
     }
     assert(response[21] == FORCE_FEEDBACK_RUNTIME_POSITION_ONLY);
 
-    assert(!force_feedback_script_status_encode(&status, response, 21));
-    assert(!force_feedback_script_status_encode(NULL, response, sizeof(response)));
-    assert(!force_feedback_script_status_encode(&status, NULL, sizeof(response)));
+    sequence = UINT8_MAX;
+    assert(force_feedback_script_status_encode(slots, FORCE_FEEDBACK_RUNTIME_ACTIVE, &sequence,
+                                               response, sizeof(response)));
+    assert(sequence == 1 && response[2] == 1);
+
+    assert(!force_feedback_script_status_encode(slots, FORCE_FEEDBACK_RUNTIME_ACTIVE, &sequence,
+                                                response, sizeof(response) - 1));
+    assert(!force_feedback_script_status_encode(NULL, FORCE_FEEDBACK_RUNTIME_ACTIVE, &sequence,
+                                                response, sizeof(response)));
+    assert(!force_feedback_script_status_encode(slots, FORCE_FEEDBACK_RUNTIME_ACTIVE, NULL,
+                                                response, sizeof(response)));
+    assert(!force_feedback_script_status_encode(slots, FORCE_FEEDBACK_RUNTIME_ACTIVE, &sequence,
+                                                NULL, sizeof(response)));
 }
 
 static void test_applies_slot_lifecycle(void) {
@@ -175,7 +186,7 @@ static void test_advances_script_clocks(void) {
 int main(void) {
     test_decodes_slot_commands_and_runtime_mode();
     test_rejects_incomplete_commands();
-    test_encodes_slot_status_and_preserves_response_prefix();
+    test_encodes_complete_slot_status_response();
     test_applies_slot_lifecycle();
     test_preserves_state_for_rejected_transitions();
     test_advances_script_clocks();

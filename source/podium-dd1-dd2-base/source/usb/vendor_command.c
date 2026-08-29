@@ -7,6 +7,8 @@ enum {
     VENDOR_COMMAND_SIZE = 63,
     VENDOR_COMMAND_ARGUMENT_SIZE = 62,
     VENDOR_COMMAND_EXTENDED_RESET = 0x0a,
+    VENDOR_COMMAND_SCRIPT_STATUS_GROUP = 0,
+    VENDOR_COMMAND_SCRIPT_STATUS_SELECTOR = 6,
     VENDOR_COMMAND_EXTENDED_RESET_GROUP = 1,
     VENDOR_COMMAND_EXTENDED_RESET_SELECTOR = 0x1a,
     VENDOR_COMMAND_WHEEL_TRANSFER = 0xe0,
@@ -19,7 +21,7 @@ enum {
  * @brief Selects the route for a vendor command opcode.
  *
  * Maps each supported top-level opcode to its clean command category and rejects an extended reset
- * unless its group and selector match the reset signature.
+ * unless its group and selector match a supported script-status or reset signature.
  *
  * @param[in] opcode Top-level vendor command opcode.
  * @param[in] payload Complete 63-byte vendor command payload.
@@ -40,6 +42,10 @@ static int8_t command_kind(uint8_t opcode, const uint8_t *payload) {
     case 8:
         return USB_VENDOR_COMMAND_STATUS_RESPONSE;
     case VENDOR_COMMAND_EXTENDED_RESET:
+        if (payload[1] == VENDOR_COMMAND_SCRIPT_STATUS_GROUP &&
+            payload[4] == VENDOR_COMMAND_SCRIPT_STATUS_SELECTOR) {
+            return USB_VENDOR_COMMAND_SCRIPT_STATUS;
+        }
         if (payload[1] == VENDOR_COMMAND_EXTENDED_RESET_GROUP &&
             payload[2] == VENDOR_COMMAND_EXTENDED_RESET_SELECTOR) {
             return USB_VENDOR_COMMAND_EXTENDED_RESET;
@@ -61,7 +67,8 @@ static int8_t command_kind(uint8_t opcode, const uint8_t *payload) {
  * @brief Classify a complete vendor-transfer payload.
  *
  * Selects the command route from the top-level opcode and exposes the remaining 62 bytes as its
- * arguments. Extended reset packets are accepted only with group 1 and selector 0x1A.
+ * arguments. Opcode 0x0A packets are accepted only for the supported script-status and reset
+ * signatures.
  *
  * @param[in] output Classified vendor-transfer output containing 63 command bytes.
  * @param[out] command Destination for the command route, opcode, and remaining arguments.

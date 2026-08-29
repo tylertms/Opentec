@@ -11,7 +11,9 @@ enum {
     SCRIPT_CONTROL_PACKET_SIZE = 13,
     SCRIPT_STATUS_FIRST_SLOT_OFFSET = 5,
     SCRIPT_STATUS_RUNTIME_MODE_OFFSET = 21,
-    SCRIPT_STATUS_RESPONSE_SIZE = 22,
+    SCRIPT_STATUS_REPORT = 0x25,
+    SCRIPT_STATUS_RESPONSE_KIND = 0x12,
+    SCRIPT_STATUS_RESPONSE_MODE = 6,
 };
 
 /**
@@ -43,29 +45,39 @@ ForceFeedbackScriptControlResult force_feedback_script_control_decode(const uint
 }
 
 /**
- * @brief Encode script-slot states and the force-feedback runtime mode.
+ * @brief Encodes the script-slot status vendor response.
  *
- * Writes the 16 slot states at response bytes 5 through 20 and the runtime mode at byte 21. An
- * internal fault state is serialized as state 4.
+ * Advances the nonzero response sequence, writes the five-byte 25 00 SS 12 06 envelope, then
+ * appends the 16 slot states and runtime mode. An internal fault state is serialized as state 4.
  *
- * @param[in] status Current per-slot states and shared runtime mode.
- * @param[out] response Destination feature response whose five-byte prefix is already prepared.
+ * @param[in] slots Current force-feedback script slots.
+ * @param[in] mode Current force-feedback runtime mode.
+ * @param[in,out] sequence Shared nonzero vendor response sequence.
+ * @param[out] response Destination for the complete 22-byte response.
  * @param[in] length Number of writable response bytes.
  * @return True when the complete status fields fit in the response.
  */
-bool force_feedback_script_status_encode(const ForceFeedbackScriptStatus *status, uint8_t *response,
-                                         size_t length) {
-    if (status == NULL || response == NULL || length < SCRIPT_STATUS_RESPONSE_SIZE) {
+bool force_feedback_script_status_encode(const ForceFeedbackScriptSlot *slots,
+                                         ForceFeedbackRuntimeMode mode, uint8_t *sequence,
+                                         uint8_t *response, size_t length) {
+    if (slots == NULL || sequence == NULL || response == NULL ||
+        length < FORCE_FEEDBACK_SCRIPT_STATUS_RESPONSE_SIZE) {
         return false;
     }
 
+    *sequence = *sequence == UINT8_MAX ? 1 : (uint8_t)(*sequence + 1u);
+    response[0] = SCRIPT_STATUS_REPORT;
+    response[1] = 0;
+    response[2] = *sequence;
+    response[3] = SCRIPT_STATUS_RESPONSE_KIND;
+    response[4] = SCRIPT_STATUS_RESPONSE_MODE;
     for (uint8_t slot = 0; slot < FORCE_FEEDBACK_SCRIPT_SLOT_COUNT; slot++) {
-        ForceFeedbackScriptSlotState state = status->slots[slot];
+        ForceFeedbackScriptSlotState state = slots[slot].state;
         response[SCRIPT_STATUS_FIRST_SLOT_OFFSET + slot] =
             state == FORCE_FEEDBACK_SCRIPT_SLOT_FAULT ? FORCE_FEEDBACK_SCRIPT_SLOT_SERIALIZED_FAULT
                                                       : state;
     }
-    response[SCRIPT_STATUS_RUNTIME_MODE_OFFSET] = status->runtime_mode;
+    response[SCRIPT_STATUS_RUNTIME_MODE_OFFSET] = mode;
     return true;
 }
 
