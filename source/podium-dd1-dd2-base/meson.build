@@ -122,6 +122,7 @@ settings_persistence_sources = files('source/settings/persistence.c')
 settings_state_sources = files('source/settings/state.c')
 platform_time_sources = files('source/platform/time.c')
 wheel_position_sources = files('source/wheel/position.c')
+wheel_center_capture_sources = files('source/wheel/center_capture.c')
 wheel_steering_limit_sources = files('source/wheel/steering_limit.c')
 wheel_axis_override_sources = files('source/wheel/axis_override.c')
 wheel_authentication_sources = files('source/wheel/authentication.c')
@@ -305,6 +306,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'settings-persistence': 'source/settings/persistence.c',
     'settings-state': 'source/settings/state.c',
     'wheel-position': 'source/wheel/position.c',
+    'wheel-center-capture': 'source/wheel/center_capture.c',
     'wheel-steering-limit': 'source/wheel/steering_limit.c',
     'wheel-axis-override': 'source/wheel/axis_override.c',
     'wheel-authentication': 'source/wheel/authentication.c',
@@ -1454,6 +1456,15 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_center_capture_test = executable(
+    'base-wheel-center-capture-test',
+    'tests/source/wheel_center_capture.c',
+    wheel_center_capture_sources,
+    platform_time_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_steering_limit_test = executable(
     'base-wheel-steering-limit-test',
     'tests/source/wheel_steering_limit.c',
@@ -2100,6 +2111,11 @@ if not meson.is_cross_build()
   )
   test('base-platform-time', platform_time_test, suite: ['base', 'platform'])
   test('base-wheel-position', wheel_position_test, suite: ['base', 'wheel-position'])
+  test(
+    'base-wheel-center-capture',
+    wheel_center_capture_test,
+    suite: ['base', 'wheel-position', 'input'],
+  )
   test(
     'base-wheel-steering-limit',
     wheel_steering_limit_test,

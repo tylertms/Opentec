@@ -64,6 +64,7 @@
 #include "usb/tuning_profile_report.h"
 #include "usb/tuning_profile_service.h"
 #include "usb/vendor_command.h"
+#include "wheel/center_capture.h"
 #include "wheel/command_forwarder.h"
 #include "wheel/position.h"
 #include "wheel/service.h"
@@ -114,6 +115,7 @@ static MotorPositionReport motor_position_report;
 static bool motor_position_ready;
 static WheelPositionCalibration wheel_position_calibration;
 static WheelVelocityEstimator wheel_velocity_estimator;
+static WheelCenterCaptureCommand wheel_center_capture_command;
 static PedalService pedal_service;
 static PedalBrakeIndicator pedal_brake_indicator;
 static WheelVibrationOutput wheel_vibration_output;
@@ -277,6 +279,24 @@ static void initialize_motor_link(void) {
 }
 
 /**
+ * @brief Captures and persists the current absolute wheel center.
+ *
+ * Ignores capture before a valid motor-position report is available. Otherwise normalizes the
+ * current sample with the identified controller modulus and schedules persistence when the retained
+ * reference changes.
+ */
+static void capture_current_wheel_center(void) {
+    if (!motor_position_ready) {
+        return;
+    }
+    if (wheel_position_reference_capture(
+            &base_settings.wheel_position, motor_position_report.wheel_position,
+            motor_identity_position_modulus(motor_probe_identity(&motor_probe)))) {
+        base_settings_persistence_mark_dirty(&settings_persistence, platform_time_ms());
+    }
+}
+
+/**
  * @brief Builds the motor controller's force-feedback status byte.
  *
  * Selects remote motor-side effect processing, reports whether motor safety, USB connection, and
@@ -310,13 +330,10 @@ static void service_motor_link(void) {
     if (motor_live_frame_decode(motor_received_frame, &motor_live_frame) ==
             MOTOR_LIVE_FRAME_VALID &&
         motor_position_report_decode(&motor_live_frame, &motor_position_report)) {
-        if (!base_settings.wheel_position.calibrated &&
-            wheel_position_reference_capture(
-                &base_settings.wheel_position, motor_position_report.wheel_position,
-                motor_identity_position_modulus(motor_probe_identity(&motor_probe)))) {
-            base_settings_persistence_mark_dirty(&settings_persistence, platform_time_ms());
-        }
         motor_position_ready = true;
+        if (!base_settings.wheel_position.calibrated) {
+            capture_current_wheel_center();
+        }
     }
 
     motor_output_transport_build_frame(&motor_output_transport, motor_force_feedback_status(),
@@ -798,6 +815,15 @@ static void service_usb_output(void) {
         return;
     }
 
+    WheelCenterCaptureAction center_capture_action = wheel_center_capture_command_apply(
+        &wheel_center_capture_command, &usb_output_command, platform_time_ms());
+    if (center_capture_action != WHEEL_CENTER_CAPTURE_UNHANDLED) {
+        if (center_capture_action == WHEEL_CENTER_CAPTURE_REQUESTED) {
+            capture_current_wheel_center();
+        }
+        return;
+    }
+
     if (usb_operating_mode_command_decode(&usb_output_command, &usb_operating_mode_command)) {
         if (usb_operating_mode_command_requests_native_reset(&usb_operating_mode_command)) {
             (void)usb_device_set_input_mode(USB_INPUT_REPORT_MODE_FANATEC);
@@ -1113,6 +1139,7 @@ int main(void) {
     wheel_status_service_init(&wheel_status_service, &serial_service);
     initialize_usb_command_bridge();
     wheel_velocity_reset(&wheel_velocity_estimator);
+    wheel_center_capture_command_init(&wheel_center_capture_command);
     initialize_motor_link();
     initialize_base_settings();
     initialize_motor();
