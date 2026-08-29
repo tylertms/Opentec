@@ -160,11 +160,13 @@ wheel_output_reports_sources = files('source/wheel/output_reports.c')
 transfer_memory_sources = files('source/transfer/memory.c')
 wheel_motion_sources = files('source/wheel/motion.c')
 wheel_rotary_input_sources = files('source/wheel/rotary_input.c')
+wheel_packet_common_sources = files('source/wheel/packet_common.c')
 wheel_packet_crc_sources = files('source/wheel/packet_crc.c')
 wheel_packet_display_sources = files('source/wheel/packet_display.c')
 wheel_packet_mode_one_sources = files('source/wheel/packet_mode_one.c')
 wheel_packet_mode_four_sources = files('source/wheel/packet_mode_four.c')
 wheel_packet_packed_sources = files('source/wheel/packet_packed.c')
+wheel_packet_remapped_sources = files('source/wheel/packet_remapped.c')
 wheel_packet_remote_tuning_sources = files('source/wheel/packet_remote_tuning.c')
 wheel_protocol_sources = files('source/wheel/protocol.c')
 wheel_service_sources = files('source/wheel/service.c')
@@ -380,11 +382,13 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'transfer-command': 'source/transfer/command.c',
     'wheel-motion': 'source/wheel/motion.c',
     'wheel-rotary-input': 'source/wheel/rotary_input.c',
+    'wheel-packet-common': 'source/wheel/packet_common.c',
     'wheel-packet-crc': 'source/wheel/packet_crc.c',
     'wheel-packet-display': 'source/wheel/packet_display.c',
     'wheel-packet-mode-one': 'source/wheel/packet_mode_one.c',
     'wheel-packet-mode-four': 'source/wheel/packet_mode_four.c',
     'wheel-packet-packed': 'source/wheel/packet_packed.c',
+    'wheel-packet-remapped': 'source/wheel/packet_remapped.c',
     'wheel-packet-remote-tuning': 'source/wheel/packet_remote_tuning.c',
     'wheel-protocol': 'source/wheel/protocol.c',
     'wheel-service': 'source/wheel/service.c',
@@ -1996,7 +2000,17 @@ if not meson.is_cross_build()
   wheel_packet_display_test = executable(
     'base-wheel-packet-display-test',
     'tests/source/wheel_packet_display.c',
+    wheel_packet_common_sources,
     wheel_packet_display_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  wheel_packet_remapped_test = executable(
+    'base-wheel-packet-remapped-test',
+    'tests/source/wheel_packet_remapped.c',
+    wheel_packet_common_sources,
+    wheel_packet_remapped_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2076,11 +2090,13 @@ if not meson.is_cross_build()
     wheel_capability_sources,
     wheel_motion_sources,
     wheel_output_reports_sources,
+    wheel_packet_common_sources,
     wheel_packet_crc_sources,
     wheel_packet_display_sources,
     wheel_packet_mode_one_sources,
     wheel_packet_mode_four_sources,
     wheel_packet_packed_sources,
+    wheel_packet_remapped_sources,
     wheel_packet_remote_tuning_sources,
     build_by_default: false,
     include_directories: base_include,
@@ -2097,11 +2113,13 @@ if not meson.is_cross_build()
     wheel_motion_sources,
     wheel_rotary_input_sources,
     wheel_output_reports_sources,
+    wheel_packet_common_sources,
     wheel_packet_crc_sources,
     wheel_packet_display_sources,
     wheel_packet_mode_one_sources,
     wheel_packet_mode_four_sources,
     wheel_packet_packed_sources,
+    wheel_packet_remapped_sources,
     wheel_packet_remote_tuning_sources,
     wheel_protocol_sources,
     serial_service_sources,
@@ -2637,6 +2655,11 @@ if not meson.is_cross_build()
   test(
     'base-wheel-packet-display',
     wheel_packet_display_test,
+    suite: ['base', 'wheel', 'protocol'],
+  )
+  test(
+    'base-wheel-packet-remapped',
+    wheel_packet_remapped_test,
     suite: ['base', 'wheel', 'protocol'],
   )
   test(

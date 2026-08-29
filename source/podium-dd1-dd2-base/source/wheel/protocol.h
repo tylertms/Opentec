@@ -14,6 +14,7 @@
 #include "wheel/packet_mode_four.h"
 #include "wheel/packet_mode_one.h"
 #include "wheel/packet_packed.h"
+#include "wheel/packet_remapped.h"
 #include "wheel/packet_remote_tuning.h"
 
 enum {
@@ -71,6 +72,8 @@ typedef struct {
     WheelPacketModeFourOutput mode_four_output;
     WheelPacketDisplayFilter display_filter;
     WheelPacketDisplayInput display_input;
+    WheelPacketRemappedFilter remapped_filter;
+    WheelPacketRemappedInput remapped_input;
     WheelPacketPackedFilter packed_filter;
     WheelPacketPackedInput packed_input;
     WheelPacketCrcFilter crc_filter;
@@ -127,6 +130,7 @@ const uint8_t *wheel_protocol_request(const WheelProtocol *protocol);
 const WheelPacketModeOneInput *wheel_protocol_mode_one_input(const WheelProtocol *protocol);
 const WheelPacketModeFourInput *wheel_protocol_mode_four_input(const WheelProtocol *protocol);
 const WheelPacketDisplayInput *wheel_protocol_display_input(const WheelProtocol *protocol);
+const WheelPacketRemappedInput *wheel_protocol_remapped_input(const WheelProtocol *protocol);
 const WheelPacketPackedInput *wheel_protocol_packed_input(const WheelProtocol *protocol);
 const WheelPacketCrcInput *wheel_protocol_crc_input(const WheelProtocol *protocol);
 const WheelPacketModeOneReportState *

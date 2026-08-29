@@ -19,7 +19,7 @@ static void test_decodes_all_logical_fields(void) {
     memcpy(request + 2, payload, sizeof(payload));
 
     WheelPacketDisplayInput input;
-    wheel_packet_display_decode(request, &input);
+    wheel_packet_common_decode(request, &input);
 
     assert(memcmp(input.buttons, (uint8_t[]){0x11, 0x22, 0x33}, 3) == 0);
     assert(memcmp(input.axis_outputs, (uint8_t[]){0x44, 0x55}, 2) == 0);
@@ -73,8 +73,8 @@ static void test_serializes_the_filtered_snapshot(void) {
     }
     WheelPacketDisplayInput input;
     uint8_t snapshot[WHEEL_PACKET_DISPLAY_SNAPSHOT_SIZE];
-    wheel_packet_display_decode(request, &input);
-    wheel_packet_display_snapshot(&input, snapshot);
+    wheel_packet_common_decode(request, &input);
+    wheel_packet_common_snapshot(&input, snapshot);
     assert(memcmp(snapshot, request + 2, sizeof(snapshot)) == 0);
 }
 
@@ -90,7 +90,7 @@ static void test_encodes_authenticated_display_output(void) {
         0xa6, 0, 0x11, 0x22, 0xb3, 0x44, 0x55, 0x66, 0x77,
     };
 
-    wheel_packet_display_encode(&display, vibration, axes, response);
+    wheel_packet_common_response_encode(&display, vibration, axes, response);
     assert(memcmp(response, expected, sizeof(expected)) == 0);
 }
 
