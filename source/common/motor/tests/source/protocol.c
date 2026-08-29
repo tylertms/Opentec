@@ -57,9 +57,51 @@ static void test_status_command(void) {
     assert(!motor_protocol_frame_apply(&state, &frame));
 }
 
+static void test_local_force_feedback_service(void) {
+    MotorProtocolState state;
+    motor_protocol_initialize(&state, 53U);
+
+    MotorLinkFrame frame = {
+        .type = MOTOR_LINK_STATUS_TYPE,
+        .payload = {0x03U, 0x01U, MOTOR_FORCE_FEEDBACK_EFFECT_CONSTANT, 0U, 0U, 0U, 0U, 0U},
+    };
+    assert(motor_protocol_frame_apply(&state, &frame));
+    assert(motor_protocol_force_feedback_service(&state, 0U, 0, 0));
+    assert(state.live_drive_updated);
+    assert(state.live_drive.primary_current == 6078);
+    assert(!motor_protocol_force_feedback_service(&state, 0U, 0, 0));
+    assert(motor_protocol_force_feedback_service(&state, 1U, 0, 0));
+}
+
+static void test_local_force_feedback_gates(void) {
+    MotorProtocolState state;
+    motor_protocol_initialize(&state, 40U);
+    state.force_feedback.effects[0].active = true;
+    state.status = 0x05U;
+    assert(motor_protocol_force_feedback_service(&state, 0U, 0, 0));
+    assert(!state.force_feedback.effects[0].active);
+    assert(state.force_feedback.ramp_percent == 0U);
+
+    state.status = 0x03U;
+    assert(motor_protocol_force_feedback_service(&state, 1U, 0, 0));
+    assert(state.force_feedback.ramp_percent == 1U);
+    assert(motor_protocol_force_feedback_service(&state, 51U, 0, 0));
+    assert(state.force_feedback.ramp_percent == 1U);
+    assert(motor_protocol_force_feedback_service(&state, 52U, 0, 0));
+    assert(state.force_feedback.ramp_percent == 2U);
+
+    state.force_feedback.effects[1].active = true;
+    state.status = 0x43U;
+    assert(motor_protocol_force_feedback_service(&state, 53U, 0, 0));
+    assert(!state.force_feedback.effects[1].active);
+    assert(state.force_feedback.ramp_percent == 2U);
+}
+
 int main(void) {
     test_live_force();
     test_remote_effects();
     test_status_command();
+    test_local_force_feedback_service();
+    test_local_force_feedback_gates();
     return 0;
 }

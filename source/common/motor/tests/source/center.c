@@ -39,9 +39,16 @@ static void test_shared_endpoint(void) {
     assert(retained_positive.encoder_offset == 100);
 }
 
+static void test_centered_position(void) {
+    assert(motor_centered_position_resolve(1000, 250) == 750);
+    assert(motor_centered_position_resolve(100000, -1000) == 82880);
+    assert(motor_centered_position_resolve(-100000, 1000) == -82880);
+}
+
 int main(void) {
     test_inactive_and_unchanged();
     test_offset_clamp();
     test_shared_endpoint();
+    test_centered_position();
     return 0;
 }

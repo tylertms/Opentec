@@ -11,6 +11,7 @@
 
 #include "common/motor/board.h"
 #include "common/motor/calibration.h"
+#include "common/motor/center.h"
 #include "common/motor/communication.h"
 #include "common/motor/control.h"
 #include "common/motor/encoder.h"
@@ -118,6 +119,23 @@ static void motor_runtime_settings_apply(void *context) {
         (uint8_t)runtime->parameters.entries[MOTOR_PARAMETER_DIRECTIONAL_GAIN].value);
     motor_force_feedback_filter_configure(&runtime->protocol.force_feedback.filter,
                                           settings->filter_setting);
+}
+
+/**
+ * @brief Applies the latest resolved motor-link drive command.
+ *
+ * The signed primary and secondary current fields become the live run-mode command. Both current
+ * controllers receive the coefficient pair selected by the official output path.
+ *
+ * @param runtime Active motor runtime and protocol state.
+ */
+static void motor_runtime_drive_apply(MotorRuntime *runtime) {
+    runtime->live_drive = runtime->protocol.live_drive;
+    runtime->protocol.live_drive_updated = false;
+    runtime->foc.d_controller.a32PGain = runtime->live_drive.controller_coefficient;
+    runtime->foc.d_controller.a32IGain = runtime->live_drive.controller_scale;
+    runtime->foc.q_controller.a32PGain = runtime->live_drive.controller_coefficient;
+    runtime->foc.q_controller.a32IGain = runtime->live_drive.controller_scale;
 }
 
 /**
@@ -610,6 +628,15 @@ static void motor_runtime_service_handler(void *context) {
         (uint16_t)runtime->control_current;
 }
 
+/**
+ * @brief Prepares the next official motor-link position response.
+ *
+ * The extended encoder position, measured Q-axis torque, and live primary drive current are
+ * encoded into the transmit buffer before the next SPI transfer.
+ *
+ * @param frame Motor-link transfer buffer to populate.
+ * @param context Active motor runtime supplied during SPI initialization.
+ */
 static void motor_runtime_spi_prepare(uint8_t frame[MOTOR_SPI_TRANSFER_SIZE], void *context) {
     MotorRuntime *runtime = context;
     int16_t measured_current = runtime->foc_output.filtered_current.f16Q;
@@ -624,6 +651,15 @@ static void motor_runtime_spi_prepare(uint8_t frame[MOTOR_SPI_TRANSFER_SIZE], vo
     motor_link_position_frame_encode(&report, frame);
 }
 
+/**
+ * @brief Applies one received official motor-link frame.
+ *
+ * Valid live-force commands immediately update drive current and both FOC controller coefficient
+ * pairs. Local effect frames retain their state until the deferred force-feedback service runs.
+ *
+ * @param frame Complete received motor-link transfer buffer.
+ * @param context Active motor runtime supplied during SPI initialization.
+ */
 static void motor_runtime_spi_receive(const uint8_t frame[MOTOR_SPI_TRANSFER_SIZE], void *context) {
     MotorRuntime *runtime = context;
     MotorLinkFrame decoded;
@@ -633,12 +669,7 @@ static void motor_runtime_spi_receive(const uint8_t frame[MOTOR_SPI_TRANSFER_SIZ
         return;
     }
 
-    runtime->live_drive = runtime->protocol.live_drive;
-    runtime->protocol.live_drive_updated = false;
-    runtime->foc.d_controller.a32PGain = runtime->live_drive.controller_coefficient;
-    runtime->foc.d_controller.a32IGain = runtime->live_drive.controller_scale;
-    runtime->foc.q_controller.a32PGain = runtime->live_drive.controller_coefficient;
-    runtime->foc.q_controller.a32IGain = runtime->live_drive.controller_scale;
+    motor_runtime_drive_apply(runtime);
 }
 
 /**
@@ -700,11 +731,19 @@ void motor_runtime_initialize(void) {
 /**
  * @brief Services deferred motor runtime work.
  *
- * Published temperature windows are converted outside the control interrupt and exposed through
- * the read-only parameter bank. The seven-interrupt deferred event remains available for the
- * recovered estimator path.
+ * Local force feedback is mixed once per service tick and applied to the live FOC command.
+ * Published temperature windows and measured torque are also exposed through the read-only
+ * parameter bank. The seven-interrupt event remains available for the recovered estimator path.
  */
 void motor_runtime_poll(void) {
+    int32_t centered_position = motor_centered_position_resolve(motor_runtime.encoder.position,
+                                                                motor_runtime.protocol.center);
+    if (motor_protocol_force_feedback_service(
+            &motor_runtime.protocol, motor_runtime.service_tick, centered_position,
+            motor_runtime.motion_sample.filtered_position_delta)) {
+        motor_runtime_drive_apply(&motor_runtime);
+    }
+
     if (motor_auxiliary_samples_resolve(&motor_runtime.auxiliary_accumulator,
                                         &motor_runtime.auxiliary_telemetry)) {
         motor_runtime.parameters.entries[MOTOR_PARAMETER_MOTOR_TEMPERATURE].value =

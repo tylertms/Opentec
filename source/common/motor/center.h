@@ -12,5 +12,6 @@ typedef struct {
 
 bool motor_center_command_apply(MotorCenterState *state, int16_t requested, int32_t encoder_modulus,
                                 uint16_t encoder_counter, uint16_t wrap_threshold);
+int32_t motor_centered_position_resolve(int32_t position, int16_t center);
 
 #endif

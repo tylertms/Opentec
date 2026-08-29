@@ -1,7 +1,15 @@
 #include "common/motor/center.h"
 
+enum {
+    CENTERED_POSITION_LIMIT = 0x143c0,
+};
+
 /**
  * @brief Applies an official center command and normalizes the circular encoder offset.
+ *
+ * A changed command retains the current circular offset inside one encoder revolution and
+ * normalizes either shared endpoint according to the raw timer counter.
+ *
  * @param state Persistent requested center, offset, and activation state.
  * @param requested New signed center command from the motor link.
  * @param encoder_modulus Positive encoder offset limit for one revolution.
@@ -26,4 +34,25 @@ bool motor_center_command_apply(MotorCenterState *state, int16_t requested, int3
         state->encoder_offset = 0;
     }
     return true;
+}
+
+/**
+ * @brief Resolves the official centered force-feedback position.
+ *
+ * The commanded center is removed from the extended encoder position before the result is limited
+ * to the range consumed by the force-feedback engine.
+ *
+ * @param position Current extended encoder position.
+ * @param center Signed center command from the motor link.
+ * @return Centered position clamped to plus or minus 82,880 counts.
+ */
+int32_t motor_centered_position_resolve(int32_t position, int16_t center) {
+    int32_t centered = position - center;
+    if (centered > CENTERED_POSITION_LIMIT) {
+        return CENTERED_POSITION_LIMIT;
+    }
+    if (centered < -CENTERED_POSITION_LIMIT) {
+        return -CENTERED_POSITION_LIMIT;
+    }
+    return centered;
 }
