@@ -2,7 +2,23 @@
 
 #include "common/motor/service.h"
 
+static void test_initial_values(void) {
+    MotorServiceTiming timing;
+    motor_service_timing_initialize(&timing);
+
+    assert(timing.countdowns[kMotorCountdownTelemetry].ticks == 100U);
+    assert(timing.countdowns[kMotorCountdownStartupInterlockB].ticks == 10U);
+    assert(timing.countdowns[kMotorCountdownStartupRamp].ticks == 2000U);
+    assert(timing.countdowns[kMotorCountdownEncoderIndex].ticks == 5000U);
+    assert(timing.countdowns[kMotorCountdownStartupInterlockA].ticks == 200U);
+    for (uint32_t index = 0U; index < MOTOR_SERVICE_COUNTDOWN_COUNT; ++index) {
+        assert(timing.countdowns[index].active == 0U);
+    }
+}
+
 int main(void) {
+    test_initial_values();
+
     MotorServiceTiming timing = {
         .countdowns =
             {
