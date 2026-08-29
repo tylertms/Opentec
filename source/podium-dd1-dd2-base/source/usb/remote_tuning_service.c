@@ -173,13 +173,11 @@ static void apply_selection(UsbRemoteTuningService *service, uint8_t command, ui
     case REMOTE_TUNING_COMMAND_MENU:
         if (selection_valid(value, REMOTE_TUNING_MENU_SELECTION_MAXIMUM)) {
             service->menu_selection = value;
-            service->vendor_response_pending = true;
         }
         break;
     case REMOTE_TUNING_COMMAND_MULTI_POSITION:
         if (selection_valid(value, REMOTE_TUNING_MULTI_POSITION_SELECTION_MAXIMUM)) {
             service->multi_position_selection = value;
-            service->vendor_response_pending = true;
             apply_telemetry_selection(service, wheel_mode);
         }
         break;
@@ -202,7 +200,6 @@ static void apply_selection(UsbRemoteTuningService *service, uint8_t command, ui
         service->command_type = 0;
         if (selection_valid(value, REMOTE_TUNING_SETUP_SELECTION_MAXIMUM)) {
             service->setup_selection = value;
-            service->vendor_response_pending = true;
         } else {
             service->setup_sync_pending = false;
         }

@@ -37,7 +37,6 @@ typedef struct {
     bool active;
     bool refresh_requested;
     bool adapter_refresh_state;
-    bool vendor_response_pending;
     bool active_sync_pending;
     bool setup_sync_pending;
     bool refresh_sync_pending;

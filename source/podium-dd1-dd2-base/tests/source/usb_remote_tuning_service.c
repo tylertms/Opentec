@@ -70,20 +70,16 @@ static void applies_menu_and_multi_position_selections(void) {
     assert(usb_remote_tuning_service_apply(&service, &command, 100, 1, true, false));
     assert(service.command_type == 1);
     assert(service.menu_selection == 6);
-    assert(service.vendor_response_pending);
 
-    service.vendor_response_pending = false;
     arguments[2] = 7;
     assert(usb_remote_tuning_service_apply(&service, &command, 100, 1, true, false));
     assert(service.menu_selection == 6);
-    assert(!service.vendor_response_pending);
 
     arguments[1] = 2;
     arguments[2] = 11;
     assert(usb_remote_tuning_service_apply(&service, &command, 100, 1, true, false));
     assert(service.command_type == 2);
     assert(service.multi_position_selection == 11);
-    assert(service.vendor_response_pending);
 }
 
 static void applies_setup_selections(void) {
@@ -95,14 +91,11 @@ static void applies_setup_selections(void) {
     assert(service.command_type == 0);
     assert(service.setup_selection == 6);
     assert(service.setup_sync_pending);
-    assert(service.vendor_response_pending);
 
-    service.vendor_response_pending = false;
     arguments[2] = 0;
     assert(usb_remote_tuning_service_apply(&service, &command, 100, 1, true, false));
     assert(service.setup_selection == 6);
     assert(!service.setup_sync_pending);
-    assert(!service.vendor_response_pending);
 
     arguments[2] = 6;
     assert(usb_remote_tuning_service_apply(&service, &command, 100, 1, true, false));
