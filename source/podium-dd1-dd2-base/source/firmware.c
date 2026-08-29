@@ -272,6 +272,7 @@ static MotorLiveFrame motor_live_frame;
 static MotorOutputTransport motor_output_transport;
 static uint8_t motor_received_frame[MOTOR_LIVE_FRAME_SIZE];
 static uint8_t motor_transmitted_frame[MOTOR_LIVE_FRAME_SIZE];
+static uint8_t motor_malformed_frame_count;
 static StatusLed status_led;
 static PowerController power_controller;
 static SystemControlState system_control_state;
@@ -367,6 +368,7 @@ enum {
     FORCE_FEEDBACK_DD1_AUTOMATIC_STRENGTH_PERCENT = 35,
     FORCE_FEEDBACK_DD2_AUTOMATIC_STRENGTH_PERCENT = 30,
     FORCE_FEEDBACK_RAMP_INTERVAL_MS = 50,
+    MOTOR_LINK_MALFORMED_FRAME_LIMIT = 100,
 };
 
 /** @brief Storage used only by the native and Xbox motor-command transports. */
@@ -677,12 +679,19 @@ static void update_fan_speed(PlatformFan fan) {
             : 0;
 }
 
+/**
+ * @brief Initializes the motor controller's live SPI exchange.
+ *
+ * Clears live output and position state, builds the first remote-effects frame, resets malformed
+ * frame tracking, and starts the platform motor transport with that frame.
+ */
 static void initialize_motor_link(void) {
     motor_output_report = (ForceOutputReport){0};
     motor_output_transport_init(&motor_output_transport);
     motor_output_transport_build_frame(&motor_output_transport, MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS,
                                        0, &motor_output_report, &motor_live_frame);
     motor_live_frame_encode(&motor_live_frame, motor_transmitted_frame);
+    motor_malformed_frame_count = 0;
     platform_motor_link_init(motor_transmitted_frame);
     motor_position_ready = false;
 }
@@ -736,18 +745,30 @@ static uint8_t motor_force_feedback_status(void) {
     return status;
 }
 
+/**
+ * @brief Processes one completed motor exchange and prepares its successor.
+ *
+ * Decodes valid live packets, publishes position reports, and queues the current force-output
+ * response. CRC-valid packets clear delimiter-failure tracking, CRC failures preserve it, and the
+ * transport restarts after the 101st packet with invalid delimiters.
+ */
 static void service_motor_link(void) {
     if (!platform_motor_link_take_received(motor_received_frame)) {
         return;
     }
 
-    if (motor_live_frame_decode(motor_received_frame, &motor_live_frame) ==
-            MOTOR_LIVE_FRAME_VALID &&
-        motor_position_report_decode(&motor_live_frame, &motor_position_report)) {
-        motor_position_ready = true;
-        if (!base_settings.wheel_position.calibrated) {
-            (void)capture_current_wheel_center();
+    MotorLiveFrameResult frame_result =
+        motor_live_frame_decode(motor_received_frame, &motor_live_frame);
+    if (frame_result == MOTOR_LIVE_FRAME_VALID) {
+        motor_malformed_frame_count = 0;
+        if (motor_position_report_decode(&motor_live_frame, &motor_position_report)) {
+            motor_position_ready = true;
+            if (!base_settings.wheel_position.calibrated) {
+                (void)capture_current_wheel_center();
+            }
         }
+    } else if (frame_result == MOTOR_LIVE_FRAME_INVALID_BOUNDARY) {
+        motor_malformed_frame_count++;
     }
 
     motor_output_transport_build_frame(&motor_output_transport, motor_force_feedback_status(),
@@ -755,6 +776,11 @@ static void service_motor_link(void) {
                                        &motor_output_report, &motor_live_frame);
     motor_live_frame_encode(&motor_live_frame, motor_transmitted_frame);
     platform_motor_link_set_transmit(motor_transmitted_frame);
+
+    if (motor_malformed_frame_count > MOTOR_LINK_MALFORMED_FRAME_LIMIT) {
+        motor_malformed_frame_count = 0;
+        platform_motor_link_init(motor_transmitted_frame);
+    }
 }
 
 static void apply_active_tuning_profile(void) {
