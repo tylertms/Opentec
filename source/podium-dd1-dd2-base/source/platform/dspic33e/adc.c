@@ -18,6 +18,13 @@ static volatile uint16_t adc_primary[ANALOG_SCAN_SAMPLE_COUNT];
 static volatile uint16_t adc_secondary[ANALOG_SCAN_SAMPLE_COUNT];
 static volatile uint8_t adc_ready = ADC_READY_NONE;
 
+/**
+ * @brief Configures continuous ten-channel ADC sampling through DMA channel zero.
+ *
+ * Enables 12-bit automatic scan conversion for the analog inputs selected by mask 0xff41 and
+ * transfers each ten-sample scan into alternating DMA buffers. The DMA completion interrupt runs
+ * at priority two and records the completed buffer for foreground processing.
+ */
 void platform_adc_init(void) {
     AD1CON1 = 0;
     AD1CON1bits.AD12B = 1;
@@ -42,6 +49,8 @@ void platform_adc_init(void) {
     ANSELBbits.ANSB0 = 1;
     ANSELBbits.ANSB6 = 1;
     ANSELBbits.ANSB8 = 1;
+    ANSELBbits.ANSB9 = 1;
+    ANSELBbits.ANSB10 = 1;
 
     IEC0bits.AD1IE = 0;
     IFS0bits.AD1IF = 0;
@@ -64,6 +73,16 @@ void platform_adc_init(void) {
     AD1CON1bits.ADON = 1;
 }
 
+/**
+ * @brief Retrieves the most recently completed analog scan.
+ *
+ * Atomically consumes the completed-buffer indication and decodes that DMA buffer into logical
+ * analog inputs. A later scan may replace an unread scan so foreground processing always receives
+ * the newest complete sample set.
+ *
+ * @param[out] samples Destination for the decoded analog inputs.
+ * @return True when a completed scan was available; otherwise false.
+ */
 bool platform_adc_read(AnalogSamples *samples) {
     IEC0bits.DMA0IE = 0;
     uint8_t ready = adc_ready;
@@ -77,6 +96,12 @@ bool platform_adc_read(AnalogSamples *samples) {
     return true;
 }
 
+/**
+ * @brief Publishes the DMA buffer completed by the latest ADC scan.
+ *
+ * Selects the inactive ping-pong buffer indicated by the DMA controller and clears the channel-zero
+ * interrupt request.
+ */
 void __attribute__((interrupt, no_auto_psv)) _DMA0Interrupt(void) {
     adc_ready = DMAPPSbits.PPST0 == 0 ? 1 : 0;
     IFS0bits.DMA0IF = 0;
