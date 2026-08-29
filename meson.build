@@ -13,7 +13,10 @@ project(
 if (
   meson.is_cross_build()
   and host_machine.cpu_family() == 'arm'
-  and host_machine.cpu() == 'cortex-m4'
+  and (
+    host_machine.cpu() == 'cortex-m4'
+    or host_machine.cpu() == 'cortex-m0plus'
+  )
 )
   add_languages('c', native: true)
 endif

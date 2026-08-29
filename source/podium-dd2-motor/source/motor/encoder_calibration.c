@@ -1,6 +1,7 @@
 #include "motor/encoder_calibration.h"
 
 #include <limits.h>
+#include <string.h>
 
 enum {
     MOTOR_ENCODER_CALIBRATION_SWEEP_VELOCITY = 327,
@@ -89,9 +90,8 @@ static void motor_encoder_calibration_sample(MotorEncoderCalibrationState *state
  * @param state Calibration phase, filter, captured table, and persistent record.
  */
 void motor_encoder_calibration_initialize(MotorEncoderCalibrationState *state) {
-    *state = (MotorEncoderCalibrationState){
-        .correction_filter.shift = 3U,
-    };
+    memset(state, 0, sizeof(*state));
+    state->correction_filter.shift = 3U;
 }
 
 /**

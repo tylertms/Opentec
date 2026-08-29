@@ -143,6 +143,34 @@ if motor_target
     name_suffix: 'elf',
   )
 
+  motor_simulator = subproject('kinetis-sim', native: true)
+  motor_runner = motor_simulator.get_variable('kinetis_firmware_runner')
+  test(
+    'dd2-motor-firmware',
+    motor_runner,
+    args: [
+      firmware.full_path(),
+      '--profile',
+      'MKV10Z1287',
+      '--package',
+      'LH',
+      '--reset-address',
+      '0xa000',
+      '--write32',
+      '0x40048034:0xf0000430',
+      '--max-instructions',
+      '1000000',
+      '--max-cycles',
+      '15000000',
+      '--minimum-instructions-covered',
+      '8000',
+      '--minimum-branches-covered',
+      '250',
+    ],
+    suite: ['motor', 'simulator'],
+    timeout: 120,
+  )
+
   firmware_binary = custom_target(
     'motor-binary',
     input: firmware,

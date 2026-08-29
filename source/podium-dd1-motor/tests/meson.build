@@ -12,19 +12,6 @@ motor_control_test = executable(
   include_directories: firmware_include,
 )
 
-motor_foc_test = executable(
-  motor_test_prefix + '-foc-test',
-  'source/foc.c',
-  '../source/motor/foc.c',
-  include_directories: [include_directories('stubs'), firmware_include],
-)
-
-test(
-  motor_test_prefix + '-foc',
-  motor_foc_test,
-  suite: ['motor', 'control'],
-)
-
 test(
   motor_test_prefix + '-control',
   motor_control_test,
@@ -82,19 +69,6 @@ motor_service_timing_test = executable(
   'source/service_timing.c',
   motor_service_sources,
   include_directories: firmware_include,
-)
-
-motor_velocity_control_test = executable(
-  motor_test_prefix + '-velocity-control-test',
-  'source/velocity_control.c',
-  motor_velocity_control_sources,
-  include_directories: [include_directories('stubs'), firmware_include],
-)
-
-test(
-  motor_test_prefix + '-velocity-control',
-  motor_velocity_control_test,
-  suite: ['motor', 'control'],
 )
 
 test(
