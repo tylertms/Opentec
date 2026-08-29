@@ -1,5 +1,7 @@
 #include "common/motor/runtime.h"
 
+#include <freemaster.h>
+#include <freemaster_serial_uart.h>
 #include <fsl_common.h>
 #include <fsl_ftm.h>
 #include <fsl_gpio.h>
@@ -104,14 +106,14 @@ static MotorRuntime motor_runtime;
  * @brief Stops motor output after an unrecoverable runtime failure.
  *
  * Interrupts remain disabled, the first startup interlock is asserted, all PWM outputs are masked,
- * and the watchdog is refreshed while the controller remains in its safe state.
+ * and the FreeMASTER UART is serviced while the controller remains in its safe state.
  */
 _Noreturn static void motor_runtime_fault(void) {
     (void)DisableGlobalIRQ();
     for (;;) {
         GPIO_PortClear(GPIOC, 1UL << 1U);
         FTM0->OUTMASK = 0x3fU;
-        WDOG_Refresh(WDOG);
+        FMSTR_SerialIsr();
     }
 }
 

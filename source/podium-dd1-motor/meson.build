@@ -70,7 +70,12 @@ if motor_target
     build_by_default: false,
     c_args: freestanding_c_args,
     dependencies: cmsis_dependency,
-    include_directories: [firmware_include, freemaster_includes],
+    include_directories: [
+      firmware_include,
+      freemaster_includes,
+      sdk_driver_include,
+      sdk_device['includes'],
+    ],
     override_options: ['warning_level=0'],
     pic: false,
   )

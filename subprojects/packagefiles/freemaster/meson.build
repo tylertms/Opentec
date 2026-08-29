@@ -14,10 +14,12 @@ freemaster_sources = files(
   'src/common/freemaster_tsa.c',
   'src/common/freemaster_ures.c',
   'src/common/freemaster_utils.c',
+  'src/drivers/mcuxsdk/serial/freemaster_serial_uart.c',
 )
 
 freemaster_includes = include_directories(
   'src/common',
+  'src/drivers/mcuxsdk/serial',
   'src/platforms/gen32le',
   is_system: true,
 )
