@@ -101,6 +101,7 @@ void DMA0_DMA4_IRQHandler(void) {
  */
 void DMA1_DMA5_IRQHandler(void) {
     EDMA_ClearChannelStatusFlags(DMA0, 1U, kEDMA_InterruptFlag | kEDMA_DoneFlag);
+    GPIO_PortSet(GPIOC, 1UL << 0U);
     if (transfer_receive_handler != NULL) {
         transfer_receive_handler(transfer_buffers->receive, transfer_context);
     }
