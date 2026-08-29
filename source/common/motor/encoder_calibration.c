@@ -12,6 +12,7 @@ enum {
     MOTOR_ENCODER_CALIBRATION_VERSION = 3U,
     MOTOR_ENCODER_CALIBRATION_SCALE = 0x3333U,
     MOTOR_ENCODER_CALIBRATION_SAMPLE_OFFSET = 2U,
+    MOTOR_ENCODER_CORRECTION_DIRECTION_THRESHOLD = 82,
 };
 
 #define MOTOR_ENCODER_CALIBRATION_MAGIC UINT32_C(0xaaaaaaaa)
@@ -175,6 +176,26 @@ int16_t motor_encoder_correction_read(const MotorEncoderCalibrationRecord *recor
 
     int16_t correction = reverse ? record->reverse[index] : record->forward[index];
     return motor_q15_scale_saturate(record->correction_scale, correction);
+}
+
+/**
+ * @brief Updates the encoder correction-table direction.
+ *
+ * The filtered position delta selects a new table only after crossing the official
+ * direction threshold. Motion inside the dead band retains the previous selection.
+ *
+ * @param reverse Previously selected correction-table direction.
+ * @param filtered_position_delta Filtered position change for the current control cycle.
+ * @return True when the reverse correction table must be used.
+ */
+bool motor_encoder_correction_direction_update(bool reverse, int16_t filtered_position_delta) {
+    if (filtered_position_delta >= MOTOR_ENCODER_CORRECTION_DIRECTION_THRESHOLD) {
+        return false;
+    }
+    if (filtered_position_delta <= -MOTOR_ENCODER_CORRECTION_DIRECTION_THRESHOLD) {
+        return true;
+    }
+    return reverse;
 }
 
 /**

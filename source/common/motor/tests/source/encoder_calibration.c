@@ -100,6 +100,15 @@ static void test_correction_read(void) {
     assert(motor_encoder_correction_read(&record, true, 0U, 10U) == -50);
 }
 
+static void test_correction_direction_hysteresis(void) {
+    assert(!motor_encoder_correction_direction_update(true, 82));
+    assert(motor_encoder_correction_direction_update(false, -82));
+    assert(!motor_encoder_correction_direction_update(false, 81));
+    assert(motor_encoder_correction_direction_update(true, -81));
+    assert(!motor_encoder_correction_direction_update(false, 0));
+    assert(motor_encoder_correction_direction_update(true, 0));
+}
+
 static void test_persistent_record_validation(void) {
     MotorEncoderCalibrationRecord record = {
         .magic = UINT32_C(0xaaaaaaaa),
@@ -120,6 +129,7 @@ int main(void) {
     test_capture_sequence();
     test_velocity_and_center_boundaries();
     test_correction_read();
+    test_correction_direction_hysteresis();
     test_persistent_record_validation();
     return 0;
 }
