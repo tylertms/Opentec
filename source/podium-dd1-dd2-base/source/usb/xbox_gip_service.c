@@ -9,6 +9,7 @@
 #include "usb/xbox_gip_session.h"
 
 enum {
+    XBOX_GIP_COMMAND_PACKET = 0x0a,
     XBOX_GIP_SCRIPT_SAMPLE_PACKET = 0x0b,
     XBOX_GIP_SCRIPT_INPUT_PACKET = 0x0e,
 };
@@ -16,16 +17,15 @@ enum {
 /**
  * @brief Classifies an Xbox GIP force-feedback application packet.
  *
- * Accepts the four complete script-system packet types used for sample updates, slot control,
- * script uploads, and scheduled live inputs.
+ * Accepts command queries plus the four complete script-system packet types used for sample
+ * updates, slot control, script uploads, and scheduled live inputs.
  *
  * @param[in] request Received Xbox GIP endpoint packet.
  * @return True when the packet belongs to the force-feedback application path.
  */
 static bool
 is_force_feedback_application_packet(const uint8_t request[USB_XBOX_GIP_METADATA_PACKET_SIZE]) {
-    return request[0] >= XBOX_GIP_SCRIPT_SAMPLE_PACKET &&
-           request[0] <= XBOX_GIP_SCRIPT_INPUT_PACKET;
+    return request[0] >= XBOX_GIP_COMMAND_PACKET && request[0] <= XBOX_GIP_SCRIPT_INPUT_PACKET;
 }
 
 /**

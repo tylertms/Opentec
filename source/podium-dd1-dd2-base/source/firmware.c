@@ -83,6 +83,7 @@
 #include "usb/tuning_profile_report.h"
 #include "usb/tuning_profile_service.h"
 #include "usb/vendor_command.h"
+#include "usb/xbox_gip_command.h"
 #include "usb/xbox_gip_input.h"
 #include "wheel/center_capture.h"
 #include "wheel/command_forwarder.h"
@@ -202,6 +203,7 @@ static WheelSteeringLimitCommand wheel_steering_limit_command;
 static uint8_t wheel_adjusted_bite_point_percent;
 static uint8_t wheel_bite_point_report_percent;
 static UsbVendorCommand usb_vendor_command;
+static UsbXboxGipCommand usb_xbox_gip_command;
 static UsbWheelTransferCommand usb_wheel_transfer_command;
 static ForceFeedbackCommand force_feedback_command;
 static ForceFeedbackState force_feedback_state;
@@ -209,6 +211,7 @@ static ForceFeedbackScriptSystem force_feedback_script_system;
 static ForceFeedbackScriptOutputState force_feedback_script_output_state;
 static ForceFeedbackScriptOutputConfig force_feedback_script_output_config;
 static uint8_t force_feedback_script_response_sequence;
+static uint8_t xbox_script_response_placeholder_sequence;
 static ForceFeedbackScriptReportKind force_feedback_script_report_pending;
 static uint16_t force_feedback_script_sample_report_index;
 static uint8_t force_feedback_script_slot_report_index;
@@ -930,6 +933,72 @@ static bool service_xbox_mode_startup(void) {
 }
 
 /**
+ * @brief Encodes the pending force-feedback script query response.
+ *
+ * Uses the shared script report formats for native and Xbox transports without consuming the
+ * pending query. The caller commits it only after its transport accepts the response.
+ *
+ * @param[in,out] sequence Response sequence used to build the report envelope.
+ * @param[out] response Destination for the encoded response.
+ * @return Encoded response length, or zero when no query is pending.
+ */
+static uint8_t encode_pending_force_feedback_script_report(uint8_t *sequence, uint8_t *response) {
+    switch (force_feedback_script_report_pending) {
+    case FORCE_FEEDBACK_SCRIPT_REPORT_AXES:
+        return force_feedback_script_axes_report_encode(&force_feedback_script_system.values,
+                                                        sequence, response, USB_DEVICE_REPORT_SIZE)
+                   ? FORCE_FEEDBACK_SCRIPT_AXES_RESPONSE_SIZE
+                   : 0;
+    case FORCE_FEEDBACK_SCRIPT_REPORT_SAMPLES:
+        return force_feedback_script_samples_report_encode(
+                   &force_feedback_script_system.values, force_feedback_script_sample_report_index,
+                   sequence, response, USB_DEVICE_REPORT_SIZE)
+                   ? FORCE_FEEDBACK_SCRIPT_SAMPLES_RESPONSE_SIZE
+                   : 0;
+    case FORCE_FEEDBACK_SCRIPT_REPORT_SLOT:
+        return force_feedback_script_slot_report_encode(&force_feedback_script_system.values,
+                                                        force_feedback_script_slot_report_index,
+                                                        sequence, response, USB_DEVICE_REPORT_SIZE)
+                   ? FORCE_FEEDBACK_SCRIPT_SLOT_RESPONSE_SIZE
+                   : 0;
+    case FORCE_FEEDBACK_SCRIPT_REPORT_STATUS:
+        return force_feedback_script_status_report_encode(
+                   &force_feedback_script_system.values, force_feedback_script_system.mode,
+                   sequence, response, USB_DEVICE_REPORT_SIZE)
+                   ? FORCE_FEEDBACK_SCRIPT_STATUS_RESPONSE_SIZE
+                   : 0;
+    case FORCE_FEEDBACK_SCRIPT_REPORT_VALUES:
+        return force_feedback_script_values_report_encode(
+                   &force_feedback_script_system.values, sequence, response, USB_DEVICE_REPORT_SIZE)
+                   ? FORCE_FEEDBACK_SCRIPT_VALUES_RESPONSE_SIZE
+                   : 0;
+    case FORCE_FEEDBACK_SCRIPT_REPORT_NONE:
+        return 0;
+    }
+    return 0;
+}
+
+/**
+ * @brief Queues a pending force-feedback script response on Xbox GIP.
+ *
+ * Builds the common type-25 report and retains the query until the active Xbox endpoint accepts
+ * it. The device layer replaces the temporary report sequence with the shared GIP sequence.
+ */
+static void prepare_usb_xbox_script_response(void) {
+    if (usb_device_operating_mode() != USB_OPERATING_MODE_XBOX_GIP ||
+        force_feedback_script_report_pending == FORCE_FEEDBACK_SCRIPT_REPORT_NONE) {
+        return;
+    }
+
+    xbox_script_response_placeholder_sequence = 0;
+    uint8_t length = encode_pending_force_feedback_script_report(
+        &xbox_script_response_placeholder_sequence, usb_vendor_response);
+    if (length != 0 && usb_device_queue_xbox_response(usb_vendor_response, length)) {
+        force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_NONE;
+    }
+}
+
+/**
  * @brief Prepares the highest-priority pending vendor response.
  *
  * Retains sequence-bearing reports for endpoint retries. Native telemetry precedes wheel transfer,
@@ -937,13 +1006,15 @@ static bool service_xbox_mode_startup(void) {
  * host command service.
  */
 static void prepare_usb_vendor_response(void) {
+    if (usb_device_operating_mode() != USB_OPERATING_MODE_FANATEC) {
+        return;
+    }
     if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_REMOTE_TUNING ||
         usb_vendor_response_kind == USB_VENDOR_RESPONSE_SCRIPT_REPORT) {
         return;
     }
     usb_vendor_response_kind = USB_VENDOR_RESPONSE_NONE;
-    if (usb_device_operating_mode() == USB_OPERATING_MODE_FANATEC &&
-        usb_remote_tuning_service_take_host_report(
+    if (usb_remote_tuning_service_take_host_report(
             &usb_remote_tuning_service, wheel_service_mode(&wheel_service),
             USB_REMOTE_TUNING_HOST_NATIVE, usb_vendor_response)) {
         usb_vendor_response_length = USB_REMOTE_TUNING_HOST_REPORT_SIZE;
@@ -964,51 +1035,10 @@ static void prepare_usb_vendor_response(void) {
         usb_vendor_response_kind = USB_VENDOR_RESPONSE_WHEEL_TRANSFER;
         return;
     }
-    if (force_feedback_script_report_pending == FORCE_FEEDBACK_SCRIPT_REPORT_AXES &&
-        force_feedback_script_axes_report_encode(
-            &force_feedback_script_system.values, &force_feedback_script_response_sequence,
-            usb_vendor_response, sizeof(usb_vendor_response))) {
+    usb_vendor_response_length = encode_pending_force_feedback_script_report(
+        &force_feedback_script_response_sequence, usb_vendor_response);
+    if (usb_vendor_response_length != 0) {
         force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_NONE;
-        usb_vendor_response_length = FORCE_FEEDBACK_SCRIPT_AXES_RESPONSE_SIZE;
-        usb_vendor_response_kind = USB_VENDOR_RESPONSE_SCRIPT_REPORT;
-        return;
-    }
-    if (force_feedback_script_report_pending == FORCE_FEEDBACK_SCRIPT_REPORT_SAMPLES &&
-        force_feedback_script_samples_report_encode(
-            &force_feedback_script_system.values, force_feedback_script_sample_report_index,
-            &force_feedback_script_response_sequence, usb_vendor_response,
-            sizeof(usb_vendor_response))) {
-        force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_NONE;
-        usb_vendor_response_length = FORCE_FEEDBACK_SCRIPT_SAMPLES_RESPONSE_SIZE;
-        usb_vendor_response_kind = USB_VENDOR_RESPONSE_SCRIPT_REPORT;
-        return;
-    }
-    if (force_feedback_script_report_pending == FORCE_FEEDBACK_SCRIPT_REPORT_SLOT &&
-        force_feedback_script_slot_report_encode(
-            &force_feedback_script_system.values, force_feedback_script_slot_report_index,
-            &force_feedback_script_response_sequence, usb_vendor_response,
-            sizeof(usb_vendor_response))) {
-        force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_NONE;
-        usb_vendor_response_length = FORCE_FEEDBACK_SCRIPT_SLOT_RESPONSE_SIZE;
-        usb_vendor_response_kind = USB_VENDOR_RESPONSE_SCRIPT_REPORT;
-        return;
-    }
-    if (force_feedback_script_report_pending == FORCE_FEEDBACK_SCRIPT_REPORT_STATUS &&
-        force_feedback_script_status_report_encode(
-            &force_feedback_script_system.values, force_feedback_script_system.mode,
-            &force_feedback_script_response_sequence, usb_vendor_response,
-            sizeof(usb_vendor_response))) {
-        force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_NONE;
-        usb_vendor_response_length = FORCE_FEEDBACK_SCRIPT_STATUS_RESPONSE_SIZE;
-        usb_vendor_response_kind = USB_VENDOR_RESPONSE_SCRIPT_REPORT;
-        return;
-    }
-    if (force_feedback_script_report_pending == FORCE_FEEDBACK_SCRIPT_REPORT_VALUES &&
-        force_feedback_script_values_report_encode(
-            &force_feedback_script_system.values, &force_feedback_script_response_sequence,
-            usb_vendor_response, sizeof(usb_vendor_response))) {
-        force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_NONE;
-        usb_vendor_response_length = FORCE_FEEDBACK_SCRIPT_VALUES_RESPONSE_SIZE;
         usb_vendor_response_kind = USB_VENDOR_RESPONSE_SCRIPT_REPORT;
         return;
     }
@@ -1107,6 +1137,7 @@ static void service_usb_command_bridge(uint32_t now_ms) {
         usb_motor_acknowledgement_ready = false;
     }
     update_usb_diagnostic_snapshot(now_ms);
+    prepare_usb_xbox_script_response();
     prepare_usb_vendor_response();
     if (!usb_motor_acknowledgement_ready && usb_vendor_response_kind != USB_VENDOR_RESPONSE_NONE &&
         usb_device_send_vendor_report(usb_vendor_response, usb_vendor_response_length)) {
@@ -1407,6 +1438,46 @@ static void apply_wheel_steering_limit_command(const WheelSteeringLimitCommand *
 }
 
 /**
+ * @brief Routes one Xbox GIP script query to the shared report service.
+ *
+ * Decodes group-zero command packet 0A and schedules its sample, slot, status, value, or axis
+ * response. An earlier pending query is retained until it reaches the endpoint.
+ *
+ * @param[in] report Complete USB output report containing the GIP packet.
+ * @return True when the report belongs to the Xbox script-query path.
+ */
+static bool route_xbox_gip_script_query(const UsbDeviceOutputReport *report) {
+    if (usb_device_operating_mode() != USB_OPERATING_MODE_XBOX_GIP ||
+        !usb_xbox_gip_command_decode(report->data, report->length, &usb_xbox_gip_command)) {
+        return false;
+    }
+    if (force_feedback_script_report_pending != FORCE_FEEDBACK_SCRIPT_REPORT_NONE) {
+        return true;
+    }
+
+    switch (usb_xbox_gip_command.kind) {
+    case USB_XBOX_GIP_COMMAND_SCRIPT_SAMPLES:
+        force_feedback_script_sample_report_index = usb_xbox_gip_command.parameter;
+        force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_SAMPLES;
+        break;
+    case USB_XBOX_GIP_COMMAND_SCRIPT_SLOT:
+        force_feedback_script_slot_report_index = (uint8_t)usb_xbox_gip_command.parameter;
+        force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_SLOT;
+        break;
+    case USB_XBOX_GIP_COMMAND_SCRIPT_STATUS:
+        force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_STATUS;
+        break;
+    case USB_XBOX_GIP_COMMAND_SCRIPT_VALUES:
+        force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_VALUES;
+        break;
+    case USB_XBOX_GIP_COMMAND_SCRIPT_AXES:
+        force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_AXES;
+        break;
+    }
+    return true;
+}
+
+/**
  * @brief Routes one pending host report to its owning device subsystem.
  *
  * Gives complete script-system and motor-mailbox reports their dedicated packet paths before
@@ -1418,6 +1489,9 @@ static void service_usb_output(void) {
         return;
     }
     if (accept_usb_motor_report(&usb_device_output_report)) {
+        return;
+    }
+    if (route_xbox_gip_script_query(&usb_device_output_report)) {
         return;
     }
     if (force_feedback_script_runtime_apply_packet(&force_feedback_script_system,

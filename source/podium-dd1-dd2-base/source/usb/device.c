@@ -809,6 +809,32 @@ bool usb_device_queue_xbox_input(const UsbXboxGipInputSnapshot *snapshot) {
 }
 
 /**
+ * @brief Queues one Xbox GIP application response.
+ *
+ * Copies the complete response, replaces its envelope sequence with the next shared GIP sequence,
+ * and retains it until endpoint 1 accepts the transfer. Discovery, session, and input responses
+ * already waiting on the endpoint keep priority.
+ *
+ * @param[in] report Complete application response packet.
+ * @param[in] length Number of response bytes from three through 64.
+ * @return True when the application response was queued.
+ */
+bool usb_device_queue_xbox_response(const uint8_t *report, uint8_t length) {
+    if (operating_mode != USB_OPERATING_MODE_XBOX_GIP || !usb_device_configured() ||
+        xbox_service.session.state != USB_XBOX_GIP_SESSION_ACTIVE || report == NULL || length < 3 ||
+        length > USB_DEVICE_REPORT_SIZE || xbox_response_ready) {
+        return false;
+    }
+    for (uint8_t index = 0; index < length; index++) {
+        xbox_response[index] = report[index];
+    }
+    xbox_response[2] = usb_xbox_gip_sequence_take(&xbox_service.next_sequence);
+    xbox_response_length = length;
+    xbox_response_ready = true;
+    return true;
+}
+
+/**
  * @brief Sends one native vendor HID report.
  *
  * Submits the requested bytes to endpoint 1 without comparing them with prior input, so repeated

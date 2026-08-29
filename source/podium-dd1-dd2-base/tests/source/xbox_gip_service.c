@@ -123,7 +123,7 @@ static void test_classifies_force_feedback_application_packets(void) {
     }
 
     fixture.request[0] = 0x0a;
-    assert(!poll_service(&fixture, 0).application_output);
+    assert(poll_service(&fixture, 0).application_output);
     fixture.request[0] = 0x0f;
     assert(!poll_service(&fixture, 0).application_output);
 }

@@ -98,7 +98,14 @@ static void test_encodes_slot_details(void) {
     assert(decode_value(response + 31) == slot->execution_count);
     assert(decode_value(response + 35) == slot->tick_snapshot);
 
-    assert(!force_feedback_script_slot_report_encode(&runtime, 15, &sequence, response,
+    memset(response, 0xa5, sizeof(response));
+    assert(force_feedback_script_slot_report_encode(&runtime, 15, &sequence, response,
+                                                    sizeof(response)));
+    assert(response[0] == 0x25 && response[2] == 14 && response[3] == 0x23 && response[4] == 5);
+    for (uint8_t index = 5; index < sizeof(response); index++) {
+        assert(response[index] == 0);
+    }
+    assert(!force_feedback_script_slot_report_encode(&runtime, 16, &sequence, response,
                                                      sizeof(response)));
     assert(!force_feedback_script_slot_report_encode(&runtime, 0, &sequence, response,
                                                      sizeof(response) - 1));

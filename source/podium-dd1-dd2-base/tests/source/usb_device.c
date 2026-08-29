@@ -430,6 +430,15 @@ static void test_exchanges_xbox_gip_discovery(void) {
     assert(sent.data[6] == 0x78 && sent.data[7] == 0x56);
     assert(sent.data[17] == 0x30 && sent.data[18] == 0x2a);
 
+    uint8_t application_response[22] = {0x25, 0, 0xa5, 0x12, 6};
+    assert(usb_device_queue_xbox_response(application_response, sizeof(application_response)));
+    assert(application_response[2] == 0xa5);
+    assert(!usb_device_queue_xbox_response(application_response, sizeof(application_response)));
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 1, 0, 0);
+    usb_device_service();
+    assert(sent.endpoint == 1 && sent.length == sizeof(application_response));
+    assert(sent.data[0] == 0x25 && sent.data[2] == 4 && sent.data[3] == 0x12);
+
     uint8_t force_feedback_input[USB_DEVICE_REPORT_SIZE] = {0};
     force_feedback_input[0] = 0x0e;
     force_feedback_input[4] = 1;
