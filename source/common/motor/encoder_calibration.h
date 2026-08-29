@@ -66,5 +66,6 @@ motor_encoder_calibration_step(MotorEncoderCalibrationState *state,
                                const MotorEncoderCalibrationInput *input);
 int16_t motor_encoder_correction_read(const MotorEncoderCalibrationRecord *record, bool reverse,
                                       uint16_t relative_position, uint16_t table_length);
+bool motor_encoder_calibration_record_is_valid(const MotorEncoderCalibrationRecord *record);
 
 #endif

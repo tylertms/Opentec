@@ -100,9 +100,26 @@ static void test_correction_read(void) {
     assert(motor_encoder_correction_read(&record, true, 0U, 10U) == -50);
 }
 
+static void test_persistent_record_validation(void) {
+    MotorEncoderCalibrationRecord record = {
+        .magic = UINT32_C(0xaaaaaaaa),
+        .version = 3U,
+    };
+
+    assert(motor_encoder_calibration_record_is_valid(&record));
+
+    record.magic = 0U;
+    assert(!motor_encoder_calibration_record_is_valid(&record));
+
+    record.magic = UINT32_C(0xaaaaaaaa);
+    record.version = 2U;
+    assert(!motor_encoder_calibration_record_is_valid(&record));
+}
+
 int main(void) {
     test_capture_sequence();
     test_velocity_and_center_boundaries();
     test_correction_read();
+    test_persistent_record_validation();
     return 0;
 }

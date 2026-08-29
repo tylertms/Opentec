@@ -176,3 +176,13 @@ int16_t motor_encoder_correction_read(const MotorEncoderCalibrationRecord *recor
     int16_t correction = reverse ? record->reverse[index] : record->forward[index];
     return motor_q15_scale_saturate(record->correction_scale, correction);
 }
+
+/**
+ * @brief Validates the official persisted encoder correction record header.
+ * @param record Encoder correction record loaded from calibration flash.
+ * @return True when the magic and version match the official format.
+ */
+bool motor_encoder_calibration_record_is_valid(const MotorEncoderCalibrationRecord *record) {
+    return record->magic == MOTOR_ENCODER_CALIBRATION_MAGIC &&
+           record->version == MOTOR_ENCODER_CALIBRATION_VERSION;
+}
