@@ -250,7 +250,7 @@ static void apply_power_action(PowerAction action, uint32_t now_ms) {
         platform_power_latch_set(false);
         break;
     case POWER_ACTION_NONE:
-    case POWER_ACTION_REQUEST_CHANGED:
+    case POWER_ACTION_TORQUE_REQUEST_CHANGED:
     case POWER_ACTION_FINISH_SHUTDOWN:
         break;
     }

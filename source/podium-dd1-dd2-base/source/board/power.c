@@ -35,12 +35,12 @@ void power_controller_init(PowerController *controller) { *controller = (PowerCo
 /**
  * @brief Advances power-button and shutdown behavior.
  *
- * Enables the power hold on the first active sample. Subsequent short releases toggle the
- * requested on/off state. A continuously active sample starts shutdown after 1,000 ms and
- * finishes the shutdown interval after another 1,000 ms. Release is evaluated before the hold
- * deadline, including when service resumes after that deadline.
+ * Enables the power hold on the first active sample. Subsequent short releases toggle the torque
+ * disable request. A continuously active sample starts shutdown after 1,000 ms and finishes the
+ * shutdown interval after another 1,000 ms. Release is evaluated before the hold deadline,
+ * including when service resumes after that deadline.
  *
- * @param[in,out] controller Persistent power phase, deadline, and requested on/off state.
+ * @param[in,out] controller Persistent power phase, deadline, and torque disable request.
  * @param[in] button_pressed True while the active-high power button input is asserted.
  * @param[in] button_control_enabled True to accept short-press and hold behavior.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -63,12 +63,12 @@ PowerAction power_controller_update(PowerController *controller, bool button_pre
         break;
     case POWER_PHASE_BUTTON_HELD:
         if (!button_pressed) {
-            controller->requested_on = !controller->requested_on;
+            controller->torque_disabled = !controller->torque_disabled;
             controller->phase = POWER_PHASE_READY;
-            return POWER_ACTION_REQUEST_CHANGED;
+            return POWER_ACTION_TORQUE_REQUEST_CHANGED;
         }
         if (deadline_passed(now_ms, controller->deadline_ms)) {
-            controller->requested_on = false;
+            controller->torque_disabled = false;
             controller->deadline_ms = now_ms + POWER_SHUTDOWN_DELAY_MS;
             controller->phase = POWER_PHASE_SHUTDOWN_DELAY;
             return POWER_ACTION_BEGIN_SHUTDOWN;

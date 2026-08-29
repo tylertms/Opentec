@@ -33,12 +33,12 @@ static void test_short_release_toggles_requested_state(void) {
 
     assert(update(&controller, true, true, 101) == POWER_ACTION_NONE);
     assert(controller.phase == POWER_PHASE_BUTTON_HELD);
-    assert(update(&controller, false, true, 1101) == POWER_ACTION_REQUEST_CHANGED);
-    assert(controller.requested_on);
+    assert(update(&controller, false, true, 1101) == POWER_ACTION_TORQUE_REQUEST_CHANGED);
+    assert(controller.torque_disabled);
 
     assert(update(&controller, true, true, 1200) == POWER_ACTION_NONE);
-    assert(update(&controller, false, true, 1201) == POWER_ACTION_REQUEST_CHANGED);
-    assert(!controller.requested_on);
+    assert(update(&controller, false, true, 1201) == POWER_ACTION_TORQUE_REQUEST_CHANGED);
+    assert(!controller.torque_disabled);
 }
 
 static void test_release_precedes_expired_hold(void) {
@@ -46,9 +46,9 @@ static void test_release_precedes_expired_hold(void) {
     start(&controller, 0);
     assert(update(&controller, true, true, 10) == POWER_ACTION_NONE);
 
-    assert(update(&controller, false, true, 1011) == POWER_ACTION_REQUEST_CHANGED);
+    assert(update(&controller, false, true, 1011) == POWER_ACTION_TORQUE_REQUEST_CHANGED);
     assert(controller.phase == POWER_PHASE_READY);
-    assert(controller.requested_on);
+    assert(controller.torque_disabled);
 }
 
 static void test_strict_shutdown_boundaries(void) {
@@ -59,7 +59,7 @@ static void test_strict_shutdown_boundaries(void) {
     assert(update(&controller, true, true, 1010) == POWER_ACTION_NONE);
     assert(update(&controller, true, true, 1011) == POWER_ACTION_BEGIN_SHUTDOWN);
     assert(controller.phase == POWER_PHASE_SHUTDOWN_DELAY);
-    assert(!controller.requested_on);
+    assert(!controller.torque_disabled);
 
     assert(update(&controller, true, true, 2011) == POWER_ACTION_NONE);
     assert(update(&controller, true, true, 2012) == POWER_ACTION_FINISH_SHUTDOWN);

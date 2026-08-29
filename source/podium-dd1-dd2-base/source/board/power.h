@@ -15,7 +15,7 @@ typedef enum {
 typedef enum {
     POWER_ACTION_NONE,
     POWER_ACTION_ENABLE_LATCH,
-    POWER_ACTION_REQUEST_CHANGED,
+    POWER_ACTION_TORQUE_REQUEST_CHANGED,
     POWER_ACTION_BEGIN_SHUTDOWN,
     POWER_ACTION_FINISH_SHUTDOWN,
 } PowerAction;
@@ -23,7 +23,7 @@ typedef enum {
 typedef struct {
     PowerPhase phase;
     uint32_t deadline_ms;
-    bool requested_on;
+    bool torque_disabled;
 } PowerController;
 
 void power_controller_init(PowerController *controller);
