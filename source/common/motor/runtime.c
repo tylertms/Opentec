@@ -42,6 +42,7 @@ enum {
     MOTOR_PARAMETER_DRIVE_CURRENT = 20,
     MOTOR_PARAMETER_STEERING_RANGE = 32,
     MOTOR_PARAMETER_OVERALL_GAIN = 33,
+    MOTOR_PARAMETER_INTERPOLATION = 38,
     MOTOR_PARAMETER_FILTER = 39,
     MOTOR_PARAMETER_CONSTANT_GAIN = 40,
     MOTOR_PARAMETER_WINDOW_GAIN = 41,
@@ -69,6 +70,7 @@ typedef struct {
     MotorAuxiliaryTelemetry auxiliary_telemetry;
     MotorSpiTransferBuffers spi;
     MotorDriveCommand live_drive;
+    MotorDriveInterpolationState drive_interpolation;
     MotorControlMode mode;
     uint32_t service_tick;
     int16_t electrical_angle;
@@ -166,8 +168,12 @@ static void motor_runtime_encoder_position_refresh(MotorRuntime *runtime) {
  * @return Saturated current command for the normal FOC cycle.
  */
 static int16_t motor_runtime_current_resolve(MotorRuntime *runtime) {
-    int16_t current =
-        MLIB_AddSat_F16(runtime->live_drive.primary_current, runtime->live_drive.secondary_current);
+    uint8_t interpolation_setting =
+        (uint8_t)runtime->parameters.entries[MOTOR_PARAMETER_INTERPOLATION].value;
+    int16_t primary_current = interpolation_setting < MOTOR_DRIVE_INTERPOLATION_SETTING_COUNT
+                                  ? runtime->drive_interpolation.output
+                                  : runtime->live_drive.primary_current;
+    int16_t current = MLIB_AddSat_F16(primary_current, runtime->live_drive.secondary_current);
     if (!runtime->calibration_valid || !runtime->encoder_index_detected) {
         return current;
     }
@@ -732,8 +738,8 @@ void motor_runtime_initialize(void) {
  * @brief Services deferred motor runtime work.
  *
  * Local force feedback is mixed once per service tick and applied to the live FOC command.
- * Published temperature windows and measured torque are also exposed through the read-only
- * parameter bank. The seven-interrupt event remains available for the recovered estimator path.
+ * Seven-ADC events advance the selected force interpolation response. Published temperature
+ * windows and measured torque are also exposed through the read-only parameter bank.
  */
 void motor_runtime_poll(void) {
     int32_t centered_position = motor_centered_position_resolve(motor_runtime.encoder.position,
@@ -742,6 +748,13 @@ void motor_runtime_poll(void) {
             &motor_runtime.protocol, motor_runtime.service_tick, centered_position,
             motor_runtime.motion_sample.filtered_position_delta)) {
         motor_runtime_drive_apply(&motor_runtime);
+    }
+
+    if (motor_runtime.control_update_pending) {
+        (void)motor_drive_interpolation_step(
+            &motor_runtime.drive_interpolation, motor_runtime.live_drive.primary_current,
+            (uint8_t)motor_runtime.parameters.entries[MOTOR_PARAMETER_INTERPOLATION].value);
+        motor_runtime.control_update_pending = false;
     }
 
     if (motor_auxiliary_samples_resolve(&motor_runtime.auxiliary_accumulator,

@@ -120,6 +120,7 @@ motor_drive_test = executable(
   'motor-drive-test',
   'source/drive.c',
   motor_drive_sources,
+  motor_motion_sources,
   include_directories: common_include,
 )
 
@@ -188,6 +189,7 @@ motor_protocol_test = executable(
   motor_drive_sources,
   motor_force_feedback_sources,
   motor_link_frame_sources,
+  motor_motion_sources,
   include_directories: common_include,
 )
 

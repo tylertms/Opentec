@@ -32,8 +32,24 @@ static void test_full_torque_and_gates(void) {
     assert(command.controller_coefficient == 0x11c7U);
 }
 
+static void test_interpolation_filter(void) {
+    MotorDriveInterpolationState state = {0};
+    assert(motor_drive_interpolation_step(&state, 10000, 6U) == 289);
+    assert(state.error == 10000);
+    assert(state.accumulator == 29570U);
+    assert(motor_drive_interpolation_step(&state, 10000, 6U) == 580);
+    assert(state.error == 9701);
+    assert(state.accumulator == 58251U);
+
+    assert(motor_drive_interpolation_step(&state, -1234, 20U) == -1234);
+    assert(state.output == -1234);
+    assert(state.error == 0);
+    assert(state.accumulator == 0U);
+}
+
 int main(void) {
     test_normal_product_scales();
     test_full_torque_and_gates();
+    test_interpolation_filter();
     return 0;
 }
