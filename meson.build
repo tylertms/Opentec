@@ -27,6 +27,7 @@ motor_control_sources = files(
   'source/common/motor/foc.c',
   'source/common/motor/io.c',
   'source/common/motor/peripherals.c',
+  'source/common/motor/spi.c',
 ) + motor_current_offset_calibration_sources + motor_service_sources
 wqr_frame_sources = files('source/common/wqr_frame.c')
 
