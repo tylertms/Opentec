@@ -29,6 +29,7 @@ if motor_target
     'dac',
     'dmamux',
     'edma',
+    'flash',
     'ftm',
     'gpio',
     'i2c',
