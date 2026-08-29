@@ -13,8 +13,13 @@ static void test_initialization(void) {
     assert(bank.entries[1].width == 4U);
     assert(bank.entries[2].value == UINT32_MAX);
     assert(bank.entries[2].width == 0U);
+    assert(bank.entries[3].width == 2U);
+    assert(bank.entries[3].writable);
     assert(bank.entries[4].value == 0xaaU);
     assert(bank.entries[4].writable);
+    assert(bank.entries[8].value == 0U);
+    assert(bank.entries[8].width == 1U);
+    assert(!bank.entries[8].writable);
     assert(bank.entries[17].width == 4U);
     assert(!bank.entries[17].writable);
     assert(bank.entries[32].value == 0xedU);

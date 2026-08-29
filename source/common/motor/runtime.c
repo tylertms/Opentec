@@ -32,9 +32,11 @@
 #include "common/motor/velocity_control.h"
 
 enum {
+    MOTOR_PARAMETER_RESET_COMMAND = 3,
     MOTOR_PARAMETER_DIRECTION_COMMAND = 5,
     MOTOR_PARAMETER_CALIBRATION_COMMAND = 6,
     MOTOR_PARAMETER_CALIBRATION_VERSION = 7,
+    MOTOR_PARAMETER_ENCODER_INDEX = 8,
     MOTOR_PARAMETER_TORQUE = 16,
     MOTOR_PARAMETER_SERVICE_TICK = 17,
     MOTOR_PARAMETER_MOTOR_TEMPERATURE = 18,
@@ -268,6 +270,7 @@ static void motor_runtime_control_cycle(MotorRuntime *runtime, int16_t torque_cu
  */
 static void motor_runtime_index_seek_restart(MotorRuntime *runtime) {
     runtime->encoder_index_detected = false;
+    runtime->parameters.entries[MOTOR_PARAMETER_ENCODER_INDEX].value = 0U;
     runtime->timing.countdowns[kMotorCountdownEncoderIndex].ticks = 5000U;
     runtime->timing.countdowns[kMotorCountdownEncoderIndex].active = 0U;
     motor_encoder_index_interrupt_enable();
@@ -636,6 +639,7 @@ static void motor_runtime_encoder_index_handler(uint16_t counter, void *context)
         runtime->encoder_zero_captured = true;
     }
     runtime->encoder_index_detected = true;
+    runtime->parameters.entries[MOTOR_PARAMETER_ENCODER_INDEX].value = 1U;
 }
 
 /**
@@ -783,12 +787,17 @@ void motor_runtime_initialize(void) {
 /**
  * @brief Services deferred motor runtime work.
  *
- * Local force feedback is mixed once per service tick and applied to the live FOC command.
+ * The reset parameter is serviced before local force feedback is mixed once per service tick and
+ * applied to the live FOC command.
  * Seven-ADC events advance the selected force interpolation response. Run mode publishes natural
  * friction and the complete product-scaled current command. Published temperature windows are
  * exposed through the read-only parameter bank.
  */
 void motor_runtime_poll(void) {
+    if (motor_runtime.parameters.entries[MOTOR_PARAMETER_RESET_COMMAND].value == 0x05faU) {
+        NVIC_SystemReset();
+    }
+
     int32_t centered_position = motor_centered_position_resolve(motor_runtime.encoder.position,
                                                                 motor_runtime.protocol.center);
     if (motor_protocol_force_feedback_service(
