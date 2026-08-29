@@ -14,6 +14,7 @@
 #include "force_feedback/output_enable.h"
 #include "force_feedback/script_runtime.h"
 #include "force_feedback/state.h"
+#include "motor/calibration.h"
 #include "motor/command_mailbox.h"
 #include "motor/command_serial.h"
 #include "motor/live_frame.h"
@@ -104,6 +105,7 @@ static WheelTransferService wheel_transfer_service;
 static MotorStatusService motor_status_service;
 static MotorTelemetryService motor_telemetry_service;
 static MotorTuningService motor_tuning_service;
+static MotorCalibrationService motor_calibration_service;
 static BaseSettings base_settings;
 static BaseSettingsPersistence settings_persistence;
 static TuningProfile runtime_tuning_profile;
@@ -116,6 +118,7 @@ static bool motor_position_ready;
 static WheelPositionCalibration wheel_position_calibration;
 static WheelVelocityEstimator wheel_velocity_estimator;
 static WheelCenterCaptureCommand wheel_center_capture_command;
+static MotorCalibrationOperation motor_calibration_operation;
 static PedalService pedal_service;
 static PedalBrakeIndicator pedal_brake_indicator;
 static WheelVibrationOutput wheel_vibration_output;
@@ -412,6 +415,7 @@ static void initialize_motor(void) {
         .calibration_active = 0,
     };
     motor_tuning_ready = false;
+    motor_calibration_service_init(&motor_calibration_service);
     apply_active_tuning_profile();
     motor_probe_init(&motor_probe);
     motor_probe_start(&motor_probe, platform_time_ms());
@@ -712,9 +716,18 @@ static void service_motor(void) {
         motor_command_request_pending = false;
     }
     if (motor_tuning_ready) {
-        motor_telemetry_service_run(&motor_telemetry_service, platform_time_ms());
-        motor_status_service_run(&motor_status_service, platform_time_ms());
-        motor_tuning_service_run(&motor_tuning_service);
+        bool calibration_pending = motor_calibration_service_pending(&motor_calibration_service);
+        bool calibration_can_run = motor_calibration_service_owns_bus(&motor_calibration_service) ||
+                                   platform_aux_bus_status() == PLATFORM_AUX_BUS_IDLE;
+        if (calibration_pending && calibration_can_run) {
+            motor_calibration_service_run(&motor_calibration_service,
+                                          wheel_service_mode(&wheel_service),
+                                          motor_telemetry_service_value(&motor_telemetry_service));
+        } else {
+            motor_telemetry_service_run(&motor_telemetry_service, platform_time_ms());
+            motor_status_service_run(&motor_status_service, platform_time_ms());
+            motor_tuning_service_run(&motor_tuning_service);
+        }
     }
 }
 
@@ -821,6 +834,11 @@ static void service_usb_output(void) {
         if (center_capture_action == WHEEL_CENTER_CAPTURE_REQUESTED) {
             capture_current_wheel_center();
         }
+        return;
+    }
+
+    if (motor_calibration_command_decode(&usb_output_command, &motor_calibration_operation)) {
+        motor_calibration_service_request(&motor_calibration_service, motor_calibration_operation);
         return;
     }
 

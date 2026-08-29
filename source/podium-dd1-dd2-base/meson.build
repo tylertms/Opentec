@@ -95,6 +95,7 @@ motor_live_frame_sources = files('source/motor/live_frame.c')
 motor_output_transport_sources = files('source/motor/output_transport.c')
 motor_output_interlock_sources = files('source/motor/output_interlock.c')
 motor_probe_sources = files('source/motor/probe.c')
+motor_calibration_sources = files('source/motor/calibration.c')
 motor_status_service_sources = files('source/motor/status_service.c')
 motor_telemetry_sources = files('source/motor/telemetry.c')
 motor_telemetry_service_sources = files('source/motor/telemetry_service.c')
@@ -264,6 +265,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'motor-output-transport': 'source/motor/output_transport.c',
     'motor-output-interlock': 'source/motor/output_interlock.c',
     'motor-probe': 'source/motor/probe.c',
+    'motor-calibration': 'source/motor/calibration.c',
     'motor-status-service': 'source/motor/status_service.c',
     'motor-telemetry': 'source/motor/telemetry.c',
     'motor-telemetry-service': 'source/motor/telemetry_service.c',
@@ -1234,6 +1236,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  motor_calibration_test = executable(
+    'base-motor-calibration-test',
+    'tests/source/motor_calibration.c',
+    motor_calibration_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   motor_status_service_test = executable(
     'base-motor-status-service-test',
     'tests/source/motor_status_service.c',
@@ -2075,6 +2085,7 @@ if not meson.is_cross_build()
   )
   test('base-motor-output-interlock', motor_output_interlock_test, suite: ['base', 'motor'])
   test('base-motor-probe', motor_probe_test, suite: ['base', 'motor'])
+  test('base-motor-calibration', motor_calibration_test, suite: ['base', 'motor', 'calibration'])
   test('base-motor-status-service', motor_status_service_test, suite: ['base', 'motor'])
   test('base-motor-telemetry-service', motor_telemetry_service_test, suite: ['base', 'motor'])
   test('base-motor-tuning-parameter', motor_tuning_parameter_test, suite: ['base', 'motor'])
