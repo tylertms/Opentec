@@ -1,0 +1,5 @@
+[wrap-git]
+url = https://github.com/nxp-mcuxpresso/rtcesl.git
+revision = 1275b1ef6964485dc3ce68b1b2e87eaa1161505e
+depth = 1
+patch_directory = rtcesl

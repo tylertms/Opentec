@@ -9,12 +9,14 @@ if motor_target
   mcux_sdk = subproject('mcux-sdk')
   cmsis = subproject('cmsis')
   freemaster = subproject('freemaster')
+  rtcesl = subproject('rtcesl')
   sdk_drivers = mcux_sdk.get_variable('mcux_sdk_driver_sources')
   sdk_driver_include = mcux_sdk.get_variable('mcux_sdk_driver_includes')
   sdk_device = mcux_sdk.get_variable('mcux_sdk_devices')['MKV10Z1287']
   cmsis_dependency = cmsis.get_variable('cmsis_dependency')
   freemaster_sources = freemaster.get_variable('freemaster_sources')
   freemaster_includes = freemaster.get_variable('freemaster_includes')
+  rtcesl_dependency = rtcesl.get_variable('rtcesl_dependency')
   firmware_include = include_directories('source')
   linker_script = files('source/firmware.ld')[0]
   objcopy = find_program('objcopy')
@@ -80,7 +82,7 @@ if motor_target
       '-D__START=firmware_main',
       '-D__STARTUP_CLEAR_BSS',
     ],
-    dependencies: cmsis_dependency,
+    dependencies: [cmsis_dependency, rtcesl_dependency],
     include_directories: [
       firmware_include,
       freemaster_includes,
