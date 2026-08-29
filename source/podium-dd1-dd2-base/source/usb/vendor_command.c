@@ -10,6 +10,8 @@ enum {
     VENDOR_COMMAND_SCRIPT_GROUP = 0,
     VENDOR_COMMAND_SCRIPT_SAMPLES_SELECTOR = 4,
     VENDOR_COMMAND_SCRIPT_SAMPLES_LAST_FIRST = 0x01f5,
+    VENDOR_COMMAND_SCRIPT_SLOT_SELECTOR = 5,
+    VENDOR_COMMAND_SCRIPT_SLOT_LAST = 14,
     VENDOR_COMMAND_SCRIPT_STATUS_SELECTOR = 6,
     VENDOR_COMMAND_SCRIPT_VALUES_SELECTOR = 7,
     VENDOR_COMMAND_SCRIPT_AXES_SELECTOR = 8,
@@ -51,6 +53,10 @@ static int8_t command_kind(uint8_t opcode, const uint8_t *payload) {
                 ((uint16_t)payload[5] | (uint16_t)((uint16_t)payload[6] << 8)) <=
                     VENDOR_COMMAND_SCRIPT_SAMPLES_LAST_FIRST) {
                 return USB_VENDOR_COMMAND_SCRIPT_SAMPLES;
+            }
+            if (payload[4] == VENDOR_COMMAND_SCRIPT_SLOT_SELECTOR &&
+                payload[5] <= VENDOR_COMMAND_SCRIPT_SLOT_LAST) {
+                return USB_VENDOR_COMMAND_SCRIPT_SLOT;
             }
             if (payload[4] == VENDOR_COMMAND_SCRIPT_STATUS_SELECTOR) {
                 return USB_VENDOR_COMMAND_SCRIPT_STATUS;
@@ -96,6 +102,25 @@ bool usb_vendor_command_script_sample_index(const UsbVendorCommand *command, uin
     }
     *index = (uint16_t)command->arguments[4] | (uint16_t)((uint16_t)command->arguments[5] << 8);
     return *index <= VENDOR_COMMAND_SCRIPT_SAMPLES_LAST_FIRST;
+}
+
+/**
+ * @brief Reads the slot index from a script slot query.
+ *
+ * Reads command argument byte 4 after confirming that the decoded command selects a reportable
+ * script slot from zero through 14.
+ *
+ * @param[in] command Decoded script slot query.
+ * @param[out] index Destination for the slot index.
+ * @return True when the command contains a reportable script slot index.
+ */
+bool usb_vendor_command_script_slot_index(const UsbVendorCommand *command, uint8_t *index) {
+    if (command == NULL || index == NULL || command->kind != USB_VENDOR_COMMAND_SCRIPT_SLOT ||
+        command->arguments == NULL || command->length < 5) {
+        return false;
+    }
+    *index = command->arguments[4];
+    return *index <= VENDOR_COMMAND_SCRIPT_SLOT_LAST;
 }
 
 /**

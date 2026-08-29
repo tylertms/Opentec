@@ -60,7 +60,9 @@ static void test_classifies_script_status_query(void) {
     assert(command.kind == USB_VENDOR_COMMAND_SCRIPT_STATUS);
 
     payload[4] = 5;
+    payload[5] = 15;
     assert(!usb_vendor_command_decode(&output, &command));
+    payload[5] = 0;
     payload[4] = 7;
     assert(usb_vendor_command_decode(&output, &command));
     assert(command.kind == USB_VENDOR_COMMAND_SCRIPT_VALUES);
@@ -89,6 +91,26 @@ static void test_decodes_script_sample_query(void) {
     assert(!usb_vendor_command_script_sample_index(&command, NULL));
     command.kind = USB_VENDOR_COMMAND_SCRIPT_STATUS;
     assert(!usb_vendor_command_script_sample_index(&command, &index));
+}
+
+static void test_decodes_script_slot_query(void) {
+    uint8_t payload[63] = {[4] = 5, [5] = 14};
+    UsbOutputCommand output = make_output(payload, 0x0a);
+    UsbVendorCommand command;
+    uint8_t index = 0;
+
+    assert(usb_vendor_command_decode(&output, &command));
+    assert(command.kind == USB_VENDOR_COMMAND_SCRIPT_SLOT);
+    assert(usb_vendor_command_script_slot_index(&command, &index));
+    assert(index == 14);
+
+    payload[5] = 15;
+    assert(!usb_vendor_command_decode(&output, &command));
+    assert(!usb_vendor_command_script_slot_index(&command, &index));
+    assert(!usb_vendor_command_script_slot_index(NULL, &index));
+    assert(!usb_vendor_command_script_slot_index(&command, NULL));
+    command.kind = USB_VENDOR_COMMAND_SCRIPT_STATUS;
+    assert(!usb_vendor_command_script_slot_index(&command, &index));
 }
 
 static void test_identifies_motor_command_request(void) {
@@ -189,6 +211,7 @@ int main(void) {
     test_validates_extended_reset_signature();
     test_classifies_script_status_query();
     test_decodes_script_sample_query();
+    test_decodes_script_slot_query();
     test_identifies_motor_command_request();
     test_decodes_wheel_transfer_commands();
     test_decodes_tuning_menu_wheel_report();

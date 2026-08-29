@@ -116,6 +116,7 @@ typedef enum {
     FORCE_FEEDBACK_SCRIPT_REPORT_NONE,
     FORCE_FEEDBACK_SCRIPT_REPORT_AXES,
     FORCE_FEEDBACK_SCRIPT_REPORT_SAMPLES,
+    FORCE_FEEDBACK_SCRIPT_REPORT_SLOT,
     FORCE_FEEDBACK_SCRIPT_REPORT_STATUS,
     FORCE_FEEDBACK_SCRIPT_REPORT_VALUES,
 } ForceFeedbackScriptReportKind;
@@ -200,6 +201,7 @@ static ForceFeedbackScriptOutputConfig force_feedback_script_output_config;
 static uint8_t force_feedback_script_response_sequence;
 static ForceFeedbackScriptReportKind force_feedback_script_report_pending;
 static uint16_t force_feedback_script_sample_report_index;
+static uint8_t force_feedback_script_slot_report_index;
 static uint32_t force_feedback_ramp_deadline_ms;
 static ForceOutputReport motor_output_report;
 static MotorLiveFrame motor_live_frame;
@@ -903,6 +905,16 @@ static void prepare_usb_vendor_response(void) {
         usb_vendor_response_kind = USB_VENDOR_RESPONSE_SCRIPT_REPORT;
         return;
     }
+    if (force_feedback_script_report_pending == FORCE_FEEDBACK_SCRIPT_REPORT_SLOT &&
+        force_feedback_script_slot_report_encode(
+            &force_feedback_script_system.values, force_feedback_script_slot_report_index,
+            &force_feedback_script_response_sequence, usb_vendor_response,
+            sizeof(usb_vendor_response))) {
+        force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_NONE;
+        usb_vendor_response_length = FORCE_FEEDBACK_SCRIPT_SLOT_RESPONSE_SIZE;
+        usb_vendor_response_kind = USB_VENDOR_RESPONSE_SCRIPT_REPORT;
+        return;
+    }
     if (force_feedback_script_report_pending == FORCE_FEEDBACK_SCRIPT_REPORT_STATUS &&
         force_feedback_script_status_report_encode(
             &force_feedback_script_system.values, force_feedback_script_system.mode,
@@ -1060,6 +1072,7 @@ static void initialize_force_feedback_script(void) {
     force_feedback_script_response_sequence = 1;
     force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_NONE;
     force_feedback_script_sample_report_index = 0;
+    force_feedback_script_slot_report_index = 0;
     force_feedback_ramp_deadline_ms = 0;
     platform_force_feedback_timer_init(handle_force_feedback_timer_tick,
                                        &force_feedback_script_system);
@@ -1365,6 +1378,11 @@ static void service_usb_output(void) {
         if (usb_vendor_command_script_sample_index(&usb_vendor_command,
                                                    &force_feedback_script_sample_report_index)) {
             force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_SAMPLES;
+            return;
+        }
+        if (usb_vendor_command_script_slot_index(&usb_vendor_command,
+                                                 &force_feedback_script_slot_report_index)) {
+            force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_SLOT;
             return;
         }
         if (usb_vendor_command.kind == USB_VENDOR_COMMAND_SCRIPT_STATUS) {

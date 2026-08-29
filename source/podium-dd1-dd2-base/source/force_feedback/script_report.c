@@ -10,6 +10,12 @@ enum {
     SCRIPT_AXES_PADDING_SIZE = 8,
     SCRIPT_SAMPLES_RESPONSE_KIND = 0x2b,
     SCRIPT_SAMPLES_RESPONSE_MODE = 4,
+    SCRIPT_SLOT_RESPONSE_KIND = 0x23,
+    SCRIPT_SLOT_RESPONSE_MODE = 5,
+    SCRIPT_SLOT_AVERAGE_RATE_OFFSET = 23,
+    SCRIPT_SLOT_DELTA_RATE_OFFSET = 27,
+    SCRIPT_SLOT_EXECUTION_COUNT_OFFSET = 31,
+    SCRIPT_SLOT_TICK_SNAPSHOT_OFFSET = 35,
     SCRIPT_STATUS_RESPONSE_KIND = 0x12,
     SCRIPT_STATUS_RESPONSE_MODE = 6,
     SCRIPT_VALUES_RESPONSE_KIND = 0x31,
@@ -113,6 +119,42 @@ bool force_feedback_script_samples_report_encode(const ForceFeedbackScriptRuntim
         encode_value(response + SCRIPT_RESPONSE_PAYLOAD_OFFSET + index * 4u,
                      runtime->samples.values[first_sample + index]);
     }
+    return true;
+}
+
+/**
+ * @brief Encodes one script slot's detail vendor response.
+ *
+ * Writes the 25 00 SS 23 05 envelope, slot index, raw slot state, four slot values, average and
+ * delta rates, execution count, and tick snapshot in least-significant-byte-first order.
+ *
+ * @param[in] runtime Current force-feedback script runtime.
+ * @param[in] slot Reportable script slot index from zero through 14.
+ * @param[in,out] sequence Shared nonzero vendor response sequence.
+ * @param[out] response Destination for the complete 39-byte response.
+ * @param[in] length Number of writable response bytes.
+ * @return True when the slot is reportable and the complete response was encoded.
+ */
+bool force_feedback_script_slot_report_encode(const ForceFeedbackScriptRuntime *runtime,
+                                              uint8_t slot, uint8_t *sequence, uint8_t *response,
+                                              size_t length) {
+    if (runtime == NULL || slot > FORCE_FEEDBACK_SCRIPT_SLOT_REPORT_LAST || sequence == NULL ||
+        response == NULL || length < FORCE_FEEDBACK_SCRIPT_SLOT_RESPONSE_SIZE) {
+        return false;
+    }
+
+    const ForceFeedbackScriptSlot *selected = &runtime->slots[slot];
+    encode_header(sequence, SCRIPT_SLOT_RESPONSE_KIND, SCRIPT_SLOT_RESPONSE_MODE, response);
+    response[SCRIPT_RESPONSE_PAYLOAD_OFFSET] = slot;
+    response[SCRIPT_RESPONSE_PAYLOAD_OFFSET + 1u] = selected->state;
+    for (uint8_t index = 0; index < 4; index++) {
+        encode_value(response + SCRIPT_RESPONSE_PAYLOAD_OFFSET + 2u + index * 4u,
+                     selected->values[index]);
+    }
+    encode_value(response + SCRIPT_SLOT_AVERAGE_RATE_OFFSET, selected->average_rate);
+    encode_value(response + SCRIPT_SLOT_DELTA_RATE_OFFSET, selected->delta_rate);
+    encode_value(response + SCRIPT_SLOT_EXECUTION_COUNT_OFFSET, selected->execution_count);
+    encode_value(response + SCRIPT_SLOT_TICK_SNAPSHOT_OFFSET, selected->tick_snapshot);
     return true;
 }
 
