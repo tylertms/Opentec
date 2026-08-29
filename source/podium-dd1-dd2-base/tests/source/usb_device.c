@@ -412,6 +412,23 @@ static void test_exchanges_xbox_gip_discovery(void) {
     assert(usb_device_take_xbox_session_actions() ==
            (USB_XBOX_GIP_SESSION_ACTION_SEND_READY | USB_XBOX_GIP_SESSION_ACTION_REFRESH_STATE));
     assert(usb_device_take_xbox_session_actions() == USB_XBOX_GIP_SESSION_ACTION_NONE);
+
+    UsbXboxGipInputSnapshot snapshot = {
+        .buttons = {0x12, 0x34},
+        .steering = 0x5678,
+        .pedals = {0x1234, 0x2345, 0x3456},
+        .auxiliary_pedal = 0x45,
+        .steering_range_degrees = 1080,
+    };
+    assert(usb_device_queue_xbox_input(&snapshot));
+    assert(!usb_device_queue_xbox_input(&snapshot));
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 1, 0, 0);
+    usb_device_service();
+    assert(sent.endpoint == 1 && sent.length == USB_XBOX_GIP_INPUT_RESPONSE_SIZE);
+    assert(sent.data[0] == 0x20 && sent.data[2] == 3 && sent.data[3] == 0x32);
+    assert(sent.data[4] == 0x12 && sent.data[5] == 0x34);
+    assert(sent.data[6] == 0x78 && sent.data[7] == 0x56);
+    assert(sent.data[17] == 0x30 && sent.data[18] == 0x2a);
 }
 
 int main(void) {

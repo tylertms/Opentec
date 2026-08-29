@@ -770,6 +770,27 @@ bool usb_device_send_input(const uint8_t *report, uint8_t length) {
 }
 
 /**
+ * @brief Queues the current Xbox GIP controller state.
+ *
+ * Encodes one state packet with the next shared sequence value. A queued packet can wait behind an
+ * active endpoint transfer, but it does not replace a pending discovery, session, or state reply.
+ *
+ * @param[in] snapshot Current logical Xbox controller state.
+ * @return True when the state packet was queued.
+ */
+bool usb_device_queue_xbox_input(const UsbXboxGipInputSnapshot *snapshot) {
+    if (operating_mode != USB_OPERATING_MODE_XBOX_GIP || !usb_device_configured() ||
+        snapshot == 0 || xbox_response_ready) {
+        return false;
+    }
+    uint8_t sequence = usb_xbox_gip_sequence_take(&xbox_service.next_sequence);
+    usb_xbox_gip_input_response_encode(sequence, snapshot, xbox_response);
+    xbox_response_length = USB_XBOX_GIP_INPUT_RESPONSE_SIZE;
+    xbox_response_ready = true;
+    return true;
+}
+
+/**
  * @brief Sends one native vendor HID report.
  *
  * Submits the requested bytes to endpoint 1 without comparing them with prior input, so repeated

@@ -7,6 +7,7 @@
 #include "board/identity.h"
 #include "usb/console_descriptor.h"
 #include "usb/input_report.h"
+#include "usb/xbox_gip_response.h"
 #include "usb/xbox_gip_session.h"
 
 enum {
@@ -49,6 +50,7 @@ void usb_device_service(void);
 bool usb_device_configured(void);
 bool usb_device_take_output(UsbDeviceOutputReport *report);
 bool usb_device_send_input(const uint8_t *report, uint8_t length);
+bool usb_device_queue_xbox_input(const UsbXboxGipInputSnapshot *snapshot);
 bool usb_device_send_vendor_report(const uint8_t *report, uint8_t length);
 bool usb_device_take_updater_packet(UsbDeviceUpdaterPacket *packet);
 bool usb_device_send_updater_packet(const uint8_t *data, uint8_t length);
