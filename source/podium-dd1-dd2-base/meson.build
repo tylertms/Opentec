@@ -93,6 +93,7 @@ podium_report_descriptor_sources = files('source/usb/podium_report_descriptor.c'
 board_identity_sources = files('source/board/identity.c')
 usb_connection_sources = files('source/usb/connection.c')
 usb_host_capability_recovery_sources = files('source/usb/host_capability_recovery.c')
+usb_playstation_authentication_sources = files('source/usb/playstation_authentication.c')
 a71ch_sources = files('source/secure_element/a71ch.c')
 a71ch_bus_sources = files('source/secure_element/bus.c')
 a71ch_exchange_sources = files('source/secure_element/exchange.c')
@@ -288,6 +289,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'board-identity': 'source/board/identity.c',
     'usb-connection': 'source/usb/connection.c',
     'usb-host-capability-recovery': 'source/usb/host_capability_recovery.c',
+    'usb-playstation-authentication': 'source/usb/playstation_authentication.c',
     'a71ch': 'source/secure_element/a71ch.c',
     'a71ch-bus': 'source/secure_element/bus.c',
     'a71ch-exchange': 'source/secure_element/exchange.c',
@@ -1064,6 +1066,7 @@ if not meson.is_cross_build()
     usb_compatibility_descriptor_sources,
     usb_compatibility_report_descriptor_sources,
     usb_console_descriptor_sources,
+    usb_playstation_authentication_sources,
     usb_feature_download_sources,
     usb_xbox_gip_discovery_sources,
     usb_xbox_gip_metadata_sources,
@@ -1262,6 +1265,13 @@ if not meson.is_cross_build()
     'tests/source/a71ch.c',
     a71ch_sources,
     build_by_default: false,
+    include_directories: base_include,
+  )
+
+  usb_playstation_authentication_test = executable(
+    'base-usb-playstation-authentication-test',
+    'tests/source/playstation_authentication.c',
+    usb_playstation_authentication_sources,
     include_directories: base_include,
   )
 
@@ -2358,6 +2368,11 @@ if not meson.is_cross_build()
     suite: ['base', 'usb', 'xbox'],
   )
   test('base-a71ch', a71ch_test, suite: ['base', 'secure-element'])
+  test(
+    'base-usb-playstation-authentication',
+    usb_playstation_authentication_test,
+    suite: ['base', 'usb', 'secure-element'],
+  )
   test('base-a71ch-bus', a71ch_bus_test, suite: ['base', 'secure-element'])
   test(
     'base-a71ch-exchange',

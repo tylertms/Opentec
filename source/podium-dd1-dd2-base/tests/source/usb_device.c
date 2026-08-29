@@ -133,16 +133,37 @@ static void complete_control_input(void) {
     usb_device_service();
 }
 
+static void complete_control_output(void) {
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 0, 0, 0);
+    usb_device_service();
+}
+
 static void assert_string_descriptor(uint8_t index, const char *expected) {
-    uint8_t request[] = {0x80, 6, index, 3, 0x09, 0x04, 64, 0};
+    uint8_t request[] = {0x80, 6, index, 3, 0x09, 0x04, 0xff, 0};
+    uint8_t descriptor[256] = {0};
+    size_t text_length = strlen(expected);
+    size_t descriptor_length = text_length * 2 + 2;
+    descriptor[0] = (uint8_t)descriptor_length;
+    descriptor[1] = 3;
+    for (size_t character = 0; character < text_length; character++) {
+        descriptor[character * 2 + 2] = (uint8_t)expected[character];
+    }
+
     push_setup(request);
     usb_device_service();
-    size_t length = strlen(expected);
-    assert(sent.length == length * 2 + 2);
-    assert(sent.data[0] == sent.length && sent.data[1] == 3);
-    for (size_t character = 0; character < length; character++) {
-        assert(sent.data[character * 2 + 2] == (uint8_t)expected[character]);
-        assert(sent.data[character * 2 + 3] == 0);
+    size_t offset = 0;
+    while (offset < descriptor_length) {
+        size_t packet_length = descriptor_length - offset;
+        if (packet_length > PLATFORM_USB_PACKET_SIZE) {
+            packet_length = PLATFORM_USB_PACKET_SIZE;
+        }
+        assert(sent.length == packet_length);
+        assert(memcmp(sent.data, descriptor + offset, packet_length) == 0);
+        offset += packet_length;
+        if (offset < descriptor_length) {
+            push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 0, 0, 0);
+            usb_device_service();
+        }
     }
     complete_control_input();
 }
@@ -496,6 +517,106 @@ static void test_exchanges_xbox_gip_discovery(void) {
     assert(memcmp(output.data, vendor_tunnel, sizeof(vendor_tunnel)) == 0);
 }
 
+static void test_exchanges_playstation_authentication(void) {
+    static const uint8_t get_device_descriptor[] = {0x80, 6, 0, 1, 0, 0, 18, 0};
+    static const uint8_t get_configuration_descriptor[] = {0x80, 6, 0, 2, 0, 0, 41, 0};
+    static const uint8_t get_format_report[] = {0xa1, 1, 0xf3, 3, 0, 0, 8, 0};
+    static const uint8_t get_status_report[] = {0xa1, 1, 0xf2, 3, 0, 0, 16, 0};
+    static const uint8_t get_response_report[] = {0xa1, 1, 0xf1, 3, 0, 0, 64, 0};
+    static const uint8_t set_request_report[] = {0x21, 9, 0xf0, 3, 0, 0, 64, 0};
+    uint8_t expected_request[USB_PLAYSTATION_AUTHENTICATION_REQUEST_SIZE];
+    uint8_t actual_request[USB_PLAYSTATION_AUTHENTICATION_REQUEST_SIZE];
+    uint8_t response[USB_PLAYSTATION_AUTHENTICATION_RESPONSE_SIZE];
+
+    for (uint16_t index = 0; index < sizeof(expected_request); index++) {
+        expected_request[index] = (uint8_t)(index ^ 0x5a);
+    }
+    for (uint16_t index = 0; index < sizeof(response); index++) {
+        response[index] = (uint8_t)(index ^ 0xa5);
+    }
+
+    usb_device_init(BOARD_VARIANT_DD2);
+    assert(usb_device_set_playstation_mode());
+    assert(usb_device_operating_mode() == USB_OPERATING_MODE_PLAYSTATION);
+
+    push_setup(get_device_descriptor);
+    usb_device_service();
+    assert(sent.data[8] == 0xb7 && sent.data[9] == 0x0e);
+    assert(sent.data[10] == 0x06 && sent.data[11] == 0x0e);
+    assert(sent.data[15] == 9);
+    complete_control_input();
+
+    push_setup(get_configuration_descriptor);
+    usb_device_service();
+    assert(sent.length == 41);
+    assert(sent.data[25] == 160 && sent.data[26] == 0);
+    assert(sent.data[29] == 0x03 && sent.data[36] == 0x84);
+    complete_control_input();
+    assert_string_descriptor(9, "FANATEC Podium Wheel Base DD2 PlayStation 4");
+
+    push_setup(get_format_report);
+    usb_device_service();
+    assert(sent.length == 8);
+    assert(sent.data[0] == 0xf3 && sent.data[1] == 0);
+    assert(sent.data[2] == 0x38 && sent.data[3] == 0x38);
+    complete_control_input();
+
+    for (uint8_t fragment = 0; fragment <= 4; fragment++) {
+        uint8_t report[USB_PLAYSTATION_AUTHENTICATION_REPORT_SIZE] = {0xf0, 0x27, fragment, 0};
+        uint16_t offset = (uint16_t)fragment * 0x38;
+        uint16_t remaining = sizeof(expected_request) - offset;
+        uint8_t count = remaining < 0x38 ? (uint8_t)remaining : 0x38;
+        memcpy(report + 4, expected_request + offset, count);
+
+        receive_count = 0;
+        push_setup(set_request_report);
+        usb_device_service();
+        assert(receive_count == 1 && received[0].endpoint == 0 && received[0].length == 64);
+        assert(received[0].data_one);
+        push_event(PLATFORM_USB_EVENT_OUT, 0, report, sizeof(report));
+        usb_device_service();
+        assert(sent.endpoint == 0 && sent.length == 0 && sent.data_one);
+        complete_control_output();
+    }
+
+    assert(usb_device_take_playstation_authentication_request(actual_request));
+    assert(memcmp(actual_request, expected_request, sizeof(expected_request)) == 0);
+    assert(!usb_device_take_playstation_authentication_request(actual_request));
+
+    push_setup(get_status_report);
+    usb_device_service();
+    assert(sent.length == 16 && sent.data[0] == 0xf2 && sent.data[1] == 0x27);
+    assert(sent.data[2] == USB_PLAYSTATION_AUTHENTICATION_PENDING);
+    complete_control_input();
+
+    assert(usb_device_publish_playstation_authentication_response(response, sizeof(response)));
+    assert(usb_device_playstation_authentication_response_active());
+    push_setup(get_status_report);
+    usb_device_service();
+    assert(sent.data[2] == USB_PLAYSTATION_AUTHENTICATION_IDLE);
+    complete_control_input();
+
+    for (uint8_t fragment = 0; fragment < 19; fragment++) {
+        push_setup(get_response_report);
+        usb_device_service();
+        assert(sent.length == 64 && sent.data[0] == 0xf1 && sent.data[1] == 0x27);
+        assert(sent.data[2] == fragment && sent.data[3] == 0);
+        uint16_t offset = (uint16_t)fragment * 0x38;
+        uint16_t remaining = sizeof(response) - offset;
+        uint8_t count = remaining < 0x38 ? (uint8_t)remaining : 0x38;
+        assert(memcmp(sent.data + 4, response + offset, count) == 0);
+        for (uint8_t index = (uint8_t)(count + 4); index < sizeof(sent.data); index++) {
+            assert(sent.data[index] == 0);
+        }
+        complete_control_input();
+    }
+    assert(!usb_device_playstation_authentication_response_active());
+
+    push_setup(get_response_report);
+    usb_device_service();
+    assert(stalled);
+}
+
 int main(void) {
     test_enumerates_podium_device();
     test_returns_xbox_security_descriptor();
@@ -503,5 +624,6 @@ int main(void) {
     test_reenumerates_compatibility_modes();
     test_exchanges_updater_packets();
     test_exchanges_xbox_gip_discovery();
+    test_exchanges_playstation_authentication();
     return 0;
 }

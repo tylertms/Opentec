@@ -7,6 +7,7 @@
 #include "board/identity.h"
 #include "usb/console_descriptor.h"
 #include "usb/input_report.h"
+#include "usb/playstation_authentication.h"
 #include "usb/xbox_gip_response.h"
 #include "usb/xbox_gip_session.h"
 
@@ -45,6 +46,7 @@ bool usb_device_set_input_mode(UsbInputReportMode mode);
 UsbInputReportMode usb_device_input_mode(void);
 bool usb_device_set_operating_mode(UsbOperatingMode mode);
 bool usb_device_set_xbox_mode(uint8_t wheel_mode, const uint8_t digest[USB_XBOX_GIP_DIGEST_SIZE]);
+bool usb_device_set_playstation_mode(void);
 UsbOperatingMode usb_device_operating_mode(void);
 void usb_device_service(void);
 bool usb_device_configured(void);
@@ -60,5 +62,11 @@ bool usb_device_send_vendor_report(const uint8_t *report, uint8_t length);
 bool usb_device_take_updater_packet(UsbDeviceUpdaterPacket *packet);
 bool usb_device_send_updater_packet(const uint8_t *data, uint8_t length);
 UsbXboxGipSessionAction usb_device_take_xbox_session_actions(void);
+bool usb_device_take_playstation_authentication_request(
+    uint8_t request[USB_PLAYSTATION_AUTHENTICATION_REQUEST_SIZE]);
+bool usb_device_publish_playstation_authentication_response(const uint8_t *response,
+                                                            uint16_t response_length);
+bool usb_device_playstation_authentication_response_active(void);
+void usb_device_fail_playstation_authentication(void);
 
 #endif

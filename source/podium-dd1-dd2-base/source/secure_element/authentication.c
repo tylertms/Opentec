@@ -178,14 +178,11 @@ A71chExchangeResult a71ch_authentication_service_result(const A71chAuthenticatio
  * completed successfully.
  *
  * @param[in] service Authentication service state and response storage.
- * @param[out] length Response length when authentication completed.
  * @return Completed response bytes; otherwise null.
  */
-const uint8_t *a71ch_authentication_service_response(const A71chAuthenticationService *service,
-                                                     uint16_t *length) {
-    if (service == 0 || length == 0 || service->status != A71CH_AUTHENTICATION_SERVICE_COMPLETE) {
+const uint8_t *a71ch_authentication_service_response(const A71chAuthenticationService *service) {
+    if (service == 0 || service->status != A71CH_AUTHENTICATION_SERVICE_COMPLETE) {
         return 0;
     }
-    *length = sizeof(service->response);
     return service->response;
 }

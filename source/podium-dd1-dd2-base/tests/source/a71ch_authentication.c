@@ -153,11 +153,9 @@ static void test_completes_standard_transfer(void) {
     assert(a71ch_authentication_service_result(&service) == A71CH_EXCHANGE_SUCCEEDED);
     assert(command_writes == 22);
     assert(response_reads == 22);
-    uint16_t response_length = 0;
-    const uint8_t *response = a71ch_authentication_service_response(&service, &response_length);
+    const uint8_t *response = a71ch_authentication_service_response(&service);
     assert(response == service.response);
-    assert(response_length == A71CH_AUTHENTICATION_READ_SIZE);
-    for (uint16_t index = 0; index < response_length; ++index) {
+    for (uint16_t index = 0; index < A71CH_AUTHENTICATION_READ_SIZE; ++index) {
         assert(response[index] == (uint8_t)index);
     }
 }
@@ -185,7 +183,7 @@ static void test_propagates_checked_response_failure(void) {
 
     assert(a71ch_authentication_service_status(&service) == A71CH_AUTHENTICATION_SERVICE_FAILED);
     assert(a71ch_authentication_service_result(&service) == A71CH_EXCHANGE_LRC_ERROR);
-    assert(a71ch_authentication_service_response(&service, &(uint16_t){0}) == 0);
+    assert(a71ch_authentication_service_response(&service) == 0);
 }
 
 static void test_rejects_invalid_or_overlapping_start(void) {

@@ -33,7 +33,6 @@ void a71ch_authentication_service_run(A71chAuthenticationService *service);
 A71chAuthenticationServiceStatus
 a71ch_authentication_service_status(const A71chAuthenticationService *service);
 A71chExchangeResult a71ch_authentication_service_result(const A71chAuthenticationService *service);
-const uint8_t *a71ch_authentication_service_response(const A71chAuthenticationService *service,
-                                                     uint16_t *length);
+const uint8_t *a71ch_authentication_service_response(const A71chAuthenticationService *service);
 
 #endif

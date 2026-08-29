@@ -55,6 +55,8 @@
 #include "platform/usb.h"
 #include "profile/bank.h"
 #include "profile/tuning.h"
+#include "secure_element/authentication.h"
+#include "secure_element/session.h"
 #include "serial/service.h"
 #include "settings/persistence.h"
 #include "settings/state.h"
@@ -260,6 +262,7 @@ static bool usb_disconnect_notice_visible;
 static bool usb_motor_acknowledgement_ready;
 static bool xbox_mode_startup_attempted;
 static bool xbox_mode_startup_finished;
+static bool playstation_authentication_response_published;
 static bool usb_wheel_transfer_response_pending[WHEEL_TRANSFER_REQUEST_COUNT];
 static uint8_t local_display_page;
 static uint8_t local_display_rendered_bite_point_percent;
@@ -321,24 +324,42 @@ enum {
     FORCE_FEEDBACK_RAMP_INTERVAL_MS = 50,
 };
 
-static uint8_t usb_motor_upload_assembly[USB_MOTOR_BUFFER_SIZE];
-static uint8_t usb_motor_receive_assembly[USB_MOTOR_BUFFER_SIZE];
-static uint8_t usb_motor_mailbox_receive[USB_MOTOR_BUFFER_SIZE];
-static uint8_t usb_motor_transmit[USB_MOTOR_BUFFER_SIZE];
-static uint8_t usb_motor_application_data[USB_MOTOR_BUFFER_SIZE];
+/** @brief Storage used only by the native and Xbox motor-command transports. */
+typedef struct {
+    uint8_t upload_assembly[USB_MOTOR_BUFFER_SIZE];
+    uint8_t receive_assembly[USB_MOTOR_BUFFER_SIZE];
+    uint8_t mailbox_receive[USB_MOTOR_BUFFER_SIZE];
+    uint8_t transmit[USB_MOTOR_BUFFER_SIZE];
+    uint8_t application_data[USB_MOTOR_BUFFER_SIZE];
+} UsbMotorWorkspace;
+
+/** @brief Storage used only by the PlayStation secure-element transport. */
+typedef struct {
+    A71chSessionService session;
+    A71chAuthenticationService authentication;
+    uint8_t request[USB_PLAYSTATION_AUTHENTICATION_REQUEST_SIZE];
+} PlayStationAuthenticationWorkspace;
+
+/** @brief Storage shared by mutually exclusive USB operating modes. */
+typedef union {
+    UsbMotorWorkspace motor;
+    PlayStationAuthenticationWorkspace playstation;
+} UsbOperatingModeWorkspace;
+
+static UsbOperatingModeWorkspace usb_operating_mode_workspace;
 static const MotorCommandChannelBuffers motor_command_channel_buffers = {
-    .receive_assembly = usb_motor_receive_assembly,
-    .receive_assembly_capacity = sizeof(usb_motor_receive_assembly),
-    .transmit = usb_motor_transmit,
-    .transmit_capacity = sizeof(usb_motor_transmit),
-    .pending_payload = usb_motor_application_data,
-    .pending_payload_capacity = sizeof(usb_motor_application_data),
+    .receive_assembly = usb_operating_mode_workspace.motor.receive_assembly,
+    .receive_assembly_capacity = sizeof(usb_operating_mode_workspace.motor.receive_assembly),
+    .transmit = usb_operating_mode_workspace.motor.transmit,
+    .transmit_capacity = sizeof(usb_operating_mode_workspace.motor.transmit),
+    .pending_payload = usb_operating_mode_workspace.motor.application_data,
+    .pending_payload_capacity = sizeof(usb_operating_mode_workspace.motor.application_data),
 };
 static const UsbMotorVendorServiceBuffers usb_motor_buffers = {
-    .upload_assembly = usb_motor_upload_assembly,
-    .upload_assembly_capacity = sizeof(usb_motor_upload_assembly),
-    .application_data = usb_motor_application_data,
-    .application_data_capacity = sizeof(usb_motor_application_data),
+    .upload_assembly = usb_operating_mode_workspace.motor.upload_assembly,
+    .upload_assembly_capacity = sizeof(usb_operating_mode_workspace.motor.upload_assembly),
+    .application_data = usb_operating_mode_workspace.motor.application_data,
+    .application_data_capacity = sizeof(usb_operating_mode_workspace.motor.application_data),
 };
 
 /**
@@ -782,8 +803,9 @@ static void initialize_motor(void) {
  */
 static void initialize_usb_command_bridge(void) {
     command_transport_init(&command_transport);
-    (void)motor_command_mailbox_exchange_init(&motor_command_mailbox, usb_motor_mailbox_receive,
-                                              sizeof(usb_motor_mailbox_receive));
+    (void)motor_command_mailbox_exchange_init(
+        &motor_command_mailbox, usb_operating_mode_workspace.motor.mailbox_receive,
+        sizeof(usb_operating_mode_workspace.motor.mailbox_receive));
     (void)motor_command_channel_init(&motor_command_channel, &motor_command_channel_buffers);
     motor_command_startup_service_init(&motor_command_startup_service);
     (void)usb_motor_vendor_service_init(&usb_motor_vendor_service, &motor_command_channel,
@@ -969,6 +991,102 @@ static bool service_xbox_mode_startup(void) {
         (void)usb_device_set_xbox_mode(wheel_mode, application->digest);
     }
     return false;
+}
+
+/**
+ * @brief Selects PlayStation USB for a compatible attached-wheel mode.
+ *
+ * Changes the base from its initial Fanatec interface to mode seven when the attached wheel reports
+ * operating mode 2, 4, or 5. The change waits until the shared motor-command transport and its
+ * retained response state are idle so the mode-exclusive workspace can change owners safely.
+ *
+ * @return True when PlayStation mode was selected; otherwise false.
+ */
+static bool service_playstation_mode_startup(void) {
+    if (usb_device_operating_mode() != USB_OPERATING_MODE_FANATEC) {
+        return false;
+    }
+
+    uint8_t wheel_mode = wheel_service_mode(&wheel_service);
+    if (wheel_mode != 2 && wheel_mode != 4 && wheel_mode != 5) {
+        return false;
+    }
+    if (command_transport.phase != COMMAND_TRANSPORT_IDLE ||
+        motor_command_channel.command_pending || usb_motor_vendor_service.response_active) {
+        return false;
+    }
+    return usb_device_set_playstation_mode();
+}
+
+/**
+ * @brief Initializes the PlayStation secure-element services.
+ *
+ * Starts the A71CH SCI2C session sequence and clears authentication request and response state
+ * before the USB interface can accept a host challenge.
+ */
+static void initialize_playstation_authentication(void) {
+    a71ch_session_service_init(&usb_operating_mode_workspace.playstation.session);
+    a71ch_session_service_start(&usb_operating_mode_workspace.playstation.session);
+    a71ch_authentication_service_init(&usb_operating_mode_workspace.playstation.authentication);
+    playstation_authentication_response_published = false;
+}
+
+/**
+ * @brief Services PlayStation authentication through the A71CH.
+ *
+ * Completes the SCI2C startup sequence, submits each assembled 256-byte host challenge without
+ * LRC framing, and publishes the exact 1,040-byte response or an error status to USB.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_playstation_authentication(uint32_t now_ms) {
+    if (usb_device_operating_mode() != USB_OPERATING_MODE_PLAYSTATION) {
+        return;
+    }
+
+    A71chSessionServiceStatus session_status =
+        a71ch_session_service_status(&usb_operating_mode_workspace.playstation.session);
+    if (session_status == A71CH_SESSION_SERVICE_RUNNING) {
+        a71ch_session_service_run(&usb_operating_mode_workspace.playstation.session, now_ms);
+        return;
+    }
+    if (session_status != A71CH_SESSION_SERVICE_COMPLETE) {
+        return;
+    }
+
+    A71chAuthenticationServiceStatus authentication_status = a71ch_authentication_service_status(
+        &usb_operating_mode_workspace.playstation.authentication);
+    if (authentication_status == A71CH_AUTHENTICATION_SERVICE_RUNNING) {
+        a71ch_authentication_service_run(&usb_operating_mode_workspace.playstation.authentication);
+        return;
+    }
+    if (authentication_status == A71CH_AUTHENTICATION_SERVICE_COMPLETE) {
+        if (!playstation_authentication_response_published) {
+            const uint8_t *response = a71ch_authentication_service_response(
+                &usb_operating_mode_workspace.playstation.authentication);
+            playstation_authentication_response_published =
+                response != 0 && usb_device_publish_playstation_authentication_response(
+                                     response, A71CH_AUTHENTICATION_READ_SIZE);
+        } else if (!usb_device_playstation_authentication_response_active()) {
+            a71ch_authentication_service_init(
+                &usb_operating_mode_workspace.playstation.authentication);
+            playstation_authentication_response_published = false;
+        }
+        return;
+    }
+    if (authentication_status == A71CH_AUTHENTICATION_SERVICE_FAILED) {
+        usb_device_fail_playstation_authentication();
+        a71ch_authentication_service_init(&usb_operating_mode_workspace.playstation.authentication);
+        return;
+    }
+
+    if (usb_device_take_playstation_authentication_request(
+            usb_operating_mode_workspace.playstation.request)) {
+        (void)a71ch_authentication_service_start(
+            &usb_operating_mode_workspace.playstation.authentication,
+            usb_operating_mode_workspace.playstation.request,
+            sizeof(usb_operating_mode_workspace.playstation.request), false);
+    }
 }
 
 /**
@@ -1234,8 +1352,9 @@ static void complete_usb_vendor_response(void) {
  * @brief Advances host command services over serial message type four.
  *
  * Queues remote-tuning responses and telemetry for the attached wheel, batches generic tuning
- * records, advances wheel-transfer and mailbox requests, submits the next queued command, and
- * schedules control and vendor reports on the shared USB endpoint.
+ * records, advances wheel-transfer and mailbox requests, and selects the console interface at an
+ * idle transport boundary. Motor mailbox and vendor-report work stop while PlayStation mode owns
+ * the shared workspace.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -1263,12 +1382,20 @@ static void service_usb_command_bridge(uint32_t now_ms) {
                                             wheel_command_batch_length);
     }
     wheel_command_forwarder_run(&wheel_command_forwarder, &command_transport);
-    if (!service_xbox_mode_startup()) {
+    bool playstation_mode_selected = service_playstation_mode_startup();
+    if (playstation_mode_selected) {
+        initialize_playstation_authentication();
+    }
+    bool playstation_mode_active = usb_device_operating_mode() == USB_OPERATING_MODE_PLAYSTATION;
+    if (!playstation_mode_active && !service_xbox_mode_startup()) {
         (void)usb_motor_vendor_service_run_mailbox(&usb_motor_vendor_service,
                                                    &motor_command_mailbox, &command_transport);
     }
     if (serial_service.status == SERIAL_SERVICE_IDLE) {
         (void)motor_command_serial_submit(&command_transport, &serial_service, now_ms);
+    }
+    if (playstation_mode_active) {
+        return;
     }
 
     if (usb_motor_acknowledgement_ready &&
@@ -1724,7 +1851,14 @@ static void service_usb_output(void) {
 
     if (usb_operating_mode_command_decode(&usb_output_command, &usb_operating_mode_command)) {
         if (usb_operating_mode_command_requests_native_reset(&usb_operating_mode_command)) {
-            (void)usb_device_set_input_mode(USB_INPUT_REPORT_MODE_FANATEC);
+            bool leaving_playstation =
+                usb_device_operating_mode() == USB_OPERATING_MODE_PLAYSTATION;
+            if (leaving_playstation) {
+                platform_aux_bus_init();
+            }
+            if (usb_device_set_input_mode(USB_INPUT_REPORT_MODE_FANATEC) && leaving_playstation) {
+                initialize_usb_command_bridge();
+            }
         } else if (usb_operating_mode_command_decode_status(&usb_operating_mode_command,
                                                             &usb_operating_status_enabled)) {
             system_control_state_set_operating_status(&system_control_state,
@@ -2329,6 +2463,7 @@ int main(void) {
         service_usb_output();
         platform_aux_bus_service();
         uint32_t now_ms = platform_time_ms();
+        service_playstation_authentication(now_ms);
         service_usb_host_capability_recovery(now_ms);
         service_power(now_ms);
         service_power_torque_request();
