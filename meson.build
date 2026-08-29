@@ -46,6 +46,7 @@ motor_control_sources = files(
   'source/common/motor/io.c',
   'source/common/motor/link.c',
   'source/common/motor/peripherals.c',
+  'source/common/motor/runtime.c',
   'source/common/motor/spi.c',
 ) + motor_center_sources + motor_control_state_sources + motor_current_offset_calibration_sources + motor_drive_sources + motor_encoder_sources + motor_encoder_calibration_sources + motor_calibration_storage_sources + motor_force_feedback_sources + motor_hardware_profile_sources + motor_link_frame_sources + motor_motion_sources + motor_parameter_sources + motor_protocol_sources + motor_service_sources + motor_auxiliary_telemetry_sources
 wqr_frame_sources = files('source/common/wqr_frame.c')
