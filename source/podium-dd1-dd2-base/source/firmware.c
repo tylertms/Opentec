@@ -231,6 +231,7 @@ enum {
     LOCAL_DISPLAY_PAGE_BITE_POINT = 3,
     LOCAL_DISPLAY_PAGE_SYSTEM_NOTICE = 4,
     USB_DISCONNECT_STATUS_CODE = 0x1c,
+    TUNING_MENU_RESET_EVENT_CODE = 1,
     WHEEL_CENTER_CALIBRATED_EVENT_CODE = 2,
     WHEEL_CENTER_CALIBRATED_STATUS_CODE = 0x1f,
 };
@@ -328,7 +329,9 @@ static void service_system_events(uint32_t now_ms) {
     system_notice_update(&system_notice, now_ms);
     SystemEventAction action =
         system_event_dispatcher_update(&system_event_dispatcher, &system_event_queue, now_ms);
-    if (action == SYSTEM_EVENT_ACTION_SHOW_WHEEL_CENTER_CALIBRATED) {
+    if (action == SYSTEM_EVENT_ACTION_SHOW_TUNING_MENU_RESET) {
+        system_notice_show(&system_notice, SYSTEM_NOTICE_TUNING_MENU_RESET, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_WHEEL_CENTER_CALIBRATED) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_WHEEL_CENTER_CALIBRATED, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_POSITION_SENSOR_TEST_SUCCEEDED) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_POSITION_SENSOR_TEST_SUCCEEDED, now_ms);
@@ -1112,6 +1115,12 @@ static void service_usb_output(void) {
             }
             if ((tuning_action & USB_TUNING_PROFILE_ACTION_SAVE) != 0) {
                 base_settings_persistence_request_save(&settings_persistence, now_ms);
+            }
+            if ((tuning_action & USB_TUNING_PROFILE_ACTION_RESET_COMPLETED) != 0) {
+                (void)system_event_queue_try_push(&system_event_queue,
+                                                  TUNING_MENU_RESET_EVENT_CODE);
+                system_control_state_set_active_event(&system_control_state,
+                                                      TUNING_MENU_RESET_EVENT_CODE);
             }
             if (usb_tuning_profile_service_response_pending(&usb_tuning_profile_service)) {
                 usb_tuning_profile_response_ready = false;

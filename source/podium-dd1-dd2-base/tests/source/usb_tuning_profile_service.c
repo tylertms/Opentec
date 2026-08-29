@@ -75,6 +75,7 @@ static void test_resets_profiles_with_shared_guard(void) {
     UsbTuningProfileAction result = usb_tuning_profile_service_apply(&service, &bank, &update, 100);
     assert((result & USB_TUNING_PROFILE_ACTION_PROFILE_CHANGED) != 0);
     assert((result & USB_TUNING_PROFILE_ACTION_MODE_CHANGED) != 0);
+    assert((result & USB_TUNING_PROFILE_ACTION_RESET_COMPLETED) != 0);
     assert(bank.slots[0].force_feedback_strength == 35);
     assert(bank.slots[1].force_feedback_strength == 35);
     assert(bank.standard_mode_enabled);
@@ -83,6 +84,7 @@ static void test_resets_profiles_with_shared_guard(void) {
     arguments[0] = 5;
     result = usb_tuning_profile_service_apply(&service, &bank, &update, 1000);
     assert(result == USB_TUNING_PROFILE_ACTION_CLAIM);
+    assert((result & USB_TUNING_PROFILE_ACTION_RESET_COMPLETED) == 0);
     assert(bank.slots[0].force_feedback_strength == 90);
 
     result = usb_tuning_profile_service_apply(&service, &bank, &update, 10100);

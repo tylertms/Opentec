@@ -103,7 +103,8 @@ UsbTuningProfileAction usb_tuning_profile_service_apply(UsbTuningProfileService 
             service->reset_after_ms = now_ms + USB_TUNING_PROFILE_RESET_DELAY_MS;
             service->response_pending = true;
             result |= USB_TUNING_PROFILE_ACTION_PROFILE_CHANGED |
-                      USB_TUNING_PROFILE_ACTION_SETTINGS_CHANGED;
+                      USB_TUNING_PROFILE_ACTION_SETTINGS_CHANGED |
+                      USB_TUNING_PROFILE_ACTION_RESET_COMPLETED;
             if (mode_changed) {
                 result |= USB_TUNING_PROFILE_ACTION_MODE_CHANGED;
             }

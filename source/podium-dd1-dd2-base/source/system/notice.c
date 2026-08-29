@@ -10,9 +10,9 @@ enum {
 /**
  * @brief Tests whether a system notice has a finite presentation interval.
  *
- * All transient position-sensor and motor-calibration results use the shared four-second interval.
- * Position-sensor failure and an ongoing motor calibration remain until another notice replaces
- * them.
+ * Transient tuning, wheel-position, position-sensor, and motor-calibration results use the shared
+ * four-second interval. Position-sensor failure and an ongoing motor calibration remain until
+ * another notice replaces them.
  *
  * @param[in] kind System notice kind.
  * @return True when the notice has a finite presentation interval.
