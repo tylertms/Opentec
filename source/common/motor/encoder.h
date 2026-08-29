@@ -54,6 +54,7 @@ MotorEncoderPositionResult motor_encoder_position_update(MotorEncoderState *stat
                                                          bool overflow_pending, uint16_t counter,
                                                          int32_t position_limit);
 void motor_encoder_position_reset(MotorEncoderState *state);
+uint16_t motor_encoder_relative_position(uint16_t counter, uint16_t zero_counter, uint16_t modulus);
 MotorEncoderIndexSeekStep motor_encoder_index_seek_step(bool index_detected,
                                                         uint16_t timeout_remaining);
 void motor_encoder_direction_initialize(MotorEncoderDirectionState *state);

@@ -62,6 +62,11 @@ static void test_index_seek(void) {
     assert(timed_out.drive_current == 0);
 }
 
+static void test_relative_position(void) {
+    assert(motor_encoder_relative_position(500U, 100U, 0x5c7fU) == 400U);
+    assert(motor_encoder_relative_position(100U, 500U, 0x5c7fU) == 0x5aefU);
+}
+
 static void test_direction_check_pass(void) {
     MotorEncoderDirectionState state;
     motor_encoder_direction_initialize(&state);
@@ -109,6 +114,7 @@ int main(void) {
     test_position_update();
     test_reset();
     test_index_seek();
+    test_relative_position();
     test_direction_check_pass();
     test_direction_check_failure();
     return 0;

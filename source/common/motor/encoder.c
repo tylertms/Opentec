@@ -49,6 +49,22 @@ void motor_encoder_position_reset(MotorEncoderState *state) {
 }
 
 /**
+ * @brief Resolves the official encoder position within one revolution.
+ * @param counter Current hardware quadrature counter.
+ * @param zero_counter Captured encoder zero counter.
+ * @param modulus Board-selected encoder counts per revolution.
+ * @return Unsigned encoder position relative to zero with one-revolution wrapping.
+ */
+uint16_t motor_encoder_relative_position(uint16_t counter, uint16_t zero_counter,
+                                         uint16_t modulus) {
+    int32_t position = (int32_t)counter - zero_counter;
+    if (position < 0) {
+        position += modulus;
+    }
+    return (uint16_t)position;
+}
+
+/**
  * @brief Resolves one official encoder-index seek step.
  * @param index_detected True after the PORTE index interrupt captures a position.
  * @param timeout_remaining Active five-thousand-tick search countdown.
