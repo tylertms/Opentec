@@ -85,6 +85,7 @@
 #include "usb/vendor_command.h"
 #include "usb/xbox_gip_command.h"
 #include "usb/xbox_gip_input.h"
+#include "usb/xbox_gip_vendor_tunnel.h"
 #include "wheel/center_capture.h"
 #include "wheel/command_forwarder.h"
 #include "wheel/compatibility_alert.h"
@@ -979,6 +980,33 @@ static uint8_t encode_pending_force_feedback_script_report(uint8_t *sequence, ui
 }
 
 /**
+ * @brief Queues a pending raw vendor report on Xbox GIP.
+ *
+ * Retains a marker-36 remote-tuning report until the active Xbox endpoint accepts all 64 bytes.
+ * The report fields remain unchanged because this vendor format does not use the GIP sequence
+ * envelope.
+ */
+static void prepare_usb_xbox_vendor_response(void) {
+    if (usb_device_operating_mode() != USB_OPERATING_MODE_XBOX_GIP ||
+        (usb_vendor_response_kind != USB_VENDOR_RESPONSE_NONE &&
+         usb_vendor_response_kind != USB_VENDOR_RESPONSE_REMOTE_TUNING)) {
+        return;
+    }
+    if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_NONE) {
+        if (!usb_remote_tuning_service_take_host_report(
+                &usb_remote_tuning_service, wheel_service_mode(&wheel_service),
+                USB_REMOTE_TUNING_HOST_XBOX, usb_vendor_response)) {
+            return;
+        }
+        usb_vendor_response_length = USB_REMOTE_TUNING_HOST_REPORT_SIZE;
+        usb_vendor_response_kind = USB_VENDOR_RESPONSE_REMOTE_TUNING;
+    }
+    if (usb_device_queue_xbox_vendor_report(usb_vendor_response)) {
+        usb_vendor_response_kind = USB_VENDOR_RESPONSE_NONE;
+    }
+}
+
+/**
  * @brief Queues a pending force-feedback script response on Xbox GIP.
  *
  * Builds the common type-25 report and retains the query until the active Xbox endpoint accepts
@@ -986,7 +1014,8 @@ static uint8_t encode_pending_force_feedback_script_report(uint8_t *sequence, ui
  */
 static void prepare_usb_xbox_script_response(void) {
     if (usb_device_operating_mode() != USB_OPERATING_MODE_XBOX_GIP ||
-        force_feedback_script_report_pending == FORCE_FEEDBACK_SCRIPT_REPORT_NONE) {
+        force_feedback_script_report_pending == FORCE_FEEDBACK_SCRIPT_REPORT_NONE ||
+        usb_vendor_response_kind != USB_VENDOR_RESPONSE_NONE) {
         return;
     }
 
@@ -1137,6 +1166,7 @@ static void service_usb_command_bridge(uint32_t now_ms) {
         usb_motor_acknowledgement_ready = false;
     }
     update_usb_diagnostic_snapshot(now_ms);
+    prepare_usb_xbox_vendor_response();
     prepare_usb_xbox_script_response();
     prepare_usb_vendor_response();
     if (!usb_motor_acknowledgement_ready && usb_vendor_response_kind != USB_VENDOR_RESPONSE_NONE &&
@@ -1499,7 +1529,12 @@ static void service_usb_output(void) {
                                                    usb_device_output_report.length)) {
         return;
     }
-    if (!usb_output_command_decode(&usb_device_output_report, &usb_output_command)) {
+    bool xbox_vendor_tunnel =
+        usb_device_operating_mode() == USB_OPERATING_MODE_XBOX_GIP &&
+        usb_xbox_gip_vendor_tunnel_decode(usb_device_output_report.data,
+                                          usb_device_output_report.length, &usb_output_command);
+    if (!xbox_vendor_tunnel &&
+        !usb_output_command_decode(&usb_device_output_report, &usb_output_command)) {
         return;
     }
 

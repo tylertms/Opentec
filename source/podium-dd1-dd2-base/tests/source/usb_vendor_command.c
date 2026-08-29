@@ -37,6 +37,20 @@ static void test_classifies_direct_command_routes(void) {
     }
 }
 
+static void test_classifies_xbox_tunnel_payload(void) {
+    uint8_t payload[59] = {5, 2, 1};
+    UsbOutputCommand output = {
+        .kind = USB_OUTPUT_COMMAND_VENDOR_TRANSFER,
+        .payload = payload,
+        .length = sizeof(payload),
+    };
+    UsbVendorCommand command;
+
+    assert(usb_vendor_command_decode(&output, &command));
+    assert(command.kind == USB_VENDOR_COMMAND_REMOTE_TUNING);
+    assert(command.arguments == payload + 1 && command.length == 58);
+}
+
 static void test_rejects_unsupported_script_groups(void) {
     uint8_t payload[63] = {0};
     UsbOutputCommand output = make_output(payload, 0x0a);
@@ -192,7 +206,9 @@ static void test_rejects_unhandled_payloads(void) {
     UsbVendorCommand command;
 
     assert(!usb_vendor_command_decode(&output, &command));
-    output.length = 62;
+    output.length = 64;
+    assert(!usb_vendor_command_decode(&output, &command));
+    output.length = 0;
     assert(!usb_vendor_command_decode(&output, &command));
     output.length = 63;
     output.kind = USB_OUTPUT_COMMAND_SHORT;
@@ -206,6 +222,7 @@ static void test_rejects_unhandled_payloads(void) {
 
 int main(void) {
     test_classifies_direct_command_routes();
+    test_classifies_xbox_tunnel_payload();
     test_rejects_unsupported_script_groups();
     test_classifies_script_status_query();
     test_decodes_script_sample_query();

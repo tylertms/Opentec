@@ -439,6 +439,13 @@ static void test_exchanges_xbox_gip_discovery(void) {
     assert(sent.endpoint == 1 && sent.length == sizeof(application_response));
     assert(sent.data[0] == 0x25 && sent.data[2] == 4 && sent.data[3] == 0x12);
 
+    uint8_t vendor_report[USB_DEVICE_REPORT_SIZE] = {0x36, 5, 1, 0xa5};
+    assert(usb_device_queue_xbox_vendor_report(vendor_report));
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 1, 0, 0);
+    usb_device_service();
+    assert(sent.endpoint == 1 && sent.length == USB_DEVICE_REPORT_SIZE);
+    assert(memcmp(sent.data, vendor_report, sizeof(vendor_report)) == 0);
+
     uint8_t force_feedback_input[USB_DEVICE_REPORT_SIZE] = {0};
     force_feedback_input[0] = 0x0e;
     force_feedback_input[4] = 1;
@@ -454,6 +461,12 @@ static void test_exchanges_xbox_gip_discovery(void) {
     assert(output.report_id == 0 && output.length == USB_DEVICE_REPORT_SIZE);
     assert(memcmp(output.data, force_feedback_input, sizeof(force_feedback_input)) == 0);
     assert(!usb_device_take_output(&output));
+
+    uint8_t vendor_tunnel[USB_DEVICE_REPORT_SIZE] = {[0] = 0x0f, [3] = 60, [4] = 0x36, [5] = 5};
+    push_event(PLATFORM_USB_EVENT_OUT, 1, vendor_tunnel, sizeof(vendor_tunnel));
+    usb_device_service();
+    assert(usb_device_take_output(&output));
+    assert(memcmp(output.data, vendor_tunnel, sizeof(vendor_tunnel)) == 0);
 }
 
 int main(void) {

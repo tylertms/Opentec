@@ -28,10 +28,11 @@ enum {
  * unless its group and selector match a supported script query.
  *
  * @param[in] opcode Top-level vendor command opcode.
- * @param[in] payload Complete 63-byte vendor command payload.
+ * @param[in] payload Vendor command payload beginning with its opcode.
+ * @param[in] length Number of available payload bytes.
  * @return Command category value, or negative one when the command is unsupported.
  */
-static int8_t command_kind(uint8_t opcode, const uint8_t *payload) {
+static int8_t command_kind(uint8_t opcode, const uint8_t *payload, uint8_t length) {
     switch (opcode) {
     case 1:
         return USB_VENDOR_COMMAND_WHEEL_OUTPUT_REPORT;
@@ -46,7 +47,7 @@ static int8_t command_kind(uint8_t opcode, const uint8_t *payload) {
     case 8:
         return USB_VENDOR_COMMAND_STATUS_RESPONSE;
     case VENDOR_COMMAND_SCRIPT:
-        if (payload[1] == VENDOR_COMMAND_SCRIPT_GROUP) {
+        if (length >= 7 && payload[1] == VENDOR_COMMAND_SCRIPT_GROUP) {
             if (payload[4] == VENDOR_COMMAND_SCRIPT_SAMPLES_SELECTOR &&
                 ((uint16_t)payload[5] | (uint16_t)((uint16_t)payload[6] << 8)) <=
                     VENDOR_COMMAND_SCRIPT_SAMPLES_LAST_FIRST) {
@@ -113,22 +114,23 @@ bool usb_vendor_command_script_slot_index(const UsbVendorCommand *command, uint8
 }
 
 /**
- * @brief Classify a complete vendor-transfer payload.
+ * @brief Classifies a vendor-transfer payload.
  *
- * Selects the command route from the top-level opcode and exposes the remaining 62 bytes as its
- * arguments. Opcode 0x0A packets are accepted only for supported script-query signatures.
+ * Selects the command route from the top-level opcode and exposes the remaining bytes as its
+ * arguments. Native payloads provide 63 bytes and the Xbox vendor tunnel provides 59. Opcode 0x0A
+ * packets are accepted only when all seven query bytes are present with a supported signature.
  *
- * @param[in] output Classified vendor-transfer output containing 63 command bytes.
+ * @param[in] output Classified vendor-transfer output containing up to 63 command bytes.
  * @param[out] command Destination for the command route, opcode, and remaining arguments.
  * @return True when the opcode selects one of the supported vendor command routes.
  */
 bool usb_vendor_command_decode(const UsbOutputCommand *output, UsbVendorCommand *command) {
     if (output == NULL || command == NULL || output->kind != USB_OUTPUT_COMMAND_VENDOR_TRANSFER ||
-        output->payload == NULL || output->length != VENDOR_COMMAND_SIZE) {
+        output->payload == NULL || output->length == 0 || output->length > VENDOR_COMMAND_SIZE) {
         return false;
     }
 
-    int8_t kind = command_kind(output->payload[0], output->payload);
+    int8_t kind = command_kind(output->payload[0], output->payload, output->length);
     if (kind < 0) {
         return false;
     }
@@ -137,7 +139,7 @@ bool usb_vendor_command_decode(const UsbOutputCommand *output, UsbVendorCommand 
         .kind = (UsbVendorCommandKind)kind,
         .opcode = output->payload[0],
         .arguments = output->payload + 1,
-        .length = VENDOR_COMMAND_ARGUMENT_SIZE,
+        .length = (uint8_t)(output->length - 1u),
     };
     return true;
 }

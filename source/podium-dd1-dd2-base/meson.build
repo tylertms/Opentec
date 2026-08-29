@@ -70,6 +70,7 @@ usb_xbox_gip_input_sources = files('source/usb/xbox_gip_input.c')
 usb_xbox_gip_response_sources = files('source/usb/xbox_gip_response.c')
 usb_xbox_gip_service_sources = files('source/usb/xbox_gip_service.c')
 usb_xbox_gip_session_sources = files('source/usb/xbox_gip_session.c')
+usb_xbox_gip_vendor_tunnel_sources = files('source/usb/xbox_gip_vendor_tunnel.c')
 usb_updater_descriptor_sources = files('source/usb/updater_descriptor.c')
 usb_updater_control_sources = files('source/usb/updater_control.c')
 usb_descriptor_sources = files('source/usb/descriptor.c')
@@ -258,6 +259,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'usb-xbox-gip-response': 'source/usb/xbox_gip_response.c',
     'usb-xbox-gip-service': 'source/usb/xbox_gip_service.c',
     'usb-xbox-gip-session': 'source/usb/xbox_gip_session.c',
+    'usb-xbox-gip-vendor-tunnel': 'source/usb/xbox_gip_vendor_tunnel.c',
     'usb-updater-descriptor': 'source/usb/updater_descriptor.c',
     'usb-updater-control': 'source/usb/updater_control.c',
     'usb-descriptor': 'source/usb/descriptor.c',
@@ -970,6 +972,14 @@ if not meson.is_cross_build()
     usb_xbox_gip_response_sources,
     usb_xbox_gip_service_sources,
     usb_xbox_gip_session_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  usb_xbox_gip_vendor_tunnel_test = executable(
+    'base-usb-xbox-gip-vendor-tunnel-test',
+    'tests/source/xbox_gip_vendor_tunnel.c',
+    usb_xbox_gip_vendor_tunnel_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2196,6 +2206,11 @@ if not meson.is_cross_build()
   test('base-usb-xbox-gip-input', usb_xbox_gip_input_test, suite: ['base', 'usb'])
   test('base-usb-xbox-gip-command', usb_xbox_gip_command_test, suite: ['base', 'usb'])
   test('base-usb-xbox-gip-service', usb_xbox_gip_service_test, suite: ['base', 'usb'])
+  test(
+    'base-usb-xbox-gip-vendor-tunnel',
+    usb_xbox_gip_vendor_tunnel_test,
+    suite: ['base', 'usb'],
+  )
   test(
     'base-usb-motor-response-download',
     usb_motor_response_download_test,

@@ -835,6 +835,29 @@ bool usb_device_queue_xbox_response(const uint8_t *report, uint8_t length) {
 }
 
 /**
+ * @brief Queues one raw Xbox vendor report.
+ *
+ * Copies all 64 report bytes without changing its marker, report identifier, or type fields and
+ * retains it until endpoint 1 accepts the transfer. Existing endpoint responses keep priority.
+ *
+ * @param[in] report Complete raw Xbox vendor report.
+ * @return True when the vendor report was queued.
+ */
+bool usb_device_queue_xbox_vendor_report(const uint8_t report[USB_DEVICE_REPORT_SIZE]) {
+    if (operating_mode != USB_OPERATING_MODE_XBOX_GIP || !usb_device_configured() ||
+        xbox_service.session.state != USB_XBOX_GIP_SESSION_ACTIVE || report == NULL ||
+        xbox_response_ready) {
+        return false;
+    }
+    for (uint8_t index = 0; index < USB_DEVICE_REPORT_SIZE; index++) {
+        xbox_response[index] = report[index];
+    }
+    xbox_response_length = USB_DEVICE_REPORT_SIZE;
+    xbox_response_ready = true;
+    return true;
+}
+
+/**
  * @brief Sends one native vendor HID report.
  *
  * Submits the requested bytes to endpoint 1 without comparing them with prior input, so repeated
