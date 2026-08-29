@@ -214,7 +214,7 @@ static void test_normalizes_pulse_mode_with_temporary_control(void) {
 
 static void test_merges_adapter_buttons_axes_and_motion(void) {
     WheelPacketCrcInput input = {.buttons = {0xf0, 0xf0, 0}};
-    WheelPacketCrcAdapter adapter = {
+    WheelAdapterInput adapter = {
         .buttons = {0x8f, 0x23, 0x1c},
         .axes = {0x10, 0x20},
         .mode = 2,
@@ -246,7 +246,7 @@ static void test_merges_adapter_buttons_axes_and_motion(void) {
 
 static void test_uses_adapter_xbox_button_sources(void) {
     WheelPacketCrcInput input = {.controls = {0, 0, 0x03}};
-    WheelPacketCrcAdapter adapter = {.connected = true, .mode = 1};
+    WheelAdapterInput adapter = {.connected = true, .mode = 1};
 
     wheel_packet_crc_normalize(&input, 6, 6, &adapter);
 

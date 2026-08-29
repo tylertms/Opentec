@@ -17,6 +17,8 @@ typedef struct {
 } WheelCapabilityState;
 
 void wheel_capability_init(WheelCapabilityState *state);
+void wheel_capability_update_report(WheelCapabilityState *state, uint8_t report_mode,
+                                    uint8_t report_capabilities);
 void wheel_capability_update(WheelCapabilityState *state, uint8_t wheel_mode, uint8_t report_mode,
                              uint8_t report_capabilities);
 bool wheel_capability_input_available(const WheelCapabilityState *state, uint8_t wheel_mode);

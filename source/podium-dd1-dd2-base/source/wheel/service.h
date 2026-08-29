@@ -62,7 +62,7 @@ void wheel_service_run(WheelService *service, uint32_t now_ms, bool start_allowe
 void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output);
 void wheel_service_set_vibration_output(WheelService *service, const WheelVibrationOutput *output);
 void wheel_service_set_legacy_axes(WheelService *service, const uint8_t axes[2]);
-void wheel_service_set_crc_adapter(WheelService *service, const WheelPacketCrcAdapter *adapter);
+void wheel_service_set_adapter(WheelService *service, const WheelAdapterInput *adapter);
 void wheel_service_set_host_capability(WheelService *service, bool enabled);
 void wheel_service_configure_axis_processing(WheelService *service, uint8_t interface_mode,
                                              uint8_t paddle_mode, uint8_t bite_point_percent,
@@ -98,7 +98,7 @@ uint8_t wheel_service_axis_limit(const WheelService *service);
 uint8_t wheel_service_mode_buttons(const WheelService *service);
 const uint8_t *wheel_service_clutch_paddles(const WheelService *service);
 bool wheel_service_axis_report_enabled(const WheelService *service);
-const WheelPacketCrcAdapter *wheel_service_adapter(const WheelService *service);
+const WheelAdapterInput *wheel_service_adapter(const WheelService *service);
 bool wheel_service_axis_values(const WheelService *service, uint16_t values[2]);
 const WheelAxisOverrides *wheel_service_axis_overrides(const WheelService *service);
 bool wheel_service_controls(const WheelService *service, uint8_t controls[8]);

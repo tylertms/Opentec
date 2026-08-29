@@ -178,7 +178,7 @@ static void map_xbox_buttons(WheelPacketCrcInput *input, bool adapter_connected)
  * @param[in,out] adapter Adapter state whose queued motion is consumed.
  */
 static void merge_adapter_input(WheelPacketCrcInput *input, uint8_t interface_mode,
-                                WheelPacketCrcAdapter *adapter) {
+                                WheelAdapterInput *adapter) {
     merge_bit(&input->buttons[0], 1, read_bit(adapter->buttons[0], 1));
     merge_bit(&input->buttons[0], 2, read_bit(adapter->buttons[0], 2));
     merge_bit(&input->buttons[0], 0, read_bit(adapter->buttons[0], 0));
@@ -430,7 +430,7 @@ void wheel_packet_crc_smooth_axes(WheelPacketCrcFilter *filter, WheelPacketCrcIn
  * @param[in,out] adapter Adapter input and its consumed motion delta, or null for a direct wheel.
  */
 void wheel_packet_crc_normalize(WheelPacketCrcInput *input, uint8_t wheel_mode,
-                                uint8_t interface_mode, WheelPacketCrcAdapter *adapter) {
+                                uint8_t interface_mode, WheelAdapterInput *adapter) {
     uint8_t filtered_control = input->controls[2];
     if (wheel_mode == WHEEL_PACKET_CRC_PULSE_MODE) {
         input->controls[2] = 1;

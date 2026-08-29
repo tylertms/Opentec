@@ -9,6 +9,7 @@
 #include "wheel/capability.h"
 #include "wheel/motion.h"
 #include "wheel/output_reports.h"
+#include "wheel/packet_adapter.h"
 #include "wheel/packet_alternate.h"
 #include "wheel/packet_axis_mode.h"
 #include "wheel/packet_crc.h"
@@ -88,10 +89,11 @@ typedef struct {
     WheelPacketCommonFilter common_filter;
     WheelPacketCommonInput common_input;
     WheelPacketExtendedPulseState extended_pulse_state;
+    WheelPacketAdapterOutput adapter_output;
     WheelPacketCrcFilter crc_filter;
     WheelPacketCrcInput crc_input;
     WheelPacketCrcOutput crc_output;
-    WheelPacketCrcAdapter crc_adapter;
+    WheelAdapterInput adapter;
     WheelPacketRemoteTuningOutput system_control_output;
     WheelPacketRemoteTuningOutput remote_tuning_output;
     WheelOutputReports output_reports;
@@ -121,7 +123,7 @@ void wheel_protocol_set_mode_four_output(WheelProtocol *protocol,
                                          const WheelPacketModeFourOutput *output);
 void wheel_protocol_set_crc_output(WheelProtocol *protocol, const WheelPacketCrcOutput *output);
 void wheel_protocol_set_host_capability(WheelProtocol *protocol, bool enabled);
-void wheel_protocol_set_crc_adapter(WheelProtocol *protocol, const WheelPacketCrcAdapter *adapter);
+void wheel_protocol_set_adapter(WheelProtocol *protocol, const WheelAdapterInput *adapter);
 bool wheel_protocol_queue_remote_tuning_response(WheelProtocol *protocol,
                                                  const RemoteTuningResponse *response);
 bool wheel_protocol_queue_system_control_response(WheelProtocol *protocol,
@@ -151,6 +153,7 @@ const WheelPacketAlternateInput *wheel_protocol_alternate_input(const WheelProto
 const WheelPacketPackedInput *wheel_protocol_packed_input(const WheelProtocol *protocol);
 const WheelPacketAxisModeInput *wheel_protocol_axis_mode_input(const WheelProtocol *protocol);
 const WheelPacketExtendedInput *wheel_protocol_extended_input(const WheelProtocol *protocol);
+const WheelPacketAdapterInput *wheel_protocol_adapter_input(const WheelProtocol *protocol);
 const WheelPacketMetadataInput *wheel_protocol_metadata_input(const WheelProtocol *protocol);
 const WheelPacketCrcInput *wheel_protocol_crc_input(const WheelProtocol *protocol);
 const WheelPacketModeOneReportState *

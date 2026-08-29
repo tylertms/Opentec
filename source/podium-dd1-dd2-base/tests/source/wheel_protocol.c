@@ -1594,6 +1594,121 @@ static void test_captures_metadata_packets(void) {
     assert(wheel_protocol_message_valid(wheel_protocol_response(&protocol)));
 }
 
+static void test_captures_adapter_packets(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    protocol.mode = WHEEL_PACKET_ADAPTER_MODE;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    protocol.adapter = (WheelAdapterInput){
+        .buttons = {0x0f, 0x23, 0x1c},
+        .axes = {0x12, 0x34},
+        .mode = 2,
+        .primary_delta = 3,
+        .connected = true,
+    };
+    protocol.adapter_output.display = (WheelDisplayOutput){.glyphs = {1, 2, 3}};
+    protocol.adapter_output.display_report = 0x5678;
+    wheel_protocol_set_axis_processing(&protocol, 0, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50, 1);
+
+    request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    request[2] = 0x80;
+    request[3] = 0x08;
+    request[4] = 0x01;
+    request[12] = 30;
+    request[13] = 60;
+    request[14] = 70;
+    request[18] = 0x34;
+    request[19] = 0x12;
+    request[20] = 0x78;
+    request[21] = 0x56;
+    request[22] = 0x61;
+    request[23] = 1;
+    request[28] = 0x45;
+    request[30] = 0x3f;
+    request[31] = 0x62;
+    mark_ready(request);
+    for (uint8_t sample = 0; sample < WHEEL_PACKET_COMMON_HISTORY_DEPTH; sample++) {
+        wheel_protocol_set_axis_processing(&protocol, 0, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50,
+                                           (uint32_t)sample * 51u + 1u);
+        accept_active_request(&protocol, request);
+    }
+
+    const WheelPacketAdapterInput *input = wheel_protocol_adapter_input(&protocol);
+    assert(input != 0);
+    assert(input->buttons[0] == 0xcf);
+    assert(input->buttons[1] == 0xc8);
+    assert(input->buttons[2] == 0x27);
+    assert(input->axis_outputs[0] == 0x34);
+    assert(input->axis_outputs[1] == 0xed);
+    assert(input->motion == 1);
+    assert(input->controls[4] == 30);
+    assert(input->controls[5] == 0xc3);
+    assert(input->controls[6] == 0xb9);
+    assert(input->axis_values[0] == 0x1234);
+    assert(input->axis_values[1] == 0x5678);
+    assert(protocol.adapter.primary_delta == 0);
+    assert(protocol.adapter.buttons_active);
+    assert(protocol.motion.primary == 3);
+    assert(wheel_protocol_axis_limit(&protocol) == 0x62);
+    assert(wheel_protocol_mode_buttons(&protocol) == 0x61);
+    assert(wheel_protocol_axis_report_enabled(&protocol));
+    assert(wheel_protocol_axis_outputs(&protocol) == input->axis_outputs);
+    uint16_t values[2];
+    assert(wheel_protocol_axis_values(&protocol, values));
+    assert(values[0] == 0x1234);
+    assert(values[1] == 0x5678);
+    uint8_t controls[8];
+    assert(wheel_protocol_controls(&protocol, controls));
+    assert(memcmp(controls, input->controls, sizeof(controls)) == 0);
+    assert(wheel_protocol_acknowledgement_input_active(&protocol));
+    assert(wheel_protocol_request_changed(&protocol));
+    assert(wheel_protocol_capabilities(&protocol)->input_available);
+    assert(wheel_protocol_capabilities(&protocol)->capability_flags == 0x3f45);
+    const uint8_t *response = wheel_protocol_response(&protocol);
+    assert(response[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
+    assert(response[2] == 1);
+    assert(response[3] == 2);
+    assert(response[4] == 3);
+    assert(response[5] == 0x78);
+    assert(response[6] == 0x56);
+    assert(protocol.adapter_output.display_update_pending);
+    assert(wheel_protocol_message_valid(response));
+}
+
+static void test_accumulates_adapter_interface_pulses(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    protocol.mode = WHEEL_PACKET_ADAPTER_MODE;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    protocol.adapter.connected = true;
+    protocol.adapter.primary_delta = 3;
+    request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    mark_ready(request);
+
+    wheel_protocol_set_axis_processing(&protocol, 10, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50, 1);
+    accept_active_request(&protocol, request);
+    wheel_protocol_set_axis_processing(&protocol, 10, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50, 2);
+    accept_active_request(&protocol, request);
+    wheel_protocol_set_axis_processing(&protocol, 10, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50, 17);
+    accept_active_request(&protocol, request);
+    assert(protocol.motion.primary == 3);
+    assert(protocol.motion.axes[0] == 2);
+
+    wheel_protocol_init(&protocol);
+    protocol.mode = WHEEL_PACKET_ADAPTER_MODE;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    protocol.adapter.connected = true;
+    protocol.adapter.primary_delta = -1;
+    wheel_protocol_set_axis_processing(&protocol, 6, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50, 1);
+    accept_active_request(&protocol, request);
+    assert(protocol.motion.primary == UINT8_MAX);
+    assert(protocol.motion.axes[0] == UINT8_MAX);
+    assert(protocol.motion.axes[1] == UINT8_MAX);
+    assert(protocol.motion.axes[2] == UINT8_MAX);
+}
+
 static void test_accumulates_extended_interface_pulses(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -1727,6 +1842,8 @@ int main(void) {
     test_captures_axis_mode_packets();
     test_captures_extended_packets();
     test_captures_metadata_packets();
+    test_captures_adapter_packets();
+    test_accumulates_adapter_interface_pulses();
     test_accumulates_extended_interface_pulses();
     test_accumulates_axis_mode_interface_pulses();
     test_rejects_out_of_range_mode();

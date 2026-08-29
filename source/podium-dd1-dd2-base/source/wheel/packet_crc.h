@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "wheel/adapter.h"
 #include "wheel/display_output.h"
 #include "wheel/packet_common.h"
 
@@ -16,7 +17,6 @@ enum {
     WHEEL_PACKET_CRC_CONTROL_COUNT = 8,
     WHEEL_PACKET_CRC_HISTORY_DEPTH = 3,
     WHEEL_PACKET_CRC_AXIS_VALUE_COUNT = 2,
-    WHEEL_PACKET_CRC_ADAPTER_ROTARY_COUNT = 3,
 };
 
 /** @brief Logical input carried by the CRC attached-wheel packet family. */
@@ -41,16 +41,6 @@ typedef struct {
     bool status_update_pending;
 } WheelPacketCrcOutput;
 
-typedef struct {
-    uint8_t buttons[3];
-    uint8_t axes[2];
-    uint8_t rotary_positions[WHEEL_PACKET_CRC_ADAPTER_ROTARY_COUNT];
-    uint16_t mode;
-    int8_t primary_delta;
-    bool connected;
-    bool buttons_active;
-} WheelPacketCrcAdapter;
-
 bool wheel_packet_crc_applies(uint8_t wheel_mode);
 void wheel_packet_crc_filter_init(WheelPacketCrcFilter *filter);
 void wheel_packet_crc_decode(const uint8_t request[WHEEL_PACKET_CRC_REQUEST_SIZE],
@@ -61,7 +51,7 @@ void wheel_packet_crc_filter(WheelPacketCrcFilter *filter, WheelPacketCrcInput *
                              uint8_t wheel_mode);
 void wheel_packet_crc_smooth_axes(WheelPacketCrcFilter *filter, WheelPacketCrcInput *input);
 void wheel_packet_crc_normalize(WheelPacketCrcInput *input, uint8_t wheel_mode,
-                                uint8_t interface_mode, WheelPacketCrcAdapter *adapter);
+                                uint8_t interface_mode, WheelAdapterInput *adapter);
 void wheel_packet_crc_snapshot(const WheelPacketCrcInput *input,
                                uint8_t snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE]);
 void wheel_packet_crc_encode(uint8_t wheel_mode, bool host_capability_enabled,

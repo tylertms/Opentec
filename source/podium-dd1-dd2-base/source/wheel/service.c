@@ -227,7 +227,8 @@ static void reset_connection(WheelService *service) {
     WheelPacketPackedFilter packed_filter = service->protocol.packed_filter;
     WheelPacketCrcFilter crc_filter = service->protocol.crc_filter;
     WheelPacketCrcOutput crc_output = service->protocol.crc_output;
-    WheelPacketCrcAdapter crc_adapter = service->protocol.crc_adapter;
+    WheelAdapterInput adapter = service->protocol.adapter;
+    WheelPacketAdapterOutput adapter_output = service->protocol.adapter_output;
     WheelPacketRemoteTuningOutput system_control_output = service->protocol.system_control_output;
     WheelPacketRemoteTuningOutput remote_tuning_output = service->protocol.remote_tuning_output;
     WheelOutputReports output_reports = service->protocol.output_reports;
@@ -269,7 +270,8 @@ static void reset_connection(WheelService *service) {
     service->protocol.packed_filter = packed_filter;
     service->protocol.crc_filter = crc_filter;
     service->protocol.crc_output = crc_output;
-    service->protocol.crc_adapter = crc_adapter;
+    service->protocol.adapter = adapter;
+    service->protocol.adapter_output = adapter_output;
     service->protocol.system_control_output = system_control_output;
     service->protocol.remote_tuning_output = remote_tuning_output;
     service->protocol.output_reports = output_reports;
@@ -494,6 +496,7 @@ void wheel_service_set_display_output(WheelService *service, const WheelDisplayO
     crc_output.display = *output;
     service->protocol.crc_output = crc_output;
     service->protocol.alternate_output.display = *output;
+    service->protocol.adapter_output.display = *output;
 }
 
 /**
@@ -510,6 +513,8 @@ void wheel_service_set_vibration_output(WheelService *service, const WheelVibrat
         service->protocol.mode_four_output.vibration[channel] = output->channels[channel];
         service->protocol.crc_output.vibration[channel] = output->channels[channel];
     }
+    service->protocol.adapter_output.display_report =
+        (uint16_t)output->channels[0] | (uint16_t)output->channels[1] << 8;
 }
 
 /**
@@ -533,16 +538,16 @@ void wheel_service_set_legacy_axes(WheelService *service, const uint8_t axes[2])
 }
 
 /**
- * @brief Configures the attached-wheel CRC packet adapter.
+ * @brief Configures attached-wheel adapter input.
  *
- * Retains adapter buttons, axes, rotary positions, mode, connection state, and pending motion used
- * by attached-wheel input processing.
+ * Retains adapter buttons, axes, rotary positions, profile flags, mode, connection state, and
+ * pending motion used by attached-wheel packet families.
  *
  * @param[in,out] service Attached-wheel service to configure.
- * @param[in] adapter CRC packet adapter configuration.
+ * @param[in] adapter Attached-wheel adapter input.
  */
-void wheel_service_set_crc_adapter(WheelService *service, const WheelPacketCrcAdapter *adapter) {
-    wheel_protocol_set_crc_adapter(&service->protocol, adapter);
+void wheel_service_set_adapter(WheelService *service, const WheelAdapterInput *adapter) {
+    wheel_protocol_set_adapter(&service->protocol, adapter);
 }
 
 /**
@@ -659,7 +664,7 @@ bool wheel_service_multi_position_supported(const WheelService *service) {
  * @return True when adapter rotary positions are the active source.
  */
 static bool adapter_supplies_multi_position_input(const WheelService *service) {
-    if (!service->protocol.crc_adapter.connected) {
+    if (!service->protocol.adapter.connected) {
         return false;
     }
     switch (service->protocol.mode) {
@@ -687,7 +692,7 @@ static bool third_multi_position_channel_active(const WheelService *service, boo
     return service->protocol.mode == WHEEL_MODE_LEGACY_ALTERNATE ||
            service->protocol.mode == WHEEL_MODE_LEGACY_COMPATIBILITY ||
            service->protocol.mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED ||
-           (adapter_source && service->protocol.crc_adapter.mode == 1);
+           (adapter_source && service->protocol.adapter.mode == 1);
 }
 
 /**
@@ -715,8 +720,7 @@ bool wheel_service_multi_position_input(WheelService *service, uint32_t now_ms,
     bool adapter_source = adapter_supplies_multi_position_input(service);
     if (adapter_source) {
         for (uint8_t channel = 0; channel < WHEEL_MULTI_POSITION_CHANNEL_COUNT; channel++) {
-            input->channels[channel].position =
-                service->protocol.crc_adapter.rotary_positions[channel];
+            input->channels[channel].position = service->protocol.adapter.rotary_positions[channel];
         }
     } else {
         input->channels[0].position = request[WHEEL_MULTI_POSITION_PRIMARY_OFFSET];
@@ -750,7 +754,7 @@ bool wheel_service_multi_position_input(WheelService *service, uint32_t now_ms,
 void wheel_service_apply_output_report(WheelService *service, const uint8_t *arguments,
                                        bool display_blink_active) {
     wheel_output_reports_apply(&service->protocol.output_reports, arguments, service->protocol.mode,
-                               service->protocol.crc_adapter.mode, display_blink_active);
+                               service->protocol.adapter.mode, display_blink_active);
 }
 
 /**
@@ -1011,8 +1015,8 @@ bool wheel_service_axis_report_enabled(const WheelService *service) {
  * @param[in] service Attached-wheel service state.
  * @return Current attached adapter input.
  */
-const WheelPacketCrcAdapter *wheel_service_adapter(const WheelService *service) {
-    return &service->protocol.crc_adapter;
+const WheelAdapterInput *wheel_service_adapter(const WheelService *service) {
+    return &service->protocol.adapter;
 }
 
 /**
@@ -1070,7 +1074,7 @@ bool wheel_service_extended_report_fields(const WheelService *service) {
     if (mode == WHEEL_MODE_CRC_AUTHENTICATED) {
         return false;
     }
-    return !service->protocol.crc_adapter.connected || (mode != 4 && mode != 6);
+    return !service->protocol.adapter.connected || (mode != 4 && mode != 6);
 }
 
 /**
@@ -1158,26 +1162,26 @@ bool wheel_service_calibration_advance_input_active(const WheelService *service)
 /**
  * @brief Reports whether an attached adapter is connected.
  *
- * Returns the connection state retained from the current CRC-family adapter report.
+ * Returns the connection state retained from the attached adapter report.
  *
  * @param[in] service Attached-wheel service state.
  * @return True while the adapter is connected.
  */
 bool wheel_service_adapter_connected(const WheelService *service) {
-    return service->protocol.crc_adapter.connected;
+    return service->protocol.adapter.connected;
 }
 
 /**
  * @brief Reports whether the attached adapter requests the Xbox host capability.
  *
- * Requires an attached CRC adapter and the high status bit carried by its second button byte.
+ * Requires an attached adapter and the high status bit carried by its second button byte.
  *
  * @param[in] service Attached-wheel service and adapter state.
  * @return True when the adapter-specific host-capability condition is active.
  */
 bool wheel_service_adapter_requests_host_capability(const WheelService *service) {
-    return service->protocol.crc_adapter.connected &&
-           (service->protocol.crc_adapter.buttons[1] & 0x80u) != 0;
+    return service->protocol.adapter.connected &&
+           (service->protocol.adapter.buttons[1] & 0x80u) != 0;
 }
 
 /**

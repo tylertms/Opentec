@@ -84,6 +84,22 @@ void wheel_capability_init(WheelCapabilityState *state) {
 }
 
 /**
+ * @brief Updates attached-wheel report capability state.
+ *
+ * Caches the report mode and capability byte and maps capability bits 2 through 5 into report flag
+ * bits 1 through 4 without changing calibration or tuning availability.
+ *
+ * @param[in,out] state Persistent attached-wheel capability state.
+ * @param[in] report_mode Attached-wheel report mode byte.
+ * @param[in] report_capabilities Attached-wheel status and capability byte.
+ */
+void wheel_capability_update_report(WheelCapabilityState *state, uint8_t report_mode,
+                                    uint8_t report_capabilities) {
+    state->capability_flags = (uint16_t)report_mode | (uint16_t)report_capabilities << 8;
+    state->report_flags = (state->report_flags & 0xffe1u) | ((report_capabilities & 0x3cu) >> 1);
+}
+
+/**
  * @brief Updates shared attached-wheel capability state.
  *
  * Caches the report mode and capability byte, maps capability bits 2 through 5 into report flag
@@ -96,8 +112,7 @@ void wheel_capability_init(WheelCapabilityState *state) {
  */
 void wheel_capability_update(WheelCapabilityState *state, uint8_t wheel_mode, uint8_t report_mode,
                              uint8_t report_capabilities) {
-    state->capability_flags = (uint16_t)report_mode | (uint16_t)report_capabilities << 8;
-    state->report_flags = (state->report_flags & 0xffe1u) | ((report_capabilities & 0x3cu) >> 1);
+    wheel_capability_update_report(state, report_mode, report_capabilities);
     if (calibration_forced_available(wheel_mode)) {
         state->calibration_available = true;
     } else if (calibration_forced_unavailable(wheel_mode)) {

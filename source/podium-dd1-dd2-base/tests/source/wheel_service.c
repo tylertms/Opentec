@@ -274,6 +274,9 @@ static void test_sends_display_output_with_each_scan_phase(void) {
         .third_glyph_marker = true,
     };
     wheel_service_set_display_output(&service, &output);
+    assert(service.protocol.adapter_output.display.glyphs[0] == 0xa5);
+    assert(service.protocol.adapter_output.display.glyphs[1] == 0x5a);
+    assert(service.protocol.adapter_output.display.glyphs[2] == 0x40);
 
     respond_scan(WHEEL_BUTTON_PRIMARY_RESPONSE);
     run_service(&service, now_ms++);
@@ -591,11 +594,11 @@ static void test_builds_adapter_multi_position_input(void) {
     service.protocol.request[6] = 1;
     service.protocol.request[7] = 2;
     service.protocol.request[14] = 3;
-    service.protocol.crc_adapter.connected = true;
-    service.protocol.crc_adapter.mode = 1;
-    service.protocol.crc_adapter.rotary_positions[0] = 5;
-    service.protocol.crc_adapter.rotary_positions[1] = 6;
-    service.protocol.crc_adapter.rotary_positions[2] = 7;
+    service.protocol.adapter.connected = true;
+    service.protocol.adapter.mode = 1;
+    service.protocol.adapter.rotary_positions[0] = 5;
+    service.protocol.adapter.rotary_positions[1] = 6;
+    service.protocol.adapter.rotary_positions[2] = 7;
     WheelMultiPositionInput input;
 
     assert(wheel_service_multi_position_input(&service, 0, &input));
@@ -640,7 +643,7 @@ static void test_selects_extended_report_fields(void) {
     assert(wheel_service_extended_report_fields(&service));
     assert(wheel_service_accessory_flags(&service) == 0x0b);
 
-    service.protocol.crc_adapter.connected = true;
+    service.protocol.adapter.connected = true;
     assert(!wheel_service_extended_report_fields(&service));
     service.protocol.mode = 6;
     assert(!wheel_service_extended_report_fields(&service));
@@ -738,6 +741,7 @@ static void test_applies_vibration_to_every_packet_family(void) {
     assert(service.protocol.mode_four_output.vibration[1] == 0x56);
     assert(service.protocol.crc_output.vibration[0] == 0x34);
     assert(service.protocol.crc_output.vibration[1] == 0x56);
+    assert(service.protocol.adapter_output.display_report == 0x5634);
 }
 
 static void test_applies_legacy_axes_to_every_packet_family(void) {
@@ -765,11 +769,11 @@ static void test_reports_host_capability_recovery_inputs(void) {
     wheel_service_set_host_capability(&service, true);
     assert(wheel_service_host_capability_enabled(&service));
 
-    service.protocol.crc_adapter.buttons[1] = 0x80;
+    service.protocol.adapter.buttons[1] = 0x80;
     assert(!wheel_service_adapter_requests_host_capability(&service));
-    service.protocol.crc_adapter.connected = true;
+    service.protocol.adapter.connected = true;
     assert(wheel_service_adapter_requests_host_capability(&service));
-    service.protocol.crc_adapter.buttons[1] = 0x7f;
+    service.protocol.adapter.buttons[1] = 0x7f;
     assert(!wheel_service_adapter_requests_host_capability(&service));
 }
 
@@ -788,7 +792,7 @@ static void test_exposes_playstation_wheel_inputs(void) {
     service.protocol.request[23] = 0xcd;
     service.protocol.request[24] = 0xef;
     service.protocol.mode_four_input.axis_report_enabled = 1;
-    service.protocol.crc_adapter = (WheelPacketCrcAdapter){
+    service.protocol.adapter = (WheelAdapterInput){
         .buttons = {0x12, 0x34, 0x56},
         .axes = {0x78, 0x9a},
         .mode = 1,
@@ -806,7 +810,7 @@ static void test_exposes_playstation_wheel_inputs(void) {
     assert(snapshot.auxiliary_report[1] == 0xcd);
     assert(snapshot.auxiliary_report[2] == 0xef);
     assert(snapshot.axis_report_enabled);
-    assert(wheel_service_adapter(&service) == &service.protocol.crc_adapter);
+    assert(wheel_service_adapter(&service) == &service.protocol.adapter);
     assert(wheel_service_adapter(&service)->buttons[2] == 0x56);
     assert(wheel_service_adapter(&service)->axes[1] == 0x9a);
     assert(wheel_service_adapter(&service)->mode == 1);

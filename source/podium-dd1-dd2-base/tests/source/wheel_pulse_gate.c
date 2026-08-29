@@ -15,6 +15,8 @@ static void test_applies_independent_interface_deadlines(void) {
     assert(wheel_pulse_gate_ready(&gate, 7, 1, 0x10));
     assert(!wheel_pulse_gate_ready(&gate, 7, 16, 0x10));
     assert(wheel_pulse_gate_ready(&gate, 7, 17, 0x10));
+    assert(!wheel_pulse_gate_ready(&gate, 10, 17, 0x10));
+    assert(wheel_pulse_gate_ready(&gate, 10, 33, 0x10));
 }
 
 static void test_zero_flags_do_not_extend_a_deadline(void) {

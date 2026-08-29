@@ -2116,7 +2116,7 @@ static void service_usb_input(uint32_t now_ms) {
     if (usb_device_operating_mode() == USB_OPERATING_MODE_PLAYSTATION) {
         UsbPlaystationInputWorkspace *workspace = &usb_console_input_workspace.playstation;
         (void)wheel_service_input_snapshot(&wheel_service, &workspace->sources.wheel);
-        const WheelPacketCrcAdapter *adapter = wheel_service_adapter(&wheel_service);
+        const WheelAdapterInput *adapter = wheel_service_adapter(&wheel_service);
         uint8_t wheel_clutch_first = workspace->sources.wheel.clutch_paddles[0];
         uint8_t wheel_clutch_second = workspace->sources.wheel.clutch_paddles[1];
         bool wheel_axis_enabled = workspace->sources.wheel.axis_report_enabled;

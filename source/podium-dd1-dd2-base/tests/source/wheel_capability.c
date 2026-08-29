@@ -21,6 +21,20 @@ static void test_caches_and_maps_report_capabilities(void) {
     assert(!state.tuning_menu_available);
 }
 
+static void test_updates_report_capabilities_without_changing_features(void) {
+    WheelCapabilityState state = {
+        .calibration_available = true,
+        .tuning_menu_available = true,
+    };
+
+    wheel_capability_update_report(&state, 0x45, 0x3c);
+
+    assert(state.capability_flags == 0x3c45);
+    assert(state.report_flags == 0x1e);
+    assert(state.calibration_available);
+    assert(state.tuning_menu_available);
+}
+
 static void test_applies_calibration_mode_defaults(void) {
     static const uint8_t forced_available[] = {5, 7, 8, 0x10, 0x12};
     static const uint8_t forced_unavailable[] = {9, 0x0b, 0x11, 0x15, 0x16, 0x1d};
@@ -157,6 +171,7 @@ static void test_reports_multi_position_support(void) {
 
 int main(void) {
     test_caches_and_maps_report_capabilities();
+    test_updates_report_capabilities_without_changing_features();
     test_applies_calibration_mode_defaults();
     test_gates_latched_input_capability_by_wheel_mode();
     test_resolves_tuning_menu_availability();

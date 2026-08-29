@@ -579,7 +579,7 @@ void wheel_axis_override_process(WheelAxisOverrideProcessor *processor, uint8_t 
 }
 
 /**
- * @brief Applies the CRC-family packet axis-control mode.
+ * @brief Applies a packet family's axis-control mode.
  *
  * Normalizes the packet axis bytes, updates the persistent availability state, publishes the
  * selected overrides, or advances the packet multiplex phase and output axes.
@@ -593,7 +593,7 @@ void wheel_axis_override_process(WheelAxisOverrideProcessor *processor, uint8_t 
  * @param[in,out] bite_point_percent Active profile bite-point percentage.
  * @param[in,out] buttons Primary attached-wheel button bank.
  * @param[in,out] motion Primary attached-wheel rotary motion.
- * @param[in,out] controls Eight CRC-family control bytes updated in place.
+ * @param[in,out] controls Eight packet control bytes updated in place.
  * @param[in,out] axes Two packet output axes updated in place when required by the mode.
  */
 void wheel_axis_override_process_packet(WheelAxisOverrideProcessor *processor, uint8_t mode,

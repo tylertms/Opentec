@@ -6,6 +6,7 @@
 enum {
     INTERFACE_MODE_XBOX_GIP = 6,
     INTERFACE_MODE_PLAYSTATION_4 = 7,
+    INTERFACE_MODE_AUXILIARY_PULSE = 10,
     XBOX_PULSE_HOLD_MS = 90,
     PLAYSTATION_PULSE_HOLD_MS = 15,
 };
@@ -26,8 +27,8 @@ void wheel_pulse_gate_init(WheelPulseGate *gate) {
  * @brief Applies the attached-wheel interface pulse timing policy.
  *
  * Publishes pulses immediately on direct interfaces. Xbox and PlayStation pulses are accepted only
- * after their independent 90 ms and 15 ms hold intervals, and a nonzero accepted pulse starts the
- * next interval.
+ * after their independent 90 ms and 15 ms hold intervals. The auxiliary-pulse interface shares the
+ * 15 ms gate. A nonzero accepted pulse starts the next interval.
  *
  * @param[in,out] gate Independent Xbox and PlayStation pulse deadlines.
  * @param[in] interface_mode Active wheel interface mode.
@@ -42,7 +43,8 @@ bool wheel_pulse_gate_ready(WheelPulseGate *gate, uint8_t interface_mode, uint32
     if (interface_mode == INTERFACE_MODE_XBOX_GIP) {
         deadline_index = 0;
         hold_ms = XBOX_PULSE_HOLD_MS;
-    } else if (interface_mode == INTERFACE_MODE_PLAYSTATION_4) {
+    } else if (interface_mode == INTERFACE_MODE_PLAYSTATION_4 ||
+               interface_mode == INTERFACE_MODE_AUXILIARY_PULSE) {
         deadline_index = 1;
         hold_ms = PLAYSTATION_PULSE_HOLD_MS;
     } else {
