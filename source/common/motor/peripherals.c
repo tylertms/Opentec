@@ -79,6 +79,74 @@ void motor_adc_trigger_enable(void) {
 }
 
 /**
+ * @brief Polls the active ADC and advances two-phase current-offset calibration.
+ * @param state Current calibration stage, accumulation, and resulting offsets.
+ * @return Pending, phase-B transition, or completed calibration.
+ */
+MotorCurrentCalibrationResult motor_current_calibration_poll(MotorCurrentCalibrationState *state) {
+    ADC_Type *adc;
+
+    if (state->stage == kMotorCurrentCalibrationPhaseA) {
+        adc = ADC1;
+    } else if (state->stage == kMotorCurrentCalibrationPhaseB) {
+        adc = ADC0;
+    } else {
+        return kMotorCurrentCalibrationPending;
+    }
+
+    bool sample_ready = false;
+    uint16_t sample = 0U;
+    if (state->sample_count < MOTOR_CURRENT_CALIBRATION_SAMPLE_COUNT) {
+        sample_ready =
+            (ADC16_GetChannelStatusFlags(adc, 0U) & kADC16_ChannelConversionDoneFlag) != 0U;
+        if (sample_ready) {
+            sample = (uint16_t)ADC16_GetChannelConversionValue(adc, 0U);
+        }
+    }
+
+    MotorCurrentCalibrationResult result =
+        motor_current_calibration_step(state, sample_ready, sample);
+    adc16_channel_config_t channel_config = {
+        .channelNumber = 0U,
+        .enableInterruptOnConversionCompleted = false,
+        .enableDifferentialConversion = false,
+    };
+
+    if (result == kMotorCurrentCalibrationPhaseBStarted) {
+        ADC16_SetChannelConfig(ADC1, 0U, &channel_config);
+        channel_config.channelNumber = 9U;
+        channel_config.enableInterruptOnConversionCompleted = true;
+        ADC16_SetChannelConfig(ADC0, 0U, &channel_config);
+    } else if (result == kMotorCurrentCalibrationFinished) {
+        ADC16_SetChannelConfig(ADC0, 0U, &channel_config);
+    }
+
+    return result;
+}
+
+/**
+ * @brief Selects the four PDB-triggered ADC channels used during motor control.
+ * @param adc1_auxiliary_channel Board-selected ADC1 auxiliary channel, either 4 or 7.
+ */
+void motor_adc_runtime_initialize(uint32_t adc1_auxiliary_channel) {
+    adc16_channel_config_t channel_config = {
+        .channelNumber = 9U,
+        .enableInterruptOnConversionCompleted = true,
+        .enableDifferentialConversion = false,
+    };
+
+    ADC16_SetChannelConfig(ADC1, 0U, &channel_config);
+    channel_config.channelNumber = 10U;
+    channel_config.enableInterruptOnConversionCompleted = false;
+    ADC16_SetChannelConfig(ADC0, 0U, &channel_config);
+    channel_config.channelNumber = adc1_auxiliary_channel;
+    ADC16_SetChannelConfig(ADC1, 1U, &channel_config);
+    channel_config.channelNumber = 2U;
+    ADC16_SetChannelConfig(ADC0, 1U, &channel_config);
+    motor_adc_trigger_enable();
+}
+
+/**
  * @brief Configures masked complementary PWM for all three motor phases.
  */
 void motor_pwm_initialize(void) {
