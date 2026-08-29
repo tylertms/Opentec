@@ -19,6 +19,7 @@ enum {
 };
 
 static const char torque_disabled_text[] = "Torque disabled by Powerbutton";
+static const char wheel_center_calibrated_text[] = "Wheel center calibrated.";
 static const char position_sensor_succeeded_text[] = "Position Sensor Test Successful.";
 static const char position_sensor_started_text[] = "Position Sensor Test Started.";
 static const char position_sensor_failed_text[] = "Position Sensor Test Failed!";
@@ -107,7 +108,7 @@ void display_notice_render_torque_disabled(uint8_t framebuffer[DISPLAY_FRAMEBUFF
 }
 
 /**
- * @brief Renders a motor-originated system notice.
+ * @brief Renders a wheel-position or motor-originated system notice.
  *
  * Clears the display, selects the warning or error icon, and lays out the exact one-line or
  * two-line operator message associated with the notice.
@@ -130,7 +131,10 @@ void display_notice_render_system(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE],
         draw_warning_icon(framebuffer);
     }
 
-    if (kind == SYSTEM_NOTICE_POSITION_SENSOR_TEST_SUCCEEDED) {
+    if (kind == SYSTEM_NOTICE_WHEEL_CENTER_CALIBRATED) {
+        display_text_draw_centered(framebuffer, wheel_center_calibrated_text, NOTICE_TEXT_Y, 1,
+                                   NOTICE_COLOR);
+    } else if (kind == SYSTEM_NOTICE_POSITION_SENSOR_TEST_SUCCEEDED) {
         display_text_draw_centered(framebuffer, position_sensor_succeeded_text, NOTICE_TEXT_Y, 1,
                                    NOTICE_COLOR);
     } else if (kind == SYSTEM_NOTICE_POSITION_SENSOR_TEST_STARTED) {

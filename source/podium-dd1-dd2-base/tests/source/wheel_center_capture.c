@@ -41,6 +41,24 @@ static void test_deadline_wraps(void) {
            WHEEL_CENTER_CAPTURE_REQUESTED);
 }
 
+static void test_throttles_result_notification_for_four_seconds(void) {
+    WheelCenterCaptureCommand command;
+    wheel_center_capture_command_init(&command);
+
+    assert(!wheel_center_capture_command_notification_due(&command, 0));
+    assert(wheel_center_capture_command_notification_due(&command, 1));
+    assert(command.next_notification_ms == 4001);
+    assert(!wheel_center_capture_command_notification_due(&command, 4001));
+    assert(wheel_center_capture_command_notification_due(&command, 4002));
+
+    command.next_notification_ms = UINT32_MAX - 1;
+    assert(!wheel_center_capture_command_notification_due(&command, UINT32_MAX - 1));
+    assert(wheel_center_capture_command_notification_due(&command, UINT32_MAX));
+    assert(command.next_notification_ms == 3999);
+    assert(!wheel_center_capture_command_notification_due(&command, 3999));
+    assert(wheel_center_capture_command_notification_due(&command, 4000));
+}
+
 static void test_rejects_other_reports(void) {
     uint8_t payload[7] = {0xf8, 5, 0, 0, 0, 0, 0};
     UsbOutputCommand output = make_command(payload);
@@ -68,6 +86,7 @@ static void test_rejects_other_reports(void) {
 int main(void) {
     test_accepts_capture_command_once_per_second();
     test_deadline_wraps();
+    test_throttles_result_notification_for_four_seconds();
     test_rejects_other_reports();
     return 0;
 }

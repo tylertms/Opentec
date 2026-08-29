@@ -32,6 +32,7 @@ static void test_dispatches_motor_notice_actions(void) {
         uint8_t code;
         SystemEventAction action;
     } cases[] = {
+        {2, SYSTEM_EVENT_ACTION_SHOW_WHEEL_CENTER_CALIBRATED},
         {3, SYSTEM_EVENT_ACTION_SHOW_POSITION_SENSOR_TEST_SUCCEEDED},
         {4, SYSTEM_EVENT_ACTION_SHOW_POSITION_SENSOR_TEST_STARTED},
         {5, SYSTEM_EVENT_ACTION_SHOW_POSITION_SENSOR_TEST_FAILED},

@@ -6,6 +6,7 @@
 #include "system/event_queue.h"
 
 enum {
+    SYSTEM_EVENT_WHEEL_CENTER_CALIBRATED = 2,
     SYSTEM_EVENT_POSITION_SENSOR_TEST_SUCCEEDED = 3,
     SYSTEM_EVENT_POSITION_SENSOR_TEST_STARTED = 4,
     SYSTEM_EVENT_POSITION_SENSOR_TEST_FAILED = 5,
@@ -48,9 +49,9 @@ void system_event_dispatcher_init(SystemEventDispatcher *dispatcher) {
 /**
  * @brief Dispatches a queued system notice event.
  *
- * Maps position-sensor, motor-calibration, torque-reduction, and power-button event codes to
- * display actions. Recognized events complete their queue slot and start a 100-millisecond minimum
- * interval. Other event codes remain available for their owning dispatcher.
+ * Maps wheel-center, position-sensor, motor-calibration, torque-reduction, and power-button event
+ * codes to display actions. Recognized events complete their queue slot and start a 100-millisecond
+ * minimum interval. Other event codes remain available for their owning dispatcher.
  *
  * @param[in,out] dispatcher Shared event dispatch cadence.
  * @param[in,out] queue Single-slot system event queue.
@@ -60,7 +61,9 @@ void system_event_dispatcher_init(SystemEventDispatcher *dispatcher) {
 SystemEventAction system_event_dispatcher_update(SystemEventDispatcher *dispatcher,
                                                  SystemEventQueue *queue, uint32_t now_ms) {
     SystemEventAction action;
-    if (queue->pending_code == SYSTEM_EVENT_POSITION_SENSOR_TEST_SUCCEEDED) {
+    if (queue->pending_code == SYSTEM_EVENT_WHEEL_CENTER_CALIBRATED) {
+        action = SYSTEM_EVENT_ACTION_SHOW_WHEEL_CENTER_CALIBRATED;
+    } else if (queue->pending_code == SYSTEM_EVENT_POSITION_SENSOR_TEST_SUCCEEDED) {
         action = SYSTEM_EVENT_ACTION_SHOW_POSITION_SENSOR_TEST_SUCCEEDED;
     } else if (queue->pending_code == SYSTEM_EVENT_POSITION_SENSOR_TEST_STARTED) {
         action = SYSTEM_EVENT_ACTION_SHOW_POSITION_SENSOR_TEST_STARTED;

@@ -55,6 +55,10 @@ static void test_hidden_notice_clears_display(void) {
 static void test_renders_position_sensor_notices(void) {
     uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE] = {0};
 
+    display_notice_render_system(framebuffer, SYSTEM_NOTICE_WHEEL_CENTER_CALIBRATED);
+    assert(has_lit_pixel(framebuffer, 123, 17, 11, 10));
+    assert(has_lit_pixel(framebuffer, 0, 37, DISPLAY_FRAMEBUFFER_WIDTH, 7));
+
     display_notice_render_system(framebuffer, SYSTEM_NOTICE_POSITION_SENSOR_TEST_SUCCEEDED);
     assert(has_lit_pixel(framebuffer, 123, 17, 11, 10));
     assert(has_lit_pixel(framebuffer, 0, 37, DISPLAY_FRAMEBUFFER_WIDTH, 7));

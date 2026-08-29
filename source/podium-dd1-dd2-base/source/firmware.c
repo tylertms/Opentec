@@ -231,6 +231,8 @@ enum {
     LOCAL_DISPLAY_PAGE_BITE_POINT = 3,
     LOCAL_DISPLAY_PAGE_SYSTEM_NOTICE = 4,
     USB_DISCONNECT_STATUS_CODE = 0x1c,
+    WHEEL_CENTER_CALIBRATED_EVENT_CODE = 2,
+    WHEEL_CENTER_CALIBRATED_STATUS_CODE = 0x1f,
 };
 
 static uint8_t usb_motor_upload_assembly[USB_MOTOR_BUFFER_SIZE];
@@ -326,7 +328,9 @@ static void service_system_events(uint32_t now_ms) {
     system_notice_update(&system_notice, now_ms);
     SystemEventAction action =
         system_event_dispatcher_update(&system_event_dispatcher, &system_event_queue, now_ms);
-    if (action == SYSTEM_EVENT_ACTION_SHOW_POSITION_SENSOR_TEST_SUCCEEDED) {
+    if (action == SYSTEM_EVENT_ACTION_SHOW_WHEEL_CENTER_CALIBRATED) {
+        system_notice_show(&system_notice, SYSTEM_NOTICE_WHEEL_CENTER_CALIBRATED, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_POSITION_SENSOR_TEST_SUCCEEDED) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_POSITION_SENSOR_TEST_SUCCEEDED, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_POSITION_SENSOR_TEST_STARTED) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_POSITION_SENSOR_TEST_STARTED, now_ms);
@@ -419,16 +423,19 @@ static void initialize_motor_link(void) {
  * Ignores capture before a valid motor-position report is available. Otherwise normalizes the
  * current sample with the identified controller modulus and schedules persistence when the retained
  * reference changes.
+ *
+ * @return True when a valid position sample was captured.
  */
-static void capture_current_wheel_center(void) {
+static bool capture_current_wheel_center(void) {
     if (!motor_position_ready) {
-        return;
+        return false;
     }
     if (wheel_position_reference_capture(
             &base_settings.wheel_position, motor_position_report.wheel_position,
             motor_identity_position_modulus(motor_probe_identity(&motor_probe)))) {
         base_settings_persistence_mark_dirty(&settings_persistence, platform_time_ms());
     }
+    return true;
 }
 
 /**
@@ -469,7 +476,7 @@ static void service_motor_link(void) {
         motor_position_report_decode(&motor_live_frame, &motor_position_report)) {
         motor_position_ready = true;
         if (!base_settings.wheel_position.calibrated) {
-            capture_current_wheel_center();
+            (void)capture_current_wheel_center();
         }
     }
 
@@ -1014,7 +1021,17 @@ static void service_usb_output(void) {
         &wheel_center_capture_command, &usb_output_command, platform_time_ms());
     if (center_capture_action != WHEEL_CENTER_CAPTURE_UNHANDLED) {
         if (center_capture_action == WHEEL_CENTER_CAPTURE_REQUESTED) {
-            capture_current_wheel_center();
+            uint32_t now_ms = platform_time_ms();
+            if (capture_current_wheel_center()) {
+                system_control_state_set_status(&system_control_state,
+                                                wheel_service_mode(&wheel_service),
+                                                WHEEL_CENTER_CALIBRATED_STATUS_CODE);
+                if (wheel_center_capture_command_notification_due(&wheel_center_capture_command,
+                                                                  now_ms)) {
+                    (void)system_event_queue_try_push(&system_event_queue,
+                                                      WHEEL_CENTER_CALIBRATED_EVENT_CODE);
+                }
+            }
         }
         return;
     }
