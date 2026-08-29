@@ -67,8 +67,7 @@ typedef struct {
 
 void wheel_updater_bridge_init(WheelUpdaterBridge *bridge);
 bool wheel_updater_bridge_start(WheelUpdaterBridge *bridge, const uint8_t *request, uint8_t length);
-WheelUpdaterOperation wheel_updater_bridge_step(WheelUpdaterBridge *bridge,
-                                                const WheelUpdaterIo *io);
+WheelUpdaterOperation wheel_updater_bridge_step(WheelUpdaterBridge *bridge, WheelUpdaterIo io);
 bool wheel_updater_bridge_take_response(WheelUpdaterBridge *bridge, const uint8_t **response,
                                         uint8_t *length);
 bool wheel_updater_bridge_active(const WheelUpdaterBridge *bridge);

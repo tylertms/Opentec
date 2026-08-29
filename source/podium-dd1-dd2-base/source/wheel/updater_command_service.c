@@ -146,7 +146,7 @@ void wheel_updater_command_service_run(WheelUpdaterCommandService *service, uint
     }
 
     WheelUpdaterIo io = poll_transport(service, now_ms);
-    WheelUpdaterOperation operation = wheel_updater_bridge_step(&service->bridge, &io);
+    WheelUpdaterOperation operation = wheel_updater_bridge_step(&service->bridge, io);
     if (!service->operation_pending) {
         queue_operation(service, operation);
     }

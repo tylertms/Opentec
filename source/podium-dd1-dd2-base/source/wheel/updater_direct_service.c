@@ -104,7 +104,7 @@ void wheel_updater_direct_service_run(WheelUpdaterDirectService *service, uint32
         return;
     }
     WheelUpdaterIo io = poll_operation(service, now_ms);
-    WheelUpdaterOperation operation = wheel_updater_bridge_step(&service->bridge, &io);
+    WheelUpdaterOperation operation = wheel_updater_bridge_step(&service->bridge, io);
     if (!service->operation_pending) {
         start_operation(service, operation);
     }

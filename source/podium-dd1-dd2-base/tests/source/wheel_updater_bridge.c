@@ -13,7 +13,7 @@ static WheelUpdaterIo io(WheelUpdaterIoStatus status, uint32_t now_ms, const uin
 static WheelUpdaterOperation step(WheelUpdaterBridge *bridge, WheelUpdaterIoStatus status,
                                   uint32_t now_ms, const uint8_t *data, uint8_t length) {
     WheelUpdaterIo result = io(status, now_ms, data, length);
-    return wheel_updater_bridge_step(bridge, &result);
+    return wheel_updater_bridge_step(bridge, result);
 }
 
 static void assert_operation(WheelUpdaterOperation operation, WheelUpdaterOperationKind kind,
@@ -72,8 +72,8 @@ static void test_rejects_invalid_requests_and_busy_start(void) {
     assert(!wheel_updater_bridge_start(&bridge, request, 2));
     assert(wheel_updater_bridge_active(&bridge));
     assert(!wheel_updater_bridge_active(NULL));
-    assert(wheel_updater_bridge_step(NULL, NULL).kind == WHEEL_UPDATER_OPERATION_NONE);
-    assert(wheel_updater_bridge_step(&bridge, NULL).kind == WHEEL_UPDATER_OPERATION_NONE);
+    assert(wheel_updater_bridge_step(NULL, (WheelUpdaterIo){0}).kind ==
+           WHEEL_UPDATER_OPERATION_NONE);
 }
 
 static void test_accepts_maximum_request(void) {

@@ -187,7 +187,7 @@ void wheel_updater_aux_service_run(WheelUpdaterAuxService *service, uint32_t now
         return;
     }
 
-    WheelUpdaterOperation operation = wheel_updater_bridge_step(&service->bridge, &io);
+    WheelUpdaterOperation operation = wheel_updater_bridge_step(&service->bridge, io);
     if (!service->transfer_active) {
         start_operation(service, operation);
     }

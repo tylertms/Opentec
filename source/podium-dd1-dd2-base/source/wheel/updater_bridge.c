@@ -76,12 +76,12 @@ static WheelUpdaterOperation finish_response(WheelUpdaterBridge *bridge) {
  * @param[in] length Required fragment size.
  * @return True when the complete fragment was stored; otherwise false.
  */
-static bool append_fragment(WheelUpdaterBridge *bridge, const WheelUpdaterIo *io, uint8_t length) {
-    if (io->data == NULL || io->length != length ||
+static bool append_fragment(WheelUpdaterBridge *bridge, WheelUpdaterIo io, uint8_t length) {
+    if (io.data == NULL || io.length != length ||
         (uint16_t)bridge->response_length + length > sizeof(bridge->response)) {
         return false;
     }
-    memcpy(bridge->response + bridge->response_length, io->data, length);
+    memcpy(bridge->response + bridge->response_length, io.data, length);
     bridge->response_length += length;
     return true;
 }
@@ -138,33 +138,32 @@ bool wheel_updater_bridge_start(WheelUpdaterBridge *bridge, const uint8_t *reque
  * @param[in] io Current time and completion state of the preceding wheel operation.
  * @return Next wheel write or read operation, or no operation while waiting or response-ready.
  */
-WheelUpdaterOperation wheel_updater_bridge_step(WheelUpdaterBridge *bridge,
-                                                const WheelUpdaterIo *io) {
-    if (bridge == NULL || io == NULL || bridge->phase == WHEEL_UPDATER_BRIDGE_IDLE ||
+WheelUpdaterOperation wheel_updater_bridge_step(WheelUpdaterBridge *bridge, WheelUpdaterIo io) {
+    if (bridge == NULL || bridge->phase == WHEEL_UPDATER_BRIDGE_IDLE ||
         bridge->phase == WHEEL_UPDATER_BRIDGE_RESPONSE_READY) {
         return (WheelUpdaterOperation){0};
     }
-    if (io->status == WHEEL_UPDATER_IO_FAILED) {
+    if (io.status == WHEEL_UPDATER_IO_FAILED) {
         bridge->phase = WHEEL_UPDATER_BRIDGE_IDLE;
         return (WheelUpdaterOperation){0};
     }
 
     if (bridge->phase == WHEEL_UPDATER_BRIDGE_WRITE_REQUEST) {
-        if (io->status != WHEEL_UPDATER_IO_COMPLETE) {
-            return io->status == WHEEL_UPDATER_IO_PENDING ? (WheelUpdaterOperation){0}
-                                                          : current_operation(bridge);
+        if (io.status != WHEEL_UPDATER_IO_COMPLETE) {
+            return io.status == WHEEL_UPDATER_IO_PENDING ? (WheelUpdaterOperation){0}
+                                                         : current_operation(bridge);
         }
         if (bridge->request[1] == WHEEL_UPDATER_RETRY_OPCODE) {
             bridge->phase = WHEEL_UPDATER_BRIDGE_IDLE;
             return (WheelUpdaterOperation){0};
         }
-        bridge->deadline_ms = io->now_ms + WHEEL_UPDATER_READ_DELAY_MS;
+        bridge->deadline_ms = io.now_ms + WHEEL_UPDATER_READ_DELAY_MS;
         bridge->phase = WHEEL_UPDATER_BRIDGE_READ_DELAY;
         return (WheelUpdaterOperation){0};
     }
 
     if (bridge->phase == WHEEL_UPDATER_BRIDGE_READ_DELAY) {
-        if (!platform_time_reached(io->now_ms, bridge->deadline_ms)) {
+        if (!platform_time_reached(io.now_ms, bridge->deadline_ms)) {
             return (WheelUpdaterOperation){0};
         }
         bridge->phase = WHEEL_UPDATER_BRIDGE_READ_HEADER;
@@ -172,23 +171,23 @@ WheelUpdaterOperation wheel_updater_bridge_step(WheelUpdaterBridge *bridge,
     }
 
     if (bridge->phase == WHEEL_UPDATER_BRIDGE_READ_HEADER && bridge->retry_response &&
-        io->status != WHEEL_UPDATER_IO_COMPLETE &&
-        platform_time_reached(io->now_ms, bridge->deadline_ms)) {
+        io.status != WHEEL_UPDATER_IO_COMPLETE &&
+        platform_time_reached(io.now_ms, bridge->deadline_ms)) {
         return finish_response(bridge);
     }
-    if (io->status != WHEEL_UPDATER_IO_COMPLETE) {
-        return io->status == WHEEL_UPDATER_IO_PENDING ? (WheelUpdaterOperation){0}
-                                                      : current_operation(bridge);
+    if (io.status != WHEEL_UPDATER_IO_COMPLETE) {
+        return io.status == WHEEL_UPDATER_IO_PENDING ? (WheelUpdaterOperation){0}
+                                                     : current_operation(bridge);
     }
 
     if (bridge->phase == WHEEL_UPDATER_BRIDGE_READ_HEADER) {
-        if (io->data == NULL || io->length != 1) {
+        if (io.data == NULL || io.length != 1) {
             return current_operation(bridge);
         }
-        if (io->data[0] == 0) {
+        if (io.data[0] == 0) {
             return bridge->retry_response ? finish_response(bridge) : current_operation(bridge);
         }
-        if (io->data[0] != WHEEL_UPDATER_FRAME_MARKER) {
+        if (io.data[0] != WHEEL_UPDATER_FRAME_MARKER) {
             bridge->response_length = 0;
             bridge->retry_response = false;
             bridge->phase = WHEEL_UPDATER_BRIDGE_WRITE_REQUEST;
@@ -203,15 +202,15 @@ WheelUpdaterOperation wheel_updater_bridge_step(WheelUpdaterBridge *bridge,
     }
 
     if (bridge->phase == WHEEL_UPDATER_BRIDGE_READ_OPCODE) {
-        if (io->data == NULL || io->length != 1) {
+        if (io.data == NULL || io.length != 1) {
             return current_operation(bridge);
         }
-        uint8_t opcode = io->data[0];
+        uint8_t opcode = io.data[0];
         bridge->response[bridge->response_length + 1] = opcode;
         if (opcode == WHEEL_UPDATER_RETRY_OPCODE) {
             bridge->response_length += 2;
             bridge->retry_response = true;
-            bridge->deadline_ms = io->now_ms + WHEEL_UPDATER_RETRY_TIMEOUT_MS;
+            bridge->deadline_ms = io.now_ms + WHEEL_UPDATER_RETRY_TIMEOUT_MS;
             bridge->phase = WHEEL_UPDATER_BRIDGE_READ_HEADER;
             return current_operation(bridge);
         }
@@ -244,7 +243,7 @@ WheelUpdaterOperation wheel_updater_bridge_step(WheelUpdaterBridge *bridge,
         if (!append_fragment(bridge, io, WHEEL_UPDATER_LENGTH_SIZE)) {
             return current_operation(bridge);
         }
-        bridge->variable_payload_length = (uint16_t)io->data[0] | (uint16_t)io->data[1] << 8;
+        bridge->variable_payload_length = (uint16_t)io.data[0] | (uint16_t)io.data[1] << 8;
         bridge->phase = WHEEL_UPDATER_BRIDGE_READ_METADATA;
         return current_operation(bridge);
     }
