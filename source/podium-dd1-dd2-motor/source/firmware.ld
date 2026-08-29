@@ -1,12 +1,13 @@
 /*
 ** ###################################################################
-**     Processors:          MKV30F128VFM10
-**                          MKV30F128VLF10
-**                          MKV30F128VLH10
+**     Processors:          MKV10Z128VFM7
+**                          MKV10Z128VLC7
+**                          MKV10Z128VLF7
+**                          MKV10Z128VLH7
 **
 **     Compiler:            GNU C Compiler
-**     Reference manual:    KV30P64M100SFARM, Rev. 0, February 14, 2014
-**     Version:             rev. 0.5, 2015-02-19
+**     Reference manual:    KV11P64M75RM Rev.2, April 2015
+**     Version:             rev. 1.0, 2014-12-14
 **     Build:               b210812
 **
 **     Abstract:
@@ -36,8 +37,7 @@ MEMORY
   m_interrupts          (RX)  : ORIGIN = 0x0000A000, LENGTH = 0x00000400
   m_flash_config        (RX)  : ORIGIN = 0x0000A400, LENGTH = 0x00000010
   m_text                (RX)  : ORIGIN = 0x0000A410, LENGTH = 0x00015BF0
-  m_data                (RW)  : ORIGIN = 0x1FFFE000, LENGTH = 0x00002000
-  m_data_2              (RW)  : ORIGIN = 0x20000000, LENGTH = 0x00002000
+  m_data                (RW)  : ORIGIN = 0x1FFFF000, LENGTH = 0x00004000
 }
 
 /* Define output sections */
@@ -147,6 +147,16 @@ SECTIONS
   __etext = .;    /* define a global symbol at end of code */
   __DATA_ROM = .; /* Symbol is used by startup for data initialization */
 
+  /* reserve MTB memory at the beginning of m_data */
+  .mtb : /* MTB buffer address as defined by the hardware */
+  {
+    . = ALIGN(8);
+    _mtb_start = .;
+    KEEP(*(.mtb_buf)) /* need to KEEP Micro Trace Buffer as not referenced by application */
+    . = ALIGN(8);
+    _mtb_end = .;
+  } > m_data
+
   .data : AT(__DATA_ROM)
   {
     . = ALIGN(4);
@@ -191,21 +201,21 @@ SECTIONS
     . += HEAP_SIZE;
     __HeapLimit = .;
     __heap_limit = .; /* Add for _sbrk */
-  } > m_data_2
+  } > m_data
 
   .stack :
   {
     . = ALIGN(8);
     . += STACK_SIZE;
-  } > m_data_2
+  } > m_data
 
   /* Initializes stack on the end of block */
-  __StackTop   = ORIGIN(m_data_2) + LENGTH(m_data_2);
+  __StackTop   = ORIGIN(m_data) + LENGTH(m_data);
   __StackLimit = __StackTop - STACK_SIZE;
   PROVIDE(__stack = __StackTop);
 
   .ARM.attributes 0 : { *(.ARM.attributes) }
 
-  ASSERT(__StackLimit >= __HeapLimit, "region m_data_2 overflowed with stack and heap")
+  ASSERT(__StackLimit >= __HeapLimit, "region m_data overflowed with stack and heap")
 }
 

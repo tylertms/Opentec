@@ -1,7 +1,9 @@
 protocol_sources = files('source/protocol.c') + wqr_frame_sources
 protocol_include = [include_directories('source'), common_include]
 
-if meson.is_cross_build() and host_machine.cpu_family() == 'arm'
+wqr_target = meson.is_cross_build() and host_machine.cpu_family() == 'arm' and host_machine.cpu() == 'cortex-m4'
+
+if wqr_target
   mcux_sdk = subproject('mcux-sdk')
   cmsis = subproject('cmsis')
   sdk_drivers = mcux_sdk.get_variable('mcux_sdk_driver_sources')
@@ -134,6 +136,6 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'arm'
 
 endif
 
-if not meson.is_cross_build() or host_machine.cpu_family() == 'arm'
+if not meson.is_cross_build() or wqr_target
   subdir('tests')
 endif

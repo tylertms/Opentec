@@ -1,0 +1,5 @@
+[wrap-git]
+url = https://github.com/nxp-mcuxpresso/mcux-freemaster.git
+revision = 4603513d24f572e683c8bb5942ebe0f37022fa99
+depth = 1
+patch_directory = freemaster
