@@ -429,6 +429,22 @@ static void test_exchanges_xbox_gip_discovery(void) {
     assert(sent.data[4] == 0x12 && sent.data[5] == 0x34);
     assert(sent.data[6] == 0x78 && sent.data[7] == 0x56);
     assert(sent.data[17] == 0x30 && sent.data[18] == 0x2a);
+
+    uint8_t force_feedback_input[USB_DEVICE_REPORT_SIZE] = {0};
+    force_feedback_input[0] = 0x0e;
+    force_feedback_input[4] = 1;
+    force_feedback_input[5] = 0x34;
+    force_feedback_input[6] = 0x12;
+    force_feedback_input[7] = 3;
+    push_event(PLATFORM_USB_EVENT_OUT, 1, force_feedback_input, sizeof(force_feedback_input));
+    usb_device_service();
+
+    UsbDeviceOutputReport output;
+    assert(usb_device_take_output(&output));
+    assert(output.report_type == USB_DEVICE_HID_REPORT_OUTPUT);
+    assert(output.report_id == 0 && output.length == USB_DEVICE_REPORT_SIZE);
+    assert(memcmp(output.data, force_feedback_input, sizeof(force_feedback_input)) == 0);
+    assert(!usb_device_take_output(&output));
 }
 
 int main(void) {

@@ -28,6 +28,7 @@ typedef struct {
 typedef struct {
     UsbXboxGipSessionAction session_actions;
     uint8_t response_length;
+    bool application_output;
 } UsbXboxGipServiceResult;
 
 void usb_xbox_gip_service_init(UsbXboxGipService *service);

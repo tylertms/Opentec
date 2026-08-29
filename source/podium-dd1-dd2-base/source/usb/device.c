@@ -571,6 +571,17 @@ static void handle_control_input_complete(void) {
     }
 }
 
+/**
+ * @brief Stores one host output report for application processing.
+ *
+ * Replaces the pending output workspace with the supplied report classification and payload, then
+ * marks it available to the main device service.
+ *
+ * @param[in] report_type HID report type associated with the payload.
+ * @param[in] report_id HID report identifier, or zero for an unnumbered application packet.
+ * @param[in] data Report payload to store.
+ * @param[in] length Number of payload bytes to store.
+ */
 static void store_output_report(uint8_t report_type, uint8_t report_id, const uint8_t *data,
                                 uint8_t length) {
     output_report.report_type = report_type;
@@ -701,19 +712,22 @@ static void handle_event(void) {
 /**
  * @brief Services the Xbox GIP endpoint exchange.
  *
- * Preserves one response until endpoint 1 can accept it, waits for transfer completion before
- * producing another response, and passes received requests through the discovery and session
- * service.
+ * Preserves one response until endpoint 1 can accept it, captures force-feedback application
+ * packets for the main device service, and passes all requests through the discovery and session
+ * service. A received request can be processed while a prior input transfer is still completing.
  *
  */
 static void service_xbox_gip(void) {
-    if (operating_mode != USB_OPERATING_MODE_XBOX_GIP || !usb_device_configured() ||
-        xbox_input_busy) {
+    if (operating_mode != USB_OPERATING_MODE_XBOX_GIP || !usb_device_configured()) {
         return;
     }
-    if (!xbox_response_ready) {
+    if (!xbox_response_ready && (!xbox_input_busy || xbox_request_ready)) {
         UsbXboxGipServiceResult result = usb_xbox_gip_service_poll(
             &xbox_service, &xbox_service_identity, xbox_request, platform_time_ms(), xbox_response);
+        if (result.application_output) {
+            store_output_report(USB_DEVICE_HID_REPORT_OUTPUT, 0, xbox_request,
+                                USB_DEVICE_REPORT_SIZE);
+        }
         xbox_request_ready = false;
         for (uint8_t index = 0; index < USB_XBOX_GIP_METADATA_PACKET_SIZE; index++) {
             xbox_request[index] = 0;
@@ -724,6 +738,9 @@ static void service_xbox_gip(void) {
         }
         xbox_response_length = result.response_length;
         xbox_response_ready = true;
+    }
+    if (xbox_input_busy) {
+        return;
     }
     if (platform_usb_send(USB_HID_ENDPOINT, xbox_response, xbox_response_length, input_data_one)) {
         input_data_one = !input_data_one;

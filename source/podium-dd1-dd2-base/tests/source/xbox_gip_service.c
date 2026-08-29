@@ -110,8 +110,27 @@ static void test_responds_to_session_commands(void) {
     assert(fixture.service.next_sequence == 3);
 }
 
+static void test_classifies_force_feedback_application_packets(void) {
+    Fixture fixture;
+    fixture_init(&fixture);
+    fixture.service.session.state = USB_XBOX_GIP_SESSION_ACTIVE;
+
+    for (uint8_t packet = 0x0b; packet <= 0x0e; packet++) {
+        fixture.request[0] = packet;
+        UsbXboxGipServiceResult result = poll_service(&fixture, packet);
+        assert(result.application_output);
+        assert(result.response_length == 0);
+    }
+
+    fixture.request[0] = 0x0a;
+    assert(!poll_service(&fixture, 0).application_output);
+    fixture.request[0] = 0x0f;
+    assert(!poll_service(&fixture, 0).application_output);
+}
+
 int main(void) {
     test_runs_discovery_and_metadata_download();
     test_responds_to_session_commands();
+    test_classifies_force_feedback_application_packets();
     return 0;
 }

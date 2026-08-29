@@ -8,6 +8,26 @@
 #include "usb/xbox_gip_response.h"
 #include "usb/xbox_gip_session.h"
 
+enum {
+    XBOX_GIP_SCRIPT_SAMPLE_PACKET = 0x0b,
+    XBOX_GIP_SCRIPT_INPUT_PACKET = 0x0e,
+};
+
+/**
+ * @brief Classifies an Xbox GIP force-feedback application packet.
+ *
+ * Accepts the four complete script-system packet types used for sample updates, slot control,
+ * script uploads, and scheduled live inputs.
+ *
+ * @param[in] request Received Xbox GIP endpoint packet.
+ * @return True when the packet belongs to the force-feedback application path.
+ */
+static bool
+is_force_feedback_application_packet(const uint8_t request[USB_XBOX_GIP_METADATA_PACKET_SIZE]) {
+    return request[0] >= XBOX_GIP_SCRIPT_SAMPLE_PACKET &&
+           request[0] <= XBOX_GIP_SCRIPT_INPUT_PACKET;
+}
+
 /**
  * @brief Emits a response for accepted Xbox GIP session actions.
  *
@@ -95,13 +115,15 @@ void usb_xbox_gip_service_init(UsbXboxGipService *service) {
  * @param[in] request Current 64-byte request packet, or an all-zero packet when none was received.
  * @param[in] now Current monotonic time in milliseconds.
  * @param[out] response Destination for a response packet.
- * @return Session actions and response length for the current cycle.
+ * @return Session actions, response length, and application-output classification for the cycle.
  */
 UsbXboxGipServiceResult
 usb_xbox_gip_service_poll(UsbXboxGipService *service, const UsbXboxGipServiceIdentity *identity,
                           const uint8_t request[USB_XBOX_GIP_METADATA_PACKET_SIZE], uint32_t now,
                           uint8_t response[USB_XBOX_GIP_METADATA_PACKET_SIZE]) {
-    UsbXboxGipServiceResult result = {0};
+    UsbXboxGipServiceResult result = {
+        .application_output = is_force_feedback_application_packet(request),
+    };
     if (service->metadata_active) {
         result.response_length = service_metadata(service, identity, request, response);
         return result;
