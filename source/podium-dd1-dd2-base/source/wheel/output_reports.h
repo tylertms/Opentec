@@ -40,6 +40,7 @@ void wheel_output_reports_init(WheelOutputReports *reports);
 void wheel_output_reports_apply(WheelOutputReports *reports, const uint8_t *arguments,
                                 uint8_t wheel_mode, uint16_t adapter_mode,
                                 bool display_blink_active);
+void wheel_output_reports_queue_six(WheelOutputReports *reports, uint8_t first, uint8_t second);
 void wheel_output_reports_queue_seventeen(
     WheelOutputReports *reports, const uint8_t payload[WHEEL_OUTPUT_REPORT_SEVENTEEN_SIZE]);
 bool wheel_output_reports_queue_remote_telemetry(

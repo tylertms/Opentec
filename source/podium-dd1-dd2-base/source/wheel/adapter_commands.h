@@ -29,6 +29,7 @@ typedef enum {
     WHEEL_ADAPTER_COMMAND_DISPLAY_PENDING,
     WHEEL_ADAPTER_COMMAND_REPORT_FOUR_PENDING,
     WHEEL_ADAPTER_COMMAND_REPORT_FIVE_PENDING,
+    WHEEL_ADAPTER_COMMAND_REPORT_SIX_PENDING,
 } WheelAdapterCommandPhase;
 
 /** @brief Asynchronous adapter discovery, input polling, and display-write state. */
@@ -59,6 +60,7 @@ typedef struct {
     bool status_ready;
     bool report_four_pending;
     bool report_five_pending;
+    bool report_six_pending;
     bool extended_reports_due;
 } WheelAdapterCommandService;
 
@@ -80,6 +82,8 @@ void wheel_adapter_command_service_queue_report_four(
     WheelAdapterCommandService *service, const uint8_t report[WHEEL_OUTPUT_REPORT_FOUR_SIZE]);
 void wheel_adapter_command_service_queue_report_five(
     WheelAdapterCommandService *service, const uint8_t report[WHEEL_OUTPUT_REPORT_FIVE_SIZE]);
+void wheel_adapter_command_service_queue_report_six(WheelAdapterCommandService *service,
+                                                    uint8_t first, uint8_t second);
 bool wheel_adapter_command_service_take_host_controls(
     WheelAdapterCommandService *service, uint8_t output[WHEEL_ADAPTER_HOST_CONTROLS_SIZE]);
 void wheel_adapter_command_service_run(WheelAdapterCommandService *service,

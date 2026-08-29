@@ -16,6 +16,7 @@ enum {
     WHEEL_ADAPTER_DISPLAY_STATE_OFFSET = 0x18,
     WHEEL_ADAPTER_REPORT_FOUR_OFFSET = 0x08,
     WHEEL_ADAPTER_REPORT_FIVE_OFFSET = 0x09,
+    WHEEL_ADAPTER_REPORT_SIX_OFFSET = 0x19,
     WHEEL_ADAPTER_SETUP_SELECTION_OFFSET = 0xc0,
     WHEEL_ADAPTER_HOST_CONTROLS_OFFSET = 0xa0,
     WHEEL_ADAPTER_PROBE_OFFSET = 0x0c,
@@ -74,6 +75,7 @@ static void advance_endpoint(WheelAdapterCommandService *service, WheelAdapterIn
     service->status_ready = false;
     service->report_four_pending = false;
     service->report_five_pending = false;
+    service->report_six_pending = false;
     service->extended_report_cadence = 0;
     service->extended_reports_due = false;
     service->phase = WHEEL_ADAPTER_COMMAND_DISCOVERING;
@@ -169,6 +171,7 @@ static bool finish_request(WheelAdapterCommandService *service, WheelAdapterInpu
     case WHEEL_ADAPTER_COMMAND_DISPLAY_PENDING:
     case WHEEL_ADAPTER_COMMAND_REPORT_FOUR_PENDING:
     case WHEEL_ADAPTER_COMMAND_REPORT_FIVE_PENDING:
+    case WHEEL_ADAPTER_COMMAND_REPORT_SIX_PENDING:
     case WHEEL_ADAPTER_COMMAND_DISCOVERING:
     case WHEEL_ADAPTER_COMMAND_READY:
         break;
@@ -308,7 +311,8 @@ static CommandTransportResult queue_request(WheelAdapterCommandService *service,
         return result;
     }
     if (service->endpoint_index == 1 &&
-        (service->report_four_pending || service->report_five_pending) &&
+        (service->report_four_pending || service->report_five_pending ||
+         service->report_six_pending) &&
         !service->extended_reports_due) {
         service->extended_reports_due = service->extended_report_cadence == 0;
         service->extended_report_cadence++;
@@ -322,7 +326,8 @@ static CommandTransportResult queue_request(WheelAdapterCommandService *service,
             service->report_four, sizeof(service->report_four));
         if (result == COMMAND_TRANSPORT_COMPLETE) {
             service->report_four_pending = false;
-            service->extended_reports_due = service->report_five_pending;
+            service->extended_reports_due =
+                service->report_five_pending || service->report_six_pending;
             service->phase = WHEEL_ADAPTER_COMMAND_REPORT_FOUR_PENDING;
         }
         return result;
@@ -333,8 +338,21 @@ static CommandTransportResult queue_request(WheelAdapterCommandService *service,
             service->report_five, sizeof(service->report_five));
         if (result == COMMAND_TRANSPORT_COMPLETE) {
             service->report_five_pending = false;
-            service->extended_reports_due = service->report_four_pending;
+            service->extended_reports_due =
+                service->report_four_pending || service->report_six_pending;
             service->phase = WHEEL_ADAPTER_COMMAND_REPORT_FIVE_PENDING;
+        }
+        return result;
+    }
+    if (service->extended_reports_due && service->report_six_pending) {
+        CommandTransportResult result = command_transport_queue_write_to(
+            transport, WHEEL_ADAPTER_COMMAND_OWNER, target, WHEEL_ADAPTER_REPORT_SIX_OFFSET,
+            service->report_four, 2);
+        if (result == COMMAND_TRANSPORT_COMPLETE) {
+            service->report_six_pending = false;
+            service->extended_reports_due =
+                service->report_four_pending || service->report_five_pending;
+            service->phase = WHEEL_ADAPTER_COMMAND_REPORT_SIX_PENDING;
         }
         return result;
     }
@@ -514,6 +532,27 @@ void wheel_adapter_command_service_queue_report_five(
         service->report_five[index] = report[index];
     }
     service->report_five_pending = true;
+}
+
+/**
+ * @brief Retains report-six fields for the extended adapter endpoint.
+ *
+ * Replaces the first two bytes of the shared report-four payload and queues those bytes for a
+ * write to adapter offset 0x19. Pending report-four and report-six writes observe the same newest
+ * values.
+ *
+ * @param[in,out] service Adapter command service retaining the report fields.
+ * @param[in] first First shared report byte.
+ * @param[in] second Second shared report byte.
+ */
+void wheel_adapter_command_service_queue_report_six(WheelAdapterCommandService *service,
+                                                    uint8_t first, uint8_t second) {
+    if (service == 0) {
+        return;
+    }
+    service->report_four[0] = first;
+    service->report_four[1] = second;
+    service->report_six_pending = true;
 }
 
 /**

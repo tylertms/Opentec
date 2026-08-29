@@ -89,6 +89,34 @@ static void test_ignores_unknown_actions(void) {
     assert(!wheel_output_reports_encode_next(&reports, 0, frame));
 }
 
+static void test_queues_report_six_from_shared_report_four_payload(void) {
+    WheelOutputReports reports;
+    wheel_output_reports_init(&reports);
+    uint8_t arguments[26];
+    uint8_t frame[33] = {0};
+
+    fill_arguments(arguments, WHEEL_OUTPUT_REPORT_ACTION_FOUR, 0x40);
+    wheel_output_reports_apply(&reports, arguments, 0, 1, false);
+    wheel_output_reports_queue_six(&reports, 0xa5, 0x5a);
+
+    assert(wheel_output_reports_encode_next(&reports, 0, frame));
+    assert(frame[1] == 4);
+    assert(frame[2] == 0xa5);
+    assert(frame[3] == 0x5a);
+    for (uint8_t index = 2; index < WHEEL_OUTPUT_REPORT_FOUR_SIZE; index++) {
+        assert(frame[index + 2] == (uint8_t)(0x40 + index));
+    }
+
+    assert(wheel_output_reports_encode_next(&reports, 0, frame));
+    assert(frame[1] == 6);
+    assert(frame[2] == 0xa5);
+    assert(frame[3] == 0x5a);
+    for (uint8_t index = 2; index < WHEEL_OUTPUT_REPORT_FOUR_SIZE; index++) {
+        assert(frame[index + 2] == (uint8_t)(0x40 + index));
+    }
+    assert(!wheel_output_reports_encode_next(&reports, 0, frame));
+}
+
 static void test_streams_report_seventeen_after_direct_reports(void) {
     WheelOutputReports reports;
     wheel_output_reports_init(&reports);
@@ -184,6 +212,7 @@ int main(void) {
     test_suppresses_legacy_report_two_outside_blink_phase();
     test_gates_extended_reports();
     test_ignores_unknown_actions();
+    test_queues_report_six_from_shared_report_four_payload();
     test_streams_report_seventeen_after_direct_reports();
     test_repeats_remote_telemetry_after_report_seventeen();
     test_sends_button_illumination_changes_to_remote_tuning_modes();

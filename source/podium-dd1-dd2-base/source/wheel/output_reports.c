@@ -11,6 +11,7 @@ enum {
     WHEEL_OUTPUT_REPORT_FIVE_PENDING = 1u << 3,
     WHEEL_OUTPUT_REPORT_SEVENTEEN_PENDING = 1u << 4,
     WHEEL_OUTPUT_REMOTE_TELEMETRY_PENDING = 1u << 5,
+    WHEEL_OUTPUT_REPORT_SIX_PENDING = 1u << 6,
     WHEEL_OUTPUT_REPORT_SEVENTEEN_COMMAND = 3,
     WHEEL_OUTPUT_REPORT_SEVENTEEN_CHUNK_SIZE = 30,
     WHEEL_OUTPUT_REPORT_SEVENTEEN_HEADER_STEP = 0x0f,
@@ -171,14 +172,34 @@ void wheel_output_reports_apply(WheelOutputReports *reports, const uint8_t *argu
 }
 
 /**
+ * @brief Queues attached-wheel report six.
+ *
+ * Replaces the first two bytes of the retained report-four payload and queues that shared 25-byte
+ * payload under report number six. A pending report four observes the replacement before it is
+ * sent.
+ *
+ * @param[in,out] reports Retained report payloads and pending state.
+ * @param[in] first First shared report byte.
+ * @param[in] second Second shared report byte.
+ */
+void wheel_output_reports_queue_six(WheelOutputReports *reports, uint8_t first, uint8_t second) {
+    if (reports == NULL) {
+        return;
+    }
+    reports->report_four[0] = first;
+    reports->report_four[1] = second;
+    reports->pending |= WHEEL_OUTPUT_REPORT_SIX_PENDING;
+}
+
+/**
  * @brief Encodes the next pending attached-wheel output report.
  *
- * Selects reports in the order 1, 2, 4, 5, 17, remote telemetry, and changed button illumination.
- * Single-frame reports write their report number and retained payload at frame offsets one and two,
- * then consume their pending state. Report 17 emits its next segmented transfer frame. Remote
- * telemetry writes command 3 and its 30-byte payload for three successive selections. Button
- * illumination uses command 0x16 only in remote-tuning wheel modes. The caller supplies the command
- * byte and checksum.
+ * Selects reports in the order 1, 2, 4, 5, 6, 17, remote telemetry, and changed button
+ * illumination. Single-frame reports write their report number and retained payload at frame
+ * offsets one and two, then consume their pending state. Reports four and six use the same 25-byte
+ * payload. Report 17 emits its next segmented transfer frame. Remote telemetry writes command 3
+ * and its 30-byte payload for three successive selections. Button illumination uses command 0x16
+ * only in remote-tuning wheel modes. The caller supplies the command byte and checksum.
  *
  * @param[in,out] reports Retained report payloads and pending state.
  * @param[in] wheel_mode Negotiated attached-wheel mode.
@@ -212,6 +233,11 @@ bool wheel_output_reports_encode_next(WheelOutputReports *reports, uint8_t wheel
         payload = reports->report_five;
         size = sizeof(reports->report_five);
         pending = WHEEL_OUTPUT_REPORT_FIVE_PENDING;
+    } else if ((reports->pending & WHEEL_OUTPUT_REPORT_SIX_PENDING) != 0) {
+        report = 6;
+        payload = reports->report_four;
+        size = sizeof(reports->report_four);
+        pending = WHEEL_OUTPUT_REPORT_SIX_PENDING;
     } else if ((reports->pending & WHEEL_OUTPUT_REPORT_SEVENTEEN_PENDING) != 0) {
         encode_report_seventeen(reports, frame);
         return true;

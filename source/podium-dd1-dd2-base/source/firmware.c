@@ -1940,6 +1940,9 @@ static void service_usb_output(void) {
         } else if (pedal_protocol_command_decode(&usb_operating_mode_command,
                                                  &pedal_protocol_command)) {
             pedal_service_apply_protocol_command(&pedal_service, &pedal_protocol_command);
+        } else if (wheel_service_apply_report_six_command(&wheel_service,
+                                                          &usb_operating_mode_command)) {
+            return;
         } else if (wheel_service_apply_multi_position_command(&wheel_service,
                                                               &usb_operating_mode_command)) {
             return;

@@ -679,6 +679,24 @@ static void test_mirrors_extended_adapter_output_reports(void) {
                   WHEEL_OUTPUT_REPORT_FOUR_SIZE) == 0);
 }
 
+static void test_routes_report_six_command(void) {
+    WheelService service;
+    initialize_service(&service);
+    UsbOperatingModeCommand command = {.opcode = 0x0d, .parameters = {0xa5, 0x12, 0x34, 0x5a}};
+
+    assert(wheel_service_apply_report_six_command(&service, &command));
+    assert(service.protocol.output_reports.report_four[0] == 0xa5);
+    assert(service.protocol.output_reports.report_four[1] == 0x5a);
+    assert(service.adapter_commands.report_four[0] == 0xa5);
+    assert(service.adapter_commands.report_four[1] == 0x5a);
+    assert(service.adapter_commands.report_six_pending);
+
+    command.opcode = 0x0c;
+    assert(!wheel_service_apply_report_six_command(&service, &command));
+    assert(!wheel_service_apply_report_six_command(NULL, &command));
+    assert(!wheel_service_apply_report_six_command(&service, NULL));
+}
+
 static void test_rejects_unavailable_multi_position_input(void) {
     WheelService service;
     initialize_service(&service);
@@ -902,6 +920,7 @@ int main(void) {
     test_filters_adapter_remote_tuning_active_state();
     test_retains_adapter_display_state_across_command_resets();
     test_mirrors_extended_adapter_output_reports();
+    test_routes_report_six_command();
     test_rejects_unavailable_multi_position_input();
     test_selects_extended_report_fields();
     test_reports_calibration_availability();

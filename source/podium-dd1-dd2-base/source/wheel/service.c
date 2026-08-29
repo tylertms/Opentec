@@ -781,6 +781,28 @@ bool wheel_service_apply_multi_position_command(WheelService *service,
 }
 
 /**
+ * @brief Applies a host report-six update.
+ *
+ * Routes operating-mode opcode 0x0D parameters zero and three into the shared report-four payload,
+ * then queues attached-wheel report six and the corresponding extended-adapter write.
+ *
+ * @param[in,out] service Attached-wheel service and adapter command state.
+ * @param[in] command Decoded F8 09 operating-mode command.
+ * @return True when the command carries a report-six update.
+ */
+bool wheel_service_apply_report_six_command(WheelService *service,
+                                            const UsbOperatingModeCommand *command) {
+    if (service == NULL || command == NULL || command->opcode != 0x0d) {
+        return false;
+    }
+    uint8_t first = command->parameters[0];
+    uint8_t second = command->parameters[3];
+    wheel_output_reports_queue_six(&service->protocol.output_reports, first, second);
+    wheel_adapter_command_service_queue_report_six(&service->adapter_commands, first, second);
+    return true;
+}
+
+/**
  * @brief Resolves the attached wheel's effective multi-position reporting mode.
  *
  * Combines the active profile setting with the retained host override, negotiated wheel mode, and

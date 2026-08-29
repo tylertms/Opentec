@@ -310,6 +310,9 @@ static void writes_extended_output_reports(void) {
     }
     wheel_adapter_command_service_queue_report_four(&service, report_four);
     wheel_adapter_command_service_queue_report_five(&service, report_five);
+    wheel_adapter_command_service_queue_report_six(&service, 0xa5, 0x5a);
+    report_four[0] = 0xa5;
+    report_four[1] = 0x5a;
 
     wheel_adapter_command_service_run(&service, &adapter, &transport);
     uint8_t expected_four[WHEEL_OUTPUT_REPORT_FOUR_SIZE + 3] = {2, 0x2c, 0x08};
@@ -322,6 +325,12 @@ static void writes_extended_output_reports(void) {
     uint8_t expected_five[WHEEL_OUTPUT_REPORT_FIVE_SIZE + 3] = {2, 0x2c, 0x09};
     memcpy(expected_five + 3, report_five, sizeof(report_five));
     expect_request(&transport, expected_five, sizeof(expected_five));
+    complete_write(&transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    const uint8_t expected_six[] = {2, 0x2c, 0x19, 0xa5, 0x5a};
+    expect_request(&transport, expected_six, sizeof(expected_six));
     complete_write(&transport);
     wheel_adapter_command_service_run(&service, &adapter, &transport);
 }
