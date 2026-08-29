@@ -836,6 +836,28 @@ uint8_t wheel_protocol_axis_limit(const WheelProtocol *protocol) {
 }
 
 /**
+ * @brief Returns the attached wheel's secondary button byte.
+ *
+ * Selects the mode-button field retained by the active mode-one, mode-four, or CRC-family input
+ * packet.
+ *
+ * @param[in] protocol Attached-wheel protocol state.
+ * @return Current secondary button byte, or zero when unavailable.
+ */
+uint8_t wheel_protocol_mode_buttons(const WheelProtocol *protocol) {
+    const WheelPacketModeOneInput *mode_one = wheel_protocol_mode_one_input(protocol);
+    if (mode_one != 0) {
+        return mode_one->mode_buttons;
+    }
+    const WheelPacketModeFourInput *mode_four = wheel_protocol_mode_four_input(protocol);
+    if (mode_four != 0) {
+        return mode_four->mode_buttons;
+    }
+    const WheelPacketCrcInput *crc = wheel_protocol_crc_input(protocol);
+    return crc != 0 ? crc->mode_buttons : 0;
+}
+
+/**
  * @brief Returns the attached wheel's two primary axis-output bytes.
  *
  * Selects the normalized values from the current mode-one, mode-four, or CRC-family input report.

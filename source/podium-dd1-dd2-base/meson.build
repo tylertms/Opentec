@@ -65,6 +65,7 @@ usb_motor_vendor_service_sources = files('source/usb/motor_vendor_service.c')
 usb_xbox_gip_discovery_sources = files('source/usb/xbox_gip_discovery.c')
 usb_xbox_gip_metadata_sources = files('source/usb/xbox_gip_metadata.c')
 usb_xbox_gip_metadata_download_sources = files('source/usb/xbox_gip_metadata_download.c')
+usb_xbox_gip_input_sources = files('source/usb/xbox_gip_input.c')
 usb_xbox_gip_response_sources = files('source/usb/xbox_gip_response.c')
 usb_xbox_gip_service_sources = files('source/usb/xbox_gip_service.c')
 usb_xbox_gip_session_sources = files('source/usb/xbox_gip_session.c')
@@ -251,6 +252,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'usb-xbox-gip-discovery': 'source/usb/xbox_gip_discovery.c',
     'usb-xbox-gip-metadata': 'source/usb/xbox_gip_metadata.c',
     'usb-xbox-gip-metadata-download': 'source/usb/xbox_gip_metadata_download.c',
+    'usb-xbox-gip-input': 'source/usb/xbox_gip_input.c',
     'usb-xbox-gip-response': 'source/usb/xbox_gip_response.c',
     'usb-xbox-gip-service': 'source/usb/xbox_gip_service.c',
     'usb-xbox-gip-session': 'source/usb/xbox_gip_session.c',
@@ -935,6 +937,14 @@ if not meson.is_cross_build()
     'tests/source/xbox_gip_response.c',
     usb_console_descriptor_sources,
     usb_xbox_gip_response_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  usb_xbox_gip_input_test = executable(
+    'base-usb-xbox-gip-input-test',
+    'tests/source/xbox_gip_input.c',
+    usb_xbox_gip_input_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2173,6 +2183,7 @@ if not meson.is_cross_build()
   test('base-usb-xbox-gip-discovery', usb_xbox_gip_discovery_test, suite: ['base', 'usb'])
   test('base-usb-xbox-gip-session', usb_xbox_gip_session_test, suite: ['base', 'usb'])
   test('base-usb-xbox-gip-response', usb_xbox_gip_response_test, suite: ['base', 'usb'])
+  test('base-usb-xbox-gip-input', usb_xbox_gip_input_test, suite: ['base', 'usb'])
   test('base-usb-xbox-gip-service', usb_xbox_gip_service_test, suite: ['base', 'usb'])
   test(
     'base-usb-motor-response-download',

@@ -780,7 +780,8 @@ bool usb_device_send_input(const uint8_t *report, uint8_t length) {
  */
 bool usb_device_queue_xbox_input(const UsbXboxGipInputSnapshot *snapshot) {
     if (operating_mode != USB_OPERATING_MODE_XBOX_GIP || !usb_device_configured() ||
-        snapshot == 0 || xbox_response_ready) {
+        xbox_service.session.state != USB_XBOX_GIP_SESSION_ACTIVE || snapshot == 0 ||
+        xbox_response_ready) {
         return false;
     }
     uint8_t sequence = usb_xbox_gip_sequence_take(&xbox_service.next_sequence);

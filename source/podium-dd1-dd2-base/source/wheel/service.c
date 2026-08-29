@@ -859,6 +859,18 @@ uint8_t wheel_service_axis_limit(const WheelService *service) {
 }
 
 /**
+ * @brief Returns the attached wheel's secondary button byte.
+ *
+ * Reads the mode-button field retained by the current supported packet-family input report.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return Current secondary button byte, or zero when unavailable.
+ */
+uint8_t wheel_service_mode_buttons(const WheelService *service) {
+    return wheel_protocol_mode_buttons(&service->protocol);
+}
+
+/**
  * @brief Returns the attached wheel's two clutch-paddle bytes.
  *
  * Selects the current axis-output bytes that feed the two clutch-paddle report fields.

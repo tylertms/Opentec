@@ -83,6 +83,7 @@
 #include "usb/tuning_profile_report.h"
 #include "usb/tuning_profile_service.h"
 #include "usb/vendor_command.h"
+#include "usb/xbox_gip_input.h"
 #include "wheel/center_capture.h"
 #include "wheel/command_forwarder.h"
 #include "wheel/compatibility_alert.h"
@@ -168,6 +169,9 @@ static ShifterDisplay shifter_display;
 static UsbDisconnectDisplay usb_disconnect_display;
 static UsbInputReportState usb_input_state;
 static FanatecEncoder fanatec_encoder;
+static UsbXboxGipInputBuilder xbox_input_builder;
+static UsbXboxGipInputState xbox_input_state;
+static UsbXboxGipInputSnapshot xbox_input_snapshot;
 static WheelMultiPositionInput wheel_multi_position_input;
 static fanatec_multi_position_input fanatec_multi_position_input_state;
 static uint8_t usb_input_report[USB_INPUT_REPORT_MAX_SIZE];
@@ -1592,8 +1596,8 @@ static void service_usb_output(void) {
  * @brief Builds and submits the current USB input report.
  *
  * Combines calibrated motor position, attached-wheel controls and rotary selectors, shifter
- * state, thermal limit state, pedal axes, and pending bite-point updates into the active USB input
- * format.
+ * state, thermal limit state, pedal axes, and pending bite-point updates into the active native or
+ * Xbox USB input format.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -1618,7 +1622,7 @@ static void service_usb_input(uint32_t now_ms) {
         usb_input_state.fanatec.clutch_paddles[0] = clutch_paddles[0];
         usb_input_state.fanatec.clutch_paddles[1] = clutch_paddles[1];
     }
-    uint8_t wheel_controls[8];
+    uint8_t wheel_controls[8] = {0};
     if (wheel_service_controls(&wheel_service, wheel_controls)) {
         bool include_extended = wheel_service_extended_report_fields(&wheel_service);
         fanatec_input_apply_wheel_controls(&usb_input_state.fanatec, wheel_controls,
@@ -1669,8 +1673,55 @@ static void service_usb_input(uint32_t now_ms) {
         usb_input_state.fanatec.pedals[axis] = pedal_input_hid_axis(pedal_input->axes[axis]);
     }
     usb_input_state.fanatec.auxiliary_pedal = pedal_input_hid_auxiliary(pedal_input->auxiliary);
-    fanatec_input_apply_wheel_axis_overrides(&usb_input_state.fanatec,
-                                             wheel_service_axis_overrides(&wheel_service));
+    const WheelAxisOverrides *axis_overrides = wheel_service_axis_overrides(&wheel_service);
+    fanatec_input_apply_wheel_axis_overrides(&usb_input_state.fanatec, axis_overrides);
+    if (usb_device_operating_mode() == USB_OPERATING_MODE_XBOX_GIP) {
+        xbox_input_state = (UsbXboxGipInputState){
+            .mode_buttons = wheel_service_mode_buttons(&wheel_service),
+            .steering = usb_input_state.fanatec.steering,
+            .auxiliary_pedal = usb_input_state.fanatec.auxiliary_pedal,
+            .encoder_direction = (usb_input_state.fanatec.button_banks[3] & 0x08u) != 0   ? 1
+                                 : (usb_input_state.fanatec.button_banks[3] & 0x04u) != 0 ? -1
+                                                                                          : 0,
+            .wheel_mode = wheel_service_mode(&wheel_service),
+            .axis_mode = shifter_input.primary_mode == SHIFTER_INPUT_H_PATTERN ||
+                                 shifter_input.secondary_mode == SHIFTER_INPUT_H_PATTERN
+                             ? 1
+                         : shifter_input.primary_mode == SHIFTER_INPUT_SEQUENTIAL ||
+                                 shifter_input.secondary_mode == SHIFTER_INPUT_SEQUENTIAL
+                             ? 2
+                             : 0,
+            .led_state = (uint8_t)(base_settings.tuning_profiles.active_slot + 1u),
+            .steering_range_degrees = tuning_profile->rotation_degrees,
+            .force_feedback_percent = tuning_profile->force_feedback_strength,
+            .auxiliary_pedal_active =
+                pedal_service.auxiliary_override_active || axis_overrides->auxiliary.enabled,
+        };
+        bool pedals_active = pedal_service.connected || pedal_service.analog.active;
+        for (uint8_t button = 0; button < USB_XBOX_GIP_WHEEL_BUTTON_COUNT; button++) {
+            xbox_input_state.buttons[button] = usb_input_state.fanatec.button_banks[button];
+        }
+        for (uint8_t control = 0; control < USB_XBOX_GIP_WHEEL_CONTROL_COUNT; control++) {
+            xbox_input_state.controls[control] = wheel_controls[control];
+        }
+        for (uint8_t rotary = 0; rotary < USB_XBOX_GIP_ROTARY_COUNT; rotary++) {
+            xbox_input_state.rotary[rotary] = usb_input_state.fanatec.rotary[rotary];
+        }
+        const WheelAxisOverride *pedal_overrides[USB_XBOX_GIP_INPUT_PEDAL_COUNT] = {
+            &axis_overrides->axis_5,
+            &axis_overrides->axis_6,
+            &axis_overrides->axis_7,
+        };
+        for (uint8_t axis = 0; axis < USB_XBOX_GIP_INPUT_PEDAL_COUNT; axis++) {
+            xbox_input_state.pedals[axis] = usb_input_state.fanatec.pedals[axis];
+            xbox_input_state.pedal_active[axis] = pedals_active || pedal_overrides[axis]->enabled;
+        }
+        xbox_input_state.clutch_paddles[0] = usb_input_state.fanatec.clutch_paddles[0];
+        xbox_input_state.clutch_paddles[1] = usb_input_state.fanatec.clutch_paddles[1];
+        usb_xbox_gip_input_build(&xbox_input_builder, &xbox_input_state, &xbox_input_snapshot);
+        (void)usb_device_queue_xbox_input(&xbox_input_snapshot);
+        return;
+    }
     uint8_t report_size =
         usb_input_report_encode(usb_device_input_mode(), usb_input_report, &usb_input_state);
     if (report_size != 0) {
@@ -1966,6 +2017,7 @@ int main(void) {
     wheel_service_init(&wheel_service, &serial_service);
     wheel_compatibility_alert_init(&wheel_compatibility_alert);
     fanatec_encoder_init(&fanatec_encoder);
+    usb_xbox_gip_input_builder_init(&xbox_input_builder);
     wheel_status_service_init(&wheel_status_service, &serial_service);
     initialize_usb_command_bridge();
     wheel_velocity_reset(&wheel_velocity_estimator);
