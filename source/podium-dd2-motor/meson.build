@@ -157,7 +157,7 @@ if motor_target
     output: 'dd2-firmware.checksummed.bin',
     command: [
       python,
-      meson.project_source_root() / 'tools/motor_checksum.py',
+      meson.current_source_dir() / 'tools/checksum.py',
       'dd2',
       '@INPUT@',
       '@OUTPUT@',
