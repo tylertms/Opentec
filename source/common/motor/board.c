@@ -74,3 +74,22 @@ uint8_t motor_board_identity_read(void) {
     identity |= (uint8_t)(((GPIOE->PDIR >> 29U) & 1U) << 6U);
     return identity;
 }
+
+/**
+ * @brief Applies the two official active-low startup interlock outputs.
+ * @param interlock_a True to pull GPIOC1 low, or false to release it high.
+ * @param interlock_b True to pull GPIOA19 low, or false to release it high.
+ */
+void motor_startup_interlock_outputs_apply(bool interlock_a, bool interlock_b) {
+    if (interlock_a) {
+        GPIO_PortClear(GPIOC, 1UL << 1U);
+    } else {
+        GPIO_PortSet(GPIOC, 1UL << 1U);
+    }
+
+    if (interlock_b) {
+        GPIO_PortClear(GPIOA, 1UL << 19U);
+    } else {
+        GPIO_PortSet(GPIOA, 1UL << 19U);
+    }
+}
