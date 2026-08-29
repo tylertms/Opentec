@@ -137,9 +137,11 @@ static void test_calibrates_until_nonzero_response(void) {
     MotorTelemetry telemetry = available_accessory();
     reset_bus();
     motor_calibration_service_init(&service);
+    assert(motor_calibration_service_event(&service) == MOTOR_CALIBRATION_EVENT_NONE);
     motor_calibration_service_request(&service, MOTOR_CALIBRATION_OPERATION_CALIBRATE);
 
     motor_calibration_service_run(&service, 0, &telemetry);
+    assert(motor_calibration_service_event(&service) == MOTOR_CALIBRATION_EVENT_STARTED);
     assert(transfer_kind == TRANSFER_WRITE);
     assert(bus_address == 0x78);
     assert(register_address == 6);
@@ -162,6 +164,7 @@ static void test_calibrates_until_nonzero_response(void) {
     motor_calibration_service_run(&service, 0, &telemetry);
     assert(!motor_calibration_service_pending(&service));
     assert(!motor_calibration_service_owns_bus(&service));
+    assert(motor_calibration_service_event(&service) == MOTOR_CALIBRATION_EVENT_COMPLETED);
 }
 
 static void test_erases_in_any_wheel_mode(void) {
@@ -174,6 +177,11 @@ static void test_erases_in_any_wheel_mode(void) {
     motor_calibration_service_run(&service, 7, &telemetry);
     assert(transfer_kind == TRANSFER_WRITE);
     assert(transfer_data[0] == 0xbb && transfer_data[1] == 0xbb);
+    finish_write(true);
+    motor_calibration_service_run(&service, 7, &telemetry);
+    finish_read(1, true);
+    motor_calibration_service_run(&service, 7, &telemetry);
+    assert(motor_calibration_service_event(&service) == MOTOR_CALIBRATION_EVENT_ERASED);
 }
 
 static void test_rejects_unavailable_operations(void) {
@@ -186,11 +194,13 @@ static void test_rejects_unavailable_operations(void) {
     motor_calibration_service_run(&service, 1, &telemetry);
     assert(!motor_calibration_service_pending(&service));
     assert(start_count == 0);
+    assert(motor_calibration_service_event(&service) == MOTOR_CALIBRATION_EVENT_DISCONNECT_WHEEL);
 
     motor_calibration_service_request(&service, MOTOR_CALIBRATION_OPERATION_ERASE);
     motor_calibration_service_run(&service, 0, &unavailable);
     assert(!motor_calibration_service_pending(&service));
     assert(start_count == 0);
+    assert(motor_calibration_service_event(&service) == MOTOR_CALIBRATION_EVENT_UNSUPPORTED);
 }
 
 static void test_prioritizes_calibration_and_retries_failures(void) {

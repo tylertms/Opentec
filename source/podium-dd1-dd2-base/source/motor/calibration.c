@@ -56,7 +56,8 @@ bool motor_calibration_command_decode(const UsbOutputCommand *output,
 /**
  * @brief Initializes asynchronous motor-calibration state.
  *
- * Clears pending operation requests, transfer ownership, response data, and the active phase.
+ * Clears pending operation requests, transfer ownership, response data, lifecycle event, and the
+ * active phase.
  *
  * @param[out] service Motor-calibration service to initialize.
  */
@@ -97,8 +98,8 @@ static uint8_t request_bit(MotorCalibrationOperation operation) {
  * @brief Starts the highest-priority eligible calibration request.
  *
  * Selects calibration before erasure, rejects calibration outside wheel mode zero, rejects either
- * operation before an accessory type is available, and prepares the repeated command bytes for an
- * accepted request.
+ * operation before an accessory type is available, records the corresponding lifecycle event, and
+ * prepares the repeated command bytes for an accepted request.
  *
  * @param[in,out] service Motor-calibration requests and command state.
  * @param[in] wheel_mode Current attached-wheel mode.
@@ -110,9 +111,14 @@ static bool begin_request(MotorCalibrationService *service, uint8_t wheel_mode,
     service->operation = (service->requests & MOTOR_CALIBRATION_CALIBRATE_REQUEST) != 0
                              ? MOTOR_CALIBRATION_OPERATION_CALIBRATE
                              : MOTOR_CALIBRATION_OPERATION_ERASE;
-    if ((service->operation == MOTOR_CALIBRATION_OPERATION_CALIBRATE &&
-         wheel_mode != MOTOR_CALIBRATION_REQUIRED_WHEEL_MODE) ||
-        telemetry == NULL || !telemetry->accessory_type_valid) {
+    if (service->operation == MOTOR_CALIBRATION_OPERATION_CALIBRATE &&
+        wheel_mode != MOTOR_CALIBRATION_REQUIRED_WHEEL_MODE) {
+        service->event = MOTOR_CALIBRATION_EVENT_DISCONNECT_WHEEL;
+        service->requests &= (uint8_t)~request_bit(service->operation);
+        return false;
+    }
+    if (telemetry == NULL || !telemetry->accessory_type_valid) {
+        service->event = MOTOR_CALIBRATION_EVENT_UNSUPPORTED;
         service->requests &= (uint8_t)~request_bit(service->operation);
         return false;
     }
@@ -123,14 +129,18 @@ static bool begin_request(MotorCalibrationService *service, uint8_t wheel_mode,
     service->data[0] = value;
     service->data[1] = value;
     service->phase = MOTOR_CALIBRATION_WRITE_COMMAND;
+    if (service->operation == MOTOR_CALIBRATION_OPERATION_CALIBRATE) {
+        service->event = MOTOR_CALIBRATION_EVENT_STARTED;
+    }
     return true;
 }
 
 /**
  * @brief Applies one completed motor-calibration bus transfer.
  *
- * Advances a successful command write to response polling and completes the selected request when
- * a successful response read is nonzero. Failed transfers retain their current phase for retry.
+ * Advances a successful command write to response polling and completes the selected request with
+ * its result event when a successful response read is nonzero. Failed transfers retain their
+ * current phase for retry.
  *
  * @param[in,out] service Motor-calibration phase, data, and transfer state.
  * @param[in] succeeded True when the auxiliary-bus transfer completed successfully.
@@ -148,6 +158,9 @@ static void finish_transfer(MotorCalibrationService *service, bool succeeded) {
     } else if (service->data[0] != 0 || service->data[1] != 0) {
         service->requests &= (uint8_t)~request_bit(service->operation);
         service->phase = MOTOR_CALIBRATION_IDLE;
+        service->event = service->operation == MOTOR_CALIBRATION_OPERATION_CALIBRATE
+                             ? MOTOR_CALIBRATION_EVENT_COMPLETED
+                             : MOTOR_CALIBRATION_EVENT_ERASED;
     }
 }
 
@@ -228,4 +241,17 @@ bool motor_calibration_service_pending(const MotorCalibrationService *service) {
  */
 bool motor_calibration_service_owns_bus(const MotorCalibrationService *service) {
     return service->transfer_active;
+}
+
+/**
+ * @brief Returns the latest motor-calibration lifecycle event.
+ *
+ * Exposes disconnect-wheel and unsupported rejections, calibration start and completion, and
+ * successful calibration-data erasure.
+ *
+ * @param[in] service Motor-calibration service state.
+ * @return Most recent calibration lifecycle event.
+ */
+MotorCalibrationEvent motor_calibration_service_event(const MotorCalibrationService *service) {
+    return service->event;
 }
