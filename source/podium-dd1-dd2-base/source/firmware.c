@@ -283,6 +283,7 @@ static ForceOutputEnable force_output_enable;
 static ForceOutputEnableAction force_output_enable_action;
 static bool force_output_enabled;
 static bool force_output_prompt_visible;
+static LedPatternController led_pattern_controller;
 static TorqueKey torque_key;
 static TorqueKeyPrompt torque_key_prompt;
 static bool torque_key_prompt_visible;
@@ -2542,6 +2543,45 @@ static void service_usb_host_capability_recovery(uint32_t now_ms) {
     }
 }
 
+/**
+ * @brief Runs the board LED startup brightness sweep.
+ *
+ * Writes the first pattern of buckets zero through 62 in ascending order and retains each pattern
+ * for 50 milliseconds. The first autonomous normal update selects the remaining full-scale
+ * bucket.
+ */
+static void run_led_pattern_startup_sequence(void) {
+    for (uint8_t step = 0; step < LED_PATTERN_STARTUP_STEP_COUNT; ++step) {
+        platform_led_pattern_set_duty(led_pattern_pwm_duty(led_pattern_startup_pattern(step)));
+        uint32_t deadline_ms = platform_time_ms() + 50;
+        while (!platform_time_reached(platform_time_ms(), deadline_ms)) {
+        }
+    }
+}
+
+/**
+ * @brief Services autonomous board LED output.
+ *
+ * Selects the inhibited-output heartbeat from motor status, clears the LED after shutdown starts,
+ * and sustains the breathing transition while the pedal recovery handshake is active. A returned
+ * no-update marker leaves host-selected output unchanged.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_led_pattern(uint32_t now_ms) {
+    LedPatternControllerInput input = {
+        .output_inhibited =
+            motor_tuning_ready && motor_status_service_output_inhibited(&motor_status_service),
+        .shutdown_complete = power_controller.phase == POWER_PHASE_SHUTDOWN_DELAY ||
+                             power_controller.phase == POWER_PHASE_OFF,
+        .pedal_handshake_active = pedal_service.recovery_handshake,
+    };
+    uint16_t pattern = led_pattern_controller_update(&led_pattern_controller, input, now_ms);
+    if (pattern != LED_PATTERN_NO_UPDATE) {
+        platform_led_pattern_set_duty(led_pattern_pwm_duty((uint8_t)pattern));
+    }
+}
+
 int main(void) {
     platform_clock_init();
     board_identity = platform_board_identity_read();
@@ -2559,6 +2599,8 @@ int main(void) {
     system_notice_init(&system_notice);
     service_power(0);
     platform_time_init();
+    led_pattern_controller_init(&led_pattern_controller);
+    run_led_pattern_startup_sequence();
     platform_display_init();
     platform_display_write_frame(display_framebuffer);
     platform_status_led_init();
@@ -2620,6 +2662,7 @@ int main(void) {
         service_analog_input(now_ms);
         service_motor_link();
         pedal_service_run(&pedal_service, now_ms);
+        service_led_pattern(now_ms);
         service_alternate_brake_force(now_ms);
         uint8_t brake_indicator_selector = pedal_brake_indicator_update(
             &pedal_brake_indicator, tuning_profile->brake_indicator_level,
