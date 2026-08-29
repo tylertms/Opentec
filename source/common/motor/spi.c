@@ -55,6 +55,9 @@ void motor_spi_initialize(MotorSpiTransferBuffers *buffers) {
                          MOTOR_SPI_TRANSFER_SIZE, kEDMA_PeripheralToMemory);
     motor_spi_dma_channel_initialize(1U, kDmaRequestMux0SPI0Rx, &transfer);
 
+    EDMA_EnableChannelRequest(DMA0, 1U);
+    EDMA_EnableChannelRequest(DMA0, 0U);
+
     EnableIRQ(DMA0_DMA4_IRQn);
     EnableIRQ(DMA1_DMA5_IRQn);
 }
