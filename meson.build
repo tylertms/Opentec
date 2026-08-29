@@ -22,6 +22,7 @@ common_include = include_directories('source')
 motor_control_sources = files(
   'source/common/motor/foc.c',
   'source/common/motor/io.c',
+  'source/common/motor/peripherals.c',
 )
 wqr_frame_sources = files('source/common/wqr_frame.c')
 
