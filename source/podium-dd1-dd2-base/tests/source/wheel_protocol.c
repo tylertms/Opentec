@@ -1181,6 +1181,99 @@ static void test_forwards_one_pending_host_report(void) {
     assert(wheel_protocol_message_valid(response));
 }
 
+static void test_captures_alternate_packets(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    protocol.mode = 0x12;
+    request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    request[2] = 0x10;
+    request[3] = 0x01;
+    request[4] = 0x03;
+    request[5] = 0x42;
+    request[6] = 0x84;
+    request[8] = 0x20;
+    request[9] = 0x21;
+    request[10] = 0x22;
+    request[11] = 0x23;
+    request[12] = 0x24;
+    request[13] = 0x25;
+    request[14] = 0x26;
+    request[15] = 0x27;
+    request[18] = 0x34;
+    request[19] = 0x12;
+    request[20] = 0x78;
+    request[21] = 0x56;
+    request[22] = 0x6a;
+    request[23] = 1;
+    request[28] = 0x31;
+    request[30] = 0x40;
+    request[31] = 0x62;
+    mark_ready(request);
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+    for (uint8_t sample = 0; sample < WHEEL_PACKET_ALTERNATE_HISTORY_DEPTH; sample++) {
+        wheel_protocol_accept(&protocol, request);
+    }
+
+    const WheelPacketAlternateInput *input = wheel_protocol_alternate_input(&protocol);
+    assert(input != 0);
+    assert(input->buttons[0] == 0x10);
+    assert(input->buttons[1] == 0x08);
+    assert(input->buttons[2] == 0x0a);
+    assert(wheel_protocol_axis_outputs(&protocol)[0] == 0x42);
+    assert(wheel_protocol_axis_outputs(&protocol)[1] == 0x84);
+    assert(wheel_protocol_axis_limit(&protocol) == 0x62);
+    assert(wheel_protocol_mode_buttons(&protocol) == 0x6a);
+    assert(wheel_protocol_axis_report_enabled(&protocol));
+    uint16_t axis_values[2];
+    assert(wheel_protocol_axis_values(&protocol, axis_values));
+    assert(axis_values[0] == 0x1234);
+    assert(axis_values[1] == 0x5678);
+    uint8_t controls[8];
+    assert(wheel_protocol_controls(&protocol, controls));
+    assert(controls[0] == 0x20);
+    assert(controls[1] == 0x21);
+    assert(controls[2] == 0);
+    assert(controls[3] == 0);
+    assert(controls[4] == 0);
+    assert(controls[5] == 0);
+    assert(controls[6] == 0x26);
+    assert(controls[7] == 0x27);
+    assert(wheel_protocol_acknowledgement_input_active(&protocol));
+    assert(wheel_protocol_message_valid(wheel_protocol_response(&protocol)));
+}
+
+static void test_forwards_remote_telemetry_in_alternate_mode(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    uint8_t telemetry[WHEEL_OUTPUT_REMOTE_TELEMETRY_SIZE];
+    wheel_protocol_init(&protocol);
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    protocol.mode = 0x12;
+    request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    mark_ready(request);
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+    for (uint8_t index = 0; index < sizeof(telemetry); index++) {
+        telemetry[index] = (uint8_t)(0x40u + index);
+    }
+    assert(wheel_protocol_queue_remote_telemetry(&protocol, telemetry));
+    assert(wheel_protocol_remote_telemetry_pending(&protocol));
+
+    uint8_t transfer_count = 0;
+    for (uint8_t exchange = 0; exchange < 31; exchange++) {
+        wheel_protocol_accept(&protocol, request);
+        const uint8_t *response = wheel_protocol_response(&protocol);
+        if (response[1] == 0x12) {
+            transfer_count++;
+            assert(memcmp(response + 2, telemetry, sizeof(telemetry)) == 0);
+        }
+        assert(wheel_protocol_message_valid(response));
+    }
+    assert(transfer_count == 8);
+    assert(!wheel_protocol_remote_telemetry_pending(&protocol));
+}
+
 static void test_captures_crc_family_requests(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -1316,6 +1409,8 @@ int main(void) {
     test_encodes_legacy_display_rotation_status();
     test_rejects_remote_tuning_link_mismatch();
     test_forwards_one_pending_host_report();
+    test_captures_alternate_packets();
+    test_forwards_remote_telemetry_in_alternate_mode();
     test_captures_crc_family_requests();
     test_applies_crc_family_axis_controls();
     test_rejects_out_of_range_mode();

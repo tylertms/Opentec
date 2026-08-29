@@ -222,6 +222,8 @@ static void reset_connection(WheelService *service) {
     WheelPacketModeFourOutput mode_four_output = service->protocol.mode_four_output;
     WheelPacketDisplayFilter display_filter = service->protocol.display_filter;
     WheelPacketRemappedFilter remapped_filter = service->protocol.remapped_filter;
+    WheelPacketAlternateFilter alternate_filter = service->protocol.alternate_filter;
+    WheelPacketAlternateOutput alternate_output = service->protocol.alternate_output;
     WheelPacketPackedFilter packed_filter = service->protocol.packed_filter;
     WheelPacketCrcFilter crc_filter = service->protocol.crc_filter;
     WheelPacketCrcOutput crc_output = service->protocol.crc_output;
@@ -262,6 +264,8 @@ static void reset_connection(WheelService *service) {
     service->protocol.mode_four_output = mode_four_output;
     service->protocol.display_filter = display_filter;
     service->protocol.remapped_filter = remapped_filter;
+    service->protocol.alternate_filter = alternate_filter;
+    service->protocol.alternate_output = alternate_output;
     service->protocol.packed_filter = packed_filter;
     service->protocol.crc_filter = crc_filter;
     service->protocol.crc_output = crc_output;
@@ -489,6 +493,7 @@ void wheel_service_set_display_output(WheelService *service, const WheelDisplayO
     WheelPacketCrcOutput crc_output = service->protocol.crc_output;
     crc_output.display = *output;
     service->protocol.crc_output = crc_output;
+    service->protocol.alternate_output.display = *output;
 }
 
 /**
@@ -773,8 +778,7 @@ void wheel_service_queue_report_seventeen(
  */
 bool wheel_service_queue_remote_telemetry(
     WheelService *service, const uint8_t payload[WHEEL_OUTPUT_REMOTE_TELEMETRY_SIZE]) {
-    return service != 0 &&
-           wheel_output_reports_queue_remote_telemetry(&service->protocol.output_reports, payload);
+    return service != 0 && wheel_protocol_queue_remote_telemetry(&service->protocol, payload);
 }
 
 /**
@@ -786,8 +790,7 @@ bool wheel_service_queue_remote_telemetry(
  * @return True while a telemetry report remains queued.
  */
 bool wheel_service_remote_telemetry_pending(const WheelService *service) {
-    return service != 0 &&
-           wheel_output_reports_remote_telemetry_pending(&service->protocol.output_reports);
+    return service != 0 && wheel_protocol_remote_telemetry_pending(&service->protocol);
 }
 
 /**

@@ -435,6 +435,10 @@ static void test_restarts_discovery_after_scan_timeout(void) {
     service.protocol.display_filter.next_sample = 2;
     service.protocol.remapped_filter.samples[2][1] = 0x6d;
     service.protocol.remapped_filter.next_sample = 1;
+    service.protocol.alternate_filter.samples[1][2] = 0x6e;
+    service.protocol.alternate_filter.next_sample = 2;
+    service.protocol.alternate_output.payload[4] = 0x6f;
+    service.protocol.alternate_output.payload_pending = true;
     service.protocol.packed_filter.samples[2][0] = 0x7c;
     service.protocol.packed_filter.next_sample = 1;
     wheel_service_configure_axis_processing(&service, 7, WHEEL_AXIS_OVERRIDE_MODE_PRIMARY, 60, 123);
@@ -469,6 +473,10 @@ static void test_restarts_discovery_after_scan_timeout(void) {
     assert(service.protocol.display_filter.next_sample == 2);
     assert(service.protocol.remapped_filter.samples[2][1] == 0x6d);
     assert(service.protocol.remapped_filter.next_sample == 1);
+    assert(service.protocol.alternate_filter.samples[1][2] == 0x6e);
+    assert(service.protocol.alternate_filter.next_sample == 2);
+    assert(service.protocol.alternate_output.payload[4] == 0x6f);
+    assert(service.protocol.alternate_output.payload_pending);
     assert(service.protocol.packed_filter.samples[2][0] == 0x7c);
     assert(service.protocol.packed_filter.next_sample == 1);
     assert(service.protocol.interface_mode == 7);
