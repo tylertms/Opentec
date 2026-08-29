@@ -3,6 +3,7 @@ project('mcux-sdk', 'c')
 mcux_sdk_driver_includes = include_directories(
   'drivers/common',
   'drivers/adc16',
+  'drivers/crc',
   'drivers/dac',
   'drivers/dmamux',
   'drivers/dspi',
@@ -24,6 +25,7 @@ mcux_sdk_driver_includes = include_directories(
 mcux_sdk_driver_sources = {
   'common': files('drivers/common/fsl_common.c'),
   'adc16': files('drivers/adc16/fsl_adc16.c'),
+  'crc': files('drivers/crc/fsl_crc.c'),
   'dac': files('drivers/dac/fsl_dac.c'),
   'dmamux': files('drivers/dmamux/fsl_dmamux.c'),
   'dspi': files('drivers/dspi/fsl_dspi.c'),

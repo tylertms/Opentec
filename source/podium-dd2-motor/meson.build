@@ -26,6 +26,7 @@ if motor_target
   foreach driver : [
     'common',
     'adc16',
+    'crc',
     'dac',
     'dmamux',
     'edma',
