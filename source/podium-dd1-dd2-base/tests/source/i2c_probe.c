@@ -368,6 +368,137 @@ static void test_rejects_out_of_order_exchange_events(void) {
     assert(!i2c_probe_exchange_status(&exchange, 0x07));
 }
 
+static const uint8_t startup_signature[] = {
+    0xb8, 0x04, 0x11, 0x01, 0x05, 0x04, 0xb9, 0x02, 0x01, 0x01, 0xba, 0x01, 0x01, 0xbb, 0x0c,
+    0x41, 0x37, 0x31, 0x30, 0x35, 0x43, 0x43, 0x32, 0x34, 0x32, 0x52, 0x31, 0xbc, 0x00,
+};
+
+static void advance_startup_to_signature(I2cProbeStartup *startup) {
+    I2cProbeStartupResponse status = {.declared_length = 1};
+
+    i2c_probe_startup_init(startup);
+    assert(i2c_probe_startup_accept(startup, I2C_PROBE_BEGIN_SESSION, NULL, 0));
+    assert(i2c_probe_startup_accept(startup, I2C_PROBE_READ_STARTUP_STATUS, &status, 0));
+    assert(startup->command == I2C_PROBE_READ_SIGNATURE);
+}
+
+static void test_completes_accessory_startup_sequence(void) {
+    I2cProbeStartup startup;
+    I2cProbeCommand command;
+    I2cProbeStartupResponse response = {0};
+
+    i2c_probe_startup_init(&startup);
+    assert(i2c_probe_startup_current(&startup, 0, &command));
+    assert(command == I2C_PROBE_BEGIN_SESSION);
+    assert(i2c_probe_startup_accept(&startup, command, NULL, 0));
+
+    assert(i2c_probe_startup_current(&startup, 0, &command));
+    assert(command == I2C_PROBE_READ_STARTUP_STATUS);
+    response.declared_length = 1;
+    assert(i2c_probe_startup_accept(&startup, command, &response, 0));
+
+    assert(i2c_probe_startup_current(&startup, 0, &command));
+    assert(command == I2C_PROBE_READ_SIGNATURE);
+    response.payload = startup_signature;
+    response.payload_length = sizeof(startup_signature);
+    assert(i2c_probe_startup_accept(&startup, command, &response, 0));
+
+    assert(i2c_probe_startup_current(&startup, 0, &command));
+    assert(command == I2C_PROBE_READ_CONFIRMATION);
+    response.declared_length = 1;
+    response.status = 0xcc;
+    assert(i2c_probe_startup_accept(&startup, command, &response, 0));
+
+    assert(i2c_probe_startup_current(&startup, 0, &command));
+    assert(command == I2C_PROBE_READ_READY_STATUS);
+    response.status = 7;
+    assert(i2c_probe_startup_accept(&startup, command, &response, 0));
+    assert(startup.complete);
+    assert(!i2c_probe_startup_current(&startup, 0, &command));
+}
+
+static void test_delays_and_limits_startup_status_retries(void) {
+    I2cProbeStartup startup;
+    I2cProbeCommand command;
+    I2cProbeStartupResponse response = {.declared_length = 1, .status = 7};
+    uint32_t now_ms = 100;
+
+    i2c_probe_startup_init(&startup);
+    assert(i2c_probe_startup_accept(&startup, I2C_PROBE_BEGIN_SESSION, NULL, now_ms));
+    for (uint8_t attempt = 0; attempt < 3; ++attempt) {
+        assert(
+            i2c_probe_startup_accept(&startup, I2C_PROBE_READ_STARTUP_STATUS, &response, now_ms));
+        assert(!i2c_probe_startup_current(&startup, now_ms + 5, &command));
+        now_ms += 6;
+        assert(i2c_probe_startup_current(&startup, now_ms, &command));
+        assert(command == I2C_PROBE_READ_STARTUP_STATUS);
+    }
+
+    assert(i2c_probe_startup_accept(&startup, I2C_PROBE_READ_STARTUP_STATUS, &response, now_ms));
+    assert(startup.command == I2C_PROBE_BEGIN_SESSION);
+    assert(startup.completed_attempts == 0);
+    assert(!startup.waiting);
+}
+
+static void test_retries_invalid_identity_and_confirmation(void) {
+    uint8_t mismatched_signature[sizeof(startup_signature)];
+    I2cProbeStartup startup;
+    I2cProbeStartupResponse response = {
+        .payload = mismatched_signature,
+        .payload_length = sizeof(mismatched_signature),
+    };
+
+    memcpy(mismatched_signature, startup_signature, sizeof(mismatched_signature));
+    mismatched_signature[5] ^= 1;
+    advance_startup_to_signature(&startup);
+    assert(i2c_probe_startup_accept(&startup, I2C_PROBE_READ_SIGNATURE, &response, 0));
+    assert(startup.command == I2C_PROBE_READ_SIGNATURE);
+
+    response.payload = startup_signature;
+    assert(i2c_probe_startup_accept(&startup, I2C_PROBE_READ_SIGNATURE, &response, 0));
+    assert(startup.command == I2C_PROBE_READ_CONFIRMATION);
+    assert(startup.completed_attempts == 0);
+
+    response.declared_length = 1;
+    response.status = 0xcb;
+    assert(i2c_probe_startup_accept(&startup, I2C_PROBE_READ_CONFIRMATION, &response, 0));
+    assert(startup.command == I2C_PROBE_READ_CONFIRMATION);
+    response.status = 0xcc;
+    assert(i2c_probe_startup_accept(&startup, I2C_PROBE_READ_CONFIRMATION, &response, 0));
+    assert(startup.command == I2C_PROBE_READ_READY_STATUS);
+}
+
+static void test_restarts_on_negative_ready_status(void) {
+    I2cProbeStartup startup;
+    I2cProbeStartupResponse response = {
+        .payload = startup_signature,
+        .payload_length = sizeof(startup_signature),
+    };
+
+    advance_startup_to_signature(&startup);
+    assert(i2c_probe_startup_accept(&startup, I2C_PROBE_READ_SIGNATURE, &response, 0));
+    response.declared_length = 1;
+    response.status = 0xcc;
+    assert(i2c_probe_startup_accept(&startup, I2C_PROBE_READ_CONFIRMATION, &response, 0));
+    response.status = 6;
+    assert(i2c_probe_startup_accept(&startup, I2C_PROBE_READ_READY_STATUS, &response, 0));
+    assert(startup.command == I2C_PROBE_READ_READY_STATUS);
+    response.status = 0x80;
+    assert(i2c_probe_startup_accept(&startup, I2C_PROBE_READ_READY_STATUS, &response, 0));
+    assert(startup.command == I2C_PROBE_BEGIN_SESSION);
+}
+
+static void test_rejects_out_of_order_startup_events(void) {
+    I2cProbeStartup startup;
+    I2cProbeStartupResponse response = {.declared_length = 1, .status = 7};
+
+    i2c_probe_startup_init(&startup);
+    assert(!i2c_probe_startup_accept(&startup, I2C_PROBE_READ_STARTUP_STATUS, &response, 0));
+    assert(i2c_probe_startup_accept(&startup, I2C_PROBE_BEGIN_SESSION, NULL, 0));
+    assert(i2c_probe_startup_accept(&startup, I2C_PROBE_READ_STARTUP_STATUS, &response, 0));
+    assert(!i2c_probe_startup_accept(&startup, I2C_PROBE_READ_STARTUP_STATUS, &response, 1));
+}
+
 int main(void) {
     test_accepts_handshake_and_clears_retry_count();
     test_busy_handshake_increments_without_rejection();
@@ -392,5 +523,10 @@ int main(void) {
     test_rejects_command_acceptance();
     test_classifies_final_response_errors();
     test_rejects_out_of_order_exchange_events();
+    test_completes_accessory_startup_sequence();
+    test_delays_and_limits_startup_status_retries();
+    test_retries_invalid_identity_and_confirmation();
+    test_restarts_on_negative_ready_status();
+    test_rejects_out_of_order_startup_events();
     return 0;
 }

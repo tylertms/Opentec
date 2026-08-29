@@ -116,6 +116,21 @@ typedef struct {
     I2cProbeHandshake readiness;
 } I2cProbeExchange;
 
+typedef struct {
+    uint8_t declared_length;
+    uint8_t status;
+    const uint8_t *payload;
+    uint8_t payload_length;
+} I2cProbeStartupResponse;
+
+typedef struct {
+    I2cProbeCommand command;
+    uint8_t completed_attempts;
+    uint32_t retry_after_ms;
+    bool waiting;
+    bool complete;
+} I2cProbeStartup;
+
 void i2c_probe_handshake_init(I2cProbeHandshake *handshake);
 I2cProbeResponseResult i2c_probe_handshake_evaluate(I2cProbeHandshake *handshake, uint8_t response);
 I2cProbeResponseResult i2c_probe_command_response_evaluate(uint8_t response);
@@ -134,5 +149,9 @@ bool i2c_probe_exchange_status(I2cProbeExchange *exchange, uint8_t response);
 bool i2c_probe_exchange_command_queued(I2cProbeExchange *exchange);
 bool i2c_probe_exchange_finalize(I2cProbeExchange *exchange, const I2cProbeFinalResponse *response,
                                  bool checksum_enabled);
+void i2c_probe_startup_init(I2cProbeStartup *startup);
+bool i2c_probe_startup_current(I2cProbeStartup *startup, uint32_t now_ms, I2cProbeCommand *command);
+bool i2c_probe_startup_accept(I2cProbeStartup *startup, I2cProbeCommand command,
+                              const I2cProbeStartupResponse *response, uint32_t now_ms);
 
 #endif

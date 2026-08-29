@@ -8,6 +8,14 @@ enum {
     I2C_PROBE_RESPONSE_ACCEPT = 0x07,
     I2C_PROBE_RESPONSE_WAIT = 0x17,
     I2C_PROBE_UNEXPECTED_RETRY_LIMIT = 2,
+    I2C_PROBE_STARTUP_ATTEMPT_LIMIT = 3,
+    I2C_PROBE_STARTUP_RETRY_DELAY_MS = 5,
+    I2C_PROBE_STARTUP_SIGNATURE_SIZE = 29,
+};
+
+static const uint8_t startup_signature[I2C_PROBE_STARTUP_SIGNATURE_SIZE] = {
+    0xb8, 0x04, 0x11, 0x01, 0x05, 0x04, 0xb9, 0x02, 0x01, 0x01, 0xba, 0x01, 0x01, 0xbb, 0x0c,
+    0x41, 0x37, 0x31, 0x30, 0x35, 0x43, 0x43, 0x32, 0x34, 0x32, 0x52, 0x31, 0xbc, 0x00,
 };
 
 static const I2cProbeRequest requests[] = {
@@ -380,6 +388,106 @@ bool i2c_probe_exchange_finalize(I2cProbeExchange *exchange, const I2cProbeFinal
         exchange->result = validation == I2C_PROBE_CHECKSUM_ERROR
                                ? I2C_PROBE_EXCHANGE_CHECKSUM_ERROR
                                : I2C_PROBE_EXCHANGE_RESPONSE_ERROR;
+    }
+    return true;
+}
+
+/**
+ * @brief Initializes the accessory startup sequence.
+ *
+ * Selects the session-begin command and clears the retry and completion state.
+ *
+ * @param[out] startup Startup sequence to initialize.
+ */
+void i2c_probe_startup_init(I2cProbeStartup *startup) {
+    *startup = (I2cProbeStartup){.command = I2C_PROBE_BEGIN_SESSION};
+}
+
+/**
+ * @brief Gets the next accessory startup command when it is ready.
+ *
+ * Holds startup-status retries through their five-millisecond deadline. A retry becomes available
+ * on the first later millisecond. Completed startup sequences have no current command.
+ *
+ * @param[in,out] startup Startup sequence whose delay state may expire.
+ * @param[in] now_ms Current system time in milliseconds.
+ * @param[out] command Command to execute next.
+ * @return True when a command is ready; otherwise false.
+ */
+bool i2c_probe_startup_current(I2cProbeStartup *startup, uint32_t now_ms,
+                               I2cProbeCommand *command) {
+    if (startup->complete) {
+        return false;
+    }
+    if (startup->waiting) {
+        if ((int32_t)(now_ms - startup->retry_after_ms) <= 0) {
+            return false;
+        }
+        startup->waiting = false;
+    }
+    *command = startup->command;
+    return true;
+}
+
+/**
+ * @brief Applies one completed accessory startup command.
+ *
+ * Advances through session start, startup status, the fixed 29-byte identity signature, the 0xCC
+ * confirmation, and ready status 7. Invalid startup status waits five milliseconds before another
+ * read. Invalid signature, confirmation, and nonnegative ready responses repeat immediately.
+ * Four completed attempts at one response-bearing stage restart the sequence, as does a negative
+ * ready status.
+ *
+ * @param[in,out] startup Active startup sequence.
+ * @param[in] command Command whose exchange completed.
+ * @param[in] response Response fields, or null for the session-begin command.
+ * @param[in] now_ms Current system time in milliseconds.
+ * @return True when the event belongs to the current sequence state; otherwise false.
+ */
+bool i2c_probe_startup_accept(I2cProbeStartup *startup, I2cProbeCommand command,
+                              const I2cProbeStartupResponse *response, uint32_t now_ms) {
+    if (startup->complete || startup->waiting || command != startup->command ||
+        (command != I2C_PROBE_BEGIN_SESSION && response == NULL)) {
+        return false;
+    }
+
+    if (command == I2C_PROBE_BEGIN_SESSION) {
+        startup->command = I2C_PROBE_READ_STARTUP_STATUS;
+        startup->completed_attempts = 0;
+        return true;
+    }
+
+    ++startup->completed_attempts;
+    if (startup->completed_attempts > I2C_PROBE_STARTUP_ATTEMPT_LIMIT) {
+        i2c_probe_startup_init(startup);
+        return true;
+    }
+
+    if (command == I2C_PROBE_READ_STARTUP_STATUS) {
+        if (response->declared_length == 1 && response->status == 0) {
+            startup->command = I2C_PROBE_READ_SIGNATURE;
+            startup->completed_attempts = 0;
+        } else {
+            startup->waiting = true;
+            startup->retry_after_ms = now_ms + I2C_PROBE_STARTUP_RETRY_DELAY_MS;
+        }
+    } else if (command == I2C_PROBE_READ_SIGNATURE) {
+        if (response->status == 0 && response->payload != NULL &&
+            response->payload_length >= I2C_PROBE_STARTUP_SIGNATURE_SIZE &&
+            memcmp(response->payload, startup_signature, I2C_PROBE_STARTUP_SIGNATURE_SIZE) == 0) {
+            startup->command = I2C_PROBE_READ_CONFIRMATION;
+            startup->completed_attempts = 0;
+        }
+    } else if (command == I2C_PROBE_READ_CONFIRMATION) {
+        if (response->declared_length == 1 && response->status == 0xcc) {
+            startup->command = I2C_PROBE_READ_READY_STATUS;
+            startup->completed_attempts = 0;
+        }
+    } else if ((int8_t)response->status < 0) {
+        i2c_probe_startup_init(startup);
+    } else if (response->status == I2C_PROBE_RESPONSE_ACCEPT) {
+        startup->completed_attempts = 0;
+        startup->complete = true;
     }
     return true;
 }
