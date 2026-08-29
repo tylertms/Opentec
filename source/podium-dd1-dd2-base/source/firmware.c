@@ -80,6 +80,7 @@
 #include "wheel/status_service.h"
 #include "wheel/steering_limit.h"
 #include "wheel/transfer_service.h"
+#include "wheel/usb_disconnect_display.h"
 #include "wheel/vibration.h"
 
 #pragma config GWRP = OFF
@@ -140,6 +141,7 @@ static HPatternCalibrationService h_pattern_calibration_service;
 static HPatternCalibrationCommand h_pattern_calibration_command;
 static ShifterInputState shifter_input;
 static ShifterDisplay shifter_display;
+static UsbDisconnectDisplay usb_disconnect_display;
 static UsbInputReportState usb_input_state;
 static FanatecEncoder fanatec_encoder;
 static WheelMultiPositionInput wheel_multi_position_input;
@@ -205,6 +207,7 @@ static ForceOutputEnableAction force_output_enable_action;
 static bool force_output_enabled;
 static bool force_output_prompt_visible;
 static bool torque_disabled_notice_visible;
+static bool usb_disconnect_notice_visible;
 static bool usb_motor_acknowledgement_ready;
 static bool usb_motor_response_ready;
 static bool usb_remote_tuning_host_report_ready;
@@ -223,6 +226,7 @@ enum {
     LOCAL_DISPLAY_PAGE_TORQUE_DISABLED = 1,
     LOCAL_DISPLAY_PAGE_TORQUE_PROMPT = 2,
     LOCAL_DISPLAY_PAGE_BITE_POINT = 3,
+    USB_DISCONNECT_STATUS_CODE = 0x1c,
 };
 
 static uint8_t usb_motor_upload_assembly[USB_MOTOR_BUFFER_SIZE];
@@ -1198,15 +1202,24 @@ static void service_analog_input(uint32_t now_ms) {
 }
 
 /**
- * @brief Updates the attached-wheel H-pattern display.
+ * @brief Updates the attached-wheel glyph display.
  *
- * Shows the active calibration stage or a temporary gear glyph while the attached-wheel protocol
- * is active, then publishes changed display output through the wheel service.
+ * Gives the USB disconnect label priority over H-pattern calibration and temporary gear glyphs,
+ * then publishes changed display output through the wheel service.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 static void service_shifter_display(uint32_t now_ms) {
     WheelDisplayOutput *output = &wheel_service.display_output;
+    bool changed = usb_disconnect_display_update(&usb_disconnect_display,
+                                                 usb_disconnect_notice_visible, output);
+    if (changed) {
+        wheel_service_set_display_output(&wheel_service, output);
+    }
+    if (usb_disconnect_notice_visible || changed) {
+        return;
+    }
+
     bool wheel_active = wheel_service_protocol_phase(&wheel_service) == WHEEL_PROTOCOL_ACTIVE;
     HPatternCalibrationPrompt calibration_prompt =
         h_pattern_calibration_service_prompt(&h_pattern_calibration_service, now_ms);
@@ -1310,6 +1323,7 @@ int main(void) {
     platform_shifter_init();
     platform_shifter_read(&shifter_input);
     shifter_display_init(&shifter_display);
+    usb_disconnect_display_init(&usb_disconnect_display);
     platform_aux_bus_init();
     platform_pedal_link_init();
     pedal_service_init(&pedal_service);
@@ -1336,8 +1350,18 @@ int main(void) {
         service_power(now_ms);
         service_power_torque_request();
         service_system_events(now_ms);
-        (void)usb_connection_monitor_update(&usb_connection_monitor, platform_usb_connected(), true,
-                                            now_ms);
+        UsbConnectionAction usb_connection_action = usb_connection_monitor_update(
+            &usb_connection_monitor, platform_usb_connected(), true, now_ms);
+        if ((usb_connection_action & USB_CONNECTION_ACTION_NOTIFY_DISCONNECTED) != 0) {
+            system_control_state_set_status(&system_control_state,
+                                            wheel_service_mode(&wheel_service),
+                                            USB_DISCONNECT_STATUS_CODE);
+        }
+        if ((usb_connection_action & USB_CONNECTION_ACTION_SHOW_DISCONNECTED) != 0) {
+            usb_disconnect_notice_visible = true;
+        } else if ((usb_connection_action & USB_CONNECTION_ACTION_CLEAR_NOTIFICATION) != 0) {
+            usb_disconnect_notice_visible = false;
+        }
         platform_status_led_set(status_led_update(&status_led, now_ms));
         platform_cooling_service(now_ms);
         update_fan_speed(PLATFORM_FAN_PRIMARY);

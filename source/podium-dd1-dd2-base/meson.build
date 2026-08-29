@@ -138,6 +138,7 @@ wheel_authentication_sources = files('source/wheel/authentication.c')
 wheel_capability_sources = files('source/wheel/capability.c')
 wheel_command_forwarder_sources = files('source/wheel/command_forwarder.c')
 wheel_display_output_sources = files('source/wheel/display_output.c')
+wheel_usb_disconnect_display_sources = files('source/wheel/usb_disconnect_display.c')
 wheel_output_reports_sources = files('source/wheel/output_reports.c')
 transfer_memory_sources = files('source/transfer/memory.c')
 wheel_motion_sources = files('source/wheel/motion.c')
@@ -332,6 +333,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'wheel-capability': 'source/wheel/capability.c',
     'wheel-command-forwarder': 'source/wheel/command_forwarder.c',
     'wheel-display-output': 'source/wheel/display_output.c',
+    'wheel-usb-disconnect-display': 'source/wheel/usb_disconnect_display.c',
     'wheel-output-reports': 'source/wheel/output_reports.c',
     'transfer-memory': 'source/transfer/memory.c',
     'transfer-command': 'source/transfer/command.c',
@@ -1577,6 +1579,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_usb_disconnect_display_test = executable(
+    'base-wheel-usb-disconnect-display-test',
+    'tests/source/wheel_usb_disconnect_display.c',
+    wheel_usb_disconnect_display_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_vibration_test = executable(
     'base-wheel-vibration-test',
     'tests/source/wheel_vibration.c',
@@ -2238,6 +2248,11 @@ if not meson.is_cross_build()
     'base-wheel-display-output',
     wheel_display_output_test,
     suite: ['base', 'wheel', 'display'],
+  )
+  test(
+    'base-wheel-usb-disconnect-display',
+    wheel_usb_disconnect_display_test,
+    suite: ['base', 'wheel', 'display', 'usb'],
   )
   test('base-wheel-vibration', wheel_vibration_test, suite: ['base', 'wheel', 'output'])
   test(
