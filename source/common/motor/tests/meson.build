@@ -114,3 +114,19 @@ test(
   motor_parameter_test,
   suite: ['motor', 'communication'],
 )
+
+motor_protocol_test = executable(
+  'motor-protocol-test',
+  'source/protocol.c',
+  motor_protocol_sources,
+  motor_drive_sources,
+  motor_force_feedback_sources,
+  motor_link_frame_sources,
+  include_directories: common_include,
+)
+
+test(
+  'motor-protocol',
+  motor_protocol_test,
+  suite: ['motor', 'communication'],
+)
