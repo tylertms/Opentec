@@ -11,6 +11,7 @@ typedef struct {
 } DisplayPrompt;
 
 void display_prompt_render(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], bool visible);
+void display_prompt_render_torque_key(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], bool visible);
 void display_prompt_render_bite_point(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], bool visible,
                                       uint8_t percent);
 bool display_prompt_update(DisplayPrompt *prompt, bool visible, bool input_active);

@@ -36,6 +36,32 @@ static void test_acknowledge_on_release(void) {
     assert(!display_prompt_update(&prompt, true, false));
 }
 
+static uint8_t pixel(const uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], uint16_t x, uint16_t y) {
+    uint8_t packed = framebuffer[y * (DISPLAY_FRAMEBUFFER_WIDTH / 2) + x / 2];
+    return (x & 1u) == 0 ? packed >> 4 : packed & 0x0fu;
+}
+
+static void test_render_torque_key_prompt(void) {
+    uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE] = {0};
+
+    display_prompt_render_torque_key(framebuffer, true);
+    assert(pixel(framebuffer, 127, 16) == 3);
+    assert(pixel(framebuffer, 128, 16) == 15);
+    assert(pixel(framebuffer, 129, 16) == 3);
+
+    bool primary_text_present = false;
+    bool secondary_text_present = false;
+    bool acknowledgement_present = false;
+    for (uint16_t x = 0; x < DISPLAY_FRAMEBUFFER_WIDTH; x++) {
+        primary_text_present |= pixel(framebuffer, x, 30) != 0;
+        secondary_text_present |= pixel(framebuffer, x, 40) != 0;
+        acknowledgement_present |= pixel(framebuffer, x, 52) != 0;
+    }
+    assert(primary_text_present);
+    assert(secondary_text_present);
+    assert(acknowledgement_present);
+}
+
 static void test_render_bite_point(void) {
     uint8_t first[DISPLAY_FRAMEBUFFER_SIZE] = {0};
     uint8_t second[DISPLAY_FRAMEBUFFER_SIZE] = {0};
@@ -64,6 +90,7 @@ static void test_hide_clears_input(void) {
 
 int main(void) {
     test_render_and_clear();
+    test_render_torque_key_prompt();
     test_render_bite_point();
     test_acknowledge_on_release();
     test_hide_clears_input();

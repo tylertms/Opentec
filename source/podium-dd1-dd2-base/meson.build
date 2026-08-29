@@ -90,7 +90,9 @@ board_identity_sources = files('source/board/identity.c')
 usb_connection_sources = files('source/usb/connection.c')
 status_led_sources = files('source/board/status_led.c')
 power_controller_sources = files('source/board/power.c')
+torque_key_sources = files('source/board/torque_key.c')
 system_torque_transition_sources = files('source/system/torque_transition.c')
+torque_key_prompt_sources = files('source/system/torque_key_prompt.c')
 system_event_queue_sources = files('source/system/event_queue.c')
 system_event_dispatcher_sources = files('source/system/event_dispatcher.c')
 system_notice_sources = files('source/system/notice.c')
@@ -269,7 +271,9 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'usb-connection': 'source/usb/connection.c',
     'status-led': 'source/board/status_led.c',
     'power-controller': 'source/board/power.c',
+    'torque-key': 'source/board/torque_key.c',
     'system-torque-transition': 'source/system/torque_transition.c',
+    'torque-key-prompt': 'source/system/torque_key_prompt.c',
     'system-event-queue': 'source/system/event_queue.c',
     'system-event-dispatcher': 'source/system/event_dispatcher.c',
     'system-notice': 'source/system/notice.c',
@@ -317,6 +321,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'platform-storage': 'source/platform/dspic33e/storage.c',
     'platform-status-led': 'source/platform/dspic33e/status_led.c',
     'platform-power': 'source/platform/dspic33e/power.c',
+    'platform-torque-key': 'source/platform/dspic33e/torque_key.c',
     'platform-shifter': 'source/platform/dspic33e/shifter.c',
     'platform-time': 'source/platform/dspic33e/time.c',
     'platform-usb': 'source/platform/dspic33e/usb.c',
@@ -1193,6 +1198,22 @@ if not meson.is_cross_build()
     'base-power-controller-test',
     'tests/source/power_controller.c',
     power_controller_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  torque_key_test = executable(
+    'base-torque-key-test',
+    'tests/source/torque_key.c',
+    torque_key_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  torque_key_prompt_test = executable(
+    'base-torque-key-prompt-test',
+    'tests/source/torque_key_prompt.c',
+    torque_key_prompt_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2173,6 +2194,12 @@ if not meson.is_cross_build()
   test('base-usb-connection', usb_connection_test, suite: ['base', 'usb', 'connection'])
   test('base-status-led', status_led_test, suite: ['base', 'board', 'led'])
   test('base-power-controller', power_controller_test, suite: ['base', 'board', 'power'])
+  test('base-torque-key', torque_key_test, suite: ['base', 'board', 'safety'])
+  test(
+    'base-torque-key-prompt',
+    torque_key_prompt_test,
+    suite: ['base', 'system', 'safety'],
+  )
   test(
     'base-system-torque-transition',
     system_torque_transition_test,

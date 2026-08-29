@@ -12,6 +12,7 @@ enum {
     SYSTEM_EVENT_POSITION_SENSOR_TEST_STARTED = 4,
     SYSTEM_EVENT_POSITION_SENSOR_TEST_FAILED = 5,
     SYSTEM_EVENT_TORQUE_REDUCED = 6,
+    SYSTEM_EVENT_TORQUE_KEY_PROMPT = 7,
     SYSTEM_EVENT_MOTOR_CALIBRATION_DISCONNECT_WHEEL = 8,
     SYSTEM_EVENT_MOTOR_CALIBRATION_UNSUPPORTED = 9,
     SYSTEM_EVENT_MOTOR_CALIBRATION_COMPLETED = 10,
@@ -21,6 +22,7 @@ enum {
     SYSTEM_EVENT_SHUTDOWN = 0x0e,
     SYSTEM_EVENT_STANDARD_TUNING_MODE = 0x12,
     SYSTEM_EVENT_ADVANCED_TUNING_MODE = 0x13,
+    SYSTEM_EVENT_DISMISS_TORQUE_KEY_PROMPT = 0x18,
     SYSTEM_EVENT_DISMISS_FORCE_OUTPUT_PROMPT = 0x1a,
     SYSTEM_EVENT_TORQUE_ENABLED = 0x1b,
     SYSTEM_EVENT_MOTOR_CALIBRATION_ONGOING = 0x1c,
@@ -55,10 +57,10 @@ void system_event_dispatcher_init(SystemEventDispatcher *dispatcher) {
 /**
  * @brief Dispatches a queued system notice event.
  *
- * Maps tuning-menu, wheel-center, position-sensor, motor-calibration, force-output,
+ * Maps tuning-menu, wheel-center, position-sensor, motor-calibration, Torque Key, force-output,
  * torque-reduction, and power-button event codes to display actions. Recognized events complete
- * their queue slot and start a 100-millisecond minimum interval. Other event codes remain available
- * for their owning dispatcher.
+ * their queue slot and start a 100-millisecond minimum interval. Other event codes remain
+ * available for their owning dispatcher.
  *
  * @param[in,out] dispatcher Shared event dispatch cadence.
  * @param[in,out] queue Single-slot system event queue.
@@ -80,6 +82,8 @@ SystemEventAction system_event_dispatcher_update(SystemEventDispatcher *dispatch
         action = SYSTEM_EVENT_ACTION_SHOW_POSITION_SENSOR_TEST_FAILED;
     } else if (queue->pending_code == SYSTEM_EVENT_TORQUE_REDUCED) {
         action = SYSTEM_EVENT_ACTION_SHOW_TORQUE_REDUCED;
+    } else if (queue->pending_code == SYSTEM_EVENT_TORQUE_KEY_PROMPT) {
+        action = SYSTEM_EVENT_ACTION_SHOW_TORQUE_KEY_PROMPT;
     } else if (queue->pending_code == SYSTEM_EVENT_MOTOR_CALIBRATION_DISCONNECT_WHEEL) {
         action = SYSTEM_EVENT_ACTION_SHOW_MOTOR_CALIBRATION_DISCONNECT_WHEEL;
     } else if (queue->pending_code == SYSTEM_EVENT_MOTOR_CALIBRATION_UNSUPPORTED) {
@@ -100,6 +104,8 @@ SystemEventAction system_event_dispatcher_update(SystemEventDispatcher *dispatch
         action = SYSTEM_EVENT_ACTION_SHOW_ADVANCED_TUNING_MODE;
     } else if (queue->pending_code == SYSTEM_EVENT_SHUTDOWN) {
         action = SYSTEM_EVENT_ACTION_SHOW_SHUTDOWN;
+    } else if (queue->pending_code == SYSTEM_EVENT_DISMISS_TORQUE_KEY_PROMPT) {
+        action = SYSTEM_EVENT_ACTION_DISMISS_TORQUE_KEY_PROMPT;
     } else if (queue->pending_code == SYSTEM_EVENT_TORQUE_DISABLED) {
         action = SYSTEM_EVENT_ACTION_SHOW_TORQUE_DISABLED;
     } else if (queue->pending_code == SYSTEM_EVENT_TORQUE_ENABLED) {

@@ -5,6 +5,7 @@
 #include "board/identity.h"
 #include "board/power.h"
 #include "board/status_led.h"
+#include "board/torque_key.h"
 #include "cooling/controller.h"
 #include "cooling/effect_limit.h"
 #include "cooling/tachometer.h"
@@ -45,6 +46,7 @@
 #include "platform/shifter.h"
 #include "platform/status_led.h"
 #include "platform/time.h"
+#include "platform/torque_key.h"
 #include "platform/usb.h"
 #include "profile/bank.h"
 #include "profile/tuning.h"
@@ -59,6 +61,7 @@
 #include "system/event_dispatcher.h"
 #include "system/event_queue.h"
 #include "system/notice.h"
+#include "system/torque_key_prompt.h"
 #include "system/torque_transition.h"
 #include "usb/connection.h"
 #include "usb/device.h"
@@ -203,11 +206,15 @@ static CoolingTemperatureMonitor cooling_temperature_monitor;
 static PlatformFanTachometer fan_tachometer;
 static uint16_t fan_speed_rpm[2];
 static uint8_t display_framebuffer[DISPLAY_FRAMEBUFFER_SIZE];
-static DisplayPrompt display_prompt;
+static DisplayPrompt force_output_display_prompt;
+static DisplayPrompt torque_key_display_prompt;
 static ForceOutputEnable force_output_enable;
 static ForceOutputEnableAction force_output_enable_action;
 static bool force_output_enabled;
 static bool force_output_prompt_visible;
+static TorqueKey torque_key;
+static TorqueKeyPrompt torque_key_prompt;
+static bool torque_key_prompt_visible;
 static bool torque_disabled_notice_visible;
 static bool usb_disconnect_notice_visible;
 static bool usb_motor_acknowledgement_ready;
@@ -227,9 +234,10 @@ enum {
     USB_MOTOR_BUFFER_SIZE = MEMORY_TRANSFER_MAX_READ_SIZE,
     LOCAL_DISPLAY_PAGE_CLEAR = 0,
     LOCAL_DISPLAY_PAGE_TORQUE_DISABLED = 1,
-    LOCAL_DISPLAY_PAGE_TORQUE_PROMPT = 2,
-    LOCAL_DISPLAY_PAGE_BITE_POINT = 3,
-    LOCAL_DISPLAY_PAGE_SYSTEM_NOTICE = 4,
+    LOCAL_DISPLAY_PAGE_FORCE_OUTPUT_PROMPT = 2,
+    LOCAL_DISPLAY_PAGE_TORQUE_KEY_PROMPT = 3,
+    LOCAL_DISPLAY_PAGE_BITE_POINT = 4,
+    LOCAL_DISPLAY_PAGE_SYSTEM_NOTICE = 5,
     USB_DISCONNECT_STATUS_CODE = 0x1c,
     TUNING_MENU_RESET_EVENT_CODE = 1,
     WHEEL_CENTER_CALIBRATED_EVENT_CODE = 2,
@@ -240,6 +248,8 @@ enum {
     SYSTEM_DISPLAY_DISMISS_EVENT_CODE = 0x11,
     FORCE_OUTPUT_PROMPT_EVENT_CODE = 0x0c,
     FORCE_OUTPUT_PROMPT_DISMISS_EVENT_CODE = 0x1a,
+    TORQUE_KEY_PROMPT_EVENT_CODE = 7,
+    TORQUE_KEY_PROMPT_DISMISS_EVENT_CODE = 0x18,
     SHUTDOWN_STATUS_CODE = 0x2d,
 };
 
@@ -376,11 +386,76 @@ static void service_system_events(uint32_t now_ms) {
         force_output_prompt_visible = true;
     } else if (action == SYSTEM_EVENT_ACTION_DISMISS_FORCE_OUTPUT_PROMPT) {
         force_output_prompt_visible = false;
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_TORQUE_KEY_PROMPT) {
+        torque_key_prompt_visible = true;
+    } else if (action == SYSTEM_EVENT_ACTION_DISMISS_TORQUE_KEY_PROMPT) {
+        torque_key_prompt_visible = false;
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_TORQUE_DISABLED) {
         torque_disabled_notice_visible = true;
     } else if (action == SYSTEM_EVENT_ACTION_DISMISS_TORQUE_DISABLED) {
         torque_disabled_notice_visible = false;
     }
+}
+
+/**
+ * @brief Applies a Torque Key prompt visibility action.
+ *
+ * Show and removal actions wait for the shared event slot and publish the corresponding display
+ * state. An accepted acknowledgement hides the prompt immediately and publishes the common
+ * dismissal state.
+ *
+ * @param[in] action Requested Torque Key prompt transition.
+ */
+static void apply_torque_key_prompt_action(TorqueKeyPromptAction action) {
+    switch (action) {
+    case TORQUE_KEY_PROMPT_ACTION_SHOW:
+        if (system_event_queue_try_push(&system_event_queue, TORQUE_KEY_PROMPT_EVENT_CODE)) {
+            system_control_state_set_active_event(&system_control_state,
+                                                  TORQUE_KEY_PROMPT_EVENT_CODE);
+        }
+        break;
+    case TORQUE_KEY_PROMPT_ACTION_CANCEL:
+        if (system_event_queue_try_push(&system_event_queue,
+                                        TORQUE_KEY_PROMPT_DISMISS_EVENT_CODE)) {
+            system_control_state_set_active_event(&system_control_state,
+                                                  SYSTEM_DISPLAY_DISMISS_EVENT_CODE);
+        }
+        break;
+    case TORQUE_KEY_PROMPT_ACTION_DISMISS:
+        torque_key_prompt_visible = false;
+        system_control_state_set_active_event(&system_control_state,
+                                              SYSTEM_DISPLAY_DISMISS_EVENT_CODE);
+        break;
+    case TORQUE_KEY_PROMPT_ACTION_NONE:
+        break;
+    }
+}
+
+/**
+ * @brief Services the Torque Key safety acknowledgement.
+ *
+ * Filters the active-low board input for 500 milliseconds, starts or cancels the safety prompt on
+ * stable key transitions, accepts a released wheel input only while the prompt owns the display,
+ * and advances presentation through the shared event slot.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_torque_key(uint32_t now_ms) {
+    TorqueKeyEvent event = torque_key_update(&torque_key, platform_torque_key_inserted(), now_ms);
+    if (event == TORQUE_KEY_EVENT_INSERTED) {
+        torque_key_prompt_set_inserted(&torque_key_prompt, true);
+    } else if (event == TORQUE_KEY_EVENT_REMOVED) {
+        torque_key_prompt_set_inserted(&torque_key_prompt, false);
+    }
+
+    bool visible = torque_key_prompt_visible && system_notice.kind == SYSTEM_NOTICE_NONE &&
+                   !torque_disabled_notice_visible;
+    if (display_prompt_update(&torque_key_display_prompt, visible,
+                              wheel_service_acknowledgement_input_active(&wheel_service))) {
+        torque_key_prompt_set_response(&torque_key_prompt, true);
+    }
+    apply_torque_key_prompt_action(
+        torque_key_prompt_service(&torque_key_prompt, system_event_queue.pending_code == 0));
 }
 
 static void initialize_cooling(void) {
@@ -1397,15 +1472,17 @@ static void apply_force_output_prompt_action(ForceOutputEnableAction action) {
  * @brief Updates the local display when its active page changes.
  *
  * Gives motor-originated notices priority over the persistent torque-disabled notice,
- * torque-confirmation prompt, and paddle bite-point adjustment. Changes to active notice content
- * or percentage redraw their page, and leaving all display owners clears the display.
+ * Torque Key prompt, force-output prompt, and paddle bite-point adjustment. Changes to active
+ * notice content or percentage redraw their page, and leaving all display owners clears the
+ * display.
  */
 static void service_local_display(void) {
     bool bite_point_visible =
         wheel_service_bite_point_adjustment(&wheel_service, &wheel_bite_point_display_percent);
     uint8_t page = system_notice.kind != SYSTEM_NOTICE_NONE ? LOCAL_DISPLAY_PAGE_SYSTEM_NOTICE
                    : torque_disabled_notice_visible         ? LOCAL_DISPLAY_PAGE_TORQUE_DISABLED
-                   : force_output_prompt_visible            ? LOCAL_DISPLAY_PAGE_TORQUE_PROMPT
+                   : torque_key_prompt_visible              ? LOCAL_DISPLAY_PAGE_TORQUE_KEY_PROMPT
+                   : force_output_prompt_visible            ? LOCAL_DISPLAY_PAGE_FORCE_OUTPUT_PROMPT
                    : bite_point_visible                     ? LOCAL_DISPLAY_PAGE_BITE_POINT
                                                             : LOCAL_DISPLAY_PAGE_CLEAR;
     if (page == local_display_page &&
@@ -1420,7 +1497,9 @@ static void service_local_display(void) {
         display_notice_render_system(display_framebuffer, system_notice.kind);
     } else if (page == LOCAL_DISPLAY_PAGE_TORQUE_DISABLED) {
         display_notice_render_torque_disabled(display_framebuffer, true);
-    } else if (page == LOCAL_DISPLAY_PAGE_TORQUE_PROMPT) {
+    } else if (page == LOCAL_DISPLAY_PAGE_TORQUE_KEY_PROMPT) {
+        display_prompt_render_torque_key(display_framebuffer, true);
+    } else if (page == LOCAL_DISPLAY_PAGE_FORCE_OUTPUT_PROMPT) {
         display_prompt_render(display_framebuffer, true);
     } else {
         display_prompt_render_bite_point(display_framebuffer, page == LOCAL_DISPLAY_PAGE_BITE_POINT,
@@ -1432,6 +1511,13 @@ static void service_local_display(void) {
     local_display_rendered_notice_kind = system_notice.kind;
 }
 
+/**
+ * @brief Services force-output readiness and operator acknowledgement.
+ *
+ * Removes enabled force output when its wheel or USB prerequisite disappears. While interlocked,
+ * accepts a released wheel input only when the force-output prompt owns the display and advances
+ * prompt presentation through the shared event slot.
+ */
 static void service_force_output_enable(void) {
     WheelProtocolPhase wheel_phase = wheel_service_protocol_phase(&wheel_service);
     bool wheel_protocol_ready = wheel_phase >= WHEEL_PROTOCOL_AUTHENTICATING;
@@ -1444,7 +1530,9 @@ static void service_force_output_enable(void) {
         return;
     }
 
-    if (display_prompt_update(&display_prompt, force_output_prompt_visible,
+    bool prompt_visible = force_output_prompt_visible && system_notice.kind == SYSTEM_NOTICE_NONE &&
+                          !torque_disabled_notice_visible && !torque_key_prompt_visible;
+    if (display_prompt_update(&force_output_display_prompt, prompt_visible,
                               wheel_service_acknowledgement_input_active(&wheel_service))) {
         force_output_enable_set_response(&force_output_enable, 1);
     }
@@ -1461,6 +1549,9 @@ int main(void) {
     board_identity = platform_board_identity_read();
     platform_pin_mux_init();
     platform_power_init();
+    platform_torque_key_init();
+    torque_key_init(&torque_key);
+    torque_key_prompt_init(&torque_key_prompt);
     power_controller_init(&power_controller);
     system_control_state_init(&system_control_state);
     system_torque_transition_init(&system_torque_transition);
@@ -1572,6 +1663,7 @@ int main(void) {
         if (serial_service.status == SERIAL_SERVICE_IDLE) {
             (void)motor_command_serial_submit(&command_transport, &serial_service, now_ms);
         }
+        service_torque_key(now_ms);
         service_force_output_enable();
         service_local_display();
         service_shifter_display(now_ms);
