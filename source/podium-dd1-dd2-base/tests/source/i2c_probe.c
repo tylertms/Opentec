@@ -86,7 +86,11 @@ static void test_encodes_fixed_requests(void) {
 
     for (I2cProbeCommand command = I2C_PROBE_BEGIN_SESSION; command <= I2C_PROBE_READ_READY_STATUS;
          ++command) {
+        const I2cProbeRequest *encoded = i2c_probe_request_lookup(command);
         I2cProbeRequest request = {0};
+        assert(encoded != 0);
+        assert(encoded->selector == expected[command].selector);
+        assert(encoded->response_length == expected[command].response_length);
         assert(i2c_probe_request_encode(command, &request));
         assert(request.selector == expected[command].selector);
         assert(request.response_length == expected[command].response_length);
@@ -96,8 +100,10 @@ static void test_encodes_fixed_requests(void) {
 static void test_rejects_reserved_requests(void) {
     I2cProbeRequest request = {.selector = 0xa5, .response_length = 0x5a};
 
+    assert(i2c_probe_request_lookup(0) == 0);
     assert(!i2c_probe_request_encode(0, &request));
     assert(request.selector == 0xa5 && request.response_length == 0x5a);
+    assert(i2c_probe_request_lookup(6) == 0);
     assert(!i2c_probe_request_encode(6, &request));
     assert(request.selector == 0xa5 && request.response_length == 0x5a);
 }

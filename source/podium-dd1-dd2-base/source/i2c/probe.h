@@ -138,6 +138,7 @@ uint8_t i2c_probe_checksum(const uint8_t *payload, uint8_t payload_length);
 I2cProbeValidationResult i2c_probe_final_response_validate(const I2cProbeFinalResponse *response,
                                                            bool checksum_enabled);
 bool i2c_probe_request_encode(I2cProbeCommand command, I2cProbeRequest *request);
+const I2cProbeRequest *i2c_probe_request_lookup(I2cProbeCommand command);
 bool i2c_probe_transfer_encode(I2cProbeCommand command, const I2cProbeTransferInput *input,
                                I2cProbeTransferFrame *frame);
 void i2c_probe_transfer_sequence_init(I2cProbeTransferSequence *sequence, bool checked);

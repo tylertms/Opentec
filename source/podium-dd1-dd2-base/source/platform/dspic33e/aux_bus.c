@@ -38,8 +38,19 @@ static bool reading;
 static bool wide_address;
 static uint32_t deadline;
 
+/**
+ * @brief Starts one interrupt-driven auxiliary-bus transaction.
+ *
+ * Captures the 7-bit device address, register address, and transfer length, then issues a start
+ * condition. A zero transfer length is valid for a register-only write.
+ *
+ * @param[in] address Seven-bit device address.
+ * @param[in] register_address Eight- or sixteen-bit register address.
+ * @param[in] length Number of payload bytes to write or read.
+ * @return True when the controller accepted the transaction; otherwise false.
+ */
 static bool start_transaction(uint8_t address, uint16_t register_address, uint16_t length) {
-    if (status == PLATFORM_AUX_BUS_BUSY || address >= 0x80 || length == 0) {
+    if (status == PLATFORM_AUX_BUS_BUSY || address >= 0x80) {
         return false;
     }
 
@@ -56,6 +67,17 @@ static bool start_transaction(uint8_t address, uint16_t register_address, uint16
     return true;
 }
 
+/**
+ * @brief Checks a payload-bearing auxiliary-bus transaction request.
+ *
+ * Rejects a busy controller, an address outside the seven-bit range, a null payload, or an empty
+ * payload.
+ *
+ * @param[in] address Seven-bit device address.
+ * @param[in] data Payload source or destination.
+ * @param[in] length Number of payload bytes.
+ * @return True when the transaction arguments can be queued; otherwise false.
+ */
 static bool transaction_valid(uint8_t address, const void *data, uint16_t length) {
     return status != PLATFORM_AUX_BUS_BUSY && address < 0x80 && data != 0 && length != 0;
 }
@@ -73,10 +95,20 @@ static void send_register_low(void) {
     phase = AUX_BUS_REGISTER_LOW;
 }
 
+/**
+ * @brief Continues after the register address is acknowledged.
+ *
+ * Restarts the bus for a read, transmits the first write byte, or finishes a register-only write.
+ */
 static void send_data_or_stop(void) {
     if (reading) {
         I2C2CONbits.RSEN = 1;
         phase = AUX_BUS_RESTART;
+        return;
+    }
+
+    if (data_length == 0) {
+        stop_transaction(PLATFORM_AUX_BUS_SUCCEEDED);
         return;
     }
 
@@ -113,9 +145,25 @@ void platform_aux_bus_service(void) {
     status = PLATFORM_AUX_BUS_FAILED;
 }
 
+/**
+ * @brief Starts a register-addressed auxiliary-bus write.
+ *
+ * A null data pointer with zero length sends only the register address. Nonempty writes require a
+ * payload source.
+ *
+ * @param[in] address Seven-bit device address.
+ * @param[in] register_address Eight- or sixteen-bit register address.
+ * @param[in] data Payload source, or null for a register-only write.
+ * @param[in] length Number of payload bytes.
+ * @return True when the transaction starts; otherwise false.
+ */
 bool platform_aux_bus_start_write(uint8_t address, uint16_t register_address, const uint8_t *data,
                                   uint16_t length) {
-    if (!transaction_valid(address, data, length)) {
+    if (length == 0) {
+        if (data != 0 || status == PLATFORM_AUX_BUS_BUSY || address >= 0x80) {
+            return false;
+        }
+    } else if (!transaction_valid(address, data, length)) {
         return false;
     }
 

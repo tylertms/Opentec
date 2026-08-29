@@ -133,11 +133,28 @@ I2cProbeValidationResult i2c_probe_final_response_validate(const I2cProbeFinalRe
  * @return True for commands 1 through 5; otherwise false.
  */
 bool i2c_probe_request_encode(I2cProbeCommand command, I2cProbeRequest *request) {
-    if (command < I2C_PROBE_BEGIN_SESSION || command > I2C_PROBE_READ_READY_STATUS) {
+    const I2cProbeRequest *encoded = i2c_probe_request_lookup(command);
+    if (encoded == NULL) {
         return false;
     }
-    *request = requests[command];
+    *request = *encoded;
     return true;
+}
+
+/**
+ * @brief Looks up a fixed probe request.
+ *
+ * Maps the five session and identification commands to their immutable selector and exact response
+ * length without copying the descriptor.
+ *
+ * @param[in] command Session or identification command to look up.
+ * @return Fixed request descriptor for commands 1 through 5, or null for another command.
+ */
+const I2cProbeRequest *i2c_probe_request_lookup(I2cProbeCommand command) {
+    if (command < I2C_PROBE_BEGIN_SESSION || command > I2C_PROBE_READ_READY_STATUS) {
+        return NULL;
+    }
+    return &requests[command];
 }
 
 /**
