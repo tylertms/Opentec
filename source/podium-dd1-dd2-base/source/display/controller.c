@@ -32,6 +32,17 @@ static const DisplayBusEvent begin_frame[] = {
     {DISPLAY_BUS_COMMAND, 0x5c},
 };
 
+/**
+ * @brief Sends an ordered display bus event sequence.
+ *
+ * Passes every command or data byte to the supplied bus writer without changing the required
+ * ordering or mode assignments.
+ *
+ * @param[in] events Ordered command and data events to send.
+ * @param[in] count Number of events in the sequence.
+ * @param[in] write Display bus byte writer.
+ * @param[in,out] context Opaque state passed to the byte writer.
+ */
 static void write_events(const DisplayBusEvent *events, size_t count, DisplayBusWrite write,
                          void *context) {
     for (size_t index = 0; index < count; index++) {

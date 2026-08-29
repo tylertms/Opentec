@@ -20,12 +20,30 @@ typedef struct {
 
 static DisplayBus display_bus;
 
-static void wait_ms(uint32_t duration_ms) {
+/**
+ * @brief Waits until a millisecond interval is strictly past.
+ *
+ * Preserves the controller reset cadence by advancing only after the current time exceeds the
+ * calculated deadline.
+ *
+ * @param[in] duration_ms Interval to add to the current system time.
+ */
+static void wait_past(uint32_t duration_ms) {
     uint32_t deadline_ms = platform_time_ms() + duration_ms;
-    while (!platform_time_reached(platform_time_ms(), deadline_ms)) {
+    while (!platform_time_reached(platform_time_ms(), deadline_ms + 1)) {
     }
 }
 
+/**
+ * @brief Writes one command or data byte to the display controller.
+ *
+ * Changes the D/C level when necessary, starts an eight-bit parallel-master transfer, and waits
+ * for that transfer to complete.
+ *
+ * @param[in,out] context Display bus state used to avoid redundant D/C transitions.
+ * @param[in] mode Command or data mode required for the byte.
+ * @param[in] value Byte to send to the display controller.
+ */
 static void write_byte(void *context, DisplayBusMode mode, uint8_t value) {
     DisplayBus *bus = context;
     if (bus->mode != mode) {
@@ -38,6 +56,13 @@ static void write_byte(void *context, DisplayBusMode mode, uint8_t value) {
     }
 }
 
+/**
+ * @brief Configures the eight-bit parallel-master display bus.
+ *
+ * Drives RE0 through RE7 as the data bus, selects CS2 through PMA15, configures the board control
+ * pins, and enables byte-wide master mode with 2/15/2 wait states.
+ *
+ */
 static void configure_parallel_port(void) {
     TRISE &= 0xff00u;
     TRISDbits.TRISD10 = 0;
@@ -71,12 +96,19 @@ static void configure_parallel_port(void) {
     PMCONbits.PMPEN = 1;
 }
 
+/**
+ * @brief Applies the display controller reset sequence.
+ *
+ * Holds reset high through the setup interval, asserts it low for the pulse interval, then restores
+ * it high through the recovery interval.
+ *
+ */
 static void reset_controller(void) {
-    wait_ms(DISPLAY_RESET_START_DELAY_MS);
+    wait_past(DISPLAY_RESET_START_DELAY_MS);
     LATGbits.LATG14 = 0;
-    wait_ms(DISPLAY_RESET_LOW_MS);
+    wait_past(DISPLAY_RESET_LOW_MS);
     LATGbits.LATG14 = 1;
-    wait_ms(DISPLAY_RESET_RECOVERY_MS);
+    wait_past(DISPLAY_RESET_RECOVERY_MS);
 }
 
 /**
@@ -113,6 +145,7 @@ static void start_dma(ConstDisplayFramebuffer framebuffer) {
  *
  * Configures the eight-bit parallel-master port, applies the high-low-high reset timing, sends the
  * controller setup stream, and leaves the bus in display-data mode.
+ *
  */
 void platform_display_init(void) {
     TRISGbits.TRISG14 = 0;
@@ -134,7 +167,7 @@ void platform_display_init(void) {
  * Selects the 256-by-64 display window, enters display-RAM write mode, and starts an 8,192-byte
  * one-shot transfer from the framebuffer through DMA channel 10.
  *
- * @param[in] framebuffer Complete packed four-bit grayscale framebuffer in DMA-accessible memory.
+ * @param[in] framebuffer Complete packed four-bit grayscale framebuffer in DMA-accessible storage.
  */
 void platform_display_write_frame(ConstDisplayFramebuffer framebuffer) {
     display_controller_begin_frame(write_byte, &display_bus);
