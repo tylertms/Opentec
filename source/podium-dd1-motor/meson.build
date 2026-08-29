@@ -76,7 +76,7 @@ if motor_target
   firmware = executable(
     'podium-dd1-motor',
     'source/firmware.c',
-    motor_foc_sources,
+    motor_control_sources,
     sdk_device['sources'],
     build_by_default: false,
     c_args: freestanding_c_args + [
