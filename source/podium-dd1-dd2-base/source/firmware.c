@@ -1580,9 +1580,10 @@ static void apply_wheel_steering_limit_command(const WheelSteeringLimitCommand *
 /**
  * @brief Routes one Xbox GIP application command.
  *
- * Decodes group-zero command packet 0A, applies transient steering-range and force-level controls,
- * and schedules capability, attached-device status, transfer-status, or script responses. Earlier
- * pending responses are retained until they reach the endpoint.
+ * Decodes group-zero command packet 0A, applies transient steering-range, force-level, and
+ * attached-wheel capability controls, and schedules capability, attached-device status,
+ * transfer-status, or script responses. Earlier pending responses are retained until they reach
+ * the endpoint.
  *
  * @param[in] report Complete USB output report containing the GIP packet.
  * @return True when the report belongs to the Xbox application-command path.
@@ -1606,6 +1607,11 @@ static bool route_xbox_gip_command(const UsbDeviceOutputReport *report) {
     case USB_XBOX_GIP_COMMAND_FORCE_FEEDBACK_STRENGTH:
         xbox_force_feedback_percent =
             usb_xbox_gip_force_feedback_strength_normalize((uint8_t)usb_xbox_gip_command.parameter);
+        break;
+    case USB_XBOX_GIP_COMMAND_HOST_CAPABILITY:
+        if (usb_xbox_gip_command.parameter <= 1) {
+            wheel_service_set_host_capability(&wheel_service, usb_xbox_gip_command.parameter != 0);
+        }
         break;
     case USB_XBOX_GIP_COMMAND_TRANSFER_STATUS:
         if (usb_xbox_control_response_pending == USB_XBOX_CONTROL_RESPONSE_NONE) {

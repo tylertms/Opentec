@@ -47,8 +47,8 @@ typedef struct {
 typedef struct {
     WheelDisplayOutput display;
     uint8_t vibration[2];
-    uint8_t legacy_axes[2];
     uint8_t report_state;
+    bool command_restart_pending;
     bool status_update_pending;
 } WheelPacketCrcOutput;
 
@@ -74,7 +74,8 @@ void wheel_packet_crc_normalize(WheelPacketCrcInput *input, uint8_t wheel_mode,
                                 uint8_t interface_mode, WheelPacketCrcAdapter *adapter);
 void wheel_packet_crc_snapshot(const WheelPacketCrcInput *input,
                                uint8_t snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE]);
-void wheel_packet_crc_encode(uint8_t wheel_mode, WheelPacketCrcOutput *output,
+void wheel_packet_crc_encode(uint8_t wheel_mode, bool host_capability_enabled,
+                             WheelPacketCrcOutput *output,
                              uint8_t response[WHEEL_PACKET_CRC_RESPONSE_SIZE]);
 
 #endif

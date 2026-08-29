@@ -613,25 +613,34 @@ static void test_builds_crc_family_active_response(void) {
     const WheelPacketCrcOutput output = {
         .display = {.glyphs = {0x11, 0x22, 0x33}, .third_glyph_marker = true},
         .vibration = {0x22, 0x33},
-        .legacy_axes = {0x44, 0x55},
         .report_state = 0x66,
+        .command_restart_pending = true,
         .status_update_pending = true,
     };
     wheel_protocol_init(&protocol);
     wheel_protocol_set_crc_output(&protocol, &output);
     synchronize(&protocol, request);
     select_mode(&protocol, request, 6);
+    wheel_protocol_set_host_capability(&protocol, true);
 
     request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
     wheel_protocol_accept(&protocol, request);
 
     const uint8_t *response = wheel_protocol_response(&protocol);
-    const uint8_t expected[] = {0xa5, 0, 0x11, 0x22, 0xb3, 0x22, 0x33, 0x44, 0x55, 0x66, 0xff};
+    const uint8_t expected[] = {0xa5, 0, 0x11, 0x22, 0xb3, 0x22, 0x33, 0xff, 0xff, 0x66, 0xff};
     assert(memcmp(response, expected, sizeof(expected)) == 0);
+    assert((response[WHEEL_PROTOCOL_FLAGS_OFFSET] & WHEEL_PROTOCOL_HOST_CAPABILITY) != 0);
     assert(wheel_protocol_message_valid(response));
 
     wheel_protocol_accept(&protocol, request);
+    assert(wheel_protocol_response(&protocol)[8] == 0);
     assert(wheel_protocol_response(&protocol)[10] == 0);
+
+    wheel_protocol_set_host_capability(&protocol, false);
+    wheel_protocol_accept(&protocol, request);
+    assert(wheel_protocol_response(&protocol)[7] == 0);
+    assert((wheel_protocol_response(&protocol)[WHEEL_PROTOCOL_FLAGS_OFFSET] &
+            WHEEL_PROTOCOL_HOST_CAPABILITY) == 0);
 }
 
 static void test_builds_remote_tuning_responses(void) {

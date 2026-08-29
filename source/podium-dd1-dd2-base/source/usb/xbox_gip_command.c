@@ -15,6 +15,7 @@ enum {
     XBOX_GIP_COMMAND_STEERING_RANGE = 1,
     XBOX_GIP_COMMAND_FORCE_FEEDBACK_STRENGTH = 2,
     XBOX_GIP_COMMAND_TRANSFER_STATUS = 3,
+    XBOX_GIP_COMMAND_CONTROL_HOST_CAPABILITY = 0,
     XBOX_GIP_COMMAND_CONTROL_TRANSFER_STATUS = 1,
     XBOX_GIP_COMMAND_SCRIPT_SAMPLES = 4,
     XBOX_GIP_COMMAND_SCRIPT_SLOT = 5,
@@ -46,10 +47,10 @@ static uint16_t read_u16(const uint8_t input[2]) {
 /**
  * @brief Decodes an Xbox GIP application command.
  *
- * Accepts group-zero command packet 0A selectors zero through nine and the group-20 transfer
- * status selector. Control selectors request capabilities, steering range, force-feedback
- * strength, or transfer status. Script selectors allow sample indices through 501 and real slots
- * through 14 plus the empty slot-15 response.
+ * Accepts group-zero command packet 0A selectors zero through nine and group-20 host-capability
+ * and transfer-status selectors. Control selectors request capabilities, steering range,
+ * force-feedback strength, host-capability state, or transfer status. Script selectors allow
+ * sample indices through 501 and real slots through 14 plus the empty slot-15 response.
  *
  * @param[in] packet Received Xbox GIP endpoint packet.
  * @param[in] length Number of available packet bytes.
@@ -64,6 +65,11 @@ bool usb_xbox_gip_command_decode(const uint8_t *packet, size_t length, UsbXboxGi
 
     uint16_t parameter = read_u16(packet + XBOX_GIP_COMMAND_PARAMETER_OFFSET);
     if (packet[1] == XBOX_GIP_COMMAND_GROUP_CONTROL) {
+        if (packet[XBOX_GIP_COMMAND_SELECTOR_OFFSET] == XBOX_GIP_COMMAND_CONTROL_HOST_CAPABILITY) {
+            command->kind = USB_XBOX_GIP_COMMAND_HOST_CAPABILITY;
+            command->parameter = packet[XBOX_GIP_COMMAND_PARAMETER_OFFSET];
+            return true;
+        }
         if (packet[XBOX_GIP_COMMAND_SELECTOR_OFFSET] != XBOX_GIP_COMMAND_CONTROL_TRANSFER_STATUS) {
             return false;
         }

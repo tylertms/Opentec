@@ -138,7 +138,8 @@ static void build_active_response(WheelProtocol *protocol) {
         (void)wheel_packet_remote_tuning_encode(&protocol->remote_tuning_output,
                                                 protocol->response);
     } else if (wheel_packet_crc_applies(protocol->mode)) {
-        wheel_packet_crc_encode(protocol->mode, &protocol->crc_output, protocol->response);
+        wheel_packet_crc_encode(protocol->mode, protocol->host_capability_enabled,
+                                &protocol->crc_output, protocol->response);
     } else if (protocol->mode == 4) {
         wheel_packet_mode_four_encode(&protocol->mode_four_output, protocol->response);
     } else if (!remote_tuning_mode) {
@@ -481,6 +482,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     protocol->paddle_bite_point_percent = 100;
     protocol->system_status_code = 0;
     protocol->button_latch_enabled = false;
+    protocol->host_capability_enabled = false;
     protocol->profile_transition_pending = false;
     protocol->system_status_pending = false;
     protocol->request_ready = false;
@@ -517,13 +519,32 @@ void wheel_protocol_set_mode_four_output(WheelProtocol *protocol,
 /**
  * @brief Updates CRC-family wheel output.
  *
- * Replaces the display, legacy-axis, and report-status output encoded for CRC-family packets.
+ * Replaces the display, motor-link restart, and report-status output encoded for CRC-family
+ * packets.
  *
  * @param[in,out] protocol Wheel protocol state to update.
  * @param[in] output CRC-family output state.
  */
 void wheel_protocol_set_crc_output(WheelProtocol *protocol, const WheelPacketCrcOutput *output) {
     protocol->crc_output = *output;
+}
+
+/**
+ * @brief Selects the host-controlled attached-wheel capability.
+ *
+ * Retains the capability for CRC-family response byte seven and mirrors it in transport flag
+ * 0x40 for every subsequent attached-wheel exchange.
+ *
+ * @param[in,out] protocol Attached-wheel protocol state and response storage.
+ * @param[in] enabled True to advertise the host-controlled capability.
+ */
+void wheel_protocol_set_host_capability(WheelProtocol *protocol, bool enabled) {
+    protocol->host_capability_enabled = enabled;
+    if (enabled) {
+        protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] |= WHEEL_PROTOCOL_HOST_CAPABILITY;
+    } else {
+        protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] &= (uint8_t)~WHEEL_PROTOCOL_HOST_CAPABILITY;
+    }
 }
 
 /**

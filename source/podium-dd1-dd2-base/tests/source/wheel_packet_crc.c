@@ -227,21 +227,24 @@ static void test_encodes_standard_and_authenticated_responses(void) {
     WheelPacketCrcOutput output = {
         .display = {.glyphs = {0x11, 0x22, 0x33}, .third_glyph_marker = true},
         .vibration = {0x22, 0x33},
-        .legacy_axes = {0x44, 0x55},
         .report_state = 0x66,
+        .command_restart_pending = true,
         .status_update_pending = true,
     };
     uint8_t response[WHEEL_PACKET_CRC_RESPONSE_SIZE] = {0};
 
-    wheel_packet_crc_encode(6, &output, response);
+    wheel_packet_crc_encode(6, true, &output, response);
 
-    const uint8_t expected[] = {0xa5, 0, 0x11, 0x22, 0xb3, 0x22, 0x33, 0x44, 0x55, 0x66, 0xff};
+    const uint8_t expected[] = {0xa5, 0, 0x11, 0x22, 0xb3, 0x22, 0x33, 0xff, 0xff, 0x66, 0xff};
     assert(memcmp(response, expected, sizeof(expected)) == 0);
+    assert(!output.command_restart_pending);
     assert(!output.status_update_pending);
 
     memset(response, 0, sizeof(response));
-    wheel_packet_crc_encode(0x15, &output, response);
+    wheel_packet_crc_encode(0x15, false, &output, response);
     assert(response[0] == 0xa6);
+    assert(response[7] == 0);
+    assert(response[8] == 0);
     assert(response[10] == 0);
 }
 

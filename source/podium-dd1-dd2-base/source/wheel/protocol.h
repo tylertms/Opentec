@@ -22,6 +22,7 @@ enum {
     WHEEL_PROTOCOL_FLAGS_OFFSET = 56,
     WHEEL_PROTOCOL_REQUEST_READY = 0x02,
     WHEEL_PROTOCOL_RESPONSE_ACKNOWLEDGED = 0x01,
+    WHEEL_PROTOCOL_HOST_CAPABILITY = 0x40,
     WHEEL_PROTOCOL_COMMAND_SELECT_MODE = 0xa5,
     WHEEL_PROTOCOL_COMMAND_AUTHENTICATE = 0xa6,
     WHEEL_PROTOCOL_COMMAND_AUTHENTICATE_REPLY = 0xa7,
@@ -83,6 +84,7 @@ typedef struct {
     int16_t display_rotation_angle;
     bool button_latch_enabled;
     bool display_rotation_enabled;
+    bool host_capability_enabled;
     bool profile_transition_pending;
     bool system_status_pending;
     bool request_ready;
@@ -96,6 +98,7 @@ void wheel_protocol_set_mode_one_output(WheelProtocol *protocol,
 void wheel_protocol_set_mode_four_output(WheelProtocol *protocol,
                                          const WheelPacketModeFourOutput *output);
 void wheel_protocol_set_crc_output(WheelProtocol *protocol, const WheelPacketCrcOutput *output);
+void wheel_protocol_set_host_capability(WheelProtocol *protocol, bool enabled);
 void wheel_protocol_set_crc_adapter(WheelProtocol *protocol, const WheelPacketCrcAdapter *adapter);
 bool wheel_protocol_queue_remote_tuning_response(WheelProtocol *protocol,
                                                  const RemoteTuningResponse *response);

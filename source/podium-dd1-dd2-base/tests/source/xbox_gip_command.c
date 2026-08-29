@@ -21,7 +21,18 @@ static void test_decodes_control_commands(void) {
     }
 
     packet[1] = 0x20;
+    packet[4] = 0;
+    for (uint8_t value = 0; value <= 2; value++) {
+        packet[5] = value;
+        packet[6] = 0xff;
+        assert(usb_xbox_gip_command_decode(packet, sizeof(packet), &command));
+        assert(command.kind == USB_XBOX_GIP_COMMAND_HOST_CAPABILITY);
+        assert(command.parameter == value);
+    }
+
     packet[4] = 1;
+    packet[5] = 0x34;
+    packet[6] = 0x12;
     assert(usb_xbox_gip_command_decode(packet, sizeof(packet), &command));
     assert(command.kind == USB_XBOX_GIP_COMMAND_TRANSFER_STATUS && command.parameter == 0x1234);
 }

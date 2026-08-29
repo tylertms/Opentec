@@ -244,6 +244,7 @@ static void reset_connection(WheelService *service) {
         service->protocol.axis_override_processor.paddle_bite_point_commit_pending;
     bool button_latch_enabled = service->protocol.button_latch_enabled;
     bool display_rotation_enabled = service->protocol.display_rotation_enabled;
+    bool host_capability_enabled = service->protocol.host_capability_enabled;
     bool profile_transition_pending = service->protocol.profile_transition_pending;
     bool system_status_pending = service->protocol.system_status_pending;
     wheel_protocol_init(&service->protocol);
@@ -277,6 +278,7 @@ static void reset_connection(WheelService *service) {
                                     profile_transition_pending);
     wheel_protocol_set_display_rotation(&service->protocol, display_rotation_enabled,
                                         display_rotation_angle);
+    wheel_protocol_set_host_capability(&service->protocol, host_capability_enabled);
     if (system_status_pending) {
         wheel_protocol_queue_system_status(&service->protocol, system_status_code);
     }
@@ -506,6 +508,19 @@ void wheel_service_set_vibration_output(WheelService *service, const WheelVibrat
  */
 void wheel_service_set_crc_adapter(WheelService *service, const WheelPacketCrcAdapter *adapter) {
     wheel_protocol_set_crc_adapter(&service->protocol, adapter);
+}
+
+/**
+ * @brief Selects the host-controlled attached-wheel capability.
+ *
+ * Applies the host capability to subsequent attached-wheel response packets and preserves it
+ * across attached-wheel connection discovery.
+ *
+ * @param[in,out] service Attached-wheel service to configure.
+ * @param[in] enabled True to advertise the host-controlled capability.
+ */
+void wheel_service_set_host_capability(WheelService *service, bool enabled) {
+    wheel_protocol_set_host_capability(&service->protocol, enabled);
 }
 
 /**

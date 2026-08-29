@@ -443,6 +443,7 @@ static void test_restarts_discovery_after_scan_timeout(void) {
     service.protocol.axis_override_processor.overrides.axis_5.value = 0x7d;
     service.protocol.capabilities.input_available = true;
     wheel_protocol_set_button_latch(&service.protocol, true, true);
+    wheel_service_set_host_capability(&service, true);
     run_service(&service, now_ms + 10);
     run_service(&service, now_ms + 20);
     run_service(&service, now_ms + 30);
@@ -478,6 +479,9 @@ static void test_restarts_discovery_after_scan_timeout(void) {
     assert(!service.protocol.capabilities.input_available);
     assert(service.protocol.button_latch_enabled);
     assert(service.protocol.profile_transition_pending);
+    assert(service.protocol.host_capability_enabled);
+    assert((wheel_protocol_response(&service.protocol)[WHEEL_PROTOCOL_FLAGS_OFFSET] &
+            WHEEL_PROTOCOL_HOST_CAPABILITY) != 0);
     assert(request().type_flags == 2);
 }
 

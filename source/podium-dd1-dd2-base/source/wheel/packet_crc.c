@@ -383,14 +383,16 @@ void wheel_packet_crc_snapshot(const WheelPacketCrcInput *input,
  * @brief Encodes a CRC-family attached-wheel response payload.
  *
  * Writes the mode-specific command, three display glyphs, optional third-glyph marker, two
- * vibration channels, two legacy axes, report state, and one-shot status-update marker. The caller
- * supplies the CRC byte.
+ * vibration channels, host capability, one-shot motor-link restart state, report state, and
+ * one-shot status-update marker. The caller supplies the CRC byte.
  *
  * @param[in] wheel_mode Selected mode 6 or mode 0x15.
- * @param[in,out] output Current response values whose pending status marker is consumed.
+ * @param[in] host_capability_enabled True when the host enabled the attached-wheel capability.
+ * @param[in,out] output Current response values whose pending markers are consumed.
  * @param[out] response Thirty-three-byte destination buffer for the encoded response fields.
  */
-void wheel_packet_crc_encode(uint8_t wheel_mode, WheelPacketCrcOutput *output,
+void wheel_packet_crc_encode(uint8_t wheel_mode, bool host_capability_enabled,
+                             WheelPacketCrcOutput *output,
                              uint8_t response[WHEEL_PACKET_CRC_RESPONSE_SIZE]) {
     response[0] = wheel_mode == WHEEL_PACKET_CRC_AUTHENTICATED_MODE
                       ? WHEEL_PACKET_COMMAND_AUTHENTICATE
@@ -404,9 +406,10 @@ void wheel_packet_crc_encode(uint8_t wheel_mode, WheelPacketCrcOutput *output,
     }
     response[5] = output->vibration[0];
     response[6] = output->vibration[1];
-    response[7] = output->legacy_axes[0];
-    response[8] = output->legacy_axes[1];
+    response[7] = host_capability_enabled ? UINT8_MAX : 0;
+    response[8] = output->command_restart_pending ? UINT8_MAX : 0;
     response[9] = output->report_state;
     response[10] = output->status_update_pending ? UINT8_MAX : 0;
+    output->command_restart_pending = false;
     output->status_update_pending = false;
 }
