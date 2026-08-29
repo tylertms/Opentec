@@ -252,6 +252,30 @@ static void writes_refresh_state(void) {
     wheel_adapter_command_service_run(&service, &adapter, &transport);
 }
 
+static void writes_system_display_state(void) {
+    WheelAdapterCommandService service;
+    WheelAdapterInput adapter;
+    CommandTransport transport;
+    command_transport_init(&transport);
+    wheel_adapter_command_service_init(&service, &adapter);
+    complete_standard_probe(&service, &adapter, &transport);
+
+    wheel_adapter_command_service_queue_display_state(&service, 0x39);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    const uint8_t status_request[] = {2, 0x2b, 0x00, 2, 0};
+    expect_request(&transport, status_request, sizeof(status_request));
+    const uint8_t status[] = {0, 0};
+    complete_read(&transport, status, sizeof(status));
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    const uint8_t expected[] = {2, 0x2a, 0x18, 0x39};
+    expect_request(&transport, expected, sizeof(expected));
+    assert(!service.display_state_pending);
+    complete_write(&transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+}
+
 static void switches_endpoints_after_a_failed_transfer(void) {
     WheelAdapterCommandService service;
     WheelAdapterInput adapter;
@@ -276,6 +300,7 @@ static void switches_endpoints_after_a_failed_transfer(void) {
     assert(adapter.connected);
 
     wheel_adapter_command_service_queue_display(&service, 0x1234);
+    wheel_adapter_command_service_queue_display_state(&service, 0x39);
     wheel_adapter_command_service_run(&service, &adapter, &transport);
     const uint8_t status_request[] = {2, 0x2d, 0x00, 2, 0};
     const uint8_t *request;
@@ -284,6 +309,7 @@ static void switches_endpoints_after_a_failed_transfer(void) {
     assert(length == sizeof(status_request));
     assert(memcmp(request, status_request, length) == 0);
     assert(service.display_pending);
+    assert(service.display_state_pending);
 }
 
 int main(void) {
@@ -295,6 +321,7 @@ int main(void) {
     writes_remote_setup_selections();
     writes_remote_tuning_active_state();
     writes_refresh_state();
+    writes_system_display_state();
     forwards_requested_host_controls();
     switches_endpoints_after_a_failed_transfer();
     return 0;

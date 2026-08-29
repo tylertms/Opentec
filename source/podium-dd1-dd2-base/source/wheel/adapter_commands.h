@@ -23,6 +23,7 @@ typedef enum {
     WHEEL_ADAPTER_COMMAND_REMOTE_TUNING_ACTIVE_PENDING,
     WHEEL_ADAPTER_COMMAND_REFRESH_STATE_PENDING,
     WHEEL_ADAPTER_COMMAND_SETUP_SELECTION_PENDING,
+    WHEEL_ADAPTER_COMMAND_DISPLAY_STATE_PENDING,
     WHEEL_ADAPTER_COMMAND_GLYPHS_PENDING,
     WHEEL_ADAPTER_COMMAND_DISPLAY_PENDING,
 } WheelAdapterCommandPhase;
@@ -36,6 +37,7 @@ typedef struct {
     uint8_t remote_tuning_active;
     uint8_t refresh_state;
     uint8_t setup_selection;
+    uint8_t display_state;
     uint8_t host_controls[WHEEL_ADAPTER_HOST_CONTROLS_SIZE];
     uint8_t endpoint_index;
     uint8_t pending_inputs;
@@ -47,6 +49,8 @@ typedef struct {
     bool remote_tuning_active_pending;
     bool refresh_state_pending;
     bool setup_selection_pending;
+    bool display_state_pending;
+    bool status_ready;
 } WheelAdapterCommandService;
 
 void wheel_adapter_command_service_init(WheelAdapterCommandService *service,
@@ -61,6 +65,8 @@ void wheel_adapter_command_service_queue_refresh_state(WheelAdapterCommandServic
                                                        bool active);
 void wheel_adapter_command_service_queue_setup_selection(WheelAdapterCommandService *service,
                                                          uint8_t selection);
+void wheel_adapter_command_service_queue_display_state(WheelAdapterCommandService *service,
+                                                       uint8_t state);
 bool wheel_adapter_command_service_take_host_controls(
     WheelAdapterCommandService *service, uint8_t output[WHEEL_ADAPTER_HOST_CONTROLS_SIZE]);
 void wheel_adapter_command_service_run(WheelAdapterCommandService *service,

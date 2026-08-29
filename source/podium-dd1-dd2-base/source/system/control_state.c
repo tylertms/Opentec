@@ -59,6 +59,26 @@ void system_control_state_set_status(SystemControlState *state, uint8_t wheel_mo
  */
 void system_control_state_set_active_event(SystemControlState *state, uint8_t code) {
     state->active_event_code = code;
+    state->display_state_pending = code != 0;
+}
+
+/**
+ * @brief Takes the pending attached-wheel display state.
+ *
+ * Returns the most recently accepted nonzero system event code once for the adapter display and
+ * retains the active event code for other system consumers.
+ *
+ * @param[in,out] state System-control state that owns the pending display state.
+ * @param[out] code Destination for the pending display state.
+ * @return True when a pending display state was returned; otherwise false.
+ */
+bool system_control_state_take_display_state(SystemControlState *state, uint8_t *code) {
+    if (state == NULL || code == NULL || !state->display_state_pending) {
+        return false;
+    }
+    *code = state->active_event_code;
+    state->display_state_pending = false;
+    return true;
 }
 
 /**

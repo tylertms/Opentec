@@ -222,6 +222,7 @@ static uint8_t wheel_adapter_host_controls[WHEEL_ADAPTER_HOST_CONTROLS_SIZE];
 static bool wheel_adapter_remote_tuning_active;
 static bool wheel_adapter_refresh_state;
 static uint8_t wheel_adapter_setup_selection;
+static uint8_t wheel_adapter_display_state;
 static UsbTuningMenuService usb_tuning_menu_service;
 static UsbTuningProfileService usb_tuning_profile_service;
 static UsbDiagnosticSnapshot usb_diagnostic_snapshot;
@@ -1383,10 +1384,10 @@ static void complete_usb_vendor_response(void) {
 /**
  * @brief Advances host command services over serial message type four.
  *
- * Queues remote-tuning responses and telemetry for the attached wheel, polls attached-adapter
- * state, batches generic tuning records, advances wheel-transfer and mailbox requests, and selects
- * the console interface at an idle transport boundary. Motor mailbox and vendor-report work stop
- * while PlayStation mode owns the shared workspace.
+ * Queues remote-tuning responses and telemetry for the attached wheel, forwards system display
+ * states, polls attached-adapter state, batches generic tuning records, advances wheel-transfer and
+ * mailbox requests, and selects the console interface at an idle transport boundary. Motor mailbox
+ * and vendor-report work stop while PlayStation mode owns the shared workspace.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -1418,6 +1419,10 @@ static void service_usb_command_bridge(uint32_t now_ms) {
     if (usb_remote_tuning_service_take_adapter_setup_selection(&usb_remote_tuning_service,
                                                                &wheel_adapter_setup_selection)) {
         wheel_service_queue_adapter_setup_selection(&wheel_service, wheel_adapter_setup_selection);
+    }
+    if (system_control_state_take_display_state(&system_control_state,
+                                                &wheel_adapter_display_state)) {
+        wheel_service_queue_adapter_display_state(&wheel_service, wheel_adapter_display_state);
     }
     wheel_service_run_adapter_commands(&wheel_service, &command_transport);
     if (wheel_service_take_adapter_host_controls(&wheel_service, wheel_adapter_host_controls)) {

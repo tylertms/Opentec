@@ -57,11 +57,20 @@ static void test_retains_operating_feature_state(void) {
 
 static void test_retains_active_event_code(void) {
     SystemControlState state;
+    uint8_t display_state = 0;
     system_control_state_init(&state);
 
     system_control_state_set_active_event(&state, 5);
 
     assert(state.active_event_code == 5);
+    assert(system_control_state_take_display_state(&state, &display_state));
+    assert(display_state == 5);
+    assert(!system_control_state_take_display_state(&state, &display_state));
+
+    system_control_state_set_active_event(&state, 6);
+    system_control_state_set_active_event(&state, 7);
+    assert(system_control_state_take_display_state(&state, &display_state));
+    assert(display_state == 7);
 }
 
 static void test_takes_each_wheel_response_once(void) {

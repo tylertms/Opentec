@@ -646,6 +646,20 @@ static void test_filters_adapter_remote_tuning_active_state(void) {
     assert(service.adapter_commands.remote_tuning_active == 0);
 }
 
+static void test_retains_adapter_display_state_across_command_resets(void) {
+    WheelService service;
+    initialize_service(&service);
+
+    wheel_service_queue_adapter_display_state(&service, 0x39);
+    assert(service.adapter_display_state == 0x39);
+    assert(service.adapter_commands.display_state == 0x39);
+    assert(service.adapter_commands.display_state_pending);
+
+    wheel_service_reset_adapter_commands(&service);
+    assert(service.adapter_commands.display_state == 0x39);
+    assert(service.adapter_commands.display_state_pending);
+}
+
 static void test_rejects_unavailable_multi_position_input(void) {
     WheelService service;
     initialize_service(&service);
@@ -867,6 +881,7 @@ int main(void) {
     test_builds_adapter_multi_position_input();
     test_marks_extended_multi_position_layout();
     test_filters_adapter_remote_tuning_active_state();
+    test_retains_adapter_display_state_across_command_resets();
     test_rejects_unavailable_multi_position_input();
     test_selects_extended_report_fields();
     test_reports_calibration_availability();

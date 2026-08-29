@@ -464,6 +464,7 @@ static bool scan_active(const WheelService *service) {
 void wheel_service_init(WheelService *service, SerialService *transport) {
     service->transport = transport;
     wheel_protocol_init(&service->protocol);
+    service->adapter_display_state = 0;
     wheel_service_reset_adapter_commands(service);
     wheel_rotary_input_init(&service->rotary_input);
     clear_scan_filter(service);
@@ -491,6 +492,8 @@ void wheel_service_reset_adapter_commands(WheelService *service) {
         return;
     }
     wheel_adapter_command_service_init(&service->adapter_commands, &service->protocol.adapter);
+    wheel_adapter_command_service_queue_display_state(&service->adapter_commands,
+                                                      service->adapter_display_state);
 }
 
 /**
@@ -614,6 +617,23 @@ void wheel_service_queue_adapter_setup_selection(WheelService *service, uint8_t 
         return;
     }
     wheel_adapter_command_service_queue_setup_selection(&service->adapter_commands, selection);
+}
+
+/**
+ * @brief Queues a system display state for the attached adapter.
+ *
+ * Retains the newest nonzero state across adapter command resets and queues it for the standard
+ * endpoint's offset-0x18 display-state command.
+ *
+ * @param[in,out] service Attached-wheel service receiving the display state.
+ * @param[in] state Nonzero system display state.
+ */
+void wheel_service_queue_adapter_display_state(WheelService *service, uint8_t state) {
+    if (service == 0 || state == 0) {
+        return;
+    }
+    service->adapter_display_state = state;
+    wheel_adapter_command_service_queue_display_state(&service->adapter_commands, state);
 }
 
 /**

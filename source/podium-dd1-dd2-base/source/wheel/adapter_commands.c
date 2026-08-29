@@ -13,6 +13,7 @@ enum {
     WHEEL_ADAPTER_GLYPHS_OFFSET = 0x06,
     WHEEL_ADAPTER_REMOTE_TUNING_ACTIVE_OFFSET = 0x0e,
     WHEEL_ADAPTER_REFRESH_STATE_OFFSET = 0x17,
+    WHEEL_ADAPTER_DISPLAY_STATE_OFFSET = 0x18,
     WHEEL_ADAPTER_SETUP_SELECTION_OFFSET = 0xc0,
     WHEEL_ADAPTER_HOST_CONTROLS_OFFSET = 0xa0,
     WHEEL_ADAPTER_PROBE_OFFSET = 0x0c,
@@ -46,8 +47,9 @@ static uint8_t endpoint_target(const WheelAdapterCommandService *service) {
 /**
  * @brief Restarts adapter discovery on the alternate endpoint.
  *
- * Releases the local command owner, clears incomplete input and output work, marks the adapter
- * disconnected, and selects the other supported adapter mode.
+ * Releases the local command owner, clears incomplete input and endpoint-specific output work,
+ * retains a requested system display state, marks the adapter disconnected, and selects the other
+ * supported adapter mode.
  *
  * @param[in,out] service Adapter command service restarting discovery.
  * @param[in,out] adapter Logical adapter state to disconnect.
@@ -66,6 +68,7 @@ static void advance_endpoint(WheelAdapterCommandService *service, WheelAdapterIn
     service->remote_tuning_active_pending = false;
     service->refresh_state_pending = false;
     service->setup_selection_pending = false;
+    service->status_ready = false;
     service->phase = WHEEL_ADAPTER_COMMAND_DISCOVERING;
     adapter->mode = service->endpoint_index;
     adapter->profile_flags = 0;
@@ -103,8 +106,8 @@ static void apply_status(WheelAdapterCommandService *service, WheelAdapterInput 
  * @brief Completes the active adapter command.
  *
  * Waits for the shared transport, applies a successful probe or status result, clears completed
- * component work, and releases the local owner. A rejected transfer starts discovery on the
- * alternate endpoint.
+ * component work, and releases the local owner. A rejected transfer retains an interrupted system
+ * display state and starts discovery on the alternate endpoint.
  *
  * @param[in,out] service Adapter command service awaiting a result.
  * @param[in,out] adapter Logical adapter state receiving completed data.
@@ -118,6 +121,9 @@ static bool finish_request(WheelAdapterCommandService *service, WheelAdapterInpu
         return false;
     }
     if (result != COMMAND_TRANSPORT_COMPLETE) {
+        if (service->phase == WHEEL_ADAPTER_COMMAND_DISPLAY_STATE_PENDING) {
+            service->display_state_pending = true;
+        }
         advance_endpoint(service, adapter, transport);
         return true;
     }
@@ -133,6 +139,7 @@ static bool finish_request(WheelAdapterCommandService *service, WheelAdapterInpu
     }
     case WHEEL_ADAPTER_COMMAND_STATUS_PENDING:
         apply_status(service, adapter);
+        service->status_ready = true;
         break;
     case WHEEL_ADAPTER_COMMAND_BUTTONS_PENDING:
         service->pending_inputs &= (uint8_t)~WHEEL_ADAPTER_BUTTONS_CHANGED;
@@ -150,6 +157,7 @@ static bool finish_request(WheelAdapterCommandService *service, WheelAdapterInpu
     case WHEEL_ADAPTER_COMMAND_REMOTE_TUNING_ACTIVE_PENDING:
     case WHEEL_ADAPTER_COMMAND_REFRESH_STATE_PENDING:
     case WHEEL_ADAPTER_COMMAND_SETUP_SELECTION_PENDING:
+    case WHEEL_ADAPTER_COMMAND_DISPLAY_STATE_PENDING:
     case WHEEL_ADAPTER_COMMAND_GLYPHS_PENDING:
     case WHEEL_ADAPTER_COMMAND_DISPLAY_PENDING:
     case WHEEL_ADAPTER_COMMAND_DISCOVERING:
@@ -166,8 +174,9 @@ static bool finish_request(WheelAdapterCommandService *service, WheelAdapterInpu
  * @brief Queues the next adapter command by priority.
  *
  * Probes an undiscovered endpoint first, then reads changed buttons, axes, or selectors, writes
- * requested glyphs or a pending standard-endpoint display report, and otherwise requests the
- * two-byte input status.
+ * requested system display state, glyphs, or a pending standard-endpoint display report, and
+ * otherwise requests the two-byte input status. System display state waits for one successful
+ * input-status response from the standard endpoint.
  *
  * @param[in,out] service Adapter command service selecting work.
  * @param[in,out] adapter Logical adapter state receiving read results.
@@ -255,6 +264,16 @@ static CommandTransportResult queue_request(WheelAdapterCommandService *service,
         if (result == COMMAND_TRANSPORT_COMPLETE) {
             service->setup_selection_pending = false;
             service->phase = WHEEL_ADAPTER_COMMAND_SETUP_SELECTION_PENDING;
+        }
+        return result;
+    }
+    if (service->display_state_pending && service->endpoint_index == 0 && service->status_ready) {
+        CommandTransportResult result = command_transport_queue_write_to(
+            transport, WHEEL_ADAPTER_COMMAND_OWNER, target, WHEEL_ADAPTER_DISPLAY_STATE_OFFSET,
+            &service->display_state, sizeof(service->display_state));
+        if (result == COMMAND_TRANSPORT_COMPLETE) {
+            service->display_state_pending = false;
+            service->phase = WHEEL_ADAPTER_COMMAND_DISPLAY_STATE_PENDING;
         }
         return result;
     }
@@ -396,6 +415,24 @@ void wheel_adapter_command_service_queue_setup_selection(WheelAdapterCommandServ
     }
     service->setup_selection = selection;
     service->setup_selection_pending = true;
+}
+
+/**
+ * @brief Retains a system display state for the standard adapter endpoint.
+ *
+ * Stores the newest nonzero state for a one-byte write to adapter offset 0x18. A newer state
+ * replaces an older queued value, while the extended endpoint leaves it pending.
+ *
+ * @param[in,out] service Adapter command service retaining the state.
+ * @param[in] state Nonzero system display state.
+ */
+void wheel_adapter_command_service_queue_display_state(WheelAdapterCommandService *service,
+                                                       uint8_t state) {
+    if (service == 0 || state == 0) {
+        return;
+    }
+    service->display_state = state;
+    service->display_state_pending = true;
 }
 
 /**

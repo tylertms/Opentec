@@ -49,6 +49,7 @@ typedef struct {
     WheelAdapterCommandService adapter_commands;
     WheelRotaryInput rotary_input;
     WheelDisplayOutput display_output;
+    uint8_t adapter_display_state;
     uint8_t request[SERIAL_PACKET_MAX_PAYLOAD_SIZE];
     uint8_t button_banks[WHEEL_BUTTON_BANK_COUNT];
     uint8_t scan_samples[WHEEL_SCAN_SAMPLE_DEPTH][WHEEL_BUTTON_BANK_COUNT];
@@ -68,6 +69,7 @@ bool wheel_service_take_adapter_host_controls(WheelService *service,
 void wheel_service_queue_adapter_remote_tuning_active(WheelService *service, bool active);
 void wheel_service_queue_adapter_refresh_state(WheelService *service, bool active);
 void wheel_service_queue_adapter_setup_selection(WheelService *service, uint8_t selection);
+void wheel_service_queue_adapter_display_state(WheelService *service, uint8_t state);
 void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output);
 void wheel_service_set_vibration_output(WheelService *service, const WheelVibrationOutput *output);
 void wheel_service_set_legacy_axes(WheelService *service, const uint8_t axes[2]);

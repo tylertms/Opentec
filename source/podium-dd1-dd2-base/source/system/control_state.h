@@ -13,11 +13,13 @@ typedef struct {
     uint8_t active_event_code;
     uint8_t operating_status;
     bool operating_feature_enabled;
+    bool display_state_pending;
 } SystemControlState;
 
 void system_control_state_init(SystemControlState *state);
 void system_control_state_set_status(SystemControlState *state, uint8_t wheel_mode, uint16_t code);
 void system_control_state_set_active_event(SystemControlState *state, uint8_t code);
+bool system_control_state_take_display_state(SystemControlState *state, uint8_t *code);
 bool system_control_state_take_status(SystemControlState *state, uint16_t *code);
 bool system_control_state_take_wheel_response(SystemControlState *state,
                                               RemoteTuningResponse *response);
