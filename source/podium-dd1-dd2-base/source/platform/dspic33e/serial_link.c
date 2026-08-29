@@ -1,6 +1,7 @@
 #include "platform/serial_link.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <xc.h>
 
@@ -18,13 +19,25 @@ enum {
     SERIAL_LINK_TIMER_PRIORITY = 6,
     SERIAL_LINK_TRANSMIT_GUARD_PERIOD = 0x4b0,
     SERIAL_LINK_RECEIVE_TIMEOUT_PERIOD = 10000,
+    SERIAL_LINK_DIRECT_TRANSMIT_CAPACITY = 63,
+    SERIAL_LINK_DIRECT_RECEIVE_CAPACITY = 66,
+    SERIAL_LINK_DIRECT_BAUD_PERIOD = 0xc2,
+    SERIAL_LINK_DIRECT_SERVICE_PERIOD = 600,
+    SERIAL_LINK_DIRECT_TURNAROUND_TICKS = 2,
 };
 
 typedef enum {
     SERIAL_LINK_TIMER_IDLE,
     SERIAL_LINK_TIMER_RECEIVE_TIMEOUT,
     SERIAL_LINK_TIMER_START_RECEIVE,
+    SERIAL_LINK_TIMER_DIRECT_SERVICE,
 } SerialLinkTimerAction;
+
+typedef enum {
+    SERIAL_LINK_DIRECT_IDLE,
+    SERIAL_LINK_DIRECT_TRANSMITTING,
+    SERIAL_LINK_DIRECT_TURNAROUND,
+} SerialLinkDirectPhase;
 
 static volatile uint8_t transmit_dma[SERIAL_LINK_TRANSMIT_SIZE];
 static volatile uint8_t receive_dma[SERIAL_LINK_RECEIVE_SIZE];
@@ -32,6 +45,15 @@ static volatile uint8_t received_packet[SERIAL_PACKET_SIZE];
 static volatile bool transfer_active;
 static volatile bool frame_ready;
 static volatile SerialLinkTimerAction timer_action;
+static volatile uint8_t direct_transmit[SERIAL_LINK_DIRECT_TRANSMIT_CAPACITY];
+static volatile uint8_t direct_receive[SERIAL_LINK_DIRECT_RECEIVE_CAPACITY];
+static volatile uint8_t direct_transmit_length;
+static volatile uint8_t direct_transmit_index;
+static volatile uint8_t direct_receive_length;
+static volatile uint8_t direct_turnaround_ticks;
+static volatile bool direct_mode;
+static volatile bool direct_transmit_active;
+static volatile SerialLinkDirectPhase direct_phase;
 
 /**
  * @brief Clears UART3 receive errors and pending bytes.
@@ -175,11 +197,57 @@ static void start_receive(void) {
 }
 
 /**
+ * @brief Advances the raw UART turnaround state.
+ *
+ * Starts a queued write, waits for its interrupt-driven completion, then holds receive disabled
+ * for two 600-cycle service periods before accepting response bytes.
+ */
+static void service_direct_mode(void) {
+    if (direct_phase == SERIAL_LINK_DIRECT_IDLE) {
+        if (direct_transmit_length == 0) {
+            return;
+        }
+        IEC5bits.U3RXIE = 0;
+        direct_transmit_active = true;
+        direct_transmit_index = 1;
+        U3TXREG = direct_transmit[0];
+        direct_phase = SERIAL_LINK_DIRECT_TRANSMITTING;
+        return;
+    }
+
+    if (direct_phase == SERIAL_LINK_DIRECT_TRANSMITTING) {
+        if (direct_transmit_active) {
+            return;
+        }
+        direct_transmit_length = 0;
+        direct_turnaround_ticks = SERIAL_LINK_DIRECT_TURNAROUND_TICKS;
+        direct_phase = SERIAL_LINK_DIRECT_TURNAROUND;
+        return;
+    }
+
+    if (direct_turnaround_ticks != 0) {
+        direct_turnaround_ticks--;
+        if (direct_turnaround_ticks != 0) {
+            return;
+        }
+    }
+    direct_receive_length = 0;
+    clear_uart();
+    IFS5bits.U3RXIF = 0;
+    IEC5bits.U3RXIE = 1;
+    direct_phase = SERIAL_LINK_DIRECT_IDLE;
+}
+
+/**
  * @brief Initializes the attached-device UART3 exchange layer.
  *
  * Configures the physical pins, inverted high-speed UART, one-shot DMA channels, and Timer 6.
  */
 void platform_serial_link_init(void) {
+    direct_mode = false;
+    direct_transmit_active = false;
+    direct_transmit_length = 0;
+    direct_receive_length = 0;
     transfer_active = false;
     frame_ready = false;
     TRISFbits.TRISF2 = 0;
@@ -199,6 +267,9 @@ void platform_serial_link_init(void) {
  * Stops all active DMA and timer work, clears pending receive data, and releases the transaction.
  */
 void platform_serial_link_reset(void) {
+    if (direct_mode) {
+        return;
+    }
     IEC3bits.DMA5IE = 0;
     IEC4bits.DMA6IE = 0;
     IEC5bits.U3RXIE = 0;
@@ -225,7 +296,7 @@ void platform_serial_link_reset(void) {
  */
 bool platform_serial_link_start(const uint8_t packet[SERIAL_PACKET_SIZE]) {
     IEC3bits.DMA5IE = 0;
-    if (transfer_active) {
+    if (direct_mode || transfer_active) {
         IEC3bits.DMA5IE = 1;
         return false;
     }
@@ -259,6 +330,9 @@ bool platform_serial_link_start(const uint8_t packet[SERIAL_PACKET_SIZE]) {
  * @return true when a frame was copied; false when no response is ready.
  */
 bool platform_serial_link_take_received(uint8_t packet[SERIAL_PACKET_SIZE]) {
+    if (direct_mode) {
+        return false;
+    }
     IEC4bits.DMA6IE = 0;
     bool ready = frame_ready;
     if (ready) {
@@ -269,6 +343,110 @@ bool platform_serial_link_take_received(uint8_t packet[SERIAL_PACKET_SIZE]) {
     }
     IEC4bits.DMA6IE = 1;
     return ready;
+}
+
+/**
+ * @brief Selects the raw attached-wheel updater link.
+ *
+ * Stops framed DMA exchanges and configures UART3 for inverted 8-N-1 traffic with baud period
+ * 0xc2. A 600-cycle periodic service drives transmission and the two-period receive turnaround.
+ */
+void platform_serial_link_enter_direct_mode(void) {
+    IEC3bits.DMA5IE = 0;
+    IEC4bits.DMA6IE = 0;
+    IEC5bits.U3TXIE = 0;
+    IEC5bits.U3RXIE = 0;
+    DMA5CONbits.CHEN = 0;
+    DMA6CONbits.CHEN = 0;
+    stop_timer();
+    U3STAbits.UTXEN = 0;
+    U3MODEbits.UARTEN = 0;
+
+    transfer_active = false;
+    frame_ready = false;
+    direct_transmit_active = false;
+    direct_transmit_length = 0;
+    direct_transmit_index = 0;
+    direct_receive_length = 0;
+    direct_turnaround_ticks = 0;
+    direct_phase = SERIAL_LINK_DIRECT_TURNAROUND;
+    direct_mode = true;
+
+    U3MODE = 0;
+    U3STA = 0;
+    U3MODEbits.URXINV = 1;
+    U3BRG = SERIAL_LINK_DIRECT_BAUD_PERIOD;
+    U3STAbits.UTXINV = 1;
+    U3STAbits.UTXISEL0 = 1;
+    U3STAbits.UTXISEL1 = 0;
+    U3STAbits.URXISEL0 = 0;
+    U3STAbits.URXISEL1 = 0;
+    IFS3bits.DMA5IF = 0;
+    IFS4bits.DMA6IF = 0;
+    IFS5bits.U3TXIF = 0;
+    IFS5bits.U3RXIF = 0;
+    IFS5bits.U3EIF = 0;
+    IEC5bits.U3TXIE = 1;
+    IEC5bits.U3EIE = 1;
+    U3MODEbits.UARTEN = 1;
+    U3STAbits.UTXEN = 1;
+    start_timer(SERIAL_LINK_DIRECT_SERVICE_PERIOD, SERIAL_LINK_TIMER_DIRECT_SERVICE);
+}
+
+/**
+ * @brief Queues raw updater request bytes.
+ *
+ * Retains up to 63 bytes for the periodic direct-mode transmitter. A request remains pending until
+ * UART interrupts send every byte and the service releases its length.
+ *
+ * @param[in] data Request bytes to transmit.
+ * @param[in] length Request byte count.
+ * @return true when the request was queued; false when direct mode is inactive or busy.
+ */
+bool platform_serial_link_direct_write(const uint8_t *data, uint8_t length) {
+    if (!direct_mode || data == NULL || length == 0 ||
+        length > SERIAL_LINK_DIRECT_TRANSMIT_CAPACITY || direct_transmit_length != 0) {
+        return false;
+    }
+    for (uint8_t index = 0; index < length; index++) {
+        direct_transmit[index] = data[index];
+    }
+    direct_transmit_length = length;
+    return true;
+}
+
+/**
+ * @brief Takes a requested number of raw updater response bytes.
+ *
+ * Copies and consumes the oldest received bytes only when the complete requested fragment is
+ * available. Up to 66 valid response bytes are retained.
+ *
+ * @param[out] data Storage that receives the requested response fragment.
+ * @param[in] length Requested response byte count.
+ * @return true when the complete fragment was copied; false when insufficient data is available.
+ */
+bool platform_serial_link_direct_read(uint8_t *data, uint8_t length) {
+    if (!direct_mode || data == NULL || length == 0) {
+        return false;
+    }
+    IEC5bits.U3RXIE = 0;
+    if (direct_receive_length < length) {
+        if (direct_phase == SERIAL_LINK_DIRECT_IDLE) {
+            IEC5bits.U3RXIE = 1;
+        }
+        return false;
+    }
+    for (uint8_t index = 0; index < length; index++) {
+        data[index] = direct_receive[index];
+    }
+    direct_receive_length -= length;
+    for (uint8_t index = 0; index < direct_receive_length; index++) {
+        direct_receive[index] = direct_receive[index + length];
+    }
+    if (direct_phase == SERIAL_LINK_DIRECT_IDLE) {
+        IEC5bits.U3RXIE = 1;
+    }
+    return true;
 }
 
 /**
@@ -307,11 +485,51 @@ void __attribute__((interrupt, no_auto_psv)) _DMA6Interrupt(void) {
 }
 
 /**
+ * @brief Sends the next raw updater request byte.
+ *
+ * Feeds UART3 until the queued direct-mode request is empty, then releases the periodic service to
+ * begin its receive turnaround.
+ */
+void __attribute__((interrupt, no_auto_psv)) _U3TXInterrupt(void) {
+    IFS5bits.U3TXIF = 0;
+    if (!direct_mode || !direct_transmit_active) {
+        return;
+    }
+    if (direct_transmit_index < direct_transmit_length) {
+        U3TXREG = direct_transmit[direct_transmit_index];
+        direct_transmit_index++;
+    } else {
+        direct_transmit_active = false;
+    }
+}
+
+/**
  * @brief Handles the first received UART3 byte.
  *
- * Disables further UART3 receive interrupts and starts the 10000-cycle full-frame timeout.
+ * Retains bounded raw updater bytes in direct mode. During framed operation, disables further
+ * receive interrupts and starts the 10000-cycle full-frame timeout.
  */
 void __attribute__((interrupt, no_auto_psv)) _U3RXInterrupt(void) {
+    if (direct_mode) {
+        IFS5bits.U3RXIF = 0;
+        if (U3STAbits.OERR != 0) {
+            U3STAbits.OERR = 0;
+            return;
+        }
+        if (U3STAbits.FERR != 0 || U3STAbits.PERR != 0) {
+            U3STAbits.FERR = 0;
+            U3STAbits.PERR = 0;
+            return;
+        }
+        while (U3STAbits.URXDA != 0) {
+            uint8_t received = U3RXREG;
+            if (direct_receive_length < SERIAL_LINK_DIRECT_RECEIVE_CAPACITY) {
+                direct_receive[direct_receive_length] = received;
+                direct_receive_length++;
+            }
+        }
+        return;
+    }
     IEC5bits.U3RXIE = 0;
     IFS5bits.U3RXIF = 0;
     if (transfer_active && DMA6CONbits.CHEN != 0) {
@@ -325,6 +543,11 @@ void __attribute__((interrupt, no_auto_psv)) _U3RXInterrupt(void) {
  * Arms receive DMA after transmit turnaround or releases an exchange whose receive frame timed out.
  */
 void __attribute__((interrupt, no_auto_psv)) _T6Interrupt(void) {
+    if (direct_mode && timer_action == SERIAL_LINK_TIMER_DIRECT_SERVICE) {
+        IFS2bits.T6IF = 0;
+        service_direct_mode();
+        return;
+    }
     SerialLinkTimerAction action = timer_action;
     stop_timer();
     if (action == SERIAL_LINK_TIMER_START_RECEIVE && transfer_active) {

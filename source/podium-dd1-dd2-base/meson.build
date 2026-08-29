@@ -184,6 +184,7 @@ wheel_status_service_sources = files('source/wheel/status_service.c')
 wheel_transfer_service_sources = files('source/wheel/transfer_service.c')
 wheel_updater_bridge_sources = files('source/wheel/updater_bridge.c')
 wheel_updater_command_service_sources = files('source/wheel/updater_command_service.c')
+wheel_updater_direct_service_sources = files('source/wheel/updater_direct_service.c')
 wheel_vibration_sources = files('source/wheel/vibration.c')
 motor_command_digest_sources = files('source/motor/command_digest.c')
 motor_command_application_sources = files('source/motor/command_application.c')
@@ -419,6 +420,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'wheel-transfer-service': 'source/wheel/transfer_service.c',
     'wheel-updater-bridge': 'source/wheel/updater_bridge.c',
     'wheel-updater-command-service': 'source/wheel/updater_command_service.c',
+    'wheel-updater-direct-service': 'source/wheel/updater_direct_service.c',
     'wheel-vibration': 'source/wheel/vibration.c',
     'motor-command-digest': 'source/motor/command_digest.c',
     'motor-command-application': 'source/motor/command_application.c',
@@ -2288,6 +2290,16 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_updater_direct_service_test = executable(
+    'base-wheel-updater-direct-service-test',
+    'tests/source/wheel_updater_direct_service.c',
+    wheel_updater_direct_service_sources,
+    wheel_updater_bridge_sources,
+    platform_time_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_status_service_test = executable(
     'base-wheel-status-service-test',
     'tests/source/wheel_status_service.c',
@@ -2882,6 +2894,11 @@ if not meson.is_cross_build()
   test(
     'base-wheel-updater-command-service',
     wheel_updater_command_service_test,
+    suite: ['base', 'wheel', 'usb', 'update', 'transport'],
+  )
+  test(
+    'base-wheel-updater-direct-service',
+    wheel_updater_direct_service_test,
     suite: ['base', 'wheel', 'usb', 'update', 'transport'],
   )
 endif
