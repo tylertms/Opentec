@@ -14,6 +14,8 @@ static void test_initializes_baseline_state(void) {
     assert(state.hid_response_flags == 0);
     assert(state.active_event_code == 0);
     assert(state.motor_control_state == 0);
+    assert(state.operating_status == 0);
+    assert(state.operating_transition_code == 0);
     assert(!state.operating_feature_enabled);
 }
 
@@ -63,6 +65,29 @@ static void test_motor_control_resets_transient_capabilities(void) {
     assert(!state.operating_feature_enabled);
 }
 
+static void test_applies_operating_status_by_wheel_mode(void) {
+    SystemControlState state;
+    system_control_state_init(&state);
+
+    system_control_state_set_operating_status(&state, 0x0e, true);
+    assert(state.operating_status == 1);
+    assert(state.operating_transition_code == 2);
+    assert(state.motor_control_state == 0);
+
+    system_control_state_set_operating_status(&state, 0x0e, false);
+    assert(state.operating_status == 0);
+    assert(state.operating_transition_code == 0xff);
+
+    system_control_state_set_operating_status(&state, 0x1c, true);
+    assert(state.operating_status == 1);
+    assert(state.motor_control_state == 2);
+    assert(state.hid_response_flags == 2);
+
+    system_control_state_set_operating_status(&state, 0x1c, false);
+    assert(state.operating_status == 0);
+    assert(state.motor_control_state == 0xff);
+}
+
 static void test_applies_extended_torque_transitions(void) {
     SystemControlState state;
     SystemTorqueTransition transition;
@@ -91,6 +116,7 @@ int main(void) {
     test_normalizes_mode_eighteen_status_range();
     test_feature_state_owns_configuration_bit_zero();
     test_motor_control_resets_transient_capabilities();
+    test_applies_operating_status_by_wheel_mode();
     test_applies_extended_torque_transitions();
     return 0;
 }

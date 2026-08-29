@@ -16,5 +16,7 @@ typedef struct {
 bool usb_operating_mode_command_decode(const UsbOutputCommand *output,
                                        UsbOperatingModeCommand *command);
 bool usb_operating_mode_command_requests_native_reset(const UsbOperatingModeCommand *command);
+bool usb_operating_mode_command_decode_status(const UsbOperatingModeCommand *command,
+                                              bool *enabled);
 
 #endif

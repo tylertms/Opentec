@@ -14,7 +14,12 @@ enum {
     STATUS_NORMALIZATION_FIRST = 0x80,
     STATUS_NORMALIZATION_LAST = 0x8f,
     STATUS_NORMALIZED = 0x13,
+    WHEEL_MODE_TRANSITION = 0x0e,
     WHEEL_MODE_EXTENDED = 0x1c,
+    OPERATING_TRANSITION_DISABLED = 0xff,
+    OPERATING_TRANSITION_ENABLED = 2,
+    MOTOR_CONTROL_OPERATING_DISABLED = 0xff,
+    MOTOR_CONTROL_OPERATING_ENABLED = 2,
 };
 
 /**
@@ -81,6 +86,29 @@ void system_control_state_set_motor_control(SystemControlState *state, uint8_t w
     if (wheel_mode == WHEEL_MODE_EXTENDED) {
         state->hid_configuration &= (uint16_t)~HID_CONFIGURATION_OPERATING_FEATURE;
         state->operating_feature_enabled = false;
+    }
+}
+
+/**
+ * @brief Applies an operating-status change from the host.
+ *
+ * Stores a canonical zero-or-one status. Wheel mode 0x0e publishes transition code 0xff or 2,
+ * while wheel mode 0x1c applies the matching motor-link control state.
+ *
+ * @param[in,out] state System-control state receiving the operating-status change.
+ * @param[in] wheel_mode Current attached-wheel mode.
+ * @param[in] enabled True to enter the operating state.
+ */
+void system_control_state_set_operating_status(SystemControlState *state, uint8_t wheel_mode,
+                                               bool enabled) {
+    state->operating_status = enabled ? 1 : 0;
+    if (wheel_mode == WHEEL_MODE_TRANSITION) {
+        state->operating_transition_code =
+            enabled ? OPERATING_TRANSITION_ENABLED : OPERATING_TRANSITION_DISABLED;
+    } else if (wheel_mode == WHEEL_MODE_EXTENDED) {
+        system_control_state_set_motor_control(state, wheel_mode,
+                                               enabled ? MOTOR_CONTROL_OPERATING_ENABLED
+                                                       : MOTOR_CONTROL_OPERATING_DISABLED);
     }
 }
 

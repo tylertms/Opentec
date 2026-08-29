@@ -50,3 +50,22 @@ bool usb_operating_mode_command_decode(const UsbOutputCommand *output,
 bool usb_operating_mode_command_requests_native_reset(const UsbOperatingModeCommand *command) {
     return command != NULL && command->opcode == 1 && command->parameters[0] == 1;
 }
+
+/**
+ * @brief Decodes an operating-status command.
+ *
+ * Accepts opcode 2 and converts its first parameter to a boolean operating state. Zero disables
+ * the state and every nonzero value enables it.
+ *
+ * @param[in] command Decoded operating-mode command.
+ * @param[out] enabled Destination for the requested operating state.
+ * @return True when the command carries an operating-status update.
+ */
+bool usb_operating_mode_command_decode_status(const UsbOperatingModeCommand *command,
+                                              bool *enabled) {
+    if (command == NULL || enabled == NULL || command->opcode != 2) {
+        return false;
+    }
+    *enabled = command->parameters[0] != 0;
+    return true;
+}

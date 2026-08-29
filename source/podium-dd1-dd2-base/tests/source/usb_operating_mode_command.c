@@ -63,9 +63,27 @@ static void test_identifies_native_reset(void) {
     assert(!usb_operating_mode_command_requests_native_reset(NULL));
 }
 
+static void test_decodes_operating_status(void) {
+    UsbOperatingModeCommand command = {.opcode = 2, .parameters = {0}};
+    bool enabled = true;
+
+    assert(usb_operating_mode_command_decode_status(&command, &enabled));
+    assert(!enabled);
+
+    command.parameters[0] = 0xa5;
+    assert(usb_operating_mode_command_decode_status(&command, &enabled));
+    assert(enabled);
+
+    command.opcode = 3;
+    assert(!usb_operating_mode_command_decode_status(&command, &enabled));
+    assert(!usb_operating_mode_command_decode_status(NULL, &enabled));
+    assert(!usb_operating_mode_command_decode_status(&command, NULL));
+}
+
 int main(void) {
     test_decodes_command_envelope();
     test_rejects_other_envelopes();
     test_identifies_native_reset();
+    test_decodes_operating_status();
     return 0;
 }

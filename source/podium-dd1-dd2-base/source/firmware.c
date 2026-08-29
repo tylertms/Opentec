@@ -54,6 +54,10 @@
 #include "shifter/display.h"
 #include "shifter/h_pattern.h"
 #include "shifter/input.h"
+#include "system/control_state.h"
+#include "system/event_dispatcher.h"
+#include "system/event_queue.h"
+#include "system/torque_transition.h"
 #include "usb/connection.h"
 #include "usb/device.h"
 #include "usb/diagnostic_report.h"
@@ -161,6 +165,7 @@ static UsbDeviceOutputReport usb_device_output_report;
 static UsbConnectionMonitor usb_connection_monitor;
 static UsbOutputCommand usb_output_command;
 static UsbOperatingModeCommand usb_operating_mode_command;
+static bool usb_operating_status_enabled;
 static PedalCalibrationCommand pedal_calibration_command;
 static PedalCalibrationActions pedal_calibration_actions;
 static PedalProtocolCommand pedal_protocol_command;
@@ -179,6 +184,11 @@ static uint8_t motor_received_frame[MOTOR_LIVE_FRAME_SIZE];
 static uint8_t motor_transmitted_frame[MOTOR_LIVE_FRAME_SIZE];
 static StatusLed status_led;
 static PowerController power_controller;
+static SystemControlState system_control_state;
+static SystemTorqueTransition system_torque_transition;
+static SystemTorqueTransitionAction system_torque_action;
+static SystemEventQueue system_event_queue;
+static SystemEventDispatcher system_event_dispatcher;
 static CoolingController cooling_controller;
 static CoolingEffectLimit cooling_effect_limit;
 static CoolingEffectStrengths cooling_effect_strengths;
@@ -191,6 +201,7 @@ static ForceOutputEnable force_output_enable;
 static ForceOutputEnableAction force_output_enable_action;
 static bool force_output_enabled;
 static bool force_output_prompt_visible;
+static bool torque_disabled_notice_visible;
 static bool usb_motor_acknowledgement_ready;
 static bool usb_motor_response_ready;
 static bool usb_remote_tuning_host_report_ready;
@@ -268,6 +279,44 @@ static void service_power(uint32_t now_ms) {
     PowerAction action =
         power_controller_update(&power_controller, platform_power_button_pressed(), true, now_ms);
     apply_power_action(action, now_ms);
+}
+
+/**
+ * @brief Applies a pending power-button torque request.
+ *
+ * Waits for the single event slot, then publishes the event and applies its status, feature, and
+ * motor-control changes as one accepted transition.
+ */
+static void service_power_torque_request(void) {
+    uint8_t wheel_mode = wheel_service_mode(&wheel_service);
+    if (!system_torque_transition_update(
+            &system_torque_transition, power_controller.torque_disabled,
+            system_event_queue.pending_code == 0, wheel_mode, system_control_state.operating_status,
+            &system_torque_action)) {
+        return;
+    }
+    if (system_event_queue_try_push(&system_event_queue, system_torque_action.pending_event_code)) {
+        system_control_state_apply_torque_transition(&system_control_state, wheel_mode,
+                                                     &system_torque_action);
+    }
+}
+
+/**
+ * @brief Services power-button torque notice events.
+ *
+ * Dispatches recognized torque events at the system cadence and retains the requested notice
+ * visibility for the display owner.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_system_events(uint32_t now_ms) {
+    SystemEventAction action =
+        system_event_dispatcher_update(&system_event_dispatcher, &system_event_queue, now_ms);
+    if (action == SYSTEM_EVENT_ACTION_SHOW_TORQUE_DISABLED) {
+        torque_disabled_notice_visible = true;
+    } else if (action == SYSTEM_EVENT_ACTION_DISMISS_TORQUE_DISABLED) {
+        torque_disabled_notice_visible = false;
+    }
 }
 
 static void initialize_cooling(void) {
@@ -353,14 +402,16 @@ static void capture_current_wheel_center(void) {
  * @brief Builds the motor controller's force-feedback status byte.
  *
  * Selects remote motor-side effect processing, reports whether motor safety, USB connection, and
- * operator confirmation permit force, and mirrors the primary and secondary output gates.
+ * operator confirmation permit force, applies the power-button torque gate, and mirrors the
+ * primary and secondary output gates.
  *
  * @return Current force-feedback status bits for the next motor-link packet.
  */
 static uint8_t motor_force_feedback_status(void) {
     uint8_t status = MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS;
     if (motor_tuning_ready && !motor_status_service_output_inhibited(&motor_status_service) &&
-        !usb_connection_monitor.disconnected && force_output_enabled) {
+        !usb_connection_monitor.disconnected && force_output_enabled &&
+        !system_torque_transition.applied_disabled) {
         status |= MOTOR_OUTPUT_STATUS_ENABLED;
     }
     if (force_feedback_state.primary_output_disabled) {
@@ -895,6 +946,11 @@ static void service_usb_output(void) {
     if (usb_operating_mode_command_decode(&usb_output_command, &usb_operating_mode_command)) {
         if (usb_operating_mode_command_requests_native_reset(&usb_operating_mode_command)) {
             (void)usb_device_set_input_mode(USB_INPUT_REPORT_MODE_FANATEC);
+        } else if (usb_operating_mode_command_decode_status(&usb_operating_mode_command,
+                                                            &usb_operating_status_enabled)) {
+            system_control_state_set_operating_status(&system_control_state,
+                                                      wheel_service_mode(&wheel_service),
+                                                      usb_operating_status_enabled);
         } else if (h_pattern_calibration_command_decode(&usb_operating_mode_command,
                                                         &h_pattern_calibration_command)) {
             h_pattern_calibration_service_request(
@@ -1230,6 +1286,10 @@ int main(void) {
     platform_pin_mux_init();
     platform_power_init();
     power_controller_init(&power_controller);
+    system_control_state_init(&system_control_state);
+    system_torque_transition_init(&system_torque_transition);
+    system_event_queue_init(&system_event_queue);
+    system_event_dispatcher_init(&system_event_dispatcher);
     service_power(0);
     platform_time_init();
     platform_display_init();
@@ -1265,6 +1325,8 @@ int main(void) {
         platform_aux_bus_service();
         uint32_t now_ms = platform_time_ms();
         service_power(now_ms);
+        service_power_torque_request();
+        service_system_events(now_ms);
         (void)usb_connection_monitor_update(&usb_connection_monitor, platform_usb_connected(), true,
                                             now_ms);
         platform_status_led_set(status_led_update(&status_led, now_ms));
