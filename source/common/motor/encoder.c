@@ -1,5 +1,12 @@
 #include "common/motor/encoder.h"
 
+enum {
+    MOTOR_ENCODER_INDEX_DRIVE_CURRENT = 491,
+    MOTOR_ENCODER_DIRECTION_TOLERANCE = 10,
+    MOTOR_ENCODER_DIRECTION_RUNNING_STATUS = 0xaaaaU,
+    MOTOR_ENCODER_DIRECTION_FAILED_STATUS = 0xbbbbU,
+};
+
 /**
  * @brief Extends one official FTM2 quadrature overflow into the signed revolution offset.
  * @param state Persistent encoder position state.
@@ -39,4 +46,99 @@ MotorEncoderPositionResult motor_encoder_position_update(MotorEncoderState *stat
 void motor_encoder_position_reset(MotorEncoderState *state) {
     state->revolution_offset = 0;
     state->position = 0;
+}
+
+/**
+ * @brief Resolves one official encoder-index seek step.
+ * @param index_detected True after the PORTE index interrupt captures a position.
+ * @param timeout_remaining Active five-thousand-tick search countdown.
+ * @return Drive current, countdown state, and completion result for the search.
+ */
+MotorEncoderIndexSeekStep motor_encoder_index_seek_step(bool index_detected,
+                                                        uint16_t timeout_remaining) {
+    if (!index_detected && timeout_remaining != 0U) {
+        return (MotorEncoderIndexSeekStep){
+            .drive_current = MOTOR_ENCODER_INDEX_DRIVE_CURRENT,
+            .countdown_active = true,
+        };
+    }
+
+    return (MotorEncoderIndexSeekStep){.complete = true};
+}
+
+/**
+ * @brief Resets the official encoder-direction diagnostic sequence.
+ * @param state Diagnostic phase, captured positions, and reporting status.
+ */
+void motor_encoder_direction_initialize(MotorEncoderDirectionState *state) {
+    *state = (MotorEncoderDirectionState){0};
+}
+
+/**
+ * @brief Advances the official two-index encoder-direction diagnostic.
+ * @param state Persistent diagnostic phase and captured positions.
+ * @param index_seek_complete True when the active index search detected an index or timed out.
+ * @param position Current extended encoder position.
+ * @param encoder_modulus Expected encoder counts per revolution.
+ * @return Diagnostic result and the drive, status, and index-search actions to apply.
+ */
+MotorEncoderDirectionStep motor_encoder_direction_check_step(MotorEncoderDirectionState *state,
+                                                             bool index_seek_complete,
+                                                             int32_t position,
+                                                             int32_t encoder_modulus) {
+    MotorEncoderDirectionStep step = {
+        .status = state->status,
+    };
+
+    if (state->phase == kMotorEncoderDirectionBegin) {
+        state->start_position = position;
+        state->status = MOTOR_ENCODER_DIRECTION_RUNNING_STATUS;
+        state->phase = kMotorEncoderDirectionFirstIndex;
+        step.status = state->status;
+        step.restart_index_seek = true;
+        return step;
+    }
+
+    if (state->phase == kMotorEncoderDirectionFirstIndex) {
+        if (!index_seek_complete) {
+            step.drive_current = MOTOR_ENCODER_INDEX_DRIVE_CURRENT;
+            return step;
+        }
+
+        state->first_index_position = position;
+        state->phase = kMotorEncoderDirectionSecondIndex;
+        step.restart_index_seek = true;
+        return step;
+    }
+
+    if (state->phase == kMotorEncoderDirectionSecondIndex) {
+        if (!index_seek_complete) {
+            step.drive_current = MOTOR_ENCODER_INDEX_DRIVE_CURRENT;
+            return step;
+        }
+
+        int32_t error = position - encoder_modulus - state->first_index_position;
+        if (error < MOTOR_ENCODER_DIRECTION_TOLERANCE &&
+            error > -MOTOR_ENCODER_DIRECTION_TOLERANCE) {
+            state->phase = kMotorEncoderDirectionReturn;
+            return step;
+        }
+
+        state->phase = kMotorEncoderDirectionBegin;
+        state->status = MOTOR_ENCODER_DIRECTION_FAILED_STATUS;
+        step.status = state->status;
+        step.result = kMotorEncoderDirectionFailed;
+        return step;
+    }
+
+    if (position > state->start_position) {
+        step.drive_current = -MOTOR_ENCODER_INDEX_DRIVE_CURRENT;
+        return step;
+    }
+
+    state->phase = kMotorEncoderDirectionBegin;
+    state->status = 0U;
+    step.status = state->status;
+    step.result = kMotorEncoderDirectionPassed;
+    return step;
 }

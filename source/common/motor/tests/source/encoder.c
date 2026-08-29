@@ -46,9 +46,70 @@ static void test_reset(void) {
     assert(state.zero_counter == 300);
 }
 
+static void test_index_seek(void) {
+    MotorEncoderIndexSeekStep pending = motor_encoder_index_seek_step(false, 5000U);
+    assert(!pending.complete);
+    assert(pending.countdown_active);
+    assert(pending.drive_current == 491);
+
+    MotorEncoderIndexSeekStep detected = motor_encoder_index_seek_step(true, 4999U);
+    assert(detected.complete);
+    assert(!detected.countdown_active);
+    assert(detected.drive_current == 0);
+
+    MotorEncoderIndexSeekStep timed_out = motor_encoder_index_seek_step(false, 0U);
+    assert(timed_out.complete);
+    assert(timed_out.drive_current == 0);
+}
+
+static void test_direction_check_pass(void) {
+    MotorEncoderDirectionState state;
+    motor_encoder_direction_initialize(&state);
+
+    MotorEncoderDirectionStep step = motor_encoder_direction_check_step(&state, false, 100, 0x5c7f);
+    assert(step.result == kMotorEncoderDirectionPending);
+    assert(step.restart_index_seek);
+    assert(step.status == 0xaaaaU);
+
+    step = motor_encoder_direction_check_step(&state, false, 110, 0x5c7f);
+    assert(step.drive_current == 491);
+
+    step = motor_encoder_direction_check_step(&state, true, 120, 0x5c7f);
+    assert(step.restart_index_seek);
+
+    step = motor_encoder_direction_check_step(&state, false, 0x5c7f, 0x5c7f);
+    assert(step.drive_current == 491);
+
+    step = motor_encoder_direction_check_step(&state, true, 120 + 0x5c7f + 9, 0x5c7f);
+    assert(step.result == kMotorEncoderDirectionPending);
+    assert(state.phase == kMotorEncoderDirectionReturn);
+
+    step = motor_encoder_direction_check_step(&state, false, 101, 0x5c7f);
+    assert(step.drive_current == -491);
+    step = motor_encoder_direction_check_step(&state, false, 100, 0x5c7f);
+    assert(step.result == kMotorEncoderDirectionPassed);
+    assert(step.status == 0U);
+}
+
+static void test_direction_check_failure(void) {
+    MotorEncoderDirectionState state;
+    motor_encoder_direction_initialize(&state);
+    (void)motor_encoder_direction_check_step(&state, false, 100, 0x5c7f);
+    (void)motor_encoder_direction_check_step(&state, true, 120, 0x5c7f);
+
+    MotorEncoderDirectionStep step =
+        motor_encoder_direction_check_step(&state, true, 120 + 0x5c7f + 10, 0x5c7f);
+    assert(step.result == kMotorEncoderDirectionFailed);
+    assert(step.status == 0xbbbbU);
+    assert(state.phase == kMotorEncoderDirectionBegin);
+}
+
 int main(void) {
     test_overflow_extension();
     test_position_update();
     test_reset();
+    test_index_seek();
+    test_direction_check_pass();
+    test_direction_check_failure();
     return 0;
 }
