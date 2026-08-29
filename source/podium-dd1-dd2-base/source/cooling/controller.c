@@ -155,10 +155,10 @@ static void update_force_scale(CoolingController *controller, float temperature,
 }
 
 /**
- * @brief Initializes the thermal controller with the firmware startup phase and fan duty.
+ * @brief Initializes the thermal controller with its startup fan and force limits.
  *
- * Clears the controller, starts both fan requests at 25 percent, and selects the standard or
- * dual-fan duty map.
+ * Clears the controller, starts both fan requests at 25 percent, permits full force output, and
+ * selects the standard or dual-fan duty map.
  *
  * @param[out] controller Thermal fan and force-derating state.
  * @param[in] dual_fan_mode True for the alternate two-output fan duty map.
@@ -167,6 +167,7 @@ void cooling_controller_init(CoolingController *controller, bool dual_fan_mode) 
     *controller = (CoolingController){
         .primary_duty_percent = FAN_STARTUP_DUTY_PERCENT,
         .secondary_duty_percent = FAN_STARTUP_DUTY_PERCENT,
+        .force_scale_percent = 100,
         .dual_fan_mode = dual_fan_mode,
     };
 }

@@ -71,6 +71,8 @@ UsbMotorVendorServiceResult
 usb_motor_vendor_service_run_mailbox(UsbMotorVendorService *service,
                                      MotorCommandMailboxExchange *exchange,
                                      CommandTransport *transport);
+uint8_t usb_motor_vendor_service_prepare_response(UsbMotorVendorService *service,
+                                                  uint8_t packet[USB_MOTOR_RESPONSE_PACKET_SIZE]);
 uint8_t usb_motor_vendor_service_next_response(UsbMotorVendorService *service,
                                                uint8_t packet[USB_MOTOR_RESPONSE_PACKET_SIZE]);
 bool usb_motor_vendor_service_acknowledge_response(

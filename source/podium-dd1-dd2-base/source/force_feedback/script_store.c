@@ -155,6 +155,17 @@ void force_feedback_script_store_compact(ForceFeedbackScriptStore *store,
     }
 }
 
+/**
+ * @brief Get the stored byte sequence for one force-feedback script slot.
+ *
+ * Returns the allocated sequence without copying it and reports its declared size. Empty and
+ * out-of-range slots do not produce a sequence.
+ *
+ * @param[in] store Shared script storage containing all slot allocations.
+ * @param[in] slot Script slot index from 0 through 15.
+ * @param[out] size Declared byte count for the selected sequence.
+ * @return The stored sequence, or null when the slot has no valid allocation.
+ */
 const uint8_t *force_feedback_script_store_data(const ForceFeedbackScriptStore *store, uint8_t slot,
                                                 uint16_t *size) {
     if (store == NULL || size == NULL || slot >= FORCE_FEEDBACK_SCRIPT_SLOT_COUNT ||

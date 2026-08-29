@@ -16,6 +16,7 @@
 #include "force_feedback/output.h"
 #include "force_feedback/output_enable.h"
 #include "force_feedback/script_runtime.h"
+#include "force_feedback/script_tick.h"
 #include "force_feedback/state.h"
 #include "motor/calibration.h"
 #include "motor/command_mailbox.h"
@@ -155,8 +156,7 @@ static WheelMultiPositionInput wheel_multi_position_input;
 static fanatec_multi_position_input fanatec_multi_position_input_state;
 static uint8_t usb_input_report[USB_INPUT_REPORT_MAX_SIZE];
 static uint8_t usb_motor_acknowledgement[USB_DEVICE_REPORT_SIZE];
-static uint8_t usb_motor_response[USB_DEVICE_REPORT_SIZE];
-static uint8_t usb_wheel_transfer_response[USB_DEVICE_REPORT_SIZE];
+static uint8_t usb_vendor_response[USB_DEVICE_REPORT_SIZE];
 static UsbDiagnosticReportService usb_diagnostic_report_service;
 static UsbRemoteTuningService usb_remote_tuning_service;
 static WheelCommandForwarder wheel_command_forwarder;
@@ -164,14 +164,10 @@ static uint8_t wheel_command_batch[USB_REMOTE_TUNING_FORWARD_BATCH_SIZE];
 static uint8_t wheel_command_batch_length;
 static RemoteTuningResponse usb_remote_tuning_response;
 static RemoteTuningResponse system_wheel_response;
-static uint8_t usb_remote_tuning_host_report[USB_REMOTE_TUNING_HOST_REPORT_SIZE];
 static uint8_t wheel_remote_telemetry_report[REMOTE_TELEMETRY_REPORT_SIZE];
 static UsbTuningMenuService usb_tuning_menu_service;
 static UsbTuningProfileService usb_tuning_profile_service;
 static UsbDiagnosticSnapshot usb_diagnostic_snapshot;
-static uint8_t usb_diagnostic_report[USB_DEVICE_REPORT_SIZE];
-static uint8_t usb_tuning_menu_response[USB_DEVICE_REPORT_SIZE];
-static uint8_t usb_tuning_profile_response[USB_DEVICE_REPORT_SIZE];
 static UsbDeviceOutputReport usb_device_output_report;
 static UsbConnectionMonitor usb_connection_monitor;
 static UsbOutputCommand usb_output_command;
@@ -188,6 +184,9 @@ static UsbWheelTransferCommand usb_wheel_transfer_command;
 static ForceFeedbackCommand force_feedback_command;
 static ForceFeedbackState force_feedback_state;
 static ForceFeedbackScriptSystem force_feedback_script_system;
+static ForceFeedbackScriptOutputState force_feedback_script_output_state;
+static ForceFeedbackScriptOutputConfig force_feedback_script_output_config;
+static uint32_t force_feedback_ramp_deadline_ms;
 static ForceOutputReport motor_output_report;
 static MotorLiveFrame motor_live_frame;
 static MotorOutputTransport motor_output_transport;
@@ -221,16 +220,24 @@ static bool torque_key_prompt_visible;
 static bool torque_disabled_notice_visible;
 static bool usb_disconnect_notice_visible;
 static bool usb_motor_acknowledgement_ready;
-static bool usb_motor_response_ready;
-static bool usb_remote_tuning_host_report_ready;
-static bool usb_wheel_transfer_response_ready;
-static bool usb_tuning_menu_response_ready;
-static bool usb_tuning_profile_response_ready;
 static bool usb_wheel_transfer_response_pending[WHEEL_TRANSFER_REQUEST_COUNT];
 static uint8_t local_display_page;
 static uint8_t local_display_rendered_bite_point_percent;
 static SystemNoticeKind local_display_rendered_notice_kind;
 static uint8_t wheel_bite_point_display_percent;
+
+typedef enum {
+    USB_VENDOR_RESPONSE_NONE,
+    USB_VENDOR_RESPONSE_REMOTE_TUNING,
+    USB_VENDOR_RESPONSE_WHEEL_TRANSFER,
+    USB_VENDOR_RESPONSE_TUNING_PROFILE,
+    USB_VENDOR_RESPONSE_TUNING_MENU,
+    USB_VENDOR_RESPONSE_DIAGNOSTIC,
+    USB_VENDOR_RESPONSE_MOTOR,
+} UsbVendorResponseKind;
+
+static UsbVendorResponseKind usb_vendor_response_kind;
+static WheelTransferRequest usb_vendor_wheel_response_request;
 
 enum {
     FAN_STARTUP_DUTY_PERCENT = 25,
@@ -256,6 +263,12 @@ enum {
     UNSUPPORTED_WHEEL_INVERTED_EVENT_CODE = 0x0f,
     UNSUPPORTED_WHEEL_OUTLINED_EVENT_CODE = 0x10,
     SHUTDOWN_STATUS_CODE = 0x2d,
+    FORCE_FEEDBACK_FULL_STRENGTH_PERCENT = 100,
+    FORCE_FEEDBACK_DD1_REDUCED_STRENGTH_PERCENT = 40,
+    FORCE_FEEDBACK_DD2_REDUCED_STRENGTH_PERCENT = 32,
+    FORCE_FEEDBACK_DD1_AUTOMATIC_STRENGTH_PERCENT = 35,
+    FORCE_FEEDBACK_DD2_AUTOMATIC_STRENGTH_PERCENT = 30,
+    FORCE_FEEDBACK_RAMP_INTERVAL_MS = 50,
 };
 
 static uint8_t usb_motor_upload_assembly[USB_MOTOR_BUFFER_SIZE];
@@ -445,7 +458,8 @@ static void apply_torque_key_prompt_action(TorqueKeyPromptAction action) {
  *
  * Filters the active-low board input for 500 milliseconds, starts or cancels the safety prompt on
  * stable key transitions, accepts a released wheel input only while the prompt owns the display,
- * and advances presentation through the shared event slot.
+ * and advances presentation through the shared event slot. Acknowledgement selects full base
+ * strength; removal restores the DD1 or DD2 reduced limit and refreshes motor-side tuning.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -465,6 +479,19 @@ static void service_torque_key(uint32_t now_ms) {
     }
     apply_torque_key_prompt_action(
         torque_key_prompt_service(&torque_key_prompt, system_event_queue.pending_code == 0));
+
+    uint8_t strength = torque_key_prompt.phase == TORQUE_KEY_PROMPT_ACKNOWLEDGED
+                           ? FORCE_FEEDBACK_FULL_STRENGTH_PERCENT
+                       : board_identity.variant == BOARD_VARIANT_DD1
+                           ? FORCE_FEEDBACK_DD1_REDUCED_STRENGTH_PERCENT
+                           : FORCE_FEEDBACK_DD2_REDUCED_STRENGTH_PERCENT;
+    if (motor_tuning_context.strength_percent != strength) {
+        motor_tuning_context.strength_percent = strength;
+        if (motor_tuning_ready) {
+            motor_tuning_service_refresh(&motor_tuning_service, tuning_profile,
+                                         &motor_tuning_context);
+        }
+    }
 }
 
 static void initialize_cooling(void) {
@@ -658,11 +685,19 @@ static void initialize_base_settings(void) {
     auxiliary_axis_init(&auxiliary_axis, &base_settings.auxiliary_axis);
 }
 
+/**
+ * @brief Initializes motor force, tuning, calibration, and discovery state.
+ *
+ * Starts force output with a zero-percent ramp and the board variant's reduced Torque Key limit,
+ * applies the active profile, and begins asynchronous motor discovery.
+ */
 static void initialize_motor(void) {
     force_feedback_state_init(&force_feedback_state);
     motor_tuning_context = (MotorTuningContext){
         .ramp_percent = 0,
-        .strength_percent = board_identity.variant == BOARD_VARIANT_DD1 ? 40 : 32,
+        .strength_percent = board_identity.variant == BOARD_VARIANT_DD1
+                                ? FORCE_FEEDBACK_DD1_REDUCED_STRENGTH_PERCENT
+                                : FORCE_FEEDBACK_DD2_REDUCED_STRENGTH_PERCENT,
         .xbox_mode = 0,
         .calibration_active = 0,
     };
@@ -691,11 +726,7 @@ static void initialize_usb_command_bridge(void) {
     usb_tuning_menu_service_init(&usb_tuning_menu_service);
     usb_tuning_profile_service_init(&usb_tuning_profile_service);
     usb_motor_acknowledgement_ready = false;
-    usb_motor_response_ready = false;
-    usb_remote_tuning_host_report_ready = false;
-    usb_wheel_transfer_response_ready = false;
-    usb_tuning_menu_response_ready = false;
-    usb_tuning_profile_response_ready = false;
+    usb_vendor_response_kind = USB_VENDOR_RESPONSE_NONE;
     for (uint8_t request = 0; request < WHEEL_TRANSFER_REQUEST_COUNT; request++) {
         usb_wheel_transfer_response_pending[request] = false;
     }
@@ -801,6 +832,82 @@ static bool accept_usb_motor_report(const UsbDeviceOutputReport *report) {
 }
 
 /**
+ * @brief Prepares the highest-priority pending vendor response.
+ *
+ * Retains one complete report for endpoint retries. Native telemetry precedes wheel transfer,
+ * profile, menu, diagnostics, and motor responses in the same order used by the host command
+ * service.
+ */
+static void prepare_usb_vendor_response(void) {
+    if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_REMOTE_TUNING) {
+        return;
+    }
+    usb_vendor_response_kind = USB_VENDOR_RESPONSE_NONE;
+    if (usb_device_operating_mode() == USB_OPERATING_MODE_FANATEC &&
+        usb_remote_tuning_service_take_host_report(
+            &usb_remote_tuning_service, wheel_service_mode(&wheel_service),
+            USB_REMOTE_TUNING_HOST_NATIVE, usb_vendor_response)) {
+        usb_vendor_response_kind = USB_VENDOR_RESPONSE_REMOTE_TUNING;
+        return;
+    }
+
+    WheelTransferRequest request = WHEEL_TRANSFER_READ;
+    if (!usb_wheel_transfer_response_pending[request]) {
+        request = WHEEL_TRANSFER_WRITE;
+    }
+    if (usb_wheel_transfer_response_pending[request]) {
+        usb_vendor_command_encode_wheel_transfer_response(
+            request, wheel_transfer_service_status(&wheel_transfer_service, request),
+            usb_vendor_response);
+        usb_vendor_wheel_response_request = request;
+        usb_vendor_response_kind = USB_VENDOR_RESPONSE_WHEEL_TRANSFER;
+        return;
+    }
+    if (usb_tuning_profile_service_response_pending(&usb_tuning_profile_service)) {
+        usb_tuning_profile_report_encode_response(&base_settings.tuning_profiles,
+                                                  usb_vendor_response);
+        usb_vendor_response_kind = USB_VENDOR_RESPONSE_TUNING_PROFILE;
+        return;
+    }
+    if (usb_tuning_menu_service_response_pending(&usb_tuning_menu_service)) {
+        usb_tuning_menu_service_encode_response(&usb_tuning_menu_service, usb_vendor_response);
+        usb_vendor_response_kind = USB_VENDOR_RESPONSE_TUNING_MENU;
+        return;
+    }
+    if (usb_diagnostic_report_prepare(&usb_diagnostic_report_service, &usb_diagnostic_snapshot,
+                                      usb_vendor_response)) {
+        usb_vendor_response_kind = USB_VENDOR_RESPONSE_DIAGNOSTIC;
+        return;
+    }
+    if (usb_motor_vendor_service_prepare_response(&usb_motor_vendor_service, usb_vendor_response) !=
+        0) {
+        usb_vendor_response_kind = USB_VENDOR_RESPONSE_MOTOR;
+    }
+}
+
+/**
+ * @brief Commits a submitted vendor response.
+ *
+ * Completes service-specific response state after the endpoint copies the retained report, then
+ * releases the shared response image for the next pending owner.
+ */
+static void complete_usb_vendor_response(void) {
+    if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_WHEEL_TRANSFER) {
+        usb_wheel_transfer_response_pending[usb_vendor_wheel_response_request] = false;
+    } else if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_TUNING_PROFILE) {
+        usb_tuning_profile_service_response_sent(&usb_tuning_profile_service);
+    } else if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_TUNING_MENU) {
+        usb_tuning_menu_service_response_sent(&usb_tuning_menu_service);
+    } else if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_DIAGNOSTIC) {
+        usb_diagnostic_report_commit(&usb_diagnostic_report_service, usb_vendor_response);
+    } else if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_MOTOR) {
+        (void)usb_motor_vendor_service_next_response(&usb_motor_vendor_service,
+                                                     usb_vendor_response);
+    }
+    usb_vendor_response_kind = USB_VENDOR_RESPONSE_NONE;
+}
+
+/**
  * @brief Advances host command services over serial message type four.
  *
  * Queues remote-tuning responses and telemetry for the attached wheel, batches generic tuning
@@ -843,76 +950,11 @@ static void service_usb_command_bridge(uint32_t now_ms) {
         usb_device_send_vendor_report(usb_motor_acknowledgement)) {
         usb_motor_acknowledgement_ready = false;
     }
-    if (!usb_remote_tuning_host_report_ready &&
-        usb_device_operating_mode() == USB_OPERATING_MODE_FANATEC) {
-        usb_remote_tuning_host_report_ready = usb_remote_tuning_service_take_host_report(
-            &usb_remote_tuning_service, wheel_service_mode(&wheel_service),
-            USB_REMOTE_TUNING_HOST_NATIVE, usb_remote_tuning_host_report);
-    }
-    if (!usb_motor_acknowledgement_ready && usb_remote_tuning_host_report_ready &&
-        usb_device_send_vendor_report(usb_remote_tuning_host_report)) {
-        usb_remote_tuning_host_report_ready = false;
-    }
-    if (!usb_motor_response_ready) {
-        usb_motor_response_ready = usb_motor_vendor_service_next_response(&usb_motor_vendor_service,
-                                                                          usb_motor_response) != 0;
-    }
-    if (!usb_wheel_transfer_response_ready) {
-        WheelTransferRequest request = WHEEL_TRANSFER_READ;
-        if (!usb_wheel_transfer_response_pending[request]) {
-            request = WHEEL_TRANSFER_WRITE;
-        }
-        if (usb_wheel_transfer_response_pending[request]) {
-            usb_vendor_command_encode_wheel_transfer_response(
-                request, wheel_transfer_service_status(&wheel_transfer_service, request),
-                usb_wheel_transfer_response);
-            usb_wheel_transfer_response_pending[request] = false;
-            usb_wheel_transfer_response_ready = true;
-        }
-    }
-    if (!usb_tuning_profile_response_ready &&
-        usb_tuning_profile_service_response_pending(&usb_tuning_profile_service)) {
-        usb_tuning_profile_report_encode_response(&base_settings.tuning_profiles,
-                                                  usb_tuning_profile_response);
-        usb_tuning_profile_response_ready = true;
-    }
-    if (!usb_tuning_menu_response_ready &&
-        usb_tuning_menu_service_response_pending(&usb_tuning_menu_service)) {
-        usb_tuning_menu_service_encode_response(&usb_tuning_menu_service, usb_tuning_menu_response);
-        usb_tuning_menu_response_ready = true;
-    }
     update_usb_diagnostic_snapshot(now_ms);
-    bool usb_diagnostic_report_ready = usb_diagnostic_report_prepare(
-        &usb_diagnostic_report_service, &usb_diagnostic_snapshot, usb_diagnostic_report);
-    if (!usb_motor_acknowledgement_ready && !usb_remote_tuning_host_report_ready &&
-        usb_wheel_transfer_response_ready &&
-        usb_device_send_vendor_report(usb_wheel_transfer_response)) {
-        usb_wheel_transfer_response_ready = false;
-    }
-    if (!usb_motor_acknowledgement_ready && !usb_remote_tuning_host_report_ready &&
-        !usb_wheel_transfer_response_ready && usb_tuning_profile_response_ready &&
-        usb_device_send_vendor_report(usb_tuning_profile_response)) {
-        usb_tuning_profile_response_ready = false;
-        usb_tuning_profile_service_response_sent(&usb_tuning_profile_service);
-    }
-    if (!usb_motor_acknowledgement_ready && !usb_remote_tuning_host_report_ready &&
-        !usb_wheel_transfer_response_ready && !usb_tuning_profile_response_ready &&
-        usb_tuning_menu_response_ready && usb_device_send_vendor_report(usb_tuning_menu_response)) {
-        usb_tuning_menu_response_ready = false;
-        usb_tuning_menu_service_response_sent(&usb_tuning_menu_service);
-    }
-    if (!usb_motor_acknowledgement_ready && !usb_remote_tuning_host_report_ready &&
-        !usb_wheel_transfer_response_ready && !usb_tuning_profile_response_ready &&
-        !usb_tuning_menu_response_ready && usb_diagnostic_report_ready &&
-        usb_device_send_vendor_report(usb_diagnostic_report)) {
-        usb_diagnostic_report_commit(&usb_diagnostic_report_service, usb_diagnostic_report);
-        usb_diagnostic_report_ready = false;
-    }
-    if (!usb_motor_acknowledgement_ready && !usb_remote_tuning_host_report_ready &&
-        !usb_wheel_transfer_response_ready && !usb_tuning_profile_response_ready &&
-        !usb_tuning_menu_response_ready && !usb_diagnostic_report_ready &&
-        usb_motor_response_ready && usb_device_send_vendor_report(usb_motor_response)) {
-        usb_motor_response_ready = false;
+    prepare_usb_vendor_response();
+    if (!usb_motor_acknowledgement_ready && usb_vendor_response_kind != USB_VENDOR_RESPONSE_NONE &&
+        usb_device_send_vendor_report(usb_vendor_response)) {
+        complete_usb_vendor_response();
     }
 }
 
@@ -942,15 +984,67 @@ static void handle_force_feedback_timer_tick(void *context) {
 }
 
 /**
- * @brief Initialize force-feedback script state and its runtime clock.
+ * @brief Initializes force-feedback script scheduling and output state.
  *
- * Resets the complete script runtime in position-only mode before starting the dedicated Timer 2
- * clock used for engine, slot, and wheel-motion timing.
+ * Resets the complete script runtime in position-only mode, clears smoothing and range-limit
+ * history, starts the force ramp at zero, and starts the dedicated Timer 2 clock used for engine,
+ * slot, and wheel-motion timing.
  */
 static void initialize_force_feedback_script(void) {
     force_feedback_script_runtime_init(&force_feedback_script_system);
+    force_feedback_script_output_init(&force_feedback_script_output_state);
+    force_feedback_ramp_deadline_ms = 0;
     platform_force_feedback_timer_init(handle_force_feedback_timer_tick,
                                        &force_feedback_script_system);
+}
+
+/**
+ * @brief Advances script-generated live force output.
+ *
+ * Raises the startup ramp by one percent after each elapsed 50-millisecond deadline, keeps the
+ * motor's natural-friction tuning synchronized, and services due script ticks after a motor
+ * position is available. Output uses the active profile, thermal limit, Torque Key strength,
+ * centered wheel travel, and secondary-output gate.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_force_feedback_script(uint32_t now_ms) {
+    if (motor_tuning_context.ramp_percent < FORCE_FEEDBACK_FULL_STRENGTH_PERCENT &&
+        now_ms > force_feedback_ramp_deadline_ms) {
+        ++motor_tuning_context.ramp_percent;
+        force_feedback_ramp_deadline_ms = now_ms + FORCE_FEEDBACK_RAMP_INTERVAL_MS;
+        if (motor_tuning_ready) {
+            motor_tuning_service_refresh(&motor_tuning_service, tuning_profile,
+                                         &motor_tuning_context);
+        }
+    }
+
+    if (!motor_position_ready) {
+        return;
+    }
+
+    uint32_t travel = wheel_position_travel_from_degrees(tuning_profile->rotation_degrees);
+    if (travel == 0) {
+        return;
+    }
+
+    int32_t position = wheel_position_center(motor_position_report.wheel_position,
+                                             base_settings.wheel_position.center);
+    force_feedback_script_output_config = (ForceFeedbackScriptOutputConfig){
+        .soft_stop = {.travel_limit = (int32_t)travel},
+        .available_percent = cooling_controller.force_scale_percent,
+        .output_strength_percent = motor_tuning_context.strength_percent,
+        .automatic_strength = board_identity.variant == BOARD_VARIANT_DD1
+                                  ? FORCE_FEEDBACK_DD1_AUTOMATIC_STRENGTH_PERCENT
+                                  : FORCE_FEEDBACK_DD2_AUTOMATIC_STRENGTH_PERCENT,
+        .ramp_percent = motor_tuning_context.ramp_percent,
+        .smoothing_intensity = tuning_profile->force_effect_intensity,
+        .tuning_strength = (int8_t)tuning_profile->force_feedback_strength,
+        .secondary_output_disabled = force_feedback_state.secondary_output_disabled,
+    };
+    (void)force_feedback_script_tick_output(
+        &force_feedback_script_system, &force_feedback_script_output_state, now_ms, position,
+        travel, &force_feedback_script_output_config, &motor_output_report);
 }
 
 /**
@@ -1108,11 +1202,23 @@ static void apply_wheel_steering_limit_command(const WheelSteeringLimitCommand *
     }
 }
 
+/**
+ * @brief Routes one pending host report to its owning device subsystem.
+ *
+ * Gives complete script-system and motor-mailbox reports their dedicated packet paths before
+ * decoding shared short commands and native vendor transfers. Each accepted report is consumed by
+ * the first matching subsystem.
+ */
 static void service_usb_output(void) {
     if (!usb_device_take_output(&usb_device_output_report)) {
         return;
     }
     if (accept_usb_motor_report(&usb_device_output_report)) {
+        return;
+    }
+    if (force_feedback_script_runtime_apply_packet(&force_feedback_script_system,
+                                                   usb_device_output_report.data,
+                                                   usb_device_output_report.length)) {
         return;
     }
     if (!usb_output_command_decode(&usb_device_output_report, &usb_output_command)) {
@@ -1196,13 +1302,17 @@ static void service_usb_output(void) {
             return;
         }
         if (usb_tuning_menu_service_apply(&usb_tuning_menu_service, &usb_vendor_command)) {
-            if (usb_tuning_menu_service_response_pending(&usb_tuning_menu_service)) {
-                usb_tuning_menu_response_ready = false;
+            if (usb_tuning_menu_service_response_pending(&usb_tuning_menu_service) &&
+                usb_vendor_response_kind == USB_VENDOR_RESPONSE_TUNING_MENU) {
+                usb_vendor_response_kind = USB_VENDOR_RESPONSE_NONE;
             }
             return;
         }
         if (usb_diagnostic_report_apply_command(&usb_diagnostic_report_service,
                                                 &usb_vendor_command)) {
+            if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_DIAGNOSTIC) {
+                usb_vendor_response_kind = USB_VENDOR_RESPONSE_NONE;
+            }
             return;
         }
         uint32_t now_ms = platform_time_ms();
@@ -1237,8 +1347,9 @@ static void service_usb_output(void) {
                 (void)system_event_queue_try_push(&system_event_queue, event_code);
                 system_control_state_set_active_event(&system_control_state, event_code);
             }
-            if (usb_tuning_profile_service_response_pending(&usb_tuning_profile_service)) {
-                usb_tuning_profile_response_ready = false;
+            if (usb_tuning_profile_service_response_pending(&usb_tuning_profile_service) &&
+                usb_vendor_response_kind == USB_VENDOR_RESPONSE_TUNING_PROFILE) {
+                usb_vendor_response_kind = USB_VENDOR_RESPONSE_NONE;
             }
             return;
         }
@@ -1719,6 +1830,7 @@ int main(void) {
             (void)motor_command_serial_submit(&command_transport, &serial_service, now_ms);
         }
         service_torque_key(now_ms);
+        service_force_feedback_script(now_ms);
         service_force_output_enable();
         service_local_display();
         service_shifter_display(now_ms);

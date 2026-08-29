@@ -76,10 +76,13 @@ static void test_bridges_compact_command_and_response(void) {
     assert(fixture.motor_transmit[0] == 0x80);
 
     uint8_t response_length =
-        usb_motor_vendor_service_next_response(&fixture.service, fixture.usb_packet);
+        usb_motor_vendor_service_prepare_response(&fixture.service, fixture.usb_packet);
     assert(response_length == 8);
     static const uint8_t expected[] = {6, 0x30, 0x2a, 4, 0, 0xc1, 0xaa, 0xbb};
     assert(memcmp(fixture.usb_packet, expected, sizeof(expected)) == 0);
+    assert(fixture.service.download.offset == 0);
+    response_length = usb_motor_vendor_service_next_response(&fixture.service, fixture.usb_packet);
+    assert(response_length == 8);
 
     uint8_t acknowledgement[USB_MOTOR_RESPONSE_ACKNOWLEDGEMENT_SIZE] = {0};
     acknowledgement[0] = 1;

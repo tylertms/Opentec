@@ -90,10 +90,71 @@ static void test_rejects_invalid_control_without_changes(void) {
     assert(system.mode == FORCE_FEEDBACK_RUNTIME_POSITION_ONLY);
 }
 
+static void test_routes_complete_script_packets(void) {
+    ForceFeedbackScriptSystem system;
+    force_feedback_script_runtime_init(&system);
+
+    uint8_t samples[FORCE_FEEDBACK_SCRIPT_PACKET_SIZE] = {[0] = 0x0b};
+    for (uint8_t record = 0; record < FORCE_FEEDBACK_SCRIPT_SAMPLE_UPDATE_COUNT; record++) {
+        size_t offset = 4u + (size_t)record * 6u;
+        samples[offset] = UINT8_MAX;
+        samples[offset + 1] = UINT8_MAX;
+    }
+    samples[4] = 3;
+    samples[5] = 0;
+    samples[6] = 0x78;
+    samples[7] = 0x56;
+    samples[8] = 0x34;
+    samples[9] = 0x12;
+    assert(force_feedback_script_runtime_apply_packet(&system, samples, sizeof(samples)));
+    assert(system.values.samples.values[3] == UINT32_C(0x12345678));
+
+    uint8_t control[13] = {[0] = 0x0c, [12] = FORCE_FEEDBACK_RUNTIME_ZERO_OUTPUT};
+    assert(force_feedback_script_runtime_apply_packet(&system, control, sizeof(control)));
+    assert(system.mode == FORCE_FEEDBACK_RUNTIME_ZERO_OUTPUT);
+
+    uint8_t upload[FORCE_FEEDBACK_SCRIPT_PACKET_SIZE] = {
+        [0] = 0x0d,
+        [4] = 2,
+        [5] = 1,
+        [9] = 0xa5,
+    };
+    assert(force_feedback_script_runtime_apply_packet(&system, upload, sizeof(upload)));
+    assert(system.store.slots[2].allocated);
+    assert(system.store.data[0] == 0xa5);
+
+    system.values.variables[FORCE_FEEDBACK_SCRIPT_SAMPLE_COUNT_VARIABLE] = 100;
+    uint8_t input[FORCE_FEEDBACK_SCRIPT_PACKET_SIZE] = {
+        [0] = 0x0e,
+        [4] = FORCE_FEEDBACK_SCRIPT_INPUT_ACTIVE,
+        [5] = 25,
+    };
+    input[9] = FORCE_FEEDBACK_SCRIPT_INPUT_UNUSED;
+    input[18] = FORCE_FEEDBACK_SCRIPT_INPUT_UNUSED;
+    input[27] = FORCE_FEEDBACK_SCRIPT_INPUT_UNUSED;
+    assert(force_feedback_script_runtime_apply_packet(&system, input, sizeof(input)));
+    assert(system.inputs.deadline == 125);
+}
+
+static void test_rejects_unknown_or_incomplete_script_packets(void) {
+    ForceFeedbackScriptSystem system;
+    force_feedback_script_runtime_init(&system);
+    uint8_t unknown[] = {0x0f};
+
+    assert(!force_feedback_script_runtime_apply_packet(&system, unknown, sizeof(unknown)));
+    assert(!force_feedback_script_runtime_apply_packet(&system, unknown, 0));
+    assert(!force_feedback_script_runtime_apply_packet(&system, NULL, 0));
+    assert(!force_feedback_script_runtime_apply_packet(NULL, unknown, sizeof(unknown)));
+    assert(system.mode == FORCE_FEEDBACK_RUNTIME_POSITION_ONLY);
+    assert(system.store.used == 0);
+}
+
 int main(void) {
     test_initializes_complete_runtime();
     test_applies_controls_and_compacts_storage();
     test_rejects_invalid_control_without_changes();
+    test_routes_complete_script_packets();
+    test_rejects_unknown_or_incomplete_script_packets();
     force_feedback_script_runtime_init(NULL);
     return 0;
 }

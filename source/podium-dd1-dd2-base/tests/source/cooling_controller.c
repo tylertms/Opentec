@@ -9,6 +9,7 @@ static void test_standard_fan_profile(void) {
     cooling_controller_init(&controller, false);
     assert(controller.primary_duty_percent == 25);
     assert(controller.secondary_duty_percent == 25);
+    assert(controller.force_scale_percent == 100);
 
     cooling_controller_update(&controller, 7.0f, false, false, 0);
     assert(controller.phase == COOLING_PHASE_IDLE);

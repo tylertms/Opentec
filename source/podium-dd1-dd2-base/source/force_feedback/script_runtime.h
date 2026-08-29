@@ -23,6 +23,8 @@ typedef struct {
 } ForceFeedbackScriptSystem;
 
 void force_feedback_script_runtime_init(ForceFeedbackScriptSystem *system);
+bool force_feedback_script_runtime_apply_packet(ForceFeedbackScriptSystem *system,
+                                                const uint8_t *packet, size_t length);
 bool force_feedback_script_runtime_apply_control(ForceFeedbackScriptSystem *system,
                                                  const uint8_t *packet, size_t length);
 

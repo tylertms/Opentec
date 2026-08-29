@@ -362,6 +362,34 @@ usb_motor_vendor_service_run_mailbox(UsbMotorVendorService *service,
 }
 
 /**
+ * @brief Prepares the next USB packet without advancing response progress.
+ *
+ * Restores the download cursor after encoding so endpoint backpressure or a higher-priority vendor
+ * response can discard the packet without changing acknowledgement progress.
+ *
+ * @param[in] service Active motor vendor service.
+ * @param[out] packet Destination for the candidate USB response packet.
+ * @return Number of response bytes prepared, or zero while waiting or when no response is active.
+ */
+uint8_t usb_motor_vendor_service_prepare_response(UsbMotorVendorService *service,
+                                                  uint8_t packet[USB_MOTOR_RESPONSE_PACKET_SIZE]) {
+    if (service == 0 || !service->response_active) {
+        return 0;
+    }
+    uint16_t offset = service->download.offset;
+    uint8_t continuation_count = service->download.continuation_count;
+    bool awaiting_acknowledgement = service->download.awaiting_acknowledgement;
+    bool complete = service->download.complete;
+    uint8_t length = usb_motor_response_download_next(&service->download,
+                                                      service->buffers.application_data, packet);
+    service->download.offset = offset;
+    service->download.continuation_count = continuation_count;
+    service->download.awaiting_acknowledgement = awaiting_acknowledgement;
+    service->download.complete = complete;
+    return length;
+}
+
+/**
  * @brief Builds the next USB packet for a completed motor response.
  *
  * Advances compact or segmented report 6 framing and releases the retained application response

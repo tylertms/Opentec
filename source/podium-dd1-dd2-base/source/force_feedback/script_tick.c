@@ -9,7 +9,6 @@
 enum {
     SCRIPT_TICK_DELTA = 8,
     SCRIPT_AVERAGE_TICK = 9,
-    SCRIPT_SAMPLE_COUNT = 10,
     SCRIPT_TICK_SNAPSHOT = 11,
     MOTION_SELECTOR = 0,
     MOTION_FORCE = 2,
@@ -43,8 +42,9 @@ static void update_engine_timing(ForceFeedbackScriptSystem *system,
     } else {
         system->host_tick_snapshot = snapshot;
     }
-    uint32_t sample_count = system->values.variables[SCRIPT_SAMPLE_COUNT] + 1u;
-    system->values.variables[SCRIPT_SAMPLE_COUNT] = sample_count;
+    uint32_t sample_count =
+        system->values.variables[FORCE_FEEDBACK_SCRIPT_SAMPLE_COUNT_VARIABLE] + 1u;
+    system->values.variables[FORCE_FEEDBACK_SCRIPT_SAMPLE_COUNT_VARIABLE] = sample_count;
     system->values.variables[SCRIPT_TICK_SNAPSHOT] = snapshot;
     system->values.variables[SCRIPT_AVERAGE_TICK] = float_bits(
         ((float)snapshot / (float)sample_count) / (float)FORCE_FEEDBACK_TICKS_PER_SECOND);
@@ -76,7 +76,8 @@ ForceFeedbackScriptOutputPolicy force_feedback_script_tick(ForceFeedbackScriptSy
     }
 
     ForceFeedbackScriptSchedule schedule = force_feedback_script_scheduler_step(
-        &system->scheduler, &system->inputs, system->values.variables[SCRIPT_SAMPLE_COUNT], now);
+        &system->scheduler, &system->inputs,
+        system->values.variables[FORCE_FEEDBACK_SCRIPT_SAMPLE_COUNT_VARIABLE], now);
     if (schedule == FORCE_FEEDBACK_SCRIPT_SCHEDULE_NONE) {
         return FORCE_FEEDBACK_SCRIPT_OUTPUT_NONE;
     }
