@@ -1,97 +1,32 @@
 #include "display/prompt.h"
 
 #include <stdbool.h>
-#include <stddef.h>
 #include <stdint.h>
 
 #include "display/framebuffer.h"
+#include "display/text.h"
 
 enum {
-    GLYPH_WIDTH = 5,
     GLYPH_HEIGHT = 7,
-    GLYPH_ADVANCE = 6,
     GLYPH_SCALE = 2,
     PROMPT_COLOR = 15,
 };
 
-typedef struct {
-    char character;
-    uint8_t rows[GLYPH_HEIGHT];
-} Glyph;
-
-static const Glyph glyphs[] = {
-    {' ', {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
-    {'?', {0x0e, 0x11, 0x01, 0x02, 0x04, 0x00, 0x04}},
-    {'A', {0x0e, 0x11, 0x11, 0x1f, 0x11, 0x11, 0x11}},
-    {'B', {0x1e, 0x11, 0x11, 0x1e, 0x11, 0x11, 0x1e}},
-    {'E', {0x1f, 0x10, 0x10, 0x1e, 0x10, 0x10, 0x1f}},
-    {'I', {0x1f, 0x04, 0x04, 0x04, 0x04, 0x04, 0x1f}},
-    {'L', {0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1f}},
-    {'N', {0x11, 0x19, 0x19, 0x15, 0x13, 0x13, 0x11}},
-    {'O', {0x0e, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0e}},
-    {'Q', {0x0e, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0d}},
-    {'R', {0x1e, 0x11, 0x11, 0x1e, 0x14, 0x12, 0x11}},
-    {'T', {0x1f, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04}},
-    {'U', {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0e}},
-    {'0', {0x0e, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0e}},
-    {'1', {0x04, 0x0c, 0x04, 0x04, 0x04, 0x04, 0x0e}},
-    {'2', {0x0e, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1f}},
-    {'3', {0x1e, 0x01, 0x01, 0x0e, 0x01, 0x01, 0x1e}},
-    {'4', {0x02, 0x06, 0x0a, 0x12, 0x1f, 0x02, 0x02}},
-    {'5', {0x1f, 0x10, 0x10, 0x1e, 0x01, 0x01, 0x1e}},
-    {'6', {0x0e, 0x10, 0x10, 0x1e, 0x11, 0x11, 0x0e}},
-    {'7', {0x1f, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08}},
-    {'8', {0x0e, 0x11, 0x11, 0x0e, 0x11, 0x11, 0x0e}},
-    {'9', {0x0e, 0x11, 0x11, 0x0f, 0x01, 0x01, 0x0e}},
-};
-
-static const Glyph *find_glyph(char character) {
-    for (size_t index = 0; index < sizeof(glyphs) / sizeof(glyphs[0]); index++) {
-        if (glyphs[index].character == character) {
-            return &glyphs[index];
-        }
-    }
-    return &glyphs[0];
-}
-
-static uint16_t text_width(const char *text) {
-    uint16_t length = 0;
-    while (text[length] != '\0') {
-        length++;
-    }
-    return (uint16_t)((length * GLYPH_ADVANCE - 1) * GLYPH_SCALE);
-}
-
-static void draw_text(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], const char *text, uint16_t y) {
-    uint16_t x = (DISPLAY_FRAMEBUFFER_WIDTH - text_width(text)) / 2;
-    for (uint16_t index = 0; text[index] != '\0'; index++) {
-        const Glyph *glyph = find_glyph(text[index]);
-        for (uint16_t row = 0; row < GLYPH_HEIGHT; row++) {
-            for (uint16_t column = 0; column < GLYPH_WIDTH; column++) {
-                if ((glyph->rows[row] & (uint8_t)(1u << (GLYPH_WIDTH - column - 1))) == 0) {
-                    continue;
-                }
-                for (uint16_t scale_y = 0; scale_y < GLYPH_SCALE; scale_y++) {
-                    for (uint16_t scale_x = 0; scale_x < GLYPH_SCALE; scale_x++) {
-                        display_framebuffer_set_pixel(
-                            framebuffer,
-                            (uint16_t)(x + index * GLYPH_ADVANCE * GLYPH_SCALE +
-                                       column * GLYPH_SCALE + scale_x),
-                            (uint16_t)(y + row * GLYPH_SCALE + scale_y), PROMPT_COLOR);
-                    }
-                }
-            }
-        }
-    }
-}
-
+/**
+ * @brief Renders the force-output acknowledgement prompt.
+ *
+ * Clears the display and, while visible, draws both centered prompt lines at their selected rows.
+ *
+ * @param[out] framebuffer Complete local-display framebuffer.
+ * @param[in] visible True while the acknowledgement prompt owns the display.
+ */
 void display_prompt_render(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], bool visible) {
     display_framebuffer_clear(framebuffer);
     if (!visible) {
         return;
     }
-    draw_text(framebuffer, "ATTENTION", 10);
-    draw_text(framebuffer, "ENABLE TORQUE?", 38);
+    display_text_draw_centered(framebuffer, "ATTENTION", 10, GLYPH_SCALE, PROMPT_COLOR);
+    display_text_draw_centered(framebuffer, "ENABLE TORQUE?", 38, GLYPH_SCALE, PROMPT_COLOR);
 }
 
 /**
@@ -122,7 +57,9 @@ void display_prompt_render_bite_point(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SI
     } else {
         text[2] = (char)('0' + percent);
     }
-    draw_text(framebuffer, text, (DISPLAY_FRAMEBUFFER_HEIGHT - GLYPH_HEIGHT * GLYPH_SCALE) / 2);
+    display_text_draw_centered(framebuffer, text,
+                               (DISPLAY_FRAMEBUFFER_HEIGHT - GLYPH_HEIGHT * GLYPH_SCALE) / 2,
+                               GLYPH_SCALE, PROMPT_COLOR);
 }
 
 /**

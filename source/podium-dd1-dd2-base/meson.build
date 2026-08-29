@@ -11,7 +11,9 @@ cooling_tachometer_sources = files('source/cooling/tachometer.c')
 cooling_temperature_sources = files('source/cooling/temperature.c')
 display_controller_sources = files('source/display/controller.c')
 display_framebuffer_sources = files('source/display/framebuffer.c')
+display_notice_sources = files('source/display/notice.c')
 display_prompt_sources = files('source/display/prompt.c')
+display_text_sources = files('source/display/text.c')
 force_effect_bank_sources = files('source/force_feedback/bank.c')
 force_feedback_command_sources = files('source/force_feedback/command.c')
 force_feedback_state_sources = files('source/force_feedback/state.c')
@@ -190,7 +192,9 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'cooling-temperature': 'source/cooling/temperature.c',
     'display-controller': 'source/display/controller.c',
     'display-framebuffer': 'source/display/framebuffer.c',
+    'display-notice': 'source/display/notice.c',
     'display-prompt': 'source/display/prompt.c',
+    'display-text': 'source/display/text.c',
     'force-effect-bank': 'source/force_feedback/bank.c',
     'force-feedback-command': 'source/force_feedback/command.c',
     'force-feedback-state': 'source/force_feedback/state.c',
@@ -492,6 +496,17 @@ if not meson.is_cross_build()
     'base-display-prompt-test',
     'tests/source/display_prompt.c',
     display_prompt_sources,
+    display_text_sources,
+    display_framebuffer_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  display_notice_test = executable(
+    'base-display-notice-test',
+    'tests/source/display_notice.c',
+    display_notice_sources,
+    display_text_sources,
     display_framebuffer_sources,
     build_by_default: false,
     include_directories: base_include,
@@ -1908,6 +1923,7 @@ if not meson.is_cross_build()
   )
   test('base-display-controller', display_controller_test, suite: ['base', 'display'])
   test('base-display-framebuffer', display_framebuffer_test, suite: ['base', 'display'])
+  test('base-display-notice', display_notice_test, suite: ['base', 'display'])
   test('base-display-prompt', display_prompt_test, suite: ['base', 'display'])
   test('base-analog-samples', analog_samples_test, suite: ['base', 'analog'])
   test('base-force-effect', force_effect_test, suite: ['base', 'force-feedback'])

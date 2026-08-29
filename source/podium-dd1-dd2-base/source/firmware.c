@@ -9,6 +9,7 @@
 #include "cooling/effect_limit.h"
 #include "cooling/tachometer.h"
 #include "cooling/temperature.h"
+#include "display/notice.h"
 #include "display/prompt.h"
 #include "force_feedback/command.h"
 #include "force_feedback/output.h"
@@ -219,8 +220,9 @@ enum {
     FAN_STARTUP_DUTY_PERCENT = 25,
     USB_MOTOR_BUFFER_SIZE = MEMORY_TRANSFER_MAX_READ_SIZE,
     LOCAL_DISPLAY_PAGE_CLEAR = 0,
-    LOCAL_DISPLAY_PAGE_TORQUE_PROMPT = 1,
-    LOCAL_DISPLAY_PAGE_BITE_POINT = 2,
+    LOCAL_DISPLAY_PAGE_TORQUE_DISABLED = 1,
+    LOCAL_DISPLAY_PAGE_TORQUE_PROMPT = 2,
+    LOCAL_DISPLAY_PAGE_BITE_POINT = 3,
 };
 
 static uint8_t usb_motor_upload_assembly[USB_MOTOR_BUFFER_SIZE];
@@ -1233,22 +1235,26 @@ static void apply_force_output_prompt_action(ForceOutputEnableAction action) {
 /**
  * @brief Updates the local display when its active page changes.
  *
- * Gives the torque-confirmation prompt priority over paddle bite-point adjustment. Changes to the
- * active percentage redraw the bite-point page, and leaving both states clears the display.
+ * Gives the persistent torque-disabled notice priority over the torque-confirmation prompt and
+ * paddle bite-point adjustment. Changes to the active percentage redraw the bite-point page, and
+ * leaving all display owners clears the display.
  */
 static void service_local_display(void) {
     bool bite_point_visible =
         wheel_service_bite_point_adjustment(&wheel_service, &wheel_bite_point_display_percent);
-    uint8_t page = force_output_prompt_visible ? LOCAL_DISPLAY_PAGE_TORQUE_PROMPT
-                   : bite_point_visible        ? LOCAL_DISPLAY_PAGE_BITE_POINT
-                                               : LOCAL_DISPLAY_PAGE_CLEAR;
+    uint8_t page = torque_disabled_notice_visible ? LOCAL_DISPLAY_PAGE_TORQUE_DISABLED
+                   : force_output_prompt_visible  ? LOCAL_DISPLAY_PAGE_TORQUE_PROMPT
+                   : bite_point_visible           ? LOCAL_DISPLAY_PAGE_BITE_POINT
+                                                  : LOCAL_DISPLAY_PAGE_CLEAR;
     if (page == local_display_page &&
         (page != LOCAL_DISPLAY_PAGE_BITE_POINT ||
          wheel_bite_point_display_percent == local_display_rendered_bite_point_percent)) {
         return;
     }
 
-    if (page == LOCAL_DISPLAY_PAGE_TORQUE_PROMPT) {
+    if (page == LOCAL_DISPLAY_PAGE_TORQUE_DISABLED) {
+        display_notice_render_torque_disabled(display_framebuffer, true);
+    } else if (page == LOCAL_DISPLAY_PAGE_TORQUE_PROMPT) {
         display_prompt_render(display_framebuffer, true);
     } else {
         display_prompt_render_bite_point(display_framebuffer, page == LOCAL_DISPLAY_PAGE_BITE_POINT,

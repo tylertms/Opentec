@@ -1,0 +1,148 @@
+#include "display/text.h"
+
+#include <stddef.h>
+#include <stdint.h>
+
+#include "display/framebuffer.h"
+
+enum {
+    GLYPH_WIDTH = 5,
+    GLYPH_HEIGHT = 7,
+    GLYPH_ADVANCE = 6,
+};
+
+typedef struct {
+    char character;
+    uint8_t rows[GLYPH_HEIGHT];
+} Glyph;
+
+static const Glyph glyphs[] = {
+    {' ', {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+    {'?', {0x0e, 0x11, 0x01, 0x02, 0x04, 0x00, 0x04}},
+    {'A', {0x0e, 0x11, 0x11, 0x1f, 0x11, 0x11, 0x11}},
+    {'B', {0x1e, 0x11, 0x11, 0x1e, 0x11, 0x11, 0x1e}},
+    {'E', {0x1f, 0x10, 0x10, 0x1e, 0x10, 0x10, 0x1f}},
+    {'I', {0x1f, 0x04, 0x04, 0x04, 0x04, 0x04, 0x1f}},
+    {'L', {0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1f}},
+    {'N', {0x11, 0x19, 0x19, 0x15, 0x13, 0x13, 0x11}},
+    {'O', {0x0e, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0e}},
+    {'P', {0x1e, 0x11, 0x11, 0x1e, 0x10, 0x10, 0x10}},
+    {'Q', {0x0e, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0d}},
+    {'R', {0x1e, 0x11, 0x11, 0x1e, 0x14, 0x12, 0x11}},
+    {'T', {0x1f, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04}},
+    {'U', {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0e}},
+    {'a', {0x00, 0x00, 0x0e, 0x01, 0x0f, 0x11, 0x0f}},
+    {'b', {0x10, 0x10, 0x16, 0x19, 0x11, 0x11, 0x1e}},
+    {'d', {0x01, 0x01, 0x0d, 0x13, 0x11, 0x11, 0x0f}},
+    {'e', {0x00, 0x00, 0x0e, 0x11, 0x1f, 0x10, 0x0e}},
+    {'i', {0x04, 0x00, 0x0c, 0x04, 0x04, 0x04, 0x0e}},
+    {'l', {0x0c, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0e}},
+    {'n', {0x00, 0x00, 0x16, 0x19, 0x11, 0x11, 0x11}},
+    {'o', {0x00, 0x00, 0x0e, 0x11, 0x11, 0x11, 0x0e}},
+    {'q', {0x00, 0x00, 0x0d, 0x13, 0x11, 0x0f, 0x01}},
+    {'r', {0x00, 0x00, 0x16, 0x19, 0x10, 0x10, 0x10}},
+    {'s', {0x00, 0x00, 0x0f, 0x10, 0x0e, 0x01, 0x1e}},
+    {'t', {0x08, 0x08, 0x1e, 0x08, 0x08, 0x09, 0x06}},
+    {'u', {0x00, 0x00, 0x11, 0x11, 0x11, 0x13, 0x0d}},
+    {'w', {0x00, 0x00, 0x11, 0x11, 0x15, 0x15, 0x0a}},
+    {'y', {0x00, 0x00, 0x11, 0x11, 0x0f, 0x01, 0x0e}},
+    {'0', {0x0e, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0e}},
+    {'1', {0x04, 0x0c, 0x04, 0x04, 0x04, 0x04, 0x0e}},
+    {'2', {0x0e, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1f}},
+    {'3', {0x1e, 0x01, 0x01, 0x0e, 0x01, 0x01, 0x1e}},
+    {'4', {0x02, 0x06, 0x0a, 0x12, 0x1f, 0x02, 0x02}},
+    {'5', {0x1f, 0x10, 0x10, 0x1e, 0x01, 0x01, 0x1e}},
+    {'6', {0x0e, 0x10, 0x10, 0x1e, 0x11, 0x11, 0x0e}},
+    {'7', {0x1f, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08}},
+    {'8', {0x0e, 0x11, 0x11, 0x0e, 0x11, 0x11, 0x0e}},
+    {'9', {0x0e, 0x11, 0x11, 0x0f, 0x01, 0x01, 0x0e}},
+};
+
+/**
+ * @brief Finds the bitmap for one supported display character.
+ *
+ * Searches the compact built-in display alphabet and substitutes a blank for unsupported input.
+ *
+ * @param[in] character Character to locate.
+ * @return Matching glyph, or the blank glyph when the character is unavailable.
+ */
+static const Glyph *find_glyph(char character) {
+    for (size_t index = 0; index < sizeof(glyphs) / sizeof(glyphs[0]); index++) {
+        if (glyphs[index].character == character) {
+            return &glyphs[index];
+        }
+    }
+    return &glyphs[0];
+}
+
+/**
+ * @brief Measures display text rendered at a fixed scale.
+ *
+ * Includes the inter-character advance while excluding trailing spacing after the final glyph.
+ *
+ * @param[in] text Null-terminated text to measure.
+ * @param[in] scale Integer pixel scale.
+ * @return Rendered width in pixels, or zero for empty text or a zero scale.
+ */
+uint16_t display_text_width(const char *text, uint8_t scale) {
+    uint16_t length = 0;
+    while (text[length] != '\0') {
+        length++;
+    }
+    if (length == 0 || scale == 0) {
+        return 0;
+    }
+    return (uint16_t)((length * GLYPH_ADVANCE - 1) * scale);
+}
+
+/**
+ * @brief Draws display text into the grayscale framebuffer.
+ *
+ * Expands each lit glyph cell by the requested integer scale and leaves unlit pixels unchanged.
+ *
+ * @param[in,out] framebuffer Complete local-display framebuffer.
+ * @param[in] text Null-terminated text to draw.
+ * @param[in] x Left pixel coordinate.
+ * @param[in] y Top pixel coordinate.
+ * @param[in] scale Integer pixel scale.
+ * @param[in] color Four-bit grayscale value.
+ */
+void display_text_draw(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], const char *text, uint16_t x,
+                       uint16_t y, uint8_t scale, uint8_t color) {
+    for (uint16_t index = 0; text[index] != '\0'; index++) {
+        const Glyph *glyph = find_glyph(text[index]);
+        for (uint16_t row = 0; row < GLYPH_HEIGHT; row++) {
+            for (uint16_t column = 0; column < GLYPH_WIDTH; column++) {
+                if ((glyph->rows[row] & (uint8_t)(1u << (GLYPH_WIDTH - column - 1))) == 0) {
+                    continue;
+                }
+                for (uint8_t scale_y = 0; scale_y < scale; scale_y++) {
+                    for (uint8_t scale_x = 0; scale_x < scale; scale_x++) {
+                        display_framebuffer_set_pixel(framebuffer,
+                                                      (uint16_t)(x + index * GLYPH_ADVANCE * scale +
+                                                                 column * scale + scale_x),
+                                                      (uint16_t)(y + row * scale + scale_y), color);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * @brief Draws horizontally centered display text.
+ *
+ * Measures the selected text and clamps oversized content to the left display edge.
+ *
+ * @param[in,out] framebuffer Complete local-display framebuffer.
+ * @param[in] text Null-terminated text to draw.
+ * @param[in] y Top pixel coordinate.
+ * @param[in] scale Integer pixel scale.
+ * @param[in] color Four-bit grayscale value.
+ */
+void display_text_draw_centered(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], const char *text,
+                                uint16_t y, uint8_t scale, uint8_t color) {
+    uint16_t width = display_text_width(text, scale);
+    uint16_t x = width < DISPLAY_FRAMEBUFFER_WIDTH ? (DISPLAY_FRAMEBUFFER_WIDTH - width) / 2 : 0;
+    display_text_draw(framebuffer, text, x, y, scale, color);
+}
