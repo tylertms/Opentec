@@ -20,22 +20,6 @@ static const uint16_t driver_temperature_table[MOTOR_TEMPERATURE_TABLE_LENGTH] =
 };
 
 /**
- * @brief Advances the official seven-conversion auxiliary ADC cadence.
- * @param conversion_count Persistent conversion divider from zero through six.
- * @return True when auxiliary channels are due for collection.
- */
-bool motor_auxiliary_sample_due(uint8_t *conversion_count) {
-    uint8_t previous = *conversion_count;
-    *conversion_count = (uint8_t)(previous + 1U);
-    if (previous <= 5U) {
-        return false;
-    }
-
-    *conversion_count = 0U;
-    return true;
-}
-
-/**
  * @brief Converts an auxiliary ADC average through the selected official temperature table.
  * @param sample Averaged twelve-bit ADC sample.
  * @param sensor Temperature-table selection.

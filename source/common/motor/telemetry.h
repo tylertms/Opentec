@@ -26,7 +26,6 @@ typedef struct {
 } MotorAuxiliaryTelemetry;
 
 int16_t motor_temperature_interpolate(uint16_t sample, MotorTemperatureSensor sensor);
-bool motor_auxiliary_sample_due(uint8_t *conversion_count);
 bool motor_auxiliary_samples_accumulate(MotorAuxiliaryAccumulator *accumulator, uint16_t motor,
                                         uint16_t driver);
 bool motor_auxiliary_samples_resolve(MotorAuxiliaryAccumulator *accumulator,

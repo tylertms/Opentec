@@ -82,6 +82,25 @@ MotorControlRequest motor_control_request_decode(uint32_t calibration_command,
 }
 
 /**
+ * @brief Advances the seven-interrupt control-update cadence.
+ *
+ * The divider raises one deferred control update after every seventh completed ADC interrupt.
+ *
+ * @param conversion_count Persistent interrupt divider from zero through six.
+ * @return True when the deferred control update is due.
+ */
+bool motor_control_update_due(uint8_t *conversion_count) {
+    uint8_t previous = *conversion_count;
+    *conversion_count = (uint8_t)(previous + 1U);
+    if (previous <= 5U) {
+        return false;
+    }
+
+    *conversion_count = 0U;
+    return true;
+}
+
+/**
  * @brief Resolves the official startup current ramp from its service countdown.
  * @param ticks_remaining Countdown initialized to two thousand service ticks.
  * @return Current command rising by ten per elapsed tick and limited to ten thousand.

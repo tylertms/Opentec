@@ -6,8 +6,8 @@
 #include <fsl_pdb.h>
 #include <fsl_port.h>
 
+#include "common/motor/control.h"
 #include "common/motor/motion.h"
-#include "common/motor/telemetry.h"
 
 static MotorTimerHandler service_timer_handler;
 static void *service_timer_context;
@@ -22,7 +22,10 @@ static volatile bool encoder_revolution_complete;
 static MotorAdcHandler adc_handler;
 static void *adc_context;
 static uint32_t adc_encoder_scale;
-static uint8_t adc_auxiliary_conversion_count;
+static uint32_t adc0_auxiliary_channel;
+static uint16_t adc_auxiliary_first_sample;
+static uint8_t adc_control_conversion_count;
+static bool adc_auxiliary_second_sample;
 
 /**
  * @brief Calibrates and configures both motor-current ADCs for PDB triggering.
@@ -36,7 +39,7 @@ void motor_adc_initialize(uint32_t encoder_scale, MotorAdcHandler handler, void 
     adc_encoder_scale = encoder_scale;
     adc_handler = handler;
     adc_context = context;
-    adc_auxiliary_conversion_count = 0U;
+    adc_control_conversion_count = 0U;
 
     ADC16_GetDefaultConfig(&config);
     config.clockSource = kADC16_ClockSourceAlt0;
@@ -77,9 +80,9 @@ void motor_adc_initialize(uint32_t encoder_scale, MotorAdcHandler handler, void 
 static void motor_adc_interrupt_dispatch(void) {
     int16_t electrical_angle =
         motor_q15_scale_wrap(adc_encoder_scale, (int16_t)(uint16_t)FTM2->CNT);
-    bool auxiliary_sample_due = motor_auxiliary_sample_due(&adc_auxiliary_conversion_count);
+    bool control_update_due = motor_control_update_due(&adc_control_conversion_count);
     if (adc_handler != NULL) {
-        adc_handler(electrical_angle, auxiliary_sample_due, adc_context);
+        adc_handler(electrical_angle, control_update_due, adc_context);
     }
 }
 
@@ -193,9 +196,9 @@ MotorCurrentCalibrationResult motor_current_calibration_poll(MotorCurrentCalibra
  * ADC0 samples phase B and the board-selected auxiliary input. ADC1 samples phase A and starts
  * the alternating auxiliary sequence on channel two.
  *
- * @param adc0_auxiliary_channel Board-selected ADC0 auxiliary channel, either four or seven.
+ * @param auxiliary_channel Board-selected ADC0 auxiliary channel, either four or seven.
  */
-void motor_adc_runtime_initialize(uint32_t adc0_auxiliary_channel) {
+void motor_adc_runtime_initialize(uint32_t auxiliary_channel) {
     adc16_channel_config_t channel_config = {
         .channelNumber = 9U,
         .enableInterruptOnConversionCompleted = true,
@@ -206,11 +209,50 @@ void motor_adc_runtime_initialize(uint32_t adc0_auxiliary_channel) {
     channel_config.channelNumber = 10U;
     channel_config.enableInterruptOnConversionCompleted = false;
     ADC16_SetChannelConfig(ADC1, 0U, &channel_config);
+    adc0_auxiliary_channel = auxiliary_channel;
+    adc_auxiliary_first_sample = 0U;
+    adc_auxiliary_second_sample = false;
     channel_config.channelNumber = adc0_auxiliary_channel;
     ADC16_SetChannelConfig(ADC0, 1U, &channel_config);
     channel_config.channelNumber = 2U;
     ADC16_SetChannelConfig(ADC1, 1U, &channel_config);
     motor_adc_trigger_enable();
+}
+
+/**
+ * @brief Advances the alternating auxiliary ADC sample pair.
+ *
+ * Successive ADC1 channel-zero and channel-two conversions form one motor and driver temperature
+ * pair. The primary phase-current channels and board-selected ADC0 auxiliary input are restored on
+ * every cycle.
+ *
+ * @param samples Completed auxiliary sample pair when the function returns true.
+ * @return True after both auxiliary conversions have been captured.
+ */
+bool motor_adc_auxiliary_cycle(MotorAdcAuxiliarySamples *samples) {
+    bool pair_complete = adc_auxiliary_second_sample;
+    if (pair_complete) {
+        samples->motor = adc_auxiliary_first_sample;
+        samples->driver = (uint16_t)ADC1->R[1];
+    } else {
+        adc_auxiliary_first_sample = (uint16_t)ADC1->R[1];
+    }
+
+    adc16_channel_config_t channel_config = {
+        .channelNumber = 9U,
+        .enableInterruptOnConversionCompleted = true,
+        .enableDifferentialConversion = false,
+    };
+    ADC16_SetChannelConfig(ADC0, 0U, &channel_config);
+    channel_config.channelNumber = 10U;
+    channel_config.enableInterruptOnConversionCompleted = false;
+    ADC16_SetChannelConfig(ADC1, 0U, &channel_config);
+    channel_config.channelNumber = adc0_auxiliary_channel;
+    ADC16_SetChannelConfig(ADC0, 1U, &channel_config);
+    channel_config.channelNumber = pair_complete ? 0U : 2U;
+    ADC16_SetChannelConfig(ADC1, 1U, &channel_config);
+    adc_auxiliary_second_sample = !pair_complete;
+    return pair_complete;
 }
 
 /**

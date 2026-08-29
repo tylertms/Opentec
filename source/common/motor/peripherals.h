@@ -9,13 +9,19 @@
 typedef void (*MotorTimerHandler)(void *context);
 typedef void (*MotorEncoderOverflowHandler)(bool increasing, void *context);
 typedef void (*MotorEncoderIndexHandler)(uint16_t counter, void *context);
-typedef void (*MotorAdcHandler)(int16_t electrical_angle, bool auxiliary_sample_due, void *context);
+typedef void (*MotorAdcHandler)(int16_t electrical_angle, bool control_update_due, void *context);
+
+typedef struct {
+    uint16_t motor;
+    uint16_t driver;
+} MotorAdcAuxiliarySamples;
 
 void motor_adc_initialize(uint32_t encoder_scale, MotorAdcHandler handler, void *context);
 void motor_adc_trigger_initialize(void);
 void motor_adc_trigger_enable(void);
 MotorCurrentCalibrationResult motor_current_calibration_poll(MotorCurrentCalibrationState *state);
 void motor_adc_runtime_initialize(uint32_t adc0_auxiliary_channel);
+bool motor_adc_auxiliary_cycle(MotorAdcAuxiliarySamples *samples);
 void motor_reset_filter_initialize(void);
 void motor_interrupts_initialize(void);
 void motor_pwm_initialize(void);

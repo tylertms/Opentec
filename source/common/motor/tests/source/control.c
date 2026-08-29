@@ -41,6 +41,17 @@ static void test_request_decode(void) {
     assert(motor_control_request_decode(0U, 0U) == kMotorControlRequestNone);
 }
 
+static void test_control_update_cadence(void) {
+    uint8_t conversion_count = 0U;
+    for (uint32_t index = 0U; index < 6U; ++index) {
+        assert(!motor_control_update_due(&conversion_count));
+    }
+    assert(conversion_count == 6U);
+    assert(motor_control_update_due(&conversion_count));
+    assert(conversion_count == 0U);
+    assert(!motor_control_update_due(&conversion_count));
+}
+
 static void test_startup_ramp(void) {
     assert(motor_control_startup_ramp_current(2000U) == 0U);
     assert(motor_control_startup_ramp_current(1999U) == 10U);
@@ -72,6 +83,7 @@ int main(void) {
     test_startup_sequence();
     test_calibration_transitions();
     test_request_decode();
+    test_control_update_cadence();
     test_startup_ramp();
     test_current_reference();
     return 0;

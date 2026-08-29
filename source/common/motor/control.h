@@ -1,6 +1,7 @@
 #ifndef OPENTEC_MOTOR_CONTROL_H
 #define OPENTEC_MOTOR_CONTROL_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 typedef enum {
@@ -32,6 +33,7 @@ MotorControlMode motor_control_mode_complete(MotorControlMode mode);
 MotorControlMode motor_control_request_apply(MotorControlMode mode, MotorControlRequest request);
 MotorControlRequest motor_control_request_decode(uint32_t calibration_command,
                                                  uint32_t direction_command);
+bool motor_control_update_due(uint8_t *conversion_count);
 uint16_t motor_control_startup_ramp_current(uint16_t ticks_remaining);
 MotorControlCurrentReference motor_control_current_reference(int16_t torque_current);
 
