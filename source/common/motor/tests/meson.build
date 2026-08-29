@@ -5,6 +5,19 @@ motor_current_calibration_test = executable(
   include_directories: common_include,
 )
 
+motor_control_test = executable(
+  'motor-control-test',
+  'source/control.c',
+  motor_control_state_sources,
+  include_directories: common_include,
+)
+
+test(
+  'motor-control',
+  motor_control_test,
+  suite: ['motor', 'control'],
+)
+
 motor_center_test = executable(
   'motor-center-test',
   'source/center.c',

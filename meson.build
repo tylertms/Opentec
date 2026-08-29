@@ -20,6 +20,7 @@ endif
 
 common_include = include_directories('source')
 motor_center_sources = files('source/common/motor/center.c')
+motor_control_state_sources = files('source/common/motor/control.c')
 motor_current_offset_calibration_sources = files('source/common/motor/calibration.c')
 motor_drive_sources = files('source/common/motor/drive.c')
 motor_encoder_sources = files('source/common/motor/encoder.c')
@@ -44,7 +45,7 @@ motor_control_sources = files(
   'source/common/motor/link.c',
   'source/common/motor/peripherals.c',
   'source/common/motor/spi.c',
-) + motor_center_sources + motor_current_offset_calibration_sources + motor_drive_sources + motor_encoder_sources + motor_force_feedback_sources + motor_hardware_profile_sources + motor_link_frame_sources + motor_motion_sources + motor_parameter_sources + motor_protocol_sources + motor_service_sources + motor_auxiliary_telemetry_sources
+) + motor_center_sources + motor_control_state_sources + motor_current_offset_calibration_sources + motor_drive_sources + motor_encoder_sources + motor_force_feedback_sources + motor_hardware_profile_sources + motor_link_frame_sources + motor_motion_sources + motor_parameter_sources + motor_protocol_sources + motor_service_sources + motor_auxiliary_telemetry_sources
 wqr_frame_sources = files('source/common/wqr_frame.c')
 
 subdir('source/podium-dd1-dd2-wqr')
