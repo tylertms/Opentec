@@ -68,6 +68,7 @@ bool wheel_service_apply_multi_position_command(WheelService *service,
                                                 const UsbOperatingModeCommand *command);
 uint8_t wheel_service_multi_position_mode(const WheelService *service,
                                           TuningMultiPositionMode configured_mode);
+bool wheel_service_multi_position_supported(const WheelService *service);
 bool wheel_service_multi_position_input(WheelService *service, uint32_t now_ms,
                                         WheelMultiPositionInput *input);
 void wheel_service_apply_output_report(WheelService *service, const uint8_t *arguments,

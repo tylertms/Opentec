@@ -21,6 +21,7 @@ enum {
     XBOX_GIP_COMMAND_SCRIPT_STATUS = 6,
     XBOX_GIP_COMMAND_SCRIPT_VALUES = 7,
     XBOX_GIP_COMMAND_SCRIPT_AXES = 8,
+    XBOX_GIP_COMMAND_EXTENDED_STATUS = 9,
     XBOX_GIP_COMMAND_LAST_SAMPLE = 501,
     XBOX_GIP_COMMAND_EMPTY_SLOT = 15,
     XBOX_GIP_STEERING_RANGE_MINIMUM_DEGREES = 90,
@@ -45,7 +46,7 @@ static uint16_t read_u16(const uint8_t input[2]) {
 /**
  * @brief Decodes an Xbox GIP application command.
  *
- * Accepts group-zero command packet 0A selectors zero through eight and the group-20 transfer
+ * Accepts group-zero command packet 0A selectors zero through nine and the group-20 transfer
  * status selector. Control selectors request capabilities, steering range, force-feedback
  * strength, or transfer status. Script selectors allow sample indices through 501 and real slots
  * through 14 plus the empty slot-15 response.
@@ -108,6 +109,9 @@ bool usb_xbox_gip_command_decode(const uint8_t *packet, size_t length, UsbXboxGi
         break;
     case XBOX_GIP_COMMAND_SCRIPT_AXES:
         command->kind = USB_XBOX_GIP_COMMAND_SCRIPT_AXES;
+        break;
+    case XBOX_GIP_COMMAND_EXTENDED_STATUS:
+        command->kind = USB_XBOX_GIP_COMMAND_EXTENDED_STATUS;
         break;
     default:
         return false;

@@ -25,7 +25,7 @@ enum {
  * @param[in] input_active True when the attached-wheel input transport is active.
  * @return True when multi-position input is available.
  */
-static bool multi_position_input_supported(uint8_t wheel_mode, bool input_active) {
+bool wheel_capability_multi_position_supported(uint8_t wheel_mode, bool input_active) {
     switch (wheel_mode) {
     case 4:
     case 6:
@@ -210,7 +210,7 @@ bool wheel_capability_apply_multi_position_command(WheelCapabilityState *state,
 uint8_t wheel_capability_multi_position_mode(const WheelCapabilityState *state,
                                              TuningMultiPositionMode configured_mode,
                                              uint8_t wheel_mode, bool input_active) {
-    if (state == NULL || !multi_position_input_supported(wheel_mode, input_active)) {
+    if (state == NULL || !wheel_capability_multi_position_supported(wheel_mode, input_active)) {
         return TUNING_MULTI_POSITION_ENCODER;
     }
     if (configured_mode <= TUNING_MULTI_POSITION_CONSTANT) {

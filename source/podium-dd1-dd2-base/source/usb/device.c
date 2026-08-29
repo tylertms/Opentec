@@ -829,6 +829,28 @@ bool usb_device_queue_xbox_capabilities(void) {
 }
 
 /**
+ * @brief Queues the Xbox GIP attached-device status response.
+ *
+ * Encodes the current logical base and attached-device state with the next shared sequence and
+ * retains it until endpoint 1 accepts the transfer. Existing endpoint responses keep priority.
+ *
+ * @param[in] status Current logical attached-device status.
+ * @return True when the extended-status response was queued.
+ */
+bool usb_device_queue_xbox_extended_status(const UsbXboxGipExtendedStatus *status) {
+    if (operating_mode != USB_OPERATING_MODE_XBOX_GIP || !usb_device_configured() ||
+        xbox_service.session.state != USB_XBOX_GIP_SESSION_ACTIVE || status == NULL ||
+        xbox_response_ready) {
+        return false;
+    }
+    uint8_t sequence = usb_xbox_gip_sequence_take(&xbox_service.next_sequence);
+    usb_xbox_gip_extended_status_response_encode(sequence, status, xbox_response);
+    xbox_response_length = USB_XBOX_GIP_EXTENDED_STATUS_RESPONSE_SIZE;
+    xbox_response_ready = true;
+    return true;
+}
+
+/**
  * @brief Queues an Xbox GIP command transfer-status response.
  *
  * Echoes the triggering packet type and group with the current shared sequence without consuming

@@ -23,6 +23,19 @@ enum {
     XBOX_GIP_CAPABILITY_RANGE_LOWER = 0x38,
     XBOX_GIP_CAPABILITY_PEDAL_COUNT = 4,
     XBOX_GIP_CAPABILITY_FLAGS = 0x48,
+    XBOX_GIP_EXTENDED_STATUS_RESPONSE = 0x11,
+    XBOX_GIP_EXTENDED_STATUS_PAYLOAD_SIZE = 0x0d,
+    XBOX_GIP_EXTENDED_STATUS_READY = 1 << 0,
+    XBOX_GIP_EXTENDED_STATUS_LEGACY_PEDALS = 1 << 1,
+    XBOX_GIP_EXTENDED_STATUS_AUXILIARY_CALIBRATION = 1 << 2,
+    XBOX_GIP_EXTENDED_STATUS_PEDAL_RECOVERY = 1 << 3,
+    XBOX_GIP_EXTENDED_STATUS_THERMAL_LIMIT = 1 << 4,
+    XBOX_GIP_EXTENDED_STATUS_PEDAL_CALIBRATION = 1 << 5,
+    XBOX_GIP_EXTENDED_STATUS_WHEEL_CALIBRATION = 1 << 6,
+    XBOX_GIP_EXTENDED_STATUS_WHEEL_INPUT = 1 << 7,
+    XBOX_GIP_EXTENDED_STATUS_SECONDARY_PEDAL_CALIBRATION = 1 << 4,
+    XBOX_GIP_EXTENDED_STATUS_PROFILE_VERSION = 3,
+    XBOX_GIP_EXTENDED_STATUS_PROTOCOL_VERSION = 9,
     XBOX_GIP_EXTENDED_STATUS_WHEEL_MODE = 0x1d,
     XBOX_GIP_INPUT_PAYLOAD_SIZE = 0x32,
     XBOX_GIP_INPUT_AXIS_MODE = 0x66,
@@ -159,6 +172,57 @@ void usb_xbox_gip_capability_response_encode(
     output[12] = XBOX_GIP_CAPABILITY_PEDAL_COUNT;
     output[13] = 1;
     output[14] = XBOX_GIP_CAPABILITY_FLAGS;
+}
+
+/**
+ * @brief Encodes the Xbox GIP attached-device status response.
+ *
+ * Emits the wheel, pedal, shifter, thermal-limit, motor-controller, multi-position, adapter, and
+ * base-identity state in the 13-byte type-11 payload. Reserved bytes are cleared.
+ *
+ * @param[in] sequence Response sequence value.
+ * @param[in] status Current logical attached-device status.
+ * @param[out] output Destination for the extended-status response.
+ */
+void usb_xbox_gip_extended_status_response_encode(
+    uint8_t sequence, const UsbXboxGipExtendedStatus *status,
+    uint8_t output[USB_XBOX_GIP_EXTENDED_STATUS_RESPONSE_SIZE]) {
+    memset(output, 0, USB_XBOX_GIP_EXTENDED_STATUS_RESPONSE_SIZE);
+    output[0] = XBOX_GIP_EXTENDED_STATUS_RESPONSE;
+    output[2] = sequence;
+    output[3] = XBOX_GIP_EXTENDED_STATUS_PAYLOAD_SIZE;
+    output[4] =
+        (status->h_pattern_available ? XBOX_GIP_EXTENDED_STATUS_READY : 0) |
+        (status->legacy_pedal_mode ? XBOX_GIP_EXTENDED_STATUS_LEGACY_PEDALS : 0) |
+        ((status->legacy_pedal_mode || status->secondary_pedal_calibration) &&
+                 (status->pedal_connection_flags & 0xaau) == 0
+             ? XBOX_GIP_EXTENDED_STATUS_AUXILIARY_CALIBRATION
+             : 0) |
+        (status->pedal_recovery_handshake ? XBOX_GIP_EXTENDED_STATUS_PEDAL_RECOVERY : 0) |
+        (status->thermal_effect_limit ? XBOX_GIP_EXTENDED_STATUS_THERMAL_LIMIT : 0) |
+        (status->primary_pedal_calibration ? XBOX_GIP_EXTENDED_STATUS_PEDAL_CALIBRATION : 0) |
+        (status->wheel_calibration_available ? XBOX_GIP_EXTENDED_STATUS_WHEEL_CALIBRATION : 0) |
+        (status->wheel_input_capability_available ? XBOX_GIP_EXTENDED_STATUS_WHEEL_INPUT : 0);
+    output[5] = status->wheel_mode;
+    output[6] =
+        status->secondary_pedal_calibration
+            ? XBOX_GIP_EXTENDED_STATUS_SECONDARY_PEDAL_CALIBRATION
+            : (status->legacy_pedal_mode ? 1u : 0u) | (status->primary_pedal_calibration ? 2u : 0u);
+    output[7] = status->auxiliary_axis_active;
+    output[8] = status->axis_mode;
+    output[9] = XBOX_GIP_EXTENDED_STATUS_PROFILE_VERSION;
+    output[10] = XBOX_GIP_EXTENDED_STATUS_PROTOCOL_VERSION;
+    output[11] = status->transfer_code;
+    if (status->multi_position_supported) {
+        static const uint8_t variants[] = {1, 3, 2, 0};
+        output[12] = status->multi_position_mode < sizeof(variants)
+                         ? variants[status->multi_position_mode]
+                         : 4;
+    } else {
+        output[12] = 4;
+    }
+    output[13] = status->adapter_connected ? 1 : 0;
+    output[14] = status->board_variant == BOARD_VARIANT_DD2 ? 8 : status->hardware_option ? 7 : 6;
 }
 
 /**

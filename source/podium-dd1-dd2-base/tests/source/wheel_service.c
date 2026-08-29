@@ -517,13 +517,16 @@ static void test_routes_multi_position_mode(void) {
            TUNING_MULTI_POSITION_CONSTANT);
 
     service.protocol.mode = 4;
+    assert(!wheel_service_multi_position_supported(&service));
     assert(wheel_service_multi_position_mode(&service, TUNING_MULTI_POSITION_CONSTANT) ==
            TUNING_MULTI_POSITION_ENCODER);
     service.protocol.request_ready = true;
+    assert(wheel_service_multi_position_supported(&service));
     assert(wheel_service_multi_position_mode(&service, TUNING_MULTI_POSITION_CONSTANT) ==
            TUNING_MULTI_POSITION_CONSTANT);
     assert(wheel_service_multi_position_mode(NULL, TUNING_MULTI_POSITION_CONSTANT) ==
            TUNING_MULTI_POSITION_ENCODER);
+    assert(!wheel_service_multi_position_supported(NULL));
 }
 
 static void test_builds_direct_multi_position_input(void) {

@@ -23,6 +23,7 @@ bool wheel_capability_input_available(const WheelCapabilityState *state, uint8_t
 bool wheel_capability_tuning_menu_available(const WheelCapabilityState *state, uint8_t wheel_mode);
 bool wheel_capability_apply_multi_position_command(WheelCapabilityState *state,
                                                    const UsbOperatingModeCommand *command);
+bool wheel_capability_multi_position_supported(uint8_t wheel_mode, bool input_active);
 uint8_t wheel_capability_multi_position_mode(const WheelCapabilityState *state,
                                              TuningMultiPositionMode configured_mode,
                                              uint8_t wheel_mode, bool input_active);

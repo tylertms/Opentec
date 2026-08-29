@@ -62,6 +62,10 @@ static void test_decodes_script_queries(void) {
         assert(command.kind == expected[selector - 5]);
         assert(command.parameter == (selector == 5 ? 15 : 0x1234));
     }
+
+    packet[4] = 9;
+    assert(usb_xbox_gip_command_decode(packet, sizeof(packet), &command));
+    assert(command.kind == USB_XBOX_GIP_COMMAND_EXTENDED_STATUS);
 }
 
 static void test_rejects_other_packets_and_invalid_query_ranges(void) {
@@ -73,7 +77,7 @@ static void test_rejects_other_packets_and_invalid_query_ranges(void) {
     packet[5] = 16;
     packet[6] = 0;
     assert(!usb_xbox_gip_command_decode(packet, sizeof(packet), &command));
-    packet[4] = 9;
+    packet[4] = 10;
     assert(!usb_xbox_gip_command_decode(packet, sizeof(packet), &command));
     packet[4] = 6;
     packet[1] = 0x20;

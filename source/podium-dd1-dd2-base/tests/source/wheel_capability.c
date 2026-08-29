@@ -145,6 +145,16 @@ static void test_resolves_multi_position_mode(void) {
            TUNING_MULTI_POSITION_ENCODER);
 }
 
+static void test_reports_multi_position_support(void) {
+    assert(wheel_capability_multi_position_supported(4, true));
+    assert(!wheel_capability_multi_position_supported(4, false));
+    assert(wheel_capability_multi_position_supported(9, false));
+    assert(wheel_capability_multi_position_supported(23, false));
+    assert(wheel_capability_multi_position_supported(29, false));
+    assert(!wheel_capability_multi_position_supported(22, true));
+    assert(!wheel_capability_multi_position_supported(30, true));
+}
+
 int main(void) {
     test_caches_and_maps_report_capabilities();
     test_applies_calibration_mode_defaults();
@@ -153,5 +163,6 @@ int main(void) {
     test_applies_multi_position_override_commands();
     test_rejects_other_multi_position_commands();
     test_resolves_multi_position_mode();
+    test_reports_multi_position_support();
     return 0;
 }

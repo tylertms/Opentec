@@ -174,6 +174,7 @@ static FanatecEncoder fanatec_encoder;
 static UsbXboxGipInputBuilder xbox_input_builder;
 static UsbXboxGipInputState xbox_input_state;
 static UsbXboxGipInputSnapshot xbox_input_snapshot;
+static UsbXboxGipExtendedStatus xbox_extended_status;
 static WheelPositionCalibration xbox_position_calibration;
 static uint16_t xbox_steering_range_degrees;
 static uint16_t xbox_profile_steering_range_degrees;
@@ -277,6 +278,7 @@ typedef enum {
 typedef enum {
     USB_XBOX_CONTROL_RESPONSE_NONE,
     USB_XBOX_CONTROL_RESPONSE_CAPABILITIES,
+    USB_XBOX_CONTROL_RESPONSE_EXTENDED_STATUS,
     USB_XBOX_CONTROL_RESPONSE_TRANSFER_STATUS,
 } UsbXboxControlResponseKind;
 
@@ -1014,10 +1016,51 @@ static uint8_t encode_pending_force_feedback_script_report(uint8_t *sequence, ui
 }
 
 /**
+ * @brief Builds the current Xbox GIP attached-device status.
+ *
+ * Collects the base identity, negotiated wheel capabilities, pedal state, shifter modes, thermal
+ * limit, and motor-controller identity into the logical type-11 response model.
+ *
+ * @param[out] status Destination for the current logical extended status.
+ */
+static void build_xbox_extended_status(UsbXboxGipExtendedStatus *status) {
+    const PedalV3State *pedal_state = pedal_service_v3_state(&pedal_service);
+    bool h_pattern = shifter_input.primary_mode == SHIFTER_INPUT_H_PATTERN ||
+                     shifter_input.secondary_mode == SHIFTER_INPUT_H_PATTERN;
+    bool sequential = shifter_input.primary_mode == SHIFTER_INPUT_SEQUENTIAL ||
+                      shifter_input.secondary_mode == SHIFTER_INPUT_SEQUENTIAL;
+    *status = (UsbXboxGipExtendedStatus){
+        .board_variant = board_identity.variant,
+        .wheel_mode = wheel_service_mode(&wheel_service),
+        .pedal_connection_flags = pedal_state->connection_flags,
+        .auxiliary_axis_active = pedal_service.auxiliary_override_active ? 1 : 0,
+        .axis_mode = h_pattern    ? 1
+                     : sequential ? 2
+                                  : 0,
+        .transfer_code = motor_identity_input_transfer_code(motor_probe_identity(&motor_probe)),
+        .multi_position_mode =
+            wheel_service_multi_position_mode(&wheel_service, tuning_profile->multi_position_mode),
+        .hardware_option = board_identity.hardware_option != 0,
+        .h_pattern_available = h_pattern,
+        .legacy_pedal_mode = pedal_service_legacy_transport_active(&pedal_service),
+        .primary_pedal_calibration = pedal_state->primary_calibration,
+        .secondary_pedal_calibration = pedal_state->secondary_calibration,
+        .pedal_recovery_handshake = pedal_service.recovery_handshake,
+        .thermal_effect_limit = cooling_effect_limit.active,
+        .wheel_calibration_available = wheel_service_calibration_available(&wheel_service),
+        .wheel_input_capability_available =
+            wheel_service_input_capability_available(&wheel_service),
+        .multi_position_supported = wheel_service_multi_position_supported(&wheel_service),
+        .adapter_connected = wheel_service_adapter_connected(&wheel_service),
+    };
+}
+
+/**
  * @brief Queues a pending Xbox GIP control response.
  *
- * Retains capability and transfer-status requests until the active Xbox endpoint can accept the
- * corresponding response. Transfer status echoes the saved command packet type and group.
+ * Retains capability, attached-device status, and transfer-status requests until the active Xbox
+ * endpoint can accept the corresponding response. Transfer status echoes the saved command packet
+ * type and group.
  */
 static void prepare_usb_xbox_control_response(void) {
     if (usb_device_operating_mode() != USB_OPERATING_MODE_XBOX_GIP) {
@@ -1029,6 +1072,11 @@ static void prepare_usb_xbox_control_response(void) {
     case USB_XBOX_CONTROL_RESPONSE_CAPABILITIES:
         queued = usb_device_queue_xbox_capabilities();
         break;
+    case USB_XBOX_CONTROL_RESPONSE_EXTENDED_STATUS: {
+        build_xbox_extended_status(&xbox_extended_status);
+        queued = usb_device_queue_xbox_extended_status(&xbox_extended_status);
+        break;
+    }
     case USB_XBOX_CONTROL_RESPONSE_TRANSFER_STATUS:
         queued = usb_device_queue_xbox_transfer_status(usb_xbox_control_request);
         break;
@@ -1533,8 +1581,8 @@ static void apply_wheel_steering_limit_command(const WheelSteeringLimitCommand *
  * @brief Routes one Xbox GIP application command.
  *
  * Decodes group-zero command packet 0A, applies transient steering-range and force-level controls,
- * and schedules capability, transfer-status, or script responses. Earlier pending responses are
- * retained until they reach the endpoint.
+ * and schedules capability, attached-device status, transfer-status, or script responses. Earlier
+ * pending responses are retained until they reach the endpoint.
  *
  * @param[in] report Complete USB output report containing the GIP packet.
  * @return True when the report belongs to the Xbox application-command path.
@@ -1591,6 +1639,11 @@ static bool route_xbox_gip_command(const UsbDeviceOutputReport *report) {
     case USB_XBOX_GIP_COMMAND_SCRIPT_AXES:
         if (force_feedback_script_report_pending == FORCE_FEEDBACK_SCRIPT_REPORT_NONE) {
             force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_AXES;
+        }
+        break;
+    case USB_XBOX_GIP_COMMAND_EXTENDED_STATUS:
+        if (usb_xbox_control_response_pending == USB_XBOX_CONTROL_RESPONSE_NONE) {
+            usb_xbox_control_response_pending = USB_XBOX_CONTROL_RESPONSE_EXTENDED_STATUS;
         }
         break;
     }

@@ -586,6 +586,20 @@ uint8_t wheel_service_multi_position_mode(const WheelService *service,
 }
 
 /**
+ * @brief Reports whether the attached wheel supplies multi-position input.
+ *
+ * Applies the negotiated wheel-mode rules and current input-transport activity used by the
+ * multi-position report path.
+ *
+ * @param[in] service Attached-wheel service and capability state.
+ * @return True when multi-position input reporting is supported.
+ */
+bool wheel_service_multi_position_supported(const WheelService *service) {
+    return service != NULL && wheel_capability_multi_position_supported(
+                                  service->protocol.mode, service->protocol.request_ready);
+}
+
+/**
  * @brief Tests whether the attached adapter supplies rotary positions.
  *
  * Selects the wheel modes that replace the direct rotary bytes with the three adapter selectors
