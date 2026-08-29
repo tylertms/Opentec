@@ -68,6 +68,26 @@ static void test_classifies_script_status_query(void) {
     assert(!usb_vendor_command_decode(&output, &command));
 }
 
+static void test_decodes_script_sample_query(void) {
+    uint8_t payload[63] = {[4] = 4, [5] = 0xf5, [6] = 1};
+    UsbOutputCommand output = make_output(payload, 0x0a);
+    UsbVendorCommand command;
+    uint16_t index = 0;
+
+    assert(usb_vendor_command_decode(&output, &command));
+    assert(command.kind == USB_VENDOR_COMMAND_SCRIPT_SAMPLES);
+    assert(usb_vendor_command_script_sample_index(&command, &index));
+    assert(index == 501);
+
+    payload[5] = 0xf6;
+    assert(!usb_vendor_command_decode(&output, &command));
+    assert(!usb_vendor_command_script_sample_index(&command, &index));
+    assert(!usb_vendor_command_script_sample_index(NULL, &index));
+    assert(!usb_vendor_command_script_sample_index(&command, NULL));
+    command.kind = USB_VENDOR_COMMAND_SCRIPT_STATUS;
+    assert(!usb_vendor_command_script_sample_index(&command, &index));
+}
+
 static void test_identifies_motor_command_request(void) {
     uint8_t payload[63] = {0xff, 0, 1, 1};
     UsbOutputCommand output = make_output(payload, 0xff);
@@ -165,6 +185,7 @@ int main(void) {
     test_classifies_direct_command_routes();
     test_validates_extended_reset_signature();
     test_classifies_script_status_query();
+    test_decodes_script_sample_query();
     test_identifies_motor_command_request();
     test_decodes_wheel_transfer_commands();
     test_decodes_tuning_menu_wheel_report();

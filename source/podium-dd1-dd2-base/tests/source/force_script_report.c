@@ -9,6 +9,35 @@ static uint32_t decode_value(const uint8_t input[4]) {
            (uint32_t)input[3] << 24u;
 }
 
+static void test_encodes_ten_consecutive_samples(void) {
+    ForceFeedbackScriptRuntime runtime = {0};
+    uint8_t sequence = 3;
+    uint8_t response[FORCE_FEEDBACK_SCRIPT_SAMPLES_RESPONSE_SIZE] = {0};
+    static const uint8_t expected_envelope[] = {0x25, 0, 4, 0x2b, 4};
+
+    for (uint16_t index = 0; index < FORCE_FEEDBACK_SCRIPT_SAMPLE_REPORT_COUNT; index++) {
+        runtime.samples.values[501 + index] = UINT32_C(0x80706050) + index;
+    }
+    assert(force_feedback_script_samples_report_encode(&runtime, 501, &sequence, response,
+                                                       sizeof(response)));
+    assert(sequence == 4);
+    assert(memcmp(response, expected_envelope, sizeof(expected_envelope)) == 0);
+    for (uint8_t index = 0; index < FORCE_FEEDBACK_SCRIPT_SAMPLE_REPORT_COUNT; index++) {
+        assert(decode_value(response + 5 + index * 4u) == runtime.samples.values[501 + index]);
+    }
+
+    assert(!force_feedback_script_samples_report_encode(&runtime, 502, &sequence, response,
+                                                        sizeof(response)));
+    assert(!force_feedback_script_samples_report_encode(&runtime, 0, &sequence, response,
+                                                        sizeof(response) - 1));
+    assert(!force_feedback_script_samples_report_encode(NULL, 0, &sequence, response,
+                                                        sizeof(response)));
+    assert(!force_feedback_script_samples_report_encode(&runtime, 0, NULL, response,
+                                                        sizeof(response)));
+    assert(!force_feedback_script_samples_report_encode(&runtime, 0, &sequence, NULL,
+                                                        sizeof(response)));
+}
+
 static void test_encodes_complete_slot_status_response(void) {
     ForceFeedbackScriptRuntime runtime = {0};
     static const ForceFeedbackScriptSlotState states[FORCE_FEEDBACK_SCRIPT_SLOT_COUNT] = {
@@ -91,6 +120,7 @@ static void test_encodes_timing_before_writable_variables(void) {
 }
 
 int main(void) {
+    test_encodes_ten_consecutive_samples();
     test_encodes_complete_slot_status_response();
     test_encodes_timing_before_writable_variables();
     return 0;

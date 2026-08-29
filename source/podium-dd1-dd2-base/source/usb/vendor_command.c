@@ -8,6 +8,8 @@ enum {
     VENDOR_COMMAND_ARGUMENT_SIZE = 62,
     VENDOR_COMMAND_EXTENDED_RESET = 0x0a,
     VENDOR_COMMAND_SCRIPT_GROUP = 0,
+    VENDOR_COMMAND_SCRIPT_SAMPLES_SELECTOR = 4,
+    VENDOR_COMMAND_SCRIPT_SAMPLES_LAST_FIRST = 0x01f5,
     VENDOR_COMMAND_SCRIPT_STATUS_SELECTOR = 6,
     VENDOR_COMMAND_SCRIPT_VALUES_SELECTOR = 7,
     VENDOR_COMMAND_EXTENDED_RESET_GROUP = 1,
@@ -44,6 +46,11 @@ static int8_t command_kind(uint8_t opcode, const uint8_t *payload) {
         return USB_VENDOR_COMMAND_STATUS_RESPONSE;
     case VENDOR_COMMAND_EXTENDED_RESET:
         if (payload[1] == VENDOR_COMMAND_SCRIPT_GROUP) {
+            if (payload[4] == VENDOR_COMMAND_SCRIPT_SAMPLES_SELECTOR &&
+                ((uint16_t)payload[5] | (uint16_t)((uint16_t)payload[6] << 8)) <=
+                    VENDOR_COMMAND_SCRIPT_SAMPLES_LAST_FIRST) {
+                return USB_VENDOR_COMMAND_SCRIPT_SAMPLES;
+            }
             if (payload[4] == VENDOR_COMMAND_SCRIPT_STATUS_SELECTOR) {
                 return USB_VENDOR_COMMAND_SCRIPT_STATUS;
             }
@@ -66,6 +73,25 @@ static int8_t command_kind(uint8_t opcode, const uint8_t *payload) {
     default:
         return -1;
     }
+}
+
+/**
+ * @brief Reads the first sample index from a script sample query.
+ *
+ * Combines command argument bytes 4 and 5 in least-significant-byte-first order after confirming
+ * that the decoded command selects the bounded ten-sample response.
+ *
+ * @param[in] command Decoded script sample query.
+ * @param[out] index Destination for the first sample index.
+ * @return True when the command contains a valid sample query index.
+ */
+bool usb_vendor_command_script_sample_index(const UsbVendorCommand *command, uint16_t *index) {
+    if (command == NULL || index == NULL || command->kind != USB_VENDOR_COMMAND_SCRIPT_SAMPLES ||
+        command->arguments == NULL || command->length < 6) {
+        return false;
+    }
+    *index = (uint16_t)command->arguments[4] | (uint16_t)((uint16_t)command->arguments[5] << 8);
+    return *index <= VENDOR_COMMAND_SCRIPT_SAMPLES_LAST_FIRST;
 }
 
 /**

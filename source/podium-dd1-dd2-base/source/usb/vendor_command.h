@@ -14,6 +14,7 @@ typedef enum {
     USB_VENDOR_COMMAND_DIAGNOSTIC_SNAPSHOT,
     USB_VENDOR_COMMAND_REMOTE_TUNING,
     USB_VENDOR_COMMAND_STATUS_RESPONSE,
+    USB_VENDOR_COMMAND_SCRIPT_SAMPLES,
     USB_VENDOR_COMMAND_SCRIPT_STATUS,
     USB_VENDOR_COMMAND_SCRIPT_VALUES,
     USB_VENDOR_COMMAND_EXTENDED_RESET,
@@ -40,6 +41,7 @@ typedef struct {
 } UsbWheelTransferCommand;
 
 bool usb_vendor_command_decode(const UsbOutputCommand *output, UsbVendorCommand *command);
+bool usb_vendor_command_script_sample_index(const UsbVendorCommand *command, uint16_t *index);
 bool usb_vendor_command_requests_motor_command(const UsbVendorCommand *command);
 bool usb_vendor_command_decode_wheel_transfer(const UsbVendorCommand *command,
                                               UsbWheelTransferCommand *transfer);
