@@ -13,6 +13,7 @@ enum {
     INTERPOLATION_ERROR_SCALE = 0x666,
     INTERPOLATION_ACCUMULATOR_GAIN = 0x001da12f,
     INTERPOLATION_ACCUMULATOR_OUTPUT_SCALE = 12,
+    NATURAL_EFFECT_SCALE = 0x18000,
 };
 
 static const uint32_t interpolation_coefficients[MOTOR_DRIVE_INTERPOLATION_SETTING_COUNT] = {
@@ -116,4 +117,19 @@ int16_t motor_drive_interpolation_step(MotorDriveInterpolationState *state, int1
         motor_q15_scale_saturate(INTERPOLATION_ACCUMULATOR_GAIN, accumulator_input);
     state->accumulator += (uint32_t)(int32_t)accumulator_step;
     return state->output;
+}
+
+/**
+ * @brief Resolves an official natural damping or inertia component.
+ *
+ * The eight-bit tuning value is converted to Q15, applied to the signed motion sample, and scaled
+ * by the shared natural-effect gain before sixteen-bit saturation.
+ *
+ * @param motion Signed filtered velocity or acceleration sample.
+ * @param setting Natural damping or inertia tuning value.
+ * @return Signed current component that opposes the supplied motion.
+ */
+int16_t motor_drive_motion_resistance_resolve(int16_t motion, uint8_t setting) {
+    int16_t weighted_motion = motor_q15_scale_wrap((uint32_t)setting << 7U, motion);
+    return motor_q15_scale_saturate(NATURAL_EFFECT_SCALE, weighted_motion);
 }

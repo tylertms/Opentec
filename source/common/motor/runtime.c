@@ -42,6 +42,8 @@ enum {
     MOTOR_PARAMETER_DRIVE_CURRENT = 20,
     MOTOR_PARAMETER_STEERING_RANGE = 32,
     MOTOR_PARAMETER_OVERALL_GAIN = 33,
+    MOTOR_PARAMETER_NATURAL_DAMPING = 35,
+    MOTOR_PARAMETER_NATURAL_INERTIA = 37,
     MOTOR_PARAMETER_INTERPOLATION = 38,
     MOTOR_PARAMETER_FILTER = 39,
     MOTOR_PARAMETER_CONSTANT_GAIN = 40,
@@ -173,7 +175,15 @@ static int16_t motor_runtime_current_resolve(MotorRuntime *runtime) {
     int16_t primary_current = interpolation_setting < MOTOR_DRIVE_INTERPOLATION_SETTING_COUNT
                                   ? runtime->drive_interpolation.output
                                   : runtime->live_drive.primary_current;
-    int16_t current = MLIB_AddSat_F16(primary_current, runtime->live_drive.secondary_current);
+    int16_t damping = motor_drive_motion_resistance_resolve(
+        runtime->motion_sample.filtered_position_delta,
+        (uint8_t)runtime->parameters.entries[MOTOR_PARAMETER_NATURAL_DAMPING].value);
+    int16_t current = MLIB_SubSat_F16(primary_current, damping);
+    current = MLIB_AddSat_F16(current, runtime->live_drive.secondary_current);
+    int16_t inertia = motor_drive_motion_resistance_resolve(
+        runtime->motion_sample.filtered_velocity_delta,
+        (uint8_t)runtime->parameters.entries[MOTOR_PARAMETER_NATURAL_INERTIA].value);
+    current = MLIB_SubSat_F16(current, inertia);
     if (!runtime->calibration_valid || !runtime->encoder_index_detected) {
         return current;
     }

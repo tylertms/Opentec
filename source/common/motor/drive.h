@@ -24,5 +24,6 @@ MotorDriveCommand motor_drive_command_resolve(bool positive, uint32_t primary, i
                                               bool reduced_controller, bool secondary_disabled);
 int16_t motor_drive_interpolation_step(MotorDriveInterpolationState *state, int16_t sample,
                                        uint8_t setting);
+int16_t motor_drive_motion_resistance_resolve(int16_t motion, uint8_t setting);
 
 #endif

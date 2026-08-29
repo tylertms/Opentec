@@ -47,9 +47,17 @@ static void test_interpolation_filter(void) {
     assert(state.accumulator == 0U);
 }
 
+static void test_natural_motion_resistance(void) {
+    assert(motor_drive_motion_resistance_resolve(1000, 255U) == 2988);
+    assert(motor_drive_motion_resistance_resolve(-1000, 255U) == -2991);
+    assert(motor_drive_motion_resistance_resolve(INT16_MAX, 255U) == INT16_MAX);
+    assert(motor_drive_motion_resistance_resolve(1000, 0U) == 0);
+}
+
 int main(void) {
     test_normal_product_scales();
     test_full_torque_and_gates();
     test_interpolation_filter();
+    test_natural_motion_resistance();
     return 0;
 }
