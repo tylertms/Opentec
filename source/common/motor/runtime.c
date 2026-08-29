@@ -28,6 +28,7 @@
 #include "common/motor/spi.h"
 #include "common/motor/storage.h"
 #include "common/motor/telemetry.h"
+#include "common/motor/velocity_control.h"
 
 enum {
     MOTOR_PARAMETER_DIRECTION_COMMAND = 5,
@@ -52,6 +53,7 @@ typedef struct {
     MotorProtocolState protocol;
     MotorFocState foc;
     MotorFocOutput foc_output;
+    MotorVelocityControlState velocity_control;
     MotorAdcSample adc_sample;
     MotorCurrentCalibrationState current_calibration;
     MotorEncoderState encoder;
@@ -352,10 +354,35 @@ static void motor_runtime_encoder_calibration_erase(MotorRuntime *runtime) {
 }
 
 /**
+ * @brief Persists a completed encoder correction record.
+ *
+ * Flash erase and programming run inside one interrupt-masked transaction. Success publishes the
+ * new version, clears the calibration command, and enables correction lookup immediately.
+ *
+ * @param runtime Active motor runtime and completed calibration record.
+ */
+static void motor_runtime_encoder_calibration_store(MotorRuntime *runtime) {
+    uint32_t interrupt_mask = DisableGlobalIRQ();
+    status_t status = motor_calibration_storage_erase();
+    if (status == kStatus_Success) {
+        status = motor_calibration_storage_program(&runtime->encoder_calibration.record);
+    }
+    EnableGlobalIRQ(interrupt_mask);
+    if (status != kStatus_Success) {
+        motor_runtime_fault();
+    }
+
+    runtime->parameters.entries[MOTOR_PARAMETER_CALIBRATION_COMMAND].value = 0U;
+    runtime->parameters.entries[MOTOR_PARAMETER_CALIBRATION_VERSION].value =
+        runtime->encoder_calibration.record.version;
+    runtime->calibration_valid = true;
+}
+
+/**
  * @brief Applies one run-mode maintenance request.
  *
- * Erase has priority over the direction diagnostic. Encoder calibration remains in run mode until
- * its independently recovered velocity controller is available.
+ * Calibration and erase share parameter six and therefore take priority over the independent
+ * direction diagnostic in parameter five.
  *
  * @param runtime Active motor runtime and writable parameter bank.
  */
@@ -367,12 +394,61 @@ static void motor_runtime_request_apply(MotorRuntime *runtime) {
         motor_runtime_encoder_calibration_erase(runtime);
         return;
     }
+    if (request == kMotorControlRequestCalibrateEncoder) {
+        runtime->mode = motor_control_request_apply(runtime->mode, request);
+        return;
+    }
     if (request != kMotorControlRequestCheckEncoderDirection) {
         return;
     }
 
     motor_encoder_direction_initialize(&runtime->encoder_direction);
     runtime->mode = motor_control_request_apply(runtime->mode, request);
+}
+
+/**
+ * @brief Advances encoder correction calibration and its motor-control cycle.
+ *
+ * The ADC-rate state machine selects velocity targets and captures filtered velocity error at each
+ * tenth encoder count. The service-rate velocity PI supplies Q-axis current until both directional
+ * sweeps are captured, the shaft returns to center, and the record is persisted.
+ *
+ * @param runtime Active motor runtime, velocity controller, and calibration capture state.
+ */
+static void motor_runtime_encoder_calibration_step(MotorRuntime *runtime) {
+    motor_runtime_encoder_position_refresh(runtime);
+    motor_startup_interlock_outputs_apply(false, true);
+
+    MotorEncoderCalibrationInput input = {
+        .velocity = runtime->motion_sample.filtered_position_delta,
+        .correction = runtime->velocity_control.velocity_error,
+        .position = runtime->encoder.position,
+        .relative_position = motor_encoder_relative_position(
+            (uint16_t)FTM2->CNT, (uint16_t)runtime->encoder.zero_counter,
+            (uint16_t)runtime->hardware.encoder_modulus),
+        .encoder_period = (uint16_t)runtime->hardware.encoder_modulus,
+        .revolution_complete = motor_encoder_revolution_is_complete(),
+    };
+    MotorEncoderCalibrationStep step =
+        motor_encoder_calibration_step(&runtime->encoder_calibration, &input);
+
+    if (step.reset_controller) {
+        motor_velocity_control_reset(&runtime->velocity_control);
+    }
+    motor_velocity_control_target_set(&runtime->velocity_control, step.target_velocity);
+    if (step.clear_revolution) {
+        motor_encoder_revolution_clear();
+    }
+    if (step.arm_revolution) {
+        motor_encoder_revolution_arm();
+    }
+    if (step.result == kMotorEncoderCalibrationComplete) {
+        motor_runtime_encoder_calibration_store(runtime);
+        runtime->mode = motor_control_mode_complete(runtime->mode);
+    }
+
+    runtime->control_current = runtime->velocity_control.current_reference;
+    motor_runtime_control_cycle(runtime, runtime->control_current, false);
 }
 
 /**
@@ -466,11 +542,13 @@ static void motor_runtime_adc_handler(int16_t electrical_angle, bool control_upd
     case kMotorControlRun:
         motor_runtime_run_step(runtime);
         break;
+    case kMotorControlEncoderCalibration:
+        motor_runtime_encoder_calibration_step(runtime);
+        break;
     case kMotorControlEncoderDirectionCheck:
         motor_runtime_encoder_direction_step(runtime);
         break;
     case kMotorControlInactive:
-    case kMotorControlEncoderCalibration:
     default:
         break;
     }
@@ -524,6 +602,9 @@ static void motor_runtime_service_handler(void *context) {
                             (uint32_t)runtime->encoder.position, runtime->hardware.velocity_scale);
     (void)motor_service_timing_tick(&runtime->timing);
     motor_bus_service();
+    (void)motor_velocity_control_step(&runtime->velocity_control,
+                                      runtime->motion_sample.filtered_position_delta,
+                                      runtime->foc.q_controller.bLimFlag);
     runtime->parameters.entries[MOTOR_PARAMETER_SERVICE_TICK].value = runtime->service_tick;
     runtime->parameters.entries[MOTOR_PARAMETER_DRIVE_CURRENT].value =
         (uint16_t)runtime->control_current;
@@ -586,6 +667,8 @@ void motor_runtime_initialize(void) {
     motor_protocol_initialize(&motor_runtime.protocol,
                               motor_product_configuration.normal_output_percent);
     motor_foc_initialize(&motor_runtime.foc);
+    motor_velocity_control_initialize(&motor_runtime.velocity_control,
+                                      motor_product_configuration.velocity_current_limit);
     motor_service_timing_initialize(&motor_runtime.timing);
     motor_encoder_calibration_initialize(&motor_runtime.encoder_calibration);
     motor_encoder_direction_initialize(&motor_runtime.encoder_direction);

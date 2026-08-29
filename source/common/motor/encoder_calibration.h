@@ -43,7 +43,7 @@ typedef struct {
 
 typedef struct {
     MotorEncoderCalibrationResult result;
-    int16_t drive_current;
+    int16_t target_velocity;
     bool reset_controller;
     bool arm_revolution;
     bool clear_revolution;
@@ -55,7 +55,7 @@ typedef struct {
     int16_t velocity_lower;
     int16_t velocity_upper;
     uint16_t sweep_start_position;
-    int16_t drive_current;
+    int16_t target_velocity;
     MotorMotionFilter correction_filter;
     MotorEncoderCalibrationRecord record;
 } MotorEncoderCalibrationState;

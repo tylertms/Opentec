@@ -5,6 +5,7 @@
 
 typedef struct {
     uint8_t normal_output_percent;
+    int16_t velocity_current_limit;
 } MotorProductConfiguration;
 
 extern const MotorProductConfiguration motor_product_configuration;

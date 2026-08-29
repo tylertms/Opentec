@@ -24,7 +24,7 @@ static void test_capture_sequence(void) {
     MotorEncoderCalibrationStep step = motor_encoder_calibration_step(&state, &input);
     assert(step.reset_controller);
     step = motor_encoder_calibration_step(&state, &input);
-    assert(step.drive_current == 327);
+    assert(step.target_velocity == 327);
     step = advance_settle(&state, &input);
     assert(step.arm_revolution);
 
@@ -36,7 +36,7 @@ static void test_capture_sequence(void) {
     input.revolution_complete = true;
     step = motor_encoder_calibration_step(&state, &input);
     assert(step.clear_revolution);
-    assert(step.drive_current == -327);
+    assert(step.target_velocity == -327);
 
     input.revolution_complete = false;
     input.velocity = -327;
@@ -49,13 +49,13 @@ static void test_capture_sequence(void) {
     input.relative_position = 100U;
     input.revolution_complete = true;
     step = motor_encoder_calibration_step(&state, &input);
-    assert(step.drive_current == -655);
+    assert(step.target_velocity == -655);
 
     input.position = 100;
     input.revolution_complete = false;
     step = motor_encoder_calibration_step(&state, &input);
     assert(step.result == kMotorEncoderCalibrationComplete);
-    assert(step.drive_current == 0);
+    assert(step.target_velocity == 0);
     assert(state.record.magic == 0xaaaaaaaaU);
     assert(state.record.version == 3U);
     assert(state.record.correction_scale == 0x3333U);
@@ -77,7 +77,7 @@ static void test_velocity_and_center_boundaries(void) {
     assert(state.phase == kMotorEncoderCalibrationSettleForward);
 
     state.phase = kMotorEncoderCalibrationCenter;
-    state.drive_current = 655;
+    state.target_velocity = 655;
     input.position = -101;
     assert(motor_encoder_calibration_step(&state, &input).result ==
            kMotorEncoderCalibrationPending);

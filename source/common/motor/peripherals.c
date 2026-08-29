@@ -385,9 +385,15 @@ void motor_encoder_overflow_interrupt_enable(void) {
 void motor_encoder_revolution_arm(void) { encoder_revolution_armed = true; }
 
 /**
- * @brief Clears the official encoder calibration full-revolution event.
+ * @brief Clears the encoder calibration full-revolution capture.
+ *
+ * Both the one-shot arm and completion state are released after each captured sweep, matching the
+ * two flags cleared by both official motor images.
  */
-void motor_encoder_revolution_clear(void) { encoder_revolution_complete = false; }
+void motor_encoder_revolution_clear(void) {
+    encoder_revolution_armed = false;
+    encoder_revolution_complete = false;
+}
 
 /**
  * @brief Reads the official encoder calibration full-revolution event.

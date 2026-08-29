@@ -71,6 +71,19 @@ motor_service_timing_test = executable(
   include_directories: common_include,
 )
 
+motor_velocity_control_test = executable(
+  'motor-velocity-control-test',
+  'source/velocity_control.c',
+  motor_velocity_control_sources,
+  include_directories: [include_directories('stubs'), common_include],
+)
+
+test(
+  'motor-velocity-control',
+  motor_velocity_control_test,
+  suite: ['motor', 'control'],
+)
+
 test(
   'motor-service-timing',
   motor_service_timing_test,

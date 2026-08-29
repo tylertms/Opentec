@@ -3,8 +3,8 @@
 #include <limits.h>
 
 enum {
-    MOTOR_ENCODER_CALIBRATION_DRIVE_CURRENT = 327,
-    MOTOR_ENCODER_CALIBRATION_CENTER_CURRENT = 655,
+    MOTOR_ENCODER_CALIBRATION_SWEEP_VELOCITY = 327,
+    MOTOR_ENCODER_CALIBRATION_CENTER_VELOCITY = 655,
     MOTOR_ENCODER_CALIBRATION_VELOCITY_TOLERANCE = 32,
     MOTOR_ENCODER_CALIBRATION_SETTLE_COUNT = 1000,
     MOTOR_ENCODER_CALIBRATION_CENTER_TOLERANCE = 100,
@@ -52,7 +52,11 @@ static void motor_encoder_calibration_sample(MotorEncoderCalibrationState *state
 }
 
 /**
- * @brief Initializes the official seven-phase encoder correction capture sequence.
+ * @brief Initializes the seven-phase encoder correction capture sequence.
+ *
+ * Calibration begins with a zero velocity target and a shift-three correction filter while the
+ * persistent record is cleared for a fresh pair of directional sweeps.
+ *
  * @param state Calibration phase, filter, captured table, and persistent record.
  */
 void motor_encoder_calibration_initialize(MotorEncoderCalibrationState *state) {
@@ -62,33 +66,37 @@ void motor_encoder_calibration_initialize(MotorEncoderCalibrationState *state) {
 }
 
 /**
- * @brief Advances one official encoder correction calibration sample.
+ * @brief Advances one encoder correction calibration sample.
+ *
+ * The state machine settles at each recovered velocity target, captures one complete revolution
+ * in each direction, returns the shaft to center, and finalizes the persistent record header.
+ *
  * @param state Persistent calibration phase, velocity window, filter, and correction tables.
  * @param input Current velocity, correction error, position, encoder phase, and revolution event.
- * @return Drive and synchronization actions plus the completion result.
+ * @return Velocity and synchronization actions plus the completion result.
  */
 MotorEncoderCalibrationStep
 motor_encoder_calibration_step(MotorEncoderCalibrationState *state,
                                const MotorEncoderCalibrationInput *input) {
     MotorEncoderCalibrationStep step = {
-        .drive_current = state->drive_current,
+        .target_velocity = state->target_velocity,
     };
 
     switch (state->phase) {
     case kMotorEncoderCalibrationInitialize:
-        state->drive_current = 0;
+        state->target_velocity = 0;
         state->phase = kMotorEncoderCalibrationStartForward;
-        step.drive_current = state->drive_current;
+        step.target_velocity = state->target_velocity;
         step.reset_controller = true;
         return step;
     case kMotorEncoderCalibrationStartForward:
-        state->drive_current = MOTOR_ENCODER_CALIBRATION_DRIVE_CURRENT;
+        state->target_velocity = MOTOR_ENCODER_CALIBRATION_SWEEP_VELOCITY;
         state->velocity_lower =
-            MOTOR_ENCODER_CALIBRATION_DRIVE_CURRENT - MOTOR_ENCODER_CALIBRATION_VELOCITY_TOLERANCE;
+            MOTOR_ENCODER_CALIBRATION_SWEEP_VELOCITY - MOTOR_ENCODER_CALIBRATION_VELOCITY_TOLERANCE;
         state->velocity_upper =
-            MOTOR_ENCODER_CALIBRATION_DRIVE_CURRENT + MOTOR_ENCODER_CALIBRATION_VELOCITY_TOLERANCE;
+            MOTOR_ENCODER_CALIBRATION_SWEEP_VELOCITY + MOTOR_ENCODER_CALIBRATION_VELOCITY_TOLERANCE;
         state->phase = kMotorEncoderCalibrationSettleForward;
-        step.drive_current = state->drive_current;
+        step.target_velocity = state->target_velocity;
         return step;
     case kMotorEncoderCalibrationSettleForward:
         ++state->settle_count;
@@ -108,9 +116,9 @@ motor_encoder_calibration_step(MotorEncoderCalibrationState *state,
             input->relative_position != state->sweep_start_position) {
             return step;
         }
-        state->drive_current = -MOTOR_ENCODER_CALIBRATION_DRIVE_CURRENT;
+        state->target_velocity = -MOTOR_ENCODER_CALIBRATION_SWEEP_VELOCITY;
         state->phase = kMotorEncoderCalibrationSettleReverse;
-        step.drive_current = state->drive_current;
+        step.target_velocity = state->target_velocity;
         step.clear_revolution = true;
         return step;
     case kMotorEncoderCalibrationSettleReverse:
@@ -131,10 +139,10 @@ motor_encoder_calibration_step(MotorEncoderCalibrationState *state,
             input->relative_position != state->sweep_start_position) {
             return step;
         }
-        state->drive_current = input->position > 0 ? -MOTOR_ENCODER_CALIBRATION_CENTER_CURRENT
-                                                   : MOTOR_ENCODER_CALIBRATION_CENTER_CURRENT;
+        state->target_velocity = input->position > 0 ? -MOTOR_ENCODER_CALIBRATION_CENTER_VELOCITY
+                                                     : MOTOR_ENCODER_CALIBRATION_CENTER_VELOCITY;
         state->phase = kMotorEncoderCalibrationCenter;
-        step.drive_current = state->drive_current;
+        step.target_velocity = state->target_velocity;
         step.clear_revolution = true;
         return step;
     case kMotorEncoderCalibrationCenter:
@@ -146,9 +154,9 @@ motor_encoder_calibration_step(MotorEncoderCalibrationState *state,
         state->record.version = MOTOR_ENCODER_CALIBRATION_VERSION;
         state->record.correction_scale = MOTOR_ENCODER_CALIBRATION_SCALE;
         state->record.sample_offset = MOTOR_ENCODER_CALIBRATION_SAMPLE_OFFSET;
-        state->drive_current = 0;
+        state->target_velocity = 0;
         state->phase = kMotorEncoderCalibrationInitialize;
-        step.drive_current = state->drive_current;
+        step.target_velocity = state->target_velocity;
         step.result = kMotorEncoderCalibrationComplete;
         return step;
     }
