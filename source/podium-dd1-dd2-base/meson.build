@@ -96,7 +96,6 @@ usb_host_capability_recovery_sources = files('source/usb/host_capability_recover
 i2c_probe_sources = files('source/i2c/probe.c')
 i2c_probe_bus_sources = files('source/i2c/probe_bus.c')
 i2c_probe_exchange_service_sources = files('source/i2c/probe_exchange_service.c')
-i2c_probe_packet_sources = files('source/i2c/probe_packet.c')
 i2c_probe_startup_service_sources = files('source/i2c/probe_startup_service.c')
 i2c_probe_transfer_service_sources = files('source/i2c/probe_transfer_service.c')
 status_led_sources = files('source/board/status_led.c')
@@ -292,7 +291,6 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'i2c-probe': 'source/i2c/probe.c',
     'i2c-probe-bus': 'source/i2c/probe_bus.c',
     'i2c-probe-exchange-service': 'source/i2c/probe_exchange_service.c',
-    'i2c-probe-packet': 'source/i2c/probe_packet.c',
     'i2c-probe-startup-service': 'source/i2c/probe_startup_service.c',
     'i2c-probe-transfer-service': 'source/i2c/probe_transfer_service.c',
     'status-led': 'source/board/status_led.c',
@@ -1291,14 +1289,6 @@ if not meson.is_cross_build()
     i2c_probe_sources,
     i2c_probe_bus_sources,
     i2c_probe_exchange_service_sources,
-    build_by_default: false,
-    include_directories: base_include,
-  )
-
-  i2c_probe_packet_test = executable(
-    'base-i2c-probe-packet-test',
-    'tests/source/i2c_probe_packet.c',
-    i2c_probe_packet_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2374,7 +2364,6 @@ if not meson.is_cross_build()
     i2c_probe_exchange_service_test,
     suite: ['base', 'i2c'],
   )
-  test('base-i2c-probe-packet', i2c_probe_packet_test, suite: ['base', 'i2c', 'usb'])
   test(
     'base-i2c-probe-transfer-service',
     i2c_probe_transfer_service_test,
