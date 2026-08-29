@@ -29,6 +29,10 @@ static bool adc_auxiliary_second_sample;
 
 /**
  * @brief Calibrates and configures both motor-current ADCs for PDB triggering.
+ *
+ * Both ADC modules are calibrated with hardware averaging, then restored to twelve-bit,
+ * divider-two, non-continuous operation. ADC1 channel ten supplies the startup interrupt.
+ *
  * @param encoder_scale Board-selected fixed-point electrical-angle scale.
  * @param handler Function invoked for each completed motor ADC conversion.
  * @param context Caller context passed to the ADC handler.
@@ -62,9 +66,6 @@ void motor_adc_initialize(uint32_t encoder_scale, MotorAdcHandler handler, void 
     ADC16_Init(ADC1, &config);
     ADC16_EnableHardwareTrigger(ADC0, true);
     ADC16_EnableHardwareTrigger(ADC1, true);
-
-    SIM->SOPT7 = SIM_SOPT7_ADC0TRGSEL(8U) | SIM_SOPT7_ADC0ALTTRGEN_MASK | SIM_SOPT7_ADC1TRGSEL(8U) |
-                 SIM_SOPT7_ADC1ALTTRGEN_MASK;
 
     adc16_channel_config_t channel_config = {
         .channelNumber = 10U,
@@ -142,6 +143,18 @@ void motor_adc_trigger_enable(void) {
 
     PDB_SetADCPreTriggerConfig(PDB0, kPDB_ADCTriggerChannel0, &config);
     PDB_SetADCPreTriggerConfig(PDB0, kPDB_ADCTriggerChannel1, &config);
+}
+
+/**
+ * @brief Routes both current ADCs through the PDB for offset calibration.
+ *
+ * The route changes only when the startup state reaches current calibration. All six zero-duty
+ * PWM outputs are unmasked at the same transition.
+ */
+void motor_current_calibration_hardware_start(void) {
+    SIM->SOPT7 |= SIM_SOPT7_ADC0TRGSEL(8U) | SIM_SOPT7_ADC0ALTTRGEN_MASK |
+                  SIM_SOPT7_ADC1TRGSEL(8U) | SIM_SOPT7_ADC1ALTTRGEN_MASK;
+    motor_pwm_enable_outputs();
 }
 
 /**

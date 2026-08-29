@@ -19,6 +19,7 @@ typedef struct {
 void motor_adc_initialize(uint32_t encoder_scale, MotorAdcHandler handler, void *context);
 void motor_adc_trigger_initialize(void);
 void motor_adc_trigger_enable(void);
+void motor_current_calibration_hardware_start(void);
 MotorCurrentCalibrationResult motor_current_calibration_poll(MotorCurrentCalibrationState *state);
 void motor_adc_runtime_initialize(uint32_t adc0_auxiliary_channel);
 bool motor_adc_auxiliary_cycle(MotorAdcAuxiliarySamples *samples);
