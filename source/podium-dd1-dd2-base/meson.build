@@ -106,6 +106,7 @@ led_pattern_sources = files('source/board/led_pattern.c')
 power_controller_sources = files('source/board/power.c')
 torque_key_sources = files('source/board/torque_key.c')
 system_torque_transition_sources = files('source/system/torque_transition.c')
+runtime_bridge_sources = files('source/system/runtime_bridge.c')
 torque_key_prompt_sources = files('source/system/torque_key_prompt.c')
 system_event_queue_sources = files('source/system/event_queue.c')
 system_event_dispatcher_sources = files('source/system/event_dispatcher.c')
@@ -317,6 +318,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'power-controller': 'source/board/power.c',
     'torque-key': 'source/board/torque_key.c',
     'system-torque-transition': 'source/system/torque_transition.c',
+    'runtime-bridge': 'source/system/runtime_bridge.c',
     'torque-key-prompt': 'source/system/torque_key_prompt.c',
     'system-event-queue': 'source/system/event_queue.c',
     'system-event-dispatcher': 'source/system/event_dispatcher.c',
@@ -1404,6 +1406,15 @@ if not meson.is_cross_build()
     'base-system-torque-transition-test',
     'tests/source/system_torque_transition.c',
     system_torque_transition_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  runtime_bridge_test = executable(
+    'base-runtime-bridge-test',
+    'tests/source/runtime_bridge.c',
+    runtime_bridge_sources,
+    platform_time_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2581,6 +2592,7 @@ if not meson.is_cross_build()
     system_torque_transition_test,
     suite: ['base', 'system', 'power'],
   )
+  test('base-runtime-bridge', runtime_bridge_test, suite: ['base', 'system', 'usb'])
   test('base-system-event-queue', system_event_queue_test, suite: ['base', 'system', 'event'])
   test(
     'base-system-event-dispatcher',
