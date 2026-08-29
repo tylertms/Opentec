@@ -5,6 +5,10 @@
 #include <fsl_edma.h>
 #include <string.h>
 
+static MotorSpiTransferBuffers *transfer_buffers;
+static MotorSpiReceiveHandler transfer_receive_handler;
+static void *transfer_context;
+
 static void motor_spi_controller_initialize(void) {
     CLOCK_EnableClock(kCLOCK_Spi0);
 
@@ -31,14 +35,33 @@ static void motor_spi_dma_channel_initialize(uint32_t channel, int32_t request,
     DMAMUX_EnableChannel(DMAMUX, channel);
 }
 
+static void motor_spi_dma_initialize(void) {
+    edma_transfer_config_t transfer;
+
+    EDMA_PrepareTransfer(&transfer, transfer_buffers->transmit, 1U, (void *)&SPI0->PUSHR, 1U, 1U,
+                         MOTOR_SPI_TRANSFER_SIZE, kEDMA_MemoryToPeripheral);
+    motor_spi_dma_channel_initialize(0U, kDmaRequestMux0SPI0Tx, &transfer);
+
+    EDMA_PrepareTransfer(&transfer, (void *)&SPI0->POPR, 1U, transfer_buffers->receive, 1U, 1U,
+                         MOTOR_SPI_TRANSFER_SIZE, kEDMA_PeripheralToMemory);
+    motor_spi_dma_channel_initialize(1U, kDmaRequestMux0SPI0Rx, &transfer);
+
+    EDMA_EnableChannelRequest(DMA0, 1U);
+    EDMA_EnableChannelRequest(DMA0, 0U);
+}
+
 /**
  * @brief Configures SPI0 and two 13-byte DMA channels for full-duplex motor transfers.
  * @param buffers Persistent transmit and receive buffers used directly by DMA.
+ * @param receive_handler Function invoked when the receive DMA channel completes.
+ * @param context Caller context passed to the receive handler.
  */
-void motor_spi_initialize(MotorSpiTransferBuffers *buffers) {
-    edma_transfer_config_t transfer;
-
+void motor_spi_initialize(MotorSpiTransferBuffers *buffers, MotorSpiReceiveHandler receive_handler,
+                          void *context) {
     memset(buffers, 0, sizeof(*buffers));
+    transfer_buffers = buffers;
+    transfer_receive_handler = receive_handler;
+    transfer_context = context;
     DisableIRQ(DMA0_DMA4_IRQn);
     DisableIRQ(DMA1_DMA5_IRQn);
 
@@ -47,17 +70,30 @@ void motor_spi_initialize(MotorSpiTransferBuffers *buffers) {
     CLOCK_EnableClock(kCLOCK_Dma0);
     DMA0->CR = 0U;
 
-    EDMA_PrepareTransfer(&transfer, buffers->transmit, 1U, (void *)&SPI0->PUSHR, 1U, 1U,
-                         MOTOR_SPI_TRANSFER_SIZE, kEDMA_MemoryToPeripheral);
-    motor_spi_dma_channel_initialize(0U, kDmaRequestMux0SPI0Tx, &transfer);
-
-    EDMA_PrepareTransfer(&transfer, (void *)&SPI0->POPR, 1U, buffers->receive, 1U, 1U,
-                         MOTOR_SPI_TRANSFER_SIZE, kEDMA_PeripheralToMemory);
-    motor_spi_dma_channel_initialize(1U, kDmaRequestMux0SPI0Rx, &transfer);
-
-    EDMA_EnableChannelRequest(DMA0, 1U);
-    EDMA_EnableChannelRequest(DMA0, 0U);
+    motor_spi_dma_initialize();
 
     EnableIRQ(DMA0_DMA4_IRQn);
     EnableIRQ(DMA1_DMA5_IRQn);
+}
+
+/**
+ * @brief Rebuilds and enables both official thirteen-byte SPI DMA transfers.
+ */
+void motor_spi_transfer_restart(void) { motor_spi_dma_initialize(); }
+
+/**
+ * @brief Completes the official SPI transmit DMA channel interrupt.
+ */
+void DMA0_DMA4_IRQHandler(void) {
+    EDMA_ClearChannelStatusFlags(DMA0, 0U, kEDMA_InterruptFlag | kEDMA_DoneFlag);
+}
+
+/**
+ * @brief Completes the official SPI receive DMA channel and processes its frame.
+ */
+void DMA1_DMA5_IRQHandler(void) {
+    EDMA_ClearChannelStatusFlags(DMA0, 1U, kEDMA_InterruptFlag | kEDMA_DoneFlag);
+    if (transfer_receive_handler != NULL) {
+        transfer_receive_handler(transfer_buffers->receive, transfer_context);
+    }
 }

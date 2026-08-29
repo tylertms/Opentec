@@ -10,6 +10,10 @@ typedef struct {
     uint8_t receive[MOTOR_SPI_TRANSFER_SIZE];
 } MotorSpiTransferBuffers;
 
-void motor_spi_initialize(MotorSpiTransferBuffers *buffers);
+typedef void (*MotorSpiReceiveHandler)(const uint8_t frame[MOTOR_SPI_TRANSFER_SIZE], void *context);
+
+void motor_spi_initialize(MotorSpiTransferBuffers *buffers, MotorSpiReceiveHandler receive_handler,
+                          void *context);
+void motor_spi_transfer_restart(void);
 
 #endif
