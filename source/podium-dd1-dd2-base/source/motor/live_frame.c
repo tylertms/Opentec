@@ -12,6 +12,16 @@ enum {
     MOTOR_POSITION_AUXILIARY_DIRECTION = 0x8000,
 };
 
+/**
+ * @brief Advances a CRC-16/CCITT value by one byte.
+ *
+ * Applies the non-reflected polynomial 0x1021 from the most-significant bit through the least-
+ * significant bit.
+ *
+ * @param[in] crc CRC value before the byte is consumed.
+ * @param[in] byte Next input byte.
+ * @return Updated CRC value.
+ */
 static uint16_t crc16_shift(uint16_t crc, uint8_t byte) {
     crc ^= (uint16_t)byte << 8;
     for (uint8_t bit = 0; bit < 8; bit++) {
@@ -20,6 +30,15 @@ static uint16_t crc16_shift(uint16_t crc, uint8_t byte) {
     return crc;
 }
 
+/**
+ * @brief Calculates the motor-link frame checksum.
+ *
+ * Processes the nine bytes from the packet type through the payload with an initial value of zero,
+ * then appends two zero bytes to obtain the transmitted CRC remainder.
+ *
+ * @param[in] input Packet type followed by the eight-byte payload.
+ * @return CRC-16/CCITT remainder stored in the frame.
+ */
 static uint16_t checksum(const uint8_t *input) {
     uint16_t crc = 0;
     for (uint8_t index = 0; index < MOTOR_LIVE_CHECKSUM_INPUT_SIZE; index++) {
@@ -29,14 +48,38 @@ static uint16_t checksum(const uint8_t *input) {
     return crc16_shift(crc, 0);
 }
 
+/**
+ * @brief Reads a little-endian 16-bit field.
+ *
+ * Combines two consecutive input bytes without alignment requirements.
+ *
+ * @param[in] input Two-byte field to read.
+ * @return Decoded unsigned value.
+ */
 static uint16_t read_u16(const uint8_t *input) { return input[0] | ((uint16_t)input[1] << 8); }
 
+/**
+ * @brief Reads a little-endian signed 32-bit field.
+ *
+ * Combines four consecutive input bytes and preserves the resulting two's-complement bit pattern.
+ *
+ * @param[in] input Four-byte field to read.
+ * @return Decoded signed value.
+ */
 static int32_t read_i32(const uint8_t *input) {
     uint32_t value = (uint32_t)input[0] | (uint32_t)input[1] << 8 | (uint32_t)input[2] << 16 |
                      (uint32_t)input[3] << 24;
     return (int32_t)value;
 }
 
+/**
+ * @brief Writes a little-endian 16-bit field.
+ *
+ * Stores the low byte before the high byte.
+ *
+ * @param[out] output Two-byte field to update.
+ * @param[in] value Unsigned value to encode.
+ */
 static void write_u16(uint8_t *output, uint16_t value) {
     output[0] = (uint8_t)value;
     output[1] = (uint8_t)(value >> 8);

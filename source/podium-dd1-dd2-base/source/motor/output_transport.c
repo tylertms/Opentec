@@ -5,6 +5,14 @@
 #include <stdint.h>
 #include <string.h>
 
+/**
+ * @brief Advances a force-command queue index.
+ *
+ * Wraps the index to zero after the final record in the 100-entry queue.
+ *
+ * @param[in] index Current queue index.
+ * @return Index of the following queue record.
+ */
 static uint8_t next_index(uint8_t index) {
     index++;
     return index == MOTOR_OUTPUT_QUEUE_CAPACITY ? 0 : index;

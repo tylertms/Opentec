@@ -65,6 +65,11 @@ static void copy_between_volatile(volatile uint8_t *destination, const volatile 
  */
 static void configure_spi(void) {
     SPI1STATbits.SPIEN = 0;
+    SPI1STATbits.SPISIDL = 0;
+    SPI1STATbits.SPIBEC = 0;
+    SPI1STATbits.SRMPT = 0;
+    SPI1STATbits.SRXMPT = 0;
+    SPI1STATbits.SISEL = 0;
     SPI1STATbits.SPIROV = 0;
     SPI1CON1 = 0;
     SPI1CON2 = 0;
@@ -84,6 +89,7 @@ static void configure_dma(void) {
     DMA8CON = 0;
     DMA8CONbits.SIZE = 1;
     DMA8CONbits.DIR = 1;
+    DMA8REQbits.FORCE = 0;
     DMA8REQbits.IRQSEL = MOTOR_LINK_DMA_REQUEST;
     DMA8STAL = (uint16_t)transmitted_dma;
     DMA8STAH = 0;
@@ -93,6 +99,7 @@ static void configure_dma(void) {
     DMA9CON = 0;
     DMA9CONbits.SIZE = 1;
     DMA9CONbits.DIR = 0;
+    DMA9REQbits.FORCE = 0;
     DMA9REQbits.IRQSEL = MOTOR_LINK_DMA_REQUEST;
     DMA9STAL = (uint16_t)received_dma;
     DMA9STAH = 0;
@@ -194,10 +201,12 @@ void __attribute__((interrupt, no_auto_psv)) _SPI1Interrupt(void) { IFS0bits.SPI
 /**
  * @brief Recovers the motor-link receiver from a SPI1 overflow.
  *
- * Clears receive overflow, restarts DMA9, and acknowledges the SPI1 error interrupt.
+ * Clears receive-full and overflow state, restarts DMA9, and acknowledges the SPI1 error
+ * interrupt.
  */
 void __attribute__((interrupt, no_auto_psv)) _SPI1ErrInterrupt(void) {
     SPI1STATbits.SPIROV = 0;
+    SPI1STATbits.SPIRBF = 0;
     DMA9CONbits.CHEN = 0;
     DMA9CONbits.CHEN = 1;
     IFS0bits.SPI1EIF = 0;
