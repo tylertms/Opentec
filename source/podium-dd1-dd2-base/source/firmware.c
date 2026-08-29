@@ -233,6 +233,8 @@ enum {
     USB_DISCONNECT_STATUS_CODE = 0x1c,
     TUNING_MENU_RESET_EVENT_CODE = 1,
     WHEEL_CENTER_CALIBRATED_EVENT_CODE = 2,
+    STANDARD_TUNING_MODE_EVENT_CODE = 0x12,
+    ADVANCED_TUNING_MODE_EVENT_CODE = 0x13,
     WHEEL_CENTER_CALIBRATED_STATUS_CODE = 0x1f,
 };
 
@@ -352,6 +354,10 @@ static void service_system_events(uint32_t now_ms) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_MOTOR_CALIBRATION_COMPLETED, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_MOTOR_CALIBRATION_ERASED) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_MOTOR_CALIBRATION_ERASED, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_STANDARD_TUNING_MODE) {
+        system_notice_show(&system_notice, SYSTEM_NOTICE_STANDARD_TUNING_MODE, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_ADVANCED_TUNING_MODE) {
+        system_notice_show(&system_notice, SYSTEM_NOTICE_ADVANCED_TUNING_MODE, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_TORQUE_DISABLED) {
         torque_disabled_notice_visible = true;
     } else if (action == SYSTEM_EVENT_ACTION_DISMISS_TORQUE_DISABLED) {
@@ -1121,6 +1127,13 @@ static void service_usb_output(void) {
                                                   TUNING_MENU_RESET_EVENT_CODE);
                 system_control_state_set_active_event(&system_control_state,
                                                       TUNING_MENU_RESET_EVENT_CODE);
+            }
+            if ((tuning_action & USB_TUNING_PROFILE_ACTION_MODE_TOGGLED) != 0) {
+                uint8_t event_code = base_settings.tuning_profiles.standard_mode_enabled
+                                         ? STANDARD_TUNING_MODE_EVENT_CODE
+                                         : ADVANCED_TUNING_MODE_EVENT_CODE;
+                (void)system_event_queue_try_push(&system_event_queue, event_code);
+                system_control_state_set_active_event(&system_control_state, event_code);
             }
             if (usb_tuning_profile_service_response_pending(&usb_tuning_profile_service)) {
                 usb_tuning_profile_response_ready = false;

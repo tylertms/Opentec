@@ -20,6 +20,9 @@ enum {
 
 static const char torque_disabled_text[] = "Torque disabled by Powerbutton";
 static const char tuning_menu_reset_text[] = "RESET Tuning Menu Parameters.";
+static const char standard_tuning_mode_text[] = "Standard Tuning Menu mode";
+static const char advanced_tuning_mode_text[] = "Advanced Tuning Menu mode";
+static const char tuning_mode_activated_text[] = "activated";
 static const char wheel_center_calibrated_text[] = "Wheel center calibrated.";
 static const char position_sensor_succeeded_text[] = "Position Sensor Test Successful.";
 static const char position_sensor_started_text[] = "Position Sensor Test Started.";
@@ -167,5 +170,13 @@ void display_notice_render_system(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE],
     } else if (kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_ERASED) {
         display_text_draw_centered(framebuffer, motor_calibration_erased_text, NOTICE_TEXT_Y, 1,
                                    NOTICE_COLOR);
+    } else if (kind == SYSTEM_NOTICE_STANDARD_TUNING_MODE ||
+               kind == SYSTEM_NOTICE_ADVANCED_TUNING_MODE) {
+        const char *mode_text = kind == SYSTEM_NOTICE_STANDARD_TUNING_MODE
+                                    ? standard_tuning_mode_text
+                                    : advanced_tuning_mode_text;
+        display_text_draw_centered(framebuffer, mode_text, NOTICE_PRIMARY_TEXT_Y, 1, NOTICE_COLOR);
+        display_text_draw_centered(framebuffer, tuning_mode_activated_text, NOTICE_SECONDARY_TEXT_Y,
+                                   1, NOTICE_COLOR);
     }
 }

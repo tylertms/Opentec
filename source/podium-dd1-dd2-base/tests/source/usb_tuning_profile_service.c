@@ -76,6 +76,7 @@ static void test_resets_profiles_with_shared_guard(void) {
     assert((result & USB_TUNING_PROFILE_ACTION_PROFILE_CHANGED) != 0);
     assert((result & USB_TUNING_PROFILE_ACTION_MODE_CHANGED) != 0);
     assert((result & USB_TUNING_PROFILE_ACTION_RESET_COMPLETED) != 0);
+    assert((result & USB_TUNING_PROFILE_ACTION_MODE_TOGGLED) == 0);
     assert(bank.slots[0].force_feedback_strength == 35);
     assert(bank.slots[1].force_feedback_strength == 35);
     assert(bank.standard_mode_enabled);
@@ -102,14 +103,17 @@ static void test_rate_limits_mode_changes(void) {
 
     UsbTuningProfileAction result = usb_tuning_profile_service_apply(&service, &bank, &update, 500);
     assert((result & USB_TUNING_PROFILE_ACTION_MODE_CHANGED) != 0);
+    assert((result & USB_TUNING_PROFILE_ACTION_MODE_TOGGLED) != 0);
     assert(!bank.standard_mode_enabled);
 
     result = usb_tuning_profile_service_apply(&service, &bank, &update, 2499);
     assert(result == USB_TUNING_PROFILE_ACTION_CLAIM);
+    assert((result & USB_TUNING_PROFILE_ACTION_MODE_TOGGLED) == 0);
     assert(!bank.standard_mode_enabled);
 
     result = usb_tuning_profile_service_apply(&service, &bank, &update, 2500);
     assert((result & USB_TUNING_PROFILE_ACTION_MODE_CHANGED) != 0);
+    assert((result & USB_TUNING_PROFILE_ACTION_MODE_TOGGLED) != 0);
     assert(bank.standard_mode_enabled);
 }
 

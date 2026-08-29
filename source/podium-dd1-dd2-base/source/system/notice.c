@@ -5,21 +5,28 @@
 
 enum {
     SYSTEM_NOTICE_DURATION_MS = 4000,
+    SYSTEM_NOTICE_TUNING_MODE_DURATION_MS = 2000,
 };
 
 /**
- * @brief Tests whether a system notice has a finite presentation interval.
+ * @brief Selects a system notice presentation interval.
  *
  * Transient tuning, wheel-position, position-sensor, and motor-calibration results use the shared
- * four-second interval. Position-sensor failure and an ongoing motor calibration remain until
- * another notice replaces them.
+ * four-second interval. Standard and Advanced tuning-mode results use two seconds. Position-sensor
+ * failure and an ongoing motor calibration remain until another notice replaces them.
  *
  * @param[in] kind System notice kind.
- * @return True when the notice has a finite presentation interval.
+ * @return Presentation interval in milliseconds, or zero for a persistent notice.
  */
-static bool notice_is_timed(SystemNoticeKind kind) {
-    return kind != SYSTEM_NOTICE_NONE && kind != SYSTEM_NOTICE_POSITION_SENSOR_TEST_FAILED &&
-           kind != SYSTEM_NOTICE_MOTOR_CALIBRATION_ONGOING;
+static uint32_t notice_duration_ms(SystemNoticeKind kind) {
+    if (kind == SYSTEM_NOTICE_NONE || kind == SYSTEM_NOTICE_POSITION_SENSOR_TEST_FAILED ||
+        kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_ONGOING) {
+        return 0;
+    }
+    if (kind == SYSTEM_NOTICE_STANDARD_TUNING_MODE || kind == SYSTEM_NOTICE_ADVANCED_TUNING_MODE) {
+        return SYSTEM_NOTICE_TUNING_MODE_DURATION_MS;
+    }
+    return SYSTEM_NOTICE_DURATION_MS;
 }
 
 /**
@@ -34,16 +41,17 @@ void system_notice_init(SystemNotice *notice) { *notice = (SystemNotice){0}; }
 /**
  * @brief Starts presentation of a system notice.
  *
- * Timed notices receive a four-second deadline. Persistent notices and the empty notice keep a
- * zero deadline.
+ * Timed notices receive their type-specific deadline. Persistent notices and the empty notice keep
+ * a zero deadline.
  *
  * @param[in,out] notice System notice state.
  * @param[in] kind Notice to present.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 void system_notice_show(SystemNotice *notice, SystemNoticeKind kind, uint32_t now_ms) {
+    uint32_t duration_ms = notice_duration_ms(kind);
     notice->kind = kind;
-    notice->deadline_ms = notice_is_timed(kind) ? now_ms + SYSTEM_NOTICE_DURATION_MS : 0;
+    notice->deadline_ms = duration_ms == 0 ? 0 : now_ms + duration_ms;
 }
 
 /**
@@ -56,7 +64,7 @@ void system_notice_show(SystemNotice *notice, SystemNoticeKind kind, uint32_t no
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 void system_notice_update(SystemNotice *notice, uint32_t now_ms) {
-    if (notice_is_timed(notice->kind) && (int32_t)(now_ms - notice->deadline_ms) > 0) {
+    if (notice_duration_ms(notice->kind) != 0 && (int32_t)(now_ms - notice->deadline_ms) > 0) {
         system_notice_init(notice);
     }
 }

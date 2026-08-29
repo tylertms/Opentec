@@ -48,6 +48,25 @@ static void test_persistent_notices_do_not_expire(void) {
     }
 }
 
+static void test_tuning_mode_notices_expire_after_two_seconds(void) {
+    static const SystemNoticeKind kinds[] = {
+        SYSTEM_NOTICE_STANDARD_TUNING_MODE,
+        SYSTEM_NOTICE_ADVANCED_TUNING_MODE,
+    };
+
+    for (size_t index = 0; index < sizeof(kinds) / sizeof(kinds[0]); index++) {
+        SystemNotice notice;
+        system_notice_init(&notice);
+        system_notice_show(&notice, kinds[index], 100);
+
+        assert(notice.deadline_ms == 2100);
+        system_notice_update(&notice, 2100);
+        assert(notice.kind == kinds[index]);
+        system_notice_update(&notice, 2101);
+        assert(notice.kind == SYSTEM_NOTICE_NONE);
+    }
+}
+
 static void test_timed_notice_expires_across_counter_wrap(void) {
     SystemNotice notice;
     system_notice_init(&notice);
@@ -63,6 +82,7 @@ static void test_timed_notice_expires_across_counter_wrap(void) {
 int main(void) {
     test_timed_notices_expire_after_four_seconds();
     test_persistent_notices_do_not_expire();
+    test_tuning_mode_notices_expire_after_two_seconds();
     test_timed_notice_expires_across_counter_wrap();
     return 0;
 }

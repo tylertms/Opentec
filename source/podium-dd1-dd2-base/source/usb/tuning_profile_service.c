@@ -125,8 +125,9 @@ UsbTuningProfileAction usb_tuning_profile_service_apply(UsbTuningProfileService 
             bank->standard_mode_enabled = !bank->standard_mode_enabled;
             service->mode_change_after_ms = now_ms + USB_TUNING_PROFILE_MODE_DELAY_MS;
             service->response_pending = true;
-            result |=
-                USB_TUNING_PROFILE_ACTION_MODE_CHANGED | USB_TUNING_PROFILE_ACTION_SETTINGS_CHANGED;
+            result |= USB_TUNING_PROFILE_ACTION_MODE_CHANGED |
+                      USB_TUNING_PROFILE_ACTION_SETTINGS_CHANGED |
+                      USB_TUNING_PROFILE_ACTION_MODE_TOGGLED;
         }
         return result;
     default:
