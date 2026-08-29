@@ -25,9 +25,11 @@ int main(void) {
     wheel_motion_accumulate_axis(&motion, 0, 1);
     wheel_motion_accumulate_axis(&motion, 1, -1);
     wheel_motion_accumulate_axis(&motion, 2, 1);
+    wheel_motion_accumulate_axis(&motion, 3, 1);
     assert(wheel_motion_take_axis(&motion, 0) == 1);
     assert(wheel_motion_take_axis(&motion, 1) == -1);
-    assert(wheel_motion_take_axis(&motion, 2) == 0);
+    assert(wheel_motion_take_axis(&motion, 2) == 1);
+    assert(wheel_motion_take_axis(&motion, 3) == 0);
 
     return 0;
 }

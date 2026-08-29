@@ -54,7 +54,7 @@ static int8_t take(uint8_t *counter) {
 /**
  * @brief Clears all attached-wheel motion counters.
  *
- * Resets the primary motion counter and both independently consumed axis counters to zero.
+ * Resets the primary motion counter and three independently consumed axis counters to zero.
  *
  * @param[out] motion Motion accumulator to initialize.
  */

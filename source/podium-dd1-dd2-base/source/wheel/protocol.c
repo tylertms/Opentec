@@ -284,6 +284,51 @@ static bool crc_acknowledgement_input_active(const WheelPacketCrcInput *input) {
 }
 
 /**
+ * @brief Decodes one negative and positive pulse pair.
+ *
+ * Gives the negative flag priority when both flags are present, otherwise returns the positive or
+ * idle direction.
+ *
+ * @param[in] flags Four positive/negative pulse pairs.
+ * @param[in] negative_mask Negative-direction flag for the selected pair.
+ * @param[in] positive_mask Positive-direction flag for the selected pair.
+ * @return Minus one, plus one, or zero for the selected pulse pair.
+ */
+static int8_t pulse_delta(uint8_t flags, uint8_t negative_mask, uint8_t positive_mask) {
+    if ((flags & negative_mask) != 0) {
+        return -1;
+    }
+    return (flags & positive_mask) != 0 ? 1 : 0;
+}
+
+/**
+ * @brief Accumulates mode-0x18 pulse input.
+ *
+ * Applies the interface timing gate and maps each lower/higher bit pair to positive/negative
+ * motion: bits 4/5 drive primary motion, bits 2/3 drive auxiliary axis zero, and bits 0/1 drive
+ * auxiliary axis one. PlayStation and direct reports also map bits 6/7 to auxiliary axis two. The
+ * packet motion byte is replaced by its signed primary direction.
+ *
+ * @param[in,out] protocol Protocol state containing pulse timing and motion counters.
+ */
+static void accumulate_filtered_pulses(WheelProtocol *protocol) {
+    uint8_t flags = (uint8_t)protocol->crc_input.motion;
+    int8_t primary = pulse_delta(flags, 0x20, 0x10);
+    if (!wheel_packet_crc_pulse_ready(&protocol->crc_pulse_gate, protocol->interface_mode,
+                                      protocol->now_ms, flags)) {
+        protocol->crc_input.motion = 0;
+        return;
+    }
+    protocol->crc_input.motion = primary;
+    wheel_motion_accumulate_primary(&protocol->motion, primary);
+    wheel_motion_accumulate_axis(&protocol->motion, 0, pulse_delta(flags, 0x08, 0x04));
+    wheel_motion_accumulate_axis(&protocol->motion, 1, pulse_delta(flags, 0x02, 0x01));
+    if (protocol->interface_mode != 6) {
+        wheel_motion_accumulate_axis(&protocol->motion, 2, pulse_delta(flags, 0x80, 0x40));
+    }
+}
+
+/**
  * @brief Detects packed-family input eligible to acknowledge a display overlay.
  *
  * Accepts any filtered primary button bit or the fifth control byte.
@@ -471,7 +516,11 @@ static void capture_request(WheelProtocol *protocol,
             protocol->crc_input.controls[2] != 0 || protocol->crc_input.controls[3] != 0 ||
             (protocol->crc_adapter.connected && protocol->crc_adapter.mode == 1);
         wheel_packet_crc_prepare(&protocol->crc_input, protocol->mode, protocol->interface_mode);
-        wheel_packet_crc_filter(&protocol->crc_filter, &protocol->crc_input);
+        wheel_packet_crc_filter(&protocol->crc_filter, &protocol->crc_input, protocol->mode);
+        if (protocol->mode == WHEEL_MODE_FILTERED_PULSE) {
+            accumulate_filtered_pulses(protocol);
+            wheel_packet_crc_smooth_axes(&protocol->crc_filter, &protocol->crc_input);
+        }
         wheel_packet_crc_normalize(&protocol->crc_input, protocol->mode, protocol->interface_mode,
                                    &protocol->crc_adapter);
         wheel_axis_override_process_packet(
@@ -480,8 +529,10 @@ static void capture_request(WheelProtocol *protocol,
             protocol->now_ms, &protocol->paddle_bite_point_percent, &protocol->crc_input.buttons[0],
             &protocol->crc_input.motion, protocol->crc_input.controls,
             protocol->crc_input.axis_outputs);
-        wheel_motion_accumulate_primary(&protocol->motion, protocol->crc_input.motion);
-        wheel_packet_crc_smooth_axes(&protocol->crc_filter, &protocol->crc_input);
+        if (protocol->mode != WHEEL_MODE_FILTERED_PULSE) {
+            wheel_motion_accumulate_primary(&protocol->motion, protocol->crc_input.motion);
+            wheel_packet_crc_smooth_axes(&protocol->crc_filter, &protocol->crc_input);
+        }
         wheel_packet_crc_snapshot(&protocol->crc_input, snapshot);
         protocol->acknowledgement_input_active =
             crc_acknowledgement_input_active(&protocol->crc_input);
@@ -575,6 +626,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     const WheelPacketCrcInput empty_crc_input = {0};
     const WheelPacketCrcOutput empty_crc_output = {0};
     const WheelPacketCrcAdapter empty_crc_adapter = {0};
+    const WheelPacketCrcPulseGate empty_crc_pulse_gate = {0};
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
     clear(protocol->request, WHEEL_PROTOCOL_SNAPSHOT_SIZE);
     wheel_axis_override_processor_init(&protocol->axis_override_processor);
@@ -608,6 +660,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     wheel_authentication_init(&protocol->authentication, WHEEL_MODE_UNKNOWN);
     protocol->phase = WHEEL_PROTOCOL_WAITING;
     protocol->now_ms = 0;
+    protocol->crc_pulse_gate = empty_crc_pulse_gate;
     protocol->mode = WHEEL_MODE_UNKNOWN;
     protocol->interface_mode = 0;
     protocol->configured_axis_override_mode = WHEEL_AXIS_OVERRIDE_MODE_NONE;

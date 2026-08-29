@@ -7,7 +7,7 @@
 
 static void test_selects_crc_modes(void) {
     for (uint8_t mode = 0; mode <= 0x1e; mode++) {
-        assert(wheel_packet_crc_applies(mode) == (mode == 6 || mode == 0x15));
+        assert(wheel_packet_crc_applies(mode) == (mode == 6 || mode == 0x15 || mode == 0x18));
     }
 }
 
@@ -53,7 +53,7 @@ static void test_filters_three_button_and_five_control_bytes(void) {
     for (uint8_t sample = 0; sample < 3; sample++) {
         memcpy(input.buttons, button_samples[sample], sizeof(input.buttons));
         memcpy(input.controls, control_samples[sample], 5);
-        wheel_packet_crc_filter(&filter, &input);
+        wheel_packet_crc_filter(&filter, &input, 6);
     }
 
     assert(input.buttons[0] == 0xf3);
@@ -64,6 +64,42 @@ static void test_filters_three_button_and_five_control_bytes(void) {
     assert(input.controls[2] == 0x5a);
     assert(input.controls[3] == 0x7f);
     assert(input.controls[4] == 0x7f);
+}
+
+static void test_filters_pulse_controls_with_button_history(void) {
+    WheelPacketCrcFilter filter;
+    WheelPacketCrcInput input = {0};
+    wheel_packet_crc_filter_init(&filter);
+    filter.next_control_sample = 2;
+
+    for (uint8_t sample = 0; sample < WHEEL_PACKET_CRC_HISTORY_DEPTH; sample++) {
+        input.buttons[0] = 0x80;
+        input.controls[0] = 0x40;
+        input.controls[1] = 0x20;
+        input.controls[2] = 0x10;
+        input.controls[3] = 0xff;
+        wheel_packet_crc_filter(&filter, &input, 0x18);
+    }
+
+    assert(input.buttons[0] == 0x80);
+    assert(input.controls[0] == 0x40);
+    assert(input.controls[1] == 0x20);
+    assert(input.controls[2] == 0x10);
+    assert(input.controls[3] == 0xff);
+    assert(filter.next_control_sample == 2);
+}
+
+static void test_applies_interface_pulse_intervals(void) {
+    WheelPacketCrcPulseGate gate = {0};
+
+    assert(wheel_packet_crc_pulse_ready(&gate, 0, 0, 0x10));
+    assert(!wheel_packet_crc_pulse_ready(&gate, 6, 0, 0x10));
+    assert(wheel_packet_crc_pulse_ready(&gate, 6, 1, 0x10));
+    assert(!wheel_packet_crc_pulse_ready(&gate, 6, 91, 0x10));
+    assert(wheel_packet_crc_pulse_ready(&gate, 6, 92, 0x10));
+    assert(wheel_packet_crc_pulse_ready(&gate, 7, 1, 0x10));
+    assert(!wheel_packet_crc_pulse_ready(&gate, 7, 16, 0x10));
+    assert(wheel_packet_crc_pulse_ready(&gate, 7, 17, 0x10));
 }
 
 static void test_averages_three_axis_control_samples(void) {
@@ -180,6 +216,15 @@ static void test_does_not_map_authenticated_standard_auxiliary_bit(void) {
     assert(input.buttons[2] == 0);
 }
 
+static void test_normalizes_pulse_mode_with_temporary_control(void) {
+    WheelPacketCrcInput input = {0};
+
+    wheel_packet_crc_normalize(&input, 0x18, 0, 0);
+
+    assert(input.buttons[1] == 0x08);
+    assert(input.controls[2] == 0);
+}
+
 static void test_merges_adapter_buttons_axes_and_motion(void) {
     WheelPacketCrcInput input = {.buttons = {0xf0, 0xf0, 0}};
     WheelPacketCrcAdapter adapter = {
@@ -247,17 +292,24 @@ static void test_encodes_standard_and_authenticated_responses(void) {
     assert(response[7] == 0x44);
     assert(response[8] == 0x55);
     assert(response[10] == 0);
+
+    memset(response, 0, sizeof(response));
+    wheel_packet_crc_encode(0x18, false, &output, response);
+    assert(response[0] == 0xa6);
 }
 
 int main(void) {
     test_selects_crc_modes();
     test_decodes_crc_fields();
     test_filters_three_button_and_five_control_bytes();
+    test_filters_pulse_controls_with_button_history();
+    test_applies_interface_pulse_intervals();
     test_averages_three_axis_control_samples();
     test_prepares_authenticated_podium_buttons();
     test_maps_standard_buttons_and_builds_snapshot();
     test_maps_direct_xbox_buttons();
     test_does_not_map_authenticated_standard_auxiliary_bit();
+    test_normalizes_pulse_mode_with_temporary_control();
     test_merges_adapter_buttons_axes_and_motion();
     test_uses_adapter_xbox_button_sources();
     test_encodes_standard_and_authenticated_responses();

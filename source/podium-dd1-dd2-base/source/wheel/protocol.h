@@ -39,6 +39,7 @@ enum {
     WHEEL_MODE_LEGACY_ALTERNATE = 0x0f,
     WHEEL_MODE_CRC_AUTHENTICATED = 0x15,
     WHEEL_MODE_LEGACY_COMPATIBILITY = 0x17,
+    WHEEL_MODE_FILTERED_PULSE = 0x18,
     WHEEL_MODE_REMOTE_TUNING_EXTENDED = 0x1c,
     WHEEL_MODE_MAXIMUM = 0x1e,
 };
@@ -89,6 +90,7 @@ typedef struct {
     WheelOutputReports output_reports;
     WheelProtocolPhase phase;
     uint32_t now_ms;
+    WheelPacketCrcPulseGate crc_pulse_gate;
     uint8_t mode;
     uint8_t interface_mode;
     uint8_t configured_axis_override_mode;

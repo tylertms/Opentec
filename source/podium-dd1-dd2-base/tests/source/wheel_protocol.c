@@ -1325,6 +1325,75 @@ static void test_captures_crc_family_requests(void) {
     assert(capabilities->input_available);
 }
 
+static void test_captures_filtered_pulse_packets(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    synchronize(&protocol, request);
+    select_mode(&protocol, request, WHEEL_MODE_FILTERED_PULSE);
+
+    request[2] = 0x08;
+    request[5] = 0x52;
+    request[6] = 0xa4;
+    request[7] = 0xd9;
+    request[12] = 30;
+    request[13] = 60;
+    request[18] = 0x34;
+    request[19] = 0x12;
+    request[20] = 0x78;
+    request[21] = 0x56;
+    request[30] = 0x3f;
+    request[31] = 0x62;
+
+    static const uint32_t sample_times[] = {0, 1, 91};
+    for (uint8_t sample = 0; sample < WHEEL_PACKET_CRC_HISTORY_DEPTH; sample++) {
+        wheel_protocol_set_axis_processing(&protocol, 6, WHEEL_AXIS_OVERRIDE_MODE_NONE, 0,
+                                           sample_times[sample]);
+        accept_active_request(&protocol, request);
+    }
+
+    const WheelPacketCrcInput *input = wheel_protocol_crc_input(&protocol);
+    assert(input != 0);
+    assert(input->buttons[0] == 0x08);
+    assert(input->axis_outputs[0] == 0x52);
+    assert(input->axis_outputs[1] == 0xa4);
+    assert(input->motion == 0);
+    assert(input->controls[2] == 0);
+    assert(input->controls[4] == 30);
+    assert(input->controls[5] == 195);
+    assert(input->axis_values[0] == 0x1234);
+    assert(input->axis_values[1] == 0x5678);
+    assert(input->axis_limit == 0x62);
+    assert(protocol.motion.primary == 1);
+    assert(protocol.motion.axes[0] == UINT8_MAX);
+    assert(protocol.motion.axes[1] == 1);
+    assert(protocol.motion.axes[2] == 0);
+    assert(wheel_protocol_response(&protocol)[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
+    assert(wheel_protocol_message_valid(wheel_protocol_response(&protocol)));
+}
+
+static void test_captures_direct_filtered_pulses(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    protocol.mode = WHEEL_MODE_FILTERED_PULSE;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    request[0] = WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
+    request[7] = 0xd9;
+    mark_ready(request);
+
+    wheel_protocol_set_axis_processing(&protocol, 0, WHEEL_AXIS_OVERRIDE_MODE_NONE, 0, 0);
+    accept_active_request(&protocol, request);
+
+    const WheelPacketCrcInput *input = wheel_protocol_crc_input(&protocol);
+    assert(input != 0);
+    assert(input->motion == 1);
+    assert(protocol.motion.primary == 1);
+    assert(protocol.motion.axes[0] == UINT8_MAX);
+    assert(protocol.motion.axes[1] == 1);
+    assert(protocol.motion.axes[2] == UINT8_MAX);
+}
+
 static void test_applies_crc_family_axis_controls(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -1412,6 +1481,8 @@ int main(void) {
     test_captures_alternate_packets();
     test_forwards_remote_telemetry_in_alternate_mode();
     test_captures_crc_family_requests();
+    test_captures_filtered_pulse_packets();
+    test_captures_direct_filtered_pulses();
     test_applies_crc_family_axis_controls();
     test_rejects_out_of_range_mode();
     test_crc8_vectors();

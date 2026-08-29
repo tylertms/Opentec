@@ -33,6 +33,10 @@ typedef struct {
 } WheelPacketCrcFilter;
 
 typedef struct {
+    uint32_t deadlines_ms[2];
+} WheelPacketCrcPulseGate;
+
+typedef struct {
     WheelDisplayOutput display;
     uint8_t vibration[2];
     uint8_t legacy_axes[2];
@@ -57,8 +61,11 @@ void wheel_packet_crc_decode(const uint8_t request[WHEEL_PACKET_CRC_REQUEST_SIZE
                              WheelPacketCrcInput *input);
 void wheel_packet_crc_prepare(WheelPacketCrcInput *input, uint8_t wheel_mode,
                               uint8_t interface_mode);
-void wheel_packet_crc_filter(WheelPacketCrcFilter *filter, WheelPacketCrcInput *input);
+void wheel_packet_crc_filter(WheelPacketCrcFilter *filter, WheelPacketCrcInput *input,
+                             uint8_t wheel_mode);
 void wheel_packet_crc_smooth_axes(WheelPacketCrcFilter *filter, WheelPacketCrcInput *input);
+bool wheel_packet_crc_pulse_ready(WheelPacketCrcPulseGate *gate, uint8_t interface_mode,
+                                  uint32_t now_ms, uint8_t pulse_flags);
 void wheel_packet_crc_normalize(WheelPacketCrcInput *input, uint8_t wheel_mode,
                                 uint8_t interface_mode, WheelPacketCrcAdapter *adapter);
 void wheel_packet_crc_snapshot(const WheelPacketCrcInput *input,

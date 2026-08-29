@@ -8,6 +8,7 @@ enum {
     WHEEL_PACKET_COMMAND_AUTHENTICATE = 0xa6,
     WHEEL_PACKET_CRC_MODE = 6,
     WHEEL_PACKET_CRC_AUTHENTICATED_MODE = 0x15,
+    WHEEL_PACKET_CRC_PULSE_MODE = 0x18,
     REQUEST_PAYLOAD_OFFSET = 2,
     REQUEST_AXIS_OUTPUTS_OFFSET = 3,
     REQUEST_MOTION_OFFSET = 5,
@@ -24,6 +25,8 @@ enum {
     INTERFACE_MODE_PODIUM_DD = 0,
     INTERFACE_MODE_XBOX_GIP = 6,
     INTERFACE_MODE_PLAYSTATION_4 = 7,
+    XBOX_PULSE_HOLD_MS = 90,
+    PLAYSTATION_PULSE_HOLD_MS = 15,
 };
 
 static uint16_t read_little_endian_u16(const uint8_t *data) {
@@ -174,13 +177,16 @@ static void write_snapshot(const WheelPacketCrcInput *input,
 /**
  * @brief Reports whether a wheel mode uses the shared CRC packet codec.
  *
- * Selects the standard mode-6 exchange and its authenticated mode-0x15 variant.
+ * Selects the standard mode-6 exchange, its authenticated mode-0x15 variant, and the filtered
+ * pulse-input mode 0x18.
  *
  * @param[in] wheel_mode Selected attached-wheel mode.
- * @return True for mode 6 or mode 0x15.
+ * @return True for mode 6, mode 0x15, or mode 0x18.
  */
 bool wheel_packet_crc_applies(uint8_t wheel_mode) {
-    return wheel_mode == WHEEL_PACKET_CRC_MODE || wheel_mode == WHEEL_PACKET_CRC_AUTHENTICATED_MODE;
+    return wheel_mode == WHEEL_PACKET_CRC_MODE ||
+           wheel_mode == WHEEL_PACKET_CRC_AUTHENTICATED_MODE ||
+           wheel_mode == WHEEL_PACKET_CRC_PULSE_MODE;
 }
 
 /**
@@ -272,15 +278,19 @@ void wheel_packet_crc_prepare(WheelPacketCrcInput *input, uint8_t wheel_mode,
 /**
  * @brief Filters CRC-family buttons and auxiliary controls.
  *
- * Keeps bits present in all three recent samples of the three primary button bytes and the first
- * five control bytes, then advances the two independent circular histories.
+ * Keeps bits present in all three recent samples of the three primary button bytes and the
+ * selected control prefix. Mode 0x18 filters three controls with the button-history position;
+ * modes 6 and 0x15 filter five controls with an independent position.
  *
  * @param[in,out] filter Primary-button and control histories with their insertion positions.
  * @param[in,out] input Input added to the histories and filtered in place.
+ * @param[in] wheel_mode Selected attached-wheel mode.
  */
-void wheel_packet_crc_filter(WheelPacketCrcFilter *filter, WheelPacketCrcInput *input) {
+void wheel_packet_crc_filter(WheelPacketCrcFilter *filter, WheelPacketCrcInput *input,
+                             uint8_t wheel_mode) {
+    uint8_t button_sample = filter->next_button_sample;
     for (uint8_t button = 0; button < WHEEL_PACKET_CRC_BUTTON_COUNT; button++) {
-        filter->button_samples[filter->next_button_sample][button] = input->buttons[button];
+        filter->button_samples[button_sample][button] = input->buttons[button];
         input->buttons[button] = filter->button_samples[0][button] &
                                  filter->button_samples[1][button] &
                                  filter->button_samples[2][button];
@@ -290,15 +300,20 @@ void wheel_packet_crc_filter(WheelPacketCrcFilter *filter, WheelPacketCrcInput *
         filter->next_button_sample = 0;
     }
 
-    for (uint8_t control = 0; control < WHEEL_PACKET_CRC_FILTERED_CONTROL_COUNT; control++) {
-        filter->control_samples[filter->next_control_sample][control] = input->controls[control];
+    bool shared_history = wheel_mode == WHEEL_PACKET_CRC_PULSE_MODE;
+    uint8_t control_count = shared_history ? 3 : WHEEL_PACKET_CRC_FILTERED_CONTROL_COUNT;
+    uint8_t control_sample = shared_history ? button_sample : filter->next_control_sample;
+    for (uint8_t control = 0; control < control_count; control++) {
+        filter->control_samples[control_sample][control] = input->controls[control];
         input->controls[control] = filter->control_samples[0][control] &
                                    filter->control_samples[1][control] &
                                    filter->control_samples[2][control];
     }
-    filter->next_control_sample++;
-    if (filter->next_control_sample == WHEEL_PACKET_CRC_HISTORY_DEPTH) {
-        filter->next_control_sample = 0;
+    if (!shared_history) {
+        filter->next_control_sample++;
+        if (filter->next_control_sample == WHEEL_PACKET_CRC_HISTORY_DEPTH) {
+            filter->next_control_sample = 0;
+        }
     }
 }
 
@@ -327,6 +342,42 @@ void wheel_packet_crc_smooth_axes(WheelPacketCrcFilter *filter, WheelPacketCrcIn
 }
 
 /**
+ * @brief Applies the mode-0x18 pulse timing policy.
+ *
+ * Publishes direct-interface pulses immediately. Xbox and PlayStation pulses are accepted only
+ * after their independent 90 ms and 15 ms hold intervals, and a nonzero accepted pulse starts the
+ * next interval.
+ *
+ * @param[in,out] gate Independent Xbox and PlayStation pulse deadlines.
+ * @param[in] interface_mode Active wheel interface mode.
+ * @param[in] now_ms Current monotonic millisecond count.
+ * @param[in] pulse_flags Four positive/negative pulse pairs.
+ * @return True when the pulse flags may update the logical motion counters.
+ */
+bool wheel_packet_crc_pulse_ready(WheelPacketCrcPulseGate *gate, uint8_t interface_mode,
+                                  uint32_t now_ms, uint8_t pulse_flags) {
+    uint8_t deadline_index;
+    uint32_t hold_ms;
+    if (interface_mode == INTERFACE_MODE_XBOX_GIP) {
+        deadline_index = 0;
+        hold_ms = XBOX_PULSE_HOLD_MS;
+    } else if (interface_mode == INTERFACE_MODE_PLAYSTATION_4) {
+        deadline_index = 1;
+        hold_ms = PLAYSTATION_PULSE_HOLD_MS;
+    } else {
+        return true;
+    }
+
+    if (now_ms <= gate->deadlines_ms[deadline_index]) {
+        return false;
+    }
+    if (pulse_flags != 0) {
+        gate->deadlines_ms[deadline_index] = now_ms + hold_ms;
+    }
+    return true;
+}
+
+/**
  * @brief Normalizes CRC-family wheel and adapter input.
  *
  * Applies the standard or Xbox interface button map, masks primary buttons when an adapter is
@@ -339,6 +390,10 @@ void wheel_packet_crc_smooth_axes(WheelPacketCrcFilter *filter, WheelPacketCrcIn
  */
 void wheel_packet_crc_normalize(WheelPacketCrcInput *input, uint8_t wheel_mode,
                                 uint8_t interface_mode, WheelPacketCrcAdapter *adapter) {
+    uint8_t filtered_control = input->controls[2];
+    if (wheel_mode == WHEEL_PACKET_CRC_PULSE_MODE) {
+        input->controls[2] = 1;
+    }
     bool adapter_connected = adapter != 0 && adapter->connected;
     if (adapter_connected) {
         input->buttons[0] &= 0x0fu;
@@ -362,6 +417,9 @@ void wheel_packet_crc_normalize(WheelPacketCrcInput *input, uint8_t wheel_mode,
     input->controls[3] = 0;
     if (adapter_connected) {
         merge_adapter_input(input, interface_mode, adapter);
+    }
+    if (wheel_mode == WHEEL_PACKET_CRC_PULSE_MODE) {
+        input->controls[2] = filtered_control;
     }
 }
 
@@ -387,7 +445,7 @@ void wheel_packet_crc_snapshot(const WheelPacketCrcInput *input,
  * state, and one-shot status-update marker. Capability and restart markers replace their
  * corresponding legacy-axis byte while active. The caller supplies the CRC byte.
  *
- * @param[in] wheel_mode Selected mode 6 or mode 0x15.
+ * @param[in] wheel_mode Selected mode 6, mode 0x15, or mode 0x18.
  * @param[in] host_capability_enabled True when the host enabled the attached-wheel capability.
  * @param[in,out] output Current response values whose pending markers are consumed.
  * @param[out] response Thirty-three-byte destination buffer for the encoded response fields.
@@ -395,9 +453,10 @@ void wheel_packet_crc_snapshot(const WheelPacketCrcInput *input,
 void wheel_packet_crc_encode(uint8_t wheel_mode, bool host_capability_enabled,
                              WheelPacketCrcOutput *output,
                              uint8_t response[WHEEL_PACKET_CRC_RESPONSE_SIZE]) {
-    response[0] = wheel_mode == WHEEL_PACKET_CRC_AUTHENTICATED_MODE
-                      ? WHEEL_PACKET_COMMAND_AUTHENTICATE
-                      : WHEEL_PACKET_COMMAND_SELECT_MODE;
+    bool authenticated_command = wheel_mode == WHEEL_PACKET_CRC_AUTHENTICATED_MODE ||
+                                 wheel_mode == WHEEL_PACKET_CRC_PULSE_MODE;
+    response[0] = authenticated_command ? WHEEL_PACKET_COMMAND_AUTHENTICATE
+                                        : WHEEL_PACKET_COMMAND_SELECT_MODE;
     response[1] = 0;
     for (uint8_t index = 0; index < WHEEL_DISPLAY_GLYPH_COUNT; index++) {
         response[index + 2] = output->display.glyphs[index];

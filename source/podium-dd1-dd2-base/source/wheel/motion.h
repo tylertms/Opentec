@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-enum { WHEEL_MOTION_AXIS_COUNT = 2 };
+enum { WHEEL_MOTION_AXIS_COUNT = 3 };
 
 typedef struct {
     uint8_t primary;
