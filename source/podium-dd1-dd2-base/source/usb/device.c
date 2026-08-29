@@ -75,12 +75,18 @@ static char xbox_serial[USB_XBOX_GIP_SERIAL_SIZE];
 static uint8_t xbox_serial_descriptor[USB_XBOX_GIP_SERIAL_TEXT_SIZE * 2 + 2];
 static uint8_t xbox_response_length;
 static uint8_t input_report[USB_DEVICE_REPORT_SIZE];
+static uint8_t updater_response[USB_DEVICE_UPDATER_RESPONSE_SIZE];
 static uint8_t input_report_length;
+static uint8_t updater_response_length;
+static uint8_t updater_response_offset;
 static uint8_t control_report_type;
 static uint8_t control_report_id;
 static UsbControlStage control_stage;
 static bool output_ready;
 static bool updater_packet_ready;
+static bool updater_response_ready;
+static bool updater_input_busy;
+static bool updater_zero_length_pending;
 static bool input_data_one;
 static bool output_data_one;
 static bool updater_input_data_one;
@@ -290,6 +296,11 @@ static void reset_state(void) {
     input_report_length = 0;
     output_ready = false;
     updater_packet_ready = false;
+    updater_response_ready = false;
+    updater_input_busy = false;
+    updater_zero_length_pending = false;
+    updater_response_length = 0;
+    updater_response_offset = 0;
     input_data_one = false;
     output_data_one = false;
     updater_input_data_one = false;
@@ -850,6 +861,12 @@ static void handle_xbox_output(void) {
     }
 }
 
+/**
+ * @brief Captures one motor-updater output packet.
+ *
+ * Stores the received endpoint 3 payload for the updater protocol service and rearms the completed
+ * output bank for another 64-byte transfer.
+ */
 static void handle_updater_output(void) {
     updater_packet.length = usb_event.length;
     for (uint8_t index = 0; index < usb_event.length; index++) {
@@ -904,6 +921,9 @@ static void handle_event(void) {
         } else if (operating_mode == USB_OPERATING_MODE_XBOX_GIP &&
                    usb_event.endpoint == USB_PRIMARY_ENDPOINT) {
             xbox_input_busy = false;
+        } else if (operating_mode == USB_OPERATING_MODE_UPDATER &&
+                   usb_event.endpoint == USB_UPDATER_DATA_ENDPOINT) {
+            updater_input_busy = false;
         }
         break;
     case PLATFORM_USB_EVENT_SUSPEND:
@@ -952,11 +972,50 @@ static void service_xbox_gip(void) {
     }
 }
 
+/**
+ * @brief Advances the motor-updater input stream.
+ *
+ * Sends at most one endpoint 3 packet while preserving the remaining response until each input
+ * transfer completes. Responses are split into 64-byte chunks, and an exact 64-byte response is
+ * terminated by a zero-length packet.
+ */
+static void service_updater_input(void) {
+    if (operating_mode != USB_OPERATING_MODE_UPDATER || !usb_device_configured() ||
+        updater_input_busy || !updater_response_ready) {
+        return;
+    }
+
+    uint8_t remaining = updater_response_length - updater_response_offset;
+    uint8_t length = remaining > USB_DEVICE_REPORT_SIZE ? USB_DEVICE_REPORT_SIZE : remaining;
+    const uint8_t *data = length == 0 ? NULL : &updater_response[updater_response_offset];
+    if (!platform_usb_send(USB_UPDATER_DATA_ENDPOINT, data, length, updater_input_data_one)) {
+        return;
+    }
+
+    updater_input_data_one = !updater_input_data_one;
+    updater_input_busy = true;
+    updater_response_offset += length;
+    if (updater_response_offset != updater_response_length) {
+        return;
+    }
+    if (updater_zero_length_pending) {
+        updater_zero_length_pending = false;
+        return;
+    }
+    updater_response_ready = false;
+}
+
+/**
+ * @brief Services pending USB controller and mode-specific transfers.
+ *
+ * Drains controller events, then advances Xbox GIP and motor-updater input exchanges.
+ */
 void usb_device_service(void) {
     while (platform_usb_take_event(&usb_event)) {
         handle_event();
     }
     service_xbox_gip();
+    service_updater_input();
 }
 
 bool usb_device_configured(void) { return usb_device_control_configured(&device_control); }
@@ -1155,6 +1214,14 @@ bool usb_device_send_vendor_report(const uint8_t *report, uint8_t length) {
     return true;
 }
 
+/**
+ * @brief Takes one received motor-updater packet.
+ *
+ * Transfers ownership of the pending endpoint 3 output payload to the caller.
+ *
+ * @param[out] packet Destination for the packet bytes and length.
+ * @return True when a packet was available; otherwise false.
+ */
 bool usb_device_take_updater_packet(UsbDeviceUpdaterPacket *packet) {
     if (!updater_packet_ready || packet == 0) {
         return false;
@@ -1164,15 +1231,31 @@ bool usb_device_take_updater_packet(UsbDeviceUpdaterPacket *packet) {
     return true;
 }
 
-bool usb_device_send_updater_packet(const uint8_t *data, uint8_t length) {
-    if (operating_mode != USB_OPERATING_MODE_UPDATER || !usb_device_configured() || data == 0 ||
-        length == 0 || length > USB_DEVICE_REPORT_SIZE) {
+/**
+ * @brief Queues one complete motor-updater response.
+ *
+ * Retains responses of up to 66 bytes while the endpoint service emits 64-byte bulk packets and
+ * the required zero-length terminator for an exact 64-byte response.
+ *
+ * @param[in] data Complete response bytes to retain.
+ * @param[in] length Number of response bytes from one through 66.
+ * @return True when the idle updater input stream accepted the response; otherwise false.
+ */
+bool usb_device_queue_updater_response(const uint8_t *data, uint8_t length) {
+    if (operating_mode != USB_OPERATING_MODE_UPDATER || !usb_device_configured() || data == NULL ||
+        length == 0 || length > USB_DEVICE_UPDATER_RESPONSE_SIZE || updater_response_ready ||
+        updater_input_busy) {
         return false;
     }
-    if (!platform_usb_send(USB_UPDATER_DATA_ENDPOINT, data, length, updater_input_data_one)) {
-        return false;
+
+    for (uint8_t index = 0; index < length; index++) {
+        updater_response[index] = data[index];
     }
-    updater_input_data_one = !updater_input_data_one;
+    updater_response_length = length;
+    updater_response_offset = 0;
+    updater_zero_length_pending = length == USB_DEVICE_REPORT_SIZE;
+    updater_response_ready = true;
+    service_updater_input();
     return true;
 }
 

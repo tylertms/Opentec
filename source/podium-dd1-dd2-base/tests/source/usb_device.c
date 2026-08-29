@@ -379,9 +379,37 @@ static void test_exchanges_updater_packets(void) {
     assert(memcmp(packet.data, bulk_output, sizeof(bulk_output)) == 0);
     assert(!usb_device_take_updater_packet(&packet));
 
-    assert(usb_device_send_updater_packet(bulk_input, sizeof(bulk_input)));
+    assert(usb_device_queue_updater_response(bulk_input, sizeof(bulk_input)));
     assert(sent.endpoint == 3 && sent.length == sizeof(bulk_input));
     assert(memcmp(sent.data, bulk_input, sizeof(bulk_input)) == 0);
+
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 3, NULL, 0);
+    usb_device_service();
+
+    uint8_t split_response[USB_DEVICE_UPDATER_RESPONSE_SIZE];
+    for (uint8_t index = 0; index < sizeof(split_response); index++) {
+        split_response[index] = index;
+    }
+    assert(usb_device_queue_updater_response(split_response, sizeof(split_response)));
+    assert(sent.endpoint == 3 && sent.length == USB_DEVICE_REPORT_SIZE);
+    assert(memcmp(sent.data, split_response, USB_DEVICE_REPORT_SIZE) == 0);
+    assert(!usb_device_queue_updater_response(bulk_input, sizeof(bulk_input)));
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 3, NULL, 0);
+    usb_device_service();
+    assert(sent.endpoint == 3 && sent.length == 2);
+    assert(memcmp(sent.data, split_response + USB_DEVICE_REPORT_SIZE, 2) == 0);
+
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 3, NULL, 0);
+    usb_device_service();
+    assert(usb_device_queue_updater_response(split_response, USB_DEVICE_REPORT_SIZE));
+    assert(sent.length == USB_DEVICE_REPORT_SIZE);
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 3, NULL, 0);
+    usb_device_service();
+    assert(sent.endpoint == 3 && sent.length == 0);
+    assert(!usb_device_queue_updater_response(bulk_input, sizeof(bulk_input)));
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 3, NULL, 0);
+    usb_device_service();
+    assert(usb_device_queue_updater_response(bulk_input, sizeof(bulk_input)));
 }
 
 static void test_exchanges_xbox_gip_discovery(void) {

@@ -14,6 +14,7 @@
 
 enum {
     USB_DEVICE_REPORT_SIZE = 64,
+    USB_DEVICE_UPDATER_RESPONSE_SIZE = 66,
     USB_DEVICE_HID_REPORT_INPUT = 1,
     USB_DEVICE_HID_REPORT_OUTPUT = 2,
     USB_DEVICE_HID_REPORT_FEATURE = 3,
@@ -61,7 +62,7 @@ bool usb_device_queue_xbox_response(const uint8_t *report, uint8_t length);
 bool usb_device_queue_xbox_vendor_report(const uint8_t report[USB_DEVICE_REPORT_SIZE]);
 bool usb_device_send_vendor_report(const uint8_t *report, uint8_t length);
 bool usb_device_take_updater_packet(UsbDeviceUpdaterPacket *packet);
-bool usb_device_send_updater_packet(const uint8_t *data, uint8_t length);
+bool usb_device_queue_updater_response(const uint8_t *data, uint8_t length);
 UsbXboxGipSessionAction usb_device_take_xbox_session_actions(void);
 bool usb_device_take_playstation_authentication_request(
     uint8_t request[USB_PLAYSTATION_AUTHENTICATION_REQUEST_SIZE]);
