@@ -34,7 +34,7 @@ STACK_SIZE = DEFINED(__stack_size__) ? __stack_size__ : 0x0400;
 /* Specify the memory areas */
 MEMORY
 {
-  m_interrupts          (RX)  : ORIGIN = 0x0000A000, LENGTH = 0x00000400
+  m_interrupts          (RX)  : ORIGIN = 0x0000A000, LENGTH = 0x00000200
   m_flash_config        (RX)  : ORIGIN = 0x0000A400, LENGTH = 0x00000010
   m_text                (RX)  : ORIGIN = 0x0000A410, LENGTH = 0x00015BF0
   m_data                (RW)  : ORIGIN = 0x1FFFF000, LENGTH = 0x00004000
@@ -218,4 +218,3 @@ SECTIONS
 
   ASSERT(__StackLimit >= __HeapLimit, "region m_data overflowed with stack and heap")
 }
-
