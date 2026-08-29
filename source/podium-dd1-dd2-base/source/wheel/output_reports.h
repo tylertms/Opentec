@@ -13,6 +13,14 @@ enum {
     WHEEL_OUTPUT_REMOTE_TELEMETRY_SIZE = 30,
 };
 
+/** @brief Host output-report action selectors. */
+typedef enum {
+    WHEEL_OUTPUT_REPORT_ACTION_TWO = 0,
+    WHEEL_OUTPUT_REPORT_ACTION_ONE = 1,
+    WHEEL_OUTPUT_REPORT_ACTION_FOUR = 2,
+    WHEEL_OUTPUT_REPORT_ACTION_FIVE = 3,
+} WheelOutputReportAction;
+
 /** @brief Retained attached-wheel output report payloads and pending state. */
 typedef struct {
     uint8_t report_one[WHEEL_OUTPUT_REPORT_ONE_SIZE];

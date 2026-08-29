@@ -7,6 +7,8 @@
 
 static void complete_standard_probe(WheelAdapterCommandService *service, WheelAdapterInput *adapter,
                                     CommandTransport *transport);
+static void complete_extended_probe(WheelAdapterCommandService *service, WheelAdapterInput *adapter,
+                                    CommandTransport *transport);
 
 static void expect_request(CommandTransport *transport, const uint8_t *expected,
                            uint16_t expected_length) {
@@ -68,6 +70,20 @@ static void complete_standard_probe(WheelAdapterCommandService *service, WheelAd
     const uint8_t expected[] = {2, 0x2b, 0x0c, 1, 0};
     expect_request(transport, expected, sizeof(expected));
     const uint8_t probe[] = {1};
+    complete_read(transport, probe, sizeof(probe));
+    wheel_adapter_command_service_run(service, adapter, transport);
+}
+
+static void complete_extended_probe(WheelAdapterCommandService *service, WheelAdapterInput *adapter,
+                                    CommandTransport *transport) {
+    wheel_adapter_command_service_run(service, adapter, transport);
+    assert(command_transport_request_sent(transport));
+    command_transport_fail(transport);
+    wheel_adapter_command_service_run(service, adapter, transport);
+    wheel_adapter_command_service_run(service, adapter, transport);
+    const uint8_t expected[] = {2, 0x2d, 0x0c, 4, 0};
+    expect_request(transport, expected, sizeof(expected));
+    const uint8_t probe[] = {1, 0, 0, 0};
     complete_read(transport, probe, sizeof(probe));
     wheel_adapter_command_service_run(service, adapter, transport);
 }
@@ -276,6 +292,73 @@ static void writes_system_display_state(void) {
     wheel_adapter_command_service_run(&service, &adapter, &transport);
 }
 
+static void writes_extended_output_reports(void) {
+    WheelAdapterCommandService service;
+    WheelAdapterInput adapter;
+    CommandTransport transport;
+    command_transport_init(&transport);
+    wheel_adapter_command_service_init(&service, &adapter);
+    complete_extended_probe(&service, &adapter, &transport);
+
+    uint8_t report_four[WHEEL_OUTPUT_REPORT_FOUR_SIZE];
+    uint8_t report_five[WHEEL_OUTPUT_REPORT_FIVE_SIZE];
+    for (uint8_t index = 0; index < sizeof(report_four); index++) {
+        report_four[index] = (uint8_t)(index + 1);
+    }
+    for (uint8_t index = 0; index < sizeof(report_five); index++) {
+        report_five[index] = (uint8_t)(0x80 + index);
+    }
+    wheel_adapter_command_service_queue_report_four(&service, report_four);
+    wheel_adapter_command_service_queue_report_five(&service, report_five);
+
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    uint8_t expected_four[WHEEL_OUTPUT_REPORT_FOUR_SIZE + 3] = {2, 0x2c, 0x08};
+    memcpy(expected_four + 3, report_four, sizeof(report_four));
+    expect_request(&transport, expected_four, sizeof(expected_four));
+    complete_write(&transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    uint8_t expected_five[WHEEL_OUTPUT_REPORT_FIVE_SIZE + 3] = {2, 0x2c, 0x09};
+    memcpy(expected_five + 3, report_five, sizeof(report_five));
+    expect_request(&transport, expected_five, sizeof(expected_five));
+    complete_write(&transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+}
+
+static void paces_separate_extended_output_reports(void) {
+    WheelAdapterCommandService service;
+    WheelAdapterInput adapter;
+    CommandTransport transport;
+    command_transport_init(&transport);
+    wheel_adapter_command_service_init(&service, &adapter);
+    complete_extended_probe(&service, &adapter, &transport);
+
+    uint8_t report_four[WHEEL_OUTPUT_REPORT_FOUR_SIZE] = {1};
+    uint8_t report_five[WHEEL_OUTPUT_REPORT_FIVE_SIZE] = {2};
+    wheel_adapter_command_service_queue_report_four(&service, report_four);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    uint8_t expected_four[WHEEL_OUTPUT_REPORT_FOUR_SIZE + 3] = {2, 0x2c, 0x08, 1};
+    expect_request(&transport, expected_four, sizeof(expected_four));
+    complete_write(&transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+
+    wheel_adapter_command_service_queue_report_five(&service, report_five);
+    const uint8_t status_request[] = {2, 0x2d, 0x00, 2, 0};
+    const uint8_t status[] = {0, 0};
+    for (uint8_t index = 0; index < 4; index++) {
+        wheel_adapter_command_service_run(&service, &adapter, &transport);
+        expect_request(&transport, status_request, sizeof(status_request));
+        complete_read(&transport, status, sizeof(status));
+        wheel_adapter_command_service_run(&service, &adapter, &transport);
+    }
+
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    uint8_t expected[WHEEL_OUTPUT_REPORT_FIVE_SIZE + 3] = {2, 0x2c, 0x09};
+    memcpy(expected + 3, report_five, sizeof(report_five));
+    expect_request(&transport, expected, sizeof(expected));
+}
+
 static void switches_endpoints_after_a_failed_transfer(void) {
     WheelAdapterCommandService service;
     WheelAdapterInput adapter;
@@ -322,6 +405,8 @@ int main(void) {
     writes_remote_tuning_active_state();
     writes_refresh_state();
     writes_system_display_state();
+    writes_extended_output_reports();
+    paces_separate_extended_output_reports();
     forwards_requested_host_controls();
     switches_endpoints_after_a_failed_transfer();
     return 0;

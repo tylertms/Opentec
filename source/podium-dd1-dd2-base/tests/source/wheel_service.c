@@ -660,6 +660,25 @@ static void test_retains_adapter_display_state_across_command_resets(void) {
     assert(service.adapter_commands.display_state_pending);
 }
 
+static void test_mirrors_extended_adapter_output_reports(void) {
+    WheelService service;
+    initialize_service(&service);
+    service.protocol.adapter.mode = 1;
+    uint8_t arguments[1 + WHEEL_OUTPUT_REPORT_FOUR_SIZE];
+    arguments[0] = WHEEL_OUTPUT_REPORT_ACTION_FOUR;
+    for (uint8_t index = 1; index < sizeof(arguments); index++) {
+        arguments[index] = index;
+    }
+
+    wheel_service_apply_output_report(&service, arguments, false);
+
+    assert(service.adapter_commands.report_four_pending);
+    assert(memcmp(service.adapter_commands.report_four, arguments + 1,
+                  WHEEL_OUTPUT_REPORT_FOUR_SIZE) == 0);
+    assert(memcmp(service.protocol.output_reports.report_four, arguments + 1,
+                  WHEEL_OUTPUT_REPORT_FOUR_SIZE) == 0);
+}
+
 static void test_rejects_unavailable_multi_position_input(void) {
     WheelService service;
     initialize_service(&service);
@@ -882,6 +901,7 @@ int main(void) {
     test_marks_extended_multi_position_layout();
     test_filters_adapter_remote_tuning_active_state();
     test_retains_adapter_display_state_across_command_resets();
+    test_mirrors_extended_adapter_output_reports();
     test_rejects_unavailable_multi_position_input();
     test_selects_extended_report_fields();
     test_reports_calibration_availability();

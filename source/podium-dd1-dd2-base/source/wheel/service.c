@@ -905,7 +905,8 @@ bool wheel_service_multi_position_input(WheelService *service, uint32_t now_ms,
  * @brief Applies a host-provided attached-wheel output report.
  *
  * Uses the negotiated wheel mode, current adapter mode, and display blink state to retain or
- * suppress the selected report for the next protocol response.
+ * suppress the selected report for the next protocol response. Extended-adapter report four and
+ * five payloads are also forwarded to the adapter command service.
  *
  * @param[in,out] service Attached-wheel service that owns the report queue.
  * @param[in] arguments Action byte followed by the report payload.
@@ -915,6 +916,14 @@ void wheel_service_apply_output_report(WheelService *service, const uint8_t *arg
                                        bool display_blink_active) {
     wheel_output_reports_apply(&service->protocol.output_reports, arguments, service->protocol.mode,
                                service->protocol.adapter.mode, display_blink_active);
+    if (service->protocol.adapter.mode != 1) {
+        return;
+    }
+    if (arguments[0] == WHEEL_OUTPUT_REPORT_ACTION_FOUR) {
+        wheel_adapter_command_service_queue_report_four(&service->adapter_commands, arguments + 1);
+    } else if (arguments[0] == WHEEL_OUTPUT_REPORT_ACTION_FIVE) {
+        wheel_adapter_command_service_queue_report_five(&service->adapter_commands, arguments + 1);
+    }
 }
 
 /**
