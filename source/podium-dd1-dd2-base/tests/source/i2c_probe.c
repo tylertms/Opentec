@@ -74,6 +74,33 @@ static void test_optionally_validates_final_checksum(void) {
     assert(i2c_probe_final_response_validate(&response, true) == I2C_PROBE_VALID);
 }
 
+static void test_encodes_fixed_requests(void) {
+    static const I2cProbeRequest expected[] = {
+        [I2C_PROBE_BEGIN_SESSION] = {.selector = 0x0f},
+        [I2C_PROBE_READ_STARTUP_STATUS] = {.selector = 0x1f, .response_length = 2},
+        [I2C_PROBE_READ_SIGNATURE] = {.selector = 0x2f, .response_length = 0x1f},
+        [I2C_PROBE_READ_CONFIRMATION] = {.selector = 0xff, .response_length = 2},
+        [I2C_PROBE_READ_READY_STATUS] = {.selector = 0x07, .response_length = 2},
+    };
+
+    for (I2cProbeCommand command = I2C_PROBE_BEGIN_SESSION; command <= I2C_PROBE_READ_READY_STATUS;
+         ++command) {
+        I2cProbeRequest request = {0};
+        assert(i2c_probe_request_encode(command, &request));
+        assert(request.selector == expected[command].selector);
+        assert(request.response_length == expected[command].response_length);
+    }
+}
+
+static void test_rejects_reserved_requests(void) {
+    I2cProbeRequest request = {.selector = 0xa5, .response_length = 0x5a};
+
+    assert(!i2c_probe_request_encode(0, &request));
+    assert(request.selector == 0xa5 && request.response_length == 0x5a);
+    assert(!i2c_probe_request_encode(6, &request));
+    assert(request.selector == 0xa5 && request.response_length == 0x5a);
+}
+
 int main(void) {
     test_accepts_handshake_and_clears_retry_count();
     test_busy_handshake_increments_without_rejection();
@@ -82,5 +109,7 @@ int main(void) {
     test_calculates_xor_checksum();
     test_rejects_nonzero_final_status_before_checksum();
     test_optionally_validates_final_checksum();
+    test_encodes_fixed_requests();
+    test_rejects_reserved_requests();
     return 0;
 }

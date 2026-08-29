@@ -9,6 +9,14 @@ enum {
     I2C_PROBE_UNEXPECTED_RETRY_LIMIT = 2,
 };
 
+static const I2cProbeRequest requests[] = {
+    [I2C_PROBE_BEGIN_SESSION] = {.selector = 0x0f},
+    [I2C_PROBE_READ_STARTUP_STATUS] = {.selector = 0x1f, .response_length = 2},
+    [I2C_PROBE_READ_SIGNATURE] = {.selector = 0x2f, .response_length = 0x1f},
+    [I2C_PROBE_READ_CONFIRMATION] = {.selector = 0xff, .response_length = 2},
+    [I2C_PROBE_READ_READY_STATUS] = {.selector = 0x07, .response_length = 2},
+};
+
 /**
  * @brief Initializes probe handshake response tracking.
  *
@@ -103,4 +111,22 @@ I2cProbeValidationResult i2c_probe_final_response_validate(const I2cProbeFinalRe
         return I2C_PROBE_CHECKSUM_ERROR;
     }
     return I2C_PROBE_VALID;
+}
+
+/**
+ * @brief Encodes a fixed probe request.
+ *
+ * Maps the five session and identification commands to their I2C selector and exact response
+ * length. These requests carry no write payload.
+ *
+ * @param[in] command Session or identification command to encode.
+ * @param[out] request Encoded selector and response length.
+ * @return True for commands 1 through 5; otherwise false.
+ */
+bool i2c_probe_request_encode(I2cProbeCommand command, I2cProbeRequest *request) {
+    if (command < I2C_PROBE_BEGIN_SESSION || command > I2C_PROBE_READ_READY_STATUS) {
+        return false;
+    }
+    *request = requests[command];
+    return true;
 }
