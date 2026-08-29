@@ -14,12 +14,8 @@ display_framebuffer_sources = files('source/display/framebuffer.c')
 display_notice_sources = files('source/display/notice.c')
 display_prompt_sources = files('source/display/prompt.c')
 display_text_sources = files('source/display/text.c')
-force_effect_bank_sources = files('source/force_feedback/bank.c')
 force_feedback_command_sources = files('source/force_feedback/command.c')
 force_feedback_state_sources = files('source/force_feedback/state.c')
-force_controller_sources = files('source/force_feedback/controller.c')
-force_effect_sources = files('source/force_feedback/effect.c')
-force_output_sources = files('source/force_feedback/output.c')
 force_output_enable_sources = files('source/force_feedback/output_enable.c')
 force_output_report_sources = files('source/force_feedback/output_report.c')
 force_output_scale_sources = files('source/force_feedback/output_scale.c')
@@ -239,12 +235,8 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'display-notice': 'source/display/notice.c',
     'display-prompt': 'source/display/prompt.c',
     'display-text': 'source/display/text.c',
-    'force-effect-bank': 'source/force_feedback/bank.c',
     'force-feedback-command': 'source/force_feedback/command.c',
     'force-feedback-state': 'source/force_feedback/state.c',
-    'force-controller': 'source/force_feedback/controller.c',
-    'force-effect': 'source/force_feedback/effect.c',
-    'force-output': 'source/force_feedback/output.c',
     'force-output-enable': 'source/force_feedback/output_enable.c',
     'force-output-report': 'source/force_feedback/output_report.c',
     'force-output-scale': 'source/force_feedback/output_scale.c',
@@ -518,14 +510,6 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
-  force_effect_test = executable(
-    'base-force-effect-test',
-    'tests/source/force_effect.c',
-    force_effect_sources,
-    build_by_default: false,
-    include_directories: base_include,
-  )
-
   cooling_tachometer_test = executable(
     'base-cooling-tachometer-test',
     'tests/source/cooling_tachometer.c',
@@ -603,15 +587,6 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
-  force_effect_bank_test = executable(
-    'base-force-effect-bank-test',
-    'tests/source/force_effect_bank.c',
-    force_effect_bank_sources,
-    force_effect_sources,
-    build_by_default: false,
-    include_directories: base_include,
-  )
-
   force_feedback_command_test = executable(
     'base-force-feedback-command-test',
     'tests/source/force_feedback_command.c',
@@ -624,27 +599,6 @@ if not meson.is_cross_build()
     'base-force-feedback-state-test',
     'tests/source/force_feedback_state.c',
     force_feedback_state_sources,
-    build_by_default: false,
-    include_directories: base_include,
-  )
-
-  force_controller_test = executable(
-    'base-force-controller-test',
-    'tests/source/force_controller.c',
-    force_controller_sources,
-    force_effect_bank_sources,
-    force_effect_sources,
-    force_filter_sources,
-    force_output_sources,
-    force_soft_stop_sources,
-    build_by_default: false,
-    include_directories: base_include,
-  )
-
-  force_output_test = executable(
-    'base-force-output-test',
-    'tests/source/force_output.c',
-    force_output_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2418,8 +2372,6 @@ if not meson.is_cross_build()
   test('base-display-notice', display_notice_test, suite: ['base', 'display'])
   test('base-display-prompt', display_prompt_test, suite: ['base', 'display'])
   test('base-analog-samples', analog_samples_test, suite: ['base', 'analog'])
-  test('base-force-effect', force_effect_test, suite: ['base', 'force-feedback'])
-  test('base-force-effect-bank', force_effect_bank_test, suite: ['base', 'force-feedback'])
   test(
     'base-force-feedback-command',
     force_feedback_command_test,
@@ -2430,8 +2382,6 @@ if not meson.is_cross_build()
     force_feedback_state_test,
     suite: ['base', 'force-feedback', 'usb', 'output'],
   )
-  test('base-force-controller', force_controller_test, suite: ['base', 'force-feedback'])
-  test('base-force-output', force_output_test, suite: ['base', 'force-feedback'])
   test(
     'base-force-output-enable',
     force_output_enable_test,

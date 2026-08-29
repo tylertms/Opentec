@@ -14,7 +14,6 @@
 #include "display/notice.h"
 #include "display/prompt.h"
 #include "force_feedback/command.h"
-#include "force_feedback/output.h"
 #include "force_feedback/output_enable.h"
 #include "force_feedback/script_report.h"
 #include "force_feedback/script_runtime.h"
