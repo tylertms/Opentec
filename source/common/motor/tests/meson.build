@@ -37,6 +37,19 @@ test(
   suite: ['motor', 'force-feedback'],
 )
 
+motor_link_frame_test = executable(
+  'motor-link-frame-test',
+  'source/link_frame.c',
+  motor_link_frame_sources,
+  include_directories: common_include,
+)
+
+test(
+  'motor-link-frame',
+  motor_link_frame_test,
+  suite: ['motor', 'link'],
+)
+
 motor_hardware_profile_test = executable(
   'motor-hardware-profile-test',
   'source/hardware_profile.c',

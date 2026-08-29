@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <stdint.h>
 
+#include "common/motor/force_feedback_command.h"
 #include "common/motor/force_feedback_engine.h"
 #include "common/motor/force_feedback_soft_stop.h"
 
@@ -202,6 +203,32 @@ static void test_engine(void) {
     assert(mix.secondary == 0);
 }
 
+static void test_commands(void) {
+    MotorForceFeedbackEngine engine;
+    motor_force_feedback_engine_initialize(&engine);
+
+    uint8_t command[7] = {0x21U, 8U, 0U, 0U, 0U, 0U, 0U};
+    assert(motor_force_feedback_command_apply(&engine, command));
+    assert(engine.effects[2].active);
+    assert(engine.effects[2].type == MOTOR_FORCE_FEEDBACK_EFFECT_CONSTANT);
+    assert(engine.effects[2].data.constant.magnitude == 65535);
+
+    command[0] = 0x23U;
+    assert(motor_force_feedback_command_apply(&engine, command));
+    assert(!engine.effects[2].active);
+
+    command[0] = 0x05U;
+    assert(motor_force_feedback_command_apply(&engine, command));
+    assert(!engine.effects[MOTOR_FORCE_FEEDBACK_POSITION_SLOT].active);
+    command[0] = 0x04U;
+    assert(motor_force_feedback_command_apply(&engine, command));
+    assert(engine.effects[MOTOR_FORCE_FEEDBACK_POSITION_SLOT].active);
+
+    command[0] = 0x11U;
+    command[1] = 7U;
+    assert(!motor_force_feedback_command_apply(&engine, command));
+}
+
 int main(void) {
     test_defaults();
     test_constant_effects();
@@ -211,5 +238,6 @@ int main(void) {
     test_output();
     test_soft_stop();
     test_engine();
+    test_commands();
     return 0;
 }
