@@ -16,6 +16,8 @@ enum {
     NATURAL_EFFECT_SCALE = 0x18000,
     FRICTION_EXCURSION_SCALE = 0x190000,
     FRICTION_SETTING_DIVISOR = 0xa0000,
+    DERATING_TEMPERATURE_THRESHOLD = 0x507,
+    DERATING_TEMPERATURE_SHIFT = 4,
 };
 
 static const uint32_t interpolation_coefficients[MOTOR_DRIVE_INTERPOLATION_SETTING_COUNT] = {
@@ -185,4 +187,67 @@ int16_t motor_drive_friction_step(MotorDriveFrictionState *state, int32_t positi
         (state->previous_raw < 0 && raw > 0) || (state->previous_raw > 0 && raw < 0);
     state->previous_raw = raw;
     return direction_reversed ? 0 : (int16_t)raw;
+}
+
+/**
+ * @brief Initializes the official product-current derating state.
+ *
+ * Normal output begins at the product maximum. The periodic NXP PI controller subsequently moves
+ * this scale toward the target and error published by the product scaling step.
+ *
+ * @param state Persistent current scale, target, and controller error.
+ * @param normal_scale Product-specific normal current scale.
+ */
+void motor_drive_derating_initialize(MotorDriveDeratingState *state, int16_t normal_scale) {
+    state->current_scale = normal_scale;
+    state->target_scale = 0;
+    state->error = 0;
+}
+
+/**
+ * @brief Applies the official product-specific current scaling and derating target.
+ *
+ * Minimum mode uses the product floor directly. Normal mode applies the maximum scale, derives a
+ * thermal and command-magnitude target, then applies the current PI-controlled derating scale.
+ *
+ * @param state Persistent current scale and newly published derating target and error.
+ * @param current Saturated current after natural effects are combined.
+ * @param motor_temperature_sample Averaged motor-temperature ADC sample.
+ * @param normal_scale Product-specific normal current scale.
+ * @param minimum_scale Product-specific minimum and special-mode current scale.
+ * @param minimum_mode True when parameter thirty-four selects the minimum scale directly.
+ * @return Product-scaled signed current.
+ */
+int16_t motor_drive_product_scale(MotorDriveDeratingState *state, int16_t current,
+                                  uint16_t motor_temperature_sample, int16_t normal_scale,
+                                  int16_t minimum_scale, bool minimum_mode) {
+    if (minimum_mode) {
+        return motor_q15_scale_wrap((uint16_t)minimum_scale, current);
+    }
+
+    int16_t scaled_current = motor_q15_scale_wrap((uint16_t)normal_scale, current);
+    int16_t temperature_scale = normal_scale;
+    if (motor_temperature_sample <= DERATING_TEMPERATURE_THRESHOLD) {
+        int16_t reduction = (int16_t)((DERATING_TEMPERATURE_THRESHOLD - motor_temperature_sample)
+                                      << DERATING_TEMPERATURE_SHIFT);
+        temperature_scale = motor_signed_difference_saturate(temperature_scale, reduction);
+        if (temperature_scale < minimum_scale) {
+            temperature_scale = minimum_scale;
+        }
+    }
+
+    int16_t magnitude = scaled_current == INT16_MIN
+                            ? INT16_MIN
+                            : (scaled_current < 0 ? (int16_t)-scaled_current : scaled_current);
+    state->target_scale = temperature_scale;
+    if (magnitude > minimum_scale) {
+        state->target_scale = motor_signed_difference_saturate(
+            temperature_scale, (int16_t)(magnitude - minimum_scale));
+    }
+    state->error = motor_signed_difference_saturate(state->target_scale, state->current_scale);
+
+    int16_t factor = state->current_scale >= normal_scale
+                         ? INT16_MAX
+                         : (int16_t)(((int32_t)state->current_scale << 15U) / normal_scale);
+    return motor_q15_scale_wrap((uint16_t)factor, scaled_current);
 }

@@ -42,6 +42,7 @@ enum {
     MOTOR_PARAMETER_DRIVE_CURRENT = 20,
     MOTOR_PARAMETER_STEERING_RANGE = 32,
     MOTOR_PARAMETER_OVERALL_GAIN = 33,
+    MOTOR_PARAMETER_MINIMUM_CURRENT_MODE = 34,
     MOTOR_PARAMETER_NATURAL_DAMPING = 35,
     MOTOR_PARAMETER_NATURAL_FRICTION = 36,
     MOTOR_PARAMETER_NATURAL_INERTIA = 37,
@@ -75,12 +76,16 @@ typedef struct {
     MotorDriveCommand live_drive;
     MotorDriveInterpolationState drive_interpolation;
     MotorDriveFrictionState drive_friction;
+    MotorDriveDeratingState drive_derating;
+    GFLIB_CTRL_PI_P_AW_T_A32 derating_controller;
     MotorControlMode mode;
     uint32_t service_tick;
     int16_t electrical_angle;
     int16_t control_current;
     int16_t friction_current;
     uint8_t identity;
+    uint8_t derating_update_count;
+    bool_t derating_stop_integrator;
     bool control_update_pending;
     bool current_calibration_started;
     bool calibration_valid;
@@ -166,8 +171,9 @@ static void motor_runtime_encoder_position_refresh(MotorRuntime *runtime) {
 /**
  * @brief Resolves the run-mode current command.
  *
- * Primary and secondary link currents are combined with saturation. A valid indexed encoder adds
- * the directional calibration correction selected by the motion hysteresis.
+ * Primary and secondary link currents are combined with natural effects and product-specific
+ * derating. A valid indexed encoder adds the directional calibration correction selected by the
+ * motion hysteresis.
  *
  * @param runtime Active motor runtime and latest link, motion, and calibration state.
  * @return Saturated current command for the normal FOC cycle.
@@ -188,6 +194,11 @@ static int16_t motor_runtime_current_resolve(MotorRuntime *runtime) {
         runtime->motion_sample.filtered_velocity_delta,
         (uint8_t)runtime->parameters.entries[MOTOR_PARAMETER_NATURAL_INERTIA].value);
     current = MLIB_SubSat_F16(current, inertia);
+    current = motor_drive_product_scale(
+        &runtime->drive_derating, current, runtime->auxiliary_telemetry.motor_average,
+        motor_product_configuration.normal_current_scale,
+        motor_product_configuration.minimum_current_scale,
+        (uint8_t)runtime->parameters.entries[MOTOR_PARAMETER_MINIMUM_CURRENT_MODE].value == 0xaaU);
     if (!runtime->calibration_valid || !runtime->encoder_index_detected) {
         return current;
     }
@@ -534,8 +545,8 @@ static void motor_runtime_encoder_direction_step(MotorRuntime *runtime) {
 /**
  * @brief Runs one normal motor-control interrupt cycle.
  *
- * The encoder position is refreshed, live current plus calibration correction is resolved, and the
- * normal rotor-angle FOC path updates all three PWM phases.
+ * The encoder position is refreshed and the normal rotor-angle FOC path consumes the current
+ * command most recently published by the main-loop drive service.
  *
  * @param runtime Active motor runtime and run-mode state.
  */
@@ -543,7 +554,6 @@ static void motor_runtime_run_step(MotorRuntime *runtime) {
     motor_runtime_encoder_position_refresh(runtime);
     motor_runtime_request_apply(runtime);
     motor_startup_interlock_outputs_apply(false, true);
-    runtime->control_current = motor_runtime_current_resolve(runtime);
     motor_runtime_control_cycle(runtime, runtime->control_current, false);
 }
 
@@ -627,8 +637,8 @@ static void motor_runtime_encoder_index_handler(uint16_t counter, void *context)
 /**
  * @brief Advances motion estimation and service countdowns.
  *
- * Each FTM3 period publishes position and velocity deltas, services the parameter bus, and advances
- * the five startup and telemetry countdowns.
+ * Each FTM3 period publishes position and velocity deltas, services the parameter bus, advances the
+ * product derating controller every tenth tick, and updates the remaining service-rate controls.
  *
  * @param context Active motor runtime supplied during service timer initialization.
  */
@@ -640,6 +650,12 @@ static void motor_runtime_service_handler(void *context) {
                             (uint32_t)runtime->encoder.position, runtime->hardware.velocity_scale);
     (void)motor_service_timing_tick(&runtime->timing);
     motor_bus_service();
+    if (++runtime->derating_update_count >= 10U) {
+        runtime->drive_derating.current_scale =
+            GFLIB_CtrlPIpAW_F16(runtime->drive_derating.error, &runtime->derating_stop_integrator,
+                                &runtime->derating_controller);
+        runtime->derating_update_count = 0U;
+    }
     (void)motor_velocity_control_step(&runtime->velocity_control,
                                       runtime->motion_sample.filtered_position_delta,
                                       runtime->foc.q_controller.bLimFlag);
@@ -713,6 +729,15 @@ void motor_runtime_initialize(void) {
         motor_hardware_profile_select(((motor_runtime.identity & 0x0fU) >> 3U) != 0U);
     motor_drive_friction_initialize(&motor_runtime.drive_friction,
                                     motor_runtime.hardware.secondary_scale);
+    motor_drive_derating_initialize(&motor_runtime.drive_derating,
+                                    motor_product_configuration.normal_current_scale);
+    motor_runtime.derating_controller = (GFLIB_CTRL_PI_P_AW_T_A32){
+        .a32IGain = 0x106,
+        .f16UpperLim = motor_product_configuration.normal_current_scale,
+        .f16LowerLim = motor_product_configuration.minimum_current_scale,
+    };
+    GFLIB_CtrlPIpAWInit_F16(motor_product_configuration.normal_current_scale,
+                            &motor_runtime.derating_controller);
     motor_runtime.mode = motor_control_mode_initialize();
     motor_runtime.position_filter.shift = 4U;
     motor_runtime.velocity_filter.shift = 6U;
@@ -721,7 +746,7 @@ void motor_runtime_initialize(void) {
                               motor_product_configuration.normal_output_percent);
     motor_foc_initialize(&motor_runtime.foc);
     motor_velocity_control_initialize(&motor_runtime.velocity_control,
-                                      motor_product_configuration.velocity_current_limit);
+                                      motor_product_configuration.normal_current_scale);
     motor_service_timing_initialize(&motor_runtime.timing);
     motor_encoder_calibration_initialize(&motor_runtime.encoder_calibration);
     motor_encoder_direction_initialize(&motor_runtime.encoder_direction);
@@ -754,8 +779,9 @@ void motor_runtime_initialize(void) {
  * @brief Services deferred motor runtime work.
  *
  * Local force feedback is mixed once per service tick and applied to the live FOC command.
- * Seven-ADC events advance the selected force interpolation response. Published temperature
- * windows and measured torque are also exposed through the read-only parameter bank.
+ * Seven-ADC events advance the selected force interpolation response. Run mode publishes natural
+ * friction and the complete product-scaled current command. Temperature windows and measured
+ * torque are exposed through the read-only parameter bank.
  */
 void motor_runtime_poll(void) {
     int32_t centered_position = motor_centered_position_resolve(motor_runtime.encoder.position,
@@ -778,6 +804,7 @@ void motor_runtime_poll(void) {
         motor_runtime.friction_current = motor_drive_friction_step(
             &motor_runtime.drive_friction, motor_runtime.encoder.position,
             (uint16_t)motor_runtime.parameters.entries[MOTOR_PARAMETER_NATURAL_FRICTION].value);
+        motor_runtime.control_current = motor_runtime_current_resolve(&motor_runtime);
     }
 
     if (motor_auxiliary_samples_resolve(&motor_runtime.auxiliary_accumulator,

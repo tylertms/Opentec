@@ -76,11 +76,33 @@ static void test_natural_friction(void) {
     assert(alternate.output_scale == 9U);
 }
 
+static void test_product_derating(void) {
+    MotorDriveDeratingState dd1;
+    motor_drive_derating_initialize(&dd1, 0x5999);
+    assert(motor_drive_product_scale(&dd1, 30000, 2000U, 0x5999, 0x4000, false) == 20998);
+    assert(dd1.target_scale == 18322);
+    assert(dd1.error == -4615);
+    assert(motor_drive_product_scale(&dd1, 10000, 0U, 0x5999, 0x4000, false) == 6998);
+    assert(dd1.target_scale == 0x4000);
+    assert(dd1.error == -6553);
+    dd1.current_scale = 0x4000;
+    assert(motor_drive_product_scale(&dd1, 20000, 2000U, 0x5999, 0x4000, false) == 9999);
+    assert(motor_drive_product_scale(&dd1, 20000, 2000U, 0x5999, 0x4000, true) == 10000);
+
+    MotorDriveDeratingState dd2;
+    motor_drive_derating_initialize(&dd2, 0x770a);
+    assert(motor_drive_product_scale(&dd2, 30000, 2000U, 0x770a, 0x5c28, false) == 27898);
+    assert(dd2.target_scale == 26167);
+    assert(dd2.error == -4307);
+    assert(motor_drive_product_scale(&dd2, 20000, 2000U, 0x770a, 0x5c28, true) == 14399);
+}
+
 int main(void) {
     test_normal_product_scales();
     test_full_torque_and_gates();
     test_interpolation_filter();
     test_natural_motion_resistance();
     test_natural_friction();
+    test_product_derating();
     return 0;
 }
