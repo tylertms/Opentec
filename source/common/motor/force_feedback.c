@@ -61,6 +61,9 @@ static int32_t clamp_symmetric(int32_t value, uint32_t limit) {
 
 /**
  * @brief Returns the force-feedback defaults installed by both official motor images.
+ *
+ * The defaults cover steering range, overall and per-effect gains, filtering, and interpolation.
+ *
  * @return Default motor effect scaling and filter settings.
  */
 MotorForceFeedbackSettings motor_force_feedback_settings_default(void) {
@@ -121,6 +124,9 @@ void motor_force_feedback_settings_apply(MotorForceFeedbackSettings *settings,
 
 /**
  * @brief Decodes the two official constant-force axis encodings.
+ *
+ * The payload sign bit selects the wire encoding used to reconstruct a signed magnitude.
+ *
  * @param payload Five-byte constant-force payload following effect kind 8.
  * @return Decoded signed force magnitude.
  */
@@ -138,6 +144,9 @@ MotorConstantEffect motor_force_feedback_constant_decode(const uint8_t payload[5
 
 /**
  * @brief Decodes the official position-window effect payload.
+ *
+ * Center, width, coefficients, and saturation are expanded relative to the live steering range.
+ *
  * @param payload Five-byte position-window payload following effect kind 11.
  * @param position_half_range Signed position scale used by the motor image.
  * @return Decoded position-window effect.
@@ -157,6 +166,9 @@ MotorWindowEffect motor_force_feedback_window_decode(const uint8_t payload[5],
 
 /**
  * @brief Decodes the official two-direction velocity effect payload.
+ *
+ * Positive and negative coefficients retain their independent direction and saturation controls.
+ *
  * @param payload Five-byte velocity-effect payload following effect kind 12.
  * @return Decoded directional effect.
  */
@@ -172,6 +184,9 @@ MotorDirectionalEffect motor_force_feedback_directional_decode(const uint8_t pay
 
 /**
  * @brief Applies the official tenths-scale gain to a constant-force effect.
+ *
+ * The signed constant magnitude is multiplied by its live per-effect gain.
+ *
  * @param effect Constant-force effect to evaluate.
  * @param gain_tenths Gain where ten selects the unscaled magnitude.
  * @return Scaled constant-force contribution.
@@ -183,6 +198,10 @@ int32_t motor_force_feedback_constant_evaluate(const MotorConstantEffect *effect
 
 /**
  * @brief Evaluates the official signed velocity-condition transfer function.
+ *
+ * Velocity sign selects an independent coefficient and direction before the configured saturation
+ * and gain stages are applied.
+ *
  * @param effect Directional velocity effect to evaluate.
  * @param velocity Signed motor velocity sample.
  * @param gain_tenths Normal-effect gain where ten is unity.
@@ -212,6 +231,10 @@ int32_t motor_force_feedback_directional_evaluate(const MotorDirectionalEffect *
 
 /**
  * @brief Evaluates the official position-window transfer and its internal velocity compensation.
+ *
+ * Position relative to the window selects a restoring branch, while the internal position slot
+ * also incorporates the recovered velocity compensation effect.
+ *
  * @param effect Position-window effect to evaluate.
  * @param position Signed motor position sample.
  * @param velocity Signed motor velocity sample.
@@ -248,6 +271,9 @@ int32_t motor_force_feedback_window_evaluate(const MotorWindowEffect *effect, in
 
 /**
  * @brief Maps the official force-filter setting to its moving-average window length.
+ *
+ * Decade settings select the recovered table; all intermediate settings use a one-sample window.
+ *
  * @param setting Filter setting from zero through one hundred.
  * @return Moving-average sample count.
  */
@@ -280,6 +306,9 @@ uint8_t motor_force_feedback_filter_length(uint8_t setting) {
 
 /**
  * @brief Configures and clears the official force moving-average window.
+ *
+ * A changed window length resets the ring position, accumulated sum, and stored samples.
+ *
  * @param filter Moving-average state to configure.
  * @param setting Filter setting from zero through one hundred.
  */
@@ -300,6 +329,9 @@ void motor_force_feedback_filter_configure(MotorForceFeedbackFilter *filter, uin
 
 /**
  * @brief Advances the official force moving-average filter by one service tick.
+ *
+ * The oldest ring sample is replaced and the signed accumulated average is returned.
+ *
  * @param filter Configured moving-average state.
  * @param force New signed force sample.
  * @return Average across the complete configured window.
@@ -317,6 +349,9 @@ int32_t motor_force_feedback_filter_apply(MotorForceFeedbackFilter *filter, int3
 
 /**
  * @brief Converts the official signed primary force into direction and magnitude fields.
+ *
+ * Negative force clears the direction flag while preserving its unsigned magnitude.
+ *
  * @param force Signed primary force after filtering and safety compensation.
  * @return Direction flag and magnitude clamped to 65535.
  */

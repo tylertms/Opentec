@@ -12,6 +12,9 @@ enum {
 
 /**
  * @brief Applies one official seven-byte motor force-feedback command.
+ *
+ * Slot opcodes configure, enable, or disable host effects and the internal position effect.
+ *
  * @param engine Force-feedback engine to update.
  * @param command Slot, opcode, effect kind, and five-byte effect payload.
  * @return False only when a configure command names an unsupported effect kind.

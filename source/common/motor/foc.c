@@ -6,6 +6,10 @@ volatile uint16_t gu16CntMmdvsq;
 
 /**
  * @brief Initializes both current controllers and current filters.
+ *
+ * D-axis and Q-axis paths receive the recovered gains, limits, filter coefficients, and cleared
+ * anti-windup state.
+ *
  * @param state Field-oriented control state to initialize.
  */
 void motor_foc_initialize(MotorFocState *state) {
@@ -37,6 +41,10 @@ void motor_foc_initialize(MotorFocState *state) {
 
 /**
  * @brief Runs one field-oriented current-control cycle.
+ *
+ * The cycle transforms measured phase current, regulates D/Q error, compensates bus ripple, and
+ * produces the next space-vector modulation duties.
+ *
  * @param state Persistent current filters, PI controllers, and anti-windup flags.
  * @param input Phase currents, current references, rotor angle, and DC-bus voltage.
  * @param output Filtered currents, commanded voltage, SVM duties, and sector.

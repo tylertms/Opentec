@@ -34,6 +34,8 @@ static void motor_bus_receive_reset(void) {
 /**
  * @brief Prepares the selected parameter for one I2C read transaction.
  *
+ * A valid selection publishes its encoded five-byte value, while an invalid index suppresses data.
+ *
  * @param transfer Active NXP SDK slave transfer descriptor.
  */
 static void motor_bus_transmit_prepare(i2c_slave_transfer_t *transfer) {

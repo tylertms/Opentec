@@ -41,6 +41,9 @@ static void motor_gpio_output_initialize(PORT_Type *port, GPIO_Type *gpio, uint3
 
 /**
  * @brief Configures all motor-controller GPIO, PWM, serial, and timer pins.
+ *
+ * Output latch levels are established before direction changes, then each pin receives its
+ * recovered mux, drive strength, filter, and pull configuration.
  */
 void motor_pins_initialize(void) {
     CLOCK_EnableClock(kCLOCK_PortA);
@@ -84,6 +87,9 @@ void motor_pins_initialize(void) {
 
 /**
  * @brief Reads the five hardware straps and packs the motor board identity byte.
+ *
+ * Active-low strap samples occupy the recovered identity bit positions with fixed marker bits.
+ *
  * @return Identity byte with fixed marker bits in positions zero and seven.
  */
 uint8_t motor_board_identity_read(void) {

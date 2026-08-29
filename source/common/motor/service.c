@@ -2,6 +2,9 @@
 
 /**
  * @brief Initializes the five official motor service countdown values.
+ *
+ * Telemetry, startup, ramp, index-search, and interlock timers receive their recovered defaults.
+ *
  * @param timing Periodic motor-service timing state.
  */
 void motor_service_timing_initialize(MotorServiceTiming *timing) {

@@ -36,6 +36,9 @@ static void write_uint16(uint8_t *output, uint16_t value) {
 
 /**
  * @brief Validates and decodes one official thirteen-byte motor-link frame.
+ *
+ * Boundary bytes and the stored little-endian CRC are checked before payload fields are exposed.
+ *
  * @param input Complete received frame.
  * @param checksum CRC peripheral result for frame bytes one through nine.
  * @param frame Decoded frame type and payload.
@@ -59,6 +62,9 @@ MotorLinkFrameResult motor_link_frame_decode_checked(const uint8_t input[MOTOR_L
 
 /**
  * @brief Decodes the official live-force motor-link payload.
+ *
+ * Only type-one frames supply center, direction, primary magnitude, and signed secondary force.
+ *
  * @param frame Decoded motor-link frame.
  * @param command Live center and force output fields.
  * @return True when the frame is a live-force command.
@@ -76,6 +82,9 @@ bool motor_link_force_command_decode(const MotorLinkFrame *frame, MotorLinkForce
 
 /**
  * @brief Decodes the official status and effect-command motor-link payload.
+ *
+ * Type-two frames expose one status byte and the seven-byte local-effect command body.
+ *
  * @param frame Decoded motor-link frame.
  * @param command Status byte and seven-byte force-feedback command.
  * @return True when the frame is a status command.
@@ -94,6 +103,10 @@ bool motor_link_status_command_decode(const MotorLinkFrame *frame,
 
 /**
  * @brief Prepares the official motor position, torque, and drive-current response body.
+ *
+ * The response preserves signed position and torque fields while packing current direction and
+ * replay status into their wire bits.
+ *
  * @param report Current motor response values and replay flag.
  * @param output Thirteen-byte frame awaiting its CRC result.
  */
@@ -118,6 +131,9 @@ void motor_link_position_frame_prepare(const MotorLinkPositionReport *report,
 
 /**
  * @brief Writes the official little-endian CRC field into a prepared motor-link frame.
+ *
+ * The CRC covers the nine response-body bytes between the fixed boundary markers.
+ *
  * @param frame Prepared thirteen-byte motor-link frame.
  * @param checksum CRC peripheral result for frame bytes one through nine.
  */

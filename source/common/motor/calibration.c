@@ -2,6 +2,9 @@
 
 /**
  * @brief Starts the two-phase current-offset calibration sequence.
+ *
+ * Existing offsets remain available until both new phase averages have completed.
+ *
  * @param state Calibration state while preserving the last valid offsets.
  */
 void motor_current_calibration_start(MotorCurrentCalibrationState *state) {
@@ -12,6 +15,9 @@ void motor_current_calibration_start(MotorCurrentCalibrationState *state) {
 
 /**
  * @brief Accumulates 1024 samples for each phase and publishes their averages.
+ *
+ * Phase A completes before phase B begins, and only ready conversions advance either average.
+ *
  * @param state Current calibration stage, accumulation, and resulting offsets.
  * @param sample_ready True when the active ADC conversion completed.
  * @param sample Raw unsigned ADC conversion result.

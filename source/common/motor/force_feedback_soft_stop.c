@@ -12,6 +12,10 @@ enum {
 
 /**
  * @brief Applies the official travel-limit force ramp and selects the internal damper state.
+ *
+ * Penetration beyond either centered travel limit blends the current force toward the restoring
+ * endpoint while range reductions recover through the fifty-tick ramp.
+ *
  * @param soft_stop Travel-limit ramp state.
  * @param now Current motor service tick.
  * @param half_range Configured positive travel limit relative to center.

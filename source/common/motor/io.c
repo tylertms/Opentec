@@ -4,6 +4,9 @@
 
 /**
  * @brief Reads one synchronized current and DC-bus sample from both ADCs.
+ *
+ * Stored phase offsets are removed before the third phase is reconstructed from the first two.
+ *
  * @param adc0 ADC0 register block containing phase B and DC-bus results.
  * @param adc1 ADC1 register block containing the phase A result.
  * @param offsets Calibrated phase-current zero offsets.
@@ -31,6 +34,10 @@ bool motor_adc_read(ADC_Type *adc0, ADC_Type *adc1, const MotorCurrentOffsets *o
 
 /**
  * @brief Converts three normalized SVM duties to complementary FTM compare values.
+ *
+ * Each duty receives the recovered scale and offset before paired positive and negative compares
+ * are loaded for the next PWM synchronization point.
+ *
  * @param ftm FTM register block driving the three motor phases.
  * @param duty SVM duties, updated with the firmware's scale and offset correction.
  */

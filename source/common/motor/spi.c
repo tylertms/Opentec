@@ -77,6 +77,10 @@ static void motor_spi_dma_initialize(void) {
 
 /**
  * @brief Configures SPI0 and two 13-byte DMA channels for full-duplex motor transfers.
+ *
+ * Persistent buffers and callbacks are installed before the controller, DMAMUX, DMA engine, and
+ * channel interrupts are enabled.
+ *
  * @param buffers Persistent transmit and receive buffers used directly by DMA.
  * @param prepare_handler Function that prepares the next response before a scheduled transfer.
  * @param receive_handler Function that processes a completed receive and approves its response.
@@ -107,12 +111,18 @@ void motor_spi_initialize(MotorSpiTransferBuffers *buffers, MotorSpiPrepareHandl
 
 /**
  * @brief Enables or disables the official delayed motor-link response scheduler.
+ *
+ * Link responses remain blocked until startup alignment and encoder setup complete.
+ *
  * @param active True after motor startup permits link responses.
  */
 void motor_spi_link_active_set(bool active) { transfer_active = active; }
 
 /**
  * @brief Starts one pending motor-link response on the official FTM4 cadence.
+ *
+ * An active pending response is rebuilt in the transmit buffer before both DMA channels restart.
+ *
  * @param context Unused timer callback context.
  */
 void motor_spi_timeout_service(void *context) {
@@ -130,6 +140,9 @@ void motor_spi_timeout_service(void *context) {
 
 /**
  * @brief Rebuilds and enables both official thirteen-byte SPI DMA transfers.
+ *
+ * Chip select is asserted, stale receive data is flushed, and fresh transmit and receive transfer
+ * descriptors are installed.
  */
 void motor_spi_transfer_restart(void) {
     GPIO_PortClear(GPIOC, 1UL << 0U);
@@ -142,6 +155,8 @@ void motor_spi_transfer_restart(void) {
 
 /**
  * @brief Completes the official SPI transmit DMA channel interrupt.
+ *
+ * Channel-zero interrupt and completion flags are acknowledged together.
  */
 void DMA0_DMA4_IRQHandler(void) {
     EDMA_ClearChannelStatusFlags(DMA0, 0U, kEDMA_InterruptFlag | kEDMA_DoneFlag);
@@ -149,6 +164,9 @@ void DMA0_DMA4_IRQHandler(void) {
 
 /**
  * @brief Completes the official SPI receive DMA channel and processes its frame.
+ *
+ * Channel-one completion releases chip select and records whether the decoded request schedules a
+ * delayed response.
  */
 void DMA1_DMA5_IRQHandler(void) {
     EDMA_ClearChannelStatusFlags(DMA0, 1U, kEDMA_InterruptFlag | kEDMA_DoneFlag);

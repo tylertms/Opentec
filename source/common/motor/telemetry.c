@@ -21,6 +21,10 @@ static const uint16_t driver_temperature_table[MOTOR_TEMPERATURE_TABLE_LENGTH] =
 
 /**
  * @brief Converts an auxiliary ADC average through the selected official temperature table.
+ *
+ * Samples outside the table bounds clamp to an endpoint while interior samples interpolate between
+ * neighboring temperature entries.
+ *
  * @param sample Averaged twelve-bit ADC sample.
  * @param sensor Temperature-table selection.
  * @return Interpolated temperature from minus fifteen through one hundred forty degrees, or a
@@ -53,6 +57,9 @@ int16_t motor_temperature_interpolate(uint16_t sample, MotorTemperatureSensor se
 /**
  * @brief Accumulates one pair of auxiliary ADC samples into the official ten-thousand-sample
  * window.
+ *
+ * Completed windows are copied to stable publication sums before the active accumulators reset.
+ *
  * @param accumulator Persistent sums and publication state.
  * @param motor Motor-temperature ADC sample.
  * @param driver Motor-driver-temperature ADC sample.
@@ -78,6 +85,9 @@ bool motor_auxiliary_samples_accumulate(MotorAuxiliaryAccumulator *accumulator, 
 
 /**
  * @brief Resolves one published auxiliary ADC window into averages and temperatures.
+ *
+ * A completed ten-thousand-sample window publishes both channel averages and table temperatures.
+ *
  * @param accumulator Persistent sums and publication state.
  * @param telemetry Resolved averages and temperatures.
  * @return True when published data was consumed.

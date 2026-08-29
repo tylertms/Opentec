@@ -12,12 +12,18 @@ enum {
 
 /**
  * @brief Selects the official first motor startup interlock state.
+ *
+ * Startup always begins with the two-hundred-tick interlock delay.
+ *
  * @return Initial motor control mode.
  */
 MotorControlMode motor_control_mode_initialize(void) { return kMotorControlStartupInterlockA; }
 
 /**
  * @brief Advances one completed official motor control mode.
+ *
+ * Startup phases advance in order, while calibration and diagnostic phases return to run mode.
+ *
  * @param mode Current motor control mode.
  * @return Next mode, or the current mode when it has no completion transition.
  */
@@ -42,6 +48,9 @@ MotorControlMode motor_control_mode_complete(MotorControlMode mode) {
 
 /**
  * @brief Applies an official run-mode calibration request to the control mode.
+ *
+ * Requests are accepted only while normal motor control is active.
+ *
  * @param mode Current motor control mode.
  * @param request Decoded calibration request.
  * @return Requested calibration mode, or the unchanged current mode.
@@ -62,6 +71,9 @@ MotorControlMode motor_control_request_apply(MotorControlMode mode, MotorControl
 
 /**
  * @brief Decodes the official run-mode encoder calibration command words.
+ *
+ * Calibration and erase commands take priority over the independent direction diagnostic.
+ *
  * @param calibration_command Encoder calibration or erase command word.
  * @param direction_command Encoder direction-check command word.
  * @return Highest-priority recognized request.
@@ -102,6 +114,9 @@ bool motor_control_update_due(uint8_t *conversion_count) {
 
 /**
  * @brief Resolves the official startup current ramp from its service countdown.
+ *
+ * Elapsed ticks add ten current counts until the ten-thousand-count alignment limit is reached.
+ *
  * @param ticks_remaining Countdown initialized to two thousand service ticks.
  * @return Current command rising by ten per elapsed tick and limited to ten thousand.
  */
@@ -113,6 +128,9 @@ uint16_t motor_control_startup_ramp_current(uint16_t ticks_remaining) {
 
 /**
  * @brief Resolves the official D/Q references from a signed torque-current command.
+ *
+ * Torque remains on the Q axis while its limited magnitude produces the negative D-axis command.
+ *
  * @param torque_current Signed Q-axis torque-current command.
  * @return Q-axis torque current and limited negative D-axis magnitude.
  */

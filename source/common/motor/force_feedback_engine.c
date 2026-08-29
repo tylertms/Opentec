@@ -62,6 +62,10 @@ static int32_t apply_overall_gain(int32_t force, uint8_t gain_percent) {
 
 /**
  * @brief Installs the official effect defaults and internal position and damper effects.
+ *
+ * All slots start clear before the recovered travel-window and directional damper payloads are
+ * configured and enabled.
+ *
  * @param engine Force-feedback engine state to initialize.
  */
 void motor_force_feedback_engine_initialize(MotorForceFeedbackEngine *engine) {
@@ -92,6 +96,9 @@ void motor_force_feedback_engine_initialize(MotorForceFeedbackEngine *engine) {
 
 /**
  * @brief Configures one official constant-force effect slot.
+ *
+ * Valid slots replace their type and decoded constant-force payload without changing activation.
+ *
  * @param engine Force-feedback engine to update.
  * @param slot Effect slot from zero through nineteen.
  * @param payload Five-byte effect payload.
@@ -109,6 +116,9 @@ bool motor_force_feedback_constant_configure(MotorForceFeedbackEngine *engine, u
 
 /**
  * @brief Configures one official position-window effect slot.
+ *
+ * The payload is decoded against the current steering half-range for a valid effect slot.
+ *
  * @param engine Force-feedback engine to update.
  * @param slot Effect slot from zero through nineteen.
  * @param payload Five-byte effect payload.
@@ -127,6 +137,9 @@ bool motor_force_feedback_window_configure(MotorForceFeedbackEngine *engine, uin
 
 /**
  * @brief Configures one official directional effect slot.
+ *
+ * Valid slots receive the decoded positive and negative velocity-response coefficients.
+ *
  * @param engine Force-feedback engine to update.
  * @param slot Effect slot from zero through nineteen.
  * @param payload Five-byte effect payload.
@@ -144,6 +157,9 @@ bool motor_force_feedback_directional_configure(MotorForceFeedbackEngine *engine
 
 /**
  * @brief Enables one official force-feedback effect slot.
+ *
+ * Activation changes only for indices inside the twenty-slot engine.
+ *
  * @param engine Force-feedback engine to update.
  * @param slot Effect slot from zero through nineteen.
  * @return True when the slot was valid.
@@ -158,6 +174,9 @@ bool motor_force_feedback_effect_enable(MotorForceFeedbackEngine *engine, uint8_
 
 /**
  * @brief Disables one official force-feedback effect slot.
+ *
+ * Deactivation changes only for indices inside the twenty-slot engine.
+ *
  * @param engine Force-feedback engine to update.
  * @param slot Effect slot from zero through nineteen.
  * @return True when the slot was valid.
@@ -172,6 +191,10 @@ bool motor_force_feedback_effect_disable(MotorForceFeedbackEngine *engine, uint8
 
 /**
  * @brief Mixes the twenty official effect slots and applies gain, filtering, ramp, and soft stop.
+ *
+ * Active effects contribute to primary or secondary accumulators before the shared output stages
+ * and travel-limit safety path produce the live force command.
+ *
  * @param engine Force-feedback engine state.
  * @param now Current motor service tick.
  * @param center Configured encoder center.

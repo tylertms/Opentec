@@ -195,6 +195,9 @@ motor_encoder_calibration_step(MotorEncoderCalibrationState *state,
 
 /**
  * @brief Reads and scales one official directional encoder correction sample.
+ *
+ * Direction applies the persisted sample offset before the board-selected table wrap and Q15 scale.
+ *
  * @param record Valid persisted encoder correction record.
  * @param reverse True for the reverse-direction correction table.
  * @param relative_position Encoder position within one revolution.
@@ -237,6 +240,9 @@ bool motor_encoder_correction_direction_update(bool reverse, int16_t filtered_po
 
 /**
  * @brief Validates the official persisted encoder correction record header.
+ *
+ * Both the fixed magic and recovered calibration version must match.
+ *
  * @param record Encoder correction record loaded from calibration flash.
  * @return True when the magic and version match the official format.
  */

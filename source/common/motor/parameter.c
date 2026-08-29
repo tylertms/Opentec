@@ -46,6 +46,10 @@ void motor_parameter_bank_initialize(MotorParameterBank *bank, uint8_t identity)
 
 /**
  * @brief Reads one entry from the official sixty-four-entry motor parameter bank.
+ *
+ * Valid indices return their current value and declared transaction width, including undefined
+ * zero-width entries inside the fixed table.
+ *
  * @param bank Motor parameter values and access metadata.
  * @param index Parameter index requested by the base firmware.
  * @param response Parameter value and wire width.
@@ -64,6 +68,9 @@ bool motor_parameter_read(const MotorParameterBank *bank, uint8_t index,
 
 /**
  * @brief Applies one width-checked write to the official motor parameter bank.
+ *
+ * Only writable entries accept values, and live-control indices request a settings refresh.
+ *
  * @param bank Motor parameter values and access metadata.
  * @param index Parameter index supplied by the base firmware.
  * @param value Zero-extended little-endian parameter value.

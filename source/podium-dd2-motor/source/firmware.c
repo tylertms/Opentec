@@ -6,6 +6,8 @@
 
 /**
  * @brief Services the UART0 FreeMASTER transport.
+ *
+ * Long-interrupt mode delegates each UART event to the official FreeMASTER serial handler.
  */
 void UART0_IRQHandler(void) { FMSTR_SerialIsr(); }
 

@@ -15,12 +15,18 @@ static flash_config_t motor_calibration_flash;
 
 /**
  * @brief Initializes the official NXP flash driver used by calibration storage.
+ *
+ * The shared flash configuration is prepared before any calibration record operation.
+ *
  * @return NXP SDK flash status.
  */
 status_t motor_calibration_storage_initialize(void) { return FLASH_Init(&motor_calibration_flash); }
 
 /**
  * @brief Loads and validates the official encoder correction record from flash.
+ *
+ * Invalid record headers clear both directional correction tables before control continues.
+ *
  * @param record Destination record in RAM.
  * @return True when the persisted magic and version are valid.
  */
@@ -37,6 +43,9 @@ bool motor_calibration_storage_load(MotorEncoderCalibrationRecord *record) {
 
 /**
  * @brief Erases and verifies the official encoder calibration flash range.
+ *
+ * Every covered sector is erased and checked at both supported verification margins.
+ *
  * @return NXP SDK flash status.
  */
 status_t motor_calibration_storage_erase(void) {
@@ -64,6 +73,9 @@ status_t motor_calibration_storage_erase(void) {
 
 /**
  * @brief Programs and verifies one official encoder correction record.
+ *
+ * The complete record is written at the calibration base and checked at the user margin.
+ *
  * @param record Completed calibration record in RAM.
  * @return NXP SDK flash status.
  */

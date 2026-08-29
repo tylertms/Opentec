@@ -2,6 +2,9 @@
 
 /**
  * @brief Selects the motor timing and sensing constants for the detected board variant.
+ *
+ * The hardware strap chooses one complete set of encoder, sensing, and correction-table values.
+ *
  * @param alternate_hardware True when the hardware strap selects the alternate profile.
  * @return Complete motor hardware profile.
  */
