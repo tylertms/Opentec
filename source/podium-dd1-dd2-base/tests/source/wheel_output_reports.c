@@ -18,9 +18,9 @@ static void test_encodes_reports_in_priority_order(void) {
     uint8_t frame[33] = {0};
 
     fill_arguments(arguments, 0, 0x20);
-    wheel_output_reports_apply(&reports, arguments, 0, 0);
+    assert(wheel_output_reports_apply(&reports, arguments, 0, 0));
     fill_arguments(arguments, 1, 0x10);
-    wheel_output_reports_apply(&reports, arguments, 0, 0);
+    assert(wheel_output_reports_apply(&reports, arguments, 0, 0));
 
     assert(wheel_output_reports_encode_next(&reports, 0, frame));
     assert(frame[1] == 1);
@@ -43,13 +43,53 @@ static void test_suppresses_legacy_report_two_while_interface_gate_is_closed(voi
     uint8_t frame[33] = {0};
 
     fill_arguments(arguments, 0, 0x30);
-    wheel_output_reports_apply(&reports, arguments, 0x0f, 0);
+    assert(!wheel_output_reports_apply(&reports, arguments, 0x0f, 0));
     assert(!wheel_output_reports_encode_next(&reports, 0, frame));
 
     wheel_output_reports_set_interface_mode_gate(&reports, true);
-    wheel_output_reports_apply(&reports, arguments, 0x17, 0);
+    assert(wheel_output_reports_apply(&reports, arguments, 0x17, 0));
     assert(wheel_output_reports_encode_next(&reports, 0, frame));
     assert(frame[1] == 2);
+}
+
+static void test_expands_compact_report_groups(void) {
+    WheelOutputReports reports;
+    wheel_output_reports_init(&reports);
+
+    const uint8_t first_band[4] = {1, 0, 0, 0};
+    assert(wheel_output_reports_queue_packed(&reports, 1, first_band, 0));
+    assert(reports.report_one[0] == 0x00);
+    assert(reports.report_one[1] == 0x1f);
+
+    const uint8_t second_band[4] = {2, 0, 0, 0};
+    assert(wheel_output_reports_queue_packed(&reports, 1, second_band, 0));
+    assert(reports.report_one[0] == 0x07);
+    assert(reports.report_one[1] == 0xe0);
+
+    const uint8_t third_band[4] = {4, 0, 0, 0};
+    assert(wheel_output_reports_queue_packed(&reports, 1, third_band, 0));
+    assert(reports.report_one[0] == 0xf8);
+    assert(reports.report_one[1] == 0x00);
+
+    const uint8_t all_bands[4] = {0xff, 0xff, 0xff, 0xff};
+    assert(wheel_output_reports_queue_packed(&reports, 2, all_bands, 0));
+    for (uint8_t index = 0; index < WHEEL_OUTPUT_REPORT_TWO_SIZE; index++) {
+        assert(reports.report_two[index] == 0xff);
+    }
+}
+
+static void test_gates_compact_legacy_report_two(void) {
+    WheelOutputReports reports;
+    wheel_output_reports_init(&reports);
+    const uint8_t packed[4] = {0xff, 0xff, 0xff, 0xff};
+
+    assert(!wheel_output_reports_queue_packed(&reports, 2, packed, 0x0f));
+    assert(wheel_output_reports_queue_packed(&reports, 1, packed, 0x17));
+    wheel_output_reports_set_interface_mode_gate(&reports, true);
+    assert(wheel_output_reports_queue_packed(&reports, 2, packed, 0x17));
+    assert(!wheel_output_reports_queue_packed(&reports, 3, packed, 0));
+    assert(!wheel_output_reports_queue_packed(NULL, 1, packed, 0));
+    assert(!wheel_output_reports_queue_packed(&reports, 1, NULL, 0));
 }
 
 static void test_toggles_interface_gate_from_legacy_button_chord(void) {
@@ -104,7 +144,7 @@ static void test_ignores_unknown_actions(void) {
     uint8_t arguments[26] = {4};
     uint8_t frame[33] = {0};
 
-    wheel_output_reports_apply(&reports, arguments, 0x0f, 1);
+    assert(!wheel_output_reports_apply(&reports, arguments, 0x0f, 1));
     assert(!wheel_output_reports_encode_next(&reports, 0, frame));
 }
 
@@ -229,6 +269,8 @@ static void test_sends_button_illumination_changes_to_remote_tuning_modes(void) 
 int main(void) {
     test_encodes_reports_in_priority_order();
     test_suppresses_legacy_report_two_while_interface_gate_is_closed();
+    test_expands_compact_report_groups();
+    test_gates_compact_legacy_report_two();
     test_toggles_interface_gate_from_legacy_button_chord();
     test_gates_extended_reports();
     test_ignores_unknown_actions();

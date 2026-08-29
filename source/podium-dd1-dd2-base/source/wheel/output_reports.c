@@ -39,6 +39,56 @@ void wheel_output_reports_init(WheelOutputReports *reports) {
 }
 
 /**
+ * @brief Expands a compact host mask into an attached-wheel output report.
+ *
+ * Treats the four-byte input as a little-endian stream of three-bit groups. Each group expands
+ * into a 16-bit value whose three bands use masks 0x1F00, 0xE007, and 0x00F8. Report one consumes
+ * six groups and report two consumes nine. Legacy wheel modes suppress report two while the
+ * interface gate is closed.
+ *
+ * @param[in,out] reports Retained report payloads and pending state.
+ * @param[in] report Attached-wheel report number, either one or two.
+ * @param[in] packed Four-byte compact group mask.
+ * @param[in] wheel_mode Negotiated attached-wheel mode.
+ * @return True when a supported report was expanded and queued.
+ */
+bool wheel_output_reports_queue_packed(WheelOutputReports *reports, uint8_t report,
+                                       const uint8_t packed[4], uint8_t wheel_mode) {
+    if (reports == NULL || packed == NULL || (report != 1 && report != 2)) {
+        return false;
+    }
+    bool legacy_mode =
+        wheel_mode == WHEEL_MODE_LEGACY_ALTERNATE || wheel_mode == WHEEL_MODE_LEGACY_COMPATIBILITY;
+    if (report == 2 && legacy_mode && !reports->interface_mode_gate) {
+        return false;
+    }
+
+    uint32_t groups = (uint32_t)packed[0] | (uint32_t)packed[1] << 8 | (uint32_t)packed[2] << 16 |
+                      (uint32_t)packed[3] << 24;
+    uint8_t *payload = report == 1 ? reports->report_one : reports->report_two;
+    uint8_t group_count =
+        report == 1 ? WHEEL_OUTPUT_REPORT_ONE_SIZE / 2 : WHEEL_OUTPUT_REPORT_TWO_SIZE / 2;
+    for (uint8_t index = 0; index < group_count; index++) {
+        uint8_t bits = (uint8_t)(groups >> (index * 3u)) & 0x07u;
+        uint16_t expanded = 0;
+        if ((bits & 0x01u) != 0) {
+            expanded |= 0x1f00u;
+        }
+        if ((bits & 0x02u) != 0) {
+            expanded |= 0xe007u;
+        }
+        if ((bits & 0x04u) != 0) {
+            expanded |= 0x00f8u;
+        }
+        payload[index * 2u] = (uint8_t)expanded;
+        payload[index * 2u + 1u] = (uint8_t)(expanded >> 8);
+    }
+    reports->pending |=
+        report == 1 ? WHEEL_OUTPUT_REPORT_ONE_PENDING : WHEEL_OUTPUT_REPORT_TWO_PENDING;
+    return true;
+}
+
+/**
  * @brief Queues a segmented attached-wheel report 17 transfer.
  *
  * Retains all 61 host-provided bytes, resets the transfer sequence, and makes the transfer the
@@ -195,9 +245,13 @@ static void encode_report_seventeen(WheelOutputReports *reports, uint8_t *frame)
  * @param[in] arguments Action byte followed by the report payload.
  * @param[in] wheel_mode Negotiated attached-wheel mode.
  * @param[in] adapter_mode Attached adapter mode.
+ * @return True when the selected report was retained.
  */
-void wheel_output_reports_apply(WheelOutputReports *reports, const uint8_t *arguments,
+bool wheel_output_reports_apply(WheelOutputReports *reports, const uint8_t *arguments,
                                 uint8_t wheel_mode, uint16_t adapter_mode) {
+    if (reports == NULL || arguments == NULL) {
+        return false;
+    }
     bool legacy_mode =
         wheel_mode == WHEEL_MODE_LEGACY_ALTERNATE || wheel_mode == WHEEL_MODE_LEGACY_COMPATIBILITY;
     switch (arguments[0]) {
@@ -205,24 +259,29 @@ void wheel_output_reports_apply(WheelOutputReports *reports, const uint8_t *argu
         if (!legacy_mode || reports->interface_mode_gate) {
             memcpy(reports->report_two, arguments + 1, sizeof(reports->report_two));
             reports->pending |= WHEEL_OUTPUT_REPORT_TWO_PENDING;
+            return true;
         }
-        break;
+        return false;
     case WHEEL_OUTPUT_REPORT_ACTION_ONE:
         memcpy(reports->report_one, arguments + 1, sizeof(reports->report_one));
         reports->pending |= WHEEL_OUTPUT_REPORT_ONE_PENDING;
-        break;
+        return true;
     case WHEEL_OUTPUT_REPORT_ACTION_FOUR:
         if (legacy_mode || adapter_mode == 1) {
             memcpy(reports->report_four, arguments + 1, sizeof(reports->report_four));
             reports->pending |= WHEEL_OUTPUT_REPORT_FOUR_PENDING;
+            return true;
         }
-        break;
+        return false;
     case WHEEL_OUTPUT_REPORT_ACTION_FIVE:
         if (legacy_mode || adapter_mode == 1) {
             memcpy(reports->report_five, arguments + 1, sizeof(reports->report_five));
             reports->pending |= WHEEL_OUTPUT_REPORT_FIVE_PENDING;
+            return true;
         }
-        break;
+        return false;
+    default:
+        return false;
     }
 }
 

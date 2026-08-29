@@ -29,6 +29,8 @@ enum {
     WHEEL_INPUT_SECONDARY_OFFSET = 1,
     WHEEL_INPUT_CLUTCH_OFFSET = 3,
     WHEEL_INPUT_AUXILIARY_OFFSET = 22,
+    WHEEL_PACKED_REPORT_TWO_OPCODE = 0x0a,
+    WHEEL_PACKED_REPORT_ONE_OPCODE = 0x0b,
 };
 
 /**
@@ -781,6 +783,40 @@ bool wheel_service_apply_multi_position_command(WheelService *service,
 }
 
 /**
+ * @brief Applies a compact host output-report update.
+ *
+ * Routes operating-mode opcode 0x0A to report two and opcode 0x0B to report one. The four command
+ * parameters expand into the retained attached-wheel payload, and accepted reports are mirrored
+ * to the matching standard-adapter command. A gated legacy report-two command is consumed without
+ * changing either destination.
+ *
+ * @param[in,out] service Attached-wheel service and adapter command state.
+ * @param[in] command Decoded F8 09 operating-mode command.
+ * @return True when the command selects a compact output report.
+ */
+bool wheel_service_apply_packed_report_command(WheelService *service,
+                                               const UsbOperatingModeCommand *command) {
+    if (service == NULL || command == NULL ||
+        (command->opcode != WHEEL_PACKED_REPORT_TWO_OPCODE &&
+         command->opcode != WHEEL_PACKED_REPORT_ONE_OPCODE)) {
+        return false;
+    }
+    uint8_t report = command->opcode == WHEEL_PACKED_REPORT_TWO_OPCODE ? 2u : 1u;
+    if (!wheel_output_reports_queue_packed(&service->protocol.output_reports, report,
+                                           command->parameters, service->protocol.mode)) {
+        return true;
+    }
+    if (report == 2) {
+        wheel_adapter_command_service_queue_report_two(&service->adapter_commands,
+                                                       service->protocol.output_reports.report_two);
+    } else {
+        wheel_adapter_command_service_queue_report_one(&service->adapter_commands,
+                                                       service->protocol.output_reports.report_one);
+    }
+    return true;
+}
+
+/**
  * @brief Applies a host report-six update.
  *
  * Routes operating-mode opcode 0x0D parameters zero and three into the shared report-four payload,
@@ -969,19 +1005,23 @@ bool wheel_service_multi_position_input(WheelService *service, uint32_t now_ms,
  * @brief Applies a host-provided attached-wheel output report.
  *
  * Uses the negotiated wheel mode, current adapter mode, and interface gate to retain or
- * suppress the selected report for the next protocol response. Extended-adapter report four and
- * five payloads are also forwarded to the adapter command service.
+ * suppress the selected report for the next protocol response. Accepted reports are also
+ * forwarded to the matching standard- or extended-adapter command service.
  *
  * @param[in,out] service Attached-wheel service that owns the report queue.
  * @param[in] arguments Action byte followed by the report payload.
  */
 void wheel_service_apply_output_report(WheelService *service, const uint8_t *arguments) {
-    wheel_output_reports_apply(&service->protocol.output_reports, arguments, service->protocol.mode,
-                               service->protocol.adapter.mode);
-    if (service->protocol.adapter.mode != 1) {
+    if (service == NULL || arguments == NULL ||
+        !wheel_output_reports_apply(&service->protocol.output_reports, arguments,
+                                    service->protocol.mode, service->protocol.adapter.mode)) {
         return;
     }
-    if (arguments[0] == WHEEL_OUTPUT_REPORT_ACTION_FOUR) {
+    if (arguments[0] == WHEEL_OUTPUT_REPORT_ACTION_TWO) {
+        wheel_adapter_command_service_queue_report_two(&service->adapter_commands, arguments + 1);
+    } else if (arguments[0] == WHEEL_OUTPUT_REPORT_ACTION_ONE) {
+        wheel_adapter_command_service_queue_report_one(&service->adapter_commands, arguments + 1);
+    } else if (arguments[0] == WHEEL_OUTPUT_REPORT_ACTION_FOUR) {
         wheel_adapter_command_service_queue_report_four(&service->adapter_commands, arguments + 1);
     } else if (arguments[0] == WHEEL_OUTPUT_REPORT_ACTION_FIVE) {
         wheel_adapter_command_service_queue_report_five(&service->adapter_commands, arguments + 1);

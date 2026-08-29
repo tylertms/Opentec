@@ -335,6 +335,40 @@ static void writes_extended_output_reports(void) {
     wheel_adapter_command_service_run(&service, &adapter, &transport);
 }
 
+static void writes_standard_output_reports(void) {
+    WheelAdapterCommandService service;
+    WheelAdapterInput adapter;
+    CommandTransport transport;
+    command_transport_init(&transport);
+    wheel_adapter_command_service_init(&service, &adapter);
+    complete_standard_probe(&service, &adapter, &transport);
+
+    uint8_t report_one[WHEEL_OUTPUT_REPORT_ONE_SIZE];
+    uint8_t report_two[WHEEL_OUTPUT_REPORT_TWO_SIZE];
+    for (uint8_t index = 0; index < sizeof(report_one); index++) {
+        report_one[index] = (uint8_t)(0x40u + index);
+    }
+    for (uint8_t index = 0; index < sizeof(report_two); index++) {
+        report_two[index] = (uint8_t)(0x80u + index);
+    }
+    wheel_adapter_command_service_queue_report_one(&service, report_one);
+    wheel_adapter_command_service_queue_report_two(&service, report_two);
+
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    uint8_t expected_two[WHEEL_OUTPUT_REPORT_TWO_SIZE + 3] = {2, 0x2a, 0x04};
+    memcpy(expected_two + 3, report_two, sizeof(report_two));
+    expect_request(&transport, expected_two, sizeof(expected_two));
+    complete_write(&transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    uint8_t expected_one[WHEEL_OUTPUT_REPORT_ONE_SIZE + 3] = {2, 0x2a, 0x05};
+    memcpy(expected_one + 3, report_one, sizeof(report_one));
+    expect_request(&transport, expected_one, sizeof(expected_one));
+    complete_write(&transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+}
+
 static void paces_separate_extended_output_reports(void) {
     WheelAdapterCommandService service;
     WheelAdapterInput adapter;
@@ -414,6 +448,7 @@ int main(void) {
     writes_remote_tuning_active_state();
     writes_refresh_state();
     writes_system_display_state();
+    writes_standard_output_reports();
     writes_extended_output_reports();
     paces_separate_extended_output_reports();
     forwards_requested_host_controls();

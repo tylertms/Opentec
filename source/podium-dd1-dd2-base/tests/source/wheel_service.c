@@ -679,6 +679,55 @@ static void test_mirrors_extended_adapter_output_reports(void) {
                   WHEEL_OUTPUT_REPORT_FOUR_SIZE) == 0);
 }
 
+static void test_mirrors_standard_adapter_output_reports(void) {
+    WheelService service;
+    initialize_service(&service);
+    uint8_t arguments[1 + WHEEL_OUTPUT_REPORT_TWO_SIZE];
+    arguments[0] = WHEEL_OUTPUT_REPORT_ACTION_TWO;
+    for (uint8_t index = 1; index < sizeof(arguments); index++) {
+        arguments[index] = (uint8_t)(0x20u + index);
+    }
+
+    wheel_service_apply_output_report(&service, arguments);
+    assert(service.adapter_commands.report_two_pending);
+    assert(memcmp(service.adapter_commands.report_two, arguments + 1,
+                  WHEEL_OUTPUT_REPORT_TWO_SIZE) == 0);
+
+    arguments[0] = WHEEL_OUTPUT_REPORT_ACTION_ONE;
+    wheel_service_apply_output_report(&service, arguments);
+    assert(service.adapter_commands.report_one_pending);
+    assert(memcmp(service.adapter_commands.report_one, arguments + 1,
+                  WHEEL_OUTPUT_REPORT_ONE_SIZE) == 0);
+}
+
+static void test_routes_packed_report_commands(void) {
+    WheelService service;
+    initialize_service(&service);
+    UsbOperatingModeCommand command = {.opcode = 0x0a, .parameters = {7, 0, 0, 0}};
+
+    assert(wheel_service_apply_packed_report_command(&service, &command));
+    assert(service.protocol.output_reports.report_two[0] == 0xff);
+    assert(service.protocol.output_reports.report_two[1] == 0xff);
+    assert(service.adapter_commands.report_two_pending);
+    assert(memcmp(service.adapter_commands.report_two, service.protocol.output_reports.report_two,
+                  WHEEL_OUTPUT_REPORT_TWO_SIZE) == 0);
+
+    initialize_service(&service);
+    service.protocol.mode = WHEEL_MODE_LEGACY_ALTERNATE;
+    assert(wheel_service_apply_packed_report_command(&service, &command));
+    assert(!service.adapter_commands.report_two_pending);
+    command.opcode = 0x0b;
+    assert(wheel_service_apply_packed_report_command(&service, &command));
+    assert(service.adapter_commands.report_one_pending);
+    assert(service.protocol.output_reports.report_one[0] == 0xff);
+    assert(service.protocol.output_reports.report_one[1] == 0xff);
+
+    command.opcode = 0x0c;
+    assert(!wheel_service_apply_packed_report_command(&service, &command));
+    assert(!wheel_service_apply_packed_report_command(NULL, &command));
+    assert(!wheel_service_apply_packed_report_command(&service, NULL));
+}
+
 static void test_routes_report_six_command(void) {
     WheelService service;
     initialize_service(&service);
@@ -950,7 +999,9 @@ int main(void) {
     test_marks_extended_multi_position_layout();
     test_filters_adapter_remote_tuning_active_state();
     test_retains_adapter_display_state_across_command_resets();
+    test_mirrors_standard_adapter_output_reports();
     test_mirrors_extended_adapter_output_reports();
+    test_routes_packed_report_commands();
     test_routes_report_six_command();
     test_routes_and_toggles_interface_mode_gate();
     test_rejects_unavailable_multi_position_input();

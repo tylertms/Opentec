@@ -40,8 +40,10 @@ typedef struct {
 } WheelOutputReports;
 
 void wheel_output_reports_init(WheelOutputReports *reports);
-void wheel_output_reports_apply(WheelOutputReports *reports, const uint8_t *arguments,
+bool wheel_output_reports_apply(WheelOutputReports *reports, const uint8_t *arguments,
                                 uint8_t wheel_mode, uint16_t adapter_mode);
+bool wheel_output_reports_queue_packed(WheelOutputReports *reports, uint8_t report,
+                                       const uint8_t packed[4], uint8_t wheel_mode);
 void wheel_output_reports_set_interface_mode_gate(WheelOutputReports *reports, bool enabled);
 void wheel_output_reports_update_interface_mode_gate(WheelOutputReports *reports,
                                                      uint16_t secondary_buttons, uint32_t now_ms);

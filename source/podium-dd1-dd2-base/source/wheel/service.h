@@ -88,6 +88,8 @@ bool wheel_service_queue_system_control_response(WheelService *service,
 bool wheel_service_remote_tuning_response_pending(const WheelService *service);
 bool wheel_service_apply_multi_position_command(WheelService *service,
                                                 const UsbOperatingModeCommand *command);
+bool wheel_service_apply_packed_report_command(WheelService *service,
+                                               const UsbOperatingModeCommand *command);
 bool wheel_service_apply_report_six_command(WheelService *service,
                                             const UsbOperatingModeCommand *command);
 bool wheel_service_apply_interface_mode_command(WheelService *service,

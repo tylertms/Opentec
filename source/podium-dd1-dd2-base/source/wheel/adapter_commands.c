@@ -14,6 +14,8 @@ enum {
     WHEEL_ADAPTER_REMOTE_TUNING_ACTIVE_OFFSET = 0x0e,
     WHEEL_ADAPTER_REFRESH_STATE_OFFSET = 0x17,
     WHEEL_ADAPTER_DISPLAY_STATE_OFFSET = 0x18,
+    WHEEL_ADAPTER_REPORT_TWO_OFFSET = 0x04,
+    WHEEL_ADAPTER_REPORT_ONE_OFFSET = 0x05,
     WHEEL_ADAPTER_REPORT_FOUR_OFFSET = 0x08,
     WHEEL_ADAPTER_REPORT_FIVE_OFFSET = 0x09,
     WHEEL_ADAPTER_REPORT_SIX_OFFSET = 0x19,
@@ -29,7 +31,7 @@ enum {
     WHEEL_ADAPTER_INPUT_INCREMENT = 0x04,
     WHEEL_ADAPTER_INPUT_DECREMENT = 0x08,
     WHEEL_ADAPTER_SECURE_PROFILE = 0x80,
-    WHEEL_ADAPTER_EXTENDED_REPORT_INTERVAL = 5,
+    WHEEL_ADAPTER_OUTPUT_REPORT_INTERVAL = 5,
 };
 
 static const uint8_t endpoint_targets[WHEEL_ADAPTER_ENDPOINT_COUNT] = {0x15, 0x16};
@@ -73,11 +75,13 @@ static void advance_endpoint(WheelAdapterCommandService *service, WheelAdapterIn
     service->refresh_state_pending = false;
     service->setup_selection_pending = false;
     service->status_ready = false;
+    service->report_one_pending = false;
+    service->report_two_pending = false;
     service->report_four_pending = false;
     service->report_five_pending = false;
     service->report_six_pending = false;
-    service->extended_report_cadence = 0;
-    service->extended_reports_due = false;
+    service->output_report_cadence = 0;
+    service->output_reports_due = false;
     service->phase = WHEEL_ADAPTER_COMMAND_DISCOVERING;
     adapter->mode = service->endpoint_index;
     adapter->profile_flags = 0;
@@ -169,6 +173,8 @@ static bool finish_request(WheelAdapterCommandService *service, WheelAdapterInpu
     case WHEEL_ADAPTER_COMMAND_DISPLAY_STATE_PENDING:
     case WHEEL_ADAPTER_COMMAND_GLYPHS_PENDING:
     case WHEEL_ADAPTER_COMMAND_DISPLAY_PENDING:
+    case WHEEL_ADAPTER_COMMAND_REPORT_TWO_PENDING:
+    case WHEEL_ADAPTER_COMMAND_REPORT_ONE_PENDING:
     case WHEEL_ADAPTER_COMMAND_REPORT_FOUR_PENDING:
     case WHEEL_ADAPTER_COMMAND_REPORT_FIVE_PENDING:
     case WHEEL_ADAPTER_COMMAND_REPORT_SIX_PENDING:
@@ -186,10 +192,10 @@ static bool finish_request(WheelAdapterCommandService *service, WheelAdapterInpu
  * @brief Queues the next adapter command by priority.
  *
  * Probes an undiscovered endpoint first, then reads changed buttons, axes, or selectors, writes
- * requested system display state, glyphs, or a pending standard-endpoint display report. Extended
- * report writes are released together every fifth scheduling pass. When no output is due, the
- * service requests the two-byte input status. System display state waits for one successful input-
- * status response from the standard endpoint.
+ * requested system display state, glyphs, or a pending standard-endpoint display report. Wheel
+ * report writes for the active endpoint are released together every fifth scheduling pass. When
+ * no output is due, the service requests the two-byte input status. System display state waits for
+ * one successful input-status response from the standard endpoint.
  *
  * @param[in,out] service Adapter command service selecting work.
  * @param[in,out] adapter Logical adapter state receiving read results.
@@ -310,47 +316,76 @@ static CommandTransportResult queue_request(WheelAdapterCommandService *service,
         }
         return result;
     }
-    if (service->endpoint_index == 1 &&
-        (service->report_four_pending || service->report_five_pending ||
-         service->report_six_pending) &&
-        !service->extended_reports_due) {
-        service->extended_reports_due = service->extended_report_cadence == 0;
-        service->extended_report_cadence++;
-        if (service->extended_report_cadence == WHEEL_ADAPTER_EXTENDED_REPORT_INTERVAL) {
-            service->extended_report_cadence = 0;
+    bool endpoint_reports_pending = service->endpoint_index == 0
+                                        ? service->report_two_pending || service->report_one_pending
+                                        : service->report_four_pending ||
+                                              service->report_five_pending ||
+                                              service->report_six_pending;
+    if (endpoint_reports_pending && !service->output_reports_due) {
+        service->output_reports_due = service->output_report_cadence == 0;
+        service->output_report_cadence++;
+        if (service->output_report_cadence == WHEEL_ADAPTER_OUTPUT_REPORT_INTERVAL) {
+            service->output_report_cadence = 0;
         }
     }
-    if (service->extended_reports_due && service->report_four_pending) {
+    if (service->output_reports_due && service->endpoint_index == 0 &&
+        service->report_two_pending) {
+        CommandTransportResult result = command_transport_queue_write_to(
+            transport, WHEEL_ADAPTER_COMMAND_OWNER, target, WHEEL_ADAPTER_REPORT_TWO_OFFSET,
+            service->report_two, sizeof(service->report_two));
+        if (result == COMMAND_TRANSPORT_COMPLETE) {
+            service->report_two_pending = false;
+            service->output_reports_due = service->report_one_pending;
+            service->phase = WHEEL_ADAPTER_COMMAND_REPORT_TWO_PENDING;
+        }
+        return result;
+    }
+    if (service->output_reports_due && service->endpoint_index == 0 &&
+        service->report_one_pending) {
+        CommandTransportResult result = command_transport_queue_write_to(
+            transport, WHEEL_ADAPTER_COMMAND_OWNER, target, WHEEL_ADAPTER_REPORT_ONE_OFFSET,
+            service->report_one, sizeof(service->report_one));
+        if (result == COMMAND_TRANSPORT_COMPLETE) {
+            service->report_one_pending = false;
+            service->output_reports_due = service->report_two_pending;
+            service->phase = WHEEL_ADAPTER_COMMAND_REPORT_ONE_PENDING;
+        }
+        return result;
+    }
+    if (service->output_reports_due && service->endpoint_index == 1 &&
+        service->report_four_pending) {
         CommandTransportResult result = command_transport_queue_write_to(
             transport, WHEEL_ADAPTER_COMMAND_OWNER, target, WHEEL_ADAPTER_REPORT_FOUR_OFFSET,
             service->report_four, sizeof(service->report_four));
         if (result == COMMAND_TRANSPORT_COMPLETE) {
             service->report_four_pending = false;
-            service->extended_reports_due =
+            service->output_reports_due =
                 service->report_five_pending || service->report_six_pending;
             service->phase = WHEEL_ADAPTER_COMMAND_REPORT_FOUR_PENDING;
         }
         return result;
     }
-    if (service->extended_reports_due && service->report_five_pending) {
+    if (service->output_reports_due && service->endpoint_index == 1 &&
+        service->report_five_pending) {
         CommandTransportResult result = command_transport_queue_write_to(
             transport, WHEEL_ADAPTER_COMMAND_OWNER, target, WHEEL_ADAPTER_REPORT_FIVE_OFFSET,
             service->report_five, sizeof(service->report_five));
         if (result == COMMAND_TRANSPORT_COMPLETE) {
             service->report_five_pending = false;
-            service->extended_reports_due =
+            service->output_reports_due =
                 service->report_four_pending || service->report_six_pending;
             service->phase = WHEEL_ADAPTER_COMMAND_REPORT_FIVE_PENDING;
         }
         return result;
     }
-    if (service->extended_reports_due && service->report_six_pending) {
+    if (service->output_reports_due && service->endpoint_index == 1 &&
+        service->report_six_pending) {
         CommandTransportResult result = command_transport_queue_write_to(
             transport, WHEEL_ADAPTER_COMMAND_OWNER, target, WHEEL_ADAPTER_REPORT_SIX_OFFSET,
             service->report_four, 2);
         if (result == COMMAND_TRANSPORT_COMPLETE) {
             service->report_six_pending = false;
-            service->extended_reports_due =
+            service->output_reports_due =
                 service->report_four_pending || service->report_five_pending;
             service->phase = WHEEL_ADAPTER_COMMAND_REPORT_SIX_PENDING;
         }
@@ -492,6 +527,46 @@ void wheel_adapter_command_service_queue_display_state(WheelAdapterCommandServic
     }
     service->display_state = state;
     service->display_state_pending = true;
+}
+
+/**
+ * @brief Retains host output report one for the standard adapter endpoint.
+ *
+ * Copies all 12 payload bytes for a write to adapter offset 0x05. A newer report replaces an
+ * older queued value.
+ *
+ * @param[in,out] service Adapter command service retaining the report.
+ * @param[in] report Complete report-one payload.
+ */
+void wheel_adapter_command_service_queue_report_one(
+    WheelAdapterCommandService *service, const uint8_t report[WHEEL_OUTPUT_REPORT_ONE_SIZE]) {
+    if (service == 0 || report == 0) {
+        return;
+    }
+    for (uint8_t index = 0; index < sizeof(service->report_one); index++) {
+        service->report_one[index] = report[index];
+    }
+    service->report_one_pending = true;
+}
+
+/**
+ * @brief Retains host output report two for the standard adapter endpoint.
+ *
+ * Copies all 18 payload bytes for a write to adapter offset 0x04. A newer report replaces an
+ * older queued value.
+ *
+ * @param[in,out] service Adapter command service retaining the report.
+ * @param[in] report Complete report-two payload.
+ */
+void wheel_adapter_command_service_queue_report_two(
+    WheelAdapterCommandService *service, const uint8_t report[WHEEL_OUTPUT_REPORT_TWO_SIZE]) {
+    if (service == 0 || report == 0) {
+        return;
+    }
+    for (uint8_t index = 0; index < sizeof(service->report_two); index++) {
+        service->report_two[index] = report[index];
+    }
+    service->report_two_pending = true;
 }
 
 /**
