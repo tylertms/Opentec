@@ -22,9 +22,11 @@
 
 enum {
     USB_CONTROL_ENDPOINT = 0,
-    USB_HID_ENDPOINT = 1,
+    USB_PRIMARY_ENDPOINT = 1,
     USB_UPDATER_NOTIFICATION_ENDPOINT = 2,
     USB_UPDATER_DATA_ENDPOINT = 3,
+    USB_PLAYSTATION_OUTPUT_ENDPOINT = 3,
+    USB_PLAYSTATION_INPUT_ENDPOINT = 4,
     USB_HID_DESCRIPTOR_OFFSET = 18,
     USB_HID_DESCRIPTOR_SIZE = 9,
     USB_STRING_COUNT = 10,
@@ -627,20 +629,28 @@ static void handle_setup(void) {
 }
 
 /**
- * @brief Configures the primary bidirectional USB endpoint.
+ * @brief Configures the application USB endpoints.
  *
- * Enables endpoint 1 in both directions and arms both 64-byte output banks with alternating data
- * toggles for HID and Xbox GIP operating modes.
+ * Native HID and Xbox GIP use endpoint one in both directions. PlayStation mode uses endpoint three
+ * for host output and endpoint four for device input. Both output banks are armed with alternating
+ * data toggles.
  *
  */
-static void configure_primary_endpoint(void) {
+static void configure_application_endpoints(void) {
     input_data_one = false;
     output_data_one = false;
-    platform_usb_configure_endpoint(USB_HID_ENDPOINT, true, true);
-    if (platform_usb_receive(USB_HID_ENDPOINT, USB_DEVICE_REPORT_SIZE, output_data_one)) {
+    uint8_t output_endpoint = USB_PRIMARY_ENDPOINT;
+    if (operating_mode == USB_OPERATING_MODE_PLAYSTATION) {
+        output_endpoint = USB_PLAYSTATION_OUTPUT_ENDPOINT;
+        platform_usb_configure_endpoint(USB_PLAYSTATION_INPUT_ENDPOINT, true, true);
+        platform_usb_configure_endpoint(USB_PLAYSTATION_OUTPUT_ENDPOINT, true, true);
+    } else {
+        platform_usb_configure_endpoint(USB_PRIMARY_ENDPOINT, true, true);
+    }
+    if (platform_usb_receive(output_endpoint, USB_DEVICE_REPORT_SIZE, output_data_one)) {
         output_data_one = !output_data_one;
     }
-    if (platform_usb_receive(USB_HID_ENDPOINT, USB_DEVICE_REPORT_SIZE, output_data_one)) {
+    if (platform_usb_receive(output_endpoint, USB_DEVICE_REPORT_SIZE, output_data_one)) {
         output_data_one = !output_data_one;
     }
 }
@@ -666,6 +676,12 @@ static void configure_updater_endpoints(void) {
     }
 }
 
+/**
+ * @brief Applies a completed USB address or configuration change.
+ *
+ * Commits the pending control request, updates the device address, and configures or removes the
+ * endpoint set selected by the active operating mode.
+ */
 static void complete_control_change(void) {
     UsbDevicePendingChange pending_change = device_control.pending_change;
     usb_device_control_complete(&device_control);
@@ -676,14 +692,18 @@ static void complete_control_change(void) {
             if (operating_mode == USB_OPERATING_MODE_UPDATER) {
                 configure_updater_endpoints();
             } else {
-                configure_primary_endpoint();
+                configure_application_endpoints();
             }
         } else {
             if (operating_mode == USB_OPERATING_MODE_UPDATER) {
                 platform_usb_unconfigure_endpoint(USB_UPDATER_NOTIFICATION_ENDPOINT);
                 platform_usb_unconfigure_endpoint(USB_UPDATER_DATA_ENDPOINT);
             } else {
-                platform_usb_unconfigure_endpoint(USB_HID_ENDPOINT);
+                platform_usb_unconfigure_endpoint(USB_PRIMARY_ENDPOINT);
+                if (operating_mode == USB_OPERATING_MODE_PLAYSTATION) {
+                    platform_usb_unconfigure_endpoint(USB_PLAYSTATION_OUTPUT_ENDPOINT);
+                    platform_usb_unconfigure_endpoint(USB_PLAYSTATION_INPUT_ENDPOINT);
+                }
             }
         }
     }
@@ -724,8 +744,8 @@ static void store_output_report(uint8_t report_type, uint8_t report_id, const ui
     output_report.report_type = report_type;
     output_report.report_id = report_id;
     output_report.length = length;
-    for (uint8_t index = 0; index < length; index++) {
-        output_report.data[index] = data[index];
+    for (uint8_t index = 0; index < USB_DEVICE_REPORT_SIZE; index++) {
+        output_report.data[index] = index < length ? data[index] : 0;
     }
     output_ready = true;
 }
@@ -781,13 +801,28 @@ static void handle_control_output(void) {
     stall_control();
 }
 
+/**
+ * @brief Captures and rearms one HID output transfer.
+ *
+ * Uses the first byte as the report identifier for native and PlayStation HID modes. PlayStation
+ * output is exposed as the complete zero-padded 64-byte receive buffer used by the command service.
+ */
 static void handle_hid_output(void) {
     if (usb_event.length != 0) {
-        uint8_t report_id = input_mode == USB_INPUT_REPORT_MODE_FANATEC ? usb_event.data[0] : 0;
+        uint8_t report_id = operating_mode == USB_OPERATING_MODE_PLAYSTATION ||
+                                    input_mode == USB_INPUT_REPORT_MODE_FANATEC
+                                ? usb_event.data[0]
+                                : 0;
         store_output_report(USB_DEVICE_HID_REPORT_OUTPUT, report_id, usb_event.data,
                             usb_event.length);
+        if (operating_mode == USB_OPERATING_MODE_PLAYSTATION) {
+            output_report.length = USB_DEVICE_REPORT_SIZE;
+        }
     }
-    if (platform_usb_receive(USB_HID_ENDPOINT, USB_DEVICE_REPORT_SIZE, output_data_one)) {
+    uint8_t endpoint = operating_mode == USB_OPERATING_MODE_PLAYSTATION
+                           ? USB_PLAYSTATION_OUTPUT_ENDPOINT
+                           : USB_PRIMARY_ENDPOINT;
+    if (platform_usb_receive(endpoint, USB_DEVICE_REPORT_SIZE, output_data_one)) {
         output_data_one = !output_data_one;
     }
 }
@@ -809,7 +844,7 @@ static void handle_xbox_output(void) {
         }
         xbox_request_ready = true;
     }
-    if (platform_usb_receive(USB_HID_ENDPOINT, USB_DEVICE_REPORT_SIZE, output_data_one)) {
+    if (platform_usb_receive(USB_PRIMARY_ENDPOINT, USB_DEVICE_REPORT_SIZE, output_data_one)) {
         output_data_one = !output_data_one;
     }
 }
@@ -831,6 +866,12 @@ static void handle_reset(void) {
     platform_usb_control_ready();
 }
 
+/**
+ * @brief Dispatches one USB controller event.
+ *
+ * Routes control traffic, mode-specific output endpoints, input completion, reset, and suspend
+ * notifications to their owning device services.
+ */
 static void handle_event(void) {
     switch (usb_event.type) {
     case PLATFORM_USB_EVENT_RESET:
@@ -842,12 +883,15 @@ static void handle_event(void) {
     case PLATFORM_USB_EVENT_OUT:
         if (usb_event.endpoint == USB_CONTROL_ENDPOINT) {
             handle_control_output();
-        } else if (usb_event.endpoint == USB_HID_ENDPOINT) {
+        } else if (usb_event.endpoint == USB_PRIMARY_ENDPOINT) {
             if (operating_mode == USB_OPERATING_MODE_XBOX_GIP) {
                 handle_xbox_output();
             } else {
                 handle_hid_output();
             }
+        } else if (operating_mode == USB_OPERATING_MODE_PLAYSTATION &&
+                   usb_event.endpoint == USB_PLAYSTATION_OUTPUT_ENDPOINT) {
+            handle_hid_output();
         } else if (operating_mode == USB_OPERATING_MODE_UPDATER &&
                    usb_event.endpoint == USB_UPDATER_DATA_ENDPOINT) {
             handle_updater_output();
@@ -857,7 +901,7 @@ static void handle_event(void) {
         if (usb_event.endpoint == USB_CONTROL_ENDPOINT) {
             handle_control_input_complete();
         } else if (operating_mode == USB_OPERATING_MODE_XBOX_GIP &&
-                   usb_event.endpoint == USB_HID_ENDPOINT) {
+                   usb_event.endpoint == USB_PRIMARY_ENDPOINT) {
             xbox_input_busy = false;
         }
         break;
@@ -899,7 +943,8 @@ static void service_xbox_gip(void) {
     if (xbox_input_busy) {
         return;
     }
-    if (platform_usb_send(USB_HID_ENDPOINT, xbox_response, xbox_response_length, input_data_one)) {
+    if (platform_usb_send(USB_PRIMARY_ENDPOINT, xbox_response, xbox_response_length,
+                          input_data_one)) {
         input_data_one = !input_data_one;
         xbox_response_ready = false;
         xbox_input_busy = true;
@@ -924,6 +969,16 @@ bool usb_device_take_output(UsbDeviceOutputReport *report) {
     return true;
 }
 
+/**
+ * @brief Sends a primary native or compatibility HID input report.
+ *
+ * Suppresses an unchanged report and submits a changed payload through endpoint one. Console modes
+ * use their dedicated input services and are not accepted here.
+ *
+ * @param[in] report Encoded HID input report.
+ * @param[in] length Number of report bytes from one through 64.
+ * @return True when the report was unchanged or accepted by the active endpoint; otherwise false.
+ */
 bool usb_device_send_input(const uint8_t *report, uint8_t length) {
     if (operating_mode > USB_OPERATING_MODE_G27 || !usb_device_configured() || report == 0 ||
         length == 0 || length > USB_DEVICE_REPORT_SIZE) {
@@ -932,7 +987,7 @@ bool usb_device_send_input(const uint8_t *report, uint8_t length) {
     if (input_report_matches(report, length)) {
         return true;
     }
-    if (!platform_usb_send(USB_HID_ENDPOINT, report, length, input_data_one)) {
+    if (!platform_usb_send(USB_PRIMARY_ENDPOINT, report, length, input_data_one)) {
         return false;
     }
     for (uint8_t index = 0; index < length; index++) {
@@ -1092,7 +1147,7 @@ bool usb_device_queue_xbox_vendor_report(const uint8_t report[USB_DEVICE_REPORT_
 bool usb_device_send_vendor_report(const uint8_t *report, uint8_t length) {
     if (operating_mode != USB_OPERATING_MODE_FANATEC || !usb_device_configured() || report == 0 ||
         length == 0 || length > USB_DEVICE_REPORT_SIZE ||
-        !platform_usb_send(USB_HID_ENDPOINT, report, length, input_data_one)) {
+        !platform_usb_send(USB_PRIMARY_ENDPOINT, report, length, input_data_one)) {
         return false;
     }
     input_data_one = !input_data_one;

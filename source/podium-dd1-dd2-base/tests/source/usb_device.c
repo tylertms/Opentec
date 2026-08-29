@@ -520,6 +520,7 @@ static void test_exchanges_xbox_gip_discovery(void) {
 static void test_exchanges_playstation_authentication(void) {
     static const uint8_t get_device_descriptor[] = {0x80, 6, 0, 1, 0, 0, 18, 0};
     static const uint8_t get_configuration_descriptor[] = {0x80, 6, 0, 2, 0, 0, 41, 0};
+    static const uint8_t set_configuration[] = {0x00, 9, 1, 0, 0, 0, 0, 0};
     static const uint8_t get_format_report[] = {0xa1, 1, 0xf3, 3, 0, 0, 8, 0};
     static const uint8_t get_status_report[] = {0xa1, 1, 0xf2, 3, 0, 0, 16, 0};
     static const uint8_t get_response_report[] = {0xa1, 1, 0xf1, 3, 0, 0, 64, 0};
@@ -553,6 +554,32 @@ static void test_exchanges_playstation_authentication(void) {
     assert(sent.data[29] == 0x03 && sent.data[36] == 0x84);
     complete_control_input();
     assert_string_descriptor(9, "FANATEC Podium Wheel Base DD2 PlayStation 4");
+
+    receive_count = 0;
+    push_setup(set_configuration);
+    usb_device_service();
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 0, 0, 0);
+    usb_device_service();
+    assert(usb_device_configured());
+    assert(endpoint_input[3] && endpoint_output[3]);
+    assert(endpoint_input[4] && endpoint_output[4]);
+    assert(!endpoint_input[1] && !endpoint_output[1]);
+    assert(receive_count == 2);
+    assert(received[0].endpoint == 3 && received[0].length == 64 && !received[0].data_one);
+    assert(received[1].endpoint == 3 && received[1].length == 64 && received[1].data_one);
+
+    uint8_t playstation_output[32] = {5, 0x12, 0x34, 0x56};
+    push_event(PLATFORM_USB_EVENT_OUT, 3, playstation_output, sizeof(playstation_output));
+    usb_device_service();
+    UsbDeviceOutputReport output;
+    assert(usb_device_take_output(&output));
+    assert(output.report_type == USB_DEVICE_HID_REPORT_OUTPUT);
+    assert(output.report_id == 5 && output.length == USB_DEVICE_REPORT_SIZE);
+    assert(memcmp(output.data, playstation_output, sizeof(playstation_output)) == 0);
+    assert(memcmp(output.data + sizeof(playstation_output),
+                  (uint8_t[USB_DEVICE_REPORT_SIZE - sizeof(playstation_output)]){0},
+                  USB_DEVICE_REPORT_SIZE - sizeof(playstation_output)) == 0);
+    assert(received[receive_count - 1].endpoint == 3);
 
     push_setup(get_format_report);
     usb_device_service();
