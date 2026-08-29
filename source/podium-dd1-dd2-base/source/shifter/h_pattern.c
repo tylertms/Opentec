@@ -3,109 +3,42 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-enum {
-    SEVENTH_BOUNDARY_MINIMUM_SPAN = 5,
-    SEVENTH_BOUNDARY_FALLBACK_OFFSET = 20,
-};
-
-static uint16_t midpoint(uint16_t first, uint16_t second) {
-    uint16_t sum = first + second;
-    return sum >> 1;
-}
-
 /**
- * Derives the H-pattern row thresholds and lateral gear boundaries from calibration samples.
+ * @brief Identifies gears in the upper H-pattern row.
  *
- * @param samples Neutral, reverse, and seven forward-gear axis samples.
- * @return Calibration thresholds used to classify subsequent shifter positions.
- */
-HPatternCalibration h_pattern_calibration_build(const HPatternCalibrationSamples *samples) {
-    uint16_t fifth_seventh_span = samples->fifth_lateral - samples->seventh_lateral;
-    uint16_t fifth_seventh_boundary =
-        fifth_seventh_span <= SEVENTH_BOUNDARY_MINIMUM_SPAN
-            ? samples->fifth_lateral - SEVENTH_BOUNDARY_FALLBACK_OFFSET
-            : midpoint(samples->fifth_lateral, samples->seventh_lateral);
-
-    return (HPatternCalibration){
-        .reverse_first_boundary = midpoint(samples->reverse_lateral, samples->first_lateral),
-        .first_third_boundary = midpoint(samples->first_lateral, samples->third_lateral),
-        .second_fourth_boundary = midpoint(samples->second_lateral, samples->fourth_lateral),
-        .third_fifth_boundary = midpoint(samples->third_lateral, samples->fifth_lateral),
-        .fourth_sixth_boundary = midpoint(samples->fourth_lateral, samples->sixth_lateral),
-        .fifth_seventh_boundary = fifth_seventh_boundary,
-        .upper_row_threshold =
-            midpoint(samples->neutral_longitudinal, samples->reverse_longitudinal),
-        .lower_row_threshold =
-            midpoint(samples->neutral_longitudinal, samples->second_longitudinal),
-    };
-}
-
-void h_pattern_calibration_start(HPatternCalibrationSession *session) {
-    *session = (HPatternCalibrationSession){0};
-}
-
-/**
- * Captures the current H-pattern position and advances through the calibration sequence.
+ * The upper row contains reverse and the odd-numbered forward gears.
  *
- * @param session Current position and samples collected by this calibration session.
- * @param lateral_position Current lateral axis sample.
- * @param longitudinal_position Current longitudinal axis sample.
- * @param settings Destination updated after neutral, reverse, and gears one through seven are
- * captured.
- * @return True only when the seventh-gear capture completes and enables the new calibration.
+ * @param[in] gear Gear code to inspect.
+ * @return True when the gear belongs to the upper row.
  */
-bool h_pattern_calibration_capture(HPatternCalibrationSession *session, uint16_t lateral_position,
-                                   uint16_t longitudinal_position, HPatternSettings *settings) {
-    switch (session->next_position) {
-    case H_PATTERN_CALIBRATION_NEUTRAL:
-        session->samples.neutral_longitudinal = longitudinal_position;
-        break;
-    case H_PATTERN_CALIBRATION_REVERSE:
-        session->samples.reverse_lateral = lateral_position;
-        session->samples.reverse_longitudinal = longitudinal_position;
-        break;
-    case H_PATTERN_CALIBRATION_FIRST:
-        session->samples.first_lateral = lateral_position;
-        break;
-    case H_PATTERN_CALIBRATION_SECOND:
-        session->samples.second_lateral = lateral_position;
-        session->samples.second_longitudinal = longitudinal_position;
-        break;
-    case H_PATTERN_CALIBRATION_THIRD:
-        session->samples.third_lateral = lateral_position;
-        break;
-    case H_PATTERN_CALIBRATION_FOURTH:
-        session->samples.fourth_lateral = lateral_position;
-        break;
-    case H_PATTERN_CALIBRATION_FIFTH:
-        session->samples.fifth_lateral = lateral_position;
-        break;
-    case H_PATTERN_CALIBRATION_SIXTH:
-        session->samples.sixth_lateral = lateral_position;
-        break;
-    case H_PATTERN_CALIBRATION_SEVENTH:
-        session->samples.seventh_lateral = lateral_position;
-        settings->calibration = h_pattern_calibration_build(&session->samples);
-        settings->calibrated = true;
-        session->next_position = H_PATTERN_CALIBRATION_COMPLETE;
-        return true;
-    case H_PATTERN_CALIBRATION_COMPLETE:
-        return false;
-    }
-
-    session->next_position++;
-    return false;
-}
-
 static bool is_upper_row_gear(ShifterGear gear) {
     return gear == SHIFTER_GEAR_REVERSE || gear == SHIFTER_GEAR_FIRST ||
            gear == SHIFTER_GEAR_THIRD || gear == SHIFTER_GEAR_FIFTH || gear == SHIFTER_GEAR_SEVENTH;
 }
 
+/**
+ * @brief Identifies gears in the lower H-pattern row.
+ *
+ * The lower row contains the even-numbered forward gears.
+ *
+ * @param[in] gear Gear code to inspect.
+ * @return True when the gear belongs to the lower row.
+ */
 static bool is_lower_row_gear(ShifterGear gear) {
     return gear == SHIFTER_GEAR_SECOND || gear == SHIFTER_GEAR_FOURTH || gear == SHIFTER_GEAR_SIXTH;
 }
 
+/**
+ * @brief Retains a gear while longitudinal movement remains inside its row allowance.
+ *
+ * The allowance is half the distance from the captured neutral reference to the applicable row
+ * threshold. Neutral remains latched only while both row allowances hold.
+ *
+ * @param[in] shifter Current gear, neutral reference, and last accepted longitudinal position.
+ * @param[in] calibration Calibrated upper and lower row thresholds.
+ * @param[in] longitudinal_position Current longitudinal axis sample.
+ * @return True when the current gear remains latched.
+ */
 static bool gear_remains_latched(const HPatternShifter *shifter,
                                  const HPatternCalibration *calibration,
                                  uint16_t longitudinal_position) {
@@ -132,6 +65,15 @@ static bool gear_remains_latched(const HPatternShifter *shifter,
     return shifter->gear == SHIFTER_GEAR_NEUTRAL && within_upper && within_lower;
 }
 
+/**
+ * @brief Selects an upper-row gear from the lateral axis.
+ *
+ * Applies the reverse-first, first-third, third-fifth, and fifth-seventh boundaries in order.
+ *
+ * @param[in] calibration Calibrated upper-row boundaries.
+ * @param[in] lateral_position Current lateral axis sample.
+ * @return Reverse or the selected odd-numbered forward gear.
+ */
 static ShifterGear select_upper_row(const HPatternCalibration *calibration,
                                     uint16_t lateral_position) {
     if (lateral_position > calibration->reverse_first_boundary) {
@@ -149,6 +91,15 @@ static ShifterGear select_upper_row(const HPatternCalibration *calibration,
     return SHIFTER_GEAR_SEVENTH;
 }
 
+/**
+ * @brief Selects a lower-row gear from the lateral axis.
+ *
+ * Applies the second-fourth and fourth-sixth boundaries in order.
+ *
+ * @param[in] calibration Calibrated lower-row boundaries.
+ * @param[in] lateral_position Current lateral axis sample.
+ * @return Second, fourth, or sixth gear.
+ */
 static ShifterGear select_lower_row(const HPatternCalibration *calibration,
                                     uint16_t lateral_position) {
     if (lateral_position > calibration->second_fourth_boundary) {
@@ -161,12 +112,16 @@ static ShifterGear select_lower_row(const HPatternCalibration *calibration,
 }
 
 /**
- * Classifies one calibrated H-pattern shifter sample with row hysteresis.
+ * @brief Classifies one calibrated H-pattern shifter sample with row hysteresis.
  *
- * @param shifter Persistent neutral reference, last accepted row position, and gear.
- * @param calibration Ordered lateral gear boundaries and longitudinal row thresholds.
- * @param lateral_position Current lateral axis sample.
- * @param longitudinal_position Current longitudinal axis sample.
+ * Retains the previous gear inside its longitudinal allowance, otherwise selects the active row
+ * and applies its lateral gear boundaries. Samples between the row thresholds update the neutral
+ * reference.
+ *
+ * @param[in,out] shifter Persistent neutral reference, last accepted row position, and gear.
+ * @param[in] calibration Ordered lateral gear boundaries and longitudinal row thresholds.
+ * @param[in] lateral_position Current lateral axis sample.
+ * @param[in] longitudinal_position Current longitudinal axis sample.
  * @return Latched or newly classified neutral, reverse, or forward gear.
  */
 ShifterGear h_pattern_shifter_update(HPatternShifter *shifter,

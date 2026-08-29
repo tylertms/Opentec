@@ -48,6 +48,7 @@
 #include "serial/service.h"
 #include "settings/persistence.h"
 #include "settings/state.h"
+#include "shifter/calibration.h"
 #include "shifter/display.h"
 #include "shifter/h_pattern.h"
 #include "shifter/input.h"
@@ -128,6 +129,8 @@ static WheelStatusService wheel_status_service;
 static AnalogSamples analog_samples;
 static AuxiliaryAxis auxiliary_axis;
 static HPatternShifter h_pattern_shifter;
+static HPatternCalibrationService h_pattern_calibration_service;
+static HPatternCalibrationCommand h_pattern_calibration_command;
 static ShifterInputState shifter_input;
 static ShifterDisplay shifter_display;
 static UsbInputReportState usb_input_state;
@@ -845,6 +848,10 @@ static void service_usb_output(void) {
     if (usb_operating_mode_command_decode(&usb_output_command, &usb_operating_mode_command)) {
         if (usb_operating_mode_command_requests_native_reset(&usb_operating_mode_command)) {
             (void)usb_device_set_input_mode(USB_INPUT_REPORT_MODE_FANATEC);
+        } else if (h_pattern_calibration_command_decode(&usb_operating_mode_command,
+                                                        &h_pattern_calibration_command)) {
+            h_pattern_calibration_service_request(&h_pattern_calibration_service,
+                                                  h_pattern_calibration_command);
         } else if (pedal_calibration_command_decode(&usb_operating_mode_command,
                                                     &pedal_calibration_command)) {
             pedal_calibration_actions = pedal_calibration_command_route(
@@ -1016,8 +1023,9 @@ static void service_usb_input(uint32_t now_ms) {
  * @brief Samples and publishes all base-side analog inputs.
  *
  * Updates cooling temperatures, pedal fallback samples, the local auxiliary override, and the
- * active H-pattern shifter. Changed auxiliary endpoint settings enter the shared delayed
- * persistence path.
+ * active H-pattern shifter. Queued H-pattern calibration captures use the selected shifter axes
+ * and request immediate persistence after seventh gear. Changed auxiliary endpoint settings enter
+ * the shared delayed persistence path.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -1039,16 +1047,29 @@ static void service_analog_input(uint32_t now_ms) {
                                          &base_settings.auxiliary_axis)) {
             base_settings_persistence_mark_dirty(&settings_persistence, now_ms);
         }
-        if (!base_settings.h_pattern_shifter.calibrated) {
-            h_pattern_shifter = (HPatternShifter){0};
-        } else if (shifter_input.primary_mode == SHIFTER_INPUT_H_PATTERN) {
-            h_pattern_shifter_update(
-                &h_pattern_shifter, &base_settings.h_pattern_shifter.calibration,
-                analog_samples.primary_shifter_x, analog_samples.primary_shifter_y);
+        uint16_t lateral_position;
+        uint16_t longitudinal_position;
+        if (shifter_input.primary_mode == SHIFTER_INPUT_H_PATTERN) {
+            lateral_position = analog_samples.primary_shifter_x;
+            longitudinal_position = analog_samples.primary_shifter_y;
         } else if (shifter_input.secondary_mode == SHIFTER_INPUT_H_PATTERN) {
-            h_pattern_shifter_update(
-                &h_pattern_shifter, &base_settings.h_pattern_shifter.calibration,
-                analog_samples.secondary_shifter_x, analog_samples.secondary_shifter_y);
+            lateral_position = analog_samples.secondary_shifter_x;
+            longitudinal_position = analog_samples.secondary_shifter_y;
+        } else {
+            h_pattern_shifter = (HPatternShifter){0};
+            return;
+        }
+
+        if (h_pattern_calibration_service_capture(
+                &h_pattern_calibration_service, lateral_position, longitudinal_position,
+                &base_settings.h_pattern_shifter) == H_PATTERN_CALIBRATION_COMPLETED) {
+            base_settings_persistence_request_save(&settings_persistence, now_ms);
+        }
+
+        if (base_settings.h_pattern_shifter.calibrated) {
+            h_pattern_shifter_update(&h_pattern_shifter,
+                                     &base_settings.h_pattern_shifter.calibration, lateral_position,
+                                     longitudinal_position);
         } else {
             h_pattern_shifter = (HPatternShifter){0};
         }

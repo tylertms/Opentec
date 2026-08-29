@@ -88,6 +88,7 @@ board_identity_sources = files('source/board/identity.c')
 usb_connection_sources = files('source/usb/connection.c')
 status_led_sources = files('source/board/status_led.c')
 h_pattern_shifter_sources = files('source/shifter/h_pattern.c')
+h_pattern_calibration_sources = files('source/shifter/calibration.c')
 shifter_display_sources = files('source/shifter/display.c')
 logitech_input_sources = files('source/usb/logitech_input.c')
 motor_identity_sources = files('source/motor/identity.c')
@@ -258,6 +259,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'status-led': 'source/board/status_led.c',
     'firmware': 'source/firmware.c',
     'h-pattern-shifter': 'source/shifter/h_pattern.c',
+    'h-pattern-calibration': 'source/shifter/calibration.c',
     'shifter-display': 'source/shifter/display.c',
     'logitech-input': 'source/usb/logitech_input.c',
     'motor-identity': 'source/motor/identity.c',
@@ -1161,6 +1163,14 @@ if not meson.is_cross_build()
     'base-h-pattern-shifter-test',
     'tests/source/h_pattern_shifter.c',
     h_pattern_shifter_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  h_pattern_calibration_test = executable(
+    'base-h-pattern-calibration-test',
+    'tests/source/h_pattern_calibration.c',
+    h_pattern_calibration_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2074,6 +2084,11 @@ if not meson.is_cross_build()
   test('base-usb-connection', usb_connection_test, suite: ['base', 'usb', 'connection'])
   test('base-status-led', status_led_test, suite: ['base', 'board', 'led'])
   test('base-h-pattern-shifter', h_pattern_shifter_test, suite: ['base', 'shifter'])
+  test(
+    'base-h-pattern-calibration',
+    h_pattern_calibration_test,
+    suite: ['base', 'shifter', 'calibration'],
+  )
   test('base-shifter-display', shifter_display_test, suite: ['base', 'shifter', 'display'])
   test('base-logitech-input', logitech_input_test, suite: ['base', 'usb', 'input'])
   test('base-motor-identity', motor_identity_test, suite: ['base', 'motor'])

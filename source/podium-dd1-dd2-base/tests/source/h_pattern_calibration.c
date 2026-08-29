@@ -1,0 +1,116 @@
+#include <assert.h>
+#include <stdbool.h>
+
+#include "shifter/calibration.h"
+
+static HPatternCalibrationSamples calibration_samples(void) {
+    return (HPatternCalibrationSamples){
+        .neutral_longitudinal = 500,
+        .reverse_lateral = 900,
+        .reverse_longitudinal = 900,
+        .first_lateral = 700,
+        .second_lateral = 650,
+        .second_longitudinal = 100,
+        .third_lateral = 500,
+        .fourth_lateral = 450,
+        .fifth_lateral = 300,
+        .sixth_lateral = 250,
+        .seventh_lateral = 100,
+    };
+}
+
+static void test_command_decode(void) {
+    HPatternCalibrationCommand command;
+    UsbOperatingModeCommand source = {.opcode = 0x19, .parameters = {1}};
+
+    assert(h_pattern_calibration_command_decode(&source, &command));
+    assert(command == H_PATTERN_CALIBRATION_COMMAND_START);
+
+    source.parameters[0] = 2;
+    assert(h_pattern_calibration_command_decode(&source, &command));
+    assert(command == H_PATTERN_CALIBRATION_COMMAND_ADVANCE);
+
+    source.parameters[0] = 0;
+    assert(!h_pattern_calibration_command_decode(&source, &command));
+    source.opcode = 0x18;
+    source.parameters[0] = 1;
+    assert(!h_pattern_calibration_command_decode(&source, &command));
+    assert(!h_pattern_calibration_command_decode(NULL, &command));
+    assert(!h_pattern_calibration_command_decode(&source, NULL));
+}
+
+static void test_calibration_thresholds(void) {
+    HPatternCalibrationSamples samples = calibration_samples();
+    HPatternCalibration result = h_pattern_calibration_build(&samples);
+
+    assert(result.reverse_first_boundary == 800);
+    assert(result.first_third_boundary == 600);
+    assert(result.second_fourth_boundary == 550);
+    assert(result.third_fifth_boundary == 400);
+    assert(result.fourth_sixth_boundary == 350);
+    assert(result.fifth_seventh_boundary == 200);
+    assert(result.upper_row_threshold == 700);
+    assert(result.lower_row_threshold == 300);
+}
+
+static void test_seventh_gear_boundary_fallback(void) {
+    HPatternCalibrationSamples samples = calibration_samples();
+    samples.seventh_lateral = 295;
+    assert(h_pattern_calibration_build(&samples).fifth_seventh_boundary == 280);
+
+    samples.seventh_lateral = 294;
+    assert(h_pattern_calibration_build(&samples).fifth_seventh_boundary == 297);
+}
+
+static HPatternCalibrationResult capture(HPatternCalibrationService *service,
+                                         HPatternSettings *settings, uint16_t lateral,
+                                         uint16_t longitudinal) {
+    h_pattern_calibration_service_request(service, H_PATTERN_CALIBRATION_COMMAND_ADVANCE);
+    return h_pattern_calibration_service_capture(service, lateral, longitudinal, settings);
+}
+
+static void test_calibration_capture_sequence(void) {
+    HPatternCalibrationService service = {0};
+    HPatternSettings settings = {0};
+
+    assert(h_pattern_calibration_service_capture(&service, 500, 500, &settings) ==
+           H_PATTERN_CALIBRATION_NO_CAPTURE);
+    h_pattern_calibration_service_request(&service, H_PATTERN_CALIBRATION_COMMAND_START);
+    assert(service.active);
+    assert(service.session.next_position == H_PATTERN_CALIBRATION_NEUTRAL);
+    assert(h_pattern_calibration_service_capture(&service, 500, 500, &settings) ==
+           H_PATTERN_CALIBRATION_NO_CAPTURE);
+
+    assert(capture(&service, &settings, 500, 500) == H_PATTERN_CALIBRATION_CAPTURED);
+    assert(service.session.next_position == H_PATTERN_CALIBRATION_REVERSE);
+    assert(capture(&service, &settings, 900, 900) == H_PATTERN_CALIBRATION_CAPTURED);
+    assert(capture(&service, &settings, 700, 850) == H_PATTERN_CALIBRATION_CAPTURED);
+    assert(capture(&service, &settings, 650, 100) == H_PATTERN_CALIBRATION_CAPTURED);
+    assert(capture(&service, &settings, 500, 800) == H_PATTERN_CALIBRATION_CAPTURED);
+    assert(capture(&service, &settings, 450, 150) == H_PATTERN_CALIBRATION_CAPTURED);
+    assert(capture(&service, &settings, 300, 750) == H_PATTERN_CALIBRATION_CAPTURED);
+    assert(capture(&service, &settings, 250, 200) == H_PATTERN_CALIBRATION_CAPTURED);
+    assert(!settings.calibrated);
+    assert(capture(&service, &settings, 100, 700) == H_PATTERN_CALIBRATION_COMPLETED);
+
+    assert(!service.active);
+    assert(service.session.next_position == H_PATTERN_CALIBRATION_COMPLETE);
+    assert(settings.calibrated);
+    assert(settings.calibration.reverse_first_boundary == 800);
+    assert(settings.calibration.first_third_boundary == 600);
+    assert(settings.calibration.second_fourth_boundary == 550);
+    assert(settings.calibration.third_fifth_boundary == 400);
+    assert(settings.calibration.fourth_sixth_boundary == 350);
+    assert(settings.calibration.fifth_seventh_boundary == 200);
+    assert(settings.calibration.upper_row_threshold == 700);
+    assert(settings.calibration.lower_row_threshold == 300);
+    assert(capture(&service, &settings, 0, 0) == H_PATTERN_CALIBRATION_NO_CAPTURE);
+}
+
+int main(void) {
+    test_command_decode();
+    test_calibration_thresholds();
+    test_seventh_gear_boundary_fallback();
+    test_calibration_capture_sequence();
+    return 0;
+}
