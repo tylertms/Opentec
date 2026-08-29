@@ -81,7 +81,7 @@ void wheel_motion_accumulate_primary(WheelMotion *motion, int8_t delta) {
 /**
  * @brief Accumulates one auxiliary wheel motion step.
  *
- * Updates either of the two wrapping axis counters from the sign of the input. Unsupported axis
+ * Updates one of the three wrapping axis counters from the sign of the input. Unsupported axis
  * indices leave the state unchanged.
  *
  * @param[in,out] motion Motion state whose selected axis counter is updated.

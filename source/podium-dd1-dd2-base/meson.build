@@ -159,9 +159,11 @@ wheel_usb_disconnect_display_sources = files('source/wheel/usb_disconnect_displa
 wheel_output_reports_sources = files('source/wheel/output_reports.c')
 transfer_memory_sources = files('source/transfer/memory.c')
 wheel_motion_sources = files('source/wheel/motion.c')
+wheel_pulse_gate_sources = files('source/wheel/pulse_gate.c')
 wheel_rotary_input_sources = files('source/wheel/rotary_input.c')
 wheel_packet_common_sources = files('source/wheel/packet_common.c')
 wheel_packet_alternate_sources = files('source/wheel/packet_alternate.c')
+wheel_packet_axis_mode_sources = files('source/wheel/packet_axis_mode.c')
 wheel_packet_crc_sources = files('source/wheel/packet_crc.c')
 wheel_packet_display_sources = files('source/wheel/packet_display.c')
 wheel_packet_mode_one_sources = files('source/wheel/packet_mode_one.c')
@@ -382,9 +384,11 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'transfer-memory': 'source/transfer/memory.c',
     'transfer-command': 'source/transfer/command.c',
     'wheel-motion': 'source/wheel/motion.c',
+    'wheel-pulse-gate': 'source/wheel/pulse_gate.c',
     'wheel-rotary-input': 'source/wheel/rotary_input.c',
     'wheel-packet-common': 'source/wheel/packet_common.c',
     'wheel-packet-alternate': 'source/wheel/packet_alternate.c',
+    'wheel-packet-axis-mode': 'source/wheel/packet_axis_mode.c',
     'wheel-packet-crc': 'source/wheel/packet_crc.c',
     'wheel-packet-display': 'source/wheel/packet_display.c',
     'wheel-packet-mode-one': 'source/wheel/packet_mode_one.c',
@@ -2041,6 +2045,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_packet_axis_mode_test = executable(
+    'base-wheel-packet-axis-mode-test',
+    'tests/source/wheel_packet_axis_mode.c',
+    wheel_packet_axis_mode_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_packet_remote_tuning_test = executable(
     'base-wheel-packet-remote-tuning-test',
     'tests/source/wheel_packet_remote_tuning.c',
@@ -2083,6 +2095,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_pulse_gate_test = executable(
+    'base-wheel-pulse-gate-test',
+    'tests/source/wheel_pulse_gate.c',
+    wheel_pulse_gate_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_rotary_input_test = executable(
     'base-wheel-rotary-input-test',
     'tests/source/wheel_rotary_input.c',
@@ -2099,8 +2119,10 @@ if not meson.is_cross_build()
     wheel_axis_override_sources,
     wheel_capability_sources,
     wheel_motion_sources,
+    wheel_pulse_gate_sources,
     wheel_output_reports_sources,
     wheel_packet_alternate_sources,
+    wheel_packet_axis_mode_sources,
     wheel_packet_common_sources,
     wheel_packet_crc_sources,
     wheel_packet_display_sources,
@@ -2122,9 +2144,11 @@ if not meson.is_cross_build()
     wheel_axis_override_sources,
     wheel_capability_sources,
     wheel_motion_sources,
+    wheel_pulse_gate_sources,
     wheel_rotary_input_sources,
     wheel_output_reports_sources,
     wheel_packet_alternate_sources,
+    wheel_packet_axis_mode_sources,
     wheel_packet_common_sources,
     wheel_packet_crc_sources,
     wheel_packet_display_sources,
@@ -2658,6 +2682,7 @@ if not meson.is_cross_build()
     suite: ['base', 'wheel', 'safety'],
   )
   test('base-wheel-motion', wheel_motion_test, suite: ['base', 'wheel', 'input'])
+  test('base-wheel-pulse-gate', wheel_pulse_gate_test, suite: ['base', 'wheel', 'input'])
   test('base-wheel-rotary-input', wheel_rotary_input_test, suite: ['base', 'wheel', 'input'])
   test(
     'base-wheel-packet-alternate',
@@ -2667,6 +2692,11 @@ if not meson.is_cross_build()
   test(
     'base-wheel-packet-crc',
     wheel_packet_crc_test,
+    suite: ['base', 'wheel', 'protocol'],
+  )
+  test(
+    'base-wheel-packet-axis-mode',
+    wheel_packet_axis_mode_test,
     suite: ['base', 'wheel', 'protocol'],
   )
   test(

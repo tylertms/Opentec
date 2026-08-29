@@ -1419,6 +1419,97 @@ static void test_applies_crc_family_axis_controls(void) {
     assert(axes->packet_axis_report_enabled);
 }
 
+static void test_captures_axis_mode_packets(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    wheel_protocol_set_axis_processing(&protocol, 0, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50, 0);
+    synchronize(&protocol, request);
+    select_mode(&protocol, request, 0x09);
+
+    request[2] = 0x80;
+    request[3] = 0x08;
+    request[4] = 0x04;
+    request[7] = 1;
+    request[12] = 30;
+    request[13] = 60;
+    request[14] = WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED;
+    request[15] = 0xa5;
+    request[18] = 0x34;
+    request[19] = 0x12;
+    request[20] = 0x78;
+    request[21] = 0x56;
+    request[22] = 0x61;
+    request[23] = 1;
+    request[28] = 0x34;
+    request[30] = 0x3f;
+    request[31] = 0x62;
+    for (uint8_t sample = 0; sample < WHEEL_PACKET_AXIS_MODE_HISTORY_DEPTH; sample++) {
+        accept_active_request(&protocol, request);
+    }
+
+    const WheelPacketAxisModeInput *input = wheel_protocol_axis_mode_input(&protocol);
+    assert(input != 0);
+    assert(input->buttons[0] == 0x80);
+    assert(input->buttons[1] == 0x08);
+    assert(input->buttons[2] == 0x04);
+    assert(input->controls[0] == 5);
+    assert(input->controls[1] == 10);
+    assert(input->controls[4] == 30);
+    assert(input->controls[5] == 60);
+    assert(input->controls[6] == WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED);
+    assert(input->axis_outputs[0] == 0x9e);
+    assert(input->axis_outputs[1] == 0xbc);
+    assert(wheel_protocol_axis_limit(&protocol) == 0x62);
+    assert(wheel_protocol_mode_buttons(&protocol) == 0x61);
+    assert(wheel_protocol_axis_report_enabled(&protocol));
+    uint16_t values[2];
+    assert(wheel_protocol_axis_values(&protocol, values));
+    assert(values[0] == 0x1234);
+    assert(values[1] == 0x5678);
+    uint8_t controls[8];
+    assert(wheel_protocol_controls(&protocol, controls));
+    assert(memcmp(controls, input->controls, sizeof(controls)) == 0);
+    assert(protocol.motion.primary == 3);
+    assert(wheel_protocol_acknowledgement_input_active(&protocol));
+    assert(wheel_protocol_capabilities(&protocol)->capability_flags == 0x3f34);
+    assert(wheel_protocol_response(&protocol)[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
+    assert(wheel_protocol_message_valid(wheel_protocol_response(&protocol)));
+}
+
+static void test_accumulates_axis_mode_interface_pulses(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    protocol.mode = 0x09;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    request[0] = WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
+    request[7] = 0x15;
+    mark_ready(request);
+
+    wheel_protocol_set_axis_processing(&protocol, 6, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50, 1);
+    accept_active_request(&protocol, request);
+    wheel_protocol_set_axis_processing(&protocol, 6, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50, 2);
+    accept_active_request(&protocol, request);
+    wheel_protocol_set_axis_processing(&protocol, 6, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50, 92);
+    accept_active_request(&protocol, request);
+    assert(protocol.motion.primary == 3);
+    assert(protocol.motion.axes[0] == 2);
+    assert(protocol.motion.axes[1] == 2);
+    assert(protocol.motion.axes[2] == 2);
+
+    wheel_protocol_init(&protocol);
+    protocol.mode = 0x09;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    request[7] = UINT8_MAX;
+    wheel_protocol_set_axis_processing(&protocol, 7, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50, 1);
+    accept_active_request(&protocol, request);
+    assert(protocol.motion.primary == UINT8_MAX);
+    assert(protocol.motion.axes[0] == UINT8_MAX);
+    assert(protocol.motion.axes[1] == 0);
+    assert(protocol.motion.axes[2] == 0);
+}
+
 static void test_rejects_out_of_range_mode(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -1484,6 +1575,8 @@ int main(void) {
     test_captures_filtered_pulse_packets();
     test_captures_direct_filtered_pulses();
     test_applies_crc_family_axis_controls();
+    test_captures_axis_mode_packets();
+    test_accumulates_axis_mode_interface_pulses();
     test_rejects_out_of_range_mode();
     test_crc8_vectors();
     return 0;

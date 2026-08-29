@@ -423,6 +423,83 @@ static void process_packet_multiplexed_axes(WheelAxisOverrideProcessor *processo
 }
 
 /**
+ * @brief Selects the inactive output used by axis-mode packets.
+ *
+ * Emits the multiplex-interface sentinel pair for interface modes six through eight and clears
+ * both axes for every other interface.
+ *
+ * @param[in] interface_mode Current input-report interface mode.
+ * @param[out] axes Two packet output axes.
+ */
+static void set_axis_mode_inactive_output(uint8_t interface_mode, uint8_t axes[2]) {
+    axes[0] = interface_multiplexes_axes(interface_mode) ? UINT8_MAX : 0;
+    axes[1] = 0;
+}
+
+/**
+ * @brief Advances axis-mode packet multiplexing.
+ *
+ * Tracks the two filtered controls, emits centered independent axes on nonmultiplexed interfaces,
+ * and serializes an available source through the interface-specific primary axis otherwise.
+ *
+ * @param[in,out] processor Persistent availability and multiplex phase.
+ * @param[in] interface_mode Current input-report interface mode.
+ * @param[in] x First filtered axis-mode control.
+ * @param[in] y Second filtered axis-mode control.
+ * @param[out] axes Two packet output axes.
+ */
+static void process_axis_mode_multiplexed_axes(WheelAxisOverrideProcessor *processor,
+                                               uint8_t interface_mode, uint8_t x, uint8_t y,
+                                               uint8_t axes[2]) {
+    processor->x_available = x <= AXIS_AVAILABLE_THRESHOLD;
+    processor->y_available = y <= AXIS_AVAILABLE_THRESHOLD;
+    if (!interface_multiplexes_axes(interface_mode)) {
+        axes[0] = (uint8_t)(x + 0x80u);
+        axes[1] = (uint8_t)(y + 0x80u);
+        return;
+    }
+
+    axes[0] = 0x80;
+    axes[1] = 0;
+    switch (processor->multiplex_phase) {
+    case WHEEL_AXIS_MULTIPLEX_SELECT:
+        if (x != AXIS_UNAVAILABLE) {
+            processor->multiplex_phase = WHEEL_AXIS_MULTIPLEX_X;
+        } else if (y != AXIS_UNAVAILABLE) {
+            processor->multiplex_phase = WHEEL_AXIS_MULTIPLEX_Y;
+        } else if (interface_mode == 7) {
+            axes[0] = UINT8_MAX;
+        }
+        break;
+    case WHEEL_AXIS_MULTIPLEX_X:
+        if (x == AXIS_UNAVAILABLE) {
+            processor->multiplex_phase = WHEEL_AXIS_MULTIPLEX_SELECT;
+        } else if (interface_mode == 6) {
+            axes[0] = (uint8_t)(0x80u - ((uint16_t)x >> 1));
+        } else if (interface_mode == 7) {
+            axes[0] = (uint8_t)(0x7fu - ((uint16_t)x >> 1));
+        } else {
+            axes[0] = x >> 1;
+        }
+        break;
+    case WHEEL_AXIS_MULTIPLEX_Y:
+        if (y == AXIS_UNAVAILABLE) {
+            processor->multiplex_phase = WHEEL_AXIS_MULTIPLEX_SELECT;
+        } else if (interface_mode == 6) {
+            axes[0] = (uint8_t)~((uint16_t)y >> 1);
+        } else if (interface_mode == 7) {
+            axes[0] = (uint8_t)(0x80u + ((uint16_t)y >> 1));
+        } else {
+            axes[0] = y >> 1;
+        }
+        break;
+    default:
+        processor->multiplex_phase = WHEEL_AXIS_MULTIPLEX_SELECT;
+        break;
+    }
+}
+
+/**
  * @brief Clears the attached-wheel axis override processor.
  *
  * Clears every override and availability flag and returns axis multiplexing to its selection
@@ -537,6 +614,61 @@ void wheel_axis_override_process_packet(WheelAxisOverrideProcessor *processor, u
                                  controls);
     } else if (mode == WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED) {
         process_packet_multiplexed_axes(processor, interface_mode, controls, axes);
+    }
+}
+
+/**
+ * @brief Applies an axis-mode packet's selected override behavior.
+ *
+ * Maps the two filtered controls into the selected pedal destinations, runs calibrated clutch
+ * policy when requested, or advances the packet family's axis multiplexer. Unsupported selectors
+ * disable overrides and publish the interface's inactive axis pair.
+ *
+ * @param[in,out] processor Persistent override, clutch, availability, and multiplex state.
+ * @param[in] mode Axis-control selector carried by the packet.
+ * @param[in] interface_mode Current input-report interface mode.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[in,out] bite_point_percent Active profile bite-point percentage.
+ * @param[in,out] buttons Primary attached-wheel button bank.
+ * @param[in,out] motion Primary attached-wheel rotary motion.
+ * @param[in] controls Eight filtered axis-mode control bytes.
+ * @param[out] axes Two packet output axes.
+ */
+void wheel_axis_override_process_axis_mode(WheelAxisOverrideProcessor *processor, uint8_t mode,
+                                           uint8_t interface_mode, uint32_t now_ms,
+                                           uint8_t *bite_point_percent, uint8_t *buttons,
+                                           int8_t *motion, const uint8_t controls[8],
+                                           uint8_t axes[2]) {
+    uint8_t x = controls[4];
+    uint8_t y = controls[5];
+    clear_overrides(&processor->overrides);
+    switch (mode) {
+    case WHEEL_AXIS_OVERRIDE_MODE_CALIBRATED:
+        processor->overrides.axis_7.enabled = true;
+        processor->overrides.axis_7.value =
+            process_paddle_clutch(processor, now_ms, bite_point_percent, buttons, motion, x, y);
+        set_axis_mode_inactive_output(interface_mode, axes);
+        break;
+    case WHEEL_AXIS_OVERRIDE_MODE_SECONDARY:
+        processor->overrides.axis_7.enabled = true;
+        processor->overrides.axis_7.value = x;
+        processor->overrides.auxiliary.enabled = true;
+        processor->overrides.auxiliary.value = y;
+        set_axis_mode_inactive_output(interface_mode, axes);
+        break;
+    case WHEEL_AXIS_OVERRIDE_MODE_PRIMARY:
+        processor->overrides.axis_6.enabled = true;
+        processor->overrides.axis_6.value = x;
+        processor->overrides.axis_5.enabled = true;
+        processor->overrides.axis_5.value = y;
+        set_axis_mode_inactive_output(interface_mode, axes);
+        break;
+    case WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED:
+        process_axis_mode_multiplexed_axes(processor, interface_mode, x, y, axes);
+        break;
+    default:
+        set_axis_mode_inactive_output(interface_mode, axes);
+        break;
     }
 }
 

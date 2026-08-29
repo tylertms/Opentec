@@ -25,25 +25,67 @@ enum {
     INTERFACE_MODE_PODIUM_DD = 0,
     INTERFACE_MODE_XBOX_GIP = 6,
     INTERFACE_MODE_PLAYSTATION_4 = 7,
-    XBOX_PULSE_HOLD_MS = 90,
-    PLAYSTATION_PULSE_HOLD_MS = 15,
 };
 
+/**
+ * @brief Reads one little-endian 16-bit CRC-packet field.
+ *
+ * Combines two adjacent bytes without requiring aligned storage.
+ *
+ * @param[in] data First byte of the field.
+ * @return Decoded 16-bit value.
+ */
 static uint16_t read_little_endian_u16(const uint8_t *data) {
     return (uint16_t)data[0] | (uint16_t)data[1] << 8;
 }
 
+/**
+ * @brief Reads one bit from a byte.
+ *
+ * Shifts the selected bit into the low position and returns it as zero or one.
+ *
+ * @param[in] value Source byte.
+ * @param[in] bit Zero-based bit position.
+ * @return Zero or one from the selected position.
+ */
 static uint8_t read_bit(uint8_t value, uint8_t bit) { return (value >> bit) & 1u; }
 
+/**
+ * @brief Replaces one destination bit.
+ *
+ * Clears the selected destination position and copies the low bit of the source into it.
+ *
+ * @param[in,out] value Destination byte.
+ * @param[in] destination_bit Zero-based destination position.
+ * @param[in] source Value whose low bit is assigned.
+ */
 static void assign_bit(uint8_t *value, uint8_t destination_bit, uint8_t source) {
     uint8_t mask = (uint8_t)(1u << destination_bit);
     *value = (uint8_t)((*value & (uint8_t)~mask) | ((source & 1u) << destination_bit));
 }
 
+/**
+ * @brief Merges one source bit into a destination byte.
+ *
+ * Sets the selected destination position when the source low bit is one and preserves it
+ * otherwise.
+ *
+ * @param[in,out] value Destination byte.
+ * @param[in] destination_bit Zero-based destination position.
+ * @param[in] source Value whose low bit is merged.
+ */
 static void merge_bit(uint8_t *value, uint8_t destination_bit, uint8_t source) {
     *value |= (uint8_t)((source & 1u) << destination_bit);
 }
 
+/**
+ * @brief Maps CRC controls into standard-interface buttons.
+ *
+ * Merges all bits from control bytes two and three into the first two primary button banks using
+ * the standard report ordering.
+ *
+ * @param[in,out] input CRC-family input updated in place.
+ */
 static void map_standard_buttons(WheelPacketCrcInput *input) {
     static const uint8_t first_destinations[8] = {3, 0, 4, 1, 5, 2, 6, 7};
     static const uint8_t second_destinations[8] = {5, 7, 6, 0, 3, 1, 2, 4};
@@ -53,6 +95,14 @@ static void map_standard_buttons(WheelPacketCrcInput *input) {
     }
 }
 
+/**
+ * @brief Maps direct-wheel controls into Xbox buttons.
+ *
+ * Combines the direct wheel's auxiliary control sources into the Xbox-oriented primary button
+ * banks without adapter input.
+ *
+ * @param[in,out] input CRC-family input updated in place.
+ */
 static void map_xbox_direct_buttons(WheelPacketCrcInput *input) {
     assign_bit(&input->buttons[1], 7,
                read_bit(input->controls[1], 1) | read_bit(input->controls[2], 7));
@@ -81,6 +131,15 @@ static void map_xbox_direct_buttons(WheelPacketCrcInput *input) {
     merge_bit(&input->buttons[2], 3, read_bit(input->controls[1], 4));
 }
 
+/**
+ * @brief Maps CRC controls into Xbox-interface buttons.
+ *
+ * Reorders the shared control banks, selects the direct or adapter-specific auxiliary sources, and
+ * merges the two analog-control button bits.
+ *
+ * @param[in,out] input CRC-family input updated in place.
+ * @param[in] adapter_connected True when adapter input replaces direct-wheel auxiliary sources.
+ */
 static void map_xbox_buttons(WheelPacketCrcInput *input, bool adapter_connected) {
     static const uint8_t first_destinations[6] = {4, 1, 5, 2, 6, 7};
     for (uint8_t bit = 2; bit < 8; bit++) {
@@ -108,6 +167,16 @@ static void map_xbox_buttons(WheelPacketCrcInput *input, bool adapter_connected)
     merge_bit(&input->buttons[1], 0, read_bit(input->controls[4], 3));
 }
 
+/**
+ * @brief Merges an attached adapter into CRC-family input.
+ *
+ * Adds adapter buttons using its active mapping, converts both adapter axes, publishes button
+ * activity, and consumes one queued primary motion step.
+ *
+ * @param[in,out] input CRC-family input receiving adapter values.
+ * @param[in] interface_mode Current input-report interface mode.
+ * @param[in,out] adapter Adapter state whose queued motion is consumed.
+ */
 static void merge_adapter_input(WheelPacketCrcInput *input, uint8_t interface_mode,
                                 WheelPacketCrcAdapter *adapter) {
     merge_bit(&input->buttons[0], 1, read_bit(adapter->buttons[0], 1));
@@ -145,6 +214,14 @@ static void merge_adapter_input(WheelPacketCrcInput *input, uint8_t interface_mo
     }
 }
 
+/**
+ * @brief Serializes normalized CRC-family input.
+ *
+ * Writes every logical input field into its 30-byte change-detection position.
+ *
+ * @param[in] input Normalized CRC-family input.
+ * @param[out] snapshot Thirty-byte protocol request view.
+ */
 static void write_snapshot(const WheelPacketCrcInput *input,
                            uint8_t snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE]) {
     for (uint8_t index = 0; index < WHEEL_PACKET_CRC_BUTTON_COUNT; index++) {
@@ -339,42 +416,6 @@ void wheel_packet_crc_smooth_axes(WheelPacketCrcFilter *filter, WheelPacketCrcIn
     if (filter->next_axis_sample == WHEEL_PACKET_CRC_HISTORY_DEPTH) {
         filter->next_axis_sample = 0;
     }
-}
-
-/**
- * @brief Applies the mode-0x18 pulse timing policy.
- *
- * Publishes direct-interface pulses immediately. Xbox and PlayStation pulses are accepted only
- * after their independent 90 ms and 15 ms hold intervals, and a nonzero accepted pulse starts the
- * next interval.
- *
- * @param[in,out] gate Independent Xbox and PlayStation pulse deadlines.
- * @param[in] interface_mode Active wheel interface mode.
- * @param[in] now_ms Current monotonic millisecond count.
- * @param[in] pulse_flags Four positive/negative pulse pairs.
- * @return True when the pulse flags may update the logical motion counters.
- */
-bool wheel_packet_crc_pulse_ready(WheelPacketCrcPulseGate *gate, uint8_t interface_mode,
-                                  uint32_t now_ms, uint8_t pulse_flags) {
-    uint8_t deadline_index;
-    uint32_t hold_ms;
-    if (interface_mode == INTERFACE_MODE_XBOX_GIP) {
-        deadline_index = 0;
-        hold_ms = XBOX_PULSE_HOLD_MS;
-    } else if (interface_mode == INTERFACE_MODE_PLAYSTATION_4) {
-        deadline_index = 1;
-        hold_ms = PLAYSTATION_PULSE_HOLD_MS;
-    } else {
-        return true;
-    }
-
-    if (now_ms <= gate->deadlines_ms[deadline_index]) {
-        return false;
-    }
-    if (pulse_flags != 0) {
-        gate->deadlines_ms[deadline_index] = now_ms + hold_ms;
-    }
-    return true;
 }
 
 /**

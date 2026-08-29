@@ -89,19 +89,6 @@ static void test_filters_pulse_controls_with_button_history(void) {
     assert(filter.next_control_sample == 2);
 }
 
-static void test_applies_interface_pulse_intervals(void) {
-    WheelPacketCrcPulseGate gate = {0};
-
-    assert(wheel_packet_crc_pulse_ready(&gate, 0, 0, 0x10));
-    assert(!wheel_packet_crc_pulse_ready(&gate, 6, 0, 0x10));
-    assert(wheel_packet_crc_pulse_ready(&gate, 6, 1, 0x10));
-    assert(!wheel_packet_crc_pulse_ready(&gate, 6, 91, 0x10));
-    assert(wheel_packet_crc_pulse_ready(&gate, 6, 92, 0x10));
-    assert(wheel_packet_crc_pulse_ready(&gate, 7, 1, 0x10));
-    assert(!wheel_packet_crc_pulse_ready(&gate, 7, 16, 0x10));
-    assert(wheel_packet_crc_pulse_ready(&gate, 7, 17, 0x10));
-}
-
 static void test_averages_three_axis_control_samples(void) {
     WheelPacketCrcFilter filter;
     WheelPacketCrcInput input = {0};
@@ -303,7 +290,6 @@ int main(void) {
     test_decodes_crc_fields();
     test_filters_three_button_and_five_control_bytes();
     test_filters_pulse_controls_with_button_history();
-    test_applies_interface_pulse_intervals();
     test_averages_three_axis_control_samples();
     test_prepares_authenticated_podium_buttons();
     test_maps_standard_buttons_and_builds_snapshot();

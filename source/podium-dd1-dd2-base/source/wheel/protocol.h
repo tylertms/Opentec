@@ -10,6 +10,7 @@
 #include "wheel/motion.h"
 #include "wheel/output_reports.h"
 #include "wheel/packet_alternate.h"
+#include "wheel/packet_axis_mode.h"
 #include "wheel/packet_crc.h"
 #include "wheel/packet_display.h"
 #include "wheel/packet_mode_four.h"
@@ -17,6 +18,7 @@
 #include "wheel/packet_packed.h"
 #include "wheel/packet_remapped.h"
 #include "wheel/packet_remote_tuning.h"
+#include "wheel/pulse_gate.h"
 
 enum {
     WHEEL_PROTOCOL_PACKET_SIZE = 57,
@@ -81,6 +83,8 @@ typedef struct {
     WheelPacketAlternateOutput alternate_output;
     WheelPacketPackedFilter packed_filter;
     WheelPacketPackedInput packed_input;
+    WheelPacketAxisModeFilter axis_mode_filter;
+    WheelPacketAxisModeInput axis_mode_input;
     WheelPacketCrcFilter crc_filter;
     WheelPacketCrcInput crc_input;
     WheelPacketCrcOutput crc_output;
@@ -90,7 +94,7 @@ typedef struct {
     WheelOutputReports output_reports;
     WheelProtocolPhase phase;
     uint32_t now_ms;
-    WheelPacketCrcPulseGate crc_pulse_gate;
+    WheelPulseGate pulse_gate;
     uint8_t mode;
     uint8_t interface_mode;
     uint8_t configured_axis_override_mode;
@@ -142,6 +146,7 @@ const WheelPacketDisplayInput *wheel_protocol_display_input(const WheelProtocol 
 const WheelPacketRemappedInput *wheel_protocol_remapped_input(const WheelProtocol *protocol);
 const WheelPacketAlternateInput *wheel_protocol_alternate_input(const WheelProtocol *protocol);
 const WheelPacketPackedInput *wheel_protocol_packed_input(const WheelProtocol *protocol);
+const WheelPacketAxisModeInput *wheel_protocol_axis_mode_input(const WheelProtocol *protocol);
 const WheelPacketCrcInput *wheel_protocol_crc_input(const WheelProtocol *protocol);
 const WheelPacketModeOneReportState *
 wheel_protocol_mode_one_report_state(const WheelProtocol *protocol);

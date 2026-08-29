@@ -55,6 +55,11 @@ void wheel_axis_override_process_packet(WheelAxisOverrideProcessor *processor, u
                                         uint8_t axis_limit, uint32_t now_ms,
                                         uint8_t *bite_point_percent, uint8_t *buttons,
                                         int8_t *motion, uint8_t controls[8], uint8_t axes[2]);
+void wheel_axis_override_process_axis_mode(WheelAxisOverrideProcessor *processor, uint8_t mode,
+                                           uint8_t interface_mode, uint32_t now_ms,
+                                           uint8_t *bite_point_percent, uint8_t *buttons,
+                                           int8_t *motion, const uint8_t controls[8],
+                                           uint8_t axes[2]);
 bool wheel_axis_override_take_bite_point(WheelAxisOverrideProcessor *processor,
                                          uint8_t bite_point_percent, uint8_t *updated_percent);
 bool wheel_axis_override_take_bite_point_report(WheelAxisOverrideProcessor *processor,
