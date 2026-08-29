@@ -290,7 +290,8 @@ void motor_tick_timer_initialize(uint16_t modulus, MotorEncoderOverflowHandler h
     FTM2->MOD = modulus;
     FTM2->CNTIN = 0U;
     FTM2->EXTTRIG = 0U;
-    FTM2->CONF = FTM_CONF_BDMMODE(3U) | FTM_CONF_NUMTOF(1U);
+    FTM2->CONF = 0U;
+    FTM2->QDCTRL = FTM_QDCTRL_QUADEN_MASK | FTM_QDCTRL_PHBFLTREN_MASK | FTM_QDCTRL_PHAFLTREN_MASK;
     FTM2->SC &= ~FTM_SC_TOF_MASK;
     FTM_StartTimer(FTM2, kFTM_SystemClock);
 }
