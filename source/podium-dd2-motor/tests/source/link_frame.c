@@ -1,7 +1,7 @@
-#include "motor/link_frame.h"
-
 #include <assert.h>
 #include <stdint.h>
+
+#include "link/frame.h"
 
 static const uint8_t force_frame[MOTOR_LINK_FRAME_SIZE] = {
     0x7bU, 0x01U, 0x05U, 0x06U, 0x07U, 0x08U, 0xcdU, 0xabU, 0x68U, 0x24U, 0xfbU, 0xa4U, 0x7dU,

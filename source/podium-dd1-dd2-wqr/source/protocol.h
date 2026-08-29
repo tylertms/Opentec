@@ -1,10 +1,11 @@
 #ifndef OPENTEC_WQR_PROTOCOL_H
 #define OPENTEC_WQR_PROTOCOL_H
 
-#include <common/wqr_frame.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+
+#include "wqr_frame.h"
 
 enum { WQR_TRANSFER_CAPACITY = 512, WQR_SPI_TRANSFER_SIZE = 33, WQR_STATUS_SIZE = 15 };
 

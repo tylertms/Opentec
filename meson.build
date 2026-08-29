@@ -18,9 +18,6 @@ if (
   add_languages('c', native: true)
 endif
 
-common_include = include_directories('source')
-wqr_frame_sources = files('source/common/wqr_frame.c')
-
 subdir('source/podium-dd1-dd2-wqr')
 subdir('source/podium-dd1-dd2-base')
 subdir('source/podium-dd1-motor')

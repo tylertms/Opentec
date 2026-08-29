@@ -1,4 +1,4 @@
-#include "motor/protocol.h"
+#include "link/protocol.h"
 
 #include <assert.h>
 

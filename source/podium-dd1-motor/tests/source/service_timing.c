@@ -1,6 +1,6 @@
 #include <assert.h>
 
-#include "motor/service.h"
+#include "system/timing.h"
 
 static void test_initial_values(void) {
     MotorServiceTiming timing;

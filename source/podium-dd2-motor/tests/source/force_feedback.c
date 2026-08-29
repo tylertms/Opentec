@@ -1,11 +1,10 @@
-#include "motor/force_feedback.h"
-
 #include <assert.h>
 #include <stdint.h>
 
-#include "motor/force_feedback_command.h"
-#include "motor/force_feedback_engine.h"
-#include "motor/force_feedback_soft_stop.h"
+#include "force_feedback/command.h"
+#include "force_feedback/effect.h"
+#include "force_feedback/engine.h"
+#include "force_feedback/soft_stop.h"
 
 static void test_defaults(void) {
     MotorForceFeedbackSettings settings = motor_force_feedback_settings_default();

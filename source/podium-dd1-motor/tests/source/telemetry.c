@@ -1,6 +1,6 @@
-#include "motor/telemetry.h"
-
 #include <assert.h>
+
+#include "telemetry/auxiliary.h"
 
 static void test_temperature_interpolation(void) {
     assert(motor_temperature_interpolate(3987U, kMotorTemperatureMotor) == -255);

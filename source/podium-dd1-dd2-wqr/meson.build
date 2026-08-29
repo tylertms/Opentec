@@ -1,5 +1,5 @@
-protocol_sources = files('source/protocol.c') + wqr_frame_sources
-protocol_include = [include_directories('source'), common_include]
+protocol_sources = files('source/protocol.c', 'source/wqr_frame.c')
+protocol_include = include_directories('source')
 
 wqr_target = meson.is_cross_build() and host_machine.cpu_family() == 'arm' and host_machine.cpu() == 'cortex-m4'
 

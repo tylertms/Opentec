@@ -1,6 +1,6 @@
 #include <assert.h>
 
-#include "motor/profile.h"
+#include "profile/hardware.h"
 
 int main(void) {
     MotorHardwareProfile standard = motor_hardware_profile_select(false);

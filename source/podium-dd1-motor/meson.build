@@ -5,30 +5,30 @@ motor_current_offset_calibration_sources = files('source/motor/calibration.c')
 motor_drive_sources = files('source/motor/drive.c')
 motor_encoder_sources = files('source/motor/encoder.c')
 motor_encoder_calibration_sources = files('source/motor/encoder_calibration.c')
-motor_calibration_storage_sources = files('source/motor/storage.c')
+motor_calibration_storage_sources = files('source/platform/mkv10z/storage.c')
 motor_force_feedback_sources = files(
-  'source/motor/force_feedback.c',
-  'source/motor/force_feedback_command.c',
-  'source/motor/force_feedback_engine.c',
-  'source/motor/force_feedback_soft_stop.c',
+  'source/force_feedback/effect.c',
+  'source/force_feedback/command.c',
+  'source/force_feedback/engine.c',
+  'source/force_feedback/soft_stop.c',
 )
-motor_hardware_profile_sources = files('source/motor/profile.c')
-motor_link_frame_sources = files('source/motor/link_frame.c')
+motor_hardware_profile_sources = files('source/profile/hardware.c')
+motor_link_frame_sources = files('source/link/frame.c')
 motor_motion_sources = files('source/motor/motion.c')
-motor_parameter_sources = files('source/motor/parameter.c')
-motor_protocol_sources = files('source/motor/protocol.c')
-motor_service_sources = files('source/motor/service.c')
-motor_auxiliary_telemetry_sources = files('source/motor/telemetry.c')
+motor_parameter_sources = files('source/tuning/parameter.c')
+motor_protocol_sources = files('source/link/protocol.c')
+motor_service_sources = files('source/system/timing.c')
+motor_auxiliary_telemetry_sources = files('source/telemetry/auxiliary.c')
 motor_velocity_control_sources = files('source/motor/velocity_control.c')
 motor_control_sources = files(
-  'source/motor/board.c',
-  'source/motor/communication.c',
+  'source/platform/mkv10z/board.c',
+  'source/platform/mkv10z/tuning_bus.c',
   'source/motor/foc.c',
-  'source/motor/io.c',
-  'source/motor/link.c',
-  'source/motor/peripherals.c',
-  'source/motor/runtime.c',
-  'source/motor/spi.c',
+  'source/platform/mkv10z/io.c',
+  'source/platform/mkv10z/link.c',
+  'source/platform/mkv10z/peripherals.c',
+  'source/system/runtime.c',
+  'source/platform/mkv10z/spi.c',
 ) + motor_center_sources + motor_control_state_sources + motor_current_offset_calibration_sources + motor_drive_sources + motor_encoder_sources + motor_encoder_calibration_sources + motor_calibration_storage_sources + motor_force_feedback_sources + motor_hardware_profile_sources + motor_link_frame_sources + motor_motion_sources + motor_parameter_sources + motor_protocol_sources + motor_service_sources + motor_auxiliary_telemetry_sources + motor_velocity_control_sources
 
 
