@@ -6,17 +6,43 @@
 
 enum { MOTOR_AUX_BUS_ADDRESS = 0x78 };
 
+/**
+ * @brief Initializes the asynchronous motor tuning service.
+ *
+ * Builds the initial desired parameter set and clears bus transfer ownership.
+ *
+ * @param[out] service Motor tuning service to initialize.
+ * @param[in] profile Active tuning profile.
+ * @param[in] context Runtime motor tuning context.
+ */
 void motor_tuning_service_init(MotorTuningService *service, const TuningProfile *profile,
                                const MotorTuningContext *context) {
     motor_tuning_sync_init(&service->sync, profile, context);
     service->transfer_active = false;
 }
 
+/**
+ * @brief Refreshes motor tuning writes after settings or runtime context change.
+ *
+ * Re-encodes the desired parameter set and leaves unchanged values synchronized.
+ *
+ * @param[in,out] service Motor tuning service to refresh.
+ * @param[in] profile Active tuning profile.
+ * @param[in] context Runtime motor tuning context.
+ */
 void motor_tuning_service_refresh(MotorTuningService *service, const TuningProfile *profile,
                                   const MotorTuningContext *context) {
     motor_tuning_sync_refresh(&service->sync, profile, context);
 }
 
+/**
+ * @brief Advances the asynchronous motor tuning transfer.
+ *
+ * Completes the active auxiliary-bus write, records its result, and starts at most one pending
+ * write to motor address 0x78 when the bus is idle.
+ *
+ * @param[in,out] service Motor tuning service and transfer state to advance.
+ */
 void motor_tuning_service_run(MotorTuningService *service) {
     PlatformAuxBusStatus bus_status = platform_aux_bus_status();
     if (service->transfer_active) {
@@ -42,6 +68,14 @@ void motor_tuning_service_run(MotorTuningService *service) {
     }
 }
 
+/**
+ * @brief Reports whether the motor tuning service has outstanding work.
+ *
+ * Includes both an active auxiliary-bus transfer and parameter writes waiting to start.
+ *
+ * @param[in] service Motor tuning service state.
+ * @return True while any motor tuning write remains outstanding.
+ */
 bool motor_tuning_service_pending(const MotorTuningService *service) {
     return service->transfer_active || motor_tuning_sync_pending(&service->sync);
 }
