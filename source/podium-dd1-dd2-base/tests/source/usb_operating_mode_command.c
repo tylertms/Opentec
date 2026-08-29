@@ -99,11 +99,96 @@ static void test_identifies_led_pattern(void) {
     assert(!usb_operating_mode_command_requests_led_pattern(NULL));
 }
 
+static UsbOperatingModeCommand runtime_command(uint8_t subcommand, uint8_t request) {
+    return (UsbOperatingModeCommand){
+        .opcode = 1,
+        .parameters = {subcommand, request, 0, 0},
+    };
+}
+
+static void test_decodes_auxiliary_runtime_modes(void) {
+    UsbOperatingModeCommand command = runtime_command(0xfe, 0);
+    UsbRuntimeModeTransition transition;
+
+    assert(usb_operating_mode_command_decode_runtime(&command, 0, 0, 2, &transition));
+    assert(transition.mode == USB_RUNTIME_MODE_AUXILIARY);
+    assert(transition.save_settings);
+
+    assert(usb_operating_mode_command_decode_runtime(&command, 1, 0, 3, &transition));
+    assert(transition.mode == USB_RUNTIME_MODE_AUXILIARY_RECOVERY);
+    assert(transition.save_settings);
+
+    assert(!usb_operating_mode_command_decode_runtime(&command, 0, 0, 1, &transition));
+    assert(!usb_operating_mode_command_decode_runtime(&command, 2, 0, 2, &transition));
+}
+
+static void test_decodes_bridge_runtime_modes(void) {
+    UsbRuntimeModeTransition transition;
+    UsbOperatingModeCommand command = runtime_command(0xfe, 1);
+
+    assert(usb_operating_mode_command_decode_runtime(&command, 0, 0xff, 0, &transition));
+    assert(transition.mode == USB_RUNTIME_MODE_STATUS_BRIDGE);
+    assert(!transition.save_settings);
+
+    command.parameters[1] = 3;
+    assert(usb_operating_mode_command_decode_runtime(&command, 1, 0xff, 0, &transition));
+    assert(transition.mode == USB_RUNTIME_MODE_PROTOCOL_BRIDGE);
+    assert(!transition.save_settings);
+}
+
+static bool accepts_usb_bridge(uint8_t wheel_mode) {
+    UsbOperatingModeCommand command = runtime_command(0xfe, 2);
+    UsbRuntimeModeTransition transition;
+    bool accepted =
+        usb_operating_mode_command_decode_runtime(&command, 0, wheel_mode, 0, &transition);
+    if (accepted) {
+        assert(transition.mode == USB_RUNTIME_MODE_USB_BRIDGE);
+        assert(!transition.save_settings);
+    }
+    return accepted;
+}
+
+static void test_gates_usb_bridge_by_wheel_mode(void) {
+    for (uint16_t wheel_mode = 0; wheel_mode <= UINT8_MAX; wheel_mode++) {
+        bool expected = wheel_mode == 0 || (wheel_mode >= 9 && wheel_mode <= 12) ||
+                        (wheel_mode >= 16 && wheel_mode <= 22) ||
+                        (wheel_mode >= 27 && wheel_mode <= 30);
+        assert(accepts_usb_bridge((uint8_t)wheel_mode) == expected);
+    }
+}
+
+static void test_decodes_reset_and_rejects_other_runtime_commands(void) {
+    UsbRuntimeModeTransition transition = {
+        .mode = USB_RUNTIME_MODE_PROTOCOL_RECOVERY,
+        .save_settings = true,
+    };
+    UsbOperatingModeCommand command = runtime_command(0xff, 0xa5);
+
+    assert(usb_operating_mode_command_decode_runtime(&command, UINT8_MAX, UINT8_MAX, UINT8_MAX,
+                                                     &transition));
+    assert(transition.mode == USB_RUNTIME_MODE_RESET);
+    assert(!transition.save_settings);
+
+    command.parameters[0] = 0xfd;
+    assert(!usb_operating_mode_command_decode_runtime(&command, 0, 0, 0, &transition));
+    command.parameters[0] = 0xfe;
+    command.parameters[1] = 4;
+    assert(!usb_operating_mode_command_decode_runtime(&command, 0, 0, 0, &transition));
+    command.opcode = 2;
+    assert(!usb_operating_mode_command_decode_runtime(&command, 0, 0, 0, &transition));
+    assert(!usb_operating_mode_command_decode_runtime(NULL, 0, 0, 0, &transition));
+    assert(!usb_operating_mode_command_decode_runtime(&command, 0, 0, 0, NULL));
+}
+
 int main(void) {
     test_decodes_command_envelope();
     test_rejects_other_envelopes();
     test_identifies_native_reset();
     test_decodes_operating_status();
     test_identifies_led_pattern();
+    test_decodes_auxiliary_runtime_modes();
+    test_decodes_bridge_runtime_modes();
+    test_gates_usb_bridge_by_wheel_mode();
+    test_decodes_reset_and_rejects_other_runtime_commands();
     return 0;
 }
