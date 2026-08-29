@@ -12,6 +12,19 @@ motor_control_test = executable(
   include_directories: common_include,
 )
 
+motor_foc_test = executable(
+  'motor-foc-test',
+  'source/foc.c',
+  '../foc.c',
+  include_directories: [include_directories('stubs'), common_include],
+)
+
+test(
+  'motor-foc',
+  motor_foc_test,
+  suite: ['motor', 'control'],
+)
+
 test(
   'motor-control',
   motor_control_test,

@@ -2,6 +2,14 @@
 
 #include <limits.h>
 
+/**
+ * @brief Limits one signed value to the sixteen-bit motor range.
+ *
+ * Values inside the range pass through unchanged.
+ *
+ * @param value Signed value to limit.
+ * @return Sixteen-bit saturated result.
+ */
 static int16_t motor_int16_saturate(int32_t value) {
     if (value > INT16_MAX) {
         return INT16_MAX;
@@ -12,6 +20,14 @@ static int16_t motor_int16_saturate(int32_t value) {
     return (int16_t)value;
 }
 
+/**
+ * @brief Limits one wide accumulator to the signed thirty-two-bit range.
+ *
+ * Values inside the range pass through unchanged.
+ *
+ * @param value Wide signed accumulator value.
+ * @return Thirty-two-bit saturated result.
+ */
 static int32_t motor_int32_saturate(int64_t value) {
     if (value > INT32_MAX) {
         return INT32_MAX;

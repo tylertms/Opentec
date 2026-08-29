@@ -9,10 +9,26 @@ enum {
     FRAME_CHECKSUM_OFFSET = 10,
 };
 
+/**
+ * @brief Reads one official little-endian sixteen-bit field.
+ *
+ * Motor-link fields are byte-aligned and do not require packed C structures.
+ *
+ * @param input First byte of the field.
+ * @return Decoded unsigned value.
+ */
 static uint16_t read_uint16(const uint8_t *input) {
     return (uint16_t)input[0] | (uint16_t)input[1] << 8U;
 }
 
+/**
+ * @brief Writes one official little-endian sixteen-bit field.
+ *
+ * The two bytes are emitted explicitly so the wire representation is independent of host layout.
+ *
+ * @param output First output byte of the field.
+ * @param value Unsigned value to encode.
+ */
 static void write_uint16(uint8_t *output, uint16_t value) {
     output[0] = (uint8_t)value;
     output[1] = (uint8_t)(value >> 8U);

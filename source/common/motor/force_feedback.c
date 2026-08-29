@@ -12,6 +12,14 @@ enum {
     MOTOR_FORCE_FEEDBACK_GAIN_MAXIMUM = 12,
 };
 
+/**
+ * @brief Reinterprets one unsigned word as a portable signed value.
+ *
+ * Values above the signed maximum are converted without relying on implementation-defined casts.
+ *
+ * @param value Unsigned two's-complement word.
+ * @return Equivalent signed value.
+ */
 static int32_t signed_from_uint32(uint32_t value) {
     if (value <= INT32_MAX) {
         return (int32_t)value;
@@ -19,10 +27,28 @@ static int32_t signed_from_uint32(uint32_t value) {
     return -1 - (int32_t)(UINT32_MAX - value);
 }
 
+/**
+ * @brief Decodes one centered force axis.
+ *
+ * The recovered transfer maps the unsigned midpoint to negative one and preserves the full signed
+ * endpoint range.
+ *
+ * @param value Unsigned sixteen-bit force axis.
+ * @return Signed force magnitude.
+ */
 static int32_t axis_decode(uint16_t value) {
     return signed_from_uint32((0x8000U - value) * 2U - 1U);
 }
 
+/**
+ * @brief Applies one symmetric signed force limit.
+ *
+ * Positive and negative magnitudes use the same unsigned limit.
+ *
+ * @param value Signed force to limit.
+ * @param limit Maximum positive or negative magnitude.
+ * @return Limited signed force.
+ */
 static int32_t clamp_symmetric(int32_t value, uint32_t limit) {
     if (value > (int32_t)limit) {
         return (int32_t)limit;

@@ -1,5 +1,7 @@
 #include "common/motor/foc.h"
 
+#include <mlib.h>
+
 volatile uint16_t gu16CntMmdvsq;
 
 /**
@@ -55,18 +57,20 @@ void motor_foc_step(MotorFocState *state, const MotorFocInput *input, MotorFocOu
     output->filtered_current.f16D =
         GDFLIB_FilterIIR1_F16(rotating_current.f16D, &state->d_current_filter);
 
-    current_error.f16D = MLIB_Sub_F16(input->current_reference.f16D, output->filtered_current.f16D);
-    current_error.f16Q = MLIB_Sub_F16(input->current_reference.f16Q, output->filtered_current.f16Q);
+    current_error.f16D =
+        MLIB_SubSat_F16(input->current_reference.f16D, output->filtered_current.f16D);
+    current_error.f16Q =
+        MLIB_SubSat_F16(input->current_reference.f16Q, output->filtered_current.f16Q);
 
     state->d_controller.f16UpperLim = input->dc_bus_voltage;
-    state->d_controller.f16LowerLim = MLIB_Neg_F16(input->dc_bus_voltage);
+    state->d_controller.f16LowerLim = MLIB_NegSat_F16(input->dc_bus_voltage);
     output->voltage.f16D =
         GFLIB_CtrlPIpAW_F16(current_error.f16D, &state->stop_d_integrator, &state->d_controller);
 
     state->q_controller.f16UpperLim =
-        GFLIB_Sqrt_F16(MLIB_Sub_F16(MLIB_Mul_F16(input->dc_bus_voltage, input->dc_bus_voltage),
-                                    MLIB_Mul_F16(output->voltage.f16D, output->voltage.f16D)));
-    state->q_controller.f16LowerLim = MLIB_Neg_F16(state->q_controller.f16UpperLim);
+        GFLIB_Sqrt_F16(MLIB_SubSat_F16(MLIB_Mul_F16(input->dc_bus_voltage, input->dc_bus_voltage),
+                                       MLIB_Mul_F16(output->voltage.f16D, output->voltage.f16D)));
+    state->q_controller.f16LowerLim = MLIB_NegSat_F16(state->q_controller.f16UpperLim);
     output->voltage.f16Q =
         GFLIB_CtrlPIpAW_F16(current_error.f16Q, &state->stop_q_integrator, &state->q_controller);
 

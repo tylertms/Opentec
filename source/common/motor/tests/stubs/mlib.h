@@ -24,4 +24,13 @@ static inline frac16_t MLIB_SubSat_F16(frac16_t minuend, frac16_t subtrahend) {
     return (frac16_t)result;
 }
 
+static inline frac16_t MLIB_NegSat_F16(frac16_t value) {
+    return value == INT16_MIN ? INT16_MAX : (frac16_t)-value;
+}
+
+static inline frac16_t MLIB_Mul_F16(frac16_t left, frac16_t right) {
+    int32_t result = (int32_t)left * right >> 15;
+    return result == INT16_MIN ? INT16_MAX : (frac16_t)result;
+}
+
 #endif

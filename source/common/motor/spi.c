@@ -13,6 +13,12 @@ static void *transfer_context;
 static bool transfer_active;
 static bool response_pending;
 
+/**
+ * @brief Configures the official SPI0 motor-link controller.
+ *
+ * SPI0 operates as an eight-bit full-duplex controller with disabled FIFOs and DMA requests for
+ * both transmit and receive data.
+ */
 static void motor_spi_controller_initialize(void) {
     CLOCK_EnableClock(kCLOCK_Spi0);
 
@@ -29,6 +35,16 @@ static void motor_spi_controller_initialize(void) {
     SPI0->MCR &= ~SPI_MCR_HALT_MASK;
 }
 
+/**
+ * @brief Configures one official motor-link DMA channel.
+ *
+ * The channel is reset, loaded with its transfer descriptor, connected to its DMAMUX request, and
+ * enabled with a major-loop interrupt.
+ *
+ * @param channel DMA and DMAMUX channel number.
+ * @param request Peripheral request source selected by the DMAMUX.
+ * @param transfer Prepared NXP SDK transfer descriptor.
+ */
 static void motor_spi_dma_channel_initialize(uint32_t channel, int32_t request,
                                              edma_transfer_config_t *transfer) {
     DMAMUX_DisableChannel(DMAMUX, channel);
@@ -39,6 +55,11 @@ static void motor_spi_dma_channel_initialize(uint32_t channel, int32_t request,
     DMAMUX_EnableChannel(DMAMUX, channel);
 }
 
+/**
+ * @brief Rebuilds both official thirteen-byte motor-link DMA descriptors.
+ *
+ * Channel zero transfers the response to SPI0 and channel one captures the simultaneous request.
+ */
 static void motor_spi_dma_initialize(void) {
     edma_transfer_config_t transfer;
 

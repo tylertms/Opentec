@@ -10,6 +10,14 @@ enum {
     SOFT_STOP_TRANSITION_RANGE = 0x19b1,
 };
 
+/**
+ * @brief Limits the signed primary force accumulator.
+ *
+ * The recovered force mixer uses symmetric positive and negative limits of 65535.
+ *
+ * @param force Signed accumulated primary force.
+ * @return Primary force limited to the official range.
+ */
 static int32_t clamp_primary(int32_t force) {
     if (force > PRIMARY_FORCE_LIMIT) {
         return PRIMARY_FORCE_LIMIT;
@@ -20,6 +28,15 @@ static int32_t clamp_primary(int32_t force) {
     return force;
 }
 
+/**
+ * @brief Limits the signed secondary force accumulator.
+ *
+ * The positive side already fits the recovered accumulator while the negative side reserves one
+ * 65536-count margin from the signed minimum.
+ *
+ * @param force Signed accumulated secondary force.
+ * @return Secondary force with the official lower limit applied.
+ */
 static int32_t clamp_secondary(int32_t force) {
     if (force < SECONDARY_FORCE_MINIMUM) {
         return SECONDARY_FORCE_MINIMUM;
@@ -27,6 +44,15 @@ static int32_t clamp_secondary(int32_t force) {
     return force;
 }
 
+/**
+ * @brief Applies the live overall force gain.
+ *
+ * Zero suppresses output and one hundred bypasses division.
+ *
+ * @param force Signed force before overall scaling.
+ * @param gain_percent Overall force gain from zero through one hundred.
+ * @return Scaled signed force.
+ */
 static int32_t apply_overall_gain(int32_t force, uint8_t gain_percent) {
     if (gain_percent == 0U) {
         return 0;

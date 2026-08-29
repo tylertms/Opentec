@@ -446,6 +446,16 @@ void PORTB_PORTC_PORTD_PORTE_IRQHandler(void) {
     }
 }
 
+/**
+ * @brief Configures one official periodic FTM channel.
+ *
+ * The timer uses the system clock, divide-by-two prescaling, three overflow repetitions, and an
+ * enabled overflow interrupt.
+ *
+ * @param timer FTM peripheral to configure.
+ * @param clock Clock gate associated with the FTM peripheral.
+ * @param modulus Timer modulus in peripheral clock counts.
+ */
 static void motor_periodic_timer_initialize(FTM_Type *timer, clock_ip_name_t clock,
                                             uint16_t modulus) {
     CLOCK_EnableClock(clock);

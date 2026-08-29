@@ -63,4 +63,6 @@ static inline frac16_t GFLIB_CtrlPIpAW_F16(frac16_t error, const bool_t *stop_in
     return error;
 }
 
+static inline frac16_t GFLIB_Sqrt_F16(frac16_t value) { return value < 0 ? 0 : value; }
+
 #endif

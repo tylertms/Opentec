@@ -20,6 +20,15 @@ enum {
 _Static_assert(sizeof(MotorEncoderCalibrationRecord) == 0x2558U,
                "unexpected encoder calibration record size");
 
+/**
+ * @brief Resolves the calibration velocity magnitude.
+ *
+ * The most-negative signed value retains its wrapped representation, matching the official
+ * fixed-point absolute-value primitive.
+ *
+ * @param value Signed calibration velocity.
+ * @return Nonnegative magnitude, or the retained most-negative value.
+ */
 static int16_t motor_encoder_calibration_abs(int16_t value) {
     if (value < 0 && value != INT16_MIN) {
         return (int16_t)-value;
@@ -27,11 +36,31 @@ static int16_t motor_encoder_calibration_abs(int16_t value) {
     return value;
 }
 
+/**
+ * @brief Tests the active calibration velocity window.
+ *
+ * Both recovered limits are inclusive.
+ *
+ * @param state Calibration state containing the active velocity limits.
+ * @param velocity Signed velocity sample to test.
+ * @return True when the sample is inside the active window.
+ */
 static bool motor_encoder_calibration_velocity_ready(const MotorEncoderCalibrationState *state,
                                                      int16_t velocity) {
     return velocity >= state->velocity_lower && velocity <= state->velocity_upper;
 }
 
+/**
+ * @brief Captures one eligible encoder correction sample.
+ *
+ * Every tenth relative encoder position advances the shift-three correction filter and stores the
+ * result in the selected directional table.
+ *
+ * @param state Calibration filter and persistent correction tables.
+ * @param reverse True to update the reverse table, or false to update the forward table.
+ * @param relative_position Encoder position within one revolution.
+ * @param correction Signed velocity-controller error sample.
+ */
 static void motor_encoder_calibration_sample(MotorEncoderCalibrationState *state, bool reverse,
                                              uint16_t relative_position, int16_t correction) {
     if (relative_position % MOTOR_ENCODER_CALIBRATION_SAMPLE_DIVISOR != 0U) {

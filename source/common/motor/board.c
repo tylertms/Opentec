@@ -3,19 +3,40 @@
 #include <fsl_gpio.h>
 #include <fsl_port.h>
 
+/**
+ * @brief Configures one official hardware-strap input.
+ *
+ * The pin uses the GPIO mux with an enabled pull-up and passive input filter.
+ *
+ * @param port Port-control block for the pin.
+ * @param gpio GPIO block containing the pin direction.
+ * @param pin Zero-based pin number.
+ */
 static void motor_filtered_pullup_input_initialize(PORT_Type *port, GPIO_Type *gpio, uint32_t pin) {
     PORT_SetPinMux(port, pin, kPORT_MuxAsGpio);
     gpio->PDDR &= ~(1UL << pin);
     port->PCR[pin] |= PORT_PCR_PE_MASK | PORT_PCR_PS_MASK | PORT_PCR_PFE_MASK;
 }
 
+/**
+ * @brief Configures one official digital output without exposing an intermediate level.
+ *
+ * The requested output latch is installed before the pin direction changes to output.
+ *
+ * @param port Port-control block for the pin.
+ * @param gpio GPIO block containing the output and direction registers.
+ * @param pin Zero-based pin number.
+ * @param high True to preset a high output, or false to preset a low output.
+ */
 static void motor_gpio_output_initialize(PORT_Type *port, GPIO_Type *gpio, uint32_t pin,
                                          bool high) {
     PORT_SetPinMux(port, pin, kPORT_MuxAsGpio);
-    gpio->PDDR |= 1UL << pin;
     if (high) {
         GPIO_PortSet(gpio, 1UL << pin);
+    } else {
+        GPIO_PortClear(gpio, 1UL << pin);
     }
+    gpio->PDDR |= 1UL << pin;
 }
 
 /**
