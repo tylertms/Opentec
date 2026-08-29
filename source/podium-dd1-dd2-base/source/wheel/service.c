@@ -534,6 +534,22 @@ bool wheel_service_take_adapter_host_controls(WheelService *service,
 }
 
 /**
+ * @brief Queues a remote setup selection for the attached adapter.
+ *
+ * Retains the newest one-based selection in the adapter command service for transmission at the
+ * next available shared-transport boundary.
+ *
+ * @param[in,out] service Attached-wheel service receiving the selection.
+ * @param[in] selection One-based setup selection.
+ */
+void wheel_service_queue_adapter_setup_selection(WheelService *service, uint8_t selection) {
+    if (service == 0) {
+        return;
+    }
+    wheel_adapter_command_service_queue_setup_selection(&service->adapter_commands, selection);
+}
+
+/**
  * @brief Updates the output state sent to the attached wheel.
  *
  * Applies the same display and auxiliary output to each negotiated packet-family encoder.

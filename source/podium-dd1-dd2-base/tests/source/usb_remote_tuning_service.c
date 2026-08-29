@@ -98,6 +98,19 @@ static void applies_setup_selections(void) {
     assert(!service.setup_sync_pending);
     assert(!service.vendor_response_pending);
 
+    arguments[2] = 6;
+    assert(usb_remote_tuning_service_apply(&service, &command, 100, 1, true, false));
+    service.menu_selection = 2;
+    service.multi_position_selection = 3;
+    uint8_t selection = 0;
+    assert(usb_remote_tuning_service_take_adapter_setup_selection(&service, &selection));
+    assert(selection == 6);
+    assert(service.setup_selection == 0);
+    assert(service.menu_selection == 0);
+    assert(service.multi_position_selection == 0);
+    assert(!service.setup_sync_pending);
+    assert(!usb_remote_tuning_service_take_adapter_setup_selection(&service, &selection));
+
     usb_remote_tuning_service_init(&service);
     arguments[2] = 4;
     assert(usb_remote_tuning_service_apply(&service, &command, 100,

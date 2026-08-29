@@ -11,6 +11,7 @@ enum {
     WHEEL_ADAPTER_AXES_OFFSET = 0x02,
     WHEEL_ADAPTER_ROTARY_OFFSET = 0x03,
     WHEEL_ADAPTER_GLYPHS_OFFSET = 0x06,
+    WHEEL_ADAPTER_SETUP_SELECTION_OFFSET = 0xc0,
     WHEEL_ADAPTER_HOST_CONTROLS_OFFSET = 0xa0,
     WHEEL_ADAPTER_PROBE_OFFSET = 0x0c,
     WHEEL_ADAPTER_DISPLAY_OFFSET = 0x0f,
@@ -60,6 +61,7 @@ static void advance_endpoint(WheelAdapterCommandService *service, WheelAdapterIn
     service->display_pending = false;
     service->host_controls_pending = false;
     service->host_controls_ready = false;
+    service->setup_selection_pending = false;
     service->phase = WHEEL_ADAPTER_COMMAND_DISCOVERING;
     adapter->mode = service->endpoint_index;
     adapter->profile_flags = 0;
@@ -141,6 +143,7 @@ static bool finish_request(WheelAdapterCommandService *service, WheelAdapterInpu
         service->host_controls_pending = false;
         service->host_controls_ready = true;
         break;
+    case WHEEL_ADAPTER_COMMAND_SETUP_SELECTION_PENDING:
     case WHEEL_ADAPTER_COMMAND_GLYPHS_PENDING:
     case WHEEL_ADAPTER_COMMAND_DISPLAY_PENDING:
     case WHEEL_ADAPTER_COMMAND_DISCOVERING:
@@ -215,6 +218,16 @@ static CommandTransportResult queue_request(WheelAdapterCommandService *service,
             service->host_controls, sizeof(service->host_controls));
         if (result == COMMAND_TRANSPORT_COMPLETE) {
             service->phase = WHEEL_ADAPTER_COMMAND_HOST_CONTROLS_PENDING;
+        }
+        return result;
+    }
+    if (service->setup_selection_pending) {
+        CommandTransportResult result = command_transport_queue_write_to(
+            transport, WHEEL_ADAPTER_COMMAND_OWNER, target, WHEEL_ADAPTER_SETUP_SELECTION_OFFSET,
+            &service->setup_selection, sizeof(service->setup_selection));
+        if (result == COMMAND_TRANSPORT_COMPLETE) {
+            service->setup_selection_pending = false;
+            service->phase = WHEEL_ADAPTER_COMMAND_SETUP_SELECTION_PENDING;
         }
         return result;
     }
@@ -302,6 +315,24 @@ void wheel_adapter_command_service_set_glyphs(WheelAdapterCommandService *servic
     for (uint8_t index = 0; index < sizeof(service->glyphs); index++) {
         service->glyphs[index] = glyphs[index];
     }
+}
+
+/**
+ * @brief Retains a remote setup selection for the adapter.
+ *
+ * Stores the newest one-based setup selection for a one-byte write to adapter offset 0xC0. A
+ * newer selection replaces an older queued value.
+ *
+ * @param[in,out] service Adapter command service retaining the selection.
+ * @param[in] selection One-based setup selection.
+ */
+void wheel_adapter_command_service_queue_setup_selection(WheelAdapterCommandService *service,
+                                                         uint8_t selection) {
+    if (service == 0 || selection == 0) {
+        return;
+    }
+    service->setup_selection = selection;
+    service->setup_selection_pending = true;
 }
 
 /**

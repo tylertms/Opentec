@@ -219,6 +219,7 @@ static RemoteTuningResponse usb_remote_tuning_response;
 static RemoteTuningResponse system_wheel_response;
 static uint8_t wheel_remote_telemetry_report[REMOTE_TELEMETRY_REPORT_SIZE];
 static uint8_t wheel_adapter_host_controls[WHEEL_ADAPTER_HOST_CONTROLS_SIZE];
+static uint8_t wheel_adapter_setup_selection;
 static UsbTuningMenuService usb_tuning_menu_service;
 static UsbTuningProfileService usb_tuning_profile_service;
 static UsbDiagnosticSnapshot usb_diagnostic_snapshot;
@@ -1403,6 +1404,10 @@ static void service_usb_command_bridge(uint32_t now_ms) {
     }
     (void)motor_command_serial_receive(&command_transport, &serial_service);
     wheel_transfer_service_run(&wheel_transfer_service, &command_transport);
+    if (usb_remote_tuning_service_take_adapter_setup_selection(&usb_remote_tuning_service,
+                                                               &wheel_adapter_setup_selection)) {
+        wheel_service_queue_adapter_setup_selection(&wheel_service, wheel_adapter_setup_selection);
+    }
     wheel_service_run_adapter_commands(&wheel_service, &command_transport);
     if (wheel_service_take_adapter_host_controls(&wheel_service, wheel_adapter_host_controls)) {
         (void)usb_remote_tuning_service_queue_host_controls(&usb_remote_tuning_service,

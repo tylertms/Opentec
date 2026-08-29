@@ -349,6 +349,29 @@ bool usb_remote_tuning_service_take_response(UsbRemoteTuningService *service, ui
 }
 
 /**
+ * @brief Takes a setup selection destined for the adapter.
+ *
+ * Returns the retained one-based setup selection and consumes the shared setup, menu, and
+ * multi-position selections after the downstream adapter service accepts the handoff.
+ *
+ * @param[in,out] service Remote-tuning service retaining the selection.
+ * @param[out] selection One-based setup selection.
+ * @return True when a pending selection was taken.
+ */
+bool usb_remote_tuning_service_take_adapter_setup_selection(UsbRemoteTuningService *service,
+                                                            uint8_t *selection) {
+    if (service == NULL || selection == NULL || !service->setup_sync_pending) {
+        return false;
+    }
+    *selection = service->setup_selection;
+    service->setup_selection = 0;
+    service->menu_selection = 0;
+    service->multi_position_selection = 0;
+    service->setup_sync_pending = false;
+    return true;
+}
+
+/**
  * @brief Queues adapter-originated telemetry controls for the host.
  *
  * Splits the 30-byte adapter area into six five-byte records, ignores entries whose first two

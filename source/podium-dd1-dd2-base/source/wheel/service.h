@@ -65,6 +65,7 @@ void wheel_service_run(WheelService *service, uint32_t now_ms, bool start_allowe
 void wheel_service_run_adapter_commands(WheelService *service, CommandTransport *transport);
 bool wheel_service_take_adapter_host_controls(WheelService *service,
                                               uint8_t output[WHEEL_ADAPTER_HOST_CONTROLS_SIZE]);
+void wheel_service_queue_adapter_setup_selection(WheelService *service, uint8_t selection);
 void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output);
 void wheel_service_set_vibration_output(WheelService *service, const WheelVibrationOutput *output);
 void wheel_service_set_legacy_axes(WheelService *service, const uint8_t axes[2]);

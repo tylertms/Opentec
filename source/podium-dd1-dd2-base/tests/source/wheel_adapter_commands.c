@@ -201,6 +201,23 @@ static void writes_requested_glyphs(void) {
     wheel_adapter_command_service_run(&service, &adapter, &transport);
 }
 
+static void writes_remote_setup_selections(void) {
+    WheelAdapterCommandService service;
+    WheelAdapterInput adapter;
+    CommandTransport transport;
+    command_transport_init(&transport);
+    wheel_adapter_command_service_init(&service, &adapter);
+    complete_standard_probe(&service, &adapter, &transport);
+
+    wheel_adapter_command_service_queue_setup_selection(&service, 6);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    const uint8_t expected[] = {2, 0x2a, 0xc0, 6};
+    expect_request(&transport, expected, sizeof(expected));
+    assert(!service.setup_selection_pending);
+    complete_write(&transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+}
+
 static void switches_endpoints_after_a_failed_transfer(void) {
     WheelAdapterCommandService service;
     WheelAdapterInput adapter;
@@ -241,6 +258,7 @@ int main(void) {
     applies_motion_direction_priority();
     writes_standard_endpoint_display_reports();
     writes_requested_glyphs();
+    writes_remote_setup_selections();
     forwards_requested_host_controls();
     switches_endpoints_after_a_failed_transfer();
     return 0;
