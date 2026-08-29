@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "i2c/probe.h"
 
@@ -101,6 +102,66 @@ static void test_rejects_reserved_requests(void) {
     assert(request.selector == 0xa5 && request.response_length == 0x5a);
 }
 
+static void test_encodes_checksum_free_chunk_write(void) {
+    static const uint8_t chunk[] = {0x11, 0x22, 0x33, 0x44};
+    static const uint8_t expected[] = {9, 0x80, 0x44, 0x40, 3, 4, 0x11, 0x22, 0x33, 0x44};
+    I2cProbeTransferInput input = {
+        .phase = 0x0a,
+        .chunk_index = 3,
+        .chunk = chunk,
+        .chunk_length = sizeof(chunk),
+    };
+    I2cProbeTransferFrame frame;
+
+    assert(i2c_probe_transfer_encode(I2C_PROBE_WRITE_CHUNK, &input, &frame));
+    assert(frame.selector == 0x20);
+    assert(frame.write_length == sizeof(expected));
+    assert(memcmp(frame.write_data, expected, sizeof(expected)) == 0);
+    assert(frame.response_length == 4);
+    assert(frame.response_payload_length == 0);
+}
+
+static void test_encodes_checksum_free_chunk_read(void) {
+    static const uint8_t expected[] = {5, 0x80, 0x46, 0x40, 0x11, 0x10};
+    I2cProbeTransferInput input = {
+        .phase = 5,
+        .chunk_index = 0x11,
+        .chunk_length = 0x10,
+    };
+    I2cProbeTransferFrame frame;
+
+    assert(i2c_probe_transfer_encode(I2C_PROBE_READ_CHUNK, &input, &frame));
+    assert(frame.selector == 0x50);
+    assert(frame.write_length == sizeof(expected));
+    assert(memcmp(frame.write_data, expected, sizeof(expected)) == 0);
+    assert(frame.response_length == 0x14);
+    assert(frame.response_payload_offset == 2);
+    assert(frame.response_payload_length == 0x10);
+}
+
+static void test_encodes_checksum_free_transfer_finish(void) {
+    static const uint8_t expected[] = {5, 0x80, 0x48, 0, 0, 0};
+    I2cProbeTransferInput input = {.phase = 9};
+    I2cProbeTransferFrame frame;
+
+    assert(i2c_probe_transfer_encode(I2C_PROBE_FINISH_TRANSFER, &input, &frame));
+    assert(frame.selector == 0x10);
+    assert(frame.write_length == sizeof(expected));
+    assert(memcmp(frame.write_data, expected, sizeof(expected)) == 0);
+    assert(frame.response_length == 4);
+}
+
+static void test_rejects_invalid_chunk_transfer(void) {
+    I2cProbeTransferInput input = {.chunk_length = I2C_PROBE_TRANSFER_CHUNK_CAPACITY + 1};
+    I2cProbeTransferFrame frame;
+
+    assert(!i2c_probe_transfer_encode(I2C_PROBE_READ_CHUNK, &input, &frame));
+    input.chunk_length = 1;
+    assert(!i2c_probe_transfer_encode(I2C_PROBE_WRITE_CHUNK, &input, &frame));
+    input.chunk_length = 0;
+    assert(!i2c_probe_transfer_encode(10, &input, &frame));
+}
+
 int main(void) {
     test_accepts_handshake_and_clears_retry_count();
     test_busy_handshake_increments_without_rejection();
@@ -111,5 +172,9 @@ int main(void) {
     test_optionally_validates_final_checksum();
     test_encodes_fixed_requests();
     test_rejects_reserved_requests();
+    test_encodes_checksum_free_chunk_write();
+    test_encodes_checksum_free_chunk_read();
+    test_encodes_checksum_free_transfer_finish();
+    test_rejects_invalid_chunk_transfer();
     return 0;
 }

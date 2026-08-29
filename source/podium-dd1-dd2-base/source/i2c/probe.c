@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 enum {
     I2C_PROBE_RESPONSE_ACCEPT = 0x07,
@@ -128,5 +129,59 @@ bool i2c_probe_request_encode(I2cProbeCommand command, I2cProbeRequest *request)
         return false;
     }
     *request = requests[command];
+    return true;
+}
+
+/**
+ * @brief Encodes a checksum-free chunk-transfer frame.
+ *
+ * Builds write, read, and finish frames for the transfer mode without response-checksum fields.
+ * The three-bit phase occupies selector bits 4 through 6. Chunk frames carry the fixed 0x80,
+ * operation, and 0x40 header followed by the fragment index and length.
+ *
+ * @param[in] command Write-chunk, read-chunk, or finish-transfer command.
+ * @param[in] input Transfer phase, fragment index, length, and optional write payload.
+ * @param[out] frame Encoded write bytes and expected response layout.
+ * @return True when the command and chunk input are valid; otherwise false.
+ */
+bool i2c_probe_transfer_encode(I2cProbeCommand command, const I2cProbeTransferInput *input,
+                               I2cProbeTransferFrame *frame) {
+    if ((command != I2C_PROBE_WRITE_CHUNK && command != I2C_PROBE_READ_CHUNK &&
+         command != I2C_PROBE_FINISH_TRANSFER) ||
+        input->chunk_length > I2C_PROBE_TRANSFER_CHUNK_CAPACITY ||
+        (command == I2C_PROBE_WRITE_CHUNK && input->chunk_length != 0 && input->chunk == NULL)) {
+        return false;
+    }
+
+    *frame = (I2cProbeTransferFrame){0};
+    frame->selector = (uint8_t)((input->phase & 0x07u) << 4);
+    frame->write_data[1] = 0x80;
+
+    if (command == I2C_PROBE_FINISH_TRANSFER) {
+        frame->write_data[0] = 5;
+        frame->write_data[2] = 0x48;
+        frame->write_length = 6;
+        frame->response_length = 4;
+        return true;
+    }
+
+    frame->write_data[0] =
+        command == I2C_PROBE_WRITE_CHUNK ? (uint8_t)(input->chunk_length + 5u) : 5;
+    frame->write_data[2] = command == I2C_PROBE_WRITE_CHUNK ? 0x44 : 0x46;
+    frame->write_data[3] = 0x40;
+    frame->write_data[4] = input->chunk_index;
+    frame->write_data[5] = input->chunk_length;
+    frame->write_length = (uint8_t)(frame->write_data[0] + 1u);
+
+    if (command == I2C_PROBE_WRITE_CHUNK) {
+        if (input->chunk_length != 0) {
+            memcpy(frame->write_data + 6, input->chunk, input->chunk_length);
+        }
+        frame->response_length = 4;
+    } else {
+        frame->response_length = (uint8_t)(input->chunk_length + 4u);
+        frame->response_payload_offset = 2;
+        frame->response_payload_length = input->chunk_length;
+    }
     return true;
 }
