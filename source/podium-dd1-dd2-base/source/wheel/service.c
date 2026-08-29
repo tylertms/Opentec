@@ -1033,6 +1033,20 @@ bool wheel_service_calibration_available(const WheelService *service) {
 }
 
 /**
+ * @brief Reports whether the attached wheel exposes the tuning menu.
+ *
+ * Applies the negotiated wheel mode's inherent and report-driven availability rules to the retained
+ * capability state.
+ *
+ * @param[in] service Attached-wheel service and capability state.
+ * @return True when tuning-menu operation is available.
+ */
+bool wheel_service_tuning_menu_available(const WheelService *service) {
+    return wheel_capability_tuning_menu_available(wheel_protocol_capabilities(&service->protocol),
+                                                  wheel_service_mode(service));
+}
+
+/**
  * @brief Reports the effective attached-wheel input capability.
  *
  * Applies the negotiated wheel mode's report eligibility to the retained input-capability latch.

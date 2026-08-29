@@ -94,6 +94,7 @@ bool wheel_service_acknowledgement_input_active(const WheelService *service);
 bool wheel_service_calibration_advance_input_active(const WheelService *service);
 bool wheel_service_adapter_connected(const WheelService *service);
 bool wheel_service_calibration_available(const WheelService *service);
+bool wheel_service_tuning_menu_available(const WheelService *service);
 bool wheel_service_input_capability_available(const WheelService *service);
 uint8_t wheel_service_mode(const WheelService *service);
 WheelProtocolPhase wheel_service_protocol_phase(const WheelService *service);

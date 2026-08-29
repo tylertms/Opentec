@@ -4,133 +4,72 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "motor/command_application.h"
+#include "motor/command_channel.h"
+#include "motor/command_channel_mailbox.h"
 #include "motor/command_mailbox.h"
-#include "motor/command_message.h"
-#include "motor/command_packet.h"
-#include "motor/command_receiver.h"
-#include "motor/command_sequence.h"
 #include "usb/feature_upload_acknowledgement.h"
 #include "usb/motor_command_upload.h"
 #include "usb/motor_response_download.h"
 
 /**
- * @brief Resets the motor-command protocol state.
+ * @brief Maps one channel event into the USB vendor response service.
  *
- * Restores sequence, fragment, and pending-command state while retaining application data and any
- * active USB response transfer.
+ * Publishes motor writes and copies forwardable application responses into stable USB download
+ * storage before initializing compact or segmented response framing.
  *
- * @param[in,out] service Motor vendor service to reset.
+ * @param[in,out] service Motor vendor service receiving the event.
+ * @param[in] channel_event Motor-command protocol event to apply.
+ * @return Motor write and USB response-ready actions produced by the event.
  */
-static void reset_protocol(UsbMotorVendorService *service) {
-    motor_command_receiver_init(&service->receiver, service->buffers.receive_assembly,
-                                service->buffers.receive_assembly_capacity);
-    service->motor_transmit_length = 0;
-    service->pending_payload_length = 0;
-    service->command_pending = false;
-}
-
-/**
- * @brief Builds a motor packet for a newly uploaded vendor command.
- *
- * Retains the logical command for protocol retries, advances the two-bit transmit sequence, and
- * frames the command in normal mode against the previously received sequence.
- *
- * @param[in,out] service Active motor vendor service.
- * @param[in] payload Uploaded motor application command.
- * @param[in] payload_length Command byte count.
- * @return True when the command fits both retained application and motor transmit storage.
- */
-static bool build_command(UsbMotorVendorService *service, const uint8_t *payload,
-                          uint16_t payload_length) {
-    if (payload == 0 || payload_length > service->buffers.application_data_capacity ||
-        payload_length + MOTOR_COMMAND_PACKET_ENCODING_OVERHEAD >
-            service->buffers.motor_transmit_capacity) {
-        return false;
+static UsbMotorVendorServiceResult apply_channel_event(UsbMotorVendorService *service,
+                                                       MotorCommandChannelEvent channel_event) {
+    UsbMotorVendorServiceResult result = {0};
+    if ((channel_event.actions & MOTOR_COMMAND_CHANNEL_ACTION_WRITE) != 0) {
+        result.actions = USB_MOTOR_VENDOR_ACTION_WRITE_MOTOR;
+        result.motor_packet = channel_event.packet;
+        result.motor_packet_length = channel_event.packet_length;
     }
-    memmove(service->buffers.application_data, payload, payload_length);
-    motor_command_sequence_advance(&service->receiver.sequence);
-    if (!motor_command_packet_payload_encode(
-            0, service->receiver.sequence.transmit, service->receiver.sequence.receive_previous,
-            service->buffers.application_data, payload_length, service->buffers.motor_transmit,
-            service->buffers.motor_transmit_capacity, &service->motor_transmit_length)) {
-        return false;
+    MotorCommandApplicationEvent application = channel_event.application;
+    if (application.result != MOTOR_COMMAND_APPLICATION_FORWARD || application.forward_data == 0 ||
+        application.forward_length > service->buffers.application_data_capacity) {
+        return result;
     }
-    service->pending_payload_length = payload_length;
-    service->command_pending = true;
-    return true;
-}
-
-/**
- * @brief Rebuilds the pending vendor command for the selected transmit sequence.
- *
- * Frames the retained logical command without advancing sequence state so retry and resend
- * requests can select the sequence already applied by the receiver.
- *
- * @param[in,out] service Active motor vendor service.
- * @return True when a retained command is pending and can be framed.
- */
-static bool rebuild_command(UsbMotorVendorService *service) {
-    return service->command_pending &&
-           motor_command_packet_payload_encode(
-               0, service->receiver.sequence.transmit, service->receiver.sequence.receive_previous,
-               service->buffers.application_data, service->pending_payload_length,
-               service->buffers.motor_transmit, service->buffers.motor_transmit_capacity,
-               &service->motor_transmit_length);
-}
-
-/**
- * @brief Builds a motor-link control response.
- *
- * Encodes acknowledgement or retry control with the receiver's accepted previous or expected next
- * sequence and publishes the resulting five-byte motor packet.
- *
- * @param[in,out] service Active motor vendor service.
- * @param[in] retry Selects retry instead of acknowledgement control.
- * @return True when the control packet fits the motor transmit buffer.
- */
-static bool build_control(UsbMotorVendorService *service, bool retry) {
-    if (service->buffers.motor_transmit_capacity < MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE) {
-        return false;
+    memmove(service->buffers.application_data, application.forward_data,
+            application.forward_length);
+    service->response_length = application.forward_length;
+    service->response_active = usb_motor_response_download_init(
+        &service->download, service->usb_sequence, service->response_length);
+    if (service->response_active) {
+        result.actions =
+            (UsbMotorVendorAction)(result.actions | USB_MOTOR_VENDOR_ACTION_RESPONSE_READY);
     }
-    if (retry) {
-        motor_command_packet_retry_encode(service->receiver.sequence.receive_next,
-                                          service->buffers.motor_transmit);
-    } else {
-        motor_command_packet_acknowledgement_encode(service->receiver.sequence.receive_previous,
-                                                    service->buffers.motor_transmit);
-    }
-    service->motor_transmit_length = MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE;
-    return true;
+    return result;
 }
 
 /**
  * @brief Initializes the USB motor vendor bridge.
  *
- * Attaches caller-owned USB assembly, motor assembly, transmit, and application buffers and resets
- * upload, motor protocol, application, and response state.
+ * Attaches an initialized motor-command channel plus caller-owned USB assembly and response
+ * storage, then resets upload and response state.
  *
  * @param[out] service Motor vendor service to initialize.
+ * @param[in,out] channel Motor-command protocol channel used by the bridge.
  * @param[in] buffers Caller-owned storage used by the service.
- * @return True when every required buffer is present and nonempty.
+ * @return True when the channel and required USB storage are present and nonempty.
  */
-bool usb_motor_vendor_service_init(UsbMotorVendorService *service,
+bool usb_motor_vendor_service_init(UsbMotorVendorService *service, MotorCommandChannel *channel,
                                    const UsbMotorVendorServiceBuffers *buffers) {
-    if (service == 0 || buffers == 0 || buffers->upload_assembly == 0 ||
-        buffers->upload_assembly_capacity == 0 || buffers->receive_assembly == 0 ||
-        buffers->receive_assembly_capacity == 0 || buffers->motor_transmit == 0 ||
-        buffers->motor_transmit_capacity < MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE ||
-        buffers->application_data == 0 || buffers->application_data_capacity == 0) {
+    if (service == 0 || channel == 0 || buffers == 0 || buffers->upload_assembly == 0 ||
+        buffers->upload_assembly_capacity == 0 || buffers->application_data == 0 ||
+        buffers->application_data_capacity == 0) {
         return false;
     }
-    *service = (UsbMotorVendorService){.buffers = *buffers};
+    *service = (UsbMotorVendorService){.channel = channel, .buffers = *buffers};
     if (!usb_motor_command_upload_init(&service->upload, buffers->upload_assembly,
                                        buffers->upload_assembly_capacity)) {
         return false;
     }
-    motor_command_application_init(&service->application);
     memset(&service->download, 0, sizeof(service->download));
-    reset_protocol(service);
     return true;
 }
 
@@ -160,7 +99,7 @@ UsbMotorVendorServiceResult usb_motor_vendor_service_accept_usb(
     service->usb_sequence = event.sequence;
 
     if (event.result == USB_MOTOR_COMMAND_UPLOAD_RESTART) {
-        reset_protocol(service);
+        motor_command_channel_reset(service->channel);
         result.actions = (UsbMotorVendorAction)(result.actions | USB_MOTOR_VENDOR_ACTION_RESTART);
         return result;
     }
@@ -186,11 +125,12 @@ UsbMotorVendorServiceResult usb_motor_vendor_service_accept_usb(
         result.actions = (UsbMotorVendorAction)(result.actions | USB_MOTOR_VENDOR_ACTION_WRITE_USB);
         result.usb_packet_length = USB_FEATURE_UPLOAD_ACKNOWLEDGEMENT_SIZE;
     }
-    if (build_command(service, event.payload, event.payload_length)) {
+    if (motor_command_channel_queue_payload(service->channel, event.payload,
+                                            event.payload_length)) {
         result.actions =
             (UsbMotorVendorAction)(result.actions | USB_MOTOR_VENDOR_ACTION_WRITE_MOTOR);
-        result.motor_packet = service->buffers.motor_transmit;
-        result.motor_packet_length = service->motor_transmit_length;
+        result.motor_packet = service->channel->buffers.transmit;
+        result.motor_packet_length = service->channel->transmit_length;
     }
     return result;
 }
@@ -253,75 +193,11 @@ UsbMotorVendorServiceResult usb_motor_vendor_service_accept_usb_mailbox(
 UsbMotorVendorServiceResult usb_motor_vendor_service_accept_motor(UsbMotorVendorService *service,
                                                                   const uint8_t *packet,
                                                                   uint16_t length) {
-    UsbMotorVendorServiceResult result = {0};
     if (service == 0) {
-        return result;
+        return (UsbMotorVendorServiceResult){0};
     }
-    MotorCommandReceiveEvent receive =
-        motor_command_receiver_accept(&service->receiver, packet, length);
-    if (receive.result == MOTOR_COMMAND_RECEIVE_ACKNOWLEDGED) {
-        service->command_pending = false;
-        service->pending_payload_length = 0;
-        return result;
-    }
-    if (receive.result == MOTOR_COMMAND_RECEIVE_RESEND ||
-        receive.result == MOTOR_COMMAND_RECEIVE_RETRY) {
-        if (rebuild_command(service)) {
-            result.actions = USB_MOTOR_VENDOR_ACTION_WRITE_MOTOR;
-            result.motor_packet = service->buffers.motor_transmit;
-            result.motor_packet_length = service->motor_transmit_length;
-        }
-        return result;
-    }
-    if (receive.result == MOTOR_COMMAND_RECEIVE_RESET) {
-        reset_protocol(service);
-        return result;
-    }
-    if (receive.result == MOTOR_COMMAND_RECEIVE_INVALID) {
-        if (packet != 0 && length >= MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE &&
-            build_control(service, true)) {
-            result.actions = USB_MOTOR_VENDOR_ACTION_WRITE_MOTOR;
-            result.motor_packet = service->buffers.motor_transmit;
-            result.motor_packet_length = service->motor_transmit_length;
-        }
-        return result;
-    }
-    if (receive.result != MOTOR_COMMAND_RECEIVE_FRAGMENT_WAITING &&
-        receive.result != MOTOR_COMMAND_RECEIVE_MESSAGE &&
-        receive.result != MOTOR_COMMAND_RECEIVE_IGNORED) {
-        return result;
-    }
-
-    service->command_pending = false;
-    service->pending_payload_length = 0;
-    if (build_control(service, false)) {
-        result.actions = USB_MOTOR_VENDOR_ACTION_WRITE_MOTOR;
-        result.motor_packet = service->buffers.motor_transmit;
-        result.motor_packet_length = service->motor_transmit_length;
-    }
-    if (receive.result != MOTOR_COMMAND_RECEIVE_MESSAGE) {
-        return result;
-    }
-
-    if (!motor_command_message_decode(receive.payload, receive.payload_length, &service->message)) {
-        return result;
-    }
-    MotorCommandApplicationEvent application =
-        motor_command_application_apply(&service->application, &service->message);
-    if (application.result != MOTOR_COMMAND_APPLICATION_FORWARD || application.forward_data == 0 ||
-        application.forward_length > service->buffers.application_data_capacity) {
-        return result;
-    }
-    memmove(service->buffers.application_data, application.forward_data,
-            application.forward_length);
-    service->response_length = application.forward_length;
-    service->response_active = usb_motor_response_download_init(
-        &service->download, service->usb_sequence, service->response_length);
-    if (service->response_active) {
-        result.actions =
-            (UsbMotorVendorAction)(result.actions | USB_MOTOR_VENDOR_ACTION_RESPONSE_READY);
-    }
-    return result;
+    MotorCommandChannelEvent event = motor_command_channel_accept(service->channel, packet, length);
+    return apply_channel_event(service, event);
 }
 
 /**
@@ -345,19 +221,11 @@ usb_motor_vendor_service_run_mailbox(UsbMotorVendorService *service,
         return result;
     }
 
-    MotorCommandMailboxExchangeResult mailbox =
-        motor_command_mailbox_exchange_run(exchange, transport);
-    if (mailbox.event == MOTOR_COMMAND_MAILBOX_EXCHANGE_PACKET_READ) {
-        result =
-            usb_motor_vendor_service_accept_motor(service, mailbox.packet, mailbox.packet_length);
-        if ((result.actions & USB_MOTOR_VENDOR_ACTION_WRITE_MOTOR) != 0 &&
-            !motor_command_mailbox_exchange_queue(exchange, result.motor_packet,
-                                                  result.motor_packet_length)) {
-            mailbox.event = MOTOR_COMMAND_MAILBOX_EXCHANGE_FAILED;
-        }
-    }
-    result.mailbox_event = mailbox.event;
-    result.motor_status = mailbox.status;
+    MotorCommandChannelMailboxEvent event =
+        motor_command_channel_mailbox_run(service->channel, exchange, transport);
+    result = apply_channel_event(service, event.channel_event);
+    result.mailbox_event = event.mailbox_event;
+    result.motor_status = event.status;
     return result;
 }
 

@@ -142,6 +142,35 @@ bool wheel_capability_input_available(const WheelCapabilityState *state, uint8_t
 }
 
 /**
+ * @brief Reports whether the attached wheel exposes the tuning menu.
+ *
+ * Treats wheel modes 6, 7, 9, 11, 18, and 29 as inherently available. Modes 10, 19, 20, and 21
+ * use the retained capability state, while every other mode suppresses the menu.
+ *
+ * @param[in] state Persistent attached-wheel capability state.
+ * @param[in] wheel_mode Negotiated attached-wheel mode.
+ * @return True when tuning-menu operation is available.
+ */
+bool wheel_capability_tuning_menu_available(const WheelCapabilityState *state, uint8_t wheel_mode) {
+    switch (wheel_mode) {
+    case 6:
+    case 7:
+    case 9:
+    case 11:
+    case 18:
+    case 29:
+        return true;
+    case 10:
+    case 19:
+    case 20:
+    case 21:
+        return state != NULL && state->tuning_menu_available;
+    default:
+        return false;
+    }
+}
+
+/**
  * @brief Applies a multi-position reporting override command.
  *
  * Accepts device-control selector 0x16. Value three restores automatic selection; every other

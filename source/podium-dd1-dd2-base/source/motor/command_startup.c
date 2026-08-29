@@ -27,14 +27,14 @@ void motor_command_startup_init(MotorCommandStartup *startup) {
  *
  * @param[in,out] startup Startup state to advance.
  * @param[in,out] transport Shared command transport used by the sequence.
- * @param[in] input Current command, response, status-write, and restart state.
+ * @param[in] input Current command, response, status-read, and restart state.
  * @return Next protocol action, or no action while an expected event is pending.
  */
 MotorCommandStartupAction motor_command_startup_run(MotorCommandStartup *startup,
                                                     CommandTransport *transport,
-                                                    const MotorCommandStartupInput *input) {
+                                                    MotorCommandStartupInput input) {
     MotorCommandStartupAction action = {.type = MOTOR_COMMAND_STARTUP_ACTION_NONE};
-    if (input->restart) {
+    if (input.restart) {
         motor_command_startup_init(startup);
     }
 
@@ -53,21 +53,21 @@ MotorCommandStartupAction motor_command_startup_run(MotorCommandStartup *startup
         action.type = MOTOR_COMMAND_STARTUP_ACTION_READ_STATUS;
         break;
     case MOTOR_COMMAND_STARTUP_WAIT_STATUS:
-        if (!input->status_read_pending) {
+        if (!input.status_read_pending) {
             startup->phase = MOTOR_COMMAND_STARTUP_WAIT_RESET;
             action.type = MOTOR_COMMAND_STARTUP_ACTION_SEND_COMMAND;
             action.command = MOTOR_COMMAND_STARTUP_SEQUENCE_RESET_COMMAND;
         }
         break;
     case MOTOR_COMMAND_STARTUP_WAIT_RESET:
-        if (input->command == 0) {
+        if (input.command == 0) {
             startup->phase = MOTOR_COMMAND_STARTUP_WAIT_DIGEST;
             action.type = MOTOR_COMMAND_STARTUP_ACTION_SEND_COMMAND;
             action.command = MOTOR_COMMAND_STARTUP_DIGEST_COMMAND;
         }
         break;
     case MOTOR_COMMAND_STARTUP_WAIT_DIGEST:
-        if (input->response_ready) {
+        if (input.response_ready) {
             startup->phase = MOTOR_COMMAND_STARTUP_WAIT_FIRST_INFO;
             action.type = MOTOR_COMMAND_STARTUP_ACTION_SEND_COMMAND;
             action.command = MOTOR_COMMAND_STARTUP_INFO_COMMAND;
@@ -75,7 +75,7 @@ MotorCommandStartupAction motor_command_startup_run(MotorCommandStartup *startup
         }
         break;
     case MOTOR_COMMAND_STARTUP_WAIT_FIRST_INFO:
-        if (input->response_ready) {
+        if (input.response_ready) {
             startup->phase = MOTOR_COMMAND_STARTUP_WAIT_SECOND_INFO;
             action.type = MOTOR_COMMAND_STARTUP_ACTION_SEND_COMMAND;
             action.command = MOTOR_COMMAND_STARTUP_INFO_COMMAND;
@@ -83,12 +83,12 @@ MotorCommandStartupAction motor_command_startup_run(MotorCommandStartup *startup
         }
         break;
     case MOTOR_COMMAND_STARTUP_WAIT_SECOND_INFO:
-        if (input->response_ready && input->command != UINT8_MAX) {
+        if (input.response_ready && input.command != UINT8_MAX) {
             startup->phase = MOTOR_COMMAND_STARTUP_CONFIRM;
         }
         break;
     case MOTOR_COMMAND_STARTUP_CONFIRM:
-        if (input->response_ready) {
+        if (input.response_ready) {
             startup->phase = MOTOR_COMMAND_STARTUP_FINISH;
         }
         break;

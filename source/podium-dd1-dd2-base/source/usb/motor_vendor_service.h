@@ -4,9 +4,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "motor/command_application.h"
+#include "motor/command_channel.h"
 #include "motor/command_mailbox.h"
-#include "motor/command_receiver.h"
 #include "usb/motor_command_upload.h"
 #include "usb/motor_response_download.h"
 
@@ -23,10 +22,6 @@ typedef enum {
 typedef struct {
     uint8_t *upload_assembly;
     uint16_t upload_assembly_capacity;
-    uint8_t *receive_assembly;
-    uint16_t receive_assembly_capacity;
-    uint8_t *motor_transmit;
-    uint16_t motor_transmit_capacity;
     uint8_t *application_data;
     uint16_t application_data_capacity;
 } UsbMotorVendorServiceBuffers;
@@ -34,15 +29,10 @@ typedef struct {
 typedef struct {
     UsbMotorCommandUpload upload;
     UsbMotorResponseDownload download;
-    MotorCommandReceiver receiver;
-    MotorCommandApplication application;
-    MotorCommandMessage message;
+    MotorCommandChannel *channel;
     UsbMotorVendorServiceBuffers buffers;
-    uint16_t motor_transmit_length;
-    uint16_t pending_payload_length;
     uint16_t response_length;
     uint8_t usb_sequence;
-    bool command_pending;
     bool response_active;
 } UsbMotorVendorService;
 
@@ -55,7 +45,7 @@ typedef struct {
     MotorCommandMailboxExchangeEvent mailbox_event;
 } UsbMotorVendorServiceResult;
 
-bool usb_motor_vendor_service_init(UsbMotorVendorService *service,
+bool usb_motor_vendor_service_init(UsbMotorVendorService *service, MotorCommandChannel *channel,
                                    const UsbMotorVendorServiceBuffers *buffers);
 UsbMotorVendorServiceResult usb_motor_vendor_service_accept_usb(
     UsbMotorVendorService *service, const uint8_t request[USB_FEATURE_UPLOAD_PACKET_SIZE],

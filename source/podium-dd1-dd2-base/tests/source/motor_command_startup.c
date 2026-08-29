@@ -8,7 +8,7 @@ static MotorCommandStartupAction run(MotorCommandStartup *startup, CommandTransp
                                      uint8_t command, bool status_pending, bool response_ready,
                                      bool restart) {
     MotorCommandStartupInput input = {command, status_pending, response_ready, restart};
-    return motor_command_startup_run(startup, transport, &input);
+    return motor_command_startup_run(startup, transport, input);
 }
 
 static void test_sequences_startup_actions(void) {

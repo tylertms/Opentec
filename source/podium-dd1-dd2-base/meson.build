@@ -159,6 +159,8 @@ wheel_transfer_service_sources = files('source/wheel/transfer_service.c')
 wheel_vibration_sources = files('source/wheel/vibration.c')
 motor_command_digest_sources = files('source/motor/command_digest.c')
 motor_command_application_sources = files('source/motor/command_application.c')
+motor_command_channel_sources = files('source/motor/command_channel.c')
+motor_command_channel_mailbox_sources = files('source/motor/command_channel_mailbox.c')
 motor_command_fragment_sources = files('source/motor/command_fragment.c')
 motor_command_information_sources = files('source/motor/command_information.c')
 motor_command_mailbox_sources = files('source/motor/command_mailbox.c')
@@ -169,6 +171,7 @@ motor_command_scheduler_sources = files('source/motor/command_scheduler.c')
 motor_command_sequence_sources = files('source/motor/command_sequence.c')
 motor_command_serial_sources = files('source/motor/command_serial.c')
 motor_command_startup_sources = files('source/motor/command_startup.c')
+motor_command_startup_service_sources = files('source/motor/command_startup_service.c')
 serial_message_sources = files('source/serial/message.c')
 serial_packet_sources = files('source/serial/packet.c')
 serial_service_sources = files('source/serial/service.c')
@@ -362,6 +365,8 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'wheel-vibration': 'source/wheel/vibration.c',
     'motor-command-digest': 'source/motor/command_digest.c',
     'motor-command-application': 'source/motor/command_application.c',
+    'motor-command-channel': 'source/motor/command_channel.c',
+    'motor-command-channel-mailbox': 'source/motor/command_channel_mailbox.c',
     'motor-command-fragment': 'source/motor/command_fragment.c',
     'motor-command-information': 'source/motor/command_information.c',
     'motor-command-mailbox': 'source/motor/command_mailbox.c',
@@ -372,6 +377,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'motor-command-sequence': 'source/motor/command_sequence.c',
     'motor-command-serial': 'source/motor/command_serial.c',
     'motor-command-startup': 'source/motor/command_startup.c',
+    'motor-command-startup-service': 'source/motor/command_startup_service.c',
     'serial-message': 'source/serial/message.c',
     'serial-packet': 'source/serial/packet.c',
     'serial-service': 'source/serial/service.c',
@@ -1073,6 +1079,8 @@ if not meson.is_cross_build()
     usb_feature_download_sources,
     usb_feature_upload_acknowledgement_sources,
     motor_command_application_sources,
+    motor_command_channel_sources,
+    motor_command_channel_mailbox_sources,
     motor_command_mailbox_sources,
     motor_command_digest_sources,
     motor_command_fragment_sources,
@@ -1763,6 +1771,28 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  motor_command_startup_service_test = executable(
+    'base-motor-command-startup-service-test',
+    'tests/source/motor_command_startup_service.c',
+    motor_command_startup_service_sources,
+    motor_command_startup_sources,
+    motor_command_channel_sources,
+    motor_command_channel_mailbox_sources,
+    motor_command_application_sources,
+    motor_command_digest_sources,
+    motor_command_fragment_sources,
+    motor_command_information_sources,
+    motor_command_mailbox_sources,
+    motor_command_message_sources,
+    motor_command_packet_sources,
+    motor_command_receiver_sources,
+    motor_command_sequence_sources,
+    transfer_command_sources,
+    transfer_memory_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   serial_packet_test = executable(
     'base-serial-packet-test',
     'tests/source/serial_packet.c',
@@ -2383,6 +2413,11 @@ if not meson.is_cross_build()
   test(
     'base-motor-command-startup',
     motor_command_startup_test,
+    suite: ['base', 'motor'],
+  )
+  test(
+    'base-motor-command-startup-service',
+    motor_command_startup_service_test,
     suite: ['base', 'motor'],
   )
   test('base-serial-packet', serial_packet_test, suite: ['base', 'serial'])

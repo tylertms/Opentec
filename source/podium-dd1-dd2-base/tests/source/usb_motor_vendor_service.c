@@ -8,6 +8,7 @@
 
 typedef struct {
     UsbMotorVendorService service;
+    MotorCommandChannel channel;
     MotorCommandMailboxExchange exchange;
     CommandTransport transport;
     uint8_t upload_assembly[128];
@@ -20,17 +21,22 @@ typedef struct {
 
 static void fixture_init(Fixture *fixture) {
     memset(fixture, 0, sizeof(*fixture));
+    MotorCommandChannelBuffers channel_buffers = {
+        .receive_assembly = fixture->receive_assembly,
+        .receive_assembly_capacity = sizeof(fixture->receive_assembly),
+        .transmit = fixture->motor_transmit,
+        .transmit_capacity = sizeof(fixture->motor_transmit),
+        .pending_payload = fixture->application_data,
+        .pending_payload_capacity = sizeof(fixture->application_data),
+    };
     UsbMotorVendorServiceBuffers buffers = {
         .upload_assembly = fixture->upload_assembly,
         .upload_assembly_capacity = sizeof(fixture->upload_assembly),
-        .receive_assembly = fixture->receive_assembly,
-        .receive_assembly_capacity = sizeof(fixture->receive_assembly),
-        .motor_transmit = fixture->motor_transmit,
-        .motor_transmit_capacity = sizeof(fixture->motor_transmit),
         .application_data = fixture->application_data,
         .application_data_capacity = sizeof(fixture->application_data),
     };
-    assert(usb_motor_vendor_service_init(&fixture->service, &buffers));
+    assert(motor_command_channel_init(&fixture->channel, &channel_buffers));
+    assert(usb_motor_vendor_service_init(&fixture->service, &fixture->channel, &buffers));
     assert(motor_command_mailbox_exchange_init(&fixture->exchange, fixture->mailbox_receive,
                                                sizeof(fixture->mailbox_receive)));
     command_transport_init(&fixture->transport);

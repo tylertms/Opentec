@@ -57,6 +57,6 @@ typedef struct {
 void motor_command_startup_init(MotorCommandStartup *startup);
 MotorCommandStartupAction motor_command_startup_run(MotorCommandStartup *startup,
                                                     CommandTransport *transport,
-                                                    const MotorCommandStartupInput *input);
+                                                    MotorCommandStartupInput input);
 
 #endif

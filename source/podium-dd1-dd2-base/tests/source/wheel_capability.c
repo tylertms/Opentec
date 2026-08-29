@@ -58,6 +58,25 @@ static void test_gates_latched_input_capability_by_wheel_mode(void) {
     assert(!wheel_capability_input_available(NULL, 4));
 }
 
+static void test_resolves_tuning_menu_availability(void) {
+    static const uint8_t inherent_modes[] = {6, 7, 9, 11, 18, 29};
+    static const uint8_t reported_modes[] = {10, 19, 20, 21};
+    WheelCapabilityState state = {0};
+
+    for (uint8_t mode = 0; mode <= 30; mode++) {
+        bool expected = false;
+        for (uint8_t index = 0; index < sizeof(inherent_modes); index++) {
+            expected |= mode == inherent_modes[index];
+        }
+        assert(wheel_capability_tuning_menu_available(&state, mode) == expected);
+    }
+    state.tuning_menu_available = true;
+    for (uint8_t index = 0; index < sizeof(reported_modes); index++) {
+        assert(wheel_capability_tuning_menu_available(&state, reported_modes[index]));
+    }
+    assert(!wheel_capability_tuning_menu_available(NULL, 10));
+}
+
 static UsbOperatingModeCommand multi_position_command(uint8_t selector, uint8_t mode) {
     UsbOperatingModeCommand command = {.opcode = 1};
     command.parameters[0] = selector;
@@ -130,6 +149,7 @@ int main(void) {
     test_caches_and_maps_report_capabilities();
     test_applies_calibration_mode_defaults();
     test_gates_latched_input_capability_by_wheel_mode();
+    test_resolves_tuning_menu_availability();
     test_applies_multi_position_override_commands();
     test_rejects_other_multi_position_commands();
     test_resolves_multi_position_mode();

@@ -20,8 +20,10 @@
 #include "force_feedback/script_tick.h"
 #include "force_feedback/state.h"
 #include "motor/calibration.h"
+#include "motor/command_channel.h"
 #include "motor/command_mailbox.h"
 #include "motor/command_serial.h"
+#include "motor/command_startup_service.h"
 #include "motor/live_frame.h"
 #include "motor/output_transport.h"
 #include "motor/probe.h"
@@ -67,6 +69,7 @@
 #include "system/torque_key_prompt.h"
 #include "system/torque_transition.h"
 #include "usb/connection.h"
+#include "usb/console_descriptor.h"
 #include "usb/device.h"
 #include "usb/diagnostic_report.h"
 #include "usb/fanatec_encoder.h"
@@ -126,6 +129,8 @@ static BoardIdentity board_identity;
 static MotorProbe motor_probe;
 static CommandTransport command_transport;
 static MotorCommandMailboxExchange motor_command_mailbox;
+static MotorCommandChannel motor_command_channel;
+static MotorCommandStartupService motor_command_startup_service;
 static UsbMotorVendorService usb_motor_vendor_service;
 static WheelTransferService wheel_transfer_service;
 static MotorStatusService motor_status_service;
@@ -237,6 +242,8 @@ static bool torque_key_prompt_visible;
 static bool torque_disabled_notice_visible;
 static bool usb_disconnect_notice_visible;
 static bool usb_motor_acknowledgement_ready;
+static bool xbox_mode_startup_attempted;
+static bool xbox_mode_startup_finished;
 static bool usb_wheel_transfer_response_pending[WHEEL_TRANSFER_REQUEST_COUNT];
 static uint8_t local_display_page;
 static uint8_t local_display_rendered_bite_point_percent;
@@ -294,13 +301,17 @@ static uint8_t usb_motor_receive_assembly[USB_MOTOR_BUFFER_SIZE];
 static uint8_t usb_motor_mailbox_receive[USB_MOTOR_BUFFER_SIZE];
 static uint8_t usb_motor_transmit[USB_MOTOR_BUFFER_SIZE];
 static uint8_t usb_motor_application_data[USB_MOTOR_BUFFER_SIZE];
+static const MotorCommandChannelBuffers motor_command_channel_buffers = {
+    .receive_assembly = usb_motor_receive_assembly,
+    .receive_assembly_capacity = sizeof(usb_motor_receive_assembly),
+    .transmit = usb_motor_transmit,
+    .transmit_capacity = sizeof(usb_motor_transmit),
+    .pending_payload = usb_motor_application_data,
+    .pending_payload_capacity = sizeof(usb_motor_application_data),
+};
 static const UsbMotorVendorServiceBuffers usb_motor_buffers = {
     .upload_assembly = usb_motor_upload_assembly,
     .upload_assembly_capacity = sizeof(usb_motor_upload_assembly),
-    .receive_assembly = usb_motor_receive_assembly,
-    .receive_assembly_capacity = sizeof(usb_motor_receive_assembly),
-    .motor_transmit = usb_motor_transmit,
-    .motor_transmit_capacity = sizeof(usb_motor_transmit),
     .application_data = usb_motor_application_data,
     .application_data_capacity = sizeof(usb_motor_application_data),
 };
@@ -748,7 +759,10 @@ static void initialize_usb_command_bridge(void) {
     command_transport_init(&command_transport);
     (void)motor_command_mailbox_exchange_init(&motor_command_mailbox, usb_motor_mailbox_receive,
                                               sizeof(usb_motor_mailbox_receive));
-    (void)usb_motor_vendor_service_init(&usb_motor_vendor_service, &usb_motor_buffers);
+    (void)motor_command_channel_init(&motor_command_channel, &motor_command_channel_buffers);
+    motor_command_startup_service_init(&motor_command_startup_service);
+    (void)usb_motor_vendor_service_init(&usb_motor_vendor_service, &motor_command_channel,
+                                        &usb_motor_buffers);
     wheel_transfer_service_init(&wheel_transfer_service);
     usb_diagnostic_report_service_init(&usb_diagnostic_report_service);
     usb_remote_tuning_service_init(&usb_remote_tuning_service);
@@ -756,6 +770,8 @@ static void initialize_usb_command_bridge(void) {
     usb_tuning_menu_service_init(&usb_tuning_menu_service);
     usb_tuning_profile_service_init(&usb_tuning_profile_service);
     usb_motor_acknowledgement_ready = false;
+    xbox_mode_startup_attempted = false;
+    xbox_mode_startup_finished = false;
     usb_motor_acknowledgement_length = 0;
     usb_vendor_response_kind = USB_VENDOR_RESPONSE_NONE;
     usb_vendor_response_length = 0;
@@ -854,6 +870,9 @@ static bool accept_usb_motor_report(const UsbDeviceOutputReport *report) {
         report->length != USB_FEATURE_UPLOAD_PACKET_SIZE) {
         return false;
     }
+    if (xbox_mode_startup_attempted && !xbox_mode_startup_finished) {
+        return true;
+    }
     UsbMotorVendorServiceResult result = usb_motor_vendor_service_accept_usb_mailbox(
         &usb_motor_vendor_service, &motor_command_mailbox, &command_transport, report->data,
         report->length, usb_motor_acknowledgement);
@@ -862,6 +881,48 @@ static bool accept_usb_motor_report(const UsbDeviceOutputReport *report) {
         usb_motor_acknowledgement_length = result.usb_packet_length;
     }
     return (result.actions & USB_MOTOR_VENDOR_ACTION_CLAIM) != 0;
+}
+
+/**
+ * @brief Starts the default Xbox interface for a capable attached wheel.
+ *
+ * Waits for a supported wheel mode with tuning-menu capability, runs the motor-command identity
+ * exchange once, and applies the resulting digest and wheel-specific product identity to USB mode
+ * six. The startup exchange has exclusive use of the motor-command mailbox while active.
+ *
+ * @return True while the startup exchange owns the motor-command channel.
+ */
+static bool service_xbox_mode_startup(void) {
+    if (xbox_mode_startup_finished || usb_device_operating_mode() != USB_OPERATING_MODE_FANATEC) {
+        return false;
+    }
+
+    uint8_t wheel_mode = wheel_service_mode(&wheel_service);
+    if (!xbox_mode_startup_attempted) {
+        if (!wheel_service_tuning_menu_available(&wheel_service) ||
+            usb_xbox_gip_mode_code(board_identity.variant, wheel_mode) == 0) {
+            return false;
+        }
+        motor_command_application_init(&motor_command_channel.application);
+        motor_command_channel_reset(&motor_command_channel);
+        motor_command_mailbox_exchange_reset(&motor_command_mailbox);
+        motor_command_startup_service_init(&motor_command_startup_service);
+        xbox_mode_startup_attempted = true;
+    }
+
+    MotorCommandStartupServiceResult result =
+        motor_command_startup_service_run(&motor_command_startup_service, &motor_command_channel,
+                                          &motor_command_mailbox, &command_transport);
+    if (result == MOTOR_COMMAND_STARTUP_SERVICE_RUNNING) {
+        return true;
+    }
+    xbox_mode_startup_finished = true;
+    if (result == MOTOR_COMMAND_STARTUP_SERVICE_COMPLETE) {
+        const MotorCommandApplication *application =
+            motor_command_channel_application(&motor_command_channel);
+        (void)usb_device_set_xbox_mode(wheel_mode, application->digest);
+    }
+    return false;
 }
 
 /**
@@ -1028,8 +1089,10 @@ static void service_usb_command_bridge(uint32_t now_ms) {
                                             wheel_command_batch_length);
     }
     wheel_command_forwarder_run(&wheel_command_forwarder, &command_transport);
-    (void)usb_motor_vendor_service_run_mailbox(&usb_motor_vendor_service, &motor_command_mailbox,
-                                               &command_transport);
+    if (!service_xbox_mode_startup()) {
+        (void)usb_motor_vendor_service_run_mailbox(&usb_motor_vendor_service,
+                                                   &motor_command_mailbox, &command_transport);
+    }
     if (serial_service.status == SERIAL_SERVICE_IDLE) {
         (void)motor_command_serial_submit(&command_transport, &serial_service, now_ms);
     }
