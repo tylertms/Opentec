@@ -13,6 +13,13 @@ enum {
     AUXILIARY_CLOCK_DIVIDER = 7,
 };
 
+/**
+ * @brief Configures the processor and auxiliary clock trees.
+ *
+ * Disables the software watchdog, selects the primary oscillator with PLL feedback 58 and input
+ * divider 1, waits for the requested source and lock, then enables the auxiliary PLL with input
+ * divider 2, output divider 6, and clock divider 7 and waits for its lock.
+ */
 void platform_clock_init(void) {
     RCONbits.SWDTEN = 0;
     PLLFBD = SYSTEM_PLL_FEEDBACK;

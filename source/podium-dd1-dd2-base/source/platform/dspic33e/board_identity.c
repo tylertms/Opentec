@@ -3,6 +3,12 @@
 #include <stdint.h>
 #include <xc.h>
 
+/**
+ * @brief Prepares the board-identity strap inputs.
+ *
+ * Disables Output Compare 2 and analog input on port D, selects RD1, RD12, RD13, RE9, and RE8 as
+ * inputs, and applies the strap-specific pull-downs and pull-ups.
+ */
 static void enable_mode_inputs(void) {
     OC2CON1 = 0;
     OC2CON2 = 0;
@@ -20,6 +26,11 @@ static void enable_mode_inputs(void) {
     CNPUEbits.CNPUE8 = 1;
 }
 
+/**
+ * @brief Releases the board-identity strap inputs.
+ *
+ * Removes the temporary pulls and restores the five strap pins as outputs after sampling.
+ */
 static void disable_mode_inputs(void) {
     CNPUDbits.CNPUD1 = 0;
     TRISDbits.TRISD1 = 0;
@@ -33,6 +44,14 @@ static void disable_mode_inputs(void) {
     TRISEbits.TRISE8 = 0;
 }
 
+/**
+ * @brief Reads the wheel-base board identity straps.
+ *
+ * Samples RD1, RD12, RD13, RE9, and RE8 into a five-bit identity value after two instruction
+ * settling cycles, releases the temporary inputs, and decodes the board variant and options.
+ *
+ * @return Decoded board identity.
+ */
 BoardIdentity platform_board_identity_read(void) {
     enable_mode_inputs();
     __builtin_nop();

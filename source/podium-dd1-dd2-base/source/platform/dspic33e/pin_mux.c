@@ -25,6 +25,12 @@ enum {
     OUTPUT_SPI4_SELECT = 36,
 };
 
+/**
+ * @brief Assigns remappable peripheral inputs and outputs.
+ *
+ * Unlocks peripheral pin selection, maps the UART, CAN, input-capture, and SPI inputs and outputs
+ * used by the board, then locks the assignments against accidental changes.
+ */
 void platform_pin_mux_init(void) {
     __builtin_write_OSCCONL(OSCCON & (uint16_t)~PERIPHERAL_PIN_SELECT_LOCK);
 
