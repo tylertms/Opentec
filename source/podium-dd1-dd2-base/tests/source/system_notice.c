@@ -36,6 +36,8 @@ static void test_persistent_notices_do_not_expire(void) {
         SYSTEM_NOTICE_POSITION_SENSOR_TEST_FAILED,
         SYSTEM_NOTICE_MOTOR_CALIBRATION_ONGOING,
         SYSTEM_NOTICE_SHUTDOWN,
+        SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED,
+        SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED,
     };
 
     for (size_t index = 0; index < sizeof(kinds) / sizeof(kinds[0]); index++) {

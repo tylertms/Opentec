@@ -20,6 +20,8 @@ enum {
     SYSTEM_EVENT_FORCE_OUTPUT_PROMPT = 12,
     SYSTEM_EVENT_TORQUE_DISABLED = 0x0d,
     SYSTEM_EVENT_SHUTDOWN = 0x0e,
+    SYSTEM_EVENT_UNSUPPORTED_WHEEL_INVERTED = 0x0f,
+    SYSTEM_EVENT_UNSUPPORTED_WHEEL_OUTLINED = 0x10,
     SYSTEM_EVENT_STANDARD_TUNING_MODE = 0x12,
     SYSTEM_EVENT_ADVANCED_TUNING_MODE = 0x13,
     SYSTEM_EVENT_DISMISS_TORQUE_KEY_PROMPT = 0x18,
@@ -57,10 +59,10 @@ void system_event_dispatcher_init(SystemEventDispatcher *dispatcher) {
 /**
  * @brief Dispatches a queued system notice event.
  *
- * Maps tuning-menu, wheel-center, position-sensor, motor-calibration, Torque Key, force-output,
- * torque-reduction, and power-button event codes to display actions. Recognized events complete
- * their queue slot and start a 100-millisecond minimum interval. Other event codes remain
- * available for their owning dispatcher.
+ * Maps tuning-menu, wheel-center, position-sensor, motor-calibration, Torque Key,
+ * unsupported-wheel, force-output, torque-reduction, and power-button event codes to display
+ * actions. Recognized events complete their queue slot and start a 100-millisecond minimum
+ * interval. Other event codes remain available for their owning dispatcher.
  *
  * @param[in,out] dispatcher Shared event dispatch cadence.
  * @param[in,out] queue Single-slot system event queue.
@@ -104,6 +106,10 @@ SystemEventAction system_event_dispatcher_update(SystemEventDispatcher *dispatch
         action = SYSTEM_EVENT_ACTION_SHOW_ADVANCED_TUNING_MODE;
     } else if (queue->pending_code == SYSTEM_EVENT_SHUTDOWN) {
         action = SYSTEM_EVENT_ACTION_SHOW_SHUTDOWN;
+    } else if (queue->pending_code == SYSTEM_EVENT_UNSUPPORTED_WHEEL_INVERTED) {
+        action = SYSTEM_EVENT_ACTION_SHOW_UNSUPPORTED_WHEEL_INVERTED;
+    } else if (queue->pending_code == SYSTEM_EVENT_UNSUPPORTED_WHEEL_OUTLINED) {
+        action = SYSTEM_EVENT_ACTION_SHOW_UNSUPPORTED_WHEEL_OUTLINED;
     } else if (queue->pending_code == SYSTEM_EVENT_DISMISS_TORQUE_KEY_PROMPT) {
         action = SYSTEM_EVENT_ACTION_DISMISS_TORQUE_KEY_PROMPT;
     } else if (queue->pending_code == SYSTEM_EVENT_TORQUE_DISABLED) {

@@ -124,6 +124,21 @@ static void test_renders_shutdown_notice(void) {
     assert(has_lit_pixel(framebuffer, 0, 37, DISPLAY_FRAMEBUFFER_WIDTH, 7));
 }
 
+static void test_renders_unsupported_wheel_alert_variants(void) {
+    uint8_t inverted[DISPLAY_FRAMEBUFFER_SIZE] = {0};
+    uint8_t outlined[DISPLAY_FRAMEBUFFER_SIZE] = {0};
+
+    display_notice_render_system(inverted, SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED);
+    display_notice_render_system(outlined, SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED);
+
+    assert(pixel(inverted, 123, 17) == 15);
+    assert(pixel(outlined, 123, 17) == 0);
+    assert(has_lit_pixel(inverted, 0, 30, DISPLAY_FRAMEBUFFER_WIDTH, 7));
+    assert(has_lit_pixel(inverted, 0, 40, DISPLAY_FRAMEBUFFER_WIDTH, 7));
+    assert(has_lit_pixel(outlined, 0, 30, DISPLAY_FRAMEBUFFER_WIDTH, 7));
+    assert(has_lit_pixel(outlined, 0, 40, DISPLAY_FRAMEBUFFER_WIDTH, 7));
+}
+
 int main(void) {
     test_renders_persistent_notice_layout();
     test_hidden_notice_clears_display();
@@ -131,6 +146,7 @@ int main(void) {
     test_renders_two_line_torque_reduction_notice();
     test_renders_tuning_mode_notices();
     test_renders_shutdown_notice();
+    test_renders_unsupported_wheel_alert_variants();
     test_renders_motor_calibration_notices();
     return 0;
 }

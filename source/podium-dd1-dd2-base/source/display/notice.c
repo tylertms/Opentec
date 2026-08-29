@@ -24,6 +24,8 @@ static const char standard_tuning_mode_text[] = "Standard Tuning Menu mode";
 static const char advanced_tuning_mode_text[] = "Advanced Tuning Menu mode";
 static const char tuning_mode_activated_text[] = "activated";
 static const char shutdown_text[] = "Switching off Podium DD Wheel Base";
+static const char unsupported_wheel_primary_text[] = "WARNING";
+static const char unsupported_wheel_secondary_text[] = "Steering Wheel not supported!";
 static const char wheel_center_calibrated_text[] = "Wheel center calibrated.";
 static const char position_sensor_succeeded_text[] = "Position Sensor Test Successful.";
 static const char position_sensor_started_text[] = "Position Sensor Test Started.";
@@ -45,25 +47,34 @@ static const char motor_calibration_erased_text[] = "Motor calib. data erased.";
  * Renders an eleven-by-ten triangular warning mark at the notice icon position.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
+ * @param[in] inverted True to draw a light field with a dark warning mark.
  */
-static void draw_warning_icon(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE]) {
+static void draw_warning_icon(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], bool inverted) {
     uint16_t center = WARNING_ICON_X + WARNING_ICON_WIDTH / 2;
+    uint8_t color = inverted ? 0 : NOTICE_COLOR;
+    if (inverted) {
+        for (uint16_t row = 0; row < WARNING_ICON_HEIGHT; row++) {
+            for (uint16_t column = 0; column < WARNING_ICON_WIDTH; column++) {
+                display_framebuffer_set_pixel(framebuffer, (uint16_t)(WARNING_ICON_X + column),
+                                              (uint16_t)(WARNING_ICON_Y + row), NOTICE_COLOR);
+            }
+        }
+    }
     for (uint16_t row = 0; row < WARNING_ICON_HEIGHT - 1; row++) {
         uint16_t half_width = (row + 1) / 2;
         display_framebuffer_set_pixel(framebuffer, (uint16_t)(center - half_width),
-                                      (uint16_t)(WARNING_ICON_Y + row), NOTICE_COLOR);
+                                      (uint16_t)(WARNING_ICON_Y + row), color);
         display_framebuffer_set_pixel(framebuffer, (uint16_t)(center + half_width),
-                                      (uint16_t)(WARNING_ICON_Y + row), NOTICE_COLOR);
+                                      (uint16_t)(WARNING_ICON_Y + row), color);
     }
     for (uint16_t column = 0; column < WARNING_ICON_WIDTH; column++) {
         display_framebuffer_set_pixel(framebuffer, (uint16_t)(WARNING_ICON_X + column),
-                                      WARNING_ICON_Y + WARNING_ICON_HEIGHT - 1, NOTICE_COLOR);
+                                      WARNING_ICON_Y + WARNING_ICON_HEIGHT - 1, color);
     }
     for (uint16_t row = 3; row < 7; row++) {
-        display_framebuffer_set_pixel(framebuffer, center, (uint16_t)(WARNING_ICON_Y + row),
-                                      NOTICE_COLOR);
+        display_framebuffer_set_pixel(framebuffer, center, (uint16_t)(WARNING_ICON_Y + row), color);
     }
-    display_framebuffer_set_pixel(framebuffer, center, WARNING_ICON_Y + 8, NOTICE_COLOR);
+    display_framebuffer_set_pixel(framebuffer, center, WARNING_ICON_Y + 8, color);
 }
 
 /**
@@ -108,7 +119,7 @@ void display_notice_render_torque_disabled(uint8_t framebuffer[DISPLAY_FRAMEBUFF
     if (!visible) {
         return;
     }
-    draw_warning_icon(framebuffer);
+    draw_warning_icon(framebuffer, false);
     display_text_draw_centered(framebuffer, torque_disabled_text, NOTICE_TEXT_Y, 1, NOTICE_COLOR);
 }
 
@@ -133,7 +144,7 @@ void display_notice_render_system(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE],
         kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_UNSUPPORTED) {
         draw_error_icon(framebuffer);
     } else {
-        draw_warning_icon(framebuffer);
+        draw_warning_icon(framebuffer, kind == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED);
     }
 
     if (kind == SYSTEM_NOTICE_TUNING_MENU_RESET) {
@@ -181,5 +192,11 @@ void display_notice_render_system(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE],
                                    1, NOTICE_COLOR);
     } else if (kind == SYSTEM_NOTICE_SHUTDOWN) {
         display_text_draw_centered(framebuffer, shutdown_text, NOTICE_TEXT_Y, 1, NOTICE_COLOR);
+    } else if (kind == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED ||
+               kind == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED) {
+        display_text_draw_centered(framebuffer, unsupported_wheel_primary_text,
+                                   NOTICE_PRIMARY_TEXT_Y, 1, NOTICE_COLOR);
+        display_text_draw_centered(framebuffer, unsupported_wheel_secondary_text,
+                                   NOTICE_SECONDARY_TEXT_Y, 1, NOTICE_COLOR);
     }
 }

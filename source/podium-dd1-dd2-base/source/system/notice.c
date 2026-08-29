@@ -13,14 +13,17 @@ enum {
  *
  * Transient tuning, wheel-position, position-sensor, and motor-calibration results use the shared
  * four-second interval. Standard and Advanced tuning-mode results use two seconds. Position-sensor
- * failure, an ongoing motor calibration, and shutdown remain until another notice replaces them.
+ * failure, an ongoing motor calibration, shutdown, and unsupported-wheel alerts remain until
+ * another notice replaces them.
  *
  * @param[in] kind System notice kind.
  * @return Presentation interval in milliseconds, or zero for a persistent notice.
  */
 static uint32_t notice_duration_ms(SystemNoticeKind kind) {
     if (kind == SYSTEM_NOTICE_NONE || kind == SYSTEM_NOTICE_POSITION_SENSOR_TEST_FAILED ||
-        kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_ONGOING || kind == SYSTEM_NOTICE_SHUTDOWN) {
+        kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_ONGOING || kind == SYSTEM_NOTICE_SHUTDOWN ||
+        kind == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED ||
+        kind == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED) {
         return 0;
     }
     if (kind == SYSTEM_NOTICE_STANDARD_TUNING_MODE || kind == SYSTEM_NOTICE_ADVANCED_TUNING_MODE) {

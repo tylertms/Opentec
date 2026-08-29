@@ -79,6 +79,7 @@
 #include "usb/vendor_command.h"
 #include "wheel/center_capture.h"
 #include "wheel/command_forwarder.h"
+#include "wheel/compatibility_alert.h"
 #include "wheel/position.h"
 #include "wheel/service.h"
 #include "wheel/status_service.h"
@@ -138,6 +139,8 @@ static WheelVibrationOutput wheel_vibration_output;
 static SerialService serial_service;
 static WheelService wheel_service;
 static WheelStatusService wheel_status_service;
+static WheelCompatibilityAlert wheel_compatibility_alert;
+static WheelDisplayOutput wheel_compatibility_display_output;
 static AnalogSamples analog_samples;
 static AuxiliaryAxis auxiliary_axis;
 static HPatternShifter h_pattern_shifter;
@@ -250,6 +253,8 @@ enum {
     FORCE_OUTPUT_PROMPT_DISMISS_EVENT_CODE = 0x1a,
     TORQUE_KEY_PROMPT_EVENT_CODE = 7,
     TORQUE_KEY_PROMPT_DISMISS_EVENT_CODE = 0x18,
+    UNSUPPORTED_WHEEL_INVERTED_EVENT_CODE = 0x0f,
+    UNSUPPORTED_WHEEL_OUTLINED_EVENT_CODE = 0x10,
     SHUTDOWN_STATUS_CODE = 0x2d,
 };
 
@@ -382,6 +387,10 @@ static void service_system_events(uint32_t now_ms) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_ADVANCED_TUNING_MODE, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_SHUTDOWN) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_SHUTDOWN, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_UNSUPPORTED_WHEEL_INVERTED) {
+        system_notice_show(&system_notice, SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_UNSUPPORTED_WHEEL_OUTLINED) {
+        system_notice_show(&system_notice, SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_FORCE_OUTPUT_PROMPT) {
         force_output_prompt_visible = true;
     } else if (action == SYSTEM_EVENT_ACTION_DISMISS_FORCE_OUTPUT_PROMPT) {
@@ -1520,7 +1529,8 @@ static void service_local_display(void) {
  */
 static void service_force_output_enable(void) {
     WheelProtocolPhase wheel_phase = wheel_service_protocol_phase(&wheel_service);
-    bool wheel_protocol_ready = wheel_phase >= WHEEL_PROTOCOL_AUTHENTICATING;
+    bool wheel_protocol_ready =
+        wheel_phase == WHEEL_PROTOCOL_AUTHENTICATING || wheel_phase == WHEEL_PROTOCOL_ACTIVE;
     bool usb_connected = !usb_connection_monitor.disconnected;
 
     if (force_output_enabled && (!wheel_protocol_ready || !usb_connected)) {
@@ -1542,6 +1552,50 @@ static void service_force_output_enable(void) {
         system_event_queue.pending_code == 0, &force_output_enable_action);
     apply_force_output_prompt_action(force_output_enable_action);
     force_output_enabled = !interlocked;
+}
+
+/**
+ * @brief Services the unsupported-wheel compatibility alert.
+ *
+ * Suppresses force output while the attached wheel remains in the unsupported protocol phase,
+ * alternates the local warning presentation once per second, and blinks the three-character
+ * firmware-update-required indication every 125 milliseconds.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_wheel_compatibility_alert(uint32_t now_ms) {
+    bool unsupported = wheel_service_protocol_phase(&wheel_service) == WHEEL_PROTOCOL_UNSUPPORTED;
+    WheelCompatibilityAlertAction action = wheel_compatibility_alert_update(
+        &wheel_compatibility_alert, unsupported, system_event_queue.pending_code == 0, now_ms);
+    if (action == WHEEL_COMPATIBILITY_ALERT_ACTION_SHOW_INVERTED ||
+        action == WHEEL_COMPATIBILITY_ALERT_ACTION_SHOW_OUTLINED) {
+        uint8_t event_code = action == WHEEL_COMPATIBILITY_ALERT_ACTION_SHOW_INVERTED
+                                 ? UNSUPPORTED_WHEEL_INVERTED_EVENT_CODE
+                                 : UNSUPPORTED_WHEEL_OUTLINED_EVENT_CODE;
+        if (system_event_queue_try_push(&system_event_queue, event_code)) {
+            system_control_state_set_active_event(&system_control_state,
+                                                  UNSUPPORTED_WHEEL_INVERTED_EVENT_CODE);
+        }
+    } else if (action == WHEEL_COMPATIBILITY_ALERT_ACTION_CLEAR) {
+        if (system_notice.kind == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED ||
+            system_notice.kind == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED) {
+            system_notice_init(&system_notice);
+        }
+        system_control_state_set_active_event(&system_control_state,
+                                              SYSTEM_DISPLAY_DISMISS_EVENT_CODE);
+    }
+
+    if (!unsupported) {
+        return;
+    }
+    force_output_enabled = false;
+    wheel_compatibility_display_output = (WheelDisplayOutput){0};
+    if (wheel_compatibility_alert_segment_visible(now_ms)) {
+        wheel_compatibility_display_output.glyphs[0] = 0x3e;
+        wheel_compatibility_display_output.glyphs[1] = 0x73;
+        wheel_compatibility_display_output.glyphs[2] = 0xde;
+    }
+    wheel_service_set_display_output(&wheel_service, &wheel_compatibility_display_output);
 }
 
 int main(void) {
@@ -1577,6 +1631,7 @@ int main(void) {
     platform_serial_link_init();
     serial_service_init(&serial_service);
     wheel_service_init(&wheel_service, &serial_service);
+    wheel_compatibility_alert_init(&wheel_compatibility_alert);
     fanatec_encoder_init(&fanatec_encoder);
     wheel_status_service_init(&wheel_status_service, &serial_service);
     initialize_usb_command_bridge();
@@ -1667,6 +1722,7 @@ int main(void) {
         service_force_output_enable();
         service_local_display();
         service_shifter_display(now_ms);
+        service_wheel_compatibility_alert(now_ms);
         service_usb_input(now_ms);
         service_motor();
         service_cooling(now_ms);
