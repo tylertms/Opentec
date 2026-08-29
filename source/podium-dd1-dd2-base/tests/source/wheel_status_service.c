@@ -114,6 +114,26 @@ static void test_marks_and_takes_transition_response(void) {
     assert(!wheel_status_service_take_marked_response(&service));
 }
 
+static void test_marked_transition_bypasses_poll_deadline(void) {
+    WheelStatusService service;
+    SerialService transport;
+    initialize(&service, &transport);
+
+    wheel_status_service_run(&service, 10, true);
+    SerialPacket first = request();
+    static const uint8_t response[15] = {0};
+    respond(first.sequence, response);
+    serial_service_run(&transport, 11);
+    wheel_status_service_run(&service, 11, true);
+    assert(transport.status == SERIAL_SERVICE_IDLE);
+
+    wheel_status_service_mark_next_request(&service);
+    wheel_status_service_run(&service, 12, true);
+    assert(transport.status == SERIAL_SERVICE_PENDING);
+    SerialPacket marked = request();
+    assert(marked.payload[0] == 0xaa);
+}
+
 static void test_waits_for_scheduler_slot(void) {
     WheelStatusService service;
     SerialService transport;
@@ -129,6 +149,7 @@ int main(void) {
     test_polls_and_decodes_status();
     test_enforces_poll_interval();
     test_marks_and_takes_transition_response();
+    test_marked_transition_bypasses_poll_deadline();
     test_waits_for_scheduler_slot();
     return 0;
 }

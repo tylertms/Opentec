@@ -70,6 +70,7 @@
 #include "system/event_dispatcher.h"
 #include "system/event_queue.h"
 #include "system/notice.h"
+#include "system/runtime_bridge.h"
 #include "system/torque_key_prompt.h"
 #include "system/torque_transition.h"
 #include "usb/connection.h"
@@ -88,6 +89,7 @@
 #include "usb/tuning_menu_service.h"
 #include "usb/tuning_profile_report.h"
 #include "usb/tuning_profile_service.h"
+#include "usb/updater_service.h"
 #include "usb/vendor_command.h"
 #include "usb/xbox_gip_command.h"
 #include "usb/xbox_gip_input.h"
@@ -235,6 +237,11 @@ static UsbOutputCommand usb_output_command;
 static UsbPlaystationWheelValue usb_playstation_wheel_value;
 static UsbPlaystationInputMapper usb_playstation_input_mapper;
 static UsbOperatingModeCommand usb_operating_mode_command;
+static RuntimeBridge runtime_bridge;
+static UsbUpdaterService usb_updater_service;
+static UsbRuntimeModeTransition usb_runtime_transition;
+static RuntimeBridgeInput runtime_bridge_input;
+static UsbUpdaterServiceInput usb_updater_input;
 static bool usb_operating_status_enabled;
 static PedalCalibrationCommand pedal_calibration_command;
 static PedalCalibrationActions pedal_calibration_actions;
@@ -839,6 +846,7 @@ static void initialize_motor(void) {
  */
 static void initialize_usb_command_bridge(void) {
     command_transport_init(&command_transport);
+    usb_updater_service_init(&usb_updater_service, &command_transport);
     wheel_service_reset_adapter_commands(&wheel_service);
     (void)motor_command_mailbox_exchange_init(
         &motor_command_mailbox, usb_operating_mode_workspace.motor.mailbox_receive,
@@ -1491,6 +1499,124 @@ static bool serial_command_waiting(void) {
 }
 
 /**
+ * @brief Converts the updater route probe result to runtime transition input.
+ *
+ * Maps idle, pending, complete, and failed probe states without exposing updater transport
+ * internals to the runtime transition controller.
+ *
+ * @param[in] status Current updater route probe result.
+ * @return Corresponding runtime bridge transfer status.
+ */
+static RuntimeBridgeTransferStatus runtime_bridge_transfer_status(UsbUpdaterProbeStatus status) {
+    switch (status) {
+    case USB_UPDATER_PROBE_PENDING:
+        return RUNTIME_BRIDGE_TRANSFER_PENDING;
+    case USB_UPDATER_PROBE_COMPLETE:
+        return RUNTIME_BRIDGE_TRANSFER_COMPLETE;
+    case USB_UPDATER_PROBE_FAILED:
+        return RUNTIME_BRIDGE_TRANSFER_FAILED;
+    case USB_UPDATER_PROBE_IDLE:
+    default:
+        return RUNTIME_BRIDGE_TRANSFER_IDLE;
+    }
+}
+
+/**
+ * @brief Applies runtime bridge operations to clean platform services.
+ *
+ * Marks the status handshake, detaches USB during its settling interval, selects the raw updater
+ * link, starts the common route probe, and activates the updater descriptor and request service.
+ * Transfer timer actions require no separate operation because the selected transport owns its
+ * timing source.
+ *
+ * @param[in] actions Independent runtime bridge action flags.
+ */
+static void apply_runtime_bridge_actions(uint16_t actions) {
+    if ((actions & RUNTIME_BRIDGE_ACTION_MARK_WHEEL_STATUS) != 0) {
+        wheel_status_service_mark_next_request(&wheel_status_service);
+    }
+    if ((actions & RUNTIME_BRIDGE_ACTION_PREPARE_USB) != 0) {
+        platform_usb_detach();
+    }
+    if ((actions & RUNTIME_BRIDGE_ACTION_INITIALIZE_DIRECT_TRANSFER) != 0) {
+        platform_serial_link_enter_direct_mode();
+    }
+    if ((actions & RUNTIME_BRIDGE_ACTION_START_TRANSFER) != 0) {
+        (void)usb_updater_service_start_probe(&usb_updater_service);
+    }
+    if ((actions & RUNTIME_BRIDGE_ACTION_ACTIVATE_UPDATER_USB) != 0 &&
+        usb_device_set_operating_mode(USB_OPERATING_MODE_UPDATER)) {
+        usb_updater_service_set_usb_active(&usb_updater_service, true);
+    }
+}
+
+/**
+ * @brief Starts the supported attached-wheel status updater transition.
+ *
+ * Decodes runtime operating-mode commands against the active host and wheel modes, accepts the
+ * status bridge route, initializes its direct updater service, disables force output, and applies
+ * the transition's initial status-marker action.
+ *
+ * @param[in] command Decoded operating-mode command.
+ * @return True when a status updater transition started; otherwise false.
+ */
+static bool start_runtime_bridge(const UsbOperatingModeCommand *command) {
+    if (!usb_operating_mode_command_decode_runtime(command, (uint8_t)usb_device_operating_mode(),
+                                                   wheel_service_mode(&wheel_service), 0,
+                                                   &usb_runtime_transition) ||
+        usb_runtime_transition.mode != USB_RUNTIME_MODE_STATUS_BRIDGE ||
+        !usb_updater_service_select_mode(&usb_updater_service, usb_runtime_transition.mode)) {
+        return false;
+    }
+    force_output_enabled = false;
+    motor_output_report = (ForceOutputReport){0};
+    apply_runtime_bridge_actions(
+        runtime_bridge_start(&runtime_bridge, usb_runtime_transition.mode));
+    return true;
+}
+
+/**
+ * @brief Advances an active status updater transition and service.
+ *
+ * Keeps the motor link on disabled zero-force frames, owns status-link progress until its marked
+ * response arrives, advances the probe-driven runtime transition, services updater USB after
+ * activation, and applies guarded updater reset requests.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @return True while runtime bridge mode owns the main loop; otherwise false.
+ */
+static bool service_runtime_bridge(uint32_t now_ms) {
+    if (runtime_bridge.phase == RUNTIME_BRIDGE_IDLE) {
+        return false;
+    }
+    service_motor_link();
+    if (runtime_bridge.phase == RUNTIME_BRIDGE_WAIT_WHEEL_STATUS) {
+        serial_service_run(&serial_service, now_ms);
+        wheel_status_service_run(&wheel_status_service, now_ms, true);
+    }
+
+    runtime_bridge_input = (RuntimeBridgeInput){
+        .now_ms = now_ms,
+        .transfer_status =
+            runtime_bridge_transfer_status(usb_updater_service_probe_status(&usb_updater_service)),
+        .marked_wheel_status_received =
+            wheel_status_service_take_marked_response(&wheel_status_service),
+    };
+    apply_runtime_bridge_actions(runtime_bridge_step(&runtime_bridge, &runtime_bridge_input));
+    usb_updater_input = (UsbUpdaterServiceInput){
+        .now_ms = now_ms,
+        .board_variant = board_identity.variant,
+        .wheel_mode = wheel_service_mode(&wheel_service),
+        .adapter_connected = wheel_service_adapter_connected(&wheel_service),
+    };
+    usb_updater_service_run(&usb_updater_service, &usb_updater_input);
+    if (usb_updater_service_take_reset(&usb_updater_service)) {
+        platform_system_reset();
+    }
+    return true;
+}
+
+/**
  * @brief Advance the force-feedback script clocks for one Timer 2 interrupt.
  *
  * Advances the shared engine clock in active and zero-output modes, advances the selected slot
@@ -1935,6 +2061,8 @@ static void service_usb_output(void) {
             system_control_state_set_operating_status(&system_control_state,
                                                       wheel_service_mode(&wheel_service),
                                                       usb_operating_status_enabled);
+        } else if (start_runtime_bridge(&usb_operating_mode_command)) {
+            return;
         } else if (usb_operating_mode_command_requests_led_pattern(&usb_operating_mode_command)) {
             platform_led_pattern_set_duty(
                 led_pattern_pwm_duty(usb_operating_mode_command.parameters[1]));
@@ -2627,6 +2755,7 @@ int main(void) {
     fanatec_encoder_init(&fanatec_encoder);
     usb_xbox_gip_input_builder_init(&xbox_input_builder);
     wheel_status_service_init(&wheel_status_service, &serial_service);
+    runtime_bridge_init(&runtime_bridge);
     initialize_usb_command_bridge();
     wheel_velocity_reset(&wheel_velocity_estimator);
     wheel_center_capture_command_init(&wheel_center_capture_command);
@@ -2643,6 +2772,9 @@ int main(void) {
         service_usb_output();
         platform_aux_bus_service();
         uint32_t now_ms = platform_time_ms();
+        if (service_runtime_bridge(now_ms)) {
+            continue;
+        }
         service_playstation_authentication(now_ms);
         service_usb_host_capability_recovery(now_ms);
         service_power(now_ms);

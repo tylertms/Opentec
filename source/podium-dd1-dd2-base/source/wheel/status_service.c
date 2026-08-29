@@ -124,13 +124,15 @@ void wheel_status_service_run(WheelStatusService *service, uint32_t now_ms, bool
 /**
  * @brief Marks the next attached-wheel status request.
  *
- * Sets the one-byte request payload to 0xAA so a matching response can signal completion.
+ * Sets the one-byte request payload to 0xAA and makes the request immediately eligible so a
+ * matching response can signal completion.
  *
  * @param[in,out] service Wheel-status service whose next request is marked.
  */
 void wheel_status_service_mark_next_request(WheelStatusService *service) {
     if (service != 0) {
         service->request_marker = WHEEL_STATUS_MARKER;
+        service->poll_deadline_active = false;
     }
 }
 
