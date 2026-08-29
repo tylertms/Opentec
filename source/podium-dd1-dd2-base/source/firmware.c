@@ -2563,8 +2563,8 @@ static void run_led_pattern_startup_sequence(void) {
  * @brief Services autonomous board LED output.
  *
  * Selects the inhibited-output heartbeat from motor status, clears the LED after shutdown starts,
- * and sustains the breathing transition while the pedal recovery handshake is active. A returned
- * no-update marker leaves host-selected output unchanged.
+ * and requests the breathing transition from the torque-disable toggle or pedal recovery
+ * handshake. A returned no-update marker leaves host-selected output unchanged.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -2575,6 +2575,7 @@ static void service_led_pattern(uint32_t now_ms) {
         .shutdown_complete = power_controller.phase == POWER_PHASE_SHUTDOWN_DELAY ||
                              power_controller.phase == POWER_PHASE_OFF,
         .pedal_handshake_active = pedal_service.recovery_handshake,
+        .force_override_requested = power_controller.torque_disabled,
     };
     uint16_t pattern = led_pattern_controller_update(&led_pattern_controller, input, now_ms);
     if (pattern != LED_PATTERN_NO_UPDATE) {
