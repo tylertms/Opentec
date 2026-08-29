@@ -31,3 +31,15 @@ MotorLinkFrameResult motor_link_frame_decode(const uint8_t input[MOTOR_LINK_FRAM
     uint16_t checksum = motor_link_crc_calculate(input + 1U, MOTOR_LINK_CHECKSUM_INPUT_SIZE);
     return motor_link_frame_decode_checked(input, checksum, frame);
 }
+
+/**
+ * @brief Encodes one official motor position response with a hardware CRC.
+ * @param report Current motor response values and replay flag.
+ * @param output Complete thirteen-byte motor-link frame.
+ */
+void motor_link_position_frame_encode(const MotorLinkPositionReport *report,
+                                      uint8_t output[MOTOR_LINK_FRAME_SIZE]) {
+    motor_link_position_frame_prepare(report, output);
+    uint16_t checksum = motor_link_crc_calculate(output + 1U, MOTOR_LINK_CHECKSUM_INPUT_SIZE);
+    motor_link_frame_checksum_write(output, checksum);
+}

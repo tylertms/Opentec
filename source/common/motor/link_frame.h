@@ -36,9 +36,20 @@ typedef struct {
     uint8_t command[7];
 } MotorLinkStatusCommand;
 
+typedef struct {
+    int32_t position;
+    uint16_t torque;
+    int16_t drive_current;
+    bool positive;
+    bool replay;
+} MotorLinkPositionReport;
+
 MotorLinkFrameResult motor_link_frame_decode_checked(const uint8_t input[MOTOR_LINK_FRAME_SIZE],
                                                      uint16_t checksum, MotorLinkFrame *frame);
 bool motor_link_force_command_decode(const MotorLinkFrame *frame, MotorLinkForceCommand *command);
 bool motor_link_status_command_decode(const MotorLinkFrame *frame, MotorLinkStatusCommand *command);
+void motor_link_position_frame_prepare(const MotorLinkPositionReport *report,
+                                       uint8_t output[MOTOR_LINK_FRAME_SIZE]);
+void motor_link_frame_checksum_write(uint8_t frame[MOTOR_LINK_FRAME_SIZE], uint16_t checksum);
 
 #endif

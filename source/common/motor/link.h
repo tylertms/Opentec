@@ -9,5 +9,7 @@
 uint16_t motor_link_crc_calculate(const uint8_t *data, size_t length);
 MotorLinkFrameResult motor_link_frame_decode(const uint8_t input[MOTOR_LINK_FRAME_SIZE],
                                              MotorLinkFrame *frame);
+void motor_link_position_frame_encode(const MotorLinkPositionReport *report,
+                                      uint8_t output[MOTOR_LINK_FRAME_SIZE]);
 
 #endif
