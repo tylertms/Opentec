@@ -850,8 +850,9 @@ static void service_usb_output(void) {
             (void)usb_device_set_input_mode(USB_INPUT_REPORT_MODE_FANATEC);
         } else if (h_pattern_calibration_command_decode(&usb_operating_mode_command,
                                                         &h_pattern_calibration_command)) {
-            h_pattern_calibration_service_request(&h_pattern_calibration_service,
-                                                  h_pattern_calibration_command);
+            h_pattern_calibration_service_request(
+                &h_pattern_calibration_service, h_pattern_calibration_command,
+                wheel_service_mode(&wheel_service), platform_time_ms());
         } else if (pedal_calibration_command_decode(&usb_operating_mode_command,
                                                     &pedal_calibration_command)) {
             pedal_calibration_actions = pedal_calibration_command_route(
@@ -1023,9 +1024,10 @@ static void service_usb_input(uint32_t now_ms) {
  * @brief Samples and publishes all base-side analog inputs.
  *
  * Updates cooling temperatures, pedal fallback samples, the local auxiliary override, and the
- * active H-pattern shifter. An uncalibrated H-pattern input opens a fresh capture session. Queued
- * calibration captures use the selected shifter axes and request immediate persistence after
- * seventh gear. Changed auxiliary endpoint settings enter the shared delayed persistence path.
+ * active H-pattern shifter. An uncalibrated H-pattern input opens a fresh capture session when the
+ * attached-wheel display is ready. Queued calibration captures use the selected shifter axes and
+ * request immediate persistence after seventh gear. Changed auxiliary endpoint settings enter the
+ * shared delayed persistence path.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -1054,9 +1056,12 @@ static void service_analog_input(uint32_t now_ms) {
         uint16_t longitudinal_position;
         bool h_pattern_input_available = shifter_input.primary_mode == SHIFTER_INPUT_H_PATTERN ||
                                          shifter_input.secondary_mode == SHIFTER_INPUT_H_PATTERN;
+        bool calibration_start_allowed =
+            h_pattern_input_available &&
+            wheel_service_protocol_phase(&wheel_service) == WHEEL_PROTOCOL_ACTIVE;
         (void)h_pattern_calibration_service_start_if_required(
-            &h_pattern_calibration_service, h_pattern_input_available,
-            base_settings.h_pattern_shifter.calibrated);
+            &h_pattern_calibration_service, calibration_start_allowed,
+            base_settings.h_pattern_shifter.calibrated, wheel_service_mode(&wheel_service), now_ms);
         if (shifter_input.primary_mode == SHIFTER_INPUT_H_PATTERN) {
             lateral_position = analog_samples.primary_shifter_x;
             longitudinal_position = analog_samples.primary_shifter_y;
@@ -1069,7 +1074,7 @@ static void service_analog_input(uint32_t now_ms) {
         }
 
         if (h_pattern_calibration_service_capture(
-                &h_pattern_calibration_service, lateral_position, longitudinal_position,
+                &h_pattern_calibration_service, now_ms, lateral_position, longitudinal_position,
                 &base_settings.h_pattern_shifter) == H_PATTERN_CALIBRATION_COMPLETED) {
             base_settings_persistence_request_save(&settings_persistence, now_ms);
         }
@@ -1095,10 +1100,11 @@ static void service_analog_input(uint32_t now_ms) {
 static void service_shifter_display(uint32_t now_ms) {
     WheelDisplayOutput *output = &wheel_service.display_output;
     bool wheel_active = wheel_service_protocol_phase(&wheel_service) == WHEEL_PROTOCOL_ACTIVE;
-    if (shifter_display_update(&shifter_display, h_pattern_shifter.gear, wheel_active,
-                               h_pattern_calibration_service.active,
-                               h_pattern_calibration_service.session.next_position, now_ms,
-                               output)) {
+    HPatternCalibrationPrompt calibration_prompt =
+        h_pattern_calibration_service_prompt(&h_pattern_calibration_service, now_ms);
+    if (shifter_display_update(
+            &shifter_display, h_pattern_shifter.gear, wheel_active, calibration_prompt,
+            h_pattern_calibration_service.session.next_position, now_ms, output)) {
         wheel_service_set_display_output(&wheel_service, output);
     }
 }

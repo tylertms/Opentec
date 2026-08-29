@@ -45,6 +45,14 @@ typedef enum {
     H_PATTERN_CALIBRATION_COMPLETED,
 } HPatternCalibrationResult;
 
+typedef enum {
+    H_PATTERN_CALIBRATION_PROMPT_NONE,
+    H_PATTERN_CALIBRATION_PROMPT_WAITING,
+    H_PATTERN_CALIBRATION_PROMPT_SHIFTER,
+    H_PATTERN_CALIBRATION_PROMPT_CALIBRATION,
+    H_PATTERN_CALIBRATION_PROMPT_POSITION,
+} HPatternCalibrationPrompt;
+
 typedef struct {
     HPatternCalibrationPosition next_position;
     HPatternCalibrationSamples samples;
@@ -52,6 +60,8 @@ typedef struct {
 
 typedef struct {
     HPatternCalibrationSession session;
+    uint32_t started_ms;
+    uint8_t wheel_mode;
     bool active;
     bool advance_pending;
     bool advance_input_active;
@@ -62,14 +72,19 @@ bool h_pattern_calibration_command_decode(const UsbOperatingModeCommand *source,
                                           HPatternCalibrationCommand *command);
 HPatternCalibration h_pattern_calibration_build(const HPatternCalibrationSamples *samples);
 void h_pattern_calibration_service_request(HPatternCalibrationService *service,
-                                           HPatternCalibrationCommand command);
+                                           HPatternCalibrationCommand command, uint8_t wheel_mode,
+                                           uint32_t now_ms);
 bool h_pattern_calibration_service_start_if_required(HPatternCalibrationService *service,
-                                                     bool input_available, bool calibrated);
+                                                     bool start_allowed, bool calibrated,
+                                                     uint8_t wheel_mode, uint32_t now_ms);
 void h_pattern_calibration_service_set_advance_input(HPatternCalibrationService *service,
                                                      bool active);
 HPatternCalibrationResult h_pattern_calibration_service_capture(HPatternCalibrationService *service,
+                                                                uint32_t now_ms,
                                                                 uint16_t lateral_position,
                                                                 uint16_t longitudinal_position,
                                                                 HPatternSettings *settings);
+HPatternCalibrationPrompt
+h_pattern_calibration_service_prompt(const HPatternCalibrationService *service, uint32_t now_ms);
 
 #endif

@@ -10,14 +10,18 @@ static void test_waits_for_connection_and_next_gear(void) {
     WheelDisplayOutput output = {0};
     shifter_display_init(&display);
 
-    assert(!shifter_display_update(&display, SHIFTER_GEAR_FIRST, false, false,
+    assert(!shifter_display_update(&display, SHIFTER_GEAR_FIRST, false,
+                                   H_PATTERN_CALIBRATION_PROMPT_NONE,
                                    H_PATTERN_CALIBRATION_COMPLETE, 0, &output));
-    assert(!shifter_display_update(&display, SHIFTER_GEAR_FIRST, true, false,
+    assert(!shifter_display_update(&display, SHIFTER_GEAR_FIRST, true,
+                                   H_PATTERN_CALIBRATION_PROMPT_NONE,
                                    H_PATTERN_CALIBRATION_COMPLETE, 10, &output));
-    assert(!shifter_display_update(&display, SHIFTER_GEAR_FIRST, true, false,
+    assert(!shifter_display_update(&display, SHIFTER_GEAR_FIRST, true,
+                                   H_PATTERN_CALIBRATION_PROMPT_NONE,
                                    H_PATTERN_CALIBRATION_COMPLETE, 20, &output));
-    assert(shifter_display_update(&display, SHIFTER_GEAR_SECOND, true, false,
-                                  H_PATTERN_CALIBRATION_COMPLETE, 30, &output));
+    assert(shifter_display_update(&display, SHIFTER_GEAR_SECOND, true,
+                                  H_PATTERN_CALIBRATION_PROMPT_NONE, H_PATTERN_CALIBRATION_COMPLETE,
+                                  30, &output));
     assert(output.glyphs[0] == 0);
     assert(output.glyphs[1] == 0x5b);
     assert(output.glyphs[2] == 0);
@@ -27,15 +31,18 @@ static void test_clears_after_strict_one_second_deadline(void) {
     ShifterDisplay display;
     WheelDisplayOutput output = {0};
     shifter_display_init(&display);
-    shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true, false,
+    shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true, H_PATTERN_CALIBRATION_PROMPT_NONE,
                            H_PATTERN_CALIBRATION_COMPLETE, 10, &output);
-    assert(shifter_display_update(&display, SHIFTER_GEAR_REVERSE, true, false,
-                                  H_PATTERN_CALIBRATION_COMPLETE, 100, &output));
+    assert(shifter_display_update(&display, SHIFTER_GEAR_REVERSE, true,
+                                  H_PATTERN_CALIBRATION_PROMPT_NONE, H_PATTERN_CALIBRATION_COMPLETE,
+                                  100, &output));
     assert(output.glyphs[1] == 0x50);
-    assert(!shifter_display_update(&display, SHIFTER_GEAR_REVERSE, true, false,
+    assert(!shifter_display_update(&display, SHIFTER_GEAR_REVERSE, true,
+                                   H_PATTERN_CALIBRATION_PROMPT_NONE,
                                    H_PATTERN_CALIBRATION_COMPLETE, 1100, &output));
-    assert(shifter_display_update(&display, SHIFTER_GEAR_REVERSE, true, false,
-                                  H_PATTERN_CALIBRATION_COMPLETE, 1101, &output));
+    assert(shifter_display_update(&display, SHIFTER_GEAR_REVERSE, true,
+                                  H_PATTERN_CALIBRATION_PROMPT_NONE, H_PATTERN_CALIBRATION_COMPLETE,
+                                  1101, &output));
     assert(output.glyphs[1] == 0);
 }
 
@@ -43,13 +50,15 @@ static void test_neutral_clears_immediately(void) {
     ShifterDisplay display;
     WheelDisplayOutput output = {0};
     shifter_display_init(&display);
-    shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true, false,
+    shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true, H_PATTERN_CALIBRATION_PROMPT_NONE,
                            H_PATTERN_CALIBRATION_COMPLETE, 0, &output);
-    assert(shifter_display_update(&display, SHIFTER_GEAR_SEVENTH, true, false,
-                                  H_PATTERN_CALIBRATION_COMPLETE, 1, &output));
+    assert(shifter_display_update(&display, SHIFTER_GEAR_SEVENTH, true,
+                                  H_PATTERN_CALIBRATION_PROMPT_NONE, H_PATTERN_CALIBRATION_COMPLETE,
+                                  1, &output));
     assert(output.glyphs[1] == 0x07);
-    assert(shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true, false,
-                                  H_PATTERN_CALIBRATION_COMPLETE, 2, &output));
+    assert(shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true,
+                                  H_PATTERN_CALIBRATION_PROMPT_NONE, H_PATTERN_CALIBRATION_COMPLETE,
+                                  2, &output));
     assert(output.glyphs[1] == 0);
 }
 
@@ -57,9 +66,10 @@ static void test_does_not_replace_busy_display(void) {
     ShifterDisplay display;
     WheelDisplayOutput output = {.glyphs = {1, 0, 0}};
     shifter_display_init(&display);
-    shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true, false,
+    shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true, H_PATTERN_CALIBRATION_PROMPT_NONE,
                            H_PATTERN_CALIBRATION_COMPLETE, 0, &output);
-    assert(!shifter_display_update(&display, SHIFTER_GEAR_FIFTH, true, false,
+    assert(!shifter_display_update(&display, SHIFTER_GEAR_FIFTH, true,
+                                   H_PATTERN_CALIBRATION_PROMPT_NONE,
                                    H_PATTERN_CALIBRATION_COMPLETE, 1, &output));
     assert(output.glyphs[0] == 1);
     assert(output.glyphs[1] == 0);
@@ -73,21 +83,52 @@ static void test_calibration_stage_and_completion(void) {
 
     for (HPatternCalibrationPosition position = H_PATTERN_CALIBRATION_NEUTRAL;
          position <= H_PATTERN_CALIBRATION_SEVENTH; position++) {
-        assert(shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true, true, position,
+        assert(shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true,
+                                      H_PATTERN_CALIBRATION_PROMPT_POSITION, position,
                                       (uint32_t)position, &output));
         assert(output.glyphs[0] == 0);
         assert(output.glyphs[1] == expected[position]);
         assert(output.glyphs[2] == 0);
     }
 
-    assert(!shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true, false,
+    assert(!shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true,
+                                   H_PATTERN_CALIBRATION_PROMPT_NONE,
                                    H_PATTERN_CALIBRATION_COMPLETE, 100, &output));
     assert(output.glyphs[1] == 0x07);
-    assert(!shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true, false,
+    assert(!shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true,
+                                   H_PATTERN_CALIBRATION_PROMPT_NONE,
                                    H_PATTERN_CALIBRATION_COMPLETE, 1100, &output));
-    assert(shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true, false,
-                                  H_PATTERN_CALIBRATION_COMPLETE, 1101, &output));
+    assert(shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true,
+                                  H_PATTERN_CALIBRATION_PROMPT_NONE, H_PATTERN_CALIBRATION_COMPLETE,
+                                  1101, &output));
     assert(output.glyphs[1] == 0);
+}
+
+static void test_calibration_entry_prompts(void) {
+    ShifterDisplay display;
+    WheelDisplayOutput output = {.glyphs = {1, 2, 3}};
+    shifter_display_init(&display);
+
+    assert(!shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true,
+                                   H_PATTERN_CALIBRATION_PROMPT_WAITING,
+                                   H_PATTERN_CALIBRATION_NEUTRAL, 0, &output));
+    assert(output.glyphs[0] == 1);
+    assert(output.glyphs[1] == 2);
+    assert(output.glyphs[2] == 3);
+
+    assert(shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true,
+                                  H_PATTERN_CALIBRATION_PROMPT_SHIFTER,
+                                  H_PATTERN_CALIBRATION_NEUTRAL, 1, &output));
+    assert(output.glyphs[0] == 0x6d);
+    assert(output.glyphs[1] == 0x71);
+    assert(output.glyphs[2] == 0x78);
+
+    assert(shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true,
+                                  H_PATTERN_CALIBRATION_PROMPT_CALIBRATION,
+                                  H_PATTERN_CALIBRATION_NEUTRAL, 2, &output));
+    assert(output.glyphs[0] == 0x39);
+    assert(output.glyphs[1] == 0x77);
+    assert(output.glyphs[2] == 0x38);
 }
 
 int main(void) {
@@ -96,5 +137,6 @@ int main(void) {
     test_neutral_clears_immediately();
     test_does_not_replace_busy_display();
     test_calibration_stage_and_completion();
+    test_calibration_entry_prompts();
     return 0;
 }

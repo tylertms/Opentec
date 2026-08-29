@@ -23,7 +23,7 @@ typedef struct {
 
 void shifter_display_init(ShifterDisplay *display);
 bool shifter_display_update(ShifterDisplay *display, ShifterGear gear, bool wheel_active,
-                            bool calibration_active,
+                            HPatternCalibrationPrompt calibration_prompt,
                             HPatternCalibrationPosition calibration_position, uint32_t now_ms,
                             WheelDisplayOutput *output);
 

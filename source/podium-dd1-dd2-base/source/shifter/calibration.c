@@ -8,6 +8,10 @@ enum {
     H_PATTERN_CALIBRATION_OPCODE = 0x19,
     H_PATTERN_CALIBRATION_START_SELECTOR = 1,
     H_PATTERN_CALIBRATION_ADVANCE_SELECTOR = 2,
+    H_PATTERN_EXTENDED_WHEEL_MODE = 0x1c,
+    H_PATTERN_LEGACY_SHIFTER_PROMPT_MS = 2000,
+    H_PATTERN_LEGACY_CALIBRATION_PROMPT_MS = 4000,
+    H_PATTERN_EXTENDED_ENTRY_DELAY_MS = 5000,
     SEVENTH_BOUNDARY_MINIMUM_SPAN = 5,
     SEVENTH_BOUNDARY_FALLBACK_OFFSET = 20,
 };
@@ -145,19 +149,27 @@ static HPatternCalibrationResult capture_position(HPatternCalibrationSession *se
  * @brief Applies a calibration lifecycle command.
  *
  * Start clears the collected samples and opens a new session. Advance queues one capture for the
- * next available H-pattern analog sample.
+ * next available H-pattern analog sample. A new session retains its wheel mode and start time for
+ * entry presentation and capture gating.
  *
  * @param[in,out] service Calibration lifecycle state.
  * @param[in] command Requested start or advance action.
+ * @param[in] wheel_mode Active attached-wheel mode.
+ * @param[in] now_ms Current monotonic time in milliseconds.
  */
 void h_pattern_calibration_service_request(HPatternCalibrationService *service,
-                                           HPatternCalibrationCommand command) {
+                                           HPatternCalibrationCommand command, uint8_t wheel_mode,
+                                           uint32_t now_ms) {
     if (service == NULL) {
         return;
     }
 
     if (command == H_PATTERN_CALIBRATION_COMMAND_START) {
-        *service = (HPatternCalibrationService){.active = true};
+        *service = (HPatternCalibrationService){
+            .started_ms = now_ms,
+            .wheel_mode = wheel_mode,
+            .active = true,
+        };
     } else if (command == H_PATTERN_CALIBRATION_COMMAND_ADVANCE) {
         service->advance_pending = true;
     }
@@ -166,22 +178,57 @@ void h_pattern_calibration_service_request(HPatternCalibrationService *service,
 /**
  * @brief Starts calibration for an uninitialized H-pattern input.
  *
- * Opens a fresh capture session when an H-pattern shifter is available without saved calibration.
- * An active session or calibrated input remains unchanged.
+ * Opens a fresh capture session when the local entry path is ready without saved calibration. An
+ * active session or calibrated input remains unchanged.
  *
  * @param[in,out] service Calibration lifecycle state.
- * @param[in] input_available True when either shifter input is in H-pattern mode.
+ * @param[in] start_allowed True when an H-pattern input and attached-wheel display are available.
  * @param[in] calibrated True when usable H-pattern thresholds are already available.
+ * @param[in] wheel_mode Active attached-wheel mode.
+ * @param[in] now_ms Current monotonic time in milliseconds.
  * @return True when a new calibration session was started.
  */
 bool h_pattern_calibration_service_start_if_required(HPatternCalibrationService *service,
-                                                     bool input_available, bool calibrated) {
-    if (service == NULL || service->active || !input_available || calibrated) {
+                                                     bool start_allowed, bool calibrated,
+                                                     uint8_t wheel_mode, uint32_t now_ms) {
+    if (service == NULL || service->active || !start_allowed || calibrated) {
         return false;
     }
 
-    *service = (HPatternCalibrationService){.active = true};
+    h_pattern_calibration_service_request(service, H_PATTERN_CALIBRATION_COMMAND_START, wheel_mode,
+                                          now_ms);
     return true;
+}
+
+/**
+ * @brief Selects the current H-pattern calibration prompt.
+ *
+ * Legacy wheel modes show the shifter and calibration labels for two seconds each before the first
+ * position. Extended mode reserves five seconds for its separate presentation path. Captures are
+ * accepted only after the corresponding entry interval expires.
+ *
+ * @param[in] service Calibration lifecycle state.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @return Inactive, waiting, shifter, calibration, or position prompt state.
+ */
+HPatternCalibrationPrompt
+h_pattern_calibration_service_prompt(const HPatternCalibrationService *service, uint32_t now_ms) {
+    if (service == NULL || !service->active) {
+        return H_PATTERN_CALIBRATION_PROMPT_NONE;
+    }
+
+    uint32_t elapsed_ms = now_ms - service->started_ms;
+    if (service->wheel_mode == H_PATTERN_EXTENDED_WHEEL_MODE) {
+        return elapsed_ms <= H_PATTERN_EXTENDED_ENTRY_DELAY_MS
+                   ? H_PATTERN_CALIBRATION_PROMPT_WAITING
+                   : H_PATTERN_CALIBRATION_PROMPT_POSITION;
+    }
+    if (elapsed_ms <= H_PATTERN_LEGACY_SHIFTER_PROMPT_MS) {
+        return H_PATTERN_CALIBRATION_PROMPT_SHIFTER;
+    }
+    return elapsed_ms <= H_PATTERN_LEGACY_CALIBRATION_PROMPT_MS
+               ? H_PATTERN_CALIBRATION_PROMPT_CALIBRATION
+               : H_PATTERN_CALIBRATION_PROMPT_POSITION;
 }
 
 /**
@@ -203,22 +250,26 @@ void h_pattern_calibration_service_set_advance_input(HPatternCalibrationService 
 /**
  * @brief Captures a queued H-pattern calibration position.
  *
- * Ignores samples until a session is active and either the attached-wheel input or a host advance
- * is active. After each capture, waits for the attached-wheel input to be released before accepting
- * the next position. A successful seventh-gear capture closes the session and enables the new
- * settings.
+ * Ignores samples until the entry presentation completes and either the attached-wheel input or a
+ * host advance is active. After each capture, waits for the attached-wheel input to be released
+ * before accepting the next position. A successful seventh-gear capture closes the session and
+ * enables the new settings.
  *
  * @param[in,out] service Calibration lifecycle state.
+ * @param[in] now_ms Current monotonic time in milliseconds.
  * @param[in] lateral_position Current lateral axis sample.
  * @param[in] longitudinal_position Current longitudinal axis sample.
  * @param[in,out] settings Destination for the completed calibration.
  * @return No capture, an intermediate capture, or completed calibration.
  */
 HPatternCalibrationResult h_pattern_calibration_service_capture(HPatternCalibrationService *service,
+                                                                uint32_t now_ms,
                                                                 uint16_t lateral_position,
                                                                 uint16_t longitudinal_position,
                                                                 HPatternSettings *settings) {
-    if (service == NULL || settings == NULL || !service->active) {
+    if (service == NULL || settings == NULL ||
+        h_pattern_calibration_service_prompt(service, now_ms) !=
+            H_PATTERN_CALIBRATION_PROMPT_POSITION) {
         return H_PATTERN_CALIBRATION_NO_CAPTURE;
     }
 

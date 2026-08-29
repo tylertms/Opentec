@@ -10,8 +10,14 @@
 enum {
     DISPLAY_HOLD_DURATION_MS = 1000,
     GEAR_DISPLAY_POSITION = 1,
+    GLYPH_A = 0x77,
+    GLYPH_C = 0x39,
+    GLYPH_F = 0x71,
+    GLYPH_L = 0x38,
     GLYPH_NEUTRAL = 0x54,
     GLYPH_REVERSE = 0x50,
+    GLYPH_S = 0x6d,
+    GLYPH_T = 0x78,
 };
 
 /**
@@ -119,22 +125,23 @@ void shifter_display_init(ShifterDisplay *display) { *display = (ShifterDisplay)
 /**
  * @brief Updates the temporary H-pattern gear display.
  *
- * Calibration owns the center glyph while active and shows the next position to capture. The
- * seventh-gear glyph remains visible for one second after completion. Outside calibration, a
- * changed non-neutral gear is shown for one second when the display is idle. Neutral clears a
- * shown gear, and connection loss returns the service to its waiting phase.
+ * Calibration owns the glyph display while active, presents the shifter and calibration labels,
+ * and then shows the next position to capture. Extended-mode entry waits without replacing its
+ * separate presentation. The seventh-gear glyph remains visible for one second after completion.
+ * Outside calibration, a changed non-neutral gear is shown for one second when the display is
+ * idle. Neutral clears a shown gear, and connection loss returns the service to its waiting phase.
  *
  * @param[in,out] display Persistent display phase, last gear, and clear deadline.
  * @param[in] gear Current H-pattern gear, or neutral.
  * @param[in] wheel_active True while the attached-wheel display connection is active.
- * @param[in] calibration_active True while H-pattern calibration accepts captures.
+ * @param[in] calibration_prompt Current H-pattern calibration presentation phase.
  * @param[in] calibration_position Next calibration position, or complete.
  * @param[in] now_ms Current millisecond counter.
  * @param[in,out] output Current display output, updated when a gear is shown or cleared.
  * @return True when the display output changed.
  */
 bool shifter_display_update(ShifterDisplay *display, ShifterGear gear, bool wheel_active,
-                            bool calibration_active,
+                            HPatternCalibrationPrompt calibration_prompt,
                             HPatternCalibrationPosition calibration_position, uint32_t now_ms,
                             WheelDisplayOutput *output) {
     if (!wheel_active) {
@@ -143,17 +150,34 @@ bool shifter_display_update(ShifterDisplay *display, ShifterGear gear, bool whee
         return false;
     }
 
-    if (calibration_active) {
-        uint8_t glyph = calibration_glyph(calibration_position);
+    if (calibration_prompt != H_PATTERN_CALIBRATION_PROMPT_NONE) {
         display->phase = SHIFTER_DISPLAY_MONITORING;
         display->last_gear = gear;
         display->clear_after_ms = 0;
         display->calibration_visible = true;
-        if (output->glyphs[0] == 0 && output->glyphs[1] == glyph && output->glyphs[2] == 0) {
+        if (calibration_prompt == H_PATTERN_CALIBRATION_PROMPT_WAITING) {
             return false;
         }
-        clear_glyphs(output);
-        output->glyphs[GEAR_DISPLAY_POSITION] = glyph;
+
+        uint8_t glyphs[3] = {0};
+        if (calibration_prompt == H_PATTERN_CALIBRATION_PROMPT_SHIFTER) {
+            glyphs[0] = GLYPH_S;
+            glyphs[1] = GLYPH_F;
+            glyphs[2] = GLYPH_T;
+        } else if (calibration_prompt == H_PATTERN_CALIBRATION_PROMPT_CALIBRATION) {
+            glyphs[0] = GLYPH_C;
+            glyphs[1] = GLYPH_A;
+            glyphs[2] = GLYPH_L;
+        } else {
+            glyphs[GEAR_DISPLAY_POSITION] = calibration_glyph(calibration_position);
+        }
+        if (output->glyphs[0] == glyphs[0] && output->glyphs[1] == glyphs[1] &&
+            output->glyphs[2] == glyphs[2]) {
+            return false;
+        }
+        output->glyphs[0] = glyphs[0];
+        output->glyphs[1] = glyphs[1];
+        output->glyphs[2] = glyphs[2];
         return true;
     }
 
