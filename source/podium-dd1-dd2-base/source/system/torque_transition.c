@@ -9,7 +9,6 @@ enum {
     SYSTEM_EVENT_TORQUE_ENABLED = 0x1b,
     SYSTEM_STATUS_IDLE = 0x1e,
     SYSTEM_STATUS_TORQUE_DISABLED = 0x2b,
-    MOTOR_CONTROL_RESUME = 0x10,
     WHEEL_MODE_EXTENDED = 0x1c,
 };
 
@@ -30,7 +29,8 @@ void system_torque_transition_init(SystemTorqueTransition *transition) {
  * Leaves the request pending while the event slot is occupied. Disabling torque emits event 0x0d.
  * Restoring torque queues event 0x1b and selects active event 0x11. Wheel mode 0x1c additionally
  * changes its feature state and selects status 0x2b while disabled; when restoring torque it
- * selects status 0x1e for operating status zero or motor-control state 0x10 otherwise.
+ * selects status 0x1e for operating status zero or requests the current setup-page response
+ * otherwise.
  *
  * @param[in,out] transition Last torque disable state accepted by the system event path.
  * @param[in] disable_requested Requested torque disable state.
@@ -64,8 +64,7 @@ bool system_torque_transition_update(SystemTorqueTransition *transition, bool di
             action->status_update = true;
             action->status_code = SYSTEM_STATUS_IDLE;
         } else {
-            action->motor_control_update = true;
-            action->motor_control_state = MOTOR_CONTROL_RESUME;
+            action->setup_response = true;
         }
     }
 

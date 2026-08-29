@@ -8,11 +8,10 @@ typedef struct {
     uint8_t pending_event_code;
     uint8_t active_event_code;
     uint8_t status_code;
-    uint8_t motor_control_state;
     bool status_update;
     bool feature_update;
     bool feature_enabled;
-    bool motor_control_update;
+    bool setup_response;
 } SystemTorqueTransitionAction;
 
 typedef struct {

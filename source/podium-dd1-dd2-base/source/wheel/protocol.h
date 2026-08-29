@@ -70,6 +70,7 @@ typedef struct {
     WheelPacketCrcInput crc_input;
     WheelPacketCrcOutput crc_output;
     WheelPacketCrcAdapter crc_adapter;
+    WheelPacketRemoteTuningOutput system_control_output;
     WheelPacketRemoteTuningOutput remote_tuning_output;
     WheelOutputReports output_reports;
     WheelProtocolPhase phase;
@@ -98,6 +99,8 @@ void wheel_protocol_set_crc_output(WheelProtocol *protocol, const WheelPacketCrc
 void wheel_protocol_set_crc_adapter(WheelProtocol *protocol, const WheelPacketCrcAdapter *adapter);
 bool wheel_protocol_queue_remote_tuning_response(WheelProtocol *protocol,
                                                  const RemoteTuningResponse *response);
+bool wheel_protocol_queue_system_control_response(WheelProtocol *protocol,
+                                                  const RemoteTuningResponse *response);
 bool wheel_protocol_remote_tuning_response_pending(const WheelProtocol *protocol);
 void wheel_protocol_set_axis_processing(WheelProtocol *protocol, uint8_t interface_mode,
                                         uint8_t override_mode, uint8_t bite_point_percent,

@@ -219,6 +219,7 @@ static void reset_connection(WheelService *service) {
     WheelPacketCrcFilter crc_filter = service->protocol.crc_filter;
     WheelPacketCrcOutput crc_output = service->protocol.crc_output;
     WheelPacketCrcAdapter crc_adapter = service->protocol.crc_adapter;
+    WheelPacketRemoteTuningOutput system_control_output = service->protocol.system_control_output;
     WheelPacketRemoteTuningOutput remote_tuning_output = service->protocol.remote_tuning_output;
     WheelOutputReports output_reports = service->protocol.output_reports;
     WheelCapabilityState capabilities = service->protocol.capabilities;
@@ -254,6 +255,7 @@ static void reset_connection(WheelService *service) {
     service->protocol.crc_filter = crc_filter;
     service->protocol.crc_output = crc_output;
     service->protocol.crc_adapter = crc_adapter;
+    service->protocol.system_control_output = system_control_output;
     service->protocol.remote_tuning_output = remote_tuning_output;
     service->protocol.output_reports = output_reports;
     service->protocol.capabilities = capabilities;
@@ -519,6 +521,21 @@ void wheel_service_set_crc_adapter(WheelService *service, const WheelPacketCrcAd
 bool wheel_service_queue_remote_tuning_response(WheelService *service,
                                                 const RemoteTuningResponse *response) {
     return wheel_protocol_queue_remote_tuning_response(&service->protocol, response);
+}
+
+/**
+ * @brief Queues a system-owned extended remote-tuning response.
+ *
+ * Retains the response across connection discovery in a priority slot separate from host-owned
+ * remote-tuning work.
+ *
+ * @param[in,out] service Attached-wheel service that owns protocol output.
+ * @param[in] response Semantic system-control response.
+ * @return True when the response was queued.
+ */
+bool wheel_service_queue_system_control_response(WheelService *service,
+                                                 const RemoteTuningResponse *response) {
+    return wheel_protocol_queue_system_control_response(&service->protocol, response);
 }
 
 /**

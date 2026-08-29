@@ -25,7 +25,7 @@ static void test_builds_standard_disable_and_restore_events(void) {
     assert(action.active_event_code == 0x0d);
     assert(!action.status_update);
     assert(!action.feature_update);
-    assert(!action.motor_control_update);
+    assert(!action.setup_response);
 
     assert(!system_torque_transition_update(&transition, true, true, 1, 0, &action));
     assert(system_torque_transition_update(&transition, false, true, 1, 0, &action));
@@ -34,7 +34,7 @@ static void test_builds_standard_disable_and_restore_events(void) {
     assert(action.active_event_code == 0x11);
     assert(!action.status_update);
     assert(!action.feature_update);
-    assert(!action.motor_control_update);
+    assert(!action.setup_response);
 }
 
 static void test_builds_extended_mode_disable_transition(void) {
@@ -49,7 +49,7 @@ static void test_builds_extended_mode_disable_transition(void) {
     assert(action.feature_enabled);
     assert(action.status_update);
     assert(action.status_code == 0x2b);
-    assert(!action.motor_control_update);
+    assert(!action.setup_response);
 }
 
 static void test_builds_extended_mode_idle_transition(void) {
@@ -63,7 +63,7 @@ static void test_builds_extended_mode_idle_transition(void) {
     assert(!action.feature_enabled);
     assert(action.status_update);
     assert(action.status_code == 0x1e);
-    assert(!action.motor_control_update);
+    assert(!action.setup_response);
 }
 
 static void test_builds_extended_mode_active_transition(void) {
@@ -74,8 +74,7 @@ static void test_builds_extended_mode_active_transition(void) {
     assert(action.feature_update);
     assert(!action.feature_enabled);
     assert(!action.status_update);
-    assert(action.motor_control_update);
-    assert(action.motor_control_state == 0x10);
+    assert(action.setup_response);
 }
 
 int main(void) {

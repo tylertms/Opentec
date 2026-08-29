@@ -723,6 +723,85 @@ static void test_system_status_preempts_one_remote_tuning_response(void) {
     assert(!wheel_protocol_remote_tuning_response_pending(&protocol));
 }
 
+static void test_system_operating_responses_use_extended_control_encoding(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    protocol.mode = WHEEL_MODE_REMOTE_TUNING_EXTENDED;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    mark_ready(request);
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+
+    RemoteTuningResponse response = {
+        .link = REMOTE_TUNING_LINK_EXTENDED,
+        .code = REMOTE_TUNING_RESPONSE_ACTIVE,
+    };
+    assert(wheel_protocol_queue_system_control_response(&protocol, &response));
+    wheel_protocol_accept(&protocol, request);
+    const uint8_t *packet = wheel_protocol_response(&protocol);
+    assert(packet[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE_REPLY);
+    assert(packet[1] == REMOTE_TUNING_RESPONSE_ACTIVE);
+    assert(packet[2] == 1);
+    assert(wheel_protocol_message_valid(packet));
+
+    response.code = REMOTE_TUNING_RESPONSE_INACTIVE;
+    assert(wheel_protocol_queue_system_control_response(&protocol, &response));
+    wheel_protocol_accept(&protocol, request);
+    packet = wheel_protocol_response(&protocol);
+    assert(packet[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE_REPLY);
+    assert(packet[1] == REMOTE_TUNING_RESPONSE_ACTIVE);
+    assert(packet[2] == 0);
+    assert(wheel_protocol_message_valid(packet));
+}
+
+static void test_system_setup_response_precedes_host_response_and_schedules_status(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    protocol.mode = WHEEL_MODE_REMOTE_TUNING_EXTENDED;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    mark_ready(request);
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+
+    RemoteTuningResponse host_response = {
+        .link = REMOTE_TUNING_LINK_EXTENDED,
+        .code = REMOTE_TUNING_RESPONSE_SETUP,
+        .value = 5,
+    };
+    RemoteTuningResponse system_response = {
+        .link = REMOTE_TUNING_LINK_EXTENDED,
+        .code = REMOTE_TUNING_RESPONSE_SETUP,
+        .value = 3,
+    };
+    assert(wheel_protocol_queue_remote_tuning_response(&protocol, &host_response));
+    assert(wheel_protocol_queue_system_control_response(&protocol, &system_response));
+
+    wheel_protocol_accept(&protocol, request);
+    const uint8_t *packet = wheel_protocol_response(&protocol);
+    assert(packet[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE_REPLY);
+    assert(packet[1] == REMOTE_TUNING_RESPONSE_SETUP);
+    assert(packet[2] == 3);
+    assert(wheel_protocol_message_valid(packet));
+    assert(protocol.system_status_pending);
+    assert(wheel_protocol_remote_tuning_response_pending(&protocol));
+
+    wheel_protocol_accept(&protocol, request);
+    packet = wheel_protocol_response(&protocol);
+    assert(packet[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
+    assert(packet[1] == 0x82);
+    assert(packet[2] == 0x22);
+    assert(wheel_protocol_message_valid(packet));
+
+    wheel_protocol_accept(&protocol, request);
+    packet = wheel_protocol_response(&protocol);
+    assert(packet[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE_REPLY);
+    assert(packet[1] == REMOTE_TUNING_RESPONSE_SETUP);
+    assert(packet[2] == 5);
+    assert(wheel_protocol_message_valid(packet));
+}
+
 static void test_forwards_remote_telemetry_in_legacy_mode(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -951,6 +1030,8 @@ int main(void) {
     test_builds_crc_family_active_response();
     test_builds_remote_tuning_responses();
     test_system_status_preempts_one_remote_tuning_response();
+    test_system_operating_responses_use_extended_control_encoding();
+    test_system_setup_response_precedes_host_response_and_schedules_status();
     test_forwards_remote_telemetry_in_legacy_mode();
     test_encodes_legacy_display_rotation_status();
     test_rejects_remote_tuning_link_mismatch();

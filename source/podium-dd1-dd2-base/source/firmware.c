@@ -153,6 +153,7 @@ static WheelCommandForwarder wheel_command_forwarder;
 static uint8_t wheel_command_batch[USB_REMOTE_TUNING_FORWARD_BATCH_SIZE];
 static uint8_t wheel_command_batch_length;
 static RemoteTuningResponse usb_remote_tuning_response;
+static RemoteTuningResponse system_wheel_response;
 static uint8_t usb_remote_tuning_host_report[USB_REMOTE_TUNING_HOST_REPORT_SIZE];
 static uint8_t wheel_remote_telemetry_report[REMOTE_TELEMETRY_REPORT_SIZE];
 static UsbTuningMenuService usb_tuning_menu_service;
@@ -286,7 +287,7 @@ static void service_power(uint32_t now_ms) {
  * @brief Applies a pending power-button torque request.
  *
  * Waits for the single event slot, then publishes the event and applies its status, feature, and
- * motor-control changes as one accepted transition.
+ * attached-wheel response changes as one accepted transition.
  */
 static void service_power_torque_request(void) {
     uint8_t wheel_mode = wheel_service_mode(&wheel_service);
@@ -298,6 +299,7 @@ static void service_power_torque_request(void) {
     }
     if (system_event_queue_try_push(&system_event_queue, system_torque_action.pending_event_code)) {
         system_control_state_apply_torque_transition(&system_control_state, wheel_mode,
+                                                     usb_remote_tuning_service.setup_page,
                                                      &system_torque_action);
     }
 }
@@ -1368,6 +1370,11 @@ int main(void) {
                                             &wheel_position_calibration));
         if (system_control_state_take_status(&system_control_state, &pending_system_status_code)) {
             wheel_service_queue_system_status(&wheel_service, pending_system_status_code);
+        }
+        if (system_control_state_take_wheel_response(&system_control_state,
+                                                     &system_wheel_response)) {
+            (void)wheel_service_queue_system_control_response(&wheel_service,
+                                                              &system_wheel_response);
         }
         wheel_service_run(&wheel_service, now_ms, !serial_command_waiting());
         if (wheel_service_take_bite_point(&wheel_service, &wheel_adjusted_bite_point_percent)) {

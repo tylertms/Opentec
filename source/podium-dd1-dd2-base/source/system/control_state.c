@@ -7,10 +7,6 @@
 #include "system/torque_transition.h"
 
 enum {
-    HID_CONFIGURATION_BASELINE = 0x20,
-    HID_CONFIGURATION_OPERATING_FEATURE = 0x0001,
-    HID_CONFIGURATION_COMMAND_RESET_MASK = 0xff83,
-    HID_RESPONSE_REFRESH = 0x0002,
     STATUS_NORMALIZATION_WHEEL_MODE = 0x18,
     STATUS_NORMALIZATION_FIRST = 0x80,
     STATUS_NORMALIZATION_LAST = 0x8f,
@@ -20,22 +16,19 @@ enum {
     WHEEL_MODE_EXTENDED = 0x1c,
     OPERATING_TRANSITION_DISABLED = 0xff,
     OPERATING_TRANSITION_ENABLED = 2,
-    MOTOR_CONTROL_OPERATING_DISABLED = 0xff,
-    MOTOR_CONTROL_OPERATING_ENABLED = 2,
 };
 
 /**
  * @brief Initializes shared system-control state.
  *
- * Starts with no pending attached-wheel status, event and motor-control state zero, the baseline
- * HID capability bit enabled, and the operating-mode feature disabled.
+ * Starts with no pending attached-wheel status or response, an idle event code, and the
+ * operating-mode feature disabled.
  *
  * @param[out] state System-control state to initialize.
  */
 void system_control_state_init(SystemControlState *state) {
     *state = (SystemControlState){
         .status_code = STATUS_NONE,
-        .hid_configuration = HID_CONFIGURATION_BASELINE,
     };
 }
 
@@ -78,46 +71,43 @@ bool system_control_state_take_status(SystemControlState *state, uint16_t *code)
 }
 
 /**
+ * @brief Takes the pending system-owned attached-wheel response.
+ *
+ * Returns one semantic extended remote-tuning response and clears the retained response. Host
+ * responses remain under the ownership of the USB remote-tuning service.
+ *
+ * @param[in,out] state System-control state that owns the pending response.
+ * @param[out] response Destination for the pending response.
+ * @return True when a pending response was returned; otherwise false.
+ */
+bool system_control_state_take_wheel_response(SystemControlState *state,
+                                              RemoteTuningResponse *response) {
+    if (state == NULL || response == NULL ||
+        state->wheel_response.code == REMOTE_TUNING_RESPONSE_NONE) {
+        return false;
+    }
+    *response = state->wheel_response;
+    state->wheel_response = (RemoteTuningResponse){0};
+    return true;
+}
+
+/**
  * @brief Applies the operating-mode feature enable state.
  *
- * Mirrors the state into HID configuration bit zero while preserving every other capability bit.
+ * Retains the state used by torque-transition and operating-mode policy.
  *
  * @param[in,out] state System-control state receiving the feature state.
  * @param[in] enabled True to enable the operating-mode feature.
  */
 void system_control_state_set_operating_feature(SystemControlState *state, bool enabled) {
     state->operating_feature_enabled = enabled;
-    state->hid_configuration =
-        (uint16_t)((state->hid_configuration & ~HID_CONFIGURATION_OPERATING_FEATURE) |
-                   (enabled ? HID_CONFIGURATION_OPERATING_FEATURE : 0));
-}
-
-/**
- * @brief Applies a motor-link control state change.
- *
- * Stores the control state, clears transient HID command bits, requests a refreshed response, and
- * clears the operating-mode feature bit for wheel mode 0x1c.
- *
- * @param[in,out] state System-control state receiving the motor-control change.
- * @param[in] wheel_mode Current attached-wheel mode.
- * @param[in] control_state Requested motor-link control state.
- */
-void system_control_state_set_motor_control(SystemControlState *state, uint8_t wheel_mode,
-                                            uint8_t control_state) {
-    state->motor_control_state = control_state;
-    state->hid_configuration &= HID_CONFIGURATION_COMMAND_RESET_MASK;
-    state->hid_response_flags |= HID_RESPONSE_REFRESH;
-    if (wheel_mode == WHEEL_MODE_EXTENDED) {
-        state->hid_configuration &= (uint16_t)~HID_CONFIGURATION_OPERATING_FEATURE;
-        state->operating_feature_enabled = false;
-    }
 }
 
 /**
  * @brief Applies an operating-status change from the host.
  *
- * Stores a canonical zero-or-one status. Wheel mode 0x0e publishes transition code 0xff or 2,
- * while wheel mode 0x1c applies the matching motor-link control state.
+ * Stores a canonical zero-or-one status. Wheel mode 0x0e publishes transition code 0xff or 2.
+ * Wheel mode 0x1c queues the matching inactive or active remote-tuning response.
  *
  * @param[in,out] state System-control state receiving the operating-status change.
  * @param[in] wheel_mode Current attached-wheel mode.
@@ -130,23 +120,27 @@ void system_control_state_set_operating_status(SystemControlState *state, uint8_
         state->operating_transition_code =
             enabled ? OPERATING_TRANSITION_ENABLED : OPERATING_TRANSITION_DISABLED;
     } else if (wheel_mode == WHEEL_MODE_EXTENDED) {
-        system_control_state_set_motor_control(state, wheel_mode,
-                                               enabled ? MOTOR_CONTROL_OPERATING_ENABLED
-                                                       : MOTOR_CONTROL_OPERATING_DISABLED);
+        state->operating_feature_enabled = false;
+        state->wheel_response = (RemoteTuningResponse){
+            .link = REMOTE_TUNING_LINK_EXTENDED,
+            .code = enabled ? REMOTE_TUNING_RESPONSE_ACTIVE : REMOTE_TUNING_RESPONSE_INACTIVE,
+        };
     }
 }
 
 /**
  * @brief Applies an accepted torque transition to shared system-control state.
  *
- * Publishes the active event and applies only the status, feature, and motor-control changes marked
- * by the transition action.
+ * Publishes the active event and applies the status and feature changes marked by the transition.
+ * A setup response carries the current page selected by the remote-tuning owner.
  *
  * @param[in,out] state System-control state receiving the transition.
  * @param[in] wheel_mode Current attached-wheel mode.
+ * @param[in] setup_page Current remote-tuning setup page.
  * @param[in] action Accepted torque transition action.
  */
 void system_control_state_apply_torque_transition(SystemControlState *state, uint8_t wheel_mode,
+                                                  uint8_t setup_page,
                                                   const SystemTorqueTransitionAction *action) {
     state->active_event_code = action->active_event_code;
     if (action->feature_update) {
@@ -155,7 +149,11 @@ void system_control_state_apply_torque_transition(SystemControlState *state, uin
     if (action->status_update) {
         system_control_state_set_status(state, wheel_mode, action->status_code);
     }
-    if (action->motor_control_update) {
-        system_control_state_set_motor_control(state, wheel_mode, action->motor_control_state);
+    if (wheel_mode == WHEEL_MODE_EXTENDED && action->setup_response) {
+        state->wheel_response = (RemoteTuningResponse){
+            .link = REMOTE_TUNING_LINK_EXTENDED,
+            .code = REMOTE_TUNING_RESPONSE_SETUP,
+            .value = setup_page,
+        };
     }
 }

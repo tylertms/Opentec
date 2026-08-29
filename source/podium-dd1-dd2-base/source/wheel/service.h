@@ -61,6 +61,8 @@ bool wheel_service_take_bite_point_report(WheelService *service, uint8_t *update
 bool wheel_service_bite_point_adjustment(const WheelService *service, uint8_t *percent);
 bool wheel_service_queue_remote_tuning_response(WheelService *service,
                                                 const RemoteTuningResponse *response);
+bool wheel_service_queue_system_control_response(WheelService *service,
+                                                 const RemoteTuningResponse *response);
 bool wheel_service_remote_tuning_response_pending(const WheelService *service);
 bool wheel_service_apply_multi_position_command(WheelService *service,
                                                 const UsbOperatingModeCommand *command);

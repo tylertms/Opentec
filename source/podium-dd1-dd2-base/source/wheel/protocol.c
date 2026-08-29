@@ -15,6 +15,9 @@
 enum {
     WHEEL_STATUS_SELECT_PREFIX_MODE = 9,
     WHEEL_STATUS_RESPONSE_CODE = 0x82,
+    WHEEL_STATUS_IDLE = 0x1e,
+    WHEEL_STATUS_SETUP_PAGE_OFFSET = 0x1f,
+    WHEEL_SETUP_PAGE_MAXIMUM = 5,
 };
 
 /**
@@ -93,10 +96,11 @@ static void build_selection_response(WheelProtocol *protocol) {
 /**
  * @brief Builds the next active attached-wheel response.
  *
- * Consumes a pending system status before remote-tuning and host output reports. Otherwise,
- * encodes the selected packet family or a blank A6 remote-tuning frame and overlays the
- * highest-priority host output report. The checksum is updated while transport acknowledgement
- * flags are preserved.
+ * Consumes a pending system status before a system-owned control response, remote-tuning work, and
+ * host output reports. A setup-page response schedules its corresponding status for the following
+ * exchange. Otherwise, encodes the selected packet family or a blank A6 remote-tuning frame and
+ * overlays the highest-priority host output report. The checksum is updated while transport
+ * acknowledgement flags are preserved.
  *
  * @param[in,out] protocol Active protocol state and response storage.
  */
@@ -108,12 +112,25 @@ static void build_active_response(WheelProtocol *protocol) {
         return;
     }
     bool system_status_response = protocol->system_status_pending;
+    bool system_control_response =
+        !system_status_response && protocol->mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED &&
+        wheel_packet_remote_tuning_pending(&protocol->system_control_output);
     bool remote_tuning_response =
-        !system_status_response && remote_tuning_mode &&
+        !system_status_response && !system_control_response && remote_tuning_mode &&
         wheel_packet_remote_tuning_pending(&protocol->remote_tuning_output);
     uint8_t flags = protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET];
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
-    if (remote_tuning_response) {
+    if (system_control_response) {
+        RemoteTuningResponse response = protocol->system_control_output.response;
+        (void)wheel_packet_remote_tuning_encode(&protocol->system_control_output,
+                                                protocol->response);
+        if (response.code == REMOTE_TUNING_RESPONSE_SETUP) {
+            protocol->system_status_code =
+                response.value == 0 ? WHEEL_STATUS_IDLE
+                                    : (uint8_t)(response.value + WHEEL_STATUS_SETUP_PAGE_OFFSET);
+            protocol->system_status_pending = true;
+        }
+    } else if (remote_tuning_response) {
         (void)wheel_packet_remote_tuning_encode(&protocol->remote_tuning_output,
                                                 protocol->response);
     } else if (wheel_packet_crc_applies(protocol->mode)) {
@@ -126,7 +143,7 @@ static void build_active_response(WheelProtocol *protocol) {
     } else {
         protocol->response[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
     }
-    if (!remote_tuning_response) {
+    if (!system_control_response && !remote_tuning_response) {
         encode_legacy_status(protocol, protocol->response);
         if (!system_status_response) {
             (void)wheel_output_reports_encode_next(&protocol->output_reports, protocol->mode,
@@ -173,6 +190,29 @@ void wheel_protocol_set_display_rotation(WheelProtocol *protocol, bool enabled, 
 void wheel_protocol_queue_system_status(WheelProtocol *protocol, uint16_t code) {
     protocol->system_status_code = (uint8_t)code;
     protocol->system_status_pending = true;
+}
+
+/**
+ * @brief Queues a system-owned extended remote-tuning response.
+ *
+ * Accepts active, inactive, and setup-page responses for the extended link. The separate system
+ * slot takes priority without consuming a host-owned response that is already pending.
+ *
+ * @param[in,out] protocol Attached-wheel protocol state to update.
+ * @param[in] response Semantic response requested by system-control policy.
+ * @return True when the response was retained; otherwise false.
+ */
+bool wheel_protocol_queue_system_control_response(WheelProtocol *protocol,
+                                                  const RemoteTuningResponse *response) {
+    if (protocol == NULL || response == NULL || response->link != REMOTE_TUNING_LINK_EXTENDED ||
+        (response->code != REMOTE_TUNING_RESPONSE_ACTIVE &&
+         response->code != REMOTE_TUNING_RESPONSE_INACTIVE &&
+         response->code != REMOTE_TUNING_RESPONSE_SETUP) ||
+        (response->code == REMOTE_TUNING_RESPONSE_SETUP &&
+         response->value > WHEEL_SETUP_PAGE_MAXIMUM)) {
+        return false;
+    }
+    return wheel_packet_remote_tuning_queue(&protocol->system_control_output, response);
 }
 
 /**
@@ -422,6 +462,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     protocol->crc_input = empty_crc_input;
     protocol->crc_output = empty_crc_output;
     protocol->crc_adapter = empty_crc_adapter;
+    wheel_packet_remote_tuning_init(&protocol->system_control_output);
     wheel_packet_remote_tuning_init(&protocol->remote_tuning_output);
     wheel_output_reports_init(&protocol->output_reports);
     wheel_capability_init(&protocol->capabilities);
