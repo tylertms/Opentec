@@ -64,6 +64,9 @@ static void test_classifies_script_status_query(void) {
     payload[4] = 7;
     assert(usb_vendor_command_decode(&output, &command));
     assert(command.kind == USB_VENDOR_COMMAND_SCRIPT_VALUES);
+    payload[4] = 8;
+    assert(usb_vendor_command_decode(&output, &command));
+    assert(command.kind == USB_VENDOR_COMMAND_SCRIPT_AXES);
     payload[1] = 2;
     assert(!usb_vendor_command_decode(&output, &command));
 }

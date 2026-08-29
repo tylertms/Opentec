@@ -114,6 +114,7 @@
 
 typedef enum {
     FORCE_FEEDBACK_SCRIPT_REPORT_NONE,
+    FORCE_FEEDBACK_SCRIPT_REPORT_AXES,
     FORCE_FEEDBACK_SCRIPT_REPORT_SAMPLES,
     FORCE_FEEDBACK_SCRIPT_REPORT_STATUS,
     FORCE_FEEDBACK_SCRIPT_REPORT_VALUES,
@@ -883,6 +884,15 @@ static void prepare_usb_vendor_response(void) {
         usb_vendor_response_kind = USB_VENDOR_RESPONSE_WHEEL_TRANSFER;
         return;
     }
+    if (force_feedback_script_report_pending == FORCE_FEEDBACK_SCRIPT_REPORT_AXES &&
+        force_feedback_script_axes_report_encode(
+            &force_feedback_script_system.values, &force_feedback_script_response_sequence,
+            usb_vendor_response, sizeof(usb_vendor_response))) {
+        force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_NONE;
+        usb_vendor_response_length = FORCE_FEEDBACK_SCRIPT_AXES_RESPONSE_SIZE;
+        usb_vendor_response_kind = USB_VENDOR_RESPONSE_SCRIPT_REPORT;
+        return;
+    }
     if (force_feedback_script_report_pending == FORCE_FEEDBACK_SCRIPT_REPORT_SAMPLES &&
         force_feedback_script_samples_report_encode(
             &force_feedback_script_system.values, force_feedback_script_sample_report_index,
@@ -1348,6 +1358,10 @@ static void service_usb_output(void) {
     }
 
     if (usb_vendor_command_decode(&usb_output_command, &usb_vendor_command)) {
+        if (usb_vendor_command.kind == USB_VENDOR_COMMAND_SCRIPT_AXES) {
+            force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_AXES;
+            return;
+        }
         if (usb_vendor_command_script_sample_index(&usb_vendor_command,
                                                    &force_feedback_script_sample_report_index)) {
             force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_SAMPLES;

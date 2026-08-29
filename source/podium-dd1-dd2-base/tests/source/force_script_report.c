@@ -9,6 +9,35 @@ static uint32_t decode_value(const uint8_t input[4]) {
            (uint32_t)input[3] << 24u;
 }
 
+static void test_encodes_axis_group_and_padding(void) {
+    ForceFeedbackScriptRuntime runtime = {0};
+    uint8_t sequence = 10;
+    uint8_t response[FORCE_FEEDBACK_SCRIPT_AXES_RESPONSE_SIZE];
+    static const uint8_t expected_envelope[] = {0x25, 0, 11, 0x2a, 8};
+
+    memset(response, 0xa5, sizeof(response));
+    for (uint8_t index = 0; index < FORCE_FEEDBACK_SCRIPT_AXIS_VALUE_COUNT; index++) {
+        runtime.axes[index] = UINT32_C(0xf0e0d000) + index;
+    }
+    assert(
+        force_feedback_script_axes_report_encode(&runtime, &sequence, response, sizeof(response)));
+    assert(sequence == 11);
+    assert(memcmp(response, expected_envelope, sizeof(expected_envelope)) == 0);
+    assert(response[5] == 0);
+    for (uint8_t index = 0; index < FORCE_FEEDBACK_SCRIPT_AXIS_REPORT_COUNT; index++) {
+        assert(decode_value(response + 6 + index * 4u) == runtime.axes[index]);
+    }
+    for (uint8_t index = 38; index < sizeof(response); index++) {
+        assert(response[index] == 0);
+    }
+
+    assert(!force_feedback_script_axes_report_encode(&runtime, &sequence, response,
+                                                     sizeof(response) - 1));
+    assert(!force_feedback_script_axes_report_encode(NULL, &sequence, response, sizeof(response)));
+    assert(!force_feedback_script_axes_report_encode(&runtime, NULL, response, sizeof(response)));
+    assert(!force_feedback_script_axes_report_encode(&runtime, &sequence, NULL, sizeof(response)));
+}
+
 static void test_encodes_ten_consecutive_samples(void) {
     ForceFeedbackScriptRuntime runtime = {0};
     uint8_t sequence = 3;
@@ -120,6 +149,7 @@ static void test_encodes_timing_before_writable_variables(void) {
 }
 
 int main(void) {
+    test_encodes_axis_group_and_padding();
     test_encodes_ten_consecutive_samples();
     test_encodes_complete_slot_status_response();
     test_encodes_timing_before_writable_variables();

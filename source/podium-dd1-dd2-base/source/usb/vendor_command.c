@@ -12,6 +12,7 @@ enum {
     VENDOR_COMMAND_SCRIPT_SAMPLES_LAST_FIRST = 0x01f5,
     VENDOR_COMMAND_SCRIPT_STATUS_SELECTOR = 6,
     VENDOR_COMMAND_SCRIPT_VALUES_SELECTOR = 7,
+    VENDOR_COMMAND_SCRIPT_AXES_SELECTOR = 8,
     VENDOR_COMMAND_EXTENDED_RESET_GROUP = 1,
     VENDOR_COMMAND_EXTENDED_RESET_SELECTOR = 0x1a,
     VENDOR_COMMAND_WHEEL_TRANSFER = 0xe0,
@@ -23,8 +24,8 @@ enum {
 /**
  * @brief Selects the route for a vendor command opcode.
  *
- * Maps each supported top-level opcode to its clean command category and rejects an extended reset
- * unless its group and selector match a supported script-status or reset signature.
+ * Maps each supported top-level opcode to its clean command category and rejects opcode 0x0A
+ * unless its group and selector match a supported script query or reset signature.
  *
  * @param[in] opcode Top-level vendor command opcode.
  * @param[in] payload Complete 63-byte vendor command payload.
@@ -56,6 +57,9 @@ static int8_t command_kind(uint8_t opcode, const uint8_t *payload) {
             }
             if (payload[4] == VENDOR_COMMAND_SCRIPT_VALUES_SELECTOR) {
                 return USB_VENDOR_COMMAND_SCRIPT_VALUES;
+            }
+            if (payload[4] == VENDOR_COMMAND_SCRIPT_AXES_SELECTOR) {
+                return USB_VENDOR_COMMAND_SCRIPT_AXES;
             }
         }
         if (payload[1] == VENDOR_COMMAND_EXTENDED_RESET_GROUP &&
