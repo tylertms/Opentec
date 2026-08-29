@@ -5,29 +5,29 @@
 #include <stdint.h>
 
 typedef enum {
-    kMotorTemperaturePrimary,
-    kMotorTemperatureSecondary,
+    kMotorTemperatureMotor,
+    kMotorTemperatureDriver,
 } MotorTemperatureSensor;
 
 typedef struct {
-    uint32_t primary_sum;
-    uint32_t secondary_sum;
-    uint32_t published_primary_sum;
-    uint32_t published_secondary_sum;
+    uint32_t motor_sum;
+    uint32_t driver_sum;
+    uint32_t published_motor_sum;
+    uint32_t published_driver_sum;
     uint32_t count;
     bool ready;
 } MotorAuxiliaryAccumulator;
 
 typedef struct {
-    uint16_t primary_average;
-    uint16_t secondary_average;
-    int16_t primary_temperature;
-    int16_t secondary_temperature;
+    uint16_t motor_average;
+    uint16_t driver_average;
+    int16_t motor_temperature;
+    int16_t driver_temperature;
 } MotorAuxiliaryTelemetry;
 
 int16_t motor_temperature_interpolate(uint16_t sample, MotorTemperatureSensor sensor);
-bool motor_auxiliary_samples_accumulate(MotorAuxiliaryAccumulator *accumulator, uint16_t primary,
-                                        uint16_t secondary);
+bool motor_auxiliary_samples_accumulate(MotorAuxiliaryAccumulator *accumulator, uint16_t motor,
+                                        uint16_t driver);
 bool motor_auxiliary_samples_resolve(MotorAuxiliaryAccumulator *accumulator,
                                      MotorAuxiliaryTelemetry *telemetry);
 

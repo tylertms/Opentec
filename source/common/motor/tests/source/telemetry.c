@@ -3,14 +3,14 @@
 #include <assert.h>
 
 static void test_temperature_interpolation(void) {
-    assert(motor_temperature_interpolate(3987U, kMotorTemperaturePrimary) == -255);
-    assert(motor_temperature_interpolate(3970U, kMotorTemperaturePrimary) == -13);
-    assert(motor_temperature_interpolate(3953U, kMotorTemperaturePrimary) == -11);
-    assert(motor_temperature_interpolate(428U, kMotorTemperaturePrimary) == 255);
+    assert(motor_temperature_interpolate(3987U, kMotorTemperatureMotor) == -255);
+    assert(motor_temperature_interpolate(3970U, kMotorTemperatureMotor) == -13);
+    assert(motor_temperature_interpolate(3953U, kMotorTemperatureMotor) == -11);
+    assert(motor_temperature_interpolate(428U, kMotorTemperatureMotor) == 255);
 
-    assert(motor_temperature_interpolate(3948U, kMotorTemperatureSecondary) == -255);
-    assert(motor_temperature_interpolate(3930U, kMotorTemperatureSecondary) == -13);
-    assert(motor_temperature_interpolate(718U, kMotorTemperatureSecondary) == 255);
+    assert(motor_temperature_interpolate(3948U, kMotorTemperatureDriver) == -255);
+    assert(motor_temperature_interpolate(3930U, kMotorTemperatureDriver) == -13);
+    assert(motor_temperature_interpolate(718U, kMotorTemperatureDriver) == 255);
 }
 
 static void test_auxiliary_accumulation(void) {
@@ -24,10 +24,10 @@ static void test_auxiliary_accumulation(void) {
     assert(accumulator.count == 0U);
     assert(accumulator.ready);
     assert(motor_auxiliary_samples_resolve(&accumulator, &telemetry));
-    assert(telemetry.primary_average == 3970U);
-    assert(telemetry.secondary_average == 3930U);
-    assert(telemetry.primary_temperature == -13);
-    assert(telemetry.secondary_temperature == -13);
+    assert(telemetry.motor_average == 3970U);
+    assert(telemetry.driver_average == 3930U);
+    assert(telemetry.motor_temperature == -13);
+    assert(telemetry.driver_temperature == -13);
     assert(!motor_auxiliary_samples_resolve(&accumulator, &telemetry));
 }
 
