@@ -3,6 +3,9 @@
 #include <assert.h>
 #include <stdint.h>
 
+#include "common/motor/force_feedback_engine.h"
+#include "common/motor/force_feedback_soft_stop.h"
+
 static void test_defaults(void) {
     MotorForceFeedbackSettings settings = motor_force_feedback_settings_default();
     assert(settings.position_half_range == 0x8ac0);
@@ -125,6 +128,80 @@ static void test_output(void) {
     assert(output.magnitude == 1234U);
 }
 
+static void test_soft_stop(void) {
+    MotorForceFeedbackSoftStop soft_stop = {0};
+    int32_t force = 100;
+    assert(
+        !motor_force_feedback_soft_stop_apply(&soft_stop, 1U, 35520, 0, 0, 6577U, false, &force));
+    assert(force == 100);
+    assert(soft_stop.ramp_percent == 1U);
+    assert(soft_stop.next_ramp_tick == 51U);
+
+    force = 0;
+    assert(motor_force_feedback_soft_stop_apply(&soft_stop, 52U, 35520, 0, 42097, 6577U, false,
+                                                &force));
+    assert(force == 1310);
+    assert(soft_stop.ramp_percent == 2U);
+
+    force = 0;
+    assert(motor_force_feedback_soft_stop_apply(&soft_stop, 103U, 35520, 0, -42097, 6577U, false,
+                                                &force));
+    assert(force == -1966);
+
+    force = 4321;
+    assert(!motor_force_feedback_soft_stop_apply(&soft_stop, 104U, 35520, 0, 50000, 6577U, true,
+                                                 &force));
+    assert(force == 4321);
+
+    soft_stop.previous_half_range = 36001;
+    soft_stop.ramp_percent = 100U;
+    soft_stop.next_ramp_tick = 100U;
+    force = 0;
+    assert(motor_force_feedback_soft_stop_apply(&soft_stop, 200U, 35520, 0, 42097, 6577U, false,
+                                                &force));
+    assert(soft_stop.ramp_percent == 1U);
+    assert(force == 655);
+}
+
+static void test_engine(void) {
+    MotorForceFeedbackEngine engine;
+    motor_force_feedback_engine_initialize(&engine);
+    assert(engine.settings.position_half_range == 0x8ac0);
+    assert(engine.effects[MOTOR_FORCE_FEEDBACK_POSITION_SLOT].active);
+    assert(engine.effects[MOTOR_FORCE_FEEDBACK_POSITION_SLOT].type ==
+           MOTOR_FORCE_FEEDBACK_EFFECT_WINDOW);
+    assert(engine.effects[MOTOR_FORCE_FEEDBACK_DAMPER_SLOT].active);
+    assert(engine.effects[MOTOR_FORCE_FEEDBACK_DAMPER_SLOT].type ==
+           MOTOR_FORCE_FEEDBACK_EFFECT_DIRECTIONAL);
+    assert(engine.soft_stop_transition_range == 0x19b1U);
+    assert(engine.ramp_percent == 100U);
+
+    MotorForceFeedbackMix mix = motor_force_feedback_mix(&engine, 1U, 0, 0, 0, false);
+    assert(mix.primary.positive);
+    assert(mix.primary.magnitude == 0U);
+    assert(mix.secondary == 0);
+    assert(!engine.effects[MOTOR_FORCE_FEEDBACK_DAMPER_SLOT].active);
+
+    const uint8_t constant_payload[5] = {0U, 0U, 0U, 0U, 0U};
+    assert(motor_force_feedback_constant_configure(&engine, 0U, constant_payload));
+    assert(motor_force_feedback_effect_enable(&engine, 0U));
+    mix = motor_force_feedback_mix(&engine, 2U, 0, 0, 0, false);
+    assert(mix.primary.positive);
+    assert(mix.primary.magnitude == 22937U);
+    assert(mix.secondary == 0);
+
+    engine.ramp_percent = 50U;
+    mix = motor_force_feedback_mix(&engine, 3U, 0, 0, 0, false);
+    assert(mix.primary.magnitude == 11468U);
+    assert(motor_force_feedback_effect_disable(&engine, 0U));
+    assert(!motor_force_feedback_effect_disable(&engine, MOTOR_FORCE_FEEDBACK_EFFECT_COUNT));
+
+    engine.ramp_percent = 100U;
+    mix = motor_force_feedback_mix(&engine, 4U, 0, 0, 320, false);
+    assert(mix.primary.magnitude == 3U);
+    assert(mix.secondary == 0);
+}
+
 int main(void) {
     test_defaults();
     test_constant_effects();
@@ -132,5 +209,7 @@ int main(void) {
     test_directional_effects();
     test_filter();
     test_output();
+    test_soft_stop();
+    test_engine();
     return 0;
 }

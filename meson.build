@@ -20,7 +20,11 @@ endif
 
 common_include = include_directories('source')
 motor_current_offset_calibration_sources = files('source/common/motor/calibration.c')
-motor_force_feedback_sources = files('source/common/motor/force_feedback.c')
+motor_force_feedback_sources = files(
+  'source/common/motor/force_feedback.c',
+  'source/common/motor/force_feedback_engine.c',
+  'source/common/motor/force_feedback_soft_stop.c',
+)
 motor_hardware_profile_sources = files('source/common/motor/profile.c')
 motor_service_sources = files('source/common/motor/service.c')
 motor_control_sources = files(
