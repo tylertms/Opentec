@@ -3,6 +3,7 @@
 
 #include "analog/auxiliary_axis.h"
 #include "board/identity.h"
+#include "board/power.h"
 #include "board/status_led.h"
 #include "cooling/controller.h"
 #include "cooling/effect_limit.h"
@@ -38,6 +39,7 @@
 #include "platform/motor_link.h"
 #include "platform/pedal_link.h"
 #include "platform/pin_mux.h"
+#include "platform/power.h"
 #include "platform/serial_link.h"
 #include "platform/shifter.h"
 #include "platform/status_led.h"
@@ -176,6 +178,7 @@ static MotorOutputTransport motor_output_transport;
 static uint8_t motor_received_frame[MOTOR_LIVE_FRAME_SIZE];
 static uint8_t motor_transmitted_frame[MOTOR_LIVE_FRAME_SIZE];
 static StatusLed status_led;
+static PowerController power_controller;
 static CoolingController cooling_controller;
 static CoolingEffectLimit cooling_effect_limit;
 static CoolingEffectStrengths cooling_effect_strengths;
@@ -222,6 +225,50 @@ static const UsbMotorVendorServiceBuffers usb_motor_buffers = {
     .application_data = usb_motor_application_data,
     .application_data_capacity = sizeof(usb_motor_application_data),
 };
+
+/**
+ * @brief Applies a power-controller transition to base hardware and retained settings.
+ *
+ * Enables the external power hold at startup. Shutdown start makes retained settings immediately
+ * eligible for storage, performs one persistence pass, disconnects USB, inhibits force output,
+ * and releases the power hold. Requested-state and completed-shutdown transitions remain available
+ * in the controller for the system-event service.
+ *
+ * @param[in] action Power transition produced by the controller.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void apply_power_action(PowerAction action, uint32_t now_ms) {
+    switch (action) {
+    case POWER_ACTION_ENABLE_LATCH:
+        platform_power_latch_set(true);
+        break;
+    case POWER_ACTION_BEGIN_SHUTDOWN:
+        base_settings_persistence_request_save(&settings_persistence, now_ms);
+        (void)base_settings_persistence_service(&settings_persistence, &base_settings, now_ms);
+        force_output_enabled = false;
+        platform_usb_detach();
+        platform_power_latch_set(false);
+        break;
+    case POWER_ACTION_NONE:
+    case POWER_ACTION_REQUEST_CHANGED:
+    case POWER_ACTION_FINISH_SHUTDOWN:
+        break;
+    }
+}
+
+/**
+ * @brief Services the wheel-base power button.
+ *
+ * Samples the active-high platform input, advances the short-press and shutdown controller, and
+ * applies any resulting hardware transition.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_power(uint32_t now_ms) {
+    PowerAction action =
+        power_controller_update(&power_controller, platform_power_button_pressed(), true, now_ms);
+    apply_power_action(action, now_ms);
+}
 
 static void initialize_cooling(void) {
     cooling_controller_init(&cooling_controller, board_identity.mode_bits == 7);
@@ -1181,6 +1228,9 @@ int main(void) {
     platform_clock_init();
     board_identity = platform_board_identity_read();
     platform_pin_mux_init();
+    platform_power_init();
+    power_controller_init(&power_controller);
+    service_power(0);
     platform_time_init();
     platform_display_init();
     platform_display_write_frame(display_framebuffer);
@@ -1214,6 +1264,7 @@ int main(void) {
         service_usb_output();
         platform_aux_bus_service();
         uint32_t now_ms = platform_time_ms();
+        service_power(now_ms);
         (void)usb_connection_monitor_update(&usb_connection_monitor, platform_usb_connected(), true,
                                             now_ms);
         platform_status_led_set(status_led_update(&status_led, now_ms));

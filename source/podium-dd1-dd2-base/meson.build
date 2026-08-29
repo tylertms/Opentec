@@ -87,6 +87,7 @@ podium_report_descriptor_sources = files('source/usb/podium_report_descriptor.c'
 board_identity_sources = files('source/board/identity.c')
 usb_connection_sources = files('source/usb/connection.c')
 status_led_sources = files('source/board/status_led.c')
+power_controller_sources = files('source/board/power.c')
 h_pattern_shifter_sources = files('source/shifter/h_pattern.c')
 h_pattern_calibration_sources = files('source/shifter/calibration.c')
 shifter_display_sources = files('source/shifter/display.c')
@@ -257,6 +258,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'board-identity': 'source/board/identity.c',
     'usb-connection': 'source/usb/connection.c',
     'status-led': 'source/board/status_led.c',
+    'power-controller': 'source/board/power.c',
     'firmware': 'source/firmware.c',
     'h-pattern-shifter': 'source/shifter/h_pattern.c',
     'h-pattern-calibration': 'source/shifter/calibration.c',
@@ -299,6 +301,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'platform-pin-mux': 'source/platform/dspic33e/pin_mux.c',
     'platform-storage': 'source/platform/dspic33e/storage.c',
     'platform-status-led': 'source/platform/dspic33e/status_led.c',
+    'platform-power': 'source/platform/dspic33e/power.c',
     'platform-shifter': 'source/platform/dspic33e/shifter.c',
     'platform-time': 'source/platform/dspic33e/time.c',
     'platform-usb': 'source/platform/dspic33e/usb.c',
@@ -1155,6 +1158,14 @@ if not meson.is_cross_build()
     'base-status-led-test',
     'tests/source/status_led.c',
     status_led_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  power_controller_test = executable(
+    'base-power-controller-test',
+    'tests/source/power_controller.c',
+    power_controller_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2083,6 +2094,7 @@ if not meson.is_cross_build()
   test('base-board-identity', board_identity_test, suite: ['base', 'board'])
   test('base-usb-connection', usb_connection_test, suite: ['base', 'usb', 'connection'])
   test('base-status-led', status_led_test, suite: ['base', 'board', 'led'])
+  test('base-power-controller', power_controller_test, suite: ['base', 'board', 'power'])
   test('base-h-pattern-shifter', h_pattern_shifter_test, suite: ['base', 'shifter'])
   test(
     'base-h-pattern-calibration',
