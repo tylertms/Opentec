@@ -19,14 +19,19 @@ if (
 endif
 
 common_include = include_directories('source')
+motor_current_offset_calibration_sources = files('source/common/motor/calibration.c')
 motor_control_sources = files(
   'source/common/motor/foc.c',
   'source/common/motor/io.c',
   'source/common/motor/peripherals.c',
-)
+) + motor_current_offset_calibration_sources
 wqr_frame_sources = files('source/common/wqr_frame.c')
 
 subdir('source/podium-dd1-dd2-wqr')
 subdir('source/podium-dd1-dd2-base')
 subdir('source/podium-dd1-motor')
 subdir('source/podium-dd2-motor')
+
+if not meson.is_cross_build()
+  subdir('source/common/motor/tests')
+endif

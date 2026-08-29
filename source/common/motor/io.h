@@ -5,10 +5,7 @@
 #include <gmclib.h>
 #include <stdbool.h>
 
-typedef struct {
-    frac16_t phase_a;
-    frac16_t phase_b;
-} MotorCurrentOffsets;
+#include "common/motor/calibration.h"
 
 typedef struct {
     GMCLIB_3COOR_T_F16 phase_current;
