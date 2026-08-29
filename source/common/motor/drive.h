@@ -32,6 +32,10 @@ typedef struct {
     int16_t error;
 } MotorDriveDeratingState;
 
+typedef struct {
+    bool latched;
+} MotorDriveOverspeedState;
+
 MotorDriveCommand motor_drive_command_resolve(bool positive, uint32_t primary, int32_t secondary,
                                               uint8_t normal_output_percent, bool full_torque,
                                               bool reduced_controller, bool secondary_disabled);
@@ -45,5 +49,7 @@ void motor_drive_derating_initialize(MotorDriveDeratingState *state, int16_t nor
 int16_t motor_drive_product_scale(MotorDriveDeratingState *state, int16_t current,
                                   uint16_t motor_temperature_sample, int16_t normal_scale,
                                   int16_t minimum_scale, bool minimum_mode);
+int16_t motor_drive_overspeed_apply(MotorDriveOverspeedState *state, int16_t current,
+                                    int16_t velocity);
 
 #endif

@@ -97,6 +97,20 @@ static void test_product_derating(void) {
     assert(motor_drive_product_scale(&dd2, 20000, 2000U, 0x770a, 0x5c28, true) == 14399);
 }
 
+static void test_overspeed_latch(void) {
+    MotorDriveOverspeedState state = {0};
+    assert(motor_drive_overspeed_apply(&state, 1234, 0x2ccc) == 1234);
+    assert(!state.latched);
+    assert(motor_drive_overspeed_apply(&state, 1234, 0x2ccd) == 1234);
+    assert(state.latched);
+    assert(motor_drive_overspeed_apply(&state, -1234, 0) == 0);
+
+    state = (MotorDriveOverspeedState){0};
+    assert(motor_drive_overspeed_apply(&state, -1234, -0x2ccd) == -1234);
+    assert(state.latched);
+    assert(motor_drive_overspeed_apply(&state, 1234, 0) == 0);
+}
+
 int main(void) {
     test_normal_product_scales();
     test_full_torque_and_gates();
@@ -104,5 +118,6 @@ int main(void) {
     test_natural_motion_resistance();
     test_natural_friction();
     test_product_derating();
+    test_overspeed_latch();
     return 0;
 }

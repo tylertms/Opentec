@@ -18,6 +18,7 @@ enum {
     FRICTION_SETTING_DIVISOR = 0xa0000,
     DERATING_TEMPERATURE_THRESHOLD = 0x507,
     DERATING_TEMPERATURE_SHIFT = 4,
+    OVERSPEED_THRESHOLD = 0x2ccc,
 };
 
 static const uint32_t interpolation_coefficients[MOTOR_DRIVE_INTERPOLATION_SETTING_COUNT] = {
@@ -250,4 +251,26 @@ int16_t motor_drive_product_scale(MotorDriveDeratingState *state, int16_t curren
                          ? INT16_MAX
                          : (int16_t)(((int32_t)state->current_scale << 15U) / normal_scale);
     return motor_q15_scale_wrap((uint16_t)factor, scaled_current);
+}
+
+/**
+ * @brief Applies the official permanent over-speed current latch.
+ *
+ * The first sample outside the positive or negative threshold arms the latch while preserving that
+ * sample. Every subsequent sample is replaced by zero until the controller resets.
+ *
+ * @param state Persistent over-speed latch.
+ * @param current Product-scaled signed current.
+ * @param velocity Filtered position delta used by the official safety check.
+ * @return Original current before latching, otherwise zero after the latch is armed.
+ */
+int16_t motor_drive_overspeed_apply(MotorDriveOverspeedState *state, int16_t current,
+                                    int16_t velocity) {
+    if (state->latched) {
+        return 0;
+    }
+    if (velocity > OVERSPEED_THRESHOLD || velocity < -OVERSPEED_THRESHOLD) {
+        state->latched = true;
+    }
+    return current;
 }

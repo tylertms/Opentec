@@ -77,6 +77,7 @@ typedef struct {
     MotorDriveInterpolationState drive_interpolation;
     MotorDriveFrictionState drive_friction;
     MotorDriveDeratingState drive_derating;
+    MotorDriveOverspeedState drive_overspeed;
     GFLIB_CTRL_PI_P_AW_T_A32 derating_controller;
     MotorControlMode mode;
     uint32_t service_tick;
@@ -199,6 +200,8 @@ static int16_t motor_runtime_current_resolve(MotorRuntime *runtime) {
         motor_product_configuration.normal_current_scale,
         motor_product_configuration.minimum_current_scale,
         (uint8_t)runtime->parameters.entries[MOTOR_PARAMETER_MINIMUM_CURRENT_MODE].value == 0xaaU);
+    current = motor_drive_overspeed_apply(&runtime->drive_overspeed, current,
+                                          runtime->motion_sample.filtered_position_delta);
     if (!runtime->calibration_valid || !runtime->encoder_index_detected) {
         return current;
     }
