@@ -58,7 +58,7 @@ static void motor_spi_dma_initialize(void) {
  * @brief Configures SPI0 and two 13-byte DMA channels for full-duplex motor transfers.
  * @param buffers Persistent transmit and receive buffers used directly by DMA.
  * @param prepare_handler Function that prepares the next response before a scheduled transfer.
- * @param receive_handler Function invoked when the receive DMA channel completes.
+ * @param receive_handler Function that processes a completed receive and approves its response.
  * @param context Caller context passed to the receive handler.
  */
 void motor_spi_initialize(MotorSpiTransferBuffers *buffers, MotorSpiPrepareHandler prepare_handler,
@@ -132,8 +132,6 @@ void DMA0_DMA4_IRQHandler(void) {
 void DMA1_DMA5_IRQHandler(void) {
     EDMA_ClearChannelStatusFlags(DMA0, 1U, kEDMA_InterruptFlag | kEDMA_DoneFlag);
     GPIO_PortSet(GPIOC, 1UL << 0U);
-    if (transfer_receive_handler != NULL) {
-        transfer_receive_handler(transfer_buffers->receive, transfer_context);
-    }
-    response_pending = true;
+    response_pending = transfer_receive_handler == NULL ||
+                       transfer_receive_handler(transfer_buffers->receive, transfer_context);
 }

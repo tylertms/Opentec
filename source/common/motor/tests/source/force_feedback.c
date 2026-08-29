@@ -259,6 +259,9 @@ static void test_commands(void) {
     command[0] = 0x11U;
     command[1] = 7U;
     assert(!motor_force_feedback_command_apply(&engine, command));
+
+    command[0] = 0x12U;
+    assert(motor_force_feedback_command_apply(&engine, command));
 }
 
 int main(void) {

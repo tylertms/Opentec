@@ -14,7 +14,7 @@ enum {
  * @brief Applies one official seven-byte motor force-feedback command.
  * @param engine Force-feedback engine to update.
  * @param command Slot, opcode, effect kind, and five-byte effect payload.
- * @return True when the opcode and effect kind were supported.
+ * @return False only when a configure command names an unsupported effect kind.
  */
 bool motor_force_feedback_command_apply(MotorForceFeedbackEngine *engine,
                                         const uint8_t command[7]) {
@@ -44,5 +44,5 @@ bool motor_force_feedback_command_apply(MotorForceFeedbackEngine *engine,
     if (opcode == DISABLE_POSITION_OPCODE) {
         return motor_force_feedback_effect_disable(engine, MOTOR_FORCE_FEEDBACK_POSITION_SLOT);
     }
-    return false;
+    return true;
 }

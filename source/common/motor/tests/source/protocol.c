@@ -53,6 +53,10 @@ static void test_status_command(void) {
     assert(state.force_feedback.effects[0].active);
     assert(state.force_feedback.effects[0].type == MOTOR_FORCE_FEEDBACK_EFFECT_CONSTANT);
 
+    frame.payload[1] = 0x11U;
+    frame.payload[2] = 7U;
+    assert(!motor_protocol_frame_apply(&state, &frame));
+
     frame.type = 9U;
     assert(!motor_protocol_frame_apply(&state, &frame));
 }

@@ -39,7 +39,7 @@ void motor_protocol_initialize(MotorProtocolState *state, uint8_t normal_output_
  *
  * @param state Persistent motor protocol state.
  * @param frame Validated motor-link frame.
- * @return True when the frame type is supported.
+ * @return False for an unknown frame type or rejected effect configuration.
  */
 bool motor_protocol_frame_apply(MotorProtocolState *state, const MotorLinkFrame *frame) {
     MotorLinkForceCommand force;
@@ -59,8 +59,7 @@ bool motor_protocol_frame_apply(MotorProtocolState *state, const MotorLinkFrame 
     MotorLinkStatusCommand status;
     if (motor_link_status_command_decode(frame, &status)) {
         state->status = status.status;
-        (void)motor_force_feedback_command_apply(&state->force_feedback, status.command);
-        return true;
+        return motor_force_feedback_command_apply(&state->force_feedback, status.command);
     }
     return false;
 }

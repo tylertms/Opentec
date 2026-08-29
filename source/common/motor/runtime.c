@@ -706,17 +706,18 @@ static void motor_runtime_spi_prepare(uint8_t frame[MOTOR_SPI_TRANSFER_SIZE], vo
  *
  * @param frame Complete received motor-link transfer buffer.
  * @param context Active motor runtime supplied during SPI initialization.
+ * @return False only when an unsupported effect configuration suppresses the next response.
  */
-static void motor_runtime_spi_receive(const uint8_t frame[MOTOR_SPI_TRANSFER_SIZE], void *context) {
+static bool motor_runtime_spi_receive(const uint8_t frame[MOTOR_SPI_TRANSFER_SIZE], void *context) {
     MotorRuntime *runtime = context;
     MotorLinkFrame decoded;
     MotorLinkFrameResult result = motor_link_frame_decode(frame, &decoded);
-    if (!motor_protocol_frame_result_apply(&runtime->protocol, result, &decoded) ||
-        !runtime->protocol.live_drive_updated) {
-        return;
+    bool applied = motor_protocol_frame_result_apply(&runtime->protocol, result, &decoded);
+    if (applied && runtime->protocol.live_drive_updated) {
+        motor_runtime_drive_apply(runtime);
     }
 
-    motor_runtime_drive_apply(runtime);
+    return result != MOTOR_LINK_FRAME_VALID || decoded.type != MOTOR_LINK_STATUS_TYPE || applied;
 }
 
 /**

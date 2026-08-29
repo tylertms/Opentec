@@ -12,7 +12,7 @@ typedef struct {
 } MotorSpiTransferBuffers;
 
 typedef void (*MotorSpiPrepareHandler)(uint8_t frame[MOTOR_SPI_TRANSFER_SIZE], void *context);
-typedef void (*MotorSpiReceiveHandler)(const uint8_t frame[MOTOR_SPI_TRANSFER_SIZE], void *context);
+typedef bool (*MotorSpiReceiveHandler)(const uint8_t frame[MOTOR_SPI_TRANSFER_SIZE], void *context);
 
 void motor_spi_initialize(MotorSpiTransferBuffers *buffers, MotorSpiPrepareHandler prepare_handler,
                           MotorSpiReceiveHandler receive_handler, void *context);
