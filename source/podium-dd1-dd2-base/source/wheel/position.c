@@ -3,6 +3,14 @@
 #include <stdint.h>
 #include <string.h>
 
+/**
+ * @brief Clamps a signed wheel position to the supported sensor range.
+ *
+ * Saturates values outside the one-sided 82,880-count limit and preserves values within it.
+ *
+ * @param[in] position Signed wheel position to constrain.
+ * @return Position constrained to the supported sensor range.
+ */
 static int32_t clamp_position(int64_t position) {
     if (position < -WHEEL_POSITION_SAMPLE_LIMIT) {
         return -WHEEL_POSITION_SAMPLE_LIMIT;
@@ -30,10 +38,29 @@ static bool filter_value_is_invalid(float value) {
     return representation.bits == UINT32_C(0x7fffffff) || representation.bits == UINT32_MAX;
 }
 
+/**
+ * @brief Centers an absolute wheel-position sample.
+ *
+ * Subtracts the retained center reference and saturates the result to the supported sensor range.
+ *
+ * @param[in] sample Current absolute wheel-position sample.
+ * @param[in] center Retained absolute center reference.
+ * @return Signed and constrained displacement from center.
+ */
 int32_t wheel_position_center(int32_t sample, int32_t center) {
     return clamp_position((int64_t)sample - center);
 }
 
+/**
+ * @brief Applies wheel centering and steering deadband.
+ *
+ * Removes the configured deadband from the magnitude outside the center region and returns zero
+ * while the centered position remains within that region.
+ *
+ * @param[in] sample Current absolute wheel-position sample.
+ * @param[in] calibration Active wheel center, travel, and deadband.
+ * @return Centered position with the deadband removed.
+ */
 int32_t wheel_position_filter(int32_t sample, const WheelPositionCalibration *calibration) {
     int32_t position = wheel_position_center(sample, calibration->center);
     uint32_t deadband = calibration->deadband;
@@ -47,6 +74,16 @@ int32_t wheel_position_filter(int32_t sample, const WheelPositionCalibration *ca
     return position < 0 ? position + (int32_t)deadband : position - (int32_t)deadband;
 }
 
+/**
+ * @brief Scales a wheel-position sample to a signed HID axis.
+ *
+ * Applies centering and deadband, scales negative travel to 32,768 steps and positive travel to
+ * 32,767 steps, and saturates samples at the configured end stops.
+ *
+ * @param[in] sample Current absolute wheel-position sample.
+ * @param[in] calibration Active wheel center, travel, and deadband.
+ * @return Signed sixteen-bit steering axis.
+ */
 int16_t wheel_position_axis(int32_t sample, const WheelPositionCalibration *calibration) {
     int32_t position = wheel_position_filter(sample, calibration);
     uint32_t travel = calibration->travel;
@@ -64,6 +101,16 @@ int16_t wheel_position_axis(int32_t sample, const WheelPositionCalibration *cali
     return position < 0 ? (int16_t)-(int32_t)scaled : (int16_t)scaled;
 }
 
+/**
+ * @brief Encodes a wheel-position sample as an unsigned HID steering axis.
+ *
+ * Offsets the signed steering axis by 32,768 so full left maps to zero and full right maps to
+ * 65,535.
+ *
+ * @param[in] sample Current absolute wheel-position sample.
+ * @param[in] calibration Active wheel center, travel, and deadband.
+ * @return Unsigned sixteen-bit steering axis.
+ */
 uint16_t wheel_position_hid_axis(int32_t sample, const WheelPositionCalibration *calibration) {
     return (uint16_t)((int32_t)wheel_position_axis(sample, calibration) + 32768);
 }
@@ -96,11 +143,28 @@ int16_t wheel_position_display_rotation(int32_t sample,
     return (int16_t)angle;
 }
 
+/**
+ * @brief Clears the retained wheel center reference.
+ *
+ * Resets the absolute center to zero and marks the reference unavailable.
+ *
+ * @param[out] reference Wheel center reference to clear.
+ */
 void wheel_position_reference_reset(WheelPositionReference *reference) {
     reference->center = 0;
     reference->calibrated = false;
 }
 
+/**
+ * @brief Captures an absolute wheel sample as the center reference.
+ *
+ * Stores the sample, marks the reference available, and reports whether persistence-visible state
+ * changed.
+ *
+ * @param[in,out] reference Wheel center reference to update.
+ * @param[in] sample Absolute wheel-position sample to retain.
+ * @return True when the stored center or availability state changed.
+ */
 bool wheel_position_reference_capture(WheelPositionReference *reference, int32_t sample) {
     bool changed = !reference->calibrated || reference->center != sample;
     reference->center = sample;
@@ -122,6 +186,17 @@ uint32_t wheel_position_travel_from_degrees(uint16_t rotation_degrees) {
     return travel > WHEEL_POSITION_SAMPLE_LIMIT ? WHEEL_POSITION_SAMPLE_LIMIT : travel;
 }
 
+/**
+ * @brief Builds the active wheel-position calibration.
+ *
+ * Combines the retained center, configured lock-to-lock range, and ten-count deadzone steps. Travel
+ * remains disabled until a center reference is available.
+ *
+ * @param[in] reference Retained wheel center reference.
+ * @param[in] rotation_degrees Configured lock-to-lock wheel range in degrees.
+ * @param[in] deadzone Configured steering deadzone in ten-count steps.
+ * @return Complete wheel-position calibration for input and display processing.
+ */
 WheelPositionCalibration wheel_position_calibration_build(const WheelPositionReference *reference,
                                                           uint16_t rotation_degrees,
                                                           uint8_t deadzone) {
