@@ -93,11 +93,11 @@ podium_report_descriptor_sources = files('source/usb/podium_report_descriptor.c'
 board_identity_sources = files('source/board/identity.c')
 usb_connection_sources = files('source/usb/connection.c')
 usb_host_capability_recovery_sources = files('source/usb/host_capability_recovery.c')
-i2c_probe_sources = files('source/i2c/probe.c')
-i2c_probe_bus_sources = files('source/i2c/probe_bus.c')
-i2c_probe_exchange_service_sources = files('source/i2c/probe_exchange_service.c')
-i2c_probe_startup_service_sources = files('source/i2c/probe_startup_service.c')
-i2c_probe_transfer_service_sources = files('source/i2c/probe_transfer_service.c')
+a71ch_sources = files('source/secure_element/a71ch.c')
+a71ch_bus_sources = files('source/secure_element/bus.c')
+a71ch_exchange_sources = files('source/secure_element/exchange.c')
+a71ch_session_sources = files('source/secure_element/session.c')
+a71ch_authentication_sources = files('source/secure_element/authentication.c')
 status_led_sources = files('source/board/status_led.c')
 power_controller_sources = files('source/board/power.c')
 torque_key_sources = files('source/board/torque_key.c')
@@ -288,11 +288,11 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'board-identity': 'source/board/identity.c',
     'usb-connection': 'source/usb/connection.c',
     'usb-host-capability-recovery': 'source/usb/host_capability_recovery.c',
-    'i2c-probe': 'source/i2c/probe.c',
-    'i2c-probe-bus': 'source/i2c/probe_bus.c',
-    'i2c-probe-exchange-service': 'source/i2c/probe_exchange_service.c',
-    'i2c-probe-startup-service': 'source/i2c/probe_startup_service.c',
-    'i2c-probe-transfer-service': 'source/i2c/probe_transfer_service.c',
+    'a71ch': 'source/secure_element/a71ch.c',
+    'a71ch-bus': 'source/secure_element/bus.c',
+    'a71ch-exchange': 'source/secure_element/exchange.c',
+    'a71ch-session': 'source/secure_element/session.c',
+    'a71ch-authentication': 'source/secure_element/authentication.c',
     'status-led': 'source/board/status_led.c',
     'power-controller': 'source/board/power.c',
     'torque-key': 'source/board/torque_key.c',
@@ -1257,49 +1257,49 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
-  i2c_probe_test = executable(
-    'base-i2c-probe-test',
-    'tests/source/i2c_probe.c',
-    i2c_probe_sources,
+  a71ch_test = executable(
+    'base-a71ch-test',
+    'tests/source/a71ch.c',
+    a71ch_sources,
     build_by_default: false,
     include_directories: base_include,
   )
 
-  i2c_probe_bus_test = executable(
-    'base-i2c-probe-bus-test',
-    'tests/source/i2c_probe_bus.c',
-    i2c_probe_sources,
-    i2c_probe_bus_sources,
+  a71ch_bus_test = executable(
+    'base-a71ch-bus-test',
+    'tests/source/a71ch_bus.c',
+    a71ch_sources,
+    a71ch_bus_sources,
     build_by_default: false,
     include_directories: base_include,
   )
 
-  i2c_probe_startup_service_test = executable(
-    'base-i2c-probe-startup-service-test',
-    'tests/source/i2c_probe_startup_service.c',
-    i2c_probe_sources,
-    i2c_probe_startup_service_sources,
+  a71ch_session_test = executable(
+    'base-a71ch-session-test',
+    'tests/source/a71ch_session.c',
+    a71ch_sources,
+    a71ch_session_sources,
     build_by_default: false,
     include_directories: base_include,
   )
 
-  i2c_probe_exchange_service_test = executable(
-    'base-i2c-probe-exchange-service-test',
-    'tests/source/i2c_probe_exchange_service.c',
-    i2c_probe_sources,
-    i2c_probe_bus_sources,
-    i2c_probe_exchange_service_sources,
+  a71ch_exchange_test = executable(
+    'base-a71ch-exchange-test',
+    'tests/source/a71ch_exchange.c',
+    a71ch_sources,
+    a71ch_bus_sources,
+    a71ch_exchange_sources,
     build_by_default: false,
     include_directories: base_include,
   )
 
-  i2c_probe_transfer_service_test = executable(
-    'base-i2c-probe-transfer-service-test',
-    'tests/source/i2c_probe_transfer_service.c',
-    i2c_probe_sources,
-    i2c_probe_bus_sources,
-    i2c_probe_exchange_service_sources,
-    i2c_probe_transfer_service_sources,
+  a71ch_authentication_test = executable(
+    'base-a71ch-authentication-test',
+    'tests/source/a71ch_authentication.c',
+    a71ch_sources,
+    a71ch_bus_sources,
+    a71ch_exchange_sources,
+    a71ch_authentication_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2357,22 +2357,22 @@ if not meson.is_cross_build()
     usb_host_capability_recovery_test,
     suite: ['base', 'usb', 'xbox'],
   )
-  test('base-i2c-probe', i2c_probe_test, suite: ['base', 'i2c'])
-  test('base-i2c-probe-bus', i2c_probe_bus_test, suite: ['base', 'i2c'])
+  test('base-a71ch', a71ch_test, suite: ['base', 'secure-element'])
+  test('base-a71ch-bus', a71ch_bus_test, suite: ['base', 'secure-element'])
   test(
-    'base-i2c-probe-exchange-service',
-    i2c_probe_exchange_service_test,
-    suite: ['base', 'i2c'],
+    'base-a71ch-exchange',
+    a71ch_exchange_test,
+    suite: ['base', 'secure-element'],
   )
   test(
-    'base-i2c-probe-transfer-service',
-    i2c_probe_transfer_service_test,
-    suite: ['base', 'i2c'],
+    'base-a71ch-authentication',
+    a71ch_authentication_test,
+    suite: ['base', 'secure-element'],
   )
   test(
-    'base-i2c-probe-startup-service',
-    i2c_probe_startup_service_test,
-    suite: ['base', 'i2c'],
+    'base-a71ch-session',
+    a71ch_session_test,
+    suite: ['base', 'secure-element'],
   )
   test('base-status-led', status_led_test, suite: ['base', 'board', 'led'])
   test('base-power-controller', power_controller_test, suite: ['base', 'board', 'power'])

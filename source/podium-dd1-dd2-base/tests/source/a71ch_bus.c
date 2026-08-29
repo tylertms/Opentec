@@ -2,9 +2,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "i2c/probe.h"
-#include "i2c/probe_bus.h"
 #include "platform/aux_bus.h"
+#include "secure_element/a71ch.h"
+#include "secure_element/bus.h"
 
 typedef enum {
     BUS_CALL_NONE,
@@ -52,7 +52,7 @@ static void reset_bus(void) {
 
 static void test_starts_register_only_session_write(void) {
     reset_bus();
-    assert(i2c_probe_bus_start(I2C_PROBE_BEGIN_SESSION, 0));
+    assert(a71ch_bus_start(A71CH_WAKE_UP, 0));
     assert(bus_call == BUS_CALL_WRITE);
     assert(bus_address == 0x48);
     assert(bus_register == 0x0f);
@@ -60,10 +60,10 @@ static void test_starts_register_only_session_write(void) {
     assert(bus_length == 0);
 }
 
-static void assert_read(I2cProbeCommand command, uint16_t selector, uint16_t length) {
+static void assert_read(A71chCommand command, uint16_t selector, uint16_t length) {
     uint8_t response[0x1f];
     reset_bus();
-    assert(i2c_probe_bus_start(command, response));
+    assert(a71ch_bus_start(command, response));
     assert(bus_call == BUS_CALL_READ);
     assert(bus_address == 0x48);
     assert(bus_register == selector);
@@ -72,17 +72,17 @@ static void assert_read(I2cProbeCommand command, uint16_t selector, uint16_t len
 }
 
 static void test_starts_exact_response_reads(void) {
-    assert_read(I2C_PROBE_READ_STARTUP_STATUS, 0x1f, 2);
-    assert_read(I2C_PROBE_READ_SIGNATURE, 0x2f, 0x1f);
-    assert_read(I2C_PROBE_READ_CONFIRMATION, 0xff, 2);
-    assert_read(I2C_PROBE_READ_READY_STATUS, 0x07, 2);
+    assert_read(A71CH_SOFT_RESET, 0x1f, 2);
+    assert_read(A71CH_READ_ANSWER_TO_RESET, 0x2f, 0x1f);
+    assert_read(A71CH_PARAMETER_EXCHANGE, 0xff, 2);
+    assert_read(A71CH_READ_STATUS, 0x07, 2);
 }
 
 static void test_rejects_invalid_requests(void) {
     reset_bus();
-    assert(!i2c_probe_bus_start(I2C_PROBE_WRITE_CHUNK, 0));
+    assert(!a71ch_bus_start(A71CH_AUTHENTICATION_WRITE, 0));
     assert(bus_call == BUS_CALL_NONE);
-    assert(!i2c_probe_bus_start(I2C_PROBE_READ_SIGNATURE, 0));
+    assert(!a71ch_bus_start(A71CH_READ_ANSWER_TO_RESET, 0));
     assert(bus_call == BUS_CALL_NONE);
 }
 
@@ -90,23 +90,23 @@ static void test_propagates_bus_backpressure(void) {
     uint8_t response[2];
     reset_bus();
     bus_accepts = false;
-    assert(!i2c_probe_bus_start(I2C_PROBE_READ_STARTUP_STATUS, response));
+    assert(!a71ch_bus_start(A71CH_SOFT_RESET, response));
     assert(bus_call == BUS_CALL_READ);
 }
 
 static void test_starts_encoded_transfer_write(void) {
     const uint8_t payload[] = {0x11, 0x22, 0x33};
-    I2cProbeTransferInput input = {
+    A71chAuthenticationInput input = {
         .phase = 3,
         .chunk_index = 2,
         .chunk = payload,
         .chunk_length = sizeof(payload),
     };
-    I2cProbeTransferFrame frame;
-    assert(i2c_probe_transfer_encode(I2C_PROBE_WRITE_CHECKED_CHUNK, &input, &frame));
+    A71chAuthenticationFrame frame;
+    assert(a71ch_authentication_encode(A71CH_AUTHENTICATION_WRITE_LRC, &input, &frame));
 
     reset_bus();
-    assert(i2c_probe_bus_start_frame_write(&frame));
+    assert(a71ch_bus_start_frame_write(&frame));
     assert(bus_call == BUS_CALL_WRITE);
     assert(bus_address == 0x48);
     assert(bus_register == 0x34);
@@ -115,17 +115,17 @@ static void test_starts_encoded_transfer_write(void) {
 }
 
 static void test_starts_encoded_transfer_response_read(void) {
-    I2cProbeTransferInput input = {
+    A71chAuthenticationInput input = {
         .phase = 7,
         .chunk_index = 16,
         .chunk_length = 16,
     };
-    I2cProbeTransferFrame frame;
+    A71chAuthenticationFrame frame;
     uint8_t response[20];
-    assert(i2c_probe_transfer_encode(I2C_PROBE_READ_CHUNK, &input, &frame));
+    assert(a71ch_authentication_encode(A71CH_AUTHENTICATION_READ, &input, &frame));
 
     reset_bus();
-    assert(i2c_probe_bus_start_frame_read(&frame, response));
+    assert(a71ch_bus_start_frame_read(&frame, response));
     assert(bus_call == BUS_CALL_READ);
     assert(bus_address == 0x48);
     assert(bus_register == 0x82);
@@ -134,15 +134,15 @@ static void test_starts_encoded_transfer_response_read(void) {
 }
 
 static void test_rejects_invalid_transfer_frames(void) {
-    I2cProbeTransferFrame frame = {0};
+    A71chAuthenticationFrame frame = {0};
     uint8_t response[1];
 
     reset_bus();
-    assert(!i2c_probe_bus_start_frame_write(0));
-    assert(!i2c_probe_bus_start_frame_write(&frame));
-    assert(!i2c_probe_bus_start_frame_read(0, response));
-    assert(!i2c_probe_bus_start_frame_read(&frame, 0));
-    assert(!i2c_probe_bus_start_frame_read(&frame, response));
+    assert(!a71ch_bus_start_frame_write(0));
+    assert(!a71ch_bus_start_frame_write(&frame));
+    assert(!a71ch_bus_start_frame_read(0, response));
+    assert(!a71ch_bus_start_frame_read(&frame, 0));
+    assert(!a71ch_bus_start_frame_read(&frame, response));
     assert(bus_call == BUS_CALL_NONE);
 }
 
