@@ -59,6 +59,11 @@ typedef struct {
 } MotorForceFeedbackOutput;
 
 MotorForceFeedbackSettings motor_force_feedback_settings_default(void);
+void motor_force_feedback_settings_apply(MotorForceFeedbackSettings *settings,
+                                         int8_t steering_range, uint8_t overall_gain_percent,
+                                         uint8_t filter_setting, uint8_t constant_gain_tenths,
+                                         uint8_t window_gain_tenths,
+                                         uint8_t directional_gain_tenths);
 MotorConstantEffect motor_force_feedback_constant_decode(const uint8_t payload[5]);
 MotorWindowEffect motor_force_feedback_window_decode(const uint8_t payload[5],
                                                      int32_t position_half_range);

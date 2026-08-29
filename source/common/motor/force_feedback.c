@@ -3,6 +3,15 @@
 #include <limits.h>
 #include <stdint.h>
 
+enum {
+    MOTOR_STEERING_RANGE_MAXIMUM = 126,
+    MOTOR_STEERING_HALF_RANGE_NUMERATOR = 828800,
+    MOTOR_STEERING_HALF_RANGE_DENOMINATOR = 2520,
+    MOTOR_STEERING_HALF_RANGE_MAXIMUM = 82880,
+    MOTOR_FORCE_FEEDBACK_PERCENT_MAXIMUM = 100,
+    MOTOR_FORCE_FEEDBACK_GAIN_MAXIMUM = 12,
+};
+
 static int32_t signed_from_uint32(uint32_t value) {
     if (value <= INT32_MAX) {
         return (int32_t)value;
@@ -38,6 +47,50 @@ MotorForceFeedbackSettings motor_force_feedback_settings_default(void) {
         .directional_gain_tenths = 10U,
         .window_multiplier = 1U,
     };
+}
+
+/**
+ * @brief Applies the live force-feedback parameter settings.
+ *
+ * Accepted values update the steering range and effect gains. Values outside the official
+ * parameter limits retain the current setting.
+ *
+ * @param settings Force-feedback settings to update.
+ * @param steering_range Signed steering-range parameter encoding.
+ * @param overall_gain_percent Overall force strength from zero through one hundred.
+ * @param filter_setting Moving-average filter setting from zero through one hundred.
+ * @param constant_gain_tenths Constant-effect gain from zero through twelve.
+ * @param window_gain_tenths Position-window gain from zero through twelve.
+ * @param directional_gain_tenths Velocity-effect gain from zero through twelve.
+ */
+void motor_force_feedback_settings_apply(MotorForceFeedbackSettings *settings,
+                                         int8_t steering_range, uint8_t overall_gain_percent,
+                                         uint8_t filter_setting, uint8_t constant_gain_tenths,
+                                         uint8_t window_gain_tenths,
+                                         uint8_t directional_gain_tenths) {
+    if (steering_range < MOTOR_STEERING_RANGE_MAXIMUM) {
+        settings->position_half_range = MOTOR_STEERING_HALF_RANGE_NUMERATOR *
+                                        (steering_range + 127) /
+                                        MOTOR_STEERING_HALF_RANGE_DENOMINATOR;
+    } else if (steering_range == MOTOR_STEERING_RANGE_MAXIMUM) {
+        settings->position_half_range = MOTOR_STEERING_HALF_RANGE_MAXIMUM;
+    }
+
+    if (overall_gain_percent <= MOTOR_FORCE_FEEDBACK_PERCENT_MAXIMUM) {
+        settings->overall_gain_percent = overall_gain_percent;
+    }
+    if (filter_setting <= MOTOR_FORCE_FEEDBACK_PERCENT_MAXIMUM) {
+        settings->filter_setting = filter_setting;
+    }
+    if (constant_gain_tenths <= MOTOR_FORCE_FEEDBACK_GAIN_MAXIMUM) {
+        settings->constant_gain_tenths = constant_gain_tenths;
+    }
+    if (window_gain_tenths <= MOTOR_FORCE_FEEDBACK_GAIN_MAXIMUM) {
+        settings->window_gain_tenths = window_gain_tenths;
+    }
+    if (directional_gain_tenths <= MOTOR_FORCE_FEEDBACK_GAIN_MAXIMUM) {
+        settings->directional_gain_tenths = directional_gain_tenths;
+    }
 }
 
 /**

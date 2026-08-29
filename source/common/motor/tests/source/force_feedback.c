@@ -18,6 +18,33 @@ static void test_defaults(void) {
     assert(settings.window_multiplier == 1U);
 }
 
+static void test_parameter_settings(void) {
+    MotorForceFeedbackSettings settings = motor_force_feedback_settings_default();
+    motor_force_feedback_settings_apply(&settings, -19, 80U, 90U, 9U, 8U, 7U);
+    assert(settings.position_half_range == 0x8ac0);
+    assert(settings.overall_gain_percent == 80U);
+    assert(settings.filter_setting == 90U);
+    assert(settings.constant_gain_tenths == 9U);
+    assert(settings.window_gain_tenths == 8U);
+    assert(settings.directional_gain_tenths == 7U);
+
+    motor_force_feedback_settings_apply(&settings, 126, 101U, 101U, 13U, 13U, 13U);
+    assert(settings.position_half_range == 82880);
+    assert(settings.overall_gain_percent == 80U);
+    assert(settings.filter_setting == 90U);
+    assert(settings.constant_gain_tenths == 9U);
+    assert(settings.window_gain_tenths == 8U);
+    assert(settings.directional_gain_tenths == 7U);
+
+    motor_force_feedback_settings_apply(&settings, 127, 100U, 100U, 12U, 12U, 12U);
+    assert(settings.position_half_range == 82880);
+    assert(settings.overall_gain_percent == 100U);
+    assert(settings.filter_setting == 100U);
+    assert(settings.constant_gain_tenths == 12U);
+    assert(settings.window_gain_tenths == 12U);
+    assert(settings.directional_gain_tenths == 12U);
+}
+
 static void test_constant_effects(void) {
     uint8_t payload[5] = {0x80U, 0U, 0U, 0U, 0U};
     MotorConstantEffect effect = motor_force_feedback_constant_decode(payload);
@@ -231,6 +258,7 @@ static void test_commands(void) {
 
 int main(void) {
     test_defaults();
+    test_parameter_settings();
     test_constant_effects();
     test_window_effects();
     test_directional_effects();
