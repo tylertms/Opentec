@@ -17,19 +17,23 @@ enum {
     PERSISTENCE_WHEEL_REFERENCE_VERSION = 2,
     PERSISTENCE_H_PATTERN_VERSION = 3,
     PERSISTENCE_AUXILIARY_AXIS_VERSION = 4,
-    PERSISTENCE_VERSION = 5,
+    PERSISTENCE_STEERING_LIMIT_VERSION = 5,
+    PERSISTENCE_VERSION = 6,
     PERSISTENCE_HEADER_SIZE = 12,
     PERSISTENCE_REFERENCE_SIZE = 5,
     PERSISTENCE_H_PATTERN_SIZE = 17,
     PERSISTENCE_AUXILIARY_AXIS_SIZE = 5,
     PERSISTENCE_STEERING_LIMIT_SIZE = TUNING_PROFILE_SLOT_COUNT,
+    PERSISTENCE_AUXILIARY_OUTPUT_SIZE = 1,
     PERSISTENCE_REFERENCE_PAYLOAD_SIZE = TUNING_PROFILE_RECORD_SIZE + PERSISTENCE_REFERENCE_SIZE,
     PERSISTENCE_H_PATTERN_PAYLOAD_SIZE =
         PERSISTENCE_REFERENCE_PAYLOAD_SIZE + PERSISTENCE_H_PATTERN_SIZE,
     PERSISTENCE_AUXILIARY_AXIS_PAYLOAD_SIZE =
         PERSISTENCE_H_PATTERN_PAYLOAD_SIZE + PERSISTENCE_AUXILIARY_AXIS_SIZE,
-    PERSISTENCE_PAYLOAD_SIZE =
+    PERSISTENCE_STEERING_LIMIT_PAYLOAD_SIZE =
         PERSISTENCE_AUXILIARY_AXIS_PAYLOAD_SIZE + PERSISTENCE_STEERING_LIMIT_SIZE,
+    PERSISTENCE_PAYLOAD_SIZE =
+        PERSISTENCE_STEERING_LIMIT_PAYLOAD_SIZE + PERSISTENCE_AUXILIARY_OUTPUT_SIZE,
     PERSISTENCE_DATA_SIZE = PERSISTENCE_HEADER_SIZE + PERSISTENCE_PAYLOAD_SIZE,
     PERSISTENCE_CHECKSUM_SIZE = 2,
     PERSISTENCE_RECORD_SIZE = PERSISTENCE_DATA_SIZE + PERSISTENCE_CHECKSUM_SIZE,
@@ -98,6 +102,8 @@ static bool deadline_reached(uint32_t now_ms, uint32_t deadline_ms) {
 static bool header_valid(const uint8_t *data, uint16_t payload_size) {
     uint8_t version = data[4];
     bool current = version == PERSISTENCE_VERSION && payload_size == PERSISTENCE_PAYLOAD_SIZE;
+    bool steering_limits = version == PERSISTENCE_STEERING_LIMIT_VERSION &&
+                           payload_size == PERSISTENCE_STEERING_LIMIT_PAYLOAD_SIZE;
     bool auxiliary_axis = version == PERSISTENCE_AUXILIARY_AXIS_VERSION &&
                           payload_size == PERSISTENCE_AUXILIARY_AXIS_PAYLOAD_SIZE;
     bool h_pattern = version == PERSISTENCE_H_PATTERN_VERSION &&
@@ -108,7 +114,8 @@ static bool header_valid(const uint8_t *data, uint16_t payload_size) {
         version == PERSISTENCE_PROFILE_ONLY_VERSION && payload_size == TUNING_PROFILE_RECORD_SIZE;
     return data[0] == PERSISTENCE_MAGIC_0 && data[1] == PERSISTENCE_MAGIC_1 &&
            data[2] == PERSISTENCE_MAGIC_2 && data[3] == PERSISTENCE_MAGIC_3 && data[5] == 0 &&
-           (current || auxiliary_axis || h_pattern || wheel_reference || profile_only);
+           (current || steering_limits || auxiliary_axis || h_pattern || wheel_reference ||
+            profile_only);
 }
 
 static void h_pattern_calibration_decode(const uint8_t *data, HPatternSettings *settings) {
@@ -248,7 +255,7 @@ static bool record_decode(const uint8_t data[PERSISTENCE_RECORD_SIZE], StoredSet
     } else {
         stored->settings.h_pattern_shifter = (HPatternSettings){0};
     }
-    if (version == PERSISTENCE_AUXILIARY_AXIS_VERSION || version == PERSISTENCE_VERSION) {
+    if (version >= PERSISTENCE_AUXILIARY_AXIS_VERSION) {
         uint16_t auxiliary_offset = PERSISTENCE_HEADER_SIZE + PERSISTENCE_H_PATTERN_PAYLOAD_SIZE;
         if (!auxiliary_axis_settings_decode(&data[auxiliary_offset],
                                             &stored->settings.auxiliary_axis)) {
@@ -258,7 +265,7 @@ static bool record_decode(const uint8_t data[PERSISTENCE_RECORD_SIZE], StoredSet
     } else {
         auxiliary_axis_settings_defaults(&stored->settings.auxiliary_axis);
     }
-    if (version == PERSISTENCE_VERSION) {
+    if (version >= PERSISTENCE_STEERING_LIMIT_VERSION) {
         uint16_t steering_limit_offset =
             PERSISTENCE_HEADER_SIZE + PERSISTENCE_AUXILIARY_AXIS_PAYLOAD_SIZE;
         if (!steering_limits_decode(&data[steering_limit_offset],
@@ -268,6 +275,17 @@ static bool record_decode(const uint8_t data[PERSISTENCE_RECORD_SIZE], StoredSet
         }
     } else {
         wheel_steering_limits_defaults(&stored->settings.steering_limits);
+    }
+    if (version == PERSISTENCE_VERSION) {
+        uint16_t auxiliary_output_offset =
+            PERSISTENCE_HEADER_SIZE + PERSISTENCE_STEERING_LIMIT_PAYLOAD_SIZE;
+        if (data[auxiliary_output_offset] > 1) {
+            stored->valid = false;
+            return false;
+        }
+        stored->settings.wheel_auxiliary_disabled = data[auxiliary_output_offset] == 1;
+    } else {
+        stored->settings.wheel_auxiliary_disabled = false;
     }
     stored->valid = true;
     return true;
@@ -286,7 +304,7 @@ static bool record_read(PlatformStorageSlot slot, StoredSettings *stored) {
  * @brief Encodes one complete retained base-settings record.
  *
  * Writes the current version header, generation, tuning profiles, calibration data, auxiliary
- * endpoints, per-profile steering limits, and final checksum.
+ * endpoints, per-profile steering limits, attached-wheel auxiliary option, and final checksum.
  *
  * @param[in] settings Base settings to retain.
  * @param[in] generation Monotonic record generation.
@@ -316,6 +334,9 @@ static bool record_encode(const BaseSettings *settings, uint32_t generation,
     uint16_t steering_limit_offset =
         PERSISTENCE_HEADER_SIZE + PERSISTENCE_AUXILIARY_AXIS_PAYLOAD_SIZE;
     steering_limits_encode(&settings->steering_limits, &data[steering_limit_offset]);
+    uint16_t auxiliary_output_offset =
+        PERSISTENCE_HEADER_SIZE + PERSISTENCE_STEERING_LIMIT_PAYLOAD_SIZE;
+    data[auxiliary_output_offset] = settings->wheel_auxiliary_disabled ? 1 : 0;
     write_u16(data, PERSISTENCE_DATA_SIZE, persistence_checksum(data, PERSISTENCE_DATA_SIZE));
     return true;
 }

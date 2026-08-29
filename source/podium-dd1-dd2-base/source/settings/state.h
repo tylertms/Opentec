@@ -1,6 +1,8 @@
 #ifndef OPENTEC_BASE_SETTINGS_STATE_H
 #define OPENTEC_BASE_SETTINGS_STATE_H
 
+#include <stdbool.h>
+
 #include "analog/auxiliary_axis.h"
 #include "profile/bank.h"
 #include "shifter/h_pattern.h"
@@ -13,6 +15,7 @@ typedef struct {
     HPatternSettings h_pattern_shifter;
     AuxiliaryAxisSettings auxiliary_axis;
     WheelSteeringLimits steering_limits;
+    bool wheel_auxiliary_disabled;
 } BaseSettings;
 
 void base_settings_defaults(BaseSettings *settings);

@@ -6,6 +6,7 @@
 
 #include "serial/service.h"
 #include "wheel/adapter_commands.h"
+#include "wheel/auxiliary_output.h"
 #include "wheel/display_output.h"
 #include "wheel/protocol.h"
 #include "wheel/rotary_input.h"
@@ -49,6 +50,7 @@ typedef struct {
     WheelAdapterCommandService adapter_commands;
     WheelRotaryInput rotary_input;
     WheelDisplayOutput display_output;
+    WheelAuxiliaryOutput auxiliary_output;
     uint8_t adapter_display_state;
     uint8_t request[SERIAL_PACKET_MAX_PAYLOAD_SIZE];
     uint8_t button_banks[WHEEL_BUTTON_BANK_COUNT];
@@ -72,6 +74,7 @@ void wheel_service_queue_adapter_setup_selection(WheelService *service, uint8_t 
 void wheel_service_queue_adapter_display_state(WheelService *service, uint8_t state);
 void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output);
 void wheel_service_set_vibration_output(WheelService *service, const WheelVibrationOutput *output);
+void wheel_service_set_auxiliary_output_disabled(WheelService *service, bool disabled);
 void wheel_service_set_legacy_axes(WheelService *service, const uint8_t axes[2]);
 void wheel_service_set_adapter(WheelService *service, const WheelAdapterInput *adapter);
 void wheel_service_set_host_capability(WheelService *service, bool enabled);
@@ -86,6 +89,8 @@ bool wheel_service_queue_remote_tuning_response(WheelService *service,
 bool wheel_service_queue_system_control_response(WheelService *service,
                                                  const RemoteTuningResponse *response);
 bool wheel_service_remote_tuning_response_pending(const WheelService *service);
+bool wheel_service_apply_auxiliary_output_command(WheelService *service,
+                                                  const UsbOperatingModeCommand *command);
 bool wheel_service_apply_multi_position_command(WheelService *service,
                                                 const UsbOperatingModeCommand *command);
 bool wheel_service_apply_packed_report_command(WheelService *service,

@@ -270,10 +270,11 @@ static void test_sends_display_output_with_each_scan_phase(void) {
     uint32_t now_ms = begin_scan(&service);
     const WheelDisplayOutput output = {
         .glyphs = {0xa5, 0x5a, 0x40},
-        .auxiliary = 0x37,
         .third_glyph_marker = true,
     };
     wheel_service_set_display_output(&service, &output);
+    const WheelVibrationOutput vibration = {.channels = {0x01, 0x01}};
+    wheel_service_set_vibration_output(&service, &vibration);
     assert(service.protocol.adapter_output.display.glyphs[0] == 0xa5);
     assert(service.protocol.adapter_output.display.glyphs[1] == 0x5a);
     assert(service.protocol.adapter_output.display.glyphs[2] == 0x40);
@@ -296,7 +297,7 @@ static void test_sends_display_output_with_each_scan_phase(void) {
     respond_scan(WHEEL_BUTTON_PRIMARY_RESPONSE);
     run_service(&service, now_ms);
     scan = request();
-    assert(scan.payload[1] == (uint8_t)~0x37);
+    assert(scan.payload[1] == (uint8_t)~0x11);
 }
 
 static void test_keeps_protocol_transport_for_packet_modes(void) {
@@ -728,6 +729,45 @@ static void test_routes_packed_report_commands(void) {
     assert(!wheel_service_apply_packed_report_command(&service, NULL));
 }
 
+static void test_routes_auxiliary_output_commands(void) {
+    WheelService service;
+    initialize_service(&service);
+    UsbOperatingModeCommand command = {
+        .opcode = WHEEL_AUXILIARY_OPTION_OPCODE,
+        .parameters = {2, 0, 0, 0},
+    };
+
+    assert(wheel_service_apply_auxiliary_output_command(&service, &command));
+    assert(service.auxiliary_output.disabled);
+    assert(service.protocol.alternate_output.suppress_auxiliary_display);
+
+    command.parameters[0] = 0;
+    assert(wheel_service_apply_auxiliary_output_command(&service, &command));
+    assert(!service.auxiliary_output.disabled);
+    assert(!service.protocol.alternate_output.suppress_auxiliary_display);
+
+    command.opcode = WHEEL_AUXILIARY_CODE_MODE_OPCODE;
+    command.parameters[0] = UINT8_MAX;
+    assert(wheel_service_apply_auxiliary_output_command(&service, &command));
+    assert(service.auxiliary_output.code_mode);
+
+    command.opcode = WHEEL_AUXILIARY_REPORT_OPCODE;
+    command.parameters[0] = 0x01;
+    command.parameters[1] = 0x34;
+    assert(wheel_service_apply_auxiliary_output_command(&service, &command));
+    assert(service.auxiliary_output.report == 0x0134);
+    assert(service.protocol.mode_one_output.vibration[0] == 0x34);
+    assert(service.protocol.mode_one_output.vibration[1] == 0x01);
+    assert(service.protocol.alternate_output.display.auxiliary == 0x34);
+    assert(service.protocol.alternate_output.auxiliary_status);
+    assert(service.protocol.adapter_output.display_report == 0x0134);
+
+    command.opcode = 0x09;
+    assert(!wheel_service_apply_auxiliary_output_command(&service, &command));
+    assert(!wheel_service_apply_auxiliary_output_command(NULL, &command));
+    assert(!wheel_service_apply_auxiliary_output_command(&service, NULL));
+}
+
 static void test_routes_report_six_command(void) {
     WheelService service;
     initialize_service(&service);
@@ -898,7 +938,14 @@ static void test_applies_vibration_to_every_packet_family(void) {
     assert(service.protocol.mode_four_output.vibration[1] == 0x56);
     assert(service.protocol.crc_output.vibration[0] == 0x34);
     assert(service.protocol.crc_output.vibration[1] == 0x56);
+    assert(service.auxiliary_output.report == 0x5634);
+    assert(service.protocol.alternate_output.display.auxiliary == 0x34);
+    assert(!service.protocol.alternate_output.auxiliary_status);
     assert(service.protocol.adapter_output.display_report == 0x5634);
+
+    WheelDisplayOutput display = {.glyphs = {1, 2, 3}};
+    wheel_service_set_display_output(&service, &display);
+    assert(service.protocol.alternate_output.display.auxiliary == 0x34);
 }
 
 static void test_applies_legacy_axes_to_every_packet_family(void) {
@@ -1001,6 +1048,7 @@ int main(void) {
     test_retains_adapter_display_state_across_command_resets();
     test_mirrors_standard_adapter_output_reports();
     test_mirrors_extended_adapter_output_reports();
+    test_routes_auxiliary_output_commands();
     test_routes_packed_report_commands();
     test_routes_report_six_command();
     test_routes_and_toggles_interface_mode_gate();

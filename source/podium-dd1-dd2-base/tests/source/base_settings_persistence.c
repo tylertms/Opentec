@@ -82,6 +82,7 @@ static void test_defaults_are_saved_after_delay(void) {
     assert(restored.auxiliary_axis.maximum == 0x00c8);
     assert(restored.auxiliary_axis.reset_on_start);
     assert(wheel_steering_limits_active(&restored.steering_limits, 0) == 100);
+    assert(!restored.wheel_auxiliary_disabled);
 }
 
 static void test_dirty_changes_are_coalesced(void) {
@@ -200,6 +201,43 @@ static void test_steering_limit_settings_are_persisted(void) {
     assert(restored.steering_limits.percent[0] == 35);
     assert(restored.steering_limits.percent[5] == 80);
     assert(restored.steering_limits.percent[1] == 100);
+}
+
+static void test_wheel_auxiliary_option_is_persisted(void) {
+    reset_storage();
+    BaseSettingsPersistence persistence;
+    BaseSettings settings;
+    base_settings_persistence_load(&persistence, &settings, 0);
+    settings.wheel_auxiliary_disabled = true;
+    base_settings_persistence_request_save(&persistence, 100);
+    assert(base_settings_persistence_service(&persistence, &settings, 100) ==
+           BASE_SETTINGS_PERSISTENCE_SAVED);
+
+    BaseSettingsPersistence loaded;
+    BaseSettings restored;
+    assert(base_settings_persistence_load(&loaded, &restored, 200));
+    assert(restored.wheel_auxiliary_disabled);
+}
+
+static void test_invalid_wheel_auxiliary_option_is_rejected(void) {
+    enum { HEADER_SIZE = 12 };
+    reset_storage();
+    BaseSettingsPersistence persistence;
+    BaseSettings settings;
+    base_settings_persistence_load(&persistence, &settings, 0);
+    assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
+           BASE_SETTINGS_PERSISTENCE_SAVED);
+
+    uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
+    uint16_t payload_size = (uint16_t)record[6] | (uint16_t)record[7] << 8;
+    uint16_t data_size = HEADER_SIZE + payload_size;
+    record[data_size - 1] = 2;
+    write_u16(record, data_size, checksum(record, data_size));
+
+    BaseSettingsPersistence loaded;
+    BaseSettings restored;
+    assert(!base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(!restored.wheel_auxiliary_disabled);
 }
 
 static void test_profile_only_record_is_upgraded(void) {
@@ -333,6 +371,33 @@ static void test_auxiliary_axis_record_is_upgraded(void) {
     assert(restored.steering_limits.percent[0] == 100);
 }
 
+static void test_steering_limit_record_is_upgraded(void) {
+    enum { HEADER_SIZE = 12, STEERING_LIMIT_VERSION = 5 };
+    reset_storage();
+    BaseSettingsPersistence persistence;
+    BaseSettings settings;
+    base_settings_persistence_load(&persistence, &settings, 0);
+    settings.steering_limits.percent[0] = 25;
+    settings.wheel_auxiliary_disabled = true;
+    assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
+           BASE_SETTINGS_PERSISTENCE_SAVED);
+
+    uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
+    uint16_t payload_size = (uint16_t)record[6] | (uint16_t)record[7] << 8;
+    payload_size--;
+    uint16_t data_size = HEADER_SIZE + payload_size;
+    record[4] = STEERING_LIMIT_VERSION;
+    write_u16(record, 6, payload_size);
+    write_u16(record, data_size, checksum(record, data_size));
+
+    BaseSettingsPersistence loaded;
+    BaseSettings restored;
+    assert(base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(loaded.dirty);
+    assert(restored.steering_limits.percent[0] == 25);
+    assert(!restored.wheel_auxiliary_disabled);
+}
+
 static void test_interrupted_replacement_preserves_previous_record(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
@@ -404,10 +469,13 @@ int main(void) {
     test_shifter_calibration_is_persisted();
     test_auxiliary_axis_settings_are_persisted();
     test_steering_limit_settings_are_persisted();
+    test_wheel_auxiliary_option_is_persisted();
+    test_invalid_wheel_auxiliary_option_is_rejected();
     test_profile_only_record_is_upgraded();
     test_wheel_reference_record_is_upgraded();
     test_h_pattern_record_is_upgraded();
     test_auxiliary_axis_record_is_upgraded();
+    test_steering_limit_record_is_upgraded();
     test_interrupted_replacement_preserves_previous_record();
     test_corrupted_new_record_falls_back_to_previous_record();
     test_deadline_wraps_safely();

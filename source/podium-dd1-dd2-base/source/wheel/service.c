@@ -7,6 +7,7 @@
 #include "serial/message.h"
 #include "serial/service.h"
 #include "wheel/adapter_commands.h"
+#include "wheel/auxiliary_output.h"
 #include "wheel/display_output.h"
 #include "wheel/output_reports.h"
 #include "wheel/protocol.h"
@@ -414,8 +415,11 @@ static void start_scan(WheelService *service, uint32_t now_ms) {
         service->request[index] = 0;
     }
     service->request[0] = service->scan_phase;
-    service->request[1] =
-        (uint8_t)~wheel_display_output_encode(&service->display_output, service->scan_phase);
+    uint8_t encoded =
+        service->scan_phase == WHEEL_SCAN_PHASE_AUXILIARY
+            ? wheel_auxiliary_output_encode(&service->auxiliary_output)
+            : wheel_display_output_encode(&service->display_output, service->scan_phase);
+    service->request[1] = (uint8_t)~encoded;
     service->request[SERIAL_PACKET_MAX_PAYLOAD_SIZE - 1] = WHEEL_BUTTON_REQUEST_READY;
     service->request_kind = WHEEL_SERVICE_REQUEST_BUTTONS;
     if (!serial_service_start(service->transport, WHEEL_BUTTON_COMMAND, service->request,
@@ -475,6 +479,7 @@ void wheel_service_init(WheelService *service, SerialService *transport) {
     }
     service->display_output.auxiliary = 0;
     service->display_output.third_glyph_marker = false;
+    service->auxiliary_output = (WheelAuxiliaryOutput){0};
     service->protocol_deadline_ms = 0;
     service->scan_phase = 0;
     service->request_kind = WHEEL_SERVICE_REQUEST_NONE;
@@ -639,12 +644,35 @@ void wheel_service_queue_adapter_display_state(WheelService *service, uint8_t st
 }
 
 /**
- * @brief Updates the output state sent to the attached wheel.
+ * @brief Applies the shared two-byte auxiliary report.
  *
- * Applies the same display and auxiliary output to each negotiated packet-family encoder.
+ * Updates each vibration packet family, the alternate packet's auxiliary fields, the scan encoder,
+ * and the adapter display report from one logical value.
  *
  * @param[in,out] service Attached-wheel service to update.
- * @param[in] output Display glyphs, auxiliary byte, and marker state to send.
+ * @param[in] report Shared auxiliary report.
+ */
+static void set_auxiliary_report(WheelService *service, uint16_t report) {
+    service->auxiliary_output.report = report;
+    for (uint8_t channel = 0; channel < WHEEL_VIBRATION_CHANNEL_COUNT; channel++) {
+        uint8_t value = channel == 0 ? (uint8_t)report : (uint8_t)(report >> 8);
+        service->protocol.mode_one_output.vibration[channel] = value;
+        service->protocol.mode_four_output.vibration[channel] = value;
+        service->protocol.crc_output.vibration[channel] = value;
+    }
+    service->protocol.alternate_output.display.auxiliary = (uint8_t)report;
+    service->protocol.alternate_output.auxiliary_status = ((report >> 8) & 1u) != 0;
+    service->protocol.adapter_output.display_report = report;
+}
+
+/**
+ * @brief Updates the output state sent to the attached wheel.
+ *
+ * Applies the same glyph and marker output to each negotiated packet-family encoder while
+ * preserving the shared auxiliary report.
+ *
+ * @param[in,out] service Attached-wheel service to update.
+ * @param[in] output Display glyphs and marker state to send.
  */
 void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output) {
     service->display_output = *output;
@@ -657,26 +685,40 @@ void wheel_service_set_display_output(WheelService *service, const WheelDisplayO
     WheelPacketCrcOutput crc_output = service->protocol.crc_output;
     crc_output.display = *output;
     service->protocol.crc_output = crc_output;
+    uint8_t alternate_auxiliary = service->protocol.alternate_output.display.auxiliary;
     service->protocol.alternate_output.display = *output;
+    service->protocol.alternate_output.display.auxiliary = alternate_auxiliary;
     service->protocol.adapter_output.display = *output;
 }
 
 /**
- * @brief Updates the vibration output sent to the attached wheel.
+ * @brief Updates the shared auxiliary report sent to the attached wheel.
  *
- * Applies the same two vibration channels to every negotiated packet-family encoder.
+ * Applies the two vibration channels to each packet family, the alternate packet's auxiliary
+ * fields, the scan encoder, and the adapter display report.
  *
  * @param[in,out] service Attached-wheel service to update.
  * @param[in] output Two attached-wheel vibration channels.
  */
 void wheel_service_set_vibration_output(WheelService *service, const WheelVibrationOutput *output) {
-    for (uint8_t channel = 0; channel < WHEEL_VIBRATION_CHANNEL_COUNT; channel++) {
-        service->protocol.mode_one_output.vibration[channel] = output->channels[channel];
-        service->protocol.mode_four_output.vibration[channel] = output->channels[channel];
-        service->protocol.crc_output.vibration[channel] = output->channels[channel];
+    set_auxiliary_report(service,
+                         (uint16_t)output->channels[0] | (uint16_t)output->channels[1] << 8);
+}
+
+/**
+ * @brief Enables or disables attached-wheel auxiliary output.
+ *
+ * Updates both scan encoding and alternate-packet suppression from the retained host option.
+ *
+ * @param[in,out] service Attached-wheel service to update.
+ * @param[in] disabled True to clear auxiliary output.
+ */
+void wheel_service_set_auxiliary_output_disabled(WheelService *service, bool disabled) {
+    if (service == NULL) {
+        return;
     }
-    service->protocol.adapter_output.display_report =
-        (uint16_t)output->channels[0] | (uint16_t)output->channels[1] << 8;
+    service->auxiliary_output.disabled = disabled;
+    service->protocol.alternate_output.suppress_auxiliary_display = disabled;
 }
 
 /**
@@ -765,6 +807,38 @@ bool wheel_service_queue_system_control_response(WheelService *service,
  */
 bool wheel_service_remote_tuning_response_pending(const WheelService *service) {
     return service != 0 && wheel_protocol_remote_tuning_response_pending(&service->protocol);
+}
+
+/**
+ * @brief Applies an auxiliary-output operating-mode command.
+ *
+ * Opcode 0x06 normalizes the persistent disable option, opcode 0x07 normalizes code mode, and
+ * opcode 0x08 updates the shared report from its high-byte and low-byte parameters.
+ *
+ * @param[in,out] service Attached-wheel service and output state.
+ * @param[in] command Decoded F8 09 operating-mode command.
+ * @return True when the command selects an auxiliary-output operation.
+ */
+bool wheel_service_apply_auxiliary_output_command(WheelService *service,
+                                                  const UsbOperatingModeCommand *command) {
+    if (service == NULL || command == NULL) {
+        return false;
+    }
+    if (command->opcode == WHEEL_AUXILIARY_OPTION_OPCODE) {
+        wheel_service_set_auxiliary_output_disabled(service, command->parameters[0] != 0);
+        return true;
+    }
+    if (command->opcode == WHEEL_AUXILIARY_CODE_MODE_OPCODE) {
+        service->auxiliary_output.code_mode = command->parameters[0] != 0;
+        return true;
+    }
+    if (command->opcode != WHEEL_AUXILIARY_REPORT_OPCODE) {
+        return false;
+    }
+
+    set_auxiliary_report(service,
+                         (uint16_t)command->parameters[1] | (uint16_t)command->parameters[0] << 8);
+    return true;
 }
 
 /**

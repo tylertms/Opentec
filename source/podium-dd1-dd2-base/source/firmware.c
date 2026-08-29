@@ -791,12 +791,14 @@ static void service_alternate_brake_force(uint32_t now_ms) {
 /**
  * @brief Loads retained base settings and initializes their runtime consumers.
  *
- * Selects the newest valid settings record and initializes the local auxiliary input from its
- * retained endpoint calibration.
+ * Selects the newest valid settings record and initializes the local auxiliary input and
+ * attached-wheel auxiliary output from their retained settings.
  */
 static void initialize_base_settings(void) {
     base_settings_persistence_load(&settings_persistence, &base_settings, platform_time_ms());
     auxiliary_axis_init(&auxiliary_axis, &base_settings.auxiliary_axis);
+    wheel_service_set_auxiliary_output_disabled(&wheel_service,
+                                                base_settings.wheel_auxiliary_disabled);
 }
 
 /**
@@ -1940,6 +1942,14 @@ static void service_usb_output(void) {
         } else if (pedal_protocol_command_decode(&usb_operating_mode_command,
                                                  &pedal_protocol_command)) {
             pedal_service_apply_protocol_command(&pedal_service, &pedal_protocol_command);
+        } else if (wheel_service_apply_auxiliary_output_command(&wheel_service,
+                                                                &usb_operating_mode_command)) {
+            if (usb_operating_mode_command.opcode == WHEEL_AUXILIARY_OPTION_OPCODE &&
+                base_settings.wheel_auxiliary_disabled != wheel_service.auxiliary_output.disabled) {
+                base_settings.wheel_auxiliary_disabled = wheel_service.auxiliary_output.disabled;
+                base_settings_persistence_request_save(&settings_persistence, platform_time_ms());
+            }
+            return;
         } else if (wheel_service_apply_packed_report_command(&wheel_service,
                                                              &usb_operating_mode_command)) {
             return;

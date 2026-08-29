@@ -155,6 +155,7 @@ wheel_capability_sources = files('source/wheel/capability.c')
 wheel_adapter_command_sources = files('source/wheel/adapter_commands.c')
 wheel_command_forwarder_sources = files('source/wheel/command_forwarder.c')
 wheel_compatibility_alert_sources = files('source/wheel/compatibility_alert.c')
+wheel_auxiliary_output_sources = files('source/wheel/auxiliary_output.c')
 wheel_display_output_sources = files('source/wheel/display_output.c')
 wheel_usb_disconnect_display_sources = files('source/wheel/usb_disconnect_display.c')
 wheel_output_reports_sources = files('source/wheel/output_reports.c')
@@ -383,6 +384,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'wheel-adapter-commands': 'source/wheel/adapter_commands.c',
     'wheel-command-forwarder': 'source/wheel/command_forwarder.c',
     'wheel-compatibility-alert': 'source/wheel/compatibility_alert.c',
+    'wheel-auxiliary-output': 'source/wheel/auxiliary_output.c',
     'wheel-display-output': 'source/wheel/display_output.c',
     'wheel-usb-disconnect-display': 'source/wheel/usb_disconnect_display.c',
     'wheel-output-reports': 'source/wheel/output_reports.c',
@@ -1779,6 +1781,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_auxiliary_output_test = executable(
+    'base-wheel-auxiliary-output-test',
+    'tests/source/wheel_auxiliary_output.c',
+    wheel_auxiliary_output_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_usb_disconnect_display_test = executable(
     'base-wheel-usb-disconnect-display-test',
     'tests/source/wheel_usb_disconnect_display.c',
@@ -2189,6 +2199,7 @@ if not meson.is_cross_build()
     wheel_adapter_command_sources,
     transfer_command_sources,
     transfer_memory_sources,
+    wheel_auxiliary_output_sources,
     wheel_display_output_sources,
     wheel_authentication_sources,
     wheel_axis_override_sources,
@@ -2635,6 +2646,11 @@ if not meson.is_cross_build()
     suite: ['base', 'wheel', 'profile'],
   )
   test('base-wheel-axis-override', wheel_axis_override_test, suite: ['base', 'wheel', 'input'])
+  test(
+    'base-wheel-auxiliary-output',
+    wheel_auxiliary_output_test,
+    suite: ['base', 'wheel', 'display'],
+  )
   test(
     'base-wheel-display-output',
     wheel_display_output_test,
