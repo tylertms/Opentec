@@ -4,6 +4,7 @@
 #include <fsl_common.h>
 #include <fsl_ftm.h>
 #include <fsl_pdb.h>
+#include <fsl_port.h>
 
 #include "common/motor/motion.h"
 #include "common/motor/telemetry.h"
@@ -14,6 +15,10 @@ static MotorTimerHandler communication_timer_handler;
 static void *communication_timer_context;
 static MotorEncoderOverflowHandler encoder_overflow_handler;
 static void *encoder_overflow_context;
+static MotorEncoderIndexHandler encoder_index_handler;
+static void *encoder_index_context;
+static volatile bool encoder_revolution_armed;
+static volatile bool encoder_revolution_complete;
 static MotorAdcHandler adc_handler;
 static void *adc_context;
 static uint32_t adc_encoder_scale;
@@ -268,12 +273,17 @@ void motor_pwm_enable_outputs(void) { FTM0->OUTMASK = 0U; }
  * @brief Configures the FTM2 motor scheduling timer.
  * @param modulus Runtime timer period selected by the motor configuration.
  * @param handler Function invoked with the quadrature overflow direction.
+ * @param index_handler Function invoked with the counter captured at the encoder index.
  * @param context Caller context passed to the overflow handler.
  */
 void motor_tick_timer_initialize(uint16_t modulus, MotorEncoderOverflowHandler handler,
-                                 void *context) {
+                                 MotorEncoderIndexHandler index_handler, void *context) {
     encoder_overflow_handler = handler;
     encoder_overflow_context = context;
+    encoder_index_handler = index_handler;
+    encoder_index_context = context;
+    encoder_revolution_armed = false;
+    encoder_revolution_complete = false;
     CLOCK_EnableClock(kCLOCK_Ftm2);
     FTM2->MODE = FTM_MODE_FTMEN_MASK;
     FTM2->SYNCONF = 0xc0U;
@@ -286,6 +296,49 @@ void motor_tick_timer_initialize(uint16_t modulus, MotorEncoderOverflowHandler h
 }
 
 /**
+ * @brief Enables the official FTM2 overflow interrupt after the startup current ramp.
+ */
+void motor_encoder_overflow_interrupt_enable(void) {
+    FTM2->CNT = 0U;
+    encoder_revolution_armed = false;
+    encoder_revolution_complete = false;
+    FTM_ClearStatusFlags(FTM2, kFTM_TimeOverflowFlag);
+    FTM_EnableInterrupts(FTM2, kFTM_TimeOverflowInterruptEnable);
+}
+
+/**
+ * @brief Arms the official encoder calibration full-revolution event.
+ */
+void motor_encoder_revolution_arm(void) { encoder_revolution_armed = true; }
+
+/**
+ * @brief Clears the official encoder calibration full-revolution event.
+ */
+void motor_encoder_revolution_clear(void) { encoder_revolution_complete = false; }
+
+/**
+ * @brief Reads the official encoder calibration full-revolution event.
+ * @return True after an armed FTM2 overflow.
+ */
+bool motor_encoder_revolution_is_complete(void) { return encoder_revolution_complete; }
+
+/**
+ * @brief Enables the official falling-edge encoder-index interrupt on PORTE24.
+ */
+void motor_encoder_index_interrupt_enable(void) {
+    PORT_ClearPinsInterruptFlags(PORTE, 1UL << 24U);
+    PORT_SetPinInterruptConfig(PORTE, 24U, kPORT_InterruptFallingEdge);
+}
+
+/**
+ * @brief Disables and clears the official encoder-index interrupt on PORTE24.
+ */
+void motor_encoder_index_interrupt_disable(void) {
+    PORT_SetPinInterruptConfig(PORTE, 24U, kPORT_InterruptOrDMADisabled);
+    PORT_ClearPinsInterruptFlags(PORTE, 1UL << 24U);
+}
+
+/**
  * @brief Extends the official FTM2 quadrature count in its hardware overflow direction.
  */
 void FTM2_IRQHandler(void) {
@@ -293,6 +346,24 @@ void FTM2_IRQHandler(void) {
     FTM_ClearStatusFlags(FTM2, kFTM_TimeOverflowFlag);
     if (encoder_overflow_handler != NULL) {
         encoder_overflow_handler(increasing, encoder_overflow_context);
+    }
+    if (encoder_revolution_armed) {
+        encoder_revolution_complete = true;
+    }
+}
+
+/**
+ * @brief Captures and dispatches the official PORTE24 encoder-index interrupt.
+ */
+void PORTB_PORTC_PORTD_PORTE_IRQHandler(void) {
+    if ((PORT_GetPinsInterruptFlags(PORTE) & (1UL << 24U)) == 0U) {
+        return;
+    }
+
+    uint16_t counter = (uint16_t)FTM2->CNT;
+    motor_encoder_index_interrupt_disable();
+    if (encoder_index_handler != NULL) {
+        encoder_index_handler(counter, encoder_index_context);
     }
 }
 
