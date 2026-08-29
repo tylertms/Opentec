@@ -1023,9 +1023,9 @@ static void service_usb_input(uint32_t now_ms) {
  * @brief Samples and publishes all base-side analog inputs.
  *
  * Updates cooling temperatures, pedal fallback samples, the local auxiliary override, and the
- * active H-pattern shifter. Queued H-pattern calibration captures use the selected shifter axes
- * and request immediate persistence after seventh gear. Changed auxiliary endpoint settings enter
- * the shared delayed persistence path.
+ * active H-pattern shifter. An uncalibrated H-pattern input opens a fresh capture session. Queued
+ * calibration captures use the selected shifter axes and request immediate persistence after
+ * seventh gear. Changed auxiliary endpoint settings enter the shared delayed persistence path.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -1052,6 +1052,11 @@ static void service_analog_input(uint32_t now_ms) {
         }
         uint16_t lateral_position;
         uint16_t longitudinal_position;
+        bool h_pattern_input_available = shifter_input.primary_mode == SHIFTER_INPUT_H_PATTERN ||
+                                         shifter_input.secondary_mode == SHIFTER_INPUT_H_PATTERN;
+        (void)h_pattern_calibration_service_start_if_required(
+            &h_pattern_calibration_service, h_pattern_input_available,
+            base_settings.h_pattern_shifter.calibrated);
         if (shifter_input.primary_mode == SHIFTER_INPUT_H_PATTERN) {
             lateral_position = analog_samples.primary_shifter_x;
             longitudinal_position = analog_samples.primary_shifter_y;
@@ -1079,6 +1084,14 @@ static void service_analog_input(uint32_t now_ms) {
     }
 }
 
+/**
+ * @brief Updates the attached-wheel H-pattern display.
+ *
+ * Shows the active calibration stage or a temporary gear glyph while the attached-wheel protocol
+ * is active, then publishes changed display output through the wheel service.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 static void service_shifter_display(uint32_t now_ms) {
     WheelDisplayOutput *output = &wheel_service.display_output;
     bool wheel_active = wheel_service_protocol_phase(&wheel_service) == WHEEL_PROTOCOL_ACTIVE;

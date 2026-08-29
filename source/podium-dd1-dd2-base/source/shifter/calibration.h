@@ -63,6 +63,8 @@ bool h_pattern_calibration_command_decode(const UsbOperatingModeCommand *source,
 HPatternCalibration h_pattern_calibration_build(const HPatternCalibrationSamples *samples);
 void h_pattern_calibration_service_request(HPatternCalibrationService *service,
                                            HPatternCalibrationCommand command);
+bool h_pattern_calibration_service_start_if_required(HPatternCalibrationService *service,
+                                                     bool input_available, bool calibrated);
 void h_pattern_calibration_service_set_advance_input(HPatternCalibrationService *service,
                                                      bool active);
 HPatternCalibrationResult h_pattern_calibration_service_capture(HPatternCalibrationService *service,

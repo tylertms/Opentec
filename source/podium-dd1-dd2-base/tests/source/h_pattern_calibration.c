@@ -73,6 +73,27 @@ static HPatternCalibrationResult capture(HPatternCalibrationService *service,
     return h_pattern_calibration_service_capture(service, lateral, longitudinal, settings);
 }
 
+static void test_starts_for_uncalibrated_h_pattern_input(void) {
+    HPatternCalibrationService service = {
+        .advance_pending = true,
+        .advance_input_active = true,
+        .release_required = true,
+    };
+
+    assert(!h_pattern_calibration_service_start_if_required(&service, false, false));
+    assert(!service.active);
+    assert(!h_pattern_calibration_service_start_if_required(&service, true, true));
+    assert(!service.active);
+    assert(h_pattern_calibration_service_start_if_required(&service, true, false));
+    assert(service.active);
+    assert(!service.advance_pending);
+    assert(!service.advance_input_active);
+    assert(!service.release_required);
+    assert(service.session.next_position == H_PATTERN_CALIBRATION_NEUTRAL);
+    assert(!h_pattern_calibration_service_start_if_required(&service, true, false));
+    assert(service.active);
+}
+
 static void test_requires_release_between_physical_captures(void) {
     HPatternCalibrationService service = {0};
     HPatternSettings settings = {0};
@@ -147,6 +168,7 @@ int main(void) {
     test_command_decode();
     test_calibration_thresholds();
     test_seventh_gear_boundary_fallback();
+    test_starts_for_uncalibrated_h_pattern_input();
     test_requires_release_between_physical_captures();
     test_calibration_capture_sequence();
     return 0;

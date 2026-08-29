@@ -164,6 +164,27 @@ void h_pattern_calibration_service_request(HPatternCalibrationService *service,
 }
 
 /**
+ * @brief Starts calibration for an uninitialized H-pattern input.
+ *
+ * Opens a fresh capture session when an H-pattern shifter is available without saved calibration.
+ * An active session or calibrated input remains unchanged.
+ *
+ * @param[in,out] service Calibration lifecycle state.
+ * @param[in] input_available True when either shifter input is in H-pattern mode.
+ * @param[in] calibrated True when usable H-pattern thresholds are already available.
+ * @return True when a new calibration session was started.
+ */
+bool h_pattern_calibration_service_start_if_required(HPatternCalibrationService *service,
+                                                     bool input_available, bool calibrated) {
+    if (service == NULL || service->active || !input_available || calibrated) {
+        return false;
+    }
+
+    *service = (HPatternCalibrationService){.active = true};
+    return true;
+}
+
+/**
  * @brief Updates the attached-wheel calibration-advance input.
  *
  * Retains the current input level so a captured position must be followed by a release before the
