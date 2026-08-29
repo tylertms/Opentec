@@ -94,10 +94,65 @@ static void test_propagates_bus_backpressure(void) {
     assert(bus_call == BUS_CALL_READ);
 }
 
+static void test_starts_encoded_transfer_write(void) {
+    const uint8_t payload[] = {0x11, 0x22, 0x33};
+    I2cProbeTransferInput input = {
+        .phase = 3,
+        .chunk_index = 2,
+        .chunk = payload,
+        .chunk_length = sizeof(payload),
+    };
+    I2cProbeTransferFrame frame;
+    assert(i2c_probe_transfer_encode(I2C_PROBE_WRITE_CHECKED_CHUNK, &input, &frame));
+
+    reset_bus();
+    assert(i2c_probe_bus_start_frame_write(&frame));
+    assert(bus_call == BUS_CALL_WRITE);
+    assert(bus_address == 0x48);
+    assert(bus_register == 0x34);
+    assert(bus_write_data == frame.write_data);
+    assert(bus_length == frame.write_length);
+}
+
+static void test_starts_encoded_transfer_response_read(void) {
+    I2cProbeTransferInput input = {
+        .phase = 7,
+        .chunk_index = 16,
+        .chunk_length = 16,
+    };
+    I2cProbeTransferFrame frame;
+    uint8_t response[20];
+    assert(i2c_probe_transfer_encode(I2C_PROBE_READ_CHUNK, &input, &frame));
+
+    reset_bus();
+    assert(i2c_probe_bus_start_frame_read(&frame, response));
+    assert(bus_call == BUS_CALL_READ);
+    assert(bus_address == 0x48);
+    assert(bus_register == 0x82);
+    assert(bus_read_data == response);
+    assert(bus_length == sizeof(response));
+}
+
+static void test_rejects_invalid_transfer_frames(void) {
+    I2cProbeTransferFrame frame = {0};
+    uint8_t response[1];
+
+    reset_bus();
+    assert(!i2c_probe_bus_start_frame_write(0));
+    assert(!i2c_probe_bus_start_frame_write(&frame));
+    assert(!i2c_probe_bus_start_frame_read(0, response));
+    assert(!i2c_probe_bus_start_frame_read(&frame, 0));
+    assert(!i2c_probe_bus_start_frame_read(&frame, response));
+    assert(bus_call == BUS_CALL_NONE);
+}
+
 int main(void) {
     test_starts_register_only_session_write();
     test_starts_exact_response_reads();
     test_rejects_invalid_requests();
     test_propagates_bus_backpressure();
+    test_starts_encoded_transfer_write();
+    test_starts_encoded_transfer_response_read();
+    test_rejects_invalid_transfer_frames();
     return 0;
 }
