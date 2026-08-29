@@ -132,6 +132,25 @@ typedef enum {
     FORCE_FEEDBACK_SCRIPT_REPORT_VALUES,
 } ForceFeedbackScriptReportKind;
 
+/** @brief Phase-specific sources reused while composing one PlayStation input report. */
+typedef union {
+    WheelInputSnapshot wheel;
+    UsbPlaystationButtonInput buttons;
+    UsbPlaystationClutchInput clutch;
+} UsbPlaystationInputSources;
+
+/** @brief Working state for one PlayStation input report. */
+typedef struct {
+    UsbPlaystationInputState state;
+    UsbPlaystationInputSources sources;
+} UsbPlaystationInputWorkspace;
+
+/** @brief Mutually exclusive input state for the active console protocol. */
+typedef union {
+    UsbXboxGipInputState xbox;
+    UsbPlaystationInputWorkspace playstation;
+} UsbConsoleInputWorkspace;
+
 static BoardIdentity board_identity;
 static MotorProbe motor_probe;
 static CommandTransport command_transport;
@@ -176,7 +195,7 @@ static UsbDisconnectDisplay usb_disconnect_display;
 static UsbInputReportState usb_input_state;
 static FanatecEncoder fanatec_encoder;
 static UsbXboxGipInputBuilder xbox_input_builder;
-static UsbXboxGipInputState xbox_input_state;
+static UsbConsoleInputWorkspace usb_console_input_workspace;
 static UsbXboxGipInputSnapshot xbox_input_snapshot;
 static UsbXboxGipExtendedStatus xbox_extended_status;
 static WheelPositionCalibration xbox_position_calibration;
@@ -207,6 +226,7 @@ static UsbConnectionMonitor usb_connection_monitor;
 static UsbHostCapabilityRecovery usb_host_capability_recovery;
 static UsbOutputCommand usb_output_command;
 static UsbPlaystationWheelValue usb_playstation_wheel_value;
+static UsbPlaystationInputMapper usb_playstation_input_mapper;
 static UsbOperatingModeCommand usb_operating_mode_command;
 static bool usb_operating_status_enabled;
 static PedalCalibrationCommand pedal_calibration_command;
@@ -1021,16 +1041,18 @@ static bool service_playstation_mode_startup(void) {
 }
 
 /**
- * @brief Initializes the PlayStation secure-element services.
+ * @brief Initializes PlayStation authentication and input services.
  *
- * Starts the A71CH SCI2C session sequence and clears authentication request and response state
- * before the USB interface can accept a host challenge.
+ * Starts the A71CH SCI2C session sequence, clears authentication request and response state,
+ * centers host-controlled wheel values, and resets retained input-button timing before the USB
+ * interface can accept PlayStation traffic.
  */
-static void initialize_playstation_authentication(void) {
+static void initialize_playstation_services(void) {
     a71ch_session_service_init(&usb_operating_mode_workspace.playstation.session);
     a71ch_session_service_start(&usb_operating_mode_workspace.playstation.session);
     a71ch_authentication_service_init(&usb_operating_mode_workspace.playstation.authentication);
     usb_playstation_wheel_value_init(&usb_playstation_wheel_value);
+    usb_playstation_input_mapper_init(&usb_playstation_input_mapper);
     wheel_service_set_legacy_axes(&wheel_service,
                                   usb_playstation_wheel_value_axes(&usb_playstation_wheel_value));
     playstation_authentication_response_published = false;
@@ -1389,7 +1411,7 @@ static void service_usb_command_bridge(uint32_t now_ms) {
     wheel_command_forwarder_run(&wheel_command_forwarder, &command_transport);
     bool playstation_mode_selected = service_playstation_mode_startup();
     if (playstation_mode_selected) {
-        initialize_playstation_authentication();
+        initialize_playstation_services();
     }
     bool playstation_mode_active = usb_device_operating_mode() == USB_OPERATING_MODE_PLAYSTATION;
     if (!playstation_mode_active && !service_xbox_mode_startup()) {
@@ -2002,8 +2024,8 @@ static void service_usb_output(void) {
  * @brief Builds and submits the current USB input report.
  *
  * Combines calibrated motor position, attached-wheel controls and rotary selectors, shifter
- * state, thermal limit state, pedal axes, and pending bite-point updates into the active native or
- * Xbox USB input format.
+ * state, thermal limit state, pedal axes, and pending bite-point updates into the active native,
+ * Xbox, or PlayStation USB input format.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -2091,8 +2113,54 @@ static void service_usb_input(uint32_t now_ms) {
     usb_input_state.fanatec.auxiliary_pedal = pedal_input_hid_auxiliary(pedal_input->auxiliary);
     const WheelAxisOverrides *axis_overrides = wheel_service_axis_overrides(&wheel_service);
     fanatec_input_apply_wheel_axis_overrides(&usb_input_state.fanatec, axis_overrides);
+    if (usb_device_operating_mode() == USB_OPERATING_MODE_PLAYSTATION) {
+        UsbPlaystationInputWorkspace *workspace = &usb_console_input_workspace.playstation;
+        (void)wheel_service_input_snapshot(&wheel_service, &workspace->sources.wheel);
+        const WheelPacketCrcAdapter *adapter = wheel_service_adapter(&wheel_service);
+        uint8_t wheel_clutch_first = workspace->sources.wheel.clutch_paddles[0];
+        uint8_t wheel_clutch_second = workspace->sources.wheel.clutch_paddles[1];
+        bool wheel_axis_enabled = workspace->sources.wheel.axis_report_enabled;
+        bool shifter_display_active = h_pattern_calibration_service.active;
+        workspace->sources.buttons = (UsbPlaystationButtonInput){
+            .secondary_buttons = workspace->sources.wheel.secondary_buttons,
+            .adapter_mode = adapter->mode,
+            .wheel_mode = wheel_service_mode(&wheel_service),
+            .directional_buttons = workspace->sources.wheel.directional_buttons,
+            .adapter_buttons = {adapter->buttons[0], adapter->buttons[1], adapter->buttons[2]},
+            .auxiliary_buttons = {shifter_input.primary_transition,
+                                  shifter_input.secondary_transition},
+            .auxiliary_history = workspace->sources.wheel.auxiliary_report[0],
+            .extended_buttons = workspace->sources.wheel.auxiliary_report[2],
+            .axis_modes = {(uint8_t)shifter_input.primary_mode,
+                           (uint8_t)shifter_input.secondary_mode},
+            .adapter_connected = adapter->connected,
+            .hat_suppressed = shifter_display_active,
+            .system_button_suppressed = shifter_display_active,
+        };
+        workspace->state = (UsbPlaystationInputState){
+            .steering = usb_input_state.fanatec.steering,
+            .pedals = {usb_input_state.fanatec.pedals[0], usb_input_state.fanatec.pedals[1],
+                       usb_input_state.fanatec.pedals[2]},
+            .wheel_hat = (uint8_t)h_pattern_shifter.gear,
+            .auxiliary_axis = (uint16_t)usb_input_state.fanatec.auxiliary_pedal * 0x0101u,
+        };
+        (void)usb_playstation_input_map_buttons(
+            &usb_playstation_input_mapper, &workspace->sources.buttons, now_ms, &workspace->state);
+        workspace->sources.clutch = (UsbPlaystationClutchInput){
+            .wheel_mode = wheel_service_mode(&wheel_service),
+            .paddle_mode = (uint8_t)tuning_profile->paddle_mode,
+            .wheel_axes = {wheel_clutch_first, wheel_clutch_second},
+            .adapter_axes = {adapter->axes[0], adapter->axes[1]},
+            .wheel_axis_enabled = wheel_axis_enabled,
+            .adapter_connected = adapter->connected,
+        };
+        usb_playstation_input_map_clutch(workspace->state.clutch_axes, &workspace->sources.clutch);
+        (void)usb_device_send_playstation_input(&workspace->state);
+        return;
+    }
     if (xbox_mode) {
-        xbox_input_state = (UsbXboxGipInputState){
+        UsbXboxGipInputState *xbox_input = &usb_console_input_workspace.xbox;
+        *xbox_input = (UsbXboxGipInputState){
             .mode_buttons = wheel_service_mode_buttons(&wheel_service),
             .steering = usb_input_state.fanatec.steering,
             .auxiliary_pedal = usb_input_state.fanatec.auxiliary_pedal,
@@ -2115,13 +2183,13 @@ static void service_usb_input(uint32_t now_ms) {
         };
         bool pedals_active = pedal_service.connected || pedal_service.analog.active;
         for (uint8_t button = 0; button < USB_XBOX_GIP_WHEEL_BUTTON_COUNT; button++) {
-            xbox_input_state.buttons[button] = usb_input_state.fanatec.button_banks[button];
+            xbox_input->buttons[button] = usb_input_state.fanatec.button_banks[button];
         }
         for (uint8_t control = 0; control < USB_XBOX_GIP_WHEEL_CONTROL_COUNT; control++) {
-            xbox_input_state.controls[control] = wheel_controls[control];
+            xbox_input->controls[control] = wheel_controls[control];
         }
         for (uint8_t rotary = 0; rotary < USB_XBOX_GIP_ROTARY_COUNT; rotary++) {
-            xbox_input_state.rotary[rotary] = usb_input_state.fanatec.rotary[rotary];
+            xbox_input->rotary[rotary] = usb_input_state.fanatec.rotary[rotary];
         }
         const WheelAxisOverride *pedal_overrides[USB_XBOX_GIP_INPUT_PEDAL_COUNT] = {
             &axis_overrides->axis_5,
@@ -2129,12 +2197,12 @@ static void service_usb_input(uint32_t now_ms) {
             &axis_overrides->axis_7,
         };
         for (uint8_t axis = 0; axis < USB_XBOX_GIP_INPUT_PEDAL_COUNT; axis++) {
-            xbox_input_state.pedals[axis] = usb_input_state.fanatec.pedals[axis];
-            xbox_input_state.pedal_active[axis] = pedals_active || pedal_overrides[axis]->enabled;
+            xbox_input->pedals[axis] = usb_input_state.fanatec.pedals[axis];
+            xbox_input->pedal_active[axis] = pedals_active || pedal_overrides[axis]->enabled;
         }
-        xbox_input_state.clutch_paddles[0] = usb_input_state.fanatec.clutch_paddles[0];
-        xbox_input_state.clutch_paddles[1] = usb_input_state.fanatec.clutch_paddles[1];
-        usb_xbox_gip_input_build(&xbox_input_builder, &xbox_input_state, &xbox_input_snapshot);
+        xbox_input->clutch_paddles[0] = usb_input_state.fanatec.clutch_paddles[0];
+        xbox_input->clutch_paddles[1] = usb_input_state.fanatec.clutch_paddles[1];
+        usb_xbox_gip_input_build(&xbox_input_builder, xbox_input, &xbox_input_snapshot);
         (void)usb_device_queue_xbox_input(&xbox_input_snapshot);
         return;
     }

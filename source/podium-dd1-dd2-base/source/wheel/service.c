@@ -24,6 +24,10 @@ enum {
     WHEEL_MULTI_POSITION_SECONDARY_OFFSET = 7,
     WHEEL_MULTI_POSITION_PACKED_OFFSET = 14,
     WHEEL_ACCESSORY_FLAGS_OFFSET = 15,
+    WHEEL_INPUT_DIRECTIONAL_OFFSET = 0,
+    WHEEL_INPUT_SECONDARY_OFFSET = 1,
+    WHEEL_INPUT_CLUTCH_OFFSET = 3,
+    WHEEL_INPUT_AUXILIARY_OFFSET = 22,
 };
 
 /**
@@ -893,6 +897,39 @@ const uint8_t *wheel_service_buttons(const WheelService *service) {
     }
     const WheelPacketCrcInput *crc_input = wheel_protocol_crc_input(&service->protocol);
     return crc_input != 0 ? crc_input->buttons : service->button_banks;
+}
+
+/**
+ * @brief Copies normalized attached-wheel host input fields.
+ *
+ * Reads the directional byte, sixteen secondary buttons, two clutch paddles, and three auxiliary
+ * bytes from the current thirty-byte request view. The separately retained axis-report capability
+ * accompanies the values. An unavailable request produces a cleared destination.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @param[out] snapshot Normalized host input fields.
+ * @return True when a supported attached-wheel request is available.
+ */
+bool wheel_service_input_snapshot(const WheelService *service, WheelInputSnapshot *snapshot) {
+    if (snapshot == 0) {
+        return false;
+    }
+    *snapshot = (WheelInputSnapshot){0};
+    const uint8_t *request = wheel_protocol_request(&service->protocol);
+    if (request == 0) {
+        return false;
+    }
+
+    snapshot->directional_buttons = request[WHEEL_INPUT_DIRECTIONAL_OFFSET];
+    snapshot->secondary_buttons = (uint16_t)request[WHEEL_INPUT_SECONDARY_OFFSET] |
+                                  (uint16_t)request[WHEEL_INPUT_SECONDARY_OFFSET + 1] << 8;
+    snapshot->clutch_paddles[0] = request[WHEEL_INPUT_CLUTCH_OFFSET];
+    snapshot->clutch_paddles[1] = request[WHEEL_INPUT_CLUTCH_OFFSET + 1];
+    snapshot->auxiliary_report[0] = request[WHEEL_INPUT_AUXILIARY_OFFSET];
+    snapshot->auxiliary_report[1] = request[WHEEL_INPUT_AUXILIARY_OFFSET + 1];
+    snapshot->auxiliary_report[2] = request[WHEEL_INPUT_AUXILIARY_OFFSET + 2];
+    snapshot->axis_report_enabled = wheel_protocol_axis_report_enabled(&service->protocol);
+    return true;
 }
 
 /**

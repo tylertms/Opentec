@@ -759,6 +759,14 @@ static void test_exposes_playstation_wheel_inputs(void) {
 
     service.protocol.request_ready = true;
     service.protocol.mode = 4;
+    service.protocol.request[0] = 0x81;
+    service.protocol.request[1] = 0x23;
+    service.protocol.request[2] = 0x45;
+    service.protocol.request[3] = 0x67;
+    service.protocol.request[4] = 0x89;
+    service.protocol.request[22] = 0xab;
+    service.protocol.request[23] = 0xcd;
+    service.protocol.request[24] = 0xef;
     service.protocol.mode_four_input.axis_report_enabled = 1;
     service.protocol.crc_adapter = (WheelPacketCrcAdapter){
         .buttons = {0x12, 0x34, 0x56},
@@ -768,11 +776,27 @@ static void test_exposes_playstation_wheel_inputs(void) {
     };
 
     assert(wheel_service_axis_report_enabled(&service));
+    WheelInputSnapshot snapshot;
+    assert(wheel_service_input_snapshot(&service, &snapshot));
+    assert(snapshot.directional_buttons == 0x81);
+    assert(snapshot.secondary_buttons == 0x4523);
+    assert(snapshot.clutch_paddles[0] == 0x67);
+    assert(snapshot.clutch_paddles[1] == 0x89);
+    assert(snapshot.auxiliary_report[0] == 0xab);
+    assert(snapshot.auxiliary_report[1] == 0xcd);
+    assert(snapshot.auxiliary_report[2] == 0xef);
+    assert(snapshot.axis_report_enabled);
     assert(wheel_service_adapter(&service) == &service.protocol.crc_adapter);
     assert(wheel_service_adapter(&service)->buttons[2] == 0x56);
     assert(wheel_service_adapter(&service)->axes[1] == 0x9a);
     assert(wheel_service_adapter(&service)->mode == 1);
     assert(wheel_service_adapter(&service)->connected);
+
+    service.protocol.request_ready = false;
+    assert(!wheel_service_input_snapshot(&service, &snapshot));
+    assert(snapshot.directional_buttons == 0);
+    assert(snapshot.secondary_buttons == 0);
+    assert(!snapshot.axis_report_enabled);
 }
 
 int main(void) {

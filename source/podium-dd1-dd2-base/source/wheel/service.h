@@ -33,6 +33,15 @@ typedef struct {
     bool remap_selectors;
 } WheelMultiPositionInput;
 
+/** @brief Normalized attached-wheel fields shared by host input formats. */
+typedef struct {
+    uint16_t secondary_buttons;
+    uint8_t directional_buttons;
+    uint8_t clutch_paddles[2];
+    uint8_t auxiliary_report[3];
+    bool axis_report_enabled;
+} WheelInputSnapshot;
+
 typedef struct {
     SerialService *transport;
     WheelProtocol protocol;
@@ -84,6 +93,7 @@ void wheel_service_set_button_illumination(WheelService *service, bool enabled);
 void wheel_service_set_display_rotation(WheelService *service, bool enabled, int16_t angle);
 void wheel_service_queue_system_status(WheelService *service, uint16_t code);
 const uint8_t *wheel_service_buttons(const WheelService *service);
+bool wheel_service_input_snapshot(const WheelService *service, WheelInputSnapshot *snapshot);
 uint8_t wheel_service_axis_limit(const WheelService *service);
 uint8_t wheel_service_mode_buttons(const WheelService *service);
 const uint8_t *wheel_service_clutch_paddles(const WheelService *service);
