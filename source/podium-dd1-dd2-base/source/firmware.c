@@ -237,7 +237,9 @@ enum {
     ADVANCED_TUNING_MODE_EVENT_CODE = 0x13,
     WHEEL_CENTER_CALIBRATED_STATUS_CODE = 0x1f,
     SHUTDOWN_EVENT_CODE = 0x0e,
-    SHUTDOWN_COMPLETE_EVENT_CODE = 0x11,
+    SYSTEM_DISPLAY_DISMISS_EVENT_CODE = 0x11,
+    FORCE_OUTPUT_PROMPT_EVENT_CODE = 0x0c,
+    FORCE_OUTPUT_PROMPT_DISMISS_EVENT_CODE = 0x1a,
     SHUTDOWN_STATUS_CODE = 0x2d,
 };
 
@@ -284,7 +286,8 @@ static void apply_power_action(PowerAction action, uint32_t now_ms) {
         platform_power_latch_set(false);
         break;
     case POWER_ACTION_FINISH_SHUTDOWN:
-        system_control_state_set_active_event(&system_control_state, SHUTDOWN_COMPLETE_EVENT_CODE);
+        system_control_state_set_active_event(&system_control_state,
+                                              SYSTEM_DISPLAY_DISMISS_EVENT_CODE);
         platform_usb_detach();
         break;
     case POWER_ACTION_NONE:
@@ -369,6 +372,10 @@ static void service_system_events(uint32_t now_ms) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_ADVANCED_TUNING_MODE, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_SHUTDOWN) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_SHUTDOWN, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_FORCE_OUTPUT_PROMPT) {
+        force_output_prompt_visible = true;
+    } else if (action == SYSTEM_EVENT_ACTION_DISMISS_FORCE_OUTPUT_PROMPT) {
+        force_output_prompt_visible = false;
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_TORQUE_DISABLED) {
         torque_disabled_notice_visible = true;
     } else if (action == SYSTEM_EVENT_ACTION_DISMISS_TORQUE_DISABLED) {
@@ -1355,16 +1362,35 @@ static void service_shifter_display(uint32_t now_ms) {
 /**
  * @brief Applies a force-output prompt visibility action.
  *
- * Retains the current display state when no action is requested and otherwise shows or hides the
- * torque-confirmation prompt.
+ * Retains the current display state when no action is requested. Show and cancellation actions use
+ * the shared event slot and publish their attached-wheel display state. An accepted response hides
+ * the prompt immediately and publishes the common dismissal state.
  *
  * @param[in] action Requested prompt visibility transition.
  */
 static void apply_force_output_prompt_action(ForceOutputEnableAction action) {
-    if (action == FORCE_OUTPUT_ENABLE_ACTION_NONE) {
-        return;
+    switch (action) {
+    case FORCE_OUTPUT_ENABLE_ACTION_SHOW_PROMPT:
+        if (system_event_queue_try_push(&system_event_queue, FORCE_OUTPUT_PROMPT_EVENT_CODE)) {
+            system_control_state_set_active_event(&system_control_state,
+                                                  FORCE_OUTPUT_PROMPT_EVENT_CODE);
+        }
+        break;
+    case FORCE_OUTPUT_ENABLE_ACTION_CANCEL_PROMPT:
+        if (system_event_queue_try_push(&system_event_queue,
+                                        FORCE_OUTPUT_PROMPT_DISMISS_EVENT_CODE)) {
+            system_control_state_set_active_event(&system_control_state,
+                                                  SYSTEM_DISPLAY_DISMISS_EVENT_CODE);
+        }
+        break;
+    case FORCE_OUTPUT_ENABLE_ACTION_DISMISS_PROMPT:
+        force_output_prompt_visible = false;
+        system_control_state_set_active_event(&system_control_state,
+                                              SYSTEM_DISPLAY_DISMISS_EVENT_CODE);
+        break;
+    case FORCE_OUTPUT_ENABLE_ACTION_NONE:
+        break;
     }
-    force_output_prompt_visible = action == FORCE_OUTPUT_ENABLE_ACTION_SHOW_PROMPT;
 }
 
 /**
@@ -1423,9 +1449,9 @@ static void service_force_output_enable(void) {
         force_output_enable_set_response(&force_output_enable, 1);
     }
 
-    bool interlocked =
-        force_output_enable_service(&force_output_enable, wheel_protocol_ready, usb_connected, true,
-                                    &force_output_enable_action);
+    bool interlocked = force_output_enable_service(
+        &force_output_enable, wheel_protocol_ready, usb_connected,
+        system_event_queue.pending_code == 0, &force_output_enable_action);
     apply_force_output_prompt_action(force_output_enable_action);
     force_output_enabled = !interlocked;
 }

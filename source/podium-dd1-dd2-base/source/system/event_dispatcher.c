@@ -16,10 +16,12 @@ enum {
     SYSTEM_EVENT_MOTOR_CALIBRATION_UNSUPPORTED = 9,
     SYSTEM_EVENT_MOTOR_CALIBRATION_COMPLETED = 10,
     SYSTEM_EVENT_MOTOR_CALIBRATION_ERASED = 11,
+    SYSTEM_EVENT_FORCE_OUTPUT_PROMPT = 12,
     SYSTEM_EVENT_TORQUE_DISABLED = 0x0d,
     SYSTEM_EVENT_SHUTDOWN = 0x0e,
     SYSTEM_EVENT_STANDARD_TUNING_MODE = 0x12,
     SYSTEM_EVENT_ADVANCED_TUNING_MODE = 0x13,
+    SYSTEM_EVENT_DISMISS_FORCE_OUTPUT_PROMPT = 0x1a,
     SYSTEM_EVENT_TORQUE_ENABLED = 0x1b,
     SYSTEM_EVENT_MOTOR_CALIBRATION_ONGOING = 0x1c,
     SYSTEM_EVENT_DISPATCH_INTERVAL_MS = 100,
@@ -53,10 +55,10 @@ void system_event_dispatcher_init(SystemEventDispatcher *dispatcher) {
 /**
  * @brief Dispatches a queued system notice event.
  *
- * Maps tuning-menu, wheel-center, position-sensor, motor-calibration, torque-reduction, and
- * power-button event codes to display actions. Recognized events complete their queue slot and
- * start a 100-millisecond minimum interval. Other event codes remain available for their owning
- * dispatcher.
+ * Maps tuning-menu, wheel-center, position-sensor, motor-calibration, force-output,
+ * torque-reduction, and power-button event codes to display actions. Recognized events complete
+ * their queue slot and start a 100-millisecond minimum interval. Other event codes remain available
+ * for their owning dispatcher.
  *
  * @param[in,out] dispatcher Shared event dispatch cadence.
  * @param[in,out] queue Single-slot system event queue.
@@ -88,6 +90,10 @@ SystemEventAction system_event_dispatcher_update(SystemEventDispatcher *dispatch
         action = SYSTEM_EVENT_ACTION_SHOW_MOTOR_CALIBRATION_COMPLETED;
     } else if (queue->pending_code == SYSTEM_EVENT_MOTOR_CALIBRATION_ERASED) {
         action = SYSTEM_EVENT_ACTION_SHOW_MOTOR_CALIBRATION_ERASED;
+    } else if (queue->pending_code == SYSTEM_EVENT_FORCE_OUTPUT_PROMPT) {
+        action = SYSTEM_EVENT_ACTION_SHOW_FORCE_OUTPUT_PROMPT;
+    } else if (queue->pending_code == SYSTEM_EVENT_DISMISS_FORCE_OUTPUT_PROMPT) {
+        action = SYSTEM_EVENT_ACTION_DISMISS_FORCE_OUTPUT_PROMPT;
     } else if (queue->pending_code == SYSTEM_EVENT_STANDARD_TUNING_MODE) {
         action = SYSTEM_EVENT_ACTION_SHOW_STANDARD_TUNING_MODE;
     } else if (queue->pending_code == SYSTEM_EVENT_ADVANCED_TUNING_MODE) {

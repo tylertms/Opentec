@@ -42,9 +42,11 @@ static void test_dispatches_motor_notice_actions(void) {
         {9, SYSTEM_EVENT_ACTION_SHOW_MOTOR_CALIBRATION_UNSUPPORTED},
         {10, SYSTEM_EVENT_ACTION_SHOW_MOTOR_CALIBRATION_COMPLETED},
         {11, SYSTEM_EVENT_ACTION_SHOW_MOTOR_CALIBRATION_ERASED},
+        {12, SYSTEM_EVENT_ACTION_SHOW_FORCE_OUTPUT_PROMPT},
         {0x0e, SYSTEM_EVENT_ACTION_SHOW_SHUTDOWN},
         {0x12, SYSTEM_EVENT_ACTION_SHOW_STANDARD_TUNING_MODE},
         {0x13, SYSTEM_EVENT_ACTION_SHOW_ADVANCED_TUNING_MODE},
+        {0x1a, SYSTEM_EVENT_ACTION_DISMISS_FORCE_OUTPUT_PROMPT},
         {0x1c, SYSTEM_EVENT_ACTION_SHOW_MOTOR_CALIBRATION_ONGOING},
     };
 
@@ -66,10 +68,10 @@ static void test_leaves_unowned_events_pending(void) {
     SystemEventQueue queue;
     system_event_dispatcher_init(&dispatcher);
     system_event_queue_init(&queue);
-    assert(system_event_queue_try_push(&queue, 0x0e));
+    assert(system_event_queue_try_push(&queue, 0x7f));
 
     assert(system_event_dispatcher_update(&dispatcher, &queue, 1000) == SYSTEM_EVENT_ACTION_NONE);
-    assert(queue.pending_code == 0x0e);
+    assert(queue.pending_code == 0x7f);
     assert(dispatcher.next_dispatch_ms == 0);
 }
 
