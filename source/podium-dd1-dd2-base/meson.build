@@ -95,6 +95,7 @@ usb_connection_sources = files('source/usb/connection.c')
 usb_host_capability_recovery_sources = files('source/usb/host_capability_recovery.c')
 usb_playstation_authentication_sources = files('source/usb/playstation_authentication.c')
 usb_playstation_input_sources = files('source/usb/playstation_input.c')
+usb_playstation_wheel_value_sources = files('source/usb/playstation_wheel_value.c')
 a71ch_sources = files('source/secure_element/a71ch.c')
 a71ch_bus_sources = files('source/secure_element/bus.c')
 a71ch_exchange_sources = files('source/secure_element/exchange.c')
@@ -292,6 +293,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'usb-host-capability-recovery': 'source/usb/host_capability_recovery.c',
     'usb-playstation-authentication': 'source/usb/playstation_authentication.c',
     'usb-playstation-input': 'source/usb/playstation_input.c',
+    'usb-playstation-wheel-value': 'source/usb/playstation_wheel_value.c',
     'a71ch': 'source/secure_element/a71ch.c',
     'a71ch-bus': 'source/secure_element/bus.c',
     'a71ch-exchange': 'source/secure_element/exchange.c',
@@ -1282,6 +1284,13 @@ if not meson.is_cross_build()
     'base-usb-playstation-input-test',
     'tests/source/playstation_input.c',
     usb_playstation_input_sources,
+    include_directories: base_include,
+  )
+
+  usb_playstation_wheel_value_test = executable(
+    'base-usb-playstation-wheel-value-test',
+    'tests/source/playstation_wheel_value.c',
+    usb_playstation_wheel_value_sources,
     include_directories: base_include,
   )
 
@@ -2328,6 +2337,11 @@ if not meson.is_cross_build()
   test('base-usb-device-control', usb_device_control_test, suite: ['base', 'usb'])
   test('base-usb-device', usb_device_test, suite: ['base', 'usb'])
   test('base-usb-output-command', usb_output_command_test, suite: ['base', 'usb', 'output'])
+  test(
+    'base-usb-playstation-wheel-value',
+    usb_playstation_wheel_value_test,
+    suite: ['base', 'usb', 'output'],
+  )
   test(
     'base-usb-operating-mode-command',
     usb_operating_mode_command_test,

@@ -52,6 +52,7 @@ void wheel_service_init(WheelService *service, SerialService *transport);
 void wheel_service_run(WheelService *service, uint32_t now_ms, bool start_allowed);
 void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output);
 void wheel_service_set_vibration_output(WheelService *service, const WheelVibrationOutput *output);
+void wheel_service_set_legacy_axes(WheelService *service, const uint8_t axes[2]);
 void wheel_service_set_crc_adapter(WheelService *service, const WheelPacketCrcAdapter *adapter);
 void wheel_service_set_host_capability(WheelService *service, bool enabled);
 void wheel_service_configure_axis_processing(WheelService *service, uint8_t interface_mode,

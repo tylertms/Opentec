@@ -19,7 +19,7 @@ static void test_encodes_the_complete_response(void) {
     const WheelPacketModeOneOutput output = {
         .display = {.glyphs = {0x11, 0x22, 0x33}, .third_glyph_marker = true},
         .vibration = {0x44, 0x55},
-        .link_status = {0x66, 0x77},
+        .legacy_axes = {0x66, 0x77},
     };
     uint8_t response[WHEEL_PACKET_MODE_ONE_RESPONSE_SIZE] = {0};
     const uint8_t expected[WHEEL_PACKET_MODE_ONE_RESPONSE_SIZE] = {

@@ -62,7 +62,7 @@ typedef struct {
 typedef struct {
     WheelDisplayOutput display;
     uint8_t vibration[2];
-    uint8_t link_status[2];
+    uint8_t legacy_axes[2];
 } WheelPacketModeOneOutput;
 
 bool wheel_packet_mode_one_applies(uint8_t wheel_mode);

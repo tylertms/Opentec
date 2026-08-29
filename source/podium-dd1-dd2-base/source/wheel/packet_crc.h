@@ -47,6 +47,7 @@ typedef struct {
 typedef struct {
     WheelDisplayOutput display;
     uint8_t vibration[2];
+    uint8_t legacy_axes[2];
     uint8_t report_state;
     bool command_restart_pending;
     bool status_update_pending;

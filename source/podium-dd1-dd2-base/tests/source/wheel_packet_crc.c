@@ -227,6 +227,7 @@ static void test_encodes_standard_and_authenticated_responses(void) {
     WheelPacketCrcOutput output = {
         .display = {.glyphs = {0x11, 0x22, 0x33}, .third_glyph_marker = true},
         .vibration = {0x22, 0x33},
+        .legacy_axes = {0x44, 0x55},
         .report_state = 0x66,
         .command_restart_pending = true,
         .status_update_pending = true,
@@ -243,8 +244,8 @@ static void test_encodes_standard_and_authenticated_responses(void) {
     memset(response, 0, sizeof(response));
     wheel_packet_crc_encode(0x15, false, &output, response);
     assert(response[0] == 0xa6);
-    assert(response[7] == 0);
-    assert(response[8] == 0);
+    assert(response[7] == 0x44);
+    assert(response[8] == 0x55);
     assert(response[10] == 0);
 }
 

@@ -493,7 +493,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
 /**
  * @brief Updates standard packet-family wheel output.
  *
- * Replaces the display, display-state, and link-status output encoded for mode-one packets.
+ * Replaces the display, vibration, and legacy-axis output encoded for mode-one packets.
  *
  * @param[in,out] protocol Wheel protocol state to update.
  * @param[in] output Standard packet-family output state.

@@ -383,8 +383,9 @@ void wheel_packet_crc_snapshot(const WheelPacketCrcInput *input,
  * @brief Encodes a CRC-family attached-wheel response payload.
  *
  * Writes the mode-specific command, three display glyphs, optional third-glyph marker, two
- * vibration channels, host capability, one-shot motor-link restart state, report state, and
- * one-shot status-update marker. The caller supplies the CRC byte.
+ * vibration channels, legacy axes, host capability, one-shot motor-link restart state, report
+ * state, and one-shot status-update marker. Capability and restart markers replace their
+ * corresponding legacy-axis byte while active. The caller supplies the CRC byte.
  *
  * @param[in] wheel_mode Selected mode 6 or mode 0x15.
  * @param[in] host_capability_enabled True when the host enabled the attached-wheel capability.
@@ -406,8 +407,8 @@ void wheel_packet_crc_encode(uint8_t wheel_mode, bool host_capability_enabled,
     }
     response[5] = output->vibration[0];
     response[6] = output->vibration[1];
-    response[7] = host_capability_enabled ? UINT8_MAX : 0;
-    response[8] = output->command_restart_pending ? UINT8_MAX : 0;
+    response[7] = host_capability_enabled ? UINT8_MAX : output->legacy_axes[0];
+    response[8] = output->command_restart_pending ? UINT8_MAX : output->legacy_axes[1];
     response[9] = output->report_state;
     response[10] = output->status_update_pending ? UINT8_MAX : 0;
     output->command_restart_pending = false;

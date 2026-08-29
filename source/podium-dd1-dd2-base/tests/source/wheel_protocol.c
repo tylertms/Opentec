@@ -610,7 +610,7 @@ static void test_builds_mode_one_active_response(void) {
     const WheelPacketModeOneOutput output = {
         .display = {.glyphs = {0x11, 0x22, 0x33}, .third_glyph_marker = true},
         .vibration = {0x44, 0x55},
-        .link_status = {0x66, 0x77},
+        .legacy_axes = {0x66, 0x77},
     };
     wheel_protocol_init(&protocol);
     wheel_protocol_set_mode_one_output(&protocol, &output);

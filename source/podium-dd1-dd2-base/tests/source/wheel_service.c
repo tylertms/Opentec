@@ -720,6 +720,21 @@ static void test_applies_vibration_to_every_packet_family(void) {
     assert(service.protocol.crc_output.vibration[1] == 0x56);
 }
 
+static void test_applies_legacy_axes_to_every_packet_family(void) {
+    WheelService service;
+    initialize_service(&service);
+    const uint8_t axes[2] = {0x34, 0x56};
+
+    wheel_service_set_legacy_axes(&service, axes);
+
+    assert(service.protocol.mode_one_output.legacy_axes[0] == 0x34);
+    assert(service.protocol.mode_one_output.legacy_axes[1] == 0x56);
+    assert(service.protocol.mode_four_output.legacy_axes[0] == 0x34);
+    assert(service.protocol.mode_four_output.legacy_axes[1] == 0x56);
+    assert(service.protocol.crc_output.legacy_axes[0] == 0x34);
+    assert(service.protocol.crc_output.legacy_axes[1] == 0x56);
+}
+
 static void test_reports_host_capability_recovery_inputs(void) {
     WheelService service;
     initialize_service(&service);
@@ -785,6 +800,7 @@ int main(void) {
     test_exposes_axis_overrides();
     test_reports_bite_point_adjustment();
     test_applies_vibration_to_every_packet_family();
+    test_applies_legacy_axes_to_every_packet_family();
     test_reports_host_capability_recovery_inputs();
     test_exposes_playstation_wheel_inputs();
     return 0;

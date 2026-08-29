@@ -498,6 +498,26 @@ void wheel_service_set_vibration_output(WheelService *service, const WheelVibrat
 }
 
 /**
+ * @brief Updates the legacy axes sent to the attached wheel.
+ *
+ * Applies the same high-byte and low-byte axis values to each packet family that publishes the
+ * shared legacy-axis fields.
+ *
+ * @param[in,out] service Attached-wheel service to update.
+ * @param[in] axes Two legacy-axis bytes in attached-wheel response order.
+ */
+void wheel_service_set_legacy_axes(WheelService *service, const uint8_t axes[2]) {
+    if (service == NULL || axes == NULL) {
+        return;
+    }
+    for (uint8_t axis = 0; axis < 2; axis++) {
+        service->protocol.mode_one_output.legacy_axes[axis] = axes[axis];
+        service->protocol.mode_four_output.legacy_axes[axis] = axes[axis];
+        service->protocol.crc_output.legacy_axes[axis] = axes[axis];
+    }
+}
+
+/**
  * @brief Configures the attached-wheel CRC packet adapter.
  *
  * Retains adapter buttons, axes, rotary positions, mode, connection state, and pending motion used

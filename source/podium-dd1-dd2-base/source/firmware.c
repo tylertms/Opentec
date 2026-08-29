@@ -81,6 +81,7 @@
 #include "usb/motor_vendor_service.h"
 #include "usb/operating_mode_command.h"
 #include "usb/output_command.h"
+#include "usb/playstation_wheel_value.h"
 #include "usb/remote_tuning_service.h"
 #include "usb/tuning_menu_service.h"
 #include "usb/tuning_profile_report.h"
@@ -205,6 +206,7 @@ static UsbDeviceOutputReport usb_device_output_report;
 static UsbConnectionMonitor usb_connection_monitor;
 static UsbHostCapabilityRecovery usb_host_capability_recovery;
 static UsbOutputCommand usb_output_command;
+static UsbPlaystationWheelValue usb_playstation_wheel_value;
 static UsbOperatingModeCommand usb_operating_mode_command;
 static bool usb_operating_status_enabled;
 static PedalCalibrationCommand pedal_calibration_command;
@@ -1028,6 +1030,9 @@ static void initialize_playstation_authentication(void) {
     a71ch_session_service_init(&usb_operating_mode_workspace.playstation.session);
     a71ch_session_service_start(&usb_operating_mode_workspace.playstation.session);
     a71ch_authentication_service_init(&usb_operating_mode_workspace.playstation.authentication);
+    usb_playstation_wheel_value_init(&usb_playstation_wheel_value);
+    wheel_service_set_legacy_axes(&wheel_service,
+                                  usb_playstation_wheel_value_axes(&usb_playstation_wheel_value));
     playstation_authentication_response_published = false;
 }
 
@@ -1802,6 +1807,13 @@ static void service_usb_output(void) {
     if (route_xbox_gip_command(&usb_device_output_report)) {
         return;
     }
+    if (usb_device_operating_mode() == USB_OPERATING_MODE_PLAYSTATION &&
+        usb_playstation_wheel_value_apply(&usb_playstation_wheel_value, &usb_device_output_report,
+                                          platform_time_ms())) {
+        wheel_service_set_legacy_axes(
+            &wheel_service, usb_playstation_wheel_value_axes(&usb_playstation_wheel_value));
+        return;
+    }
     if (force_feedback_script_runtime_apply_packet(&force_feedback_script_system,
                                                    usb_device_output_report.data,
                                                    usb_device_output_report.length)) {
@@ -2509,6 +2521,11 @@ int main(void) {
             wheel_steering_limits_active(&base_settings.steering_limits,
                                          base_settings.tuning_profiles.active_slot),
             now_ms);
+        if (usb_device_operating_mode() == USB_OPERATING_MODE_PLAYSTATION &&
+            usb_playstation_wheel_value_expire(&usb_playstation_wheel_value, now_ms)) {
+            wheel_service_set_legacy_axes(
+                &wheel_service, usb_playstation_wheel_value_axes(&usb_playstation_wheel_value));
+        }
         wheel_position_calibration = wheel_position_calibration_build(
             &base_settings.wheel_position, tuning_profile->rotation_degrees,
             tuning_profile->steering_deadzone);
