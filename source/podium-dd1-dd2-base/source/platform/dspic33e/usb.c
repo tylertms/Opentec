@@ -39,25 +39,69 @@ static volatile uint8_t event_head;
 static volatile uint8_t event_tail;
 static volatile uint8_t next_bank[USB_ENDPOINT_COUNT][USB_DIRECTION_COUNT];
 
+/**
+ * @brief Selects one USB buffer descriptor.
+ *
+ * Maps an endpoint, direction, and ping-pong bank to its controller descriptor.
+ *
+ * @param[in] endpoint Endpoint number from zero through four.
+ * @param[in] input True for device-to-host transfers.
+ * @param[in] odd_bank True for the odd ping-pong bank.
+ * @return Selected descriptor.
+ */
 static volatile UsbBufferDescriptor *descriptor(uint8_t endpoint, bool input, bool odd_bank) {
     return &descriptors[usb_buffer_descriptor_index(endpoint, input, odd_bank)];
 }
 
+/**
+ * @brief Selects one USB transfer buffer address.
+ *
+ * Maps an endpoint, direction, and ping-pong bank to its 64-byte packet buffer.
+ *
+ * @param[in] endpoint Endpoint number from zero through four.
+ * @param[in] input True for device-to-host transfers.
+ * @param[in] odd_bank True for the odd ping-pong bank.
+ * @return Controller-visible packet buffer address.
+ */
 static uint16_t buffer_address(uint8_t endpoint, bool input, bool odd_bank) {
     return (uint16_t)&buffers[endpoint][input ? 1 : 0][odd_bank ? 1 : 0][0];
 }
 
+/**
+ * @brief Clears every USB buffer descriptor.
+ *
+ * Resets all 20 endpoint, direction, and ping-pong descriptor combinations.
+ *
+ */
 static void clear_descriptors(void) {
     for (uint8_t index = 0; index < USB_DESCRIPTOR_COUNT; index++) {
         usb_buffer_descriptor_clear(&descriptors[index]);
     }
 }
 
+/**
+ * @brief Arms one endpoint-zero setup bank.
+ *
+ * Prepares the selected host-to-device bank to accept a setup packet of up to 64 bytes.
+ *
+ * @param[in] odd_bank True for the odd ping-pong bank.
+ */
 static void arm_setup_bank(bool odd_bank) {
     usb_buffer_descriptor_arm_setup(descriptor(0, false, odd_bank),
                                     buffer_address(0, false, odd_bank), PLATFORM_USB_PACKET_SIZE);
 }
 
+/**
+ * @brief Queues one USB controller event.
+ *
+ * Copies the completed packet into the eight-entry interrupt-to-main event ring and drops the
+ * event when the ring is full.
+ *
+ * @param[in] type Controller event type.
+ * @param[in] endpoint Endpoint associated with the event.
+ * @param[in] data Completed packet bytes, or null for events without a payload.
+ * @param[in] length Number of packet bytes to copy.
+ */
 static void push_event(PlatformUsbEventType type, uint8_t endpoint, const volatile uint8_t *data,
                        uint8_t length) {
     uint8_t next = (event_head + 1) & USB_EVENT_MASK;
@@ -75,6 +119,13 @@ static void push_event(PlatformUsbEventType type, uint8_t endpoint, const volati
     event_head = next;
 }
 
+/**
+ * @brief Restores the USB controller to its default device state.
+ *
+ * Resets ping-pong selection, address zero, endpoint controls, queued events, descriptors, and
+ * both endpoint-zero setup banks before allowing token processing.
+ *
+ */
 static void reset_controller(void) {
     U1CONbits.PPBRST = 1;
     U1ADDR = 0;
@@ -95,6 +146,14 @@ static void reset_controller(void) {
     U1CONbits.PPBRST = 0;
 }
 
+/**
+ * @brief Initializes the USB device controller.
+ *
+ * Configures the active-high RB1 connection input, enables and powers the controller, selects all
+ * supported device interrupt sources, installs the aligned descriptor table, resets endpoint
+ * state, and selects interrupt priority four.
+ *
+ */
 void platform_usb_init(void) {
     IEC5bits.USB1IE = 0;
     ANSELBbits.ANSB1 = 0;
@@ -126,6 +185,13 @@ void platform_usb_init(void) {
  */
 bool platform_usb_connected(void) { return PORTBbits.RB1 != 0; }
 
+/**
+ * @brief Attaches the USB device controller to the bus.
+ *
+ * Clears pending controller and CPU interrupt flags, enables the supported device events and the
+ * priority-four interrupt, and enables the USB transceiver.
+ *
+ */
 void platform_usb_attach(void) {
     U1IR = 0xff;
     U1IE = 0x9f;
@@ -134,6 +200,12 @@ void platform_usb_attach(void) {
     U1CONbits.USBEN = 1;
 }
 
+/**
+ * @brief Detaches the USB device controller from the bus.
+ *
+ * Disables the CPU interrupt, USB transceiver, and controller event sources.
+ *
+ */
 void platform_usb_detach(void) {
     IEC5bits.USB1IE = 0;
     U1CONbits.USBEN = 0;
@@ -145,6 +217,7 @@ void platform_usb_detach(void) {
  *
  * Disables the controller, discards queued transfers, waits for 0x9000 groups of 0x0c81
  * two-cycle delay operations, resets both endpoint banks, and reconnects to the bus.
+ *
  */
 void platform_usb_restart(void) {
     platform_usb_detach();
@@ -160,6 +233,7 @@ void platform_usb_restart(void) {
  *
  * Disables the USB interrupt, waits 0x0e10 delay cycles, asserts the controller resume bit for
  * 0x09c4 delay cycles, clears the bit, and re-enables the USB interrupt.
+ *
  */
 void platform_usb_signal_resume(void) {
     IEC5bits.USB1IE = 0;
@@ -170,6 +244,15 @@ void platform_usb_signal_resume(void) {
     IEC5bits.USB1IE = 1;
 }
 
+/**
+ * @brief Takes one queued USB controller event.
+ *
+ * Copies the oldest event while briefly excluding the USB interrupt and preserves the prior
+ * interrupt-enable state.
+ *
+ * @param[out] event Destination for the event and any packet bytes.
+ * @return True when an event was available; otherwise false.
+ */
 bool platform_usb_take_event(PlatformUsbEvent *event) {
     if (event == 0) {
         return false;
@@ -191,6 +274,20 @@ bool platform_usb_take_event(PlatformUsbEvent *event) {
     return available;
 }
 
+/**
+ * @brief Arms one USB endpoint transfer.
+ *
+ * Selects the next available ping-pong bank, copies device-to-host bytes, publishes the descriptor
+ * to the controller, advances bank selection, and releases endpoint-zero token processing only
+ * after the requested control stage is ready.
+ *
+ * @param[in] endpoint Endpoint number from zero through four.
+ * @param[in] input True for a device-to-host transfer.
+ * @param[in] data Device-to-host packet bytes, or null for a host-to-device transfer.
+ * @param[in] length Transfer capacity in bytes.
+ * @param[in] data_one True to use the DATA1 toggle.
+ * @return True when a bank accepted the transfer; otherwise false.
+ */
 static bool arm(uint8_t endpoint, bool input, const uint8_t *data, uint8_t length, bool data_one) {
     if (endpoint >= USB_ENDPOINT_COUNT || length > PLATFORM_USB_PACKET_SIZE) {
         return false;
@@ -214,19 +311,50 @@ static bool arm(uint8_t endpoint, bool input, const uint8_t *data, uint8_t lengt
         usb_buffer_descriptor_arm(target, buffer_address(endpoint, input, bank != 0), length,
                                   data_one, false);
         next_bank[endpoint][direction] = bank ^ 1;
+        if (endpoint == 0) {
+            U1CONbits.PKTDIS = 0;
+        }
         return true;
     }
     return false;
 }
 
+/**
+ * @brief Submits one device-to-host USB transfer.
+ *
+ * Accepts a null source only for a zero-length packet and arms the next endpoint input bank.
+ *
+ * @param[in] endpoint Endpoint number from zero through four.
+ * @param[in] data Packet bytes, or null for a zero-length packet.
+ * @param[in] length Number of packet bytes.
+ * @param[in] data_one True to use the DATA1 toggle.
+ * @return True when the transfer was armed; otherwise false.
+ */
 bool platform_usb_send(uint8_t endpoint, const uint8_t *data, uint8_t length, bool data_one) {
     return (data != 0 || length == 0) && arm(endpoint, true, data, length, data_one);
 }
 
+/**
+ * @brief Submits one host-to-device USB transfer.
+ *
+ * Arms the next endpoint output bank with the requested capacity and data toggle.
+ *
+ * @param[in] endpoint Endpoint number from zero through four.
+ * @param[in] length Maximum packet length.
+ * @param[in] data_one True to use the DATA1 toggle.
+ * @return True when the transfer was armed; otherwise false.
+ */
 bool platform_usb_receive(uint8_t endpoint, uint8_t length, bool data_one) {
     return arm(endpoint, false, 0, length, data_one);
 }
 
+/**
+ * @brief Prepares endpoint zero for the next setup packet.
+ *
+ * Arms every available output bank for setup traffic, clears a prior control stall, releases token
+ * processing, and preserves the prior interrupt-enable state.
+ *
+ */
 void platform_usb_control_ready(void) {
     bool interrupt_enabled = IEC5bits.USB1IE != 0;
     IEC5bits.USB1IE = 0;
@@ -238,9 +366,17 @@ void platform_usb_control_ready(void) {
         }
     }
     U1EP0bits.EPSTALL = 0;
+    U1CONbits.PKTDIS = 0;
     IEC5bits.USB1IE = interrupt_enabled;
 }
 
+/**
+ * @brief Applies the enumerated USB device address.
+ *
+ * Writes the low seven address bits after the status stage completes.
+ *
+ * @param[in] address Host-assigned device address.
+ */
 void platform_usb_set_address(uint8_t address) { U1ADDR = address & 0x7f; }
 
 /**
@@ -292,13 +428,40 @@ void platform_usb_unconfigure_endpoint(uint8_t endpoint) {
     IEC5bits.USB1IE = interrupt_enabled;
 }
 
+/**
+ * @brief Stalls one USB endpoint.
+ *
+ * Keeps endpoint zero able to accept a replacement setup packet, requests a stall handshake, and
+ * releases token processing after the stall path is ready.
+ *
+ * @param[in] endpoint Endpoint number from zero through four.
+ */
 void platform_usb_stall(uint8_t endpoint) {
     if (endpoint < USB_ENDPOINT_COUNT) {
+        if (endpoint == 0) {
+            for (uint8_t bank = 0; bank < USB_BANK_COUNT; bank++) {
+                volatile UsbBufferDescriptor *target = descriptor(0, false, bank != 0);
+                if (!usb_buffer_descriptor_owned(target)) {
+                    arm_setup_bank(bank != 0);
+                }
+            }
+        }
         volatile uint16_t *endpoint_control = &U1EP0 + endpoint;
         *endpoint_control |= USB_ENDPOINT_STALL;
+        if (endpoint == 0) {
+            U1CONbits.PKTDIS = 0;
+        }
     }
 }
 
+/**
+ * @brief Captures one completed USB transaction.
+ *
+ * Decodes endpoint, direction, and ping-pong bank from controller status, advances the bank
+ * selector, and queues the completed setup, output, or input-completion event. Setup traffic clears
+ * a prior control stall but remains token-gated until its next stage is armed.
+ *
+ */
 static void handle_transaction(void) {
     uint8_t status = U1STAT;
     uint8_t endpoint = (status & USB_TRANSACTION_ENDPOINT_MASK) >> 4;
@@ -323,10 +486,16 @@ static void handle_transaction(void) {
     push_event(type, endpoint, data, length);
     if (type == PLATFORM_USB_EVENT_SETUP) {
         U1EP0bits.EPSTALL = 0;
-        U1CONbits.PKTDIS = 0;
     }
 }
 
+/**
+ * @brief Services USB device-controller interrupts.
+ *
+ * Handles reset, suspend, protocol errors, frame, stall, and up to four queued transaction events
+ * before clearing the CPU interrupt request.
+ *
+ */
 void __attribute__((interrupt, no_auto_psv)) _USB1Interrupt(void) {
     if (U1IRbits.URSTIF != 0) {
         reset_controller();
@@ -345,6 +514,7 @@ void __attribute__((interrupt, no_auto_psv)) _USB1Interrupt(void) {
         U1IR = 0x04;
     }
     if (U1IRbits.STALLIF != 0) {
+        U1EP0bits.EPSTALL = 0;
         U1IR = 0x80;
     }
     for (uint8_t transaction = 0; transaction < 4 && U1IRbits.TRNIF != 0; transaction++) {
