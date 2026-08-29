@@ -6,6 +6,6 @@
 #include "display/framebuffer.h"
 
 void platform_display_init(void);
-void platform_display_write_frame(const uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE]);
+void platform_display_write_frame(ConstDisplayFramebuffer framebuffer);
 
 #endif

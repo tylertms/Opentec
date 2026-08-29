@@ -124,8 +124,8 @@ uint16_t display_text_width(const char *text, uint8_t scale) {
  * @param[in] scale Integer pixel scale.
  * @param[in] color Four-bit grayscale value.
  */
-void display_text_draw(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], const char *text, uint16_t x,
-                       uint16_t y, uint8_t scale, uint8_t color) {
+void display_text_draw(DisplayFramebuffer framebuffer, const char *text, uint16_t x, uint16_t y,
+                       uint8_t scale, uint8_t color) {
     for (uint16_t index = 0; text[index] != '\0'; index++) {
         const Glyph *glyph = find_glyph(text[index]);
         for (uint16_t row = 0; row < GLYPH_HEIGHT; row++) {
@@ -157,8 +157,8 @@ void display_text_draw(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], const char
  * @param[in] scale Integer pixel scale.
  * @param[in] color Four-bit grayscale value.
  */
-void display_text_draw_centered(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], const char *text,
-                                uint16_t y, uint8_t scale, uint8_t color) {
+void display_text_draw_centered(DisplayFramebuffer framebuffer, const char *text, uint16_t y,
+                                uint8_t scale, uint8_t color) {
     uint16_t width = display_text_width(text, scale);
     uint16_t x = width < DISPLAY_FRAMEBUFFER_WIDTH ? (DISPLAY_FRAMEBUFFER_WIDTH - width) / 2 : 0;
     display_text_draw(framebuffer, text, x, y, scale, color);

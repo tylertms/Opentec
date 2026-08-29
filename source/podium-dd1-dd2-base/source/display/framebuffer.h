@@ -9,8 +9,16 @@ enum {
     DISPLAY_FRAMEBUFFER_SIZE = 8192,
 };
 
-void display_framebuffer_clear(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE]);
-void display_framebuffer_set_pixel(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], uint16_t x,
-                                   uint16_t y, uint8_t value);
+#if defined(__XC16__)
+typedef __eds__ uint8_t *DisplayFramebuffer;
+typedef const __eds__ uint8_t *ConstDisplayFramebuffer;
+#else
+typedef uint8_t *DisplayFramebuffer;
+typedef const uint8_t *ConstDisplayFramebuffer;
+#endif
+
+void display_framebuffer_clear(DisplayFramebuffer framebuffer);
+void display_framebuffer_set_pixel(DisplayFramebuffer framebuffer, uint16_t x, uint16_t y,
+                                   uint8_t value);
 
 #endif

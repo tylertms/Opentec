@@ -31,7 +31,7 @@ static const uint8_t torque_key_icon[] = {
  * @param[out] framebuffer Complete local-display framebuffer.
  * @param[in] visible True while the acknowledgement prompt owns the display.
  */
-void display_prompt_render(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], bool visible) {
+void display_prompt_render(DisplayFramebuffer framebuffer, bool visible) {
     display_framebuffer_clear(framebuffer);
     if (!visible) {
         return;
@@ -49,7 +49,7 @@ void display_prompt_render(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], bool v
  * @param[out] framebuffer Complete local-display framebuffer.
  * @param[in] visible True while the Torque Key acknowledgement prompt owns the display.
  */
-void display_prompt_render_torque_key(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], bool visible) {
+void display_prompt_render_torque_key(DisplayFramebuffer framebuffer, bool visible) {
     display_framebuffer_clear(framebuffer);
     if (!visible) {
         return;
@@ -80,7 +80,7 @@ void display_prompt_render_torque_key(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SI
  * @param[in] visible True while paddle bite-point adjustment owns the display.
  * @param[in] percent Current bite-point percentage from zero through one hundred.
  */
-void display_prompt_render_bite_point(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], bool visible,
+void display_prompt_render_bite_point(DisplayFramebuffer framebuffer, bool visible,
                                       uint8_t percent) {
     display_framebuffer_clear(framebuffer);
     if (!visible) {

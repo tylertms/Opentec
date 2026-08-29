@@ -15,7 +15,7 @@ enum {
  *
  * @param[out] framebuffer Packed 256-by-64 grayscale framebuffer.
  */
-void display_framebuffer_clear(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE]) {
+void display_framebuffer_clear(DisplayFramebuffer framebuffer) {
     for (uint16_t index = 0; index < DISPLAY_FRAMEBUFFER_SIZE; index++) {
         framebuffer[index] = 0;
     }
@@ -32,8 +32,8 @@ void display_framebuffer_clear(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE]) {
  * @param[in] y Pixel row.
  * @param[in] value Four-bit grayscale value; higher bits are discarded.
  */
-void display_framebuffer_set_pixel(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], uint16_t x,
-                                   uint16_t y, uint8_t value) {
+void display_framebuffer_set_pixel(DisplayFramebuffer framebuffer, uint16_t x, uint16_t y,
+                                   uint8_t value) {
     if (x > DISPLAY_DRAWABLE_MAX_X || y > DISPLAY_DRAWABLE_MAX_Y) {
         return;
     }

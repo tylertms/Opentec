@@ -276,7 +276,11 @@ static CoolingEffectStrengths cooling_effect_strengths;
 static CoolingTemperatureMonitor cooling_temperature_monitor;
 static PlatformFanTachometer fan_tachometer;
 static uint16_t fan_speed_rpm[2];
+#if defined(__XC16__)
+static __eds__ uint8_t display_framebuffer[DISPLAY_FRAMEBUFFER_SIZE] __attribute__((space(eds)));
+#else
 static uint8_t display_framebuffer[DISPLAY_FRAMEBUFFER_SIZE];
+#endif
 static DisplayPrompt force_output_display_prompt;
 static DisplayPrompt torque_key_display_prompt;
 static ForceOutputEnable force_output_enable;

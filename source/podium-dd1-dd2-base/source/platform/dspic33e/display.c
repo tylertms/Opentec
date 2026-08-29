@@ -79,7 +79,16 @@ static void reset_controller(void) {
     wait_ms(DISPLAY_RESET_RECOVERY_MS);
 }
 
-static void start_dma(const uint8_t *framebuffer) {
+/**
+ * @brief Starts a full framebuffer transfer on DMA channel 10.
+ *
+ * Configures byte-wide, one-shot RAM-to-peripheral transfers for the parallel-master request,
+ * selects PMDIN1 as the destination, and forces the first transfer after enabling the channel.
+ *
+ * @param[in] framebuffer Complete packed display framebuffer in extended data space.
+ */
+static void start_dma(ConstDisplayFramebuffer framebuffer) {
+    uint32_t source = (uint32_t)framebuffer;
     DMA10CONbits.CHEN = 0;
     IFS7bits.DMA10IF = 0;
     IEC7bits.DMA10IE = 0;
@@ -91,7 +100,7 @@ static void start_dma(const uint8_t *framebuffer) {
     DMA10REQbits.IRQSEL = DISPLAY_DMA_REQUEST;
     DMA10PAD = (uint16_t)&PMDIN1;
     DMA10CNT = DISPLAY_FRAMEBUFFER_SIZE - 1;
-    DMA10STAL = (uint16_t)framebuffer;
+    DMA10STAL = (uint16_t)source;
     DMA10STAH = 0;
     IPC30bits.DMA10IP = DISPLAY_INTERRUPT_PRIORITY;
     IFS7bits.DMA10IF = 0;
@@ -127,7 +136,7 @@ void platform_display_init(void) {
  *
  * @param[in] framebuffer Complete packed four-bit grayscale framebuffer in DMA-accessible memory.
  */
-void platform_display_write_frame(const uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE]) {
+void platform_display_write_frame(ConstDisplayFramebuffer framebuffer) {
     display_controller_begin_frame(write_byte, &display_bus);
     LATDbits.LATD3 = 1;
     __builtin_nop();

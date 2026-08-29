@@ -49,7 +49,7 @@ static const char motor_calibration_erased_text[] = "Motor calib. data erased.";
  * @param[in,out] framebuffer Complete local-display framebuffer.
  * @param[in] inverted True to draw a light field with a dark warning mark.
  */
-static void draw_warning_icon(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], bool inverted) {
+static void draw_warning_icon(DisplayFramebuffer framebuffer, bool inverted) {
     uint16_t center = WARNING_ICON_X + WARNING_ICON_WIDTH / 2;
     uint8_t color = inverted ? 0 : NOTICE_COLOR;
     if (inverted) {
@@ -84,7 +84,7 @@ static void draw_warning_icon(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], boo
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
  */
-static void draw_error_icon(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE]) {
+static void draw_error_icon(DisplayFramebuffer framebuffer) {
     for (uint16_t column = 0; column < WARNING_ICON_WIDTH; column++) {
         display_framebuffer_set_pixel(framebuffer, (uint16_t)(WARNING_ICON_X + column),
                                       WARNING_ICON_Y, NOTICE_COLOR);
@@ -113,8 +113,7 @@ static void draw_error_icon(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE]) {
  * @param[out] framebuffer Complete local-display framebuffer.
  * @param[in] visible True while the torque-disabled notice owns the display.
  */
-void display_notice_render_torque_disabled(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE],
-                                           bool visible) {
+void display_notice_render_torque_disabled(DisplayFramebuffer framebuffer, bool visible) {
     display_framebuffer_clear(framebuffer);
     if (!visible) {
         return;
@@ -132,8 +131,7 @@ void display_notice_render_torque_disabled(uint8_t framebuffer[DISPLAY_FRAMEBUFF
  * @param[out] framebuffer Complete local-display framebuffer.
  * @param[in] kind Active system notice kind.
  */
-void display_notice_render_system(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE],
-                                  SystemNoticeKind kind) {
+void display_notice_render_system(DisplayFramebuffer framebuffer, SystemNoticeKind kind) {
     display_framebuffer_clear(framebuffer);
     if (kind == SYSTEM_NOTICE_NONE) {
         return;
