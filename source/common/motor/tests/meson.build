@@ -50,6 +50,19 @@ test(
   suite: ['motor', 'link'],
 )
 
+motor_drive_test = executable(
+  'motor-drive-test',
+  'source/drive.c',
+  motor_drive_sources,
+  include_directories: common_include,
+)
+
+test(
+  'motor-drive',
+  motor_drive_test,
+  suite: ['motor', 'drive'],
+)
+
 motor_hardware_profile_test = executable(
   'motor-hardware-profile-test',
   'source/hardware_profile.c',
