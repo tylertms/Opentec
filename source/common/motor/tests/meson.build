@@ -88,3 +88,16 @@ test(
   motor_motion_test,
   suite: ['motor', 'motion'],
 )
+
+motor_telemetry_test = executable(
+  'motor-telemetry-test',
+  'source/telemetry.c',
+  motor_auxiliary_telemetry_sources,
+  include_directories: common_include,
+)
+
+test(
+  'motor-telemetry',
+  motor_telemetry_test,
+  suite: ['motor', 'telemetry'],
+)
