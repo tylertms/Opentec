@@ -38,7 +38,7 @@ enum {
     MOTOR_PARAMETER_CALIBRATION_VERSION = 7,
     MOTOR_PARAMETER_ENCODER_INDEX = 8,
     MOTOR_PARAMETER_TORQUE = 16,
-    MOTOR_PARAMETER_SERVICE_TICK = 17,
+    MOTOR_PARAMETER_UPTIME = 17,
     MOTOR_PARAMETER_MOTOR_TEMPERATURE = 18,
     MOTOR_PARAMETER_DRIVER_TEMPERATURE = 19,
     MOTOR_PARAMETER_DRIVE_CURRENT = 20,
@@ -668,7 +668,9 @@ static void motor_runtime_service_handler(void *context) {
     (void)motor_velocity_control_step(&runtime->velocity_control,
                                       runtime->motion_sample.filtered_position_delta,
                                       runtime->foc.q_controller.bLimFlag);
-    runtime->parameters.entries[MOTOR_PARAMETER_SERVICE_TICK].value = runtime->service_tick;
+    if (runtime->service_tick % 1000U == 0U) {
+        ++runtime->parameters.entries[MOTOR_PARAMETER_UPTIME].value;
+    }
     int16_t measured_current = runtime->foc_output.measured_current.f16Q;
     runtime->parameters.entries[MOTOR_PARAMETER_DRIVE_CURRENT].value = (uint16_t)measured_current;
     runtime->parameters.entries[MOTOR_PARAMETER_TORQUE].value =
