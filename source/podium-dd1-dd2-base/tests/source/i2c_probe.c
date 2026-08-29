@@ -211,6 +211,70 @@ static void test_rejects_invalid_chunk_transfer(void) {
     assert(!i2c_probe_transfer_encode(6, &input, &frame));
 }
 
+static void test_sequences_standard_transfer(void) {
+    I2cProbeTransferSequence sequence;
+    I2cProbeTransferStep step;
+
+    i2c_probe_transfer_sequence_init(&sequence, false);
+    for (uint8_t index = 0; index < 4; ++index) {
+        assert(i2c_probe_transfer_sequence_current(&sequence, &step));
+        assert(step.command == I2C_PROBE_WRITE_CHUNK);
+        assert(step.phase == index);
+        assert(step.chunk_index == index);
+        assert(step.buffer_offset == (uint16_t)index * 64);
+        assert(step.chunk_length == 64);
+        assert(i2c_probe_transfer_sequence_accept(&sequence));
+    }
+
+    for (uint8_t index = 0; index < 16; ++index) {
+        assert(i2c_probe_transfer_sequence_current(&sequence, &step));
+        assert(step.command == I2C_PROBE_READ_CHUNK);
+        assert(step.phase == (uint8_t)(index + 4));
+        assert(step.chunk_index == index);
+        assert(step.buffer_offset == (uint16_t)index * 64);
+        assert(step.chunk_length == 64);
+        assert(i2c_probe_transfer_sequence_accept(&sequence));
+    }
+
+    assert(i2c_probe_transfer_sequence_current(&sequence, &step));
+    assert(step.command == I2C_PROBE_READ_CHUNK);
+    assert(step.phase == 20);
+    assert(step.chunk_index == 16);
+    assert(step.buffer_offset == 0x400);
+    assert(step.chunk_length == 16);
+    assert(i2c_probe_transfer_sequence_accept(&sequence));
+
+    assert(i2c_probe_transfer_sequence_current(&sequence, &step));
+    assert(step.command == I2C_PROBE_FINISH_TRANSFER);
+    assert(step.phase == 21);
+    assert(step.chunk_index == 0);
+    assert(step.chunk_length == 0);
+    assert(i2c_probe_transfer_sequence_accept(&sequence));
+    assert(!i2c_probe_transfer_sequence_current(&sequence, &step));
+    assert(!i2c_probe_transfer_sequence_accept(&sequence));
+}
+
+static void test_sequences_checked_commands(void) {
+    I2cProbeTransferSequence sequence;
+    I2cProbeTransferStep step;
+
+    i2c_probe_transfer_sequence_init(&sequence, true);
+    assert(i2c_probe_transfer_sequence_current(&sequence, &step));
+    assert(step.command == I2C_PROBE_WRITE_CHECKED_CHUNK);
+
+    for (uint8_t index = 0; index < 4; ++index) {
+        assert(i2c_probe_transfer_sequence_accept(&sequence));
+    }
+    assert(i2c_probe_transfer_sequence_current(&sequence, &step));
+    assert(step.command == I2C_PROBE_READ_CHECKED_CHUNK);
+
+    for (uint8_t index = 0; index < 17; ++index) {
+        assert(i2c_probe_transfer_sequence_accept(&sequence));
+    }
+    assert(i2c_probe_transfer_sequence_current(&sequence, &step));
+    assert(step.command == I2C_PROBE_FINISH_CHECKED_TRANSFER);
+}
+
 int main(void) {
     test_accepts_handshake_and_clears_retry_count();
     test_busy_handshake_increments_without_rejection();
@@ -228,5 +292,7 @@ int main(void) {
     test_encodes_checked_chunk_read();
     test_encodes_checked_transfer_finish();
     test_rejects_invalid_chunk_transfer();
+    test_sequences_standard_transfer();
+    test_sequences_checked_commands();
     return 0;
 }

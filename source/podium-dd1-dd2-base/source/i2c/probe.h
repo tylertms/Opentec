@@ -51,6 +51,8 @@ typedef struct {
 enum {
     I2C_PROBE_TRANSFER_CHUNK_CAPACITY = 64,
     I2C_PROBE_TRANSFER_WRITE_CAPACITY = I2C_PROBE_TRANSFER_CHUNK_CAPACITY + 8,
+    I2C_PROBE_TRANSFER_WRITE_SIZE = 0x100,
+    I2C_PROBE_TRANSFER_READ_SIZE = 0x410,
 };
 
 typedef struct {
@@ -69,6 +71,28 @@ typedef struct {
     uint8_t response_payload_length;
 } I2cProbeTransferFrame;
 
+typedef enum {
+    I2C_PROBE_TRANSFER_WRITING,
+    I2C_PROBE_TRANSFER_READING,
+    I2C_PROBE_TRANSFER_FINISHING,
+    I2C_PROBE_TRANSFER_COMPLETE,
+} I2cProbeTransferStage;
+
+typedef struct {
+    I2cProbeTransferStage stage;
+    uint8_t phase;
+    uint8_t chunk_index;
+    bool checked;
+} I2cProbeTransferSequence;
+
+typedef struct {
+    I2cProbeCommand command;
+    uint16_t buffer_offset;
+    uint8_t phase;
+    uint8_t chunk_index;
+    uint8_t chunk_length;
+} I2cProbeTransferStep;
+
 void i2c_probe_handshake_init(I2cProbeHandshake *handshake);
 I2cProbeResponseResult i2c_probe_handshake_evaluate(I2cProbeHandshake *handshake, uint8_t response);
 I2cProbeResponseResult i2c_probe_command_response_evaluate(uint8_t response);
@@ -78,5 +102,9 @@ I2cProbeValidationResult i2c_probe_final_response_validate(const I2cProbeFinalRe
 bool i2c_probe_request_encode(I2cProbeCommand command, I2cProbeRequest *request);
 bool i2c_probe_transfer_encode(I2cProbeCommand command, const I2cProbeTransferInput *input,
                                I2cProbeTransferFrame *frame);
+void i2c_probe_transfer_sequence_init(I2cProbeTransferSequence *sequence, bool checked);
+bool i2c_probe_transfer_sequence_current(const I2cProbeTransferSequence *sequence,
+                                         I2cProbeTransferStep *step);
+bool i2c_probe_transfer_sequence_accept(I2cProbeTransferSequence *sequence);
 
 #endif

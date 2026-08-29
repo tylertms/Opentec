@@ -195,3 +195,91 @@ bool i2c_probe_transfer_encode(I2cProbeCommand command, const I2cProbeTransferIn
     }
     return true;
 }
+
+/**
+ * @brief Initializes the probe data-transfer sequence.
+ *
+ * Starts at phase zero with the first 64-byte write chunk and selects either the standard or
+ * checked command family for every sequence step.
+ *
+ * @param[out] sequence Transfer sequence to initialize.
+ * @param[in] checked True to use the checked write, read, and finish commands.
+ */
+void i2c_probe_transfer_sequence_init(I2cProbeTransferSequence *sequence, bool checked) {
+    *sequence = (I2cProbeTransferSequence){
+        .stage = I2C_PROBE_TRANSFER_WRITING,
+        .checked = checked,
+    };
+}
+
+/**
+ * @brief Describes the current probe transfer step.
+ *
+ * Produces four 64-byte write steps, sixteen 64-byte read steps, one 16-byte read step, and one
+ * finish step. Buffer offsets refer to the start of the corresponding write source or read
+ * destination fragment.
+ *
+ * @param[in] sequence Current transfer sequence state.
+ * @param[out] step Command, phase, chunk index, length, and buffer offset for the current step.
+ * @return True while a write, read, or finish step remains; otherwise false.
+ */
+bool i2c_probe_transfer_sequence_current(const I2cProbeTransferSequence *sequence,
+                                         I2cProbeTransferStep *step) {
+    if (sequence->stage == I2C_PROBE_TRANSFER_COMPLETE) {
+        return false;
+    }
+
+    *step = (I2cProbeTransferStep){
+        .phase = sequence->phase,
+        .chunk_index = sequence->chunk_index,
+    };
+    if (sequence->stage == I2C_PROBE_TRANSFER_WRITING) {
+        step->command = sequence->checked ? I2C_PROBE_WRITE_CHECKED_CHUNK : I2C_PROBE_WRITE_CHUNK;
+        step->buffer_offset = (uint16_t)sequence->chunk_index * I2C_PROBE_TRANSFER_CHUNK_CAPACITY;
+        step->chunk_length = I2C_PROBE_TRANSFER_CHUNK_CAPACITY;
+    } else if (sequence->stage == I2C_PROBE_TRANSFER_READING) {
+        step->command = sequence->checked ? I2C_PROBE_READ_CHECKED_CHUNK : I2C_PROBE_READ_CHUNK;
+        step->buffer_offset = (uint16_t)sequence->chunk_index * I2C_PROBE_TRANSFER_CHUNK_CAPACITY;
+        step->chunk_length = sequence->chunk_index == 16 ? 16 : I2C_PROBE_TRANSFER_CHUNK_CAPACITY;
+    } else {
+        step->command =
+            sequence->checked ? I2C_PROBE_FINISH_CHECKED_TRANSFER : I2C_PROBE_FINISH_TRANSFER;
+        step->chunk_index = 0;
+    }
+    return true;
+}
+
+/**
+ * @brief Advances an accepted probe transfer step.
+ *
+ * Increments the phase after each accepted write or read chunk, changes from writing to reading
+ * after 256 bytes, and changes from reading to finishing after 1,040 bytes. Accepting the finish
+ * step completes the sequence.
+ *
+ * @param[in,out] sequence Transfer sequence to advance.
+ * @return True when a pending step was accepted; otherwise false.
+ */
+bool i2c_probe_transfer_sequence_accept(I2cProbeTransferSequence *sequence) {
+    if (sequence->stage == I2C_PROBE_TRANSFER_COMPLETE) {
+        return false;
+    }
+    if (sequence->stage == I2C_PROBE_TRANSFER_FINISHING) {
+        sequence->stage = I2C_PROBE_TRANSFER_COMPLETE;
+        return true;
+    }
+
+    ++sequence->phase;
+    ++sequence->chunk_index;
+    if (sequence->stage == I2C_PROBE_TRANSFER_WRITING &&
+        sequence->chunk_index ==
+            I2C_PROBE_TRANSFER_WRITE_SIZE / I2C_PROBE_TRANSFER_CHUNK_CAPACITY) {
+        sequence->stage = I2C_PROBE_TRANSFER_READING;
+        sequence->chunk_index = 0;
+    } else if (sequence->stage == I2C_PROBE_TRANSFER_READING &&
+               (uint16_t)sequence->chunk_index * I2C_PROBE_TRANSFER_CHUNK_CAPACITY >=
+                   I2C_PROBE_TRANSFER_READ_SIZE) {
+        sequence->stage = I2C_PROBE_TRANSFER_FINISHING;
+        sequence->chunk_index = 0;
+    }
+    return true;
+}
