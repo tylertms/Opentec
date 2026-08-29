@@ -11,11 +11,13 @@ enum {
     WHEEL_ADAPTER_AXES_OFFSET = 0x02,
     WHEEL_ADAPTER_ROTARY_OFFSET = 0x03,
     WHEEL_ADAPTER_GLYPHS_OFFSET = 0x06,
+    WHEEL_ADAPTER_HOST_CONTROLS_OFFSET = 0xa0,
     WHEEL_ADAPTER_PROBE_OFFSET = 0x0c,
     WHEEL_ADAPTER_DISPLAY_OFFSET = 0x0f,
     WHEEL_ADAPTER_BUTTONS_CHANGED = 0x01,
     WHEEL_ADAPTER_AXES_CHANGED = 0x02,
     WHEEL_ADAPTER_ROTARY_CHANGED = 0x04,
+    WHEEL_ADAPTER_HOST_CONTROLS_REQUESTED = 0x10,
     WHEEL_ADAPTER_GLYPHS_REQUESTED = 0x20,
     WHEEL_ADAPTER_INPUT_INCREMENT = 0x04,
     WHEEL_ADAPTER_INPUT_DECREMENT = 0x08,
@@ -56,6 +58,8 @@ static void advance_endpoint(WheelAdapterCommandService *service, WheelAdapterIn
     service->pending_inputs = 0;
     service->glyphs_pending = false;
     service->display_pending = false;
+    service->host_controls_pending = false;
+    service->host_controls_ready = false;
     service->phase = WHEEL_ADAPTER_COMMAND_DISCOVERING;
     adapter->mode = service->endpoint_index;
     adapter->profile_flags = 0;
@@ -78,6 +82,8 @@ static void apply_status(WheelAdapterCommandService *service, WheelAdapterInput 
         service->pending_inputs |=
             adapter->profile_flags & (WHEEL_ADAPTER_BUTTONS_CHANGED | WHEEL_ADAPTER_AXES_CHANGED |
                                       WHEEL_ADAPTER_ROTARY_CHANGED);
+        service->host_controls_pending |=
+            (adapter->profile_flags & WHEEL_ADAPTER_HOST_CONTROLS_REQUESTED) != 0;
         service->glyphs_pending |= (adapter->profile_flags & WHEEL_ADAPTER_GLYPHS_REQUESTED) != 0;
     }
     if ((service->status[1] & WHEEL_ADAPTER_INPUT_INCREMENT) != 0) {
@@ -130,6 +136,10 @@ static bool finish_request(WheelAdapterCommandService *service, WheelAdapterInpu
         break;
     case WHEEL_ADAPTER_COMMAND_ROTARY_PENDING:
         service->pending_inputs &= (uint8_t)~WHEEL_ADAPTER_ROTARY_CHANGED;
+        break;
+    case WHEEL_ADAPTER_COMMAND_HOST_CONTROLS_PENDING:
+        service->host_controls_pending = false;
+        service->host_controls_ready = true;
         break;
     case WHEEL_ADAPTER_COMMAND_GLYPHS_PENDING:
     case WHEEL_ADAPTER_COMMAND_DISPLAY_PENDING:
@@ -196,6 +206,15 @@ static CommandTransportResult queue_request(WheelAdapterCommandService *service,
             adapter->rotary_positions, endpoint_rotary_lengths[service->endpoint_index]);
         if (result == COMMAND_TRANSPORT_COMPLETE) {
             service->phase = WHEEL_ADAPTER_COMMAND_ROTARY_PENDING;
+        }
+        return result;
+    }
+    if (service->host_controls_pending && !service->host_controls_ready) {
+        CommandTransportResult result = command_transport_queue_read_from(
+            transport, WHEEL_ADAPTER_COMMAND_OWNER, target, WHEEL_ADAPTER_HOST_CONTROLS_OFFSET,
+            service->host_controls, sizeof(service->host_controls));
+        if (result == COMMAND_TRANSPORT_COMPLETE) {
+            service->phase = WHEEL_ADAPTER_COMMAND_HOST_CONTROLS_PENDING;
         }
         return result;
     }
@@ -283,6 +302,28 @@ void wheel_adapter_command_service_set_glyphs(WheelAdapterCommandService *servic
     for (uint8_t index = 0; index < sizeof(service->glyphs); index++) {
         service->glyphs[index] = glyphs[index];
     }
+}
+
+/**
+ * @brief Takes the latest adapter-originated host control batch.
+ *
+ * Copies the complete 30-byte control area after its offset-0xA0 read has completed and releases
+ * the retained batch so a later adapter request can replace it.
+ *
+ * @param[in,out] service Adapter command service retaining the completed control area.
+ * @param[out] output Destination for the complete control area.
+ * @return True when a completed batch was copied.
+ */
+bool wheel_adapter_command_service_take_host_controls(
+    WheelAdapterCommandService *service, uint8_t output[WHEEL_ADAPTER_HOST_CONTROLS_SIZE]) {
+    if (service == 0 || output == 0 || !service->host_controls_ready) {
+        return false;
+    }
+    for (uint8_t index = 0; index < sizeof(service->host_controls); index++) {
+        output[index] = service->host_controls[index];
+    }
+    service->host_controls_ready = false;
+    return true;
 }
 
 /**

@@ -341,6 +341,23 @@ static void retains_local_records_in_extended_mode(void) {
     assert(service.records.count == 1);
 }
 
+static void forwards_adapter_host_controls(void) {
+    UsbRemoteTuningService service;
+    usb_remote_tuning_service_init(&service);
+    uint8_t controls[REMOTE_TELEMETRY_REPORT_SIZE] = {
+        2, 0x80, 0x34, 0x12, 0x56, 0, 0, 0xaa, 0xbb, 0xcc, 2, 1, 0x78, 0x56, 0x34,
+    };
+    assert(usb_remote_tuning_service_queue_host_controls(&service, controls) == 2);
+
+    uint8_t report[USB_REMOTE_TUNING_HOST_REPORT_SIZE];
+    assert(usb_remote_tuning_service_take_host_report(&service, WHEEL_MODE_REMOTE_TUNING_EXTENDED,
+                                                      USB_REMOTE_TUNING_HOST_NATIVE, report));
+    assert(report[0] == 0xff && report[1] == 5 && report[2] == 1);
+    assert(memcmp(report + 3, controls, REMOTE_TELEMETRY_SUBSCRIPTION_SIZE) == 0);
+    assert(memcmp(report + 8, controls + 2 * REMOTE_TELEMETRY_SUBSCRIPTION_SIZE,
+                  REMOTE_TELEMETRY_SUBSCRIPTION_SIZE) == 0);
+}
+
 int main(void) {
     retains_records_and_extends_the_session();
     applies_active_state_and_routes_responses();
@@ -355,5 +372,6 @@ int main(void) {
     clears_selected_telemetry();
     converts_local_records_to_wheel_telemetry();
     retains_local_records_in_extended_mode();
+    forwards_adapter_host_controls();
     return 0;
 }

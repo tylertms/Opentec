@@ -349,6 +349,36 @@ bool usb_remote_tuning_service_take_response(UsbRemoteTuningService *service, ui
 }
 
 /**
+ * @brief Queues adapter-originated telemetry controls for the host.
+ *
+ * Splits the 30-byte adapter area into six five-byte records, ignores entries whose first two
+ * bytes are both zero, and appends every other entry to the shared host control queue. Records
+ * that exceed the queue capacity are dropped independently.
+ *
+ * @param[in,out] service Remote-tuning service that owns the host control queue.
+ * @param[in] input Complete adapter control area.
+ * @return Number of records appended to the host queue.
+ */
+uint8_t
+usb_remote_tuning_service_queue_host_controls(UsbRemoteTuningService *service,
+                                              const uint8_t input[REMOTE_TELEMETRY_REPORT_SIZE]) {
+    if (service == NULL || input == NULL) {
+        return 0;
+    }
+
+    uint8_t queued = 0;
+    for (uint8_t offset = 0; offset < REMOTE_TELEMETRY_REPORT_SIZE;
+         offset += REMOTE_TELEMETRY_SUBSCRIPTION_SIZE) {
+        const uint8_t *record = input + offset;
+        if ((record[0] != 0 || record[1] != 0) &&
+            remote_telemetry_queue_control_record(&service->telemetry, record)) {
+            queued++;
+        }
+    }
+    return queued;
+}
+
+/**
  * @brief Takes the next generic attached-device command batch.
  *
  * Routes ordinary and legacy-mode route-three records to the generic attached-device transport.

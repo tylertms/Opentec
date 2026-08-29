@@ -203,11 +203,23 @@ static void test_scales_fuel_and_classifies_stale_records(void) {
     assert(memcmp(clear, overlay_clear, sizeof(clear)) == 0);
 }
 
+static void test_queues_encoded_host_controls(void) {
+    RemoteTelemetry telemetry;
+    remote_telemetry_init(&telemetry);
+    const uint8_t record[] = {2, 0x81, 0x34, 0x12, 0x56};
+    assert(remote_telemetry_queue_control_record(&telemetry, record));
+
+    uint8_t output[REMOTE_TELEMETRY_SUBSCRIPTION_SIZE];
+    assert(remote_telemetry_take_control_record(&telemetry, output));
+    assert(memcmp(output, record, sizeof(output)) == 0);
+}
+
 int main(void) {
     test_exposes_metric_subscriptions();
     test_formats_speed_and_overlay();
     test_scales_rpm_and_services_both_channels();
     test_formats_specialized_metrics();
     test_scales_fuel_and_classifies_stale_records();
+    test_queues_encoded_host_controls();
     return 0;
 }

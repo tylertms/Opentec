@@ -413,19 +413,10 @@ static bool encode_report(const RemoteTelemetry *telemetry, uint8_t channel_inde
  */
 static bool queue_control_record(RemoteTelemetry *telemetry, uint8_t selector, uint16_t key,
                                  uint8_t format) {
-    if (telemetry->control_count >= REMOTE_TELEMETRY_CONTROL_QUEUE_COUNT) {
-        return false;
-    }
-    uint8_t tail = (uint8_t)((telemetry->control_head + telemetry->control_count) %
-                             REMOTE_TELEMETRY_CONTROL_QUEUE_COUNT);
-    uint8_t *record = telemetry->control_records[tail];
-    record[0] = REMOTE_TELEMETRY_ROUTE;
-    record[1] = selector;
-    record[2] = (uint8_t)key;
-    record[3] = (uint8_t)(key >> 8);
-    record[4] = format;
-    telemetry->control_count++;
-    return true;
+    uint8_t record[REMOTE_TELEMETRY_SUBSCRIPTION_SIZE] = {
+        REMOTE_TELEMETRY_ROUTE, selector, (uint8_t)key, (uint8_t)(key >> 8), format,
+    };
+    return remote_telemetry_queue_control_record(telemetry, record);
 }
 
 /**
@@ -567,6 +558,29 @@ void remote_telemetry_encode_subscription(const RemoteTelemetrySubscription *sub
     output[2] = (uint8_t)subscription->key;
     output[3] = (uint8_t)(subscription->key >> 8);
     output[4] = subscription->format;
+}
+
+/**
+ * @brief Queues one encoded telemetry control record for the host.
+ *
+ * Appends the five bytes unchanged to the 32-entry arrival-order queue. A full queue rejects the
+ * record without changing any retained entry.
+ *
+ * @param[in,out] telemetry Telemetry state that owns the control queue.
+ * @param[in] input Complete five-byte control record.
+ * @return True when the record was queued.
+ */
+bool remote_telemetry_queue_control_record(
+    RemoteTelemetry *telemetry, const uint8_t input[REMOTE_TELEMETRY_SUBSCRIPTION_SIZE]) {
+    if (telemetry == NULL || input == NULL ||
+        telemetry->control_count >= REMOTE_TELEMETRY_CONTROL_QUEUE_COUNT) {
+        return false;
+    }
+    uint8_t tail = (uint8_t)((telemetry->control_head + telemetry->control_count) %
+                             REMOTE_TELEMETRY_CONTROL_QUEUE_COUNT);
+    memcpy(telemetry->control_records[tail], input, REMOTE_TELEMETRY_SUBSCRIPTION_SIZE);
+    telemetry->control_count++;
+    return true;
 }
 
 /**

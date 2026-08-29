@@ -519,6 +519,21 @@ void wheel_service_run_adapter_commands(WheelService *service, CommandTransport 
 }
 
 /**
+ * @brief Takes the latest adapter-originated host control batch.
+ *
+ * Copies and consumes a completed offset-0xA0 adapter read from the command service.
+ *
+ * @param[in,out] service Attached-wheel service retaining the completed batch.
+ * @param[out] output Destination for the complete 30-byte control area.
+ * @return True when a completed batch was copied.
+ */
+bool wheel_service_take_adapter_host_controls(WheelService *service,
+                                              uint8_t output[WHEEL_ADAPTER_HOST_CONTROLS_SIZE]) {
+    return service != 0 &&
+           wheel_adapter_command_service_take_host_controls(&service->adapter_commands, output);
+}
+
+/**
  * @brief Updates the output state sent to the attached wheel.
  *
  * Applies the same display and auxiliary output to each negotiated packet-family encoder.

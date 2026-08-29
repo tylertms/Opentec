@@ -88,6 +88,8 @@ bool remote_telemetry_subscription(const RemoteTelemetry *telemetry, uint8_t cha
                                    RemoteTelemetrySubscription *subscription);
 void remote_telemetry_encode_subscription(const RemoteTelemetrySubscription *subscription,
                                           uint8_t output[REMOTE_TELEMETRY_SUBSCRIPTION_SIZE]);
+bool remote_telemetry_queue_control_record(RemoteTelemetry *telemetry,
+                                           const uint8_t input[REMOTE_TELEMETRY_SUBSCRIPTION_SIZE]);
 bool remote_telemetry_take_control_record(RemoteTelemetry *telemetry,
                                           uint8_t output[REMOTE_TELEMETRY_SUBSCRIPTION_SIZE]);
 RemoteTelemetryRecordResult remote_telemetry_apply_primary(RemoteTelemetry *telemetry,

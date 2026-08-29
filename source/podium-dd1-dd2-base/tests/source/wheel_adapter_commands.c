@@ -5,6 +5,9 @@
 #include "transfer/command.h"
 #include "wheel/adapter_commands.h"
 
+static void complete_standard_probe(WheelAdapterCommandService *service, WheelAdapterInput *adapter,
+                                    CommandTransport *transport);
+
 static void expect_request(CommandTransport *transport, const uint8_t *expected,
                            uint16_t expected_length) {
     const uint8_t *request;
@@ -16,10 +19,42 @@ static void expect_request(CommandTransport *transport, const uint8_t *expected,
 }
 
 static void complete_read(CommandTransport *transport, const uint8_t *data, uint16_t length) {
-    uint8_t response[6] = {1, 0};
+    uint8_t response[WHEEL_ADAPTER_HOST_CONTROLS_SIZE + 2] = {1, 0};
     assert(length <= sizeof(response) - 2);
     memcpy(response + 2, data, length);
     command_transport_receive(transport, response, length + 2);
+}
+
+static void forwards_requested_host_controls(void) {
+    WheelAdapterCommandService service;
+    WheelAdapterInput adapter;
+    CommandTransport transport;
+    command_transport_init(&transport);
+    wheel_adapter_command_service_init(&service, &adapter);
+    complete_standard_probe(&service, &adapter, &transport);
+
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    const uint8_t status_request[] = {2, 0x2b, 0x00, 2, 0};
+    expect_request(&transport, status_request, sizeof(status_request));
+    const uint8_t status[] = {0x10, 0};
+    complete_read(&transport, status, sizeof(status));
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    assert(service.host_controls_pending);
+
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    const uint8_t expected[] = {2, 0x2b, 0xa0, WHEEL_ADAPTER_HOST_CONTROLS_SIZE, 0};
+    expect_request(&transport, expected, sizeof(expected));
+    uint8_t controls[WHEEL_ADAPTER_HOST_CONTROLS_SIZE];
+    for (uint8_t index = 0; index < sizeof(controls); index++) {
+        controls[index] = (uint8_t)(index + 1);
+    }
+    complete_read(&transport, controls, sizeof(controls));
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+
+    uint8_t output[WHEEL_ADAPTER_HOST_CONTROLS_SIZE];
+    assert(wheel_adapter_command_service_take_host_controls(&service, output));
+    assert(memcmp(output, controls, sizeof(output)) == 0);
+    assert(!wheel_adapter_command_service_take_host_controls(&service, output));
 }
 
 static void complete_write(CommandTransport *transport) {
@@ -206,6 +241,7 @@ int main(void) {
     applies_motion_direction_priority();
     writes_standard_endpoint_display_reports();
     writes_requested_glyphs();
+    forwards_requested_host_controls();
     switches_endpoints_after_a_failed_transfer();
     return 0;
 }
