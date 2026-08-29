@@ -48,6 +48,7 @@ void motor_foc_step(MotorFocState *state, const MotorFocInput *input, MotorFocOu
 
     GMCLIB_Clark_F16(&input->phase_current, &stationary_current);
     GMCLIB_Park_F16(&stationary_current, &input->rotor_sin_cos, &rotating_current);
+    output->measured_current = rotating_current;
 
     output->filtered_current.f16Q =
         GDFLIB_FilterIIR1_F16(rotating_current.f16Q, &state->q_current_filter);

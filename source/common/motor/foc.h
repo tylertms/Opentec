@@ -22,6 +22,7 @@ typedef struct {
 } MotorFocInput;
 
 typedef struct {
+    GMCLIB_2COOR_DQ_T_F16 measured_current;
     GMCLIB_2COOR_DQ_T_F16 filtered_current;
     GMCLIB_2COOR_DQ_T_F16 voltage;
     GMCLIB_3COOR_T_F16 duty;

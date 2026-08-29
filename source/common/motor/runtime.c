@@ -51,6 +51,7 @@ enum {
     MOTOR_PARAMETER_CONSTANT_GAIN = 40,
     MOTOR_PARAMETER_WINDOW_GAIN = 41,
     MOTOR_PARAMETER_DIRECTIONAL_GAIN = 42,
+    MOTOR_TORQUE_SCALE = 0x75c2,
 };
 
 typedef struct {
@@ -640,8 +641,9 @@ static void motor_runtime_encoder_index_handler(uint16_t counter, void *context)
 /**
  * @brief Advances motion estimation and service countdowns.
  *
- * Each FTM3 period publishes position and velocity deltas, services the parameter bus, advances the
- * product derating controller every tenth tick, and updates the remaining service-rate controls.
+ * Each FTM3 period publishes position and velocity deltas, raw and scaled current telemetry,
+ * services the parameter bus, advances product derating every tenth tick, and updates the remaining
+ * service-rate controls.
  *
  * @param context Active motor runtime supplied during service timer initialization.
  */
@@ -663,8 +665,10 @@ static void motor_runtime_service_handler(void *context) {
                                       runtime->motion_sample.filtered_position_delta,
                                       runtime->foc.q_controller.bLimFlag);
     runtime->parameters.entries[MOTOR_PARAMETER_SERVICE_TICK].value = runtime->service_tick;
-    runtime->parameters.entries[MOTOR_PARAMETER_DRIVE_CURRENT].value =
-        (uint16_t)runtime->control_current;
+    int16_t measured_current = runtime->foc_output.measured_current.f16Q;
+    runtime->parameters.entries[MOTOR_PARAMETER_DRIVE_CURRENT].value = (uint16_t)measured_current;
+    runtime->parameters.entries[MOTOR_PARAMETER_TORQUE].value =
+        (uint16_t)motor_q15_scale_wrap(MOTOR_TORQUE_SCALE, measured_current);
 }
 
 /**
@@ -678,12 +682,9 @@ static void motor_runtime_service_handler(void *context) {
  */
 static void motor_runtime_spi_prepare(uint8_t frame[MOTOR_SPI_TRANSFER_SIZE], void *context) {
     MotorRuntime *runtime = context;
-    int16_t measured_current = runtime->foc_output.filtered_current.f16Q;
-    uint16_t torque =
-        measured_current < 0 ? (uint16_t)-(int32_t)measured_current : (uint16_t)measured_current;
     MotorLinkPositionReport report = {
         .position = runtime->encoder.position,
-        .torque = torque,
+        .torque = (uint16_t)runtime->parameters.entries[MOTOR_PARAMETER_TORQUE].value,
         .drive_current = runtime->live_drive.primary_current,
         .positive = runtime->live_drive.primary_current >= 0,
         .replay = runtime->protocol.replay,
@@ -784,8 +785,8 @@ void motor_runtime_initialize(void) {
  *
  * Local force feedback is mixed once per service tick and applied to the live FOC command.
  * Seven-ADC events advance the selected force interpolation response. Run mode publishes natural
- * friction and the complete product-scaled current command. Temperature windows and measured
- * torque are exposed through the read-only parameter bank.
+ * friction and the complete product-scaled current command. Published temperature windows are
+ * exposed through the read-only parameter bank.
  */
 void motor_runtime_poll(void) {
     int32_t centered_position = motor_centered_position_resolve(motor_runtime.encoder.position,
@@ -818,8 +819,4 @@ void motor_runtime_poll(void) {
         motor_runtime.parameters.entries[MOTOR_PARAMETER_DRIVER_TEMPERATURE].value =
             (uint16_t)motor_runtime.auxiliary_telemetry.driver_temperature;
     }
-
-    int16_t measured_current = motor_runtime.foc_output.filtered_current.f16Q;
-    motor_runtime.parameters.entries[MOTOR_PARAMETER_TORQUE].value =
-        measured_current < 0 ? (uint16_t)-(int32_t)measured_current : (uint16_t)measured_current;
 }
