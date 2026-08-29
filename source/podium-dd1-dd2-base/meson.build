@@ -95,6 +95,7 @@ usb_connection_sources = files('source/usb/connection.c')
 usb_host_capability_recovery_sources = files('source/usb/host_capability_recovery.c')
 i2c_probe_sources = files('source/i2c/probe.c')
 i2c_probe_bus_sources = files('source/i2c/probe_bus.c')
+i2c_probe_startup_service_sources = files('source/i2c/probe_startup_service.c')
 status_led_sources = files('source/board/status_led.c')
 power_controller_sources = files('source/board/power.c')
 torque_key_sources = files('source/board/torque_key.c')
@@ -287,6 +288,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'usb-host-capability-recovery': 'source/usb/host_capability_recovery.c',
     'i2c-probe': 'source/i2c/probe.c',
     'i2c-probe-bus': 'source/i2c/probe_bus.c',
+    'i2c-probe-startup-service': 'source/i2c/probe_startup_service.c',
     'status-led': 'source/board/status_led.c',
     'power-controller': 'source/board/power.c',
     'torque-key': 'source/board/torque_key.c',
@@ -1264,6 +1266,15 @@ if not meson.is_cross_build()
     'tests/source/i2c_probe_bus.c',
     i2c_probe_sources,
     i2c_probe_bus_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  i2c_probe_startup_service_test = executable(
+    'base-i2c-probe-startup-service-test',
+    'tests/source/i2c_probe_startup_service.c',
+    i2c_probe_sources,
+    i2c_probe_startup_service_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2323,6 +2334,11 @@ if not meson.is_cross_build()
   )
   test('base-i2c-probe', i2c_probe_test, suite: ['base', 'i2c'])
   test('base-i2c-probe-bus', i2c_probe_bus_test, suite: ['base', 'i2c'])
+  test(
+    'base-i2c-probe-startup-service',
+    i2c_probe_startup_service_test,
+    suite: ['base', 'i2c'],
+  )
   test('base-status-led', status_led_test, suite: ['base', 'board', 'led'])
   test('base-power-controller', power_controller_test, suite: ['base', 'board', 'power'])
   test('base-torque-key', torque_key_test, suite: ['base', 'board', 'safety'])
