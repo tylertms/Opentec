@@ -1232,6 +1232,17 @@ bool usb_device_take_updater_packet(UsbDeviceUpdaterPacket *packet) {
 }
 
 /**
+ * @brief Reports whether the motor-updater input stream can accept a response.
+ *
+ * Requires no retained response and no endpoint 3 input transfer awaiting completion.
+ *
+ * @return True when updater protocol service may process its next request; otherwise false.
+ */
+bool usb_device_updater_channel_idle(void) {
+    return !updater_response_ready && !updater_input_busy;
+}
+
+/**
  * @brief Queues one complete motor-updater response.
  *
  * Retains responses of up to 66 bytes while the endpoint service emits 64-byte bulk packets and

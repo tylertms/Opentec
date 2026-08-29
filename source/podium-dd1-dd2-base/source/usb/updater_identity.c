@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "board/identity.h"
 #include "usb/operating_mode_command.h"
 #include "usb/updater_protocol.h"
 
@@ -16,6 +17,7 @@ enum {
     USB_UPDATER_USB_ADAPTER_INDEX = 7,
     USB_UPDATER_HIGH_DEFAULT_INDEX = 20,
     USB_UPDATER_PULSE_WHEEL_MODE = 0x1b,
+    USB_UPDATER_DD_VARIANT_CHARACTER = 2,
 };
 
 static const uint8_t low_identities[][USB_UPDATER_DEVICE_IDENTITY_SIZE + 1] = {
@@ -89,6 +91,90 @@ static bool direct_wheel_identity(uint8_t wheel_mode) {
 }
 
 /**
+ * @brief Maps one low-family updater command to its identity selector.
+ *
+ * Accepts the wheel and accessory updater commands recognized after a 0x5A/0xA7 probe and returns
+ * the corresponding low-table index. Unsupported commands restore automatic selection.
+ *
+ * @param[in] command Command byte returned by the attached device.
+ * @return Low-table selector or 0xFF for automatic selection.
+ */
+static uint8_t low_selector(uint8_t command) {
+    if ((command >= 9 && command <= 12) || (command >= 16 && command <= 18) ||
+        (command >= 21 && command <= 22)) {
+        return command - 5;
+    }
+    if (command == 19) {
+        return 15;
+    }
+    if (command == 20) {
+        return 14;
+    }
+    if (command == 27) {
+        return 21;
+    }
+    if (command == 28) {
+        return 28;
+    }
+    return command == 29 ? 25 : USB_UPDATER_IDENTITY_AUTOMATIC;
+}
+
+/**
+ * @brief Maps one high-family updater command to its identity selector.
+ *
+ * Accepts the extended updater commands recognized after a 0x5A/0xA7 probe and returns the
+ * corresponding high-table selector. Unsupported commands restore automatic selection.
+ *
+ * @param[in] command Command byte returned by the attached device.
+ * @return High-table selector or 0xFF for automatic selection.
+ */
+static uint8_t high_selector(uint8_t command) {
+    if ((command >= 0x8a && command <= 0x8b) || command == 0x90 || command == 0x95) {
+        return USB_UPDATER_HIGH_SELECTOR | (command - 0x85);
+    }
+    if (command >= 0x98 && command <= 0x9b) {
+        return USB_UPDATER_HIGH_SELECTOR | (command - 0x86);
+    }
+    switch (command) {
+    case 0x9c:
+        return 0x9c;
+    case 0x9d:
+        return 0x86;
+    case 0x9e:
+        return 0x9e;
+    case 0x9f:
+        return 0x97;
+    default:
+        return USB_UPDATER_IDENTITY_AUTOMATIC;
+    }
+}
+
+/**
+ * @brief Selects the identity override carried by an updater probe response.
+ *
+ * USB bridge modes select the low or high command family from command bit seven. Protocol bridge
+ * mode recognizes its PBPE and ZPBR commands. Other runtime modes retain automatic selection.
+ *
+ * @param[in] runtime_mode Active updater bridge route.
+ * @param[in] command Command byte returned by the 0x5A/0xA7 probe.
+ * @return Identity selector for later device-information responses.
+ */
+uint8_t usb_updater_identity_selector(UsbRuntimeMode runtime_mode, uint8_t command) {
+    if (runtime_mode == USB_RUNTIME_MODE_USB_BRIDGE ||
+        runtime_mode == USB_RUNTIME_MODE_PROTOCOL_RECOVERY) {
+        return (command & USB_UPDATER_HIGH_SELECTOR) != 0 ? high_selector(command)
+                                                          : low_selector(command);
+    }
+    if (runtime_mode != USB_RUNTIME_MODE_PROTOCOL_BRIDGE) {
+        return USB_UPDATER_IDENTITY_AUTOMATIC;
+    }
+    if (command == 0x16 || command == 0x9a) {
+        return 0x94;
+    }
+    return command == 0x15 ? 8 : USB_UPDATER_IDENTITY_AUTOMATIC;
+}
+
+/**
  * @brief Selects the updater device identity for the active bridge path.
  *
  * Maps auxiliary and status runtimes directly, derives USB bridge identities from attached-wheel
@@ -110,6 +196,10 @@ void usb_updater_identity_select(const UsbUpdaterIdentityInput *input,
     if (input->runtime_mode != USB_RUNTIME_MODE_USB_BRIDGE) {
         select_entry(low_identities, (uint8_t)(sizeof(low_identities) / sizeof(*low_identities)),
                      (uint8_t)input->runtime_mode, identity);
+        if (input->runtime_mode == USB_RUNTIME_MODE_AUXILIARY_RECOVERY &&
+            input->board_variant == BOARD_VARIANT_DD2) {
+            identity[USB_UPDATER_DD_VARIANT_CHARACTER] = '2';
+        }
         return;
     }
     if (input->wheel_mode == 4 || input->wheel_mode == 6) {

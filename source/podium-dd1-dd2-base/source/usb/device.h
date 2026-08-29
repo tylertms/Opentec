@@ -62,6 +62,7 @@ bool usb_device_queue_xbox_response(const uint8_t *report, uint8_t length);
 bool usb_device_queue_xbox_vendor_report(const uint8_t report[USB_DEVICE_REPORT_SIZE]);
 bool usb_device_send_vendor_report(const uint8_t *report, uint8_t length);
 bool usb_device_take_updater_packet(UsbDeviceUpdaterPacket *packet);
+bool usb_device_updater_channel_idle(void);
 bool usb_device_queue_updater_response(const uint8_t *data, uint8_t length);
 UsbXboxGipSessionAction usb_device_take_xbox_session_actions(void);
 bool usb_device_take_playstation_authentication_request(

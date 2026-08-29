@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "board/identity.h"
 #include "usb/operating_mode_command.h"
 #include "usb/updater_protocol.h"
 
@@ -12,11 +13,13 @@ enum { USB_UPDATER_IDENTITY_AUTOMATIC = 0xff };
 /** @brief Runtime and attached-wheel state used to select an updater identity. */
 typedef struct {
     UsbRuntimeMode runtime_mode;
+    BoardVariant board_variant;
     uint8_t wheel_mode;
     uint8_t response_selector;
     bool adapter_connected;
 } UsbUpdaterIdentityInput;
 
+uint8_t usb_updater_identity_selector(UsbRuntimeMode runtime_mode, uint8_t command);
 void usb_updater_identity_select(const UsbUpdaterIdentityInput *input,
                                  uint8_t identity[USB_UPDATER_DEVICE_IDENTITY_SIZE]);
 
