@@ -18,6 +18,19 @@ test(
   suite: ['motor', 'encoder'],
 )
 
+motor_encoder_test = executable(
+  'motor-encoder-test',
+  'source/encoder.c',
+  motor_encoder_sources,
+  include_directories: common_include,
+)
+
+test(
+  'motor-encoder',
+  motor_encoder_test,
+  suite: ['motor', 'encoder'],
+)
+
 test(
   'motor-current-calibration',
   motor_current_calibration_test,
