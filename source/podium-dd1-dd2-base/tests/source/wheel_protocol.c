@@ -113,8 +113,12 @@ static void test_reports_axis_capability_for_active_packet_family(void) {
     protocol.mode_four_input.axis_report_enabled = 2;
     assert(wheel_protocol_axis_report_enabled(&protocol));
 
+    protocol.mode = WHEEL_MODE_LEGACY_ALTERNATE;
+    protocol.packed_input.axis_report_enabled = 3;
+    assert(wheel_protocol_axis_report_enabled(&protocol));
+
     protocol.mode = WHEEL_MODE_CRC_AUTHENTICATED;
-    protocol.crc_input.axis_report_enabled = 3;
+    protocol.crc_input.axis_report_enabled = 4;
     assert(wheel_protocol_axis_report_enabled(&protocol));
 }
 
@@ -450,14 +454,16 @@ static void accept_active_request(WheelProtocol *protocol,
 }
 
 static void test_accumulates_motion_from_packet_modes(void) {
-    static const uint8_t modes[] = {1, 4, 6};
+    static const uint8_t modes[] = {1, 4, 6, WHEEL_MODE_LEGACY_ALTERNATE};
     for (uint8_t index = 0; index < sizeof(modes); index++) {
         WheelProtocol protocol;
         uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
         wheel_protocol_init(&protocol);
         protocol.mode = modes[index];
         protocol.phase = WHEEL_PROTOCOL_ACTIVE;
-        request[0] = WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
+        request[0] = wheel_authentication_required(modes[index])
+                         ? WHEEL_PROTOCOL_COMMAND_AUTHENTICATE
+                         : WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
         request[7] = 0x7f;
         request[WHEEL_PROTOCOL_FLAGS_OFFSET] = WHEEL_PROTOCOL_REQUEST_READY;
 
@@ -466,6 +472,72 @@ static void test_accumulates_motion_from_packet_modes(void) {
         assert(wheel_protocol_take_motion(&protocol) == 1);
         assert(wheel_protocol_take_motion(&protocol) == 0);
     }
+}
+
+static void test_captures_packed_family_requests(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    protocol.mode = WHEEL_MODE_LEGACY_ALTERNATE;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    request[2] = 0x80;
+    request[3] = 0x01;
+    request[4] = 0x40;
+    request[5] = 0x21;
+    request[6] = 0x43;
+    request[7] = 1;
+    request[10] = 1;
+    request[11] = 2;
+    request[14] = 0x34;
+    request[15] = 0xab;
+    request[18] = 0x34;
+    request[19] = 0x12;
+    request[20] = 0x78;
+    request[21] = 0x56;
+    request[22] = 0x5a;
+    request[23] = 1;
+    request[24] = 0xa1;
+    request[25] = 0xa2;
+    request[26] = 0xa3;
+    request[27] = 0xa4;
+    request[28] = 0x21;
+    request[30] = 0x3f;
+    request[31] = 0x62;
+    mark_ready(request);
+
+    accept_active_request(&protocol, request);
+    accept_active_request(&protocol, request);
+    accept_active_request(&protocol, request);
+
+    const WheelPacketPackedInput *input = wheel_protocol_packed_input(&protocol);
+    assert(input != 0);
+    assert(input->buttons[0] == 0x80);
+    assert(input->buttons[1] == 0x08);
+    assert(input->buttons[2] == 0x40);
+    assert(input->axis_outputs[0] == 0x21);
+    assert(input->axis_outputs[1] == 0x43);
+    assert(input->controls[6] == 0x34);
+    assert(input->controls[7] == 0xab);
+    assert(input->axis_values[0] == 0x1234);
+    assert(input->axis_values[1] == 0x5678);
+    assert(input->mode_buttons == 0x5a);
+    assert(input->axis_report_enabled == 1);
+    assert(input->auxiliary_data[0] == 0xa1);
+    assert(input->auxiliary_data[3] == 0xa4);
+    assert(input->axis_limit == 0x62);
+    assert(wheel_protocol_axis_limit(&protocol) == 0x62);
+    assert(wheel_protocol_axis_outputs(&protocol) == input->axis_outputs);
+    uint16_t axis_values[2] = {0};
+    assert(wheel_protocol_axis_values(&protocol, axis_values));
+    assert(axis_values[0] == 0x1234);
+    assert(axis_values[1] == 0x5678);
+    uint8_t controls[8] = {0};
+    assert(wheel_protocol_controls(&protocol, controls));
+    assert(memcmp(controls, input->controls, sizeof(controls)) == 0);
+    assert(wheel_protocol_acknowledgement_input_active(&protocol));
+    assert(wheel_protocol_request(&protocol)[0] == 0x80);
+    assert(wheel_protocol_request(&protocol)[1] == 0x08);
 }
 
 static void test_tracks_display_acknowledgement_input(void) {
@@ -626,6 +698,30 @@ static void test_builds_mode_one_active_response(void) {
     };
     assert(memcmp(response, expected, sizeof(expected)) == 0);
     assert(wheel_protocol_message_valid(response));
+}
+
+static void test_builds_packed_family_active_response(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    const WheelPacketModeOneOutput output = {
+        .display = {.glyphs = {0x11, 0x22, 0x33}, .third_glyph_marker = true},
+        .vibration = {0x44, 0x55},
+        .legacy_axes = {0x66, 0x77},
+    };
+    wheel_protocol_init(&protocol);
+    wheel_protocol_set_mode_one_output(&protocol, &output);
+    protocol.mode = WHEEL_MODE_LEGACY_COMPATIBILITY;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    mark_ready(request);
+
+    accept_active_request(&protocol, request);
+
+    const uint8_t expected[WHEEL_PACKET_PACKED_RESPONSE_SIZE] = {
+        0xa6, 0x00, 0x11, 0x22, 0xb3, 0x44, 0x55, 0x66, 0x77,
+    };
+    assert(memcmp(wheel_protocol_response(&protocol), expected, sizeof(expected)) == 0);
+    assert(wheel_protocol_message_valid(wheel_protocol_response(&protocol)));
 }
 
 static void test_builds_crc_family_active_response(void) {
@@ -1053,6 +1149,7 @@ int main(void) {
     test_refreshes_active_response_after_invalid_checksum();
     test_restarts_synchronization_when_ready_drops();
     test_captures_normalized_active_requests();
+    test_captures_packed_family_requests();
     test_averages_control_axes_only_for_authenticated_wheel_modes();
     test_accumulates_motion_from_packet_modes();
     test_tracks_display_acknowledgement_input();
@@ -1060,6 +1157,7 @@ int main(void) {
     test_applies_authenticated_axis_overrides();
     test_builds_mode_one_active_response();
     test_builds_mode_four_active_response();
+    test_builds_packed_family_active_response();
     test_builds_crc_family_active_response();
     test_builds_remote_tuning_responses();
     test_system_status_preempts_one_remote_tuning_response();
