@@ -15,5 +15,7 @@ void motor_interrupts_initialize(void);
 void motor_pwm_initialize(void);
 void motor_pwm_enable_outputs(void);
 void motor_tick_timer_initialize(uint16_t modulus);
+void motor_service_timer_initialize(void);
+void motor_communication_timeout_timer_initialize(void);
 
 #endif
