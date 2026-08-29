@@ -1,3 +1,37 @@
+firmware_include = include_directories('source')
+motor_center_sources = files('source/motor/center.c')
+motor_control_state_sources = files('source/motor/control.c')
+motor_current_offset_calibration_sources = files('source/motor/calibration.c')
+motor_drive_sources = files('source/motor/drive.c')
+motor_encoder_sources = files('source/motor/encoder.c')
+motor_encoder_calibration_sources = files('source/motor/encoder_calibration.c')
+motor_calibration_storage_sources = files('source/motor/storage.c')
+motor_force_feedback_sources = files(
+  'source/motor/force_feedback.c',
+  'source/motor/force_feedback_command.c',
+  'source/motor/force_feedback_engine.c',
+  'source/motor/force_feedback_soft_stop.c',
+)
+motor_hardware_profile_sources = files('source/motor/profile.c')
+motor_link_frame_sources = files('source/motor/link_frame.c')
+motor_motion_sources = files('source/motor/motion.c')
+motor_parameter_sources = files('source/motor/parameter.c')
+motor_protocol_sources = files('source/motor/protocol.c')
+motor_service_sources = files('source/motor/service.c')
+motor_auxiliary_telemetry_sources = files('source/motor/telemetry.c')
+motor_velocity_control_sources = files('source/motor/velocity_control.c')
+motor_control_sources = files(
+  'source/motor/board.c',
+  'source/motor/communication.c',
+  'source/motor/foc.c',
+  'source/motor/io.c',
+  'source/motor/link.c',
+  'source/motor/peripherals.c',
+  'source/motor/runtime.c',
+  'source/motor/spi.c',
+) + motor_center_sources + motor_control_state_sources + motor_current_offset_calibration_sources + motor_drive_sources + motor_encoder_sources + motor_encoder_calibration_sources + motor_calibration_storage_sources + motor_force_feedback_sources + motor_hardware_profile_sources + motor_link_frame_sources + motor_motion_sources + motor_parameter_sources + motor_protocol_sources + motor_service_sources + motor_auxiliary_telemetry_sources + motor_velocity_control_sources
+
+
 motor_target = (
   meson.is_cross_build()
   and host_machine.cpu_family() == 'arm'
@@ -17,7 +51,6 @@ if motor_target
   freemaster_sources = freemaster.get_variable('freemaster_sources')
   freemaster_includes = freemaster.get_variable('freemaster_includes')
   rtcesl_dependency = rtcesl.get_variable('rtcesl_dependency')
-  firmware_include = include_directories('source')
   linker_script = files('source/firmware.ld')[0]
   objcopy = find_program('objcopy')
   python = import('python').find_installation()
@@ -95,7 +128,6 @@ if motor_target
     dependencies: [cmsis_dependency, rtcesl_dependency],
     include_directories: [
       firmware_include,
-      common_include,
       freemaster_includes,
       sdk_driver_include,
       sdk_device['includes'],
@@ -166,4 +198,9 @@ if motor_target
     ],
     build_by_default: true,
   )
+endif
+
+if not meson.is_cross_build()
+  motor_test_prefix = 'dd2-motor'
+  subdir('tests')
 endif

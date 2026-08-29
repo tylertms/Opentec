@@ -2,7 +2,7 @@
 #include <freemaster_serial_uart.h>
 #include <fsl_common.h>
 
-#include "common/motor/runtime.h"
+#include "motor/runtime.h"
 
 /**
  * @brief Services the UART0 FreeMASTER transport.
