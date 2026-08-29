@@ -8,8 +8,9 @@
 
 typedef void (*MotorTimerHandler)(void *context);
 typedef void (*MotorEncoderOverflowHandler)(bool increasing, void *context);
+typedef void (*MotorAdcHandler)(int16_t electrical_angle, bool auxiliary_sample_due, void *context);
 
-void motor_adc_initialize(void);
+void motor_adc_initialize(uint32_t encoder_scale, MotorAdcHandler handler, void *context);
 void motor_adc_trigger_initialize(void);
 void motor_adc_trigger_enable(void);
 MotorCurrentCalibrationResult motor_current_calibration_poll(MotorCurrentCalibrationState *state);

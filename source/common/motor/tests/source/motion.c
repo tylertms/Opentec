@@ -8,6 +8,10 @@ static void test_fixed_point_scaling(void) {
     assert(motor_q15_scale_saturate(0x002985a1U, -1) == -84);
     assert(motor_q15_scale_saturate(0x002985a1U, 1000) == INT16_MAX);
     assert(motor_q15_scale_saturate(0x002985a1U, -1000) == INT16_MIN);
+    assert(motor_q15_scale_wrap(0x000f3851U, 1) == 30);
+    assert(motor_q15_scale_wrap(0x000f3851U, -1) == -31);
+    assert(motor_q15_scale_wrap(0x000f3851U, 0x5c7f) == -108);
+    assert(motor_q15_scale_wrap(0x000f1ca2U, 0x5d2b) == -31);
 }
 
 static void test_saturated_difference(void) {

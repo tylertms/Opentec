@@ -2,6 +2,17 @@
 
 #include <assert.h>
 
+static void test_auxiliary_sample_cadence(void) {
+    uint8_t conversion_count = 0U;
+    for (uint32_t index = 0U; index < 6U; ++index) {
+        assert(!motor_auxiliary_sample_due(&conversion_count));
+    }
+    assert(conversion_count == 6U);
+    assert(motor_auxiliary_sample_due(&conversion_count));
+    assert(conversion_count == 0U);
+    assert(!motor_auxiliary_sample_due(&conversion_count));
+}
+
 static void test_temperature_interpolation(void) {
     assert(motor_temperature_interpolate(3987U, kMotorTemperatureMotor) == -255);
     assert(motor_temperature_interpolate(3970U, kMotorTemperatureMotor) == -13);
@@ -32,6 +43,7 @@ static void test_auxiliary_accumulation(void) {
 }
 
 int main(void) {
+    test_auxiliary_sample_cadence();
     test_temperature_interpolation();
     test_auxiliary_accumulation();
     return 0;

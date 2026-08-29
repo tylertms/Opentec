@@ -5,18 +5,33 @@
 #include <fsl_ftm.h>
 #include <fsl_pdb.h>
 
+#include "common/motor/motion.h"
+#include "common/motor/telemetry.h"
+
 static MotorTimerHandler service_timer_handler;
 static void *service_timer_context;
 static MotorTimerHandler communication_timer_handler;
 static void *communication_timer_context;
 static MotorEncoderOverflowHandler encoder_overflow_handler;
 static void *encoder_overflow_context;
+static MotorAdcHandler adc_handler;
+static void *adc_context;
+static uint32_t adc_encoder_scale;
+static uint8_t adc_auxiliary_conversion_count;
 
 /**
  * @brief Calibrates and configures both motor-current ADCs for PDB triggering.
+ * @param encoder_scale Board-selected fixed-point electrical-angle scale.
+ * @param handler Function invoked for each completed motor ADC conversion.
+ * @param context Caller context passed to the ADC handler.
  */
-void motor_adc_initialize(void) {
+void motor_adc_initialize(uint32_t encoder_scale, MotorAdcHandler handler, void *context) {
     adc16_config_t config;
+
+    adc_encoder_scale = encoder_scale;
+    adc_handler = handler;
+    adc_context = context;
+    adc_auxiliary_conversion_count = 0U;
 
     ADC16_GetDefaultConfig(&config);
     config.clockSource = kADC16_ClockSourceAlt0;
@@ -50,6 +65,28 @@ void motor_adc_initialize(void) {
     };
     ADC16_SetChannelConfig(ADC1, 0U, &channel_config);
 }
+
+/**
+ * @brief Publishes one official motor ADC interrupt sample to the control layer.
+ */
+static void motor_adc_interrupt_dispatch(void) {
+    int16_t electrical_angle =
+        motor_q15_scale_wrap(adc_encoder_scale, (int16_t)(uint16_t)FTM2->CNT);
+    bool auxiliary_sample_due = motor_auxiliary_sample_due(&adc_auxiliary_conversion_count);
+    if (adc_handler != NULL) {
+        adc_handler(electrical_angle, auxiliary_sample_due, adc_context);
+    }
+}
+
+/**
+ * @brief Dispatches the official ADC0 vector through the shared motor ADC handler.
+ */
+void ADC0_IRQHandler(void) { motor_adc_interrupt_dispatch(); }
+
+/**
+ * @brief Dispatches the official ADC1 vector through the shared motor ADC handler.
+ */
+void ADC1_IRQHandler(void) { motor_adc_interrupt_dispatch(); }
 
 /**
  * @brief Configures the PDB timing used to trigger both ADC modules.

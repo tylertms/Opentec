@@ -21,6 +21,7 @@ typedef struct {
 } MotorMotionSample;
 
 int16_t motor_q15_scale_saturate(uint32_t scale, int16_t value);
+int16_t motor_q15_scale_wrap(uint32_t scale, int16_t value);
 int16_t motor_signed_difference_saturate(int16_t value, int16_t previous);
 int16_t motor_motion_filter_step(MotorMotionFilter *filter, int16_t sample);
 int16_t motor_encoder_delta_scale(MotorMotionState *state, uint32_t counter, uint32_t scale);

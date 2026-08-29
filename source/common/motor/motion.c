@@ -36,6 +36,19 @@ int16_t motor_q15_scale_saturate(uint32_t scale, int16_t value) {
 }
 
 /**
+ * @brief Applies the official signed Q15 motor scale with sixteen-bit wrapping.
+ * @param scale Unsigned fixed-point scale.
+ * @param value Signed input value.
+ * @return Low sixteen bits of the scaled signed value.
+ */
+int16_t motor_q15_scale_wrap(uint32_t scale, int16_t value) {
+    int64_t upper = (int16_t)(scale >> 16U);
+    int64_t lower = scale & UINT16_MAX;
+    int64_t result = upper * value * 2 + (lower * value >> 15U);
+    return (int16_t)(uint16_t)result;
+}
+
+/**
  * @brief Calculates the official saturated difference between two signed samples.
  * @param value Current sample.
  * @param previous Previous sample.
