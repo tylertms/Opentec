@@ -28,6 +28,7 @@ typedef struct {
     uint16_t sector;
 } MotorFocOutput;
 
+void motor_foc_initialize(MotorFocState *state);
 void motor_foc_step(MotorFocState *state, const MotorFocInput *input, MotorFocOutput *output);
 
 #endif

@@ -3,6 +3,37 @@
 volatile uint16_t gu16CntMmdvsq;
 
 /**
+ * @brief Initializes both current controllers and current filters.
+ * @param state Field-oriented control state to initialize.
+ */
+void motor_foc_initialize(MotorFocState *state) {
+    state->d_controller.a32PGain = 0x9999;
+    state->d_controller.a32IGain = 0x147;
+    state->d_controller.f16UpperLim = 0x1999;
+    state->d_controller.f16LowerLim = (frac16_t)0xe667;
+    GFLIB_CtrlPIpAWInit_F16(0, &state->d_controller);
+
+    state->q_controller.a32PGain = 0x9999;
+    state->q_controller.a32IGain = 0x147;
+    state->q_controller.f16UpperLim = 0x1999;
+    state->q_controller.f16LowerLim = (frac16_t)0xe667;
+    GFLIB_CtrlPIpAWInit_F16(0, &state->q_controller);
+
+    state->q_current_filter.sFltCoeff.f32B0 = 0x05bcffd5;
+    state->q_current_filter.sFltCoeff.f32B1 = 0x05bcffd5;
+    state->q_current_filter.sFltCoeff.f32A1 = 0x34860055;
+    GDFLIB_FilterIIR1Init_F16(&state->q_current_filter);
+
+    state->d_current_filter.sFltCoeff.f32B0 = 0x05bcffd5;
+    state->d_current_filter.sFltCoeff.f32B1 = 0x05bcffd5;
+    state->d_current_filter.sFltCoeff.f32A1 = 0x34860055;
+    GDFLIB_FilterIIR1Init_F16(&state->d_current_filter);
+
+    state->stop_d_integrator = 0;
+    state->stop_q_integrator = 0;
+}
+
+/**
  * @brief Runs one field-oriented current-control cycle.
  * @param state Persistent current filters, PI controllers, and anti-windup flags.
  * @param input Phase currents, current references, rotor angle, and DC-bus voltage.
