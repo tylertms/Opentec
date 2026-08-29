@@ -54,7 +54,7 @@ static int8_t take(uint8_t *counter) {
 /**
  * @brief Clears all attached-wheel motion counters.
  *
- * Resets the primary motion counter and three independently consumed axis counters to zero.
+ * Resets the primary motion counter and four independently consumed axis counters to zero.
  *
  * @param[out] motion Motion accumulator to initialize.
  */
@@ -81,7 +81,7 @@ void wheel_motion_accumulate_primary(WheelMotion *motion, int8_t delta) {
 /**
  * @brief Accumulates one auxiliary wheel motion step.
  *
- * Updates one of the three wrapping axis counters from the sign of the input. Unsupported axis
+ * Updates one of the four wrapping axis counters from the sign of the input. Unsupported axis
  * indices leave the state unchanged.
  *
  * @param[in,out] motion Motion state whose selected axis counter is updated.

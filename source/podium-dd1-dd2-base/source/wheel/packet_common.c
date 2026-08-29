@@ -17,6 +17,12 @@ enum {
     REQUEST_RESERVED_REPORT_OFFSET = 27,
     REQUEST_REPORT_CAPABILITIES_OFFSET = 28,
     REQUEST_AXIS_LIMIT_OFFSET = 29,
+    FILTERED_AXIS_FIRST_CONTROL = 4,
+    PACKED_OUTPUT_CONTROL = 7,
+    FIRST_LATCH_BUTTON = 0x01,
+    SECOND_LATCH_BUTTON = 0x08,
+    FIRST_LATCH_FLAG = 0x01,
+    SECOND_LATCH_FLAG = 0x02,
 };
 
 /**
@@ -80,6 +86,99 @@ void wheel_packet_common_decode(const uint8_t request[WHEEL_PACKET_COMMON_REQUES
     input->reserved_report = payload[REQUEST_RESERVED_REPORT_OFFSET];
     input->report_capabilities = payload[REQUEST_REPORT_CAPABILITIES_OFFSET];
     input->axis_limit = payload[REQUEST_AXIS_LIMIT_OFFSET];
+}
+
+/**
+ * @brief Clears the common packet histories.
+ *
+ * Zeros the three button and analog-axis samples and returns the shared insertion position to the
+ * first sample.
+ *
+ * @param[out] filter Common packet filter state to initialize.
+ */
+void wheel_packet_common_filter_init(WheelPacketCommonFilter *filter) {
+    for (uint8_t sample = 0; sample < WHEEL_PACKET_COMMON_HISTORY_DEPTH; sample++) {
+        for (uint8_t button = 0; button < WHEEL_PACKET_COMMON_BUTTON_COUNT; button++) {
+            filter->button_samples[sample][button] = 0;
+        }
+        for (uint8_t axis = 0; axis < WHEEL_PACKET_COMMON_FILTERED_AXIS_COUNT; axis++) {
+            filter->axis_samples[sample][axis] = 0;
+        }
+    }
+    filter->next_sample = 0;
+}
+
+/**
+ * @brief Filters common packet buttons and analog axes.
+ *
+ * Keeps button bits present in all three recent samples and replaces control bytes four and five
+ * with their unsigned three-sample means. Empty startup samples contribute zero.
+ *
+ * @param[in,out] filter Shared button and analog-axis histories.
+ * @param[in,out] input Decoded common input filtered in place.
+ */
+void wheel_packet_common_filter(WheelPacketCommonFilter *filter, WheelPacketCommonInput *input) {
+    uint8_t sample = filter->next_sample;
+    for (uint8_t button = 0; button < WHEEL_PACKET_COMMON_BUTTON_COUNT; button++) {
+        filter->button_samples[sample][button] = input->buttons[button];
+        input->buttons[button] = filter->button_samples[0][button] &
+                                 filter->button_samples[1][button] &
+                                 filter->button_samples[2][button];
+    }
+    for (uint8_t axis = 0; axis < WHEEL_PACKET_COMMON_FILTERED_AXIS_COUNT; axis++) {
+        filter->axis_samples[sample][axis] = input->controls[FILTERED_AXIS_FIRST_CONTROL + axis];
+        uint16_t total = 0;
+        for (uint8_t history = 0; history < WHEEL_PACKET_COMMON_HISTORY_DEPTH; history++) {
+            total += filter->axis_samples[history][axis];
+        }
+        input->controls[FILTERED_AXIS_FIRST_CONTROL + axis] =
+            (uint8_t)(total / WHEEL_PACKET_COMMON_HISTORY_DEPTH);
+    }
+    filter->next_sample++;
+    if (filter->next_sample == WHEEL_PACKET_COMMON_HISTORY_DEPTH) {
+        filter->next_sample = 0;
+    }
+}
+
+/**
+ * @brief Expands a common packet's packed output controls.
+ *
+ * Replaces the first two control bytes with the low and high nibbles of control byte seven while
+ * preserving the packet's selector and filtered analog controls.
+ *
+ * @param[in,out] input Filtered common input updated in place.
+ */
+void wheel_packet_common_expand_packed_controls(WheelPacketCommonInput *input) {
+    input->controls[0] = input->controls[PACKED_OUTPUT_CONTROL] & 0x0fu;
+    input->controls[1] = input->controls[PACKED_OUTPUT_CONTROL] >> 4;
+}
+
+/**
+ * @brief Applies persistent button latching to a common packet.
+ *
+ * Records buttons eight and eleven in the packet latch flags while they are pressed and restores
+ * either button while its corresponding flag remains set. Profile transitions suspend updates.
+ *
+ * @param[in,out] input Filtered common input and packet latch flags.
+ * @param[in] enabled True when alternative button latching is enabled.
+ * @param[in] profile_transition_pending True while a profile transition suppresses latch updates.
+ */
+void wheel_packet_common_latch_buttons(WheelPacketCommonInput *input, bool enabled,
+                                       bool profile_transition_pending) {
+    if (!enabled || profile_transition_pending) {
+        return;
+    }
+
+    if ((input->buttons[1] & FIRST_LATCH_BUTTON) != 0) {
+        input->controls[3] |= FIRST_LATCH_FLAG;
+    } else if ((input->controls[3] & FIRST_LATCH_FLAG) != 0) {
+        input->buttons[1] |= FIRST_LATCH_BUTTON;
+    }
+    if ((input->buttons[1] & SECOND_LATCH_BUTTON) != 0) {
+        input->controls[3] |= SECOND_LATCH_FLAG;
+    } else if ((input->controls[3] & SECOND_LATCH_FLAG) != 0) {
+        input->buttons[1] |= SECOND_LATCH_BUTTON;
+    }
 }
 
 /**

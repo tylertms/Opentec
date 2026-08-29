@@ -141,8 +141,8 @@ static uint8_t encode_multiplexed_y(uint8_t interface_mode, uint8_t value) {
  */
 static void process_multiplexed_axes(WheelAxisOverrideProcessor *processor, uint8_t interface_mode,
                                      uint8_t x, uint8_t y, uint8_t axes[2]) {
-    processor->x_available = x >= AXIS_AVAILABLE_THRESHOLD;
-    processor->y_available = y >= AXIS_AVAILABLE_THRESHOLD;
+    processor->x_available = x <= AXIS_AVAILABLE_THRESHOLD;
+    processor->y_available = y <= AXIS_AVAILABLE_THRESHOLD;
 
     if (!interface_multiplexes_axes(interface_mode)) {
         axes[0] = (uint8_t)(x + 0x80u);

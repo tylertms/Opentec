@@ -12,6 +12,7 @@
 #include "wheel/packet_common.h"
 #include "wheel/packet_crc.h"
 #include "wheel/packet_display.h"
+#include "wheel/packet_extended.h"
 #include "wheel/packet_mode_four.h"
 #include "wheel/packet_mode_one.h"
 #include "wheel/packet_remapped.h"
@@ -119,6 +120,7 @@ static void build_active_response(WheelProtocol *protocol) {
         !wheel_packet_alternate_applies(protocol->mode) &&
         !wheel_packet_packed_applies(protocol->mode) &&
         !wheel_packet_axis_mode_applies(protocol->mode) &&
+        !wheel_packet_extended_applies(protocol->mode) &&
         !wheel_packet_crc_applies(protocol->mode) && !remote_tuning_mode) {
         return;
     }
@@ -157,7 +159,8 @@ static void build_active_response(WheelProtocol *protocol) {
         wheel_packet_alternate_encode(&protocol->alternate_output, protocol->response);
     } else if (wheel_packet_display_applies(protocol->mode) ||
                wheel_packet_remapped_applies(protocol->mode) ||
-               wheel_packet_axis_mode_applies(protocol->mode)) {
+               wheel_packet_axis_mode_applies(protocol->mode) ||
+               wheel_packet_extended_applies(protocol->mode)) {
         wheel_packet_common_response_encode(
             &protocol->mode_one_output.display, protocol->mode_one_output.vibration,
             protocol->mode_one_output.legacy_axes, protocol->response);
@@ -342,7 +345,7 @@ static void accumulate_filtered_pulses(WheelProtocol *protocol) {
  * @param[in,out] protocol Protocol state containing axis-mode input, pulse timing, and counters.
  */
 static void accumulate_axis_mode_motion(WheelProtocol *protocol) {
-    int8_t motion = protocol->axis_mode_input.motion;
+    int8_t motion = protocol->common_input.motion;
     wheel_motion_accumulate_primary(&protocol->motion, motion);
 
     uint8_t flags;
@@ -362,6 +365,43 @@ static void accumulate_axis_mode_motion(WheelProtocol *protocol) {
     if (protocol->interface_mode == 6) {
         wheel_motion_accumulate_axis(&protocol->motion, 1, pulse_delta(flags, 0x08, 0x04));
         wheel_motion_accumulate_axis(&protocol->motion, 2, pulse_delta(flags, 0x02, 0x01));
+    }
+}
+
+/**
+ * @brief Accumulates extended-family rotary and pulse input.
+ *
+ * Queues the packet's primary rotary step before applying interface pulse timing. Xbox and
+ * PlayStation interfaces map the three lower directional pairs to auxiliary counters. Status mode
+ * additionally maps bits six and seven to a fourth counter. Direct interfaces retain each pair
+ * independently for 80 milliseconds and expose bits four and five as the normalized motion
+ * direction.
+ *
+ * @param[in,out] protocol Protocol state containing extended input, pulse timing, and counters.
+ */
+static void accumulate_extended_motion(WheelProtocol *protocol) {
+    uint8_t flags = (uint8_t)protocol->common_input.motion;
+    wheel_motion_accumulate_primary(&protocol->motion,
+                                    wheel_packet_extended_primary_delta(&protocol->common_input));
+
+    if (protocol->interface_mode != 6 && protocol->interface_mode != 7) {
+        flags = wheel_packet_extended_hold_direct_pulses(&protocol->extended_pulse_state,
+                                                         protocol->mode, protocol->now_ms, flags);
+        protocol->common_input.motion = pulse_delta(flags, 0x20, 0x10);
+        return;
+    }
+
+    if (!wheel_pulse_gate_ready(&protocol->pulse_gate, protocol->interface_mode, protocol->now_ms,
+                                flags)) {
+        protocol->common_input.motion = 0;
+        return;
+    }
+    protocol->common_input.motion = pulse_delta(flags, 0x20, 0x10);
+    wheel_motion_accumulate_axis(&protocol->motion, 0, pulse_delta(flags, 0x20, 0x10));
+    wheel_motion_accumulate_axis(&protocol->motion, 1, pulse_delta(flags, 0x08, 0x04));
+    wheel_motion_accumulate_axis(&protocol->motion, 2, pulse_delta(flags, 0x02, 0x01));
+    if (protocol->mode == WHEEL_PACKET_EXTENDED_MODE_STATUS) {
+        wheel_motion_accumulate_axis(&protocol->motion, 3, pulse_delta(flags, 0x80, 0x40));
     }
 }
 
@@ -541,21 +581,50 @@ static void capture_request(WheelProtocol *protocol,
         protocol->request_changed |= changed;
     } else if (wheel_packet_axis_mode_applies(protocol->mode)) {
         uint8_t snapshot[WHEEL_PACKET_COMMON_SNAPSHOT_SIZE];
-        wheel_packet_common_decode(request, &protocol->axis_mode_input);
+        wheel_packet_common_decode(request, &protocol->common_input);
         wheel_capability_update(&protocol->capabilities, protocol->mode,
-                                protocol->axis_mode_input.report_mode,
-                                protocol->axis_mode_input.report_capabilities);
+                                protocol->common_input.report_mode,
+                                protocol->common_input.report_capabilities);
         accumulate_axis_mode_motion(protocol);
-        wheel_packet_axis_mode_filter(&protocol->axis_mode_filter, &protocol->axis_mode_input);
-        wheel_packet_axis_mode_expand_controls(&protocol->axis_mode_input);
+        wheel_packet_common_filter(&protocol->common_filter, &protocol->common_input);
+        wheel_packet_common_expand_packed_controls(&protocol->common_input);
         wheel_axis_override_process_axis_mode(
-            &protocol->axis_override_processor, protocol->axis_mode_input.controls[6],
+            &protocol->axis_override_processor, protocol->common_input.controls[6],
             protocol->interface_mode, protocol->now_ms, &protocol->paddle_bite_point_percent,
-            &protocol->axis_mode_input.buttons[0], &protocol->axis_mode_input.motion,
-            protocol->axis_mode_input.controls, protocol->axis_mode_input.axis_outputs);
-        wheel_packet_common_snapshot(&protocol->axis_mode_input, snapshot);
+            &protocol->common_input.buttons[0], &protocol->common_input.motion,
+            protocol->common_input.controls, protocol->common_input.axis_outputs);
+        wheel_packet_common_snapshot(&protocol->common_input, snapshot);
         protocol->acknowledgement_input_active =
-            common_buttons_acknowledgement_input_active(&protocol->axis_mode_input);
+            common_buttons_acknowledgement_input_active(&protocol->common_input);
+        bool changed = false;
+        for (uint8_t index = 0; index < WHEEL_PROTOCOL_SNAPSHOT_SIZE; index++) {
+            changed |= protocol->request[index] != snapshot[index];
+            protocol->request[index] = snapshot[index];
+        }
+        protocol->request_changed |= changed;
+    } else if (wheel_packet_extended_applies(protocol->mode)) {
+        uint8_t snapshot[WHEEL_PACKET_COMMON_SNAPSHOT_SIZE];
+        wheel_packet_common_decode(request, &protocol->common_input);
+        wheel_capability_update(&protocol->capabilities, protocol->mode,
+                                protocol->common_input.report_mode,
+                                protocol->common_input.report_capabilities);
+        protocol->capabilities.input_available |=
+            protocol->common_input.controls[2] != 0 || protocol->common_input.controls[3] != 0;
+        accumulate_extended_motion(protocol);
+        wheel_packet_common_filter(&protocol->common_filter, &protocol->common_input);
+        wheel_packet_extended_swap_buttons(&protocol->common_input);
+        wheel_packet_common_expand_packed_controls(&protocol->common_input);
+        wheel_packet_common_latch_buttons(&protocol->common_input, protocol->button_latch_enabled,
+                                          protocol->profile_transition_pending);
+        wheel_axis_override_process(
+            &protocol->axis_override_processor, protocol->common_input.controls[6], protocol->mode,
+            protocol->interface_mode, protocol->common_input.controls[2] != 0, protocol->now_ms,
+            &protocol->paddle_bite_point_percent, &protocol->common_input.buttons[0],
+            &protocol->common_input.motion, protocol->common_input.controls[4],
+            protocol->common_input.controls[5], protocol->common_input.axis_outputs);
+        wheel_packet_common_snapshot(&protocol->common_input, snapshot);
+        protocol->acknowledgement_input_active =
+            common_buttons_acknowledgement_input_active(&protocol->common_input);
         bool changed = false;
         for (uint8_t index = 0; index < WHEEL_PROTOCOL_SNAPSHOT_SIZE; index++) {
             changed |= protocol->request[index] != snapshot[index];
@@ -683,7 +752,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     const WheelPacketAlternateInput empty_alternate_input = {0};
     const WheelPacketAlternateOutput empty_alternate_output = {0};
     const WheelPacketPackedInput empty_packed_input = {0};
-    const WheelPacketAxisModeInput empty_axis_mode_input = {0};
+    const WheelPacketCommonInput empty_common_input = {0};
     const WheelPacketCrcInput empty_crc_input = {0};
     const WheelPacketCrcOutput empty_crc_output = {0};
     const WheelPacketCrcAdapter empty_crc_adapter = {0};
@@ -709,8 +778,9 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     protocol->alternate_output = empty_alternate_output;
     wheel_packet_packed_filter_init(&protocol->packed_filter);
     protocol->packed_input = empty_packed_input;
-    wheel_packet_axis_mode_filter_init(&protocol->axis_mode_filter);
-    protocol->axis_mode_input = empty_axis_mode_input;
+    wheel_packet_common_filter_init(&protocol->common_filter);
+    protocol->common_input = empty_common_input;
+    wheel_packet_extended_pulse_init(&protocol->extended_pulse_state);
     wheel_packet_crc_filter_init(&protocol->crc_filter);
     protocol->crc_input = empty_crc_input;
     protocol->crc_output = empty_crc_output;
@@ -885,7 +955,7 @@ bool wheel_protocol_remote_telemetry_pending(const WheelProtocol *protocol) {
  * @brief Configures attached-wheel axis processing.
  *
  * Retains the host interface mode, analog-paddle mode, and bite-point percentage applied to
- * incoming mode-one and CRC-family controls.
+ * incoming standard, common-payload, and CRC-family controls.
  *
  * @param[in,out] protocol Wheel protocol state to configure.
  * @param[in] interface_mode Active host interface mode.
@@ -935,8 +1005,8 @@ bool wheel_protocol_take_bite_point_report(WheelProtocol *protocol, uint8_t *upd
 /**
  * @brief Configures standard-packet button latching.
  *
- * Retains the button-latch enable and profile-transition state used while normalizing mode-one
- * input.
+ * Retains the button-latch enable and profile-transition state used while normalizing standard and
+ * extended input.
  *
  * @param[in,out] protocol Wheel protocol state to configure.
  * @param[in] enabled Enables standard-packet button latching.
@@ -1132,7 +1202,21 @@ const WheelPacketPackedInput *wheel_protocol_packed_input(const WheelProtocol *p
  */
 const WheelPacketAxisModeInput *wheel_protocol_axis_mode_input(const WheelProtocol *protocol) {
     return protocol->request_ready && wheel_packet_axis_mode_applies(protocol->mode)
-               ? &protocol->axis_mode_input
+               ? &protocol->common_input
+               : 0;
+}
+
+/**
+ * @brief Returns the current extended packet-family input.
+ *
+ * Exposes decoded and normalized input only after a supported extended request has been captured.
+ *
+ * @param[in] protocol Wheel protocol state.
+ * @return Current extended-family input, or null when unavailable.
+ */
+const WheelPacketExtendedInput *wheel_protocol_extended_input(const WheelProtocol *protocol) {
+    return protocol->request_ready && wheel_packet_extended_applies(protocol->mode)
+               ? &protocol->common_input
                : 0;
 }
 
@@ -1194,7 +1278,7 @@ const WheelCapabilityState *wheel_protocol_capabilities(const WheelProtocol *pro
  * @brief Returns the attached wheel's axis-limit value.
  *
  * Selects the value from the current mode-one, mode-four, display, remapped, alternate, packed,
- * axis-mode, or CRC-family input report.
+ * axis-mode, extended, or CRC-family input report.
  * Returns zero until a supported input report is ready.
  *
  * @param[in] protocol Attached-wheel protocol state.
@@ -1229,6 +1313,10 @@ uint8_t wheel_protocol_axis_limit(const WheelProtocol *protocol) {
     if (axis_mode != 0) {
         return axis_mode->axis_limit;
     }
+    const WheelPacketExtendedInput *extended = wheel_protocol_extended_input(protocol);
+    if (extended != 0) {
+        return extended->axis_limit;
+    }
     const WheelPacketCrcInput *crc = wheel_protocol_crc_input(protocol);
     return crc != 0 ? crc->axis_limit : 0;
 }
@@ -1237,7 +1325,7 @@ uint8_t wheel_protocol_axis_limit(const WheelProtocol *protocol) {
  * @brief Returns the attached wheel's secondary button byte.
  *
  * Selects the mode-button field retained by the active mode-one, mode-four, display, remapped,
- * alternate, packed, axis-mode, or CRC-family input packet.
+ * alternate, packed, axis-mode, extended, or CRC-family input packet.
  *
  * @param[in] protocol Attached-wheel protocol state.
  * @return Current secondary button byte, or zero when unavailable.
@@ -1271,6 +1359,10 @@ uint8_t wheel_protocol_mode_buttons(const WheelProtocol *protocol) {
     if (axis_mode != 0) {
         return axis_mode->mode_buttons;
     }
+    const WheelPacketExtendedInput *extended = wheel_protocol_extended_input(protocol);
+    if (extended != 0) {
+        return extended->mode_buttons;
+    }
     const WheelPacketCrcInput *crc = wheel_protocol_crc_input(protocol);
     return crc != 0 ? crc->mode_buttons : 0;
 }
@@ -1279,7 +1371,7 @@ uint8_t wheel_protocol_mode_buttons(const WheelProtocol *protocol) {
  * @brief Returns the attached wheel's two primary axis-output bytes.
  *
  * Selects the normalized values from the current mode-one, mode-four, display, remapped, alternate,
- * packed, axis-mode, or CRC-family input report.
+ * packed, axis-mode, extended, or CRC-family input report.
  *
  * @param[in] protocol Attached-wheel protocol state.
  * @return Two axis-output bytes, or null when no supported input report is ready.
@@ -1313,6 +1405,10 @@ const uint8_t *wheel_protocol_axis_outputs(const WheelProtocol *protocol) {
     if (axis_mode != 0) {
         return axis_mode->axis_outputs;
     }
+    const WheelPacketExtendedInput *extended = wheel_protocol_extended_input(protocol);
+    if (extended != 0) {
+        return extended->axis_outputs;
+    }
     const WheelPacketCrcInput *crc = wheel_protocol_crc_input(protocol);
     return crc != 0 ? crc->axis_outputs : 0;
 }
@@ -1321,8 +1417,8 @@ const uint8_t *wheel_protocol_axis_outputs(const WheelProtocol *protocol) {
  * @brief Reports whether the attached wheel enabled its axis report.
  *
  * Selects the capability flag retained by the current mode-one, mode-four, display, remapped,
- * alternate, packed, axis-mode, or CRC-family input packet. Unsupported and inactive modes report
- * disabled.
+ * alternate, packed, axis-mode, extended, or CRC-family input packet. Unsupported and inactive
+ * modes report disabled.
  *
  * @param[in] protocol Attached-wheel protocol state.
  * @return True while the current input packet enables its axis report.
@@ -1356,6 +1452,10 @@ bool wheel_protocol_axis_report_enabled(const WheelProtocol *protocol) {
     if (axis_mode != 0) {
         return axis_mode->axis_report_enabled != 0;
     }
+    const WheelPacketExtendedInput *extended = wheel_protocol_extended_input(protocol);
+    if (extended != 0) {
+        return extended->axis_report_enabled != 0;
+    }
     const WheelPacketCrcInput *crc = wheel_protocol_crc_input(protocol);
     return crc != 0 && crc->axis_report_enabled != 0;
 }
@@ -1364,8 +1464,8 @@ bool wheel_protocol_axis_report_enabled(const WheelProtocol *protocol) {
  * @brief Copies the attached wheel's two 16-bit axis values.
  *
  * Selects the separately retained standard-packet values or the mode-four, display, remapped,
- * alternate, packed, axis-mode, and CRC-family values. The destination is cleared when no
- * supported input report is ready.
+ * alternate, packed, axis-mode, extended, and CRC-family values. The destination is cleared when
+ * no supported input report is ready.
  *
  * @param[in] protocol Attached-wheel protocol state.
  * @param[out] values Two 16-bit axis values.
@@ -1416,6 +1516,12 @@ bool wheel_protocol_axis_values(const WheelProtocol *protocol, uint16_t values[2
         values[1] = axis_mode->axis_values[1];
         return true;
     }
+    const WheelPacketExtendedInput *extended = wheel_protocol_extended_input(protocol);
+    if (extended != 0) {
+        values[0] = extended->axis_values[0];
+        values[1] = extended->axis_values[1];
+        return true;
+    }
     const WheelPacketCrcInput *crc = wheel_protocol_crc_input(protocol);
     if (crc == 0) {
         return false;
@@ -1428,8 +1534,8 @@ bool wheel_protocol_axis_values(const WheelProtocol *protocol, uint16_t values[2
 /**
  * @brief Copies the attached wheel's eight control bytes.
  *
- * Selects normalized mode-one, mode-four, display, remapped, alternate, packed, axis-mode, or
- * CRC-family controls.
+ * Selects normalized mode-one, mode-four, display, remapped, alternate, packed, axis-mode,
+ * extended, or CRC-family controls.
  * Mode-four control and control-data groups are joined in their packet order. The destination is
  * cleared when no supported input report is ready.
  *
@@ -1491,6 +1597,13 @@ bool wheel_protocol_controls(const WheelProtocol *protocol, uint8_t controls[8])
     if (axis_mode != 0) {
         for (uint8_t index = 0; index < WHEEL_PACKET_COMMON_CONTROL_COUNT; index++) {
             controls[index] = axis_mode->controls[index];
+        }
+        return true;
+    }
+    const WheelPacketExtendedInput *extended = wheel_protocol_extended_input(protocol);
+    if (extended != 0) {
+        for (uint8_t index = 0; index < WHEEL_PACKET_COMMON_CONTROL_COUNT; index++) {
+            controls[index] = extended->controls[index];
         }
         return true;
     }
@@ -1559,6 +1672,7 @@ bool wheel_protocol_acknowledgement_input_active(const WheelProtocol *protocol) 
             wheel_packet_alternate_applies(protocol->mode) ||
             wheel_packet_packed_applies(protocol->mode) ||
             wheel_packet_axis_mode_applies(protocol->mode) ||
+            wheel_packet_extended_applies(protocol->mode) ||
             wheel_packet_crc_applies(protocol->mode)) &&
            protocol->acknowledgement_input_active;
 }

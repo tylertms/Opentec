@@ -13,6 +13,7 @@
 #include "wheel/packet_axis_mode.h"
 #include "wheel/packet_crc.h"
 #include "wheel/packet_display.h"
+#include "wheel/packet_extended.h"
 #include "wheel/packet_mode_four.h"
 #include "wheel/packet_mode_one.h"
 #include "wheel/packet_packed.h"
@@ -83,8 +84,9 @@ typedef struct {
     WheelPacketAlternateOutput alternate_output;
     WheelPacketPackedFilter packed_filter;
     WheelPacketPackedInput packed_input;
-    WheelPacketAxisModeFilter axis_mode_filter;
-    WheelPacketAxisModeInput axis_mode_input;
+    WheelPacketCommonFilter common_filter;
+    WheelPacketCommonInput common_input;
+    WheelPacketExtendedPulseState extended_pulse_state;
     WheelPacketCrcFilter crc_filter;
     WheelPacketCrcInput crc_input;
     WheelPacketCrcOutput crc_output;
@@ -147,6 +149,7 @@ const WheelPacketRemappedInput *wheel_protocol_remapped_input(const WheelProtoco
 const WheelPacketAlternateInput *wheel_protocol_alternate_input(const WheelProtocol *protocol);
 const WheelPacketPackedInput *wheel_protocol_packed_input(const WheelProtocol *protocol);
 const WheelPacketAxisModeInput *wheel_protocol_axis_mode_input(const WheelProtocol *protocol);
+const WheelPacketExtendedInput *wheel_protocol_extended_input(const WheelProtocol *protocol);
 const WheelPacketCrcInput *wheel_protocol_crc_input(const WheelProtocol *protocol);
 const WheelPacketModeOneReportState *
 wheel_protocol_mode_one_report_state(const WheelProtocol *protocol);

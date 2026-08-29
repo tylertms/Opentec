@@ -1477,6 +1477,102 @@ static void test_captures_axis_mode_packets(void) {
     assert(wheel_protocol_message_valid(wheel_protocol_response(&protocol)));
 }
 
+static void test_captures_extended_packets(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    protocol.mode = WHEEL_PACKET_EXTENDED_MODE_STANDARD;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    wheel_protocol_set_axis_processing(&protocol, 0, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50, 1);
+
+    request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    request[2] = 0x80;
+    request[3] = 0x01;
+    request[4] = 0x04;
+    request[5] = 0x31;
+    request[6] = 0xc2;
+    request[7] = 0x10;
+    request[10] = 1;
+    request[12] = 30;
+    request[13] = 60;
+    request[14] = WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED;
+    request[15] = 0xa5;
+    request[18] = 0x34;
+    request[19] = 0x12;
+    request[20] = 0x78;
+    request[21] = 0x56;
+    request[22] = 0x61;
+    request[23] = 1;
+    request[28] = 0x34;
+    request[30] = 0x3f;
+    request[31] = 0x62;
+    mark_ready(request);
+    for (uint8_t sample = 0; sample < WHEEL_PACKET_COMMON_HISTORY_DEPTH; sample++) {
+        accept_active_request(&protocol, request);
+    }
+
+    const WheelPacketExtendedInput *input = wheel_protocol_extended_input(&protocol);
+    assert(input != 0);
+    assert(input->buttons[0] == 0x80);
+    assert(input->buttons[1] == 0x08);
+    assert(input->buttons[2] == 0x04);
+    assert(input->controls[0] == 5);
+    assert(input->controls[1] == 10);
+    assert(input->controls[4] == 30);
+    assert(input->controls[5] == 60);
+    assert(input->controls[6] == WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED);
+    assert(input->axis_outputs[0] == 0x9e);
+    assert(input->axis_outputs[1] == 0xbc);
+    assert(wheel_protocol_axis_limit(&protocol) == 0x62);
+    assert(wheel_protocol_mode_buttons(&protocol) == 0x61);
+    assert(wheel_protocol_axis_report_enabled(&protocol));
+    uint16_t values[2];
+    assert(wheel_protocol_axis_values(&protocol, values));
+    assert(values[0] == 0x1234);
+    assert(values[1] == 0x5678);
+    uint8_t controls[8];
+    assert(wheel_protocol_controls(&protocol, controls));
+    assert(memcmp(controls, input->controls, sizeof(controls)) == 0);
+    assert(protocol.motion.primary == 3);
+    assert(wheel_protocol_acknowledgement_input_active(&protocol));
+    assert(wheel_protocol_capabilities(&protocol)->input_available);
+    assert(wheel_protocol_capabilities(&protocol)->capability_flags == 0x3f34);
+    assert(wheel_protocol_response(&protocol)[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
+    assert(wheel_protocol_message_valid(wheel_protocol_response(&protocol)));
+}
+
+static void test_accumulates_extended_interface_pulses(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    protocol.mode = WHEEL_PACKET_EXTENDED_MODE_STANDARD;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    request[7] = 0x15;
+    mark_ready(request);
+
+    wheel_protocol_set_axis_processing(&protocol, 6, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50, 1);
+    accept_active_request(&protocol, request);
+    wheel_protocol_set_axis_processing(&protocol, 6, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50, 2);
+    accept_active_request(&protocol, request);
+    wheel_protocol_set_axis_processing(&protocol, 6, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50, 92);
+    accept_active_request(&protocol, request);
+
+    assert(protocol.motion.primary == 3);
+    assert(protocol.motion.axes[0] == 2);
+    assert(protocol.motion.axes[1] == 2);
+    assert(protocol.motion.axes[2] == 2);
+    assert(wheel_protocol_extended_input(&protocol)->motion == 1);
+
+    wheel_protocol_init(&protocol);
+    protocol.mode = WHEEL_PACKET_EXTENDED_MODE_STATUS;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    request[7] = 0x40;
+    wheel_protocol_set_axis_processing(&protocol, 7, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50, 1);
+    accept_active_request(&protocol, request);
+    assert(protocol.motion.axes[3] == 1);
+}
+
 static void test_accumulates_axis_mode_interface_pulses(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -1576,6 +1672,8 @@ int main(void) {
     test_captures_direct_filtered_pulses();
     test_applies_crc_family_axis_controls();
     test_captures_axis_mode_packets();
+    test_captures_extended_packets();
+    test_accumulates_extended_interface_pulses();
     test_accumulates_axis_mode_interface_pulses();
     test_rejects_out_of_range_mode();
     test_crc8_vectors();

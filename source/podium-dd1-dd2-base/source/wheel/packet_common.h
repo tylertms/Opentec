@@ -13,6 +13,8 @@ enum {
     WHEEL_PACKET_COMMON_BUTTON_COUNT = 3,
     WHEEL_PACKET_COMMON_CONTROL_COUNT = 8,
     WHEEL_PACKET_COMMON_AXIS_VALUE_COUNT = 2,
+    WHEEL_PACKET_COMMON_HISTORY_DEPTH = 3,
+    WHEEL_PACKET_COMMON_FILTERED_AXIS_COUNT = 2,
 };
 
 /** @brief Logical fields shared by the common 30-byte attached-wheel packet layouts. */
@@ -32,8 +34,21 @@ typedef struct {
     uint8_t axis_limit;
 } WheelPacketCommonInput;
 
+/** @brief Three-sample button and analog-axis histories for common wheel packets. */
+typedef struct {
+    uint8_t button_samples[WHEEL_PACKET_COMMON_HISTORY_DEPTH][WHEEL_PACKET_COMMON_BUTTON_COUNT];
+    uint8_t axis_samples[WHEEL_PACKET_COMMON_HISTORY_DEPTH]
+                        [WHEEL_PACKET_COMMON_FILTERED_AXIS_COUNT];
+    uint8_t next_sample;
+} WheelPacketCommonFilter;
+
 void wheel_packet_common_decode(const uint8_t request[WHEEL_PACKET_COMMON_REQUEST_SIZE],
                                 WheelPacketCommonInput *input);
+void wheel_packet_common_filter_init(WheelPacketCommonFilter *filter);
+void wheel_packet_common_filter(WheelPacketCommonFilter *filter, WheelPacketCommonInput *input);
+void wheel_packet_common_expand_packed_controls(WheelPacketCommonInput *input);
+void wheel_packet_common_latch_buttons(WheelPacketCommonInput *input, bool enabled,
+                                       bool profile_transition_pending);
 void wheel_packet_common_snapshot(const WheelPacketCommonInput *input,
                                   uint8_t snapshot[WHEEL_PACKET_COMMON_SNAPSHOT_SIZE]);
 void wheel_packet_common_response_encode(const WheelDisplayOutput *display,

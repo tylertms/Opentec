@@ -243,6 +243,12 @@ static void test_maps_direct_multiplexed_axes(void) {
     assert(axes[0] == 0x07);
     assert(axes[1] == 0x06);
     assert(processor.x_available);
+    assert(processor.y_available);
+
+    value.x = 0x88;
+    value.y = UINT8_MAX;
+    process(&processor, &value, axes);
+    assert(!processor.x_available);
     assert(!processor.y_available);
 }
 
