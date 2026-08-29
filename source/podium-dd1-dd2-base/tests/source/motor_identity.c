@@ -36,13 +36,13 @@ static void test_position_protocols(void) {
     MotorIdentity identity;
 
     assert(motor_identity_decode(0xfd, version, &identity));
-    assert(identity.protocol == MOTOR_PROTOCOL_POSITION_A);
+    assert(identity.protocol == MOTOR_PROTOCOL_POSITION);
     assert(identity.model == 0x1f);
     assert(motor_identity_input_transfer_code(&identity) == 1);
     assert(motor_identity_has_extended_parameters(&identity));
 
     assert(motor_identity_decode(0xfe, version, &identity));
-    assert(identity.protocol == MOTOR_PROTOCOL_POSITION_B);
+    assert(identity.protocol == MOTOR_PROTOCOL_POSITION);
     assert(motor_identity_has_extended_parameters(&identity));
 }
 

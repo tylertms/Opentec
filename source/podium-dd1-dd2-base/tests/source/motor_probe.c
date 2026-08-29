@@ -70,7 +70,7 @@ static void test_discovers_motor(void) {
 
     const MotorIdentity *identity = motor_probe_identity(&probe);
     assert(identity != 0);
-    assert(identity->protocol == MOTOR_PROTOCOL_POSITION_A);
+    assert(identity->protocol == MOTOR_PROTOCOL_POSITION);
     assert(identity->model == 5);
     for (uint8_t index = 0; index < sizeof(version); index++) {
         assert(identity->version[index] == version[index]);

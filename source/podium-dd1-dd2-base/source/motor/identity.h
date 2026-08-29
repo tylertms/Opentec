@@ -7,8 +7,7 @@
 typedef enum {
     MOTOR_PROTOCOL_LEGACY,
     MOTOR_PROTOCOL_STANDARD,
-    MOTOR_PROTOCOL_POSITION_A,
-    MOTOR_PROTOCOL_POSITION_B,
+    MOTOR_PROTOCOL_POSITION,
 } MotorProtocol;
 
 typedef struct {

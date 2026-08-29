@@ -15,6 +15,10 @@ enum {
 
 /**
  * @brief Resets motor-controller identification state.
+ *
+ * Clears the probe phase, deadline, response buffers, and transfer ownership so a new discovery
+ * attempt can start from an idle auxiliary bus.
+ *
  * @param[out] probe Motor-controller probe state.
  */
 void motor_probe_init(MotorProbe *probe) {
@@ -29,6 +33,10 @@ void motor_probe_init(MotorProbe *probe) {
 
 /**
  * @brief Starts the one-second motor-controller identification window.
+ *
+ * Selects the status-read phase and establishes the common deadline for all status and version
+ * retries. An in-flight transfer is left undisturbed.
+ *
  * @param[in,out] probe Motor-controller probe state.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -41,6 +49,16 @@ void motor_probe_start(MotorProbe *probe, uint32_t now_ms) {
     probe->deadline_ms = now_ms + MOTOR_PROBE_TIMEOUT_MS;
 }
 
+/**
+ * @brief Applies the result of one motor-controller identification transfer.
+ *
+ * Releases the auxiliary bus, advances a successful status read to the version phase, and decodes
+ * a successful version read. Failed transfers leave the current phase available for retry until
+ * the shared deadline expires.
+ *
+ * @param[in,out] probe Motor-controller probe state and response buffers.
+ * @param[in] succeeded True when the auxiliary-bus transfer completed successfully.
+ */
 static void complete_transfer(MotorProbe *probe, bool succeeded) {
     platform_aux_bus_clear();
     probe->transfer_active = false;
@@ -60,6 +78,10 @@ static void complete_transfer(MotorProbe *probe, bool succeeded) {
 
 /**
  * @brief Advances status and version reads until identification succeeds or its deadline expires.
+ *
+ * Completes any prior auxiliary-bus transfer, retries failed reads while time remains, and starts
+ * the next status or four-byte version read whenever the bus is idle.
+ *
  * @param[in,out] probe Motor-controller probe state and decoded identity.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -96,6 +118,9 @@ void motor_probe_run(MotorProbe *probe, uint32_t now_ms) {
 
 /**
  * @brief Returns the identified motor controller after a successful probe.
+ *
+ * Hides partial and failed identification state from downstream services.
+ *
  * @param[in] probe Motor-controller probe state.
  * @return Decoded identity, or null before completion and after failure.
  */

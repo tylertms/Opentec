@@ -19,7 +19,7 @@ static void test_initial_state(void) {
 
 static void test_extended_command_response(void) {
     MotorOutputInterlock interlock;
-    MotorIdentity extended = identity(MOTOR_PROTOCOL_POSITION_A);
+    MotorIdentity extended = identity(MOTOR_PROTOCOL_POSITION);
     MotorIdentity standard = identity(MOTOR_PROTOCOL_STANDARD);
 
     motor_output_interlock_init(&interlock);
@@ -37,7 +37,7 @@ static void test_extended_command_response(void) {
 
 static void test_extended_status_response(void) {
     MotorOutputInterlock interlock;
-    MotorIdentity extended = identity(MOTOR_PROTOCOL_POSITION_B);
+    MotorIdentity extended = identity(MOTOR_PROTOCOL_POSITION);
 
     motor_output_interlock_init(&interlock);
     motor_output_interlock_accept_status(&interlock, &extended, 0xff);

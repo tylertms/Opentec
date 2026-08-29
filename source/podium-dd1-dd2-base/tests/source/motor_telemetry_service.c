@@ -47,7 +47,7 @@ static void finish_read(const uint8_t *data) {
 
 static MotorIdentity extended_identity(void) {
     return (MotorIdentity){
-        .protocol = MOTOR_PROTOCOL_POSITION_A,
+        .protocol = MOTOR_PROTOCOL_POSITION,
     };
 }
 

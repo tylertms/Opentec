@@ -81,7 +81,7 @@ static void finish_write(void) { bus_status = PLATFORM_AUX_BUS_SUCCEEDED; }
 
 static void test_extended_status_cycle(void) {
     MotorStatusService service;
-    MotorIdentity extended = identity(MOTOR_PROTOCOL_POSITION_A);
+    MotorIdentity extended = identity(MOTOR_PROTOCOL_POSITION);
     reset_bus();
     motor_status_service_init(&service, &extended);
 
@@ -145,7 +145,7 @@ static void test_legacy_status_disabled(void) {
 
 static void test_failed_transfer_retries(void) {
     MotorStatusService service;
-    MotorIdentity extended = identity(MOTOR_PROTOCOL_POSITION_A);
+    MotorIdentity extended = identity(MOTOR_PROTOCOL_POSITION);
     reset_bus();
     motor_status_service_init(&service, &extended);
 
@@ -168,7 +168,7 @@ static void finish_initial_status_cycle(MotorStatusService *service, uint32_t no
 
 static void test_extended_command_request_and_acknowledgement(void) {
     MotorStatusService service;
-    MotorIdentity extended = identity(MOTOR_PROTOCOL_POSITION_A);
+    MotorIdentity extended = identity(MOTOR_PROTOCOL_POSITION);
     reset_bus();
     motor_status_service_init(&service, &extended);
     motor_status_service_request_command(&service);
@@ -199,7 +199,7 @@ static void test_extended_command_request_and_acknowledgement(void) {
 
 static void test_extended_command_fault_latches_output(void) {
     MotorStatusService service;
-    MotorIdentity extended = identity(MOTOR_PROTOCOL_POSITION_B);
+    MotorIdentity extended = identity(MOTOR_PROTOCOL_POSITION);
     reset_bus();
     motor_status_service_init(&service, &extended);
     motor_status_service_request_command(&service);
@@ -216,7 +216,7 @@ static void test_extended_command_fault_latches_output(void) {
 
 static void test_terminal_command_responses_preserve_request(void) {
     static const uint16_t responses[] = {0xaaaa, 0xffff};
-    MotorIdentity extended = identity(MOTOR_PROTOCOL_POSITION_A);
+    MotorIdentity extended = identity(MOTOR_PROTOCOL_POSITION);
 
     for (size_t index = 0; index < sizeof(responses) / sizeof(responses[0]); index++) {
         MotorStatusService service;
@@ -237,7 +237,7 @@ static void test_terminal_command_responses_preserve_request(void) {
 
 static void test_unknown_command_response_retries_read(void) {
     MotorStatusService service;
-    MotorIdentity extended = identity(MOTOR_PROTOCOL_POSITION_A);
+    MotorIdentity extended = identity(MOTOR_PROTOCOL_POSITION);
     reset_bus();
     motor_status_service_init(&service, &extended);
 
