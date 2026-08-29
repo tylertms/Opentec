@@ -6,7 +6,7 @@
 enum {
     VENDOR_COMMAND_SIZE = 63,
     VENDOR_COMMAND_ARGUMENT_SIZE = 62,
-    VENDOR_COMMAND_EXTENDED_RESET = 0x0a,
+    VENDOR_COMMAND_SCRIPT = 0x0a,
     VENDOR_COMMAND_SCRIPT_GROUP = 0,
     VENDOR_COMMAND_SCRIPT_SAMPLES_SELECTOR = 4,
     VENDOR_COMMAND_SCRIPT_SAMPLES_LAST_FIRST = 0x01f5,
@@ -15,8 +15,6 @@ enum {
     VENDOR_COMMAND_SCRIPT_STATUS_SELECTOR = 6,
     VENDOR_COMMAND_SCRIPT_VALUES_SELECTOR = 7,
     VENDOR_COMMAND_SCRIPT_AXES_SELECTOR = 8,
-    VENDOR_COMMAND_EXTENDED_RESET_GROUP = 1,
-    VENDOR_COMMAND_EXTENDED_RESET_SELECTOR = 0x1a,
     VENDOR_COMMAND_WHEEL_TRANSFER = 0xe0,
     VENDOR_COMMAND_WHEEL_TRANSFER_WRITE = 0x0402,
     VENDOR_COMMAND_WHEEL_TRANSFER_READ = 0x0502,
@@ -27,7 +25,7 @@ enum {
  * @brief Selects the route for a vendor command opcode.
  *
  * Maps each supported top-level opcode to its clean command category and rejects opcode 0x0A
- * unless its group and selector match a supported script query or reset signature.
+ * unless its group and selector match a supported script query.
  *
  * @param[in] opcode Top-level vendor command opcode.
  * @param[in] payload Complete 63-byte vendor command payload.
@@ -47,7 +45,7 @@ static int8_t command_kind(uint8_t opcode, const uint8_t *payload) {
         return USB_VENDOR_COMMAND_REMOTE_TUNING;
     case 8:
         return USB_VENDOR_COMMAND_STATUS_RESPONSE;
-    case VENDOR_COMMAND_EXTENDED_RESET:
+    case VENDOR_COMMAND_SCRIPT:
         if (payload[1] == VENDOR_COMMAND_SCRIPT_GROUP) {
             if (payload[4] == VENDOR_COMMAND_SCRIPT_SAMPLES_SELECTOR &&
                 ((uint16_t)payload[5] | (uint16_t)((uint16_t)payload[6] << 8)) <=
@@ -68,16 +66,7 @@ static int8_t command_kind(uint8_t opcode, const uint8_t *payload) {
                 return USB_VENDOR_COMMAND_SCRIPT_AXES;
             }
         }
-        if (payload[1] == VENDOR_COMMAND_EXTENDED_RESET_GROUP &&
-            payload[2] == VENDOR_COMMAND_EXTENDED_RESET_SELECTOR) {
-            return USB_VENDOR_COMMAND_EXTENDED_RESET;
-        }
         return -1;
-    case 0x10:
-        return USB_VENDOR_COMMAND_EDS_WRITE;
-    case 0x11:
-    case 0x13:
-        return USB_VENDOR_COMMAND_EDS_TRANSFER;
     case 0xff:
         return USB_VENDOR_COMMAND_EXTENDED;
     default:
@@ -127,8 +116,7 @@ bool usb_vendor_command_script_slot_index(const UsbVendorCommand *command, uint8
  * @brief Classify a complete vendor-transfer payload.
  *
  * Selects the command route from the top-level opcode and exposes the remaining 62 bytes as its
- * arguments. Opcode 0x0A packets are accepted only for the supported script-status and reset
- * signatures.
+ * arguments. Opcode 0x0A packets are accepted only for supported script-query signatures.
  *
  * @param[in] output Classified vendor-transfer output containing 63 command bytes.
  * @param[out] command Destination for the command route, opcode, and remaining arguments.

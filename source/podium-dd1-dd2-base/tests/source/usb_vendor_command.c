@@ -22,8 +22,7 @@ static void test_classifies_direct_command_routes(void) {
         {1, USB_VENDOR_COMMAND_WHEEL_OUTPUT_REPORT},   {2, USB_VENDOR_COMMAND_TUNING_MENU},
         {3, USB_VENDOR_COMMAND_DEVICE_CONTROL_UPDATE}, {4, USB_VENDOR_COMMAND_DIAGNOSTIC_SNAPSHOT},
         {5, USB_VENDOR_COMMAND_REMOTE_TUNING},         {8, USB_VENDOR_COMMAND_STATUS_RESPONSE},
-        {0x10, USB_VENDOR_COMMAND_EDS_WRITE},          {0x11, USB_VENDOR_COMMAND_EDS_TRANSFER},
-        {0x13, USB_VENDOR_COMMAND_EDS_TRANSFER},       {0xff, USB_VENDOR_COMMAND_EXTENDED},
+        {0xff, USB_VENDOR_COMMAND_EXTENDED},
     };
     uint8_t payload[63] = {0};
 
@@ -38,7 +37,7 @@ static void test_classifies_direct_command_routes(void) {
     }
 }
 
-static void test_validates_extended_reset_signature(void) {
+static void test_rejects_unsupported_script_groups(void) {
     uint8_t payload[63] = {0};
     UsbOutputCommand output = make_output(payload, 0x0a);
     UsbVendorCommand command;
@@ -47,8 +46,7 @@ static void test_validates_extended_reset_signature(void) {
     payload[1] = 1;
     assert(!usb_vendor_command_decode(&output, &command));
     payload[2] = 0x1a;
-    assert(usb_vendor_command_decode(&output, &command));
-    assert(command.kind == USB_VENDOR_COMMAND_EXTENDED_RESET);
+    assert(!usb_vendor_command_decode(&output, &command));
 }
 
 static void test_classifies_script_status_query(void) {
@@ -208,7 +206,7 @@ static void test_rejects_unhandled_payloads(void) {
 
 int main(void) {
     test_classifies_direct_command_routes();
-    test_validates_extended_reset_signature();
+    test_rejects_unsupported_script_groups();
     test_classifies_script_status_query();
     test_decodes_script_sample_query();
     test_decodes_script_slot_query();

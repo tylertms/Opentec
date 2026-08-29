@@ -76,6 +76,20 @@ static void test_inserts_scripts_in_slot_order(void) {
     assert(store.data[5] == 0xc0 && store.data[8] == 0xc3);
 }
 
+static void test_uploads_slot_fifteen(void) {
+    ForceFeedbackScriptStore store;
+    ForceFeedbackScriptSlot slots[FORCE_FEEDBACK_SCRIPT_SLOT_COUNT] = {0};
+    uint8_t packet[FORCE_FEEDBACK_SCRIPT_PACKET_SIZE];
+    force_feedback_script_store_init(&store);
+
+    prepare_packet(packet, 15, 4, 0, 0xa0);
+    assert(force_feedback_script_store_upload(&store, slots, packet, sizeof(packet)));
+    assert(store.slots[15].allocated);
+    assert(store.slots[15].offset == 0);
+    assert(store.slots[15].size == 4);
+    assert(slots[15].state == FORCE_FEEDBACK_SCRIPT_SLOT_INACTIVE);
+}
+
 static void test_compacts_cleared_scripts(void) {
     ForceFeedbackScriptStore store;
     ForceFeedbackScriptSlot slots[FORCE_FEEDBACK_SCRIPT_SLOT_COUNT] = {0};
@@ -141,6 +155,7 @@ static void test_rejects_invalid_uploads(void) {
 int main(void) {
     test_uploads_script_chunks();
     test_inserts_scripts_in_slot_order();
+    test_uploads_slot_fifteen();
     test_compacts_cleared_scripts();
     test_rejects_invalid_uploads();
     return 0;

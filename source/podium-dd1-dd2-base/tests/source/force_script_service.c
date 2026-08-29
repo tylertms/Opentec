@@ -76,6 +76,23 @@ static void test_preserves_completion_result(void) {
     assert(runtime.slots[3].execution_count == 1);
 }
 
+static void test_runs_slot_fifteen(void) {
+    ForceFeedbackScriptRuntime runtime = {0};
+    runtime.slots[15].state = FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE;
+    ForceFeedbackScriptClock clock = {0};
+    ForceFeedbackScriptStore store = {0};
+    store.data[0] = 0xa0;
+    store.data[1] = 0x10;
+    store.data[2] = 7;
+    store.data[3] = 0x40;
+    store.slots[15] = (ForceFeedbackScriptStorageSlot){.offset = 0, .size = 4, .allocated = true};
+
+    assert(!force_feedback_script_service_run(&runtime, &store, &clock));
+    assert(runtime.active_slot == 15);
+    assert(runtime.slots[15].values[0] == 7);
+    assert(runtime.slots[15].execution_count == 1);
+}
+
 static void test_reports_slot_faults(void) {
     ForceFeedbackScriptRuntime runtime = {0};
     runtime.slots[0].state = FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE;
@@ -97,6 +114,7 @@ static void test_reports_slot_faults(void) {
 int main(void) {
     test_runs_active_slots_in_order();
     test_preserves_completion_result();
+    test_runs_slot_fifteen();
     test_reports_slot_faults();
     return 0;
 }
