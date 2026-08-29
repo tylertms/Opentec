@@ -23,3 +23,16 @@ test(
   motor_service_timing_test,
   suite: ['motor', 'service'],
 )
+
+motor_hardware_profile_test = executable(
+  'motor-hardware-profile-test',
+  'source/hardware_profile.c',
+  motor_hardware_profile_sources,
+  include_directories: common_include,
+)
+
+test(
+  'motor-hardware-profile',
+  motor_hardware_profile_test,
+  suite: ['motor', 'hardware'],
+)

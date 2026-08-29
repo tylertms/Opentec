@@ -20,6 +20,7 @@ endif
 
 common_include = include_directories('source')
 motor_current_offset_calibration_sources = files('source/common/motor/calibration.c')
+motor_hardware_profile_sources = files('source/common/motor/profile.c')
 motor_service_sources = files('source/common/motor/service.c')
 motor_control_sources = files(
   'source/common/motor/board.c',
@@ -28,7 +29,7 @@ motor_control_sources = files(
   'source/common/motor/io.c',
   'source/common/motor/peripherals.c',
   'source/common/motor/spi.c',
-) + motor_current_offset_calibration_sources + motor_service_sources
+) + motor_current_offset_calibration_sources + motor_hardware_profile_sources + motor_service_sources
 wqr_frame_sources = files('source/common/wqr_frame.c')
 
 subdir('source/podium-dd1-dd2-wqr')
