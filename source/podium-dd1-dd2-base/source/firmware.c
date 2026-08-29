@@ -236,6 +236,9 @@ enum {
     STANDARD_TUNING_MODE_EVENT_CODE = 0x12,
     ADVANCED_TUNING_MODE_EVENT_CODE = 0x13,
     WHEEL_CENTER_CALIBRATED_STATUS_CODE = 0x1f,
+    SHUTDOWN_EVENT_CODE = 0x0e,
+    SHUTDOWN_COMPLETE_EVENT_CODE = 0x11,
+    SHUTDOWN_STATUS_CODE = 0x2d,
 };
 
 static uint8_t usb_motor_upload_assembly[USB_MOTOR_BUFFER_SIZE];
@@ -258,9 +261,9 @@ static const UsbMotorVendorServiceBuffers usb_motor_buffers = {
  * @brief Applies a power-controller transition to base hardware and retained settings.
  *
  * Enables the external power hold at startup. Shutdown start makes retained settings immediately
- * eligible for storage, performs one persistence pass, disconnects USB, inhibits force output,
- * and releases the power hold. Requested-state and completed-shutdown transitions remain available
- * in the controller for the system-event service.
+ * eligible for storage, performs one persistence pass, inhibits force output, publishes shutdown
+ * state, and releases the power hold. Shutdown completion publishes its terminal event and
+ * disconnects USB.
  *
  * @param[in] action Power transition produced by the controller.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -274,12 +277,18 @@ static void apply_power_action(PowerAction action, uint32_t now_ms) {
         base_settings_persistence_request_save(&settings_persistence, now_ms);
         (void)base_settings_persistence_service(&settings_persistence, &base_settings, now_ms);
         force_output_enabled = false;
-        platform_usb_detach();
+        (void)system_event_queue_try_push(&system_event_queue, SHUTDOWN_EVENT_CODE);
+        system_control_state_set_status(&system_control_state, wheel_service_mode(&wheel_service),
+                                        SHUTDOWN_STATUS_CODE);
+        system_control_state_set_active_event(&system_control_state, SHUTDOWN_EVENT_CODE);
         platform_power_latch_set(false);
+        break;
+    case POWER_ACTION_FINISH_SHUTDOWN:
+        system_control_state_set_active_event(&system_control_state, SHUTDOWN_COMPLETE_EVENT_CODE);
+        platform_usb_detach();
         break;
     case POWER_ACTION_NONE:
     case POWER_ACTION_TORQUE_REQUEST_CHANGED:
-    case POWER_ACTION_FINISH_SHUTDOWN:
         break;
     }
 }
@@ -358,6 +367,8 @@ static void service_system_events(uint32_t now_ms) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_STANDARD_TUNING_MODE, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_ADVANCED_TUNING_MODE) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_ADVANCED_TUNING_MODE, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_SHUTDOWN) {
+        system_notice_show(&system_notice, SYSTEM_NOTICE_SHUTDOWN, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_TORQUE_DISABLED) {
         torque_disabled_notice_visible = true;
     } else if (action == SYSTEM_EVENT_ACTION_DISMISS_TORQUE_DISABLED) {

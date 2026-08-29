@@ -17,6 +17,7 @@ enum {
     SYSTEM_EVENT_MOTOR_CALIBRATION_COMPLETED = 10,
     SYSTEM_EVENT_MOTOR_CALIBRATION_ERASED = 11,
     SYSTEM_EVENT_TORQUE_DISABLED = 0x0d,
+    SYSTEM_EVENT_SHUTDOWN = 0x0e,
     SYSTEM_EVENT_STANDARD_TUNING_MODE = 0x12,
     SYSTEM_EVENT_ADVANCED_TUNING_MODE = 0x13,
     SYSTEM_EVENT_TORQUE_ENABLED = 0x1b,
@@ -91,6 +92,8 @@ SystemEventAction system_event_dispatcher_update(SystemEventDispatcher *dispatch
         action = SYSTEM_EVENT_ACTION_SHOW_STANDARD_TUNING_MODE;
     } else if (queue->pending_code == SYSTEM_EVENT_ADVANCED_TUNING_MODE) {
         action = SYSTEM_EVENT_ACTION_SHOW_ADVANCED_TUNING_MODE;
+    } else if (queue->pending_code == SYSTEM_EVENT_SHUTDOWN) {
+        action = SYSTEM_EVENT_ACTION_SHOW_SHUTDOWN;
     } else if (queue->pending_code == SYSTEM_EVENT_TORQUE_DISABLED) {
         action = SYSTEM_EVENT_ACTION_SHOW_TORQUE_DISABLED;
     } else if (queue->pending_code == SYSTEM_EVENT_TORQUE_ENABLED) {

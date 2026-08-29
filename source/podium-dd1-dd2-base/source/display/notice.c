@@ -23,6 +23,7 @@ static const char tuning_menu_reset_text[] = "RESET Tuning Menu Parameters.";
 static const char standard_tuning_mode_text[] = "Standard Tuning Menu mode";
 static const char advanced_tuning_mode_text[] = "Advanced Tuning Menu mode";
 static const char tuning_mode_activated_text[] = "activated";
+static const char shutdown_text[] = "Switching off Podium DD Wheel Base";
 static const char wheel_center_calibrated_text[] = "Wheel center calibrated.";
 static const char position_sensor_succeeded_text[] = "Position Sensor Test Successful.";
 static const char position_sensor_started_text[] = "Position Sensor Test Started.";
@@ -178,5 +179,7 @@ void display_notice_render_system(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE],
         display_text_draw_centered(framebuffer, mode_text, NOTICE_PRIMARY_TEXT_Y, 1, NOTICE_COLOR);
         display_text_draw_centered(framebuffer, tuning_mode_activated_text, NOTICE_SECONDARY_TEXT_Y,
                                    1, NOTICE_COLOR);
+    } else if (kind == SYSTEM_NOTICE_SHUTDOWN) {
+        display_text_draw_centered(framebuffer, shutdown_text, NOTICE_TEXT_Y, 1, NOTICE_COLOR);
     }
 }

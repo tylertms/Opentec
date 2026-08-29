@@ -115,12 +115,22 @@ static void test_renders_tuning_mode_notices(void) {
     assert(has_lit_pixel(framebuffer, 0, 40, DISPLAY_FRAMEBUFFER_WIDTH, 7));
 }
 
+static void test_renders_shutdown_notice(void) {
+    uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE] = {0};
+
+    display_notice_render_system(framebuffer, SYSTEM_NOTICE_SHUTDOWN);
+
+    assert(has_lit_pixel(framebuffer, 123, 17, 11, 10));
+    assert(has_lit_pixel(framebuffer, 0, 37, DISPLAY_FRAMEBUFFER_WIDTH, 7));
+}
+
 int main(void) {
     test_renders_persistent_notice_layout();
     test_hidden_notice_clears_display();
     test_renders_position_sensor_notices();
     test_renders_two_line_torque_reduction_notice();
     test_renders_tuning_mode_notices();
+    test_renders_shutdown_notice();
     test_renders_motor_calibration_notices();
     return 0;
 }
