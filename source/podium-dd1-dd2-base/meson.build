@@ -73,6 +73,8 @@ usb_xbox_gip_session_sources = files('source/usb/xbox_gip_session.c')
 usb_xbox_gip_vendor_tunnel_sources = files('source/usb/xbox_gip_vendor_tunnel.c')
 usb_updater_descriptor_sources = files('source/usb/updater_descriptor.c')
 usb_updater_control_sources = files('source/usb/updater_control.c')
+usb_updater_protocol_sources = files('source/usb/updater_protocol.c')
+usb_updater_identity_sources = files('source/usb/updater_identity.c')
 usb_descriptor_sources = files('source/usb/descriptor.c')
 usb_diagnostic_report_sources = files('source/usb/diagnostic_report.c')
 usb_tuning_menu_service_sources = files('source/usb/tuning_menu_service.c')
@@ -288,6 +290,8 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'usb-xbox-gip-vendor-tunnel': 'source/usb/xbox_gip_vendor_tunnel.c',
     'usb-updater-descriptor': 'source/usb/updater_descriptor.c',
     'usb-updater-control': 'source/usb/updater_control.c',
+    'usb-updater-protocol': 'source/usb/updater_protocol.c',
+    'usb-updater-identity': 'source/usb/updater_identity.c',
     'usb-descriptor': 'source/usb/descriptor.c',
     'usb-diagnostic-report': 'source/usb/diagnostic_report.c',
     'usb-tuning-menu-service': 'source/usb/tuning_menu_service.c',
@@ -1049,6 +1053,22 @@ if not meson.is_cross_build()
     'base-usb-updater-control-test',
     'tests/source/updater_control.c',
     usb_updater_control_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  usb_updater_protocol_test = executable(
+    'base-usb-updater-protocol-test',
+    'tests/source/updater_protocol.c',
+    usb_updater_protocol_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  usb_updater_identity_test = executable(
+    'base-usb-updater-identity-test',
+    'tests/source/updater_identity.c',
+    usb_updater_identity_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2531,6 +2551,8 @@ if not meson.is_cross_build()
   )
   test('base-usb-updater-descriptor', usb_updater_descriptor_test, suite: ['base', 'usb'])
   test('base-usb-updater-control', usb_updater_control_test, suite: ['base', 'usb'])
+  test('base-usb-updater-protocol', usb_updater_protocol_test, suite: ['base', 'usb'])
+  test('base-usb-updater-identity', usb_updater_identity_test, suite: ['base', 'usb'])
   test('base-usb-descriptor', usb_descriptor_test, suite: ['base', 'usb'])
   test('base-usb-control-request', usb_control_request_test, suite: ['base', 'usb'])
   test('base-usb-control-pipe', usb_control_pipe_test, suite: ['base', 'usb'])
