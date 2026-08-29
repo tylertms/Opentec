@@ -54,6 +54,8 @@ typedef struct {
     HPatternCalibrationSession session;
     bool active;
     bool advance_pending;
+    bool advance_input_active;
+    bool release_required;
 } HPatternCalibrationService;
 
 bool h_pattern_calibration_command_decode(const UsbOperatingModeCommand *source,
@@ -61,6 +63,8 @@ bool h_pattern_calibration_command_decode(const UsbOperatingModeCommand *source,
 HPatternCalibration h_pattern_calibration_build(const HPatternCalibrationSamples *samples);
 void h_pattern_calibration_service_request(HPatternCalibrationService *service,
                                            HPatternCalibrationCommand command);
+void h_pattern_calibration_service_set_advance_input(HPatternCalibrationService *service,
+                                                     bool active);
 HPatternCalibrationResult h_pattern_calibration_service_capture(HPatternCalibrationService *service,
                                                                 uint16_t lateral_position,
                                                                 uint16_t longitudinal_position,

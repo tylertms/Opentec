@@ -164,10 +164,28 @@ void h_pattern_calibration_service_request(HPatternCalibrationService *service,
 }
 
 /**
+ * @brief Updates the attached-wheel calibration-advance input.
+ *
+ * Retains the current input level so a captured position must be followed by a release before the
+ * next physical or queued host advance can capture another position.
+ *
+ * @param[in,out] service Calibration lifecycle state.
+ * @param[in] active True while the attached-wheel calibration input is pressed.
+ */
+void h_pattern_calibration_service_set_advance_input(HPatternCalibrationService *service,
+                                                     bool active) {
+    if (service != NULL) {
+        service->advance_input_active = active;
+    }
+}
+
+/**
  * @brief Captures a queued H-pattern calibration position.
  *
- * Ignores samples until a session is active and an advance request is pending. A successful
- * seventh-gear capture closes the session and enables the new settings.
+ * Ignores samples until a session is active and either the attached-wheel input or a host advance
+ * is active. After each capture, waits for the attached-wheel input to be released before accepting
+ * the next position. A successful seventh-gear capture closes the session and enables the new
+ * settings.
  *
  * @param[in,out] service Calibration lifecycle state.
  * @param[in] lateral_position Current lateral axis sample.
@@ -179,7 +197,17 @@ HPatternCalibrationResult h_pattern_calibration_service_capture(HPatternCalibrat
                                                                 uint16_t lateral_position,
                                                                 uint16_t longitudinal_position,
                                                                 HPatternSettings *settings) {
-    if (service == NULL || settings == NULL || !service->active || !service->advance_pending) {
+    if (service == NULL || settings == NULL || !service->active) {
+        return H_PATTERN_CALIBRATION_NO_CAPTURE;
+    }
+
+    if (service->release_required) {
+        if (!service->advance_input_active) {
+            service->release_required = false;
+        }
+        return H_PATTERN_CALIBRATION_NO_CAPTURE;
+    }
+    if (!service->advance_pending && !service->advance_input_active) {
         return H_PATTERN_CALIBRATION_NO_CAPTURE;
     }
 
@@ -188,6 +216,8 @@ HPatternCalibrationResult h_pattern_calibration_service_capture(HPatternCalibrat
         capture_position(&service->session, lateral_position, longitudinal_position, settings);
     if (result == H_PATTERN_CALIBRATION_COMPLETED) {
         service->active = false;
+    } else if (result == H_PATTERN_CALIBRATION_CAPTURED) {
+        service->release_required = true;
     }
     return result;
 }

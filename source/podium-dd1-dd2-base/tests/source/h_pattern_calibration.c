@@ -65,8 +65,44 @@ static void test_seventh_gear_boundary_fallback(void) {
 static HPatternCalibrationResult capture(HPatternCalibrationService *service,
                                          HPatternSettings *settings, uint16_t lateral,
                                          uint16_t longitudinal) {
+    if (service->release_required) {
+        assert(h_pattern_calibration_service_capture(service, lateral, longitudinal, settings) ==
+               H_PATTERN_CALIBRATION_NO_CAPTURE);
+    }
     h_pattern_calibration_service_request(service, H_PATTERN_CALIBRATION_COMMAND_ADVANCE);
     return h_pattern_calibration_service_capture(service, lateral, longitudinal, settings);
+}
+
+static void test_requires_release_between_physical_captures(void) {
+    HPatternCalibrationService service = {0};
+    HPatternSettings settings = {0};
+
+    h_pattern_calibration_service_request(&service, H_PATTERN_CALIBRATION_COMMAND_START);
+    h_pattern_calibration_service_set_advance_input(&service, true);
+    assert(h_pattern_calibration_service_capture(&service, 500, 500, &settings) ==
+           H_PATTERN_CALIBRATION_CAPTURED);
+    assert(service.session.next_position == H_PATTERN_CALIBRATION_REVERSE);
+
+    assert(h_pattern_calibration_service_capture(&service, 900, 900, &settings) ==
+           H_PATTERN_CALIBRATION_NO_CAPTURE);
+    h_pattern_calibration_service_request(&service, H_PATTERN_CALIBRATION_COMMAND_ADVANCE);
+    assert(h_pattern_calibration_service_capture(&service, 900, 900, &settings) ==
+           H_PATTERN_CALIBRATION_NO_CAPTURE);
+
+    h_pattern_calibration_service_set_advance_input(&service, false);
+    assert(h_pattern_calibration_service_capture(&service, 900, 900, &settings) ==
+           H_PATTERN_CALIBRATION_NO_CAPTURE);
+    assert(h_pattern_calibration_service_capture(&service, 900, 900, &settings) ==
+           H_PATTERN_CALIBRATION_CAPTURED);
+    assert(service.session.next_position == H_PATTERN_CALIBRATION_FIRST);
+
+    h_pattern_calibration_service_set_advance_input(&service, false);
+    assert(h_pattern_calibration_service_capture(&service, 700, 850, &settings) ==
+           H_PATTERN_CALIBRATION_NO_CAPTURE);
+    h_pattern_calibration_service_set_advance_input(&service, true);
+    assert(h_pattern_calibration_service_capture(&service, 700, 850, &settings) ==
+           H_PATTERN_CALIBRATION_CAPTURED);
+    assert(service.session.next_position == H_PATTERN_CALIBRATION_SECOND);
 }
 
 static void test_calibration_capture_sequence(void) {
@@ -111,6 +147,7 @@ int main(void) {
     test_command_decode();
     test_calibration_thresholds();
     test_seventh_gear_boundary_fallback();
+    test_requires_release_between_physical_captures();
     test_calibration_capture_sequence();
     return 0;
 }

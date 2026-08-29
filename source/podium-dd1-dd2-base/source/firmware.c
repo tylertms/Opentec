@@ -1031,6 +1031,9 @@ static void service_usb_input(uint32_t now_ms) {
  */
 static void service_analog_input(uint32_t now_ms) {
     platform_shifter_read(&shifter_input);
+    h_pattern_calibration_service_set_advance_input(
+        &h_pattern_calibration_service,
+        wheel_service_calibration_advance_input_active(&wheel_service));
     if (platform_adc_read(&analog_samples)) {
         cooling_temperature_monitor_add(&cooling_temperature_monitor,
                                         analog_samples.primary_thermistor,

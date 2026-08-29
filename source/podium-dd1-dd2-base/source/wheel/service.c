@@ -598,7 +598,8 @@ static bool adapter_supplies_multi_position_input(const WheelService *service) {
  * @return True when the third channel contributes to the input report.
  */
 static bool third_multi_position_channel_active(const WheelService *service, bool adapter_source) {
-    return service->protocol.mode == 0x0f || service->protocol.mode == 0x17 ||
+    return service->protocol.mode == WHEEL_MODE_LEGACY_ALTERNATE ||
+           service->protocol.mode == WHEEL_MODE_LEGACY_COMPATIBILITY ||
            service->protocol.mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED ||
            (adapter_source && service->protocol.crc_adapter.mode == 1);
 }
@@ -950,6 +951,25 @@ bool wheel_service_acknowledgement_input_active(const WheelService *service) {
         }
     }
     return false;
+}
+
+/**
+ * @brief Reports the attached-wheel H-pattern calibration input.
+ *
+ * Uses button bank three bit zero for wheel modes 0x0E, 0x0F, and 0x17. Other wheel modes use
+ * button bank two bit seven.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return True while the mode-specific calibration input is active.
+ */
+bool wheel_service_calibration_advance_input_active(const WheelService *service) {
+    const uint8_t *buttons = wheel_service_buttons(service);
+    uint8_t mode = service->protocol.mode;
+    if (mode == WHEEL_MODE_REMOTE_TUNING_LEGACY || mode == WHEEL_MODE_LEGACY_ALTERNATE ||
+        mode == WHEEL_MODE_LEGACY_COMPATIBILITY) {
+        return (buttons[2] & 0x01u) != 0;
+    }
+    return (buttons[1] & 0x80u) != 0;
 }
 
 /**

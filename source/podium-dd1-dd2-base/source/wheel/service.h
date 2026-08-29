@@ -88,6 +88,7 @@ uint8_t wheel_service_accessory_flags(const WheelService *service);
 int8_t wheel_service_encoder_direction(const WheelService *service);
 int8_t wheel_service_take_encoder_step(WheelService *service);
 bool wheel_service_acknowledgement_input_active(const WheelService *service);
+bool wheel_service_calibration_advance_input_active(const WheelService *service);
 bool wheel_service_adapter_connected(const WheelService *service);
 bool wheel_service_calibration_available(const WheelService *service);
 bool wheel_service_input_capability_available(const WheelService *service);

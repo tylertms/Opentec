@@ -632,6 +632,35 @@ static void test_reports_calibration_availability(void) {
     assert(wheel_service_calibration_available(&service));
 }
 
+static void test_selects_calibration_advance_button_by_wheel_mode(void) {
+    WheelService service;
+    initialize_service(&service);
+
+    service.protocol.mode = 1;
+    service.protocol.request_ready = true;
+    service.protocol.mode_one_input.buttons[1] = 0x80;
+    assert(wheel_service_calibration_advance_input_active(&service));
+    service.protocol.mode_one_input.buttons[1] = 0;
+    assert(!wheel_service_calibration_advance_input_active(&service));
+
+    service.protocol.request_ready = false;
+    service.protocol.mode = WHEEL_MODE_REMOTE_TUNING_LEGACY;
+    service.button_banks[1] = 0x80;
+    assert(!wheel_service_calibration_advance_input_active(&service));
+    service.button_banks[2] = 0x01;
+    assert(wheel_service_calibration_advance_input_active(&service));
+
+    service.protocol.mode = WHEEL_MODE_LEGACY_ALTERNATE;
+    assert(wheel_service_calibration_advance_input_active(&service));
+    service.protocol.mode = WHEEL_MODE_LEGACY_COMPATIBILITY;
+    assert(wheel_service_calibration_advance_input_active(&service));
+
+    service.protocol.mode = WHEEL_MODE_REMOTE_TUNING_EXTENDED;
+    assert(wheel_service_calibration_advance_input_active(&service));
+    service.button_banks[1] = 0;
+    assert(!wheel_service_calibration_advance_input_active(&service));
+}
+
 static void test_reports_mode_gated_input_capability(void) {
     WheelService service;
     initialize_service(&service);
@@ -704,6 +733,7 @@ int main(void) {
     test_rejects_unavailable_multi_position_input();
     test_selects_extended_report_fields();
     test_reports_calibration_availability();
+    test_selects_calibration_advance_button_by_wheel_mode();
     test_reports_mode_gated_input_capability();
     test_exposes_axis_overrides();
     test_reports_bite_point_adjustment();
