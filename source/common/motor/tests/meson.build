@@ -24,6 +24,19 @@ test(
   suite: ['motor', 'service'],
 )
 
+motor_force_feedback_test = executable(
+  'motor-force-feedback-test',
+  'source/force_feedback.c',
+  motor_force_feedback_sources,
+  include_directories: common_include,
+)
+
+test(
+  'motor-force-feedback',
+  motor_force_feedback_test,
+  suite: ['motor', 'force-feedback'],
+)
+
 motor_hardware_profile_test = executable(
   'motor-hardware-profile-test',
   'source/hardware_profile.c',
