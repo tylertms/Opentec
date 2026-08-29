@@ -60,3 +60,17 @@ void motor_pins_initialize(void) {
     motor_gpio_output_initialize(PORTB, GPIOB, 17U, false);
     motor_gpio_output_initialize(PORTB, GPIOB, 16U, false);
 }
+
+/**
+ * @brief Reads the five hardware straps and packs the motor board identity byte.
+ * @return Identity byte with fixed marker bits in positions zero and seven.
+ */
+uint8_t motor_board_identity_read(void) {
+    uint8_t identity = 0x81U;
+    identity |= (uint8_t)(((GPIOC->PDIR >> 3U) & 1U) << 2U);
+    identity |= (uint8_t)(((GPIOE->PDIR >> 17U) & 1U) << 3U);
+    identity |= (uint8_t)(((GPIOE->PDIR >> 20U) & 1U) << 4U);
+    identity |= (uint8_t)(((GPIOC->PDIR >> 4U) & 1U) << 5U);
+    identity |= (uint8_t)(((GPIOE->PDIR >> 29U) & 1U) << 6U);
+    return identity;
+}
