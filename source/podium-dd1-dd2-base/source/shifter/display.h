@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "shifter/calibration.h"
 #include "shifter/h_pattern.h"
 #include "wheel/display_output.h"
 
@@ -17,10 +18,13 @@ typedef struct {
     ShifterDisplayPhase phase;
     ShifterGear last_gear;
     uint32_t clear_after_ms;
+    bool calibration_visible;
 } ShifterDisplay;
 
 void shifter_display_init(ShifterDisplay *display);
 bool shifter_display_update(ShifterDisplay *display, ShifterGear gear, bool wheel_active,
-                            uint32_t now_ms, WheelDisplayOutput *output);
+                            bool calibration_active,
+                            HPatternCalibrationPosition calibration_position, uint32_t now_ms,
+                            WheelDisplayOutput *output);
 
 #endif

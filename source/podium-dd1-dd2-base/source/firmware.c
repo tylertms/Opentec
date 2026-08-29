@@ -1079,7 +1079,9 @@ static void service_analog_input(uint32_t now_ms) {
 static void service_shifter_display(uint32_t now_ms) {
     WheelDisplayOutput *output = &wheel_service.display_output;
     bool wheel_active = wheel_service_protocol_phase(&wheel_service) == WHEEL_PROTOCOL_ACTIVE;
-    if (shifter_display_update(&shifter_display, h_pattern_shifter.gear, wheel_active, now_ms,
+    if (shifter_display_update(&shifter_display, h_pattern_shifter.gear, wheel_active,
+                               h_pattern_calibration_service.active,
+                               h_pattern_calibration_service.session.next_position, now_ms,
                                output)) {
         wheel_service_set_display_output(&wheel_service, output);
     }
