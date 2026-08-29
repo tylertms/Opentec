@@ -1,11 +1,13 @@
 #ifndef OPENTEC_MOTOR_PERIPHERALS_H
 #define OPENTEC_MOTOR_PERIPHERALS_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "common/motor/calibration.h"
 
 typedef void (*MotorTimerHandler)(void *context);
+typedef void (*MotorEncoderOverflowHandler)(bool increasing, void *context);
 
 void motor_adc_initialize(void);
 void motor_adc_trigger_initialize(void);
@@ -16,7 +18,8 @@ void motor_reset_filter_initialize(void);
 void motor_interrupts_initialize(void);
 void motor_pwm_initialize(void);
 void motor_pwm_enable_outputs(void);
-void motor_tick_timer_initialize(uint16_t modulus);
+void motor_tick_timer_initialize(uint16_t modulus, MotorEncoderOverflowHandler handler,
+                                 void *context);
 void motor_service_timer_initialize(MotorTimerHandler handler, void *context);
 void motor_communication_timeout_timer_initialize(MotorTimerHandler handler, void *context);
 

@@ -9,6 +9,8 @@ static MotorTimerHandler service_timer_handler;
 static void *service_timer_context;
 static MotorTimerHandler communication_timer_handler;
 static void *communication_timer_context;
+static MotorEncoderOverflowHandler encoder_overflow_handler;
+static void *encoder_overflow_context;
 
 /**
  * @brief Calibrates and configures both motor-current ADCs for PDB triggering.
@@ -228,8 +230,13 @@ void motor_pwm_enable_outputs(void) { FTM0->OUTMASK = 0U; }
 /**
  * @brief Configures the FTM2 motor scheduling timer.
  * @param modulus Runtime timer period selected by the motor configuration.
+ * @param handler Function invoked with the quadrature overflow direction.
+ * @param context Caller context passed to the overflow handler.
  */
-void motor_tick_timer_initialize(uint16_t modulus) {
+void motor_tick_timer_initialize(uint16_t modulus, MotorEncoderOverflowHandler handler,
+                                 void *context) {
+    encoder_overflow_handler = handler;
+    encoder_overflow_context = context;
     CLOCK_EnableClock(kCLOCK_Ftm2);
     FTM2->MODE = FTM_MODE_FTMEN_MASK;
     FTM2->SYNCONF = 0xc0U;
@@ -239,6 +246,17 @@ void motor_tick_timer_initialize(uint16_t modulus) {
     FTM2->CONF = FTM_CONF_BDMMODE(3U) | FTM_CONF_NUMTOF(1U);
     FTM2->SC &= ~FTM_SC_TOF_MASK;
     FTM_StartTimer(FTM2, kFTM_SystemClock);
+}
+
+/**
+ * @brief Extends the official FTM2 quadrature count in its hardware overflow direction.
+ */
+void FTM2_IRQHandler(void) {
+    bool increasing = (FTM2->QDCTRL & FTM_QDCTRL_TOFDIR_MASK) != 0U;
+    FTM_ClearStatusFlags(FTM2, kFTM_TimeOverflowFlag);
+    if (encoder_overflow_handler != NULL) {
+        encoder_overflow_handler(increasing, encoder_overflow_context);
+    }
 }
 
 static void motor_periodic_timer_initialize(FTM_Type *timer, clock_ip_name_t clock,
