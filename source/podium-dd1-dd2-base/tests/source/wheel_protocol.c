@@ -723,18 +723,18 @@ static void test_system_status_preempts_one_remote_tuning_response(void) {
     assert(!wheel_protocol_remote_tuning_response_pending(&protocol));
 }
 
-static void test_system_operating_responses_use_extended_control_encoding(void) {
+static void test_system_operating_responses_use_remote_tuning_control_encoding(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
     wheel_protocol_init(&protocol);
-    protocol.mode = WHEEL_MODE_REMOTE_TUNING_EXTENDED;
+    protocol.mode = WHEEL_MODE_REMOTE_TUNING_LEGACY;
     protocol.phase = WHEEL_PROTOCOL_ACTIVE;
     request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
     mark_ready(request);
     request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
 
     RemoteTuningResponse response = {
-        .link = REMOTE_TUNING_LINK_EXTENDED,
+        .link = REMOTE_TUNING_LINK_LEGACY,
         .code = REMOTE_TUNING_RESPONSE_ACTIVE,
     };
     assert(wheel_protocol_queue_system_control_response(&protocol, &response));
@@ -745,6 +745,8 @@ static void test_system_operating_responses_use_extended_control_encoding(void) 
     assert(packet[2] == 1);
     assert(wheel_protocol_message_valid(packet));
 
+    protocol.mode = WHEEL_MODE_REMOTE_TUNING_EXTENDED;
+    response.link = REMOTE_TUNING_LINK_EXTENDED;
     response.code = REMOTE_TUNING_RESPONSE_INACTIVE;
     assert(wheel_protocol_queue_system_control_response(&protocol, &response));
     wheel_protocol_accept(&protocol, request);
@@ -1030,7 +1032,7 @@ int main(void) {
     test_builds_crc_family_active_response();
     test_builds_remote_tuning_responses();
     test_system_status_preempts_one_remote_tuning_response();
-    test_system_operating_responses_use_extended_control_encoding();
+    test_system_operating_responses_use_remote_tuning_control_encoding();
     test_system_setup_response_precedes_host_response_and_schedules_status();
     test_forwards_remote_telemetry_in_legacy_mode();
     test_encodes_legacy_display_rotation_status();

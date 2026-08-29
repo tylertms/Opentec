@@ -524,7 +524,7 @@ bool wheel_service_queue_remote_tuning_response(WheelService *service,
 }
 
 /**
- * @brief Queues a system-owned extended remote-tuning response.
+ * @brief Queues a system-owned remote-tuning response.
  *
  * Retains the response across connection discovery in a priority slot separate from host-owned
  * remote-tuning work.

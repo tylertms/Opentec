@@ -113,8 +113,12 @@ static void build_active_response(WheelProtocol *protocol) {
     }
     bool system_status_response = protocol->system_status_pending;
     bool system_control_response =
-        !system_status_response && protocol->mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED &&
-        wheel_packet_remote_tuning_pending(&protocol->system_control_output);
+        !system_status_response && remote_tuning_mode &&
+        wheel_packet_remote_tuning_pending(&protocol->system_control_output) &&
+        ((protocol->mode == WHEEL_MODE_REMOTE_TUNING_LEGACY &&
+          protocol->system_control_output.response.link == REMOTE_TUNING_LINK_LEGACY) ||
+         (protocol->mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED &&
+          protocol->system_control_output.response.link == REMOTE_TUNING_LINK_EXTENDED));
     bool remote_tuning_response =
         !system_status_response && !system_control_response && remote_tuning_mode &&
         wheel_packet_remote_tuning_pending(&protocol->remote_tuning_output);
@@ -193,10 +197,10 @@ void wheel_protocol_queue_system_status(WheelProtocol *protocol, uint16_t code) 
 }
 
 /**
- * @brief Queues a system-owned extended remote-tuning response.
+ * @brief Queues a system-owned remote-tuning response.
  *
- * Accepts active, inactive, and setup-page responses for the extended link. The separate system
- * slot takes priority without consuming a host-owned response that is already pending.
+ * Accepts active, inactive, and setup-page responses for a legacy or extended link. The separate
+ * system slot takes priority without consuming a host-owned response that is already pending.
  *
  * @param[in,out] protocol Attached-wheel protocol state to update.
  * @param[in] response Semantic response requested by system-control policy.
@@ -204,7 +208,9 @@ void wheel_protocol_queue_system_status(WheelProtocol *protocol, uint16_t code) 
  */
 bool wheel_protocol_queue_system_control_response(WheelProtocol *protocol,
                                                   const RemoteTuningResponse *response) {
-    if (protocol == NULL || response == NULL || response->link != REMOTE_TUNING_LINK_EXTENDED ||
+    if (protocol == NULL || response == NULL ||
+        (response->link != REMOTE_TUNING_LINK_LEGACY &&
+         response->link != REMOTE_TUNING_LINK_EXTENDED) ||
         (response->code != REMOTE_TUNING_RESPONSE_ACTIVE &&
          response->code != REMOTE_TUNING_RESPONSE_INACTIVE &&
          response->code != REMOTE_TUNING_RESPONSE_SETUP) ||

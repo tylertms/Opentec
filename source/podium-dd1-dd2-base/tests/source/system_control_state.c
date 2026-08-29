@@ -13,7 +13,6 @@ static void test_initializes_baseline_state(void) {
     assert(state.wheel_response.code == REMOTE_TUNING_RESPONSE_NONE);
     assert(state.active_event_code == 0);
     assert(state.operating_status == 0);
-    assert(state.operating_transition_code == 0);
     assert(!state.operating_feature_enabled);
 }
 
@@ -75,12 +74,13 @@ static void test_applies_operating_status_by_wheel_mode(void) {
 
     system_control_state_set_operating_status(&state, 0x0e, true);
     assert(state.operating_status == 1);
-    assert(state.operating_transition_code == 2);
-    assert(state.wheel_response.code == REMOTE_TUNING_RESPONSE_NONE);
+    assert(state.wheel_response.link == REMOTE_TUNING_LINK_LEGACY);
+    assert(state.wheel_response.code == REMOTE_TUNING_RESPONSE_ACTIVE);
 
     system_control_state_set_operating_status(&state, 0x0e, false);
     assert(state.operating_status == 0);
-    assert(state.operating_transition_code == 0xff);
+    assert(state.wheel_response.link == REMOTE_TUNING_LINK_LEGACY);
+    assert(state.wheel_response.code == REMOTE_TUNING_RESPONSE_INACTIVE);
 
     system_control_state_set_operating_status(&state, 0x1c, true);
     assert(state.operating_status == 1);

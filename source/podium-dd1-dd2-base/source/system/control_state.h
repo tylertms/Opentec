@@ -12,7 +12,6 @@ typedef struct {
     RemoteTuningResponse wheel_response;
     uint8_t active_event_code;
     uint8_t operating_status;
-    uint8_t operating_transition_code;
     bool operating_feature_enabled;
 } SystemControlState;
 

@@ -14,8 +14,6 @@ enum {
     STATUS_NONE = 0xffff,
     WHEEL_MODE_TRANSITION = 0x0e,
     WHEEL_MODE_EXTENDED = 0x1c,
-    OPERATING_TRANSITION_DISABLED = 0xff,
-    OPERATING_TRANSITION_ENABLED = 2,
 };
 
 /**
@@ -106,8 +104,8 @@ void system_control_state_set_operating_feature(SystemControlState *state, bool 
 /**
  * @brief Applies an operating-status change from the host.
  *
- * Stores a canonical zero-or-one status. Wheel mode 0x0e publishes transition code 0xff or 2.
- * Wheel mode 0x1c queues the matching inactive or active remote-tuning response.
+ * Stores a canonical zero-or-one status. Remote-tuning wheel modes queue the matching inactive or
+ * active response on their legacy or extended link.
  *
  * @param[in,out] state System-control state receiving the operating-status change.
  * @param[in] wheel_mode Current attached-wheel mode.
@@ -117,8 +115,10 @@ void system_control_state_set_operating_status(SystemControlState *state, uint8_
                                                bool enabled) {
     state->operating_status = enabled ? 1 : 0;
     if (wheel_mode == WHEEL_MODE_TRANSITION) {
-        state->operating_transition_code =
-            enabled ? OPERATING_TRANSITION_ENABLED : OPERATING_TRANSITION_DISABLED;
+        state->wheel_response = (RemoteTuningResponse){
+            .link = REMOTE_TUNING_LINK_LEGACY,
+            .code = enabled ? REMOTE_TUNING_RESPONSE_ACTIVE : REMOTE_TUNING_RESPONSE_INACTIVE,
+        };
     } else if (wheel_mode == WHEEL_MODE_EXTENDED) {
         state->operating_feature_enabled = false;
         state->wheel_response = (RemoteTuningResponse){
