@@ -89,8 +89,9 @@ static void test_reads_primary_and_descriptor_before_classification(void) {
 
     assert(i2c_device_identification_service(&identification, &transaction, &operations) ==
            I2C_DEVICE_IDENTIFICATION_PENDING);
-    assert(state.requests[0].address == 0xf0);
+    assert(state.requests[0].channel == 0xf0);
     assert(state.requests[0].length == 1);
+    assert(state.requests[0].parameter == 0);
     assert(state.requests[0].read);
     assert(i2c_device_identification_service(&identification, &transaction, &operations) ==
            I2C_DEVICE_IDENTIFICATION_PENDING);
@@ -98,8 +99,9 @@ static void test_reads_primary_and_descriptor_before_classification(void) {
 
     assert(i2c_device_identification_service(&identification, &transaction, &operations) ==
            I2C_DEVICE_IDENTIFICATION_PENDING);
-    assert(state.requests[1].address == 0xf0);
+    assert(state.requests[1].channel == 0xf0);
     assert(state.requests[1].length == 4);
+    assert(state.requests[1].parameter == 1);
     assert(state.requests[1].read);
     assert(i2c_device_identification_service(&identification, &transaction, &operations) ==
            I2C_DEVICE_IDENTIFICATION_READY);

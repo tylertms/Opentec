@@ -4,7 +4,9 @@
 #include <stdint.h>
 
 enum {
-    I2C_IDENTIFICATION_ADDRESS = 0xf0,
+    I2C_IDENTIFICATION_CHANNEL = 0xf0,
+    I2C_IDENTIFICATION_PRIMARY_PARAMETER = 0,
+    I2C_IDENTIFICATION_DESCRIPTOR_PARAMETER = 1,
     I2C_IDENTIFICATION_MARKER = 0x80,
     I2C_IDENTIFICATION_SUBTYPE_MASK = 0x03,
     I2C_IDENTIFICATION_MODEL_MASK = 0x7c,
@@ -29,7 +31,7 @@ void i2c_device_identification_init(I2cDeviceIdentification *identification) {
  * Encoded responses use bits 2 through 6 as a five-bit model. Subtype 0 selects class 2, subtypes
  * 1 and 2 select class 3, and subtype 3 is rejected.
  *
- * @param[in] response One-byte identification response from I2C address 0xF0.
+ * @param[in] response One-byte identification response from channel 0xF0.
  * @param[out] identity Decoded class, raw response, model, and subtype.
  * @return True when the response selects a supported device class.
  */
@@ -63,9 +65,9 @@ bool i2c_device_identity_decode(uint8_t response, I2cDeviceIdentity *identity) {
 /**
  * @brief Services the two-stage I2C identification exchange.
  *
- * Reads one primary byte and then four descriptor bytes from address 0xF0. A completed descriptor
- * read classifies the primary byte and restarts the exchange at its first phase. Pending and
- * recovered channel states preserve the active phase for retry.
+ * Reads one primary byte from parameter 0 and then four descriptor bytes from parameter 1 on
+ * channel 0xF0. A completed descriptor read classifies the primary byte and restarts the exchange
+ * at its first phase. Pending and recovered channel states preserve the active phase for retry.
  *
  * @param[in,out] identification Persistent exchange buffers, phase, and decoded identity.
  * @param[in,out] transaction Asynchronous I2C transaction channel.
@@ -76,13 +78,16 @@ I2cDeviceIdentificationResult
 i2c_device_identification_service(I2cDeviceIdentification *identification,
                                   I2cTransaction *transaction, const I2cTransactionDriver *driver) {
     I2cTransactionRequest request = {
-        .address = I2C_IDENTIFICATION_ADDRESS,
+        .channel = I2C_IDENTIFICATION_CHANNEL,
         .data = identification->phase == I2C_DEVICE_IDENTIFICATION_PRIMARY
                     ? &identification->primary_response
                     : identification->descriptor,
         .length = identification->phase == I2C_DEVICE_IDENTIFICATION_PRIMARY
                       ? 1
                       : sizeof(identification->descriptor),
+        .parameter = identification->phase == I2C_DEVICE_IDENTIFICATION_PRIMARY
+                         ? I2C_IDENTIFICATION_PRIMARY_PARAMETER
+                         : I2C_IDENTIFICATION_DESCRIPTOR_PARAMETER,
         .read = true,
     };
 

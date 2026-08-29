@@ -47,18 +47,20 @@ static void test_submits_then_completes_an_accepted_request(void) {
     i2c_transaction_init(&transaction);
     uint8_t data[3] = {0};
     I2cTransactionRequest request = {
-        .address = 0xf0,
+        .channel = 0xf0,
         .data = data,
         .length = sizeof(data),
+        .parameter = 0x12345678,
         .read = true,
     };
 
     assert(i2c_transaction_service(&transaction, &operations, request) == I2C_TRANSACTION_PENDING);
     assert(transaction.state == I2C_TRANSACTION_POLLING);
     assert(state.submissions == 1);
-    assert(state.request.address == 0xf0);
+    assert(state.request.channel == 0xf0);
     assert(state.request.data == data);
     assert(state.request.length == sizeof(data));
+    assert(state.request.parameter == 0x12345678);
     assert(state.request.read);
 
     assert(i2c_transaction_service(&transaction, &operations, request) == I2C_TRANSACTION_COMPLETE);

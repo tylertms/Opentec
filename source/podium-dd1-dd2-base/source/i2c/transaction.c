@@ -28,7 +28,7 @@ void i2c_transaction_init(I2cTransaction *transaction) {
  *
  * @param[in,out] transaction Persistent transaction-channel state.
  * @param[in] driver I2C submission, completion-poll, and recovery operations.
- * @param[in] request Address, buffer, length, and transfer direction to submit.
+ * @param[in] request Channel, local data, length, parameter offset, and transfer direction.
  * @return Pending, complete, or recovered transaction status.
  */
 I2cTransactionResult i2c_transaction_service(I2cTransaction *transaction,

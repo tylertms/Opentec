@@ -38,8 +38,37 @@ typedef struct {
     I2cDeviceIdentity identity;
 } I2cDeviceIdentification;
 
+/**
+ * @brief Initializes I2C device identification.
+ *
+ * Starts with the one-byte primary response and clears the retained descriptor and identity.
+ *
+ * @param[out] identification Identification exchange to initialize.
+ */
 void i2c_device_identification_init(I2cDeviceIdentification *identification);
+
+/**
+ * @brief Classifies an I2C peripheral identification response.
+ *
+ * Decodes direct identifiers and the supported encoded model and subtype combinations.
+ *
+ * @param[in] response One-byte identification response from channel 0xF0.
+ * @param[out] identity Decoded class, raw response, model, and subtype.
+ * @return True when the response selects a supported device class.
+ */
 bool i2c_device_identity_decode(uint8_t response, I2cDeviceIdentity *identity);
+
+/**
+ * @brief Services the two-stage I2C identification exchange.
+ *
+ * Reads the primary response from parameter 0 and its descriptor from parameter 1 before
+ * classifying the attached peripheral.
+ *
+ * @param[in,out] identification Persistent exchange buffers, phase, and decoded identity.
+ * @param[in,out] transaction Asynchronous I2C transaction channel.
+ * @param[in] driver Transfer submission, completion-poll, and recovery operations.
+ * @return Pending while either read is active, ready for a supported identity, or invalid.
+ */
 I2cDeviceIdentificationResult
 i2c_device_identification_service(I2cDeviceIdentification *identification,
                                   I2cTransaction *transaction, const I2cTransactionDriver *driver);
