@@ -686,6 +686,7 @@ static void motor_runtime_spi_prepare(uint8_t frame[MOTOR_SPI_TRANSFER_SIZE], vo
         .torque = torque,
         .drive_current = runtime->live_drive.primary_current,
         .positive = runtime->live_drive.primary_current >= 0,
+        .replay = runtime->protocol.replay,
     };
     motor_link_position_frame_encode(&report, frame);
 }
@@ -702,8 +703,8 @@ static void motor_runtime_spi_prepare(uint8_t frame[MOTOR_SPI_TRANSFER_SIZE], vo
 static void motor_runtime_spi_receive(const uint8_t frame[MOTOR_SPI_TRANSFER_SIZE], void *context) {
     MotorRuntime *runtime = context;
     MotorLinkFrame decoded;
-    if (motor_link_frame_decode(frame, &decoded) != MOTOR_LINK_FRAME_VALID ||
-        !motor_protocol_frame_apply(&runtime->protocol, &decoded) ||
+    MotorLinkFrameResult result = motor_link_frame_decode(frame, &decoded);
+    if (!motor_protocol_frame_result_apply(&runtime->protocol, result, &decoded) ||
         !runtime->protocol.live_drive_updated) {
         return;
     }

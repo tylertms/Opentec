@@ -66,6 +66,23 @@ bool motor_protocol_frame_apply(MotorProtocolState *state, const MotorLinkFrame 
 }
 
 /**
+ * @brief Applies the official motor-link validation result and replay state.
+ *
+ * Boundary or checksum failures arm bit seven in the next position response. Every valid frame
+ * clears that replay indication before its decoded payload is applied.
+ *
+ * @param state Persistent motor protocol and replay state.
+ * @param result Boundary and checksum validation result.
+ * @param frame Decoded frame supplied when validation succeeded.
+ * @return True when the frame was valid and its type was supported.
+ */
+bool motor_protocol_frame_result_apply(MotorProtocolState *state, MotorLinkFrameResult result,
+                                       const MotorLinkFrame *frame) {
+    state->replay = result != MOTOR_LINK_FRAME_VALID;
+    return result == MOTOR_LINK_FRAME_VALID && motor_protocol_frame_apply(state, frame);
+}
+
+/**
  * @brief Services the official local force-feedback path.
  *
  * Status gates disable the sixteen host-controlled slots and reset the recovery ramp where

@@ -57,6 +57,19 @@ static void test_status_command(void) {
     assert(!motor_protocol_frame_apply(&state, &frame));
 }
 
+static void test_replay_state(void) {
+    MotorProtocolState state;
+    motor_protocol_initialize(&state, 53U);
+    MotorLinkFrame frame = {.type = MOTOR_LINK_FORCE_TYPE};
+
+    assert(!motor_protocol_frame_result_apply(&state, MOTOR_LINK_FRAME_INVALID_BOUNDARY, &frame));
+    assert(state.replay);
+    assert(!motor_protocol_frame_result_apply(&state, MOTOR_LINK_FRAME_INVALID_CHECKSUM, &frame));
+    assert(state.replay);
+    assert(motor_protocol_frame_result_apply(&state, MOTOR_LINK_FRAME_VALID, &frame));
+    assert(!state.replay);
+}
+
 static void test_local_force_feedback_service(void) {
     MotorProtocolState state;
     motor_protocol_initialize(&state, 53U);
@@ -101,6 +114,7 @@ int main(void) {
     test_live_force();
     test_remote_effects();
     test_status_command();
+    test_replay_state();
     test_local_force_feedback_service();
     test_local_force_feedback_gates();
     return 0;
