@@ -821,10 +821,11 @@ static void initialize_motor(void) {
  * @brief Initializes the host command bridge.
  *
  * Attaches report-6 mailbox storage and wheel-transfer requests to the shared type-four command
- * transport, then initializes diagnostic and tuning vendor responses.
+ * transport, restarts adapter discovery, then initializes diagnostic and tuning vendor responses.
  */
 static void initialize_usb_command_bridge(void) {
     command_transport_init(&command_transport);
+    wheel_service_reset_adapter_commands(&wheel_service);
     (void)motor_command_mailbox_exchange_init(
         &motor_command_mailbox, usb_operating_mode_workspace.motor.mailbox_receive,
         sizeof(usb_operating_mode_workspace.motor.mailbox_receive));
@@ -1378,10 +1379,10 @@ static void complete_usb_vendor_response(void) {
 /**
  * @brief Advances host command services over serial message type four.
  *
- * Queues remote-tuning responses and telemetry for the attached wheel, batches generic tuning
- * records, advances wheel-transfer and mailbox requests, and selects the console interface at an
- * idle transport boundary. Motor mailbox and vendor-report work stop while PlayStation mode owns
- * the shared workspace.
+ * Queues remote-tuning responses and telemetry for the attached wheel, polls attached-adapter
+ * state, batches generic tuning records, advances wheel-transfer and mailbox requests, and selects
+ * the console interface at an idle transport boundary. Motor mailbox and vendor-report work stop
+ * while PlayStation mode owns the shared workspace.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -1401,6 +1402,7 @@ static void service_usb_command_bridge(uint32_t now_ms) {
     }
     (void)motor_command_serial_receive(&command_transport, &serial_service);
     wheel_transfer_service_run(&wheel_transfer_service, &command_transport);
+    wheel_service_run_adapter_commands(&wheel_service, &command_transport);
     if (wheel_command_forwarder_accepting(&wheel_command_forwarder) &&
         usb_remote_tuning_service_take_forward_batch(
             &usb_remote_tuning_service, wheel_service_mode(&wheel_service), wheel_command_batch,

@@ -6,23 +6,24 @@
 
 enum {
     WHEEL_COMMAND_ENDPOINT_COUNT = 2,
+    WHEEL_COMMAND_FORWARDER_OWNER = 0x41,
     WHEEL_COMMAND_PROBE_OFFSET = 0x0c,
     WHEEL_COMMAND_PAYLOAD_OFFSET = 0xb0,
 };
 
-static const uint8_t endpoint_owners[WHEEL_COMMAND_ENDPOINT_COUNT] = {0x15, 0x16};
+static const uint8_t endpoint_targets[WHEEL_COMMAND_ENDPOINT_COUNT] = {0x15, 0x16};
 static const uint8_t endpoint_probe_lengths[WHEEL_COMMAND_ENDPOINT_COUNT] = {1, 4};
 
 /**
- * @brief Selects the current attached-device command endpoint.
+ * @brief Selects the current attached-device command target.
  *
- * Maps the standard endpoint to owner 0x15 and the extended endpoint to owner 0x16.
+ * Maps the standard endpoint to target 0x15 and the extended endpoint to target 0x16.
  *
  * @param[in] forwarder Command forwarder containing the endpoint index.
- * @return Current command-transport owner identifier.
+ * @return Current remote target identifier.
  */
-static uint8_t endpoint_owner(const WheelCommandForwarder *forwarder) {
-    return endpoint_owners[forwarder->endpoint_index];
+static uint8_t endpoint_target(const WheelCommandForwarder *forwarder) {
+    return endpoint_targets[forwarder->endpoint_index];
 }
 
 /**
@@ -34,7 +35,7 @@ static uint8_t endpoint_owner(const WheelCommandForwarder *forwarder) {
  * @param[in,out] transport Shared command transport held by the current endpoint.
  */
 static void advance_endpoint(WheelCommandForwarder *forwarder, CommandTransport *transport) {
-    command_transport_release(transport, endpoint_owner(forwarder));
+    command_transport_release(transport, WHEEL_COMMAND_FORWARDER_OWNER);
     forwarder->endpoint_index =
         (uint8_t)((forwarder->endpoint_index + 1) % WHEEL_COMMAND_ENDPOINT_COUNT);
     forwarder->phase = WHEEL_COMMAND_FORWARDER_PROBE_READY;
@@ -54,13 +55,13 @@ static void start_probe(WheelCommandForwarder *forwarder, CommandTransport *tran
         return;
     }
 
-    uint8_t owner = endpoint_owner(forwarder);
-    command_transport_claim(transport, owner);
-    if (!command_transport_is_owner(transport, owner)) {
+    command_transport_claim(transport, WHEEL_COMMAND_FORWARDER_OWNER);
+    if (!command_transport_is_owner(transport, WHEEL_COMMAND_FORWARDER_OWNER)) {
         return;
     }
 
-    CommandTransportResult result = command_transport_poll(transport, owner);
+    CommandTransportResult result =
+        command_transport_poll(transport, WHEEL_COMMAND_FORWARDER_OWNER);
     if (result == COMMAND_TRANSPORT_BUSY) {
         return;
     }
@@ -69,9 +70,10 @@ static void start_probe(WheelCommandForwarder *forwarder, CommandTransport *tran
         return;
     }
 
-    result =
-        command_transport_queue_read(transport, owner, WHEEL_COMMAND_PROBE_OFFSET, forwarder->probe,
-                                     endpoint_probe_lengths[forwarder->endpoint_index]);
+    result = command_transport_queue_read_from(transport, WHEEL_COMMAND_FORWARDER_OWNER,
+                                               endpoint_target(forwarder),
+                                               WHEEL_COMMAND_PROBE_OFFSET, forwarder->probe,
+                                               endpoint_probe_lengths[forwarder->endpoint_index]);
     if (result == COMMAND_TRANSPORT_COMPLETE) {
         forwarder->phase = WHEEL_COMMAND_FORWARDER_PROBE_PENDING;
     } else if (result != COMMAND_TRANSPORT_BUSY) {
@@ -89,8 +91,8 @@ static void start_probe(WheelCommandForwarder *forwarder, CommandTransport *tran
  * @param[in,out] transport Shared command transport carrying the probe.
  */
 static void finish_probe(WheelCommandForwarder *forwarder, CommandTransport *transport) {
-    uint8_t owner = endpoint_owner(forwarder);
-    CommandTransportResult result = command_transport_poll(transport, owner);
+    CommandTransportResult result =
+        command_transport_poll(transport, WHEEL_COMMAND_FORWARDER_OWNER);
     if (result == COMMAND_TRANSPORT_BUSY) {
         return;
     }
@@ -99,7 +101,7 @@ static void finish_probe(WheelCommandForwarder *forwarder, CommandTransport *tra
         return;
     }
 
-    command_transport_release(transport, owner);
+    command_transport_release(transport, WHEEL_COMMAND_FORWARDER_OWNER);
     forwarder->phase = WHEEL_COMMAND_FORWARDER_READY;
 }
 
@@ -117,13 +119,13 @@ static void start_write(WheelCommandForwarder *forwarder, CommandTransport *tran
         return;
     }
 
-    uint8_t owner = endpoint_owner(forwarder);
-    command_transport_claim(transport, owner);
-    if (!command_transport_is_owner(transport, owner)) {
+    command_transport_claim(transport, WHEEL_COMMAND_FORWARDER_OWNER);
+    if (!command_transport_is_owner(transport, WHEEL_COMMAND_FORWARDER_OWNER)) {
         return;
     }
 
-    CommandTransportResult result = command_transport_poll(transport, owner);
+    CommandTransportResult result =
+        command_transport_poll(transport, WHEEL_COMMAND_FORWARDER_OWNER);
     if (result == COMMAND_TRANSPORT_BUSY) {
         return;
     }
@@ -132,8 +134,9 @@ static void start_write(WheelCommandForwarder *forwarder, CommandTransport *tran
         return;
     }
 
-    result = command_transport_queue_write(transport, owner, WHEEL_COMMAND_PAYLOAD_OFFSET,
-                                           forwarder->payload, forwarder->payload_length);
+    result = command_transport_queue_write_to(
+        transport, WHEEL_COMMAND_FORWARDER_OWNER, endpoint_target(forwarder),
+        WHEEL_COMMAND_PAYLOAD_OFFSET, forwarder->payload, forwarder->payload_length);
     if (result == COMMAND_TRANSPORT_COMPLETE) {
         forwarder->payload_length = 0;
         forwarder->phase = WHEEL_COMMAND_FORWARDER_WRITE_PENDING;
@@ -152,8 +155,8 @@ static void start_write(WheelCommandForwarder *forwarder, CommandTransport *tran
  * @param[in,out] transport Shared command transport carrying the write.
  */
 static void finish_write(WheelCommandForwarder *forwarder, CommandTransport *transport) {
-    uint8_t owner = endpoint_owner(forwarder);
-    CommandTransportResult result = command_transport_poll(transport, owner);
+    CommandTransportResult result =
+        command_transport_poll(transport, WHEEL_COMMAND_FORWARDER_OWNER);
     if (result == COMMAND_TRANSPORT_BUSY) {
         return;
     }
@@ -162,7 +165,7 @@ static void finish_write(WheelCommandForwarder *forwarder, CommandTransport *tra
         return;
     }
 
-    command_transport_release(transport, owner);
+    command_transport_release(transport, WHEEL_COMMAND_FORWARDER_OWNER);
     forwarder->phase = WHEEL_COMMAND_FORWARDER_READY;
 }
 

@@ -44,9 +44,15 @@ CommandTransportResult command_transport_poll(CommandTransport *transport, uint8
 CommandTransportResult command_transport_queue_write(CommandTransport *transport, uint8_t owner,
                                                      uint8_t offset, const uint8_t *data,
                                                      uint16_t length);
+CommandTransportResult command_transport_queue_write_to(CommandTransport *transport, uint8_t owner,
+                                                        uint8_t target, uint8_t offset,
+                                                        const uint8_t *data, uint16_t length);
 CommandTransportResult command_transport_queue_read(CommandTransport *transport, uint8_t owner,
                                                     uint8_t offset, uint8_t *output,
                                                     uint16_t length);
+CommandTransportResult command_transport_queue_read_from(CommandTransport *transport, uint8_t owner,
+                                                         uint8_t target, uint8_t offset,
+                                                         uint8_t *output, uint16_t length);
 bool command_transport_request(const CommandTransport *transport, const uint8_t **request,
                                uint16_t *length);
 bool command_transport_request_sent(CommandTransport *transport);

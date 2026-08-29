@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "serial/service.h"
+#include "wheel/adapter_commands.h"
 #include "wheel/display_output.h"
 #include "wheel/protocol.h"
 #include "wheel/rotary_input.h"
@@ -45,6 +46,7 @@ typedef struct {
 typedef struct {
     SerialService *transport;
     WheelProtocol protocol;
+    WheelAdapterCommandService adapter_commands;
     WheelRotaryInput rotary_input;
     WheelDisplayOutput display_output;
     uint8_t request[SERIAL_PACKET_MAX_PAYLOAD_SIZE];
@@ -58,7 +60,9 @@ typedef struct {
 } WheelService;
 
 void wheel_service_init(WheelService *service, SerialService *transport);
+void wheel_service_reset_adapter_commands(WheelService *service);
 void wheel_service_run(WheelService *service, uint32_t now_ms, bool start_allowed);
+void wheel_service_run_adapter_commands(WheelService *service, CommandTransport *transport);
 void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output);
 void wheel_service_set_vibration_output(WheelService *service, const WheelVibrationOutput *output);
 void wheel_service_set_legacy_axes(WheelService *service, const uint8_t axes[2]);

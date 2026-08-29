@@ -152,6 +152,7 @@ wheel_steering_limit_sources = files('source/wheel/steering_limit.c')
 wheel_axis_override_sources = files('source/wheel/axis_override.c')
 wheel_authentication_sources = files('source/wheel/authentication.c')
 wheel_capability_sources = files('source/wheel/capability.c')
+wheel_adapter_command_sources = files('source/wheel/adapter_commands.c')
 wheel_command_forwarder_sources = files('source/wheel/command_forwarder.c')
 wheel_compatibility_alert_sources = files('source/wheel/compatibility_alert.c')
 wheel_display_output_sources = files('source/wheel/display_output.c')
@@ -379,6 +380,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'wheel-axis-override': 'source/wheel/axis_override.c',
     'wheel-authentication': 'source/wheel/authentication.c',
     'wheel-capability': 'source/wheel/capability.c',
+    'wheel-adapter-commands': 'source/wheel/adapter_commands.c',
     'wheel-command-forwarder': 'source/wheel/command_forwarder.c',
     'wheel-compatibility-alert': 'source/wheel/compatibility_alert.c',
     'wheel-display-output': 'source/wheel/display_output.c',
@@ -2111,6 +2113,16 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_adapter_command_test = executable(
+    'base-wheel-adapter-command-test',
+    'tests/source/wheel_adapter_commands.c',
+    wheel_adapter_command_sources,
+    transfer_command_sources,
+    transfer_memory_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_compatibility_alert_test = executable(
     'base-wheel-compatibility-alert-test',
     'tests/source/wheel_compatibility_alert.c',
@@ -2174,6 +2186,9 @@ if not meson.is_cross_build()
     'base-wheel-service-test',
     'tests/source/wheel_service.c',
     wheel_service_sources,
+    wheel_adapter_command_sources,
+    transfer_command_sources,
+    transfer_memory_sources,
     wheel_display_output_sources,
     wheel_authentication_sources,
     wheel_axis_override_sources,
@@ -2712,6 +2727,11 @@ if not meson.is_cross_build()
   test(
     'base-wheel-command-forwarder',
     wheel_command_forwarder_test,
+    suite: ['base', 'wheel', 'transfer'],
+  )
+  test(
+    'base-wheel-adapter-command',
+    wheel_adapter_command_test,
     suite: ['base', 'wheel', 'transfer'],
   )
   test(

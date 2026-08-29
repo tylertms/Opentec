@@ -6,6 +6,7 @@
 #include "platform/time.h"
 #include "serial/message.h"
 #include "serial/service.h"
+#include "wheel/adapter_commands.h"
 #include "wheel/display_output.h"
 #include "wheel/output_reports.h"
 #include "wheel/protocol.h"
@@ -463,6 +464,7 @@ static bool scan_active(const WheelService *service) {
 void wheel_service_init(WheelService *service, SerialService *transport) {
     service->transport = transport;
     wheel_protocol_init(&service->protocol);
+    wheel_service_reset_adapter_commands(service);
     wheel_rotary_input_init(&service->rotary_input);
     clear_scan_filter(service);
     for (uint8_t index = 0; index < WHEEL_DISPLAY_GLYPH_COUNT; index++) {
@@ -474,6 +476,44 @@ void wheel_service_init(WheelService *service, SerialService *transport) {
     service->scan_phase = 0;
     service->request_kind = WHEEL_SERVICE_REQUEST_NONE;
     service->protocol_deadline_active = false;
+}
+
+/**
+ * @brief Restarts attached-adapter command discovery.
+ *
+ * Clears incomplete adapter command work and restores the logical adapter defaults so a reset
+ * type-four transport cannot complete a stale request.
+ *
+ * @param[in,out] service Attached-wheel service whose adapter commands restart.
+ */
+void wheel_service_reset_adapter_commands(WheelService *service) {
+    if (service == 0) {
+        return;
+    }
+    wheel_adapter_command_service_init(&service->adapter_commands, &service->protocol.adapter);
+}
+
+/**
+ * @brief Advances asynchronous commands for the attached adapter.
+ *
+ * Transfers a newly latched display report into the adapter command service, then advances
+ * endpoint discovery, status polling, component reads, or display transmission over the shared
+ * type-four transport.
+ *
+ * @param[in,out] service Attached-wheel service containing adapter state and output latches.
+ * @param[in,out] transport Shared command transport used by adapter requests.
+ */
+void wheel_service_run_adapter_commands(WheelService *service, CommandTransport *transport) {
+    if (service == 0 || transport == 0) {
+        return;
+    }
+    if (service->protocol.adapter_output.display_update_pending) {
+        wheel_adapter_command_service_queue_display(
+            &service->adapter_commands, service->protocol.adapter_output.previous_display_report);
+        service->protocol.adapter_output.display_update_pending = false;
+    }
+    wheel_adapter_command_service_run(&service->adapter_commands, &service->protocol.adapter,
+                                      transport);
 }
 
 /**

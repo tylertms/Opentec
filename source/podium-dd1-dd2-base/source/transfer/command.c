@@ -89,12 +89,35 @@ CommandTransportResult command_transport_poll(CommandTransport *transport, uint8
 CommandTransportResult command_transport_queue_write(CommandTransport *transport, uint8_t owner,
                                                      uint8_t offset, const uint8_t *data,
                                                      uint16_t length) {
+    return command_transport_queue_write_to(transport, owner, owner, offset, data, length);
+}
+
+/**
+ * @brief Queues a remote write for a separately owned client.
+ *
+ * Uses one identifier for local transport arbitration and a second identifier in the encoded
+ * request so independent clients can safely address the same remote target.
+ *
+ * @param[in,out] transport Command transport receiving the request.
+ * @param[in] owner Local nonzero client identifier.
+ * @param[in] target Remote target identifier.
+ * @param[in] offset Remote byte offset.
+ * @param[in] data Payload bytes, or null when length is zero.
+ * @param[in] length Payload byte count.
+ * @return Complete when queued, busy when unavailable, or too-long for an invalid payload.
+ */
+CommandTransportResult command_transport_queue_write_to(CommandTransport *transport, uint8_t owner,
+                                                        uint8_t target, uint8_t offset,
+                                                        const uint8_t *data, uint16_t length) {
+    if (transport->owner != 0 && !command_transport_is_owner(transport, owner)) {
+        return COMMAND_TRANSPORT_BUSY;
+    }
     if (transport->phase != COMMAND_TRANSPORT_IDLE ||
         transport->completion != COMMAND_TRANSPORT_COMPLETE) {
         return COMMAND_TRANSPORT_BUSY;
     }
     uint16_t request_length =
-        memory_transfer_encode_write(owner, offset, data, length, transport->request);
+        memory_transfer_encode_write(target, offset, data, length, transport->request);
     if (request_length == 0) {
         return COMMAND_TRANSPORT_TOO_LONG;
     }
@@ -119,11 +142,35 @@ CommandTransportResult command_transport_queue_write(CommandTransport *transport
 CommandTransportResult command_transport_queue_read(CommandTransport *transport, uint8_t owner,
                                                     uint8_t offset, uint8_t *output,
                                                     uint16_t length) {
+    return command_transport_queue_read_from(transport, owner, owner, offset, output, length);
+}
+
+/**
+ * @brief Queues a remote read for a separately owned client.
+ *
+ * Uses one identifier for local transport arbitration and a second identifier in the encoded
+ * request so independent clients can safely address the same remote target.
+ *
+ * @param[in,out] transport Command transport receiving the request.
+ * @param[in] owner Local nonzero client identifier.
+ * @param[in] target Remote target identifier.
+ * @param[in] offset Remote byte offset.
+ * @param[out] output Destination for returned bytes, or null when length is zero.
+ * @param[in] length Requested byte count.
+ * @return Complete when queued, busy when unavailable, or too-long for an invalid request.
+ */
+CommandTransportResult command_transport_queue_read_from(CommandTransport *transport, uint8_t owner,
+                                                         uint8_t target, uint8_t offset,
+                                                         uint8_t *output, uint16_t length) {
+    if (transport->owner != 0 && !command_transport_is_owner(transport, owner)) {
+        return COMMAND_TRANSPORT_BUSY;
+    }
     if (transport->phase != COMMAND_TRANSPORT_IDLE ||
         transport->completion != COMMAND_TRANSPORT_COMPLETE) {
         return COMMAND_TRANSPORT_BUSY;
     }
-    uint8_t request_length = memory_transfer_encode_read(owner, offset, length, transport->request);
+    uint8_t request_length =
+        memory_transfer_encode_read(target, offset, length, transport->request);
     if (request_length == 0 || (output == 0 && length != 0)) {
         return COMMAND_TRANSPORT_TOO_LONG;
     }

@@ -61,6 +61,22 @@ static void test_completes_read(void) {
     assert(command_transport_poll(&transport, 0x20) == COMMAND_TRANSPORT_COMPLETE);
 }
 
+static void test_separates_local_ownership_from_remote_targets(void) {
+    CommandTransport transport;
+    command_transport_init(&transport);
+    uint8_t output[1] = {0};
+    const uint8_t expected[] = {2, 0x2b, 0x0c, 1, 0};
+
+    command_transport_claim(&transport, 0x42);
+    assert(command_transport_queue_read_from(&transport, 0x42, 0x15, 0x0c, output,
+                                             sizeof(output)) == COMMAND_TRANSPORT_COMPLETE);
+    submit(&transport, expected, sizeof(expected));
+    const uint8_t response[] = {1, 0, 0x55};
+    command_transport_receive(&transport, response, sizeof(response));
+    assert(command_transport_poll(&transport, 0x42) == COMMAND_TRANSPORT_COMPLETE);
+    assert(output[0] == 0x55);
+}
+
 static void test_latches_rejections(void) {
     CommandTransport transport;
     command_transport_init(&transport);
@@ -122,6 +138,7 @@ int main(void) {
     test_tracks_ownership();
     test_completes_write();
     test_completes_read();
+    test_separates_local_ownership_from_remote_targets();
     test_latches_rejections();
     test_rejects_invalid_requests_and_responses();
     test_fails_pending_requests_by_direction();
