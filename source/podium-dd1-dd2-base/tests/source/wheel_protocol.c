@@ -491,6 +491,73 @@ static void test_routes_vendor_packet_modes(void) {
     }
 }
 
+static void test_captures_standard_display_packets(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    protocol.mode = 0x10;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    request[2] = 0xf3;
+    request[3] = 0x5a;
+    request[4] = 0x7f;
+    request[5] = 0x41;
+    request[6] = 0x52;
+    request[8] = 0x7f;
+    request[9] = 0xf3;
+    request[10] = 0x5a;
+    request[11] = 0x64;
+    request[18] = 0x34;
+    request[19] = 0x12;
+    request[20] = 0xcd;
+    request[21] = 0xab;
+    request[28] = 0x03;
+    request[30] = 0x3c;
+    request[31] = 0x74;
+    mark_ready(request);
+
+    accept_active_request(&protocol, request);
+    accept_active_request(&protocol, request);
+    accept_active_request(&protocol, request);
+
+    const WheelPacketDisplayInput *input = wheel_protocol_display_input(&protocol);
+    assert(input != 0);
+    assert(memcmp(input->buttons, (uint8_t[]){0xf3, 0x5a, 0x7f}, 3) == 0);
+    assert(memcmp(input->controls, (uint8_t[]){0x7f, 0xf3, 0x5a, 0x64}, 4) == 0);
+    assert(input->axis_outputs[0] == 0x41);
+    assert(input->axis_outputs[1] == 0x52);
+    assert(input->axis_values[0] == 0x1234);
+    assert(input->axis_values[1] == 0xabcd);
+    assert(input->report_mode == 0x03);
+    assert(input->report_capabilities == 0x3c);
+    assert(input->axis_limit == 0x74);
+    assert(wheel_protocol_response(&protocol)[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
+    assert(wheel_protocol_capabilities(&protocol)->calibration_available);
+    assert(wheel_protocol_message_valid(wheel_protocol_response(&protocol)));
+}
+
+static void test_uses_display_buttons_for_acknowledgement(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    protocol.mode = 0x10;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    request[8] = 0xff;
+    mark_ready(request);
+
+    accept_active_request(&protocol, request);
+    accept_active_request(&protocol, request);
+    accept_active_request(&protocol, request);
+    assert(!wheel_protocol_acknowledgement_input_active(&protocol));
+
+    request[2] = 1;
+    accept_active_request(&protocol, request);
+    accept_active_request(&protocol, request);
+    accept_active_request(&protocol, request);
+    assert(wheel_protocol_acknowledgement_input_active(&protocol));
+}
+
 static void test_accumulates_motion_from_packet_modes(void) {
     static const uint8_t modes[] = {1, 4, 6, WHEEL_MODE_LEGACY_ALTERNATE};
     for (uint8_t index = 0; index < sizeof(modes); index++) {
@@ -1190,6 +1257,8 @@ int main(void) {
     test_captures_packed_family_requests();
     test_averages_control_axes_only_for_authenticated_wheel_modes();
     test_routes_vendor_packet_modes();
+    test_captures_standard_display_packets();
+    test_uses_display_buttons_for_acknowledgement();
     test_accumulates_motion_from_packet_modes();
     test_tracks_display_acknowledgement_input();
     test_captures_mode_four_requests();

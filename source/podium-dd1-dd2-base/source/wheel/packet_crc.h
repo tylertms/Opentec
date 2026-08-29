@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "wheel/display_output.h"
+#include "wheel/packet_common.h"
 
 enum {
     WHEEL_PACKET_CRC_RESPONSE_SIZE = 33,
@@ -18,21 +19,8 @@ enum {
     WHEEL_PACKET_CRC_ADAPTER_ROTARY_COUNT = 3,
 };
 
-typedef struct {
-    uint8_t buttons[WHEEL_PACKET_CRC_BUTTON_COUNT];
-    uint8_t axis_outputs[2];
-    int8_t motion;
-    uint8_t controls[WHEEL_PACKET_CRC_CONTROL_COUNT];
-    uint8_t reserved_axes[2];
-    uint16_t axis_values[WHEEL_PACKET_CRC_AXIS_VALUE_COUNT];
-    uint8_t mode_buttons;
-    uint8_t axis_report_enabled;
-    uint8_t auxiliary_data[4];
-    uint8_t report_mode;
-    uint8_t reserved_report;
-    uint8_t report_capabilities;
-    uint8_t axis_limit;
-} WheelPacketCrcInput;
+/** @brief Logical input carried by the CRC attached-wheel packet family. */
+typedef WheelPacketCommonInput WheelPacketCrcInput;
 
 typedef struct {
     uint8_t button_samples[WHEEL_PACKET_CRC_HISTORY_DEPTH][WHEEL_PACKET_CRC_BUTTON_COUNT];

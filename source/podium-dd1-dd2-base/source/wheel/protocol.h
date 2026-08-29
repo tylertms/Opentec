@@ -10,6 +10,7 @@
 #include "wheel/motion.h"
 #include "wheel/output_reports.h"
 #include "wheel/packet_crc.h"
+#include "wheel/packet_display.h"
 #include "wheel/packet_mode_four.h"
 #include "wheel/packet_mode_one.h"
 #include "wheel/packet_packed.h"
@@ -68,6 +69,8 @@ typedef struct {
     WheelPacketModeFourInput mode_four_input;
     WheelPacketModeFourRuntime mode_four_runtime;
     WheelPacketModeFourOutput mode_four_output;
+    WheelPacketDisplayFilter display_filter;
+    WheelPacketDisplayInput display_input;
     WheelPacketPackedFilter packed_filter;
     WheelPacketPackedInput packed_input;
     WheelPacketCrcFilter crc_filter;
@@ -123,6 +126,7 @@ const uint8_t *wheel_protocol_response(const WheelProtocol *protocol);
 const uint8_t *wheel_protocol_request(const WheelProtocol *protocol);
 const WheelPacketModeOneInput *wheel_protocol_mode_one_input(const WheelProtocol *protocol);
 const WheelPacketModeFourInput *wheel_protocol_mode_four_input(const WheelProtocol *protocol);
+const WheelPacketDisplayInput *wheel_protocol_display_input(const WheelProtocol *protocol);
 const WheelPacketPackedInput *wheel_protocol_packed_input(const WheelProtocol *protocol);
 const WheelPacketCrcInput *wheel_protocol_crc_input(const WheelProtocol *protocol);
 const WheelPacketModeOneReportState *

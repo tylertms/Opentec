@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "wheel/display_output.h"
+#include "wheel/packet_common.h"
 
 enum {
     WHEEL_PACKET_PACKED_REQUEST_SIZE = 32,
@@ -17,21 +18,7 @@ enum {
 };
 
 /** @brief Logical input carried by the packed attached-wheel packet family. */
-typedef struct {
-    uint8_t buttons[WHEEL_PACKET_PACKED_BUTTON_COUNT];
-    uint8_t axis_outputs[2];
-    int8_t motion;
-    uint8_t controls[WHEEL_PACKET_PACKED_CONTROL_COUNT];
-    uint8_t reserved_axes[2];
-    uint16_t axis_values[WHEEL_PACKET_PACKED_AXIS_VALUE_COUNT];
-    uint8_t mode_buttons;
-    uint8_t axis_report_enabled;
-    uint8_t auxiliary_data[4];
-    uint8_t report_mode;
-    uint8_t reserved_report;
-    uint8_t report_capabilities;
-    uint8_t axis_limit;
-} WheelPacketPackedInput;
+typedef WheelPacketCommonInput WheelPacketPackedInput;
 
 /** @brief Three-sample button history for the packed packet family. */
 typedef struct {
