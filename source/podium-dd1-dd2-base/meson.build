@@ -324,6 +324,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'platform-storage': 'source/platform/dspic33e/storage.c',
     'platform-status-led': 'source/platform/dspic33e/status_led.c',
     'platform-power': 'source/platform/dspic33e/power.c',
+    'platform-system': 'source/platform/dspic33e/system.c',
     'platform-torque-key': 'source/platform/dspic33e/torque_key.c',
     'platform-shifter': 'source/platform/dspic33e/shifter.c',
     'platform-time': 'source/platform/dspic33e/time.c',

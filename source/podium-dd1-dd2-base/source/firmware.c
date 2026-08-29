@@ -47,6 +47,7 @@
 #include "platform/serial_link.h"
 #include "platform/shifter.h"
 #include "platform/status_led.h"
+#include "platform/system.h"
 #include "platform/time.h"
 #include "platform/torque_key.h"
 #include "platform/usb.h"
@@ -305,6 +306,19 @@ static const UsbMotorVendorServiceBuffers usb_motor_buffers = {
 };
 
 /**
+ * @brief Stores pending base settings immediately.
+ *
+ * Makes the current settings eligible for persistence and performs the synchronous storage pass
+ * used before shutdown or restart transitions.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void save_base_settings(uint32_t now_ms) {
+    base_settings_persistence_request_save(&settings_persistence, now_ms);
+    (void)base_settings_persistence_service(&settings_persistence, &base_settings, now_ms);
+}
+
+/**
  * @brief Applies a power-controller transition to base hardware and retained settings.
  *
  * Enables the external power hold at startup. Shutdown start makes retained settings immediately
@@ -321,8 +335,7 @@ static void apply_power_action(PowerAction action, uint32_t now_ms) {
         platform_power_latch_set(true);
         break;
     case POWER_ACTION_BEGIN_SHUTDOWN:
-        base_settings_persistence_request_save(&settings_persistence, now_ms);
-        (void)base_settings_persistence_service(&settings_persistence, &base_settings, now_ms);
+        save_base_settings(now_ms);
         force_output_enabled = false;
         (void)system_event_queue_try_push(&system_event_queue, SHUTDOWN_EVENT_CODE);
         system_control_state_set_status(&system_control_state, wheel_service_mode(&wheel_service),
@@ -1060,13 +1073,13 @@ static void handle_force_feedback_timer_tick(void *context) {
 }
 
 /**
- * @brief Initializes force-feedback script scheduling and output state.
+ * @brief Resets force-feedback script scheduling and output state.
  *
- * Resets the complete script runtime in position-only mode, clears smoothing and range-limit
- * history, starts the force ramp at zero, and starts the dedicated Timer 2 clock used for engine,
- * slot, and wheel-motion timing.
+ * Restores position-only mode, clears scripts, samples, inputs, timing, smoothing, range-limit
+ * history, report selection, and response sequencing, and starts the force ramp at zero.
+ *
  */
-static void initialize_force_feedback_script(void) {
+static void reset_force_feedback_script(void) {
     force_feedback_script_runtime_init(&force_feedback_script_system);
     force_feedback_script_output_init(&force_feedback_script_output_state);
     force_feedback_script_response_sequence = 1;
@@ -1074,8 +1087,49 @@ static void initialize_force_feedback_script(void) {
     force_feedback_script_sample_report_index = 0;
     force_feedback_script_slot_report_index = 0;
     force_feedback_ramp_deadline_ms = 0;
+}
+
+/**
+ * @brief Initializes force-feedback script processing and its hardware clock.
+ *
+ * Resets the complete script subsystem, then starts the dedicated Timer 2 clock used for engine,
+ * slot, and wheel-motion timing.
+ *
+ */
+static void initialize_force_feedback_script(void) {
+    reset_force_feedback_script();
     platform_force_feedback_timer_init(handle_force_feedback_timer_tick,
                                        &force_feedback_script_system);
+}
+
+/**
+ * @brief Applies pending Xbox GIP session side effects.
+ *
+ * Resets script processing without restarting its clock, or completes host-requested shutdown and
+ * processor-reset transitions after the endpoint service queues its ready response. Shutdown and
+ * reset store pending settings first. Shutdown also removes force output, disconnects USB, and
+ * releases the external power hold.
+ *
+ */
+static void service_usb_xbox_session_actions(void) {
+    UsbXboxGipSessionAction actions = usb_device_take_xbox_session_actions();
+    if ((actions & USB_XBOX_GIP_SESSION_ACTION_RESET_FORCE_FEEDBACK) != 0) {
+        reset_force_feedback_script();
+    }
+    if ((actions & USB_XBOX_GIP_SESSION_ACTION_SUSPEND_OUTPUT) != 0) {
+        platform_system_interrupts_set(false);
+        save_base_settings(platform_time_ms());
+        platform_system_interrupts_set(true);
+        force_output_enabled = false;
+        motor_output_report = (ForceOutputReport){0};
+        platform_usb_detach();
+        platform_power_latch_set(false);
+    }
+    if ((actions & USB_XBOX_GIP_SESSION_ACTION_RESET_DEVICE) != 0) {
+        platform_system_interrupts_set(false);
+        save_base_settings(platform_time_ms());
+        platform_system_reset();
+    }
 }
 
 /**
@@ -1861,6 +1915,7 @@ int main(void) {
     usb_connection_monitor_init(&usb_connection_monitor);
     for (;;) {
         usb_device_service();
+        service_usb_xbox_session_actions();
         service_usb_output();
         platform_aux_bus_service();
         uint32_t now_ms = platform_time_ms();
