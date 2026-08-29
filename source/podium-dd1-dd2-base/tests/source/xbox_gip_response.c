@@ -65,10 +65,41 @@ static void test_encodes_session_responses(void) {
     assert(memcmp(status, expected_status, sizeof(expected_status)) == 0);
 }
 
+static void test_encodes_input_response(void) {
+    static const UsbXboxGipInputSnapshot snapshot = {
+        .buttons = {0x12, 0x34},
+        .steering = 0x5678,
+        .pedals = {0x9abc, 0xdef0, 0x1357},
+        .auxiliary_pedal = 0x24,
+        .axis_mode = 1,
+        .led_state = 5,
+        .steering_range_degrees = 1080,
+        .force_feedback_level = 0x59,
+        .pedal_active = {true, false, true},
+        .auxiliary_pedal_active = true,
+        .clutch_paddles = {0x68, 0x79},
+        .selectors = {0x8a, 0x9b, 0xac, 0xbd, 0xce, 0xdf},
+        .button_flags = 0xe1,
+        .packed_buttons = 0xf2,
+        .auxiliary_buttons = {0x03, 0x14, 0x25},
+        .extended_button = 1,
+    };
+    static const uint8_t expected[USB_XBOX_GIP_INPUT_RESPONSE_SIZE] = {
+        0x20, 0x00, 0x2a, 0x32, 0x12, 0x34, 0x78, 0x56, 0xbc, 0x9a, 0xf0, 0xde, 0x57,
+        0x13, 0x24, 0x66, 0x05, 0x30, 0x2a, 0x59, 0xb8, 0x68, 0x79, 0x8a, 0x9b, 0xac,
+        0xbd, 0xce, 0xdf, 0xe1, 0xf2, 0x00, 0x00, 0x03, 0x14, 0x25, 0xff, 0x01,
+    };
+    uint8_t output[USB_XBOX_GIP_INPUT_RESPONSE_SIZE];
+
+    usb_xbox_gip_input_response_encode(0x2a, &snapshot, output);
+    assert(memcmp(output, expected, sizeof(expected)) == 0);
+}
+
 int main(void) {
     test_advances_and_wraps_response_sequence();
     test_encodes_digest_response();
     test_maps_base_and_extended_status_modes();
     test_encodes_session_responses();
+    test_encodes_input_response();
     return 0;
 }

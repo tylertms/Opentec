@@ -9,12 +9,20 @@ enum {
     XBOX_GIP_DIGEST_RESPONSE = 2,
     XBOX_GIP_TRANSFER_STATUS_RESPONSE = 1,
     XBOX_GIP_READY_RESPONSE = 3,
+    XBOX_GIP_INPUT_RESPONSE = 0x20,
     XBOX_GIP_SEQUENCE_SUBCOMMAND = 0x20,
     XBOX_GIP_DIGEST_PAYLOAD_SIZE = 0x1c,
     XBOX_GIP_READY_PAYLOAD_SIZE = 4,
     XBOX_GIP_TRANSFER_STATUS_PAYLOAD_SIZE = 9,
     XBOX_GIP_TRANSFER_STATUS_ERROR = 2,
     XBOX_GIP_EXTENDED_STATUS_WHEEL_MODE = 0x1d,
+    XBOX_GIP_INPUT_PAYLOAD_SIZE = 0x32,
+    XBOX_GIP_INPUT_AXIS_MODE = 0x66,
+    XBOX_GIP_INPUT_AXIS_FLAGS = 0x08,
+    XBOX_GIP_INPUT_AUXILIARY_AXIS_FLAG = 1 << 4,
+    XBOX_GIP_INPUT_THIRD_PEDAL_FLAG = 1 << 5,
+    XBOX_GIP_INPUT_SECOND_PEDAL_FLAG = 1 << 6,
+    XBOX_GIP_INPUT_FIRST_PEDAL_FLAG = 1 << 7,
 };
 
 /**
@@ -116,4 +124,49 @@ void usb_xbox_gip_transfer_status_response_encode(
     output[4] = XBOX_GIP_TRANSFER_STATUS_ERROR;
     output[5] = request[0];
     output[6] = request[1];
+}
+
+/**
+ * @brief Encodes the Xbox GIP input-state response.
+ *
+ * Emits the 50-byte controller payload with buttons, steering, pedals, wheel controls, active-axis
+ * flags, auxiliary buttons, and the fixed extension marker. The remaining reserved payload bytes
+ * are cleared.
+ *
+ * @param[in] sequence Response sequence value.
+ * @param[in] snapshot Logical controller state to encode.
+ * @param[out] output Destination for the input-state response.
+ */
+void usb_xbox_gip_input_response_encode(uint8_t sequence, const UsbXboxGipInputSnapshot *snapshot,
+                                        uint8_t output[USB_XBOX_GIP_INPUT_RESPONSE_SIZE]) {
+    memset(output, 0, USB_XBOX_GIP_INPUT_RESPONSE_SIZE);
+    output[0] = XBOX_GIP_INPUT_RESPONSE;
+    output[2] = sequence;
+    output[3] = XBOX_GIP_INPUT_PAYLOAD_SIZE;
+    memcpy(&output[4], snapshot->buttons, sizeof(snapshot->buttons));
+    output[6] = (uint8_t)snapshot->steering;
+    output[7] = (uint8_t)(snapshot->steering >> 8);
+    for (uint8_t axis = 0; axis < USB_XBOX_GIP_INPUT_PEDAL_COUNT; axis++) {
+        output[8 + axis * 2] = (uint8_t)snapshot->pedals[axis];
+        output[9 + axis * 2] = (uint8_t)(snapshot->pedals[axis] >> 8);
+    }
+    output[14] = snapshot->auxiliary_pedal;
+    output[15] = snapshot->axis_mode == 1 ? XBOX_GIP_INPUT_AXIS_MODE : 0;
+    output[16] = snapshot->led_state;
+    uint16_t steering_range_tenths = snapshot->steering_range_degrees * 10u;
+    output[17] = (uint8_t)steering_range_tenths;
+    output[18] = (uint8_t)(steering_range_tenths >> 8);
+    output[19] = snapshot->force_feedback_level;
+    output[20] = XBOX_GIP_INPUT_AXIS_FLAGS |
+                 (snapshot->auxiliary_pedal_active ? XBOX_GIP_INPUT_AUXILIARY_AXIS_FLAG : 0) |
+                 (snapshot->pedal_active[2] ? XBOX_GIP_INPUT_THIRD_PEDAL_FLAG : 0) |
+                 (snapshot->pedal_active[1] ? XBOX_GIP_INPUT_SECOND_PEDAL_FLAG : 0) |
+                 (snapshot->pedal_active[0] ? XBOX_GIP_INPUT_FIRST_PEDAL_FLAG : 0);
+    memcpy(&output[21], snapshot->clutch_paddles, sizeof(snapshot->clutch_paddles));
+    memcpy(&output[23], snapshot->selectors, sizeof(snapshot->selectors));
+    output[29] = snapshot->button_flags;
+    output[30] = snapshot->packed_buttons;
+    memcpy(&output[33], snapshot->auxiliary_buttons, sizeof(snapshot->auxiliary_buttons));
+    output[36] = UINT8_MAX;
+    output[37] = snapshot->extended_button;
 }
