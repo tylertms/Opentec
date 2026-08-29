@@ -124,6 +124,7 @@ void wheel_protocol_set_mode_four_output(WheelProtocol *protocol,
                                          const WheelPacketModeFourOutput *output);
 void wheel_protocol_set_crc_output(WheelProtocol *protocol, const WheelPacketCrcOutput *output);
 void wheel_protocol_set_host_capability(WheelProtocol *protocol, bool enabled);
+void wheel_protocol_set_response_acknowledged(WheelProtocol *protocol, bool acknowledged);
 void wheel_protocol_set_adapter(WheelProtocol *protocol, const WheelAdapterInput *adapter);
 bool wheel_protocol_queue_remote_tuning_response(WheelProtocol *protocol,
                                                  const RemoteTuningResponse *response);

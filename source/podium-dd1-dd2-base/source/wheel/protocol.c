@@ -954,6 +954,23 @@ void wheel_protocol_set_host_capability(WheelProtocol *protocol, bool enabled) {
 }
 
 /**
+ * @brief Selects the protocol response acknowledgement flag.
+ *
+ * Updates flag bit zero while preserving every other response flag.
+ *
+ * @param[in,out] protocol Attached-wheel protocol response to update.
+ * @param[in] acknowledged True to set the acknowledgement flag; false to clear it.
+ */
+void wheel_protocol_set_response_acknowledged(WheelProtocol *protocol, bool acknowledged) {
+    if (acknowledged) {
+        protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] |= WHEEL_PROTOCOL_RESPONSE_ACKNOWLEDGED;
+    } else {
+        protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] &=
+            (uint8_t)~WHEEL_PROTOCOL_RESPONSE_ACKNOWLEDGED;
+    }
+}
+
+/**
  * @brief Configures attached-wheel adapter input.
  *
  * Retains adapter buttons, axes, rotary positions, profile flags, mode, connection state, and

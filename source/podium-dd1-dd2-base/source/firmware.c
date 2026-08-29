@@ -103,6 +103,7 @@
 #include "wheel/status_service.h"
 #include "wheel/steering_limit.h"
 #include "wheel/transfer_service.h"
+#include "wheel/usb_bridge_gate.h"
 #include "wheel/usb_disconnect_display.h"
 #include "wheel/vibration.h"
 
@@ -219,6 +220,7 @@ static UsbDiagnosticReportService usb_diagnostic_report_service;
 static UsbRemoteTuningService usb_remote_tuning_service;
 static WheelCommandForwarder wheel_command_forwarder;
 static WheelProtocolBridgeService wheel_protocol_bridge_service;
+static WheelUsbBridgeGate wheel_usb_bridge_gate;
 static uint8_t wheel_command_batch[USB_REMOTE_TUNING_FORWARD_BATCH_SIZE];
 static uint8_t wheel_command_batch_length;
 static RemoteTuningResponse usb_remote_tuning_response;
@@ -849,6 +851,7 @@ static void initialize_motor(void) {
 static void initialize_usb_command_bridge(void) {
     command_transport_init(&command_transport);
     wheel_protocol_bridge_service_init(&wheel_protocol_bridge_service, &command_transport);
+    wheel_usb_bridge_gate_init(&wheel_usb_bridge_gate);
     usb_updater_service_init(&usb_updater_service, &command_transport);
     wheel_service_reset_adapter_commands(&wheel_service);
     (void)motor_command_mailbox_exchange_init(
@@ -1560,8 +1563,8 @@ static void apply_runtime_bridge_actions(uint16_t actions) {
  * @brief Starts a supported attached-wheel updater transition.
  *
  * Decodes runtime operating-mode commands against the active host and wheel modes, accepts the
- * status or protocol bridge route, initializes its updater service, disables force output, and
- * applies the transition's initial action.
+ * status, USB, or protocol bridge route, initializes its updater service, disables force output,
+ * and applies the transition's initial action.
  *
  * @param[in] command Decoded operating-mode command.
  * @return True when a supported updater transition started; otherwise false.
@@ -1571,9 +1574,14 @@ static bool start_runtime_bridge(const UsbOperatingModeCommand *command) {
                                                    wheel_service_mode(&wheel_service), 0,
                                                    &usb_runtime_transition) ||
         (usb_runtime_transition.mode != USB_RUNTIME_MODE_STATUS_BRIDGE &&
+         usb_runtime_transition.mode != USB_RUNTIME_MODE_USB_BRIDGE &&
          usb_runtime_transition.mode != USB_RUNTIME_MODE_PROTOCOL_BRIDGE) ||
         !usb_updater_service_select_mode(&usb_updater_service, usb_runtime_transition.mode)) {
         return false;
+    }
+    if (usb_runtime_transition.mode == USB_RUNTIME_MODE_USB_BRIDGE) {
+        wheel_usb_bridge_gate_init(&wheel_usb_bridge_gate);
+        (void)wheel_service_take_protocol_exchange_completed(&wheel_service);
     }
     force_output_enabled = false;
     motor_output_report = (ForceOutputReport){0};
@@ -1615,6 +1623,18 @@ static bool service_runtime_bridge(uint32_t now_ms) {
     };
     usb_updater_service_run(&usb_updater_service, &usb_updater_input);
     wheel_protocol_bridge_service_run(&wheel_protocol_bridge_service);
+    WheelUsbBridgeGateResult usb_bridge_gate_result = WHEEL_USB_BRIDGE_GATE_NONE;
+    if (runtime_bridge.phase == RUNTIME_BRIDGE_WAIT_USB_READY) {
+        usb_bridge_gate_result = wheel_usb_bridge_gate_step(
+            &wheel_usb_bridge_gate, now_ms,
+            wheel_service_take_protocol_exchange_completed(&wheel_service));
+        if (usb_bridge_gate_result == WHEEL_USB_BRIDGE_GATE_CLEAR_ACKNOWLEDGEMENT ||
+            usb_bridge_gate_result == WHEEL_USB_BRIDGE_GATE_SET_ACKNOWLEDGEMENT) {
+            wheel_protocol_set_response_acknowledged(&wheel_service.protocol,
+                                                     usb_bridge_gate_result ==
+                                                         WHEEL_USB_BRIDGE_GATE_SET_ACKNOWLEDGEMENT);
+        }
+    }
     runtime_bridge_input = (RuntimeBridgeInput){
         .now_ms = now_ms,
         .transfer_status =
@@ -1623,10 +1643,16 @@ static bool service_runtime_bridge(uint32_t now_ms) {
             wheel_status_service_take_marked_response(&wheel_status_service),
         .protocol_command_acknowledged =
             wheel_protocol_bridge_service_take_acknowledgement(&wheel_protocol_bridge_service),
+        .usb_bridge_ready = usb_bridge_gate_result == WHEEL_USB_BRIDGE_GATE_RELEASE,
     };
     apply_runtime_bridge_actions(runtime_bridge_step(&runtime_bridge, &runtime_bridge_input));
     if (command_route && serial_service.status == SERIAL_SERVICE_IDLE) {
-        (void)motor_command_serial_submit(&command_transport, &serial_service, now_ms);
+        if (runtime_bridge.phase == RUNTIME_BRIDGE_WAIT_USB_READY &&
+            command_transport.phase == COMMAND_TRANSPORT_IDLE) {
+            (void)wheel_service_start_protocol_exchange(&wheel_service, now_ms);
+        } else {
+            (void)motor_command_serial_submit(&command_transport, &serial_service, now_ms);
+        }
     }
     if (usb_updater_service_take_reset(&usb_updater_service)) {
         platform_system_reset();

@@ -160,6 +160,7 @@ wheel_capability_sources = files('source/wheel/capability.c')
 wheel_adapter_command_sources = files('source/wheel/adapter_commands.c')
 wheel_command_forwarder_sources = files('source/wheel/command_forwarder.c')
 wheel_protocol_bridge_service_sources = files('source/wheel/protocol_bridge_service.c')
+wheel_usb_bridge_gate_sources = files('source/wheel/usb_bridge_gate.c')
 wheel_compatibility_alert_sources = files('source/wheel/compatibility_alert.c')
 wheel_auxiliary_output_sources = files('source/wheel/auxiliary_output.c')
 wheel_display_output_sources = files('source/wheel/display_output.c')
@@ -399,6 +400,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'wheel-adapter-commands': 'source/wheel/adapter_commands.c',
     'wheel-command-forwarder': 'source/wheel/command_forwarder.c',
     'wheel-protocol-bridge-service': 'source/wheel/protocol_bridge_service.c',
+    'wheel-usb-bridge-gate': 'source/wheel/usb_bridge_gate.c',
     'wheel-compatibility-alert': 'source/wheel/compatibility_alert.c',
     'wheel-auxiliary-output': 'source/wheel/auxiliary_output.c',
     'wheel-display-output': 'source/wheel/display_output.c',
@@ -2201,6 +2203,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_usb_bridge_gate_test = executable(
+    'base-wheel-usb-bridge-gate-test',
+    'tests/source/wheel_usb_bridge_gate.c',
+    wheel_usb_bridge_gate_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_adapter_command_test = executable(
     'base-wheel-adapter-command-test',
     'tests/source/wheel_adapter_commands.c',
@@ -2862,6 +2872,11 @@ if not meson.is_cross_build()
   test(
     'base-wheel-protocol-bridge-service',
     wheel_protocol_bridge_service_test,
+    suite: ['base', 'wheel', 'transfer'],
+  )
+  test(
+    'base-wheel-usb-bridge-gate',
+    wheel_usb_bridge_gate_test,
     suite: ['base', 'wheel', 'transfer'],
   )
   test(

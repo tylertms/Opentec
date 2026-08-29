@@ -521,6 +521,25 @@ static void test_defers_next_request_for_shared_serial_work(void) {
     assert(request().type_flags == 2);
 }
 
+static void test_forces_and_reports_protocol_exchange(void) {
+    WheelService service;
+    initialize_service(&service);
+    service.protocol.phase = WHEEL_PROTOCOL_SCANNING_PRIMARY;
+
+    assert(!wheel_service_start_protocol_exchange(NULL, 0));
+    assert(wheel_service_start_protocol_exchange(&service, 10));
+    assert(!wheel_service_start_protocol_exchange(&service, 10));
+    assert(request().type_flags == 2);
+    assert(!wheel_service_take_protocol_exchange_completed(&service));
+
+    respond_protocol(WHEEL_PROTOCOL_COMMAND_SELECT_MODE, WHEEL_MODE_SCAN_PRIMARY);
+    serial_service_run(&transport, 11);
+    wheel_service_run(&service, 11, false);
+    assert(wheel_service_take_protocol_exchange_completed(&service));
+    assert(!wheel_service_take_protocol_exchange_completed(&service));
+    assert(!wheel_service_take_protocol_exchange_completed(NULL));
+}
+
 static void test_initializes_rotary_input(void) {
     WheelService service;
     initialize_service(&service);
@@ -1039,6 +1058,7 @@ int main(void) {
     test_ready_packet_refreshes_activity_at_deadline();
     test_restarts_discovery_after_scan_timeout();
     test_defers_next_request_for_shared_serial_work();
+    test_forces_and_reports_protocol_exchange();
     test_initializes_rotary_input();
     test_routes_multi_position_mode();
     test_builds_direct_multi_position_input();

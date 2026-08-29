@@ -60,11 +60,14 @@ typedef struct {
     uint8_t scan_sample_index;
     WheelServiceRequest request_kind;
     bool protocol_deadline_active;
+    bool protocol_exchange_completed;
 } WheelService;
 
 void wheel_service_init(WheelService *service, SerialService *transport);
 void wheel_service_reset_adapter_commands(WheelService *service);
 void wheel_service_run(WheelService *service, uint32_t now_ms, bool start_allowed);
+bool wheel_service_start_protocol_exchange(WheelService *service, uint32_t now_ms);
+bool wheel_service_take_protocol_exchange_completed(WheelService *service);
 void wheel_service_run_adapter_commands(WheelService *service, CommandTransport *transport);
 bool wheel_service_take_adapter_host_controls(WheelService *service,
                                               uint8_t output[WHEEL_ADAPTER_HOST_CONTROLS_SIZE]);

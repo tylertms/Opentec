@@ -10,6 +10,20 @@ static void mark_ready(uint8_t packet[WHEEL_PROTOCOL_PACKET_SIZE]) {
     packet[WHEEL_PROTOCOL_FLAGS_OFFSET] = WHEEL_PROTOCOL_REQUEST_READY;
 }
 
+static void test_selects_response_acknowledgement(void) {
+    WheelProtocol protocol;
+    wheel_protocol_init(&protocol);
+    wheel_protocol_set_host_capability(&protocol, true);
+
+    wheel_protocol_set_response_acknowledged(&protocol, true);
+    assert(wheel_protocol_response(&protocol)[WHEEL_PROTOCOL_FLAGS_OFFSET] ==
+           (WHEEL_PROTOCOL_HOST_CAPABILITY | WHEEL_PROTOCOL_RESPONSE_ACKNOWLEDGED));
+
+    wheel_protocol_set_response_acknowledged(&protocol, false);
+    assert(wheel_protocol_response(&protocol)[WHEEL_PROTOCOL_FLAGS_OFFSET] ==
+           WHEEL_PROTOCOL_HOST_CAPABILITY);
+}
+
 static void synchronize(WheelProtocol *protocol, uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE]) {
     mark_ready(request);
     wheel_protocol_accept(protocol, request);
@@ -1827,6 +1841,7 @@ static void test_crc8_vectors(void) {
 }
 
 int main(void) {
+    test_selects_response_acknowledgement();
     test_synchronizes_and_selects_mode();
     test_selects_scan_variants();
     test_reports_axis_capability_for_active_packet_family();

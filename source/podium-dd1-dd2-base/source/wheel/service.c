@@ -435,14 +435,17 @@ static void start_scan(WheelService *service, uint32_t now_ms) {
  *
  * @param[in,out] service Wheel service starting the protocol exchange.
  * @param[in] now_ms Current monotonic time in milliseconds.
+ * @return True when the command-two request entered the serial scheduler; otherwise false.
  */
-static void start_protocol(WheelService *service, uint32_t now_ms) {
+static bool start_protocol(WheelService *service, uint32_t now_ms) {
     service->request_kind = WHEEL_SERVICE_REQUEST_PROTOCOL;
-    if (!serial_service_start(service->transport, WHEEL_PROTOCOL_TRANSPORT_COMMAND,
-                              wheel_protocol_response(&service->protocol),
-                              WHEEL_PROTOCOL_PACKET_SIZE, now_ms)) {
-        reset_connection(service);
+    if (serial_service_start(service->transport, WHEEL_PROTOCOL_TRANSPORT_COMMAND,
+                             wheel_protocol_response(&service->protocol),
+                             WHEEL_PROTOCOL_PACKET_SIZE, now_ms)) {
+        return true;
     }
+    reset_connection(service);
+    return false;
 }
 
 /**
@@ -484,6 +487,7 @@ void wheel_service_init(WheelService *service, SerialService *transport) {
     service->scan_phase = 0;
     service->request_kind = WHEEL_SERVICE_REQUEST_NONE;
     service->protocol_deadline_active = false;
+    service->protocol_exchange_completed = false;
 }
 
 /**
@@ -1205,6 +1209,7 @@ void wheel_service_run(WheelService *service, uint32_t now_ms, bool start_allowe
         if (service->request_kind == WHEEL_SERVICE_REQUEST_PROTOCOL && response != 0 &&
             response->length == WHEEL_PROTOCOL_PACKET_SIZE) {
             wheel_protocol_accept(&service->protocol, response->data);
+            service->protocol_exchange_completed = true;
             if ((response->data[WHEEL_PROTOCOL_FLAGS_OFFSET] & WHEEL_PROTOCOL_REQUEST_READY) != 0 &&
                 protocol_exchange_active(service)) {
                 refresh_protocol_deadline(service, now_ms);
@@ -1229,8 +1234,39 @@ void wheel_service_run(WheelService *service, uint32_t now_ms, bool start_allowe
     if (scan_active(service)) {
         start_scan(service, now_ms);
     } else {
-        start_protocol(service, now_ms);
+        (void)start_protocol(service, now_ms);
     }
+}
+
+/**
+ * @brief Starts a command-two exchange independently of the negotiated input mode.
+ *
+ * Claims an idle wheel serial service with the current protocol response so bridge preparation can
+ * continue even when normal input uses command-three scanning.
+ *
+ * @param[in,out] service Attached-wheel service starting the exchange.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @return True when the exchange started; otherwise false.
+ */
+bool wheel_service_start_protocol_exchange(WheelService *service, uint32_t now_ms) {
+    return service != NULL && service->transport != NULL &&
+           service->transport->status == SERIAL_SERVICE_IDLE && start_protocol(service, now_ms);
+}
+
+/**
+ * @brief Takes the completed command-two exchange event.
+ *
+ * Reports one successfully received 57-byte protocol response and clears the retained event.
+ *
+ * @param[in,out] service Attached-wheel service holding the completion event.
+ * @return True once for each completed exchange; otherwise false.
+ */
+bool wheel_service_take_protocol_exchange_completed(WheelService *service) {
+    if (service == NULL || !service->protocol_exchange_completed) {
+        return false;
+    }
+    service->protocol_exchange_completed = false;
+    return true;
 }
 
 /**
