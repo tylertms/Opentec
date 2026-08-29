@@ -80,10 +80,30 @@ static void test_decodes_operating_status(void) {
     assert(!usb_operating_mode_command_decode_status(&command, NULL));
 }
 
+static void test_identifies_led_pattern(void) {
+    UsbOperatingModeCommand command = {
+        .opcode = 0x10,
+        .parameters = {0, 0xa5, 0, 0},
+    };
+    assert(usb_operating_mode_command_requests_led_pattern(&command));
+
+    command.parameters[0] = 1;
+    assert(!usb_operating_mode_command_requests_led_pattern(&command));
+
+    command.opcode = 0x11;
+    command.parameters[1] = 0x5a;
+    assert(usb_operating_mode_command_requests_led_pattern(&command));
+
+    command.opcode = 0x0f;
+    assert(!usb_operating_mode_command_requests_led_pattern(&command));
+    assert(!usb_operating_mode_command_requests_led_pattern(NULL));
+}
+
 int main(void) {
     test_decodes_command_envelope();
     test_rejects_other_envelopes();
     test_identifies_native_reset();
     test_decodes_operating_status();
+    test_identifies_led_pattern();
     return 0;
 }

@@ -18,5 +18,6 @@ bool usb_operating_mode_command_decode(const UsbOutputCommand *output,
 bool usb_operating_mode_command_requests_native_reset(const UsbOperatingModeCommand *command);
 bool usb_operating_mode_command_decode_status(const UsbOperatingModeCommand *command,
                                               bool *enabled);
+bool usb_operating_mode_command_requests_led_pattern(const UsbOperatingModeCommand *command);
 
 #endif

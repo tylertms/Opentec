@@ -3,6 +3,7 @@
 
 #include "analog/auxiliary_axis.h"
 #include "board/identity.h"
+#include "board/led_pattern.h"
 #include "board/power.h"
 #include "board/status_led.h"
 #include "board/torque_key.h"
@@ -42,6 +43,7 @@
 #include "platform/cooling.h"
 #include "platform/display.h"
 #include "platform/force_feedback_timer.h"
+#include "platform/led_pattern.h"
 #include "platform/motor_link.h"
 #include "platform/pedal_link.h"
 #include "platform/pin_mux.h"
@@ -1928,6 +1930,9 @@ static void service_usb_output(void) {
             system_control_state_set_operating_status(&system_control_state,
                                                       wheel_service_mode(&wheel_service),
                                                       usb_operating_status_enabled);
+        } else if (usb_operating_mode_command_requests_led_pattern(&usb_operating_mode_command)) {
+            platform_led_pattern_set_duty(
+                led_pattern_pwm_duty(usb_operating_mode_command.parameters[1]));
         } else if (h_pattern_calibration_command_decode(&usb_operating_mode_command,
                                                         &h_pattern_calibration_command)) {
             h_pattern_calibration_service_request(
@@ -2541,6 +2546,7 @@ int main(void) {
     platform_clock_init();
     board_identity = platform_board_identity_read();
     platform_pin_mux_init();
+    platform_led_pattern_init();
     platform_power_init();
     platform_torque_key_init();
     torque_key_init(&torque_key);

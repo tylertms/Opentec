@@ -9,6 +9,8 @@ enum {
     OPERATING_MODE_COMMAND_FORMAT = 9,
     OPERATING_MODE_COMMAND_OPCODE_OFFSET = 2,
     OPERATING_MODE_COMMAND_PARAMETERS_OFFSET = 3,
+    OPERATING_MODE_LED_PATTERN_IF_CLEAR_OPCODE = 0x10,
+    OPERATING_MODE_LED_PATTERN_OPCODE = 0x11,
 };
 
 /**
@@ -68,4 +70,25 @@ bool usb_operating_mode_command_decode_status(const UsbOperatingModeCommand *com
     }
     *enabled = command->parameters[0] != 0;
     return true;
+}
+
+/**
+ * @brief Identifies an accepted board LED pattern command.
+ *
+ * Accepts opcode 0x10 only when its first parameter is zero and accepts opcode 0x11 without that
+ * gate. Both commands carry the eight-bit LED pattern in their second parameter.
+ *
+ * @param[in] command Decoded operating-mode command.
+ * @return True when the command carries an accepted LED pattern update.
+ */
+bool usb_operating_mode_command_requests_led_pattern(const UsbOperatingModeCommand *command) {
+    if (command == NULL) {
+        return false;
+    }
+    if (command->opcode == OPERATING_MODE_LED_PATTERN_IF_CLEAR_OPCODE &&
+        command->parameters[0] != 0) {
+        return false;
+    }
+    return command->opcode == OPERATING_MODE_LED_PATTERN_IF_CLEAR_OPCODE ||
+           command->opcode == OPERATING_MODE_LED_PATTERN_OPCODE;
 }
