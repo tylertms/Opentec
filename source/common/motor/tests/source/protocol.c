@@ -83,11 +83,13 @@ static void test_local_force_feedback_service(void) {
         .payload = {0x03U, 0x01U, MOTOR_FORCE_FEEDBACK_EFFECT_CONSTANT, 0U, 0U, 0U, 0U, 0U},
     };
     assert(motor_protocol_frame_apply(&state, &frame));
-    assert(motor_protocol_force_feedback_service(&state, 0U, 0, 0));
+    assert(!motor_protocol_force_feedback_service(&state, 0U, 0, 0));
+    assert(!motor_protocol_force_feedback_service(&state, 9U, 0, 0));
+    assert(motor_protocol_force_feedback_service(&state, 10U, 0, 0));
     assert(state.live_drive_updated);
     assert(state.live_drive.primary_current == 6078);
-    assert(!motor_protocol_force_feedback_service(&state, 0U, 0, 0));
-    assert(motor_protocol_force_feedback_service(&state, 1U, 0, 0));
+    assert(!motor_protocol_force_feedback_service(&state, 10U, 0, 0));
+    assert(motor_protocol_force_feedback_service(&state, 11U, 0, 0));
 }
 
 static void test_local_force_feedback_gates(void) {
@@ -95,21 +97,23 @@ static void test_local_force_feedback_gates(void) {
     motor_protocol_initialize(&state, 40U);
     state.force_feedback.effects[0].active = true;
     state.status = 0x05U;
-    assert(motor_protocol_force_feedback_service(&state, 0U, 0, 0));
+    assert(!motor_protocol_force_feedback_service(&state, 0U, 0, 0));
     assert(!state.force_feedback.effects[0].active);
     assert(state.force_feedback.ramp_percent == 0U);
 
     state.status = 0x03U;
-    assert(motor_protocol_force_feedback_service(&state, 1U, 0, 0));
-    assert(state.force_feedback.ramp_percent == 1U);
+    assert(!motor_protocol_force_feedback_service(&state, 1U, 0, 0));
+    assert(state.force_feedback.ramp_percent == 0U);
     assert(motor_protocol_force_feedback_service(&state, 51U, 0, 0));
     assert(state.force_feedback.ramp_percent == 1U);
-    assert(motor_protocol_force_feedback_service(&state, 52U, 0, 0));
+    assert(motor_protocol_force_feedback_service(&state, 101U, 0, 0));
+    assert(state.force_feedback.ramp_percent == 1U);
+    assert(motor_protocol_force_feedback_service(&state, 102U, 0, 0));
     assert(state.force_feedback.ramp_percent == 2U);
 
     state.force_feedback.effects[1].active = true;
     state.status = 0x43U;
-    assert(motor_protocol_force_feedback_service(&state, 53U, 0, 0));
+    assert(motor_protocol_force_feedback_service(&state, 103U, 0, 0));
     assert(!state.force_feedback.effects[1].active);
     assert(state.force_feedback.ramp_percent == 2U);
 }

@@ -12,6 +12,7 @@ enum {
     MOTOR_STATUS_EFFECTS_SUSPENDED = 1U << 6U,
     MOTOR_STATUS_FULL_TORQUE = 1U << 7U,
     MOTOR_HOST_EFFECT_COUNT = 16U,
+    MOTOR_FORCE_FEEDBACK_START_DELAY = 10U,
     MOTOR_FORCE_RAMP_INTERVAL = 50U,
 };
 
@@ -27,6 +28,8 @@ enum {
 void motor_protocol_initialize(MotorProtocolState *state, uint8_t normal_output_percent) {
     *state = (MotorProtocolState){
         .normal_output_percent = normal_output_percent,
+        .next_force_feedback_tick = MOTOR_FORCE_FEEDBACK_START_DELAY,
+        .next_force_ramp_tick = MOTOR_FORCE_RAMP_INTERVAL,
     };
     motor_force_feedback_engine_initialize(&state->force_feedback);
 }

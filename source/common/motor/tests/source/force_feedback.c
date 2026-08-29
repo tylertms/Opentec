@@ -168,13 +168,13 @@ static void test_soft_stop(void) {
     force = 0;
     assert(motor_force_feedback_soft_stop_apply(&soft_stop, 52U, 35520, 0, 42097, 6577U, false,
                                                 &force));
-    assert(force == 1310);
+    assert(force == -1310);
     assert(soft_stop.ramp_percent == 2U);
 
     force = 0;
     assert(motor_force_feedback_soft_stop_apply(&soft_stop, 103U, 35520, 0, -42097, 6577U, false,
                                                 &force));
-    assert(force == -1966);
+    assert(force == 1966);
 
     force = 4321;
     assert(!motor_force_feedback_soft_stop_apply(&soft_stop, 104U, 35520, 0, 50000, 6577U, true,
@@ -188,7 +188,7 @@ static void test_soft_stop(void) {
     assert(motor_force_feedback_soft_stop_apply(&soft_stop, 200U, 35520, 0, 42097, 6577U, false,
                                                 &force));
     assert(soft_stop.ramp_percent == 1U);
-    assert(force == 655);
+    assert(force == -655);
 }
 
 static void test_engine(void) {

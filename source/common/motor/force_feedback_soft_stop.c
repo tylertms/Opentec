@@ -40,10 +40,10 @@ bool motor_force_feedback_soft_stop_apply(MotorForceFeedbackSoftStop *soft_stop,
     uint32_t penetration = 0U;
     int32_t centered_position = position - center;
     if (centered_position > half_range) {
-        target = FORCE_LIMIT;
+        target = -FORCE_LIMIT;
         penetration = (uint32_t)(centered_position - half_range);
     } else if (centered_position < -half_range) {
-        target = -FORCE_LIMIT;
+        target = FORCE_LIMIT;
         penetration = (uint32_t)(-centered_position - half_range);
     }
 

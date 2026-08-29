@@ -68,6 +68,7 @@ typedef struct {
     MotorAdcSample adc_sample;
     MotorCurrentCalibrationState current_calibration;
     MotorEncoderState encoder;
+    MotorCenterState center;
     MotorEncoderCalibrationState encoder_calibration;
     MotorEncoderDirectionState encoder_direction;
     MotorMotionState motion;
@@ -639,6 +640,7 @@ static void motor_runtime_encoder_index_handler(uint16_t counter, void *context)
     if (!runtime->encoder_zero_captured) {
         runtime->encoder.zero_counter = counter;
         runtime->encoder_zero_captured = true;
+        runtime->center.active = true;
     }
     runtime->encoder_index_detected = true;
     runtime->parameters.entries[MOTOR_PARAMETER_ENCODER_INDEX].value = 1U;
@@ -717,6 +719,12 @@ static bool motor_runtime_spi_receive(const uint8_t frame[MOTOR_SPI_TRANSFER_SIZ
     bool applied = motor_protocol_frame_result_apply(&runtime->protocol, result, &decoded);
     if (applied && runtime->protocol.live_drive_updated) {
         motor_runtime_drive_apply(runtime);
+    }
+    if (applied && decoded.type == MOTOR_LINK_FORCE_TYPE) {
+        (void)motor_center_command_apply(
+            &runtime->center, runtime->protocol.center, (int32_t)runtime->hardware.encoder_modulus,
+            (uint16_t)FTM2->CNT, (uint16_t)runtime->encoder.zero_counter,
+            &runtime->encoder.revolution_offset);
     }
 
     return result != MOTOR_LINK_FRAME_VALID || decoded.type != MOTOR_LINK_STATUS_TYPE || applied;
@@ -809,7 +817,7 @@ void motor_runtime_poll(void) {
     }
 
     int32_t centered_position = motor_centered_position_resolve(motor_runtime.encoder.position,
-                                                                motor_runtime.protocol.center);
+                                                                motor_runtime.center.requested);
     if (motor_protocol_force_feedback_service(
             &motor_runtime.protocol, motor_runtime.service_tick, centered_position,
             motor_runtime.motion_sample.filtered_position_delta)) {
