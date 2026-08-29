@@ -1122,9 +1122,12 @@ static void service_force_feedback_script(uint32_t now_ms) {
         .tuning_strength = (int8_t)tuning_profile->force_feedback_strength,
         .secondary_output_disabled = force_feedback_state.secondary_output_disabled,
     };
-    (void)force_feedback_script_tick_output(
+    ForceFeedbackScriptTickResult result = force_feedback_script_tick_output(
         &force_feedback_script_system, &force_feedback_script_output_state, now_ms, position,
         travel, &force_feedback_script_output_config, &motor_output_report);
+    if (result.slot_faulted) {
+        force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_STATUS;
+    }
 }
 
 /**

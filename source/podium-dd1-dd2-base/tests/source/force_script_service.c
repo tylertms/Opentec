@@ -48,7 +48,7 @@ static void test_runs_active_slots_in_order(void) {
     clock.slot_ticks[2] = UINT32_C(0x337f9801);
     ForceFeedbackScriptStore store = prepare_store();
 
-    force_feedback_script_service_run(&runtime, &store, &clock);
+    assert(!force_feedback_script_service_run(&runtime, &store, &clock));
 
     assert(runtime.active_slot == 2);
     assert(runtime.slots[0].values[0] == 5);
@@ -70,14 +70,33 @@ static void test_preserves_completion_result(void) {
     ForceFeedbackScriptClock clock = {0};
     ForceFeedbackScriptStore store = prepare_store();
 
-    force_feedback_script_service_run(&runtime, &store, &clock);
+    assert(!force_feedback_script_service_run(&runtime, &store, &clock));
 
     assert(runtime.slots[3].state == FORCE_FEEDBACK_SCRIPT_SLOT_INACTIVE);
     assert(runtime.slots[3].execution_count == 1);
 }
 
+static void test_reports_slot_faults(void) {
+    ForceFeedbackScriptRuntime runtime = {0};
+    runtime.slots[0].state = FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE;
+    ForceFeedbackScriptClock clock = {0};
+    ForceFeedbackScriptStore store = prepare_store();
+    store.data[0] = 0x0a;
+    store.slots[0].size = 1;
+
+    assert(force_feedback_script_service_run(&runtime, &store, &clock));
+    assert(runtime.slots[0].state == FORCE_FEEDBACK_SCRIPT_SLOT_FAULT);
+    assert(runtime.slots[0].execution_count == 1);
+
+    assert(!force_feedback_script_service_run(&runtime, &store, &clock));
+    assert(!force_feedback_script_service_run(NULL, &store, &clock));
+    assert(!force_feedback_script_service_run(&runtime, NULL, &clock));
+    assert(!force_feedback_script_service_run(&runtime, &store, NULL));
+}
+
 int main(void) {
     test_runs_active_slots_in_order();
     test_preserves_completion_result();
+    test_reports_slot_faults();
     return 0;
 }

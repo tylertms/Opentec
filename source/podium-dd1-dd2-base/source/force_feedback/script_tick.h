@@ -15,12 +15,28 @@ enum {
     FORCE_FEEDBACK_SCRIPT_OUTPUT_MOTION = 2,
 };
 
+/**
+ * @brief Script execution decision for one scheduled tick.
+ *
+ * Carries the selected motor-output policy and the fault event used for system-level reporting.
+ */
+typedef struct {
+    ForceFeedbackScriptOutputPolicy output_policy;
+    bool slot_faulted;
+} ForceFeedbackScriptTickDecision;
+
+/**
+ * @brief Applied force-output result for one scheduled script tick.
+ *
+ * Reports the motor write, wheel travel-limit state, and slot fault after output processing.
+ */
 typedef struct {
     bool wrote_output;
     bool outside_travel;
+    bool slot_faulted;
 } ForceFeedbackScriptTickResult;
 
-ForceFeedbackScriptOutputPolicy force_feedback_script_tick(ForceFeedbackScriptSystem *system,
+ForceFeedbackScriptTickDecision force_feedback_script_tick(ForceFeedbackScriptSystem *system,
                                                            uint32_t now, int32_t wheel_position,
                                                            uint32_t half_travel);
 ForceFeedbackScriptTickResult force_feedback_script_tick_output(
