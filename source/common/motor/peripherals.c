@@ -1,6 +1,7 @@
 #include "common/motor/peripherals.h"
 
 #include <fsl_adc16.h>
+#include <fsl_common.h>
 #include <fsl_ftm.h>
 #include <fsl_pdb.h>
 
@@ -147,6 +148,36 @@ void motor_adc_runtime_initialize(uint32_t adc1_auxiliary_channel) {
 }
 
 /**
+ * @brief Configures the reset-pin filter for run, wait, and stop operation.
+ */
+void motor_reset_filter_initialize(void) {
+    RCM->RPFC |= RCM_RPFC_RSTFLTSRW(1U);
+    RCM->RPFW |= RCM_RPFW_RSTFLTSEL(31U);
+}
+
+/**
+ * @brief Enables the eight interrupt sources and priorities used by motor firmware.
+ */
+void motor_interrupts_initialize(void) {
+    EnableIRQ(ADC1_IRQn);
+    NVIC_SetPriority(ADC1_IRQn, 2U);
+    EnableIRQ(ADC0_IRQn);
+    NVIC_SetPriority(ADC0_IRQn, 0U);
+    EnableIRQ(PDB0_PDB1_IRQn);
+    NVIC_SetPriority(PDB0_PDB1_IRQn, 10U);
+    EnableIRQ(I2C0_IRQn);
+    NVIC_SetPriority(I2C0_IRQn, 0U);
+    EnableIRQ(FTM3_IRQn);
+    NVIC_SetPriority(FTM3_IRQn, 13U);
+    EnableIRQ(PORTB_PORTC_PORTD_PORTE_IRQn);
+    NVIC_SetPriority(PORTB_PORTC_PORTD_PORTE_IRQn, 1U);
+    EnableIRQ(FTM2_IRQn);
+    NVIC_SetPriority(FTM2_IRQn, 1U);
+    EnableIRQ(FTM4_IRQn);
+    NVIC_SetPriority(FTM4_IRQn, 1U);
+}
+
+/**
  * @brief Configures masked complementary PWM for all three motor phases.
  */
 void motor_pwm_initialize(void) {
@@ -185,7 +216,7 @@ void motor_pwm_initialize(void) {
 }
 
 /**
- * @brief Unmasks all six PWM outputs after current-offset calibration.
+ * @brief Unmasks all six PWM outputs for zero-duty current-offset calibration.
  */
 void motor_pwm_enable_outputs(void) { FTM0->OUTMASK = 0U; }
 
