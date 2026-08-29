@@ -88,6 +88,7 @@ board_identity_sources = files('source/board/identity.c')
 usb_connection_sources = files('source/usb/connection.c')
 status_led_sources = files('source/board/status_led.c')
 power_controller_sources = files('source/board/power.c')
+system_power_transition_sources = files('source/system/power_transition.c')
 h_pattern_shifter_sources = files('source/shifter/h_pattern.c')
 h_pattern_calibration_sources = files('source/shifter/calibration.c')
 shifter_display_sources = files('source/shifter/display.c')
@@ -259,6 +260,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'usb-connection': 'source/usb/connection.c',
     'status-led': 'source/board/status_led.c',
     'power-controller': 'source/board/power.c',
+    'system-power-transition': 'source/system/power_transition.c',
     'firmware': 'source/firmware.c',
     'h-pattern-shifter': 'source/shifter/h_pattern.c',
     'h-pattern-calibration': 'source/shifter/calibration.c',
@@ -1166,6 +1168,14 @@ if not meson.is_cross_build()
     'base-power-controller-test',
     'tests/source/power_controller.c',
     power_controller_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  system_power_transition_test = executable(
+    'base-system-power-transition-test',
+    'tests/source/system_power_transition.c',
+    system_power_transition_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2095,6 +2105,11 @@ if not meson.is_cross_build()
   test('base-usb-connection', usb_connection_test, suite: ['base', 'usb', 'connection'])
   test('base-status-led', status_led_test, suite: ['base', 'board', 'led'])
   test('base-power-controller', power_controller_test, suite: ['base', 'board', 'power'])
+  test(
+    'base-system-power-transition',
+    system_power_transition_test,
+    suite: ['base', 'system', 'power'],
+  )
   test('base-h-pattern-shifter', h_pattern_shifter_test, suite: ['base', 'shifter'])
   test(
     'base-h-pattern-calibration',
