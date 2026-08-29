@@ -1,6 +1,7 @@
 #include "system/control_state.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "system/torque_transition.h"
@@ -14,6 +15,7 @@ enum {
     STATUS_NORMALIZATION_FIRST = 0x80,
     STATUS_NORMALIZATION_LAST = 0x8f,
     STATUS_NORMALIZED = 0x13,
+    STATUS_NONE = 0xffff,
     WHEEL_MODE_TRANSITION = 0x0e,
     WHEEL_MODE_EXTENDED = 0x1c,
     OPERATING_TRANSITION_DISABLED = 0xff,
@@ -25,13 +27,16 @@ enum {
 /**
  * @brief Initializes shared system-control state.
  *
- * Starts from status, event, and motor-control state zero with the baseline HID capability bit
- * enabled and the operating-mode feature disabled.
+ * Starts with no pending attached-wheel status, event and motor-control state zero, the baseline
+ * HID capability bit enabled, and the operating-mode feature disabled.
  *
  * @param[out] state System-control state to initialize.
  */
 void system_control_state_init(SystemControlState *state) {
-    *state = (SystemControlState){.hid_configuration = HID_CONFIGURATION_BASELINE};
+    *state = (SystemControlState){
+        .status_code = STATUS_NONE,
+        .hid_configuration = HID_CONFIGURATION_BASELINE,
+    };
 }
 
 /**
@@ -51,6 +56,25 @@ void system_control_state_set_status(SystemControlState *state, uint8_t wheel_mo
                                  low <= STATUS_NORMALIZATION_LAST
                              ? STATUS_NORMALIZED
                              : code;
+}
+
+/**
+ * @brief Takes the pending attached-wheel status code.
+ *
+ * Returns the current code once and replaces it with the idle 0xFFFF marker used by the
+ * attached-wheel response builder.
+ *
+ * @param[in,out] state System-control state that owns the pending code.
+ * @param[out] code Destination for the pending 16-bit code.
+ * @return True when a pending code was returned; otherwise false.
+ */
+bool system_control_state_take_status(SystemControlState *state, uint16_t *code) {
+    if (state == NULL || code == NULL || state->status_code == STATUS_NONE) {
+        return false;
+    }
+    *code = state->status_code;
+    state->status_code = STATUS_NONE;
+    return true;
 }
 
 /**

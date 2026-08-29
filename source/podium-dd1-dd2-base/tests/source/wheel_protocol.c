@@ -687,6 +687,42 @@ static void test_builds_remote_tuning_responses(void) {
     }
 }
 
+static void test_system_status_preempts_one_remote_tuning_response(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    protocol.mode = WHEEL_MODE_REMOTE_TUNING_EXTENDED;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    RemoteTuningResponse pending = {
+        .link = REMOTE_TUNING_LINK_EXTENDED,
+        .code = REMOTE_TUNING_RESPONSE_SETUP,
+        .value = 5,
+    };
+    assert(wheel_protocol_queue_remote_tuning_response(&protocol, &pending));
+    wheel_protocol_queue_system_status(&protocol, 0x012b);
+
+    request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    mark_ready(request);
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+    wheel_protocol_accept(&protocol, request);
+
+    const uint8_t *response = wheel_protocol_response(&protocol);
+    assert(response[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
+    assert(response[1] == 0x82);
+    assert(response[2] == 0x2b);
+    assert(wheel_protocol_message_valid(response));
+    assert(!protocol.system_status_pending);
+    assert(wheel_protocol_remote_tuning_response_pending(&protocol));
+
+    wheel_protocol_accept(&protocol, request);
+    response = wheel_protocol_response(&protocol);
+    assert(response[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE_REPLY);
+    assert(response[1] == REMOTE_TUNING_RESPONSE_SETUP);
+    assert(response[2] == 5);
+    assert(wheel_protocol_message_valid(response));
+    assert(!wheel_protocol_remote_tuning_response_pending(&protocol));
+}
+
 static void test_forwards_remote_telemetry_in_legacy_mode(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -914,6 +950,7 @@ int main(void) {
     test_builds_mode_four_active_response();
     test_builds_crc_family_active_response();
     test_builds_remote_tuning_responses();
+    test_system_status_preempts_one_remote_tuning_response();
     test_forwards_remote_telemetry_in_legacy_mode();
     test_encodes_legacy_display_rotation_status();
     test_rejects_remote_tuning_link_mismatch();

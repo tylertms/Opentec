@@ -78,10 +78,12 @@ typedef struct {
     uint8_t interface_mode;
     uint8_t configured_axis_override_mode;
     uint8_t paddle_bite_point_percent;
+    uint8_t system_status_code;
     int16_t display_rotation_angle;
     bool button_latch_enabled;
     bool display_rotation_enabled;
     bool profile_transition_pending;
+    bool system_status_pending;
     bool request_ready;
     bool request_changed;
     bool acknowledgement_input_active;
@@ -105,6 +107,7 @@ bool wheel_protocol_take_bite_point_report(WheelProtocol *protocol, uint8_t *upd
 void wheel_protocol_set_button_latch(WheelProtocol *protocol, bool enabled,
                                      bool profile_transition_pending);
 void wheel_protocol_set_display_rotation(WheelProtocol *protocol, bool enabled, int16_t angle);
+void wheel_protocol_queue_system_status(WheelProtocol *protocol, uint16_t code);
 void wheel_protocol_accept(WheelProtocol *protocol,
                            const uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE]);
 const uint8_t *wheel_protocol_response(const WheelProtocol *protocol);

@@ -201,10 +201,10 @@ static void clear_scan_filter(WheelService *service) {
  * @brief Restarts attached-wheel connection discovery.
  *
  * Reinitializes handshake and input state while preserving configured outputs, input filters,
- * adapter state, report capabilities, pending remote-tuning work, and axis-processing
- * configuration, including an in-progress bite-point adjustment and its pending notifications.
- * The transient input-capability latch, scan input, and activity timing restart from their initial
- * states.
+ * adapter state, report capabilities, pending system status and remote-tuning work, and
+ * axis-processing configuration, including an in-progress bite-point adjustment and its pending
+ * notifications. The transient input-capability latch, scan input, and activity timing restart
+ * from their initial states.
  *
  * @param[in,out] service Attached-wheel service to restart.
  */
@@ -228,6 +228,7 @@ static void reset_connection(WheelService *service) {
     uint8_t axis_override_mode = service->protocol.configured_axis_override_mode;
     uint8_t paddle_bite_point_percent = service->protocol.paddle_bite_point_percent;
     int16_t display_rotation_angle = service->protocol.display_rotation_angle;
+    uint8_t system_status_code = service->protocol.system_status_code;
     uint32_t paddle_adjustment_deadline_ms =
         service->protocol.axis_override_processor.paddle_adjustment_deadline_ms;
     uint8_t axis_multiplex_phase = service->protocol.axis_override_processor.multiplex_phase;
@@ -243,6 +244,7 @@ static void reset_connection(WheelService *service) {
     bool button_latch_enabled = service->protocol.button_latch_enabled;
     bool display_rotation_enabled = service->protocol.display_rotation_enabled;
     bool profile_transition_pending = service->protocol.profile_transition_pending;
+    bool system_status_pending = service->protocol.system_status_pending;
     wheel_protocol_init(&service->protocol);
     service->protocol.mode_one_button_filter = mode_one_button_filter;
     service->protocol.mode_one_control_axis_filter = mode_one_control_axis_filter;
@@ -273,6 +275,9 @@ static void reset_connection(WheelService *service) {
                                     profile_transition_pending);
     wheel_protocol_set_display_rotation(&service->protocol, display_rotation_enabled,
                                         display_rotation_angle);
+    if (system_status_pending) {
+        wheel_protocol_queue_system_status(&service->protocol, system_status_code);
+    }
     clear_scan_filter(service);
     service->protocol_deadline_ms = 0;
     service->protocol_deadline_active = false;
@@ -733,6 +738,19 @@ void wheel_service_set_button_illumination(WheelService *service, bool enabled) 
  */
 void wheel_service_set_display_rotation(WheelService *service, bool enabled, int16_t angle) {
     wheel_protocol_set_display_rotation(&service->protocol, enabled, angle);
+}
+
+/**
+ * @brief Queues a system status code for the attached wheel.
+ *
+ * Retains the code across connection discovery and publishes it through the next active command-2
+ * exchange.
+ *
+ * @param[in,out] service Attached-wheel service that owns protocol output.
+ * @param[in] code System status code to publish.
+ */
+void wheel_service_queue_system_status(WheelService *service, uint16_t code) {
+    wheel_protocol_queue_system_status(&service->protocol, code);
 }
 
 /**

@@ -12,6 +12,11 @@
 #include "wheel/packet_mode_one.h"
 #include "wheel/packet_remote_tuning.h"
 
+enum {
+    WHEEL_STATUS_SELECT_PREFIX_MODE = 9,
+    WHEEL_STATUS_RESPONSE_CODE = 0x82,
+};
+
 /**
  * @brief Calculates the attached-wheel message CRC-8.
  *
@@ -88,9 +93,10 @@ static void build_selection_response(WheelProtocol *protocol) {
 /**
  * @brief Builds the next active attached-wheel response.
  *
- * Consumes a pending remote-tuning response before any host output report. Otherwise, encodes the
- * selected packet family or a blank A6 remote-tuning frame and overlays the highest-priority host
- * output report. The checksum is updated while transport acknowledgement flags are preserved.
+ * Consumes a pending system status before remote-tuning and host output reports. Otherwise,
+ * encodes the selected packet family or a blank A6 remote-tuning frame and overlays the
+ * highest-priority host output report. The checksum is updated while transport acknowledgement
+ * flags are preserved.
  *
  * @param[in,out] protocol Active protocol state and response storage.
  */
@@ -101,8 +107,10 @@ static void build_active_response(WheelProtocol *protocol) {
         !wheel_packet_crc_applies(protocol->mode) && !remote_tuning_mode) {
         return;
     }
+    bool system_status_response = protocol->system_status_pending;
     bool remote_tuning_response =
-        remote_tuning_mode && wheel_packet_remote_tuning_pending(&protocol->remote_tuning_output);
+        !system_status_response && remote_tuning_mode &&
+        wheel_packet_remote_tuning_pending(&protocol->remote_tuning_output);
     uint8_t flags = protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET];
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
     if (remote_tuning_response) {
@@ -120,8 +128,18 @@ static void build_active_response(WheelProtocol *protocol) {
     }
     if (!remote_tuning_response) {
         encode_legacy_status(protocol, protocol->response);
-        (void)wheel_output_reports_encode_next(&protocol->output_reports, protocol->mode,
-                                               protocol->response);
+        if (!system_status_response) {
+            (void)wheel_output_reports_encode_next(&protocol->output_reports, protocol->mode,
+                                                   protocol->response);
+        }
+    }
+    if (system_status_response) {
+        protocol->response[0] = protocol->mode == WHEEL_STATUS_SELECT_PREFIX_MODE
+                                    ? WHEEL_PROTOCOL_COMMAND_SELECT_MODE
+                                    : WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+        protocol->response[1] = WHEEL_STATUS_RESPONSE_CODE;
+        protocol->response[2] = protocol->system_status_code;
+        protocol->system_status_pending = false;
     }
     protocol->response[WHEEL_PROTOCOL_CHECKSUM_OFFSET] =
         crc8(protocol->response, WHEEL_PROTOCOL_CONTENT_SIZE);
@@ -141,6 +159,20 @@ static void build_active_response(WheelProtocol *protocol) {
 void wheel_protocol_set_display_rotation(WheelProtocol *protocol, bool enabled, int16_t angle) {
     protocol->display_rotation_enabled = enabled;
     protocol->display_rotation_angle = angle;
+}
+
+/**
+ * @brief Queues an attached-wheel status response.
+ *
+ * Retains the low status byte for the next active wheel exchange. A newer code replaces an older
+ * pending code, matching the shared system-status owner.
+ *
+ * @param[in,out] protocol Attached-wheel protocol state to update.
+ * @param[in] code System status code to publish.
+ */
+void wheel_protocol_queue_system_status(WheelProtocol *protocol, uint16_t code) {
+    protocol->system_status_code = (uint8_t)code;
+    protocol->system_status_pending = true;
 }
 
 /**
@@ -400,8 +432,10 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     protocol->interface_mode = 0;
     protocol->configured_axis_override_mode = WHEEL_AXIS_OVERRIDE_MODE_NONE;
     protocol->paddle_bite_point_percent = 100;
+    protocol->system_status_code = 0;
     protocol->button_latch_enabled = false;
     protocol->profile_transition_pending = false;
+    protocol->system_status_pending = false;
     protocol->request_ready = false;
     protocol->request_changed = false;
     protocol->acknowledgement_input_active = false;

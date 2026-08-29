@@ -187,6 +187,7 @@ static PowerController power_controller;
 static SystemControlState system_control_state;
 static SystemTorqueTransition system_torque_transition;
 static SystemTorqueTransitionAction system_torque_action;
+static uint16_t pending_system_status_code;
 static SystemEventQueue system_event_queue;
 static SystemEventDispatcher system_event_dispatcher;
 static CoolingController cooling_controller;
@@ -1365,6 +1366,9 @@ int main(void) {
             &wheel_service, tuning_profile->display_rotation_enabled != 0,
             wheel_position_display_rotation(motor_position_report.wheel_position,
                                             &wheel_position_calibration));
+        if (system_control_state_take_status(&system_control_state, &pending_system_status_code)) {
+            wheel_service_queue_system_status(&wheel_service, pending_system_status_code);
+        }
         wheel_service_run(&wheel_service, now_ms, !serial_command_waiting());
         if (wheel_service_take_bite_point(&wheel_service, &wheel_adjusted_bite_point_percent)) {
             wheel_steering_limit_command = (WheelSteeringLimitCommand){

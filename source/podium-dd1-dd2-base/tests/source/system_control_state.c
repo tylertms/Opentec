@@ -9,7 +9,7 @@ static void test_initializes_baseline_state(void) {
     SystemControlState state;
     system_control_state_init(&state);
 
-    assert(state.status_code == 0);
+    assert(state.status_code == UINT16_MAX);
     assert(state.hid_configuration == 0x20);
     assert(state.hid_response_flags == 0);
     assert(state.active_event_code == 0);
@@ -17,6 +17,19 @@ static void test_initializes_baseline_state(void) {
     assert(state.operating_status == 0);
     assert(state.operating_transition_code == 0);
     assert(!state.operating_feature_enabled);
+}
+
+static void test_takes_each_status_once(void) {
+    SystemControlState state;
+    uint16_t code = 0;
+    system_control_state_init(&state);
+
+    assert(!system_control_state_take_status(&state, &code));
+    system_control_state_set_status(&state, 0x1c, 0x012b);
+    assert(system_control_state_take_status(&state, &code));
+    assert(code == 0x012b);
+    assert(!system_control_state_take_status(&state, &code));
+    assert(state.status_code == UINT16_MAX);
 }
 
 static void test_normalizes_mode_eighteen_status_range(void) {
@@ -113,6 +126,7 @@ static void test_applies_extended_torque_transitions(void) {
 
 int main(void) {
     test_initializes_baseline_state();
+    test_takes_each_status_once();
     test_normalizes_mode_eighteen_status_range();
     test_feature_state_owns_configuration_bit_zero();
     test_motor_control_resets_transient_capabilities();

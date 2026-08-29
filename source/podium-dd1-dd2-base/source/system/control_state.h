@@ -19,6 +19,7 @@ typedef struct {
 
 void system_control_state_init(SystemControlState *state);
 void system_control_state_set_status(SystemControlState *state, uint8_t wheel_mode, uint16_t code);
+bool system_control_state_take_status(SystemControlState *state, uint16_t *code);
 void system_control_state_set_operating_feature(SystemControlState *state, bool enabled);
 void system_control_state_set_motor_control(SystemControlState *state, uint8_t wheel_mode,
                                             uint8_t control_state);
