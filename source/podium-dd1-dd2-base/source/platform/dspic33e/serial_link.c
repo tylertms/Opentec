@@ -59,6 +59,7 @@ static volatile SerialLinkDirectPhase direct_phase;
  * @brief Clears UART3 receive errors and pending bytes.
  *
  * Clears overrun, framing, and parity state before draining the receive FIFO.
+ *
  */
 static void clear_uart(void) {
     U3STAbits.OERR = 0;
@@ -74,6 +75,7 @@ static void clear_uart(void) {
  *
  * The link uses inverted receive and transmit signals, high-speed baud generation, and a baud
  * period of 2.
+ *
  */
 static void configure_uart(void) {
     U3MODEbits.UARTEN = 0;
@@ -91,6 +93,7 @@ static void configure_uart(void) {
  * @brief Configures the byte-oriented, one-shot UART3 DMA channels.
  *
  * DMA5 sends 72 bytes with request 0x53. DMA6 receives 68 bytes with request 0x52.
+ *
  */
 static void configure_dma(void) {
     DMA5CON = 0;
@@ -120,6 +123,7 @@ static void configure_dma(void) {
  * @brief Configures attached-device link interrupts.
  *
  * DMA5 uses priority 5, DMA6 uses priority 4, and Timer 6 uses priority 6.
+ *
  */
 static void configure_interrupts(void) {
     IPC15bits.DMA5IP = SERIAL_LINK_TRANSMIT_PRIORITY;
@@ -140,6 +144,7 @@ static void configure_interrupts(void) {
  * @brief Configures Timer 6 for attached-device link timing.
  *
  * Selects the internal clock with a 1:1 prescaler and leaves the timer stopped.
+ *
  */
 static void configure_timer(void) {
     T6CON = 0;
@@ -169,6 +174,7 @@ static void start_timer(uint16_t period, SerialLinkTimerAction action) {
  * @brief Stops attached-device link timing.
  *
  * Stops Timer 6, clears its counter and pending interrupt, and removes the scheduled action.
+ *
  */
 static void stop_timer(void) {
     T6CONbits.TON = 0;
@@ -181,6 +187,7 @@ static void stop_timer(void) {
  * @brief Arms UART3 receive DMA for one 68-byte transfer.
  *
  * Clears the receive storage and UART state before enabling DMA6 and the first-byte interrupt.
+ *
  */
 static void start_receive(void) {
     DMA6CONbits.CHEN = 0;
@@ -200,7 +207,8 @@ static void start_receive(void) {
  * @brief Advances the raw UART turnaround state.
  *
  * Starts a queued write, waits for its interrupt-driven completion, then holds receive disabled
- * for two 600-cycle service periods before accepting response bytes.
+ * for two 600-cycle service periods and waits for receiver idle before accepting response bytes.
+ *
  */
 static void service_direct_mode(void) {
     if (direct_phase == SERIAL_LINK_DIRECT_IDLE) {
@@ -232,6 +240,9 @@ static void service_direct_mode(void) {
         }
     }
     direct_receive_length = 0;
+    while (U3STAbits.RIDLE == 0) {
+        __builtin_nop();
+    }
     clear_uart();
     IFS5bits.U3RXIF = 0;
     IEC5bits.U3RXIE = 1;
@@ -242,6 +253,7 @@ static void service_direct_mode(void) {
  * @brief Initializes the attached-device UART3 exchange layer.
  *
  * Configures the physical pins, inverted high-speed UART, one-shot DMA channels, and Timer 6.
+ *
  */
 void platform_serial_link_init(void) {
     direct_mode = false;
@@ -265,6 +277,7 @@ void platform_serial_link_init(void) {
  * @brief Resets the attached-device UART3 exchange layer.
  *
  * Stops all active DMA and timer work, clears pending receive data, and releases the transaction.
+ *
  */
 void platform_serial_link_reset(void) {
     if (direct_mode) {
@@ -350,6 +363,7 @@ bool platform_serial_link_take_received(uint8_t packet[SERIAL_PACKET_SIZE]) {
  *
  * Stops framed DMA exchanges and configures UART3 for inverted 8-N-1 traffic with baud period
  * 0xc2. A 600-cycle periodic service drives transmission and the two-period receive turnaround.
+ *
  */
 void platform_serial_link_enter_direct_mode(void) {
     IEC3bits.DMA5IE = 0;
@@ -453,6 +467,7 @@ bool platform_serial_link_direct_read(uint8_t *data, uint8_t length) {
  * @brief Handles completion of the 72-byte UART3 transmit DMA.
  *
  * Stops DMA5 and schedules receive DMA after the 0x4b0-cycle turnaround guard.
+ *
  */
 void __attribute__((interrupt, no_auto_psv)) _DMA5Interrupt(void) {
     DMA5CONbits.CHEN = 0;
@@ -465,6 +480,7 @@ void __attribute__((interrupt, no_auto_psv)) _DMA5Interrupt(void) {
  *
  * Stops receive timing, aligns the first frame marker within the five accepted offsets, and makes
  * the response available to the service layer.
+ *
  */
 void __attribute__((interrupt, no_auto_psv)) _DMA6Interrupt(void) {
     DMA6CONbits.CHEN = 0;
@@ -489,6 +505,7 @@ void __attribute__((interrupt, no_auto_psv)) _DMA6Interrupt(void) {
  *
  * Feeds UART3 until the queued direct-mode request is empty, then releases the periodic service to
  * begin its receive turnaround.
+ *
  */
 void __attribute__((interrupt, no_auto_psv)) _U3TXInterrupt(void) {
     IFS5bits.U3TXIF = 0;
@@ -508,6 +525,7 @@ void __attribute__((interrupt, no_auto_psv)) _U3TXInterrupt(void) {
  *
  * Retains bounded raw updater bytes in direct mode. During framed operation, disables further
  * receive interrupts and starts the 10000-cycle full-frame timeout.
+ *
  */
 void __attribute__((interrupt, no_auto_psv)) _U3RXInterrupt(void) {
     if (direct_mode) {
@@ -541,6 +559,7 @@ void __attribute__((interrupt, no_auto_psv)) _U3RXInterrupt(void) {
  * @brief Handles attached-device link timing completion.
  *
  * Arms receive DMA after transmit turnaround or releases an exchange whose receive frame timed out.
+ *
  */
 void __attribute__((interrupt, no_auto_psv)) _T6Interrupt(void) {
     if (direct_mode && timer_action == SERIAL_LINK_TIMER_DIRECT_SERVICE) {
@@ -565,6 +584,7 @@ void __attribute__((interrupt, no_auto_psv)) _T6Interrupt(void) {
  * @brief Handles UART3 receive errors.
  *
  * Clears overrun, framing, and parity state and drains any pending receive bytes.
+ *
  */
 void __attribute__((interrupt, no_auto_psv)) _U3ErrInterrupt(void) {
     clear_uart();
