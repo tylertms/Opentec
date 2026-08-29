@@ -19,13 +19,22 @@ enum {
 };
 
 static const char torque_disabled_text[] = "Torque disabled by Powerbutton";
+static const char position_sensor_succeeded_text[] = "Position Sensor Test Successful.";
 static const char position_sensor_started_text[] = "Position Sensor Test Started.";
 static const char position_sensor_failed_text[] = "Position Sensor Test Failed!";
 static const char torque_reduced_primary_text[] = "NOTE: Torque is reduced to prevent damage";
 static const char torque_reduced_secondary_text[] = "  on the simplified quick-release system.";
+static const char motor_calibration_disconnect_text[] =
+    "Please disconnect steering wheel to calibrate motor.";
+static const char motor_calibration_unsupported_text[] =
+    "Motor cal. not supported by current firmware version.";
+static const char motor_calibration_ongoing_text[] =
+    "Motor calib. ongoing. Do not touch the shaft.";
+static const char motor_calibration_completed_text[] = "Motor calib. successfully completed.";
+static const char motor_calibration_erased_text[] = "Motor calib. data erased.";
 
 /**
- * @brief Draws the warning icon used by persistent display notices.
+ * @brief Draws the warning icon used by operator notices.
  *
  * Renders an eleven-by-ten triangular warning mark at the notice icon position.
  *
@@ -52,7 +61,7 @@ static void draw_warning_icon(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE]) {
 }
 
 /**
- * @brief Draws the error icon used by persistent failure notices.
+ * @brief Draws the error icon used by rejection and failure notices.
  *
  * Renders an eleven-by-ten outlined mark with crossing diagonals at the shared notice position.
  *
@@ -113,19 +122,42 @@ void display_notice_render_system(uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE],
         return;
     }
 
-    if (kind == SYSTEM_NOTICE_POSITION_SENSOR_TEST_FAILED) {
+    if (kind == SYSTEM_NOTICE_POSITION_SENSOR_TEST_FAILED ||
+        kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_DISCONNECT_WHEEL ||
+        kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_UNSUPPORTED) {
         draw_error_icon(framebuffer);
-        display_text_draw_centered(framebuffer, position_sensor_failed_text, NOTICE_TEXT_Y, 1,
+    } else {
+        draw_warning_icon(framebuffer);
+    }
+
+    if (kind == SYSTEM_NOTICE_POSITION_SENSOR_TEST_SUCCEEDED) {
+        display_text_draw_centered(framebuffer, position_sensor_succeeded_text, NOTICE_TEXT_Y, 1,
                                    NOTICE_COLOR);
     } else if (kind == SYSTEM_NOTICE_POSITION_SENSOR_TEST_STARTED) {
-        draw_warning_icon(framebuffer);
         display_text_draw_centered(framebuffer, position_sensor_started_text, NOTICE_TEXT_Y, 1,
                                    NOTICE_COLOR);
+    } else if (kind == SYSTEM_NOTICE_POSITION_SENSOR_TEST_FAILED) {
+        display_text_draw_centered(framebuffer, position_sensor_failed_text, NOTICE_TEXT_Y, 1,
+                                   NOTICE_COLOR);
     } else if (kind == SYSTEM_NOTICE_TORQUE_REDUCED) {
-        draw_warning_icon(framebuffer);
         display_text_draw_centered(framebuffer, torque_reduced_primary_text, NOTICE_PRIMARY_TEXT_Y,
                                    1, NOTICE_COLOR);
         display_text_draw_centered(framebuffer, torque_reduced_secondary_text,
                                    NOTICE_SECONDARY_TEXT_Y, 1, NOTICE_COLOR);
+    } else if (kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_DISCONNECT_WHEEL) {
+        display_text_draw_centered(framebuffer, motor_calibration_disconnect_text, NOTICE_TEXT_Y, 1,
+                                   NOTICE_COLOR);
+    } else if (kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_UNSUPPORTED) {
+        display_text_draw_centered(framebuffer, motor_calibration_unsupported_text, NOTICE_TEXT_Y,
+                                   1, NOTICE_COLOR);
+    } else if (kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_ONGOING) {
+        display_text_draw_centered(framebuffer, motor_calibration_ongoing_text, NOTICE_TEXT_Y, 1,
+                                   NOTICE_COLOR);
+    } else if (kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_COMPLETED) {
+        display_text_draw_centered(framebuffer, motor_calibration_completed_text, NOTICE_TEXT_Y, 1,
+                                   NOTICE_COLOR);
+    } else if (kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_ERASED) {
+        display_text_draw_centered(framebuffer, motor_calibration_erased_text, NOTICE_TEXT_Y, 1,
+                                   NOTICE_COLOR);
     }
 }

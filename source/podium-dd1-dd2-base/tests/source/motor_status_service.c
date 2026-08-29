@@ -178,7 +178,7 @@ static void test_extended_command_request_and_acknowledgement(void) {
     motor_status_service_run(&service, 1);
 
     assert(motor_status_service_take_event(&service) ==
-           MOTOR_STATUS_EVENT_POSITION_SENSOR_TEST_FAILED);
+           MOTOR_STATUS_EVENT_POSITION_SENSOR_TEST_STARTED);
     assert(motor_status_service_take_event(&service) == MOTOR_STATUS_EVENT_NONE);
     assert(!requested_read);
     assert(requested_register == 5);
@@ -195,7 +195,7 @@ static void test_extended_command_request_and_acknowledgement(void) {
     motor_status_service_run(&service, 205);
 
     assert(motor_status_service_take_event(&service) ==
-           MOTOR_STATUS_EVENT_POSITION_SENSOR_TEST_STARTED);
+           MOTOR_STATUS_EVENT_POSITION_SENSOR_TEST_SUCCEEDED);
     assert(motor_status_service_take_event(&service) == MOTOR_STATUS_EVENT_NONE);
     assert(!service.command_pending);
     assert(!service.command_sent);
@@ -212,7 +212,8 @@ static void test_extended_command_fault_latches_output(void) {
     finish_command(0xbbbb);
     motor_status_service_run(&service, 1);
 
-    assert(motor_status_service_take_event(&service) == MOTOR_STATUS_EVENT_TORQUE_REDUCED);
+    assert(motor_status_service_take_event(&service) ==
+           MOTOR_STATUS_EVENT_POSITION_SENSOR_TEST_FAILED);
     assert(motor_status_service_take_event(&service) == MOTOR_STATUS_EVENT_NONE);
     assert(motor_status_service_output_inhibited(&service));
     assert(!service.command_pending);

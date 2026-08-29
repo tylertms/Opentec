@@ -326,12 +326,25 @@ static void service_system_events(uint32_t now_ms) {
     system_notice_update(&system_notice, now_ms);
     SystemEventAction action =
         system_event_dispatcher_update(&system_event_dispatcher, &system_event_queue, now_ms);
-    if (action == SYSTEM_EVENT_ACTION_SHOW_POSITION_SENSOR_TEST_STARTED) {
+    if (action == SYSTEM_EVENT_ACTION_SHOW_POSITION_SENSOR_TEST_SUCCEEDED) {
+        system_notice_show(&system_notice, SYSTEM_NOTICE_POSITION_SENSOR_TEST_SUCCEEDED, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_POSITION_SENSOR_TEST_STARTED) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_POSITION_SENSOR_TEST_STARTED, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_POSITION_SENSOR_TEST_FAILED) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_POSITION_SENSOR_TEST_FAILED, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_TORQUE_REDUCED) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_TORQUE_REDUCED, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_MOTOR_CALIBRATION_DISCONNECT_WHEEL) {
+        system_notice_show(&system_notice, SYSTEM_NOTICE_MOTOR_CALIBRATION_DISCONNECT_WHEEL,
+                           now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_MOTOR_CALIBRATION_UNSUPPORTED) {
+        system_notice_show(&system_notice, SYSTEM_NOTICE_MOTOR_CALIBRATION_UNSUPPORTED, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_MOTOR_CALIBRATION_ONGOING) {
+        system_notice_show(&system_notice, SYSTEM_NOTICE_MOTOR_CALIBRATION_ONGOING, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_MOTOR_CALIBRATION_COMPLETED) {
+        system_notice_show(&system_notice, SYSTEM_NOTICE_MOTOR_CALIBRATION_COMPLETED, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_MOTOR_CALIBRATION_ERASED) {
+        system_notice_show(&system_notice, SYSTEM_NOTICE_MOTOR_CALIBRATION_ERASED, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_TORQUE_DISABLED) {
         torque_disabled_notice_visible = true;
     } else if (action == SYSTEM_EVENT_ACTION_DISMISS_TORQUE_DISABLED) {
@@ -840,6 +853,27 @@ static void publish_motor_status_event(void) {
 }
 
 /**
+ * @brief Publishes one pending motor-calibration event to the system event queue.
+ *
+ * Waits for the single event slot, transfers the calibration display event exactly once, and
+ * retains the accepted code in shared control state for status consumers.
+ */
+static void publish_motor_calibration_event(void) {
+    if (system_event_queue.pending_code != 0) {
+        return;
+    }
+
+    MotorCalibrationEvent event = motor_calibration_service_take_event(&motor_calibration_service);
+    if (event == MOTOR_CALIBRATION_EVENT_NONE) {
+        return;
+    }
+
+    if (system_event_queue_try_push(&system_event_queue, (uint8_t)event)) {
+        system_control_state_set_active_event(&system_control_state, (uint8_t)event);
+    }
+}
+
+/**
  * @brief Services motor discovery, configuration, telemetry, and status exchange.
  *
  * Initializes protocol-specific services after discovery, schedules calibration or normal bus
@@ -861,6 +895,7 @@ static void service_motor(void) {
     }
     if (motor_tuning_ready) {
         publish_motor_status_event();
+        publish_motor_calibration_event();
         bool calibration_pending = motor_calibration_service_pending(&motor_calibration_service);
         bool calibration_can_run = motor_calibration_service_owns_bus(&motor_calibration_service) ||
                                    platform_aux_bus_status() == PLATFORM_AUX_BUS_IDLE;
@@ -874,6 +909,7 @@ static void service_motor(void) {
             motor_tuning_service_run(&motor_tuning_service);
         }
         publish_motor_status_event();
+        publish_motor_calibration_event();
     }
 }
 

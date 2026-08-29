@@ -105,18 +105,18 @@ static void finish_command_read(MotorStatusService *service) {
 
     if (response == MOTOR_COMMAND_IDLE) {
         if (service->command_sent) {
-            service->event = MOTOR_STATUS_EVENT_POSITION_SENSOR_TEST_STARTED;
+            service->event = MOTOR_STATUS_EVENT_POSITION_SENSOR_TEST_SUCCEEDED;
             service->command_pending = false;
             service->command_sent = false;
             continue_to_status(service);
         } else if (service->command_pending) {
-            service->event = MOTOR_STATUS_EVENT_POSITION_SENSOR_TEST_FAILED;
+            service->event = MOTOR_STATUS_EVENT_POSITION_SENSOR_TEST_STARTED;
             service->phase = MOTOR_STATUS_WRITE_COMMAND;
         } else {
             continue_to_status(service);
         }
     } else if (response == MOTOR_COMMAND_FAULT) {
-        service->event = MOTOR_STATUS_EVENT_TORQUE_REDUCED;
+        service->event = MOTOR_STATUS_EVENT_POSITION_SENSOR_TEST_FAILED;
         service->command_pending = false;
         service->command_sent = false;
         continue_to_status(service);
@@ -226,7 +226,7 @@ void motor_status_service_run(MotorStatusService *service, uint32_t now_ms) {
  * repeatedly publish the same notice.
  *
  * @param[in,out] service Motor status service state.
- * @return Pending position-sensor or torque-reduction event, or none.
+ * @return Pending position-sensor event, or none.
  */
 MotorStatusEvent motor_status_service_take_event(MotorStatusService *service) {
     MotorStatusEvent event = service->event;

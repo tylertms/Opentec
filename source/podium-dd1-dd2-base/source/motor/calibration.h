@@ -19,12 +19,12 @@ typedef enum {
 } MotorCalibrationPhase;
 
 typedef enum {
-    MOTOR_CALIBRATION_EVENT_NONE,
-    MOTOR_CALIBRATION_EVENT_DISCONNECT_WHEEL,
-    MOTOR_CALIBRATION_EVENT_UNSUPPORTED,
-    MOTOR_CALIBRATION_EVENT_STARTED,
-    MOTOR_CALIBRATION_EVENT_COMPLETED,
-    MOTOR_CALIBRATION_EVENT_ERASED,
+    MOTOR_CALIBRATION_EVENT_NONE = 0,
+    MOTOR_CALIBRATION_EVENT_DISCONNECT_WHEEL = 8,
+    MOTOR_CALIBRATION_EVENT_UNSUPPORTED = 9,
+    MOTOR_CALIBRATION_EVENT_COMPLETED = 10,
+    MOTOR_CALIBRATION_EVENT_ERASED = 11,
+    MOTOR_CALIBRATION_EVENT_STARTED = 0x1c,
 } MotorCalibrationEvent;
 
 typedef struct {
@@ -45,6 +45,6 @@ void motor_calibration_service_run(MotorCalibrationService *service, uint8_t whe
                                    const MotorTelemetry *telemetry);
 bool motor_calibration_service_pending(const MotorCalibrationService *service);
 bool motor_calibration_service_owns_bus(const MotorCalibrationService *service);
-MotorCalibrationEvent motor_calibration_service_event(const MotorCalibrationService *service);
+MotorCalibrationEvent motor_calibration_service_take_event(MotorCalibrationService *service);
 
 #endif

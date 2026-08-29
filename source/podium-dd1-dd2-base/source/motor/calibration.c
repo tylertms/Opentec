@@ -244,14 +244,16 @@ bool motor_calibration_service_owns_bus(const MotorCalibrationService *service) 
 }
 
 /**
- * @brief Returns the latest motor-calibration lifecycle event.
+ * @brief Takes the latest motor-calibration lifecycle event.
  *
  * Exposes disconnect-wheel and unsupported rejections, calibration start and completion, and
- * successful calibration-data erasure.
+ * successful calibration-data erasure exactly once to the shared event publisher.
  *
- * @param[in] service Motor-calibration service state.
+ * @param[in,out] service Motor-calibration service state.
  * @return Most recent calibration lifecycle event.
  */
-MotorCalibrationEvent motor_calibration_service_event(const MotorCalibrationService *service) {
-    return service->event;
+MotorCalibrationEvent motor_calibration_service_take_event(MotorCalibrationService *service) {
+    MotorCalibrationEvent event = service->event;
+    service->event = MOTOR_CALIBRATION_EVENT_NONE;
+    return event;
 }

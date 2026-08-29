@@ -10,15 +10,16 @@ enum {
 /**
  * @brief Tests whether a system notice has a finite presentation interval.
  *
- * Position-sensor start and torque-reduction notices use the shared four-second interval. The
- * position-sensor failure notice remains until another system notice replaces it.
+ * All transient position-sensor and motor-calibration results use the shared four-second interval.
+ * Position-sensor failure and an ongoing motor calibration remain until another notice replaces
+ * them.
  *
  * @param[in] kind System notice kind.
  * @return True when the notice has a finite presentation interval.
  */
 static bool notice_is_timed(SystemNoticeKind kind) {
-    return kind == SYSTEM_NOTICE_POSITION_SENSOR_TEST_STARTED ||
-           kind == SYSTEM_NOTICE_TORQUE_REDUCED;
+    return kind != SYSTEM_NOTICE_NONE && kind != SYSTEM_NOTICE_POSITION_SENSOR_TEST_FAILED &&
+           kind != SYSTEM_NOTICE_MOTOR_CALIBRATION_ONGOING;
 }
 
 /**
