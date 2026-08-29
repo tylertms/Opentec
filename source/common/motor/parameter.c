@@ -45,3 +45,47 @@ bool motor_parameter_write(MotorParameterBank *bank, uint8_t index, uint32_t val
         index >= MOTOR_CONTROL_PARAMETER_FIRST && index <= MOTOR_CONTROL_PARAMETER_LAST;
     return true;
 }
+
+/**
+ * @brief Encodes one parameter response for the motor I2C transport.
+ *
+ * The response contains the little-endian value followed by its declared width.
+ *
+ * @param response Parameter value and declared wire width.
+ * @param output Five-byte I2C response buffer.
+ */
+void motor_parameter_response_encode(const MotorParameterResponse *response,
+                                     uint8_t output[MOTOR_PARAMETER_RESPONSE_SIZE]) {
+    output[0] = (uint8_t)response->value;
+    output[1] = (uint8_t)(response->value >> 8U);
+    output[2] = (uint8_t)(response->value >> 16U);
+    output[3] = (uint8_t)(response->value >> 24U);
+    output[4] = response->width;
+}
+
+/**
+ * @brief Applies one complete parameter write received over the motor I2C transport.
+ *
+ * The request contains a parameter index followed by one to four little-endian value bytes.
+ *
+ * @param bank Parameter bank to update.
+ * @param input Five-byte receive buffer containing the index and value.
+ * @param received_size Number of bytes received, including the index.
+ * @param control_settings_changed Set when the write changes a live control parameter.
+ * @return True when a complete, writable parameter request was accepted.
+ */
+bool motor_parameter_request_apply(MotorParameterBank *bank,
+                                   const uint8_t input[MOTOR_PARAMETER_REQUEST_SIZE],
+                                   uint8_t received_size, bool *control_settings_changed) {
+    if (received_size < 2U || received_size > MOTOR_PARAMETER_REQUEST_SIZE) {
+        *control_settings_changed = false;
+        return false;
+    }
+
+    uint32_t value = 0U;
+    uint8_t width = received_size - 1U;
+    for (uint8_t index = 0U; index < width; ++index) {
+        value |= (uint32_t)input[index + 1U] << (index * 8U);
+    }
+    return motor_parameter_write(bank, input[0], value, width, control_settings_changed);
+}

@@ -77,6 +77,9 @@ uint8_t motor_board_identity_read(void) {
 
 /**
  * @brief Applies the two official active-low startup interlock outputs.
+ *
+ * Each logical interlock state is translated to the corresponding board GPIO level.
+ *
  * @param interlock_a True to pull GPIOC1 low, or false to release it high.
  * @param interlock_b True to pull GPIOA19 low, or false to release it high.
  */

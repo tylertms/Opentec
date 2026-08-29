@@ -43,8 +43,33 @@ static void test_write(void) {
     assert(!changed);
 }
 
+static void test_wire_format(void) {
+    MotorParameterResponse response = {
+        .value = UINT32_C(0x78563412),
+        .width = 4U,
+    };
+    uint8_t response_bytes[MOTOR_PARAMETER_RESPONSE_SIZE];
+    motor_parameter_response_encode(&response, response_bytes);
+    assert(response_bytes[0] == 0x12U);
+    assert(response_bytes[1] == 0x34U);
+    assert(response_bytes[2] == 0x56U);
+    assert(response_bytes[3] == 0x78U);
+    assert(response_bytes[4] == 4U);
+
+    MotorParameterBank bank = {0};
+    bank.entries[33] = (MotorParameter){.width = 4U, .writable = true};
+    uint8_t request[MOTOR_PARAMETER_REQUEST_SIZE] = {33U, 0x78U, 0x56U, 0x34U, 0x12U};
+    bool changed;
+    assert(motor_parameter_request_apply(&bank, request, 5U, &changed));
+    assert(bank.entries[33].value == UINT32_C(0x12345678));
+    assert(changed);
+    assert(!motor_parameter_request_apply(&bank, request, 1U, &changed));
+    assert(!changed);
+}
+
 int main(void) {
     test_read();
     test_write();
+    test_wire_format();
     return 0;
 }
