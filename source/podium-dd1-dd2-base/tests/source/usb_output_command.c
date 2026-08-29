@@ -56,6 +56,30 @@ static void test_decodes_vendor_transfer_report(void) {
     assert(command.payload[62] == 63);
 }
 
+static void test_decodes_playstation_short_report(void) {
+    UsbDeviceOutputReport report = make_report(0x30, 64);
+    UsbOutputCommand command;
+
+    assert(usb_output_command_decode(&report, &command));
+    assert(command.kind == USB_OUTPUT_COMMAND_SHORT);
+    assert(command.payload == report.data + 1);
+    assert(command.length == 7);
+    assert(command.payload[0] == 1);
+    assert(command.payload[6] == 7);
+}
+
+static void test_decodes_playstation_vendor_transfer_report(void) {
+    UsbDeviceOutputReport report = make_report(0x34, 64);
+    UsbOutputCommand command;
+
+    assert(usb_output_command_decode(&report, &command));
+    assert(command.kind == USB_OUTPUT_COMMAND_VENDOR_TRANSFER);
+    assert(command.payload == report.data + 1);
+    assert(command.length == 63);
+    assert(command.payload[0] == 1);
+    assert(command.payload[62] == 63);
+}
+
 static void test_rejects_unhandled_reports(void) {
     UsbOutputCommand command;
     UsbDeviceOutputReport report = make_report(2, 8);
@@ -65,6 +89,12 @@ static void test_rejects_unhandled_reports(void) {
     assert(!usb_output_command_decode(&report, &command));
 
     report = make_report(0xff, 63);
+    assert(!usb_output_command_decode(&report, &command));
+
+    report = make_report(0x30, 63);
+    assert(!usb_output_command_decode(&report, &command));
+
+    report = make_report(0x34, 63);
     assert(!usb_output_command_decode(&report, &command));
 
     report = make_report(1, 8);
@@ -83,6 +113,8 @@ int main(void) {
     test_decodes_short_report();
     test_decodes_unnumbered_short_report();
     test_decodes_vendor_transfer_report();
+    test_decodes_playstation_short_report();
+    test_decodes_playstation_vendor_transfer_report();
     test_rejects_unhandled_reports();
     return 0;
 }
