@@ -189,23 +189,27 @@ MotorCurrentCalibrationResult motor_current_calibration_poll(MotorCurrentCalibra
 
 /**
  * @brief Selects the four PDB-triggered ADC channels used during motor control.
- * @param adc1_auxiliary_channel Board-selected ADC1 auxiliary channel, either 4 or 7.
+ *
+ * ADC0 samples phase B and the board-selected auxiliary input. ADC1 samples phase A and starts
+ * the alternating auxiliary sequence on channel two.
+ *
+ * @param adc0_auxiliary_channel Board-selected ADC0 auxiliary channel, either four or seven.
  */
-void motor_adc_runtime_initialize(uint32_t adc1_auxiliary_channel) {
+void motor_adc_runtime_initialize(uint32_t adc0_auxiliary_channel) {
     adc16_channel_config_t channel_config = {
         .channelNumber = 9U,
         .enableInterruptOnConversionCompleted = true,
         .enableDifferentialConversion = false,
     };
 
-    ADC16_SetChannelConfig(ADC1, 0U, &channel_config);
+    ADC16_SetChannelConfig(ADC0, 0U, &channel_config);
     channel_config.channelNumber = 10U;
     channel_config.enableInterruptOnConversionCompleted = false;
-    ADC16_SetChannelConfig(ADC0, 0U, &channel_config);
-    channel_config.channelNumber = adc1_auxiliary_channel;
-    ADC16_SetChannelConfig(ADC1, 1U, &channel_config);
-    channel_config.channelNumber = 2U;
+    ADC16_SetChannelConfig(ADC1, 0U, &channel_config);
+    channel_config.channelNumber = adc0_auxiliary_channel;
     ADC16_SetChannelConfig(ADC0, 1U, &channel_config);
+    channel_config.channelNumber = 2U;
+    ADC16_SetChannelConfig(ADC1, 1U, &channel_config);
     motor_adc_trigger_enable();
 }
 

@@ -15,7 +15,7 @@ void motor_adc_initialize(uint32_t encoder_scale, MotorAdcHandler handler, void 
 void motor_adc_trigger_initialize(void);
 void motor_adc_trigger_enable(void);
 MotorCurrentCalibrationResult motor_current_calibration_poll(MotorCurrentCalibrationState *state);
-void motor_adc_runtime_initialize(uint32_t adc1_auxiliary_channel);
+void motor_adc_runtime_initialize(uint32_t adc0_auxiliary_channel);
 void motor_reset_filter_initialize(void);
 void motor_interrupts_initialize(void);
 void motor_pwm_initialize(void);
