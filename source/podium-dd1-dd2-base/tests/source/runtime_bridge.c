@@ -41,6 +41,8 @@ static void test_runs_auxiliary_transition(void) {
     input.now_ms = 1009;
     assert(runtime_bridge_step(&bridge, &input) == 0);
     input.now_ms = 1010;
+    assert(runtime_bridge_step(&bridge, &input) == 0);
+    input.now_ms = 1011;
     assert(runtime_bridge_step(&bridge, &input) == RUNTIME_BRIDGE_ACTION_START_TRANSFER);
 
     input.transfer_status = RUNTIME_BRIDGE_TRANSFER_COMPLETE;
@@ -48,6 +50,8 @@ static void test_runs_auxiliary_transition(void) {
     input.now_ms = 1099;
     assert(runtime_bridge_step(&bridge, &input) == 0);
     input.now_ms = 1100;
+    assert(runtime_bridge_step(&bridge, &input) == 0);
+    input.now_ms = 1101;
     assert(runtime_bridge_step(&bridge, &input) == RUNTIME_BRIDGE_ACTION_ACTIVATE_UPDATER_USB);
     assert(runtime_bridge_active(&bridge));
     assert(runtime_bridge_step(&bridge, &input) == RUNTIME_BRIDGE_ACTION_SERVICE_UPDATER);
@@ -65,6 +69,8 @@ static void test_runs_status_transition(void) {
     assert(runtime_bridge_step(&bridge, &input) ==
            (RUNTIME_BRIDGE_ACTION_PREPARE_USB | RUNTIME_BRIDGE_ACTION_INITIALIZE_DIRECT_TRANSFER));
     input.now_ms = 30;
+    assert(runtime_bridge_step(&bridge, &input) == 0);
+    input.now_ms = 31;
     assert(runtime_bridge_step(&bridge, &input) ==
            (RUNTIME_BRIDGE_ACTION_ENABLE_TRANSFER_TIMER | RUNTIME_BRIDGE_ACTION_START_TRANSFER));
 }
@@ -80,22 +86,31 @@ static void test_retries_usb_transition_after_300_milliseconds(void) {
     assert(runtime_bridge_step(&bridge, &input) ==
            (RUNTIME_BRIDGE_ACTION_PREPARE_USB | RUNTIME_BRIDGE_ACTION_ENABLE_TRANSFER_TIMER));
     input.now_ms = 110;
+    assert(runtime_bridge_step(&bridge, &input) == 0);
+    input.now_ms = 111;
     assert(runtime_bridge_step(&bridge, &input) == RUNTIME_BRIDGE_ACTION_START_TRANSFER);
     input.transfer_status = RUNTIME_BRIDGE_TRANSFER_PENDING;
     input.now_ms = 399;
     assert(runtime_bridge_step(&bridge, &input) == 0);
     input.now_ms = 400;
     assert(runtime_bridge_step(&bridge, &input) == 0);
+    assert(bridge.phase == RUNTIME_BRIDGE_WAIT_TRANSFER);
+    input.now_ms = 401;
+    assert(runtime_bridge_step(&bridge, &input) == 0);
     assert(bridge.phase == RUNTIME_BRIDGE_WAIT_USB_READY);
 
     input.usb_bridge_ready = true;
     assert(runtime_bridge_step(&bridge, &input) ==
            (RUNTIME_BRIDGE_ACTION_PREPARE_USB | RUNTIME_BRIDGE_ACTION_ENABLE_TRANSFER_TIMER));
-    input.now_ms = 410;
+    input.now_ms = 411;
+    assert(runtime_bridge_step(&bridge, &input) == 0);
+    input.now_ms = 412;
     assert(runtime_bridge_step(&bridge, &input) == RUNTIME_BRIDGE_ACTION_START_TRANSFER);
     input.transfer_status = RUNTIME_BRIDGE_TRANSFER_COMPLETE;
     assert(runtime_bridge_step(&bridge, &input) == 0);
-    input.now_ms = 700;
+    input.now_ms = 701;
+    assert(runtime_bridge_step(&bridge, &input) == 0);
+    input.now_ms = 702;
     assert(runtime_bridge_step(&bridge, &input) == RUNTIME_BRIDGE_ACTION_ACTIVATE_UPDATER_USB);
 }
 
@@ -111,6 +126,8 @@ static void test_runs_protocol_fast_path(void) {
     input.now_ms = 149;
     assert(runtime_bridge_step(&bridge, &input) == 0);
     input.now_ms = 150;
+    assert(runtime_bridge_step(&bridge, &input) == 0);
+    input.now_ms = 151;
     assert(runtime_bridge_step(&bridge, &input) == RUNTIME_BRIDGE_ACTION_ACTIVATE_UPDATER_USB);
 }
 
@@ -134,6 +151,8 @@ static void test_runs_protocol_fallback_on_acknowledgement(void) {
     input.now_ms += 499;
     assert(runtime_bridge_step(&bridge, &input) == 0);
     input.now_ms += 1;
+    assert(runtime_bridge_step(&bridge, &input) == 0);
+    input.now_ms += 1;
     assert(runtime_bridge_step(&bridge, &input) == RUNTIME_BRIDGE_ACTION_START_TRANSFER);
     input.transfer_status = RUNTIME_BRIDGE_TRANSFER_COMPLETE;
     assert(runtime_bridge_step(&bridge, &input) == 0);
@@ -152,6 +171,8 @@ static void test_runs_protocol_fallback_after_timeout(void) {
     input.now_ms = 1199;
     assert(runtime_bridge_step(&bridge, &input) == 0);
     input.now_ms = 1200;
+    assert(runtime_bridge_step(&bridge, &input) == 0);
+    input.now_ms = 1201;
     assert(runtime_bridge_step(&bridge, &input) ==
            (RUNTIME_BRIDGE_ACTION_PREPARE_USB | RUNTIME_BRIDGE_ACTION_ENABLE_TRANSFER_TIMER));
 }

@@ -3,7 +3,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "platform/time.h"
 #include "usb/operating_mode_command.h"
 
 enum {
@@ -13,6 +12,19 @@ enum {
     RUNTIME_BRIDGE_PROTOCOL_WAIT_MS = 1000,
     RUNTIME_BRIDGE_PROTOCOL_START_DELAY_MS = 500,
 };
+
+/**
+ * @brief Tests whether a runtime transition deadline has passed.
+ *
+ * Preserves the transition controller's strict greater-than comparison across timer wraparound.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[in] deadline_ms Recorded transition deadline.
+ * @return True only after the deadline; otherwise false.
+ */
+static bool deadline_passed(uint32_t now_ms, uint32_t deadline_ms) {
+    return (int32_t)(now_ms - deadline_ms) > 0;
+}
 
 /**
  * @brief Prepares the USB controller and schedules a transfer handshake.
@@ -143,14 +155,14 @@ uint16_t runtime_bridge_step(RuntimeBridge *bridge, const RuntimeBridgeInput *in
     }
     if (bridge->phase == RUNTIME_BRIDGE_WAIT_PROTOCOL_COMMAND) {
         if (!input->protocol_command_acknowledged &&
-            !platform_time_reached(input->now_ms, bridge->settle_deadline_ms)) {
+            !deadline_passed(input->now_ms, bridge->settle_deadline_ms)) {
             return RUNTIME_BRIDGE_ACTION_NONE;
         }
         return prepare_transfer(bridge, input->now_ms, RUNTIME_BRIDGE_PROTOCOL_START_DELAY_MS,
                                 RUNTIME_BRIDGE_STANDARD_SETTLE_MS);
     }
     if (bridge->phase == RUNTIME_BRIDGE_WAIT_START_DELAY) {
-        if (!platform_time_reached(input->now_ms, bridge->start_deadline_ms)) {
+        if (!deadline_passed(input->now_ms, bridge->start_deadline_ms)) {
             return RUNTIME_BRIDGE_ACTION_NONE;
         }
         bridge->phase = RUNTIME_BRIDGE_WAIT_TRANSFER;
@@ -163,13 +175,13 @@ uint16_t runtime_bridge_step(RuntimeBridge *bridge, const RuntimeBridgeInput *in
         if (input->transfer_status == RUNTIME_BRIDGE_TRANSFER_COMPLETE) {
             bridge->phase = RUNTIME_BRIDGE_WAIT_SETTLE;
         } else if (bridge->mode == USB_RUNTIME_MODE_USB_BRIDGE &&
-                   platform_time_reached(input->now_ms, bridge->settle_deadline_ms)) {
+                   deadline_passed(input->now_ms, bridge->settle_deadline_ms)) {
             bridge->phase = RUNTIME_BRIDGE_WAIT_USB_READY;
         }
         return RUNTIME_BRIDGE_ACTION_NONE;
     }
     if (bridge->phase == RUNTIME_BRIDGE_WAIT_SETTLE) {
-        if (!platform_time_reached(input->now_ms, bridge->settle_deadline_ms)) {
+        if (!deadline_passed(input->now_ms, bridge->settle_deadline_ms)) {
             return RUNTIME_BRIDGE_ACTION_NONE;
         }
         bridge->phase = RUNTIME_BRIDGE_ACTIVE;
