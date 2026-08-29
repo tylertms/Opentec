@@ -75,3 +75,16 @@ test(
   motor_hardware_profile_test,
   suite: ['motor', 'hardware'],
 )
+
+motor_motion_test = executable(
+  'motor-motion-test',
+  'source/motion.c',
+  motor_motion_sources,
+  include_directories: common_include,
+)
+
+test(
+  'motor-motion',
+  motor_motion_test,
+  suite: ['motor', 'motion'],
+)
