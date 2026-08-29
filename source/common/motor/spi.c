@@ -3,6 +3,7 @@
 #include <fsl_dmamux.h>
 #include <fsl_dspi.h>
 #include <fsl_edma.h>
+#include <fsl_gpio.h>
 #include <string.h>
 
 static MotorSpiTransferBuffers *transfer_buffers;
@@ -79,7 +80,14 @@ void motor_spi_initialize(MotorSpiTransferBuffers *buffers, MotorSpiReceiveHandl
 /**
  * @brief Rebuilds and enables both official thirteen-byte SPI DMA transfers.
  */
-void motor_spi_transfer_restart(void) { motor_spi_dma_initialize(); }
+void motor_spi_transfer_restart(void) {
+    GPIO_PortClear(GPIOC, 1UL << 0U);
+    if ((SPI0->SR & SPI_SR_RXCTR_MASK) != 0U) {
+        DSPI_FlushFifo(SPI0, false, true);
+        (void)SPI0->POPR;
+    }
+    motor_spi_dma_initialize();
+}
 
 /**
  * @brief Completes the official SPI transmit DMA channel interrupt.
