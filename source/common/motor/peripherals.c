@@ -5,6 +5,11 @@
 #include <fsl_ftm.h>
 #include <fsl_pdb.h>
 
+static MotorTimerHandler service_timer_handler;
+static void *service_timer_context;
+static MotorTimerHandler communication_timer_handler;
+static void *communication_timer_context;
+
 /**
  * @brief Calibrates and configures both motor-current ADCs for PDB triggering.
  */
@@ -255,14 +260,42 @@ static void motor_periodic_timer_initialize(FTM_Type *timer, clock_ip_name_t clo
 
 /**
  * @brief Configures the FTM3 periodic motor-service interrupt at modulus 9000.
+ * @param handler Function invoked for each service period.
+ * @param context Caller context passed to the service handler.
  */
-void motor_service_timer_initialize(void) {
+void motor_service_timer_initialize(MotorTimerHandler handler, void *context) {
+    service_timer_handler = handler;
+    service_timer_context = context;
     motor_periodic_timer_initialize(FTM3, kCLOCK_Ftm3, 9000U);
 }
 
 /**
  * @brief Configures the FTM4 communication-timeout interrupt at modulus 3600.
+ * @param handler Function invoked for each communication period.
+ * @param context Caller context passed to the communication handler.
  */
-void motor_communication_timeout_timer_initialize(void) {
+void motor_communication_timeout_timer_initialize(MotorTimerHandler handler, void *context) {
+    communication_timer_handler = handler;
+    communication_timer_context = context;
     motor_periodic_timer_initialize(FTM4, kCLOCK_Ftm4, 3600U);
+}
+
+/**
+ * @brief Clears the official FTM3 overflow and runs one periodic motor-service step.
+ */
+void FTM3_IRQHandler(void) {
+    FTM_ClearStatusFlags(FTM3, kFTM_TimeOverflowFlag);
+    if (service_timer_handler != NULL) {
+        service_timer_handler(service_timer_context);
+    }
+}
+
+/**
+ * @brief Runs the official delayed communication step and clears the FTM4 overflow.
+ */
+void FTM4_IRQHandler(void) {
+    if (communication_timer_handler != NULL) {
+        communication_timer_handler(communication_timer_context);
+    }
+    FTM_ClearStatusFlags(FTM4, kFTM_TimeOverflowFlag);
 }
