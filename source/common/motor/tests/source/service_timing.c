@@ -39,9 +39,9 @@ int main(void) {
     assert(timing.countdowns[2].ticks == 2U);
     assert(timing.countdowns[3].ticks == 0U);
     assert(timing.countdowns[4].ticks == 0U);
-    assert(timing.velocity_controller_ticks == 9U);
+    assert(timing.derating_controller_ticks == 9U);
     assert(motor_service_timing_tick(&timing));
-    assert(timing.velocity_controller_ticks == 0U);
+    assert(timing.derating_controller_ticks == 0U);
     assert(!motor_service_timing_tick(&timing));
 
     return 0;

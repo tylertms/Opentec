@@ -91,7 +91,6 @@ typedef struct {
     int16_t control_current;
     int16_t friction_current;
     uint8_t identity;
-    uint8_t derating_update_count;
     bool_t derating_stop_integrator;
     bool control_update_pending;
     bool current_calibration_started;
@@ -661,13 +660,12 @@ static void motor_runtime_service_handler(void *context) {
     runtime->motion_sample =
         motor_motion_sample(&runtime->motion, &runtime->position_filter, &runtime->velocity_filter,
                             (uint32_t)runtime->encoder.position, runtime->hardware.velocity_scale);
-    (void)motor_service_timing_tick(&runtime->timing);
+    bool derating_update_due = motor_service_timing_tick(&runtime->timing);
     motor_bus_service();
-    if (++runtime->derating_update_count >= 10U) {
+    if (derating_update_due) {
         runtime->drive_derating.current_scale =
             GFLIB_CtrlPIpAW_F16(runtime->drive_derating.error, &runtime->derating_stop_integrator,
                                 &runtime->derating_controller);
-        runtime->derating_update_count = 0U;
     }
     (void)motor_velocity_control_step(&runtime->velocity_control,
                                       runtime->motion_sample.filtered_position_delta,

@@ -18,7 +18,11 @@ void motor_service_timing_initialize(MotorServiceTiming *timing) {
 }
 
 /**
- * @brief Advances five gated countdowns and the ten-tick velocity-control cadence.
+ * @brief Advances five gated countdowns and the derating-control cadence.
+ *
+ * Active countdowns advance every service interrupt. The returned cadence event occurs after each
+ * group of ten interrupts and matches the product current-derating controller schedule.
+ *
  * @param timing Periodic motor-service timing state.
  * @return True every tenth service tick.
  */
@@ -30,9 +34,9 @@ bool motor_service_timing_tick(MotorServiceTiming *timing) {
         }
     }
 
-    ++timing->velocity_controller_ticks;
-    if (timing->velocity_controller_ticks > 9U) {
-        timing->velocity_controller_ticks = 0U;
+    ++timing->derating_controller_ticks;
+    if (timing->derating_controller_ticks > 9U) {
+        timing->derating_controller_ticks = 0U;
         return true;
     }
 

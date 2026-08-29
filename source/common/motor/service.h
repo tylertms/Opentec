@@ -21,7 +21,7 @@ typedef struct {
 
 typedef struct {
     MotorCountdown countdowns[MOTOR_SERVICE_COUNTDOWN_COUNT];
-    uint16_t velocity_controller_ticks;
+    uint16_t derating_controller_ticks;
 } MotorServiceTiming;
 
 void motor_service_timing_initialize(MotorServiceTiming *timing);
