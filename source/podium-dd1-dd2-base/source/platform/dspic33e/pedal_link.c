@@ -29,6 +29,11 @@ static volatile bool resynchronizing;
 static volatile bool transfer_receiving;
 static volatile bool transfer_receive_enabled;
 
+/**
+ * @brief Empties the UART2 receive FIFO.
+ *
+ * Discards every pending byte and clears an overrun condition so reception can resume.
+ */
 static void clear_receive_fifo(void) {
     while (U2STAbits.URXDA != 0) {
         (void)U2RXREG;
@@ -36,6 +41,12 @@ static void clear_receive_fifo(void) {
     U2STAbits.OERR = 0;
 }
 
+/**
+ * @brief Configures UART2 for pedal communication.
+ *
+ * Selects high-speed baud generation, the legacy period, transmitter operation, and idle-mode
+ * suspension before enabling the peripheral.
+ */
 static void configure_uart(void) {
     U2MODEbits.UARTEN = 0;
     U2MODE = 0;
@@ -47,6 +58,11 @@ static void configure_uart(void) {
     U2MODEbits.UARTEN = 1;
 }
 
+/**
+ * @brief Configures the pedal receive DMA channel.
+ *
+ * Routes UART2 receive requests to one-shot byte transfers into a twelve-byte frame buffer.
+ */
 static void configure_receive_dma(void) {
     DMA1CON = 0;
     DMA1CONbits.SIZE = 1;
@@ -60,6 +76,11 @@ static void configure_receive_dma(void) {
     DMA1CNT = PEDAL_FRAME_SIZE - 1;
 }
 
+/**
+ * @brief Configures the pedal transmit DMA channel.
+ *
+ * Routes one-shot byte transfers from the shared transmit buffer to UART2.
+ */
 static void configure_transmit_dma(void) {
     DMA2CON = 0;
     DMA2CONbits.SIZE = 1;
@@ -72,6 +93,12 @@ static void configure_transmit_dma(void) {
     DMA2STAH = 0;
 }
 
+/**
+ * @brief Configures pedal transport interrupt routing.
+ *
+ * Assigns priority four to receive DMA, transmit DMA, and UART2 receive events. Receive DMA starts
+ * disabled, while transmit completion and UART receive servicing start enabled.
+ */
 static void configure_interrupts(void) {
     IPC3bits.DMA1IP = PEDAL_INTERRUPT_PRIORITY;
     IPC6bits.DMA2IP = PEDAL_INTERRUPT_PRIORITY;
@@ -84,6 +111,12 @@ static void configure_interrupts(void) {
     IEC1bits.U2RXIE = 1;
 }
 
+/**
+ * @brief Initializes the pedal communication port.
+ *
+ * Clears all published transport state, configures UART2 and both DMA channels, enables their
+ * interrupt routes, and drains stale receive data.
+ */
 void platform_pedal_link_init(void) {
     byte_ready = false;
     frame_ready = false;
@@ -101,6 +134,12 @@ void platform_pedal_link_init(void) {
     clear_receive_fifo();
 }
 
+/**
+ * @brief Selects byte-oriented pedal discovery.
+ *
+ * Stops framed reception, selects digital UART pins and the legacy baud period, clears stale
+ * results, and enables UART2 receive events.
+ */
 void platform_pedal_link_begin_discovery(void) {
     IEC0bits.DMA1IE = 0;
     DMA1CONbits.CHEN = 0;
@@ -120,6 +159,12 @@ void platform_pedal_link_begin_discovery(void) {
     IEC1bits.U2RXIE = 1;
 }
 
+/**
+ * @brief Selects direct analog pedal input.
+ *
+ * Stops UART and DMA reception, selects the three pedal analog inputs, makes the two detection
+ * pins inputs, and clears stale serial results.
+ */
 void platform_pedal_link_begin_analog(void) {
     IEC0bits.DMA1IE = 0;
     IEC1bits.U2RXIE = 0;
@@ -138,6 +183,12 @@ void platform_pedal_link_begin_analog(void) {
     transfer_receive_enabled = false;
 }
 
+/**
+ * @brief Selects fixed-size V3 pedal reception.
+ *
+ * Selects the modern baud period, drains stale bytes, clears prior results, and arms receive DMA
+ * for one twelve-byte frame while retaining UART delimiter recovery.
+ */
 void platform_pedal_link_begin_framed_receive(void) {
     IEC1bits.U2RXIE = 0;
     DMA1CONbits.CHEN = 0;
@@ -153,8 +204,15 @@ void platform_pedal_link_begin_framed_receive(void) {
     IFS0bits.DMA1IF = 0;
     IEC0bits.DMA1IE = 1;
     DMA1CONbits.CHEN = 1;
+    IEC1bits.U2RXIE = 1;
 }
 
+/**
+ * @brief Selects variable-length V4 transfer reception.
+ *
+ * Stops fixed-size DMA reception, selects the modern baud period, clears prior results, and
+ * enables byte-oriented collection of escaped transfer frames.
+ */
 void platform_pedal_link_begin_transfer_receive(void) {
     IEC0bits.DMA1IE = 0;
     DMA1CONbits.CHEN = 0;
@@ -172,6 +230,15 @@ void platform_pedal_link_begin_transfer_receive(void) {
     IEC1bits.U2RXIE = 1;
 }
 
+/**
+ * @brief Starts one pedal DMA transmission.
+ *
+ * Claims the transmitter while its completion interrupt is masked, configures the requested byte
+ * count, starts the channel, and forces its first UART2 request.
+ *
+ * @param[in] length Number of bytes already prepared in the transmit buffer.
+ * @return True when the transmission started; false when another transmission owns the channel.
+ */
 static bool begin_send(uint16_t length) {
     IEC1bits.DMA2IE = 0;
     if (transmit_active) {
@@ -189,6 +256,15 @@ static bool begin_send(uint16_t length) {
     return true;
 }
 
+/**
+ * @brief Sends one pedal discovery or legacy command byte.
+ *
+ * Copies the command into the DMA source and starts a one-byte transmission when the channel is
+ * idle.
+ *
+ * @param[in] value Command byte to send.
+ * @return True when the command started; false while another transmission is active.
+ */
 bool platform_pedal_link_send_byte(uint8_t value) {
     if (transmit_active) {
         return false;
@@ -197,6 +273,15 @@ bool platform_pedal_link_send_byte(uint8_t value) {
     return begin_send(1);
 }
 
+/**
+ * @brief Sends one fixed-size V3 pedal frame.
+ *
+ * Copies all twelve encoded bytes into the DMA source and starts transmission when the channel is
+ * idle.
+ *
+ * @param[in] frame Encoded pedal frame to send.
+ * @return True when the frame started; false while another transmission is active.
+ */
 bool platform_pedal_link_send_frame(const uint8_t frame[PEDAL_FRAME_SIZE]) {
     if (transmit_active) {
         return false;
@@ -207,6 +292,16 @@ bool platform_pedal_link_send_frame(const uint8_t frame[PEDAL_FRAME_SIZE]) {
     return begin_send(PEDAL_FRAME_SIZE);
 }
 
+/**
+ * @brief Sends one encoded V4 transfer frame.
+ *
+ * Rejects null, empty, oversized, or concurrent requests before copying the encoded bytes and
+ * starting DMA transmission.
+ *
+ * @param[in] data Encoded transfer frame to send.
+ * @param[in] length Encoded byte count.
+ * @return True when the frame started; false when the request is invalid or the channel is busy.
+ */
 bool platform_pedal_link_send_transfer(const uint8_t *data, uint16_t length) {
     if (data == NULL || length == 0 || length > TRANSFER_FRAME_MAX_ENCODED_SIZE ||
         transmit_active) {
@@ -218,8 +313,23 @@ bool platform_pedal_link_send_transfer(const uint8_t *data, uint16_t length) {
     return begin_send(length);
 }
 
+/**
+ * @brief Reports pedal transmitter ownership.
+ *
+ * Returns the state cleared by the transmit DMA completion event.
+ *
+ * @return True while a pedal transmission is active; otherwise false.
+ */
 bool platform_pedal_link_transmit_busy(void) { return transmit_active; }
 
+/**
+ * @brief Takes the newest byte-oriented pedal response.
+ *
+ * Masks UART2 receive events while copying and consuming the pending discovery or legacy byte.
+ *
+ * @param[out] value Destination for the received byte.
+ * @return True when a byte was consumed; otherwise false.
+ */
 bool platform_pedal_link_take_byte(uint8_t *value) {
     IEC1bits.U2RXIE = 0;
     bool ready = byte_ready;
@@ -231,6 +341,14 @@ bool platform_pedal_link_take_byte(uint8_t *value) {
     return ready;
 }
 
+/**
+ * @brief Takes the newest boundary-aligned V3 pedal frame.
+ *
+ * Masks receive DMA completion while copying and consuming the pending twelve-byte frame.
+ *
+ * @param[out] frame Destination for the received frame.
+ * @return True when a frame was consumed; otherwise false.
+ */
 bool platform_pedal_link_take_frame(uint8_t frame[PEDAL_FRAME_SIZE]) {
     IEC0bits.DMA1IE = 0;
     bool ready = frame_ready;
@@ -244,6 +362,16 @@ bool platform_pedal_link_take_frame(uint8_t frame[PEDAL_FRAME_SIZE]) {
     return ready;
 }
 
+/**
+ * @brief Takes one complete encoded V4 transfer frame.
+ *
+ * Masks UART2 receive events while copying and consuming a frame that fits the caller's capacity.
+ * An undersized destination leaves the pending frame available for a later call.
+ *
+ * @param[out] data Destination for the encoded frame.
+ * @param[in] capacity Available destination bytes.
+ * @return Encoded frame length, or zero when no complete frame fits.
+ */
 uint16_t platform_pedal_link_take_transfer(uint8_t *data, uint16_t capacity) {
     IEC1bits.U2RXIE = 0;
     uint16_t length =
@@ -258,6 +386,14 @@ uint16_t platform_pedal_link_take_transfer(uint8_t *data, uint16_t capacity) {
     return length;
 }
 
+/**
+ * @brief Accumulates one encoded V4 transfer byte.
+ *
+ * Starts or restarts collection at the opening marker, abandons oversized partial frames, and
+ * publishes a complete frame at the closing marker without replacing an unread result.
+ *
+ * @param[in] value Received encoded byte.
+ */
 static void receive_transfer_byte(uint8_t value) {
     if (value == TRANSFER_FRAME_START) {
         transfer_buffer[0] = value;
@@ -291,7 +427,10 @@ static void receive_transfer_byte(uint8_t value) {
 }
 
 /**
- * @brief Captures discovery bytes, V4 transfer frames, or V3 resynchronization markers.
+ * @brief Services UART2 pedal receive events.
+ *
+ * Drains all available bytes, assembles V4 transfer frames, publishes the newest discovery byte,
+ * or rearms V3 DMA after a closing delimiter. UART overruns are cleared before return.
  */
 void __attribute__((interrupt, no_auto_psv)) _U2RXInterrupt(void) {
     uint8_t last = 0;
@@ -319,7 +458,10 @@ void __attribute__((interrupt, no_auto_psv)) _U2RXInterrupt(void) {
 }
 
 /**
- * Publishes a boundary-aligned pedal frame or enters delimiter resynchronization.
+ * @brief Services fixed-size pedal receive completion.
+ *
+ * Publishes a twelve-byte frame with valid boundary markers and immediately rearms DMA. A malformed
+ * boundary switches reception to UART delimiter recovery before the next DMA frame is accepted.
  */
 void __attribute__((interrupt, no_auto_psv)) _DMA1Interrupt(void) {
     if (received_dma[0] == PEDAL_FRAME_START &&
@@ -331,10 +473,16 @@ void __attribute__((interrupt, no_auto_psv)) _DMA1Interrupt(void) {
         DMA1CONbits.CHEN = 1;
     } else {
         resynchronizing = true;
+        IEC1bits.U2RXIE = 1;
     }
     IFS0bits.DMA1IF = 0;
 }
 
+/**
+ * @brief Services pedal transmit completion.
+ *
+ * Releases the shared transmitter, clears the DMA request, and restores UART2 receive servicing.
+ */
 void __attribute__((interrupt, no_auto_psv)) _DMA2Interrupt(void) {
     transmit_active = false;
     IFS1bits.DMA2IF = 0;
