@@ -48,6 +48,7 @@ if motor_target
     '-DCPU_MKV10Z128VLH7',
     '-DDISABLE_WDOG=1',
     '-DNDEBUG',
+    '-DRTCESL_MMDVSQ_ON',
   ]
 
   sdk_library = static_library(
@@ -75,6 +76,7 @@ if motor_target
   firmware = executable(
     'podium-dd2-motor',
     'source/firmware.c',
+    motor_foc_sources,
     sdk_device['sources'],
     build_by_default: false,
     c_args: freestanding_c_args + [
@@ -85,6 +87,7 @@ if motor_target
     dependencies: [cmsis_dependency, rtcesl_dependency],
     include_directories: [
       firmware_include,
+      common_include,
       freemaster_includes,
       sdk_driver_include,
       sdk_device['includes'],

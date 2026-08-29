@@ -19,6 +19,7 @@ if (
 endif
 
 common_include = include_directories('source')
+motor_foc_sources = files('source/common/motor/foc.c')
 wqr_frame_sources = files('source/common/wqr_frame.c')
 
 subdir('source/podium-dd1-dd2-wqr')
