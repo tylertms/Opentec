@@ -262,7 +262,6 @@ static ForceFeedbackScriptSystem force_feedback_script_system;
 static ForceFeedbackScriptOutputState force_feedback_script_output_state;
 static ForceFeedbackScriptOutputConfig force_feedback_script_output_config;
 static uint8_t force_feedback_script_response_sequence;
-static uint8_t xbox_script_response_placeholder_sequence;
 static ForceFeedbackScriptReportKind force_feedback_script_report_pending;
 static uint16_t force_feedback_script_sample_report_index;
 static uint8_t force_feedback_script_slot_report_index;
@@ -1177,38 +1176,37 @@ static void service_playstation_authentication(uint32_t now_ms) {
  * Uses the shared script report formats for native and Xbox transports without consuming the
  * pending query. The caller commits it only after its transport accepts the response.
  *
- * @param[in,out] sequence Response sequence used to build the report envelope.
  * @param[out] response Destination for the encoded response.
  * @return Encoded response length, or zero when no query is pending.
  */
-static uint8_t encode_pending_force_feedback_script_report(uint8_t *sequence, uint8_t *response) {
+static uint8_t encode_pending_force_feedback_script_report(uint8_t *response) {
     switch (force_feedback_script_report_pending) {
     case FORCE_FEEDBACK_SCRIPT_REPORT_AXES:
         return force_feedback_script_axes_report_encode(&force_feedback_script_system.values,
-                                                        sequence, response, USB_DEVICE_REPORT_SIZE)
+                                                        response, USB_DEVICE_REPORT_SIZE)
                    ? FORCE_FEEDBACK_SCRIPT_AXES_RESPONSE_SIZE
                    : 0;
     case FORCE_FEEDBACK_SCRIPT_REPORT_SAMPLES:
         return force_feedback_script_samples_report_encode(
                    &force_feedback_script_system.values, force_feedback_script_sample_report_index,
-                   sequence, response, USB_DEVICE_REPORT_SIZE)
+                   response, USB_DEVICE_REPORT_SIZE)
                    ? FORCE_FEEDBACK_SCRIPT_SAMPLES_RESPONSE_SIZE
                    : 0;
     case FORCE_FEEDBACK_SCRIPT_REPORT_SLOT:
         return force_feedback_script_slot_report_encode(&force_feedback_script_system.values,
                                                         force_feedback_script_slot_report_index,
-                                                        sequence, response, USB_DEVICE_REPORT_SIZE)
+                                                        response, USB_DEVICE_REPORT_SIZE)
                    ? FORCE_FEEDBACK_SCRIPT_SLOT_RESPONSE_SIZE
                    : 0;
     case FORCE_FEEDBACK_SCRIPT_REPORT_STATUS:
-        return force_feedback_script_status_report_encode(
-                   &force_feedback_script_system.values, force_feedback_script_system.mode,
-                   sequence, response, USB_DEVICE_REPORT_SIZE)
+        return force_feedback_script_status_report_encode(&force_feedback_script_system.values,
+                                                          force_feedback_script_system.mode,
+                                                          response, USB_DEVICE_REPORT_SIZE)
                    ? FORCE_FEEDBACK_SCRIPT_STATUS_RESPONSE_SIZE
                    : 0;
     case FORCE_FEEDBACK_SCRIPT_REPORT_VALUES:
-        return force_feedback_script_values_report_encode(
-                   &force_feedback_script_system.values, sequence, response, USB_DEVICE_REPORT_SIZE)
+        return force_feedback_script_values_report_encode(&force_feedback_script_system.values,
+                                                          response, USB_DEVICE_REPORT_SIZE)
                    ? FORCE_FEEDBACK_SCRIPT_VALUES_RESPONSE_SIZE
                    : 0;
     case FORCE_FEEDBACK_SCRIPT_REPORT_NONE:
@@ -1321,7 +1319,7 @@ static void prepare_usb_xbox_vendor_response(void) {
  * @brief Queues a pending force-feedback script response on Xbox GIP.
  *
  * Builds the common type-25 report and retains the query until the active Xbox endpoint accepts
- * it. The device layer replaces the temporary report sequence with the shared GIP sequence.
+ * it. The device layer assigns the shared GIP sequence.
  */
 static void prepare_usb_xbox_script_response(void) {
     if (usb_device_operating_mode() != USB_OPERATING_MODE_XBOX_GIP ||
@@ -1330,9 +1328,7 @@ static void prepare_usb_xbox_script_response(void) {
         return;
     }
 
-    xbox_script_response_placeholder_sequence = 0;
-    uint8_t length = encode_pending_force_feedback_script_report(
-        &xbox_script_response_placeholder_sequence, usb_vendor_response);
+    uint8_t length = encode_pending_force_feedback_script_report(usb_vendor_response);
     if (length != 0 && usb_device_queue_xbox_response(usb_vendor_response, length)) {
         force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_NONE;
     }
@@ -1375,9 +1371,10 @@ static void prepare_usb_vendor_response(void) {
         usb_vendor_response_kind = USB_VENDOR_RESPONSE_WHEEL_TRANSFER;
         return;
     }
-    usb_vendor_response_length = encode_pending_force_feedback_script_report(
-        &force_feedback_script_response_sequence, usb_vendor_response);
+    usb_vendor_response_length = encode_pending_force_feedback_script_report(usb_vendor_response);
     if (usb_vendor_response_length != 0) {
+        usb_vendor_response[2] =
+            force_feedback_script_report_sequence_take(&force_feedback_script_response_sequence);
         force_feedback_script_report_pending = FORCE_FEEDBACK_SCRIPT_REPORT_NONE;
         usb_vendor_response_kind = USB_VENDOR_RESPONSE_SCRIPT_REPORT;
         return;

@@ -27,23 +27,41 @@ enum {
 };
 
 /**
- * @brief Encodes a script response envelope and advances its sequence.
+ * @brief Encodes a transport-neutral script response envelope.
  *
- * Advances the sequence with a nonzero wrap and writes the report ID, reserved byte, sequence,
- * response kind, and response mode shared by script query replies.
+ * Writes the report ID, reserved bytes, response kind, and response mode shared by script query
+ * replies. The active transport assigns the response sequence before transmission.
  *
- * @param[in,out] sequence Shared nonzero vendor response sequence.
  * @param[in] kind Response payload kind.
  * @param[in] mode Response query mode.
  * @param[out] response Destination for the five-byte envelope.
  */
-static void encode_header(uint8_t *sequence, uint8_t kind, uint8_t mode, uint8_t *response) {
-    *sequence = *sequence == UINT8_MAX ? 1 : (uint8_t)(*sequence + 1u);
+static void encode_header(uint8_t kind, uint8_t mode, uint8_t *response) {
     response[0] = SCRIPT_REPORT_ID;
     response[1] = 0;
-    response[2] = *sequence;
+    response[2] = 0;
     response[3] = kind;
     response[4] = mode;
+}
+
+/**
+ * @brief Takes the next script-report response sequence.
+ *
+ * Returns the current sequence and advances it. Value 255 produces sequence 1 and leaves 1 as the
+ * next state.
+ *
+ * @param[in,out] next_sequence Sequence state to consume and advance.
+ * @return Sequence value for the current response.
+ */
+uint8_t force_feedback_script_report_sequence_take(uint8_t *next_sequence) {
+    uint8_t sequence = *next_sequence;
+    if (sequence == UINT8_MAX) {
+        *next_sequence = 1;
+        return 1;
+    }
+
+    *next_sequence = sequence + 1u;
+    return sequence;
 }
 
 /**
@@ -67,19 +85,17 @@ static void encode_value(uint8_t output[4], uint32_t value) {
  * padding bytes.
  *
  * @param[in] runtime Current force-feedback script runtime.
- * @param[in,out] sequence Shared nonzero vendor response sequence.
  * @param[out] response Destination for the complete 46-byte response.
  * @param[in] length Number of writable response bytes.
  * @return True when the complete response was encoded.
  */
 bool force_feedback_script_axes_report_encode(const ForceFeedbackScriptRuntime *runtime,
-                                              uint8_t *sequence, uint8_t *response, size_t length) {
-    if (runtime == NULL || sequence == NULL || response == NULL ||
-        length < FORCE_FEEDBACK_SCRIPT_AXES_RESPONSE_SIZE) {
+                                              uint8_t *response, size_t length) {
+    if (runtime == NULL || response == NULL || length < FORCE_FEEDBACK_SCRIPT_AXES_RESPONSE_SIZE) {
         return false;
     }
 
-    encode_header(sequence, SCRIPT_AXES_RESPONSE_KIND, SCRIPT_AXES_RESPONSE_MODE, response);
+    encode_header(SCRIPT_AXES_RESPONSE_KIND, SCRIPT_AXES_RESPONSE_MODE, response);
     response[SCRIPT_RESPONSE_PAYLOAD_OFFSET] = 0;
     for (uint8_t index = 0; index < FORCE_FEEDBACK_SCRIPT_AXIS_REPORT_COUNT; index++) {
         encode_value(response + SCRIPT_RESPONSE_PAYLOAD_OFFSET + 1u + index * 4u,
@@ -100,21 +116,19 @@ bool force_feedback_script_axes_report_encode(const ForceFeedbackScriptRuntime *
  *
  * @param[in] runtime Current force-feedback script runtime.
  * @param[in] first_sample Index of the first sample from zero through 501.
- * @param[in,out] sequence Shared nonzero vendor response sequence.
  * @param[out] response Destination for the complete 47-byte response.
  * @param[in] length Number of writable response bytes.
  * @return True when the query is in range and the complete response was encoded.
  */
 bool force_feedback_script_samples_report_encode(const ForceFeedbackScriptRuntime *runtime,
-                                                 uint16_t first_sample, uint8_t *sequence,
-                                                 uint8_t *response, size_t length) {
+                                                 uint16_t first_sample, uint8_t *response,
+                                                 size_t length) {
     if (runtime == NULL || first_sample > FORCE_FEEDBACK_SCRIPT_SAMPLE_REPORT_LAST_FIRST ||
-        sequence == NULL || response == NULL ||
-        length < FORCE_FEEDBACK_SCRIPT_SAMPLES_RESPONSE_SIZE) {
+        response == NULL || length < FORCE_FEEDBACK_SCRIPT_SAMPLES_RESPONSE_SIZE) {
         return false;
     }
 
-    encode_header(sequence, SCRIPT_SAMPLES_RESPONSE_KIND, SCRIPT_SAMPLES_RESPONSE_MODE, response);
+    encode_header(SCRIPT_SAMPLES_RESPONSE_KIND, SCRIPT_SAMPLES_RESPONSE_MODE, response);
     for (uint8_t index = 0; index < FORCE_FEEDBACK_SCRIPT_SAMPLE_REPORT_COUNT; index++) {
         encode_value(response + SCRIPT_RESPONSE_PAYLOAD_OFFSET + index * 4u,
                      runtime->samples.values[first_sample + index]);
@@ -131,20 +145,18 @@ bool force_feedback_script_samples_report_encode(const ForceFeedbackScriptRuntim
  *
  * @param[in] runtime Current force-feedback script runtime.
  * @param[in] slot Reportable script slot index from zero through 14, or empty query index 15.
- * @param[in,out] sequence Shared nonzero vendor response sequence.
  * @param[out] response Destination for the complete 39-byte response.
  * @param[in] length Number of writable response bytes.
  * @return True when the slot query is accepted and the complete response was encoded.
  */
 bool force_feedback_script_slot_report_encode(const ForceFeedbackScriptRuntime *runtime,
-                                              uint8_t slot, uint8_t *sequence, uint8_t *response,
-                                              size_t length) {
-    if (runtime == NULL || slot > FORCE_FEEDBACK_SCRIPT_SLOT_REPORT_EMPTY || sequence == NULL ||
-        response == NULL || length < FORCE_FEEDBACK_SCRIPT_SLOT_RESPONSE_SIZE) {
+                                              uint8_t slot, uint8_t *response, size_t length) {
+    if (runtime == NULL || slot > FORCE_FEEDBACK_SCRIPT_SLOT_REPORT_EMPTY || response == NULL ||
+        length < FORCE_FEEDBACK_SCRIPT_SLOT_RESPONSE_SIZE) {
         return false;
     }
 
-    encode_header(sequence, SCRIPT_SLOT_RESPONSE_KIND, SCRIPT_SLOT_RESPONSE_MODE, response);
+    encode_header(SCRIPT_SLOT_RESPONSE_KIND, SCRIPT_SLOT_RESPONSE_MODE, response);
     if (slot == FORCE_FEEDBACK_SCRIPT_SLOT_REPORT_EMPTY) {
         for (uint8_t index = SCRIPT_RESPONSE_PAYLOAD_OFFSET;
              index < FORCE_FEEDBACK_SCRIPT_SLOT_RESPONSE_SIZE; index++) {
@@ -175,20 +187,19 @@ bool force_feedback_script_slot_report_encode(const ForceFeedbackScriptRuntime *
  *
  * @param[in] runtime Current force-feedback script runtime.
  * @param[in] mode Current force-feedback runtime mode.
- * @param[in,out] sequence Shared nonzero vendor response sequence.
  * @param[out] response Destination for the complete 22-byte response.
  * @param[in] length Number of writable response bytes.
  * @return True when the complete response was encoded.
  */
 bool force_feedback_script_status_report_encode(const ForceFeedbackScriptRuntime *runtime,
-                                                ForceFeedbackRuntimeMode mode, uint8_t *sequence,
-                                                uint8_t *response, size_t length) {
-    if (runtime == NULL || sequence == NULL || response == NULL ||
+                                                ForceFeedbackRuntimeMode mode, uint8_t *response,
+                                                size_t length) {
+    if (runtime == NULL || response == NULL ||
         length < FORCE_FEEDBACK_SCRIPT_STATUS_RESPONSE_SIZE) {
         return false;
     }
 
-    encode_header(sequence, SCRIPT_STATUS_RESPONSE_KIND, SCRIPT_STATUS_RESPONSE_MODE, response);
+    encode_header(SCRIPT_STATUS_RESPONSE_KIND, SCRIPT_STATUS_RESPONSE_MODE, response);
     for (uint8_t slot = 0; slot < FORCE_FEEDBACK_SCRIPT_SLOT_COUNT; slot++) {
         ForceFeedbackScriptSlotState state = runtime->slots[slot].state;
         response[SCRIPT_RESPONSE_PAYLOAD_OFFSET + slot] =
@@ -206,20 +217,18 @@ bool force_feedback_script_status_report_encode(const ForceFeedbackScriptRuntime
  * eight writable script variables in least-significant-byte-first order.
  *
  * @param[in] runtime Current force-feedback script runtime.
- * @param[in,out] sequence Shared nonzero vendor response sequence.
  * @param[out] response Destination for the complete 53-byte response.
  * @param[in] length Number of writable response bytes.
  * @return True when the complete response was encoded.
  */
 bool force_feedback_script_values_report_encode(const ForceFeedbackScriptRuntime *runtime,
-                                                uint8_t *sequence, uint8_t *response,
-                                                size_t length) {
-    if (runtime == NULL || sequence == NULL || response == NULL ||
+                                                uint8_t *response, size_t length) {
+    if (runtime == NULL || response == NULL ||
         length < FORCE_FEEDBACK_SCRIPT_VALUES_RESPONSE_SIZE) {
         return false;
     }
 
-    encode_header(sequence, SCRIPT_VALUES_RESPONSE_KIND, SCRIPT_VALUES_RESPONSE_MODE, response);
+    encode_header(SCRIPT_VALUES_RESPONSE_KIND, SCRIPT_VALUES_RESPONSE_MODE, response);
     for (uint8_t index = 0; index < SCRIPT_TIMING_VARIABLE_COUNT; index++) {
         encode_value(response + SCRIPT_RESPONSE_PAYLOAD_OFFSET + index * 4u,
                      runtime->variables[SCRIPT_TIMING_VARIABLE_FIRST + index]);

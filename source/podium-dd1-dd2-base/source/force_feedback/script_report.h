@@ -20,19 +20,18 @@ enum {
     FORCE_FEEDBACK_SCRIPT_VALUES_RESPONSE_SIZE = 53,
 };
 
+uint8_t force_feedback_script_report_sequence_take(uint8_t *next_sequence);
 bool force_feedback_script_axes_report_encode(const ForceFeedbackScriptRuntime *runtime,
-                                              uint8_t *sequence, uint8_t *response, size_t length);
+                                              uint8_t *response, size_t length);
 bool force_feedback_script_samples_report_encode(const ForceFeedbackScriptRuntime *runtime,
-                                                 uint16_t first_sample, uint8_t *sequence,
-                                                 uint8_t *response, size_t length);
+                                                 uint16_t first_sample, uint8_t *response,
+                                                 size_t length);
 bool force_feedback_script_slot_report_encode(const ForceFeedbackScriptRuntime *runtime,
-                                              uint8_t slot, uint8_t *sequence, uint8_t *response,
-                                              size_t length);
+                                              uint8_t slot, uint8_t *response, size_t length);
 bool force_feedback_script_status_report_encode(const ForceFeedbackScriptRuntime *runtime,
-                                                ForceFeedbackRuntimeMode mode, uint8_t *sequence,
-                                                uint8_t *response, size_t length);
-bool force_feedback_script_values_report_encode(const ForceFeedbackScriptRuntime *runtime,
-                                                uint8_t *sequence, uint8_t *response,
+                                                ForceFeedbackRuntimeMode mode, uint8_t *response,
                                                 size_t length);
+bool force_feedback_script_values_report_encode(const ForceFeedbackScriptRuntime *runtime,
+                                                uint8_t *response, size_t length);
 
 #endif
