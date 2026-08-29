@@ -296,6 +296,8 @@ static void capture_request(WheelProtocol *protocol,
                             const uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE]) {
     if (wheel_packet_mode_one_applies(protocol->mode)) {
         uint8_t snapshot[WHEEL_PACKET_MODE_ONE_SNAPSHOT_SIZE];
+        bool authenticated_controls =
+            protocol->mode == 0x13 || protocol->mode == 0x14 || protocol->mode == 0x16;
         wheel_packet_mode_one_decode(request, &protocol->mode_one_input);
         protocol->mode_one_report_state.axis_values[0] = protocol->mode_one_input.axis_values[0];
         protocol->mode_one_report_state.axis_values[1] = protocol->mode_one_input.axis_values[1];
@@ -313,7 +315,7 @@ static void capture_request(WheelProtocol *protocol,
                                              &protocol->mode_one_input);
         protocol->acknowledgement_input_active =
             mode_one_acknowledgement_input_active(&protocol->mode_one_input);
-        if (protocol->mode == 0x13 || protocol->mode == 0x14) {
+        if (authenticated_controls) {
             wheel_packet_mode_one_filter_control_axes(&protocol->mode_one_control_axis_filter,
                                                       &protocol->mode_one_input);
             wheel_axis_override_process(
@@ -325,9 +327,9 @@ static void capture_request(WheelProtocol *protocol,
                 protocol->mode_one_input.controls.y, protocol->mode_one_input.axis_outputs);
         }
         wheel_motion_accumulate_primary(&protocol->motion, protocol->mode_one_input.motion);
-        wheel_packet_mode_one_normalize(
-            &protocol->mode_one_input, protocol->mode == 0x13 || protocol->mode == 0x14,
-            protocol->button_latch_enabled, protocol->profile_transition_pending, snapshot);
+        wheel_packet_mode_one_normalize(&protocol->mode_one_input, authenticated_controls,
+                                        protocol->button_latch_enabled,
+                                        protocol->profile_transition_pending, snapshot);
         bool changed = false;
         for (uint8_t index = 0; index < WHEEL_PROTOCOL_SNAPSHOT_SIZE; index++) {
             changed |= protocol->request[index] != snapshot[index];

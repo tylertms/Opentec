@@ -453,6 +453,44 @@ static void accept_active_request(WheelProtocol *protocol,
     wheel_protocol_accept(protocol, request);
 }
 
+static void test_routes_vendor_packet_modes(void) {
+    static const uint8_t modes[] = {2, 0x16};
+    for (uint8_t index = 0; index < sizeof(modes); index++) {
+        WheelProtocol protocol;
+        uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+        wheel_protocol_init(&protocol);
+        protocol.mode = modes[index];
+        protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+        request[0] = modes[index] == 0x16 ? WHEEL_PROTOCOL_COMMAND_AUTHENTICATE
+                                          : WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
+        request[5] = 0x41;
+        request[6] = 0x52;
+        request[18] = 0x34;
+        request[19] = 0x12;
+        request[20] = 0xcd;
+        request[21] = 0xab;
+        request[31] = 0x74;
+        mark_ready(request);
+
+        accept_active_request(&protocol, request);
+
+        const WheelPacketModeOneInput *input = wheel_protocol_mode_one_input(&protocol);
+        const WheelPacketModeOneReportState *report =
+            wheel_protocol_mode_one_report_state(&protocol);
+        assert(input != 0);
+        assert(input->axis_outputs[0] == (modes[index] == 0x16 ? 0x3e : 0x41));
+        assert(input->axis_outputs[1] == (modes[index] == 0x16 ? 0xd2 : 0x52));
+        assert(input->axis_limit == 0x74);
+        assert(report != 0);
+        assert(report->axis_values[0] == 0x1234);
+        assert(report->axis_values[1] == 0xabcd);
+        assert(wheel_protocol_response(&protocol)[0] == (modes[index] == 0x16
+                                                             ? WHEEL_PROTOCOL_COMMAND_AUTHENTICATE
+                                                             : WHEEL_PROTOCOL_COMMAND_SELECT_MODE));
+        assert(wheel_protocol_message_valid(wheel_protocol_response(&protocol)));
+    }
+}
+
 static void test_accumulates_motion_from_packet_modes(void) {
     static const uint8_t modes[] = {1, 4, 6, WHEEL_MODE_LEGACY_ALTERNATE};
     for (uint8_t index = 0; index < sizeof(modes); index++) {
@@ -1151,6 +1189,7 @@ int main(void) {
     test_captures_normalized_active_requests();
     test_captures_packed_family_requests();
     test_averages_control_axes_only_for_authenticated_wheel_modes();
+    test_routes_vendor_packet_modes();
     test_accumulates_motion_from_packet_modes();
     test_tracks_display_acknowledgement_input();
     test_captures_mode_four_requests();

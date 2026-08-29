@@ -6,8 +6,10 @@
 enum {
     WHEEL_PACKET_COMMAND_SELECT_MODE = 0xa5,
     WHEEL_PACKET_COMMAND_AUTHENTICATE = 0xa6,
+    WHEEL_PACKET_VENDOR_MODE = 2,
     WHEEL_PACKET_AUTHENTICATION_MODE_FIRST = 0x13,
     WHEEL_PACKET_AUTHENTICATION_MODE_LAST = 0x14,
+    WHEEL_PACKET_AUTHENTICATED_VENDOR_MODE = 0x16,
     REQUEST_PAYLOAD_OFFSET = 2,
     REQUEST_BUTTONS_OFFSET = 0,
     REQUEST_AXIS_OUTPUTS_OFFSET = 3,
@@ -21,20 +23,31 @@ enum {
     REQUEST_AXIS_LIMIT_OFFSET = 29,
 };
 
+/**
+ * @brief Reads one little-endian 16-bit packet field.
+ *
+ * Combines two adjacent bytes without requiring aligned storage.
+ *
+ * @param[in] data First byte of the field.
+ * @return Decoded 16-bit value.
+ */
 static uint16_t read_little_endian_u16(const uint8_t *data) {
     return (uint16_t)data[0] | (uint16_t)data[1] << 8;
 }
 
 /**
- * @brief Tests whether an attached-wheel mode uses the mode-1 packet codec.
+ * @brief Tests whether an attached-wheel mode uses the standard packet codec.
  *
- * Recognizes the four modes that share the standard packet layout.
+ * Recognizes the standard and vendor modes that share the same input layout and processing rules.
  *
  * @param[in] wheel_mode Selected attached-wheel mode.
- * @return True for modes 1, 3, 0x13, and 0x14; otherwise false.
+ * @return True for modes 1, 2, 3, 0x13, 0x14, and 0x16; otherwise false.
  */
 bool wheel_packet_mode_one_applies(uint8_t wheel_mode) {
-    return wheel_mode == 1 || wheel_mode == 3 || wheel_mode == 0x13 || wheel_mode == 0x14;
+    return wheel_mode == 1 || wheel_mode == WHEEL_PACKET_VENDOR_MODE || wheel_mode == 3 ||
+           wheel_mode == WHEEL_PACKET_AUTHENTICATION_MODE_FIRST ||
+           wheel_mode == WHEEL_PACKET_AUTHENTICATION_MODE_LAST ||
+           wheel_mode == WHEEL_PACKET_AUTHENTICATED_VENDOR_MODE;
 }
 
 /**
@@ -156,6 +169,13 @@ void wheel_packet_mode_one_decode(const uint8_t request[WHEEL_PACKET_MODE_ONE_RE
     input->axis_limit = payload[REQUEST_AXIS_LIMIT_OFFSET];
 }
 
+/**
+ * @brief Synchronizes authenticated button-latch representations.
+ *
+ * Mirrors either active latch source into its corresponding button and control bit.
+ *
+ * @param[in,out] input Standard packet input containing both latch representations.
+ */
 static void synchronize_latched_buttons(WheelPacketModeOneInput *input) {
     if ((input->buttons[1] & 0x01u) != 0 || (input->controls.latch_flags & 0x01u) != 0) {
         input->buttons[1] |= 0x01u;
@@ -221,8 +241,8 @@ void wheel_packet_mode_one_normalize(WheelPacketModeOneInput *input, bool authen
 /**
  * @brief Encodes the shared standard attached-wheel response.
  *
- * Writes the command, display output, vibration channels, and legacy axes for modes 1, 3, 0x13,
- * and 0x14. Modes 0x13 and 0x14 use the authentication command byte.
+ * Writes the command, display output, vibration channels, and legacy axes for the standard and
+ * vendor packet modes. Modes 0x13, 0x14, and 0x16 use the authentication command byte.
  *
  * @param[in] wheel_mode Selected attached-wheel mode.
  * @param[in] output Current display output, vibration channels, and legacy axes.
@@ -230,10 +250,11 @@ void wheel_packet_mode_one_normalize(WheelPacketModeOneInput *input, bool authen
  */
 void wheel_packet_mode_one_encode(uint8_t wheel_mode, const WheelPacketModeOneOutput *output,
                                   uint8_t response[WHEEL_PACKET_MODE_ONE_RESPONSE_SIZE]) {
-    response[0] = wheel_mode >= WHEEL_PACKET_AUTHENTICATION_MODE_FIRST &&
-                          wheel_mode <= WHEEL_PACKET_AUTHENTICATION_MODE_LAST
-                      ? WHEEL_PACKET_COMMAND_AUTHENTICATE
-                      : WHEEL_PACKET_COMMAND_SELECT_MODE;
+    bool authenticated = (wheel_mode >= WHEEL_PACKET_AUTHENTICATION_MODE_FIRST &&
+                          wheel_mode <= WHEEL_PACKET_AUTHENTICATION_MODE_LAST) ||
+                         wheel_mode == WHEEL_PACKET_AUTHENTICATED_VENDOR_MODE;
+    response[0] =
+        authenticated ? WHEEL_PACKET_COMMAND_AUTHENTICATE : WHEEL_PACKET_COMMAND_SELECT_MODE;
     response[1] = 0;
     for (uint8_t index = 0; index < WHEEL_DISPLAY_GLYPH_COUNT; index++) {
         response[index + 2] = output->display.glyphs[index];

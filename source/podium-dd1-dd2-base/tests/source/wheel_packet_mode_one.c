@@ -6,11 +6,12 @@
 
 static void test_identifies_shared_codec_modes(void) {
     assert(wheel_packet_mode_one_applies(1));
+    assert(wheel_packet_mode_one_applies(2));
     assert(wheel_packet_mode_one_applies(3));
     assert(wheel_packet_mode_one_applies(0x13));
     assert(wheel_packet_mode_one_applies(0x14));
+    assert(wheel_packet_mode_one_applies(0x16));
     assert(!wheel_packet_mode_one_applies(0));
-    assert(!wheel_packet_mode_one_applies(2));
     assert(!wheel_packet_mode_one_applies(0x12));
     assert(!wheel_packet_mode_one_applies(0x15));
 }
@@ -30,7 +31,7 @@ static void test_encodes_the_complete_response(void) {
     assert(memcmp(response, expected, sizeof(expected)) == 0);
 }
 
-static void test_requests_authentication_for_wheel_modes_0x13_and_0x14(void) {
+static void test_requests_authentication_for_authenticated_packet_modes(void) {
     const WheelPacketModeOneOutput output = {0};
     uint8_t response[WHEEL_PACKET_MODE_ONE_RESPONSE_SIZE] = {0};
 
@@ -39,6 +40,12 @@ static void test_requests_authentication_for_wheel_modes_0x13_and_0x14(void) {
 
     wheel_packet_mode_one_encode(0x14, &output, response);
     assert(response[0] == 0xa6);
+
+    wheel_packet_mode_one_encode(0x16, &output, response);
+    assert(response[0] == 0xa6);
+
+    wheel_packet_mode_one_encode(2, &output, response);
+    assert(response[0] == 0xa5);
 
     wheel_packet_mode_one_encode(0x15, &output, response);
     assert(response[0] == 0xa5);
@@ -176,7 +183,7 @@ static void test_builds_normalized_snapshots(void) {
 int main(void) {
     test_identifies_shared_codec_modes();
     test_encodes_the_complete_response();
-    test_requests_authentication_for_wheel_modes_0x13_and_0x14();
+    test_requests_authentication_for_authenticated_packet_modes();
     test_decodes_standard_input_fields();
     test_filters_buttons_across_three_samples();
     test_averages_authenticated_control_axes_across_three_samples();
