@@ -66,6 +66,14 @@ static void publish_auxiliary(PedalService *service) {
                                                                   : service->remote_auxiliary;
 }
 
+/**
+ * @brief Clears pending V3 output operations.
+ *
+ * Restores the control, input-command, configuration, and periodic output state used when a V3
+ * connection starts or is released.
+ *
+ * @param[in,out] service V3 output state to clear.
+ */
 static void clear_v3_outbound(PedalService *service) {
     service->pending_control = 0;
     for (uint8_t axis = 0; axis < PEDAL_INPUT_AXIS_COUNT; axis++) {
@@ -125,11 +133,27 @@ static void reconnect(PedalService *service, uint32_t now_ms) {
     service->deadline_ms = now_ms + (backoff ? PEDAL_RECONNECT_DELAY_MS : 0);
 }
 
+/**
+ * @brief Encodes and submits the current V3 transmit frame.
+ *
+ * Serializes the retained frame into its fixed transport buffer before starting transmission.
+ *
+ * @param[in,out] service V3 frame and encoded transport buffer to use.
+ * @return True when the pedal link accepts the frame.
+ */
 static bool send_frame(PedalService *service) {
     pedal_frame_encode(&service->transmit_frame, service->frame_buffer);
     return platform_pedal_link_send_frame(service->frame_buffer);
 }
 
+/**
+ * @brief Initializes the complete pedal service state.
+ *
+ * Releases published inputs, resets every supported transport, restores protocol defaults, and
+ * schedules digital discovery for the first service pass.
+ *
+ * @param[out] service Pedal service state to initialize.
+ */
 void pedal_service_init(PedalService *service) {
     pedal_input_release(&service->input);
     pedal_v3_state_init(&service->v3);
@@ -144,6 +168,7 @@ void pedal_service_init(PedalService *service) {
     service->v4_response_deadline_ms = 0;
     service->v4_operation_deadline_ms = 0;
     service->next_v4_keepalive_ms = 0;
+    service->next_service_ms = 0;
     service->response = 0;
     service->brake_force_percent = 100;
     service->startup_frame_count = 0;
@@ -285,6 +310,15 @@ static const TransferSessionCallbacks v4_callbacks = {
     .clock = read_v4_clock,
 };
 
+/**
+ * @brief Publishes the latest local analog pedal samples to the service.
+ *
+ * Retains all three channels for fallback detection and updates an active analog source. Loss of
+ * a valid active source returns the service to digital discovery.
+ *
+ * @param[in,out] service Analog samples, input state, and source selection to update.
+ * @param[in] samples Three local pedal samples in throttle, brake, and clutch order.
+ */
 void pedal_service_set_analog_samples(PedalService *service,
                                       const uint16_t samples[PEDAL_INPUT_AXIS_COUNT]) {
     for (uint8_t axis = 0; axis < PEDAL_INPUT_AXIS_COUNT; axis++) {
@@ -300,10 +334,29 @@ void pedal_service_set_analog_samples(PedalService *service,
     }
 }
 
+/**
+ * @brief Sets the V3 brake-force scaling control.
+ *
+ * Retains the full eight-bit control value so the V3 input path can apply its signed percentage
+ * adjustment to subsequent brake reports.
+ *
+ * @param[in,out] service Pedal service containing the scaling control.
+ * @param[in] force_percent Encoded brake-force control value.
+ */
 void pedal_service_set_brake_force(PedalService *service, uint8_t force_percent) {
     service->brake_force_percent = force_percent;
 }
 
+/**
+ * @brief Records one changed V4 tuning value for transmission.
+ *
+ * Preserves an unchanged value and raises the setting's pending bit only when its value changes.
+ *
+ * @param[in,out] current Retained value for the setting.
+ * @param[in] value Requested value for the setting.
+ * @param[in] setting One-based V4 tuning setting identifier.
+ * @param[in,out] pending Pending-setting mask to update.
+ */
 static void update_v4_tuning_value(uint8_t *current, uint8_t value, uint8_t setting,
                                    uint8_t *pending) {
     if (*current != value) {
@@ -312,6 +365,15 @@ static void update_v4_tuning_value(uint8_t *current, uint8_t value, uint8_t sett
     }
 }
 
+/**
+ * @brief Applies the current V4 pedal tuning values.
+ *
+ * Compares brake force and each pedal curve independently so the V4 service sends only settings
+ * that changed, in its protocol-defined priority order.
+ *
+ * @param[in,out] service V4 tuning values and pending-setting mask to update.
+ * @param[in] tuning Requested brake-force and pedal-curve values.
+ */
 void pedal_service_set_v4_tuning(PedalService *service, PedalV4Tuning tuning) {
     update_v4_tuning_value(&service->v4_tuning.brake_force, tuning.brake_force,
                            PEDAL_V4_TUNING_BRAKE_FORCE, &service->v4_tuning_pending);
@@ -1236,8 +1298,21 @@ static void service_v3_stream(PedalService *service, uint32_t now_ms) {
     service_v3_output(service, now_ms);
 }
 
+/**
+ * @brief Advances the pedal transport service at its one-millisecond cadence.
+ *
+ * Processes at most one discovery, legacy, V3, V4, reconnect, or analog phase per elapsed
+ * millisecond. Calls made before the next service deadline leave the retained phase unchanged.
+ *
+ * @param[in,out] service Pedal transport, protocol, timing, and input state to update.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 void pedal_service_run(PedalService *service, uint32_t now_ms) {
     service->clock_ms = now_ms;
+    if (!platform_time_reached(now_ms, service->next_service_ms)) {
+        return;
+    }
+    service->next_service_ms = now_ms + 1;
     switch (service->phase) {
     case PEDAL_SERVICE_DETECT_REQUEST:
         if (platform_pedal_link_send_byte(PEDAL_DETECT_COMMAND)) {
@@ -1321,6 +1396,18 @@ void pedal_service_run(PedalService *service, uint32_t now_ms) {
     }
 }
 
+/**
+ * @brief Returns the pedal input currently published by the active source.
+ *
+ * @param[in] service Pedal service containing the published axes and auxiliary input.
+ * @return Read-only current pedal input.
+ */
 const PedalInput *pedal_service_input(const PedalService *service) { return &service->input; }
 
+/**
+ * @brief Returns the retained V3 pedal protocol state.
+ *
+ * @param[in] service Pedal service containing V3 calibration and connection state.
+ * @return Read-only current V3 state.
+ */
 const PedalV3State *pedal_service_v3_state(const PedalService *service) { return &service->v3; }

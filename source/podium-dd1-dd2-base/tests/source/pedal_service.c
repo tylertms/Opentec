@@ -478,19 +478,33 @@ static void test_tightens_timeout_after_stream_startup(void) {
 
     for (uint16_t frame = 0; frame < 250; frame++) {
         receive_frame(&sample);
-        pedal_service_run(&service, 11);
+        pedal_service_run(&service, 11 + frame);
     }
-    pedal_service_run(&service, 1011);
+    pedal_service_run(&service, 1260);
     assert(service.connected);
     assert(service.phase == PEDAL_SERVICE_V3_STREAM);
 
     receive_frame(&sample);
-    pedal_service_run(&service, 1012);
-    pedal_service_run(&service, 2011);
+    pedal_service_run(&service, 1261);
+    pedal_service_run(&service, 2260);
     assert(service.connected);
-    pedal_service_run(&service, 2012);
+    pedal_service_run(&service, 2261);
     assert(!service.connected);
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
+}
+
+static void test_runs_at_most_once_per_millisecond(void) {
+    PedalService service;
+    reset_link();
+    pedal_service_init(&service);
+
+    pedal_service_run(&service, 0);
+    receive_byte(PEDAL_DEVICE_V3);
+    pedal_service_run(&service, 0);
+    assert(service.phase == PEDAL_SERVICE_DETECT_RESPONSE);
+
+    pedal_service_run(&service, 1);
+    assert(service.phase == PEDAL_SERVICE_PROTOCOL_REQUEST);
 }
 
 static void connect_v4(PedalService *service) {
@@ -1171,6 +1185,7 @@ int main(void) {
     test_schedules_v3_commands_and_calibration_frames();
     test_uses_long_timeout_during_stream_startup();
     test_tightens_timeout_after_stream_startup();
+    test_runs_at_most_once_per_millisecond();
     test_polls_and_publishes_v4_input();
     test_waits_for_complete_v4_status_response();
     test_sends_v4_tuning_in_protocol_order();

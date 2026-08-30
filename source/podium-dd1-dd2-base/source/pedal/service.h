@@ -94,6 +94,7 @@ typedef struct {
     uint32_t v4_response_deadline_ms;
     uint32_t v4_operation_deadline_ms;
     uint32_t next_v4_keepalive_ms;
+    uint32_t next_service_ms;
     uint32_t clock_ms;
     PedalFrame transmit_frame;
     PedalFrame receive_frame;
