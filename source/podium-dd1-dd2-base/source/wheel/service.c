@@ -1875,6 +1875,21 @@ bool wheel_service_input_capability_available(const WheelService *service) {
 }
 
 /**
+ * @brief Reports whether attached-wheel force-output mode selection is complete.
+ *
+ * Accepts authenticated packet traffic and either command-three scan mode. Connection handshake,
+ * mode selection, and unsupported-wheel phases remain interlocked.
+ *
+ * @param[in] service Attached-wheel service and protocol phase.
+ * @return True when the selected wheel protocol can proceed to force-output confirmation.
+ */
+bool wheel_service_force_output_ready(const WheelService *service) {
+    WheelProtocolPhase phase = service->protocol.phase;
+    return phase == WHEEL_PROTOCOL_AUTHENTICATING || phase == WHEEL_PROTOCOL_ACTIVE ||
+           phase == WHEEL_PROTOCOL_SCANNING_PRIMARY || phase == WHEEL_PROTOCOL_SCANNING_SECONDARY;
+}
+
+/**
  * @brief Returns the negotiated attached-wheel mode.
  *
  * Reads the mode selected by the attached-wheel protocol handshake.

@@ -1175,6 +1175,26 @@ static void test_reports_host_capability_recovery_inputs(void) {
     assert(!wheel_service_adapter_requests_host_capability(&service));
 }
 
+static void test_reports_force_output_readiness(void) {
+    WheelService service;
+    initialize_service(&service);
+
+    service.protocol.phase = WHEEL_PROTOCOL_WAITING;
+    assert(!wheel_service_force_output_ready(&service));
+    service.protocol.phase = WHEEL_PROTOCOL_SELECTING;
+    assert(!wheel_service_force_output_ready(&service));
+    service.protocol.phase = WHEEL_PROTOCOL_UNSUPPORTED;
+    assert(!wheel_service_force_output_ready(&service));
+    service.protocol.phase = WHEEL_PROTOCOL_AUTHENTICATING;
+    assert(wheel_service_force_output_ready(&service));
+    service.protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    assert(wheel_service_force_output_ready(&service));
+    service.protocol.phase = WHEEL_PROTOCOL_SCANNING_PRIMARY;
+    assert(wheel_service_force_output_ready(&service));
+    service.protocol.phase = WHEEL_PROTOCOL_SCANNING_SECONDARY;
+    assert(wheel_service_force_output_ready(&service));
+}
+
 static void test_exposes_playstation_wheel_inputs(void) {
     WheelService service;
     initialize_service(&service);
@@ -1265,6 +1285,7 @@ int main(void) {
     test_preserves_default_display_behind_temporary_overlay();
     test_prioritizes_interaction_display_override();
     test_reports_host_capability_recovery_inputs();
+    test_reports_force_output_readiness();
     test_exposes_playstation_wheel_inputs();
     return 0;
 }

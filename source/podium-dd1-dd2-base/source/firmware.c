@@ -829,6 +829,11 @@ static uint8_t motor_force_feedback_status(void) {
     if (system_torque_transition.applied_disabled) {
         status |= MOTOR_OUTPUT_STATUS_OVERRIDE_ACTIVE;
     }
+    if (!startup_direct_force && !xbox_direct_force &&
+        !force_feedback_state.primary_output_disabled &&
+        !wheel_service_force_output_ready(&wheel_service)) {
+        status |= MOTOR_OUTPUT_STATUS_TRANSITION_ACTIVE;
+    }
     if (force_feedback_state.primary_output_disabled) {
         status |= MOTOR_OUTPUT_STATUS_PRIMARY_DISABLED;
     }
@@ -3506,9 +3511,7 @@ static void service_local_display(void) {
  * prompt presentation through the shared event slot.
  */
 static void service_force_output_enable(void) {
-    WheelProtocolPhase wheel_phase = wheel_service_protocol_phase(&wheel_service);
-    bool wheel_protocol_ready =
-        wheel_phase == WHEEL_PROTOCOL_AUTHENTICATING || wheel_phase == WHEEL_PROTOCOL_ACTIVE;
+    bool wheel_protocol_ready = wheel_service_force_output_ready(&wheel_service);
     bool usb_connected = !usb_connection_monitor.disconnected;
 
     if (force_output_enabled && (!wheel_protocol_ready || !usb_connected)) {
