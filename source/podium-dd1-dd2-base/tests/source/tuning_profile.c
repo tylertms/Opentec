@@ -13,15 +13,23 @@ static void test_defaults(void) {
     assert(profile.vibration_strength == 10);
     assert(profile.brake_indicator_level == 101);
     assert(profile.force_scale == TUNING_FORCE_SCALE_PEAK);
+    assert(profile.steering_deadzone == 0);
+    assert(profile.drift_compensation == 0);
     assert(profile.force_effect_strength == 10);
     assert(profile.spring_effect_strength == 10);
     assert(profile.damper_effect_strength == 10);
     assert(profile.natural_damper == 50);
     assert(profile.natural_friction == 0);
+    assert(profile.brake_force == 50);
+    assert(profile.alternate_brake_force == 50);
     assert(profile.force_effect_intensity == 100);
     assert(profile.multi_position_mode == TUNING_MULTI_POSITION_AUTOMATIC);
     assert(profile.paddle_mode == TUNING_CLUTCH_BRAKE);
     assert(profile.interpolation_filter == 6);
+    assert(profile.natural_inertia == 0);
+    assert(profile.full_force_enabled == 0);
+    assert(profile.button_illumination_enabled == 1);
+    assert(profile.display_rotation_enabled == 1);
     assert(profile.brake_pedal_curve == TUNING_PEDAL_CURVE_LINEAR);
     assert(profile.clutch_pedal_curve == TUNING_PEDAL_CURVE_LINEAR);
     assert(profile.throttle_pedal_curve == TUNING_PEDAL_CURVE_LINEAR);
@@ -32,6 +40,7 @@ static void test_numeric_limits(void) {
     tuning_profile_defaults(&profile);
     profile.rotation_degrees = UINT16_MAX;
     profile.force_feedback_strength = UINT8_MAX;
+    profile.vibration_strength = UINT8_MAX;
     profile.brake_indicator_level = 0;
     profile.steering_deadzone = UINT8_MAX;
     profile.force_effect_strength = UINT8_MAX;
@@ -46,8 +55,9 @@ static void test_numeric_limits(void) {
     profile.natural_inertia = UINT8_MAX;
 
     tuning_profile_normalize(&profile);
-    assert(profile.rotation_degrees == 2520);
+    assert(profile.rotation_degrees == TUNING_ROTATION_MAX_DEGREES);
     assert(profile.force_feedback_strength == 100);
+    assert(profile.vibration_strength == 10);
     assert(profile.brake_indicator_level == 1);
     assert(profile.steering_deadzone == 10);
     assert(profile.force_effect_strength == 12);
@@ -68,7 +78,7 @@ static void test_rotation_normalization(void) {
 
     profile.rotation_degrees = 89;
     tuning_profile_normalize(&profile);
-    assert(profile.rotation_degrees == 90);
+    assert(profile.rotation_degrees == TUNING_ROTATION_MIN_DEGREES);
 
     profile.rotation_degrees = 1087;
     tuning_profile_normalize(&profile);
