@@ -503,8 +503,8 @@ static void test_polls_and_publishes_v4_input(void) {
     PedalService service;
     TransferFrame request;
     static const uint8_t expected_request[] = {
-        0x12, 0x0a, 0x00, 0x00, 0x02, 0x08, 0x00, 0x00, 0x02, 0x18, 0x00,
-        0x00, 0x01, 0x20, 0x00, 0x00, 0x08, 0xaa, 0x00, 0x00, 0x01,
+        0x12, 0x0a, 0x02, 0x08, 0x02, 0x18, 0x01, 0x20, 0x08, 0xaa, 0x01,
+        0x07, 0xba, 0x01, 0x04, 0x52, 0x02, 0x72, 0x00, 0xd7, 0xfb,
     };
     uint8_t status[45] = {0};
     status[25] = 0x0a;
@@ -558,6 +558,40 @@ static void test_polls_and_publishes_v4_input(void) {
     assert(transfer_send_count == 2);
     pedal_service_run(&service, 21);
     assert(transfer_send_count == 3);
+}
+
+static void test_waits_for_complete_v4_status_response(void) {
+    PedalService service;
+    const uint8_t partial_status[32] = {0};
+    uint8_t complete_status[32] = {0};
+    complete_status[25] = 0x0a;
+    complete_status[26] = 5;
+    complete_status[27] = 0x08;
+    complete_status[28] = 2;
+    complete_status[29] = 0x10;
+    complete_status[30] = 0xb4;
+    complete_status[31] = 0x24;
+    reset_link();
+    pedal_service_init(&service);
+    connect_v4(&service);
+
+    pedal_service_run(&service, 6);
+    receive_transfer(transfer_status_command(0, 0), NULL, 0);
+    pedal_service_run(&service, 7);
+    receive_transfer(transfer_data_command(0, 1, 6), partial_status, sizeof(partial_status));
+    pedal_service_run(&service, 8);
+
+    assert(service.v4_request_active);
+    assert(!service.v4_response_received);
+    assert(!service.connected);
+    assert(service.input.axes[0] == 0);
+
+    receive_transfer(transfer_data_command(0, 3, 7), complete_status, sizeof(complete_status));
+    pedal_service_run(&service, 9);
+
+    assert(!service.v4_request_active);
+    assert(service.connected);
+    assert(service.input.axes[0] == 0x1234);
 }
 
 static void test_sends_v4_tuning_in_protocol_order(void) {
@@ -959,6 +993,7 @@ int main(void) {
     test_uses_long_timeout_during_stream_startup();
     test_tightens_timeout_after_stream_startup();
     test_polls_and_publishes_v4_input();
+    test_waits_for_complete_v4_status_response();
     test_sends_v4_tuning_in_protocol_order();
     test_prioritizes_throttle_before_brake_at_v4_selection();
     test_queries_and_publishes_v4_pedal_adjustment();

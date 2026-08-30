@@ -33,8 +33,8 @@ enum {
 };
 
 static const uint8_t pedal_v4_status_request[] = {
-    0x12, 0x0a, 0x00, 0x00, 0x02, 0x08, 0x00, 0x00, 0x02, 0x18, 0x00,
-    0x00, 0x01, 0x20, 0x00, 0x00, 0x08, 0xaa, 0x00, 0x00, 0x01,
+    0x12, 0x0a, 0x02, 0x08, 0x02, 0x18, 0x01, 0x20, 0x08, 0xaa, 0x01,
+    0x07, 0xba, 0x01, 0x04, 0x52, 0x02, 0x72, 0x00, 0xd7, 0xfb,
 };
 
 /**
@@ -163,18 +163,28 @@ static bool v4_transfer_busy(void *context) {
     return platform_pedal_link_transmit_busy();
 }
 
+/**
+ * @brief Accepts a completed group-zero response for the active V4 request.
+ *
+ * Ignores intermediate fragments and responses outside the active pedal channel. A completed
+ * status response publishes its axes, while a completed adjustment response publishes the
+ * corresponding display selection.
+ *
+ * @param[in,out] context Pedal service awaiting the response.
+ * @param[in] data Response payload from the transfer session.
+ * @param[in] length Response payload length.
+ * @param[in] group Transfer channel group.
+ * @param[in] complete True when this payload completes the response sequence.
+ */
 static void apply_v4_status(void *context, const uint8_t *data, uint8_t length, uint8_t group,
                             bool complete) {
     PedalService *service = context;
-    if (group != 0 || !service->v4_request_active) {
+    if (group != 0 || !service->v4_request_active || !complete) {
         return;
     }
     if (service->v4_phase == PEDAL_V4_PHASE_STATUS) {
         pedal_v4_status_parse(data, length, service->input.axes);
     } else if (service->v4_phase == PEDAL_V4_PHASE_ADJUSTMENT_PROBE) {
-        if (!complete) {
-            return;
-        }
         if (pedal_adjustment_probe_classify(data, length, &service->adjustment_display)) {
             service->adjustment_display_pending = true;
         }
