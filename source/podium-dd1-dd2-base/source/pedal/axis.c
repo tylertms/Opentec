@@ -6,6 +6,10 @@ enum { PEDAL_AXIS_SAMPLE_MAXIMUM = 0x0ffe };
 
 /**
  * @brief Clamps or learns one pedal sample and scales it across the calibrated travel.
+ *
+ * Learns enabled endpoints, clamps disabled endpoints, applies the lower and upper margins, and
+ * scales the remaining travel to the configured output range. Insufficient travel returns zero.
+ *
  * @param[in,out] calibration Axis limits, margins, scale, and learning controls.
  * @param[in] sample Raw 12-bit pedal sample.
  * @return Scaled axis value limited by the configured output scale.

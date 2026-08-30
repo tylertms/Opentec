@@ -14,10 +14,26 @@ enum {
     PEDAL_ANALOG_UPPER_DEADZONE = 120,
 };
 
+/**
+ * @brief Converts one pedal ADC sample to its calibrated orientation.
+ *
+ * Inverts the converter result and clears its unused least-significant bit.
+ *
+ * @param[in] sample Raw 12-bit pedal ADC sample.
+ * @return Inverted even-valued pedal sample.
+ */
 static uint16_t pedal_analog_sample(uint16_t sample) {
     return (uint16_t)~sample & PEDAL_ANALOG_SAMPLE_MASK;
 }
 
+/**
+ * @brief Reports whether any local analog pedal input is connected.
+ *
+ * Uses the released-level limits for the first two axes and the lower third-axis limit.
+ *
+ * @param[in] samples Three oriented pedal samples.
+ * @return True when at least one local analog pedal input is present.
+ */
 static bool pedal_analog_present(const uint16_t samples[PEDAL_INPUT_AXIS_COUNT]) {
     return samples[0] <= PEDAL_ANALOG_PRIMARY_RELEASE_LIMIT ||
            samples[1] <= PEDAL_ANALOG_PRIMARY_RELEASE_LIMIT ||
@@ -26,6 +42,10 @@ static bool pedal_analog_present(const uint16_t samples[PEDAL_INPUT_AXIS_COUNT])
 
 /**
  * @brief Restores the three analog pedal calibration records to their startup values.
+ *
+ * Clears learned endpoints and activity, installs the 45-count lower and 120-count upper margins,
+ * enables maximum learning, and selects full 16-bit output scale.
+ *
  * @param[out] analog Analog pedal calibration state to initialize.
  */
 void pedal_analog_init(PedalAnalog *analog) {
@@ -44,6 +64,10 @@ void pedal_analog_init(PedalAnalog *analog) {
 
 /**
  * @brief Detects analog pedals, captures their low endpoints, and publishes calibrated axes.
+ *
+ * The first connected sample captures all three minima and clears published output. Later samples
+ * learn maxima and scale each axis. A disconnected sample resets calibration and released output.
+ *
  * @param[in,out] analog Analog detection and calibration state.
  * @param[in] samples Three raw ADC samples in primary, secondary, and tertiary order.
  * @param[out] input Published pedal axes and auxiliary value.
