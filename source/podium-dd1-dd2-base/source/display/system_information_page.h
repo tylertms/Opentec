@@ -6,6 +6,7 @@
 
 #include "display/framebuffer.h"
 
+/** @brief Base, motor, and wheel quick-release values shown on the system-information page. */
 typedef struct {
     uint8_t main_hardware;
     uint32_t main_runtime_seconds;

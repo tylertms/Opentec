@@ -16,7 +16,7 @@ static UsbVendorCommand command(uint8_t arguments[2], uint8_t length) {
 static void test_selects_pages_and_encodes_status(void) {
     UsbTuningMenuService service;
     usb_tuning_menu_service_init(&service);
-    uint8_t arguments[2] = {2, USB_TUNING_MENU_PAGE_FORCE_FEEDBACK};
+    uint8_t arguments[2] = {2, USB_TUNING_MENU_PAGE_MOTOR_DATA_ANALYSIS};
     UsbVendorCommand select = command(arguments, sizeof(arguments));
     uint8_t output[USB_DEVICE_REPORT_SIZE];
 
@@ -26,7 +26,7 @@ static void test_selects_pages_and_encodes_status(void) {
     usb_tuning_menu_service_encode_response(&service, output);
     assert(output[0] == UINT8_MAX);
     assert(output[1] == 2);
-    assert(output[2] == USB_TUNING_MENU_PAGE_FORCE_FEEDBACK);
+    assert(output[2] == USB_TUNING_MENU_PAGE_MOTOR_DATA_ANALYSIS);
     for (uint8_t index = 3; index < USB_DEVICE_REPORT_SIZE; index++) {
         assert(output[index] == 0);
     }

@@ -10,6 +10,9 @@ cooling_pwm_sources = files('source/cooling/pwm.c')
 cooling_tachometer_sources = files('source/cooling/tachometer.c')
 cooling_temperature_sources = files('source/cooling/temperature.c')
 display_controller_sources = files('source/display/controller.c')
+display_force_feedback_analysis_page_sources = files(
+  'source/display/force_feedback_analysis_page.c',
+)
 display_framebuffer_sources = files('source/display/framebuffer.c')
 display_identity_page_sources = files('source/display/identity_page.c')
 display_notice_sources = files('source/display/notice.c')
@@ -245,6 +248,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'cooling-tachometer': 'source/cooling/tachometer.c',
     'cooling-temperature': 'source/cooling/temperature.c',
     'display-controller': 'source/display/controller.c',
+    'display-force-feedback-analysis-page': 'source/display/force_feedback_analysis_page.c',
     'display-framebuffer': 'source/display/framebuffer.c',
     'display-identity-page': 'source/display/identity_page.c',
     'display-notice': 'source/display/notice.c',
@@ -590,6 +594,16 @@ if not meson.is_cross_build()
   display_framebuffer_test = executable(
     'base-display-framebuffer-test',
     'tests/source/display_framebuffer.c',
+    display_framebuffer_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  display_force_feedback_analysis_page_test = executable(
+    'base-display-force-feedback-analysis-page-test',
+    'tests/source/display_force_feedback_analysis_page.c',
+    display_force_feedback_analysis_page_sources,
+    display_text_sources,
     display_framebuffer_sources,
     build_by_default: false,
     include_directories: base_include,
@@ -2529,6 +2543,11 @@ if not meson.is_cross_build()
     suite: ['base', 'cooling'],
   )
   test('base-display-controller', display_controller_test, suite: ['base', 'display'])
+  test(
+    'base-display-force-feedback-analysis-page',
+    display_force_feedback_analysis_page_test,
+    suite: ['base', 'display', 'force-feedback'],
+  )
   test('base-display-framebuffer', display_framebuffer_test, suite: ['base', 'display'])
   test('base-display-identity-page', display_identity_page_test, suite: ['base', 'display'])
   test('base-display-notice', display_notice_test, suite: ['base', 'display'])

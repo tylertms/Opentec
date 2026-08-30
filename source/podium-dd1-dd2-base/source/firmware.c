@@ -11,6 +11,7 @@
 #include "cooling/effect_limit.h"
 #include "cooling/tachometer.h"
 #include "cooling/temperature.h"
+#include "display/force_feedback_analysis_page.h"
 #include "display/identity_page.h"
 #include "display/notice.h"
 #include "display/prompt.h"
@@ -343,6 +344,9 @@ static DisplaySystemInformation local_display_system_information;
 static DisplaySystemInformation local_display_rendered_system_information;
 static uint32_t local_display_system_information_title_deadline_ms;
 static bool local_display_system_information_content_active;
+static DisplayForceFeedbackAnalysisPage local_display_force_feedback_analysis;
+static uint32_t local_display_force_feedback_analysis_title_deadline_ms;
+static bool local_display_force_feedback_analysis_content_active;
 
 typedef enum {
     USB_VENDOR_RESPONSE_NONE,
@@ -379,7 +383,8 @@ enum {
     LOCAL_DISPLAY_PAGE_TUNING = 6,
     LOCAL_DISPLAY_PAGE_IDENTITY = 7,
     LOCAL_DISPLAY_PAGE_SYSTEM_INFORMATION = 8,
-    LOCAL_DISPLAY_SYSTEM_INFORMATION_TITLE_MS = 1000,
+    LOCAL_DISPLAY_PAGE_FORCE_FEEDBACK_ANALYSIS = 9,
+    LOCAL_DISPLAY_DIAGNOSTIC_TITLE_MS = 1000,
     USB_DISCONNECT_STATUS_CODE = 0x1c,
     TUNING_MENU_RESET_EVENT_CODE = 1,
     WHEEL_CENTER_CALIBRATED_EVENT_CODE = 2,
@@ -3160,8 +3165,9 @@ static bool system_information_equal(const DisplaySystemInformation *left,
  * Gives motor-originated notices priority over the persistent torque-disabled notice,
  * Torque Key prompt, force-output prompt, paddle bite-point adjustment, and local tuning page.
  * The persistent diagnostic selection presents its system-information title for one second and
- * refreshes changed component values after the title closes. Leaving all temporary display owners
- * restores the selected diagnostic page.
+ * refreshes changed component values after the title closes. The force-feedback analyzer retains
+ * a five-second set-point history and refreshes at its 25-millisecond sample cadence. Leaving all
+ * temporary display owners restores the selected diagnostic page.
  */
 static void service_local_display(void) {
     uint32_t now_ms = platform_time_ms();
@@ -3169,14 +3175,17 @@ static void service_local_display(void) {
         wheel_service_bite_point_adjustment(&wheel_service, &wheel_bite_point_display_percent);
     bool system_information_selected =
         usb_tuning_menu_service.active_page == USB_TUNING_MENU_PAGE_SYSTEM_INFORMATION;
+    bool force_feedback_analysis_selected =
+        usb_tuning_menu_service.active_page == USB_TUNING_MENU_PAGE_FORCE_FEEDBACK_ANALYSIS;
     uint8_t page = system_notice.kind != SYSTEM_NOTICE_NONE ? LOCAL_DISPLAY_PAGE_SYSTEM_NOTICE
                    : torque_disabled_notice_visible         ? LOCAL_DISPLAY_PAGE_TORQUE_DISABLED
                    : torque_key_prompt_visible              ? LOCAL_DISPLAY_PAGE_TORQUE_KEY_PROMPT
                    : force_output_prompt_visible            ? LOCAL_DISPLAY_PAGE_FORCE_OUTPUT_PROMPT
                    : bite_point_visible                     ? LOCAL_DISPLAY_PAGE_BITE_POINT
                    : tuning_menu.selected_entry < TUNING_ENTRY_COUNT ? LOCAL_DISPLAY_PAGE_TUNING
-                   : system_information_selected ? LOCAL_DISPLAY_PAGE_SYSTEM_INFORMATION
-                                                 : LOCAL_DISPLAY_PAGE_IDENTITY;
+                   : system_information_selected      ? LOCAL_DISPLAY_PAGE_SYSTEM_INFORMATION
+                   : force_feedback_analysis_selected ? LOCAL_DISPLAY_PAGE_FORCE_FEEDBACK_ANALYSIS
+                                                      : LOCAL_DISPLAY_PAGE_IDENTITY;
     local_display_system_information = build_system_information(now_ms);
     bool system_information_changed =
         page == LOCAL_DISPLAY_PAGE_SYSTEM_INFORMATION && page == local_display_page &&
@@ -3185,6 +3194,19 @@ static void service_local_display(void) {
          (local_display_system_information_content_active &&
           !system_information_equal(&local_display_system_information,
                                     &local_display_rendered_system_information)));
+    bool force_feedback_sampled = false;
+    if (page == LOCAL_DISPLAY_PAGE_FORCE_FEEDBACK_ANALYSIS && page == local_display_page) {
+        uint8_t direction =
+            motor_position_ready && motor_position_report.auxiliary_negative ? 1 : 0;
+        uint16_t position = motor_position_ready ? motor_position_report.auxiliary_position : 0;
+        force_feedback_sampled = display_force_feedback_analysis_page_update(
+            &local_display_force_feedback_analysis, now_ms, direction, position);
+    }
+    bool force_feedback_analysis_changed =
+        page == LOCAL_DISPLAY_PAGE_FORCE_FEEDBACK_ANALYSIS && page == local_display_page &&
+        ((!local_display_force_feedback_analysis_content_active &&
+          platform_time_reached(now_ms, local_display_force_feedback_analysis_title_deadline_ms)) ||
+         (local_display_force_feedback_analysis_content_active && force_feedback_sampled));
     if (page == local_display_page &&
         (page != LOCAL_DISPLAY_PAGE_BITE_POINT ||
          wheel_bite_point_display_percent == local_display_rendered_bite_point_percent) &&
@@ -3192,7 +3214,7 @@ static void service_local_display(void) {
          system_notice.kind == local_display_rendered_notice_kind) &&
         (page != LOCAL_DISPLAY_PAGE_TUNING ||
          local_display_tuning_revision == local_display_rendered_tuning_revision) &&
-        !system_information_changed) {
+        !system_information_changed && !force_feedback_analysis_changed) {
         return;
     }
 
@@ -3211,13 +3233,26 @@ static void service_local_display(void) {
         if (page != local_display_page) {
             display_system_information_page_render_title(display_framebuffer);
             local_display_system_information_title_deadline_ms =
-                now_ms + LOCAL_DISPLAY_SYSTEM_INFORMATION_TITLE_MS;
+                now_ms + LOCAL_DISPLAY_DIAGNOSTIC_TITLE_MS;
             local_display_system_information_content_active = false;
         } else {
             display_system_information_page_render(display_framebuffer,
                                                    &local_display_system_information);
             local_display_rendered_system_information = local_display_system_information;
             local_display_system_information_content_active = true;
+        }
+    } else if (page == LOCAL_DISPLAY_PAGE_FORCE_FEEDBACK_ANALYSIS) {
+        if (page != local_display_page) {
+            display_force_feedback_analysis_page_open(&local_display_force_feedback_analysis,
+                                                      now_ms);
+            display_force_feedback_analysis_page_render_title(display_framebuffer);
+            local_display_force_feedback_analysis_title_deadline_ms =
+                now_ms + LOCAL_DISPLAY_DIAGNOSTIC_TITLE_MS;
+            local_display_force_feedback_analysis_content_active = false;
+        } else {
+            display_force_feedback_analysis_page_render(display_framebuffer,
+                                                        &local_display_force_feedback_analysis);
+            local_display_force_feedback_analysis_content_active = true;
         }
     } else if (page == LOCAL_DISPLAY_PAGE_IDENTITY) {
         display_identity_page_render(display_framebuffer, board_identity.variant);
