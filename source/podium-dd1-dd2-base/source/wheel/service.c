@@ -1848,6 +1848,19 @@ bool wheel_service_calibration_available(const WheelService *service) {
 }
 
 /**
+ * @brief Reports whether the Torque Key acknowledgement can grant full strength.
+ *
+ * Prevents acknowledgement while scan-mode button polling is active or the attached wheel exposes
+ * calibration controls. The acknowledgement can be requested again after both conditions clear.
+ *
+ * @param[in] service Attached-wheel service and capability state.
+ * @return True when the Torque Key prompt can grant full strength.
+ */
+bool wheel_service_torque_key_acknowledgement_available(const WheelService *service) {
+    return !scan_active(service) && !wheel_service_calibration_available(service);
+}
+
+/**
  * @brief Reports whether the attached wheel exposes the tuning menu.
  *
  * Applies the negotiated wheel mode's inherent and report-driven availability rules to the retained

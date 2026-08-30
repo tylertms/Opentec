@@ -338,6 +338,7 @@ static bool force_output_prompt_visible;
 static LedPatternController led_pattern_controller;
 static TorqueKey torque_key;
 static TorqueKeyPrompt torque_key_prompt;
+static bool torque_key_acknowledgement_available;
 static bool torque_key_prompt_visible;
 static bool torque_disabled_notice_visible;
 static bool usb_disconnect_notice_visible;
@@ -660,15 +661,24 @@ static void apply_torque_key_prompt_action(TorqueKeyPromptAction action) {
  *
  * Filters the active-low board input for 500 milliseconds, starts or cancels the safety prompt on
  * stable key transitions, accepts a released wheel input only while the prompt owns the display,
- * and advances presentation through the shared event slot. Acknowledgement selects full base
- * strength; removal restores the DD1 or DD2 reduced limit and refreshes motor-side tuning.
+ * and advances presentation through the shared event slot. Scan-mode polling or attached-wheel
+ * calibration capability revokes acknowledgement until the condition clears. Acknowledgement
+ * selects full base strength; removal or revocation restores the DD1 or DD2 reduced limit and
+ * refreshes motor-side tuning.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 static void service_torque_key(uint32_t now_ms) {
     TorqueKeyEvent event = torque_key_update(&torque_key, platform_torque_key_inserted(), now_ms);
-    if (event == TORQUE_KEY_EVENT_INSERTED) {
-        torque_key_prompt_set_inserted(&torque_key_prompt, true);
+    bool acknowledgement_available =
+        wheel_service_torque_key_acknowledgement_available(&wheel_service);
+    if (acknowledgement_available != torque_key_acknowledgement_available) {
+        torque_key_acknowledgement_available = acknowledgement_available;
+        torque_key_prompt_set_inserted(&torque_key_prompt, acknowledgement_available &&
+                                                               torque_key.state_known &&
+                                                               torque_key.inserted);
+    } else if (event == TORQUE_KEY_EVENT_INSERTED) {
+        torque_key_prompt_set_inserted(&torque_key_prompt, acknowledgement_available);
     } else if (event == TORQUE_KEY_EVENT_REMOVED) {
         torque_key_prompt_set_inserted(&torque_key_prompt, false);
     }

@@ -878,6 +878,26 @@ static void test_reports_calibration_availability(void) {
     assert(wheel_service_calibration_available(&service));
 }
 
+static void test_gates_torque_key_acknowledgement(void) {
+    WheelService service;
+    initialize_service(&service);
+
+    assert(wheel_service_torque_key_acknowledgement_available(&service));
+
+    service.protocol.capabilities.calibration_available = true;
+    assert(!wheel_service_torque_key_acknowledgement_available(&service));
+
+    service.protocol.capabilities.calibration_available = false;
+    service.protocol.phase = WHEEL_PROTOCOL_SCANNING_PRIMARY;
+    assert(!wheel_service_torque_key_acknowledgement_available(&service));
+
+    service.protocol.phase = WHEEL_PROTOCOL_SCANNING_SECONDARY;
+    assert(!wheel_service_torque_key_acknowledgement_available(&service));
+
+    service.protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    assert(wheel_service_torque_key_acknowledgement_available(&service));
+}
+
 static void test_reports_tuning_display_support(void) {
     WheelService service = {0};
     const uint8_t direct_modes[] = {9, 10, 11, 14, 15, 16, 23, 27, 28, 29};
@@ -1280,6 +1300,7 @@ int main(void) {
     test_rejects_unavailable_multi_position_input();
     test_selects_extended_report_fields();
     test_reports_calibration_availability();
+    test_gates_torque_key_acknowledgement();
     test_reports_tuning_display_support();
     test_routes_tuning_display_output_by_connection();
     test_selects_calibration_advance_button_by_wheel_mode();

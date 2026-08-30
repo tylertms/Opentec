@@ -156,6 +156,7 @@ bool wheel_service_adapter_requests_host_capability(const WheelService *service)
 uint16_t wheel_service_capability_flags(const WheelService *service);
 bool wheel_service_host_capability_enabled(const WheelService *service);
 bool wheel_service_calibration_available(const WheelService *service);
+bool wheel_service_torque_key_acknowledgement_available(const WheelService *service);
 bool wheel_service_tuning_menu_available(const WheelService *service);
 bool wheel_service_tuning_display_supported(const WheelService *service);
 bool wheel_service_input_capability_available(const WheelService *service);
