@@ -784,7 +784,7 @@ static void select_mode(WheelProtocol *protocol,
         protocol->phase = WHEEL_PROTOCOL_SCANNING_SECONDARY;
         break;
     case WHEEL_PROTOCOL_COMMAND_SELECT_MODE:
-        if (request[1] > WHEEL_MODE_MAXIMUM) {
+        if (request[1] == WHEEL_MODE_UNKNOWN || request[1] > WHEEL_MODE_MAXIMUM) {
             protocol->phase = WHEEL_PROTOCOL_UNSUPPORTED;
             break;
         }

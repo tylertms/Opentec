@@ -1828,9 +1828,16 @@ static void test_accumulates_axis_mode_interface_pulses(void) {
     assert(protocol.motion.axes[2] == 0);
 }
 
-static void test_rejects_out_of_range_mode(void) {
+static void test_rejects_unsupported_modes(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    synchronize(&protocol, request);
+    select_mode(&protocol, request, WHEEL_MODE_UNKNOWN);
+
+    assert(protocol.phase == WHEEL_PROTOCOL_UNSUPPORTED);
+    assert(protocol.mode == WHEEL_MODE_UNKNOWN);
+
     wheel_protocol_init(&protocol);
     synchronize(&protocol, request);
     select_mode(&protocol, request, WHEEL_MODE_MAXIMUM + 1);
@@ -1903,7 +1910,7 @@ int main(void) {
     test_accumulates_adapter_interface_pulses();
     test_accumulates_extended_interface_pulses();
     test_accumulates_axis_mode_interface_pulses();
-    test_rejects_out_of_range_mode();
+    test_rejects_unsupported_modes();
     test_crc8_vectors();
     return 0;
 }

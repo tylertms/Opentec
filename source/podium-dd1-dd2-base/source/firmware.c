@@ -830,7 +830,7 @@ static uint8_t motor_force_feedback_status(void) {
     }
     if (!motor_startup_direct_force && !xbox_direct_force &&
         !force_feedback_state.primary_output_disabled &&
-        !wheel_service_force_output_ready(&wheel_service)) {
+        wheel_service_force_output_transition_active(&wheel_service)) {
         status |= MOTOR_OUTPUT_STATUS_TRANSITION_ACTIVE;
     }
     if (force_feedback_state.primary_output_disabled) {

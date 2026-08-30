@@ -1181,18 +1181,25 @@ static void test_reports_force_output_readiness(void) {
 
     service.protocol.phase = WHEEL_PROTOCOL_WAITING;
     assert(!wheel_service_force_output_ready(&service));
+    assert(!wheel_service_force_output_transition_active(&service));
     service.protocol.phase = WHEEL_PROTOCOL_SELECTING;
     assert(!wheel_service_force_output_ready(&service));
+    assert(!wheel_service_force_output_transition_active(&service));
     service.protocol.phase = WHEEL_PROTOCOL_UNSUPPORTED;
     assert(!wheel_service_force_output_ready(&service));
+    assert(wheel_service_force_output_transition_active(&service));
     service.protocol.phase = WHEEL_PROTOCOL_AUTHENTICATING;
     assert(wheel_service_force_output_ready(&service));
+    assert(!wheel_service_force_output_transition_active(&service));
     service.protocol.phase = WHEEL_PROTOCOL_ACTIVE;
     assert(wheel_service_force_output_ready(&service));
+    assert(!wheel_service_force_output_transition_active(&service));
     service.protocol.phase = WHEEL_PROTOCOL_SCANNING_PRIMARY;
     assert(wheel_service_force_output_ready(&service));
+    assert(!wheel_service_force_output_transition_active(&service));
     service.protocol.phase = WHEEL_PROTOCOL_SCANNING_SECONDARY;
     assert(wheel_service_force_output_ready(&service));
+    assert(!wheel_service_force_output_transition_active(&service));
 }
 
 static void test_exposes_playstation_wheel_inputs(void) {

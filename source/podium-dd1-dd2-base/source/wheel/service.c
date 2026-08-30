@@ -1890,6 +1890,19 @@ bool wheel_service_force_output_ready(const WheelService *service) {
 }
 
 /**
+ * @brief Reports whether the selected wheel requires the motor transition interlock.
+ *
+ * Raises the interlock only after mode selection rejects an unsupported identifier. Discovery,
+ * synchronization, and mode selection remain unflagged while their result is still unknown.
+ *
+ * @param[in] service Attached-wheel service and protocol phase.
+ * @return True only while the selected wheel is in the unsupported phase.
+ */
+bool wheel_service_force_output_transition_active(const WheelService *service) {
+    return service->protocol.phase == WHEEL_PROTOCOL_UNSUPPORTED;
+}
+
+/**
  * @brief Returns the negotiated attached-wheel mode.
  *
  * Reads the mode selected by the attached-wheel protocol handshake.
