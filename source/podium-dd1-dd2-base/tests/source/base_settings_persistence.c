@@ -29,6 +29,22 @@ static void write_u16(uint8_t *data, uint16_t offset, uint16_t value) {
     data[offset + 1] = (uint8_t)(value >> 8);
 }
 
+static void write_u32(uint8_t *data, uint16_t offset, uint32_t value) {
+    data[offset] = (uint8_t)value;
+    data[offset + 1] = (uint8_t)(value >> 8);
+    data[offset + 2] = (uint8_t)(value >> 16);
+    data[offset + 3] = (uint8_t)(value >> 24);
+}
+
+static void set_generation(PlatformStorageSlot slot, uint32_t generation) {
+    enum { HEADER_SIZE = 12, GENERATION_OFFSET = 8 };
+    uint8_t *record = storage[slot];
+    uint16_t payload_size = (uint16_t)record[6] | (uint16_t)record[7] << 8;
+    uint16_t data_size = HEADER_SIZE + payload_size;
+    write_u32(record, GENERATION_OFFSET, generation);
+    write_u16(record, data_size, checksum(record, data_size));
+}
+
 bool platform_storage_read(PlatformStorageSlot slot, uint8_t *data, uint16_t size) {
     if (slot >= PLATFORM_STORAGE_SLOT_COUNT || size > PLATFORM_STORAGE_SLOT_SIZE) {
         return false;
@@ -57,24 +73,22 @@ static void reset_storage(void) {
     replace_fails = false;
 }
 
-static void test_defaults_are_saved_after_delay(void) {
+static void test_defaults_are_saved_on_initialization(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    assert(!base_settings_persistence_load(&persistence, &settings, 100));
+    assert(!base_settings_persistence_load(&persistence, &settings));
     assert(persistence.dirty);
     assert(settings.tuning_profiles.selected_slot == 0);
     assert(!settings.wheel_position.calibrated);
-    assert(base_settings_persistence_service(&persistence, &settings, 1099) ==
-           BASE_SETTINGS_PERSISTENCE_IDLE);
-    assert(base_settings_persistence_service(&persistence, &settings, 1100) ==
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
     assert(replace_count == 1);
     assert(!persistence.dirty);
 
     BaseSettingsPersistence loaded;
     BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(base_settings_persistence_load(&loaded, &restored));
     assert(restored.tuning_profiles.slots[0].rotation_degrees ==
            settings.tuning_profiles.slots[0].rotation_degrees);
     assert(!restored.wheel_position.calibrated);
@@ -89,26 +103,25 @@ static void test_defaults_are_saved_after_delay(void) {
     assert(restored.security_code.digits[2] == 0);
 }
 
-static void test_dirty_changes_are_coalesced(void) {
+static void test_dirty_changes_wait_for_explicit_save(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings, 0);
-    assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
+    base_settings_persistence_load(&persistence, &settings);
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
 
     settings.tuning_profiles.slots[1].rotation_degrees = 720;
-    base_settings_persistence_mark_dirty(&persistence, 1200);
-    base_settings_persistence_mark_dirty(&persistence, 1700);
-    assert(base_settings_persistence_service(&persistence, &settings, 2199) ==
-           BASE_SETTINGS_PERSISTENCE_IDLE);
-    assert(base_settings_persistence_service(&persistence, &settings, 2700) ==
+    base_settings_persistence_mark_dirty(&persistence);
+    assert(persistence.dirty);
+    assert(replace_count == 1);
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
     assert(replace_count == 2);
 
     BaseSettingsPersistence loaded;
     BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored, 3000));
+    assert(base_settings_persistence_load(&loaded, &restored));
     assert(restored.tuning_profiles.slots[1].rotation_degrees == 720);
 }
 
@@ -116,15 +129,15 @@ static void test_standard_profile_is_regenerated(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings, 0);
+    base_settings_persistence_load(&persistence, &settings);
     settings.tuning_profiles.slots[0].force_feedback_strength = 80;
     settings.tuning_profiles.slots[1].force_feedback_strength = 70;
-    assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
 
     BaseSettingsPersistence loaded;
     BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(base_settings_persistence_load(&loaded, &restored));
     assert(restored.tuning_profiles.slots[0].force_feedback_strength == 35);
     assert(restored.tuning_profiles.slots[1].force_feedback_strength == 70);
 }
@@ -133,15 +146,15 @@ static void test_wheel_reference_is_persisted(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings, 0);
+    base_settings_persistence_load(&persistence, &settings);
     assert(wheel_position_reference_capture(&settings.wheel_position, 20000, UINT32_C(0x5d2b)));
-    base_settings_persistence_mark_dirty(&persistence, 100);
-    assert(base_settings_persistence_service(&persistence, &settings, 1100) ==
+    base_settings_persistence_mark_dirty(&persistence);
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
 
     BaseSettingsPersistence loaded;
     BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(base_settings_persistence_load(&loaded, &restored));
     assert(restored.wheel_position.calibrated);
     assert(restored.wheel_position.center == 20000);
 }
@@ -150,7 +163,7 @@ static void test_shifter_calibration_is_persisted(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings, 0);
+    base_settings_persistence_load(&persistence, &settings);
     settings.h_pattern_shifter = (HPatternSettings){
         .calibration =
             {
@@ -165,13 +178,13 @@ static void test_shifter_calibration_is_persisted(void) {
             },
         .calibrated = true,
     };
-    base_settings_persistence_mark_dirty(&persistence, 100);
-    assert(base_settings_persistence_service(&persistence, &settings, 1100) ==
+    base_settings_persistence_mark_dirty(&persistence);
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
 
     BaseSettingsPersistence loaded;
     BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(base_settings_persistence_load(&loaded, &restored));
     assert(restored.h_pattern_shifter.calibrated);
     assert(restored.h_pattern_shifter.calibration.reverse_first_boundary == 800);
     assert(restored.h_pattern_shifter.calibration.first_third_boundary == 600);
@@ -187,19 +200,19 @@ static void test_auxiliary_axis_settings_are_persisted(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings, 0);
+    base_settings_persistence_load(&persistence, &settings);
     settings.auxiliary_axis = (AuxiliaryAxisSettings){
         .minimum = 240,
         .maximum = 3780,
         .reset_on_start = false,
     };
-    base_settings_persistence_mark_dirty(&persistence, 100);
-    assert(base_settings_persistence_service(&persistence, &settings, 1100) ==
+    base_settings_persistence_mark_dirty(&persistence);
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
 
     BaseSettingsPersistence loaded;
     BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(base_settings_persistence_load(&loaded, &restored));
     assert(restored.auxiliary_axis.minimum == 240);
     assert(restored.auxiliary_axis.maximum == 3780);
     assert(!restored.auxiliary_axis.reset_on_start);
@@ -209,16 +222,16 @@ static void test_steering_limit_settings_are_persisted(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings, 0);
+    base_settings_persistence_load(&persistence, &settings);
     settings.steering_limits.percent[0] = 35;
     settings.steering_limits.percent[5] = 80;
-    base_settings_persistence_mark_dirty(&persistence, 100);
-    assert(base_settings_persistence_service(&persistence, &settings, 1100) ==
+    base_settings_persistence_mark_dirty(&persistence);
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
 
     BaseSettingsPersistence loaded;
     BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(base_settings_persistence_load(&loaded, &restored));
     assert(restored.steering_limits.percent[0] == 35);
     assert(restored.steering_limits.percent[5] == 80);
     assert(restored.steering_limits.percent[1] == 100);
@@ -228,15 +241,15 @@ static void test_wheel_auxiliary_option_is_persisted(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings, 0);
+    base_settings_persistence_load(&persistence, &settings);
     settings.wheel_auxiliary_disabled = true;
-    base_settings_persistence_request_save(&persistence, 100);
-    assert(base_settings_persistence_service(&persistence, &settings, 100) ==
+    base_settings_persistence_mark_dirty(&persistence);
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
 
     BaseSettingsPersistence loaded;
     BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored, 200));
+    assert(base_settings_persistence_load(&loaded, &restored));
     assert(restored.wheel_auxiliary_disabled);
 }
 
@@ -244,18 +257,18 @@ static void test_security_code_is_persisted(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings, 0);
+    base_settings_persistence_load(&persistence, &settings);
     settings.security_code = (SecurityCodeSettings){
         .digits = {4, 2, 7},
         .enabled = true,
     };
-    base_settings_persistence_request_save(&persistence, 100);
-    assert(base_settings_persistence_service(&persistence, &settings, 100) ==
+    base_settings_persistence_mark_dirty(&persistence);
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
 
     BaseSettingsPersistence loaded;
     BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored, 200));
+    assert(base_settings_persistence_load(&loaded, &restored));
     assert(restored.security_code.enabled);
     assert(restored.security_code.digits[0] == 4);
     assert(restored.security_code.digits[1] == 2);
@@ -267,8 +280,8 @@ static void test_invalid_wheel_auxiliary_option_is_rejected(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings, 0);
-    assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
+    base_settings_persistence_load(&persistence, &settings);
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
 
     uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
@@ -279,7 +292,7 @@ static void test_invalid_wheel_auxiliary_option_is_rejected(void) {
 
     BaseSettingsPersistence loaded;
     BaseSettings restored;
-    assert(!base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(!base_settings_persistence_load(&loaded, &restored));
     assert(!restored.wheel_auxiliary_disabled);
 }
 
@@ -288,8 +301,8 @@ static void test_invalid_security_code_is_rejected(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings, 0);
-    assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
+    base_settings_persistence_load(&persistence, &settings);
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
 
     uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
@@ -302,7 +315,7 @@ static void test_invalid_security_code_is_rejected(void) {
 
     BaseSettingsPersistence loaded;
     BaseSettings restored;
-    assert(!base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(!base_settings_persistence_load(&loaded, &restored));
     assert(!restored.security_code.enabled);
 }
 
@@ -311,9 +324,9 @@ static void test_profile_only_record_is_upgraded(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings, 0);
+    base_settings_persistence_load(&persistence, &settings);
     settings.tuning_profiles.slots[1].rotation_degrees = 720;
-    assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
 
     uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
@@ -324,14 +337,11 @@ static void test_profile_only_record_is_upgraded(void) {
 
     BaseSettingsPersistence loaded;
     BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(base_settings_persistence_load(&loaded, &restored));
     assert(loaded.dirty);
     assert(!restored.wheel_position.calibrated);
     assert(restored.tuning_profiles.slots[1].rotation_degrees == 720);
-    assert(base_settings_persistence_service(&loaded, &restored, 2999) ==
-           BASE_SETTINGS_PERSISTENCE_IDLE);
-    assert(base_settings_persistence_service(&loaded, &restored, 3000) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
+    assert(base_settings_persistence_save(&loaded, &restored) == BASE_SETTINGS_PERSISTENCE_SAVED);
 }
 
 static void test_wheel_reference_record_is_upgraded(void) {
@@ -339,10 +349,10 @@ static void test_wheel_reference_record_is_upgraded(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings, 0);
+    base_settings_persistence_load(&persistence, &settings);
     assert(wheel_position_reference_capture(&settings.wheel_position, 12345, UINT32_C(0x5d2b)));
     settings.h_pattern_shifter.calibrated = true;
-    assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
 
     uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
@@ -354,7 +364,7 @@ static void test_wheel_reference_record_is_upgraded(void) {
 
     BaseSettingsPersistence loaded;
     BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(base_settings_persistence_load(&loaded, &restored));
     assert(loaded.dirty);
     assert(restored.wheel_position.calibrated);
     assert(restored.wheel_position.center == 12345);
@@ -371,14 +381,14 @@ static void test_h_pattern_record_is_upgraded(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings, 0);
+    base_settings_persistence_load(&persistence, &settings);
     settings.h_pattern_shifter.calibrated = true;
     settings.auxiliary_axis = (AuxiliaryAxisSettings){
         .minimum = 240,
         .maximum = 3780,
         .reset_on_start = false,
     };
-    assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
 
     uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
@@ -390,7 +400,7 @@ static void test_h_pattern_record_is_upgraded(void) {
 
     BaseSettingsPersistence loaded;
     BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(base_settings_persistence_load(&loaded, &restored));
     assert(loaded.dirty);
     assert(restored.h_pattern_shifter.calibrated);
     assert(restored.auxiliary_axis.minimum == 0x0f38);
@@ -409,14 +419,14 @@ static void test_auxiliary_axis_record_is_upgraded(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings, 0);
+    base_settings_persistence_load(&persistence, &settings);
     settings.auxiliary_axis = (AuxiliaryAxisSettings){
         .minimum = 300,
         .maximum = 3700,
         .reset_on_start = false,
     };
     settings.steering_limits.percent[0] = 25;
-    assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
 
     uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
@@ -429,7 +439,7 @@ static void test_auxiliary_axis_record_is_upgraded(void) {
 
     BaseSettingsPersistence loaded;
     BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(base_settings_persistence_load(&loaded, &restored));
     assert(loaded.dirty);
     assert(restored.auxiliary_axis.minimum == 300);
     assert(restored.auxiliary_axis.maximum == 3700);
@@ -442,10 +452,10 @@ static void test_steering_limit_record_is_upgraded(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings, 0);
+    base_settings_persistence_load(&persistence, &settings);
     settings.steering_limits.percent[0] = 25;
     settings.wheel_auxiliary_disabled = true;
-    assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
 
     uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
@@ -458,7 +468,7 @@ static void test_steering_limit_record_is_upgraded(void) {
 
     BaseSettingsPersistence loaded;
     BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(base_settings_persistence_load(&loaded, &restored));
     assert(loaded.dirty);
     assert(restored.steering_limits.percent[0] == 25);
     assert(!restored.wheel_auxiliary_disabled);
@@ -469,13 +479,13 @@ static void test_auxiliary_output_record_is_upgraded(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings, 0);
+    base_settings_persistence_load(&persistence, &settings);
     settings.wheel_auxiliary_disabled = true;
     settings.security_code = (SecurityCodeSettings){
         .digits = {4, 2, 7},
         .enabled = true,
     };
-    assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
 
     uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
@@ -488,7 +498,7 @@ static void test_auxiliary_output_record_is_upgraded(void) {
 
     BaseSettingsPersistence loaded;
     BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(base_settings_persistence_load(&loaded, &restored));
     assert(loaded.dirty);
     assert(restored.wheel_auxiliary_disabled);
     assert(!restored.security_code.enabled);
@@ -501,19 +511,19 @@ static void test_interrupted_replacement_preserves_previous_record(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings, 0);
-    assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
+    base_settings_persistence_load(&persistence, &settings);
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
 
     settings.tuning_profiles.slots[1].rotation_degrees = 540;
-    base_settings_persistence_mark_dirty(&persistence, 1100);
+    base_settings_persistence_mark_dirty(&persistence);
     replace_fails = true;
-    assert(base_settings_persistence_service(&persistence, &settings, 2100) ==
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_RETRY);
 
     BaseSettingsPersistence loaded;
     BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored, 2200));
+    assert(base_settings_persistence_load(&loaded, &restored));
     assert(restored.tuning_profiles.slots[1].rotation_degrees != 540);
 }
 
@@ -521,49 +531,61 @@ static void test_corrupted_new_record_falls_back_to_previous_record(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings, 0);
-    assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
+    base_settings_persistence_load(&persistence, &settings);
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
     uint16_t previous_rotation = settings.tuning_profiles.slots[1].rotation_degrees;
 
     settings.tuning_profiles.slots[1].rotation_degrees = 360;
-    base_settings_persistence_mark_dirty(&persistence, 1100);
-    assert(base_settings_persistence_service(&persistence, &settings, 2100) ==
+    base_settings_persistence_mark_dirty(&persistence);
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
     storage[PLATFORM_STORAGE_SETTINGS_B][20] ^= 1;
 
     BaseSettingsPersistence loaded;
     BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored, 2200));
+    assert(base_settings_persistence_load(&loaded, &restored));
     assert(restored.tuning_profiles.slots[1].rotation_degrees == previous_rotation);
 }
 
-static void test_deadline_wraps_safely(void) {
+static void test_generation_rollover_selects_new_record(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings, UINT32_MAX - 500);
-    assert(base_settings_persistence_service(&persistence, &settings, 498) ==
-           BASE_SETTINGS_PERSISTENCE_IDLE);
-    assert(base_settings_persistence_service(&persistence, &settings, 499) ==
+    base_settings_persistence_load(&persistence, &settings);
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
+
+    settings.tuning_profiles.slots[1].rotation_degrees = 360;
+    base_settings_persistence_mark_dirty(&persistence);
+    assert(base_settings_persistence_save(&persistence, &settings) ==
+           BASE_SETTINGS_PERSISTENCE_SAVED);
+    set_generation(PLATFORM_STORAGE_SETTINGS_A, UINT32_MAX);
+    set_generation(PLATFORM_STORAGE_SETTINGS_B, 0);
+
+    BaseSettingsPersistence loaded;
+    BaseSettings restored;
+    assert(base_settings_persistence_load(&loaded, &restored));
+    assert(loaded.active_slot == PLATFORM_STORAGE_SETTINGS_B);
+    assert(restored.tuning_profiles.slots[1].rotation_degrees == 360);
 }
 
-static void test_explicit_save_has_no_delay(void) {
+static void test_clean_settings_are_not_rewritten(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings, 0);
-
-    base_settings_persistence_request_save(&persistence, 100);
-
-    assert(base_settings_persistence_service(&persistence, &settings, 100) ==
+    base_settings_persistence_load(&persistence, &settings);
+    assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
+
+    assert(base_settings_persistence_save(&persistence, &settings) ==
+           BASE_SETTINGS_PERSISTENCE_IDLE);
+    assert(replace_count == 1);
 }
 
 int main(void) {
-    test_defaults_are_saved_after_delay();
-    test_dirty_changes_are_coalesced();
+    test_defaults_are_saved_on_initialization();
+    test_dirty_changes_wait_for_explicit_save();
     test_standard_profile_is_regenerated();
     test_wheel_reference_is_persisted();
     test_shifter_calibration_is_persisted();
@@ -581,7 +603,7 @@ int main(void) {
     test_auxiliary_output_record_is_upgraded();
     test_interrupted_replacement_preserves_previous_record();
     test_corrupted_new_record_falls_back_to_previous_record();
-    test_deadline_wraps_safely();
-    test_explicit_save_has_no_delay();
+    test_generation_rollover_selects_new_record();
+    test_clean_settings_are_not_rewritten();
     return 0;
 }

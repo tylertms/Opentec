@@ -50,6 +50,15 @@ typedef struct {
     bool needs_upgrade;
 } StoredSettings;
 
+/**
+ * @brief Calculates the integrity code for retained settings.
+ *
+ * Applies the CRC-16/CCITT-FALSE polynomial to the requested byte sequence.
+ *
+ * @param[in] data Bytes to include in the calculation.
+ * @param[in] size Number of bytes to process.
+ * @return Sixteen-bit integrity code.
+ */
 static uint16_t persistence_checksum(const uint8_t *data, uint16_t size) {
     uint16_t checksum = UINT16_C(0xffff);
     for (uint16_t index = 0; index < size; index++) {
@@ -63,20 +72,56 @@ static uint16_t persistence_checksum(const uint8_t *data, uint16_t size) {
     return checksum;
 }
 
+/**
+ * @brief Reads a little-endian sixteen-bit value.
+ *
+ * Combines two consecutive bytes from the requested offset.
+ *
+ * @param[in] data Encoded byte sequence.
+ * @param[in] offset Offset of the first byte.
+ * @return Decoded sixteen-bit value.
+ */
 static uint16_t read_u16(const uint8_t *data, uint16_t offset) {
     return (uint16_t)data[offset] | ((uint16_t)data[offset + 1] << 8);
 }
 
+/**
+ * @brief Reads a little-endian thirty-two-bit value.
+ *
+ * Combines four consecutive bytes from the requested offset.
+ *
+ * @param[in] data Encoded byte sequence.
+ * @param[in] offset Offset of the first byte.
+ * @return Decoded thirty-two-bit value.
+ */
 static uint32_t read_u32(const uint8_t *data, uint16_t offset) {
     return (uint32_t)data[offset] | ((uint32_t)data[offset + 1] << 8) |
            ((uint32_t)data[offset + 2] << 16) | ((uint32_t)data[offset + 3] << 24);
 }
 
+/**
+ * @brief Writes a little-endian sixteen-bit value.
+ *
+ * Stores the low byte first at the requested offset.
+ *
+ * @param[out] data Encoded byte sequence.
+ * @param[in] offset Offset of the first byte.
+ * @param[in] value Value to encode.
+ */
 static void write_u16(uint8_t *data, uint16_t offset, uint16_t value) {
     data[offset] = (uint8_t)value;
     data[offset + 1] = (uint8_t)(value >> 8);
 }
 
+/**
+ * @brief Writes a little-endian thirty-two-bit value.
+ *
+ * Stores the four bytes from least significant to most significant.
+ *
+ * @param[out] data Encoded byte sequence.
+ * @param[in] offset Offset of the first byte.
+ * @param[in] value Value to encode.
+ */
 static void write_u32(uint8_t *data, uint16_t offset, uint32_t value) {
     data[offset] = (uint8_t)value;
     data[offset + 1] = (uint8_t)(value >> 8);
@@ -84,13 +129,18 @@ static void write_u32(uint8_t *data, uint16_t offset, uint32_t value) {
     data[offset + 3] = (uint8_t)(value >> 24);
 }
 
+/**
+ * @brief Orders retained-record generations across counter rollover.
+ *
+ * Treats a nonzero forward distance shorter than half the counter range as newer.
+ *
+ * @param[in] candidate Generation to compare.
+ * @param[in] reference Current generation.
+ * @return True when the candidate follows the reference.
+ */
 static bool generation_is_newer(uint32_t candidate, uint32_t reference) {
     uint32_t distance = candidate - reference;
     return distance != 0 && distance < UINT32_C(0x80000000);
-}
-
-static bool deadline_reached(uint32_t now_ms, uint32_t deadline_ms) {
-    return now_ms - deadline_ms < UINT32_C(0x80000000);
 }
 
 /**
@@ -124,6 +174,14 @@ static bool header_valid(const uint8_t *data, uint16_t payload_size) {
             wheel_reference || profile_only);
 }
 
+/**
+ * @brief Decodes retained H-pattern shifter calibration.
+ *
+ * Restores the availability flag and eight axis thresholds from the compact payload.
+ *
+ * @param[in] data Seventeen-byte calibration payload.
+ * @param[out] settings H-pattern settings destination.
+ */
 static void h_pattern_calibration_decode(const uint8_t *data, HPatternSettings *settings) {
     settings->calibrated = data[0] == 1;
     settings->calibration.reverse_first_boundary = read_u16(data, 1);
@@ -136,6 +194,14 @@ static void h_pattern_calibration_decode(const uint8_t *data, HPatternSettings *
     settings->calibration.lower_row_threshold = read_u16(data, 15);
 }
 
+/**
+ * @brief Encodes retained H-pattern shifter calibration.
+ *
+ * Stores the availability flag and eight axis thresholds in the compact payload.
+ *
+ * @param[in] settings H-pattern settings to encode.
+ * @param[out] data Seventeen-byte calibration destination.
+ */
 static void h_pattern_calibration_encode(const HPatternSettings *settings, uint8_t *data) {
     data[0] = settings->calibrated ? 1 : 0;
     write_u16(data, 1, settings->calibration.reverse_first_boundary);
@@ -316,6 +382,16 @@ static bool record_decode(const uint8_t data[PERSISTENCE_RECORD_SIZE], StoredSet
     return true;
 }
 
+/**
+ * @brief Reads and decodes one retained-settings slot.
+ *
+ * Marks the destination invalid when the platform read fails and otherwise validates the complete
+ * record.
+ *
+ * @param[in] slot Retained-settings slot to read.
+ * @param[out] stored Decoded settings and record metadata.
+ * @return True when the slot contains a valid supported record.
+ */
 static bool record_read(PlatformStorageSlot slot, StoredSettings *stored) {
     uint8_t data[PERSISTENCE_RECORD_SIZE];
     if (!platform_storage_read(slot, data, PERSISTENCE_RECORD_SIZE)) {
@@ -377,6 +453,15 @@ static bool record_encode(const BaseSettings *settings, uint32_t generation,
     return true;
 }
 
+/**
+ * @brief Confirms a complete retained-settings write.
+ *
+ * Reads the selected slot and compares every encoded byte with the requested record.
+ *
+ * @param[in] slot Retained-settings slot to inspect.
+ * @param[in] expected Record expected in the slot.
+ * @return True when the complete slot prefix matches the expected record.
+ */
 static bool record_matches(PlatformStorageSlot slot,
                            const uint8_t expected[PERSISTENCE_RECORD_SIZE]) {
     uint8_t actual[PERSISTENCE_RECORD_SIZE];
@@ -399,11 +484,9 @@ static bool record_matches(PlatformStorageSlot slot,
  *
  * @param[out] persistence Retained-settings service state.
  * @param[out] settings Restored or default base settings.
- * @param[in] now_ms Current monotonic time in milliseconds.
  * @return True when a valid retained record was restored.
  */
-bool base_settings_persistence_load(BaseSettingsPersistence *persistence, BaseSettings *settings,
-                                    uint32_t now_ms) {
+bool base_settings_persistence_load(BaseSettingsPersistence *persistence, BaseSettings *settings) {
     StoredSettings records[PLATFORM_STORAGE_SLOT_COUNT];
     record_read(PLATFORM_STORAGE_SETTINGS_A, &records[PLATFORM_STORAGE_SETTINGS_A]);
     record_read(PLATFORM_STORAGE_SETTINGS_B, &records[PLATFORM_STORAGE_SETTINGS_B]);
@@ -420,7 +503,6 @@ bool base_settings_persistence_load(BaseSettingsPersistence *persistence, BaseSe
         *settings = records[selected].settings;
         tuning_profile_defaults(&settings->tuning_profiles.slots[0]);
         persistence->generation = records[selected].generation;
-        persistence->write_after_ms = now_ms + BASE_SETTINGS_SAVE_DELAY_MS;
         persistence->active_slot = selected;
         persistence->has_record = true;
         persistence->dirty = records[selected].needs_upgrade;
@@ -429,35 +511,36 @@ bool base_settings_persistence_load(BaseSettingsPersistence *persistence, BaseSe
 
     base_settings_defaults(settings);
     persistence->generation = 0;
-    persistence->write_after_ms = now_ms + BASE_SETTINGS_SAVE_DELAY_MS;
     persistence->active_slot = PLATFORM_STORAGE_SETTINGS_A;
     persistence->has_record = false;
     persistence->dirty = true;
     return false;
 }
 
-void base_settings_persistence_mark_dirty(BaseSettingsPersistence *persistence, uint32_t now_ms) {
+/**
+ * @brief Marks retained settings as changed.
+ *
+ * Defers storage until an explicit save boundary.
+ *
+ * @param[in,out] persistence Retained-settings state to mark.
+ */
+void base_settings_persistence_mark_dirty(BaseSettingsPersistence *persistence) {
     persistence->dirty = true;
-    persistence->write_after_ms = now_ms + BASE_SETTINGS_SAVE_DELAY_MS;
 }
 
 /**
- * @brief Requests immediate settings persistence.
+ * @brief Saves changed base settings.
  *
- * Marks the current settings dirty and makes them eligible for the next persistence service pass.
+ * Writes the next generation to the inactive slot, confirms the complete record, and preserves the
+ * previous valid slot when encoding or replacement fails. Clean settings do not consume a write.
  *
- * @param[in,out] persistence Settings persistence state.
- * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[in,out] persistence Retained-settings state.
+ * @param[in] settings Current base settings.
+ * @return Saved, retry, or idle according to the write result and dirty state.
  */
-void base_settings_persistence_request_save(BaseSettingsPersistence *persistence, uint32_t now_ms) {
-    persistence->dirty = true;
-    persistence->write_after_ms = now_ms;
-}
-
-BaseSettingsPersistenceResult
-base_settings_persistence_service(BaseSettingsPersistence *persistence,
-                                  const BaseSettings *settings, uint32_t now_ms) {
-    if (!persistence->dirty || !deadline_reached(now_ms, persistence->write_after_ms)) {
+BaseSettingsPersistenceResult base_settings_persistence_save(BaseSettingsPersistence *persistence,
+                                                             const BaseSettings *settings) {
+    if (!persistence->dirty) {
         return BASE_SETTINGS_PERSISTENCE_IDLE;
     }
 
@@ -468,7 +551,6 @@ base_settings_persistence_service(BaseSettingsPersistence *persistence,
     if (!record_encode(settings, generation, data) ||
         !platform_storage_replace((PlatformStorageSlot)target, data, PERSISTENCE_RECORD_SIZE) ||
         !record_matches((PlatformStorageSlot)target, data)) {
-        persistence->write_after_ms = now_ms + BASE_SETTINGS_SAVE_DELAY_MS;
         return BASE_SETTINGS_PERSISTENCE_RETRY;
     }
 

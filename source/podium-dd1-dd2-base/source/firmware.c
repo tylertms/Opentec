@@ -479,14 +479,10 @@ static const UsbMotorVendorServiceBuffers usb_motor_buffers = {
 /**
  * @brief Stores pending base settings immediately.
  *
- * Makes the current settings eligible for persistence and performs the synchronous storage pass
- * used before shutdown or restart transitions.
- *
- * @param[in] now_ms Current monotonic time in milliseconds.
+ * Performs the synchronous storage pass used at explicit commit, shutdown, and restart boundaries.
  */
-static void save_base_settings(uint32_t now_ms) {
-    base_settings_persistence_request_save(&settings_persistence, now_ms);
-    (void)base_settings_persistence_service(&settings_persistence, &base_settings, now_ms);
+static void save_base_settings(void) {
+    (void)base_settings_persistence_save(&settings_persistence, &base_settings);
 }
 
 /**
@@ -498,15 +494,14 @@ static void save_base_settings(uint32_t now_ms) {
  * disconnects USB.
  *
  * @param[in] action Power transition produced by the controller.
- * @param[in] now_ms Current monotonic time in milliseconds.
  */
-static void apply_power_action(PowerAction action, uint32_t now_ms) {
+static void apply_power_action(PowerAction action) {
     switch (action) {
     case POWER_ACTION_ENABLE_LATCH:
         platform_power_latch_set(true);
         break;
     case POWER_ACTION_BEGIN_SHUTDOWN:
-        save_base_settings(now_ms);
+        save_base_settings();
         force_output_enabled = false;
         (void)system_event_queue_try_push(&system_event_queue, SHUTDOWN_EVENT_CODE);
         system_control_state_set_status(&system_control_state, wheel_service_mode(&wheel_service),
@@ -536,7 +531,7 @@ static void apply_power_action(PowerAction action, uint32_t now_ms) {
 static void service_power(uint32_t now_ms) {
     PowerAction action = power_controller_update(&power_controller, platform_power_button_pressed(),
                                                  !base_settings.security_code.enabled, now_ms);
-    apply_power_action(action, now_ms);
+    apply_power_action(action);
 }
 
 /**
@@ -799,8 +794,8 @@ static void initialize_motor_link(void) {
  * @brief Captures and persists the current absolute wheel center.
  *
  * Ignores capture before a valid motor-position report is available. Otherwise normalizes the
- * current sample with the identified controller modulus and schedules persistence when the retained
- * reference changes.
+ * current sample with the identified controller modulus and stores a changed reference before
+ * returning.
  *
  * @return True when a valid position sample was captured.
  */
@@ -811,7 +806,8 @@ static bool capture_current_wheel_center(void) {
     if (wheel_position_reference_capture(
             &base_settings.wheel_position, motor_position_report.wheel_position,
             motor_identity_position_modulus(motor_probe_identity(&motor_probe)))) {
-        base_settings_persistence_mark_dirty(&settings_persistence, platform_time_ms());
+        base_settings_persistence_mark_dirty(&settings_persistence);
+        save_base_settings();
     }
     return true;
 }
@@ -952,7 +948,7 @@ static void service_alternate_brake_force(uint32_t now_ms) {
     runtime_tuning_profile.alternate_brake_force = brake_force;
     base_settings.tuning_profiles.slots[base_settings.tuning_profiles.active_slot]
         .alternate_brake_force = brake_force;
-    base_settings_persistence_mark_dirty(&settings_persistence, now_ms);
+    base_settings_persistence_mark_dirty(&settings_persistence);
 }
 
 /**
@@ -977,7 +973,8 @@ static void service_pedal_adjustment_display(uint32_t now_ms) {
  * attached-wheel auxiliary output from their retained settings.
  */
 static void initialize_base_settings(void) {
-    base_settings_persistence_load(&settings_persistence, &base_settings, platform_time_ms());
+    base_settings_persistence_load(&settings_persistence, &base_settings);
+    save_base_settings();
     auxiliary_axis_init(&auxiliary_axis, &base_settings.auxiliary_axis);
     wheel_service_set_auxiliary_output_disabled(&wheel_service,
                                                 base_settings.wheel_auxiliary_disabled);
@@ -1848,7 +1845,7 @@ static bool start_runtime_bridge(const UsbOperatingModeCommand *command) {
         return false;
     }
     if (usb_runtime_transition.save_settings) {
-        save_base_settings(platform_time_ms());
+        save_base_settings();
     }
     if (usb_runtime_transition.mode == USB_RUNTIME_MODE_USB_BRIDGE) {
         wheel_usb_bridge_gate_init(&wheel_usb_bridge_gate);
@@ -1995,7 +1992,7 @@ static void service_usb_xbox_session_actions(void) {
     }
     if ((actions & USB_XBOX_GIP_SESSION_ACTION_SUSPEND_OUTPUT) != 0) {
         platform_system_interrupts_set(false);
-        save_base_settings(platform_time_ms());
+        save_base_settings();
         platform_system_interrupts_set(true);
         force_output_enabled = false;
         motor_output_report = (ForceOutputReport){0};
@@ -2004,7 +2001,7 @@ static void service_usb_xbox_session_actions(void) {
     }
     if ((actions & USB_XBOX_GIP_SESSION_ACTION_RESET_DEVICE) != 0) {
         platform_system_interrupts_set(false);
-        save_base_settings(platform_time_ms());
+        save_base_settings();
         platform_system_reset();
     }
 }
@@ -2112,7 +2109,6 @@ static void publish_motor_calibration_event(void) {
  * users, and publishes motor-originated operator events through the shared event boundary.
  */
 static void service_motor(void) {
-    base_settings_persistence_service(&settings_persistence, &base_settings, platform_time_ms());
     motor_probe_run(&motor_probe, platform_time_ms());
     const MotorIdentity *identity = motor_probe_identity(&motor_probe);
     if (!motor_tuning_ready && identity != 0) {
@@ -2261,7 +2257,8 @@ static void apply_wheel_steering_limit_command(const WheelSteeringLimitCommand *
     if (wheel_steering_limits_apply(&base_settings.steering_limits,
                                     base_settings.tuning_profiles.active_slot,
                                     command) == WHEEL_STEERING_LIMIT_CHANGED) {
-        base_settings_persistence_mark_dirty(&settings_persistence, platform_time_ms());
+        base_settings_persistence_mark_dirty(&settings_persistence);
+        save_base_settings();
     }
 }
 
@@ -2457,7 +2454,8 @@ static void service_usb_output(void) {
             if (usb_operating_mode_command.opcode == WHEEL_AUXILIARY_OPTION_OPCODE &&
                 base_settings.wheel_auxiliary_disabled != wheel_service.auxiliary_output.disabled) {
                 base_settings.wheel_auxiliary_disabled = wheel_service.auxiliary_output.disabled;
-                base_settings_persistence_request_save(&settings_persistence, platform_time_ms());
+                base_settings_persistence_mark_dirty(&settings_persistence);
+                save_base_settings();
             }
             return;
         } else if (wheel_service_apply_packed_report_command(&wheel_service,
@@ -2546,10 +2544,10 @@ static void service_usb_output(void) {
                 apply_active_tuning_profile();
             }
             if ((tuning_action & USB_TUNING_PROFILE_ACTION_SETTINGS_CHANGED) != 0) {
-                base_settings_persistence_mark_dirty(&settings_persistence, now_ms);
+                base_settings_persistence_mark_dirty(&settings_persistence);
             }
             if ((tuning_action & USB_TUNING_PROFILE_ACTION_SAVE) != 0) {
-                base_settings_persistence_request_save(&settings_persistence, now_ms);
+                save_base_settings();
             }
             if ((tuning_action & USB_TUNING_PROFILE_ACTION_RESET_COMPLETED) != 0) {
                 (void)system_event_queue_try_push(&system_event_queue,
@@ -2634,9 +2632,8 @@ static void publish_tuning_interaction_event(uint8_t event_code) {
  * persistence.
  *
  * @param[in] action Interaction action to apply.
- * @param[in] now_ms Current monotonic time in milliseconds.
  */
-static void apply_tuning_interaction_action(TuningInteractionAction action, uint32_t now_ms) {
+static void apply_tuning_interaction_action(TuningInteractionAction action) {
     if (action == TUNING_INTERACTION_ACTION_PEDAL_ADJUSTMENT) {
         if (pedal_service_adjustment_probe_available(&pedal_service)) {
             pedal_service_request_adjustment_probe(&pedal_service);
@@ -2650,7 +2647,7 @@ static void apply_tuning_interaction_action(TuningInteractionAction action, uint
             if (enable_standard) {
                 apply_active_tuning_profile();
             }
-            base_settings_persistence_mark_dirty(&settings_persistence, now_ms);
+            base_settings_persistence_mark_dirty(&settings_persistence);
             publish_tuning_interaction_event(enable_standard ? STANDARD_TUNING_MODE_EVENT_CODE
                                                              : ADVANCED_TUNING_MODE_EVENT_CODE);
         }
@@ -2659,7 +2656,7 @@ static void apply_tuning_interaction_action(TuningInteractionAction action, uint
     if (action == TUNING_INTERACTION_ACTION_RESET_PROFILES) {
         tuning_profile_bank_defaults(&base_settings.tuning_profiles);
         apply_active_tuning_profile();
-        base_settings_persistence_mark_dirty(&settings_persistence, now_ms);
+        base_settings_persistence_mark_dirty(&settings_persistence);
         publish_tuning_interaction_event(TUNING_MENU_RESET_EVENT_CODE);
     }
 }
@@ -2813,7 +2810,8 @@ static void service_tuning_interaction(uint32_t now_ms) {
         tuning_interaction_init(&tuning_interaction);
     }
     if (security_code_update_state.settings_changed) {
-        base_settings_persistence_request_save(&settings_persistence, now_ms);
+        base_settings_persistence_mark_dirty(&settings_persistence);
+        save_base_settings();
     }
     if (security_code_update_state.active) {
         return;
@@ -2832,7 +2830,7 @@ static void service_tuning_interaction(uint32_t now_ms) {
     };
     TuningInteractionAction action =
         tuning_interaction_update(&tuning_interaction, &tuning_interaction_input, now_ms);
-    apply_tuning_interaction_action(action, now_ms);
+    apply_tuning_interaction_action(action);
     TuningNavigationEvent navigation = tuning_interaction_take_navigation(&tuning_interaction);
     update_local_tuning_availability();
     update_local_tuning_adjustment();
@@ -2849,7 +2847,7 @@ static void service_tuning_interaction(uint32_t now_ms) {
             base_settings.tuning_profiles.active_slot) {
             apply_active_tuning_profile();
         }
-        base_settings_persistence_mark_dirty(&settings_persistence, now_ms);
+        base_settings_persistence_mark_dirty(&settings_persistence);
     }
     apply_tuning_menu_presentation();
 }
@@ -3077,7 +3075,7 @@ static void service_analog_input(uint32_t now_ms) {
         pedal_service_set_auxiliary_override(&pedal_service, auxiliary.active, auxiliary.value);
         if (auxiliary_axis_take_settings(&auxiliary_axis, auxiliary_mode,
                                          &base_settings.auxiliary_axis)) {
-            base_settings_persistence_mark_dirty(&settings_persistence, now_ms);
+            base_settings_persistence_mark_dirty(&settings_persistence);
         }
         uint16_t lateral_position;
         uint16_t longitudinal_position;
@@ -3112,7 +3110,8 @@ static void service_analog_input(uint32_t now_ms) {
         if (h_pattern_calibration_service_capture(
                 &h_pattern_calibration_service, now_ms, lateral_position, longitudinal_position,
                 &base_settings.h_pattern_shifter) == H_PATTERN_CALIBRATION_COMPLETED) {
-            base_settings_persistence_request_save(&settings_persistence, now_ms);
+            base_settings_persistence_mark_dirty(&settings_persistence);
+            save_base_settings();
         }
 
         if (base_settings.h_pattern_shifter.calibrated && !h_pattern_calibration_service.active) {
