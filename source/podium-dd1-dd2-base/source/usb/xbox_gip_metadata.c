@@ -9,6 +9,17 @@ typedef struct {
     uint8_t payload_size;
 } XboxGipMessageDefinition;
 
+/**
+ * @brief Appends a byte sequence to the metadata document.
+ *
+ * Copies the requested bytes at the current document offset.
+ *
+ * @param[out] output Metadata document receiving the bytes.
+ * @param[in] offset Current output offset.
+ * @param[in] data Byte sequence to append.
+ * @param[in] length Number of bytes to append.
+ * @return Output offset immediately after the appended bytes.
+ */
 static size_t append_bytes(uint8_t *output, size_t offset, const uint8_t *data, size_t length) {
     for (size_t index = 0; index < length; index++) {
         output[offset + index] = data[index];
@@ -16,12 +27,34 @@ static size_t append_bytes(uint8_t *output, size_t offset, const uint8_t *data, 
     return offset + length;
 }
 
+/**
+ * @brief Appends a length-prefixed metadata string.
+ *
+ * Writes the two-byte little-endian byte count followed by the string bytes without a terminator.
+ *
+ * @param[out] output Metadata document receiving the string.
+ * @param[in] offset Current output offset.
+ * @param[in] text String bytes to append.
+ * @param[in] length Number of string bytes to append.
+ * @return Output offset immediately after the string.
+ */
 static size_t append_string(uint8_t *output, size_t offset, const char *text, uint16_t length) {
     output[offset++] = (uint8_t)length;
     output[offset++] = (uint8_t)(length >> 8);
     return append_bytes(output, offset, (const uint8_t *)text, length);
 }
 
+/**
+ * @brief Appends one fixed-width GIP message declaration.
+ *
+ * Emits the 23-byte declaration containing its type, flags, endpoint count, payload size, and
+ * reserved zero fields.
+ *
+ * @param[out] output Metadata document receiving the declaration.
+ * @param[in] offset Current output offset.
+ * @param[in] message Message type, flags, and payload size to declare.
+ * @return Output offset immediately after the declaration.
+ */
 static size_t append_message(uint8_t *output, size_t offset,
                              const XboxGipMessageDefinition *message) {
     output[offset++] = 0x17;
