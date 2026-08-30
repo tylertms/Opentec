@@ -40,14 +40,41 @@ typedef union {
     uint32_t bits;
 } OperandValue;
 
+/**
+ * @brief Checks whether a complete encoded value remains in a script.
+ *
+ * Uses subtraction after checking the cursor to avoid an overflow-prone end-position calculation.
+ *
+ * @param[in] length Number of available script bytes.
+ * @param[in] cursor Offset of the value.
+ * @param[in] size Number of bytes required.
+ * @return true when the complete value is available; otherwise false.
+ */
 static bool available(size_t length, size_t cursor, size_t size) {
     return cursor <= length && size <= length - cursor;
 }
 
+/**
+ * @brief Creates a rejected operand result.
+ *
+ * Preserves the cursor reached while decoding and leaves the validity flag clear.
+ *
+ * @param[in] cursor Offset reached while decoding.
+ * @return An invalid operand result at the supplied cursor.
+ */
 static ForceFeedbackScriptOperandResult invalid_operand(size_t cursor) {
     return (ForceFeedbackScriptOperandResult){.cursor = cursor};
 }
 
+/**
+ * @brief Creates an accepted operand result.
+ *
+ * Combines the resolved raw value with the offset following the encoded operand.
+ *
+ * @param[in] value Resolved raw operand value.
+ * @param[in] cursor Offset following the operand.
+ * @return A valid operand result containing the supplied value and cursor.
+ */
 static ForceFeedbackScriptOperandResult operand_value(uint32_t value, size_t cursor) {
     return (ForceFeedbackScriptOperandResult){
         .value = value,
@@ -56,10 +83,28 @@ static ForceFeedbackScriptOperandResult operand_value(uint32_t value, size_t cur
     };
 }
 
+/**
+ * @brief Creates a destination result.
+ *
+ * Records the offset following a destination together with its acceptance state.
+ *
+ * @param[in] cursor Offset following the destination.
+ * @param[in] valid true when the destination was accepted; otherwise false.
+ * @return A destination result containing the supplied cursor and state.
+ */
 static ForceFeedbackScriptDestinationResult destination_result(size_t cursor, bool valid) {
     return (ForceFeedbackScriptDestinationResult){.cursor = cursor, .valid = valid};
 }
 
+/**
+ * @brief Decodes an unsigned big-endian integer.
+ *
+ * Consumes one through four encoded bytes from most significant to least significant.
+ *
+ * @param[in] data Encoded integer bytes.
+ * @param[in] size Number of bytes to decode.
+ * @return The decoded unsigned value.
+ */
 static uint32_t read_big_endian(const uint8_t *data, size_t size) {
     uint32_t value = 0;
     for (size_t index = 0; index < size; index++) {
@@ -68,10 +113,30 @@ static uint32_t read_big_endian(const uint8_t *data, size_t size) {
     return value;
 }
 
+/**
+ * @brief Decodes a scaled numeric literal.
+ *
+ * Converts an unsigned big-endian integer to floating point and divides it by the selected scale.
+ *
+ * @param[in] data Encoded integer bytes.
+ * @param[in] size Number of bytes to decode.
+ * @param[in] scale Divisor applied to the decoded value.
+ * @return The raw bit representation of the scaled floating-point value.
+ */
 static uint32_t scaled_immediate(const uint8_t *data, size_t size, float scale) {
     return (OperandValue){.number = (float)read_big_endian(data, size) / scale}.bits;
 }
 
+/**
+ * @brief Selects an active-slot metric.
+ *
+ * Maps operand codes 0x48 through 0x4b to delta rate, average rate, execution count, or tick
+ * snapshot respectively.
+ *
+ * @param[in] slot Active script slot.
+ * @param[in] opcode Encoded slot-metric operand.
+ * @return The selected raw metric value.
+ */
 static uint32_t slot_metric(const ForceFeedbackScriptSlot *slot, uint8_t opcode) {
     switch (opcode) {
     case OPERAND_SLOT_DELTA_RATE:
@@ -173,6 +238,14 @@ force_feedback_script_operand_read(const ForceFeedbackScriptRuntime *runtime, co
     return invalid_operand(cursor);
 }
 
+/**
+ * @brief Limits a finite force value to the normalized output range.
+ *
+ * Values above one become one and values below negative one become negative one.
+ *
+ * @param[in] value Force value to limit.
+ * @return The value limited to the inclusive range from -1 to 1.
+ */
 static float clamp_force(float value) {
     if (value > 1.0f) {
         return 1.0f;
@@ -183,6 +256,17 @@ static float clamp_force(float value) {
     return value;
 }
 
+/**
+ * @brief Writes an operand through the active script slot.
+ *
+ * Codes 0x40 through 0x43 select one of four slot values. Codes 0x44 through 0x47 use the
+ * corresponding slot value as a sample index.
+ *
+ * @param[in,out] runtime Script state containing the active slot and sample store.
+ * @param[in] opcode Encoded active-slot destination.
+ * @param[in] value Raw value to store.
+ * @return true when an active slot accepted the destination; otherwise false.
+ */
 static bool write_slot_operand(ForceFeedbackScriptRuntime *runtime, uint8_t opcode,
                                uint32_t value) {
     if (runtime->active_slot >= FORCE_FEEDBACK_SCRIPT_SLOT_COUNT) {
@@ -198,6 +282,17 @@ static bool write_slot_operand(ForceFeedbackScriptRuntime *runtime, uint8_t opco
     return true;
 }
 
+/**
+ * @brief Writes a motion destination.
+ *
+ * Stores primary or secondary motion directly. The accumulator adds a floating-point value to the
+ * secondary motion output and limits finite results to the normalized force range.
+ *
+ * @param[in,out] runtime Script state containing motion outputs.
+ * @param[in] opcode Encoded motion destination.
+ * @param[in] value Raw value to store or accumulate.
+ * @return true when the motion destination is writable; otherwise false.
+ */
 static bool write_motion_operand(ForceFeedbackScriptRuntime *runtime, uint8_t opcode,
                                  uint32_t value) {
     if (opcode == OPERAND_MOTION_PRIMARY) {
