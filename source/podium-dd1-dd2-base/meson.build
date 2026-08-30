@@ -50,7 +50,6 @@ force_script_service_sources = files('source/force_feedback/script_service.c')
 force_script_store_sources = files('source/force_feedback/script_store.c')
 force_script_tick_sources = files('source/force_feedback/script_tick.c')
 force_filter_sources = files('source/force_feedback/filter.c')
-force_safety_sources = files('source/force_feedback/safety.c')
 force_soft_stop_sources = files('source/force_feedback/soft_stop.c')
 fanatec_input_sources = files('source/usb/fanatec_input.c')
 fanatec_encoder_sources = files('source/usb/fanatec_encoder.c')
@@ -292,7 +291,6 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'force-script-store': 'source/force_feedback/script_store.c',
     'force-script-tick': 'source/force_feedback/script_tick.c',
     'force-filter': 'source/force_feedback/filter.c',
-    'force-safety': 'source/force_feedback/safety.c',
     'force-soft-stop': 'source/force_feedback/soft_stop.c',
     'fanatec-input': 'source/usb/fanatec_input.c',
     'fanatec-encoder': 'source/usb/fanatec_encoder.c',
@@ -724,14 +722,6 @@ if not meson.is_cross_build()
     'base-force-output-enable-test',
     'tests/source/force_output_enable.c',
     force_output_enable_sources,
-    build_by_default: false,
-    include_directories: base_include,
-  )
-
-  force_safety_test = executable(
-    'base-force-safety-test',
-    'tests/source/force_safety.c',
-    force_safety_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2764,7 +2754,6 @@ if not meson.is_cross_build()
     suite: ['base', 'force-feedback', 'script', 'usb'],
   )
   test('base-force-filter', force_filter_test, suite: ['base', 'force-feedback'])
-  test('base-force-safety', force_safety_test, suite: ['base', 'force-feedback'])
   test('base-force-soft-stop', force_soft_stop_test, suite: ['base', 'force-feedback'])
   test('base-fanatec-input', fanatec_input_test, suite: ['base', 'usb', 'input'])
   test('base-fanatec-encoder', fanatec_encoder_test, suite: ['base', 'usb', 'input'])
