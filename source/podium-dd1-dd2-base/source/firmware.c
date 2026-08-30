@@ -99,6 +99,7 @@
 #include "wheel/position.h"
 #include "wheel/protocol_bridge_service.h"
 #include "wheel/service.h"
+#include "wheel/startup_display.h"
 #include "wheel/status_service.h"
 #include "wheel/steering_limit.h"
 #include "wheel/transfer_service.h"
@@ -196,6 +197,7 @@ static HPatternCalibrationService h_pattern_calibration_service;
 static HPatternCalibrationCommand h_pattern_calibration_command;
 static ShifterInputState shifter_input;
 static ShifterDisplay shifter_display;
+static WheelStartupDisplay wheel_startup_display;
 static UsbDisconnectDisplay usb_disconnect_display;
 static UsbInputReportState usb_input_state;
 static FanatecEncoder fanatec_encoder;
@@ -2589,7 +2591,7 @@ static void service_analog_input(uint32_t now_ms) {
         bool h_pattern_input_available = shifter_input.primary_mode == SHIFTER_INPUT_H_PATTERN ||
                                          shifter_input.secondary_mode == SHIFTER_INPUT_H_PATTERN;
         bool calibration_start_allowed =
-            h_pattern_input_available &&
+            h_pattern_input_available && wheel_startup_display_ready(&wheel_startup_display) &&
             wheel_service_protocol_phase(&wheel_service) == WHEEL_PROTOCOL_ACTIVE;
         (void)h_pattern_calibration_service_start_if_required(
             &h_pattern_calibration_service, calibration_start_allowed,
@@ -2639,6 +2641,9 @@ static void service_shifter_display(uint32_t now_ms) {
     if (usb_disconnect_notice_visible || changed) {
         return;
     }
+    if (!wheel_startup_display_ready(&wheel_startup_display)) {
+        return;
+    }
 
     bool wheel_active = wheel_service_protocol_phase(&wheel_service) == WHEEL_PROTOCOL_ACTIVE;
     HPatternCalibrationPrompt calibration_prompt =
@@ -2646,6 +2651,26 @@ static void service_shifter_display(uint32_t now_ms) {
     if (shifter_display_update(
             &shifter_display, h_pattern_shifter.gear, wheel_active, calibration_prompt,
             h_pattern_calibration_service.session.next_position, now_ms, output)) {
+        wheel_service_set_display_output(&wheel_service, output);
+    }
+}
+
+/**
+ * @brief Services the attached-wheel startup glyph presentation.
+ *
+ * Advances the startup sequence only after protocol activation, selects the display-capability
+ * timing, supplies the identified motor-controller version and position readiness, and publishes
+ * changed glyphs through the shared wheel output.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_wheel_startup_display(uint32_t now_ms) {
+    bool wheel_active = wheel_service_protocol_phase(&wheel_service) == WHEEL_PROTOCOL_ACTIVE;
+    WheelDisplayOutput *output = &wheel_service.display_output;
+    if (wheel_startup_display_update(&wheel_startup_display, wheel_active,
+                                     wheel_service_tuning_display_supported(&wheel_service),
+                                     motor_position_ready, motor_probe_identity(&motor_probe),
+                                     now_ms, output)) {
         wheel_service_set_display_output(&wheel_service, output);
     }
 }
@@ -2897,6 +2922,7 @@ int main(void) {
     platform_shifter_init();
     platform_shifter_read(&shifter_input);
     shifter_display_init(&shifter_display);
+    wheel_startup_display_init(&wheel_startup_display);
     usb_disconnect_display_init(&usb_disconnect_display);
     platform_aux_bus_init();
     platform_pedal_link_init();
@@ -3012,6 +3038,7 @@ int main(void) {
         service_force_feedback_script(now_ms);
         service_force_output_enable();
         service_local_display();
+        service_wheel_startup_display(now_ms);
         service_shifter_display(now_ms);
         service_wheel_compatibility_alert(now_ms);
         service_usb_input(now_ms);

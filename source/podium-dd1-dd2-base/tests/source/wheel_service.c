@@ -878,6 +878,29 @@ static void test_reports_calibration_availability(void) {
     assert(wheel_service_calibration_available(&service));
 }
 
+static void test_reports_tuning_display_support(void) {
+    WheelService service = {0};
+    const uint8_t direct_modes[] = {9, 10, 11, 14, 15, 16, 23, 27, 28, 29};
+    const uint8_t adapter_modes[] = {4, 6, 12, 21};
+
+    for (uint8_t index = 0; index < sizeof(direct_modes); index++) {
+        service.protocol.mode = direct_modes[index];
+        assert(wheel_service_tuning_display_supported(&service));
+    }
+    for (uint8_t index = 0; index < sizeof(adapter_modes); index++) {
+        service.protocol.mode = adapter_modes[index];
+        assert(!wheel_service_tuning_display_supported(&service));
+        service.protocol.adapter.connected = true;
+        service.protocol.adapter.mode = 1;
+        assert(wheel_service_tuning_display_supported(&service));
+        service.protocol.adapter.mode = 0;
+        assert(!wheel_service_tuning_display_supported(&service));
+        service.protocol.adapter.connected = false;
+    }
+    service.protocol.mode = 24;
+    assert(!wheel_service_tuning_display_supported(&service));
+}
+
 static void test_selects_calibration_advance_button_by_wheel_mode(void) {
     WheelService service;
     initialize_service(&service);
@@ -1075,6 +1098,7 @@ int main(void) {
     test_rejects_unavailable_multi_position_input();
     test_selects_extended_report_fields();
     test_reports_calibration_availability();
+    test_reports_tuning_display_support();
     test_selects_calibration_advance_button_by_wheel_mode();
     test_reports_mode_gated_input_capability();
     test_exposes_axis_overrides();

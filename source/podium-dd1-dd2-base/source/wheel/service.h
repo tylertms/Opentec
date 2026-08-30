@@ -139,6 +139,7 @@ uint16_t wheel_service_capability_flags(const WheelService *service);
 bool wheel_service_host_capability_enabled(const WheelService *service);
 bool wheel_service_calibration_available(const WheelService *service);
 bool wheel_service_tuning_menu_available(const WheelService *service);
+bool wheel_service_tuning_display_supported(const WheelService *service);
 bool wheel_service_input_capability_available(const WheelService *service);
 uint8_t wheel_service_mode(const WheelService *service);
 WheelProtocolPhase wheel_service_protocol_phase(const WheelService *service);

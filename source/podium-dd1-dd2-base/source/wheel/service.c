@@ -556,7 +556,7 @@ bool wheel_service_take_adapter_host_controls(WheelService *service,
  * @param[in] service Attached-wheel service and adapter state.
  * @return True when remote tuning remains on the wheel-side display.
  */
-static bool tuning_display_supported(const WheelService *service) {
+bool wheel_service_tuning_display_supported(const WheelService *service) {
     switch (service->protocol.mode) {
     case 4:
     case 6:
@@ -592,8 +592,8 @@ void wheel_service_queue_adapter_remote_tuning_active(WheelService *service, boo
     if (service == 0) {
         return;
     }
-    bool adapter_active =
-        active && service->protocol.adapter.connected && !tuning_display_supported(service);
+    bool adapter_active = active && service->protocol.adapter.connected &&
+                          !wheel_service_tuning_display_supported(service);
     wheel_adapter_command_service_queue_remote_tuning_active(&service->adapter_commands,
                                                              adapter_active);
 }
