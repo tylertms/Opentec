@@ -68,6 +68,29 @@ bool tuning_profile_bank_store(TuningProfileBank *bank, uint8_t slot,
 }
 
 /**
+ * @brief Selects Standard or Advanced tuning mode.
+ *
+ * A mode change to Standard selects and activates setup 1 and restores setup 2 to defaults. A
+ * change to Advanced preserves the selected and active setup.
+ *
+ * @param[in,out] bank Tuning-profile bank to update.
+ * @param[in] enabled True for Standard mode or false for Advanced mode.
+ * @return True when the mode changed.
+ */
+bool tuning_profile_bank_set_standard_mode(TuningProfileBank *bank, bool enabled) {
+    if (bank->standard_mode_enabled == enabled) {
+        return false;
+    }
+    bank->standard_mode_enabled = enabled;
+    if (enabled) {
+        bank->selected_slot = 0;
+        bank->active_slot = 0;
+        tuning_profile_defaults(&bank->slots[1]);
+    }
+    return true;
+}
+
+/**
  * @brief Returns the selected tuning setup.
  *
  * Provides the profile currently chosen for inspection or activation.

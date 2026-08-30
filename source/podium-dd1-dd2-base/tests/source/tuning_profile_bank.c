@@ -48,9 +48,30 @@ static void test_store_normalizes_profile(void) {
     assert(!tuning_profile_bank_store(&bank, TUNING_PROFILE_SLOT_COUNT, &profile));
 }
 
+static void test_switches_standard_and_advanced_modes(void) {
+    TuningProfileBank bank;
+    tuning_profile_bank_defaults(&bank);
+    bank.selected_slot = 4;
+    bank.active_slot = 4;
+    bank.slots[1].force_feedback_strength = 90;
+
+    assert(tuning_profile_bank_set_standard_mode(&bank, false));
+    assert(!bank.standard_mode_enabled);
+    assert(bank.selected_slot == 4);
+    assert(bank.active_slot == 4);
+    assert(!tuning_profile_bank_set_standard_mode(&bank, false));
+
+    assert(tuning_profile_bank_set_standard_mode(&bank, true));
+    assert(bank.standard_mode_enabled);
+    assert(bank.selected_slot == 0);
+    assert(bank.active_slot == 0);
+    assert(bank.slots[1].force_feedback_strength == 35);
+}
+
 int main(void) {
     test_defaults();
     test_selection_and_activation();
     test_store_normalizes_profile();
+    test_switches_standard_and_advanced_modes();
     return 0;
 }

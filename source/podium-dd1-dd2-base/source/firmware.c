@@ -2447,11 +2447,62 @@ static void apply_security_code_presentation(void) {
 }
 
 /**
- * @brief Services the security gate and wheel-side tuning shortcuts.
+ * @brief Publishes a tuning interaction event to local and attached-wheel presentation.
+ *
+ * Queues the event for local display and makes it the active system-control event sent to the
+ * attached wheel.
+ *
+ * @param[in] event_code Tuning reset or profile-mode event code.
+ */
+static void publish_tuning_interaction_event(uint8_t event_code) {
+    (void)system_event_queue_try_push(&system_event_queue, event_code);
+    system_control_state_set_active_event(&system_control_state, event_code);
+}
+
+/**
+ * @brief Applies one action emitted by the wheel-side tuning interaction.
+ *
+ * Routes pedal adjustment to the active V4 session, toggles Standard or Advanced profile mode, or
+ * restores all six tuning setups. Profile changes are applied to runtime behavior and retained for
+ * persistence.
+ *
+ * @param[in] action Interaction action to apply.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void apply_tuning_interaction_action(TuningInteractionAction action, uint32_t now_ms) {
+    if (action == TUNING_INTERACTION_ACTION_PEDAL_ADJUSTMENT) {
+        if (pedal_service_adjustment_probe_available(&pedal_service)) {
+            pedal_service_request_adjustment_probe(&pedal_service);
+        }
+        return;
+    }
+    if (action == TUNING_INTERACTION_ACTION_TOGGLE_PROFILE_MODE) {
+        bool enable_standard = !base_settings.tuning_profiles.standard_mode_enabled;
+        if (tuning_profile_bank_set_standard_mode(&base_settings.tuning_profiles,
+                                                  enable_standard)) {
+            if (enable_standard) {
+                apply_active_tuning_profile();
+            }
+            base_settings_persistence_mark_dirty(&settings_persistence, now_ms);
+            publish_tuning_interaction_event(enable_standard ? STANDARD_TUNING_MODE_EVENT_CODE
+                                                             : ADVANCED_TUNING_MODE_EVENT_CODE);
+        }
+        return;
+    }
+    if (action == TUNING_INTERACTION_ACTION_RESET_PROFILES) {
+        tuning_profile_bank_defaults(&base_settings.tuning_profiles);
+        apply_active_tuning_profile();
+        base_settings_persistence_mark_dirty(&settings_persistence, now_ms);
+        publish_tuning_interaction_event(TUNING_MENU_RESET_EVENT_CODE);
+    }
+}
+
+/**
+ * @brief Services the security gate and wheel-side tuning interaction.
  *
  * Feeds the security-code state machine from direct or adapter controls and gives active code entry
- * priority over tuning interaction. Otherwise it advances the tuning-menu phase and queues an
- * accepted pedal-adjustment request while the V4 pedal session is active.
+ * priority over tuning interaction. Otherwise it advances local navigation, pedal adjustment,
+ * profile-mode selection, and profile-reset holds.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -2492,13 +2543,13 @@ static void service_tuning_interaction(uint32_t now_ms) {
         .analog_scale = available ? tuning_interaction_snapshot.tuning_input : 0,
         .adapter_profile_shortcut =
             adapter->connected && adapter->mode == 1 && (adapter->buttons[1] & 1u) != 0,
+        .profile_selector_active =
+            available && (tuning_interaction_snapshot.auxiliary_report[1] & 0x0fu) != 0,
         .available = available,
     };
-    if (tuning_interaction_requests_pedal_adjustment(&tuning_interaction,
-                                                     &tuning_interaction_input) &&
-        pedal_service_adjustment_probe_available(&pedal_service)) {
-        pedal_service_request_adjustment_probe(&pedal_service);
-    }
+    TuningInteractionAction action =
+        tuning_interaction_update(&tuning_interaction, &tuning_interaction_input, now_ms);
+    apply_tuning_interaction_action(action, now_ms);
 }
 
 /**

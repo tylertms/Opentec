@@ -142,18 +142,17 @@ UsbTuningProfileAction usb_tuning_profile_service_apply(UsbTuningProfileService 
         return result;
     case PROFILE_ACTION_TOGGLE_MODE:
         if (deadline_reached(now_ms, service->mode_change_after_ms)) {
-            bank->standard_mode_enabled = !bank->standard_mode_enabled;
-            if (bank->standard_mode_enabled) {
-                bank->selected_slot = 0;
-                bank->active_slot = 0;
-                tuning_profile_defaults(&bank->slots[1]);
-                result |= USB_TUNING_PROFILE_ACTION_PROFILE_CHANGED;
+            bool enable_standard = !bank->standard_mode_enabled;
+            if (tuning_profile_bank_set_standard_mode(bank, enable_standard)) {
+                if (enable_standard) {
+                    result |= USB_TUNING_PROFILE_ACTION_PROFILE_CHANGED;
+                }
+                service->mode_change_after_ms = now_ms + USB_TUNING_PROFILE_MODE_DELAY_MS;
+                service->response_pending = true;
+                result |= USB_TUNING_PROFILE_ACTION_MODE_CHANGED |
+                          USB_TUNING_PROFILE_ACTION_SETTINGS_CHANGED |
+                          USB_TUNING_PROFILE_ACTION_MODE_TOGGLED;
             }
-            service->mode_change_after_ms = now_ms + USB_TUNING_PROFILE_MODE_DELAY_MS;
-            service->response_pending = true;
-            result |= USB_TUNING_PROFILE_ACTION_MODE_CHANGED |
-                      USB_TUNING_PROFILE_ACTION_SETTINGS_CHANGED |
-                      USB_TUNING_PROFILE_ACTION_MODE_TOGGLED;
         }
         return result;
     default:

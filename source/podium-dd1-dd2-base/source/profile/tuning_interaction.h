@@ -4,6 +4,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+enum {
+    TUNING_PROFILE_MODE_HOLD_MS = 2000,
+    TUNING_PROFILE_RESET_HOLD_MS = 10000,
+};
+
 typedef enum {
     TUNING_INTERACTION_CLOSED,
     TUNING_INTERACTION_MENU_HELD,
@@ -28,6 +33,14 @@ typedef struct {
     int8_t scale;
 } TuningNavigationEvent;
 
+/** @brief Actions produced by one local tuning interaction update. */
+typedef enum {
+    TUNING_INTERACTION_ACTION_NONE = 0,
+    TUNING_INTERACTION_ACTION_PEDAL_ADJUSTMENT = 1 << 0,
+    TUNING_INTERACTION_ACTION_TOGGLE_PROFILE_MODE = 1 << 1,
+    TUNING_INTERACTION_ACTION_RESET_PROFILES = 1 << 2,
+} TuningInteractionAction;
+
 /** @brief Attached-wheel inputs used by local tuning interaction. */
 typedef struct {
     uint8_t wheel_mode;
@@ -35,20 +48,26 @@ typedef struct {
     uint16_t secondary_buttons;
     int8_t analog_scale;
     bool adapter_profile_shortcut;
+    bool profile_selector_active;
     bool available;
 } TuningInteractionInput;
 
 /** @brief Logical tuning-menu phase needed to distinguish profile and entry shortcuts. */
 typedef struct {
+    uint32_t profile_hold_started_ms;
     TuningInteractionPhase phase;
     TuningNavigationMode last_navigation;
     bool closing;
+    bool profile_hold_active;
+    bool profile_mode_toggled;
+    bool pedal_adjustment_requested;
 } TuningInteraction;
 
 void tuning_interaction_init(TuningInteraction *interaction);
 TuningNavigationEvent tuning_interaction_read_navigation(TuningInteraction *interaction,
                                                          const TuningInteractionInput *input);
-bool tuning_interaction_requests_pedal_adjustment(TuningInteraction *interaction,
-                                                  const TuningInteractionInput *input);
+TuningInteractionAction tuning_interaction_update(TuningInteraction *interaction,
+                                                  const TuningInteractionInput *input,
+                                                  uint32_t now_ms);
 
 #endif

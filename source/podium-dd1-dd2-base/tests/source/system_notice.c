@@ -6,7 +6,6 @@
 
 static void test_timed_notices_expire_after_four_seconds(void) {
     static const SystemNoticeKind kinds[] = {
-        SYSTEM_NOTICE_TUNING_MENU_RESET,
         SYSTEM_NOTICE_WHEEL_CENTER_CALIBRATED,
         SYSTEM_NOTICE_POSITION_SENSOR_TEST_SUCCEEDED,
         SYSTEM_NOTICE_POSITION_SENSOR_TEST_STARTED,
@@ -51,8 +50,9 @@ static void test_persistent_notices_do_not_expire(void) {
     }
 }
 
-static void test_tuning_mode_notices_expire_after_two_seconds(void) {
+static void test_tuning_notices_expire_after_two_seconds(void) {
     static const SystemNoticeKind kinds[] = {
+        SYSTEM_NOTICE_TUNING_MENU_RESET,
         SYSTEM_NOTICE_STANDARD_TUNING_MODE,
         SYSTEM_NOTICE_ADVANCED_TUNING_MODE,
     };
@@ -85,7 +85,7 @@ static void test_timed_notice_expires_across_counter_wrap(void) {
 int main(void) {
     test_timed_notices_expire_after_four_seconds();
     test_persistent_notices_do_not_expire();
-    test_tuning_mode_notices_expire_after_two_seconds();
+    test_tuning_notices_expire_after_two_seconds();
     test_timed_notice_expires_across_counter_wrap();
     return 0;
 }

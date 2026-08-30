@@ -19,6 +19,7 @@ void tuning_profile_bank_defaults(TuningProfileBank *bank);
 bool tuning_profile_bank_select(TuningProfileBank *bank, uint8_t slot);
 void tuning_profile_bank_activate_selected(TuningProfileBank *bank);
 bool tuning_profile_bank_store(TuningProfileBank *bank, uint8_t slot, const TuningProfile *profile);
+bool tuning_profile_bank_set_standard_mode(TuningProfileBank *bank, bool enabled);
 const TuningProfile *tuning_profile_bank_selected(const TuningProfileBank *bank);
 const TuningProfile *tuning_profile_bank_active(const TuningProfileBank *bank);
 
