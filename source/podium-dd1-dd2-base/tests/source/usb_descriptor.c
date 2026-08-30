@@ -31,6 +31,11 @@ static void test_device_identity(void) {
 }
 
 static void test_hid_configuration(void) {
+    static const uint8_t expected[] = {
+        0x09, 0x02, 0x29, 0x00, 0x01, 0x01, 0x00, 0xc0, 0x28, 0x09, 0x04, 0x00, 0x00, 0x02,
+        0x03, 0x00, 0x00, 0x00, 0x09, 0x21, 0x11, 0x01, 0x21, 0x01, 0x22, 0x28, 0x01, 0x07,
+        0x05, 0x81, 0x03, 0x40, 0x00, 0x01, 0x07, 0x05, 0x01, 0x03, 0x40, 0x00, 0x01,
+    };
     UsbHidConfiguration configuration = {
         .hid_version = 0x0111,
         .report_descriptor_size = 0x0128,
@@ -46,6 +51,7 @@ static void test_hid_configuration(void) {
 
     usb_hid_configuration_descriptor_encode(&configuration, descriptor);
 
+    assert(memcmp(descriptor, expected, sizeof(expected)) == 0);
     assert(descriptor[0] == 9 && descriptor[1] == 2);
     assert(descriptor[2] == USB_HID_CONFIGURATION_DESCRIPTOR_SIZE && descriptor[3] == 0);
     assert(descriptor[7] == 0xc0 && descriptor[8] == 40);
@@ -62,6 +68,9 @@ static void test_hid_configuration(void) {
 }
 
 static void test_string_descriptors(void) {
+    static const uint8_t expected_manufacturer[] = {
+        0x10, 0x03, 'F', 0, 'a', 0, 'n', 0, 'a', 0, 't', 0, 'e', 0, 'c', 0,
+    };
     uint8_t descriptor[64];
 
     size_t length = usb_language_descriptor_encode(0x0409, descriptor, sizeof(descriptor));
@@ -71,6 +80,7 @@ static void test_string_descriptors(void) {
 
     length = usb_string_descriptor_encode("Fanatec", descriptor, sizeof(descriptor));
     assert(length == 16);
+    assert(memcmp(descriptor, expected_manufacturer, sizeof(expected_manufacturer)) == 0);
     assert(descriptor[0] == 16 && descriptor[1] == 3);
     assert(descriptor[2] == 'F' && descriptor[3] == 0);
     assert(descriptor[14] == 'c' && descriptor[15] == 0);
