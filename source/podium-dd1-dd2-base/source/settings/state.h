@@ -5,6 +5,7 @@
 
 #include "analog/auxiliary_axis.h"
 #include "profile/bank.h"
+#include "security/code.h"
 #include "shifter/h_pattern.h"
 #include "wheel/position.h"
 #include "wheel/steering_limit.h"
@@ -15,6 +16,7 @@ typedef struct {
     HPatternSettings h_pattern_shifter;
     AuxiliaryAxisSettings auxiliary_axis;
     WheelSteeringLimits steering_limits;
+    SecurityCodeSettings security_code;
     bool wheel_auxiliary_disabled;
 } BaseSettings;
 

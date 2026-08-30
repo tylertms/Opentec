@@ -52,6 +52,7 @@ typedef struct {
     WheelRotaryInput rotary_input;
     WheelDisplayOutput display_output;
     WheelDisplayOutput default_display_output;
+    WheelDisplayOutput display_override_output;
     WheelDisplayOverlay display_overlay;
     WheelAuxiliaryOutput auxiliary_output;
     uint8_t adapter_display_state;
@@ -64,6 +65,7 @@ typedef struct {
     WheelServiceRequest request_kind;
     bool protocol_deadline_active;
     bool protocol_exchange_completed;
+    bool display_override_active;
 } WheelService;
 
 void wheel_service_init(WheelService *service, SerialService *transport);
@@ -84,10 +86,13 @@ bool wheel_service_queue_adapter_text_line(WheelService *service, uint8_t line, 
 bool wheel_service_queue_adapter_text_close(WheelService *service);
 void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output);
 WheelDisplayOutput *wheel_service_default_display_output(WheelService *service);
+void wheel_service_set_display_override(WheelService *service, const WheelDisplayOutput *output);
+void wheel_service_clear_display_override(WheelService *service);
 void wheel_service_begin_display_overlay(WheelService *service, uint8_t command, uint32_t now_ms);
 bool wheel_service_update_display_overlay(WheelService *service, uint32_t now_ms);
 bool wheel_service_display_overlay_active(const WheelService *service);
 void wheel_service_set_vibration_output(WheelService *service, const WheelVibrationOutput *output);
+void wheel_service_set_auxiliary_report(WheelService *service, uint16_t report);
 void wheel_service_set_auxiliary_output_disabled(WheelService *service, bool disabled);
 void wheel_service_set_legacy_axes(WheelService *service, const uint8_t axes[2]);
 void wheel_service_reset_host_protocol_outputs(WheelService *service);

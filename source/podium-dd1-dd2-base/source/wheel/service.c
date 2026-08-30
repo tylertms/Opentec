@@ -480,6 +480,7 @@ void wheel_service_init(WheelService *service, SerialService *transport) {
     clear_scan_filter(service);
     service->display_output = (WheelDisplayOutput){0};
     service->default_display_output = (WheelDisplayOutput){0};
+    service->display_override_output = (WheelDisplayOutput){0};
     wheel_display_overlay_init(&service->display_overlay);
     service->auxiliary_output = (WheelAuxiliaryOutput){0};
     service->protocol_deadline_ms = 0;
@@ -487,6 +488,7 @@ void wheel_service_init(WheelService *service, SerialService *transport) {
     service->request_kind = WHEEL_SERVICE_REQUEST_NONE;
     service->protocol_deadline_active = false;
     service->protocol_exchange_completed = false;
+    service->display_override_active = false;
 }
 
 /**
@@ -713,7 +715,10 @@ bool wheel_service_queue_adapter_text_close(WheelService *service) {
  * @param[in,out] service Attached-wheel service to update.
  * @param[in] report Shared auxiliary report.
  */
-static void set_auxiliary_report(WheelService *service, uint16_t report) {
+void wheel_service_set_auxiliary_report(WheelService *service, uint16_t report) {
+    if (service == NULL) {
+        return;
+    }
     service->auxiliary_output.report = report;
     for (uint8_t channel = 0; channel < WHEEL_VIBRATION_CHANNEL_COUNT; channel++) {
         uint8_t value = channel == 0 ? (uint8_t)report : (uint8_t)(report >> 8);
@@ -770,6 +775,24 @@ static void publish_display_overlay(WheelService *service) {
 }
 
 /**
+ * @brief Publishes the highest-priority attached-wheel display page.
+ *
+ * Gives an explicit interaction override priority over a timed command presentation and the
+ * retained default page.
+ *
+ * @param[in,out] service Attached-wheel service publishing its visible page.
+ */
+static void publish_visible_display(WheelService *service) {
+    if (service->display_override_active) {
+        publish_display_output(service, service->display_override_output);
+    } else if (service->display_overlay.active) {
+        publish_display_overlay(service);
+    } else {
+        publish_display_output(service, service->default_display_output);
+    }
+}
+
+/**
  * @brief Updates the default output state sent to the attached wheel.
  *
  * Retains page-zero glyph and marker changes while a temporary page is active. Otherwise publishes
@@ -780,7 +803,7 @@ static void publish_display_overlay(WheelService *service) {
  */
 void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output) {
     service->default_display_output = *output;
-    if (!service->display_overlay.active) {
+    if (!service->display_overlay.active && !service->display_override_active) {
         publish_display_output(service, *output);
     }
 }
@@ -798,6 +821,39 @@ WheelDisplayOutput *wheel_service_default_display_output(WheelService *service) 
 }
 
 /**
+ * @brief Publishes an interaction-owned attached-wheel display page.
+ *
+ * Retains the newest complete override and presents it ahead of timed command and default pages.
+ * Changes to lower-priority pages continue to accumulate for restoration.
+ *
+ * @param[in,out] service Attached-wheel service receiving the override.
+ * @param[in] output Complete interaction display output.
+ */
+void wheel_service_set_display_override(WheelService *service, const WheelDisplayOutput *output) {
+    if (service == NULL || output == NULL) {
+        return;
+    }
+    service->display_override_output = *output;
+    service->display_override_active = true;
+    publish_display_output(service, *output);
+}
+
+/**
+ * @brief Releases the interaction-owned attached-wheel display page.
+ *
+ * Restores an active timed command presentation or the newest retained default page.
+ *
+ * @param[in,out] service Attached-wheel service releasing the override.
+ */
+void wheel_service_clear_display_override(WheelService *service) {
+    if (service == NULL || !service->display_override_active) {
+        return;
+    }
+    service->display_override_active = false;
+    publish_visible_display(service);
+}
+
+/**
  * @brief Starts a temporary attached-wheel command presentation.
  *
  * Replaces any active page-one presentation, restarts its timing, and immediately publishes its
@@ -809,7 +865,9 @@ WheelDisplayOutput *wheel_service_default_display_output(WheelService *service) 
  */
 void wheel_service_begin_display_overlay(WheelService *service, uint8_t command, uint32_t now_ms) {
     wheel_display_overlay_begin(&service->display_overlay, command, now_ms);
-    publish_display_overlay(service);
+    if (!service->display_override_active) {
+        publish_display_overlay(service);
+    }
 }
 
 /**
@@ -826,11 +884,10 @@ bool wheel_service_update_display_overlay(WheelService *service, uint32_t now_ms
     if (!wheel_display_overlay_update(&service->display_overlay, now_ms)) {
         return false;
     }
-    if (service->display_overlay.active) {
-        publish_display_overlay(service);
-    } else {
-        publish_display_output(service, service->default_display_output);
+    if (service->display_override_active) {
+        return false;
     }
+    publish_visible_display(service);
     return true;
 }
 
@@ -856,8 +913,8 @@ bool wheel_service_display_overlay_active(const WheelService *service) {
  * @param[in] output Two attached-wheel vibration channels.
  */
 void wheel_service_set_vibration_output(WheelService *service, const WheelVibrationOutput *output) {
-    set_auxiliary_report(service,
-                         (uint16_t)output->channels[0] | (uint16_t)output->channels[1] << 8);
+    wheel_service_set_auxiliary_report(service, (uint16_t)output->channels[0] |
+                                                    (uint16_t)output->channels[1] << 8);
 }
 
 /**
@@ -910,9 +967,10 @@ void wheel_service_reset_host_protocol_outputs(WheelService *service) {
         return;
     }
     static const uint8_t cleared[4] = {0};
-    set_auxiliary_report(service, 0);
+    wheel_service_set_auxiliary_report(service, 0);
     wheel_service_set_legacy_axes(service, cleared);
-    if (!wheel_service_tuning_display_supported(service) && !service->display_overlay.active) {
+    if (!wheel_service_tuning_display_supported(service) && !service->display_overlay.active &&
+        !service->display_override_active) {
         service->default_display_output = (WheelDisplayOutput){0};
         publish_display_output(service, service->default_display_output);
     }
@@ -1024,8 +1082,8 @@ bool wheel_service_apply_auxiliary_output_command(WheelService *service,
         return false;
     }
 
-    set_auxiliary_report(service,
-                         (uint16_t)command->parameters[1] | (uint16_t)command->parameters[0] << 8);
+    wheel_service_set_auxiliary_report(service, (uint16_t)command->parameters[1] |
+                                                    (uint16_t)command->parameters[0] << 8);
     return true;
 }
 

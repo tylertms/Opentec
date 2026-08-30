@@ -59,6 +59,7 @@
 #include "profile/tuning_interaction.h"
 #include "secure_element/authentication.h"
 #include "secure_element/session.h"
+#include "security/code.h"
 #include "serial/service.h"
 #include "settings/persistence.h"
 #include "settings/state.h"
@@ -240,6 +241,10 @@ static UsbTuningProfileService usb_tuning_profile_service;
 static TuningInteraction tuning_interaction;
 static TuningInteractionInput tuning_interaction_input;
 static WheelInputSnapshot tuning_interaction_snapshot;
+static SecurityCode security_code;
+static SecurityCodeInput security_code_input;
+static SecurityCodeUpdate security_code_update_state;
+static WheelDisplayOutput security_code_display_output;
 static UsbDiagnosticSnapshot usb_diagnostic_snapshot;
 static UsbDeviceOutputReport usb_device_output_report;
 static UsbConnectionMonitor usb_connection_monitor;
@@ -940,6 +945,7 @@ static void initialize_usb_command_bridge(void) {
     usb_tuning_menu_service_init(&usb_tuning_menu_service);
     usb_tuning_profile_service_init(&usb_tuning_profile_service);
     tuning_interaction_init(&tuning_interaction);
+    security_code_init(&security_code);
     usb_motor_acknowledgement_ready = false;
     xbox_mode_startup_attempted = false;
     xbox_mode_startup_finished = false;
@@ -2411,15 +2417,74 @@ static void service_usb_output(void) {
 }
 
 /**
- * @brief Services wheel-side pedal-adjustment shortcuts.
+ * @brief Applies a security-code presentation to attached-wheel output.
  *
- * Feeds the tuning interaction with normalized wheel buttons, mode, and the higher-priority adapter
- * profile shortcut. An accepted request is queued only while the V4 pedal session is active.
+ * Publishes prompt or digit glyphs through the interaction override, applies selected-digit report
+ * masks, and restores lower-priority display state when entry completes.
+ *
  */
-static void service_tuning_interaction(void) {
+static void apply_security_code_presentation(void) {
+    if (security_code_update_state.presentation.kind == SECURITY_CODE_PRESENTATION_KEEP) {
+        return;
+    }
+    if (security_code_update_state.presentation.kind == SECURITY_CODE_PRESENTATION_CLEAR) {
+        wheel_service_set_auxiliary_report(&wheel_service, 0);
+        wheel_service_clear_display_override(&wheel_service);
+        return;
+    }
+
+    security_code_display_output = *wheel_service_default_display_output(&wheel_service);
+    for (uint8_t digit = 0; digit < SECURITY_CODE_DIGIT_COUNT; digit++) {
+        security_code_display_output.glyphs[digit] =
+            security_code_update_state.presentation.glyphs[digit];
+    }
+    security_code_display_output.third_glyph_marker = false;
+    wheel_service_set_display_override(&wheel_service, &security_code_display_output);
+    if (security_code_update_state.presentation.report != 0) {
+        wheel_service_set_auxiliary_report(&wheel_service,
+                                           security_code_update_state.presentation.report);
+    }
+}
+
+/**
+ * @brief Services the security gate and wheel-side tuning shortcuts.
+ *
+ * Feeds the security-code state machine from direct or adapter controls and gives active code entry
+ * priority over tuning interaction. Otherwise it advances the tuning-menu phase and queues an
+ * accepted pedal-adjustment request while the V4 pedal session is active.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_tuning_interaction(uint32_t now_ms) {
     const uint8_t *buttons = wheel_service_buttons(&wheel_service);
     const WheelAdapterInput *adapter = wheel_service_adapter(&wheel_service);
     bool available = wheel_service_input_snapshot(&wheel_service, &tuning_interaction_snapshot);
+    security_code_input = (SecurityCodeInput){
+        .wheel_mode = wheel_service_mode(&wheel_service),
+        .primary_buttons = (uint16_t)buttons[0] | (uint16_t)buttons[1] << 8,
+        .secondary_buttons = available ? tuning_interaction_snapshot.secondary_buttons : 0,
+        .adapter_buttons = {adapter->buttons[0], adapter->buttons[1], adapter->buttons[2]},
+        .adapter_connected = adapter->connected,
+    };
+    security_code_update_state = security_code_update(&security_code, &base_settings.security_code,
+                                                      &security_code_input, now_ms);
+    if (security_code_update_state.prompt_command != 0) {
+        wheel_service_queue_adapter_display_state(&wheel_service,
+                                                  security_code_update_state.prompt_command);
+        (void)wheel_service_queue_tuning_display_command(&wheel_service,
+                                                         security_code_update_state.prompt_command);
+    }
+    apply_security_code_presentation();
+    if (security_code_update_state.presentation.kind == SECURITY_CODE_PRESENTATION_PROMPT) {
+        tuning_interaction_init(&tuning_interaction);
+    }
+    if (security_code_update_state.settings_changed) {
+        base_settings_persistence_request_save(&settings_persistence, now_ms);
+    }
+    if (security_code_update_state.active) {
+        return;
+    }
+
     tuning_interaction_input = (TuningInteractionInput){
         .wheel_mode = wheel_service_mode(&wheel_service),
         .primary_buttons = (uint16_t)buttons[0] | (uint16_t)buttons[1] << 8,
@@ -3126,7 +3191,7 @@ int main(void) {
         }
         wheel_service_run(&wheel_service, now_ms, !serial_command_waiting());
         wheel_service_update_interface_mode_gate(&wheel_service, now_ms);
-        service_tuning_interaction();
+        service_tuning_interaction(now_ms);
         if (wheel_service_take_bite_point(&wheel_service, &wheel_adjusted_bite_point_percent)) {
             wheel_steering_limit_command = (WheelSteeringLimitCommand){
                 .percent = wheel_adjusted_bite_point_percent,

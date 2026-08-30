@@ -146,6 +146,7 @@ profile_bank_sources = files('source/profile/bank.c')
 profile_record_sources = files('source/profile/record.c')
 profile_tuning_sources = files('source/profile/tuning.c')
 profile_tuning_interaction_sources = files('source/profile/tuning_interaction.c')
+security_code_sources = files('source/security/code.c')
 settings_persistence_sources = files('source/settings/persistence.c')
 settings_state_sources = files('source/settings/state.c')
 platform_time_sources = files('source/platform/time.c')
@@ -389,6 +390,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'profile-record': 'source/profile/record.c',
     'profile-tuning': 'source/profile/tuning.c',
     'profile-tuning-interaction': 'source/profile/tuning_interaction.c',
+    'security-code': 'source/security/code.c',
     'settings-persistence': 'source/settings/persistence.c',
     'settings-state': 'source/settings/state.c',
     'wheel-position': 'source/wheel/position.c',
@@ -1751,6 +1753,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  security_code_test = executable(
+    'base-security-code-test',
+    'tests/source/security_code.c',
+    security_code_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   profile_bank_test = executable(
     'base-profile-bank-test',
     'tests/source/tuning_profile_bank.c',
@@ -2771,6 +2781,11 @@ if not meson.is_cross_build()
     'base-profile-tuning-interaction',
     profile_tuning_interaction_test,
     suite: ['base', 'profile', 'wheel', 'input'],
+  )
+  test(
+    'base-security-code',
+    security_code_test,
+    suite: ['base', 'security', 'profile', 'wheel', 'input'],
   )
   test('base-profile-bank', profile_bank_test, suite: ['base', 'profile'])
   test('base-profile-record', profile_record_test, suite: ['base', 'profile', 'persistence'])

@@ -83,6 +83,10 @@ static void test_defaults_are_saved_after_delay(void) {
     assert(restored.auxiliary_axis.reset_on_start);
     assert(wheel_steering_limits_active(&restored.steering_limits, 0) == 100);
     assert(!restored.wheel_auxiliary_disabled);
+    assert(!restored.security_code.enabled);
+    assert(restored.security_code.digits[0] == 0);
+    assert(restored.security_code.digits[1] == 0);
+    assert(restored.security_code.digits[2] == 0);
 }
 
 static void test_dirty_changes_are_coalesced(void) {
@@ -236,6 +240,28 @@ static void test_wheel_auxiliary_option_is_persisted(void) {
     assert(restored.wheel_auxiliary_disabled);
 }
 
+static void test_security_code_is_persisted(void) {
+    reset_storage();
+    BaseSettingsPersistence persistence;
+    BaseSettings settings;
+    base_settings_persistence_load(&persistence, &settings, 0);
+    settings.security_code = (SecurityCodeSettings){
+        .digits = {4, 2, 7},
+        .enabled = true,
+    };
+    base_settings_persistence_request_save(&persistence, 100);
+    assert(base_settings_persistence_service(&persistence, &settings, 100) ==
+           BASE_SETTINGS_PERSISTENCE_SAVED);
+
+    BaseSettingsPersistence loaded;
+    BaseSettings restored;
+    assert(base_settings_persistence_load(&loaded, &restored, 200));
+    assert(restored.security_code.enabled);
+    assert(restored.security_code.digits[0] == 4);
+    assert(restored.security_code.digits[1] == 2);
+    assert(restored.security_code.digits[2] == 7);
+}
+
 static void test_invalid_wheel_auxiliary_option_is_rejected(void) {
     enum { HEADER_SIZE = 12 };
     reset_storage();
@@ -248,13 +274,36 @@ static void test_invalid_wheel_auxiliary_option_is_rejected(void) {
     uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
     uint16_t payload_size = (uint16_t)record[6] | (uint16_t)record[7] << 8;
     uint16_t data_size = HEADER_SIZE + payload_size;
-    record[data_size - 1] = 2;
+    record[data_size - 5] = 2;
     write_u16(record, data_size, checksum(record, data_size));
 
     BaseSettingsPersistence loaded;
     BaseSettings restored;
     assert(!base_settings_persistence_load(&loaded, &restored, 2000));
     assert(!restored.wheel_auxiliary_disabled);
+}
+
+static void test_invalid_security_code_is_rejected(void) {
+    enum { HEADER_SIZE = 12, SECURITY_CODE_SIZE = 4 };
+    reset_storage();
+    BaseSettingsPersistence persistence;
+    BaseSettings settings;
+    base_settings_persistence_load(&persistence, &settings, 0);
+    assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
+           BASE_SETTINGS_PERSISTENCE_SAVED);
+
+    uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
+    uint16_t payload_size = (uint16_t)record[6] | (uint16_t)record[7] << 8;
+    uint16_t data_size = HEADER_SIZE + payload_size;
+    uint16_t security_code_offset = data_size - SECURITY_CODE_SIZE;
+    record[security_code_offset] = 1;
+    record[security_code_offset + 1] = 10;
+    write_u16(record, data_size, checksum(record, data_size));
+
+    BaseSettingsPersistence loaded;
+    BaseSettings restored;
+    assert(!base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(!restored.security_code.enabled);
 }
 
 static void test_profile_only_record_is_upgraded(void) {
@@ -401,7 +450,7 @@ static void test_steering_limit_record_is_upgraded(void) {
 
     uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
     uint16_t payload_size = (uint16_t)record[6] | (uint16_t)record[7] << 8;
-    payload_size--;
+    payload_size -= 5;
     uint16_t data_size = HEADER_SIZE + payload_size;
     record[4] = STEERING_LIMIT_VERSION;
     write_u16(record, 6, payload_size);
@@ -413,6 +462,39 @@ static void test_steering_limit_record_is_upgraded(void) {
     assert(loaded.dirty);
     assert(restored.steering_limits.percent[0] == 25);
     assert(!restored.wheel_auxiliary_disabled);
+}
+
+static void test_auxiliary_output_record_is_upgraded(void) {
+    enum { HEADER_SIZE = 12, AUXILIARY_OUTPUT_VERSION = 6, SECURITY_CODE_SIZE = 4 };
+    reset_storage();
+    BaseSettingsPersistence persistence;
+    BaseSettings settings;
+    base_settings_persistence_load(&persistence, &settings, 0);
+    settings.wheel_auxiliary_disabled = true;
+    settings.security_code = (SecurityCodeSettings){
+        .digits = {4, 2, 7},
+        .enabled = true,
+    };
+    assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
+           BASE_SETTINGS_PERSISTENCE_SAVED);
+
+    uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
+    uint16_t payload_size = (uint16_t)record[6] | (uint16_t)record[7] << 8;
+    payload_size -= SECURITY_CODE_SIZE;
+    uint16_t data_size = HEADER_SIZE + payload_size;
+    record[4] = AUXILIARY_OUTPUT_VERSION;
+    write_u16(record, 6, payload_size);
+    write_u16(record, data_size, checksum(record, data_size));
+
+    BaseSettingsPersistence loaded;
+    BaseSettings restored;
+    assert(base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(loaded.dirty);
+    assert(restored.wheel_auxiliary_disabled);
+    assert(!restored.security_code.enabled);
+    assert(restored.security_code.digits[0] == 0);
+    assert(restored.security_code.digits[1] == 0);
+    assert(restored.security_code.digits[2] == 0);
 }
 
 static void test_interrupted_replacement_preserves_previous_record(void) {
@@ -488,12 +570,15 @@ int main(void) {
     test_auxiliary_axis_settings_are_persisted();
     test_steering_limit_settings_are_persisted();
     test_wheel_auxiliary_option_is_persisted();
+    test_security_code_is_persisted();
     test_invalid_wheel_auxiliary_option_is_rejected();
+    test_invalid_security_code_is_rejected();
     test_profile_only_record_is_upgraded();
     test_wheel_reference_record_is_upgraded();
     test_h_pattern_record_is_upgraded();
     test_auxiliary_axis_record_is_upgraded();
     test_steering_limit_record_is_upgraded();
+    test_auxiliary_output_record_is_upgraded();
     test_interrupted_replacement_preserves_previous_record();
     test_corrupted_new_record_falls_back_to_previous_record();
     test_deadline_wraps_safely();

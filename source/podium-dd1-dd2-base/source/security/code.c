@@ -1,0 +1,344 @@
+#include "security/code.h"
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+enum {
+    SECURITY_CODE_PROMPT_DELAY_MS = 1000,
+    SECURITY_CODE_ENTRY_DELAY_MS = 1000,
+    SECURITY_CODE_REPEAT_DELAY_MS = 500,
+    SECURITY_CODE_BLINK_DELAY_MS = 150,
+    SECURITY_CODE_ENABLE_PRIMARY_CHORD = 0xe100,
+    SECURITY_CODE_DISABLE_PRIMARY_CHORD = 0xe800,
+    SECURITY_CODE_ADAPTER_COMMON_CHORD = 0x16,
+    SECURITY_CODE_ADAPTER_ENABLE = 0x01,
+    SECURITY_CODE_ADAPTER_DISABLE = 0x08,
+    SECURITY_CODE_ADAPTER_PREVIOUS = 0x02,
+    SECURITY_CODE_ADAPTER_NEXT = 0x04,
+    SECURITY_CODE_PRIMARY_INCREMENT = 0x0100,
+    SECURITY_CODE_PRIMARY_DECREMENT = 0x0800,
+    SECURITY_CODE_PRIMARY_PREVIOUS = 0x0200,
+    SECURITY_CODE_PRIMARY_NEXT = 0x0400,
+    SECURITY_CODE_PRIMARY_SPECIAL_CANCEL = 0x1000,
+    SECURITY_CODE_SECONDARY_CONFIRM = 0x0200,
+    SECURITY_CODE_SECONDARY_CANCEL = 0x0800,
+    SECURITY_CODE_ADAPTER_CONFIRM = 0x08,
+    SECURITY_CODE_ADAPTER_CANCEL = 0x04,
+    SECURITY_CODE_ENABLE_PROMPT = 0x1e,
+    SECURITY_CODE_DISABLE_PROMPT = 0x1f,
+    SECURITY_CODE_FIRST_REPORT = 0x20,
+    SECURITY_CODE_SECOND_REPORT = 0x10,
+    SECURITY_CODE_THIRD_REPORT = 0x08,
+    SECURITY_CODE_GLYPH_L = 0x38,
+    SECURITY_CODE_GLYPH_O = 0x3f,
+    SECURITY_CODE_GLYPH_C = 0x39,
+};
+
+typedef struct {
+    bool increment;
+    bool decrement;
+    bool previous;
+    bool next;
+    bool confirm;
+    bool cancel;
+} SecurityCodeActionInput;
+
+/**
+ * @brief Tests a millisecond deadline with unsigned wraparound.
+ *
+ * Treats the forward half of the time range as reached and the reverse half as pending.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[in] deadline_ms Deadline to test.
+ * @return True when the deadline has been reached.
+ */
+static bool deadline_reached(uint32_t now_ms, uint32_t deadline_ms) {
+    return now_ms - deadline_ms < UINT32_C(0x80000000);
+}
+
+/**
+ * @brief Reports whether the selected wheel path uses the auxiliary digit marker.
+ *
+ * Selects the five direct report modes and every connected adapter path.
+ *
+ * @param[in] input Current attached-wheel and adapter input.
+ * @return True when digit selection is carried by the auxiliary report.
+ */
+static bool report_display_used(const SecurityCodeInput *input) {
+    return input->adapter_connected || input->wheel_mode == 0x0a || input->wheel_mode == 0x0c ||
+           input->wheel_mode == 0x0f || input->wheel_mode == 0x17 || input->wheel_mode == 0x1c;
+}
+
+/**
+ * @brief Detects the security-code enable chord.
+ *
+ * Accepts either the complete direct-wheel mask or the adapter's common chord with its enable bit.
+ *
+ * @param[in] input Current attached-wheel and adapter input.
+ * @return True when the enable chord is held.
+ */
+static bool enable_chord_held(const SecurityCodeInput *input) {
+    bool direct = (input->primary_buttons & SECURITY_CODE_ENABLE_PRIMARY_CHORD) ==
+                  SECURITY_CODE_ENABLE_PRIMARY_CHORD;
+    bool adapter = input->adapter_connected &&
+                   (input->adapter_buttons[1] & SECURITY_CODE_ADAPTER_COMMON_CHORD) ==
+                       SECURITY_CODE_ADAPTER_COMMON_CHORD &&
+                   (input->adapter_buttons[0] & SECURITY_CODE_ADAPTER_ENABLE) != 0;
+    return direct || adapter;
+}
+
+/**
+ * @brief Detects the security-code disable chord.
+ *
+ * Accepts either the complete direct-wheel mask or the adapter's common chord with its disable bit.
+ *
+ * @param[in] input Current attached-wheel and adapter input.
+ * @return True when the disable chord is held.
+ */
+static bool disable_chord_held(const SecurityCodeInput *input) {
+    bool direct = (input->primary_buttons & SECURITY_CODE_DISABLE_PRIMARY_CHORD) ==
+                  SECURITY_CODE_DISABLE_PRIMARY_CHORD;
+    bool adapter = input->adapter_connected &&
+                   (input->adapter_buttons[1] & SECURITY_CODE_ADAPTER_COMMON_CHORD) ==
+                       SECURITY_CODE_ADAPTER_COMMON_CHORD &&
+                   (input->adapter_buttons[0] & SECURITY_CODE_ADAPTER_DISABLE) != 0;
+    return direct || adapter;
+}
+
+/**
+ * @brief Normalizes digit-entry controls for the active input path.
+ *
+ * Gives a connected adapter exclusive control of all six actions. Direct modes 0x06 and 0x15 use
+ * their primary special-cancel bit; other direct modes use the secondary cancel bit.
+ *
+ * @param[in] input Current attached-wheel and adapter input.
+ * @return Logical digit-entry actions.
+ */
+static SecurityCodeActionInput action_input(const SecurityCodeInput *input) {
+    if (input->adapter_connected) {
+        return (SecurityCodeActionInput){
+            .increment = (input->adapter_buttons[0] & SECURITY_CODE_ADAPTER_ENABLE) != 0,
+            .decrement = (input->adapter_buttons[0] & SECURITY_CODE_ADAPTER_DISABLE) != 0,
+            .previous = (input->adapter_buttons[0] & SECURITY_CODE_ADAPTER_PREVIOUS) != 0,
+            .next = (input->adapter_buttons[0] & SECURITY_CODE_ADAPTER_NEXT) != 0,
+            .confirm = (input->adapter_buttons[2] & SECURITY_CODE_ADAPTER_CONFIRM) != 0,
+            .cancel = (input->adapter_buttons[2] & SECURITY_CODE_ADAPTER_CANCEL) != 0,
+        };
+    }
+
+    bool special_cancel = input->wheel_mode == 0x06 || input->wheel_mode == 0x15;
+    return (SecurityCodeActionInput){
+        .increment = (input->primary_buttons & SECURITY_CODE_PRIMARY_INCREMENT) != 0,
+        .decrement = (input->primary_buttons & SECURITY_CODE_PRIMARY_DECREMENT) != 0,
+        .previous = (input->primary_buttons & SECURITY_CODE_PRIMARY_PREVIOUS) != 0,
+        .next = (input->primary_buttons & SECURITY_CODE_PRIMARY_NEXT) != 0,
+        .confirm = (input->secondary_buttons & SECURITY_CODE_SECONDARY_CONFIRM) != 0,
+        .cancel = special_cancel
+                      ? (input->primary_buttons & SECURITY_CODE_PRIMARY_SPECIAL_CANCEL) != 0
+                      : (input->secondary_buttons & SECURITY_CODE_SECONDARY_CANCEL) != 0,
+    };
+}
+
+/**
+ * @brief Advances the five-step selected-digit blink cycle.
+ *
+ * Advances at most once per service pass and restarts the 150-millisecond deadline after each step.
+ *
+ * @param[in,out] code Security-code interaction state.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void advance_blink(SecurityCode *code, uint32_t now_ms) {
+    if (!deadline_reached(now_ms, code->blink_deadline_ms)) {
+        return;
+    }
+    code->blink_deadline_ms = now_ms + SECURITY_CODE_BLINK_DELAY_MS;
+    code->blink_phase = code->blink_phase > 3 ? 0 : (uint8_t)(code->blink_phase + 1u);
+}
+
+/**
+ * @brief Builds the enable or disable prompt presentation.
+ *
+ * Uses the native prompt command in modes 0x0C, 0x06, and 0x15. Mode 0x0C leaves the local glyphs
+ * clear, while every other mode presents LOC.
+ *
+ * @param[in] code Security-code interaction state.
+ * @param[in] input Current attached-wheel and adapter input.
+ * @return Prompt presentation and optional native command.
+ */
+static SecurityCodeUpdate prompt_update(const SecurityCode *code, const SecurityCodeInput *input) {
+    SecurityCodeUpdate update = {
+        .presentation.kind = SECURITY_CODE_PRESENTATION_PROMPT,
+        .prompt_command =
+            code->enable_requested ? SECURITY_CODE_ENABLE_PROMPT : SECURITY_CODE_DISABLE_PROMPT,
+        .active = true,
+    };
+    if (input->wheel_mode != 0x0c) {
+        update.presentation.glyphs[0] = SECURITY_CODE_GLYPH_L;
+        update.presentation.glyphs[1] = SECURITY_CODE_GLYPH_O;
+        update.presentation.glyphs[2] = SECURITY_CODE_GLYPH_C;
+    }
+    if (input->wheel_mode != 0x0c && input->wheel_mode != 0x06 && input->wheel_mode != 0x15) {
+        update.prompt_command = 0;
+    }
+    return update;
+}
+
+/**
+ * @brief Builds the current three-digit entry presentation.
+ *
+ * Encodes all three decimal digits, then either publishes the selected-digit report mask or blanks
+ * the selected local glyph during blink phase zero.
+ *
+ * @param[in] code Security-code interaction state.
+ * @param[in] input Current attached-wheel and adapter input.
+ * @return Digit presentation for the active entry field.
+ */
+static SecurityCodePresentation digit_presentation(const SecurityCode *code,
+                                                   const SecurityCodeInput *input) {
+    static const uint8_t digit_glyphs[] = {0x3f, 0x06, 0x5b, 0x4f, 0x66,
+                                           0x6d, 0x7d, 0x07, 0x7f, 0x6f};
+    static const uint8_t reports[] = {SECURITY_CODE_FIRST_REPORT, SECURITY_CODE_SECOND_REPORT,
+                                      SECURITY_CODE_THIRD_REPORT};
+    SecurityCodePresentation presentation = {.kind = SECURITY_CODE_PRESENTATION_DIGITS};
+    for (uint8_t digit = 0; digit < SECURITY_CODE_DIGIT_COUNT; digit++) {
+        presentation.glyphs[digit] = digit_glyphs[code->entered_digits[digit]];
+    }
+    if (report_display_used(input)) {
+        presentation.report = reports[code->selected_digit];
+    } else if (code->blink_phase == 0) {
+        presentation.glyphs[code->selected_digit] = 0;
+    }
+    return presentation;
+}
+
+/**
+ * @brief Applies one ready digit-entry action in firmware priority order.
+ *
+ * Processes increment, decrement, previous, next, confirm, and cancel in that order. Decimal edits
+ * and digit navigation wrap, and the four repeating actions start a 500-millisecond delay.
+ *
+ * @param[in,out] code Security-code interaction state.
+ * @param[in] actions Normalized digit-entry actions.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void apply_action(SecurityCode *code, SecurityCodeActionInput actions, uint32_t now_ms) {
+    if (actions.increment) {
+        uint8_t *digit = &code->entered_digits[code->selected_digit];
+        *digit = *digit == 9 ? 0 : (uint8_t)(*digit + 1u);
+    } else if (actions.decrement) {
+        uint8_t *digit = &code->entered_digits[code->selected_digit];
+        *digit = *digit == 0 ? 9 : (uint8_t)(*digit - 1u);
+    } else if (actions.previous) {
+        code->selected_digit = code->selected_digit == 0 ? 2 : (uint8_t)(code->selected_digit - 1u);
+    } else if (actions.next) {
+        code->selected_digit = code->selected_digit == 2 ? 0 : (uint8_t)(code->selected_digit + 1u);
+    } else if (actions.confirm || actions.cancel) {
+        code->phase = SECURITY_CODE_CONFIRM;
+        return;
+    } else {
+        return;
+    }
+    code->input_deadline_ms = now_ms + SECURITY_CODE_REPEAT_DELAY_MS;
+}
+
+/**
+ * @brief Initializes a security-code interaction.
+ *
+ * Starts inactive with zero entry digits and no pending request or timing state.
+ *
+ * @param[out] code Security-code interaction to initialize.
+ */
+void security_code_init(SecurityCode *code) {
+    if (code != NULL) {
+        *code = (SecurityCode){0};
+    }
+}
+
+/**
+ * @brief Advances security-code entry and updates its retained setting.
+ *
+ * Detects enable and disable chords only from the matching activation state, presents a one-second
+ * prompt and entry delay, edits three wrapping decimal digits, and confirms enable or matching
+ * disable requests. A mismatched disable request restarts the prompt without changing the setting.
+ *
+ * @param[in,out] code Security-code interaction state.
+ * @param[in,out] settings Retained activation state and code digits.
+ * @param[in] input Current attached-wheel and adapter input.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @return Current gate state, presentation action, prompt command, and setting result.
+ */
+SecurityCodeUpdate security_code_update(SecurityCode *code, SecurityCodeSettings *settings,
+                                        const SecurityCodeInput *input, uint32_t now_ms) {
+    SecurityCodeUpdate update = {0};
+    if (code == NULL || settings == NULL || input == NULL) {
+        return update;
+    }
+
+    if (code->phase == SECURITY_CODE_INACTIVE) {
+        bool enable = !settings->enabled && enable_chord_held(input);
+        bool disable = settings->enabled && disable_chord_held(input);
+        if (enable || disable) {
+            code->enable_requested = enable;
+            code->phase = SECURITY_CODE_PREPARE;
+        }
+        return update;
+    }
+
+    update.active = true;
+    if (code->phase == SECURITY_CODE_PREPARE) {
+        code->input_deadline_ms = now_ms + SECURITY_CODE_PROMPT_DELAY_MS;
+        code->phase = SECURITY_CODE_WAIT;
+        return prompt_update(code, input);
+    }
+    if (code->phase == SECURITY_CODE_WAIT) {
+        if (deadline_reached(now_ms, code->input_deadline_ms)) {
+            for (uint8_t digit = 0; digit < SECURITY_CODE_DIGIT_COUNT; digit++) {
+                code->entered_digits[digit] = 0;
+            }
+            code->selected_digit = 0;
+            code->input_deadline_ms = now_ms + SECURITY_CODE_ENTRY_DELAY_MS;
+            code->phase = SECURITY_CODE_EDIT;
+        }
+        return update;
+    }
+    if (code->phase == SECURITY_CODE_EDIT) {
+        SecurityCodeActionInput actions = action_input(input);
+        if (deadline_reached(now_ms, code->input_deadline_ms)) {
+            apply_action(code, actions, now_ms);
+        } else if (!actions.increment && !actions.decrement && !actions.previous && !actions.next) {
+            code->input_deadline_ms = now_ms;
+        }
+        advance_blink(code, now_ms);
+        update.presentation = digit_presentation(code, input);
+        return update;
+    }
+    if (code->phase == SECURITY_CODE_CONFIRM) {
+        bool matches = true;
+        for (uint8_t digit = 0; digit < SECURITY_CODE_DIGIT_COUNT; digit++) {
+            matches = matches && settings->digits[digit] == code->entered_digits[digit];
+        }
+        if (code->enable_requested) {
+            for (uint8_t digit = 0; digit < SECURITY_CODE_DIGIT_COUNT; digit++) {
+                settings->digits[digit] = code->entered_digits[digit];
+            }
+            settings->enabled = true;
+            update.settings_changed = true;
+            code->phase = SECURITY_CODE_INACTIVE;
+        } else if (matches) {
+            settings->enabled = false;
+            update.settings_changed = true;
+            code->phase = SECURITY_CODE_INACTIVE;
+        } else {
+            code->phase = SECURITY_CODE_PREPARE;
+            code->input_deadline_ms = now_ms + SECURITY_CODE_PROMPT_DELAY_MS;
+            update.mismatch = true;
+        }
+        update.presentation.kind = SECURITY_CODE_PRESENTATION_CLEAR;
+        return update;
+    }
+
+    code->phase = SECURITY_CODE_INACTIVE;
+    update.active = false;
+    return update;
+}
