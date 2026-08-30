@@ -110,7 +110,6 @@ a71ch_bus_sources = files('source/secure_element/bus.c')
 a71ch_exchange_sources = files('source/secure_element/exchange.c')
 a71ch_session_sources = files('source/secure_element/session.c')
 a71ch_authentication_sources = files('source/secure_element/authentication.c')
-status_led_sources = files('source/board/status_led.c')
 led_pattern_sources = files('source/board/led_pattern.c')
 power_controller_sources = files('source/board/power.c')
 torque_key_sources = files('source/board/torque_key.c')
@@ -347,7 +346,6 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'a71ch-exchange': 'source/secure_element/exchange.c',
     'a71ch-session': 'source/secure_element/session.c',
     'a71ch-authentication': 'source/secure_element/authentication.c',
-    'status-led': 'source/board/status_led.c',
     'led-pattern': 'source/board/led_pattern.c',
     'power-controller': 'source/board/power.c',
     'torque-key': 'source/board/torque_key.c',
@@ -401,7 +399,6 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'platform-pedal-link': 'source/platform/dspic33e/pedal_link.c',
     'platform-pin-mux': 'source/platform/dspic33e/pin_mux.c',
     'platform-storage': 'source/platform/dspic33e/storage.c',
-    'platform-status-led': 'source/platform/dspic33e/status_led.c',
     'platform-led-pattern': 'source/platform/dspic33e/led_pattern.c',
     'platform-power': 'source/platform/dspic33e/power.c',
     'platform-system': 'source/platform/dspic33e/system.c',
@@ -1479,14 +1476,6 @@ if not meson.is_cross_build()
     a71ch_bus_sources,
     a71ch_exchange_sources,
     a71ch_authentication_sources,
-    build_by_default: false,
-    include_directories: base_include,
-  )
-
-  status_led_test = executable(
-    'base-status-led-test',
-    'tests/source/status_led.c',
-    status_led_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2897,7 +2886,6 @@ if not meson.is_cross_build()
     a71ch_session_test,
     suite: ['base', 'secure-element'],
   )
-  test('base-status-led', status_led_test, suite: ['base', 'board', 'led'])
   test('base-led-pattern', led_pattern_test, suite: ['base', 'board', 'led'])
   test('base-power-controller', power_controller_test, suite: ['base', 'board', 'power'])
   test('base-torque-key', torque_key_test, suite: ['base', 'board', 'safety'])

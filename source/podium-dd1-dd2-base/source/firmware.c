@@ -5,7 +5,6 @@
 #include "board/identity.h"
 #include "board/led_pattern.h"
 #include "board/power.h"
-#include "board/status_led.h"
 #include "board/torque_key.h"
 #include "cooling/controller.h"
 #include "cooling/effect_limit.h"
@@ -57,7 +56,6 @@
 #include "platform/power.h"
 #include "platform/serial_link.h"
 #include "platform/shifter.h"
-#include "platform/status_led.h"
 #include "platform/system.h"
 #include "platform/time.h"
 #include "platform/torque_key.h"
@@ -302,7 +300,6 @@ static MotorOutputTransport motor_output_transport;
 static uint8_t motor_received_frame[MOTOR_LIVE_FRAME_SIZE];
 static uint8_t motor_transmitted_frame[MOTOR_LIVE_FRAME_SIZE];
 static uint8_t motor_malformed_frame_count;
-static StatusLed status_led;
 static PowerController power_controller;
 static SystemControlState system_control_state;
 static SystemTorqueTransition system_torque_transition;
@@ -3595,8 +3592,6 @@ int main(void) {
     run_led_pattern_startup_sequence();
     platform_display_init();
     platform_display_write_frame(display_framebuffer);
-    platform_status_led_init();
-    status_led_init(&status_led);
     initialize_cooling();
     platform_adc_init();
     platform_shifter_init();
@@ -3652,7 +3647,6 @@ int main(void) {
         } else if ((usb_connection_action & USB_CONNECTION_ACTION_CLEAR_NOTIFICATION) != 0) {
             usb_disconnect_notice_visible = false;
         }
-        platform_status_led_set(status_led_update(&status_led, now_ms));
         platform_cooling_service(now_ms);
         update_fan_speed(PLATFORM_FAN_PRIMARY);
         update_fan_speed(PLATFORM_FAN_SECONDARY);
