@@ -60,18 +60,18 @@ static void test_reads_extended_telemetry(void) {
     motor_telemetry_service_run(&service, 0);
     assert(requested_register == 0x12);
     assert(requested_length == 2);
-    const uint8_t motor_temperature[2] = {0x12, 0x34};
+    const uint8_t motor_temperature[2] = {0x34, 0x12};
     finish_read(motor_temperature);
     motor_telemetry_service_run(&service, 1);
 
     assert(requested_register == 0x13);
-    const uint8_t driver_temperature[2] = {0x56, 0x78};
+    const uint8_t driver_temperature[2] = {0x78, 0x56};
     finish_read(driver_temperature);
     motor_telemetry_service_run(&service, 2);
 
     assert(requested_register == 0x11);
     assert(requested_length == 4);
-    const uint8_t runtime[4] = {1, 2, 3, 4};
+    const uint8_t runtime[4] = {4, 3, 2, 1};
     finish_read(runtime);
     motor_telemetry_service_run(&service, 3);
 
@@ -122,6 +122,32 @@ static void test_standard_protocol_skips_extended_values(void) {
     assert(start_count == 2);
 }
 
+static void test_extended_protocol_rejects_unavailable_values(void) {
+    MotorTelemetryService service;
+    MotorIdentity identity = extended_identity();
+    const uint8_t unavailable_u16[2] = {0xff, 0xff};
+    const uint8_t unavailable_u32[4] = {0xff, 0xff, 0xff, 0xff};
+    const uint8_t unavailable_u8[1] = {0xff};
+    reset_bus();
+    motor_telemetry_service_init(&service, &identity);
+
+    motor_telemetry_service_run(&service, 0);
+    finish_read(unavailable_u16);
+    motor_telemetry_service_run(&service, 1);
+    finish_read(unavailable_u16);
+    motor_telemetry_service_run(&service, 2);
+    finish_read(unavailable_u32);
+    motor_telemetry_service_run(&service, 3);
+    finish_read(unavailable_u8);
+    motor_telemetry_service_run(&service, 4);
+
+    const MotorTelemetry *telemetry = motor_telemetry_service_value(&service);
+    assert(!telemetry->motor_temperature_valid);
+    assert(!telemetry->driver_temperature_valid);
+    assert(!telemetry->runtime_valid);
+    assert(!telemetry->accessory_type_valid);
+}
+
 static void test_failed_read_does_not_publish_value(void) {
     MotorTelemetryService service;
     MotorIdentity identity = extended_identity();
@@ -133,12 +159,17 @@ static void test_failed_read_does_not_publish_value(void) {
     motor_telemetry_service_run(&service, 1);
 
     assert(!service.telemetry.motor_temperature_valid);
-    assert(requested_register == 0x13);
+    assert(start_count == 1);
+
+    motor_telemetry_service_run(&service, 2);
+    assert(start_count == 2);
+    assert(requested_register == 0x12);
 }
 
 int main(void) {
     test_reads_extended_telemetry();
     test_standard_protocol_skips_extended_values();
+    test_extended_protocol_rejects_unavailable_values();
     test_failed_read_does_not_publish_value();
     return 0;
 }

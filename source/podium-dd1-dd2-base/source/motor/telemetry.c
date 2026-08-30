@@ -3,12 +3,29 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-static uint16_t read_u16(const uint8_t data[2]) { return (uint16_t)data[0] << 8 | data[1]; }
+/**
+ * @brief Decodes a little-endian 16-bit telemetry value.
+ *
+ * Combines the low byte followed by the high byte used by the motor register interface.
+ *
+ * @param[in] data Two-byte motor register value.
+ * @return Decoded unsigned value.
+ */
+static uint16_t read_u16(const uint8_t data[2]) {
+    return (uint16_t)data[0] | (uint16_t)data[1] << 8;
+}
 
+/**
+ * @brief Initializes motor telemetry storage.
+ *
+ * Clears all values and marks every telemetry channel unavailable.
+ *
+ * @param[out] telemetry Motor telemetry storage to initialize.
+ */
 void motor_telemetry_init(MotorTelemetry *telemetry) { *telemetry = (MotorTelemetry){0}; }
 
 /**
- * @brief Publishes a valid big-endian motor-temperature response.
+ * @brief Publishes a valid little-endian motor-temperature response.
  *
  * Decodes the two-byte value and retains the previous telemetry when the response is 0xFFFF.
  *
@@ -24,7 +41,7 @@ void motor_telemetry_set_motor_temperature(MotorTelemetry *telemetry, const uint
 }
 
 /**
- * @brief Publishes a valid big-endian driver-temperature response.
+ * @brief Publishes a valid little-endian driver-temperature response.
  *
  * Decodes the two-byte value and retains the previous telemetry when the response is 0xFFFF.
  *
@@ -40,7 +57,7 @@ void motor_telemetry_set_driver_temperature(MotorTelemetry *telemetry, const uin
 }
 
 /**
- * @brief Publishes a valid big-endian motor-runtime response.
+ * @brief Publishes a valid little-endian motor-runtime response.
  *
  * Decodes the four-byte value and retains the previous telemetry when the response is 0xFFFFFFFF.
  *
@@ -48,8 +65,8 @@ void motor_telemetry_set_driver_temperature(MotorTelemetry *telemetry, const uin
  * @param[in] data Four-byte runtime response.
  */
 void motor_telemetry_set_runtime(MotorTelemetry *telemetry, const uint8_t data[4]) {
-    uint32_t value =
-        (uint32_t)data[0] << 24 | (uint32_t)data[1] << 16 | (uint32_t)data[2] << 8 | data[3];
+    uint32_t value = (uint32_t)data[0] | (uint32_t)data[1] << 8 | (uint32_t)data[2] << 16 |
+                     (uint32_t)data[3] << 24;
     if (value != UINT32_MAX) {
         telemetry->runtime_seconds = value;
         telemetry->runtime_valid = true;

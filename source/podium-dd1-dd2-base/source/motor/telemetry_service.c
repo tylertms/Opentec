@@ -15,6 +15,15 @@ enum {
     MOTOR_TELEMETRY_POLL_INTERVAL_MS = 200,
 };
 
+/**
+ * @brief Initializes periodic motor telemetry acquisition.
+ *
+ * Clears published telemetry, selects motor temperature as the first register, and enables the
+ * runtime and accessory registers only for controllers with extended parameters.
+ *
+ * @param[out] service Motor telemetry service to initialize.
+ * @param[in] identity Identified motor-controller protocol.
+ */
 void motor_telemetry_service_init(MotorTelemetryService *service, const MotorIdentity *identity) {
     motor_telemetry_init(&service->telemetry);
     service->read = MOTOR_TELEMETRY_READ_MOTOR_TEMPERATURE;
@@ -23,6 +32,13 @@ void motor_telemetry_service_init(MotorTelemetryService *service, const MotorIde
     service->transfer_active = false;
 }
 
+/**
+ * @brief Publishes the completed telemetry register value.
+ *
+ * Routes the current transfer buffer to its typed telemetry channel.
+ *
+ * @param[in,out] service Motor telemetry service containing the completed read.
+ */
 static void store_read(MotorTelemetryService *service) {
     switch (service->read) {
     case MOTOR_TELEMETRY_READ_MOTOR_TEMPERATURE:
@@ -40,6 +56,15 @@ static void store_read(MotorTelemetryService *service) {
     }
 }
 
+/**
+ * @brief Selects the next telemetry register.
+ *
+ * Advances through both temperatures and, for extended controllers, runtime and accessory type.
+ * Finishing the sequence schedules its next pass 200 milliseconds later.
+ *
+ * @param[in,out] service Motor telemetry service to advance.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 static void advance_read(MotorTelemetryService *service, uint32_t now_ms) {
     if (service->read == MOTOR_TELEMETRY_READ_MOTOR_TEMPERATURE) {
         service->read = MOTOR_TELEMETRY_READ_DRIVER_TEMPERATURE;
@@ -53,6 +78,14 @@ static void advance_read(MotorTelemetryService *service, uint32_t now_ms) {
     }
 }
 
+/**
+ * @brief Starts the selected motor telemetry read.
+ *
+ * Maps the current channel to its register address and byte count, then requests one auxiliary-bus
+ * transfer to motor address 0x78.
+ *
+ * @param[in,out] service Motor telemetry service to start.
+ */
 static void start_read(MotorTelemetryService *service) {
     uint16_t address;
     uint16_t length;
@@ -82,17 +115,30 @@ static void start_read(MotorTelemetryService *service) {
         platform_aux_bus_start_read(MOTOR_AUX_BUS_ADDRESS, address, service->data, length);
 }
 
+/**
+ * @brief Advances periodic motor telemetry acquisition.
+ *
+ * Publishes successful reads, retries a failed register on the next service pass, and starts the
+ * next due transfer when the shared auxiliary bus is idle.
+ *
+ * @param[in,out] service Motor telemetry service state.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 void motor_telemetry_service_run(MotorTelemetryService *service, uint32_t now_ms) {
     PlatformAuxBusStatus bus_status = platform_aux_bus_status();
     if (service->transfer_active) {
         if (bus_status == PLATFORM_AUX_BUS_BUSY) {
             return;
         }
-        if (bus_status == PLATFORM_AUX_BUS_SUCCEEDED) {
+        bool succeeded = bus_status == PLATFORM_AUX_BUS_SUCCEEDED;
+        if (succeeded) {
             store_read(service);
         }
         platform_aux_bus_clear();
         service->transfer_active = false;
+        if (!succeeded) {
+            return;
+        }
         advance_read(service, now_ms);
         bus_status = PLATFORM_AUX_BUS_IDLE;
     }
@@ -103,6 +149,14 @@ void motor_telemetry_service_run(MotorTelemetryService *service, uint32_t now_ms
     }
 }
 
+/**
+ * @brief Returns the latest accepted motor telemetry.
+ *
+ * Provides the retained values and per-channel availability flags owned by the service.
+ *
+ * @param[in] service Motor telemetry service state.
+ * @return Current motor telemetry snapshot.
+ */
 const MotorTelemetry *motor_telemetry_service_value(const MotorTelemetryService *service) {
     return &service->telemetry;
 }
