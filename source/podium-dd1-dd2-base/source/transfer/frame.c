@@ -19,6 +19,16 @@ enum {
     TRANSFER_COMMAND_PARAMETER_MASK = 0x07,
 };
 
+/**
+ * @brief Calculates the transfer protocol CRC-8.
+ *
+ * Processes each byte least-significant bit first from an all-ones seed with the reflected 0x8c
+ * polynomial.
+ *
+ * @param[in] data Bytes covered by the checksum.
+ * @param[in] length Number of bytes to process.
+ * @return Eight-bit checksum value.
+ */
 static uint8_t checksum(const uint8_t *data, uint8_t length) {
     uint8_t crc = UINT8_MAX;
     for (uint8_t index = 0; index < length; index++) {
@@ -150,6 +160,16 @@ uint16_t transfer_progress_command(uint8_t group, uint8_t parameter, uint8_t seq
            ((uint16_t)parameter & TRANSFER_COMMAND_PARAMETER_MASK);
 }
 
+/**
+ * @brief Appends one transfer byte with reserved-marker escaping.
+ *
+ * Doubles the escape marker and maps the start and end markers to their escaped suffix values.
+ *
+ * @param[in] value Decoded byte to append.
+ * @param[out] output Encoded frame buffer receiving one or two bytes.
+ * @param[in] output_length Current encoded length and insertion offset.
+ * @return Encoded length after appending the byte.
+ */
 static uint16_t append_encoded(uint8_t value, uint8_t *output, uint16_t output_length) {
     if (value == TRANSFER_FRAME_ESCAPE) {
         output[output_length++] = TRANSFER_FRAME_ESCAPE;
@@ -219,6 +239,14 @@ uint16_t transfer_frame_encode(const TransferFrame *frame,
                                         output);
 }
 
+/**
+ * @brief Decodes one suffix that follows the transfer escape marker.
+ *
+ * Accepts the doubled escape suffix and the mapped start and end suffixes.
+ *
+ * @param[in] value Escaped suffix byte.
+ * @return Decoded reserved byte, or a value above eight bits for an invalid suffix.
+ */
 static uint16_t decode_byte(uint8_t value) {
     if (value == TRANSFER_FRAME_ESCAPE) {
         return TRANSFER_FRAME_ESCAPE;

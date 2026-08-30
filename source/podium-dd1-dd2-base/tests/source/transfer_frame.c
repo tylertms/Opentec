@@ -63,10 +63,27 @@ static void test_enforces_payload_limits(void) {
     assert(transfer_frame_encode(&source, encoded) == 0);
 }
 
+static void test_accepts_maximum_received_payload(void) {
+    uint8_t encoded[130] = {0};
+    encoded[0] = TRANSFER_FRAME_START;
+    encoded[1] = 0x04;
+    encoded[128] = 0xfb;
+    encoded[129] = TRANSFER_FRAME_END;
+    TransferFrame decoded;
+
+    assert(transfer_frame_decode(encoded, sizeof(encoded), &decoded) == TRANSFER_FRAME_VALID);
+    assert(decoded.command == 0x0400);
+    assert(decoded.payload_length == TRANSFER_FRAME_MAX_PAYLOAD_SIZE);
+    for (uint8_t index = 0; index < decoded.payload_length; index++) {
+        assert(decoded.payload[index] == 0);
+    }
+}
+
 int main(void) {
     test_packs_commands();
     test_encodes_and_decodes_markers();
     test_rejects_invalid_frames();
     test_enforces_payload_limits();
+    test_accepts_maximum_received_payload();
     return 0;
 }
