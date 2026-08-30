@@ -280,6 +280,38 @@ static void test_exchanges_hid_reports(void) {
     assert(!usb_device_take_output(&report));
 }
 
+static void test_retains_hid_state_across_bus_reset(void) {
+    static const uint8_t set_idle[] = {0x21, 0x0a, 0x00, 0x07, 0x00, 0x00, 0x00, 0x00};
+    static const uint8_t set_protocol[] = {0x21, 0x0b, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00};
+    static const uint8_t get_idle[] = {0xa1, 0x02, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00};
+    static const uint8_t get_protocol[] = {0xa1, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00};
+
+    usb_device_init(BOARD_VARIANT_DD1);
+
+    push_setup(set_idle);
+    usb_device_service();
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 0, 0, 0);
+    usb_device_service();
+
+    push_setup(set_protocol);
+    usb_device_service();
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 0, 0, 0);
+    usb_device_service();
+
+    push_event(PLATFORM_USB_EVENT_RESET, 0, 0, 0);
+    usb_device_service();
+
+    push_setup(get_idle);
+    usb_device_service();
+    assert(sent.length == 1 && sent.data[0] == 7);
+    complete_control_input();
+
+    push_setup(get_protocol);
+    usb_device_service();
+    assert(sent.length == 1 && sent.data[0] == 9);
+    complete_control_input();
+}
+
 static void test_controls_endpoint_halt(void) {
     static const uint8_t set_configuration[] = {0x00, 9, 1, 0, 0, 0, 0, 0};
     static const uint8_t set_input_halt[] = {0x02, 3, 0, 0, 0x81, 0, 0, 0};
@@ -780,6 +812,7 @@ int main(void) {
     test_enumerates_podium_device();
     test_returns_xbox_security_descriptor();
     test_exchanges_hid_reports();
+    test_retains_hid_state_across_bus_reset();
     test_controls_endpoint_halt();
     test_reenumerates_compatibility_modes();
     test_exchanges_updater_packets();

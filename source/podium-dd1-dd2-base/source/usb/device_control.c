@@ -51,7 +51,6 @@ static UsbControlTransfer data(UsbDescriptorView descriptor, uint16_t requested_
 void usb_device_control_init(UsbDeviceControl *device, bool self_powered,
                              bool remote_wakeup_forced) {
     *device = (UsbDeviceControl){
-        .hid_protocol = 1,
         .self_powered = self_powered,
         .remote_wakeup_forced = remote_wakeup_forced,
     };

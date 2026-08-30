@@ -294,10 +294,19 @@ static bool build_descriptors(BoardVariant variant, UsbOperatingMode mode) {
  * @brief Resets USB controller and endpoint service state.
  *
  * Clears pending control, HID, updater, and Xbox transfers while retaining the selected descriptor
- * catalog and PlayStation authentication payload across a bus reset.
+ * catalog and PlayStation authentication payload. Bus and mode resets retain the host-selected HID
+ * idle rate and protocol; cold preparation initializes both values to zero.
+ *
+ * @param[in] preserve_hid_state True to retain HID idle and protocol selections.
  */
-static void reset_state(void) {
+static void reset_state(bool preserve_hid_state) {
+    uint8_t hid_idle_rate = device_control.hid_idle_rate;
+    uint8_t hid_protocol = device_control.hid_protocol;
     usb_device_control_init(&device_control, true, operating_mode == USB_OPERATING_MODE_XBOX_GIP);
+    if (preserve_hid_state) {
+        device_control.hid_idle_rate = hid_idle_rate;
+        device_control.hid_protocol = hid_protocol;
+    }
     control_stage = USB_CONTROL_STAGE_IDLE;
     input_report_length = 0;
     output_ready = false;
@@ -342,7 +351,7 @@ void usb_device_prepare(BoardVariant variant) {
         .metadata = console_workspace.xbox_metadata,
     };
     (void)build_descriptors(variant, USB_OPERATING_MODE_FANATEC);
-    reset_state();
+    reset_state(false);
     platform_usb_init();
     platform_usb_control_ready();
 }
@@ -395,7 +404,7 @@ bool usb_device_set_operating_mode(UsbOperatingMode mode) {
         platform_usb_attach();
         return false;
     }
-    reset_state();
+    reset_state(true);
     platform_usb_control_ready();
     platform_usb_restart();
     return true;
@@ -978,7 +987,7 @@ static void handle_updater_output(void) {
 }
 
 static void handle_reset(void) {
-    reset_state();
+    reset_state(true);
     platform_usb_control_ready();
 }
 

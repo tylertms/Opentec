@@ -113,13 +113,21 @@ static void test_selects_and_clips_descriptors(void) {
 static void test_hid_state_and_report_handoff(void) {
     UsbDeviceControl device;
     usb_device_control_init(&device, true, false);
-    UsbControlRequest control = request(USB_CONTROL_HID_SET_IDLE);
+    UsbControlRequest control = request(USB_CONTROL_HID_GET_PROTOCOL);
+    UsbControlTransfer transfer = usb_device_control_handle(&device, &control, &catalog, false);
+    assert(transfer.kind == USB_CONTROL_TRANSFER_VALUE && transfer.value == 0);
+
+    control = request(USB_CONTROL_HID_GET_IDLE);
+    transfer = usb_device_control_handle(&device, &control, &catalog, false);
+    assert(transfer.kind == USB_CONTROL_TRANSFER_VALUE && transfer.value == 0);
+
+    control = request(USB_CONTROL_HID_SET_IDLE);
     control.value = 0x0700;
     assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
            USB_CONTROL_TRANSFER_ACKNOWLEDGE);
 
     control = request(USB_CONTROL_HID_GET_IDLE);
-    UsbControlTransfer transfer = usb_device_control_handle(&device, &control, &catalog, false);
+    transfer = usb_device_control_handle(&device, &control, &catalog, false);
     assert(transfer.kind == USB_CONTROL_TRANSFER_VALUE && transfer.value == 7);
 
     control = request(USB_CONTROL_HID_SET_PROTOCOL);
