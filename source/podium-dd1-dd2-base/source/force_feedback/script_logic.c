@@ -2,8 +2,24 @@
 
 #include <stdbool.h>
 
+/**
+ * @brief Tests a script value for ordered nonzero truth.
+ *
+ * Positive and negative finite values are true. Both zeros and NaN are false.
+ *
+ * @param[in] value Floating-point script value.
+ * @return true when the value is ordered and nonzero; otherwise false.
+ */
 static bool ordered_nonzero(float value) { return value < 0.0f || value > 0.0f; }
 
+/**
+ * @brief Converts a C truth value to the script truth representation.
+ *
+ * Produces canonical floating-point one or zero.
+ *
+ * @param[in] value Truth value to convert.
+ * @return Floating-point one for true or zero for false.
+ */
 static float logical_value(bool value) { return value ? 1.0f : 0.0f; }
 
 /**

@@ -5,10 +5,25 @@
 static const float script_pi = 3.1415927f;
 static const float tangent_limit = 22875900.0f;
 
+/**
+ * @brief Creates a writable arithmetic result.
+ *
+ * Marks the supplied value for delivery to the encoded destination.
+ *
+ * @param[in] value Arithmetic result.
+ * @return A writable arithmetic result containing the value.
+ */
 static ForceFeedbackScriptMathResult value_result(float value) {
     return (ForceFeedbackScriptMathResult){.value = value, .writes_value = true};
 }
 
+/**
+ * @brief Creates a suppressed arithmetic result.
+ *
+ * Leaves the destination-write flag clear for rejected operations and undefined domains.
+ *
+ * @return An arithmetic result that suppresses its destination write.
+ */
 static ForceFeedbackScriptMathResult skipped_result(void) {
     return (ForceFeedbackScriptMathResult){0};
 }

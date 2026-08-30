@@ -11,10 +11,29 @@ enum {
     SCRIPT_UPLOAD_DATA_OFFSET = 9,
 };
 
+/**
+ * @brief Reads a little-endian 16-bit upload field.
+ *
+ * Combines two consecutive bytes with the least significant byte first.
+ *
+ * @param[in] data Two-byte field.
+ * @return The decoded unsigned value.
+ */
 static uint16_t read_u16(const uint8_t *data) {
     return (uint16_t)data[0] | (uint16_t)((uint16_t)data[1] << 8);
 }
 
+/**
+ * @brief Opens space inside the shared script buffer.
+ *
+ * Copies the selected half-open byte range backward so overlapping source and destination ranges
+ * remain intact.
+ *
+ * @param[in,out] data Shared script buffer.
+ * @param[in] start First byte to move.
+ * @param[in] end Offset following the last byte to move.
+ * @param[in] distance Number of bytes to open before the range.
+ */
 static void move_right(uint8_t *data, uint16_t start, uint16_t end, uint16_t distance) {
     if (distance == 0) {
         return;
@@ -24,6 +43,17 @@ static void move_right(uint8_t *data, uint16_t start, uint16_t end, uint16_t dis
     }
 }
 
+/**
+ * @brief Closes space inside the shared script buffer.
+ *
+ * Copies the selected half-open byte range forward so overlapping source and destination ranges
+ * remain intact.
+ *
+ * @param[in,out] data Shared script buffer.
+ * @param[in] start First byte to move.
+ * @param[in] end Offset following the last byte to move.
+ * @param[in] distance Number of bytes to remove before the range.
+ */
 static void move_left(uint8_t *data, uint16_t start, uint16_t end, uint16_t distance) {
     if (distance == 0) {
         return;

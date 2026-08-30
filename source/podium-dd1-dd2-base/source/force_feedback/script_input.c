@@ -16,10 +16,26 @@ enum {
     INPUT_SLOT_SIZE = 9,
 };
 
+/**
+ * @brief Reads a little-endian 16-bit packet field.
+ *
+ * Combines two consecutive bytes with the least significant byte first.
+ *
+ * @param[in] data Two-byte field.
+ * @return The decoded unsigned value.
+ */
 static uint16_t read_u16(const uint8_t *data) {
     return (uint16_t)data[0] | (uint16_t)((uint16_t)data[1] << 8);
 }
 
+/**
+ * @brief Reads a little-endian 32-bit packet field.
+ *
+ * Combines four consecutive bytes with the least significant byte first.
+ *
+ * @param[in] data Four-byte field.
+ * @return The decoded unsigned value.
+ */
 static uint32_t read_u32(const uint8_t *data) {
     return (uint32_t)data[0] | (uint32_t)data[1] << 8 | (uint32_t)data[2] << 16 |
            (uint32_t)data[3] << 24;

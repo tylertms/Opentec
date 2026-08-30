@@ -7,6 +7,15 @@ typedef union {
     uint32_t bits;
 } ScriptSampleValue;
 
+/**
+ * @brief Reads one raw script sample.
+ *
+ * Accepts indexes from 0 through 511 and suppresses the destination write for larger indexes.
+ *
+ * @param[in] samples Script sample table.
+ * @param[in] index Sample index.
+ * @return The raw sample value and whether the destination write is enabled.
+ */
 static ForceFeedbackScriptSampleResult sample_at(const ForceFeedbackScriptSamples *samples,
                                                  uint32_t index) {
     if (index >= FORCE_FEEDBACK_SCRIPT_SAMPLE_COUNT) {
@@ -57,10 +66,27 @@ force_feedback_script_sample_read_wrapped(const ForceFeedbackScriptSamples *samp
                        : sample_at(samples, base + value % period);
 }
 
+/**
+ * @brief Reads one script sample as floating point.
+ *
+ * Interprets the selected raw sample payload without changing its bits.
+ *
+ * @param[in] samples Script sample table.
+ * @param[in] index In-range sample index.
+ * @return The represented single-precision value.
+ */
 static float sample_number(const ForceFeedbackScriptSamples *samples, uint32_t index) {
     return (ScriptSampleValue){.bits = samples->values[index]}.number;
 }
 
+/**
+ * @brief Creates a writable interpolated-sample result.
+ *
+ * Stores the raw representation of the interpolated value and enables the destination write.
+ *
+ * @param[in] value Interpolated floating-point value.
+ * @return A writable sample result containing the value.
+ */
 static ForceFeedbackScriptSampleResult interpolated_result(float value) {
     return (ForceFeedbackScriptSampleResult){
         .value = (ScriptSampleValue){.number = value}.bits,
@@ -68,6 +94,18 @@ static ForceFeedbackScriptSampleResult interpolated_result(float value) {
     };
 }
 
+/**
+ * @brief Interpolates or extrapolates one line segment.
+ *
+ * Calculates the segment slope and evaluates it at the target x coordinate.
+ *
+ * @param[in] previous_x First x coordinate.
+ * @param[in] previous_y First y coordinate.
+ * @param[in] current_x Second x coordinate.
+ * @param[in] current_y Second y coordinate.
+ * @param[in] target Target x coordinate.
+ * @return The corresponding y value on the segment.
+ */
 static float interpolate_segment(float previous_x, float previous_y, float current_x,
                                  float current_y, float target) {
     float slope = (current_y - previous_y) / (current_x - previous_x);

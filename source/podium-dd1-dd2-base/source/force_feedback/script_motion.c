@@ -20,10 +20,34 @@ typedef union {
     uint32_t bits;
 } MotionValue;
 
+/**
+ * @brief Interprets a raw motion value as floating point.
+ *
+ * Preserves all bits while changing only the C representation used by the motion update.
+ *
+ * @param[in] bits Raw 32-bit representation.
+ * @return The represented single-precision value.
+ */
 static float read_value(uint32_t bits) { return (MotionValue){.bits = bits}.number; }
 
+/**
+ * @brief Returns the raw representation of a motion value.
+ *
+ * Preserves all bits of the single-precision value.
+ *
+ * @param[in] value Floating-point motion value.
+ * @return The raw 32-bit representation.
+ */
 static uint32_t value_bits(float value) { return (MotionValue){.number = value}.bits; }
 
+/**
+ * @brief Limits a finite normalized position.
+ *
+ * Values above one become one and values below negative one become negative one.
+ *
+ * @param[in] position Position to limit.
+ * @return The position limited to the inclusive range from -1 to 1.
+ */
 static float clamp_position(float position) {
     if (position > 1.0f) {
         return 1.0f;

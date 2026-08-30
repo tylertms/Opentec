@@ -2,10 +2,25 @@
 
 #include <stdint.h>
 
+/**
+ * @brief Creates a writable bit-operation result.
+ *
+ * Marks the supplied raw value for delivery to the encoded destination.
+ *
+ * @param[in] value Raw operation result.
+ * @return A writable bit-operation result containing the value.
+ */
 static ForceFeedbackScriptBitResult value_result(uint32_t value) {
     return (ForceFeedbackScriptBitResult){.value = value, .writes_value = true};
 }
 
+/**
+ * @brief Creates a suppressed bit-operation result.
+ *
+ * Leaves the destination-write flag clear for rejected operations and bit indexes.
+ *
+ * @return A bit-operation result that suppresses its destination write.
+ */
 static ForceFeedbackScriptBitResult skipped_result(void) {
     return (ForceFeedbackScriptBitResult){0};
 }

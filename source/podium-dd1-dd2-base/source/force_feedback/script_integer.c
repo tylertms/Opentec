@@ -10,10 +10,34 @@ typedef union {
     uint32_t bits;
 } ScriptScalar;
 
+/**
+ * @brief Returns the raw representation of a script floating-point value.
+ *
+ * Preserves all bits of the single-precision value.
+ *
+ * @param[in] value Floating-point value.
+ * @return The raw 32-bit representation.
+ */
 static uint32_t float_bits(float value) { return (ScriptScalar){.number = value}.bits; }
 
+/**
+ * @brief Interprets a raw script value as floating point.
+ *
+ * Preserves all bits while changing only the C representation used by the evaluator.
+ *
+ * @param[in] bits Raw 32-bit representation.
+ * @return The represented single-precision value.
+ */
 static float bits_float(uint32_t bits) { return (ScriptScalar){.bits = bits}.number; }
 
+/**
+ * @brief Creates a writable integer-operation result.
+ *
+ * Marks the supplied raw value for delivery to the encoded destination.
+ *
+ * @param[in] value Raw operation result.
+ * @return A writable integer-operation result containing the value.
+ */
 static ForceFeedbackScriptIntegerResult value_result(uint32_t value) {
     return (ForceFeedbackScriptIntegerResult){.value = value, .writes_value = true};
 }
