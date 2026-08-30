@@ -223,6 +223,18 @@ void pedal_service_set_v4_tuning(PedalService *service, PedalV4Tuning tuning) {
 }
 
 /**
+ * @brief Reports whether the V4 pedal transfer session is active.
+ *
+ * Exposes the session gate used before accepting an external pedal-adjustment request.
+ *
+ * @param[in] service Pedal service containing the transfer session.
+ * @return True while the V4 transfer session can accept an adjustment query.
+ */
+bool pedal_service_adjustment_probe_available(const PedalService *service) {
+    return service != 0 && service->v4.active;
+}
+
+/**
  * @brief Queues a V4 pedal-adjustment query.
  *
  * Retains one pending query until the active transfer session accepts its fixed group-zero payload.

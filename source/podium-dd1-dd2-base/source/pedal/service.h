@@ -110,6 +110,7 @@ void pedal_service_request_control(PedalService *service, PedalV3Control control
 void pedal_service_request_input_command(PedalService *service,
                                          const uint8_t values[PEDAL_INPUT_AXIS_COUNT]);
 void pedal_service_request_configuration(PedalService *service, uint8_t brake_force, bool reset);
+bool pedal_service_adjustment_probe_available(const PedalService *service);
 void pedal_service_request_adjustment_probe(PedalService *service);
 PedalAdjustmentDisplay pedal_service_take_adjustment_display(PedalService *service);
 uint8_t pedal_service_take_alternate_brake_force(PedalService *service);

@@ -183,6 +183,31 @@ static void test_decodes_tuning_menu_wheel_report(void) {
     assert(usb_vendor_command_decode_wheel_report_seventeen(NULL) == NULL);
 }
 
+static void test_identifies_pedal_adjustment_transfer(void) {
+    uint8_t payload[63] = {
+        2,    0x10, 0,    0x16, 0x0a, 0x02, 0x08, 0x02, 0x20, 0x08, 0xaa, 0x01, 0x0d, 0xba,
+        0x01, 0x0a, 0x5a, 0x08, 0x62, 0x06, 0x0a, 0x02, 0,    0x02, 0x10, 0x01, 0xb6, 0xf8,
+    };
+    UsbOutputCommand output = make_output(payload, 2);
+    UsbVendorCommand command;
+
+    assert(usb_vendor_command_decode(&output, &command));
+    assert(usb_vendor_command_requests_pedal_adjustment(&command));
+
+    command.length = 26;
+    assert(!usb_vendor_command_requests_pedal_adjustment(&command));
+    command.length = 62;
+    payload[27] = 0;
+    assert(!usb_vendor_command_requests_pedal_adjustment(&command));
+    payload[27] = 0xf8;
+    payload[1] = 0x11;
+    assert(!usb_vendor_command_requests_pedal_adjustment(&command));
+    payload[1] = 0x10;
+    command.kind = USB_VENDOR_COMMAND_STATUS_RESPONSE;
+    assert(!usb_vendor_command_requests_pedal_adjustment(&command));
+    assert(!usb_vendor_command_requests_pedal_adjustment(NULL));
+}
+
 static void test_encodes_wheel_transfer_status(void) {
     uint8_t report[USB_DEVICE_REPORT_SIZE];
 
@@ -230,6 +255,7 @@ int main(void) {
     test_identifies_motor_command_request();
     test_decodes_wheel_transfer_commands();
     test_decodes_tuning_menu_wheel_report();
+    test_identifies_pedal_adjustment_transfer();
     test_encodes_wheel_transfer_status();
     test_rejects_unhandled_payloads();
     return 0;

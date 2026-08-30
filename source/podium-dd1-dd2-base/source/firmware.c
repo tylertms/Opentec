@@ -2334,6 +2334,12 @@ static void service_usb_output(void) {
             wheel_service_queue_report_seventeen(&wheel_service, wheel_report_seventeen);
             return;
         }
+        if (usb_vendor_command_requests_pedal_adjustment(&usb_vendor_command)) {
+            if (pedal_service_adjustment_probe_available(&pedal_service)) {
+                pedal_service_request_adjustment_probe(&pedal_service);
+            }
+            return;
+        }
         if (usb_tuning_menu_service_apply(&usb_tuning_menu_service, &usb_vendor_command)) {
             if (usb_tuning_menu_service_response_pending(&usb_tuning_menu_service) &&
                 usb_vendor_response_kind == USB_VENDOR_RESPONSE_TUNING_MENU) {

@@ -600,11 +600,13 @@ static void test_queries_and_publishes_v4_pedal_adjustment(void) {
     response[0x1f] = 'X';
     reset_link();
     pedal_service_init(&service);
-    pedal_service_request_adjustment_probe(&service);
+    assert(!pedal_service_adjustment_probe_available(&service));
     connect_v4(&service);
+    assert(pedal_service_adjustment_probe_available(&service));
 
     pedal_service_run(&service, 6);
     complete_v4_request(&service, 7, 8);
+    pedal_service_request_adjustment_probe(&service);
     pedal_service_run(&service, 9);
     pedal_service_run(&service, 10);
 

@@ -46,6 +46,7 @@ bool usb_vendor_command_requests_motor_command(const UsbVendorCommand *command);
 bool usb_vendor_command_decode_wheel_transfer(const UsbVendorCommand *command,
                                               UsbWheelTransferCommand *transfer);
 const uint8_t *usb_vendor_command_decode_wheel_report_seventeen(const UsbVendorCommand *command);
+bool usb_vendor_command_requests_pedal_adjustment(const UsbVendorCommand *command);
 void usb_vendor_command_encode_wheel_transfer_response(WheelTransferRequest request,
                                                        WheelTransferStatus status,
                                                        uint8_t output[USB_DEVICE_REPORT_SIZE]);
