@@ -264,6 +264,7 @@ static void test_uses_raw_brake_during_v3_calibration(void) {
 
 static void test_ignores_unknown_v3_reports_for_timeout(void) {
     PedalService service;
+    PedalFrame handshake;
     const PedalFrame unknown = {
         .type = 9,
     };
@@ -276,10 +277,29 @@ static void test_ignores_unknown_v3_reports_for_timeout(void) {
     assert(!service.connected);
     pedal_service_run(&service, 15010);
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
+    assert(pedal_frame_decode(sent_frame, &handshake) == PEDAL_FRAME_VALID);
+    assert(handshake.type == 2);
+    assert(handshake.payload[0] == 0);
+    assert(handshake.payload[1] == UINT8_MAX);
+    assert(!service.recovery_handshake);
     assert(discovery_count == 0);
     pedal_service_run(&service, 15011);
     assert(service.phase == PEDAL_SERVICE_DETECT_REQUEST);
     assert(discovery_count == 1);
+
+    pedal_service_run(&service, 15012);
+    receive_byte(PEDAL_DEVICE_V3);
+    pedal_service_run(&service, 15013);
+    pedal_service_run(&service, 15014);
+    receive_byte(0x15);
+    pedal_service_run(&service, 15015);
+    pedal_service_run(&service, 15016);
+    pedal_service_run(&service, 15021);
+    pedal_service_run(&service, 15022);
+    assert(pedal_frame_decode(sent_frame, &handshake) == PEDAL_FRAME_VALID);
+    assert(handshake.type == 2);
+    assert(handshake.payload[0] == UINT8_MAX);
+    assert(handshake.payload[1] == 0);
 }
 
 static void test_sends_v3_status_on_change_and_interval(void) {

@@ -758,6 +758,16 @@ static void restart_v3_timeout(PedalService *service, uint32_t now_ms) {
     service->deadline_ms = now_ms + PEDAL_INITIAL_SAMPLE_TIMEOUT_MS;
 }
 
+/**
+ * @brief Schedules V3 status, control, input, configuration, and keepalive frames.
+ *
+ * Sends at most one frame per service pass in protocol priority order. Periodic status and input
+ * frames use their 500-millisecond cadence, while calibration keepalive frames use 2500
+ * milliseconds.
+ *
+ * @param[in,out] service V3 outbound requests, deadlines, and transmitted state to update.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 static void service_v3_output(PedalService *service, uint32_t now_ms) {
     const PedalProtocolStatus *status = &service->protocol_status;
     const PedalProtocolStatus *transmitted = &service->transmitted_status;
@@ -876,6 +886,12 @@ static void service_v3_stream(PedalService *service, uint32_t now_ms) {
 
     if (platform_time_reached(now_ms, service->deadline_ms)) {
         service->recovery_handshake = true;
+        if (!service->digital_activity) {
+            pedal_v3_build_handshake(true, &service->transmit_frame);
+            if (send_frame(service)) {
+                service->recovery_handshake = false;
+            }
+        }
         reconnect(service, now_ms);
         return;
     }
