@@ -13,6 +13,15 @@ enum {
     RESPONSE_STANDARD_MODE_MASK = 0x80,
 };
 
+/**
+ * @brief Encodes the steering range for a tuning-profile report.
+ *
+ * Emits the automatic-range sentinel or converts the concrete ten-degree range to its signed,
+ * biased one-byte representation.
+ *
+ * @param[in] profile Logical tuning profile.
+ * @return The encoded steering-range value.
+ */
 static uint8_t encode_rotation(const TuningProfile *profile) {
     if (profile->automatic_rotation != 0) {
         return AUTOMATIC_ROTATION_CODE;
@@ -21,6 +30,15 @@ static uint8_t encode_rotation(const TuningProfile *profile) {
                              ROTATION_ENCODING_BIAS);
 }
 
+/**
+ * @brief Decodes the steering range from a tuning-profile report.
+ *
+ * Selects automatic range without replacing the current concrete fallback, or converts a manual
+ * signed, biased value to degrees.
+ *
+ * @param[in] value Encoded steering-range value.
+ * @param[in,out] profile Logical tuning profile to update.
+ */
 static void decode_rotation(uint8_t value, TuningProfile *profile) {
     profile->automatic_rotation = value == AUTOMATIC_ROTATION_CODE;
     if (!profile->automatic_rotation) {

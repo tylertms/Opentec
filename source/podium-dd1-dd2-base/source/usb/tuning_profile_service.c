@@ -21,10 +21,29 @@ enum {
     PROFILE_SELECTOR_MAXIMUM = 6,
 };
 
+/**
+ * @brief Tests a wrap-safe monotonic deadline.
+ *
+ * Compares two millisecond timestamps while preserving ordering across counter rollover.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[in] deadline_ms Deadline to test.
+ * @return True when the deadline has been reached.
+ */
 static bool deadline_reached(uint32_t now_ms, uint32_t deadline_ms) {
     return (int32_t)(now_ms - deadline_ms) >= 0;
 }
 
+/**
+ * @brief Selects and activates a one-based tuning setup.
+ *
+ * Converts the report selector to the bank's zero-based index and rejects values outside setups 1
+ * through 6.
+ *
+ * @param[in,out] bank Tuning-profile bank to update.
+ * @param[in] selector One-based tuning setup selector.
+ * @return True when the setup was selected and activated.
+ */
 static bool select_profile(TuningProfileBank *bank, uint8_t selector) {
     if (selector < PROFILE_SELECTOR_MINIMUM || selector > PROFILE_SELECTOR_MAXIMUM ||
         !tuning_profile_bank_select(bank, (uint8_t)(selector - 1))) {
@@ -50,7 +69,8 @@ void usb_tuning_profile_service_init(UsbTuningProfileService *service) {
  *
  * Supports profile value updates, one-based profile selection, response refresh, explicit save,
  * all-profile reset, Standard-profile reset, and rate-limited Standard or Advanced mode changes.
- * Reset-all commands share a ten-second guard with Standard-profile resets.
+ * Re-enabling Standard mode activates setup 1 and restores setup 2. Reset-all commands share a
+ * ten-second guard with Standard-profile resets.
  *
  * @param[in,out] service Tuning-profile command timing and response state.
  * @param[in,out] bank Tuning profiles and Standard or Advanced mode.
@@ -123,6 +143,12 @@ UsbTuningProfileAction usb_tuning_profile_service_apply(UsbTuningProfileService 
     case PROFILE_ACTION_TOGGLE_MODE:
         if (deadline_reached(now_ms, service->mode_change_after_ms)) {
             bank->standard_mode_enabled = !bank->standard_mode_enabled;
+            if (bank->standard_mode_enabled) {
+                bank->selected_slot = 0;
+                bank->active_slot = 0;
+                tuning_profile_defaults(&bank->slots[1]);
+                result |= USB_TUNING_PROFILE_ACTION_PROFILE_CHANGED;
+            }
             service->mode_change_after_ms = now_ms + USB_TUNING_PROFILE_MODE_DELAY_MS;
             service->response_pending = true;
             result |= USB_TUNING_PROFILE_ACTION_MODE_CHANGED |

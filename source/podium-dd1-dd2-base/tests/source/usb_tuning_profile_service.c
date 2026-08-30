@@ -106,6 +106,10 @@ static void test_rate_limits_mode_changes(void) {
     assert((result & USB_TUNING_PROFILE_ACTION_MODE_TOGGLED) != 0);
     assert(!bank.standard_mode_enabled);
 
+    bank.selected_slot = 4;
+    bank.active_slot = 4;
+    bank.slots[1].force_feedback_strength = 80;
+
     result = usb_tuning_profile_service_apply(&service, &bank, &update, 2499);
     assert(result == USB_TUNING_PROFILE_ACTION_CLAIM);
     assert((result & USB_TUNING_PROFILE_ACTION_MODE_TOGGLED) == 0);
@@ -114,7 +118,11 @@ static void test_rate_limits_mode_changes(void) {
     result = usb_tuning_profile_service_apply(&service, &bank, &update, 2500);
     assert((result & USB_TUNING_PROFILE_ACTION_MODE_CHANGED) != 0);
     assert((result & USB_TUNING_PROFILE_ACTION_MODE_TOGGLED) != 0);
+    assert((result & USB_TUNING_PROFILE_ACTION_PROFILE_CHANGED) != 0);
     assert(bank.standard_mode_enabled);
+    assert(bank.selected_slot == 0);
+    assert(bank.active_slot == 0);
+    assert(bank.slots[1].force_feedback_strength == 35);
 }
 
 static void test_rejects_other_routes(void) {
