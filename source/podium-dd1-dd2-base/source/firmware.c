@@ -3734,7 +3734,8 @@ int main(void) {
         service_power_torque_request();
         service_system_events(now_ms);
         UsbConnectionAction usb_connection_action = usb_connection_monitor_update(
-            &usb_connection_monitor, platform_usb_connected(), true, now_ms);
+            &usb_connection_monitor, platform_usb_connected(),
+            wheel_startup_display_ready(&wheel_startup_display), now_ms);
         if ((usb_connection_action & USB_CONNECTION_ACTION_NOTIFY_DISCONNECTED) != 0) {
             system_control_state_set_status(&system_control_state,
                                             wheel_service_mode(&wheel_service),
