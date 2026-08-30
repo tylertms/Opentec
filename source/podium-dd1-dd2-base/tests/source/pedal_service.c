@@ -276,6 +276,10 @@ static void test_ignores_unknown_v3_reports_for_timeout(void) {
     assert(!service.connected);
     pedal_service_run(&service, 15010);
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
+    assert(discovery_count == 0);
+    pedal_service_run(&service, 15011);
+    assert(service.phase == PEDAL_SERVICE_DETECT_REQUEST);
+    assert(discovery_count == 1);
 }
 
 static void test_sends_v3_status_on_change_and_interval(void) {
@@ -424,12 +428,13 @@ static void test_uses_long_timeout_during_stream_startup(void) {
     assert(input->axes[1] == 0);
     assert(input->axes[2] == 0);
     assert(input->auxiliary == 0);
-    assert(discovery_count == 1);
+    assert(discovery_count == 0);
 
     pedal_service_run(&service, 15560);
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
     pedal_service_run(&service, 15561);
     assert(service.phase == PEDAL_SERVICE_DETECT_REQUEST);
+    assert(discovery_count == 1);
 }
 
 static void test_tightens_timeout_after_stream_startup(void) {
@@ -639,6 +644,11 @@ static void test_reconnects_after_v4_transfer_timeout(void) {
 
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
     assert(!service.connected);
+    assert(discovery_count == 0);
+    pedal_service_run(&service, 755);
+    assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
+    pedal_service_run(&service, 756);
+    assert(service.phase == PEDAL_SERVICE_DETECT_REQUEST);
     assert(discovery_count == 1);
 }
 
@@ -681,6 +691,31 @@ static void test_polls_legacy_pedal_channels(void) {
     assert(service.phase == PEDAL_SERVICE_LEGACY_REQUEST);
 }
 
+static void test_delays_legacy_reconnect_after_primary_response(void) {
+    PedalService service;
+    reset_link();
+    pedal_service_init(&service);
+    service.phase = PEDAL_SERVICE_LEGACY_RESPONSE;
+    service.legacy_channel = PEDAL_LEGACY_AXIS_1;
+    receive_byte(0xa5);
+    pedal_service_run(&service, 1);
+    assert(service.digital_activity);
+
+    service.phase = PEDAL_SERVICE_LEGACY_RESPONSE;
+    service.legacy_channel = PEDAL_LEGACY_AXIS_2;
+    service.legacy_retries[PEDAL_LEGACY_AXIS_2] = 6;
+    service.deadline_ms = 2;
+    pedal_service_run(&service, 2);
+
+    assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
+    assert(discovery_count == 0);
+    pedal_service_run(&service, 551);
+    assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
+    pedal_service_run(&service, 552);
+    assert(service.phase == PEDAL_SERVICE_DETECT_REQUEST);
+    assert(discovery_count == 1);
+}
+
 static void test_retries_after_discovery_timeout(void) {
     PedalService service;
     reset_link();
@@ -691,6 +726,9 @@ static void test_retries_after_discovery_timeout(void) {
     assert(service.phase == PEDAL_SERVICE_DETECT_RESPONSE);
     pedal_service_run(&service, 100);
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
+    assert(discovery_count == 0);
+    pedal_service_run(&service, 101);
+    assert(service.phase == PEDAL_SERVICE_DETECT_REQUEST);
     assert(discovery_count == 1);
 }
 
@@ -719,6 +757,9 @@ static void test_selects_analog_input_after_discovery_timeout(void) {
     pedal_service_set_analog_samples(&service, disconnected);
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
     assert(!service.connected);
+    assert(discovery_count == 0);
+    pedal_service_run(&service, 101);
+    assert(service.phase == PEDAL_SERVICE_DETECT_REQUEST);
     assert(discovery_count == 1);
 }
 
@@ -735,6 +776,9 @@ static void test_does_not_select_analog_fallback_from_primary_channel(void) {
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
     assert(!service.connected);
     assert(analog_count == 0);
+    assert(discovery_count == 0);
+    pedal_service_run(&service, 101);
+    assert(service.phase == PEDAL_SERVICE_DETECT_REQUEST);
     assert(discovery_count == 1);
 }
 
@@ -887,6 +931,7 @@ int main(void) {
     test_queries_and_publishes_v4_pedal_adjustment();
     test_reconnects_after_v4_transfer_timeout();
     test_polls_legacy_pedal_channels();
+    test_delays_legacy_reconnect_after_primary_response();
     test_retries_after_discovery_timeout();
     test_selects_analog_input_after_discovery_timeout();
     test_does_not_select_analog_fallback_from_primary_channel();

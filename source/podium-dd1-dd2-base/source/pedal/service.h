@@ -79,6 +79,7 @@ typedef struct {
     uint16_t analog_samples[PEDAL_INPUT_AXIS_COUNT];
     bool analog_samples_ready;
     bool connected;
+    bool digital_activity;
     bool auxiliary_override_active;
     bool input_command_pending;
     bool configuration_pending;

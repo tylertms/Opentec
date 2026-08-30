@@ -62,7 +62,17 @@ static void clear_v3_outbound(PedalService *service) {
     service->next_keepalive_ms = 0;
 }
 
+/**
+ * @brief Releases the current pedal source and schedules digital discovery.
+ *
+ * Selects local analog input only when no digital traffic preceded the failure. A failed active
+ * digital link observes the reconnect hold before discovery resumes.
+ *
+ * @param[in,out] service Pedal source, transport, and reconnect state to reset.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 static void reconnect(PedalService *service, uint32_t now_ms) {
+    bool backoff = service->digital_activity;
     pedal_input_release(&service->input);
     service->remote_auxiliary = 0;
     publish_auxiliary(service);
@@ -70,6 +80,7 @@ static void reconnect(PedalService *service, uint32_t now_ms) {
     service->v4.active = false;
     clear_v3_outbound(service);
     service->connected = false;
+    service->digital_activity = false;
     service->v4_phase = PEDAL_V4_PHASE_STATUS;
     service->v4_request_active = false;
     service->v4_response_received = false;
@@ -81,7 +92,7 @@ static void reconnect(PedalService *service, uint32_t now_ms) {
     for (uint8_t channel = 0; channel < PEDAL_LEGACY_CHANNEL_COUNT; channel++) {
         service->legacy_retries[channel] = 0;
     }
-    if (service->analog_samples_ready && pedal_analog_detect(service->analog_samples) &&
+    if (!backoff && service->analog_samples_ready && pedal_analog_detect(service->analog_samples) &&
         pedal_analog_update(&service->analog, service->analog_samples, &service->input)) {
         service->remote_auxiliary = service->input.auxiliary;
         publish_auxiliary(service);
@@ -91,8 +102,7 @@ static void reconnect(PedalService *service, uint32_t now_ms) {
         return;
     }
     service->phase = PEDAL_SERVICE_RECONNECT_WAIT;
-    service->deadline_ms = now_ms + PEDAL_RECONNECT_DELAY_MS;
-    platform_pedal_link_begin_discovery();
+    service->deadline_ms = now_ms + (backoff ? PEDAL_RECONNECT_DELAY_MS : 0);
 }
 
 static bool send_frame(PedalService *service) {
@@ -129,6 +139,7 @@ void pedal_service_init(PedalService *service) {
     }
     service->analog_samples_ready = false;
     service->connected = false;
+    service->digital_activity = false;
     service->auxiliary_override_active = false;
     service->recovery_handshake = false;
     service->status_transmitted = false;
@@ -441,6 +452,15 @@ uint8_t pedal_service_take_alternate_brake_force(PedalService *service) {
     return service->v3.alternate_brake_force;
 }
 
+/**
+ * @brief Accepts a supported pedal identity or ends the discovery attempt.
+ *
+ * Advances recognized V3 and V4 identities to protocol selection. An expired attempt releases the
+ * source and schedules a fresh discovery without an established-link delay.
+ *
+ * @param[in,out] service Pedal discovery and reconnect state to update.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 static void service_detect_response(PedalService *service, uint32_t now_ms) {
     if (platform_pedal_link_take_byte(&service->response)) {
         if (service->response == PEDAL_DEVICE_V3 || service->response == PEDAL_DEVICE_V4) {
@@ -454,6 +474,15 @@ static void service_detect_response(PedalService *service, uint32_t now_ms) {
     }
 }
 
+/**
+ * @brief Waits for the protocol response of a recognized pedal device.
+ *
+ * Retains any received byte for protocol selection and restarts discovery when the response window
+ * expires.
+ *
+ * @param[in,out] service Pedal protocol and reconnect state to update.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 static void service_protocol_response(PedalService *service, uint32_t now_ms) {
     if (platform_pedal_link_take_byte(&service->response)) {
         service->phase = PEDAL_SERVICE_SELECT_PROTOCOL;
@@ -464,6 +493,15 @@ static void service_protocol_response(PedalService *service, uint32_t now_ms) {
     }
 }
 
+/**
+ * @brief Selects the transport implied by the device and protocol response pair.
+ *
+ * Routes recognized modern protocols to their startup states, assigns all other nonempty pairs to
+ * legacy polling, and repeats discovery for empty or invalid pairs.
+ *
+ * @param[in,out] service Pedal identity, response, and selected phase to update.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 static void service_select_protocol(PedalService *service, uint32_t now_ms) {
     switch (pedal_protocol_select(service->device, service->response)) {
     case PEDAL_PROTOCOL_V3:
@@ -630,6 +668,7 @@ static void service_v4_stream(PedalService *service, uint32_t now_ms) {
     }
 
     if (transfer_session_poll(&service->v4) != TRANSFER_SESSION_OK) {
+        service->digital_activity = true;
         reconnect(service, now_ms);
         return;
     }
@@ -643,12 +682,28 @@ static void service_v4_stream(PedalService *service, uint32_t now_ms) {
     send_v4_request(service, now_ms);
 }
 
+/**
+ * @brief Advances legacy polling to the next channel request.
+ *
+ * Wraps the four-channel sequence from auxiliary input back to the first pedal axis.
+ *
+ * @param[in,out] service Legacy channel and service phase to advance.
+ */
 static void advance_legacy_channel(PedalService *service) {
     service->legacy_channel =
         (PedalLegacyChannel)((service->legacy_channel + 1) % PEDAL_LEGACY_CHANNEL_COUNT);
     service->phase = PEDAL_SERVICE_LEGACY_REQUEST;
 }
 
+/**
+ * @brief Applies a legacy response or advances its bounded retry sequence.
+ *
+ * Publishes valid channel data, records first-axis link activity, and advances to the next request.
+ * A channel that exhausts its retry allowance is released before digital reconnection begins.
+ *
+ * @param[in,out] service Legacy input, retry, activity, and reconnect state to update.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 static void service_legacy_response(PedalService *service, uint32_t now_ms) {
     if (platform_pedal_link_take_byte(&service->response)) {
         pedal_legacy_apply_response(service->legacy_channel, service->response, false,
@@ -658,6 +713,9 @@ static void service_legacy_response(PedalService *service, uint32_t now_ms) {
             publish_auxiliary(service);
         }
         service->legacy_retries[service->legacy_channel] = 0;
+        if (service->legacy_channel == PEDAL_LEGACY_AXIS_1) {
+            service->digital_activity = true;
+        }
         if (service->legacy_channel == PEDAL_LEGACY_AUXILIARY) {
             service->connected = true;
         }
@@ -687,6 +745,14 @@ static void service_legacy_response(PedalService *service, uint32_t now_ms) {
     reconnect(service, now_ms);
 }
 
+/**
+ * @brief Restarts the long V3 startup response window.
+ *
+ * Clears the accepted-frame count and restores the initial fifteen-second report deadline.
+ *
+ * @param[in,out] service V3 startup counter and report deadline to reset.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 static void restart_v3_timeout(PedalService *service, uint32_t now_ms) {
     service->startup_frame_count = 0;
     service->deadline_ms = now_ms + PEDAL_INITIAL_SAMPLE_TIMEOUT_MS;
@@ -773,6 +839,15 @@ static void service_v3_output(PedalService *service, uint32_t now_ms) {
     }
 }
 
+/**
+ * @brief Receives V3 reports and services the outbound calibration sequence.
+ *
+ * Accepts recognized reports, publishes their pedal state, changes from the startup timeout after
+ * 250 accepted frames, and reconnects when the active report deadline expires.
+ *
+ * @param[in,out] service V3 transport, input, activity, and timeout state to update.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 static void service_v3_stream(PedalService *service, uint32_t now_ms) {
     if (platform_pedal_link_take_frame(service->frame_buffer) &&
         pedal_frame_decode(service->frame_buffer, &service->receive_frame) == PEDAL_FRAME_VALID) {
@@ -795,6 +870,7 @@ static void service_v3_stream(PedalService *service, uint32_t now_ms) {
                     ? service->v3.raw_brake
                     : pedal_input_scale_brake(service->v3.raw_brake, service->brake_force_percent);
             service->connected = true;
+            service->digital_activity = true;
         }
     }
 
@@ -883,6 +959,7 @@ void pedal_service_run(PedalService *service, uint32_t now_ms) {
         break;
     case PEDAL_SERVICE_RECONNECT_WAIT:
         if (platform_time_reached(now_ms, service->deadline_ms)) {
+            platform_pedal_link_begin_discovery();
             service->phase = PEDAL_SERVICE_DETECT_REQUEST;
         }
         break;
