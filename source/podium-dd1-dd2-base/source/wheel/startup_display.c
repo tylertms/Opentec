@@ -10,6 +10,7 @@
 enum {
     BASE_VERSION_DURATION_MS = 1000,
     TUNING_DISPLAY_VERSION_DURATION_MS = 3000,
+    TUNING_DISPLAY_PAGE_DURATION_MS = 3500,
     MOTOR_VERSION_DURATION_MS = 1000,
     READY_DURATION_MS = 1000,
     CALIBRATION_DURATION_MS = 500,
@@ -127,6 +128,11 @@ bool wheel_startup_display_update(WheelStartupDisplay *display, bool wheel_activ
     if (!wheel_active || display->phase == WHEEL_STARTUP_DISPLAY_COMPLETE) {
         return false;
     }
+    if (display->version_presentation_close_armed &&
+        (int32_t)(now_ms - display->version_presentation_close_ms) > 0) {
+        display->version_presentation_close_armed = false;
+        display->version_presentation_close_pending = true;
+    }
 
     switch (display->phase) {
     case WHEEL_STARTUP_DISPLAY_DASHES: {
@@ -137,6 +143,9 @@ bool wheel_startup_display_update(WheelStartupDisplay *display, bool wheel_activ
         display->deadline_ms =
             now_ms + (tuning_display_supported ? TUNING_DISPLAY_VERSION_DURATION_MS
                                                : BASE_VERSION_DURATION_MS);
+        display->version_presentation_pending = tuning_display_supported;
+        display->version_presentation_close_armed = tuning_display_supported;
+        display->version_presentation_close_ms = now_ms + TUNING_DISPLAY_PAGE_DURATION_MS;
         display->phase = WHEEL_STARTUP_DISPLAY_BASE_VERSION;
         return changed;
     }
@@ -210,3 +219,33 @@ bool wheel_startup_display_update(WheelStartupDisplay *display, bool wheel_activ
  * @return True after the startup presentation completes.
  */
 bool wheel_startup_display_ready(const WheelStartupDisplay *display) { return display->ready; }
+
+/**
+ * @brief Takes the pending tuning-display version presentation request.
+ *
+ * Returns one request when the startup sequence enters its three-second tuning-display interval,
+ * then clears it so the presentation is not queued again.
+ *
+ * @param[in,out] display Persistent startup display state.
+ * @return True once when a tuning-display version presentation is due.
+ */
+bool wheel_startup_display_take_version_presentation(WheelStartupDisplay *display) {
+    bool pending = display->version_presentation_pending;
+    display->version_presentation_pending = false;
+    return pending;
+}
+
+/**
+ * @brief Takes the pending adapter version-page close request.
+ *
+ * Returns one request after the 3.5-second text-page interval and clears it so the close record is
+ * not queued again.
+ *
+ * @param[in,out] display Persistent startup display state.
+ * @return True once when the tuning-display version page is due to close.
+ */
+bool wheel_startup_display_take_version_presentation_close(WheelStartupDisplay *display) {
+    bool pending = display->version_presentation_close_pending;
+    display->version_presentation_close_pending = false;
+    return pending;
+}

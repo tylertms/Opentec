@@ -100,6 +100,7 @@
 #include "wheel/protocol_bridge_service.h"
 #include "wheel/service.h"
 #include "wheel/startup_display.h"
+#include "wheel/startup_version_page.h"
 #include "wheel/status_service.h"
 #include "wheel/steering_limit.h"
 #include "wheel/transfer_service.h"
@@ -198,6 +199,7 @@ static HPatternCalibrationCommand h_pattern_calibration_command;
 static ShifterInputState shifter_input;
 static ShifterDisplay shifter_display;
 static WheelStartupDisplay wheel_startup_display;
+static WheelStartupVersionPage wheel_startup_version_page;
 static UsbDisconnectDisplay usb_disconnect_display;
 static UsbInputReportState usb_input_state;
 static FanatecEncoder fanatec_encoder;
@@ -370,6 +372,8 @@ enum {
     FORCE_FEEDBACK_DD2_AUTOMATIC_STRENGTH_PERCENT = 30,
     FORCE_FEEDBACK_RAMP_INTERVAL_MS = 50,
     MOTOR_LINK_MALFORMED_FRAME_LIMIT = 100,
+    WHEEL_STARTUP_VERSION_COMMAND = 0x0a,
+    WHEEL_STARTUP_TEXT_METADATA = 0x10,
 };
 
 /** @brief Storage used only by the native and Xbox motor-command transports. */
@@ -2656,6 +2660,27 @@ static void service_shifter_display(uint32_t now_ms) {
 }
 
 /**
+ * @brief Queues the tuning-display startup version presentation.
+ *
+ * Sends native wheels display command 0x0A. For a connected extended adapter, builds the four
+ * version lines and queues them through its offset-0x1A line transport instead.
+ */
+static void queue_wheel_startup_version_presentation(void) {
+    const WheelAdapterInput *adapter = wheel_service_adapter(&wheel_service);
+    if (wheel_startup_adapter_version_page_build(motor_probe_identity(&motor_probe), adapter,
+                                                 &wheel_startup_version_page)) {
+        for (uint8_t index = 0; index < WHEEL_STARTUP_VERSION_LINE_COUNT; index++) {
+            (void)wheel_service_queue_adapter_text_line(
+                &wheel_service, index + 1u, WHEEL_STARTUP_TEXT_METADATA,
+                wheel_startup_version_page.lines[index].text,
+                wheel_startup_version_page.lines[index].length);
+        }
+        return;
+    }
+    (void)wheel_service_queue_tuning_display_command(&wheel_service, WHEEL_STARTUP_VERSION_COMMAND);
+}
+
+/**
  * @brief Services the attached-wheel startup glyph presentation.
  *
  * Advances the startup sequence only after protocol activation, selects the display-capability
@@ -2672,6 +2697,12 @@ static void service_wheel_startup_display(uint32_t now_ms) {
                                      motor_position_ready, motor_probe_identity(&motor_probe),
                                      now_ms, output)) {
         wheel_service_set_display_output(&wheel_service, output);
+    }
+    if (wheel_startup_display_take_version_presentation(&wheel_startup_display)) {
+        queue_wheel_startup_version_presentation();
+    }
+    if (wheel_startup_display_take_version_presentation_close(&wheel_startup_display)) {
+        (void)wheel_service_queue_adapter_text_close(&wheel_service);
     }
 }
 

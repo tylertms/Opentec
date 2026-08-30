@@ -20,7 +20,11 @@ typedef enum {
 typedef struct {
     WheelStartupDisplayPhase phase;
     uint32_t deadline_ms;
+    uint32_t version_presentation_close_ms;
     bool ready;
+    bool version_presentation_pending;
+    bool version_presentation_close_armed;
+    bool version_presentation_close_pending;
 } WheelStartupDisplay;
 
 void wheel_startup_display_init(WheelStartupDisplay *display);
@@ -29,5 +33,7 @@ bool wheel_startup_display_update(WheelStartupDisplay *display, bool wheel_activ
                                   const MotorIdentity *motor_identity, uint32_t now_ms,
                                   WheelDisplayOutput *output);
 bool wheel_startup_display_ready(const WheelStartupDisplay *display);
+bool wheel_startup_display_take_version_presentation(WheelStartupDisplay *display);
+bool wheel_startup_display_take_version_presentation_close(WheelStartupDisplay *display);
 
 #endif

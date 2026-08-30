@@ -10,6 +10,9 @@
 
 enum {
     WHEEL_ADAPTER_HOST_CONTROLS_SIZE = 30,
+    WHEEL_ADAPTER_TEXT_LINE_COUNT = 4,
+    WHEEL_ADAPTER_TEXT_LENGTH_MAXIMUM = 27,
+    WHEEL_ADAPTER_TEXT_REPORT_SIZE = 30,
 };
 
 typedef enum {
@@ -27,6 +30,7 @@ typedef enum {
     WHEEL_ADAPTER_COMMAND_DISPLAY_STATE_PENDING,
     WHEEL_ADAPTER_COMMAND_GLYPHS_PENDING,
     WHEEL_ADAPTER_COMMAND_DISPLAY_PENDING,
+    WHEEL_ADAPTER_COMMAND_TEXT_LINE_PENDING,
     WHEEL_ADAPTER_COMMAND_REPORT_TWO_PENDING,
     WHEEL_ADAPTER_COMMAND_REPORT_ONE_PENDING,
     WHEEL_ADAPTER_COMMAND_REPORT_FOUR_PENDING,
@@ -40,6 +44,9 @@ typedef struct {
     uint8_t status[2];
     uint8_t glyphs[3];
     uint8_t display[3];
+    uint8_t text_lines[WHEEL_ADAPTER_TEXT_LINE_COUNT][WHEEL_ADAPTER_TEXT_REPORT_SIZE];
+    uint8_t text_line_lengths[WHEEL_ADAPTER_TEXT_LINE_COUNT];
+    uint8_t text_close[4];
     uint8_t remote_tuning_active;
     uint8_t refresh_state;
     uint8_t setup_selection;
@@ -55,6 +62,8 @@ typedef struct {
     WheelAdapterCommandPhase phase;
     bool glyphs_pending;
     bool display_pending;
+    uint8_t text_lines_pending;
+    bool text_close_pending;
     bool host_controls_pending;
     bool host_controls_ready;
     bool remote_tuning_active_pending;
@@ -84,6 +93,10 @@ void wheel_adapter_command_service_queue_setup_selection(WheelAdapterCommandServ
                                                          uint8_t selection);
 void wheel_adapter_command_service_queue_display_state(WheelAdapterCommandService *service,
                                                        uint8_t state);
+bool wheel_adapter_command_service_queue_text_line(WheelAdapterCommandService *service,
+                                                   uint8_t line, uint8_t metadata,
+                                                   const uint8_t *text, uint8_t length);
+void wheel_adapter_command_service_queue_text_close(WheelAdapterCommandService *service);
 void wheel_adapter_command_service_queue_report_one(
     WheelAdapterCommandService *service, const uint8_t report[WHEEL_OUTPUT_REPORT_ONE_SIZE]);
 void wheel_adapter_command_service_queue_report_two(

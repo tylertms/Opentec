@@ -79,12 +79,19 @@ static void test_reserves_longer_version_time_for_tuning_displays(void) {
 
     assert(wheel_startup_display_update(&display, true, true, true, 0, 1, &output));
     assert(display.deadline_ms == 3001);
+    assert(wheel_startup_display_take_version_presentation(&display));
+    assert(!wheel_startup_display_take_version_presentation(&display));
     assert(!wheel_startup_display_update(&display, true, true, true, 0, 2, &output));
     assert(output.glyphs[0] == 0x40);
     assert(!wheel_startup_display_update(&display, true, true, true, 0, 3000, &output));
     assert(!wheel_startup_display_update(&display, true, true, true, 0, 3001, &output));
     assert(display.phase == WHEEL_STARTUP_DISPLAY_READY_DELAY);
     assert(display.deadline_ms == 4001);
+    assert(!wheel_startup_display_update(&display, true, true, true, 0, 3501, &output));
+    assert(!wheel_startup_display_take_version_presentation_close(&display));
+    assert(!wheel_startup_display_update(&display, true, true, true, 0, 3502, &output));
+    assert(wheel_startup_display_take_version_presentation_close(&display));
+    assert(!wheel_startup_display_take_version_presentation_close(&display));
 }
 
 static void test_blinks_calibration_until_position_is_ready(void) {

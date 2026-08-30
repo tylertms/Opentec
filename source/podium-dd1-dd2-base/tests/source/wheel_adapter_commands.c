@@ -369,6 +369,39 @@ static void writes_standard_output_reports(void) {
     wheel_adapter_command_service_run(&service, &adapter, &transport);
 }
 
+static void writes_extended_text_lines_in_display_order(void) {
+    WheelAdapterCommandService service;
+    WheelAdapterInput adapter;
+    CommandTransport transport;
+    command_transport_init(&transport);
+    wheel_adapter_command_service_init(&service, &adapter);
+    complete_extended_probe(&service, &adapter, &transport);
+
+    const uint8_t second[] = {'M', 'O', 'T', 'O', 'R'};
+    const uint8_t first[] = {'B', 'A', 'S', 'E'};
+    assert(
+        wheel_adapter_command_service_queue_text_line(&service, 2, 0x10, second, sizeof(second)));
+    assert(wheel_adapter_command_service_queue_text_line(&service, 1, 0x20, first, sizeof(first)));
+    assert(!wheel_adapter_command_service_queue_text_line(&service, 0, 0x10, first, sizeof(first)));
+
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    const uint8_t expected_first[] = {2, 0x2c, 0x1a, 1, 0x20, 4, 'B', 'A', 'S', 'E'};
+    expect_request(&transport, expected_first, sizeof(expected_first));
+    complete_write(&transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    const uint8_t expected_second[] = {2, 0x2c, 0x1a, 2, 0x10, 5, 'M', 'O', 'T', 'O', 'R'};
+    expect_request(&transport, expected_second, sizeof(expected_second));
+    complete_write(&transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+
+    wheel_adapter_command_service_queue_text_close(&service);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    const uint8_t expected_close[] = {2, 0x2c, 0x1a, 0, 0x10, 1, ' '};
+    expect_request(&transport, expected_close, sizeof(expected_close));
+}
+
 static void paces_separate_extended_output_reports(void) {
     WheelAdapterCommandService service;
     WheelAdapterInput adapter;
@@ -424,6 +457,9 @@ static void switches_endpoints_after_a_failed_transfer(void) {
     complete_read(&transport, probe, sizeof(probe));
     wheel_adapter_command_service_run(&service, &adapter, &transport);
     assert(adapter.connected);
+    assert(adapter.firmware_version[0] == 5);
+    assert(adapter.firmware_version[1] == 0);
+    assert(adapter.firmware_version[2] == 0);
 
     wheel_adapter_command_service_queue_display(&service, 0x1234);
     wheel_adapter_command_service_queue_display_state(&service, 0x39);
@@ -450,6 +486,7 @@ int main(void) {
     writes_system_display_state();
     writes_standard_output_reports();
     writes_extended_output_reports();
+    writes_extended_text_lines_in_display_order();
     paces_separate_extended_output_reports();
     forwards_requested_host_controls();
     switches_endpoints_after_a_failed_transfer();

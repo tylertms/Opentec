@@ -648,6 +648,64 @@ void wheel_service_queue_adapter_display_state(WheelService *service, uint8_t st
 }
 
 /**
+ * @brief Queues a native tuning-display command.
+ *
+ * Retains a type-0x82 command only for a directly attached wheel with a supported tuning display.
+ * Extended adapter displays use their offset-0x1A text-line transport instead.
+ *
+ * @param[in,out] service Attached-wheel service receiving the command.
+ * @param[in] command Native tuning-display command.
+ * @return True when the command was queued for a directly attached display.
+ */
+bool wheel_service_queue_tuning_display_command(WheelService *service, uint8_t command) {
+    if (service == 0 || !wheel_service_tuning_display_supported(service) ||
+        (service->protocol.adapter.connected && service->protocol.adapter.mode == 1)) {
+        return false;
+    }
+    wheel_output_reports_queue_display_command(&service->protocol.output_reports, command);
+    return true;
+}
+
+/**
+ * @brief Queues one line for an extended adapter display.
+ *
+ * Forwards a valid line only while the mode-one adapter endpoint is connected.
+ *
+ * @param[in,out] service Attached-wheel service receiving the line.
+ * @param[in] line One-based display line identifier from one through four.
+ * @param[in] metadata Display line presentation metadata.
+ * @param[in] text Text bytes to retain.
+ * @param[in] length Number of text bytes.
+ * @return True when the line was queued for the extended adapter.
+ */
+bool wheel_service_queue_adapter_text_line(WheelService *service, uint8_t line, uint8_t metadata,
+                                           const uint8_t *text, uint8_t length) {
+    if (service == 0 || !service->protocol.adapter.connected ||
+        service->protocol.adapter.mode != 1) {
+        return false;
+    }
+    return wheel_adapter_command_service_queue_text_line(&service->adapter_commands, line, metadata,
+                                                         text, length);
+}
+
+/**
+ * @brief Queues the extended adapter's text-page close record.
+ *
+ * Retains line identifier zero only while the mode-one adapter endpoint is connected.
+ *
+ * @param[in,out] service Attached-wheel service receiving the close record.
+ * @return True when the close record was queued for the extended adapter.
+ */
+bool wheel_service_queue_adapter_text_close(WheelService *service) {
+    if (service == 0 || !service->protocol.adapter.connected ||
+        service->protocol.adapter.mode != 1) {
+        return false;
+    }
+    wheel_adapter_command_service_queue_text_close(&service->adapter_commands);
+    return true;
+}
+
+/**
  * @brief Applies the shared two-byte auxiliary report.
  *
  * Updates each vibration packet family, the alternate packet's auxiliary fields, the scan encoder,

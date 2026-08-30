@@ -75,6 +75,10 @@ void wheel_service_queue_adapter_remote_tuning_active(WheelService *service, boo
 void wheel_service_queue_adapter_refresh_state(WheelService *service, bool active);
 void wheel_service_queue_adapter_setup_selection(WheelService *service, uint8_t selection);
 void wheel_service_queue_adapter_display_state(WheelService *service, uint8_t state);
+bool wheel_service_queue_tuning_display_command(WheelService *service, uint8_t command);
+bool wheel_service_queue_adapter_text_line(WheelService *service, uint8_t line, uint8_t metadata,
+                                           const uint8_t *text, uint8_t length);
+bool wheel_service_queue_adapter_text_close(WheelService *service);
 void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output);
 void wheel_service_set_vibration_output(WheelService *service, const WheelVibrationOutput *output);
 void wheel_service_set_auxiliary_output_disabled(WheelService *service, bool disabled);

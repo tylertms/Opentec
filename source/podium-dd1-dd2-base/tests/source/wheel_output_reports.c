@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "wheel/output_reports.h"
 
@@ -247,6 +248,29 @@ static void test_repeats_remote_telemetry_after_report_seventeen(void) {
     assert(!wheel_output_reports_encode_next(&reports, 0, frame));
 }
 
+static void test_sends_native_display_command_after_report_seventeen(void) {
+    WheelOutputReports reports;
+    wheel_output_reports_init(&reports);
+    uint8_t report_seventeen[WHEEL_OUTPUT_REPORT_SEVENTEEN_SIZE] = {0};
+    uint8_t frame[33];
+    memset(frame, 0xff, sizeof(frame));
+
+    wheel_output_reports_queue_seventeen(&reports, report_seventeen);
+    wheel_output_reports_queue_display_command(&reports, 0x0a);
+    for (uint8_t transmission = 0; transmission < 3; transmission++) {
+        assert(wheel_output_reports_encode_next(&reports, 0x10, frame));
+    }
+
+    assert(wheel_output_reports_encode_next(&reports, 0x10, frame));
+    assert(frame[0] == 0xa6);
+    assert(frame[1] == 0x82);
+    assert(frame[2] == 0x0a);
+    for (uint8_t index = 3; index < 32; index++) {
+        assert(frame[index] == 0);
+    }
+    assert(!wheel_output_reports_encode_next(&reports, 0x10, frame));
+}
+
 static void test_sends_button_illumination_changes_to_remote_tuning_modes(void) {
     WheelOutputReports reports;
     wheel_output_reports_init(&reports);
@@ -276,6 +300,7 @@ int main(void) {
     test_ignores_unknown_actions();
     test_queues_report_six_from_shared_report_four_payload();
     test_streams_report_seventeen_after_direct_reports();
+    test_sends_native_display_command_after_report_seventeen();
     test_repeats_remote_telemetry_after_report_seventeen();
     test_sends_button_illumination_changes_to_remote_tuning_modes();
     return 0;

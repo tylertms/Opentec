@@ -14,6 +14,7 @@ enum {
     WHEEL_ADAPTER_REMOTE_TUNING_ACTIVE_OFFSET = 0x0e,
     WHEEL_ADAPTER_REFRESH_STATE_OFFSET = 0x17,
     WHEEL_ADAPTER_DISPLAY_STATE_OFFSET = 0x18,
+    WHEEL_ADAPTER_TEXT_LINE_OFFSET = 0x1a,
     WHEEL_ADAPTER_REPORT_TWO_OFFSET = 0x04,
     WHEEL_ADAPTER_REPORT_ONE_OFFSET = 0x05,
     WHEEL_ADAPTER_REPORT_FOUR_OFFSET = 0x08,
@@ -69,6 +70,8 @@ static void advance_endpoint(WheelAdapterCommandService *service, WheelAdapterIn
     service->pending_inputs = 0;
     service->glyphs_pending = false;
     service->display_pending = false;
+    service->text_lines_pending = 0;
+    service->text_close_pending = false;
     service->host_controls_pending = false;
     service->host_controls_ready = false;
     service->remote_tuning_active_pending = false;
@@ -85,6 +88,9 @@ static void advance_endpoint(WheelAdapterCommandService *service, WheelAdapterIn
     service->phase = WHEEL_ADAPTER_COMMAND_DISCOVERING;
     adapter->mode = service->endpoint_index;
     adapter->profile_flags = 0;
+    for (uint8_t index = 0; index < sizeof(adapter->firmware_version); index++) {
+        adapter->firmware_version[index] = 0;
+    }
     adapter->connected = false;
 }
 
@@ -146,6 +152,9 @@ static bool finish_request(WheelAdapterCommandService *service, WheelAdapterInpu
         uint8_t status = service->probe[0];
         if (service->endpoint_index == 1) {
             status &= 0x3fu;
+            adapter->firmware_version[0] = status;
+            adapter->firmware_version[1] = service->probe[1];
+            adapter->firmware_version[2] = service->probe[2];
         }
         adapter->connected = status != 0;
         break;
@@ -173,6 +182,7 @@ static bool finish_request(WheelAdapterCommandService *service, WheelAdapterInpu
     case WHEEL_ADAPTER_COMMAND_DISPLAY_STATE_PENDING:
     case WHEEL_ADAPTER_COMMAND_GLYPHS_PENDING:
     case WHEEL_ADAPTER_COMMAND_DISPLAY_PENDING:
+    case WHEEL_ADAPTER_COMMAND_TEXT_LINE_PENDING:
     case WHEEL_ADAPTER_COMMAND_REPORT_TWO_PENDING:
     case WHEEL_ADAPTER_COMMAND_REPORT_ONE_PENDING:
     case WHEEL_ADAPTER_COMMAND_REPORT_FOUR_PENDING:
@@ -313,6 +323,30 @@ static CommandTransportResult queue_request(WheelAdapterCommandService *service,
         if (result == COMMAND_TRANSPORT_COMPLETE) {
             service->display_pending = false;
             service->phase = WHEEL_ADAPTER_COMMAND_DISPLAY_PENDING;
+        }
+        return result;
+    }
+    if (service->text_lines_pending != 0 && service->endpoint_index == 1) {
+        uint8_t index = 0;
+        while ((service->text_lines_pending & (uint8_t)(1u << index)) == 0) {
+            index++;
+        }
+        CommandTransportResult result = command_transport_queue_write_to(
+            transport, WHEEL_ADAPTER_COMMAND_OWNER, target, WHEEL_ADAPTER_TEXT_LINE_OFFSET,
+            service->text_lines[index], service->text_line_lengths[index]);
+        if (result == COMMAND_TRANSPORT_COMPLETE) {
+            service->text_lines_pending &= (uint8_t)~(1u << index);
+            service->phase = WHEEL_ADAPTER_COMMAND_TEXT_LINE_PENDING;
+        }
+        return result;
+    }
+    if (service->text_close_pending && service->endpoint_index == 1) {
+        CommandTransportResult result = command_transport_queue_write_to(
+            transport, WHEEL_ADAPTER_COMMAND_OWNER, target, WHEEL_ADAPTER_TEXT_LINE_OFFSET,
+            service->text_close, sizeof(service->text_close));
+        if (result == COMMAND_TRANSPORT_COMPLETE) {
+            service->text_close_pending = false;
+            service->phase = WHEEL_ADAPTER_COMMAND_TEXT_LINE_PENDING;
         }
         return result;
     }
@@ -527,6 +561,56 @@ void wheel_adapter_command_service_queue_display_state(WheelAdapterCommandServic
     }
     service->display_state = state;
     service->display_state_pending = true;
+}
+
+/**
+ * @brief Queues one extended-adapter text line.
+ *
+ * Builds the offset-0x1A line record from a one-based line identifier, metadata byte, text length,
+ * and at most 27 text bytes. Replacing a pending identifier keeps the other lines queued.
+ *
+ * @param[in,out] service Adapter command service retaining the line.
+ * @param[in] line One-based display line identifier from one through four.
+ * @param[in] metadata Display line presentation metadata.
+ * @param[in] text Text bytes to retain.
+ * @param[in] length Number of text bytes.
+ * @return True when a valid line was queued.
+ */
+bool wheel_adapter_command_service_queue_text_line(WheelAdapterCommandService *service,
+                                                   uint8_t line, uint8_t metadata,
+                                                   const uint8_t *text, uint8_t length) {
+    if (service == 0 || text == 0 || line == 0 || line > WHEEL_ADAPTER_TEXT_LINE_COUNT ||
+        length > WHEEL_ADAPTER_TEXT_LENGTH_MAXIMUM) {
+        return false;
+    }
+    uint8_t index = line - 1u;
+    service->text_lines[index][0] = line;
+    service->text_lines[index][1] = metadata;
+    service->text_lines[index][2] = length;
+    for (uint8_t text_index = 0; text_index < length; text_index++) {
+        service->text_lines[index][text_index + 3u] = text[text_index];
+    }
+    service->text_line_lengths[index] = length + 3u;
+    service->text_lines_pending |= (uint8_t)(1u << index);
+    return true;
+}
+
+/**
+ * @brief Queues the extended-adapter text-page close record.
+ *
+ * Retains line identifier zero with standard metadata and one blank byte for offset 0x1A.
+ *
+ * @param[in,out] service Adapter command service retaining the close record.
+ */
+void wheel_adapter_command_service_queue_text_close(WheelAdapterCommandService *service) {
+    if (service == 0) {
+        return;
+    }
+    service->text_close[0] = 0;
+    service->text_close[1] = 0x10;
+    service->text_close[2] = 1;
+    service->text_close[3] = ' ';
+    service->text_close_pending = true;
 }
 
 /**

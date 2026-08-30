@@ -901,6 +901,28 @@ static void test_reports_tuning_display_support(void) {
     assert(!wheel_service_tuning_display_supported(&service));
 }
 
+static void test_routes_tuning_display_output_by_connection(void) {
+    WheelService service = {0};
+    uint8_t frame[33] = {0};
+    const uint8_t text[] = {'B', 'A', 'S', 'E'};
+
+    service.protocol.mode = 16;
+    assert(wheel_service_queue_tuning_display_command(&service, 0x0a));
+    assert(wheel_output_reports_encode_next(&service.protocol.output_reports, 16, frame));
+    assert(frame[0] == 0xa6);
+    assert(frame[1] == 0x82);
+    assert(frame[2] == 0x0a);
+
+    service.protocol.mode = 4;
+    service.protocol.adapter.connected = true;
+    service.protocol.adapter.mode = 1;
+    assert(!wheel_service_queue_tuning_display_command(&service, 0x0a));
+    assert(wheel_service_queue_adapter_text_line(&service, 1, 0x10, text, sizeof(text)));
+    assert(service.adapter_commands.text_lines_pending == 1);
+    assert(wheel_service_queue_adapter_text_close(&service));
+    assert(service.adapter_commands.text_close_pending);
+}
+
 static void test_selects_calibration_advance_button_by_wheel_mode(void) {
     WheelService service;
     initialize_service(&service);
@@ -1099,6 +1121,7 @@ int main(void) {
     test_selects_extended_report_fields();
     test_reports_calibration_availability();
     test_reports_tuning_display_support();
+    test_routes_tuning_display_output_by_connection();
     test_selects_calibration_advance_button_by_wheel_mode();
     test_reports_mode_gated_input_capability();
     test_exposes_axis_overrides();

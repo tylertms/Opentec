@@ -12,12 +12,15 @@ enum {
     WHEEL_OUTPUT_REPORT_SEVENTEEN_PENDING = 1u << 4,
     WHEEL_OUTPUT_REMOTE_TELEMETRY_PENDING = 1u << 5,
     WHEEL_OUTPUT_REPORT_SIX_PENDING = 1u << 6,
+    WHEEL_OUTPUT_DISPLAY_COMMAND_PENDING = 1u << 7,
     WHEEL_OUTPUT_REPORT_SEVENTEEN_COMMAND = 3,
     WHEEL_OUTPUT_REPORT_SEVENTEEN_CHUNK_SIZE = 30,
     WHEEL_OUTPUT_REPORT_SEVENTEEN_HEADER_STEP = 0x0f,
     WHEEL_OUTPUT_REPORT_SEVENTEEN_LAST_SEQUENCE = 1,
     WHEEL_OUTPUT_REMOTE_TELEMETRY_COMMAND = 3,
     WHEEL_OUTPUT_REMOTE_TELEMETRY_TRANSMISSIONS = 3,
+    WHEEL_OUTPUT_DISPLAY_COMMAND_REPORT_ID = 0xa6,
+    WHEEL_OUTPUT_DISPLAY_COMMAND_PACKET_TYPE = 0x82,
     WHEEL_OUTPUT_BUTTON_ILLUMINATION_COMMAND = 0x16,
     WHEEL_MODE_REMOTE_TUNING_LEGACY = 0x0e,
     WHEEL_MODE_REMOTE_TUNING_EXTENDED = 0x1c,
@@ -102,6 +105,23 @@ void wheel_output_reports_queue_seventeen(
     memcpy(reports->report_seventeen, payload, sizeof(reports->report_seventeen));
     reports->report_seventeen_sequence = 0;
     reports->pending |= WHEEL_OUTPUT_REPORT_SEVENTEEN_PENDING;
+}
+
+/**
+ * @brief Queues a native attached-wheel display command.
+ *
+ * Retains the newest one-byte command for a type-0x82 configuration packet. The command is
+ * scheduled after direct reports and report 17, and before remote telemetry.
+ *
+ * @param[in,out] reports Retained report payloads and pending state.
+ * @param[in] command Native wheel display command.
+ */
+void wheel_output_reports_queue_display_command(WheelOutputReports *reports, uint8_t command) {
+    if (reports == NULL) {
+        return;
+    }
+    reports->display_command = command;
+    reports->pending |= WHEEL_OUTPUT_DISPLAY_COMMAND_PENDING;
 }
 
 /**
@@ -308,12 +328,13 @@ void wheel_output_reports_queue_six(WheelOutputReports *reports, uint8_t first, 
 /**
  * @brief Encodes the next pending attached-wheel output report.
  *
- * Selects reports in the order 1, 2, 4, 5, 6, 17, remote telemetry, and changed button
- * illumination. Single-frame reports write their report number and retained payload at frame
- * offsets one and two, then consume their pending state. Reports four and six use the same 25-byte
- * payload. Report 17 emits its next segmented transfer frame. Remote telemetry writes command 3
- * and its 30-byte payload for three successive selections. Button illumination uses command 0x16
- * only in remote-tuning wheel modes. The caller supplies the command byte and checksum.
+ * Selects reports in the order 1, 2, 4, 5, 6, 17, native display command, remote telemetry, and
+ * changed button illumination. Single-frame reports write their report number and retained payload
+ * at frame offsets one and two, then consume their pending state. Reports four and six use the same
+ * 25-byte payload. Report 17 emits its next segmented transfer frame. Remote telemetry writes
+ * command 3 and its 30-byte payload for three successive selections. Button illumination uses
+ * command 0x16 only in remote-tuning wheel modes. The caller supplies the command byte and
+ * checksum.
  *
  * @param[in,out] reports Retained report payloads and pending state.
  * @param[in] wheel_mode Negotiated attached-wheel mode.
@@ -354,6 +375,13 @@ bool wheel_output_reports_encode_next(WheelOutputReports *reports, uint8_t wheel
         pending = WHEEL_OUTPUT_REPORT_SIX_PENDING;
     } else if ((reports->pending & WHEEL_OUTPUT_REPORT_SEVENTEEN_PENDING) != 0) {
         encode_report_seventeen(reports, frame);
+        return true;
+    } else if ((reports->pending & WHEEL_OUTPUT_DISPLAY_COMMAND_PENDING) != 0) {
+        memset(frame + 1, 0, 31);
+        frame[0] = WHEEL_OUTPUT_DISPLAY_COMMAND_REPORT_ID;
+        frame[1] = WHEEL_OUTPUT_DISPLAY_COMMAND_PACKET_TYPE;
+        frame[2] = reports->display_command;
+        reports->pending &= (uint8_t)~WHEEL_OUTPUT_DISPLAY_COMMAND_PENDING;
         return true;
     } else if ((reports->pending & WHEEL_OUTPUT_REMOTE_TELEMETRY_PENDING) != 0) {
         frame[1] = WHEEL_OUTPUT_REMOTE_TELEMETRY_COMMAND;
