@@ -115,6 +115,16 @@ static void test_renders_tuning_mode_notices(void) {
     assert(has_lit_pixel(framebuffer, 0, 40, DISPLAY_FRAMEBUFFER_WIDTH, 7));
 }
 
+static void test_renders_maximum_rotation_warning(void) {
+    uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE] = {0};
+
+    display_notice_render_system(framebuffer, SYSTEM_NOTICE_MAXIMUM_ROTATIONS_EXCEEDED);
+
+    assert(has_lit_pixel(framebuffer, 123, 17, 11, 10));
+    assert(has_lit_pixel(framebuffer, 0, 30, DISPLAY_FRAMEBUFFER_WIDTH, 7));
+    assert(has_lit_pixel(framebuffer, 0, 40, DISPLAY_FRAMEBUFFER_WIDTH, 7));
+}
+
 static void test_renders_shutdown_notice(void) {
     uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE] = {0};
 
@@ -145,6 +155,7 @@ int main(void) {
     test_renders_position_sensor_notices();
     test_renders_two_line_torque_reduction_notice();
     test_renders_tuning_mode_notices();
+    test_renders_maximum_rotation_warning();
     test_renders_shutdown_notice();
     test_renders_unsupported_wheel_alert_variants();
     test_renders_motor_calibration_notices();

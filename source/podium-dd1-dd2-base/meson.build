@@ -15,6 +15,7 @@ display_force_feedback_analysis_page_sources = files(
   'source/display/force_feedback_analysis_page.c',
 )
 display_framebuffer_sources = files('source/display/framebuffer.c')
+display_high_torque_icon_sources = files('source/display/high_torque_icon.c')
 display_identity_page_sources = files('source/display/identity_page.c')
 display_motor_data_analysis_page_sources = files('source/display/motor_data_analysis_page.c')
 display_notice_sources = files('source/display/notice.c')
@@ -130,6 +131,7 @@ motor_output_transport_sources = files('source/motor/output_transport.c')
 motor_output_interlock_sources = files('source/motor/output_interlock.c')
 motor_probe_sources = files('source/motor/probe.c')
 motor_calibration_sources = files('source/motor/calibration.c')
+motor_rotation_guard_sources = files('source/motor/rotation_guard.c')
 motor_status_service_sources = files('source/motor/status_service.c')
 motor_telemetry_sources = files('source/motor/telemetry.c')
 motor_telemetry_service_sources = files('source/motor/telemetry_service.c')
@@ -254,6 +256,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'display-auxiliary-calibration-page': 'source/display/auxiliary_calibration_page.c',
     'display-force-feedback-analysis-page': 'source/display/force_feedback_analysis_page.c',
     'display-framebuffer': 'source/display/framebuffer.c',
+    'display-high-torque-icon': 'source/display/high_torque_icon.c',
     'display-identity-page': 'source/display/identity_page.c',
     'display-motor-data-analysis-page': 'source/display/motor_data_analysis_page.c',
     'display-notice': 'source/display/notice.c',
@@ -366,6 +369,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'motor-output-interlock': 'source/motor/output_interlock.c',
     'motor-probe': 'source/motor/probe.c',
     'motor-calibration': 'source/motor/calibration.c',
+    'motor-rotation-guard': 'source/motor/rotation_guard.c',
     'motor-status-service': 'source/motor/status_service.c',
     'motor-telemetry': 'source/motor/telemetry.c',
     'motor-telemetry-service': 'source/motor/telemetry_service.c',
@@ -649,6 +653,7 @@ if not meson.is_cross_build()
     'base-display-prompt-test',
     'tests/source/display_prompt.c',
     display_prompt_sources,
+    display_high_torque_icon_sources,
     display_text_sources,
     display_framebuffer_sources,
     build_by_default: false,
@@ -679,6 +684,7 @@ if not meson.is_cross_build()
     'base-display-notice-test',
     'tests/source/display_notice.c',
     display_notice_sources,
+    display_high_torque_icon_sources,
     display_text_sources,
     display_framebuffer_sources,
     build_by_default: false,
@@ -1659,6 +1665,14 @@ if not meson.is_cross_build()
     'base-motor-calibration-test',
     'tests/source/motor_calibration.c',
     motor_calibration_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  motor_rotation_guard_test = executable(
+    'base-motor-rotation-guard-test',
+    'tests/source/motor_rotation_guard.c',
+    motor_rotation_guard_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2928,6 +2942,7 @@ if not meson.is_cross_build()
   test('base-motor-output-interlock', motor_output_interlock_test, suite: ['base', 'motor'])
   test('base-motor-probe', motor_probe_test, suite: ['base', 'motor'])
   test('base-motor-calibration', motor_calibration_test, suite: ['base', 'motor', 'calibration'])
+  test('base-motor-rotation-guard', motor_rotation_guard_test, suite: ['base', 'motor', 'safety'])
   test('base-motor-status-service', motor_status_service_test, suite: ['base', 'motor'])
   test('base-motor-telemetry-service', motor_telemetry_service_test, suite: ['base', 'motor'])
   test('base-motor-tuning-parameter', motor_tuning_parameter_test, suite: ['base', 'motor'])

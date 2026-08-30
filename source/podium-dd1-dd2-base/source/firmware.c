@@ -34,6 +34,7 @@
 #include "motor/live_frame.h"
 #include "motor/output_transport.h"
 #include "motor/probe.h"
+#include "motor/rotation_guard.h"
 #include "motor/status_service.h"
 #include "motor/telemetry_service.h"
 #include "motor/tuning_service.h"
@@ -184,6 +185,7 @@ static MotorStatusService motor_status_service;
 static MotorTelemetryService motor_telemetry_service;
 static MotorTuningService motor_tuning_service;
 static MotorCalibrationService motor_calibration_service;
+static MotorRotationGuard motor_rotation_guard;
 static BaseSettings base_settings;
 static BaseSettingsPersistence settings_persistence;
 static TuningProfile runtime_tuning_profile;
@@ -405,6 +407,7 @@ enum {
     WHEEL_CENTER_CALIBRATED_EVENT_CODE = 2,
     STANDARD_TUNING_MODE_EVENT_CODE = 0x12,
     ADVANCED_TUNING_MODE_EVENT_CODE = 0x13,
+    MAXIMUM_ROTATIONS_EXCEEDED_EVENT_CODE = 0x17,
     WHEEL_CENTER_CALIBRATED_STATUS_CODE = 0x1f,
     SHUTDOWN_EVENT_CODE = 0x0e,
     SYSTEM_DISPLAY_DISMISS_EVENT_CODE = 0x11,
@@ -587,6 +590,8 @@ static void service_system_events(uint32_t now_ms) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_STANDARD_TUNING_MODE, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_ADVANCED_TUNING_MODE) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_ADVANCED_TUNING_MODE, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_MAXIMUM_ROTATIONS_EXCEEDED) {
+        system_notice_show(&system_notice, SYSTEM_NOTICE_MAXIMUM_ROTATIONS_EXCEEDED, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_SHUTDOWN) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_SHUTDOWN, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_UNSUPPORTED_WHEEL_INVERTED) {
@@ -947,7 +952,8 @@ static void initialize_base_settings(void) {
  * @brief Initializes motor force, tuning, calibration, and discovery state.
  *
  * Starts force output with a zero-percent ramp and the board variant's reduced Torque Key limit,
- * applies the active profile, and begins asynchronous motor discovery.
+ * clears calibration and maximum-rotation monitoring, applies the active profile, and begins
+ * asynchronous motor discovery.
  */
 static void initialize_motor(void) {
     force_feedback_state_init(&force_feedback_state);
@@ -961,6 +967,7 @@ static void initialize_motor(void) {
     };
     motor_tuning_ready = false;
     motor_calibration_service_init(&motor_calibration_service);
+    motor_rotation_guard_init(&motor_rotation_guard);
     apply_active_tuning_profile();
     motor_probe_init(&motor_probe);
     motor_probe_start(&motor_probe, platform_time_ms());
@@ -2052,6 +2059,31 @@ static void service_motor(void) {
         }
         publish_motor_status_event();
         publish_motor_calibration_event();
+    }
+}
+
+/**
+ * @brief Monitors a stalled motor counter at the minimum steering limit.
+ *
+ * Converts the current wheel position to its published steering axis, supplies the latest motor
+ * runtime counter, and queues the persistent restart warning after an unchanged 4.5-second hold.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_motor_rotation_guard(uint32_t now_ms) {
+    int32_t steering_axis = 1;
+    if (motor_position_ready && wheel_position_calibration.travel != 0) {
+        steering_axis = wheel_position_hid_axis(motor_position_report.wheel_position,
+                                                &wheel_position_calibration);
+    }
+    const MotorTelemetry *telemetry =
+        motor_tuning_ready ? motor_telemetry_service_value(&motor_telemetry_service) : NULL;
+    uint32_t runtime_seconds =
+        telemetry != NULL && telemetry->runtime_valid ? telemetry->runtime_seconds : 0;
+    if (motor_rotation_guard_update(&motor_rotation_guard, steering_axis, runtime_seconds,
+                                    now_ms)) {
+        (void)system_event_queue_try_push(&system_event_queue,
+                                          MAXIMUM_ROTATIONS_EXCEEDED_EVENT_CODE);
     }
 }
 
@@ -3659,6 +3691,7 @@ int main(void) {
         wheel_position_calibration = wheel_position_calibration_build(
             &base_settings.wheel_position, tuning_profile->rotation_degrees,
             tuning_profile->steering_deadzone);
+        service_motor_rotation_guard(now_ms);
         wheel_service_set_display_rotation(
             &wheel_service, tuning_profile->display_rotation_enabled != 0,
             wheel_position_display_rotation(motor_position_report.wheel_position,

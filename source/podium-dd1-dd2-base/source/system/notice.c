@@ -22,6 +22,7 @@ enum {
 static uint32_t notice_duration_ms(SystemNoticeKind kind) {
     if (kind == SYSTEM_NOTICE_NONE || kind == SYSTEM_NOTICE_POSITION_SENSOR_TEST_FAILED ||
         kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_ONGOING || kind == SYSTEM_NOTICE_SHUTDOWN ||
+        kind == SYSTEM_NOTICE_MAXIMUM_ROTATIONS_EXCEEDED ||
         kind == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED ||
         kind == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED) {
         return 0;

@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "display/framebuffer.h"
+#include "display/high_torque_icon.h"
 #include "display/text.h"
 #include "system/notice.h"
 
@@ -40,6 +41,8 @@ static const char motor_calibration_ongoing_text[] =
     "Motor calib. ongoing. Do not touch the shaft.";
 static const char motor_calibration_completed_text[] = "Motor calib. successfully completed.";
 static const char motor_calibration_erased_text[] = "Motor calib. data erased.";
+static const char maximum_rotations_exceeded_text[] = "Exceeded maximum rotations,";
+static const char restart_wheel_base_text[] = "please restart the wheel base";
 
 /**
  * @brief Draws the warning icon used by operator notices.
@@ -141,6 +144,8 @@ void display_notice_render_system(DisplayFramebuffer framebuffer, SystemNoticeKi
         kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_DISCONNECT_WHEEL ||
         kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_UNSUPPORTED) {
         draw_error_icon(framebuffer);
+    } else if (kind == SYSTEM_NOTICE_MAXIMUM_ROTATIONS_EXCEEDED) {
+        display_high_torque_icon_draw(framebuffer, WARNING_ICON_X, WARNING_ICON_Y);
     } else {
         draw_warning_icon(framebuffer, kind == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED);
     }
@@ -179,6 +184,11 @@ void display_notice_render_system(DisplayFramebuffer framebuffer, SystemNoticeKi
                                    NOTICE_COLOR);
     } else if (kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_ERASED) {
         display_text_draw_centered(framebuffer, motor_calibration_erased_text, NOTICE_TEXT_Y, 1,
+                                   NOTICE_COLOR);
+    } else if (kind == SYSTEM_NOTICE_MAXIMUM_ROTATIONS_EXCEEDED) {
+        display_text_draw_centered(framebuffer, maximum_rotations_exceeded_text,
+                                   NOTICE_PRIMARY_TEXT_Y, 1, NOTICE_COLOR);
+        display_text_draw_centered(framebuffer, restart_wheel_base_text, NOTICE_SECONDARY_TEXT_Y, 1,
                                    NOTICE_COLOR);
     } else if (kind == SYSTEM_NOTICE_STANDARD_TUNING_MODE ||
                kind == SYSTEM_NOTICE_ADVANCED_TUNING_MODE) {
