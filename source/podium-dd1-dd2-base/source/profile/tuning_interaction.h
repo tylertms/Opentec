@@ -57,6 +57,7 @@ typedef struct {
     uint32_t profile_hold_started_ms;
     TuningInteractionPhase phase;
     TuningNavigationMode last_navigation;
+    TuningNavigationEvent navigation;
     bool closing;
     bool profile_hold_active;
     bool profile_mode_toggled;
@@ -66,6 +67,7 @@ typedef struct {
 void tuning_interaction_init(TuningInteraction *interaction);
 TuningNavigationEvent tuning_interaction_read_navigation(TuningInteraction *interaction,
                                                          const TuningInteractionInput *input);
+TuningNavigationEvent tuning_interaction_take_navigation(TuningInteraction *interaction);
 TuningInteractionAction tuning_interaction_update(TuningInteraction *interaction,
                                                   const TuningInteractionInput *input,
                                                   uint32_t now_ms);

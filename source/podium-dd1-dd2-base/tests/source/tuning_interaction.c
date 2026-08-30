@@ -146,6 +146,17 @@ static void test_decodes_each_digital_navigation_action(void) {
     }
 }
 
+static void test_forwards_each_navigation_event_once(void) {
+    TuningInteraction interaction;
+    tuning_interaction_init(&interaction);
+    TuningInteractionInput sample = input(0x10, 0x0400, 0);
+
+    assert(tuning_interaction_update(&interaction, &sample, 0) == TUNING_INTERACTION_ACTION_NONE);
+    assert(tuning_interaction_take_navigation(&interaction).mode == TUNING_NAVIGATION_NEXT);
+    assert(tuning_interaction_take_navigation(&interaction).mode == TUNING_NAVIGATION_NONE);
+    assert(tuning_interaction_take_navigation(NULL).mode == TUNING_NAVIGATION_NONE);
+}
+
 static void test_unavailable_navigation_resets_the_edge_latch(void) {
     TuningInteraction interaction;
     tuning_interaction_init(&interaction);
@@ -209,6 +220,7 @@ int main(void) {
     test_resets_when_wheel_input_is_unavailable();
     test_decodes_navigation_priority_and_edges();
     test_decodes_each_digital_navigation_action();
+    test_forwards_each_navigation_event_once();
     test_unavailable_navigation_resets_the_edge_latch();
     test_emits_profile_hold_actions_at_their_thresholds();
     test_profile_inputs_restart_the_hold_timer();

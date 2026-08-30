@@ -119,6 +119,24 @@ TuningNavigationEvent tuning_interaction_read_navigation(TuningInteraction *inte
 }
 
 /**
+ * @brief Takes the navigation event produced by the latest interaction update.
+ *
+ * Returns the retained event once and clears it so entry navigation and value adjustment cannot
+ * process the same input twice.
+ *
+ * @param[in,out] interaction Tuning interaction retaining the event.
+ * @return Latest navigation event, or no action when none is pending.
+ */
+TuningNavigationEvent tuning_interaction_take_navigation(TuningInteraction *interaction) {
+    if (interaction == NULL) {
+        return (TuningNavigationEvent){0};
+    }
+    TuningNavigationEvent navigation = interaction->navigation;
+    interaction->navigation = (TuningNavigationEvent){0};
+    return navigation;
+}
+
+/**
  * @brief Clears the active tuning-profile hold timer.
  *
  * Returns the hold lifecycle to its idle state without changing menu navigation.
@@ -222,6 +240,7 @@ TuningInteractionAction tuning_interaction_update(TuningInteraction *interaction
     }
 
     TuningNavigationEvent navigation = tuning_interaction_read_navigation(interaction, input);
+    interaction->navigation = navigation;
     bool menu_held = navigation.mode == TUNING_NAVIGATION_MENU;
     if (interaction->phase == TUNING_INTERACTION_CLOSED) {
         if (menu_held) {
