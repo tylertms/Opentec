@@ -206,7 +206,7 @@ static bool entry_supports_interface(TuningEntry entry, uint8_t interface_mode) 
 /**
  * @brief Reports whether attached hardware exposes an entry.
  *
- * Applies wheel calibration, wheel capability, pedal connection, pedal calibration, and legacy
+ * Applies wheel capability, pedal connection, pedal calibration, and legacy
  * compatibility gates to entries whose presence depends on attached hardware.
  *
  * @param[in] entry Logical tuning entry.
@@ -218,7 +218,7 @@ static bool entry_supported_by_hardware(TuningEntry entry, const TuningProfileBa
                                         const TuningEntryAvailabilityContext *context) {
     switch (entry) {
     case TUNING_ENTRY_FORCE_SCALE:
-        return !context->wheel_calibration_active;
+        return !context->legacy_pedal_mode;
     case TUNING_ENTRY_NATURAL_DAMPER:
         return context->wheel_accessory_kind != WHEEL_ACCESSORY_DISCONNECTED;
     case TUNING_ENTRY_FULL_FORCE:
@@ -241,13 +241,13 @@ static bool entry_supported_by_hardware(TuningEntry entry, const TuningProfileBa
         return context->primary_pedal_calibration_active ||
                context->secondary_pedal_calibration_active;
     case TUNING_ENTRY_MULTI_POSITION_MODE:
-        return context->wheel_status_mode_active;
+        return context->multi_position_supported;
     case TUNING_ENTRY_PADDLE_MODE:
         return context->wheel_axis_report_enabled;
     case TUNING_ENTRY_VIBRATION_STRENGTH:
         return context->vibration_mode_compatible;
     case TUNING_ENTRY_BRAKE_INDICATOR_LEVEL:
-        return context->legacy_pedals || context->wheel_mode == 0x03 ||
+        return context->legacy_pedal_mode || context->wheel_mode == 0x03 ||
                context->wheel_mode == 0x0a || context->wheel_mode == 0x01 ||
                context->wheel_mode == 0x02 || context->wheel_mode == 0x16;
     default:

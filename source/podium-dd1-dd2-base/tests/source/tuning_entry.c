@@ -17,9 +17,8 @@ static const TuningEntryAvailabilityContext available_context = {
     .wheel_mode = 0x0e,
     .wheel_accessory_kind = WHEEL_ACCESSORY_EXTENDED,
     .pedal_connection = TUNING_PEDALS_TRANSFER,
-    .legacy_pedals = true,
     .primary_pedal_calibration_active = true,
-    .wheel_status_mode_active = true,
+    .multi_position_supported = true,
     .wheel_axis_report_enabled = true,
     .vibration_mode_compatible = true,
 };
@@ -167,9 +166,9 @@ static void test_applies_interface_and_hardware_availability(void) {
     bank.standard_mode_enabled = false;
 
     for (TuningEntry entry = 0; entry < TUNING_ENTRY_COUNT; entry++) {
-        bool unavailable = entry == TUNING_ENTRY_STEERING_DEADZONE ||
-                           entry == TUNING_ENTRY_DRIFT_COMPENSATION ||
-                           entry == TUNING_ENTRY_FULL_FORCE;
+        bool unavailable =
+            entry == TUNING_ENTRY_STEERING_DEADZONE || entry == TUNING_ENTRY_DRIFT_COMPENSATION ||
+            entry == TUNING_ENTRY_FULL_FORCE || entry == TUNING_ENTRY_BRAKE_INDICATOR_LEVEL;
         assert(tuning_entry_available(entry, &bank, &context) != unavailable);
     }
 
@@ -182,8 +181,9 @@ static void test_applies_interface_and_hardware_availability(void) {
     assert(!tuning_entry_available(TUNING_ENTRY_SETUP, &bank, &context));
 
     context = available_context;
-    context.wheel_calibration_active = true;
+    context.legacy_pedal_mode = true;
     assert(!tuning_entry_available(TUNING_ENTRY_FORCE_SCALE, &bank, &context));
+    assert(tuning_entry_available(TUNING_ENTRY_BRAKE_INDICATOR_LEVEL, &bank, &context));
     context.wheel_accessory_kind = WHEEL_ACCESSORY_DISCONNECTED;
     assert(!tuning_entry_available(TUNING_ENTRY_NATURAL_DAMPER, &bank, &context));
     assert(!tuning_entry_available(TUNING_ENTRY_NATURAL_FRICTION, &bank, &context));

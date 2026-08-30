@@ -15,9 +15,8 @@ static const TuningEntryAvailabilityContext availability = {
     .wheel_mode = 0x0e,
     .wheel_accessory_kind = WHEEL_ACCESSORY_EXTENDED,
     .pedal_connection = TUNING_PEDALS_TRANSFER,
-    .legacy_pedals = true,
     .primary_pedal_calibration_active = true,
-    .wheel_status_mode_active = true,
+    .multi_position_supported = true,
     .wheel_axis_report_enabled = true,
     .vibration_mode_compatible = true,
 };

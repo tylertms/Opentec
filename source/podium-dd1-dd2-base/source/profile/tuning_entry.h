@@ -55,7 +55,7 @@ typedef struct {
     bool valid;
 } TuningEntryLimits;
 
-/** @brief Pedal connection kinds used by local tuning entry availability. */
+/** @brief Pedal capability levels used by local tuning entry availability. */
 typedef enum {
     TUNING_PEDALS_UNAVAILABLE,
     TUNING_PEDALS_LEGACY,
@@ -68,11 +68,10 @@ typedef struct {
     uint8_t wheel_mode;
     WheelAccessoryKind wheel_accessory_kind;
     TuningPedalConnection pedal_connection;
-    bool wheel_calibration_active;
-    bool legacy_pedals;
+    bool legacy_pedal_mode;
     bool primary_pedal_calibration_active;
     bool secondary_pedal_calibration_active;
-    bool wheel_status_mode_active;
+    bool multi_position_supported;
     bool wheel_axis_report_enabled;
     bool vibration_mode_compatible;
 } TuningEntryAvailabilityContext;

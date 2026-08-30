@@ -56,7 +56,9 @@
 #include "platform/usb.h"
 #include "profile/bank.h"
 #include "profile/tuning.h"
+#include "profile/tuning_entry.h"
 #include "profile/tuning_interaction.h"
+#include "profile/tuning_menu.h"
 #include "secure_element/authentication.h"
 #include "secure_element/session.h"
 #include "security/code.h"
@@ -241,6 +243,9 @@ static uint8_t wheel_adapter_display_state;
 static UsbTuningMenuService usb_tuning_menu_service;
 static UsbTuningProfileService usb_tuning_profile_service;
 static TuningInteraction tuning_interaction;
+static TuningMenu tuning_menu;
+static TuningEntryAvailabilityContext tuning_availability;
+static TuningEntryAdjustmentContext tuning_adjustment;
 static TuningInteractionInput tuning_interaction_input;
 static WheelInputSnapshot tuning_interaction_snapshot;
 static SecurityCode security_code;
@@ -821,6 +826,12 @@ static void service_motor_link(void) {
     }
 }
 
+/**
+ * @brief Applies the active retained tuning profile to runtime consumers.
+ *
+ * Copies the active slot into runtime storage and refreshes cooling, pedal, wheel, and motor
+ * settings that take effect immediately.
+ */
 static void apply_active_tuning_profile(void) {
     runtime_tuning_profile = *tuning_profile_bank_active(&base_settings.tuning_profiles);
     tuning_profile = &runtime_tuning_profile;
@@ -948,6 +959,7 @@ static void initialize_usb_command_bridge(void) {
     usb_tuning_menu_service_init(&usb_tuning_menu_service);
     usb_tuning_profile_service_init(&usb_tuning_profile_service);
     tuning_interaction_init(&tuning_interaction);
+    tuning_menu_init(&tuning_menu);
     security_code_init(&security_code);
     usb_motor_acknowledgement_ready = false;
     xbox_mode_startup_attempted = false;
@@ -2502,11 +2514,110 @@ static void apply_tuning_interaction_action(TuningInteractionAction action, uint
 }
 
 /**
+ * @brief Reports whether a wheel mode exposes vibration-strength tuning.
+ *
+ * Selects the five attached-wheel modes that route a local vibration setting to the wheel.
+ *
+ * @param[in] wheel_mode Active attached-wheel mode.
+ * @return True when vibration-strength tuning is available.
+ */
+static bool wheel_mode_supports_vibration_tuning(uint8_t wheel_mode) {
+    switch (wheel_mode) {
+    case 0x01:
+    case 0x02:
+    case 0x03:
+    case 0x0a:
+    case 0x16:
+        return true;
+    default:
+        return false;
+    }
+}
+
+/**
+ * @brief Classifies the attached pedal path for local tuning controls.
+ *
+ * Retains legacy brake-force control during legacy calibration and exposes full pedal tuning only
+ * while a digital pedal path and the attached-wheel protocol are both active.
+ *
+ * @param[in] state Current V3 calibration state.
+ * @param[in] pedal_interface_active True when a digital pedal path is receiving input.
+ * @param[in] wheel_protocol_active True when the attached-wheel protocol session is active.
+ * @return Pedal capability level used by tuning entry availability.
+ */
+static TuningPedalConnection local_tuning_pedal_connection(const PedalV3State *state,
+                                                           bool pedal_interface_active,
+                                                           bool wheel_protocol_active) {
+    if (!pedal_interface_active || state->primary_calibration) {
+        return TUNING_PEDALS_UNAVAILABLE;
+    }
+    if (state->legacy_calibration) {
+        return TUNING_PEDALS_LEGACY;
+    }
+    if (state->secondary_calibration || !wheel_protocol_active) {
+        return TUNING_PEDALS_UNAVAILABLE;
+    }
+    return TUNING_PEDALS_TRANSFER;
+}
+
+/**
+ * @brief Builds current attached-device capabilities for local tuning navigation.
+ *
+ * Combines the host interface, wheel identity and input features, wheel protocol state, and pedal
+ * calibration state into the hardware gates used by the local tuning catalog.
+ *
+ * Updates the retained context consumed by the local tuning-menu controller.
+ */
+static void update_local_tuning_availability(void) {
+    uint8_t wheel_mode = wheel_service_mode(&wheel_service);
+    const PedalV3State *pedal_state = pedal_service_v3_state(&pedal_service);
+    const WheelAccessory *accessory = wheel_accessory_service_identity(&wheel_accessory_service);
+    bool pedal_interface_active =
+        pedal_service.connected && pedal_service.phase != PEDAL_SERVICE_ANALOG;
+    bool wheel_protocol_active =
+        wheel_service_protocol_phase(&wheel_service) == WHEEL_PROTOCOL_ACTIVE;
+    tuning_availability = (TuningEntryAvailabilityContext){
+        .interface_mode = (uint8_t)usb_device_operating_mode(),
+        .wheel_mode = wheel_mode,
+        .wheel_accessory_kind = accessory != NULL ? accessory->kind : WHEEL_ACCESSORY_DISCONNECTED,
+        .pedal_connection = local_tuning_pedal_connection(pedal_state, pedal_interface_active,
+                                                          wheel_protocol_active),
+        .legacy_pedal_mode = pedal_state->legacy_calibration,
+        .primary_pedal_calibration_active = pedal_state->primary_calibration,
+        .secondary_pedal_calibration_active = pedal_state->secondary_calibration,
+        .multi_position_supported = wheel_service_multi_position_supported(&wheel_service),
+        .wheel_axis_report_enabled = wheel_service_axis_report_enabled(&wheel_service),
+        .vibration_mode_compatible = wheel_mode_supports_vibration_tuning(wheel_mode),
+    };
+}
+
+/**
+ * @brief Builds current restrictions and dynamic limits for local tuning adjustment.
+ *
+ * Protects the automatic setup, selects the pedal controller's active brake-force increment, and
+ * permits automatic multi-position mode only for its supporting wheel mode.
+ *
+ * Updates the retained context consumed by the local tuning-menu controller.
+ */
+static void update_local_tuning_adjustment(void) {
+    const PedalV3State *pedal_state = pedal_service_v3_state(&pedal_service);
+    tuning_adjustment = (TuningEntryAdjustmentContext){
+        .security_code_active = security_code_update_state.active,
+        .automatic_setup_selected = base_settings.tuning_profiles.selected_slot == 0,
+        .alternate_brake_fine_step =
+            (pedal_state->primary_calibration && !pedal_state->legacy_calibration) ||
+            pedal_state->secondary_calibration,
+        .multi_position_automatic_available = wheel_service_mode(&wheel_service) == 0x09,
+    };
+}
+
+/**
  * @brief Services the security gate and wheel-side tuning interaction.
  *
  * Feeds the security-code state machine from direct or adapter controls and gives active code entry
- * priority over tuning interaction. Otherwise it advances local navigation, pedal adjustment,
- * profile-mode selection, and profile-reset holds.
+ * priority over tuning interaction. Otherwise it advances local navigation, entry selection and
+ * adjustment, pedal adjustment, profile-mode selection, and profile-reset holds. Changed profile
+ * values are applied to active consumers and scheduled for persistence.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -2554,6 +2665,19 @@ static void service_tuning_interaction(uint32_t now_ms) {
     TuningInteractionAction action =
         tuning_interaction_update(&tuning_interaction, &tuning_interaction_input, now_ms);
     apply_tuning_interaction_action(action, now_ms);
+    TuningNavigationEvent navigation = tuning_interaction_take_navigation(&tuning_interaction);
+    update_local_tuning_availability();
+    update_local_tuning_adjustment();
+    TuningMenuUpdate menu_update = tuning_menu_update(&tuning_menu, tuning_interaction.phase,
+                                                      navigation, &base_settings.tuning_profiles,
+                                                      &tuning_availability, &tuning_adjustment);
+    if (menu_update.value_changed) {
+        if (base_settings.tuning_profiles.selected_slot ==
+            base_settings.tuning_profiles.active_slot) {
+            apply_active_tuning_profile();
+        }
+        base_settings_persistence_mark_dirty(&settings_persistence, now_ms);
+    }
 }
 
 /**
