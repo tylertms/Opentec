@@ -3717,6 +3717,14 @@ static void service_led_pattern(uint32_t now_ms) {
     }
 }
 
+/**
+ * @brief Initializes and runs the wheel-base application.
+ *
+ * Brings up board safety, display, analog, pedal, serial, wheel, motor, settings, force-feedback,
+ * and USB services, then continuously advances their cooperative runtime state machines.
+ *
+ * @return This function does not return during normal operation.
+ */
 int main(void) {
     platform_clock_init();
     board_identity = platform_board_identity_read();
