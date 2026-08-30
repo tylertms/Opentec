@@ -151,6 +151,15 @@ static void assert_v4_adjustment_probe_request(void) {
     assert(memcmp(request.payload, pedal_adjustment_probe_request(), request.payload_length) == 0);
 }
 
+static void assert_v4_host_request(const uint8_t *payload, uint8_t length) {
+    TransferFrame request;
+    assert(transfer_frame_decode(sent_transfer, sent_transfer_length, &request) ==
+           TRANSFER_FRAME_VALID);
+    assert(request.command == transfer_data_command(0, 0, 0));
+    assert(request.payload_length == length);
+    assert(memcmp(request.payload, payload, length) == 0);
+}
+
 static void connect_v3(PedalService *service) {
     pedal_service_run(service, 0);
     assert(sent_byte == 0x0a);
@@ -700,7 +709,7 @@ static void test_forwards_both_host_adjustment_responses(void) {
     PedalService service;
     const uint8_t initial_response[] = {0xaa, 0xbb};
     uint8_t final_response[40] = {0};
-    const PedalAdjustmentResponse *forwarded;
+    const PedalTransferResponse *forwarded;
     final_response[0x15] = 'X';
     reset_link();
     pedal_service_init(&service);
@@ -715,19 +724,19 @@ static void test_forwards_both_host_adjustment_responses(void) {
     pedal_service_run(&service, 11);
     receive_transfer(transfer_data_command(0, 0, 0), initial_response, sizeof(initial_response));
     pedal_service_run(&service, 12);
-    forwarded = pedal_service_adjustment_response(&service);
+    forwarded = pedal_service_transfer_response(&service);
     assert(forwarded != NULL);
     assert(forwarded->length == sizeof(initial_response));
     assert(memcmp(forwarded->data, initial_response, forwarded->length) == 0);
-    pedal_service_release_adjustment_response(&service);
+    pedal_service_release_transfer_response(&service);
 
     receive_transfer(transfer_data_command(0, 0, 0), final_response, sizeof(final_response));
     pedal_service_run(&service, 13);
-    forwarded = pedal_service_adjustment_response(&service);
+    forwarded = pedal_service_transfer_response(&service);
     assert(forwarded != NULL);
     assert(forwarded->length == sizeof(final_response));
     assert(memcmp(forwarded->data, final_response, forwarded->length) == 0);
-    pedal_service_release_adjustment_response(&service);
+    pedal_service_release_transfer_response(&service);
     assert(!service.host_adjustment_pending);
     assert(pedal_service_take_adjustment_display(&service) == PEDAL_ADJUSTMENT_DISPLAY_THROTTLE);
 }
@@ -756,6 +765,102 @@ static void test_expires_v4_adjustment_operation(void) {
 
     assert(!service.button_adjustment_pending);
     assert(service.v4_phase == PEDAL_V4_PHASE_SELECT);
+}
+
+static void test_forwards_generic_v4_host_request(void) {
+    PedalService service;
+    const uint8_t request[] = {3, 0xaa, 0xbb, 0xcc, 0xdd, 0xee};
+    const uint8_t response[] = {0x10, 0x20, 0x30};
+    reset_link();
+    pedal_service_init(&service);
+    connect_v4(&service);
+    pedal_service_run(&service, 6);
+    complete_v4_request(&service, 7, 8);
+
+    pedal_service_queue_host_transfer(&service, request, sizeof(request));
+    pedal_service_run(&service, 9);
+    pedal_service_run(&service, 10);
+    assert_v4_host_request(request, sizeof(request));
+    assert(pedal_transfer_queue_active(&service.host_transfer_queue));
+
+    receive_transfer(transfer_status_command(0, 0), NULL, 0);
+    pedal_service_run(&service, 11);
+    receive_transfer(transfer_data_command(0, 0, 0), response, sizeof(response));
+    pedal_service_run(&service, 12);
+
+    const PedalTransferResponse *forwarded = pedal_service_transfer_response(&service);
+    assert(forwarded != NULL && forwarded->source == PEDAL_TRANSFER_RESPONSE_HOST_REQUEST);
+    assert(forwarded->length == sizeof(response));
+    assert(memcmp(forwarded->data, response, sizeof(response)) == 0);
+    assert(pedal_transfer_queue_active(&service.host_transfer_queue));
+    pedal_service_release_transfer_response(&service);
+    assert(!pedal_transfer_queue_active(&service.host_transfer_queue));
+    assert(service.host_transfer_queue.count == 0);
+}
+
+static void test_expires_generic_v4_host_request(void) {
+    PedalService service;
+    const uint8_t request[] = {1};
+    reset_link();
+    pedal_service_init(&service);
+    connect_v4(&service);
+    pedal_service_run(&service, 6);
+    complete_v4_request(&service, 7, 8);
+    pedal_service_queue_host_transfer(&service, request, sizeof(request));
+    pedal_service_run(&service, 9);
+    pedal_service_run(&service, 10);
+    receive_transfer(transfer_status_command(0, 0), NULL, 0);
+    pedal_service_run(&service, 11);
+
+    pedal_service_run(&service, 110);
+
+    assert(!pedal_transfer_queue_active(&service.host_transfer_queue));
+    assert(service.host_transfer_queue.count == 0);
+    assert(service.v4_phase == PEDAL_V4_PHASE_STATUS);
+}
+
+static void test_routes_special_v4_host_requests(void) {
+    static const uint8_t disabled[] = {
+        0x0c, 0x0a, 0x02, 0x08, 0x02, 0x18, 0x08, 0xb2, 0x01, 0x03, 0xa2, 0x0b, 0x00, 0x38, 0x78,
+    };
+    const uint8_t ignored[] = {1, 0x3d, 0x1b};
+    const uint8_t adjustment[] = {1, 0xb6, 0xf8};
+    PedalService service;
+    reset_link();
+    pedal_service_init(&service);
+
+    pedal_service_queue_host_transfer(&service, ignored, sizeof(ignored));
+    const PedalTransferResponse *response = pedal_service_transfer_response(&service);
+    assert(response != NULL && response->length == sizeof(disabled));
+    assert(memcmp(response->data, disabled, sizeof(disabled)) == 0);
+    pedal_service_release_transfer_response(&service);
+
+    connect_v4(&service);
+    pedal_service_queue_host_transfer(&service, ignored, sizeof(ignored));
+    assert(service.host_transfer_queue.count == 0);
+    pedal_service_queue_host_transfer(&service, adjustment, sizeof(adjustment));
+    assert(service.host_adjustment_pending);
+    assert(service.host_transfer_queue.count == 0);
+}
+
+static void test_prioritizes_v4_adjustments_before_host_queue(void) {
+    PedalService service;
+    const uint8_t request[] = {1};
+    reset_link();
+    pedal_service_init(&service);
+    connect_v4(&service);
+    pedal_service_run(&service, 6);
+    complete_v4_request(&service, 7, 8);
+    pedal_service_queue_host_transfer(&service, request, sizeof(request));
+    pedal_service_request_button_adjustment(&service);
+    pedal_service_request_host_adjustment(&service);
+
+    pedal_service_run(&service, 9);
+    pedal_service_run(&service, 10);
+
+    assert(service.adjustment_source == PEDAL_ADJUSTMENT_SOURCE_HOST);
+    assert_v4_adjustment_probe_request();
+    assert(service.host_transfer_queue.count == 1);
 }
 
 static void test_reconnects_after_v4_transfer_timeout(void) {
@@ -1073,6 +1178,10 @@ int main(void) {
     test_queries_and_publishes_v4_pedal_adjustment();
     test_forwards_both_host_adjustment_responses();
     test_expires_v4_adjustment_operation();
+    test_forwards_generic_v4_host_request();
+    test_expires_generic_v4_host_request();
+    test_routes_special_v4_host_requests();
+    test_prioritizes_v4_adjustments_before_host_queue();
     test_reconnects_after_v4_transfer_timeout();
     test_polls_legacy_pedal_channels();
     test_delays_legacy_reconnect_after_primary_response();

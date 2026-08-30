@@ -18,6 +18,8 @@ enum {
 /**
  * @brief Selects the smaller of a remaining payload and report capacity.
  *
+ * Bounds the next fragment without changing response progress.
+ *
  * @param[in] remaining Payload bytes not yet committed.
  * @param[in] capacity Bytes available in the selected report format.
  * @return Number of payload bytes carried by the report.
@@ -75,6 +77,8 @@ bool usb_transfer_response_queue(UsbTransferResponse *response, const uint8_t *p
 
 /**
  * @brief Reports whether a transfer response has another USB report.
+ *
+ * Leaves response progress unchanged while checking for retained payload bytes.
  *
  * @param[in] response Transfer-response queue to inspect.
  * @return True while retained payload bytes remain.

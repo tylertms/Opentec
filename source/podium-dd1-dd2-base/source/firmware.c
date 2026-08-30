@@ -100,6 +100,7 @@
 #include "usb/output_command.h"
 #include "usb/playstation_wheel_value.h"
 #include "usb/remote_tuning_service.h"
+#include "usb/transfer_request.h"
 #include "usb/transfer_response.h"
 #include "usb/tuning_menu_service.h"
 #include "usb/tuning_profile_report.h"
@@ -258,7 +259,9 @@ static bool wheel_adapter_refresh_state;
 static uint8_t wheel_adapter_setup_selection;
 static uint8_t wheel_adapter_display_state;
 static UsbTuningMenuService usb_tuning_menu_service;
+static UsbTransferRequest usb_transfer_request;
 static UsbTransferResponse usb_transfer_response;
+static bool usb_transfer_response_has_pedal_owner;
 static UsbTuningProfileService usb_tuning_profile_service;
 static TuningInteraction tuning_interaction;
 static TuningMenu tuning_menu;
@@ -379,7 +382,7 @@ typedef enum {
     USB_VENDOR_RESPONSE_SCRIPT_REPORT,
     USB_VENDOR_RESPONSE_TUNING_PROFILE,
     USB_VENDOR_RESPONSE_TUNING_MENU,
-    USB_VENDOR_RESPONSE_PEDAL_ADJUSTMENT,
+    USB_VENDOR_RESPONSE_PEDAL_TRANSFER,
     USB_VENDOR_RESPONSE_DIAGNOSTIC,
     USB_VENDOR_RESPONSE_MOTOR,
 } UsbVendorResponseKind;
@@ -1035,7 +1038,9 @@ static void initialize_usb_command_bridge(void) {
     usb_remote_tuning_service_init(&usb_remote_tuning_service);
     wheel_command_forwarder_init(&wheel_command_forwarder);
     usb_tuning_menu_service_init(&usb_tuning_menu_service);
+    usb_transfer_request_init(&usb_transfer_request);
     usb_transfer_response_init(&usb_transfer_response);
+    usb_transfer_response_has_pedal_owner = false;
     usb_tuning_profile_service_init(&usb_tuning_profile_service);
     tuning_interaction_init(&tuning_interaction);
     tuning_menu_init(&tuning_menu);
@@ -1486,8 +1491,8 @@ static void prepare_usb_xbox_script_response(void) {
  * @brief Prepares the highest-priority pending vendor response.
  *
  * Retains sequence-bearing reports for endpoint retries. Native telemetry precedes wheel transfer,
- * pedal adjustment, script, profile, menu, diagnostic, and motor responses in the same order used
- * by the host command service.
+ * pedal transfer, script, profile, menu, diagnostic, and motor responses in the same order used by
+ * the host command service.
  */
 static void prepare_usb_vendor_response(void) {
     if (usb_device_operating_mode() != USB_OPERATING_MODE_FANATEC) {
@@ -1519,16 +1524,17 @@ static void prepare_usb_vendor_response(void) {
         usb_vendor_response_kind = USB_VENDOR_RESPONSE_WHEEL_TRANSFER;
         return;
     }
-    if (usb_transfer_response_accepting(&usb_transfer_response)) {
-        const PedalAdjustmentResponse *response = pedal_service_adjustment_response(&pedal_service);
+    if (usb_transfer_response_accepting(&usb_transfer_response) &&
+        !usb_transfer_response_has_pedal_owner) {
+        const PedalTransferResponse *response = pedal_service_transfer_response(&pedal_service);
         if (response != NULL &&
             usb_transfer_response_queue(&usb_transfer_response, response->data, response->length)) {
-            pedal_service_release_adjustment_response(&pedal_service);
+            usb_transfer_response_has_pedal_owner = true;
         }
     }
     if (usb_transfer_response_prepare(&usb_transfer_response, usb_vendor_response)) {
         usb_vendor_response_length = USB_DEVICE_REPORT_SIZE;
-        usb_vendor_response_kind = USB_VENDOR_RESPONSE_PEDAL_ADJUSTMENT;
+        usb_vendor_response_kind = USB_VENDOR_RESPONSE_PEDAL_TRANSFER;
         return;
     }
     usb_vendor_response_length = encode_pending_force_feedback_script_report(usb_vendor_response);
@@ -1578,8 +1584,13 @@ static void complete_usb_vendor_response(void) {
         usb_tuning_profile_service_response_sent(&usb_tuning_profile_service);
     } else if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_TUNING_MENU) {
         usb_tuning_menu_service_response_sent(&usb_tuning_menu_service);
-    } else if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_PEDAL_ADJUSTMENT) {
+    } else if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_PEDAL_TRANSFER) {
         usb_transfer_response_commit(&usb_transfer_response);
+        if (usb_transfer_response_has_pedal_owner &&
+            usb_transfer_response_accepting(&usb_transfer_response)) {
+            pedal_service_release_transfer_response(&pedal_service);
+            usb_transfer_response_has_pedal_owner = false;
+        }
     } else if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_DIAGNOSTIC) {
         usb_diagnostic_report_commit(&usb_diagnostic_report_service, usb_vendor_response);
     } else if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_MOTOR) {
@@ -2528,9 +2539,12 @@ static void service_usb_output(void) {
             wheel_service_queue_report_seventeen(&wheel_service, wheel_report_seventeen);
             return;
         }
-        if (usb_vendor_command_requests_pedal_adjustment(&usb_vendor_command)) {
-            if (pedal_service_adjustment_available(&pedal_service)) {
-                pedal_service_request_host_adjustment(&pedal_service);
+        if (usb_transfer_request_apply(&usb_transfer_request, &usb_vendor_command)) {
+            const UsbTransferRequestPayload *request =
+                usb_transfer_request_payload(&usb_transfer_request);
+            if (request != NULL) {
+                pedal_service_queue_host_transfer(&pedal_service, request->data, request->length);
+                usb_transfer_request_release(&usb_transfer_request);
             }
             return;
         }

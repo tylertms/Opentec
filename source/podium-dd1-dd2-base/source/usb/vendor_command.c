@@ -19,11 +19,6 @@ enum {
     VENDOR_COMMAND_WHEEL_TRANSFER_WRITE = 0x0402,
     VENDOR_COMMAND_WHEEL_TRANSFER_READ = 0x0502,
     VENDOR_COMMAND_TUNING_MENU_REPORT = 1,
-    VENDOR_COMMAND_TUNING_MENU_SINGLE_TRANSFER = 0x10,
-    VENDOR_COMMAND_TUNING_MENU_SINGLE_TRANSFER_PAYLOAD_OFFSET = 2,
-    VENDOR_COMMAND_TUNING_MENU_TRANSFER_HEADER_SIZE = 3,
-    VENDOR_COMMAND_PEDAL_ADJUSTMENT_TAIL_FIRST = 0xb6,
-    VENDOR_COMMAND_PEDAL_ADJUSTMENT_TAIL_SECOND = 0xf8,
 };
 
 /**
@@ -210,34 +205,6 @@ const uint8_t *usb_vendor_command_decode_wheel_report_seventeen(const UsbVendorC
         return NULL;
     }
     return command->arguments + 1;
-}
-
-/**
- * @brief Identifies a single-frame V4 pedal-adjustment transfer.
- *
- * Reads the embedded payload length from the padded tuning-menu transfer and matches its final two
- * bytes against the pedal-adjustment request signature.
- *
- * @param[in] command Decoded vendor command.
- * @return True when the command contains a complete pedal-adjustment transfer payload.
- */
-bool usb_vendor_command_requests_pedal_adjustment(const UsbVendorCommand *command) {
-    if (command == NULL || command->kind != USB_VENDOR_COMMAND_TUNING_MENU ||
-        command->arguments == NULL ||
-        command->length <= VENDOR_COMMAND_TUNING_MENU_SINGLE_TRANSFER_PAYLOAD_OFFSET ||
-        command->arguments[0] != VENDOR_COMMAND_TUNING_MENU_SINGLE_TRANSFER) {
-        return false;
-    }
-
-    const uint8_t *payload =
-        command->arguments + VENDOR_COMMAND_TUNING_MENU_SINGLE_TRANSFER_PAYLOAD_OFFSET;
-    uint16_t payload_length =
-        (uint16_t)payload[0] + VENDOR_COMMAND_TUNING_MENU_TRANSFER_HEADER_SIZE;
-    uint16_t available =
-        (uint16_t)command->length - VENDOR_COMMAND_TUNING_MENU_SINGLE_TRANSFER_PAYLOAD_OFFSET;
-    return payload_length <= available &&
-           payload[payload_length - 2u] == VENDOR_COMMAND_PEDAL_ADJUSTMENT_TAIL_FIRST &&
-           payload[payload_length - 1u] == VENDOR_COMMAND_PEDAL_ADJUSTMENT_TAIL_SECOND;
 }
 
 /**

@@ -10,6 +10,7 @@
 #include "pedal/input.h"
 #include "pedal/protocol.h"
 #include "pedal/protocol_command.h"
+#include "pedal/transfer_queue.h"
 #include "pedal/v4_tuning.h"
 #include "transfer/session.h"
 
@@ -37,6 +38,7 @@ typedef enum {
     PEDAL_V4_PHASE_SELECT,
     PEDAL_V4_PHASE_ADJUSTMENT_START,
     PEDAL_V4_PHASE_ADJUSTMENT_WAIT,
+    PEDAL_V4_PHASE_HOST_TRANSFER,
     PEDAL_V4_PHASE_BRAKE_FORCE,
     PEDAL_V4_PHASE_CLUTCH_CURVE,
     PEDAL_V4_PHASE_BRAKE_CURVE,
@@ -56,14 +58,27 @@ typedef enum {
 } PedalAdjustmentSource;
 
 /**
- * @brief Stores one completed host pedal-adjustment response.
+ * @brief Identifies the operation that produced a host pedal response.
  *
- * Keeps the payload and its length together while the USB service queues the response.
+ * Associates generic responses with their retained request so request completion follows the final
+ * USB fragment.
+ */
+typedef enum {
+    PEDAL_TRANSFER_RESPONSE_NONE,
+    PEDAL_TRANSFER_RESPONSE_ADJUSTMENT,
+    PEDAL_TRANSFER_RESPONSE_HOST_REQUEST,
+} PedalTransferResponseSource;
+
+/**
+ * @brief Stores one completed host pedal response.
+ *
+ * Keeps the payload and its length together while the USB service forwards the response.
  */
 typedef struct {
     uint8_t data[TRANSFER_FRAME_MAX_SEND_PAYLOAD_SIZE];
     uint8_t length;
-} PedalAdjustmentResponse;
+    PedalTransferResponseSource source;
+} PedalTransferResponse;
 
 typedef struct {
     PedalInput input;
@@ -100,7 +115,8 @@ typedef struct {
     PedalProtocolStatus protocol_status;
     PedalProtocolStatus transmitted_status;
     PedalV4Tuning v4_tuning;
-    PedalAdjustmentResponse adjustment_response;
+    PedalTransferQueue host_transfer_queue;
+    PedalTransferResponse transfer_response;
     PedalAdjustmentDisplay adjustment_display;
     PedalAdjustmentSource adjustment_source;
     PedalV4Phase v4_phase;
@@ -143,8 +159,9 @@ void pedal_service_request_configuration(PedalService *service, uint8_t brake_fo
 bool pedal_service_adjustment_available(const PedalService *service);
 void pedal_service_request_host_adjustment(PedalService *service);
 void pedal_service_request_button_adjustment(PedalService *service);
-const PedalAdjustmentResponse *pedal_service_adjustment_response(const PedalService *service);
-void pedal_service_release_adjustment_response(PedalService *service);
+void pedal_service_queue_host_transfer(PedalService *service, const uint8_t *data, uint8_t length);
+const PedalTransferResponse *pedal_service_transfer_response(const PedalService *service);
+void pedal_service_release_transfer_response(PedalService *service);
 PedalAdjustmentDisplay pedal_service_take_adjustment_display(PedalService *service);
 uint8_t pedal_service_take_alternate_brake_force(PedalService *service);
 void pedal_service_run(PedalService *service, uint32_t now_ms);

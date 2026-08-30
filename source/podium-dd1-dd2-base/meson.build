@@ -84,6 +84,7 @@ usb_updater_service_sources = files('source/usb/updater_service.c')
 usb_descriptor_sources = files('source/usb/descriptor.c')
 usb_diagnostic_report_sources = files('source/usb/diagnostic_report.c')
 usb_tuning_menu_service_sources = files('source/usb/tuning_menu_service.c')
+usb_transfer_request_sources = files('source/usb/transfer_request.c')
 usb_transfer_response_sources = files('source/usb/transfer_response.c')
 usb_tuning_profile_report_sources = files('source/usb/tuning_profile_report.c')
 usb_tuning_profile_service_sources = files('source/usb/tuning_profile_service.c')
@@ -149,6 +150,7 @@ pedal_input_sources = files('source/pedal/input.c')
 pedal_protocol_sources = files('source/pedal/protocol.c')
 pedal_protocol_command_sources = files('source/pedal/protocol_command.c')
 pedal_service_sources = files('source/pedal/service.c')
+pedal_transfer_queue_sources = files('source/pedal/transfer_queue.c')
 pedal_v4_status_sources = files('source/pedal/v4_status.c')
 pedal_v4_tuning_sources = files('source/pedal/v4_tuning.c')
 transfer_frame_sources = files('source/transfer/frame.c')
@@ -322,6 +324,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'usb-descriptor': 'source/usb/descriptor.c',
     'usb-diagnostic-report': 'source/usb/diagnostic_report.c',
     'usb-tuning-menu-service': 'source/usb/tuning_menu_service.c',
+    'usb-transfer-request': 'source/usb/transfer_request.c',
     'usb-transfer-response': 'source/usb/transfer_response.c',
     'usb-tuning-profile-report': 'source/usb/tuning_profile_report.c',
     'usb-tuning-profile-service': 'source/usb/tuning_profile_service.c',
@@ -388,6 +391,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'pedal-protocol': 'source/pedal/protocol.c',
     'pedal-protocol-command': 'source/pedal/protocol_command.c',
     'pedal-service': 'source/pedal/service.c',
+    'pedal-transfer-queue': 'source/pedal/transfer_queue.c',
     'pedal-v4-status': 'source/pedal/v4_status.c',
     'pedal-v4-tuning': 'source/pedal/v4_tuning.c',
     'transfer-frame': 'source/transfer/frame.c',
@@ -1373,6 +1377,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  usb_transfer_request_test = executable(
+    'base-usb-transfer-request-test',
+    'tests/source/usb_transfer_request.c',
+    usb_transfer_request_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   usb_tuning_profile_service_test = executable(
     'base-usb-tuning-profile-service-test',
     'tests/source/usb_tuning_profile_service.c',
@@ -1819,6 +1831,7 @@ if not meson.is_cross_build()
     'base-pedal-service-test',
     'tests/source/pedal_service.c',
     pedal_service_sources,
+    pedal_transfer_queue_sources,
     pedal_adjustment_probe_sources,
     pedal_v4_status_sources,
     pedal_v4_tuning_sources,
@@ -1831,6 +1844,14 @@ if not meson.is_cross_build()
     transfer_session_sources,
     analog_axis_sources,
     platform_time_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  pedal_transfer_queue_test = executable(
+    'base-pedal-transfer-queue-test',
+    'tests/source/pedal_transfer_queue.c',
+    pedal_transfer_queue_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2862,6 +2883,7 @@ if not meson.is_cross_build()
     suite: ['base', 'usb', 'profile'],
   )
   test('base-usb-transfer-response', usb_transfer_response_test, suite: ['base', 'usb'])
+  test('base-usb-transfer-request', usb_transfer_request_test, suite: ['base', 'usb'])
   test(
     'base-usb-tuning-profile-report',
     usb_tuning_profile_report_test,
@@ -2982,6 +3004,7 @@ if not meson.is_cross_build()
     suite: ['base', 'pedal', 'transport'],
   )
   test('base-pedal-service', pedal_service_test, suite: ['base', 'pedal'])
+  test('base-pedal-transfer-queue', pedal_transfer_queue_test, suite: ['base', 'pedal'])
   test('base-pedal-adjustment-probe', pedal_adjustment_probe_test, suite: ['base', 'pedal'])
   test('base-pedal-v4-status', pedal_v4_status_test, suite: ['base', 'pedal'])
   test('base-pedal-v4-tuning', pedal_v4_tuning_test, suite: ['base', 'pedal'])
