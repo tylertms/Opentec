@@ -125,6 +125,15 @@ typedef union {
 
 static UsbConsoleWorkspace console_workspace;
 
+/**
+ * @brief Compares a primary input report with the retained report.
+ *
+ * Requires equal lengths and equal bytes so unchanged HID state can be suppressed.
+ *
+ * @param[in] report Candidate input report.
+ * @param[in] length Number of candidate bytes.
+ * @return True when the candidate equals the retained report; otherwise false.
+ */
 static bool input_report_matches(const uint8_t *report, uint8_t length) {
     if (input_report_length != length) {
         return false;
@@ -464,11 +473,23 @@ UsbInputReportMode usb_device_input_mode(void) { return input_mode; }
  */
 UsbOperatingMode usb_device_operating_mode(void) { return operating_mode; }
 
+/**
+ * @brief Stalls the active endpoint-zero transfer.
+ *
+ * Returns the control state to idle and arms both endpoint-zero directions as stalled.
+ */
 static void stall_control(void) {
     control_stage = USB_CONTROL_STAGE_IDLE;
     platform_usb_stall(USB_CONTROL_ENDPOINT);
 }
 
+/**
+ * @brief Sends the next endpoint-zero input packet.
+ *
+ * Takes the next packet from the control pipe and submits it with the pipe-selected data toggle.
+ *
+ * @return True when a packet was available and accepted; otherwise false.
+ */
 static bool send_next_control_packet(void) {
     if (!usb_control_pipe_next(&control_pipe, &control_packet)) {
         return false;
@@ -477,6 +498,15 @@ static bool send_next_control_packet(void) {
                              (uint8_t)control_packet.data.length, control_packet.data_one);
 }
 
+/**
+ * @brief Starts an endpoint-zero input data stage.
+ *
+ * Limits the source to the host-requested length, sends its first packet, and enters the input
+ * stage or stalls when the packet cannot be submitted.
+ *
+ * @param[in] data Response bytes and available length.
+ * @param[in] requested_length Maximum response length requested by the host.
+ */
 static void begin_control_input(UsbDescriptorView data, uint16_t requested_length) {
     usb_control_pipe_begin(&control_pipe, data, requested_length);
     if (!send_next_control_packet()) {
@@ -486,6 +516,11 @@ static void begin_control_input(UsbDescriptorView data, uint16_t requested_lengt
     control_stage = USB_CONTROL_STAGE_DATA_IN;
 }
 
+/**
+ * @brief Starts a short endpoint-zero value response.
+ *
+ * Writes the retained response low byte first and begins its one- or two-byte input data stage.
+ */
 static void begin_value_input(void) {
     value_data[0] = (uint8_t)control_transfer.value;
     value_data[1] = (uint8_t)(control_transfer.value >> 8);
@@ -493,6 +528,14 @@ static void begin_value_input(void) {
                         control_request.length);
 }
 
+/**
+ * @brief Tests whether the retained HID input report satisfies a control request.
+ *
+ * Requires an input-report request and matches the numbered native report or an unnumbered
+ * compatibility report as selected by the active input mode.
+ *
+ * @return True when the retained report satisfies the request; otherwise false.
+ */
 static bool report_matches_request(void) {
     return control_transfer.report_type == USB_DEVICE_HID_REPORT_INPUT &&
            input_report_length != 0 &&
@@ -618,6 +661,12 @@ static void restart_endpoint_after_halt(uint8_t endpoint_address) {
     }
 }
 
+/**
+ * @brief Starts the selected endpoint-zero transfer.
+ *
+ * Dispatches status, descriptor, value, HID input, HID output, and stall results to the controller
+ * and records the corresponding control stage.
+ */
 static void handle_control_transfer(void) {
     switch (control_transfer.kind) {
     case USB_CONTROL_TRANSFER_ACKNOWLEDGE:
@@ -828,6 +877,12 @@ static void complete_control_change(void) {
     }
 }
 
+/**
+ * @brief Advances a completed endpoint-zero input transaction.
+ *
+ * Sends the next data packet, arms the zero-length output status stage after the last packet, or
+ * commits an acknowledged state change and rearms setup reception.
+ */
 static void handle_control_input_complete(void) {
     if (control_stage == USB_CONTROL_STAGE_DATA_IN) {
         if (send_next_control_packet()) {
@@ -986,6 +1041,12 @@ static void handle_updater_output(void) {
     }
 }
 
+/**
+ * @brief Handles a USB bus reset.
+ *
+ * Clears transfer and endpoint service state while retaining HID selections, then rearms
+ * endpoint-zero setup reception.
+ */
 static void handle_reset(void) {
     reset_state(true);
     platform_usb_control_ready();
@@ -1127,8 +1188,23 @@ void usb_device_service(void) {
     service_updater_input();
 }
 
+/**
+ * @brief Reports whether the USB device has an active configuration.
+ *
+ * Exposes the endpoint-zero configuration state to the application services.
+ *
+ * @return True when the configuration value is nonzero; otherwise false.
+ */
 bool usb_device_configured(void) { return usb_device_control_configured(&device_control); }
 
+/**
+ * @brief Takes one pending host output report.
+ *
+ * Copies the retained report to the caller and releases its single pending slot.
+ *
+ * @param[out] report Destination for the report classification, payload, and length.
+ * @return True when a pending report was returned; otherwise false.
+ */
 bool usb_device_take_output(UsbDeviceOutputReport *report) {
     if (!output_ready || report == 0) {
         return false;
