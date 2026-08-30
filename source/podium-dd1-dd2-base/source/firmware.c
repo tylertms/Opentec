@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <string.h>
 #include <xc.h>
 
 #include "analog/auxiliary_axis.h"
@@ -764,16 +765,13 @@ static void update_fan_speed(PlatformFan fan) {
 /**
  * @brief Initializes the motor controller's live SPI exchange.
  *
- * Clears live output and position state, builds and retains the first remote-effects frame, resets
- * malformed frame tracking, and starts the platform motor transport with that frame.
+ * Clears live output, position, transport, and transmit state before starting the platform motor
+ * transport. The first completed exchange selects the initial protocol response.
  */
 static void initialize_motor_link(void) {
     motor_output_report = (ForceOutputReport){0};
     motor_output_transport_init(&motor_output_transport);
-    motor_output_transport_build_frame(&motor_output_transport, MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS,
-                                       0, &motor_output_report, &motor_live_frame);
-    motor_output_transport_remember_frame(&motor_output_transport, &motor_live_frame);
-    motor_live_frame_encode(&motor_live_frame, motor_transmitted_frame);
+    memset(motor_transmitted_frame, 0, sizeof(motor_transmitted_frame));
     motor_malformed_frame_count = 0;
     platform_motor_link_init(motor_transmitted_frame);
     motor_position_ready = false;
