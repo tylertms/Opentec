@@ -14,6 +14,14 @@ enum {
     HID_ITEM_GLOBAL = 1,
 };
 
+static uint32_t descriptor_hash(const uint8_t *data, size_t length) {
+    uint32_t hash = UINT32_C(0x811c9dc5);
+    for (size_t index = 0; index < length; index++) {
+        hash = (hash ^ data[index]) * UINT32_C(0x01000193);
+    }
+    return hash;
+}
+
 static uint32_t item_value(const uint8_t *data, size_t size) {
     uint32_t value = 0;
     for (size_t index = 0; index < size; index++) {
@@ -76,8 +84,17 @@ static void test_top_level_collections(void) {
     assert(descriptor[length - 1] == 0xc0);
 }
 
+static void test_complete_descriptor(void) {
+    uint8_t descriptor[USB_PODIUM_REPORT_DESCRIPTOR_SIZE];
+    size_t length = usb_podium_report_descriptor_encode(descriptor);
+
+    assert(length == USB_PODIUM_REPORT_DESCRIPTOR_SIZE);
+    assert(descriptor_hash(descriptor, length) == UINT32_C(0xcfeaf27c));
+}
+
 int main(void) {
     test_report_layouts();
     test_top_level_collections();
+    test_complete_descriptor();
     return 0;
 }
