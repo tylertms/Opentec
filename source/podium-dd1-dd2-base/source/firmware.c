@@ -3573,6 +3573,7 @@ static void service_led_pattern(uint32_t now_ms) {
 
 int main(void) {
     platform_clock_init();
+    platform_system_enable_firmware_protection();
     board_identity = platform_board_identity_read();
     platform_pin_mux_init();
     platform_led_pattern_init();

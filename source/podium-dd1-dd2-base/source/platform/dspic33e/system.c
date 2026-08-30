@@ -8,6 +8,12 @@
 enum {
     BOOTLOADER_REQUEST_ADDRESS = 0x4ffe,
     BOOTLOADER_REQUEST_KEY = 0xaa,
+    FIRMWARE_CONFIGURATION_PAGE = 0xf8,
+    FIRMWARE_CONFIGURATION_OFFSET = 0x0004,
+    FIRMWARE_CONFIGURATION_LATCH_PAGE = 0xfa,
+    FIRMWARE_CONFIGURATION_UNPROTECTED = 0x000000cf,
+    FIRMWARE_CONFIGURATION_PROTECTED = 0x00fd,
+    NVM_CONFIGURATION_WORD_PROGRAM = 0x4000,
 };
 
 static const uint32_t BOOTLOADER_SETTLE_DELAY_CYCLES = 0x9000UL * 0x0c81UL * 2UL;
@@ -20,6 +26,37 @@ static const uint32_t BOOTLOADER_SETTLE_DELAY_CYCLES = 0x9000UL * 0x0c81UL * 2UL
  * @param[in] enabled True to permit configured interrupts, or false to block them.
  */
 void platform_system_interrupts_set(bool enabled) { INTCON2bits.GIE = enabled; }
+
+/**
+ * @brief Enables firmware read protection after initial programming.
+ *
+ * Leaves every configuration other than the factory-programmable unprotected value unchanged. For
+ * that startup value, blocks interrupts, programs the protected configuration, waits for the
+ * controller to finish, and restores global interrupt service.
+ *
+ */
+void platform_system_enable_firmware_protection(void) {
+    uint16_t saved_table_page = TBLPAG;
+    TBLPAG = FIRMWARE_CONFIGURATION_PAGE;
+    uint32_t configuration = __builtin_tblrdl(FIRMWARE_CONFIGURATION_OFFSET);
+    configuration |= (uint32_t)__builtin_tblrdh(FIRMWARE_CONFIGURATION_OFFSET) << 16;
+    TBLPAG = saved_table_page;
+    if (configuration != FIRMWARE_CONFIGURATION_UNPROTECTED) {
+        return;
+    }
+
+    INTCON2bits.GIE = 0;
+    TBLPAG = FIRMWARE_CONFIGURATION_LATCH_PAGE;
+    __builtin_tblwtl(0, FIRMWARE_CONFIGURATION_PROTECTED);
+    NVMADRU = FIRMWARE_CONFIGURATION_PAGE;
+    NVMADR = FIRMWARE_CONFIGURATION_OFFSET;
+    NVMCON = NVM_CONFIGURATION_WORD_PROGRAM;
+    __builtin_write_NVM();
+    while (NVMCONbits.WR != 0) {
+    }
+    TBLPAG = saved_table_page;
+    INTCON2bits.GIE = 1;
+}
 
 /**
  * @brief Restarts the wheel-base processor.
