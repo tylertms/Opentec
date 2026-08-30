@@ -1035,8 +1035,10 @@ static void test_resets_host_protocol_outputs(void) {
     const WheelVibrationOutput vibration = {.channels = {0x34, 0x56}};
     const uint8_t axes[2] = {0x78, 0x9a};
     const uint8_t packed[4] = {0xff, 0xff, 0xff, 0xff};
+    const WheelDisplayOutput display = {.glyphs = {1, 2, 3}, .third_glyph_marker = true};
     wheel_service_set_vibration_output(&service, &vibration);
     wheel_service_set_legacy_axes(&service, axes);
+    wheel_service_set_display_output(&service, &display);
     assert(wheel_output_reports_queue_packed(&service.protocol.output_reports, 2, packed,
                                              service.protocol.mode));
     assert(wheel_output_reports_queue_packed(&service.protocol.output_reports, 1, packed,
@@ -1056,6 +1058,18 @@ static void test_resets_host_protocol_outputs(void) {
     }
     assert(service.adapter_commands.report_one_pending);
     assert(service.adapter_commands.report_two_pending);
+    assert(service.display_output.glyphs[0] == 1);
+    assert(service.display_output.glyphs[1] == 2);
+    assert(service.display_output.glyphs[2] == 3);
+    assert(service.display_output.third_glyph_marker);
+
+    service.protocol.mode = 1;
+    service.protocol.adapter.connected = false;
+    wheel_service_reset_host_protocol_outputs(&service);
+    assert(service.display_output.glyphs[0] == 0);
+    assert(service.display_output.glyphs[1] == 0);
+    assert(service.display_output.glyphs[2] == 0);
+    assert(!service.display_output.third_glyph_marker);
 }
 
 static void test_reports_host_capability_recovery_inputs(void) {

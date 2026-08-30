@@ -808,6 +808,7 @@ void wheel_service_set_legacy_axes(WheelService *service, const uint8_t axes[2])
  *
  * Clears both legacy axes and the shared auxiliary report, then queues zero-valued compact reports
  * two and one in protocol order. Accepted reports are mirrored to the active adapter transport.
+ * Wheels without a tuning display also receive a cleared default three-glyph page.
  *
  * @param[in,out] service Attached-wheel service and retained protocol outputs.
  */
@@ -818,6 +819,10 @@ void wheel_service_reset_host_protocol_outputs(WheelService *service) {
     static const uint8_t cleared[4] = {0};
     set_auxiliary_report(service, 0);
     wheel_service_set_legacy_axes(service, cleared);
+    if (!wheel_service_tuning_display_supported(service)) {
+        service->display_output = (WheelDisplayOutput){0};
+        wheel_service_set_display_output(service, &service->display_output);
+    }
 
     if (wheel_output_reports_queue_packed(&service->protocol.output_reports, 2, cleared,
                                           service->protocol.mode)) {
