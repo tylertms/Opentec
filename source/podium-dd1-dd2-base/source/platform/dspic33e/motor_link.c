@@ -110,8 +110,8 @@ static void configure_dma(void) {
 /**
  * @brief Configures motor-link SPI and DMA interrupts.
  *
- * Clears pending requests and enables the SPI1, SPI1 error, DMA8, and DMA9 interrupts at priority
- * seven.
+ * Clears pending requests, keeps overflow recovery disabled until frame synchronization, and
+ * enables the SPI1, DMA8, and DMA9 interrupts at priority seven.
  */
 static void configure_interrupts(void) {
     IPC2bits.SPI1IP = MOTOR_LINK_INTERRUPT_PRIORITY;
@@ -123,7 +123,7 @@ static void configure_interrupts(void) {
     IFS7bits.DMA8IF = 0;
     IFS7bits.DMA9IF = 0;
     IEC0bits.SPI1IE = 1;
-    IEC0bits.SPI1EIE = 1;
+    IEC0bits.SPI1EIE = 0;
     IEC7bits.DMA8IE = 1;
     IEC7bits.DMA9IE = 1;
 }
@@ -157,6 +157,20 @@ void platform_motor_link_init(const uint8_t initial_frame[PLATFORM_MOTOR_LINK_FR
     DMA8CONbits.CHEN = 1;
     DMA9CONbits.CHEN = 1;
     DMA8REQbits.FORCE = 1;
+}
+
+/**
+ * @brief Enables motor-link overflow recovery after frame synchronization.
+ *
+ * Clears any stale SPI1 error request and permits the error handler only after the protocol layer
+ * accepts a complete frame.
+ *
+ */
+void platform_motor_link_confirm_synchronized(void) {
+    if (IEC0bits.SPI1EIE == 0) {
+        IFS0bits.SPI1EIF = 0;
+        IEC0bits.SPI1EIE = 1;
+    }
 }
 
 /**

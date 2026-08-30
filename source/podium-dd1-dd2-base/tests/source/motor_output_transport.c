@@ -117,11 +117,48 @@ static void test_queue_capacity_and_wrap(void) {
     assert(frame.payload[1] == 0xa5);
 }
 
+static void test_replays_the_older_retained_frame(void) {
+    MotorOutputTransport transport;
+    MotorLiveFrame first = {.type = 0x11, .payload = {1}};
+    MotorLiveFrame second = {.type = 0x22, .payload = {2}};
+    MotorLiveFrame third = {.type = 0x33, .payload = {3}};
+    MotorLiveFrame replay = {0};
+
+    motor_output_transport_init(&transport);
+    assert(!motor_output_transport_replay_frame(&transport, &replay));
+    motor_output_transport_remember_frame(&transport, &first);
+    assert(motor_output_transport_replay_frame(&transport, &replay));
+    assert(memcmp(&replay, &first, sizeof(replay)) == 0);
+
+    motor_output_transport_remember_frame(&transport, &second);
+    assert(motor_output_transport_replay_frame(&transport, &replay));
+    assert(memcmp(&replay, &first, sizeof(replay)) == 0);
+
+    motor_output_transport_remember_frame(&transport, &third);
+    assert(motor_output_transport_replay_frame(&transport, &replay));
+    assert(memcmp(&replay, &second, sizeof(replay)) == 0);
+}
+
+static void test_replay_does_not_consume_commands(void) {
+    MotorOutputTransport transport;
+    MotorLiveFrame retained = {.type = 0x44, .payload = {4}};
+    MotorLiveFrame replay;
+
+    motor_output_transport_init(&transport);
+    motor_output_transport_remember_frame(&transport, &retained);
+    assert(motor_output_transport_enqueue_opcode(&transport, 0xa5));
+    assert(motor_output_transport_replay_frame(&transport, &replay));
+    assert(transport.count == 1);
+    assert(transport.previous_status == 0);
+}
+
 int main(void) {
     test_status_precedes_live_output();
     test_commands_precede_status_changes();
     test_opcode_records_are_zero_filled();
     test_host_effect_clear_sequence();
     test_queue_capacity_and_wrap();
+    test_replays_the_older_retained_frame();
+    test_replay_does_not_consume_commands();
     return 0;
 }

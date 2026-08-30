@@ -101,6 +101,46 @@ uint8_t motor_output_transport_enqueue_host_effect_clears(MotorOutputTransport *
 }
 
 /**
+ * @brief Retains one outbound motor-link frame for replay recovery.
+ *
+ * Stores the frame in a two-entry ring so the controller can request the older of the last two
+ * responses without advancing command or status state.
+ *
+ * @param[in,out] transport Output transport and replay history.
+ * @param[in] frame Outbound frame to retain.
+ */
+void motor_output_transport_remember_frame(MotorOutputTransport *transport,
+                                           const MotorLiveFrame *frame) {
+    transport->replay_frames[transport->replay_write_index] = *frame;
+    transport->replay_write_index =
+        (uint8_t)((transport->replay_write_index + 1) % MOTOR_OUTPUT_REPLAY_CAPACITY);
+    if (transport->replay_count < MOTOR_OUTPUT_REPLAY_CAPACITY) {
+        transport->replay_count++;
+    }
+}
+
+/**
+ * @brief Restores the outbound frame selected by a motor replay request.
+ *
+ * Returns the older retained response after the two-entry history is full. A single retained
+ * response is returned directly, and an empty history leaves the destination unchanged.
+ *
+ * @param[in] transport Output transport and replay history.
+ * @param[out] frame Recovered outbound frame.
+ * @return True when a retained frame was available; otherwise false.
+ */
+bool motor_output_transport_replay_frame(const MotorOutputTransport *transport,
+                                         MotorLiveFrame *frame) {
+    if (transport->replay_count == 0) {
+        return false;
+    }
+    uint8_t index =
+        transport->replay_count == MOTOR_OUTPUT_REPLAY_CAPACITY ? transport->replay_write_index : 0;
+    *frame = transport->replay_frames[index];
+    return true;
+}
+
+/**
  * @brief Builds the next payload sent to the motor controller.
  *
  * Sends the oldest queued command first, then a status-only packet when the status byte changes,

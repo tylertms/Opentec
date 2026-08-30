@@ -764,14 +764,15 @@ static void update_fan_speed(PlatformFan fan) {
 /**
  * @brief Initializes the motor controller's live SPI exchange.
  *
- * Clears live output and position state, builds the first remote-effects frame, resets malformed
- * frame tracking, and starts the platform motor transport with that frame.
+ * Clears live output and position state, builds and retains the first remote-effects frame, resets
+ * malformed frame tracking, and starts the platform motor transport with that frame.
  */
 static void initialize_motor_link(void) {
     motor_output_report = (ForceOutputReport){0};
     motor_output_transport_init(&motor_output_transport);
     motor_output_transport_build_frame(&motor_output_transport, MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS,
                                        0, &motor_output_report, &motor_live_frame);
+    motor_output_transport_remember_frame(&motor_output_transport, &motor_live_frame);
     motor_live_frame_encode(&motor_live_frame, motor_transmitted_frame);
     motor_malformed_frame_count = 0;
     platform_motor_link_init(motor_transmitted_frame);
@@ -833,9 +834,10 @@ static uint8_t motor_force_feedback_status(void) {
 /**
  * @brief Processes one completed motor exchange and prepares its successor.
  *
- * Decodes valid live packets, publishes position reports, and queues the current force-output
- * response. CRC-valid packets clear delimiter-failure tracking, CRC failures preserve it, and the
- * transport restarts after the 101st packet with invalid delimiters.
+ * Decodes valid live packets and publishes position reports. Normal exchanges retain the current
+ * force-output response in a two-frame history; replay exchanges restore the older response
+ * without consuming output state. CRC-valid packets clear delimiter-failure tracking, CRC failures
+ * preserve it, and the transport restarts after the 101st packet with invalid delimiters.
  */
 static void service_motor_link(void) {
     if (!platform_motor_link_take_received(motor_received_frame)) {
@@ -844,10 +846,13 @@ static void service_motor_link(void) {
 
     MotorLiveFrameResult frame_result =
         motor_live_frame_decode(motor_received_frame, &motor_live_frame);
+    bool replay_requested = false;
     if (frame_result == MOTOR_LIVE_FRAME_VALID) {
         motor_malformed_frame_count = 0;
+        platform_motor_link_confirm_synchronized();
         if (motor_position_report_decode(&motor_live_frame, &motor_position_report)) {
             motor_position_ready = true;
+            replay_requested = motor_position_report.replay;
             if (!base_settings.wheel_position.calibrated) {
                 (void)capture_current_wheel_center();
             }
@@ -856,9 +861,17 @@ static void service_motor_link(void) {
         motor_malformed_frame_count++;
     }
 
+    if (replay_requested &&
+        motor_output_transport_replay_frame(&motor_output_transport, &motor_live_frame)) {
+        motor_live_frame_encode(&motor_live_frame, motor_transmitted_frame);
+        platform_motor_link_set_transmit(motor_transmitted_frame);
+        return;
+    }
+
     motor_output_transport_build_frame(&motor_output_transport, motor_force_feedback_status(),
                                        (int16_t)base_settings.wheel_position.center,
                                        &motor_output_report, &motor_live_frame);
+    motor_output_transport_remember_frame(&motor_output_transport, &motor_live_frame);
     motor_live_frame_encode(&motor_live_frame, motor_transmitted_frame);
     platform_motor_link_set_transmit(motor_transmitted_frame);
 
