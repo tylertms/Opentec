@@ -18,6 +18,19 @@ enum {
     TRANSFER_MAX_ERRORS = 4,
 };
 
+/**
+ * @brief Submits one encoded frame when the lower transport is idle.
+ *
+ * Optionally retains the command and payload for a protocol retry and leaves all session state
+ * unchanged when encoding fails or the lower transport is busy.
+ *
+ * @param[in,out] session Transfer session and retained-frame state.
+ * @param[in] command Encoded transfer command fields.
+ * @param[in] payload Optional frame payload.
+ * @param[in] payload_length Payload length in bytes.
+ * @param[in] remember True to retain the frame for a retry.
+ * @return True when the encoded frame is submitted.
+ */
 static bool send_frame(TransferSession *session, uint16_t command, const uint8_t *payload,
                        uint8_t payload_length, bool remember) {
     uint16_t length =
@@ -37,6 +50,15 @@ static bool send_frame(TransferSession *session, uint16_t command, const uint8_t
     return true;
 }
 
+/**
+ * @brief Sends a status or progress response for the current inbound sequence.
+ *
+ * Uses progress zero for an acknowledgement and a nonzero progress value for an error response.
+ *
+ * @param[in,out] session Transfer session containing the inbound group and parameter.
+ * @param[in] progress Zero for acknowledgement or the protocol error value.
+ * @return True when the response is submitted.
+ */
 static bool send_status(TransferSession *session, uint8_t progress) {
     uint16_t command =
         progress == 0 ? transfer_status_command(session->receive_group, session->receive_parameter)
@@ -45,6 +67,17 @@ static bool send_status(TransferSession *session, uint8_t progress) {
     return send_frame(session, command, NULL, 0, false);
 }
 
+/**
+ * @brief Records a local frame error and stops after the fifth consecutive error.
+ *
+ * Sends the protocol progress response that identifies the final error before disabling the
+ * session.
+ *
+ * @param[in,out] session Transfer session and consecutive-error counter.
+ * @param[in] reason Protocol progress value describing the error.
+ * @param[in] result Result returned for this frame.
+ * @return The supplied frame result.
+ */
 static TransferSessionResult record_error(TransferSession *session, uint8_t reason,
                                           TransferSessionResult result) {
     uint8_t previous_count = session->error_count++;
@@ -55,9 +88,23 @@ static TransferSessionResult record_error(TransferSession *session, uint8_t reas
     return result;
 }
 
+/**
+ * @brief Advances the inbound transfer sequence.
+ *
+ * Single frames finish immediately and cancel an earlier segmented receive. Segmented parameters
+ * advance from seven to one, and reserved sequence values remain incomplete without changing the
+ * active sequence.
+ *
+ * @param[in,out] session Inbound sequence state to update.
+ * @param[in] sequence Three-bit transfer sequence value.
+ * @param[in] parameter Three-bit frame parameter.
+ * @return One for a completed message, zero for an incomplete message, or negative one for an
+ * invalid transition.
+ */
 static int8_t advance_receive_sequence(TransferSession *session, uint8_t sequence,
                                        uint8_t parameter) {
     if (sequence == TRANSFER_SEQUENCE_SINGLE) {
+        session->receive_active = false;
         session->receive_parameter = parameter;
         return 1;
     }
@@ -70,9 +117,11 @@ static int8_t advance_receive_sequence(TransferSession *session, uint8_t sequenc
         return 0;
     }
     if (sequence != TRANSFER_SEQUENCE_CONTINUE && sequence != TRANSFER_SEQUENCE_END) {
-        return -1;
+        return 0;
     }
-    if (!session->receive_active || parameter != (uint8_t)((session->receive_parameter + 1) & 7)) {
+    uint8_t expected_parameter =
+        session->receive_parameter == 7 ? 1 : (uint8_t)(session->receive_parameter + 1);
+    if (!session->receive_active || parameter != expected_parameter) {
         return -1;
     }
 
@@ -84,6 +133,16 @@ static int8_t advance_receive_sequence(TransferSession *session, uint8_t sequenc
     return 0;
 }
 
+/**
+ * @brief Handles one inbound data frame.
+ *
+ * Validates its sequence transition, acknowledges the current parameter, and delivers the payload
+ * with the message-completion state.
+ *
+ * @param[in,out] session Transfer session receiving the frame.
+ * @param[in] frame Decoded data frame.
+ * @return Okay when acknowledged, busy when acknowledgement is deferred, or a sequence error.
+ */
 static TransferSessionResult receive_data(TransferSession *session, const TransferFrame *frame) {
     session->receive_group = transfer_command_group(frame->command);
     int8_t sequence_state =
@@ -99,6 +158,17 @@ static TransferSessionResult receive_data(TransferSession *session, const Transf
     return acknowledged ? TRANSFER_SESSION_OK : TRANSFER_SESSION_BUSY;
 }
 
+/**
+ * @brief Handles one inbound status or progress command.
+ *
+ * A matching zero-progress status completes the retained outbound frame. A mismatched
+ * acknowledgement follows the local error threshold, while a remote progress error ends the
+ * active session on its first occurrence.
+ *
+ * @param[in,out] session Transfer session awaiting a status response.
+ * @param[in] command Decoded status command.
+ * @return Result of the acknowledgement, sequence error, or remote error handling.
+ */
 static TransferSessionResult receive_status(TransferSession *session, uint16_t command) {
     session->receive_group = transfer_command_group(command);
     uint8_t parameter = transfer_command_parameter(command);

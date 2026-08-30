@@ -146,11 +146,52 @@ static void test_tracks_segment_sequences(void) {
     assert(transfer_session_receive(&session, frame, length) == TRANSFER_SESSION_OK);
     assert(!fixture.complete);
 
-    length = encode(transfer_data_command(1, 3, 0), payload, sizeof(payload), frame);
+    length = encode(transfer_data_command(1, 3, 1), payload, sizeof(payload), frame);
     assert(transfer_session_receive(&session, frame, length) == TRANSFER_SESSION_OK);
     assert(fixture.complete);
     assert(!session.receive_active);
     assert(fixture.receive_count == 3);
+}
+
+static void test_single_frame_cancels_segmented_receive(void) {
+    TransferSession session;
+    Fixture fixture = {0};
+    TransferSessionCallbacks valid = callbacks();
+    const uint8_t payload[] = {0x55};
+    uint8_t frame[TRANSFER_FRAME_MAX_ENCODED_SIZE];
+
+    assert(transfer_session_init(&session, &valid, &fixture));
+    uint16_t length = encode(transfer_data_command(1, 1, 6), payload, sizeof(payload), frame);
+    assert(transfer_session_receive(&session, frame, length) == TRANSFER_SESSION_OK);
+    assert(session.receive_active);
+
+    length = encode(transfer_data_command(1, 0, 4), payload, sizeof(payload), frame);
+    assert(transfer_session_receive(&session, frame, length) == TRANSFER_SESSION_OK);
+    assert(fixture.complete);
+    assert(!session.receive_active);
+
+    length = encode(transfer_data_command(1, 1, 2), payload, sizeof(payload), frame);
+    assert(transfer_session_receive(&session, frame, length) == TRANSFER_SESSION_OK);
+    assert(!fixture.complete);
+    assert(session.receive_active);
+}
+
+static void test_accepts_reserved_sequence_as_incomplete(void) {
+    TransferSession session;
+    Fixture fixture = {0};
+    TransferSessionCallbacks valid = callbacks();
+    const uint8_t payload[] = {0x55};
+    uint8_t frame[TRANSFER_FRAME_MAX_ENCODED_SIZE];
+
+    assert(transfer_session_init(&session, &valid, &fixture));
+    uint16_t length = encode(transfer_data_command(2, 4, 5), payload, sizeof(payload), frame);
+    assert(transfer_session_receive(&session, frame, length) == TRANSFER_SESSION_OK);
+    assert(fixture.receive_count == 1);
+    assert(!fixture.complete);
+    assert(!session.receive_active);
+
+    TransferFrame acknowledgment = decode_sent(&fixture);
+    assert(acknowledgment.command == transfer_status_command(2, 0));
 }
 
 static void test_rejects_bad_sequence_without_immediate_shutdown(void) {
@@ -236,6 +277,8 @@ int main(void) {
     test_sends_single_data_and_accepts_status();
     test_acknowledges_single_inbound_data();
     test_tracks_segment_sequences();
+    test_single_frame_cancels_segmented_receive();
+    test_accepts_reserved_sequence_as_incomplete();
     test_rejects_bad_sequence_without_immediate_shutdown();
     test_busy_transport_defers_send_and_acknowledgement();
     test_enforces_strict_deadlines();
