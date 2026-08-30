@@ -10,6 +10,7 @@ enum {
     USB_TYPE_VENDOR = 0x40,
     USB_RECIPIENT_DEVICE = 0x00,
     USB_RECIPIENT_INTERFACE = 0x01,
+    USB_RECIPIENT_ENDPOINT = 0x02,
     USB_REQUEST_GET_STATUS = 0,
     USB_REQUEST_CLEAR_FEATURE = 1,
     USB_REQUEST_SET_FEATURE = 3,
@@ -29,7 +30,11 @@ enum {
     USB_CDC_GET_LINE_CODING = 0x21,
     USB_CDC_SET_CONTROL_LINE_STATE = 0x22,
     USB_XBOX_SECURITY_REQUEST = 0x90,
+    USB_FEATURE_ENDPOINT_HALT = 0,
     USB_FEATURE_DEVICE_REMOTE_WAKEUP = 1,
+    USB_ENDPOINT_NUMBER_MASK = 0x0f,
+    USB_ENDPOINT_ADDRESS_RESERVED_MASK = 0xff70,
+    USB_ENDPOINT_COUNT = 5,
 };
 
 static uint16_t read_u16(const uint8_t *data) { return (uint16_t)data[0] | (uint16_t)data[1] << 8; }
@@ -69,9 +74,14 @@ static bool classify_standard(const UsbSetupPacket *packet, UsbControlRequest *r
         break;
     case USB_REQUEST_CLEAR_FEATURE:
     case USB_REQUEST_SET_FEATURE:
-        if (packet->request_type == USB_RECIPIENT_DEVICE &&
-            packet->value == USB_FEATURE_DEVICE_REMOTE_WAKEUP && packet->index == 0 &&
-            packet->length == 0) {
+        if (packet->length == 0 &&
+            ((packet->request_type == USB_RECIPIENT_DEVICE &&
+              packet->value == USB_FEATURE_DEVICE_REMOTE_WAKEUP && packet->index == 0) ||
+             (packet->request_type == USB_RECIPIENT_ENDPOINT &&
+              packet->value == USB_FEATURE_ENDPOINT_HALT &&
+              (packet->index & USB_ENDPOINT_ADDRESS_RESERVED_MASK) == 0 &&
+              (packet->index & USB_ENDPOINT_NUMBER_MASK) != 0 &&
+              (packet->index & USB_ENDPOINT_NUMBER_MASK) < USB_ENDPOINT_COUNT))) {
             return set_request(packet, request,
                                packet->request == USB_REQUEST_SET_FEATURE
                                    ? USB_CONTROL_SET_FEATURE

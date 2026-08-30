@@ -31,5 +31,9 @@ void usb_buffer_descriptor_arm(volatile UsbBufferDescriptor *descriptor, uint32_
 bool usb_buffer_descriptor_owned(const volatile UsbBufferDescriptor *descriptor);
 uint16_t usb_buffer_descriptor_count(const volatile UsbBufferDescriptor *descriptor);
 uint8_t usb_buffer_descriptor_packet_id(const volatile UsbBufferDescriptor *descriptor);
+bool usb_buffer_descriptor_halted(const volatile UsbBufferDescriptor *descriptor);
+void usb_buffer_descriptor_set_halt(volatile UsbBufferDescriptor *descriptor);
+void usb_buffer_descriptor_clear_halt(volatile UsbBufferDescriptor *selected,
+                                      volatile UsbBufferDescriptor *alternate);
 
 #endif

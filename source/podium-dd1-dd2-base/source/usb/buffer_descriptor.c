@@ -110,3 +110,45 @@ uint8_t usb_buffer_descriptor_packet_id(const volatile UsbBufferDescriptor *desc
     return (uint8_t)((descriptor->status & USB_BUFFER_PACKET_ID_MASK) >>
                      USB_BUFFER_PACKET_ID_SHIFT);
 }
+
+/**
+ * @brief Reports whether an endpoint descriptor presents a halt handshake.
+ *
+ * Requires both the stall flag and controller ownership on the selected ping-pong descriptor.
+ *
+ * @param[in] descriptor Selected endpoint descriptor.
+ * @return True when the descriptor currently presents a halt; otherwise false.
+ */
+bool usb_buffer_descriptor_halted(const volatile UsbBufferDescriptor *descriptor) {
+    return (descriptor->status & (USB_BUFFER_STALL | USB_BUFFER_OWNED_BY_USB)) ==
+           (USB_BUFFER_STALL | USB_BUFFER_OWNED_BY_USB);
+}
+
+/**
+ * @brief Presents a halt handshake on an endpoint descriptor.
+ *
+ * Preserves the transfer fields while setting the stall flag and giving the descriptor to the
+ * controller.
+ *
+ * @param[in,out] descriptor Selected endpoint descriptor.
+ */
+void usb_buffer_descriptor_set_halt(volatile UsbBufferDescriptor *descriptor) {
+    descriptor->status |= USB_BUFFER_STALL | USB_BUFFER_OWNED_BY_USB;
+}
+
+/**
+ * @brief Releases a halted ping-pong descriptor pair.
+ *
+ * Removes ownership, stall, and DATA1 from the selected bank and prepares the alternate bank for
+ * DATA1 so the next transfer sequence restarts at DATA0.
+ *
+ * @param[in,out] selected Currently selected endpoint descriptor.
+ * @param[in,out] alternate Other ping-pong descriptor for the same endpoint direction.
+ */
+void usb_buffer_descriptor_clear_halt(volatile UsbBufferDescriptor *selected,
+                                      volatile UsbBufferDescriptor *alternate) {
+    alternate->status =
+        (alternate->status & (uint16_t)~USB_BUFFER_OWNED_BY_USB) | USB_BUFFER_DATA_TOGGLE;
+    selected->status &=
+        (uint16_t)~(USB_BUFFER_OWNED_BY_USB | USB_BUFFER_DATA_TOGGLE | USB_BUFFER_STALL);
+}

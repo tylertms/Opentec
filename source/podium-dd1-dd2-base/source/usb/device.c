@@ -28,6 +28,9 @@ enum {
     USB_UPDATER_DATA_ENDPOINT = 3,
     USB_PLAYSTATION_OUTPUT_ENDPOINT = 3,
     USB_PLAYSTATION_INPUT_ENDPOINT = 4,
+    USB_RECIPIENT_ENDPOINT = 2,
+    USB_ENDPOINT_DIRECTION_IN = 0x80,
+    USB_ENDPOINT_NUMBER_MASK = 0x0f,
     USB_HID_DESCRIPTOR_OFFSET = 18,
     USB_HID_DESCRIPTOR_SIZE = 9,
     USB_STRING_COUNT = 10,
@@ -79,6 +82,7 @@ static uint8_t updater_response[USB_DEVICE_UPDATER_RESPONSE_SIZE];
 static uint8_t input_report_length;
 static uint8_t updater_response_length;
 static uint8_t updater_response_offset;
+static uint8_t updater_input_length;
 static uint8_t control_report_type;
 static uint8_t control_report_id;
 static UsbControlStage control_stage;
@@ -301,6 +305,7 @@ static void reset_state(void) {
     updater_zero_length_pending = false;
     updater_response_length = 0;
     updater_response_offset = 0;
+    updater_input_length = 0;
     input_data_one = false;
     output_data_one = false;
     updater_input_data_one = false;
@@ -545,6 +550,63 @@ static bool handle_playstation_authentication_setup(void) {
     return false;
 }
 
+/**
+ * @brief Restarts an endpoint direction after its halt is cleared.
+ *
+ * Restores DATA0 as the next transfer, makes interrupted retained input responses eligible for
+ * retry, invalidates a cached input report, and rearms both output banks when the selected
+ * direction accepts host data.
+ *
+ * @param[in] endpoint_address Endpoint number with bit seven set for device-to-host direction.
+ */
+static void restart_endpoint_after_halt(uint8_t endpoint_address) {
+    uint8_t endpoint = endpoint_address & USB_ENDPOINT_NUMBER_MASK;
+    if ((endpoint_address & USB_ENDPOINT_DIRECTION_IN) != 0) {
+        if (endpoint == USB_PRIMARY_ENDPOINT || endpoint == USB_PLAYSTATION_INPUT_ENDPOINT) {
+            input_data_one = false;
+            input_report_length = 0;
+        }
+        if (operating_mode == USB_OPERATING_MODE_XBOX_GIP && endpoint == USB_PRIMARY_ENDPOINT &&
+            xbox_input_busy) {
+            xbox_input_busy = false;
+            xbox_response_ready = true;
+        }
+        if (operating_mode == USB_OPERATING_MODE_UPDATER && endpoint == USB_UPDATER_DATA_ENDPOINT &&
+            updater_input_busy) {
+            updater_input_busy = false;
+            updater_response_offset -= updater_input_length;
+            updater_response_ready = true;
+            updater_zero_length_pending =
+                updater_response_length == USB_DEVICE_REPORT_SIZE && updater_response_offset == 0;
+            updater_input_length = 0;
+            updater_input_data_one = false;
+        }
+        return;
+    }
+
+    bool *data_one = &output_data_one;
+    if (operating_mode == USB_OPERATING_MODE_UPDATER) {
+        if (endpoint != USB_UPDATER_DATA_ENDPOINT) {
+            return;
+        }
+        data_one = &updater_output_data_one;
+    } else {
+        uint8_t output_endpoint = operating_mode == USB_OPERATING_MODE_PLAYSTATION
+                                      ? USB_PLAYSTATION_OUTPUT_ENDPOINT
+                                      : USB_PRIMARY_ENDPOINT;
+        if (endpoint != output_endpoint) {
+            return;
+        }
+    }
+
+    *data_one = false;
+    for (uint8_t bank = 0; bank < 2; bank++) {
+        if (platform_usb_receive(endpoint, USB_DEVICE_REPORT_SIZE, *data_one)) {
+            *data_one = !*data_one;
+        }
+    }
+}
+
 static void handle_control_transfer(void) {
     switch (control_transfer.kind) {
     case USB_CONTROL_TRANSFER_ACKNOWLEDGE:
@@ -646,8 +708,20 @@ static void handle_setup(void) {
             return;
         }
     }
-    control_transfer =
-        usb_device_control_handle(&device_control, &control_request, &descriptor_catalog);
+    bool endpoint_halted = control_request.recipient == USB_RECIPIENT_ENDPOINT &&
+                           platform_usb_endpoint_halted((uint8_t)control_request.index);
+    control_transfer = usb_device_control_handle(&device_control, &control_request,
+                                                 &descriptor_catalog, endpoint_halted);
+    if (control_transfer.kind == USB_CONTROL_TRANSFER_ACKNOWLEDGE &&
+        control_request.recipient == USB_RECIPIENT_ENDPOINT &&
+        (control_request.kind == USB_CONTROL_SET_FEATURE ||
+         control_request.kind == USB_CONTROL_CLEAR_FEATURE)) {
+        bool halted = control_request.kind == USB_CONTROL_SET_FEATURE;
+        platform_usb_set_endpoint_halt((uint8_t)control_request.index, halted);
+        if (!halted) {
+            restart_endpoint_after_halt((uint8_t)control_request.index);
+        }
+    }
     handle_control_transfer();
 }
 
@@ -935,6 +1009,7 @@ static void handle_event(void) {
         } else if (operating_mode == USB_OPERATING_MODE_UPDATER &&
                    usb_event.endpoint == USB_UPDATER_DATA_ENDPOINT) {
             updater_input_busy = false;
+            updater_input_length = 0;
         }
         break;
     case PLATFORM_USB_EVENT_SUSPEND:
@@ -1005,6 +1080,7 @@ static void service_updater_input(void) {
 
     updater_input_data_one = !updater_input_data_one;
     updater_input_busy = true;
+    updater_input_length = length;
     updater_response_offset += length;
     if (updater_response_offset != updater_response_length) {
         return;

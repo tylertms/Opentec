@@ -35,5 +35,7 @@ void platform_usb_set_address(uint8_t address);
 void platform_usb_configure_endpoint(uint8_t endpoint, bool input, bool output);
 void platform_usb_unconfigure_endpoint(uint8_t endpoint);
 void platform_usb_stall(uint8_t endpoint);
+bool platform_usb_endpoint_halted(uint8_t endpoint_address);
+void platform_usb_set_endpoint_halt(uint8_t endpoint_address, bool halted);
 
 #endif

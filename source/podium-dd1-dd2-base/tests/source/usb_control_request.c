@@ -68,6 +68,29 @@ static void test_classifies_remote_wakeup_features(void) {
     assert(!usb_control_request_classify(&packet, &request));
 }
 
+static void test_classifies_endpoint_halt_features(void) {
+    const uint8_t set_feature[] = {0x02, 0x03, 0x00, 0x00, 0x81, 0x00, 0x00, 0x00};
+    const uint8_t clear_feature[] = {0x02, 0x01, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00};
+    UsbControlRequest request;
+
+    UsbSetupPacket packet = decode(set_feature);
+    assert(usb_control_request_classify(&packet, &request));
+    assert(request.kind == USB_CONTROL_SET_FEATURE);
+    assert(request.recipient == 2 && request.index == 0x81);
+
+    packet = decode(clear_feature);
+    assert(usb_control_request_classify(&packet, &request));
+    assert(request.kind == USB_CONTROL_CLEAR_FEATURE);
+    assert(request.index == 4);
+
+    packet.index = 0;
+    assert(!usb_control_request_classify(&packet, &request));
+    packet.index = 5;
+    assert(!usb_control_request_classify(&packet, &request));
+    packet.index = 0x41;
+    assert(!usb_control_request_classify(&packet, &request));
+}
+
 static void test_classifies_hid_requests(void) {
     const uint8_t get_report_data[] = {0xa1, 0x01, 0x01, 0x01, 0x00, 0x00, 0x22, 0x00};
     const uint8_t set_idle_data[] = {0x21, 0x0a, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00};
@@ -137,6 +160,7 @@ int main(void) {
     test_classifies_descriptor_request();
     test_classifies_enumeration_state_changes();
     test_classifies_remote_wakeup_features();
+    test_classifies_endpoint_halt_features();
     test_classifies_hid_requests();
     test_classifies_cdc_requests();
     test_classifies_xbox_security_request();

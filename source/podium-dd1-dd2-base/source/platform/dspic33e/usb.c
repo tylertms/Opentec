@@ -25,6 +25,9 @@ enum {
     USB_ENDPOINT_RECEIVE = 0x08,
     USB_ENDPOINT_CONTROL_DISABLE = 0x10,
     USB_ENDPOINT_CONTROL = USB_ENDPOINT_HANDSHAKE | USB_ENDPOINT_TRANSMIT | USB_ENDPOINT_RECEIVE,
+    USB_ENDPOINT_DIRECTION_IN = 0x80,
+    USB_ENDPOINT_NUMBER_MASK = 0x0f,
+    USB_ENDPOINT_ADDRESS_RESERVED_MASK = 0x70,
 };
 
 static const uint32_t USB_RESTART_DELAY_CYCLES = 0x9000UL * 0x0c81UL * 2UL;
@@ -294,6 +297,10 @@ static bool arm(uint8_t endpoint, bool input, const uint8_t *data, uint8_t lengt
     }
 
     uint8_t direction = input ? 1 : 0;
+    if (endpoint != 0 && usb_buffer_descriptor_halted(
+                             descriptor(endpoint, input, next_bank[endpoint][direction] != 0))) {
+        return false;
+    }
     uint8_t preferred = next_bank[endpoint][direction];
     for (uint8_t offset = 0; offset < USB_BANK_COUNT; offset++) {
         uint8_t bank = (preferred + offset) & 1;
@@ -452,6 +459,60 @@ void platform_usb_stall(uint8_t endpoint) {
             U1CONbits.PKTDIS = 0;
         }
     }
+}
+
+/**
+ * @brief Reports the halt state of one USB endpoint direction.
+ *
+ * Selects the current ping-pong descriptor from the endpoint address and reports a halt only while
+ * that descriptor is stalled and controller-owned.
+ *
+ * @param[in] endpoint_address Endpoint number with bit seven set for device-to-host direction.
+ * @return True when the selected endpoint direction is halted; otherwise false.
+ */
+bool platform_usb_endpoint_halted(uint8_t endpoint_address) {
+    uint8_t endpoint = endpoint_address & USB_ENDPOINT_NUMBER_MASK;
+    if ((endpoint_address & USB_ENDPOINT_ADDRESS_RESERVED_MASK) != 0 ||
+        endpoint >= USB_ENDPOINT_COUNT) {
+        return false;
+    }
+    bool input = (endpoint_address & USB_ENDPOINT_DIRECTION_IN) != 0;
+    uint8_t direction = input ? 1 : 0;
+    return usb_buffer_descriptor_halted(
+        descriptor(endpoint, input, next_bank[endpoint][direction] != 0));
+}
+
+/**
+ * @brief Changes the halt state of one non-control USB endpoint direction.
+ *
+ * A set operation presents a stall on the selected bank. A clear operation releases both banks,
+ * restores DATA0/DATA1 ordering, and clears the endpoint stall latch while preserving the other
+ * direction's configuration.
+ *
+ * @param[in] endpoint_address Endpoint number with bit seven set for device-to-host direction.
+ * @param[in] halted True to set the halt; false to clear it.
+ */
+void platform_usb_set_endpoint_halt(uint8_t endpoint_address, bool halted) {
+    uint8_t endpoint = endpoint_address & USB_ENDPOINT_NUMBER_MASK;
+    if ((endpoint_address & USB_ENDPOINT_ADDRESS_RESERVED_MASK) != 0 || endpoint == 0 ||
+        endpoint >= USB_ENDPOINT_COUNT) {
+        return;
+    }
+
+    bool interrupt_enabled = IEC5bits.USB1IE != 0;
+    IEC5bits.USB1IE = 0;
+    bool input = (endpoint_address & USB_ENDPOINT_DIRECTION_IN) != 0;
+    uint8_t direction = input ? 1 : 0;
+    bool odd_bank = next_bank[endpoint][direction] != 0;
+    volatile UsbBufferDescriptor *selected = descriptor(endpoint, input, odd_bank);
+    if (halted) {
+        usb_buffer_descriptor_set_halt(selected);
+    } else {
+        usb_buffer_descriptor_clear_halt(selected, descriptor(endpoint, input, !odd_bank));
+        volatile uint16_t *endpoint_control = &U1EP0 + endpoint;
+        *endpoint_control &= (uint16_t)~USB_ENDPOINT_STALL;
+    }
+    IEC5bits.USB1IE = interrupt_enabled;
 }
 
 /**

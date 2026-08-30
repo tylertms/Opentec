@@ -44,10 +44,26 @@ static void test_setup_arm(void) {
     assert(descriptor.address == 0x1234);
 }
 
+static void test_endpoint_halt(void) {
+    UsbBufferDescriptor selected = {.status = 0x018c};
+    UsbBufferDescriptor alternate = {.status = 0x0284};
+
+    assert(usb_buffer_descriptor_halted(&selected));
+    selected.status = 0x0188;
+    assert(!usb_buffer_descriptor_halted(&selected));
+
+    usb_buffer_descriptor_set_halt(&selected);
+    assert(selected.status == 0x018c);
+    usb_buffer_descriptor_clear_halt(&selected, &alternate);
+    assert(selected.status == 0x0108);
+    assert(alternate.status == 0x0244);
+}
+
 int main(void) {
     test_bdt_index();
     test_arm();
     test_capacity_and_packet_fields_are_masked();
     test_setup_arm();
+    test_endpoint_halt();
     return 0;
 }

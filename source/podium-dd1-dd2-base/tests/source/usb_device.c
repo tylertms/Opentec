@@ -28,6 +28,7 @@ static bool attached;
 static bool hid_configured;
 static bool endpoint_input[5];
 static bool endpoint_output[5];
+static bool endpoint_halted[5][2];
 static bool stalled;
 static uint8_t restart_count;
 static uint32_t now_ms;
@@ -46,6 +47,7 @@ static void reset_platform(void) {
     hid_configured = false;
     memset(endpoint_input, 0, sizeof(endpoint_input));
     memset(endpoint_output, 0, sizeof(endpoint_output));
+    memset(endpoint_halted, 0, sizeof(endpoint_halted));
     stalled = false;
     restart_count = 0;
     now_ms = 0;
@@ -87,6 +89,9 @@ bool platform_usb_take_event(PlatformUsbEvent *event) {
 }
 
 bool platform_usb_send(uint8_t endpoint, const uint8_t *data, uint8_t length, bool data_one) {
+    if (endpoint_halted[endpoint][1]) {
+        return false;
+    }
     send_count++;
     sent.endpoint = endpoint;
     sent.length = length;
@@ -98,6 +103,9 @@ bool platform_usb_send(uint8_t endpoint, const uint8_t *data, uint8_t length, bo
 }
 
 bool platform_usb_receive(uint8_t endpoint, uint8_t length, bool data_one) {
+    if (endpoint_halted[endpoint][0]) {
+        return false;
+    }
     TransferRecord *record = &received[receive_count++];
     record->endpoint = endpoint;
     record->length = length;
@@ -120,6 +128,12 @@ void platform_usb_unconfigure_endpoint(uint8_t endpoint) {
     }
 }
 void platform_usb_stall(uint8_t endpoint) { stalled = endpoint == 0; }
+bool platform_usb_endpoint_halted(uint8_t endpoint_address) {
+    return endpoint_halted[endpoint_address & 0x0f][(endpoint_address & 0x80) != 0];
+}
+void platform_usb_set_endpoint_halt(uint8_t endpoint_address, bool halted) {
+    endpoint_halted[endpoint_address & 0x0f][(endpoint_address & 0x80) != 0] = halted;
+}
 uint32_t platform_time_ms(void) { return now_ms; }
 
 static void complete_control_input(void) {
@@ -267,6 +281,52 @@ static void test_exchanges_hid_reports(void) {
     assert(!usb_device_take_output(&report));
 }
 
+static void test_controls_endpoint_halt(void) {
+    static const uint8_t set_configuration[] = {0x00, 9, 1, 0, 0, 0, 0, 0};
+    static const uint8_t set_input_halt[] = {0x02, 3, 0, 0, 0x81, 0, 0, 0};
+    static const uint8_t get_input_status[] = {0x82, 0, 0, 0, 0x81, 0, 2, 0};
+    static const uint8_t clear_input_halt[] = {0x02, 1, 0, 0, 0x81, 0, 0, 0};
+    static const uint8_t set_output_halt[] = {0x02, 3, 0, 0, 0x01, 0, 0, 0};
+    static const uint8_t clear_output_halt[] = {0x02, 1, 0, 0, 0x01, 0, 0, 0};
+    static const uint8_t report[] = {1, 2, 3};
+
+    usb_device_init(BOARD_VARIANT_DD1);
+    push_setup(set_configuration);
+    usb_device_service();
+    complete_control_output();
+
+    push_setup(set_input_halt);
+    usb_device_service();
+    assert(endpoint_halted[1][1]);
+    complete_control_output();
+    assert(!usb_device_send_input(report, sizeof(report)));
+
+    push_setup(get_input_status);
+    usb_device_service();
+    assert(sent.length == 2 && sent.data[0] == 1 && sent.data[1] == 0);
+    complete_control_input();
+
+    push_setup(clear_input_halt);
+    usb_device_service();
+    assert(!endpoint_halted[1][1]);
+    complete_control_output();
+    assert(usb_device_send_input(report, sizeof(report)));
+    assert(!sent.data_one);
+
+    push_setup(set_output_halt);
+    usb_device_service();
+    assert(endpoint_halted[1][0]);
+    complete_control_output();
+
+    receive_count = 0;
+    push_setup(clear_output_halt);
+    usb_device_service();
+    assert(!endpoint_halted[1][0]);
+    assert(receive_count == 2);
+    assert(!received[0].data_one && received[1].data_one);
+    complete_control_output();
+}
+
 static void test_reenumerates_compatibility_modes(void) {
     static const uint8_t get_device_descriptor[] = {0x80, 6, 0, 1, 0, 0, 18, 0};
     static const uint8_t get_configuration_descriptor[] = {0x80, 6, 0, 2, 0, 0, 41, 0};
@@ -328,6 +388,8 @@ static void test_exchanges_updater_packets(void) {
     static const uint8_t get_line_coding[] = {0xa1, 0x21, 0, 0, 0, 0, 7, 0};
     static const uint8_t set_line_coding[] = {0x21, 0x20, 0, 0, 0, 0, 7, 0};
     static const uint8_t set_configuration[] = {0x00, 9, 1, 0, 0, 0, 0, 0};
+    static const uint8_t set_input_halt[] = {0x02, 3, 0, 0, 0x83, 0, 0, 0};
+    static const uint8_t clear_input_halt[] = {0x02, 1, 0, 0, 0x83, 0, 0, 0};
     static const uint8_t updated_line_coding[] = {0x00, 0xc2, 0x01, 0x00, 0, 0, 8};
     static const uint8_t bulk_output[] = {0x12, 0x34, 0x56};
     static const uint8_t bulk_input[] = {0x78, 0x9a};
@@ -404,6 +466,18 @@ static void test_exchanges_updater_packets(void) {
     assert(sent.endpoint == 3 && sent.length == USB_DEVICE_REPORT_SIZE);
     assert(memcmp(sent.data, split_response, USB_DEVICE_REPORT_SIZE) == 0);
     assert(!usb_device_queue_updater_response(bulk_input, sizeof(bulk_input)));
+
+    push_setup(set_input_halt);
+    usb_device_service();
+    assert(endpoint_halted[3][1]);
+    complete_control_output();
+    push_setup(clear_input_halt);
+    usb_device_service();
+    assert(!endpoint_halted[3][1]);
+    assert(sent.endpoint == 3 && sent.length == USB_DEVICE_REPORT_SIZE);
+    assert(memcmp(sent.data, split_response, USB_DEVICE_REPORT_SIZE) == 0);
+    complete_control_output();
+
     push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 3, NULL, 0);
     usb_device_service();
     assert(sent.endpoint == 3 && sent.length == 2);
@@ -707,6 +781,7 @@ int main(void) {
     test_enumerates_podium_device();
     test_returns_xbox_security_descriptor();
     test_exchanges_hid_reports();
+    test_controls_endpoint_halt();
     test_reenumerates_compatibility_modes();
     test_exchanges_updater_packets();
     test_exchanges_xbox_gip_discovery();

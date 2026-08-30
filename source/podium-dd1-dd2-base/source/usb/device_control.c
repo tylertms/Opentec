@@ -11,6 +11,12 @@ enum {
     USB_DESCRIPTOR_HID_REPORT = 0x22,
     USB_RECIPIENT_DEVICE = 0,
     USB_RECIPIENT_INTERFACE = 1,
+    USB_RECIPIENT_ENDPOINT = 2,
+    USB_FEATURE_ENDPOINT_HALT = 0,
+    USB_FEATURE_DEVICE_REMOTE_WAKEUP = 1,
+    USB_ENDPOINT_NUMBER_MASK = 0x0f,
+    USB_ENDPOINT_ADDRESS_RESERVED_MASK = 0xff70,
+    USB_ENDPOINT_COUNT = 5,
 };
 
 static UsbControlTransfer stall(void) {
@@ -93,22 +99,53 @@ static UsbControlTransfer hid_report(const UsbControlRequest *request, bool inpu
     };
 }
 
+/**
+ * @brief Tests whether a standard request selects a supported endpoint.
+ *
+ * Accepts endpoint numbers zero through four when control is permitted, accepts endpoints one
+ * through four otherwise, permits the input-direction bit, and rejects every reserved address bit.
+ *
+ * @param[in] request Classified standard endpoint request.
+ * @param[in] include_control True to permit endpoint zero.
+ * @return True when the endpoint address is supported; otherwise false.
+ */
+static bool supported_endpoint(const UsbControlRequest *request, bool include_control) {
+    uint8_t endpoint = (uint8_t)request->index & USB_ENDPOINT_NUMBER_MASK;
+    return request->recipient == USB_RECIPIENT_ENDPOINT &&
+           (request->index & USB_ENDPOINT_ADDRESS_RESERVED_MASK) == 0 &&
+           (include_control || endpoint != 0) && endpoint < USB_ENDPOINT_COUNT;
+}
+
 UsbControlTransfer usb_device_control_handle(UsbDeviceControl *device,
                                              const UsbControlRequest *request,
-                                             const UsbDescriptorCatalog *catalog) {
+                                             const UsbDescriptorCatalog *catalog,
+                                             bool endpoint_halted) {
     switch (request->kind) {
     case USB_CONTROL_GET_STATUS:
-        return value(request->recipient == USB_RECIPIENT_DEVICE
-                         ? (device->self_powered ? 1 : 0) |
-                               (device->remote_wakeup || device->remote_wakeup_forced ? 2 : 0)
-                         : 0,
-                     2);
+        if (request->recipient == USB_RECIPIENT_DEVICE) {
+            return value((device->self_powered ? 1 : 0) |
+                             (device->remote_wakeup || device->remote_wakeup_forced ? 2 : 0),
+                         2);
+        }
+        if (request->recipient == USB_RECIPIENT_INTERFACE) {
+            return value(0, 2);
+        }
+        if (supported_endpoint(request, true)) {
+            return value(endpoint_halted ? 1 : 0, 2);
+        }
+        return stall();
     case USB_CONTROL_CLEAR_FEATURE:
-        device->remote_wakeup = false;
-        return acknowledge();
     case USB_CONTROL_SET_FEATURE:
-        device->remote_wakeup = true;
-        return acknowledge();
+        if (request->recipient == USB_RECIPIENT_DEVICE &&
+            request->value == USB_FEATURE_DEVICE_REMOTE_WAKEUP) {
+            device->remote_wakeup = request->kind == USB_CONTROL_SET_FEATURE;
+            return acknowledge();
+        }
+        if (request->value == USB_FEATURE_ENDPOINT_HALT && usb_device_control_configured(device) &&
+            supported_endpoint(request, false)) {
+            return acknowledge();
+        }
+        return stall();
     case USB_CONTROL_SET_ADDRESS:
         device->pending_change = USB_DEVICE_PENDING_ADDRESS;
         device->pending_value = (uint8_t)request->value;
