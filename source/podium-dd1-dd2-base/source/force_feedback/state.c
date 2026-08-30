@@ -26,7 +26,7 @@ static int32_t center_position(uint8_t position, int32_t scale) {
  *
  * @param[in,out] state Force-feedback state containing the host-controlled effects.
  */
-static void deactivate_host_effects(ForceFeedbackState *state) {
+void force_feedback_state_deactivate_host_effects(ForceFeedbackState *state) {
     for (uint8_t slot = 0; slot < FORCE_FEEDBACK_EFFECT_SLOT_COUNT; ++slot) {
         state->effects[slot].active = false;
     }
@@ -74,13 +74,13 @@ bool force_feedback_state_apply(ForceFeedbackState *state, const ForceFeedbackCo
     }
 
     if (command->kind == FORCE_FEEDBACK_COMMAND_SET_PRIMARY_OUTPUT) {
-        deactivate_host_effects(state);
+        force_feedback_state_deactivate_host_effects(state);
         state->primary_output_disabled = command->output_disabled;
         return true;
     }
 
     if (command->kind == FORCE_FEEDBACK_COMMAND_RESET_EFFECTS) {
-        deactivate_host_effects(state);
+        force_feedback_state_deactivate_host_effects(state);
         return true;
     }
 

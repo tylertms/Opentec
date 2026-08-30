@@ -3524,6 +3524,7 @@ static void service_force_output_enable(void) {
     if (force_output_enabled) {
         return;
     }
+    force_feedback_state_deactivate_host_effects(&force_feedback_state);
 
     bool prompt_visible = force_output_prompt_visible && system_notice.kind == SYSTEM_NOTICE_NONE &&
                           !torque_disabled_notice_visible && !torque_key_prompt_visible;

@@ -48,6 +48,7 @@ typedef struct {
 } ForceFeedbackState;
 
 void force_feedback_state_init(ForceFeedbackState *state);
+void force_feedback_state_deactivate_host_effects(ForceFeedbackState *state);
 bool force_feedback_state_apply(ForceFeedbackState *state, const ForceFeedbackCommand *command,
                                 int32_t position_scale);
 bool force_feedback_state_rescale_positions(ForceFeedbackState *state, int32_t previous_scale,

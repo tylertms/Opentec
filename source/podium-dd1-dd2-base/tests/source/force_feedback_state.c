@@ -165,6 +165,33 @@ static void test_resets_host_effects(void) {
     assert(state.secondary_output_disabled);
 }
 
+static void test_deactivates_host_effects(void) {
+    ForceFeedbackState state;
+    force_feedback_state_init(&state);
+    ForceFeedbackCommand command = {
+        .kind = FORCE_FEEDBACK_COMMAND_CONFIGURE_KIND_1,
+        .slot = 0,
+        .magnitude = 1234,
+    };
+    assert(force_feedback_state_apply(&state, &command, 0));
+    command.slot = 15;
+    assert(force_feedback_state_apply(&state, &command, 0));
+    state.primary_output_disabled = true;
+    state.secondary_output_disabled = true;
+
+    force_feedback_state_deactivate_host_effects(&state);
+
+    for (uint8_t slot = 0; slot < FORCE_FEEDBACK_EFFECT_SLOT_COUNT; slot++) {
+        assert(!state.effects[slot].active);
+    }
+    assert(state.effects[0].kind == FORCE_FEEDBACK_EFFECT_KIND_1);
+    assert(state.effects[0].kind_1.magnitude == 1234);
+    assert(state.effects[15].kind == FORCE_FEEDBACK_EFFECT_KIND_1);
+    assert(state.effects[FORCE_FEEDBACK_POSITION_EFFECT_SLOT].active);
+    assert(state.primary_output_disabled);
+    assert(state.secondary_output_disabled);
+}
+
 static void test_rescales_all_kind_2_positions(void) {
     ForceFeedbackState state;
     force_feedback_state_init(&state);
@@ -218,6 +245,7 @@ int main(void) {
     test_configures_kind_3();
     test_controls_position_effect_and_output_gates();
     test_resets_host_effects();
+    test_deactivates_host_effects();
     test_rescales_all_kind_2_positions();
     test_rejects_invalid_inputs();
     return 0;
