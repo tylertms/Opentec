@@ -49,6 +49,26 @@ static void restarts_after_motor_runtime_progress(void) {
     assert(motor_rotation_guard_update(&guard, -1, 101, 10003));
 }
 
+static void retains_observation_during_a_transient_zero_runtime(void) {
+    MotorRotationGuard guard;
+    motor_rotation_guard_init(&guard);
+
+    assert(!motor_rotation_guard_update(&guard, 0, 100, 1000));
+    assert(!motor_rotation_guard_update(&guard, 0, 0, 2000));
+    assert(guard.monitoring);
+    assert(guard.deadline_ms == 5500);
+    assert(motor_rotation_guard_update(&guard, 0, 100, 5501));
+}
+
+static void resets_observation_when_runtime_differs_after_the_deadline(void) {
+    MotorRotationGuard guard;
+    motor_rotation_guard_init(&guard);
+
+    assert(!motor_rotation_guard_update(&guard, 0, 100, 1000));
+    assert(!motor_rotation_guard_update(&guard, 0, 0, 5501));
+    assert(!guard.monitoring);
+}
+
 static void preserves_deadlines_across_timer_wrap(void) {
     MotorRotationGuard guard;
     motor_rotation_guard_init(&guard);
@@ -64,6 +84,8 @@ int main(void) {
     warns_after_an_unchanged_strict_hold();
     waits_for_a_nonzero_motor_runtime();
     restarts_after_motor_runtime_progress();
+    retains_observation_during_a_transient_zero_runtime();
+    resets_observation_when_runtime_differs_after_the_deadline();
     preserves_deadlines_across_timer_wrap();
     return 0;
 }

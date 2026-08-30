@@ -32,11 +32,10 @@ bool motor_rotation_guard_update(MotorRotationGuard *guard, int32_t steering_axi
     if (guard->triggered || (steering_axis != -1 && steering_axis != 0)) {
         return false;
     }
-    if (motor_runtime_seconds == 0) {
-        guard->monitoring = false;
-        return false;
-    }
     if (!guard->monitoring) {
+        if (motor_runtime_seconds == 0) {
+            return false;
+        }
         guard->observed_runtime_seconds = motor_runtime_seconds;
         guard->deadline_ms = now_ms + MOTOR_ROTATION_GUARD_HOLD_MS;
         guard->monitoring = true;
