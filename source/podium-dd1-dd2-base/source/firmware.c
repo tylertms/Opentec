@@ -11,6 +11,7 @@
 #include "cooling/effect_limit.h"
 #include "cooling/tachometer.h"
 #include "cooling/temperature.h"
+#include "display/auxiliary_calibration_page.h"
 #include "display/force_feedback_analysis_page.h"
 #include "display/identity_page.h"
 #include "display/motor_data_analysis_page.h"
@@ -355,6 +356,9 @@ static bool local_display_motor_data_analysis_content_active;
 static DisplayTemperatureAnalysisPage local_display_temperature_analysis;
 static uint32_t local_display_temperature_analysis_title_deadline_ms;
 static bool local_display_temperature_analysis_content_active;
+static DisplayAuxiliaryCalibrationPage local_display_auxiliary_calibration;
+static uint32_t local_display_auxiliary_calibration_title_deadline_ms;
+static bool local_display_auxiliary_calibration_content_active;
 
 typedef enum {
     USB_VENDOR_RESPONSE_NONE,
@@ -394,6 +398,7 @@ enum {
     LOCAL_DISPLAY_PAGE_FORCE_FEEDBACK_ANALYSIS = 9,
     LOCAL_DISPLAY_PAGE_MOTOR_DATA_ANALYSIS = 10,
     LOCAL_DISPLAY_PAGE_TEMPERATURE_ANALYSIS = 11,
+    LOCAL_DISPLAY_PAGE_AUXILIARY_CALIBRATION = 12,
     LOCAL_DISPLAY_DIAGNOSTIC_TITLE_MS = 1000,
     USB_DISCONNECT_STATUS_CODE = 0x1c,
     TUNING_MENU_RESET_EVENT_CODE = 1,
@@ -3202,7 +3207,8 @@ static LocalMotorTemperatures read_motor_temperatures(void) {
  * Torque Key prompt, force-output prompt, paddle bite-point adjustment, and local tuning page.
  * The persistent diagnostic selection presents its system-information title for one second and
  * refreshes changed component values after the title closes. The force-feedback and motor-data
- * analyzers retain five-second histories and refresh at their own sample cadences. Leaving all
+ * analyzers retain their histories and refresh at their own sample cadences. The auxiliary page
+ * mirrors the wheel's Legacy display while showing whether remote tuning owns it. Leaving all
  * temporary display owners restores the selected diagnostic page.
  */
 static void service_local_display(void) {
@@ -3217,6 +3223,8 @@ static void service_local_display(void) {
         usb_tuning_menu_service.active_page == USB_TUNING_MENU_PAGE_MOTOR_DATA_ANALYSIS;
     bool temperature_analysis_selected =
         usb_tuning_menu_service.active_page == USB_TUNING_MENU_PAGE_THERMAL_POWER;
+    bool auxiliary_calibration_selected =
+        usb_tuning_menu_service.active_page == USB_TUNING_MENU_PAGE_AUXILIARY_CALIBRATION;
     uint8_t page = system_notice.kind != SYSTEM_NOTICE_NONE ? LOCAL_DISPLAY_PAGE_SYSTEM_NOTICE
                    : torque_disabled_notice_visible         ? LOCAL_DISPLAY_PAGE_TORQUE_DISABLED
                    : torque_key_prompt_visible              ? LOCAL_DISPLAY_PAGE_TORQUE_KEY_PROMPT
@@ -3227,6 +3235,7 @@ static void service_local_display(void) {
                    : force_feedback_analysis_selected ? LOCAL_DISPLAY_PAGE_FORCE_FEEDBACK_ANALYSIS
                    : motor_data_analysis_selected     ? LOCAL_DISPLAY_PAGE_MOTOR_DATA_ANALYSIS
                    : temperature_analysis_selected    ? LOCAL_DISPLAY_PAGE_TEMPERATURE_ANALYSIS
+                   : auxiliary_calibration_selected   ? LOCAL_DISPLAY_PAGE_AUXILIARY_CALIBRATION
                                                       : LOCAL_DISPLAY_PAGE_IDENTITY;
     local_display_system_information = build_system_information(now_ms);
     bool system_information_changed =
@@ -3281,6 +3290,18 @@ static void service_local_display(void) {
         ((!local_display_temperature_analysis_content_active &&
           platform_time_reached(now_ms, local_display_temperature_analysis_title_deadline_ms)) ||
          (local_display_temperature_analysis_content_active && temperature_data_changed));
+    bool auxiliary_calibration_data_changed = false;
+    if (page == LOCAL_DISPLAY_PAGE_AUXILIARY_CALIBRATION && page == local_display_page) {
+        auxiliary_calibration_data_changed = display_auxiliary_calibration_page_update(
+            &local_display_auxiliary_calibration, wheel_service.display_output.glyphs,
+            usb_remote_tuning_service.active);
+    }
+    bool auxiliary_calibration_changed =
+        page == LOCAL_DISPLAY_PAGE_AUXILIARY_CALIBRATION && page == local_display_page &&
+        ((!local_display_auxiliary_calibration_content_active &&
+          platform_time_reached(now_ms, local_display_auxiliary_calibration_title_deadline_ms)) ||
+         (local_display_auxiliary_calibration_content_active &&
+          auxiliary_calibration_data_changed));
     if (page == local_display_page &&
         (page != LOCAL_DISPLAY_PAGE_BITE_POINT ||
          wheel_bite_point_display_percent == local_display_rendered_bite_point_percent) &&
@@ -3289,7 +3310,8 @@ static void service_local_display(void) {
         (page != LOCAL_DISPLAY_PAGE_TUNING ||
          local_display_tuning_revision == local_display_rendered_tuning_revision) &&
         !system_information_changed && !force_feedback_analysis_changed &&
-        !motor_data_analysis_changed && !temperature_analysis_changed) {
+        !motor_data_analysis_changed && !temperature_analysis_changed &&
+        !auxiliary_calibration_changed) {
         return;
     }
 
@@ -3353,6 +3375,17 @@ static void service_local_display(void) {
             display_temperature_analysis_page_render(display_framebuffer,
                                                      &local_display_temperature_analysis);
             local_display_temperature_analysis_content_active = true;
+        }
+    } else if (page == LOCAL_DISPLAY_PAGE_AUXILIARY_CALIBRATION) {
+        if (page != local_display_page) {
+            display_auxiliary_calibration_page_render_title(display_framebuffer);
+            local_display_auxiliary_calibration_title_deadline_ms =
+                now_ms + LOCAL_DISPLAY_DIAGNOSTIC_TITLE_MS;
+            local_display_auxiliary_calibration_content_active = false;
+        } else {
+            display_auxiliary_calibration_page_render(display_framebuffer,
+                                                      &local_display_auxiliary_calibration);
+            local_display_auxiliary_calibration_content_active = true;
         }
     } else if (page == LOCAL_DISPLAY_PAGE_IDENTITY) {
         display_identity_page_render(display_framebuffer, board_identity.variant);

@@ -10,6 +10,7 @@ cooling_pwm_sources = files('source/cooling/pwm.c')
 cooling_tachometer_sources = files('source/cooling/tachometer.c')
 cooling_temperature_sources = files('source/cooling/temperature.c')
 display_controller_sources = files('source/display/controller.c')
+display_auxiliary_calibration_page_sources = files('source/display/auxiliary_calibration_page.c')
 display_force_feedback_analysis_page_sources = files(
   'source/display/force_feedback_analysis_page.c',
 )
@@ -250,6 +251,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'cooling-tachometer': 'source/cooling/tachometer.c',
     'cooling-temperature': 'source/cooling/temperature.c',
     'display-controller': 'source/display/controller.c',
+    'display-auxiliary-calibration-page': 'source/display/auxiliary_calibration_page.c',
     'display-force-feedback-analysis-page': 'source/display/force_feedback_analysis_page.c',
     'display-framebuffer': 'source/display/framebuffer.c',
     'display-identity-page': 'source/display/identity_page.c',
@@ -591,6 +593,16 @@ if not meson.is_cross_build()
     'base-display-controller-test',
     'tests/source/display_controller.c',
     display_controller_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  display_auxiliary_calibration_page_test = executable(
+    'base-display-auxiliary-calibration-page-test',
+    'tests/source/display_auxiliary_calibration_page.c',
+    display_auxiliary_calibration_page_sources,
+    display_text_sources,
+    display_framebuffer_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2567,6 +2579,11 @@ if not meson.is_cross_build()
     suite: ['base', 'cooling'],
   )
   test('base-display-controller', display_controller_test, suite: ['base', 'display'])
+  test(
+    'base-display-auxiliary-calibration-page',
+    display_auxiliary_calibration_page_test,
+    suite: ['base', 'display', 'analog'],
+  )
   test(
     'base-display-force-feedback-analysis-page',
     display_force_feedback_analysis_page_test,
