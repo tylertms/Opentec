@@ -38,8 +38,25 @@ enum {
     USB_INTERFACE_COUNT = 2,
 };
 
+/**
+ * @brief Reads a little-endian 16-bit setup field.
+ *
+ * Combines the low byte followed by the high byte used by USB setup packets.
+ *
+ * @param[in] data Two source bytes in low-byte-first order.
+ * @return Decoded unsigned 16-bit value.
+ */
 static uint16_t read_u16(const uint8_t *data) { return (uint16_t)data[0] | (uint16_t)data[1] << 8; }
 
+/**
+ * @brief Decodes an eight-byte USB setup packet.
+ *
+ * Expands the request type, request, value, index, and length fields into their logical form.
+ *
+ * @param[in] data Eight-byte setup packet in transfer order.
+ * @param[out] packet Decoded setup packet.
+ * @return True when both pointers are valid; otherwise false.
+ */
 bool usb_setup_packet_decode(const uint8_t data[USB_SETUP_PACKET_SIZE], UsbSetupPacket *packet) {
     if (data == 0 || packet == 0) {
         return false;
@@ -52,6 +69,16 @@ bool usb_setup_packet_decode(const uint8_t data[USB_SETUP_PACKET_SIZE], UsbSetup
     return true;
 }
 
+/**
+ * @brief Stores a classified endpoint-zero request.
+ *
+ * Retains the common setup fields and separates descriptor type, descriptor index, and recipient.
+ *
+ * @param[in] packet Decoded setup packet.
+ * @param[out] request Classified endpoint-zero request.
+ * @param[in] kind Selected request operation.
+ * @return True after storing the request.
+ */
 static bool set_request(const UsbSetupPacket *packet, UsbControlRequest *request,
                         UsbControlRequestKind kind) {
     request->kind = kind;
@@ -64,6 +91,16 @@ static bool set_request(const UsbSetupPacket *packet, UsbControlRequest *request
     return true;
 }
 
+/**
+ * @brief Classifies supported standard USB requests.
+ *
+ * Accepts the device, interface, descriptor, configuration, address, status, and endpoint-feature
+ * forms handled by the wheel base.
+ *
+ * @param[in] packet Decoded USB setup packet.
+ * @param[out] request Classified control request.
+ * @return True when the packet is a supported standard request; otherwise false.
+ */
 static bool classify_standard(const UsbSetupPacket *packet, UsbControlRequest *request) {
     uint8_t direction = packet->request_type & USB_DIRECTION_IN;
     uint8_t recipient = packet->request_type & 0x1f;
@@ -131,6 +168,15 @@ static bool classify_standard(const UsbSetupPacket *packet, UsbControlRequest *r
     return false;
 }
 
+/**
+ * @brief Classifies supported HID interface requests.
+ *
+ * Accepts input and output reports plus the HID idle-rate and protocol requests for interface zero.
+ *
+ * @param[in] packet Decoded USB setup packet.
+ * @param[out] request Classified control request.
+ * @return True when the packet is a supported HID request; otherwise false.
+ */
 static bool classify_hid(const UsbSetupPacket *packet, UsbControlRequest *request) {
     if ((packet->request_type & 0x1f) != USB_RECIPIENT_INTERFACE || packet->index != 0) {
         return false;
@@ -220,6 +266,15 @@ static bool classify_vendor(const UsbSetupPacket *packet, UsbControlRequest *req
            set_request(packet, request, USB_CONTROL_XBOX_SECURITY_DESCRIPTOR);
 }
 
+/**
+ * @brief Classifies a decoded endpoint-zero request.
+ *
+ * Routes standard, class, and vendor request types through the supported wheel-base request sets.
+ *
+ * @param[in] packet Decoded USB setup packet.
+ * @param[out] request Classified control request or the unsupported marker.
+ * @return True when the request is supported; otherwise false.
+ */
 bool usb_control_request_classify(const UsbSetupPacket *packet, UsbControlRequest *request) {
     if (packet == 0 || request == 0) {
         return false;

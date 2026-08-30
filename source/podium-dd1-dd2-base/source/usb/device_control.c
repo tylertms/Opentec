@@ -20,14 +20,37 @@ enum {
     USB_ENDPOINT_COUNT = 5,
 };
 
+/**
+ * @brief Builds a stalled endpoint-zero transfer.
+ *
+ * Selects the transfer result used for malformed or unsupported requests.
+ *
+ * @return Stalled control-transfer description.
+ */
 static UsbControlTransfer stall(void) {
     return (UsbControlTransfer){.kind = USB_CONTROL_TRANSFER_STALL};
 }
 
+/**
+ * @brief Builds an acknowledged endpoint-zero transfer.
+ *
+ * Selects an empty status-stage response for a completed host-to-device request.
+ *
+ * @return Acknowledged control-transfer description.
+ */
 static UsbControlTransfer acknowledge(void) {
     return (UsbControlTransfer){.kind = USB_CONTROL_TRANSFER_ACKNOWLEDGE};
 }
 
+/**
+ * @brief Builds a short endpoint-zero value response.
+ *
+ * Retains a one- or two-byte response value and its transfer length.
+ *
+ * @param[in] response Value returned low byte first.
+ * @param[in] length Number of response bytes.
+ * @return Value control-transfer description.
+ */
 static UsbControlTransfer value(uint16_t response, uint16_t length) {
     return (UsbControlTransfer){
         .kind = USB_CONTROL_TRANSFER_VALUE,
@@ -36,6 +59,15 @@ static UsbControlTransfer value(uint16_t response, uint16_t length) {
     };
 }
 
+/**
+ * @brief Builds an endpoint-zero descriptor response.
+ *
+ * Limits valid descriptor data to the host-requested length and stalls empty descriptor views.
+ *
+ * @param[in] descriptor Descriptor bytes and available length.
+ * @param[in] requested_length Maximum length requested by the host.
+ * @return Data transfer limited to the request, or a stalled transfer for an empty descriptor.
+ */
 static UsbControlTransfer data(UsbDescriptorView descriptor, uint16_t requested_length) {
     if (descriptor.data == 0 || descriptor.length == 0) {
         return stall();
@@ -48,6 +80,16 @@ static UsbControlTransfer data(UsbDescriptorView descriptor, uint16_t requested_
     };
 }
 
+/**
+ * @brief Initializes endpoint-zero device state.
+ *
+ * Clears the address, configuration, interface, HID, feature, and pending-change state while
+ * retaining the supplied device capability flags.
+ *
+ * @param[out] device Endpoint-zero state to initialize.
+ * @param[in] self_powered True when the active configuration is self-powered.
+ * @param[in] remote_wakeup_forced True when status must always advertise remote wakeup.
+ */
 void usb_device_control_init(UsbDeviceControl *device, bool self_powered,
                              bool remote_wakeup_forced) {
     *device = (UsbDeviceControl){
@@ -56,6 +98,13 @@ void usb_device_control_init(UsbDeviceControl *device, bool self_powered,
     };
 }
 
+/**
+ * @brief Cancels a deferred endpoint-zero state change.
+ *
+ * Clears the pending address operation and its retained value when a new setup transaction starts.
+ *
+ * @param[in,out] device Current endpoint-zero state.
+ */
 void usb_device_control_cancel(UsbDeviceControl *device) {
     device->pending_change = USB_DEVICE_PENDING_NONE;
     device->pending_value = 0;
@@ -107,6 +156,15 @@ static UsbControlTransfer get_descriptor(const UsbControlRequest *request,
     }
 }
 
+/**
+ * @brief Builds a HID report control transfer.
+ *
+ * Retains the requested report type, report identifier, direction, and maximum transfer length.
+ *
+ * @param[in] request Classified HID report request.
+ * @param[in] input True for a device-to-host report; false for a host-to-device report.
+ * @return HID report control-transfer description.
+ */
 static UsbControlTransfer hid_report(const UsbControlRequest *request, bool input) {
     return (UsbControlTransfer){
         .kind = input ? USB_CONTROL_TRANSFER_REPORT_IN : USB_CONTROL_TRANSFER_REPORT_OUT,
@@ -238,6 +296,14 @@ void usb_device_control_complete(UsbDeviceControl *device) {
     device->pending_value = 0;
 }
 
+/**
+ * @brief Reports whether the USB device has an active configuration.
+ *
+ * Treats every nonzero configuration value as configured, matching endpoint request gating.
+ *
+ * @param[in] device Current endpoint-zero state.
+ * @return True when the configuration value is nonzero; otherwise false.
+ */
 bool usb_device_control_configured(const UsbDeviceControl *device) {
     return device->configuration != 0;
 }
