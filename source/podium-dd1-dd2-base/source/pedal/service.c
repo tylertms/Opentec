@@ -36,11 +36,6 @@ enum {
     PEDAL_PROTOCOL_PRESERVE_VALUE = 0x66,
 };
 
-static const uint8_t pedal_v4_status_request[] = {
-    0x12, 0x0a, 0x02, 0x08, 0x02, 0x18, 0x01, 0x20, 0x08, 0xaa, 0x01,
-    0x07, 0xba, 0x01, 0x04, 0x52, 0x02, 0x72, 0x00, 0xd7, 0xfb,
-};
-
 static const uint8_t pedal_protocol_disabled_response[] = {
     0x0c, 0x0a, 0x02, 0x08, 0x02, 0x18, 0x08, 0xb2, 0x01, 0x03, 0xa2, 0x0b, 0x00, 0x38, 0x78,
 };
@@ -921,8 +916,8 @@ static void send_v4_request(PedalService *service, uint32_t now_ms) {
     }
     if (service->v4_phase == PEDAL_V4_PHASE_STATUS) {
         if (platform_time_reached(now_ms, service->next_status_ms) &&
-            transfer_session_send(&service->v4, pedal_v4_status_request,
-                                  (uint8_t)sizeof(pedal_v4_status_request), 0)) {
+            transfer_session_send(&service->v4, pedal_v4_status_request(),
+                                  PEDAL_V4_STATUS_REQUEST_SIZE, 0)) {
             service->v4_request_active = true;
             service->next_status_ms = now_ms + PEDAL_V4_STATUS_INTERVAL_MS;
         }

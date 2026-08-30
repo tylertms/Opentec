@@ -4,6 +4,15 @@
 
 #include "pedal/v4_status.h"
 
+static void test_provides_status_request(void) {
+    static const uint8_t expected[PEDAL_V4_STATUS_REQUEST_SIZE] = {
+        0x12, 0x0a, 0x02, 0x08, 0x02, 0x18, 0x01, 0x20, 0x08, 0xaa, 0x01,
+        0x07, 0xba, 0x01, 0x04, 0x52, 0x02, 0x72, 0x00, 0xd7, 0xfb,
+    };
+
+    assert(memcmp(pedal_v4_status_request(), expected, sizeof(expected)) == 0);
+}
+
 static void parse_payload(const uint8_t *payload, uint16_t payload_length,
                           uint16_t axes[PEDAL_V4_STATUS_AXIS_COUNT]) {
     uint8_t response[80] = {0};
@@ -80,6 +89,7 @@ static void test_returns_partial_records_after_malformed_data(void) {
 }
 
 int main(void) {
+    test_provides_status_request();
     test_decodes_axis_records();
     test_skips_unknown_fields();
     test_ignores_unknown_selectors();

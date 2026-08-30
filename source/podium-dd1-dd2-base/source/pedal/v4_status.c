@@ -16,6 +16,20 @@ typedef struct {
     uint16_t offset;
 } ParsedVarint;
 
+static const uint8_t status_request[PEDAL_V4_STATUS_REQUEST_SIZE] = {
+    0x12, 0x0a, 0x02, 0x08, 0x02, 0x18, 0x01, 0x20, 0x08, 0xaa, 0x01,
+    0x07, 0xba, 0x01, 0x04, 0x52, 0x02, 0x72, 0x00, 0xd7, 0xfb,
+};
+
+/**
+ * @brief Provides the V4 pedal status query.
+ *
+ * Returns the fixed group-zero payload used to request the current three-axis pedal state.
+ *
+ * @return Immutable 21-byte status request.
+ */
+const uint8_t *pedal_v4_status_request(void) { return status_request; }
+
 /**
  * @brief Decodes one bounded unsigned variable-length integer.
  *
