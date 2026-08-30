@@ -176,6 +176,9 @@ typedef union {
 static BoardIdentity board_identity;
 static MotorProbe motor_probe;
 static MotorStartupCentering motor_startup_centering;
+static bool motor_startup_direct_force;
+static bool motor_startup_wheel_discovery_started;
+static uint32_t motor_startup_direct_force_deadline_ms;
 static CommandTransport command_transport;
 static MotorCommandMailboxExchange motor_command_mailbox;
 static MotorCommandChannel motor_command_channel;
@@ -425,6 +428,7 @@ enum {
     FORCE_FEEDBACK_DD1_AUTOMATIC_STRENGTH_PERCENT = 35,
     FORCE_FEEDBACK_DD2_AUTOMATIC_STRENGTH_PERCENT = 30,
     FORCE_FEEDBACK_RAMP_INTERVAL_MS = 50,
+    MOTOR_STARTUP_WHEEL_DISCOVERY_TIMEOUT_MS = 500,
     MOTOR_LINK_MALFORMED_FRAME_LIMIT = 100,
     WHEEL_STARTUP_VERSION_COMMAND = 0x0a,
     WHEEL_STARTUP_TEXT_METADATA = 0x10,
@@ -801,21 +805,18 @@ static bool capture_current_wheel_center(void) {
 /**
  * @brief Builds the motor controller's force-feedback status byte.
  *
- * Selects direct force during startup centering and Xbox operation, or remote motor-side effect
- * processing in other modes. Enables force during startup centering or when motor safety, USB
- * connection, operator confirmation, and the power-button torque gate permit runtime output. The
- * remaining flags mirror the torque override, host output gates, USB suspension, and acknowledged
- * full-torque state.
+ * Selects direct force during motor and wheel startup and Xbox operation, or remote motor-side
+ * effect processing in other modes. Enables force during startup centering or when motor safety,
+ * USB connection, operator confirmation, and the power-button torque gate permit runtime output.
+ * The remaining flags mirror the torque override, host output gates, USB suspension, and
+ * acknowledged full-torque state.
  *
  * @return Current force-feedback status bits for the next motor-link packet.
  */
 static uint8_t motor_force_feedback_status(void) {
-    bool startup_direct_force =
-        motor_startup_centering.phase >= MOTOR_STARTUP_CENTERING_PREPARING &&
-        motor_startup_centering.phase <= MOTOR_STARTUP_CENTERING_ACTIVE;
     bool xbox_direct_force = usb_device_operating_mode() == USB_OPERATING_MODE_XBOX_GIP;
     uint8_t status =
-        startup_direct_force || xbox_direct_force ? 0 : MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS;
+        motor_startup_direct_force || xbox_direct_force ? 0 : MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS;
     bool startup_force_enabled = motor_startup_centering_active(&motor_startup_centering);
     bool runtime_force_enabled = motor_tuning_ready &&
                                  !motor_status_service_output_inhibited(&motor_status_service) &&
@@ -827,7 +828,7 @@ static uint8_t motor_force_feedback_status(void) {
     if (system_torque_transition.applied_disabled) {
         status |= MOTOR_OUTPUT_STATUS_OVERRIDE_ACTIVE;
     }
-    if (!startup_direct_force && !xbox_direct_force &&
+    if (!motor_startup_direct_force && !xbox_direct_force &&
         !force_feedback_state.primary_output_disabled &&
         !wheel_service_force_output_ready(&wheel_service)) {
         status |= MOTOR_OUTPUT_STATUS_TRANSITION_ACTIVE;
@@ -998,6 +999,8 @@ static void initialize_motor(void) {
         .calibration_active = 0,
     };
     motor_tuning_ready = false;
+    motor_startup_direct_force = true;
+    motor_startup_wheel_discovery_started = false;
     motor_calibration_service_init(&motor_calibration_service);
     motor_rotation_guard_init(&motor_rotation_guard);
     apply_active_tuning_profile();
@@ -1797,6 +1800,9 @@ static void initialize_startup_usb(void) {
     if (motor_probe_identity(&motor_probe) != NULL) {
         run_motor_startup_centering();
         usb_device_init(board_identity.variant);
+        motor_startup_direct_force_deadline_ms =
+            platform_time_ms() + MOTOR_STARTUP_WHEEL_DISCOVERY_TIMEOUT_MS;
+        motor_startup_wheel_discovery_started = true;
         return;
     }
 
@@ -3534,6 +3540,25 @@ static void service_force_output_enable(void) {
 }
 
 /**
+ * @brief Finishes direct-force interpretation after attached-wheel startup.
+ *
+ * Keeps the motor in direct-force mode through wheel discovery. Normal motor-side effect handling
+ * resumes when wheel protocol selection completes or the 500-millisecond discovery window expires.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_motor_startup_force_mode(uint32_t now_ms) {
+    if (!motor_startup_direct_force || !motor_startup_wheel_discovery_started) {
+        return;
+    }
+    if (wheel_service_force_output_ready(&wheel_service) ||
+        platform_time_reached(now_ms, motor_startup_direct_force_deadline_ms)) {
+        motor_startup_direct_force = false;
+        motor_startup_wheel_discovery_started = false;
+    }
+}
+
+/**
  * @brief Services the unsupported-wheel compatibility alert.
  *
  * Suppresses force output while the attached wheel remains in the unsupported protocol phase,
@@ -3772,6 +3797,7 @@ int main(void) {
         }
         wheel_service_run(&wheel_service, now_ms, !serial_command_waiting());
         wheel_service_update_interface_mode_gate(&wheel_service, now_ms);
+        service_motor_startup_force_mode(now_ms);
         service_tuning_interaction(now_ms);
         if (wheel_service_take_bite_point(&wheel_service, &wheel_adjusted_bite_point_percent)) {
             wheel_steering_limit_command = (WheelSteeringLimitCommand){
