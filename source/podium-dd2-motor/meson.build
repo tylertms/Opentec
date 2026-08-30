@@ -1,26 +1,9 @@
-firmware_include = include_directories('source')
-motor_center_sources = files('source/motor/center.c')
-motor_control_state_sources = files('source/motor/control.c')
-motor_current_offset_calibration_sources = files('source/motor/calibration.c')
-motor_drive_sources = files('source/motor/drive.c')
-motor_encoder_sources = files('source/motor/encoder.c')
-motor_encoder_calibration_sources = files('source/motor/encoder_calibration.c')
-motor_calibration_storage_sources = files('source/platform/mkv10z/storage.c')
-motor_force_feedback_sources = files(
-  'source/force_feedback/effect.c',
-  'source/force_feedback/command.c',
-  'source/force_feedback/engine.c',
-  'source/force_feedback/soft_stop.c',
-)
-motor_hardware_profile_sources = files('source/profile/hardware.c')
-motor_link_frame_sources = files('source/link/frame.c')
-motor_motion_sources = files('source/motor/motion.c')
-motor_parameter_sources = files('source/tuning/parameter.c')
-motor_protocol_sources = files('source/link/protocol.c')
-motor_service_sources = files('source/system/timing.c')
-motor_auxiliary_telemetry_sources = files('source/telemetry/auxiliary.c')
-motor_velocity_control_sources = files('source/motor/velocity_control.c')
-motor_control_sources = files(
+motor_name = 'podium-dd2-motor'
+motor_product = 'dd2'
+motor_include = include_directories('source')
+motor_sources = files(
+  'source/firmware.c',
+  'source/product.c',
   'source/platform/mkv10z/board.c',
   'source/platform/mkv10z/tuning_bus.c',
   'source/motor/foc.c',
@@ -29,17 +12,35 @@ motor_control_sources = files(
   'source/platform/mkv10z/peripherals.c',
   'source/system/runtime.c',
   'source/platform/mkv10z/spi.c',
-) + motor_center_sources + motor_control_state_sources + motor_current_offset_calibration_sources + motor_drive_sources + motor_encoder_sources + motor_encoder_calibration_sources + motor_calibration_storage_sources + motor_force_feedback_sources + motor_hardware_profile_sources + motor_link_frame_sources + motor_motion_sources + motor_parameter_sources + motor_protocol_sources + motor_service_sources + motor_auxiliary_telemetry_sources + motor_velocity_control_sources
+  'source/motor/center.c',
+  'source/motor/control.c',
+  'source/motor/calibration.c',
+  'source/motor/drive.c',
+  'source/motor/encoder.c',
+  'source/motor/encoder_calibration.c',
+  'source/platform/mkv10z/storage.c',
+  'source/force_feedback/effect.c',
+  'source/force_feedback/command.c',
+  'source/force_feedback/engine.c',
+  'source/force_feedback/soft_stop.c',
+  'source/profile/hardware.c',
+  'source/link/frame.c',
+  'source/motor/motion.c',
+  'source/tuning/parameter.c',
+  'source/link/protocol.c',
+  'source/system/timing.c',
+  'source/telemetry/auxiliary.c',
+  'source/motor/velocity_control.c',
+)
 
-
-motor_target = (
+motor_is_target = (
   meson.is_cross_build()
   and host_machine.cpu_family() == 'arm'
   and host_machine.cpu() == 'cortex-m0plus'
-  and meson.get_external_property('motor_product', '') == 'dd2'
+  and meson.get_external_property('motor_product', '') == motor_product
 )
 
-if motor_target
+if motor_is_target
   mcux_sdk = subproject('mcux-sdk')
   cmsis = subproject('cmsis')
   freemaster = subproject('freemaster')
@@ -74,8 +75,7 @@ if motor_target
     sdk_sources += sdk_drivers[driver]
   endforeach
 
-  freestanding_c_args = [
-    '-O2',
+  motor_c_args = [
     '-ffreestanding',
     '-ffunction-sections',
     '-fdata-sections',
@@ -86,53 +86,45 @@ if motor_target
     '-DNDEBUG',
     '-DRTCESL_MMDVSQ_ON',
   ]
+  motor_includes = [
+    motor_include,
+    freemaster_includes,
+    sdk_driver_include,
+    sdk_device['includes'],
+  ]
 
   sdk_library = static_library(
-    'podium-dd2-motor-sdk',
+    motor_name + '-sdk',
     sdk_sources,
     build_by_default: false,
-    c_args: freestanding_c_args,
+    c_args: motor_c_args,
     dependencies: cmsis_dependency,
     include_directories: [sdk_driver_include, sdk_device['includes']],
     override_options: ['warning_level=0'],
     pic: false,
   )
-
   freemaster_library = static_library(
-    'podium-dd2-motor-freemaster',
+    motor_name + '-freemaster',
     freemaster_sources,
     build_by_default: false,
-    c_args: freestanding_c_args,
+    c_args: motor_c_args,
     dependencies: cmsis_dependency,
-    include_directories: [
-      firmware_include,
-      freemaster_includes,
-      sdk_driver_include,
-      sdk_device['includes'],
-    ],
+    include_directories: motor_includes,
     override_options: ['warning_level=0'],
     pic: false,
   )
-
   firmware = executable(
-    'podium-dd2-motor',
-    'source/firmware.c',
-    'source/product.c',
-    motor_control_sources,
+    motor_name,
+    motor_sources,
     sdk_device['sources'],
     build_by_default: false,
-    c_args: freestanding_c_args + [
+    c_args: motor_c_args + [
       '-fno-common',
       '-D__START=firmware_main',
       '-D__STARTUP_CLEAR_BSS',
     ],
     dependencies: [cmsis_dependency, rtcesl_dependency],
-    include_directories: [
-      firmware_include,
-      freemaster_includes,
-      sdk_driver_include,
-      sdk_device['includes'],
-    ],
+    include_directories: motor_includes,
     link_args: [
       '-nostartfiles',
       '-no-pie',
@@ -144,19 +136,19 @@ if motor_target
     name_suffix: 'elf',
   )
 
-  motor_simulator = subproject('kinetis-sim', native: true)
-  motor_runner = motor_simulator.get_variable('kinetis_firmware_runner')
-  motor_firmware_image = motor_simulator.get_variable('kinetis_firmware_image_dependency')
-  motor_scenario = executable(
-    'dd2-motor-firmware-scenario',
+  simulator = subproject('kinetis-sim', native: true)
+  simulator_runner = simulator.get_variable('kinetis_firmware_runner')
+  simulator_image = simulator.get_variable('kinetis_firmware_image_dependency')
+  scenario = executable(
+    motor_name + '-firmware-scenario',
     'tests/source/firmware_simulation.c',
     native: true,
     build_by_default: false,
-    dependencies: motor_firmware_image,
+    dependencies: simulator_image,
   )
   test(
-    'dd2-motor-firmware',
-    motor_runner,
+    motor_name + '-firmware',
+    simulator_runner,
     args: [
       firmware.full_path(),
       '--profile',
@@ -179,40 +171,38 @@ if motor_target
     timeout: 120,
   )
   test(
-    'dd2-motor-firmware-scenario',
-    motor_scenario,
+    motor_name + '-firmware-scenario',
+    scenario,
     args: firmware.full_path(),
     suite: ['motor', 'simulator'],
     depends: firmware,
     timeout: 300,
   )
 
-  firmware_binary = custom_target(
-    'motor-binary',
+  binary = custom_target(
+    motor_name + '-binary',
     input: firmware,
     output: 'firmware.bin',
     command: [objcopy, '-O', 'binary', '@INPUT@', '@OUTPUT@'],
-    build_subdir: 'motor-package.p',
+    build_subdir: 'package.p',
   )
-
   checksummed_binary = custom_target(
-    'dd2-motor-checksum',
-    input: firmware_binary,
-    output: 'dd2-firmware.checksummed.bin',
+    motor_name + '-checksum',
+    input: binary,
+    output: motor_product + '-firmware.checksummed.bin',
     command: [
       python,
       meson.current_source_dir() / 'tools/checksum.py',
-      'dd2',
+      motor_product,
       '@INPUT@',
       '@OUTPUT@',
     ],
-    build_subdir: 'motor-package.p',
+    build_subdir: 'package.p',
   )
-
-  firmware_hex = custom_target(
-    'dd2-motor-intel-hex',
+  hex = custom_target(
+    motor_name + '-intel-hex',
     input: checksummed_binary,
-    output: 'dd2-firmware.hex',
+    output: motor_product + '-firmware.hex',
     command: [
       objcopy,
       '-I',
@@ -224,13 +214,12 @@ if motor_target
       '@INPUT@',
       '@OUTPUT@',
     ],
-    build_subdir: 'motor-package.p',
+    build_subdir: 'package.p',
   )
-
   custom_target(
-    'podium-dd2-motor',
-    input: firmware_hex,
-    output: 'podium-dd2-motor.hex',
+    motor_name,
+    input: hex,
+    output: motor_name + '.hex',
     command: [
       python,
       meson.project_source_root() / 'tools/crypto.py',
@@ -245,6 +234,6 @@ if motor_target
 endif
 
 if not meson.is_cross_build()
-  motor_test_prefix = 'dd2-motor'
+  motor_test_prefix = motor_name
   subdir('tests')
 endif

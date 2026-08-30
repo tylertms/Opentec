@@ -33,6 +33,7 @@ enum {
     INPUT_FLAGS = 5,
     APPLICATION_BASE = 0xa000,
     SRAM_SIZE = 0x4000,
+    ADC0_R0_ADDRESS = 0x4003b010,
     SMC_PMSTAT_ADDRESS = 0x4007e003,
     PMC_REGSC_ADDRESS = 0x4007d002,
     RCM_SRS0_ADDRESS = 0x4007f000,
@@ -416,8 +417,13 @@ static bool exchange_status(Kinetis *device, uint8_t request_sequence, uint8_t c
 static bool exchange_measured_status(Kinetis *device, uint8_t request_sequence) {
     uint8_t response[TRANSMIT_WINDOW_SIZE];
     const uint8_t *frame = response + RECEIVE_PREFIX_SIZE;
-    uint16_t sensor_value = (uint16_t)wqr_sensor_value(SENSOR_SAMPLE);
+    uint16_t sample;
+    uint16_t sensor_value;
 
+    if (!kinetis_read(device, ADC0_R0_ADDRESS, &sample, sizeof(sample))) {
+        return false;
+    }
+    sensor_value = (uint16_t)wqr_sensor_value(sample);
     return exchange_frame(device, WQR_PAYLOAD_STATUS, request_sequence, NULL, 0, response) &&
            status_response_valid(response, (uint8_t)(request_sequence + 1), 0) &&
            frame[5] == INPUT_FLAGS && frame[6] == (uint8_t)sensor_value &&

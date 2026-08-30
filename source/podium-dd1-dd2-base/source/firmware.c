@@ -955,6 +955,7 @@ static void apply_active_tuning_profile(void) {
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 static void service_alternate_brake_force(uint32_t now_ms) {
+    (void)now_ms;
     uint8_t brake_force = pedal_service_take_alternate_brake_force(&pedal_service);
     if (brake_force == PEDAL_ALTERNATE_BRAKE_FORCE_NO_UPDATE ||
         brake_force == tuning_profile->alternate_brake_force) {

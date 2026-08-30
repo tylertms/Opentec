@@ -1,9 +1,14 @@
-protocol_sources = files('source/protocol.c', 'source/wqr_frame.c')
-protocol_include = include_directories('source')
+wqr_name = 'podium-dd1-dd2-wqr'
+wqr_include = include_directories('source')
+wqr_protocol_sources = files('source/protocol.c', 'source/wqr_frame.c')
+wqr_sources = wqr_protocol_sources + files('source/firmware.c')
+wqr_is_target = (
+  meson.is_cross_build()
+  and host_machine.cpu_family() == 'arm'
+  and host_machine.cpu() == 'cortex-m4'
+)
 
-wqr_target = meson.is_cross_build() and host_machine.cpu_family() == 'arm' and host_machine.cpu() == 'cortex-m4'
-
-if wqr_target
+if wqr_is_target
   mcux_sdk = subproject('mcux-sdk')
   cmsis = subproject('cmsis')
   sdk_drivers = mcux_sdk.get_variable('mcux_sdk_driver_sources')
@@ -33,7 +38,7 @@ if wqr_target
     sdk_sources += sdk_drivers[driver]
   endforeach
 
-  freestanding_c_args = [
+  wqr_c_args = [
     '-ffreestanding',
     '-ffunction-sections',
     '-fdata-sections',
@@ -43,31 +48,30 @@ if wqr_target
     '-DDISABLE_WDOG=0',
     '-DNDEBUG',
   ]
+  wqr_includes = [wqr_include, sdk_driver_include, sdk_device['includes']]
 
   sdk_library = static_library(
-    'podium-dd1-dd2-wqr-sdk',
+    wqr_name + '-sdk',
     sdk_sources,
     build_by_default: false,
-    c_args: freestanding_c_args,
+    c_args: wqr_c_args,
     dependencies: cmsis_dependency,
     include_directories: [sdk_driver_include, sdk_device['includes']],
     override_options: ['warning_level=0'],
     pic: false,
   )
-
   firmware = executable(
-    'podium-dd1-dd2-wqr',
-    protocol_sources,
-    'source/firmware.c',
+    wqr_name,
+    wqr_sources,
     sdk_device['sources'],
     build_by_default: false,
-    c_args: freestanding_c_args + [
+    c_args: wqr_c_args + [
       '-fno-common',
       '-D__START=firmware_main',
       '-D__STARTUP_CLEAR_BSS',
     ],
     dependencies: cmsis_dependency,
-    include_directories: [protocol_include, sdk_driver_include, sdk_device['includes']],
+    include_directories: wqr_includes,
     link_args: [
       '-nostartfiles',
       '-no-pie',
@@ -79,17 +83,16 @@ if wqr_target
     name_suffix: 'elf',
   )
 
-  firmware_binary = custom_target(
-    'wqr-binary',
+  binary = custom_target(
+    wqr_name + '-binary',
     input: firmware,
     output: 'firmware.bin',
     command: [objcopy, '-O', 'binary', '@INPUT@', '@OUTPUT@'],
-    build_subdir: 'wqr-package.p',
+    build_subdir: 'package.p',
   )
-
   checksummed_binary = custom_target(
-    'wqr-checksum',
-    input: firmware_binary,
+    wqr_name + '-checksum',
+    input: binary,
     output: 'firmware.checksummed.bin',
     command: [
       python,
@@ -97,11 +100,10 @@ if wqr_target
       '@INPUT@',
       '@OUTPUT@',
     ],
-    build_subdir: 'wqr-package.p',
+    build_subdir: 'package.p',
   )
-
-  firmware_hex = custom_target(
-    'wqr-intel-hex',
+  hex = custom_target(
+    wqr_name + '-intel-hex',
     input: checksummed_binary,
     output: 'firmware.hex',
     command: [
@@ -115,13 +117,12 @@ if wqr_target
       '@INPUT@',
       '@OUTPUT@',
     ],
-    build_subdir: 'wqr-package.p',
+    build_subdir: 'package.p',
   )
-
-  firmware_package = custom_target(
-    'podium-dd1-dd2-wqr',
-    input: firmware_hex,
-    output: 'podium-dd1-dd2-wqr.hex',
+  package = custom_target(
+    wqr_name,
+    input: hex,
+    output: wqr_name + '.hex',
     command: [
       python,
       meson.project_source_root() / 'tools/crypto.py',
@@ -133,9 +134,8 @@ if wqr_target
     ],
     build_by_default: true,
   )
-
 endif
 
-if not meson.is_cross_build() or wqr_target
+if not meson.is_cross_build() or wqr_is_target
   subdir('tests')
 endif

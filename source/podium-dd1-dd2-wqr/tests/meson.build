@@ -1,9 +1,9 @@
 protocol_test = executable(
   'wqr-protocol-test',
   'source/protocol.c',
-  protocol_sources,
+  wqr_protocol_sources,
   build_by_default: false,
-  include_directories: protocol_include,
+  include_directories: wqr_include,
   native: meson.is_cross_build(),
   override_options: ['b_ndebug=false'],
 )
@@ -16,10 +16,10 @@ if meson.is_cross_build()
   firmware_test = executable(
     'wqr-firmware-test',
     'source/firmware.c',
-    protocol_sources,
+    wqr_protocol_sources,
     build_by_default: false,
     dependencies: simulator_dependency,
-    include_directories: protocol_include,
+    include_directories: wqr_include,
     native: true,
   )
 
@@ -59,11 +59,11 @@ if meson.is_cross_build()
     args: [
       meson.project_source_root() / 'tools/crypto.py',
       'verify',
-      firmware_hex.full_path(),
-      firmware_package.full_path(),
+      hex.full_path(),
+      package.full_path(),
       '--legacy-wide-secret',
     ],
-    depends: firmware_package,
+    depends: package,
     suite: ['wqr', 'package'],
   )
 endif
