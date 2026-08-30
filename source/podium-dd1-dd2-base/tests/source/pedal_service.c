@@ -722,6 +722,22 @@ static void test_selects_analog_input_after_discovery_timeout(void) {
     assert(discovery_count == 1);
 }
 
+static void test_does_not_select_analog_fallback_from_primary_channel(void) {
+    PedalService service;
+    const uint16_t samples[PEDAL_INPUT_AXIS_COUNT] = {0x0800, 0, 0};
+    reset_link();
+    pedal_service_init(&service);
+    pedal_service_set_analog_samples(&service, samples);
+
+    pedal_service_run(&service, 0);
+    pedal_service_run(&service, 100);
+
+    assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
+    assert(!service.connected);
+    assert(analog_count == 0);
+    assert(discovery_count == 1);
+}
+
 static void test_local_auxiliary_override_restores_the_remote_value(void) {
     PedalService service;
     reset_link();
@@ -873,6 +889,7 @@ int main(void) {
     test_polls_legacy_pedal_channels();
     test_retries_after_discovery_timeout();
     test_selects_analog_input_after_discovery_timeout();
+    test_does_not_select_analog_fallback_from_primary_channel();
     test_local_auxiliary_override_restores_the_remote_value();
     test_selects_auxiliary_automatic_calibration_from_pedal_state();
     test_applies_pedal_protocol_commands();

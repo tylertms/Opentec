@@ -13,6 +13,7 @@ typedef struct {
 } PedalAnalog;
 
 void pedal_analog_init(PedalAnalog *analog);
+bool pedal_analog_detect(const uint16_t samples[PEDAL_INPUT_AXIS_COUNT]);
 bool pedal_analog_update(PedalAnalog *analog, const uint16_t samples[PEDAL_INPUT_AXIS_COUNT],
                          PedalInput *input);
 

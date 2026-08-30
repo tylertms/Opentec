@@ -8,6 +8,7 @@
 
 enum {
     PEDAL_ANALOG_SAMPLE_MASK = 0x0ffe,
+    PEDAL_ANALOG_DISCOVERY_LIMIT = 0x05d0,
     PEDAL_ANALOG_PRIMARY_RELEASE_LIMIT = 0x0fbf,
     PEDAL_ANALOG_TERTIARY_RELEASE_LIMIT = 0x09d7,
     PEDAL_ANALOG_LOWER_DEADZONE = 45,
@@ -38,6 +39,18 @@ static bool pedal_analog_present(const uint16_t samples[PEDAL_INPUT_AXIS_COUNT])
     return samples[0] <= PEDAL_ANALOG_PRIMARY_RELEASE_LIMIT ||
            samples[1] <= PEDAL_ANALOG_PRIMARY_RELEASE_LIMIT ||
            samples[2] <= PEDAL_ANALOG_TERTIARY_RELEASE_LIMIT;
+}
+
+/**
+ * @brief Detects whether serial discovery should fall back to local analog pedals.
+ *
+ * Selects analog fallback only when the oriented third pedal channel is strictly below 0x05D0.
+ *
+ * @param[in] samples Three raw ADC samples in primary, secondary, and tertiary order.
+ * @return True when the local analog pedal path should be selected.
+ */
+bool pedal_analog_detect(const uint16_t samples[PEDAL_INPUT_AXIS_COUNT]) {
+    return pedal_analog_sample(samples[2]) < PEDAL_ANALOG_DISCOVERY_LIMIT;
 }
 
 /**

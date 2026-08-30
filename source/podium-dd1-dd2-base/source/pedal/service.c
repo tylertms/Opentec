@@ -81,7 +81,7 @@ static void reconnect(PedalService *service, uint32_t now_ms) {
     for (uint8_t channel = 0; channel < PEDAL_LEGACY_CHANNEL_COUNT; channel++) {
         service->legacy_retries[channel] = 0;
     }
-    if (service->analog_samples_ready &&
+    if (service->analog_samples_ready && pedal_analog_detect(service->analog_samples) &&
         pedal_analog_update(&service->analog, service->analog_samples, &service->input)) {
         service->remote_auxiliary = service->input.auxiliary;
         publish_auxiliary(service);

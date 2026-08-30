@@ -50,8 +50,17 @@ static void test_captures_and_scales_analog_samples(void) {
     assert(input.axes[2] == 0);
 }
 
+static void test_detects_analog_fallback_from_third_channel(void) {
+    const uint16_t equal_limit[PEDAL_INPUT_AXIS_COUNT] = {0x0800, 0, 0x0a2f};
+    const uint16_t below_limit[PEDAL_INPUT_AXIS_COUNT] = {0, 0, 0x0a31};
+
+    assert(!pedal_analog_detect(equal_limit));
+    assert(pedal_analog_detect(below_limit));
+}
+
 int main(void) {
     test_initializes_calibration_defaults();
     test_captures_and_scales_analog_samples();
+    test_detects_analog_fallback_from_third_channel();
     return 0;
 }
