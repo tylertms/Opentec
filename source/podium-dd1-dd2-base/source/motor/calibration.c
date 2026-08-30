@@ -17,6 +17,7 @@ enum {
     MOTOR_CALIBRATION_CALIBRATE_VALUE = 0xaa,
     MOTOR_CALIBRATION_ERASE_VALUE = 0xbb,
     MOTOR_CALIBRATION_REQUIRED_WHEEL_MODE = 0,
+    MOTOR_CALIBRATION_RESULT_HOLD_MS = 4000,
 };
 
 /**
@@ -139,13 +140,15 @@ static bool begin_request(MotorCalibrationService *service, uint8_t wheel_mode,
  * @brief Applies one completed motor-calibration bus transfer.
  *
  * Advances a successful command write to response polling and completes the selected request with
- * its result event when a successful response read is nonzero. Failed transfers retain their
- * current phase for retry.
+ * its result event when a successful response read is nonzero. A completed calibration holds its
+ * result state for four seconds, while a completed erase returns directly to idle. Failed
+ * transfers retain their current phase for retry.
  *
  * @param[in,out] service Motor-calibration phase, data, and transfer state.
  * @param[in] succeeded True when the auxiliary-bus transfer completed successfully.
+ * @param[in] now_ms Current monotonic time in milliseconds.
  */
-static void finish_transfer(MotorCalibrationService *service, bool succeeded) {
+static void finish_transfer(MotorCalibrationService *service, bool succeeded, uint32_t now_ms) {
     platform_aux_bus_clear();
     service->transfer_active = false;
     if (!succeeded) {
@@ -157,10 +160,14 @@ static void finish_transfer(MotorCalibrationService *service, bool succeeded) {
         service->phase = MOTOR_CALIBRATION_READ_RESPONSE;
     } else if (service->data[0] != 0 || service->data[1] != 0) {
         service->requests &= (uint8_t)~request_bit(service->operation);
-        service->phase = MOTOR_CALIBRATION_IDLE;
-        service->event = service->operation == MOTOR_CALIBRATION_OPERATION_CALIBRATE
-                             ? MOTOR_CALIBRATION_EVENT_COMPLETED
-                             : MOTOR_CALIBRATION_EVENT_ERASED;
+        if (service->operation == MOTOR_CALIBRATION_OPERATION_CALIBRATE) {
+            service->phase = MOTOR_CALIBRATION_HOLD_RESULT;
+            service->result_deadline_ms = now_ms + MOTOR_CALIBRATION_RESULT_HOLD_MS;
+            service->event = MOTOR_CALIBRATION_EVENT_COMPLETED;
+        } else {
+            service->phase = MOTOR_CALIBRATION_IDLE;
+            service->event = MOTOR_CALIBRATION_EVENT_ERASED;
+        }
     }
 }
 
@@ -189,21 +196,30 @@ static void start_transfer(MotorCalibrationService *service) {
  *
  * Validates the selected operation against wheel mode and accessory availability, writes AA AA or
  * BB BB to motor register 6, and polls the same two-byte register until the controller returns a
- * nonzero response. Calibration has priority when both operations are queued.
+ * nonzero response. Calibration has priority when both operations are queued, and a successful
+ * calibration holds later requests for four seconds.
  *
  * @param[in,out] service Motor-calibration requests, phase, and transfer state.
  * @param[in] wheel_mode Current attached-wheel mode.
  * @param[in] telemetry Current motor-controller telemetry and accessory availability.
+ * @param[in] now_ms Current monotonic time in milliseconds.
  */
 void motor_calibration_service_run(MotorCalibrationService *service, uint8_t wheel_mode,
-                                   const MotorTelemetry *telemetry) {
+                                   const MotorTelemetry *telemetry, uint32_t now_ms) {
     PlatformAuxBusStatus bus_status = platform_aux_bus_status();
     if (service->transfer_active) {
         if (bus_status == PLATFORM_AUX_BUS_BUSY) {
             return;
         }
-        finish_transfer(service, bus_status == PLATFORM_AUX_BUS_SUCCEEDED);
+        finish_transfer(service, bus_status == PLATFORM_AUX_BUS_SUCCEEDED, now_ms);
         bus_status = PLATFORM_AUX_BUS_IDLE;
+    }
+
+    if (service->phase == MOTOR_CALIBRATION_HOLD_RESULT) {
+        if ((int32_t)(now_ms - service->result_deadline_ms) > 0) {
+            service->phase = MOTOR_CALIBRATION_IDLE;
+        }
+        return;
     }
 
     while (service->phase == MOTOR_CALIBRATION_IDLE && service->requests != 0) {

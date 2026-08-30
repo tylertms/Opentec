@@ -16,6 +16,7 @@ typedef enum {
     MOTOR_CALIBRATION_IDLE,
     MOTOR_CALIBRATION_WRITE_COMMAND,
     MOTOR_CALIBRATION_READ_RESPONSE,
+    MOTOR_CALIBRATION_HOLD_RESULT,
 } MotorCalibrationPhase;
 
 typedef enum {
@@ -31,6 +32,7 @@ typedef struct {
     MotorCalibrationPhase phase;
     MotorCalibrationOperation operation;
     MotorCalibrationEvent event;
+    uint32_t result_deadline_ms;
     uint8_t data[2];
     uint8_t requests;
     bool transfer_active;
@@ -42,7 +44,7 @@ void motor_calibration_service_init(MotorCalibrationService *service);
 void motor_calibration_service_request(MotorCalibrationService *service,
                                        MotorCalibrationOperation operation);
 void motor_calibration_service_run(MotorCalibrationService *service, uint8_t wheel_mode,
-                                   const MotorTelemetry *telemetry);
+                                   const MotorTelemetry *telemetry, uint32_t now_ms);
 bool motor_calibration_service_pending(const MotorCalibrationService *service);
 bool motor_calibration_service_owns_bus(const MotorCalibrationService *service);
 MotorCalibrationEvent motor_calibration_service_take_event(MotorCalibrationService *service);

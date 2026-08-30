@@ -2116,10 +2116,11 @@ static void service_motor(void) {
         bool calibration_can_run = motor_calibration_service_owns_bus(&motor_calibration_service) ||
                                    platform_aux_bus_status() == PLATFORM_AUX_BUS_IDLE;
         if (calibration_pending && calibration_can_run) {
-            motor_calibration_service_run(&motor_calibration_service,
-                                          wheel_service_mode(&wheel_service),
-                                          motor_telemetry_service_value(&motor_telemetry_service));
-        } else {
+            motor_calibration_service_run(
+                &motor_calibration_service, wheel_service_mode(&wheel_service),
+                motor_telemetry_service_value(&motor_telemetry_service), platform_time_ms());
+        }
+        if (!motor_calibration_service_owns_bus(&motor_calibration_service)) {
             motor_telemetry_service_run(&motor_telemetry_service, platform_time_ms());
             motor_status_service_run(&motor_status_service, platform_time_ms());
             motor_tuning_service_run(&motor_tuning_service);
