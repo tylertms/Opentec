@@ -803,14 +803,21 @@ static bool capture_current_wheel_center(void) {
 /**
  * @brief Builds the motor controller's force-feedback status byte.
  *
- * Selects remote motor-side effect processing, enables force during startup centering or when
- * motor safety, USB connection, operator confirmation, and the power-button torque gate permit
- * runtime output, and mirrors the primary and secondary output gates.
+ * Selects direct force during startup centering and Xbox operation, or remote motor-side effect
+ * processing in other modes. Enables force during startup centering or when motor safety, USB
+ * connection, operator confirmation, and the power-button torque gate permit runtime output. The
+ * remaining flags mirror the torque override, host output gates, USB suspension, and acknowledged
+ * full-torque state.
  *
  * @return Current force-feedback status bits for the next motor-link packet.
  */
 static uint8_t motor_force_feedback_status(void) {
-    uint8_t status = MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS;
+    bool startup_direct_force =
+        motor_startup_centering.phase >= MOTOR_STARTUP_CENTERING_PREPARING &&
+        motor_startup_centering.phase <= MOTOR_STARTUP_CENTERING_ACTIVE;
+    bool xbox_direct_force = usb_device_operating_mode() == USB_OPERATING_MODE_XBOX_GIP;
+    uint8_t status =
+        startup_direct_force || xbox_direct_force ? 0 : MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS;
     bool startup_force_enabled = motor_startup_centering_active(&motor_startup_centering);
     bool runtime_force_enabled = motor_tuning_ready &&
                                  !motor_status_service_output_inhibited(&motor_status_service) &&
@@ -818,6 +825,9 @@ static uint8_t motor_force_feedback_status(void) {
                                  !system_torque_transition.applied_disabled;
     if (startup_force_enabled || runtime_force_enabled) {
         status |= MOTOR_OUTPUT_STATUS_ENABLED;
+    }
+    if (system_torque_transition.applied_disabled) {
+        status |= MOTOR_OUTPUT_STATUS_OVERRIDE_ACTIVE;
     }
     if (force_feedback_state.primary_output_disabled) {
         status |= MOTOR_OUTPUT_STATUS_PRIMARY_DISABLED;
@@ -827,6 +837,9 @@ static uint8_t motor_force_feedback_status(void) {
     }
     if (usb_connection_monitor.disconnected) {
         status |= MOTOR_OUTPUT_STATUS_USB_DISCONNECTED;
+    }
+    if (torque_key_prompt.phase == TORQUE_KEY_PROMPT_ACKNOWLEDGED) {
+        status |= MOTOR_OUTPUT_STATUS_FULL_TORQUE;
     }
     return status;
 }
