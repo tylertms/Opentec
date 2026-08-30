@@ -129,6 +129,7 @@ motor_live_frame_sources = files('source/motor/live_frame.c')
 motor_output_transport_sources = files('source/motor/output_transport.c')
 motor_output_interlock_sources = files('source/motor/output_interlock.c')
 motor_probe_sources = files('source/motor/probe.c')
+motor_startup_centering_sources = files('source/motor/startup_centering.c')
 motor_calibration_sources = files('source/motor/calibration.c')
 motor_rotation_guard_sources = files('source/motor/rotation_guard.c')
 motor_status_service_sources = files('source/motor/status_service.c')
@@ -366,6 +367,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'motor-output-transport': 'source/motor/output_transport.c',
     'motor-output-interlock': 'source/motor/output_interlock.c',
     'motor-probe': 'source/motor/probe.c',
+    'motor-startup-centering': 'source/motor/startup_centering.c',
     'motor-calibration': 'source/motor/calibration.c',
     'motor-rotation-guard': 'source/motor/rotation_guard.c',
     'motor-status-service': 'source/motor/status_service.c',
@@ -1650,6 +1652,15 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  motor_startup_centering_test = executable(
+    'base-motor-startup-centering-test',
+    'tests/source/motor_startup_centering.c',
+    motor_startup_centering_sources,
+    platform_time_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   motor_calibration_test = executable(
     'base-motor-calibration-test',
     'tests/source/motor_calibration.c',
@@ -2929,6 +2940,11 @@ if not meson.is_cross_build()
   )
   test('base-motor-output-interlock', motor_output_interlock_test, suite: ['base', 'motor'])
   test('base-motor-probe', motor_probe_test, suite: ['base', 'motor'])
+  test(
+    'base-motor-startup-centering',
+    motor_startup_centering_test,
+    suite: ['base', 'motor'],
+  )
   test('base-motor-calibration', motor_calibration_test, suite: ['base', 'motor', 'calibration'])
   test('base-motor-rotation-guard', motor_rotation_guard_test, suite: ['base', 'motor', 'safety'])
   test('base-motor-status-service', motor_status_service_test, suite: ['base', 'motor'])

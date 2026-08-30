@@ -21,6 +21,7 @@
 #include "display/tuning_page.h"
 #include "force_feedback/command.h"
 #include "force_feedback/output_enable.h"
+#include "force_feedback/output_scale.h"
 #include "force_feedback/script_report.h"
 #include "force_feedback/script_runtime.h"
 #include "force_feedback/script_tick.h"
@@ -34,6 +35,7 @@
 #include "motor/output_transport.h"
 #include "motor/probe.h"
 #include "motor/rotation_guard.h"
+#include "motor/startup_centering.h"
 #include "motor/status_service.h"
 #include "motor/telemetry_service.h"
 #include "motor/tuning_service.h"
@@ -172,6 +174,7 @@ typedef union {
 
 static BoardIdentity board_identity;
 static MotorProbe motor_probe;
+static MotorStartupCentering motor_startup_centering;
 static CommandTransport command_transport;
 static MotorCommandMailboxExchange motor_command_mailbox;
 static MotorCommandChannel motor_command_channel;
@@ -799,17 +802,20 @@ static bool capture_current_wheel_center(void) {
 /**
  * @brief Builds the motor controller's force-feedback status byte.
  *
- * Selects remote motor-side effect processing, reports whether motor safety, USB connection, and
- * operator confirmation permit force, applies the power-button torque gate, and mirrors the
- * primary and secondary output gates.
+ * Selects remote motor-side effect processing, enables force during startup centering or when
+ * motor safety, USB connection, operator confirmation, and the power-button torque gate permit
+ * runtime output, and mirrors the primary and secondary output gates.
  *
  * @return Current force-feedback status bits for the next motor-link packet.
  */
 static uint8_t motor_force_feedback_status(void) {
     uint8_t status = MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS;
-    if (motor_tuning_ready && !motor_status_service_output_inhibited(&motor_status_service) &&
-        !usb_connection_monitor.disconnected && force_output_enabled &&
-        !system_torque_transition.applied_disabled) {
+    bool startup_force_enabled = motor_startup_centering_active(&motor_startup_centering);
+    bool runtime_force_enabled = motor_tuning_ready &&
+                                 !motor_status_service_output_inhibited(&motor_status_service) &&
+                                 !usb_connection_monitor.disconnected && force_output_enabled &&
+                                 !system_torque_transition.applied_disabled;
+    if (startup_force_enabled || runtime_force_enabled) {
         status |= MOTOR_OUTPUT_STATUS_ENABLED;
     }
     if (force_feedback_state.primary_output_disabled) {
@@ -1711,6 +1717,40 @@ static void enter_bootloader(void) {
 }
 
 /**
+ * @brief Returns the wheel to its retained center before USB startup.
+ *
+ * Polls motor readiness for up to five seconds, then applies the four-second restoring-force
+ * profile when readiness is reported. The loop continues motor packets, auxiliary transfers, and
+ * power-button handling; force uses full command availability and the board's reduced Torque Key
+ * limit.
+ *
+ */
+static void run_motor_startup_centering(void) {
+    motor_startup_centering_init(&motor_startup_centering, platform_time_ms());
+    ForceOutputScale scale = {
+        .available_percent = cooling_controller.force_scale_percent,
+        .tuning_strength_percent = FORCE_FEEDBACK_FULL_STRENGTH_PERCENT,
+        .output_strength_percent = motor_tuning_context.strength_percent,
+        .secondary_output_disabled = false,
+    };
+
+    while (!motor_startup_centering_complete(&motor_startup_centering)) {
+        platform_aux_bus_service();
+        service_motor_link();
+        uint32_t now_ms = platform_time_ms();
+        int32_t centered_position =
+            motor_position_ready ? wheel_position_center(motor_position_report.wheel_position,
+                                                         base_settings.wheel_position.center)
+                                 : 0;
+        int32_t force = motor_startup_centering_run(&motor_startup_centering, now_ms,
+                                                    motor_position_ready, centered_position);
+        force_output_scale_apply(force, 0, scale, &motor_output_report);
+        service_power(now_ms);
+    }
+    motor_output_report = (ForceOutputReport){0};
+}
+
+/**
  * @brief Selects the startup USB path after motor-controller discovery.
  *
  * Services the shared auxiliary bus through the one-second discovery window. A recognized
@@ -1724,6 +1764,7 @@ static void initialize_startup_usb(void) {
         motor_probe_run(&motor_probe, platform_time_ms());
     }
     if (motor_probe_identity(&motor_probe) != NULL) {
+        run_motor_startup_centering();
         usb_device_init(board_identity.variant);
         return;
     }
