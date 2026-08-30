@@ -15,8 +15,23 @@ enum {
     PEDAL_V3_CALIBRATION_BRAKE_STEP = 5,
 };
 
+/**
+ * @brief Reads a little-endian pedal-axis value.
+ *
+ * Combines two consecutive bytes with the least significant byte first.
+ *
+ * @param[in] data Two-byte axis field.
+ * @return The decoded unsigned axis value.
+ */
 static uint16_t read_u16(const uint8_t *data) { return (uint16_t)data[0] | (uint16_t)data[1] << 8; }
 
+/**
+ * @brief Releases every published pedal input.
+ *
+ * Clears all three pedal axes and the auxiliary input to their internal released values.
+ *
+ * @param[out] input Published pedal input state.
+ */
 void pedal_input_release(PedalInput *input) {
     for (uint8_t axis = 0; axis < PEDAL_INPUT_AXIS_COUNT; axis++) {
         input->axes[axis] = 0;
@@ -24,6 +39,16 @@ void pedal_input_release(PedalInput *input) {
     input->auxiliary = 0;
 }
 
+/**
+ * @brief Decodes a pedal axis-sample report.
+ *
+ * Reads three little-endian 16-bit axes and the final auxiliary byte. Other report types leave the
+ * destination unchanged.
+ *
+ * @param[in] frame Decoded pedal frame.
+ * @param[out] input Published pedal input state.
+ * @return true for an axis-sample report; otherwise false.
+ */
 bool pedal_input_decode(const PedalFrame *frame, PedalInput *input) {
     if (frame->type != PEDAL_FRAME_AXIS_SAMPLE) {
         return false;
@@ -36,6 +61,13 @@ bool pedal_input_decode(const PedalFrame *frame, PedalInput *input) {
     return true;
 }
 
+/**
+ * @brief Initializes V3 pedal protocol state.
+ *
+ * Clears connection, calibration, brake-force, raw-brake, and shared-axis state.
+ *
+ * @param[out] state V3 pedal state to initialize.
+ */
 void pedal_v3_state_init(PedalV3State *state) { *state = (PedalV3State){0}; }
 
 /**
@@ -114,6 +146,22 @@ uint16_t pedal_input_scale_brake(uint16_t value, uint8_t force_percent) {
     return scaled > UINT16_MAX ? UINT16_MAX : (uint16_t)scaled;
 }
 
+/**
+ * @brief Converts an internal pedal axis to its HID representation.
+ *
+ * Complements all sixteen bits so an internal released value of zero is published as 65535.
+ *
+ * @param[in] value Internal pedal-axis value.
+ * @return The complemented HID axis value.
+ */
 uint16_t pedal_input_hid_axis(uint16_t value) { return (uint16_t)~value; }
 
+/**
+ * @brief Converts the internal auxiliary input to its HID representation.
+ *
+ * Complements all eight bits so an internal released value of zero is published as 255.
+ *
+ * @param[in] value Internal auxiliary-input value.
+ * @return The complemented HID auxiliary value.
+ */
 uint8_t pedal_input_hid_auxiliary(uint8_t value) { return (uint8_t)~value; }
