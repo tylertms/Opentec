@@ -3535,14 +3535,14 @@ static void service_usb_host_capability_recovery(uint32_t now_ms) {
  * @brief Runs the board LED startup brightness sweep.
  *
  * Writes the first pattern of buckets zero through 62 in ascending order and retains each pattern
- * for 50 milliseconds. The first autonomous normal update selects the remaining full-scale
- * bucket.
+ * through its strict 50-millisecond deadline. The first autonomous normal update selects the
+ * remaining full-scale bucket.
  */
 static void run_led_pattern_startup_sequence(void) {
     for (uint8_t step = 0; step < LED_PATTERN_STARTUP_STEP_COUNT; ++step) {
         platform_led_pattern_set_duty(led_pattern_pwm_duty(led_pattern_startup_pattern(step)));
         uint32_t deadline_ms = platform_time_ms() + 50;
-        while (!platform_time_reached(platform_time_ms(), deadline_ms)) {
+        while (!platform_time_reached(platform_time_ms(), deadline_ms + 1)) {
         }
     }
 }
@@ -3590,11 +3590,11 @@ int main(void) {
     system_notice_init(&system_notice);
     service_power(0);
     platform_time_init();
+    initialize_cooling();
     led_pattern_controller_init(&led_pattern_controller);
     run_led_pattern_startup_sequence();
     platform_display_init();
     platform_display_write_frame(display_framebuffer);
-    initialize_cooling();
     platform_adc_init();
     platform_shifter_init();
     platform_shifter_read(&shifter_input);
