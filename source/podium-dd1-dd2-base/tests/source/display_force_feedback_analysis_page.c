@@ -25,7 +25,7 @@ static bool has_lit_pixel(const uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], u
 }
 
 static void samples_at_twenty_five_millisecond_intervals(void) {
-    DisplayForceFeedbackAnalysisPage page;
+    DisplayForceFeedbackAnalysisPage page = {0};
     display_force_feedback_analysis_page_open(&page, 1000);
 
     assert(!display_force_feedback_analysis_page_update(&page, 1024, 0, 0x8000));
@@ -41,7 +41,7 @@ static void samples_at_twenty_five_millisecond_intervals(void) {
 }
 
 static void retains_the_latest_two_hundred_samples(void) {
-    DisplayForceFeedbackAnalysisPage page;
+    DisplayForceFeedbackAnalysisPage page = {0};
     display_force_feedback_analysis_page_open(&page, 0);
 
     for (uint16_t index = 0; index <= DISPLAY_FORCE_FEEDBACK_ANALYSIS_SAMPLE_COUNT; index++) {
@@ -52,11 +52,14 @@ static void retains_the_latest_two_hundred_samples(void) {
     assert(page.sample_count == DISPLAY_FORCE_FEEDBACK_ANALYSIS_SAMPLE_COUNT);
     assert(page.next_sample == 1);
     assert(page.samples[0] == 99);
+    display_force_feedback_analysis_page_open(&page, 6000);
+    assert(page.sample_count == DISPLAY_FORCE_FEEDBACK_ANALYSIS_SAMPLE_COUNT);
+    assert(page.next_sample == 1);
 }
 
 static void renders_the_title_and_analysis_content(void) {
     uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE] = {0};
-    DisplayForceFeedbackAnalysisPage page;
+    DisplayForceFeedbackAnalysisPage page = {0};
     display_force_feedback_analysis_page_open(&page, 0);
 
     display_force_feedback_analysis_page_render_title(framebuffer);

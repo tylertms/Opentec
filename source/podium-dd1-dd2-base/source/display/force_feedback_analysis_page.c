@@ -173,17 +173,15 @@ static void draw_level_bar(DisplayFramebuffer framebuffer, uint16_t left, uint16
 /**
  * @brief Opens a force-feedback analysis session.
  *
- * Clears retained samples and aligns the first sample with the next global 25-millisecond tick.
+ * Preserves retained samples and aligns the next sample with the global 25-millisecond cadence.
  *
- * @param[out] page Analysis sample history and current presentation.
+ * @param[in,out] page Analysis sample history and current presentation.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 void display_force_feedback_analysis_page_open(DisplayForceFeedbackAnalysisPage *page,
                                                uint32_t now_ms) {
-    *page = (DisplayForceFeedbackAnalysisPage){
-        .next_sample_ms =
-            now_ms + ANALYSIS_SAMPLE_INTERVAL_MS - now_ms % ANALYSIS_SAMPLE_INTERVAL_MS,
-    };
+    page->next_sample_ms =
+        now_ms + ANALYSIS_SAMPLE_INTERVAL_MS - now_ms % ANALYSIS_SAMPLE_INTERVAL_MS;
 }
 
 /**
