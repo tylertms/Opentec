@@ -2,6 +2,8 @@
 
 #include <mlib.h>
 
+#pragma GCC optimize("O2")
+
 /**
  * @brief Reads one synchronized current and DC-bus sample from both ADCs.
  *

@@ -66,6 +66,8 @@ void motor_adc_initialize(uint32_t encoder_scale, MotorAdcHandler handler, void 
     ADC16_Init(ADC1, &config);
     ADC16_EnableHardwareTrigger(ADC0, true);
     ADC16_EnableHardwareTrigger(ADC1, true);
+    SIM->SOPT7 |= SIM_SOPT7_ADC0TRGSEL(8U) | SIM_SOPT7_ADC0ALTTRGEN(2U) | SIM_SOPT7_ADC1TRGSEL(8U) |
+                  SIM_SOPT7_ADC1ALTTRGEN(2U);
 
     adc16_channel_config_t channel_config = {
         .channelNumber = 10U,
@@ -110,10 +112,12 @@ void ADC1_IRQHandler(void) { motor_adc_interrupt_dispatch(); }
  * The interrupt temporarily disables the PDB while clearing completion and sequence-error flags.
  */
 void PDB0_PDB1_IRQHandler(void) {
-    PDB_Enable(PDB0, false);
-    PDB_ClearADCPreTriggerStatusFlags(PDB0, kPDB_ADCTriggerChannel0, UINT32_C(0x00ff00ff));
-    PDB_ClearADCPreTriggerStatusFlags(PDB0, kPDB_ADCTriggerChannel1, UINT32_C(0x00ff00ff));
-    PDB_Enable(PDB0, true);
+    PDB0->SC &= ~PDB_SC_PDBEN_MASK;
+    PDB0->CH[0].S &= ~UINT32_C(0xff);
+    PDB0->CH[0].S &= ~UINT32_C(0xff);
+    PDB0->CH[1].S &= ~UINT32_C(0xff);
+    PDB0->CH[1].S &= ~UINT32_C(0xff);
+    PDB0->SC |= PDB_SC_PDBEN_MASK;
 }
 
 /**
@@ -127,7 +131,6 @@ void motor_adc_trigger_initialize(void) {
 
     CLOCK_EnableClock(kCLOCK_Pdb0);
     PDB_SetModulusValue(PDB0, 1500U);
-    PDB_SetCounterDelayValue(PDB0, 750U);
     PDB_SetADCPreTriggerDelayValue(PDB0, kPDB_ADCTriggerChannel0, kPDB_ADCPreTrigger0, 10U);
     PDB_SetADCPreTriggerDelayValue(PDB0, kPDB_ADCTriggerChannel0, kPDB_ADCPreTrigger1, 750U);
     PDB_SetADCPreTriggerDelayValue(PDB0, kPDB_ADCTriggerChannel1, kPDB_ADCPreTrigger0, 10U);
@@ -135,9 +138,8 @@ void motor_adc_trigger_initialize(void) {
 
     PDB_GetDefaultConfig(&config);
     config.triggerInputSource = kPDB_TriggerInput8;
-    config.enableContinuousMode = true;
     PDB_Init(PDB0, &config);
-    PDB_EnableInterrupts(PDB0, kPDB_DelayInterruptEnable);
+    PDB_EnableInterrupts(PDB0, kPDB_DelayInterruptEnable | kPDB_SequenceErrorInterruptEnable);
     PDB_DoLoadValues(PDB0);
 }
 
@@ -163,11 +165,7 @@ void motor_adc_trigger_enable(void) {
  * The route changes only when the startup state reaches current calibration. All six zero-duty
  * PWM outputs are unmasked at the same transition.
  */
-void motor_current_calibration_hardware_start(void) {
-    SIM->SOPT7 |= SIM_SOPT7_ADC0TRGSEL(8U) | SIM_SOPT7_ADC0ALTTRGEN_MASK |
-                  SIM_SOPT7_ADC1TRGSEL(8U) | SIM_SOPT7_ADC1ALTTRGEN_MASK;
-    motor_pwm_enable_outputs();
-}
+void motor_current_calibration_hardware_start(void) { motor_pwm_enable_outputs(); }
 
 /**
  * @brief Polls the active ADC and advances two-phase current-offset calibration.
@@ -248,17 +246,7 @@ void motor_adc_runtime_initialize(uint32_t auxiliary_channel) {
     motor_adc_trigger_enable();
 }
 
-/**
- * @brief Advances the alternating auxiliary ADC sample pair.
- *
- * Successive ADC1 channel-zero and channel-two conversions form one motor and driver temperature
- * pair. The primary phase-current channels and board-selected ADC0 auxiliary input are restored on
- * every cycle.
- *
- * @param samples Completed auxiliary sample pair when the function returns true.
- * @return True after both auxiliary conversions have been captured.
- */
-bool motor_adc_auxiliary_cycle(MotorAdcAuxiliarySamples *samples) {
+bool motor_adc_auxiliary_capture(MotorAdcAuxiliarySamples *samples) {
     bool pair_complete = adc_auxiliary_second_sample;
     if (pair_complete) {
         samples->motor = adc_auxiliary_first_sample;
@@ -267,6 +255,10 @@ bool motor_adc_auxiliary_cycle(MotorAdcAuxiliarySamples *samples) {
         adc_auxiliary_first_sample = (uint16_t)ADC1->R[1];
     }
 
+    return pair_complete;
+}
+
+void motor_adc_auxiliary_rearm(void) {
     adc16_channel_config_t channel_config = {
         .channelNumber = 9U,
         .enableInterruptOnConversionCompleted = true,
@@ -278,10 +270,9 @@ bool motor_adc_auxiliary_cycle(MotorAdcAuxiliarySamples *samples) {
     ADC16_SetChannelConfig(ADC1, 0U, &channel_config);
     channel_config.channelNumber = adc0_auxiliary_channel;
     ADC16_SetChannelConfig(ADC0, 1U, &channel_config);
-    channel_config.channelNumber = pair_complete ? 0U : 2U;
+    channel_config.channelNumber = adc_auxiliary_second_sample ? 0U : 2U;
     ADC16_SetChannelConfig(ADC1, 1U, &channel_config);
-    adc_auxiliary_second_sample = !pair_complete;
-    return pair_complete;
+    adc_auxiliary_second_sample = !adc_auxiliary_second_sample;
 }
 
 /**

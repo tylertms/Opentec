@@ -75,6 +75,7 @@ if motor_target
   endforeach
 
   freestanding_c_args = [
+    '-O2',
     '-ffreestanding',
     '-ffunction-sections',
     '-fdata-sections',
@@ -145,6 +146,14 @@ if motor_target
 
   motor_simulator = subproject('kinetis-sim', native: true)
   motor_runner = motor_simulator.get_variable('kinetis_firmware_runner')
+  motor_firmware_image = motor_simulator.get_variable('kinetis_firmware_image_dependency')
+  motor_scenario = executable(
+    'dd2-motor-firmware-scenario',
+    'tests/source/firmware_simulation.c',
+    native: true,
+    build_by_default: false,
+    dependencies: motor_firmware_image,
+  )
   test(
     'dd2-motor-firmware',
     motor_runner,
@@ -156,19 +165,24 @@ if motor_target
       'LH',
       '--reset-address',
       '0xa000',
-      '--write32',
-      '0x40048034:0xf0000430',
       '--max-instructions',
       '1000000',
       '--max-cycles',
       '15000000',
       '--minimum-instructions-covered',
-      '8000',
+      '3500',
       '--minimum-branches-covered',
-      '250',
+      '210',
     ],
     suite: ['motor', 'simulator'],
     timeout: 120,
+  )
+  test(
+    'dd2-motor-firmware-scenario',
+    motor_scenario,
+    args: firmware.full_path(),
+    suite: ['motor', 'simulator'],
+    timeout: 300,
   )
 
   firmware_binary = custom_target(

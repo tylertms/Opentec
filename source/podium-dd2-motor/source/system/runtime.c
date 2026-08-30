@@ -33,6 +33,8 @@
 #include "telemetry/auxiliary.h"
 #include "tuning/parameter.h"
 
+#pragma GCC optimize("O2")
+
 enum {
     MOTOR_PARAMETER_RESET_COMMAND = 3,
     MOTOR_PARAMETER_DIRECTION_COMMAND = 5,
@@ -236,6 +238,11 @@ static int16_t motor_runtime_current_resolve(MotorRuntime *runtime) {
 static void motor_runtime_control_cycle(MotorRuntime *runtime, int16_t torque_current,
                                         bool rotor_aligned) {
     (void)motor_adc_read(ADC0, ADC1, &runtime->current_calibration.offsets, &runtime->adc_sample);
+    MotorAdcAuxiliarySamples auxiliary;
+    if (motor_adc_auxiliary_capture(&auxiliary)) {
+        (void)motor_auxiliary_samples_accumulate(&runtime->auxiliary_accumulator, auxiliary.motor,
+                                                 auxiliary.driver);
+    }
 
     MotorFocInput input = {
         .phase_current = runtime->adc_sample.phase_current,
@@ -255,12 +262,7 @@ static void motor_runtime_control_cycle(MotorRuntime *runtime, int16_t torque_cu
 
     motor_foc_step(&runtime->foc, &input, &runtime->foc_output);
     motor_pwm_write(FTM0, &runtime->foc_output.duty);
-
-    MotorAdcAuxiliarySamples auxiliary;
-    if (motor_adc_auxiliary_cycle(&auxiliary)) {
-        (void)motor_auxiliary_samples_accumulate(&runtime->auxiliary_accumulator, auxiliary.motor,
-                                                 auxiliary.driver);
-    }
+    motor_adc_auxiliary_rearm();
 }
 
 /**

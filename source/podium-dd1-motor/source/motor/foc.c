@@ -2,6 +2,8 @@
 
 #include <mlib.h>
 
+#pragma GCC optimize("O2")
+
 volatile uint16_t gu16CntMmdvsq;
 
 /**

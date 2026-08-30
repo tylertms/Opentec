@@ -4,12 +4,12 @@
 #include "link/frame.h"
 
 static const uint8_t force_frame[MOTOR_LINK_FRAME_SIZE] = {
-    0x7bU, 0x01U, 0x05U, 0x06U, 0x07U, 0x08U, 0xcdU, 0xabU, 0x68U, 0x24U, 0xfbU, 0xa4U, 0x7dU,
+    0x7bU, 0x01U, 0x05U, 0x06U, 0x07U, 0x08U, 0xcdU, 0xabU, 0x68U, 0x24U, 0xfeU, 0xe9U, 0x7dU,
 };
 
 static void test_force_frame(void) {
     MotorLinkFrame frame;
-    assert(motor_link_frame_decode_checked(force_frame, 0xa4fbU, &frame) == MOTOR_LINK_FRAME_VALID);
+    assert(motor_link_frame_decode_checked(force_frame, 0xe9feU, &frame) == MOTOR_LINK_FRAME_VALID);
     MotorLinkForceCommand command;
     assert(motor_link_force_command_decode(&frame, &command));
     assert(command.center == 0x0605);
@@ -29,7 +29,7 @@ static void test_position_frame(void) {
     };
     uint8_t output[MOTOR_LINK_FRAME_SIZE];
     motor_link_position_frame_prepare(&report, output);
-    motor_link_frame_checksum_write(output, 0xa4fbU);
+    motor_link_frame_checksum_write(output, 0xe9feU);
     for (uint8_t index = 0U; index < MOTOR_LINK_FRAME_SIZE; ++index) {
         assert(output[index] == force_frame[index]);
     }

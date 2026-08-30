@@ -3,6 +3,8 @@
 #include <limits.h>
 #include <mlib.h>
 
+#pragma GCC optimize("O2")
+
 enum {
     MOTOR_VELOCITY_PROPORTIONAL_GAIN = 0x14000,
     MOTOR_VELOCITY_INTEGRAL_GAIN = 0x617,
