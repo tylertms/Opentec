@@ -89,6 +89,13 @@ int16_t cooling_temperature_from_adc_total(uint32_t adc_total) {
     return (int16_t)(int32_t)cooling_temperature_from_resistance(resistance_ohms);
 }
 
+/**
+ * @brief Initializes a thermistor sampling window.
+ *
+ * Clears both channel accumulators, the sample count, and the published temperatures.
+ *
+ * @param[out] monitor Temperature sampling state to initialize.
+ */
 void cooling_temperature_monitor_init(CoolingTemperatureMonitor *monitor) {
     *monitor = (CoolingTemperatureMonitor){0};
 }

@@ -10,10 +10,15 @@ static void test_standard_fan_profile(void) {
     assert(controller.primary_duty_percent == 25);
     assert(controller.secondary_duty_percent == 25);
     assert(controller.force_scale_percent == 100);
-
-    cooling_controller_update(&controller, 7.0f, false, false, 0);
     assert(controller.phase == COOLING_PHASE_IDLE);
-    assert(controller.primary_duty_percent == 100);
+    assert(controller.low_threshold_offset == 5);
+    assert(controller.high_threshold_offset == 4);
+    assert(controller.primary_delay_ms == -30000);
+    assert(controller.secondary_delay_ms == -120000);
+
+    cooling_controller_update(&controller, 20.0f, false, false, 0);
+    assert(controller.phase == COOLING_PHASE_IDLE);
+    assert(controller.primary_duty_percent == 0);
     assert(controller.secondary_duty_percent == 0);
 
     cooling_controller_update(&controller, 36.0f, false, false, 0);
@@ -72,19 +77,19 @@ static void test_managed_window(void) {
     cooling_controller_init(&controller, true);
     controller.phase = COOLING_PHASE_FULL;
 
-    cooling_controller_update(&controller, 126.0f, true, false, 100);
+    cooling_controller_update(&controller, 131.0f, true, false, 100);
     assert(controller.phase == COOLING_PHASE_START_MANAGED_WINDOW);
-    assert(controller.force_scale_percent == 95);
-    cooling_controller_update(&controller, 126.0f, true, false, 100);
+    assert(controller.force_scale_percent == 70);
+    cooling_controller_update(&controller, 131.0f, true, false, 100);
     assert(controller.phase == COOLING_PHASE_MANAGED_WINDOW);
     assert(controller.primary_deadline_ms == 210100);
     assert(controller.secondary_deadline_ms == 300100);
-    cooling_controller_update(&controller, 136.0f, true, false, 101);
+    cooling_controller_update(&controller, 140.0f, true, false, 101);
     assert(controller.phase == COOLING_PHASE_MANAGED_LIMIT);
     assert(controller.force_scale_percent == 0);
-    cooling_controller_update(&controller, 124.0f, true, false, 102);
+    cooling_controller_update(&controller, 129.0f, true, false, 102);
     assert(controller.phase == COOLING_PHASE_FULL);
-    assert(controller.force_scale_percent == 100);
+    assert(controller.force_scale_percent == 80);
 }
 
 static void test_configuration_limits(void) {
@@ -114,12 +119,12 @@ static void test_suspend_and_output_inhibit(void) {
     cooling_controller_init(&controller, false);
     cooling_controller_set_suspend_request(&controller, UINT8_MAX);
     cooling_controller_update(&controller, 100.0f, false, false, 0);
-    assert(controller.phase == COOLING_PHASE_INITIALIZE);
+    assert(controller.phase == COOLING_PHASE_IDLE);
     assert(controller.primary_duty_percent == 25);
 
     cooling_controller_set_suspend_request(&controller, 0);
     cooling_controller_update(&controller, 100.0f, false, true, 0);
-    assert(controller.phase == COOLING_PHASE_IDLE);
+    assert(controller.phase == COOLING_PHASE_LOW);
     assert(controller.force_scale_percent == 0);
 }
 

@@ -9,6 +9,10 @@ enum {
 
 /**
  * @brief Converts a clamped fan duty percentage to its PWM compare value.
+ *
+ * Applies the active polarity, clamps requests above 100 percent, and selects the inactive compare
+ * value while outputs are disabled.
+ *
  * @param[in] duty_percent Requested output duty; values above 100 are clamped.
  * @param[in] inverted_pwm True when increasing duty requires a decreasing compare value.
  * @param[in] outputs_disabled True to force the output to its inactive compare value.

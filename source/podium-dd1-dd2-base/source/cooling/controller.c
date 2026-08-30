@@ -5,16 +5,44 @@
 
 enum {
     FAN_STARTUP_DUTY_PERCENT = 25,
+    COOLING_DEFAULT_LOW_THRESHOLD_OFFSET = 5,
+    COOLING_DEFAULT_HIGH_THRESHOLD_OFFSET = 4,
+    COOLING_DEFAULT_PRIMARY_DELAY_MS = -30000,
+    COOLING_DEFAULT_SECONDARY_DELAY_MS = -120000,
     MANAGED_PRIMARY_WINDOW_MS = 210000,
     MANAGED_SECONDARY_WINDOW_MS = 300000,
 };
 
+/**
+ * @brief Selects fan duties for the active board configuration.
+ *
+ * Applies the standard single-output duty or the primary and secondary duties used by the dual-fan
+ * configuration.
+ *
+ * @param[in,out] controller Thermal controller state and selected output duties.
+ * @param[in] standard Duty for the standard configuration.
+ * @param[in] dual_primary Primary duty for the dual-fan configuration.
+ * @param[in] dual_secondary Secondary duty for the dual-fan configuration.
+ */
 static void set_fan_duty(CoolingController *controller, uint8_t standard, uint8_t dual_primary,
                          uint8_t dual_secondary) {
     controller->primary_duty_percent = controller->dual_fan_mode ? dual_primary : standard;
     controller->secondary_duty_percent = controller->dual_fan_mode ? dual_secondary : 0;
 }
 
+/**
+ * @brief Advances one temperature-hysteresis transition.
+ *
+ * Selects the hotter phase above the upper threshold, the cooler phase below the lower threshold,
+ * and otherwise preserves the current phase.
+ *
+ * @param[in,out] controller Thermal controller state.
+ * @param[in] temperature Current motor temperature in degrees Celsius.
+ * @param[in] upper_threshold Temperature that selects the hotter phase.
+ * @param[in] lower_threshold Temperature that selects the cooler phase.
+ * @param[in] next Hotter phase.
+ * @param[in] previous Cooler phase.
+ */
 static void update_hysteresis(CoolingController *controller, float temperature,
                               float upper_threshold, float lower_threshold, CoolingPhase next,
                               CoolingPhase previous) {
@@ -25,6 +53,16 @@ static void update_hysteresis(CoolingController *controller, float temperature,
     }
 }
 
+/**
+ * @brief Services the managed-motor full-output window.
+ *
+ * Runs both fans at full duty, enters the managed limit at the adjusted high-temperature or time
+ * boundary, and returns to the full-output phase below the adjusted low-temperature boundary.
+ *
+ * @param[in,out] controller Thermal controller state and output duties.
+ * @param[in] temperature Current motor temperature in degrees Celsius.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 static void update_managed_window(CoolingController *controller, float temperature,
                                   uint32_t now_ms) {
     set_fan_duty(controller, 100, 100, 100);
@@ -36,6 +74,17 @@ static void update_managed_window(CoolingController *controller, float temperatu
     }
 }
 
+/**
+ * @brief Advances the fan-output thermal profile.
+ *
+ * Applies the standard or dual-fan duty map, temperature hysteresis, and managed-motor timing for
+ * the current phase.
+ *
+ * @param[in,out] controller Thermal controller state and output duties.
+ * @param[in] temperature Current motor temperature in degrees Celsius.
+ * @param[in] managed_motor_present True after a managed motor controller is identified.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 static void update_fan_profile(CoolingController *controller, float temperature,
                                bool managed_motor_present, uint32_t now_ms) {
     switch (controller->phase) {
@@ -114,6 +163,17 @@ static void update_fan_profile(CoolingController *controller, float temperature,
     }
 }
 
+/**
+ * @brief Updates the thermally available force-output scale.
+ *
+ * Disables output when inhibited or limited, preserves full output below the managed threshold,
+ * and applies the managed temperature ramp above 125 degrees Celsius.
+ *
+ * @param[in,out] controller Thermal controller state and resulting force scale.
+ * @param[in] temperature Current motor temperature in degrees Celsius.
+ * @param[in] managed_motor_present True after a managed motor controller is identified.
+ * @param[in] output_inhibited True when force output is inhibited.
+ */
 static void update_force_scale(CoolingController *controller, float temperature,
                                bool managed_motor_present, bool output_inhibited) {
     if (output_inhibited) {
@@ -157,14 +217,19 @@ static void update_force_scale(CoolingController *controller, float temperature,
 /**
  * @brief Initializes the thermal controller with its startup fan and force limits.
  *
- * Clears the controller, starts both fan requests at 25 percent, permits full force output, and
- * selects the standard or dual-fan duty map.
+ * Starts in the idle phase with the retained threshold and timing defaults, requests 25 percent
+ * from both fan outputs, permits full force output, and selects the standard or dual-fan duty map.
  *
  * @param[out] controller Thermal fan and force-derating state.
  * @param[in] dual_fan_mode True for the alternate two-output fan duty map.
  */
 void cooling_controller_init(CoolingController *controller, bool dual_fan_mode) {
     *controller = (CoolingController){
+        .phase = COOLING_PHASE_IDLE,
+        .low_threshold_offset = COOLING_DEFAULT_LOW_THRESHOLD_OFFSET,
+        .high_threshold_offset = COOLING_DEFAULT_HIGH_THRESHOLD_OFFSET,
+        .primary_delay_ms = COOLING_DEFAULT_PRIMARY_DELAY_MS,
+        .secondary_delay_ms = COOLING_DEFAULT_SECONDARY_DELAY_MS,
         .primary_duty_percent = FAN_STARTUP_DUTY_PERCENT,
         .secondary_duty_percent = FAN_STARTUP_DUTY_PERCENT,
         .force_scale_percent = 100,

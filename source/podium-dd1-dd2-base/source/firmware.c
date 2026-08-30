@@ -338,6 +338,7 @@ static WheelTransferRequest usb_vendor_wheel_response_request;
 
 enum {
     FAN_STARTUP_DUTY_PERCENT = 25,
+    COOLING_STARTUP_TEMPERATURE_C = 20,
     USB_MOTOR_BUFFER_SIZE = MEMORY_TRANSFER_MAX_READ_SIZE,
     LOCAL_DISPLAY_PAGE_CLEAR = 0,
     LOCAL_DISPLAY_PAGE_TORQUE_DISABLED = 1,
@@ -626,6 +627,12 @@ static void service_torque_key(uint32_t now_ms) {
     }
 }
 
+/**
+ * @brief Initializes thermal control and fan measurement.
+ *
+ * Restores the controller defaults, clears thermal sampling and effect-limit state, configures the
+ * board-specific fan hardware, and applies the 25-percent startup duty to both outputs.
+ */
 static void initialize_cooling(void) {
     cooling_controller_init(&cooling_controller, board_identity.mode_bits == 7);
     cooling_effect_limit_init(&cooling_effect_limit);
@@ -636,13 +643,21 @@ static void initialize_cooling(void) {
     platform_cooling_set_duty(FAN_STARTUP_DUTY_PERCENT, FAN_STARTUP_DUTY_PERCENT, false);
 }
 
+/**
+ * @brief Services fan output, force derating, and thermal effect limits.
+ *
+ * Uses the retained 20-degree startup temperature until motor telemetry is available, advances the
+ * cooling controllers, publishes effect-strength changes, and applies both fan duties.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 static void service_cooling(uint32_t now_ms) {
     bool managed_motor_present = motor_probe_identity(&motor_probe) != 0;
     const MotorTelemetry *telemetry =
         motor_tuning_ready ? motor_telemetry_service_value(&motor_telemetry_service) : 0;
     float motor_temperature = telemetry != 0 && telemetry->motor_temperature_valid
                                   ? (float)(int16_t)telemetry->motor_temperature
-                                  : 0.0f;
+                                  : (float)COOLING_STARTUP_TEMPERATURE_C;
     bool output_inhibited =
         motor_tuning_ready && motor_status_service_output_inhibited(&motor_status_service);
     cooling_controller_update(&cooling_controller, motor_temperature, managed_motor_present,
@@ -666,6 +681,14 @@ static void service_cooling(uint32_t now_ms) {
                               cooling_controller.secondary_duty_percent, false);
 }
 
+/**
+ * @brief Consumes and converts one fan tachometer result.
+ *
+ * Publishes zero for a missing signal or converts two consecutive captures to RPM when a completed
+ * result is available.
+ *
+ * @param[in] fan Fan channel to update.
+ */
 static void update_fan_speed(PlatformFan fan) {
     if (!platform_cooling_take_tachometer(fan, &fan_tachometer)) {
         return;

@@ -11,7 +11,7 @@ enum {
     FAN_PWM_PERIOD = 3192,
     FAN_PWM_REGISTER_PERIOD = FAN_PWM_PERIOD - 1,
     FAN_CAPTURE_INTERVAL_MS = 50,
-    FAN_CAPTURE_INTERRUPT_PRIORITY = 5,
+    FAN_CAPTURE_INTERRUPT_PRIORITY = 4,
 };
 
 typedef struct {
@@ -61,7 +61,7 @@ static void configure_pwm(void) {
  * @brief Configures the primary fan tachometer channel.
  *
  * Couples IC1 and IC2 into a triggered 32-bit capture pair on RA1 and enables the IC1 interrupt
- * at priority five.
+ * at priority four.
  *
  */
 static void configure_primary_capture(void) {
@@ -87,7 +87,7 @@ static void configure_primary_capture(void) {
  * @brief Configures the secondary fan tachometer channel.
  *
  * Couples IC3 and IC4 into a triggered 32-bit capture pair on RD14 and enables the IC3 interrupt
- * at priority five.
+ * at priority four.
  *
  */
 static void configure_secondary_capture(void) {
