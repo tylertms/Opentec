@@ -14,8 +14,11 @@ static const HPatternCalibration calibration = {
     .lower_row_threshold = 300,
 };
 
+static uint32_t now_ms;
+
 static ShifterGear update(HPatternShifter *shifter, uint16_t lateral, uint16_t longitudinal) {
-    return h_pattern_shifter_update(shifter, &calibration, lateral, longitudinal);
+    now_ms += 11;
+    return h_pattern_shifter_update(shifter, &calibration, lateral, longitudinal, now_ms);
 }
 
 static void test_gear_map(void) {
@@ -75,9 +78,20 @@ static void test_neutral_hysteresis(void) {
     assert(shifter.neutral_position == 601);
 }
 
+static void test_reclassifies_after_strict_deadline(void) {
+    HPatternShifter shifter = {0};
+
+    assert(h_pattern_shifter_update(&shifter, &calibration, 801, 701, 0) == SHIFTER_GEAR_NEUTRAL);
+    assert(h_pattern_shifter_update(&shifter, &calibration, 801, 701, 1) == SHIFTER_GEAR_REVERSE);
+    shifter.neutral_position = 0;
+    assert(h_pattern_shifter_update(&shifter, &calibration, 600, 701, 11) == SHIFTER_GEAR_REVERSE);
+    assert(h_pattern_shifter_update(&shifter, &calibration, 600, 701, 12) == SHIFTER_GEAR_THIRD);
+}
+
 int main(void) {
     test_gear_map();
     test_row_hysteresis();
     test_neutral_hysteresis();
+    test_reclassifies_after_strict_deadline();
     return 0;
 }

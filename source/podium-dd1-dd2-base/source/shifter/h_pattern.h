@@ -35,11 +35,13 @@ typedef struct {
 typedef struct {
     uint16_t neutral_position;
     uint16_t latched_position;
+    uint32_t update_deadline_ms;
     ShifterGear gear;
 } HPatternShifter;
 
 ShifterGear h_pattern_shifter_update(HPatternShifter *shifter,
                                      const HPatternCalibration *calibration,
-                                     uint16_t lateral_position, uint16_t longitudinal_position);
+                                     uint16_t lateral_position, uint16_t longitudinal_position,
+                                     uint32_t now_ms);
 
 #endif

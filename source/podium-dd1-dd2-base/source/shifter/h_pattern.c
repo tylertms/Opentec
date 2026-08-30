@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+enum { H_PATTERN_UPDATE_INTERVAL_MS = 10 };
+
 /**
  * @brief Identifies gears in the upper H-pattern row.
  *
@@ -114,19 +116,27 @@ static ShifterGear select_lower_row(const HPatternCalibration *calibration,
 /**
  * @brief Classifies one calibrated H-pattern shifter sample with row hysteresis.
  *
- * Retains the previous gear inside its longitudinal allowance, otherwise selects the active row
- * and applies its lateral gear boundaries. Samples between the row thresholds update the neutral
- * reference.
+ * Reclassifies after each strict ten-millisecond sampling deadline. Between deadlines it retains
+ * the published gear. An eligible sample retains the previous gear inside its longitudinal
+ * allowance, otherwise selects the active row and applies its lateral gear boundaries. Samples
+ * between the row thresholds update the neutral reference.
  *
  * @param[in,out] shifter Persistent neutral reference, last accepted row position, and gear.
  * @param[in] calibration Ordered lateral gear boundaries and longitudinal row thresholds.
  * @param[in] lateral_position Current lateral axis sample.
  * @param[in] longitudinal_position Current longitudinal axis sample.
+ * @param[in] now_ms Current monotonic time in milliseconds.
  * @return Latched or newly classified neutral, reverse, or forward gear.
  */
 ShifterGear h_pattern_shifter_update(HPatternShifter *shifter,
                                      const HPatternCalibration *calibration,
-                                     uint16_t lateral_position, uint16_t longitudinal_position) {
+                                     uint16_t lateral_position, uint16_t longitudinal_position,
+                                     uint32_t now_ms) {
+    if ((int32_t)(now_ms - shifter->update_deadline_ms) <= 0) {
+        return shifter->gear;
+    }
+    shifter->update_deadline_ms = now_ms + H_PATTERN_UPDATE_INTERVAL_MS;
+
     if (gear_remains_latched(shifter, calibration, longitudinal_position)) {
         return shifter->gear;
     }

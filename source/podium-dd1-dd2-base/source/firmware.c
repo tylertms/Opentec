@@ -3093,7 +3093,7 @@ static void service_analog_input(uint32_t now_ms) {
         if (base_settings.h_pattern_shifter.calibrated) {
             h_pattern_shifter_update(&h_pattern_shifter,
                                      &base_settings.h_pattern_shifter.calibration, lateral_position,
-                                     longitudinal_position);
+                                     longitudinal_position, now_ms);
         } else {
             h_pattern_shifter = (HPatternShifter){0};
         }
