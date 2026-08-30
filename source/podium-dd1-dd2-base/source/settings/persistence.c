@@ -355,6 +355,17 @@ static bool record_matches(PlatformStorageSlot slot,
     return true;
 }
 
+/**
+ * @brief Restores the newest valid retained base settings.
+ *
+ * Selects the newer of two redundant records, supplies defaults when neither record is valid, and
+ * regenerates setup 1 instead of trusting its retained values.
+ *
+ * @param[out] persistence Retained-settings service state.
+ * @param[out] settings Restored or default base settings.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @return True when a valid retained record was restored.
+ */
 bool base_settings_persistence_load(BaseSettingsPersistence *persistence, BaseSettings *settings,
                                     uint32_t now_ms) {
     StoredSettings records[PLATFORM_STORAGE_SLOT_COUNT];
@@ -371,6 +382,7 @@ bool base_settings_persistence_load(BaseSettingsPersistence *persistence, BaseSe
 
     if (records[selected].valid) {
         *settings = records[selected].settings;
+        tuning_profile_defaults(&settings->tuning_profiles.slots[0]);
         persistence->generation = records[selected].generation;
         persistence->write_after_ms = now_ms + BASE_SETTINGS_SAVE_DELAY_MS;
         persistence->active_slot = selected;

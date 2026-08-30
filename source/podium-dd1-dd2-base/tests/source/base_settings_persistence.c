@@ -93,7 +93,7 @@ static void test_dirty_changes_are_coalesced(void) {
     assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
 
-    settings.tuning_profiles.slots[0].rotation_degrees = 720;
+    settings.tuning_profiles.slots[1].rotation_degrees = 720;
     base_settings_persistence_mark_dirty(&persistence, 1200);
     base_settings_persistence_mark_dirty(&persistence, 1700);
     assert(base_settings_persistence_service(&persistence, &settings, 2199) ==
@@ -105,7 +105,24 @@ static void test_dirty_changes_are_coalesced(void) {
     BaseSettingsPersistence loaded;
     BaseSettings restored;
     assert(base_settings_persistence_load(&loaded, &restored, 3000));
-    assert(restored.tuning_profiles.slots[0].rotation_degrees == 720);
+    assert(restored.tuning_profiles.slots[1].rotation_degrees == 720);
+}
+
+static void test_standard_profile_is_regenerated(void) {
+    reset_storage();
+    BaseSettingsPersistence persistence;
+    BaseSettings settings;
+    base_settings_persistence_load(&persistence, &settings, 0);
+    settings.tuning_profiles.slots[0].force_feedback_strength = 80;
+    settings.tuning_profiles.slots[1].force_feedback_strength = 70;
+    assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
+           BASE_SETTINGS_PERSISTENCE_SAVED);
+
+    BaseSettingsPersistence loaded;
+    BaseSettings restored;
+    assert(base_settings_persistence_load(&loaded, &restored, 2000));
+    assert(restored.tuning_profiles.slots[0].force_feedback_strength == 35);
+    assert(restored.tuning_profiles.slots[1].force_feedback_strength == 70);
 }
 
 static void test_wheel_reference_is_persisted(void) {
@@ -246,7 +263,7 @@ static void test_profile_only_record_is_upgraded(void) {
     BaseSettingsPersistence persistence;
     BaseSettings settings;
     base_settings_persistence_load(&persistence, &settings, 0);
-    settings.tuning_profiles.slots[0].rotation_degrees = 720;
+    settings.tuning_profiles.slots[1].rotation_degrees = 720;
     assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
 
@@ -261,7 +278,7 @@ static void test_profile_only_record_is_upgraded(void) {
     assert(base_settings_persistence_load(&loaded, &restored, 2000));
     assert(loaded.dirty);
     assert(!restored.wheel_position.calibrated);
-    assert(restored.tuning_profiles.slots[0].rotation_degrees == 720);
+    assert(restored.tuning_profiles.slots[1].rotation_degrees == 720);
     assert(base_settings_persistence_service(&loaded, &restored, 2999) ==
            BASE_SETTINGS_PERSISTENCE_IDLE);
     assert(base_settings_persistence_service(&loaded, &restored, 3000) ==
@@ -406,7 +423,7 @@ static void test_interrupted_replacement_preserves_previous_record(void) {
     assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
 
-    settings.tuning_profiles.slots[0].rotation_degrees = 540;
+    settings.tuning_profiles.slots[1].rotation_degrees = 540;
     base_settings_persistence_mark_dirty(&persistence, 1100);
     replace_fails = true;
     assert(base_settings_persistence_service(&persistence, &settings, 2100) ==
@@ -415,7 +432,7 @@ static void test_interrupted_replacement_preserves_previous_record(void) {
     BaseSettingsPersistence loaded;
     BaseSettings restored;
     assert(base_settings_persistence_load(&loaded, &restored, 2200));
-    assert(restored.tuning_profiles.slots[0].rotation_degrees != 540);
+    assert(restored.tuning_profiles.slots[1].rotation_degrees != 540);
 }
 
 static void test_corrupted_new_record_falls_back_to_previous_record(void) {
@@ -425,9 +442,9 @@ static void test_corrupted_new_record_falls_back_to_previous_record(void) {
     base_settings_persistence_load(&persistence, &settings, 0);
     assert(base_settings_persistence_service(&persistence, &settings, 1000) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
-    uint16_t previous_rotation = settings.tuning_profiles.slots[0].rotation_degrees;
+    uint16_t previous_rotation = settings.tuning_profiles.slots[1].rotation_degrees;
 
-    settings.tuning_profiles.slots[0].rotation_degrees = 360;
+    settings.tuning_profiles.slots[1].rotation_degrees = 360;
     base_settings_persistence_mark_dirty(&persistence, 1100);
     assert(base_settings_persistence_service(&persistence, &settings, 2100) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
@@ -436,7 +453,7 @@ static void test_corrupted_new_record_falls_back_to_previous_record(void) {
     BaseSettingsPersistence loaded;
     BaseSettings restored;
     assert(base_settings_persistence_load(&loaded, &restored, 2200));
-    assert(restored.tuning_profiles.slots[0].rotation_degrees == previous_rotation);
+    assert(restored.tuning_profiles.slots[1].rotation_degrees == previous_rotation);
 }
 
 static void test_deadline_wraps_safely(void) {
@@ -465,6 +482,7 @@ static void test_explicit_save_has_no_delay(void) {
 int main(void) {
     test_defaults_are_saved_after_delay();
     test_dirty_changes_are_coalesced();
+    test_standard_profile_is_regenerated();
     test_wheel_reference_is_persisted();
     test_shifter_calibration_is_persisted();
     test_auxiliary_axis_settings_are_persisted();
