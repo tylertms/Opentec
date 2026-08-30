@@ -19,6 +19,33 @@ enum {
 static const uint32_t BOOTLOADER_SETTLE_DELAY_CYCLES = 0x9000UL * 0x0c81UL * 2UL;
 
 /**
+ * @brief Establishes the processor interrupt and digital-I/O baseline.
+ *
+ * Selects normal interrupt priority without nesting, enables global interrupts, disables analog
+ * input on ports B through E and G, and prepares the six board inputs used before their peripheral
+ * owners finish initialization.
+ *
+ */
+void platform_system_init(void) {
+    SRbits.IPL = 0;
+    INTCON1bits.NSTDIS = 1;
+    INTCON2bits.GIE = 1;
+
+    ANSELB = 0;
+    ANSELC = 0;
+    ANSELD = 0;
+    ANSELE = 0;
+    ANSELG = 0;
+
+    TRISBbits.TRISB9 = 1;
+    TRISBbits.TRISB10 = 1;
+    TRISDbits.TRISD0 = 1;
+    TRISDbits.TRISD11 = 1;
+    TRISBbits.TRISB0 = 1;
+    TRISBbits.TRISB15 = 1;
+}
+
+/**
  * @brief Controls global processor interrupts.
  *
  * Updates the dsPIC global interrupt-enable bit without changing individual interrupt sources.

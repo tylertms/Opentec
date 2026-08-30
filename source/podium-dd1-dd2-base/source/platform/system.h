@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 
+void platform_system_init(void);
 void platform_system_interrupts_set(bool enabled);
 void platform_system_enable_firmware_protection(void);
 void platform_system_reset(void);
