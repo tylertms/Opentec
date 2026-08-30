@@ -10,11 +10,16 @@ static void test_standard_fan_profile(void) {
     assert(controller.primary_duty_percent == 25);
     assert(controller.secondary_duty_percent == 25);
     assert(controller.force_scale_percent == 100);
-    assert(controller.phase == COOLING_PHASE_IDLE);
+    assert(controller.phase == COOLING_PHASE_INITIALIZE);
     assert(controller.low_threshold_offset == 5);
     assert(controller.high_threshold_offset == 4);
     assert(controller.primary_delay_ms == -30000);
     assert(controller.secondary_delay_ms == -120000);
+
+    cooling_controller_update(&controller, 20.0f, false, false, 0);
+    assert(controller.phase == COOLING_PHASE_IDLE);
+    assert(controller.primary_duty_percent == 100);
+    assert(controller.secondary_duty_percent == 0);
 
     cooling_controller_update(&controller, 20.0f, false, false, 0);
     assert(controller.phase == COOLING_PHASE_IDLE);
@@ -119,10 +124,15 @@ static void test_suspend_and_output_inhibit(void) {
     cooling_controller_init(&controller, false);
     cooling_controller_set_suspend_request(&controller, UINT8_MAX);
     cooling_controller_update(&controller, 100.0f, false, false, 0);
-    assert(controller.phase == COOLING_PHASE_IDLE);
+    assert(controller.phase == COOLING_PHASE_INITIALIZE);
     assert(controller.primary_duty_percent == 25);
 
     cooling_controller_set_suspend_request(&controller, 0);
+    cooling_controller_update(&controller, 100.0f, false, true, 0);
+    assert(controller.phase == COOLING_PHASE_IDLE);
+    assert(controller.primary_duty_percent == 100);
+    assert(controller.force_scale_percent == 0);
+
     cooling_controller_update(&controller, 100.0f, false, true, 0);
     assert(controller.phase == COOLING_PHASE_LOW);
     assert(controller.force_scale_percent == 0);

@@ -217,15 +217,16 @@ static void update_force_scale(CoolingController *controller, float temperature,
 /**
  * @brief Initializes the thermal controller with its startup fan and force limits.
  *
- * Starts in the idle phase with the retained threshold and timing defaults, requests 25 percent
- * from both fan outputs, permits full force output, and selects the standard or dual-fan duty map.
+ * Starts in the fail-safe initialization phase with the retained threshold and timing defaults,
+ * requests 25 percent from both fan outputs, permits full force output, and selects the standard
+ * or dual-fan duty map.
  *
  * @param[out] controller Thermal fan and force-derating state.
  * @param[in] dual_fan_mode True for the alternate two-output fan duty map.
  */
 void cooling_controller_init(CoolingController *controller, bool dual_fan_mode) {
     *controller = (CoolingController){
-        .phase = COOLING_PHASE_IDLE,
+        .phase = COOLING_PHASE_INITIALIZE,
         .low_threshold_offset = COOLING_DEFAULT_LOW_THRESHOLD_OFFSET,
         .high_threshold_offset = COOLING_DEFAULT_HIGH_THRESHOLD_OFFSET,
         .primary_delay_ms = COOLING_DEFAULT_PRIMARY_DELAY_MS,
