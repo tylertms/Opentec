@@ -62,7 +62,7 @@ static void test_waits_until_notification_is_ready(void) {
     assert(monitor.disconnected);
 }
 
-static void test_deadlines_survive_counter_wrap(void) {
+static void test_accepts_a_wrapped_deadline_at_its_target(void) {
     UsbConnectionMonitor monitor;
     usb_connection_monitor_init(&monitor);
 
@@ -75,10 +75,22 @@ static void test_deadlines_survive_counter_wrap(void) {
            USB_CONNECTION_ACTION_CLEAR_NOTIFICATION);
 }
 
+static void test_uses_unsigned_deadline_order_at_counter_wrap(void) {
+    UsbConnectionMonitor monitor;
+    usb_connection_monitor_init(&monitor);
+
+    usb_connection_monitor_update(&monitor, true, true, UINT32_MAX - 99);
+    assert(usb_connection_monitor_update(&monitor, false, true, UINT32_MAX - 50) ==
+           (USB_CONNECTION_ACTION_NOTIFY_DISCONNECTED | USB_CONNECTION_ACTION_CLEAR_NOTIFICATION));
+    assert(monitor.disconnected);
+    assert(monitor.notification_clear_ms == 0);
+}
+
 int main(void) {
     test_delays_disconnect_and_shows_notification();
     test_reconnect_rearms_notification();
     test_waits_until_notification_is_ready();
-    test_deadlines_survive_counter_wrap();
+    test_accepts_a_wrapped_deadline_at_its_target();
+    test_uses_unsigned_deadline_order_at_counter_wrap();
     return 0;
 }

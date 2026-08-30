@@ -8,13 +8,29 @@ enum {
     USB_CONNECTION_NOTIFICATION_MS = 2000,
 };
 
+/**
+ * @brief Tests an inclusive connection-display deadline.
+ *
+ * Uses the unsigned millisecond ordering applied to the reconnect delay.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[in] deadline_ms Absolute millisecond deadline.
+ * @return True when the current time is at or beyond the deadline; otherwise false.
+ */
 static bool deadline_reached(uint32_t now_ms, uint32_t deadline_ms) {
-    return (int32_t)(now_ms - deadline_ms) >= 0;
+    return now_ms >= deadline_ms;
 }
 
-static bool deadline_passed(uint32_t now_ms, uint32_t deadline_ms) {
-    return (int32_t)(now_ms - deadline_ms) > 0;
-}
+/**
+ * @brief Tests a strict connection-display deadline.
+ *
+ * Uses the unsigned millisecond ordering applied when the notification page is cleared.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[in] deadline_ms Absolute millisecond deadline.
+ * @return True when the current time is beyond the deadline; otherwise false.
+ */
+static bool deadline_passed(uint32_t now_ms, uint32_t deadline_ms) { return now_ms > deadline_ms; }
 
 /**
  * @brief Initializes USB connection monitoring.
