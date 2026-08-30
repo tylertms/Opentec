@@ -608,13 +608,22 @@ static void select_v4_phase(PedalService *service) {
     }
 }
 
+/**
+ * @brief Submits the request selected by the current V4 service phase.
+ *
+ * Selects pending tuning and adjustment work, emits periodic status requests when their
+ * 15-millisecond deadline is reached, and retains each accepted request until its response arrives.
+ *
+ * @param[in,out] service V4 phase, request, tuning, and polling state to update.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 static void send_v4_request(PedalService *service, uint32_t now_ms) {
     if (service->v4_phase == PEDAL_V4_PHASE_SELECT) {
         select_v4_phase(service);
         return;
     }
     if (service->v4_phase == PEDAL_V4_PHASE_STATUS) {
-        if (now_ms > service->next_status_ms &&
+        if (platform_time_reached(now_ms, service->next_status_ms) &&
             transfer_session_send(&service->v4, pedal_v4_status_request,
                                   (uint8_t)sizeof(pedal_v4_status_request), 0)) {
             service->v4_request_active = true;

@@ -557,8 +557,6 @@ static void test_polls_and_publishes_v4_input(void) {
     pedal_service_run(&service, 20);
     assert(transfer_send_count == 2);
     pedal_service_run(&service, 21);
-    assert(transfer_send_count == 2);
-    pedal_service_run(&service, 22);
     assert(transfer_send_count == 3);
 }
 
