@@ -56,6 +56,7 @@
 #include "platform/usb.h"
 #include "profile/bank.h"
 #include "profile/tuning.h"
+#include "profile/tuning_display.h"
 #include "profile/tuning_entry.h"
 #include "profile/tuning_interaction.h"
 #include "profile/tuning_menu.h"
@@ -244,6 +245,7 @@ static UsbTuningMenuService usb_tuning_menu_service;
 static UsbTuningProfileService usb_tuning_profile_service;
 static TuningInteraction tuning_interaction;
 static TuningMenu tuning_menu;
+static WheelDisplayOutput tuning_display_output;
 static TuningEntryAvailabilityContext tuning_availability;
 static TuningEntryAdjustmentContext tuning_adjustment;
 static TuningInteractionInput tuning_interaction_input;
@@ -2612,6 +2614,23 @@ static void update_local_tuning_adjustment(void) {
 }
 
 /**
+ * @brief Applies the current local tuning page to attached-wheel output.
+ *
+ * Renders the selected entry over the default wheel page while retaining its auxiliary output and
+ * restores lower-priority output when the local menu closes.
+ *
+ */
+static void apply_tuning_menu_presentation(void) {
+    tuning_display_output = *wheel_service_default_display_output(&wheel_service);
+    if (!tuning_display_render(&tuning_menu, &base_settings.tuning_profiles,
+                               &tuning_display_output)) {
+        wheel_service_clear_display_override(&wheel_service);
+        return;
+    }
+    wheel_service_set_display_override(&wheel_service, &tuning_display_output);
+}
+
+/**
  * @brief Services the security gate and wheel-side tuning interaction.
  *
  * Feeds the security-code state machine from direct or adapter controls and gives active code entry
@@ -2678,6 +2697,7 @@ static void service_tuning_interaction(uint32_t now_ms) {
         }
         base_settings_persistence_mark_dirty(&settings_persistence, now_ms);
     }
+    apply_tuning_menu_presentation();
 }
 
 /**

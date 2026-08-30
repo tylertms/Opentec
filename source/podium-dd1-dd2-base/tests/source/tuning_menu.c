@@ -37,6 +37,7 @@ static void selects_the_first_available_entry_when_opened(void) {
     assert(update.entry_changed);
     assert(!update.value_changed);
     assert(menu.selected_entry == TUNING_ENTRY_SETUP);
+    assert(menu.view == TUNING_MENU_VIEW_VALUE);
 }
 
 static void navigates_in_display_order_and_skips_unavailable_entries(void) {
@@ -50,6 +51,7 @@ static void navigates_in_display_order_and_skips_unavailable_entries(void) {
                                                  &availability, &adjustment);
     assert(update.entry_changed);
     assert(menu.selected_entry == TUNING_ENTRY_FORCE_SCALE);
+    assert(menu.view == TUNING_MENU_VIEW_LABEL);
 }
 
 static void adjusts_the_selected_entry(void) {
@@ -62,6 +64,40 @@ static void adjusts_the_selected_entry(void) {
                                                  &availability, &adjustment);
     assert(update.value_changed);
     assert(bank.slots[0].force_feedback_strength == 34);
+    assert(menu.view == TUNING_MENU_VIEW_VALUE);
+}
+
+static void toggles_between_entry_label_and_value(void) {
+    TuningMenu menu = {
+        .selected_entry = TUNING_ENTRY_FORCE_FEEDBACK_STRENGTH,
+        .view = TUNING_MENU_VIEW_LABEL,
+    };
+    TuningProfileBank bank;
+    tuning_profile_bank_defaults(&bank);
+
+    tuning_menu_update(&menu, TUNING_INTERACTION_ENTRY_OPEN,
+                       navigation(TUNING_NAVIGATION_TOGGLE_VIEW, 0), &bank, &availability,
+                       &adjustment);
+    assert(menu.view == TUNING_MENU_VIEW_VALUE);
+
+    tuning_menu_update(&menu, TUNING_INTERACTION_ENTRY_OPEN,
+                       navigation(TUNING_NAVIGATION_TOGGLE_VIEW, 0), &bank, &availability,
+                       &adjustment);
+    assert(menu.view == TUNING_MENU_VIEW_LABEL);
+}
+
+static void keeps_setup_on_its_value_presentation(void) {
+    TuningMenu menu = {
+        .selected_entry = TUNING_ENTRY_SETUP,
+        .view = TUNING_MENU_VIEW_VALUE,
+    };
+    TuningProfileBank bank;
+    tuning_profile_bank_defaults(&bank);
+
+    tuning_menu_update(&menu, TUNING_INTERACTION_ENTRY_OPEN,
+                       navigation(TUNING_NAVIGATION_TOGGLE_VIEW, 0), &bank, &availability,
+                       &adjustment);
+    assert(menu.view == TUNING_MENU_VIEW_VALUE);
 }
 
 static void repairs_an_unavailable_selection_and_clears_it_when_closed(void) {
@@ -80,6 +116,7 @@ static void repairs_an_unavailable_selection_and_clears_it_when_closed(void) {
                            &bank, &availability, &adjustment);
     assert(update.entry_changed);
     assert(menu.selected_entry == TUNING_ENTRY_COUNT);
+    assert(menu.view == TUNING_MENU_VIEW_LABEL);
 }
 
 static void handles_unavailable_state(void) {
@@ -102,6 +139,8 @@ int main(void) {
     selects_the_first_available_entry_when_opened();
     navigates_in_display_order_and_skips_unavailable_entries();
     adjusts_the_selected_entry();
+    toggles_between_entry_label_and_value();
+    keeps_setup_on_its_value_presentation();
     repairs_an_unavailable_selection_and_clears_it_when_closed();
     handles_unavailable_state();
     return 0;

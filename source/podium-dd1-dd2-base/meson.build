@@ -148,6 +148,7 @@ profile_tuning_sources = files('source/profile/tuning.c')
 profile_tuning_entry_sources = files('source/profile/tuning_entry.c')
 profile_tuning_interaction_sources = files('source/profile/tuning_interaction.c')
 profile_tuning_menu_sources = files('source/profile/tuning_menu.c')
+profile_tuning_display_sources = files('source/profile/tuning_display.c')
 security_code_sources = files('source/security/code.c')
 settings_persistence_sources = files('source/settings/persistence.c')
 settings_state_sources = files('source/settings/state.c')
@@ -396,6 +397,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'profile-tuning-entry': 'source/profile/tuning_entry.c',
     'profile-tuning-interaction': 'source/profile/tuning_interaction.c',
     'profile-tuning-menu': 'source/profile/tuning_menu.c',
+    'profile-tuning-display': 'source/profile/tuning_display.c',
     'security-code': 'source/security/code.c',
     'settings-persistence': 'source/settings/persistence.c',
     'settings-state': 'source/settings/state.c',
@@ -1782,6 +1784,16 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  profile_tuning_display_test = executable(
+    'base-profile-tuning-display-test',
+    'tests/source/tuning_display.c',
+    profile_tuning_display_sources,
+    profile_bank_sources,
+    profile_tuning_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   security_code_test = executable(
     'base-security-code-test',
     'tests/source/security_code.c',
@@ -2839,6 +2851,11 @@ if not meson.is_cross_build()
     'base-profile-tuning-menu',
     profile_tuning_menu_test,
     suite: ['base', 'profile', 'wheel', 'input'],
+  )
+  test(
+    'base-profile-tuning-display',
+    profile_tuning_display_test,
+    suite: ['base', 'profile', 'wheel', 'display'],
   )
   test(
     'base-security-code',

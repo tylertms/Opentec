@@ -7,9 +7,16 @@
 #include "profile/tuning_entry.h"
 #include "profile/tuning_interaction.h"
 
-/** @brief Current local tuning-menu selection. */
+/** @brief Visible side of a local tuning entry. */
+typedef enum {
+    TUNING_MENU_VIEW_LABEL,
+    TUNING_MENU_VIEW_VALUE,
+} TuningMenuView;
+
+/** @brief Current local tuning-menu selection and presentation. */
 typedef struct {
     TuningEntry selected_entry;
+    TuningMenuView view;
 } TuningMenu;
 
 /** @brief Changes produced by one local tuning-menu update. */
