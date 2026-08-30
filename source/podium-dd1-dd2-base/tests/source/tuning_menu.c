@@ -1,6 +1,7 @@
 #include "profile/tuning_menu.h"
 
 #include <assert.h>
+#include <stddef.h>
 
 #include "profile/bank.h"
 #include "profile/tuning_entry.h"

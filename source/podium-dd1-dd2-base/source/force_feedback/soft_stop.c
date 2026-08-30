@@ -7,11 +7,12 @@
 enum {
     FORCE_SOFT_STOP_ONSET_MARGIN = 1000,
     FORCE_SOFT_STOP_FULL_FORCE_SPAN = 0x19b1,
-    FORCE_SOFT_STOP_TARGET = 0xffff,
     FORCE_SOFT_STOP_RAMP_INTERVAL_MS = 50,
     FORCE_SOFT_STOP_RAMP_RESET_DISTANCE = 494,
     FORCE_SOFT_STOP_RAMP_MAXIMUM = 100,
 };
+
+static const int32_t force_soft_stop_target = INT32_C(0xffff);
 
 /**
  * @brief Reset the wheel-range end-stop runtime state.
@@ -65,12 +66,12 @@ ForceSoftStopResult force_soft_stop_update(ForceSoftStopState *state,
         int64_t distance = (int64_t)position - boundary;
         penetration = distance > FORCE_SOFT_STOP_FULL_FORCE_SPAN ? FORCE_SOFT_STOP_FULL_FORCE_SPAN
                                                                  : (int32_t)distance;
-        force_bias = FORCE_SOFT_STOP_TARGET;
+        force_bias = force_soft_stop_target;
     } else if (position < -boundary) {
         int64_t distance = -(int64_t)boundary - position;
         penetration = distance > FORCE_SOFT_STOP_FULL_FORCE_SPAN ? FORCE_SOFT_STOP_FULL_FORCE_SPAN
                                                                  : (int32_t)distance;
-        force_bias = -FORCE_SOFT_STOP_TARGET;
+        force_bias = -force_soft_stop_target;
     }
 
     if (penetration != 0) {

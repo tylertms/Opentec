@@ -249,6 +249,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     '-mlarge-code',
     '-mtext=application',
     '-Os',
+    '-g',
     '-ffunction-sections',
   ]
   linker_script = files('source/platform/dspic33e/p33EP512MU810.gld')[0]
@@ -556,7 +557,20 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
   )
 endif
 
-if not meson.is_cross_build()
+base_dspic_tests = meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
+
+if not meson.is_cross_build() or base_dspic_tests
+  if base_dspic_tests
+    add_test_setup(
+      'sim30',
+      env: {
+        'SIM30_COVERAGE_DIR': meson.current_build_dir() / 'sim30-coverage',
+      },
+      is_default: true,
+      timeout_multiplier: 4,
+    )
+  endif
+
   analog_axis_test = executable(
     'base-analog-axis-test',
     'tests/source/analog_axis.c',
@@ -3105,12 +3119,14 @@ if not meson.is_cross_build()
     settings_journal_test,
     suite: ['base', 'settings', 'persistence', 'safety'],
   )
-  test(
-    'base-flash-image-qualification',
-    base_python,
-    args: files('tests/tools/qualify_flash_image_test.py'),
-    suite: ['base', 'platform', 'safety'],
-  )
+  if not base_dspic_tests
+    test(
+      'base-flash-image-qualification',
+      base_python,
+      args: files('tests/tools/qualify_flash_image_test.py'),
+      suite: ['base', 'platform', 'safety'],
+    )
+  endif
   test('base-platform-time', platform_time_test, suite: ['base', 'platform'])
   test('base-wheel-position', wheel_position_test, suite: ['base', 'wheel-position'])
   test('base-wheel-accessory', wheel_accessory_test, suite: ['base', 'wheel', 'accessory'])

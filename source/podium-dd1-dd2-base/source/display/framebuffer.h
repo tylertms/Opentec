@@ -9,7 +9,7 @@ enum {
     DISPLAY_FRAMEBUFFER_SIZE = 8192,
 };
 
-#if defined(__XC16__)
+#if defined(__XC16__) && !defined(OPENTEC_SIM30_TEST)
 typedef __eds__ uint8_t *DisplayFramebuffer;
 typedef const __eds__ uint8_t *ConstDisplayFramebuffer;
 #else

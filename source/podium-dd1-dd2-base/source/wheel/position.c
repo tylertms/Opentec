@@ -11,12 +11,12 @@
  * @param[in] position Signed wheel position to constrain.
  * @return Position constrained to the supported sensor range.
  */
-static int32_t clamp_position(int64_t position) {
-    if (position < -WHEEL_POSITION_SAMPLE_LIMIT) {
-        return -WHEEL_POSITION_SAMPLE_LIMIT;
+static int32_t clamp_position(int32_t position) {
+    if (position < -(int32_t)WHEEL_POSITION_SAMPLE_LIMIT) {
+        return -(int32_t)WHEEL_POSITION_SAMPLE_LIMIT;
     }
-    if (position > WHEEL_POSITION_SAMPLE_LIMIT) {
-        return WHEEL_POSITION_SAMPLE_LIMIT;
+    if (position > (int32_t)WHEEL_POSITION_SAMPLE_LIMIT) {
+        return (int32_t)WHEEL_POSITION_SAMPLE_LIMIT;
     }
     return (int32_t)position;
 }
@@ -48,7 +48,13 @@ static bool filter_value_is_invalid(float value) {
  * @return Signed and constrained displacement from center.
  */
 int32_t wheel_position_center(int32_t sample, int32_t center) {
-    return clamp_position((int64_t)sample - center);
+    if (center > 0 && sample < INT32_MIN + center) {
+        return -(int32_t)WHEEL_POSITION_SAMPLE_LIMIT;
+    }
+    if (center < 0 && sample > INT32_MAX + center) {
+        return (int32_t)WHEEL_POSITION_SAMPLE_LIMIT;
+    }
+    return clamp_position(sample - center);
 }
 
 /**

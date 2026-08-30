@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stddef.h>
 #include <stdint.h>
 
 static int8_t signed_status(uint8_t value) { return (int8_t)value; }

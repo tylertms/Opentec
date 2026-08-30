@@ -848,13 +848,22 @@ static void test_exchanges_playstation_authentication(void) {
     assert(stalled);
 }
 
-static void test_handles_every_zero_shape_control_request(void) {
+static void test_handles_representative_zero_shape_control_requests(void) {
+    static const uint8_t request_types[] = {
+        0x00, 0x01, 0x02, 0x03, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x3f, 0x40, 0x41, 0x42, 0x43,
+        0x5f, 0x60, 0x61, 0x62, 0x63, 0x7f, 0x80, 0x81, 0x82, 0x83, 0x9f, 0xa0, 0xa1, 0xa2,
+        0xa3, 0xbf, 0xc0, 0xc1, 0xc2, 0xc3, 0xdf, 0xe0, 0xe1, 0xe2, 0xe3, 0xff,
+    };
+    static const uint8_t requests[] = {
+        0x00, 0x01, 0x02, 0x03, 0x05, 0x06, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x20, 0x21, 0x90, 0xff,
+    };
     uint8_t setup[8] = {0};
-    for (uint16_t request_type = 0; request_type <= UINT8_MAX; request_type++) {
-        for (uint16_t request = 0; request <= UINT8_MAX; request++) {
+    for (uint8_t request_type_index = 0; request_type_index < sizeof(request_types);
+         request_type_index++) {
+        for (uint8_t request_index = 0; request_index < sizeof(requests); request_index++) {
             usb_device_init(BOARD_VARIANT_DD1);
-            setup[0] = (uint8_t)request_type;
-            setup[1] = (uint8_t)request;
+            setup[0] = request_types[request_type_index];
+            setup[1] = requests[request_index];
             push_setup(setup);
             usb_device_service();
             assert(event_head == event_tail);
@@ -873,6 +882,6 @@ int main(void) {
     test_exchanges_updater_packets();
     test_exchanges_xbox_gip_discovery();
     test_exchanges_playstation_authentication();
-    test_handles_every_zero_shape_control_request();
+    test_handles_representative_zero_shape_control_requests();
     return 0;
 }

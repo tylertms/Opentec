@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 static TuningInteractionInput input(uint8_t mode, uint16_t primary, uint16_t secondary) {
     return (TuningInteractionInput){

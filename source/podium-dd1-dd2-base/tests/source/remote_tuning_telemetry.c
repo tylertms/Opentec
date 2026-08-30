@@ -259,7 +259,7 @@ static void test_formats_all_primary_encodings_and_lengths(void) {
     static const uint8_t formats[] = {0x41, 0x42, 0x43, 0x44, 0x45, 0x46,
                                       0x47, 0x28, 0x29, 0x1a, 0x0b};
     static const uint8_t required_sizes[] = {0, 1, 1, 2, 2, 4, 4, 4, 2, 4, 0};
-    uint8_t payload[16] = {0x85, 0xff, 0xff, 0x7f};
+    uint8_t payload[16] = {0x00, 0x00, 0xc0, 0x3f};
 
     for (uint8_t index = 0; index < sizeof(formats); index++) {
         RemoteTelemetry telemetry;
