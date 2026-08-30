@@ -716,6 +716,21 @@ static void test_delays_legacy_reconnect_after_primary_response(void) {
     assert(discovery_count == 1);
 }
 
+static void test_waits_full_legacy_response_window(void) {
+    PedalService service;
+    reset_link();
+    pedal_service_init(&service);
+    service.phase = PEDAL_SERVICE_LEGACY_REQUEST;
+
+    pedal_service_run(&service, 0);
+    assert(service.phase == PEDAL_SERVICE_LEGACY_RESPONSE);
+    pedal_service_run(&service, 17);
+    assert(service.phase == PEDAL_SERVICE_LEGACY_RESPONSE);
+    pedal_service_run(&service, 18);
+    assert(service.phase == PEDAL_SERVICE_LEGACY_REQUEST);
+    assert(service.legacy_retries[PEDAL_LEGACY_AXIS_1] == 1);
+}
+
 static void test_retries_after_discovery_timeout(void) {
     PedalService service;
     reset_link();
@@ -932,6 +947,7 @@ int main(void) {
     test_reconnects_after_v4_transfer_timeout();
     test_polls_legacy_pedal_channels();
     test_delays_legacy_reconnect_after_primary_response();
+    test_waits_full_legacy_response_window();
     test_retries_after_discovery_timeout();
     test_selects_analog_input_after_discovery_timeout();
     test_does_not_select_analog_fallback_from_primary_channel();
