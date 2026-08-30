@@ -1,44 +1,45 @@
 #include "platform/storage.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <xc.h>
 
+#include "settings/journal.h"
+
 enum {
-    FLASH_PAGE_ADDRESS_SIZE = 0x800,
-    FLASH_STORAGE_PAGE_COUNT = 2,
-    FLASH_STORAGE_INSTRUCTION_COUNT = FLASH_PAGE_ADDRESS_SIZE * FLASH_STORAGE_PAGE_COUNT / 2,
-    FLASH_INSTRUCTION_DATA_SIZE = 3,
-    FLASH_ROW_INSTRUCTION_COUNT = 128,
-    FLASH_ROW_ADDRESS_SIZE = FLASH_ROW_INSTRUCTION_COUNT * 2,
+    SETTINGS_FLASH_ORIGIN = 0x00002000,
+    SETTINGS_FLASH_PAGE_ADDRESS_SIZE = 0x800,
+    NVM_WORD_PROGRAM = 0x4001,
     NVM_ROW_PROGRAM = 0x4002,
     NVM_PAGE_ERASE = 0x4003,
+    WRITE_LATCH_PAGE = 0xfa,
 };
 
-static const uint32_t settings_storage_page_a = UINT32_C(0x54000);
-static const uint32_t settings_storage_page_b = UINT32_C(0x54800);
-static const uint16_t platform_storage_pages[FLASH_STORAGE_INSTRUCTION_COUNT]
-    __attribute__((space(prog), address(0x54000), noload, used));
+static SettingsJournal settings_journal;
 
 /**
- * @brief Resolves a retained-settings slot to its flash page.
+ * @brief Resolves a physical journal page and instruction to a program address.
  *
- * Selects the first reserved page for slot A and the second reserved page for slot B.
+ * Places six consecutive 0x800-address-unit pages in reserved program addresses 0x2000 through
+ * 0x4fff.
  *
- * @param[in] slot Retained-settings slot.
- * @return Program-flash address of the selected slot.
+ * @param[in] page Physical settings page from zero through five.
+ * @param[in] instruction Instruction offset within the page.
+ * @return Extended program address of the instruction.
  */
-static uint32_t slot_address(PlatformStorageSlot slot) {
-    return slot == PLATFORM_STORAGE_SETTINGS_A ? settings_storage_page_a : settings_storage_page_b;
+static uint32_t instruction_address(uint8_t page, uint16_t instruction) {
+    return SETTINGS_FLASH_ORIGIN + (uint32_t)page * SETTINGS_FLASH_PAGE_ADDRESS_SIZE +
+           (uint32_t)instruction * 2;
 }
 
 /**
- * @brief Executes the configured nonvolatile flash operation.
+ * @brief Executes the configured nonvolatile-memory operation.
  *
- * Raises CPU interrupt priority through the unlock and busy interval, restores the prior priority,
- * disables further writes, and reports the controller result.
+ * Masks interrupts through the unlock and busy interval, restores the previous CPU priority, and
+ * disables further writes after completion.
  *
- * @return True when the flash controller completed without a write error.
+ * @return True when the controller completed without a write error; otherwise false.
  */
 static bool nvm_execute(void) {
     uint16_t previous_priority;
@@ -53,111 +54,165 @@ static bool nvm_execute(void) {
 }
 
 /**
- * @brief Erases one aligned program-flash page.
+ * @brief Reads one 24-bit settings-journal instruction.
  *
- * Selects the page through a table-write latch and executes page-erase operation 0x4003 while
- * preserving the caller's table page selection.
+ * Reads the low word and upper byte through table access while preserving the caller's table page.
  *
- * @param[in] address Aligned program-flash page address.
- * @return True when the page erase completed without a write error.
+ * @param[in] context Unused journal context.
+ * @param[in] page Physical settings page from zero through five.
+ * @param[in] instruction Instruction offset within the page.
+ * @param[out] value Low word and upper-byte tag read from flash.
+ * @return True after the addressed instruction is read.
  */
-static bool flash_page_erase(uint32_t address) {
+static bool flash_instruction_read(void *context, uint8_t page, uint16_t instruction,
+                                   SettingsJournalInstruction *value) {
+    (void)context;
+    uint32_t address = instruction_address(page, instruction);
     uint16_t saved_table_page = TBLPAG;
-    NVMCON = NVM_PAGE_ERASE;
     TBLPAG = (uint16_t)(address >> 16);
-    __builtin_tblwtl((uint16_t)address, UINT16_MAX);
+    value->value = __builtin_tblrdl((uint16_t)address);
+    value->tag = (uint8_t)__builtin_tblrdh((uint16_t)address);
+    TBLPAG = saved_table_page;
+    return true;
+}
+
+/**
+ * @brief Programs one 24-bit settings-journal instruction.
+ *
+ * Loads the requested instruction and its unchanged paired neighbor into the word-program latches,
+ * executes operation 0x4001, and preserves the caller's table page.
+ *
+ * @param[in] context Unused journal context.
+ * @param[in] page Physical settings page from zero through five.
+ * @param[in] instruction Instruction offset within the page.
+ * @param[in] value Low word and upper-byte tag to program.
+ * @return True when word programming completes without a controller error; otherwise false.
+ */
+static bool flash_instruction_program(void *context, uint8_t page, uint16_t instruction,
+                                      SettingsJournalInstruction value) {
+    (void)context;
+    uint32_t address = instruction_address(page, instruction);
+    uint16_t offset = (uint16_t)address;
+    uint16_t neighbor_offset = offset ^ 2U;
+    uint16_t saved_table_page = TBLPAG;
+
+    TBLPAG = (uint16_t)(address >> 16);
+    SettingsJournalInstruction neighbor = {
+        .value = __builtin_tblrdl(neighbor_offset),
+        .tag = (uint8_t)__builtin_tblrdh(neighbor_offset),
+    };
+
+    NVMCON = NVM_WORD_PROGRAM;
+    NVMADRU = (uint16_t)(address >> 16);
+    NVMADR = offset;
+    TBLPAG = WRITE_LATCH_PAGE;
+    uint16_t latch_offset = offset & 3U;
+    __builtin_tblwtl(latch_offset, value.value);
+    __builtin_tblwth(latch_offset, value.tag);
+    __builtin_tblwtl(latch_offset ^ 2U, neighbor.value);
+    __builtin_tblwth(latch_offset ^ 2U, neighbor.tag);
     bool successful = nvm_execute();
     TBLPAG = saved_table_page;
     return successful;
 }
 
 /**
- * @brief Programs one complete flash row from a compact byte sequence.
+ * @brief Programs one complete settings-journal instruction row.
  *
- * Loads 128 three-byte instruction latches, pads unused input bytes with erased values, and
- * executes row-program operation 0x4002.
+ * Loads 128 low words and upper-byte tags into the row latches in instruction order, executes
+ * operation 0x4002, and preserves the caller's table page.
  *
- * @param[in] address Aligned program-flash row address.
- * @param[in] data Compact instruction bytes to program.
- * @param[in] size Number of input bytes; at most one complete row.
- * @return True when row programming completed without a write error.
+ * @param[in] context Unused journal context.
+ * @param[in] page Physical settings page from zero through five.
+ * @param[in] row Row index within the physical page.
+ * @param[in] values Complete row contents in instruction order.
+ * @return True when row programming completes without a controller error; otherwise false.
  */
-static bool flash_row_program(uint32_t address, const uint8_t *data, uint16_t size) {
-    TBLPAG = (uint16_t)(address >> 16);
+static bool flash_instruction_row_program(void *context, uint8_t page, uint16_t row,
+                                          const SettingsJournalInstruction *values) {
+    (void)context;
+    uint16_t first_instruction = row * SETTINGS_JOURNAL_ROW_INSTRUCTION_COUNT;
+    uint32_t address = instruction_address(page, first_instruction);
+    uint16_t saved_table_page = TBLPAG;
     NVMCON = NVM_ROW_PROGRAM;
-    for (uint16_t instruction = 0; instruction < FLASH_ROW_INSTRUCTION_COUNT; instruction++) {
-        uint16_t source = instruction * FLASH_INSTRUCTION_DATA_SIZE;
-        uint8_t low_byte = source < size ? data[source] : UINT8_MAX;
-        uint8_t high_byte = source + 1 < size ? data[source + 1] : UINT8_MAX;
-        uint8_t upper_byte = source + 2 < size ? data[source + 2] : UINT8_MAX;
-        uint16_t offset = (uint16_t)(address + instruction * 2U);
-        __builtin_tblwtl(offset, (uint16_t)low_byte | ((uint16_t)high_byte << 8));
-        __builtin_tblwth(offset, upper_byte);
+    for (uint16_t index = 0; index < SETTINGS_JOURNAL_ROW_INSTRUCTION_COUNT; index++) {
+        uint16_t offset = (uint16_t)(address + (uint32_t)index * 2);
+        NVMADRU = (uint16_t)(address >> 16);
+        NVMADR = offset;
+        TBLPAG = WRITE_LATCH_PAGE;
+        __builtin_tblwtl(offset & 0xffU, values[index].value);
+        __builtin_tblwth(offset & 0xffU, values[index].tag);
     }
-    NVMADRU = (uint16_t)(address >> 16);
-    NVMADR = (uint16_t)address;
-    return nvm_execute();
-}
-
-/**
- * @brief Reads compact bytes from one retained-settings slot.
- *
- * Expands each 24-bit flash instruction into three consecutive bytes and preserves the caller's
- * table page selection.
- *
- * @param[in] slot Retained-settings slot to read.
- * @param[out] data Destination for the requested bytes.
- * @param[in] size Number of bytes to read.
- * @return True when the slot and size are valid; otherwise false.
- */
-bool platform_storage_read(PlatformStorageSlot slot, uint8_t *data, uint16_t size) {
-    if ((unsigned)slot >= PLATFORM_STORAGE_SLOT_COUNT || size > PLATFORM_STORAGE_SLOT_SIZE) {
-        return false;
-    }
-
-    uint32_t address = slot_address(slot);
-    uint16_t saved_table_page = TBLPAG;
-    for (uint16_t index = 0; index < size; index += FLASH_INSTRUCTION_DATA_SIZE) {
-        TBLPAG = (uint16_t)(address >> 16);
-        uint16_t low = __builtin_tblrdl((uint16_t)address);
-        uint16_t high = __builtin_tblrdh((uint16_t)address);
-        data[index] = (uint8_t)low;
-        if (index + 1 < size) {
-            data[index + 1] = (uint8_t)(low >> 8);
-        }
-        if (index + 2 < size) {
-            data[index + 2] = (uint8_t)high;
-        }
-        address += 2;
-    }
-    TBLPAG = saved_table_page;
-    return true;
-}
-
-/**
- * @brief Replaces one retained-settings slot.
- *
- * Erases the selected page and programs its first row from the supplied compact byte sequence.
- * Unused row bytes remain erased.
- *
- * @param[in] slot Retained-settings slot to replace.
- * @param[in] data Source bytes to retain.
- * @param[in] size Number of source bytes.
- * @return True when the aligned erase and row program both succeed; otherwise false.
- */
-bool platform_storage_replace(PlatformStorageSlot slot, const uint8_t *data, uint16_t size) {
-    if ((unsigned)slot >= PLATFORM_STORAGE_SLOT_COUNT || size > PLATFORM_STORAGE_SLOT_SIZE) {
-        return false;
-    }
-
-    uint32_t address = slot_address(slot);
-    if ((address & (FLASH_PAGE_ADDRESS_SIZE - 1U)) != 0 || !flash_page_erase(address)) {
-        return false;
-    }
-
-    uint16_t saved_table_page = TBLPAG;
-    bool successful =
-        (address & (FLASH_ROW_ADDRESS_SIZE - 1U)) == 0 && flash_row_program(address, data, size);
+    bool successful = nvm_execute();
     TBLPAG = saved_table_page;
     return successful;
+}
+
+/**
+ * @brief Erases one physical settings-journal page.
+ *
+ * Selects the aligned extended program address and executes page-erase operation 0x4003 while
+ * preserving the caller's table page.
+ *
+ * @param[in] context Unused journal context.
+ * @param[in] page Physical settings page from zero through five.
+ * @return True when the page erase completes without a controller error; otherwise false.
+ */
+static bool flash_page_erase(void *context, uint8_t page) {
+    (void)context;
+    uint32_t address = instruction_address(page, 0);
+    uint16_t saved_table_page = TBLPAG;
+    NVMCON = NVM_PAGE_ERASE;
+    NVMADRU = (uint16_t)(address >> 16);
+    NVMADR = (uint16_t)address;
+    TBLPAG = WRITE_LATCH_PAGE;
+    __builtin_tblwtl((uint16_t)address & 0xffU, UINT16_MAX);
+    bool successful = nvm_execute();
+    TBLPAG = saved_table_page;
+    return successful;
+}
+
+static const SettingsJournalOperations settings_journal_operations = {
+    .read = flash_instruction_read,
+    .program = flash_instruction_program,
+    .program_row = flash_instruction_row_program,
+    .erase = flash_page_erase,
+};
+
+/**
+ * @brief Initializes retained settings storage.
+ *
+ * Examines and repairs both three-page journal groups, creating empty active pages when storage is
+ * erased.
+ *
+ * @return True when all 510 indexed values can be accessed; otherwise false.
+ */
+bool platform_storage_initialize(void) {
+    return settings_journal_initialize(&settings_journal, &settings_journal_operations, NULL);
+}
+
+/**
+ * @brief Reads one retained 16-bit setting.
+ *
+ * Returns the newest append record for the requested reference-compatible settings index.
+ *
+ * @param[in] index Settings index from zero through 509.
+ * @param[out] value Retained value.
+ * @return True when the index has a retained value; otherwise false.
+ */
+bool platform_storage_value_read(uint16_t index, uint16_t *value) {
+    return settings_journal_read(&settings_journal, index, value);
+}
+
+/**
+ * @brief Writes one retained 16-bit setting.
+ *
+ * Appends the value to the reference-compatible journal and performs page rotation when required.
+ *
+ * @param[in] index Settings index from zero through 509.
+ * @param[in] value Value to retain.
+ * @return True when the value is stored or already current; otherwise false.
+ */
+bool platform_storage_value_write(uint16_t index, uint16_t value) {
+    return settings_journal_write(&settings_journal, index, value);
 }

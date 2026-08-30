@@ -120,6 +120,15 @@ static void renders_modes_flags_and_curves(void) {
     assert_glyphs(&output, 0x73, 0x50, 0x5c);
 }
 
+static void renders_every_catalog_entry(void) {
+    TuningProfileBank bank;
+    tuning_profile_bank_defaults(&bank);
+    for (TuningEntry entry = 0; entry < TUNING_ENTRY_COUNT; entry++) {
+        render(&bank, entry, TUNING_MENU_VIEW_LABEL);
+        render(&bank, entry, TUNING_MENU_VIEW_VALUE);
+    }
+}
+
 static void rejects_a_closed_or_invalid_presentation(void) {
     TuningProfileBank bank;
     tuning_profile_bank_defaults(&bank);
@@ -139,6 +148,7 @@ int main(void) {
     renders_automatic_and_concrete_sensitivity();
     renders_disabled_scaled_and_limit_values();
     renders_modes_flags_and_curves();
+    renders_every_catalog_entry();
     rejects_a_closed_or_invalid_presentation();
     return 0;
 }

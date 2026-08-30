@@ -126,7 +126,7 @@ static uint8_t encode_exclusive(uint16_t report, uint8_t latched_bands) {
  * @return Encoded auxiliary scan byte.
  */
 uint8_t wheel_auxiliary_output_encode(const WheelAuxiliaryOutput *output) {
-    if (output == NULL || output->disabled) {
+    if (output == NULL || output->option == 1) {
         return 0;
     }
 

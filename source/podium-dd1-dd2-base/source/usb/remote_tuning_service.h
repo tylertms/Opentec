@@ -49,7 +49,8 @@ bool usb_remote_tuning_service_apply(UsbRemoteTuningService *service,
                                      bool adapter_connected);
 bool usb_remote_tuning_service_take_response(UsbRemoteTuningService *service, uint8_t wheel_mode,
                                              RemoteTuningResponse *response);
-bool usb_remote_tuning_service_take_adapter_active(UsbRemoteTuningService *service, bool *active);
+bool usb_remote_tuning_service_take_adapter_active(UsbRemoteTuningService *service,
+                                                   bool synchronization_allowed, bool *active);
 bool usb_remote_tuning_service_take_adapter_refresh_state(UsbRemoteTuningService *service,
                                                           bool *active);
 bool usb_remote_tuning_service_take_adapter_setup_selection(UsbRemoteTuningService *service,

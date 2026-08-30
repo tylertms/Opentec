@@ -4,472 +4,307 @@
 #include <stdint.h>
 
 #include "platform/storage.h"
-#include "profile/record.h"
 #include "settings/state.h"
+#include "usb/tuning_profile_report.h"
 #include "wheel/position.h"
 
 enum {
-    PERSISTENCE_MAGIC_0 = 'O',
-    PERSISTENCE_MAGIC_1 = 'T',
-    PERSISTENCE_MAGIC_2 = 'P',
-    PERSISTENCE_MAGIC_3 = 'S',
-    PERSISTENCE_PROFILE_ONLY_VERSION = 1,
-    PERSISTENCE_WHEEL_REFERENCE_VERSION = 2,
-    PERSISTENCE_H_PATTERN_VERSION = 3,
-    PERSISTENCE_AUXILIARY_AXIS_VERSION = 4,
-    PERSISTENCE_STEERING_LIMIT_VERSION = 5,
-    PERSISTENCE_AUXILIARY_OUTPUT_VERSION = 6,
-    PERSISTENCE_VERSION = 7,
-    PERSISTENCE_HEADER_SIZE = 12,
-    PERSISTENCE_REFERENCE_SIZE = 5,
-    PERSISTENCE_H_PATTERN_SIZE = 17,
-    PERSISTENCE_AUXILIARY_AXIS_SIZE = 5,
-    PERSISTENCE_STEERING_LIMIT_SIZE = TUNING_PROFILE_SLOT_COUNT,
-    PERSISTENCE_AUXILIARY_OUTPUT_SIZE = 1,
-    PERSISTENCE_SECURITY_CODE_SIZE = 4,
-    PERSISTENCE_REFERENCE_PAYLOAD_SIZE = TUNING_PROFILE_RECORD_SIZE + PERSISTENCE_REFERENCE_SIZE,
-    PERSISTENCE_H_PATTERN_PAYLOAD_SIZE =
-        PERSISTENCE_REFERENCE_PAYLOAD_SIZE + PERSISTENCE_H_PATTERN_SIZE,
-    PERSISTENCE_AUXILIARY_AXIS_PAYLOAD_SIZE =
-        PERSISTENCE_H_PATTERN_PAYLOAD_SIZE + PERSISTENCE_AUXILIARY_AXIS_SIZE,
-    PERSISTENCE_STEERING_LIMIT_PAYLOAD_SIZE =
-        PERSISTENCE_AUXILIARY_AXIS_PAYLOAD_SIZE + PERSISTENCE_STEERING_LIMIT_SIZE,
-    PERSISTENCE_AUXILIARY_OUTPUT_PAYLOAD_SIZE =
-        PERSISTENCE_STEERING_LIMIT_PAYLOAD_SIZE + PERSISTENCE_AUXILIARY_OUTPUT_SIZE,
-    PERSISTENCE_PAYLOAD_SIZE =
-        PERSISTENCE_AUXILIARY_OUTPUT_PAYLOAD_SIZE + PERSISTENCE_SECURITY_CODE_SIZE,
-    PERSISTENCE_DATA_SIZE = PERSISTENCE_HEADER_SIZE + PERSISTENCE_PAYLOAD_SIZE,
-    PERSISTENCE_CHECKSUM_SIZE = 2,
-    PERSISTENCE_RECORD_SIZE = PERSISTENCE_DATA_SIZE + PERSISTENCE_CHECKSUM_SIZE,
+    SETTINGS_FORMAT_INDEX = 0,
+    SETTINGS_FORMAT_VALUE = 0x0300,
+    WHEEL_CENTER_LOW_INDEX = 1,
+    WHEEL_CENTER_HIGH_INDEX = 2,
+    STANDARD_MODE_INDEX = 5,
+    SELECTED_PROFILE_INDEX = 6,
+    H_PATTERN_FIRST_INDEX = 7,
+    H_PATTERN_VALUE_COUNT = 8,
+    H_PATTERN_VALID_INDEX = 17,
+    SECURITY_CODE_INDEX = 18,
+    STEERING_LIMIT_FIRST_INDEX = 20,
+    STEERING_LIMIT_PREFIX = 0xaa00,
+    WHEEL_AUXILIARY_OPTION_INDEX = 26,
+    WHEEL_AUXILIARY_OPTION_PREFIX = 0xaa00,
+    AUXILIARY_MINIMUM_INDEX = 27,
+    AUXILIARY_MAXIMUM_INDEX = 28,
+    AUXILIARY_RESET_INDEX = 29,
+    PROFILE_FIRST_INDEX = 30,
+    PROFILE_STORAGE_STRIDE = 26,
 };
 
-typedef struct {
-    BaseSettings settings;
-    uint32_t generation;
-    bool valid;
-    bool needs_upgrade;
-} StoredSettings;
-
 /**
- * @brief Calculates the integrity code for retained settings.
+ * @brief Reads a retained setting when present.
  *
- * Applies the CRC-16/CCITT-FALSE polynomial to the requested byte sequence.
+ * Leaves the destination unchanged when the indexed journal has no value.
  *
- * @param[in] data Bytes to include in the calculation.
- * @param[in] size Number of bytes to process.
- * @return Sixteen-bit integrity code.
+ * @param[in] index Reference-compatible settings index.
+ * @param[in,out] value Destination retaining its prior value when the index is absent.
+ * @return True when the index has a retained value; otherwise false.
  */
-static uint16_t persistence_checksum(const uint8_t *data, uint16_t size) {
-    uint16_t checksum = UINT16_C(0xffff);
-    for (uint16_t index = 0; index < size; index++) {
-        checksum ^= (uint16_t)data[index] << 8;
-        for (uint8_t bit = 0; bit < 8; bit++) {
-            checksum = (checksum & UINT16_C(0x8000)) != 0
-                           ? (uint16_t)((checksum << 1) ^ UINT16_C(0x1021))
-                           : (uint16_t)(checksum << 1);
-        }
-    }
-    return checksum;
-}
-
-/**
- * @brief Reads a little-endian sixteen-bit value.
- *
- * Combines two consecutive bytes from the requested offset.
- *
- * @param[in] data Encoded byte sequence.
- * @param[in] offset Offset of the first byte.
- * @return Decoded sixteen-bit value.
- */
-static uint16_t read_u16(const uint8_t *data, uint16_t offset) {
-    return (uint16_t)data[offset] | ((uint16_t)data[offset + 1] << 8);
-}
-
-/**
- * @brief Reads a little-endian thirty-two-bit value.
- *
- * Combines four consecutive bytes from the requested offset.
- *
- * @param[in] data Encoded byte sequence.
- * @param[in] offset Offset of the first byte.
- * @return Decoded thirty-two-bit value.
- */
-static uint32_t read_u32(const uint8_t *data, uint16_t offset) {
-    return (uint32_t)data[offset] | ((uint32_t)data[offset + 1] << 8) |
-           ((uint32_t)data[offset + 2] << 16) | ((uint32_t)data[offset + 3] << 24);
-}
-
-/**
- * @brief Writes a little-endian sixteen-bit value.
- *
- * Stores the low byte first at the requested offset.
- *
- * @param[out] data Encoded byte sequence.
- * @param[in] offset Offset of the first byte.
- * @param[in] value Value to encode.
- */
-static void write_u16(uint8_t *data, uint16_t offset, uint16_t value) {
-    data[offset] = (uint8_t)value;
-    data[offset + 1] = (uint8_t)(value >> 8);
-}
-
-/**
- * @brief Writes a little-endian thirty-two-bit value.
- *
- * Stores the four bytes from least significant to most significant.
- *
- * @param[out] data Encoded byte sequence.
- * @param[in] offset Offset of the first byte.
- * @param[in] value Value to encode.
- */
-static void write_u32(uint8_t *data, uint16_t offset, uint32_t value) {
-    data[offset] = (uint8_t)value;
-    data[offset + 1] = (uint8_t)(value >> 8);
-    data[offset + 2] = (uint8_t)(value >> 16);
-    data[offset + 3] = (uint8_t)(value >> 24);
-}
-
-/**
- * @brief Orders retained-record generations across counter rollover.
- *
- * Treats a nonzero forward distance shorter than half the counter range as newer.
- *
- * @param[in] candidate Generation to compare.
- * @param[in] reference Current generation.
- * @return True when the candidate follows the reference.
- */
-static bool generation_is_newer(uint32_t candidate, uint32_t reference) {
-    uint32_t distance = candidate - reference;
-    return distance != 0 && distance < UINT32_C(0x80000000);
-}
-
-/**
- * @brief Validates a retained-settings record header.
- *
- * Accepts each supported payload version only with its exact encoded size, reserved byte, and
- * settings magic.
- *
- * @param[in] data Encoded settings record.
- * @param[in] payload_size Payload size read from the record header.
- * @return True when the header identifies a supported record layout.
- */
-static bool header_valid(const uint8_t *data, uint16_t payload_size) {
-    uint8_t version = data[4];
-    bool current = version == PERSISTENCE_VERSION && payload_size == PERSISTENCE_PAYLOAD_SIZE;
-    bool auxiliary_output = version == PERSISTENCE_AUXILIARY_OUTPUT_VERSION &&
-                            payload_size == PERSISTENCE_AUXILIARY_OUTPUT_PAYLOAD_SIZE;
-    bool steering_limits = version == PERSISTENCE_STEERING_LIMIT_VERSION &&
-                           payload_size == PERSISTENCE_STEERING_LIMIT_PAYLOAD_SIZE;
-    bool auxiliary_axis = version == PERSISTENCE_AUXILIARY_AXIS_VERSION &&
-                          payload_size == PERSISTENCE_AUXILIARY_AXIS_PAYLOAD_SIZE;
-    bool h_pattern = version == PERSISTENCE_H_PATTERN_VERSION &&
-                     payload_size == PERSISTENCE_H_PATTERN_PAYLOAD_SIZE;
-    bool wheel_reference = version == PERSISTENCE_WHEEL_REFERENCE_VERSION &&
-                           payload_size == PERSISTENCE_REFERENCE_PAYLOAD_SIZE;
-    bool profile_only =
-        version == PERSISTENCE_PROFILE_ONLY_VERSION && payload_size == TUNING_PROFILE_RECORD_SIZE;
-    return data[0] == PERSISTENCE_MAGIC_0 && data[1] == PERSISTENCE_MAGIC_1 &&
-           data[2] == PERSISTENCE_MAGIC_2 && data[3] == PERSISTENCE_MAGIC_3 && data[5] == 0 &&
-           (current || auxiliary_output || steering_limits || auxiliary_axis || h_pattern ||
-            wheel_reference || profile_only);
-}
-
-/**
- * @brief Decodes retained H-pattern shifter calibration.
- *
- * Restores the availability flag and eight axis thresholds from the compact payload.
- *
- * @param[in] data Seventeen-byte calibration payload.
- * @param[out] settings H-pattern settings destination.
- */
-static void h_pattern_calibration_decode(const uint8_t *data, HPatternSettings *settings) {
-    settings->calibrated = data[0] == 1;
-    settings->calibration.reverse_first_boundary = read_u16(data, 1);
-    settings->calibration.first_third_boundary = read_u16(data, 3);
-    settings->calibration.second_fourth_boundary = read_u16(data, 5);
-    settings->calibration.third_fifth_boundary = read_u16(data, 7);
-    settings->calibration.fourth_sixth_boundary = read_u16(data, 9);
-    settings->calibration.fifth_seventh_boundary = read_u16(data, 11);
-    settings->calibration.upper_row_threshold = read_u16(data, 13);
-    settings->calibration.lower_row_threshold = read_u16(data, 15);
-}
-
-/**
- * @brief Encodes retained H-pattern shifter calibration.
- *
- * Stores the availability flag and eight axis thresholds in the compact payload.
- *
- * @param[in] settings H-pattern settings to encode.
- * @param[out] data Seventeen-byte calibration destination.
- */
-static void h_pattern_calibration_encode(const HPatternSettings *settings, uint8_t *data) {
-    data[0] = settings->calibrated ? 1 : 0;
-    write_u16(data, 1, settings->calibration.reverse_first_boundary);
-    write_u16(data, 3, settings->calibration.first_third_boundary);
-    write_u16(data, 5, settings->calibration.second_fourth_boundary);
-    write_u16(data, 7, settings->calibration.third_fifth_boundary);
-    write_u16(data, 9, settings->calibration.fourth_sixth_boundary);
-    write_u16(data, 11, settings->calibration.fifth_seventh_boundary);
-    write_u16(data, 13, settings->calibration.upper_row_threshold);
-    write_u16(data, 15, settings->calibration.lower_row_threshold);
-}
-
-/**
- * @brief Decodes retained auxiliary-axis endpoint settings.
- *
- * Restores the minimum, maximum, and startup-learning flag from the compact settings payload.
- *
- * @param[in] data Five-byte encoded auxiliary settings.
- * @param[out] settings Auxiliary settings destination.
- * @return True when the startup-learning flag is valid.
- */
-static bool auxiliary_axis_settings_decode(const uint8_t *data, AuxiliaryAxisSettings *settings) {
-    if (data[4] > 1) {
+static bool value_read(uint16_t index, uint16_t *value) {
+    uint16_t stored;
+    if (!platform_storage_value_read(index, &stored)) {
         return false;
     }
-    settings->minimum = read_u16(data, 0);
-    settings->maximum = read_u16(data, 2);
-    settings->reset_on_start = data[4] == 1;
+    *value = stored;
     return true;
 }
 
 /**
- * @brief Encodes retained auxiliary-axis endpoint settings.
+ * @brief Writes the low and high words of a signed 32-bit value.
  *
- * Stores the minimum, maximum, and startup-learning flag in the compact settings payload.
+ * Appends both words at consecutive reference-compatible settings indices.
  *
- * @param[in] settings Auxiliary settings to encode.
- * @param[out] data Five-byte encoded auxiliary settings.
+ * @param[in] first_index Index receiving the low word.
+ * @param[in] value Signed value to retain.
+ * @return True when both words are retained; otherwise false.
  */
-static void auxiliary_axis_settings_encode(const AuxiliaryAxisSettings *settings, uint8_t *data) {
-    write_u16(data, 0, settings->minimum);
-    write_u16(data, 2, settings->maximum);
-    data[4] = settings->reset_on_start ? 1 : 0;
+static bool value_write_i32(uint16_t first_index, int32_t value) {
+    uint32_t encoded = (uint32_t)value;
+    return platform_storage_value_write(first_index, (uint16_t)encoded) &&
+           platform_storage_value_write(first_index + 1, (uint16_t)(encoded >> 16));
 }
 
 /**
- * @brief Decodes retained steering-limit percentages.
+ * @brief Restores the retained wheel-center reference.
  *
- * Restores one percentage for each of the six tuning profiles and rejects values above one
- * hundred.
+ * Combines settings indices one and two into the signed center value and follows the reference
+ * behavior of treating an all-zero center as uncalibrated.
  *
- * @param[in] data Six-byte encoded steering-limit settings.
- * @param[out] limits Per-profile steering-limit destination.
- * @return True when every encoded percentage is in range.
+ * @param[in,out] settings Base settings receiving the wheel reference.
  */
-static bool steering_limits_decode(const uint8_t *data, WheelSteeringLimits *limits) {
+static void wheel_reference_load(BaseSettings *settings) {
+    uint16_t low;
+    uint16_t high;
+    if (value_read(WHEEL_CENTER_LOW_INDEX, &low) && value_read(WHEEL_CENTER_HIGH_INDEX, &high)) {
+        settings->wheel_position.center = (int32_t)((uint32_t)low | (uint32_t)high << 16);
+        settings->wheel_position.calibrated = settings->wheel_position.center != 0;
+    }
+}
+
+/**
+ * @brief Restores Standard-mode and selected-profile state.
+ *
+ * Reads the reference Boolean mode at index five and converts the one-based profile at index six
+ * to the logical zero-based setup bank.
+ *
+ * @param[in,out] settings Base settings receiving tuning-bank state.
+ */
+static void tuning_bank_state_load(BaseSettings *settings) {
+    uint16_t value;
+    if (value_read(STANDARD_MODE_INDEX, &value) && value <= 1) {
+        settings->tuning_profiles.standard_mode_enabled = value != 0;
+    }
+    if (value_read(SELECTED_PROFILE_INDEX, &value) && value >= 1 &&
+        value <= TUNING_PROFILE_SLOT_COUNT) {
+        settings->tuning_profiles.selected_slot = (uint8_t)(value - 1);
+        settings->tuning_profiles.active_slot = settings->tuning_profiles.selected_slot;
+    }
+}
+
+/**
+ * @brief Restores six retained tuning profiles.
+ *
+ * Reads the first 25 low-byte values from each 26-index profile block and decodes the same logical
+ * values used by the device-control tuning report. The unimplemented final value in each reference
+ * block remains untouched in flash.
+ *
+ * @param[in,out] settings Base settings receiving tuning profiles.
+ */
+static void tuning_profiles_load(BaseSettings *settings) {
     for (uint8_t profile = 0; profile < TUNING_PROFILE_SLOT_COUNT; profile++) {
-        if (data[profile] > WHEEL_STEERING_LIMIT_DEFAULT_PERCENT) {
-            return false;
+        uint8_t encoded[USB_TUNING_PROFILE_VALUE_COUNT];
+        bool complete = true;
+        uint16_t first = PROFILE_FIRST_INDEX + (uint16_t)profile * PROFILE_STORAGE_STRIDE;
+        for (uint8_t field = 0; field < USB_TUNING_PROFILE_VALUE_COUNT; field++) {
+            uint16_t value;
+            if (!value_read(first + field, &value)) {
+                complete = false;
+                break;
+            }
+            encoded[field] = (uint8_t)value;
         }
-        limits->percent[profile] = data[profile];
-    }
-    return true;
-}
-
-/**
- * @brief Encodes retained steering-limit percentages.
- *
- * Stores one percentage for each of the six tuning profiles.
- *
- * @param[in] limits Per-profile steering-limit settings.
- * @param[out] data Six-byte encoded steering-limit destination.
- */
-static void steering_limits_encode(const WheelSteeringLimits *limits, uint8_t *data) {
-    for (uint8_t profile = 0; profile < TUNING_PROFILE_SLOT_COUNT; profile++) {
-        data[profile] = limits->percent[profile];
+        if (complete) {
+            usb_tuning_profile_report_decode(encoded, &settings->tuning_profiles.slots[profile]);
+        }
     }
 }
 
 /**
- * @brief Decodes one retained base-settings record.
+ * @brief Restores H-pattern calibration values.
  *
- * Validates the header and checksum, restores every setting available in the stored version, and
- * supplies defaults for settings introduced by later versions.
+ * Accepts the eight consecutive thresholds only when reference validity index 17 contains one.
  *
- * @param[in] data Encoded retained-settings record.
- * @param[out] stored Decoded settings, generation, validity, and upgrade state.
- * @return True when the complete stored record is valid.
+ * @param[in,out] settings Base settings receiving shifter calibration.
  */
-static bool record_decode(const uint8_t data[PERSISTENCE_RECORD_SIZE], StoredSettings *stored) {
-    uint16_t payload_size = read_u16(data, 6);
-    uint16_t data_size = PERSISTENCE_HEADER_SIZE + payload_size;
-    if (!header_valid(data, payload_size) ||
-        read_u16(data, data_size) != persistence_checksum(data, data_size) ||
-        !tuning_profile_record_decode(&data[PERSISTENCE_HEADER_SIZE],
-                                      &stored->settings.tuning_profiles)) {
-        stored->valid = false;
-        return false;
+static void h_pattern_load(BaseSettings *settings) {
+    uint16_t valid;
+    if (!value_read(H_PATTERN_VALID_INDEX, &valid) || valid != 1) {
+        return;
     }
-
-    stored->generation = read_u32(data, 8);
-    uint8_t version = data[4];
-    stored->needs_upgrade = version != PERSISTENCE_VERSION;
-    if (version == PERSISTENCE_PROFILE_ONLY_VERSION) {
-        wheel_position_reference_reset(&stored->settings.wheel_position);
-    } else {
-        uint16_t reference_offset = PERSISTENCE_HEADER_SIZE + TUNING_PROFILE_RECORD_SIZE;
-        if (data[reference_offset] > 1) {
-            stored->valid = false;
-            return false;
+    uint16_t *thresholds = &settings->h_pattern_shifter.calibration.reverse_first_boundary;
+    for (uint8_t index = 0; index < H_PATTERN_VALUE_COUNT; index++) {
+        if (!value_read(H_PATTERN_FIRST_INDEX + index, &thresholds[index])) {
+            return;
         }
-        stored->settings.wheel_position.calibrated = data[reference_offset] == 1;
-        stored->settings.wheel_position.center = (int32_t)read_u32(data, reference_offset + 1);
     }
-    if (version >= PERSISTENCE_H_PATTERN_VERSION) {
-        uint16_t calibration_offset = PERSISTENCE_HEADER_SIZE + PERSISTENCE_REFERENCE_PAYLOAD_SIZE;
-        if (data[calibration_offset] > 1) {
-            stored->valid = false;
-            return false;
-        }
-        h_pattern_calibration_decode(&data[calibration_offset],
-                                     &stored->settings.h_pattern_shifter);
-    } else {
-        stored->settings.h_pattern_shifter = (HPatternSettings){0};
-    }
-    if (version >= PERSISTENCE_AUXILIARY_AXIS_VERSION) {
-        uint16_t auxiliary_offset = PERSISTENCE_HEADER_SIZE + PERSISTENCE_H_PATTERN_PAYLOAD_SIZE;
-        if (!auxiliary_axis_settings_decode(&data[auxiliary_offset],
-                                            &stored->settings.auxiliary_axis)) {
-            stored->valid = false;
-            return false;
-        }
-    } else {
-        auxiliary_axis_settings_defaults(&stored->settings.auxiliary_axis);
-    }
-    if (version >= PERSISTENCE_STEERING_LIMIT_VERSION) {
-        uint16_t steering_limit_offset =
-            PERSISTENCE_HEADER_SIZE + PERSISTENCE_AUXILIARY_AXIS_PAYLOAD_SIZE;
-        if (!steering_limits_decode(&data[steering_limit_offset],
-                                    &stored->settings.steering_limits)) {
-            stored->valid = false;
-            return false;
-        }
-    } else {
-        wheel_steering_limits_defaults(&stored->settings.steering_limits);
-    }
-    if (version >= PERSISTENCE_AUXILIARY_OUTPUT_VERSION) {
-        uint16_t auxiliary_output_offset =
-            PERSISTENCE_HEADER_SIZE + PERSISTENCE_STEERING_LIMIT_PAYLOAD_SIZE;
-        if (data[auxiliary_output_offset] > 1) {
-            stored->valid = false;
-            return false;
-        }
-        stored->settings.wheel_auxiliary_disabled = data[auxiliary_output_offset] == 1;
-    } else {
-        stored->settings.wheel_auxiliary_disabled = false;
-    }
-    if (version == PERSISTENCE_VERSION) {
-        uint16_t security_code_offset =
-            PERSISTENCE_HEADER_SIZE + PERSISTENCE_AUXILIARY_OUTPUT_PAYLOAD_SIZE;
-        bool enabled = data[security_code_offset] == 1;
-        bool disabled = data[security_code_offset] == 0;
-        bool digits_valid = true;
-        for (uint8_t digit = 0; digit < SECURITY_CODE_DIGIT_COUNT; digit++) {
-            uint8_t value = data[security_code_offset + 1u + digit];
-            digits_valid = digits_valid && value <= 9 && (enabled || value == 0);
-            stored->settings.security_code.digits[digit] = value;
-        }
-        if ((!enabled && !disabled) || !digits_valid) {
-            stored->valid = false;
-            return false;
-        }
-        stored->settings.security_code.enabled = enabled;
-    } else {
-        stored->settings.security_code = (SecurityCodeSettings){0};
-    }
-    stored->valid = true;
-    return true;
+    settings->h_pattern_shifter.calibrated = true;
 }
 
 /**
- * @brief Reads and decodes one retained-settings slot.
+ * @brief Restores the three-digit security code.
  *
- * Marks the destination invalid when the platform read fails and otherwise validates the complete
- * record.
+ * Recognizes the A marker nibble and extracts the three decimal digits from consecutive nibbles.
+ * Invalid or absent encodings leave security disabled.
  *
- * @param[in] slot Retained-settings slot to read.
- * @param[out] stored Decoded settings and record metadata.
- * @return True when the slot contains a valid supported record.
+ * @param[in,out] settings Base settings receiving security-code state.
  */
-static bool record_read(PlatformStorageSlot slot, StoredSettings *stored) {
-    uint8_t data[PERSISTENCE_RECORD_SIZE];
-    if (!platform_storage_read(slot, data, PERSISTENCE_RECORD_SIZE)) {
-        stored->valid = false;
-        return false;
+static void security_code_load(BaseSettings *settings) {
+    uint16_t encoded;
+    if (!value_read(SECURITY_CODE_INDEX, &encoded) ||
+        (encoded & UINT16_C(0xf000)) != UINT16_C(0xa000)) {
+        return;
     }
-    return record_decode(data, stored);
-}
-
-/**
- * @brief Encodes one complete retained base-settings record.
- *
- * Writes the current version header, generation, tuning profiles, calibration data, auxiliary
- * endpoints, per-profile steering limits, attached-wheel auxiliary option, security code, and final
- * checksum.
- *
- * @param[in] settings Base settings to retain.
- * @param[in] generation Monotonic record generation.
- * @param[out] data Encoded retained-settings destination.
- * @return True when the tuning profiles and complete record were encoded.
- */
-static bool record_encode(const BaseSettings *settings, uint32_t generation,
-                          uint8_t data[PERSISTENCE_RECORD_SIZE]) {
-    data[0] = PERSISTENCE_MAGIC_0;
-    data[1] = PERSISTENCE_MAGIC_1;
-    data[2] = PERSISTENCE_MAGIC_2;
-    data[3] = PERSISTENCE_MAGIC_3;
-    data[4] = PERSISTENCE_VERSION;
-    data[5] = 0;
-    write_u16(data, 6, PERSISTENCE_PAYLOAD_SIZE);
-    write_u32(data, 8, generation);
-    if (!tuning_profile_record_encode(&settings->tuning_profiles, &data[PERSISTENCE_HEADER_SIZE])) {
-        return false;
-    }
-    uint16_t reference_offset = PERSISTENCE_HEADER_SIZE + TUNING_PROFILE_RECORD_SIZE;
-    data[reference_offset] = settings->wheel_position.calibrated ? 1 : 0;
-    write_u32(data, reference_offset + 1, (uint32_t)settings->wheel_position.center);
-    uint16_t calibration_offset = PERSISTENCE_HEADER_SIZE + PERSISTENCE_REFERENCE_PAYLOAD_SIZE;
-    h_pattern_calibration_encode(&settings->h_pattern_shifter, &data[calibration_offset]);
-    uint16_t auxiliary_offset = PERSISTENCE_HEADER_SIZE + PERSISTENCE_H_PATTERN_PAYLOAD_SIZE;
-    auxiliary_axis_settings_encode(&settings->auxiliary_axis, &data[auxiliary_offset]);
-    uint16_t steering_limit_offset =
-        PERSISTENCE_HEADER_SIZE + PERSISTENCE_AUXILIARY_AXIS_PAYLOAD_SIZE;
-    steering_limits_encode(&settings->steering_limits, &data[steering_limit_offset]);
-    uint16_t auxiliary_output_offset =
-        PERSISTENCE_HEADER_SIZE + PERSISTENCE_STEERING_LIMIT_PAYLOAD_SIZE;
-    data[auxiliary_output_offset] = settings->wheel_auxiliary_disabled ? 1 : 0;
-    uint16_t security_code_offset =
-        PERSISTENCE_HEADER_SIZE + PERSISTENCE_AUXILIARY_OUTPUT_PAYLOAD_SIZE;
-    data[security_code_offset] = settings->security_code.enabled ? 1 : 0;
     for (uint8_t digit = 0; digit < SECURITY_CODE_DIGIT_COUNT; digit++) {
-        uint8_t value = settings->security_code.digits[digit];
+        uint8_t value = (uint8_t)(encoded >> (digit * 4)) & 0x0f;
         if (value > 9) {
-            return false;
+            return;
         }
-        data[security_code_offset + 1u + digit] = settings->security_code.enabled ? value : 0;
+        settings->security_code.digits[digit] = value;
     }
-    write_u16(data, PERSISTENCE_DATA_SIZE, persistence_checksum(data, PERSISTENCE_DATA_SIZE));
-    return true;
+    settings->security_code.enabled = true;
 }
 
 /**
- * @brief Confirms a complete retained-settings write.
+ * @brief Restores per-profile steering limits.
  *
- * Reads the selected slot and compares every encoded byte with the requested record.
+ * Accepts each setting only when its high byte contains the AA marker and its low byte is a valid
+ * percentage.
  *
- * @param[in] slot Retained-settings slot to inspect.
- * @param[in] expected Record expected in the slot.
- * @return True when the complete slot prefix matches the expected record.
+ * @param[in,out] settings Base settings receiving steering limits.
  */
-static bool record_matches(PlatformStorageSlot slot,
-                           const uint8_t expected[PERSISTENCE_RECORD_SIZE]) {
-    uint8_t actual[PERSISTENCE_RECORD_SIZE];
-    if (!platform_storage_read(slot, actual, PERSISTENCE_RECORD_SIZE)) {
-        return false;
+static void steering_limits_load(BaseSettings *settings) {
+    for (uint8_t profile = 0; profile < TUNING_PROFILE_SLOT_COUNT; profile++) {
+        uint16_t encoded;
+        if (value_read(STEERING_LIMIT_FIRST_INDEX + profile, &encoded) &&
+            (encoded & UINT16_C(0xff00)) == STEERING_LIMIT_PREFIX &&
+            (uint8_t)encoded <= WHEEL_STEERING_LIMIT_DEFAULT_PERCENT) {
+            settings->steering_limits.percent[profile] = (uint8_t)encoded;
+        }
     }
-    for (uint16_t index = 0; index < PERSISTENCE_RECORD_SIZE; index++) {
-        if (actual[index] != expected[index]) {
+}
+
+/**
+ * @brief Restores auxiliary-axis and attached-wheel output settings.
+ *
+ * Reads the attached-wheel option at index 26 and the auxiliary calibration at indices 27 through
+ * 29. A marked attached-wheel option is consumed at startup and replaced by marked option zero;
+ * an unmarked value supplies its low byte directly.
+ *
+ * @param[in,out] settings Base settings receiving extended retained values.
+ */
+static void extended_settings_load(BaseSettings *settings) {
+    uint16_t minimum;
+    uint16_t maximum;
+    uint16_t flag;
+    if (value_read(AUXILIARY_MINIMUM_INDEX, &minimum) &&
+        value_read(AUXILIARY_MAXIMUM_INDEX, &maximum) && minimum < maximum) {
+        settings->auxiliary_axis.minimum = minimum;
+        settings->auxiliary_axis.maximum = maximum;
+    }
+    if (value_read(AUXILIARY_RESET_INDEX, &flag) && flag <= 1) {
+        settings->auxiliary_axis.reset_on_start = flag != 0;
+    }
+    if (value_read(WHEEL_AUXILIARY_OPTION_INDEX, &flag)) {
+        if ((flag & UINT16_C(0xff00)) == WHEEL_AUXILIARY_OPTION_PREFIX) {
+            settings->wheel_auxiliary_option = 0;
+            platform_storage_value_write(WHEEL_AUXILIARY_OPTION_INDEX,
+                                         WHEEL_AUXILIARY_OPTION_PREFIX);
+        } else {
+            settings->wheel_auxiliary_option = (uint8_t)flag;
+        }
+    }
+}
+
+/**
+ * @brief Writes six logical tuning profiles.
+ *
+ * Encodes each profile in device-control order and writes the first 25 values of its 26-index
+ * reference block without disturbing the unknown final index.
+ *
+ * @param[in] settings Base settings containing the profiles.
+ * @return True when every implemented profile value is retained; otherwise false.
+ */
+static bool tuning_profiles_save(const BaseSettings *settings) {
+    for (uint8_t profile = 0; profile < TUNING_PROFILE_SLOT_COUNT; profile++) {
+        uint8_t encoded[USB_TUNING_PROFILE_VALUE_COUNT];
+        usb_tuning_profile_report_encode(&settings->tuning_profiles.slots[profile], encoded);
+        uint16_t first = PROFILE_FIRST_INDEX + (uint16_t)profile * PROFILE_STORAGE_STRIDE;
+        for (uint8_t field = 0; field < USB_TUNING_PROFILE_VALUE_COUNT; field++) {
+            if (!platform_storage_value_write(first + field, encoded[field])) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/**
+ * @brief Writes H-pattern calibration values and validity.
+ *
+ * Writes all eight thresholds before publishing validity index 17 so incomplete first-time writes
+ * are not accepted as calibrated.
+ *
+ * @param[in] settings Base settings containing shifter calibration.
+ * @return True when the thresholds and validity state are retained; otherwise false.
+ */
+static bool h_pattern_save(const BaseSettings *settings) {
+    const uint16_t *thresholds = &settings->h_pattern_shifter.calibration.reverse_first_boundary;
+    for (uint8_t index = 0; index < H_PATTERN_VALUE_COUNT; index++) {
+        if (!platform_storage_value_write(H_PATTERN_FIRST_INDEX + index, thresholds[index])) {
+            return false;
+        }
+    }
+    return platform_storage_value_write(H_PATTERN_VALID_INDEX,
+                                        settings->h_pattern_shifter.calibrated ? 1 : 0);
+}
+
+/**
+ * @brief Encodes and writes the three-digit security code.
+ *
+ * Writes zero when security is disabled or the A marker followed by three decimal nibbles when it
+ * is enabled.
+ *
+ * @param[in] settings Base settings containing security-code state.
+ * @return True when the security setting is valid and retained; otherwise false.
+ */
+static bool security_code_save(const BaseSettings *settings) {
+    uint16_t encoded = 0;
+    if (settings->security_code.enabled) {
+        encoded = UINT16_C(0xa000);
+        for (uint8_t digit = 0; digit < SECURITY_CODE_DIGIT_COUNT; digit++) {
+            uint8_t value = settings->security_code.digits[digit];
+            if (value > 9) {
+                return false;
+            }
+            encoded |= (uint16_t)value << (digit * 4);
+        }
+    }
+    return platform_storage_value_write(SECURITY_CODE_INDEX, encoded);
+}
+
+/**
+ * @brief Writes per-profile steering limits.
+ *
+ * Combines the AA validity marker with each zero-through-100 percentage at indices 20 through 25.
+ *
+ * @param[in] settings Base settings containing steering limits.
+ * @return True when all six marked limits are retained; otherwise false.
+ */
+static bool steering_limits_save(const BaseSettings *settings) {
+    for (uint8_t profile = 0; profile < TUNING_PROFILE_SLOT_COUNT; profile++) {
+        uint8_t percent = settings->steering_limits.percent[profile];
+        if (percent > WHEEL_STEERING_LIMIT_DEFAULT_PERCENT ||
+            !platform_storage_value_write(STEERING_LIMIT_FIRST_INDEX + profile,
+                                          STEERING_LIMIT_PREFIX | percent)) {
             return false;
         }
     }
@@ -477,52 +312,41 @@ static bool record_matches(PlatformStorageSlot slot,
 }
 
 /**
- * @brief Restores the newest valid retained base settings.
+ * @brief Restores retained base settings.
  *
- * Selects the newer of two redundant records, supplies defaults when neither record is valid,
- * restores the retained selection as the active setup, and regenerates setup 1 instead of trusting
- * its retained values.
+ * Initializes the six-page settings journal, supplies logical defaults, and loads every supported
+ * reference or OpenTec setting only after format index zero contains 0x0300.
  *
  * @param[out] persistence Retained-settings service state.
  * @param[out] settings Restored or default base settings.
- * @return True when a valid retained record was restored.
+ * @return True when a formatted settings journal was restored; otherwise false.
  */
 bool base_settings_persistence_load(BaseSettingsPersistence *persistence, BaseSettings *settings) {
-    StoredSettings records[PLATFORM_STORAGE_SLOT_COUNT];
-    record_read(PLATFORM_STORAGE_SETTINGS_A, &records[PLATFORM_STORAGE_SETTINGS_A]);
-    record_read(PLATFORM_STORAGE_SETTINGS_B, &records[PLATFORM_STORAGE_SETTINGS_B]);
-
-    uint8_t selected = PLATFORM_STORAGE_SETTINGS_A;
-    if (records[PLATFORM_STORAGE_SETTINGS_B].valid &&
-        (!records[PLATFORM_STORAGE_SETTINGS_A].valid ||
-         generation_is_newer(records[PLATFORM_STORAGE_SETTINGS_B].generation,
-                             records[PLATFORM_STORAGE_SETTINGS_A].generation))) {
-        selected = PLATFORM_STORAGE_SETTINGS_B;
-    }
-
-    if (records[selected].valid) {
-        *settings = records[selected].settings;
-        settings->tuning_profiles.active_slot = settings->tuning_profiles.selected_slot;
-        tuning_profile_defaults(&settings->tuning_profiles.slots[0]);
-        persistence->generation = records[selected].generation;
-        persistence->active_slot = selected;
-        persistence->has_record = true;
-        persistence->dirty = records[selected].needs_upgrade;
-        return true;
-    }
-
     base_settings_defaults(settings);
-    persistence->generation = 0;
-    persistence->active_slot = PLATFORM_STORAGE_SETTINGS_A;
     persistence->has_record = false;
     persistence->dirty = true;
-    return false;
+    uint16_t format;
+    if (!platform_storage_initialize() || !value_read(SETTINGS_FORMAT_INDEX, &format) ||
+        format != SETTINGS_FORMAT_VALUE) {
+        return false;
+    }
+
+    wheel_reference_load(settings);
+    tuning_bank_state_load(settings);
+    tuning_profiles_load(settings);
+    h_pattern_load(settings);
+    security_code_load(settings);
+    steering_limits_load(settings);
+    extended_settings_load(settings);
+    persistence->has_record = true;
+    persistence->dirty = false;
+    return true;
 }
 
 /**
  * @brief Marks retained settings as changed.
  *
- * Defers storage until an explicit save boundary.
+ * Defers journal updates until an explicit save boundary.
  *
  * @param[in,out] persistence Retained-settings state to mark.
  */
@@ -533,8 +357,8 @@ void base_settings_persistence_mark_dirty(BaseSettingsPersistence *persistence) 
 /**
  * @brief Saves changed base settings.
  *
- * Writes the next generation to the inactive slot, confirms the complete record, and preserves the
- * previous valid slot when encoding or replacement fails. Clean settings do not consume a write.
+ * Appends all implemented reference-compatible values and writes format index zero last when
+ * initializing an erased journal. Individual unchanged values do not consume flash records.
  *
  * @param[in,out] persistence Retained-settings state.
  * @param[in] settings Current base settings.
@@ -546,18 +370,28 @@ BaseSettingsPersistenceResult base_settings_persistence_save(BaseSettingsPersist
         return BASE_SETTINGS_PERSISTENCE_IDLE;
     }
 
-    uint8_t target = persistence->has_record ? (uint8_t)(persistence->active_slot ^ 1U)
-                                             : PLATFORM_STORAGE_SETTINGS_A;
-    uint32_t generation = persistence->generation + 1;
-    uint8_t data[PERSISTENCE_RECORD_SIZE];
-    if (!record_encode(settings, generation, data) ||
-        !platform_storage_replace((PlatformStorageSlot)target, data, PERSISTENCE_RECORD_SIZE) ||
-        !record_matches((PlatformStorageSlot)target, data)) {
+    int32_t center = settings->wheel_position.calibrated ? settings->wheel_position.center : 0;
+    bool successful =
+        value_write_i32(WHEEL_CENTER_LOW_INDEX, center) &&
+        platform_storage_value_write(STANDARD_MODE_INDEX,
+                                     settings->tuning_profiles.standard_mode_enabled ? 1 : 0) &&
+        settings->tuning_profiles.selected_slot < TUNING_PROFILE_SLOT_COUNT &&
+        platform_storage_value_write(SELECTED_PROFILE_INDEX,
+                                     settings->tuning_profiles.selected_slot + 1) &&
+        h_pattern_save(settings) && security_code_save(settings) &&
+        steering_limits_save(settings) && tuning_profiles_save(settings) &&
+        platform_storage_value_write(AUXILIARY_MINIMUM_INDEX, settings->auxiliary_axis.minimum) &&
+        platform_storage_value_write(AUXILIARY_MAXIMUM_INDEX, settings->auxiliary_axis.maximum) &&
+        platform_storage_value_write(AUXILIARY_RESET_INDEX,
+                                     settings->auxiliary_axis.reset_on_start ? 1 : 0) &&
+        platform_storage_value_write(WHEEL_AUXILIARY_OPTION_INDEX,
+                                     WHEEL_AUXILIARY_OPTION_PREFIX |
+                                         settings->wheel_auxiliary_option) &&
+        platform_storage_value_write(SETTINGS_FORMAT_INDEX, SETTINGS_FORMAT_VALUE);
+    if (!successful) {
         return BASE_SETTINGS_PERSISTENCE_RETRY;
     }
 
-    persistence->generation = generation;
-    persistence->active_slot = target;
     persistence->has_record = true;
     persistence->dirty = false;
     return BASE_SETTINGS_PERSISTENCE_SAVED;

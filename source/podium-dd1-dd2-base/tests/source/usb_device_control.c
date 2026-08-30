@@ -257,6 +257,106 @@ static void test_endpoint_halt_feature(void) {
            USB_CONTROL_TRANSFER_STALL);
 }
 
+static void test_rejects_malformed_descriptors_and_endpoints(void) {
+    UsbDeviceControl device;
+    usb_device_control_init(&device, false, false);
+    UsbControlRequest control = request(USB_CONTROL_GET_DESCRIPTOR);
+    UsbControlTransfer transfer;
+
+    control.descriptor_type = 1;
+    control.recipient = 1;
+    assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
+           USB_CONTROL_TRANSFER_STALL);
+    control.recipient = 0;
+    control.descriptor_index = 1;
+    assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
+           USB_CONTROL_TRANSFER_STALL);
+    control.descriptor_type = 2;
+    control.descriptor_index = 0;
+    control.recipient = 1;
+    assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
+           USB_CONTROL_TRANSFER_STALL);
+    control.descriptor_type = 3;
+    control.recipient = 0;
+    control.descriptor_index = 0;
+    transfer = usb_device_control_handle(&device, &control, &catalog, false);
+    assert(transfer.kind == USB_CONTROL_TRANSFER_DATA);
+    control.descriptor_type = 0x22;
+    control.recipient = 1;
+    control.descriptor_index = 0;
+    assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
+           USB_CONTROL_TRANSFER_STALL);
+    device.configuration = 1;
+    transfer = usb_device_control_handle(&device, &control, &catalog, false);
+    assert(transfer.kind == USB_CONTROL_TRANSFER_DATA && transfer.data.data == report_descriptor);
+    control.descriptor_type = 0x23;
+    control.descriptor_index = 1;
+    assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
+           USB_CONTROL_TRANSFER_STALL);
+    control.descriptor_type = UINT8_MAX;
+    assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
+           USB_CONTROL_TRANSFER_STALL);
+
+    UsbDescriptorCatalog empty = catalog;
+    empty.device.data = NULL;
+    control.descriptor_type = 1;
+    control.descriptor_index = 0;
+    control.recipient = 0;
+    assert(usb_device_control_handle(&device, &control, &empty, false).kind ==
+           USB_CONTROL_TRANSFER_STALL);
+    empty.device.data = device_descriptor;
+    empty.device.length = 0;
+    assert(usb_device_control_handle(&device, &control, &empty, false).kind ==
+           USB_CONTROL_TRANSFER_STALL);
+
+    control = request(USB_CONTROL_GET_STATUS);
+    control.recipient = 3;
+    assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
+           USB_CONTROL_TRANSFER_STALL);
+    control.recipient = 2;
+    control.index = 0x10;
+    assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
+           USB_CONTROL_TRANSFER_STALL);
+    control.index = 5;
+    assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
+           USB_CONTROL_TRANSFER_STALL);
+    control.index = 0x84;
+    assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
+           USB_CONTROL_TRANSFER_VALUE);
+
+    control = request(USB_CONTROL_SET_FEATURE);
+    control.recipient = 0;
+    control.value = 2;
+    assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
+           USB_CONTROL_TRANSFER_STALL);
+    control.recipient = 2;
+    control.value = 0;
+    control.index = 0;
+    assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
+           USB_CONTROL_TRANSFER_STALL);
+
+    control = request(USB_CONTROL_SET_INTERFACE);
+    control.index = USB_DEVICE_INTERFACE_COUNT;
+    assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
+           USB_CONTROL_TRANSFER_STALL);
+    control = request(USB_CONTROL_HID_GET_REPORT);
+    control.value = 0x0302;
+    control.length = 64;
+    transfer = usb_device_control_handle(&device, &control, &catalog, false);
+    assert(transfer.kind == USB_CONTROL_TRANSFER_REPORT_IN && transfer.report_type == 3 &&
+           transfer.report_id == 2 && transfer.length == 64);
+
+    device.configuration = 1;
+    control = request(USB_CONTROL_SET_ADDRESS);
+    control.value = 0;
+    (void)usb_device_control_handle(&device, &control, &catalog, false);
+    usb_device_control_complete(&device);
+    assert(!usb_device_control_configured(&device));
+    control.kind = (UsbControlRequestKind)UINT8_MAX;
+    assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
+           USB_CONTROL_TRANSFER_STALL);
+}
+
 int main(void) {
     test_address_changes_after_status_stage();
     test_new_setup_cancels_pending_change();
@@ -268,5 +368,6 @@ int main(void) {
     test_remote_wakeup_feature();
     test_forces_xbox_wakeup_status();
     test_endpoint_halt_feature();
+    test_rejects_malformed_descriptors_and_endpoints();
     return 0;
 }

@@ -4,15 +4,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef enum {
-    PLATFORM_STORAGE_SETTINGS_A,
-    PLATFORM_STORAGE_SETTINGS_B,
-    PLATFORM_STORAGE_SLOT_COUNT,
-} PlatformStorageSlot;
+enum { PLATFORM_STORAGE_VALUE_COUNT = 510 };
 
-enum { PLATFORM_STORAGE_SLOT_SIZE = 384 };
-
-bool platform_storage_read(PlatformStorageSlot slot, uint8_t *data, uint16_t size);
-bool platform_storage_replace(PlatformStorageSlot slot, const uint8_t *data, uint16_t size);
+bool platform_storage_initialize(void);
+bool platform_storage_value_read(uint16_t index, uint16_t *value);
+bool platform_storage_value_write(uint16_t index, uint16_t value);
 
 #endif

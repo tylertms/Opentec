@@ -460,6 +460,10 @@ static void switches_endpoints_after_a_failed_transfer(void) {
     assert(adapter.firmware_version[0] == 5);
     assert(adapter.firmware_version[1] == 0);
     assert(adapter.firmware_version[2] == 0);
+    assert(adapter.information[0] == 0xc5);
+    assert(adapter.information[1] == 0);
+    assert(adapter.information[2] == 0);
+    assert(adapter.information[3] == 0);
 
     wheel_adapter_command_service_queue_display(&service, 0x1234);
     wheel_adapter_command_service_queue_display_state(&service, 0x39);
@@ -472,6 +476,55 @@ static void switches_endpoints_after_a_failed_transfer(void) {
     assert(memcmp(request, status_request, length) == 0);
     assert(service.display_pending);
     assert(service.display_state_pending);
+}
+
+static void rejects_invalid_adapter_command_inputs(void) {
+    WheelAdapterCommandService service = {0};
+    WheelAdapterInput adapter = {0};
+    CommandTransport transport;
+    uint8_t text[WHEEL_ADAPTER_TEXT_LENGTH_MAXIMUM + 1] = {0};
+    uint8_t report_one[WHEEL_OUTPUT_REPORT_ONE_SIZE] = {0};
+    uint8_t report_two[WHEEL_OUTPUT_REPORT_TWO_SIZE] = {0};
+    uint8_t report_four[WHEEL_OUTPUT_REPORT_FOUR_SIZE] = {0};
+    uint8_t report_five[WHEEL_OUTPUT_REPORT_FIVE_SIZE] = {0};
+    uint8_t host_controls[WHEEL_ADAPTER_HOST_CONTROLS_SIZE];
+
+    command_transport_init(&transport);
+    wheel_adapter_command_service_queue_display(NULL, 1);
+    wheel_adapter_command_service_queue_display(&service, 0);
+    wheel_adapter_command_service_set_glyphs(NULL, text);
+    wheel_adapter_command_service_set_glyphs(&service, NULL);
+    wheel_adapter_command_service_queue_remote_tuning_active(NULL, true);
+    wheel_adapter_command_service_queue_refresh_state(NULL, true);
+    wheel_adapter_command_service_queue_setup_selection(NULL, 1);
+    wheel_adapter_command_service_queue_setup_selection(&service, 0);
+    wheel_adapter_command_service_queue_display_state(NULL, 1);
+    wheel_adapter_command_service_queue_display_state(&service, 0);
+    assert(!wheel_adapter_command_service_queue_text_line(NULL, 1, 0, text, 1));
+    assert(!wheel_adapter_command_service_queue_text_line(&service, 1, 0, NULL, 1));
+    assert(!wheel_adapter_command_service_queue_text_line(&service, 0, 0, text, 1));
+    assert(!wheel_adapter_command_service_queue_text_line(&service, 5, 0, text, 1));
+    assert(!wheel_adapter_command_service_queue_text_line(&service, 1, 0, text, sizeof(text)));
+    for (uint8_t line = 1; line <= WHEEL_ADAPTER_TEXT_LINE_COUNT; line++) {
+        assert(wheel_adapter_command_service_queue_text_line(&service, line, line, text,
+                                                             WHEEL_ADAPTER_TEXT_LENGTH_MAXIMUM));
+    }
+    wheel_adapter_command_service_queue_text_close(NULL);
+    wheel_adapter_command_service_queue_report_one(NULL, report_one);
+    wheel_adapter_command_service_queue_report_one(&service, NULL);
+    wheel_adapter_command_service_queue_report_two(NULL, report_two);
+    wheel_adapter_command_service_queue_report_two(&service, NULL);
+    wheel_adapter_command_service_queue_report_four(NULL, report_four);
+    wheel_adapter_command_service_queue_report_four(&service, NULL);
+    wheel_adapter_command_service_queue_report_five(NULL, report_five);
+    wheel_adapter_command_service_queue_report_five(&service, NULL);
+    wheel_adapter_command_service_queue_report_six(NULL, 1, 2);
+    assert(!wheel_adapter_command_service_take_host_controls(NULL, host_controls));
+    assert(!wheel_adapter_command_service_take_host_controls(&service, NULL));
+    assert(!wheel_adapter_command_service_take_host_controls(&service, host_controls));
+    wheel_adapter_command_service_run(NULL, &adapter, &transport);
+    wheel_adapter_command_service_run(&service, NULL, &transport);
+    wheel_adapter_command_service_run(&service, &adapter, NULL);
 }
 
 int main(void) {
@@ -490,5 +543,6 @@ int main(void) {
     paces_separate_extended_output_reports();
     forwards_requested_host_controls();
     switches_endpoints_after_a_failed_transfer();
+    rejects_invalid_adapter_command_inputs();
     return 0;
 }

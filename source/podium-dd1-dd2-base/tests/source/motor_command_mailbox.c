@@ -201,6 +201,81 @@ static void test_rejects_oversized_incoming_packet(void) {
            MOTOR_COMMAND_MAILBOX_EXCHANGE_FAILED);
 }
 
+static void test_rejects_invalid_exchange_arguments(void) {
+    MotorCommandMailboxExchange exchange;
+    CommandTransport transport;
+    uint8_t buffer[4];
+    static const uint8_t packet[] = {1, 2};
+    static const uint8_t replacement[] = {3};
+    command_transport_init(&transport);
+
+    assert(!motor_command_mailbox_exchange_init(NULL, buffer, sizeof(buffer)));
+    assert(!motor_command_mailbox_exchange_init(&exchange, NULL, sizeof(buffer)));
+    assert(!motor_command_mailbox_exchange_init(&exchange, buffer, 0));
+    assert(motor_command_mailbox_exchange_init(&exchange, buffer, sizeof(buffer)));
+    assert(!motor_command_mailbox_exchange_queue(NULL, packet, sizeof(packet)));
+    assert(!motor_command_mailbox_exchange_queue(&exchange, NULL, sizeof(packet)));
+    assert(!motor_command_mailbox_exchange_queue(&exchange, packet, 0));
+    assert(!motor_command_mailbox_exchange_queue(&exchange, packet,
+                                                 MEMORY_TRANSFER_MAX_WRITE_SIZE + 1));
+    assert(motor_command_mailbox_exchange_queue(&exchange, packet, sizeof(packet)));
+    assert(!motor_command_mailbox_exchange_queue(&exchange, replacement, sizeof(replacement)));
+    exchange.phase = MOTOR_COMMAND_MAILBOX_EXCHANGE_PAYLOAD_WRITE_WAIT;
+    assert(!motor_command_mailbox_exchange_queue(&exchange, packet, sizeof(packet)));
+    assert(motor_command_mailbox_exchange_run(NULL, &transport).event ==
+           MOTOR_COMMAND_MAILBOX_EXCHANGE_FAILED);
+    assert(motor_command_mailbox_exchange_run(&exchange, NULL).event ==
+           MOTOR_COMMAND_MAILBOX_EXCHANGE_FAILED);
+}
+
+static void test_handles_busy_failed_and_unexpected_exchange_states(void) {
+    MotorCommandMailboxExchange exchange;
+    CommandTransport transport;
+    uint8_t buffer[MEMORY_TRANSFER_MAX_READ_SIZE + 1];
+    static const uint8_t packet[] = {1};
+    command_transport_init(&transport);
+    assert(motor_command_mailbox_exchange_init(&exchange, buffer, sizeof(buffer)));
+
+    command_transport_claim(&transport, 1);
+    assert(motor_command_mailbox_queue_payload_read(&transport, buffer, 1) ==
+           COMMAND_TRANSPORT_BUSY);
+    assert(motor_command_mailbox_queue_payload_write(&transport, packet, sizeof(packet)) ==
+           COMMAND_TRANSPORT_BUSY);
+    assert(motor_command_mailbox_queue_length_read(&transport, buffer) == COMMAND_TRANSPORT_BUSY);
+    assert(motor_command_mailbox_queue_control_read(&transport, buffer) == COMMAND_TRANSPORT_BUSY);
+    command_transport_release(&transport, 1);
+
+    exchange.phase = MOTOR_COMMAND_MAILBOX_EXCHANGE_CONTROL_WAIT;
+    transport.phase = COMMAND_TRANSPORT_READ_PENDING;
+    assert(motor_command_mailbox_exchange_run(&exchange, &transport).event ==
+           MOTOR_COMMAND_MAILBOX_EXCHANGE_NONE);
+    transport.phase = COMMAND_TRANSPORT_IDLE;
+    transport.completion = COMMAND_TRANSPORT_READ_REJECTED;
+    assert(motor_command_mailbox_exchange_run(&exchange, &transport).event ==
+           MOTOR_COMMAND_MAILBOX_EXCHANGE_FAILED);
+
+    exchange.phase = (MotorCommandMailboxExchangePhase)UINT8_MAX;
+    assert(motor_command_mailbox_exchange_run(&exchange, &transport).event ==
+           MOTOR_COMMAND_MAILBOX_EXCHANGE_NONE);
+    assert(exchange.phase == MOTOR_COMMAND_MAILBOX_EXCHANGE_CONTROL_QUEUE);
+
+    exchange.phase = MOTOR_COMMAND_MAILBOX_EXCHANGE_CONTROL_WAIT;
+    exchange.control.flags = MOTOR_COMMAND_MAILBOX_CONTROL_PAYLOAD_AVAILABLE;
+    exchange.control_record[0] = MOTOR_COMMAND_MAILBOX_CONTROL_PAYLOAD_AVAILABLE;
+    exchange.control_record[1] = 0;
+    exchange.control_record[2] = (MEMORY_TRANSFER_MAX_READ_SIZE + 1) >> 8;
+    exchange.control_record[3] = (MEMORY_TRANSFER_MAX_READ_SIZE + 1) & 0xff;
+    assert(motor_command_mailbox_exchange_run(&exchange, &transport).event ==
+           MOTOR_COMMAND_MAILBOX_EXCHANGE_FAILED);
+
+    exchange.phase = MOTOR_COMMAND_MAILBOX_EXCHANGE_CONTROL_WAIT;
+    exchange.control_record[0] = 0;
+    assert(motor_command_mailbox_exchange_queue(&exchange, packet, sizeof(packet)));
+    exchange.write_length = MEMORY_TRANSFER_MAX_WRITE_SIZE + 1;
+    assert(motor_command_mailbox_exchange_run(&exchange, &transport).event ==
+           MOTOR_COMMAND_MAILBOX_EXCHANGE_FAILED);
+}
+
 int main(void) {
     test_queues_payload_read();
     test_queues_payload_write();
@@ -213,5 +288,7 @@ int main(void) {
     test_exchanges_incoming_packet_first();
     test_reads_status_after_second_retry();
     test_rejects_oversized_incoming_packet();
+    test_rejects_invalid_exchange_arguments();
+    test_handles_busy_failed_and_unexpected_exchange_states();
     return 0;
 }

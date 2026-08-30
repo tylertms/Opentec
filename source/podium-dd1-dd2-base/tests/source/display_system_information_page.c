@@ -60,7 +60,7 @@ static void renders_all_component_values(void) {
     display_system_information_page_render(framebuffer, &information);
 
     assert_text(framebuffer, "Main:", 4, 2, 1);
-    assert_text(framebuffer, "FW: v3.9.0", 4, 14, 1);
+    assert_text(framebuffer, "FW: v3.9.1", 4, 14, 1);
     assert_text(framebuffer, "HW: v31", 4, 25, 1);
     assert_text(framebuffer, "1h 1m 1s", 4, 53, 1);
     assert_text(framebuffer, "Motor:", 90, 2, 1);

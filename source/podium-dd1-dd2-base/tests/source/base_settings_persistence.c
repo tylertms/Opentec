@@ -4,624 +4,278 @@
 #include <string.h>
 
 #include "platform/storage.h"
-#include "profile/record.h"
 #include "settings/persistence.h"
-#include "wheel/position.h"
+#include "settings/state.h"
 
-static uint8_t storage[PLATFORM_STORAGE_SLOT_COUNT][PLATFORM_STORAGE_SLOT_SIZE];
-static uint16_t replace_count;
-static bool replace_fails;
+static uint16_t storage[PLATFORM_STORAGE_VALUE_COUNT];
+static bool present[PLATFORM_STORAGE_VALUE_COUNT];
+static uint16_t write_count;
+static bool initialize_fails;
+static bool write_fails;
+static uint16_t fail_write_index;
 
-static uint16_t checksum(const uint8_t *data, uint16_t size) {
-    uint16_t value = UINT16_C(0xffff);
-    for (uint16_t index = 0; index < size; index++) {
-        value ^= (uint16_t)data[index] << 8;
-        for (uint8_t bit = 0; bit < 8; bit++) {
-            value = (value & UINT16_C(0x8000)) != 0 ? (uint16_t)((value << 1) ^ UINT16_C(0x1021))
-                                                    : (uint16_t)(value << 1);
-        }
-    }
-    return value;
-}
+bool platform_storage_initialize(void) { return !initialize_fails; }
 
-static void write_u16(uint8_t *data, uint16_t offset, uint16_t value) {
-    data[offset] = (uint8_t)value;
-    data[offset + 1] = (uint8_t)(value >> 8);
-}
-
-static void write_u32(uint8_t *data, uint16_t offset, uint32_t value) {
-    data[offset] = (uint8_t)value;
-    data[offset + 1] = (uint8_t)(value >> 8);
-    data[offset + 2] = (uint8_t)(value >> 16);
-    data[offset + 3] = (uint8_t)(value >> 24);
-}
-
-static void set_generation(PlatformStorageSlot slot, uint32_t generation) {
-    enum { HEADER_SIZE = 12, GENERATION_OFFSET = 8 };
-    uint8_t *record = storage[slot];
-    uint16_t payload_size = (uint16_t)record[6] | (uint16_t)record[7] << 8;
-    uint16_t data_size = HEADER_SIZE + payload_size;
-    write_u32(record, GENERATION_OFFSET, generation);
-    write_u16(record, data_size, checksum(record, data_size));
-}
-
-bool platform_storage_read(PlatformStorageSlot slot, uint8_t *data, uint16_t size) {
-    if (slot >= PLATFORM_STORAGE_SLOT_COUNT || size > PLATFORM_STORAGE_SLOT_SIZE) {
+bool platform_storage_value_read(uint16_t index, uint16_t *value) {
+    if (index >= PLATFORM_STORAGE_VALUE_COUNT || !present[index]) {
         return false;
     }
-    memcpy(data, storage[slot], size);
+    *value = storage[index];
     return true;
 }
 
-bool platform_storage_replace(PlatformStorageSlot slot, const uint8_t *data, uint16_t size) {
-    if (slot >= PLATFORM_STORAGE_SLOT_COUNT || size > PLATFORM_STORAGE_SLOT_SIZE) {
+bool platform_storage_value_write(uint16_t index, uint16_t value) {
+    if (index >= PLATFORM_STORAGE_VALUE_COUNT || write_fails || index == fail_write_index) {
         return false;
     }
-    replace_count++;
-    memset(storage[slot], UINT8_MAX, sizeof(storage[slot]));
-    if (replace_fails) {
-        storage[slot][0] = 0;
-        return false;
+    if (!present[index] || storage[index] != value) {
+        write_count++;
     }
-    memcpy(storage[slot], data, size);
+    storage[index] = value;
+    present[index] = true;
     return true;
 }
 
-static void reset_storage(void) {
-    memset(storage, UINT8_MAX, sizeof(storage));
-    replace_count = 0;
-    replace_fails = false;
+static void storage_reset(void) {
+    memset(storage, 0, sizeof(storage));
+    memset(present, 0, sizeof(present));
+    write_count = 0;
+    initialize_fails = false;
+    write_fails = false;
+    fail_write_index = UINT16_MAX;
 }
 
-static void test_defaults_are_saved_on_initialization(void) {
-    reset_storage();
+static void test_erased_storage_loads_defaults_and_saves_reference_format(void) {
     BaseSettingsPersistence persistence;
     BaseSettings settings;
+    storage_reset();
+
     assert(!base_settings_persistence_load(&persistence, &settings));
+    assert(!persistence.has_record);
     assert(persistence.dirty);
     assert(settings.tuning_profiles.selected_slot == 0);
+    assert(settings.tuning_profiles.standard_mode_enabled);
     assert(!settings.wheel_position.calibrated);
     assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
-    assert(replace_count == 1);
+    assert(storage[0] == 0x0300);
+    assert(storage[5] == 1);
+    assert(storage[6] == 1);
+    assert(storage[18] == 0);
+    assert(storage[27] == 0x0f38);
+    assert(storage[28] == 0x00c8);
+    assert(storage[29] == 1);
+    assert(storage[26] == 0xaa00);
+    for (uint8_t profile = 0; profile < TUNING_PROFILE_SLOT_COUNT; profile++) {
+        assert(storage[20 + profile] == 0xaa64);
+        assert(present[30 + profile * 26]);
+        assert(!present[30 + profile * 26 + 25]);
+    }
+    assert(persistence.has_record);
     assert(!persistence.dirty);
-
-    BaseSettingsPersistence loaded;
-    BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored));
-    assert(restored.tuning_profiles.slots[0].rotation_degrees ==
-           settings.tuning_profiles.slots[0].rotation_degrees);
-    assert(!restored.wheel_position.calibrated);
-    assert(restored.auxiliary_axis.minimum == 0x0f38);
-    assert(restored.auxiliary_axis.maximum == 0x00c8);
-    assert(restored.auxiliary_axis.reset_on_start);
-    assert(wheel_steering_limits_active(&restored.steering_limits, 0) == 100);
-    assert(!restored.wheel_auxiliary_disabled);
-    assert(!restored.security_code.enabled);
-    assert(restored.security_code.digits[0] == 0);
-    assert(restored.security_code.digits[1] == 0);
-    assert(restored.security_code.digits[2] == 0);
 }
 
-static void test_dirty_changes_wait_for_explicit_save(void) {
-    reset_storage();
+static void test_all_supported_settings_round_trip(void) {
+    BaseSettingsPersistence persistence;
+    BaseSettings expected;
+    storage_reset();
+    assert(!base_settings_persistence_load(&persistence, &expected));
+
+    expected.wheel_position = (WheelPositionReference){.center = -1234567, .calibrated = true};
+    expected.tuning_profiles.standard_mode_enabled = false;
+    expected.tuning_profiles.selected_slot = 4;
+    expected.tuning_profiles.active_slot = 4;
+    expected.tuning_profiles.slots[2].automatic_rotation = 0;
+    expected.tuning_profiles.slots[2].rotation_degrees = 1440;
+    expected.tuning_profiles.slots[2].force_feedback_strength = 87;
+    expected.tuning_profiles.slots[2].natural_friction = 31;
+    expected.tuning_profiles.slots[2].throttle_pedal_curve = TUNING_PEDAL_CURVE_PROGRESSIVE;
+    expected.h_pattern_shifter.calibrated = true;
+    uint16_t *thresholds = &expected.h_pattern_shifter.calibration.reverse_first_boundary;
+    for (uint8_t index = 0; index < 8; index++) {
+        thresholds[index] = (uint16_t)(1000 + index * 100);
+    }
+    expected.security_code.enabled = true;
+    expected.security_code.digits[0] = 2;
+    expected.security_code.digits[1] = 7;
+    expected.security_code.digits[2] = 4;
+    for (uint8_t profile = 0; profile < TUNING_PROFILE_SLOT_COUNT; profile++) {
+        expected.steering_limits.percent[profile] = (uint8_t)(90 + profile);
+    }
+    expected.auxiliary_axis.minimum = 250;
+    expected.auxiliary_axis.maximum = 3900;
+    expected.auxiliary_axis.reset_on_start = false;
+    expected.wheel_auxiliary_option = 1;
+    storage[55] = 0xbeef;
+    present[55] = true;
+
+    assert(base_settings_persistence_save(&persistence, &expected) ==
+           BASE_SETTINGS_PERSISTENCE_SAVED);
+    assert(storage[18] == 0xa472);
+    assert(storage[26] == 0xaa01);
+    assert(storage[6] == 5);
+    assert(storage[55] == 0xbeef);
+
+    BaseSettingsPersistence loaded_state;
+    BaseSettings actual;
+    assert(base_settings_persistence_load(&loaded_state, &actual));
+    assert(actual.wheel_position.calibrated);
+    assert(actual.wheel_position.center == expected.wheel_position.center);
+    assert(!actual.tuning_profiles.standard_mode_enabled);
+    assert(actual.tuning_profiles.selected_slot == 4);
+    assert(actual.tuning_profiles.active_slot == 4);
+    assert(!actual.tuning_profiles.slots[2].automatic_rotation);
+    assert(actual.tuning_profiles.slots[2].rotation_degrees == 1440);
+    assert(actual.tuning_profiles.slots[2].force_feedback_strength == 87);
+    assert(actual.tuning_profiles.slots[2].natural_friction == 31);
+    assert(actual.tuning_profiles.slots[2].throttle_pedal_curve == TUNING_PEDAL_CURVE_PROGRESSIVE);
+    assert(actual.h_pattern_shifter.calibrated);
+    for (uint8_t index = 0; index < 8; index++) {
+        uint16_t *actual_thresholds = &actual.h_pattern_shifter.calibration.reverse_first_boundary;
+        assert(actual_thresholds[index] == thresholds[index]);
+    }
+    assert(actual.security_code.enabled);
+    assert(actual.security_code.digits[0] == 2);
+    assert(actual.security_code.digits[1] == 7);
+    assert(actual.security_code.digits[2] == 4);
+    for (uint8_t profile = 0; profile < TUNING_PROFILE_SLOT_COUNT; profile++) {
+        assert(actual.steering_limits.percent[profile] == 90 + profile);
+    }
+    assert(actual.auxiliary_axis.minimum == 250);
+    assert(actual.auxiliary_axis.maximum == 3900);
+    assert(!actual.auxiliary_axis.reset_on_start);
+    assert(actual.wheel_auxiliary_option == 0);
+    assert(storage[26] == 0xaa00);
+}
+
+static void test_unformatted_and_invalid_values_keep_defaults(void) {
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings);
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
+    storage_reset();
+    storage[0] = 0x0300;
+    present[0] = true;
+    storage[5] = 3;
+    present[5] = true;
+    storage[6] = 0;
+    present[6] = true;
+    storage[18] = 0xaefa;
+    present[18] = true;
+    storage[20] = 0xaa65;
+    present[20] = true;
+    storage[27] = 3900;
+    present[27] = true;
+    storage[28] = 250;
+    present[28] = true;
 
-    settings.tuning_profiles.slots[1].rotation_degrees = 720;
-    base_settings_persistence_mark_dirty(&persistence);
+    assert(base_settings_persistence_load(&persistence, &settings));
+    assert(settings.tuning_profiles.standard_mode_enabled);
+    assert(settings.tuning_profiles.selected_slot == 0);
+    assert(!settings.security_code.enabled);
+    assert(settings.steering_limits.percent[0] == 100);
+    assert(settings.auxiliary_axis.minimum == 0x0f38);
+    assert(settings.auxiliary_axis.maximum == 0x00c8);
+
+    storage[0] = 0x1234;
+    assert(!base_settings_persistence_load(&persistence, &settings));
     assert(persistence.dirty);
-    assert(replace_count == 1);
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
-    assert(replace_count == 2);
-
-    BaseSettingsPersistence loaded;
-    BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored));
-    assert(restored.tuning_profiles.slots[1].rotation_degrees == 720);
 }
 
-static void test_standard_profile_is_regenerated(void) {
-    reset_storage();
+static void test_partial_and_invalid_reference_fields_keep_defaults(void) {
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings);
-    settings.tuning_profiles.slots[0].force_feedback_strength = 80;
-    settings.tuning_profiles.slots[1].force_feedback_strength = 70;
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
+    storage_reset();
+    storage[0] = 0x0300;
+    present[0] = true;
+    storage[1] = 0x1234;
+    present[1] = true;
+    storage[6] = 7;
+    present[6] = true;
+    storage[17] = 1;
+    present[17] = true;
+    storage[18] = 0x9000;
+    present[18] = true;
+    storage[20] = 0xbb32;
+    present[20] = true;
+    storage[27] = 250;
+    present[27] = true;
+    storage[29] = 2;
+    present[29] = true;
+    storage[26] = 2;
+    present[26] = true;
 
-    BaseSettingsPersistence loaded;
-    BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored));
-    assert(restored.tuning_profiles.slots[0].force_feedback_strength == 35);
-    assert(restored.tuning_profiles.slots[1].force_feedback_strength == 70);
+    assert(base_settings_persistence_load(&persistence, &settings));
+    assert(!settings.wheel_position.calibrated);
+    assert(settings.tuning_profiles.selected_slot == 0);
+    assert(!settings.h_pattern_shifter.calibrated);
+    assert(!settings.security_code.enabled);
+    assert(settings.steering_limits.percent[0] == 100);
+    assert(settings.auxiliary_axis.minimum == 0x0f38);
+    assert(settings.auxiliary_axis.reset_on_start);
+    assert(settings.wheel_auxiliary_option == 2);
 }
 
-static void test_retained_selection_becomes_active(void) {
-    reset_storage();
+static void test_save_validation_and_each_write_boundary(void) {
+    static const uint16_t failure_indices[] = {1, 2, 5, 6, 7, 17, 18, 20, 26, 27, 28, 29, 30, 0};
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings);
-    settings.tuning_profiles.selected_slot = 4;
-    settings.tuning_profiles.active_slot = 2;
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
+    for (uint8_t failure = 0; failure < sizeof(failure_indices) / sizeof(failure_indices[0]);
+         failure++) {
+        storage_reset();
+        base_settings_defaults(&settings);
+        persistence = (BaseSettingsPersistence){.dirty = true};
+        fail_write_index = failure_indices[failure];
+        assert(base_settings_persistence_save(&persistence, &settings) ==
+               BASE_SETTINGS_PERSISTENCE_RETRY);
+    }
 
-    BaseSettingsPersistence loaded;
-    BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored));
-    assert(restored.tuning_profiles.selected_slot == 4);
-    assert(restored.tuning_profiles.active_slot == 4);
-}
-
-static void test_wheel_reference_is_persisted(void) {
-    reset_storage();
-    BaseSettingsPersistence persistence;
-    BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings);
-    assert(wheel_position_reference_capture(&settings.wheel_position, 20000, UINT32_C(0x5d2b)));
-    base_settings_persistence_mark_dirty(&persistence);
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
-
-    BaseSettingsPersistence loaded;
-    BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored));
-    assert(restored.wheel_position.calibrated);
-    assert(restored.wheel_position.center == 20000);
-}
-
-static void test_shifter_calibration_is_persisted(void) {
-    reset_storage();
-    BaseSettingsPersistence persistence;
-    BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings);
-    settings.h_pattern_shifter = (HPatternSettings){
-        .calibration =
-            {
-                .reverse_first_boundary = 800,
-                .first_third_boundary = 600,
-                .second_fourth_boundary = 590,
-                .third_fifth_boundary = 400,
-                .fourth_sixth_boundary = 390,
-                .fifth_seventh_boundary = 200,
-                .upper_row_threshold = 700,
-                .lower_row_threshold = 300,
-            },
-        .calibrated = true,
-    };
-    base_settings_persistence_mark_dirty(&persistence);
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
-
-    BaseSettingsPersistence loaded;
-    BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored));
-    assert(restored.h_pattern_shifter.calibrated);
-    assert(restored.h_pattern_shifter.calibration.reverse_first_boundary == 800);
-    assert(restored.h_pattern_shifter.calibration.first_third_boundary == 600);
-    assert(restored.h_pattern_shifter.calibration.second_fourth_boundary == 590);
-    assert(restored.h_pattern_shifter.calibration.third_fifth_boundary == 400);
-    assert(restored.h_pattern_shifter.calibration.fourth_sixth_boundary == 390);
-    assert(restored.h_pattern_shifter.calibration.fifth_seventh_boundary == 200);
-    assert(restored.h_pattern_shifter.calibration.upper_row_threshold == 700);
-    assert(restored.h_pattern_shifter.calibration.lower_row_threshold == 300);
-}
-
-static void test_auxiliary_axis_settings_are_persisted(void) {
-    reset_storage();
-    BaseSettingsPersistence persistence;
-    BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings);
-    settings.auxiliary_axis = (AuxiliaryAxisSettings){
-        .minimum = 240,
-        .maximum = 3780,
-        .reset_on_start = false,
-    };
-    base_settings_persistence_mark_dirty(&persistence);
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
-
-    BaseSettingsPersistence loaded;
-    BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored));
-    assert(restored.auxiliary_axis.minimum == 240);
-    assert(restored.auxiliary_axis.maximum == 3780);
-    assert(!restored.auxiliary_axis.reset_on_start);
-}
-
-static void test_steering_limit_settings_are_persisted(void) {
-    reset_storage();
-    BaseSettingsPersistence persistence;
-    BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings);
-    settings.steering_limits.percent[0] = 35;
-    settings.steering_limits.percent[5] = 80;
-    base_settings_persistence_mark_dirty(&persistence);
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
-
-    BaseSettingsPersistence loaded;
-    BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored));
-    assert(restored.steering_limits.percent[0] == 35);
-    assert(restored.steering_limits.percent[5] == 80);
-    assert(restored.steering_limits.percent[1] == 100);
-}
-
-static void test_wheel_auxiliary_option_is_persisted(void) {
-    reset_storage();
-    BaseSettingsPersistence persistence;
-    BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings);
-    settings.wheel_auxiliary_disabled = true;
-    base_settings_persistence_mark_dirty(&persistence);
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
-
-    BaseSettingsPersistence loaded;
-    BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored));
-    assert(restored.wheel_auxiliary_disabled);
-}
-
-static void test_security_code_is_persisted(void) {
-    reset_storage();
-    BaseSettingsPersistence persistence;
-    BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings);
-    settings.security_code = (SecurityCodeSettings){
-        .digits = {4, 2, 7},
-        .enabled = true,
-    };
-    base_settings_persistence_mark_dirty(&persistence);
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
-
-    BaseSettingsPersistence loaded;
-    BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored));
-    assert(restored.security_code.enabled);
-    assert(restored.security_code.digits[0] == 4);
-    assert(restored.security_code.digits[1] == 2);
-    assert(restored.security_code.digits[2] == 7);
-}
-
-static void test_invalid_wheel_auxiliary_option_is_rejected(void) {
-    enum { HEADER_SIZE = 12 };
-    reset_storage();
-    BaseSettingsPersistence persistence;
-    BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings);
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
-
-    uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
-    uint16_t payload_size = (uint16_t)record[6] | (uint16_t)record[7] << 8;
-    uint16_t data_size = HEADER_SIZE + payload_size;
-    record[data_size - 5] = 2;
-    write_u16(record, data_size, checksum(record, data_size));
-
-    BaseSettingsPersistence loaded;
-    BaseSettings restored;
-    assert(!base_settings_persistence_load(&loaded, &restored));
-    assert(!restored.wheel_auxiliary_disabled);
-}
-
-static void test_invalid_security_code_is_rejected(void) {
-    enum { HEADER_SIZE = 12, SECURITY_CODE_SIZE = 4 };
-    reset_storage();
-    BaseSettingsPersistence persistence;
-    BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings);
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
-
-    uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
-    uint16_t payload_size = (uint16_t)record[6] | (uint16_t)record[7] << 8;
-    uint16_t data_size = HEADER_SIZE + payload_size;
-    uint16_t security_code_offset = data_size - SECURITY_CODE_SIZE;
-    record[security_code_offset] = 1;
-    record[security_code_offset + 1] = 10;
-    write_u16(record, data_size, checksum(record, data_size));
-
-    BaseSettingsPersistence loaded;
-    BaseSettings restored;
-    assert(!base_settings_persistence_load(&loaded, &restored));
-    assert(!restored.security_code.enabled);
-}
-
-static void test_profile_only_record_is_upgraded(void) {
-    enum { HEADER_SIZE = 12, PROFILE_ONLY_VERSION = 1 };
-    reset_storage();
-    BaseSettingsPersistence persistence;
-    BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings);
-    settings.tuning_profiles.slots[1].rotation_degrees = 720;
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
-
-    uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
-    uint16_t data_size = HEADER_SIZE + TUNING_PROFILE_RECORD_SIZE;
-    record[4] = PROFILE_ONLY_VERSION;
-    write_u16(record, 6, TUNING_PROFILE_RECORD_SIZE);
-    write_u16(record, data_size, checksum(record, data_size));
-
-    BaseSettingsPersistence loaded;
-    BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored));
-    assert(loaded.dirty);
-    assert(!restored.wheel_position.calibrated);
-    assert(restored.tuning_profiles.slots[1].rotation_degrees == 720);
-    assert(base_settings_persistence_save(&loaded, &restored) == BASE_SETTINGS_PERSISTENCE_SAVED);
-}
-
-static void test_wheel_reference_record_is_upgraded(void) {
-    enum { HEADER_SIZE = 12, WHEEL_REFERENCE_VERSION = 2, WHEEL_REFERENCE_SIZE = 5 };
-    reset_storage();
-    BaseSettingsPersistence persistence;
-    BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings);
-    assert(wheel_position_reference_capture(&settings.wheel_position, 12345, UINT32_C(0x5d2b)));
-    settings.h_pattern_shifter.calibrated = true;
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
-
-    uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
-    uint16_t payload_size = TUNING_PROFILE_RECORD_SIZE + WHEEL_REFERENCE_SIZE;
-    uint16_t data_size = HEADER_SIZE + payload_size;
-    record[4] = WHEEL_REFERENCE_VERSION;
-    write_u16(record, 6, payload_size);
-    write_u16(record, data_size, checksum(record, data_size));
-
-    BaseSettingsPersistence loaded;
-    BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored));
-    assert(loaded.dirty);
-    assert(restored.wheel_position.calibrated);
-    assert(restored.wheel_position.center == 12345);
-    assert(!restored.h_pattern_shifter.calibrated);
-}
-
-static void test_h_pattern_record_is_upgraded(void) {
-    enum {
-        HEADER_SIZE = 12,
-        H_PATTERN_VERSION = 3,
-        WHEEL_REFERENCE_SIZE = 5,
-        H_PATTERN_SIZE = 17,
-    };
-    reset_storage();
-    BaseSettingsPersistence persistence;
-    BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings);
-    settings.h_pattern_shifter.calibrated = true;
-    settings.auxiliary_axis = (AuxiliaryAxisSettings){
-        .minimum = 240,
-        .maximum = 3780,
-        .reset_on_start = false,
-    };
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
-
-    uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
-    uint16_t payload_size = TUNING_PROFILE_RECORD_SIZE + WHEEL_REFERENCE_SIZE + H_PATTERN_SIZE;
-    uint16_t data_size = HEADER_SIZE + payload_size;
-    record[4] = H_PATTERN_VERSION;
-    write_u16(record, 6, payload_size);
-    write_u16(record, data_size, checksum(record, data_size));
-
-    BaseSettingsPersistence loaded;
-    BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored));
-    assert(loaded.dirty);
-    assert(restored.h_pattern_shifter.calibrated);
-    assert(restored.auxiliary_axis.minimum == 0x0f38);
-    assert(restored.auxiliary_axis.maximum == 0x00c8);
-    assert(restored.auxiliary_axis.reset_on_start);
-}
-
-static void test_auxiliary_axis_record_is_upgraded(void) {
-    enum {
-        HEADER_SIZE = 12,
-        AUXILIARY_AXIS_VERSION = 4,
-        WHEEL_REFERENCE_SIZE = 5,
-        H_PATTERN_SIZE = 17,
-        AUXILIARY_AXIS_SIZE = 5,
-    };
-    reset_storage();
-    BaseSettingsPersistence persistence;
-    BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings);
-    settings.auxiliary_axis = (AuxiliaryAxisSettings){
-        .minimum = 300,
-        .maximum = 3700,
-        .reset_on_start = false,
-    };
-    settings.steering_limits.percent[0] = 25;
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
-
-    uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
-    uint16_t payload_size =
-        TUNING_PROFILE_RECORD_SIZE + WHEEL_REFERENCE_SIZE + H_PATTERN_SIZE + AUXILIARY_AXIS_SIZE;
-    uint16_t data_size = HEADER_SIZE + payload_size;
-    record[4] = AUXILIARY_AXIS_VERSION;
-    write_u16(record, 6, payload_size);
-    write_u16(record, data_size, checksum(record, data_size));
-
-    BaseSettingsPersistence loaded;
-    BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored));
-    assert(loaded.dirty);
-    assert(restored.auxiliary_axis.minimum == 300);
-    assert(restored.auxiliary_axis.maximum == 3700);
-    assert(!restored.auxiliary_axis.reset_on_start);
-    assert(restored.steering_limits.percent[0] == 100);
-}
-
-static void test_steering_limit_record_is_upgraded(void) {
-    enum { HEADER_SIZE = 12, STEERING_LIMIT_VERSION = 5 };
-    reset_storage();
-    BaseSettingsPersistence persistence;
-    BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings);
-    settings.steering_limits.percent[0] = 25;
-    settings.wheel_auxiliary_disabled = true;
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
-
-    uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
-    uint16_t payload_size = (uint16_t)record[6] | (uint16_t)record[7] << 8;
-    payload_size -= 5;
-    uint16_t data_size = HEADER_SIZE + payload_size;
-    record[4] = STEERING_LIMIT_VERSION;
-    write_u16(record, 6, payload_size);
-    write_u16(record, data_size, checksum(record, data_size));
-
-    BaseSettingsPersistence loaded;
-    BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored));
-    assert(loaded.dirty);
-    assert(restored.steering_limits.percent[0] == 25);
-    assert(!restored.wheel_auxiliary_disabled);
-}
-
-static void test_auxiliary_output_record_is_upgraded(void) {
-    enum { HEADER_SIZE = 12, AUXILIARY_OUTPUT_VERSION = 6, SECURITY_CODE_SIZE = 4 };
-    reset_storage();
-    BaseSettingsPersistence persistence;
-    BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings);
-    settings.wheel_auxiliary_disabled = true;
-    settings.security_code = (SecurityCodeSettings){
-        .digits = {4, 2, 7},
-        .enabled = true,
-    };
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
-
-    uint8_t *record = storage[PLATFORM_STORAGE_SETTINGS_A];
-    uint16_t payload_size = (uint16_t)record[6] | (uint16_t)record[7] << 8;
-    payload_size -= SECURITY_CODE_SIZE;
-    uint16_t data_size = HEADER_SIZE + payload_size;
-    record[4] = AUXILIARY_OUTPUT_VERSION;
-    write_u16(record, 6, payload_size);
-    write_u16(record, data_size, checksum(record, data_size));
-
-    BaseSettingsPersistence loaded;
-    BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored));
-    assert(loaded.dirty);
-    assert(restored.wheel_auxiliary_disabled);
-    assert(!restored.security_code.enabled);
-    assert(restored.security_code.digits[0] == 0);
-    assert(restored.security_code.digits[1] == 0);
-    assert(restored.security_code.digits[2] == 0);
-}
-
-static void test_interrupted_replacement_preserves_previous_record(void) {
-    reset_storage();
-    BaseSettingsPersistence persistence;
-    BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings);
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
-
-    settings.tuning_profiles.slots[1].rotation_degrees = 540;
-    base_settings_persistence_mark_dirty(&persistence);
-    replace_fails = true;
+    storage_reset();
+    base_settings_defaults(&settings);
+    persistence = (BaseSettingsPersistence){.dirty = true};
+    settings.tuning_profiles.selected_slot = TUNING_PROFILE_SLOT_COUNT;
     assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_RETRY);
 
-    BaseSettingsPersistence loaded;
-    BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored));
-    assert(restored.tuning_profiles.slots[1].rotation_degrees != 540);
+    storage_reset();
+    base_settings_defaults(&settings);
+    persistence = (BaseSettingsPersistence){.dirty = true};
+    settings.security_code.enabled = true;
+    settings.security_code.digits[1] = 10;
+    assert(base_settings_persistence_save(&persistence, &settings) ==
+           BASE_SETTINGS_PERSISTENCE_RETRY);
+
+    storage_reset();
+    base_settings_defaults(&settings);
+    persistence = (BaseSettingsPersistence){.dirty = true};
+    settings.steering_limits.percent[2] = 101;
+    assert(base_settings_persistence_save(&persistence, &settings) ==
+           BASE_SETTINGS_PERSISTENCE_RETRY);
 }
 
-static void test_corrupted_new_record_falls_back_to_previous_record(void) {
-    reset_storage();
+static void test_dirty_and_failure_behavior(void) {
     BaseSettingsPersistence persistence;
     BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings);
+    storage_reset();
+    initialize_fails = true;
+    assert(!base_settings_persistence_load(&persistence, &settings));
+    initialize_fails = false;
     assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_SAVED);
-    uint16_t previous_rotation = settings.tuning_profiles.slots[1].rotation_degrees;
-
-    settings.tuning_profiles.slots[1].rotation_degrees = 360;
-    base_settings_persistence_mark_dirty(&persistence);
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
-    storage[PLATFORM_STORAGE_SETTINGS_B][20] ^= 1;
-
-    BaseSettingsPersistence loaded;
-    BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored));
-    assert(restored.tuning_profiles.slots[1].rotation_degrees == previous_rotation);
-}
-
-static void test_generation_rollover_selects_new_record(void) {
-    reset_storage();
-    BaseSettingsPersistence persistence;
-    BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings);
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
-
-    settings.tuning_profiles.slots[1].rotation_degrees = 360;
-    base_settings_persistence_mark_dirty(&persistence);
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
-    set_generation(PLATFORM_STORAGE_SETTINGS_A, UINT32_MAX);
-    set_generation(PLATFORM_STORAGE_SETTINGS_B, 0);
-
-    BaseSettingsPersistence loaded;
-    BaseSettings restored;
-    assert(base_settings_persistence_load(&loaded, &restored));
-    assert(loaded.active_slot == PLATFORM_STORAGE_SETTINGS_B);
-    assert(restored.tuning_profiles.slots[1].rotation_degrees == 360);
-}
-
-static void test_clean_settings_are_not_rewritten(void) {
-    reset_storage();
-    BaseSettingsPersistence persistence;
-    BaseSettings settings;
-    base_settings_persistence_load(&persistence, &settings);
-    assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_SAVED);
-
     assert(base_settings_persistence_save(&persistence, &settings) ==
            BASE_SETTINGS_PERSISTENCE_IDLE);
-    assert(replace_count == 1);
+
+    base_settings_persistence_mark_dirty(&persistence);
+    write_fails = true;
+    assert(base_settings_persistence_save(&persistence, &settings) ==
+           BASE_SETTINGS_PERSISTENCE_RETRY);
+    assert(persistence.dirty);
 }
 
 int main(void) {
-    test_defaults_are_saved_on_initialization();
-    test_dirty_changes_wait_for_explicit_save();
-    test_standard_profile_is_regenerated();
-    test_retained_selection_becomes_active();
-    test_wheel_reference_is_persisted();
-    test_shifter_calibration_is_persisted();
-    test_auxiliary_axis_settings_are_persisted();
-    test_steering_limit_settings_are_persisted();
-    test_wheel_auxiliary_option_is_persisted();
-    test_security_code_is_persisted();
-    test_invalid_wheel_auxiliary_option_is_rejected();
-    test_invalid_security_code_is_rejected();
-    test_profile_only_record_is_upgraded();
-    test_wheel_reference_record_is_upgraded();
-    test_h_pattern_record_is_upgraded();
-    test_auxiliary_axis_record_is_upgraded();
-    test_steering_limit_record_is_upgraded();
-    test_auxiliary_output_record_is_upgraded();
-    test_interrupted_replacement_preserves_previous_record();
-    test_corrupted_new_record_falls_back_to_previous_record();
-    test_generation_rollover_selects_new_record();
-    test_clean_settings_are_not_rewritten();
+    test_erased_storage_loads_defaults_and_saves_reference_format();
+    test_all_supported_settings_round_trip();
+    test_unformatted_and_invalid_values_keep_defaults();
+    test_partial_and_invalid_reference_fields_keep_defaults();
+    test_save_validation_and_each_write_boundary();
+    test_dirty_and_failure_behavior();
     return 0;
 }

@@ -53,8 +53,18 @@ static void polls_status_then_version_and_applies_identity(void) {
     assert(identity->model == 2);
     assert(identity->version == 0x78561234);
     assert(!service.version_stage);
+    assert(service.accessory_type_stage);
     assert(!service.request_pending);
     assert(transport.owner == 0);
+
+    wheel_accessory_service_run(&service, &transport);
+    const uint8_t expected_type[] = {2, 0xe1, 7, 1, 0};
+    submit_request(&transport, expected_type, sizeof(expected_type));
+    const uint8_t accessory_type[] = {0x23};
+    complete_read(&transport, accessory_type, sizeof(accessory_type));
+    wheel_accessory_service_run(&service, &transport);
+    assert(identity->accessory_type == 0x23);
+    assert(!service.accessory_type_stage);
 }
 
 static void retries_a_failed_stage_without_erasing_identity(void) {

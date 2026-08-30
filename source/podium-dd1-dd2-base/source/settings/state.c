@@ -15,5 +15,5 @@ void base_settings_defaults(BaseSettings *settings) {
     auxiliary_axis_settings_defaults(&settings->auxiliary_axis);
     wheel_steering_limits_defaults(&settings->steering_limits);
     settings->security_code = (SecurityCodeSettings){0};
-    settings->wheel_auxiliary_disabled = false;
+    settings->wheel_auxiliary_option = 0;
 }

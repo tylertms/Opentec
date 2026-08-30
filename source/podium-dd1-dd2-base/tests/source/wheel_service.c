@@ -757,12 +757,17 @@ static void test_routes_auxiliary_output_commands(void) {
     };
 
     assert(wheel_service_apply_auxiliary_output_command(&service, &command));
-    assert(service.auxiliary_output.disabled);
+    assert(service.auxiliary_output.option == 2);
+    assert(!service.protocol.alternate_output.suppress_auxiliary_display);
+
+    command.parameters[0] = 1;
+    assert(wheel_service_apply_auxiliary_output_command(&service, &command));
+    assert(service.auxiliary_output.option == 1);
     assert(service.protocol.alternate_output.suppress_auxiliary_display);
 
     command.parameters[0] = 0;
     assert(wheel_service_apply_auxiliary_output_command(&service, &command));
-    assert(!service.auxiliary_output.disabled);
+    assert(service.auxiliary_output.option == 0);
     assert(!service.protocol.alternate_output.suppress_auxiliary_display);
 
     command.opcode = WHEEL_AUXILIARY_CODE_MODE_OPCODE;
@@ -1271,6 +1276,84 @@ static void test_exposes_playstation_wheel_inputs(void) {
     assert(!snapshot.axis_report_enabled);
 }
 
+static void test_rejects_invalid_service_requests(void) {
+    WheelService service;
+    WheelInputSnapshot snapshot;
+    WheelMultiPositionInput multi_position;
+    WheelDisplayOutput display = {0};
+    UsbOperatingModeCommand command = {0};
+    uint8_t host_controls[WHEEL_ADAPTER_HOST_CONTROLS_SIZE];
+    uint8_t legacy_axes[2] = {0};
+    uint8_t telemetry[WHEEL_OUTPUT_REMOTE_TELEMETRY_SIZE] = {0};
+    uint8_t text = 0;
+    CommandTransport adapter_transport;
+    initialize_service(&service);
+    command_transport_init(&adapter_transport);
+
+    wheel_service_reset_adapter_commands(NULL);
+    wheel_service_run_adapter_commands(NULL, &adapter_transport);
+    wheel_service_run_adapter_commands(&service, NULL);
+    assert(!wheel_service_take_adapter_host_controls(NULL, host_controls));
+    assert(!wheel_service_take_adapter_host_controls(&service, NULL));
+    wheel_service_queue_adapter_remote_tuning_active(NULL, true);
+    wheel_service_queue_adapter_refresh_state(NULL, true);
+    wheel_service_queue_adapter_setup_selection(NULL, 1);
+    wheel_service_queue_adapter_display_state(NULL, 1);
+    wheel_service_queue_adapter_display_state(&service, 0);
+    assert(!wheel_service_queue_tuning_display_command(NULL, 1));
+    assert(!wheel_service_queue_tuning_display_command(&service, 1));
+    assert(!wheel_service_queue_adapter_text_line(NULL, 1, 0, &text, 1));
+    assert(!wheel_service_queue_adapter_text_line(&service, 1, 0, &text, 1));
+    assert(!wheel_service_queue_adapter_text_close(NULL));
+    assert(!wheel_service_queue_adapter_text_close(&service));
+    wheel_service_set_auxiliary_report(NULL, 1);
+    wheel_service_set_display_override(NULL, &display);
+    wheel_service_set_display_override(&service, NULL);
+    wheel_service_clear_display_override(NULL);
+    wheel_service_clear_display_override(&service);
+    wheel_service_set_auxiliary_output_option(NULL, 1);
+    wheel_service_set_legacy_axes(NULL, legacy_axes);
+    wheel_service_set_legacy_axes(&service, NULL);
+    wheel_service_reset_host_protocol_outputs(NULL);
+    assert(!wheel_service_remote_tuning_response_pending(NULL));
+    assert(!wheel_service_apply_auxiliary_output_command(NULL, &command));
+    assert(!wheel_service_apply_auxiliary_output_command(&service, NULL));
+    command.opcode = UINT8_MAX;
+    assert(!wheel_service_apply_auxiliary_output_command(&service, &command));
+    assert(!wheel_service_apply_multi_position_command(NULL, &command));
+    assert(!wheel_service_apply_packed_report_command(NULL, &command));
+    assert(!wheel_service_apply_packed_report_command(&service, NULL));
+    assert(!wheel_service_apply_packed_report_command(&service, &command));
+    assert(!wheel_service_apply_report_six_command(NULL, &command));
+    assert(!wheel_service_apply_report_six_command(&service, NULL));
+    assert(!wheel_service_apply_report_six_command(&service, &command));
+    assert(!wheel_service_apply_interface_mode_command(NULL, &command));
+    assert(!wheel_service_apply_interface_mode_command(&service, NULL));
+    assert(!wheel_service_apply_interface_mode_command(&service, &command));
+    wheel_service_update_interface_mode_gate(NULL, 0);
+    wheel_service_update_interface_mode_gate(&service, 0);
+    assert(wheel_service_multi_position_mode(NULL, TUNING_MULTI_POSITION_AUTOMATIC) ==
+           TUNING_MULTI_POSITION_ENCODER);
+    assert(!wheel_service_multi_position_supported(NULL));
+    assert(!wheel_service_multi_position_input(NULL, 0, &multi_position));
+    assert(!wheel_service_multi_position_input(&service, 0, NULL));
+    assert(!wheel_service_multi_position_input(&service, 0, &multi_position));
+    wheel_service_apply_output_report(NULL, telemetry);
+    wheel_service_apply_output_report(&service, NULL);
+    assert(!wheel_service_queue_remote_telemetry(NULL, telemetry));
+    assert(!wheel_service_remote_telemetry_pending(NULL));
+    assert(!wheel_service_start_protocol_exchange(NULL, 0));
+    service.transport = NULL;
+    assert(!wheel_service_start_protocol_exchange(&service, 0));
+    service.transport = &transport;
+    service.transport->status = SERIAL_SERVICE_PENDING;
+    assert(!wheel_service_start_protocol_exchange(&service, 0));
+    assert(!wheel_service_take_protocol_exchange_completed(NULL));
+    assert(!wheel_service_take_protocol_exchange_completed(&service));
+    assert(!wheel_service_input_snapshot(&service, NULL));
+    assert(!wheel_service_input_snapshot(&service, &snapshot));
+}
+
 int main(void) {
     test_maps_primary_scan_bits();
     test_maps_secondary_scan_bit();
@@ -1315,5 +1398,6 @@ int main(void) {
     test_reports_host_capability_recovery_inputs();
     test_reports_force_output_readiness();
     test_exposes_playstation_wheel_inputs();
+    test_rejects_invalid_service_requests();
     return 0;
 }

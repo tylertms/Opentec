@@ -83,6 +83,26 @@ static void test_adjusts_and_clamps_scalar_entries(void) {
                                 navigation(TUNING_NAVIGATION_PREVIOUS, 0), &default_context));
 }
 
+static void test_adjusts_every_scalar_entry(void) {
+    TuningProfileBank bank;
+    tuning_profile_bank_defaults(&bank);
+    bank.standard_mode_enabled = false;
+
+    for (TuningEntry entry = TUNING_ENTRY_FORCE_FEEDBACK_STRENGTH; entry < TUNING_ENTRY_COUNT;
+         entry++) {
+        if (entry == TUNING_ENTRY_SENSITIVITY) {
+            continue;
+        }
+        bool changed = tuning_entry_adjust(&bank, entry, navigation(TUNING_NAVIGATION_DECREASE, 0),
+                                           &default_context);
+        if (!changed) {
+            changed = tuning_entry_adjust(&bank, entry, navigation(TUNING_NAVIGATION_INCREASE, 0),
+                                          &default_context);
+        }
+        assert(changed);
+    }
+}
+
 static void test_adjusts_sensitivity_through_automatic_range(void) {
     TuningProfileBank bank;
     tuning_profile_bank_defaults(&bank);
@@ -240,6 +260,7 @@ static void test_navigates_available_entries_in_display_order(void) {
 int main(void) {
     test_reports_catalog_and_runtime_limits();
     test_adjusts_and_clamps_scalar_entries();
+    test_adjusts_every_scalar_entry();
     test_adjusts_sensitivity_through_automatic_range();
     test_adjusts_and_activates_setup_selection();
     test_enforces_security_and_automatic_setup_restrictions();

@@ -105,6 +105,7 @@
 #include "usb/tuning_menu_service.h"
 #include "usb/tuning_profile_report.h"
 #include "usb/tuning_profile_service.h"
+#include "usb/tuning_status_report.h"
 #include "usb/updater_service.h"
 #include "usb/vendor_command.h"
 #include "usb/xbox_gip_command.h"
@@ -244,6 +245,7 @@ static uint8_t usb_motor_acknowledgement_length;
 static uint8_t usb_vendor_response[USB_DEVICE_REPORT_SIZE];
 static uint8_t usb_vendor_response_length;
 static UsbDiagnosticReportService usb_diagnostic_report_service;
+static UsbTuningStatusReportService usb_tuning_status_report_service;
 static UsbRemoteTuningService usb_remote_tuning_service;
 static WheelCommandForwarder wheel_command_forwarder;
 static WheelProtocolBridgeService wheel_protocol_bridge_service;
@@ -275,6 +277,7 @@ static SecurityCodeInput security_code_input;
 static SecurityCodeUpdate security_code_update_state;
 static WheelDisplayOutput security_code_display_output;
 static UsbDiagnosticSnapshot usb_diagnostic_snapshot;
+static UsbTuningStatusSnapshot usb_tuning_status_snapshot;
 static UsbDeviceOutputReport usb_device_output_report;
 static UsbConnectionMonitor usb_connection_monitor;
 static UsbHostCapabilityRecovery usb_host_capability_recovery;
@@ -384,6 +387,7 @@ typedef enum {
     USB_VENDOR_RESPONSE_TUNING_MENU,
     USB_VENDOR_RESPONSE_PEDAL_TRANSFER,
     USB_VENDOR_RESPONSE_DIAGNOSTIC,
+    USB_VENDOR_RESPONSE_TUNING_STATUS,
     USB_VENDOR_RESPONSE_MOTOR,
 } UsbVendorResponseKind;
 
@@ -982,8 +986,7 @@ static void initialize_base_settings(void) {
     base_settings_persistence_load(&settings_persistence, &base_settings);
     save_base_settings();
     auxiliary_axis_init(&auxiliary_axis, &base_settings.auxiliary_axis);
-    wheel_service_set_auxiliary_output_disabled(&wheel_service,
-                                                base_settings.wheel_auxiliary_disabled);
+    wheel_service_set_auxiliary_output_option(&wheel_service, base_settings.wheel_auxiliary_option);
 }
 
 /**
@@ -1035,6 +1038,7 @@ static void initialize_usb_command_bridge(void) {
     wheel_transfer_service_init(&wheel_transfer_service);
     wheel_accessory_service_init(&wheel_accessory_service);
     usb_diagnostic_report_service_init(&usb_diagnostic_report_service);
+    usb_tuning_status_report_service_init(&usb_tuning_status_report_service);
     usb_remote_tuning_service_init(&usb_remote_tuning_service);
     wheel_command_forwarder_init(&wheel_command_forwarder);
     usb_tuning_menu_service_init(&usb_tuning_menu_service);
@@ -1145,6 +1149,108 @@ static void update_usb_diagnostic_snapshot(uint32_t now_ms) {
         usb_diagnostic_snapshot.wheel_position = centered_position;
         usb_diagnostic_snapshot.wheel_velocity =
             wheel_velocity_update(&wheel_velocity_estimator, centered_position, now_ms);
+    }
+}
+
+static void update_usb_tuning_status_snapshot(void) {
+    enum {
+        BASE_STATUS_DD1 = 6,
+        BASE_STATUS_DD1_OPTION = 7,
+        BASE_STATUS_DD2 = 8,
+        SYSTEM_STATUS_VENDOR_ONE_AVAILABLE = 0x02,
+        SYSTEM_STATUS_ACTIVE = 0x10,
+        SYSTEM_STATUS_TUNING_AVAILABLE = 0x40,
+        PEDAL_STATUS_INACTIVE = 0,
+        PEDAL_STATUS_LEGACY = 1,
+        PEDAL_STATUS_LEGACY_CALIBRATION = 2,
+        PEDAL_STATUS_CALIBRATION = 4,
+        PEDAL_STATUS_SECONDARY_CALIBRATION = 5,
+        PEDAL_STATUS_TRANSFER = 6,
+    };
+
+    const WheelStatusSnapshot *wheel_status = wheel_status_service_snapshot(&wheel_status_service);
+    const WheelAccessory *accessory = wheel_accessory_service_identity(&wheel_accessory_service);
+    const WheelAdapterInput *adapter = wheel_service_adapter(&wheel_service);
+    const PedalInput *pedals = pedal_service_input(&pedal_service);
+    const PedalV3State *pedal_v3 = pedal_service_v3_state(&pedal_service);
+    bool tuning_available = wheel_service_tuning_menu_available(&wheel_service);
+    bool system_active = system_control_state.operating_feature_enabled;
+    uint8_t system_flags = SYSTEM_STATUS_VENDOR_ONE_AVAILABLE;
+    if (system_active) {
+        system_flags |= SYSTEM_STATUS_ACTIVE;
+    }
+    if (tuning_available) {
+        system_flags |= SYSTEM_STATUS_TUNING_AVAILABLE;
+    }
+
+    uint16_t axis_values[2] = {0};
+    bool axis_values_available = wheel_service_axis_report_enabled(&wheel_service) &&
+                                 wheel_service_axis_values(&wheel_service, axis_values);
+    WheelProtocolPhase wheel_phase = wheel_service_protocol_phase(&wheel_service);
+    uint8_t button_mode = wheel_phase == WHEEL_PROTOCOL_SCANNING_PRIMARY ||
+                                  wheel_phase == WHEEL_PROTOCOL_SCANNING_SECONDARY
+                              ? wheel_service_mode_buttons(&wheel_service)
+                              : (uint8_t)wheel_service_capability_flags(&wheel_service);
+    uint32_t input = axis_values_available
+                         ? (uint32_t)axis_values[0] | (uint32_t)axis_values[1] << 16
+                         : wheel_service_axis_limit(&wheel_service) & 0x3fu;
+
+    uint8_t pedal_status = PEDAL_STATUS_INACTIVE;
+    if (pedal_service_legacy_transport_active(&pedal_service)) {
+        pedal_status = pedal_service_calibration_active(&pedal_service)
+                           ? PEDAL_STATUS_LEGACY_CALIBRATION
+                           : PEDAL_STATUS_LEGACY;
+    } else if (pedal_v3->primary_calibration) {
+        pedal_status = PEDAL_STATUS_CALIBRATION;
+    } else if (pedal_v3->secondary_calibration) {
+        pedal_status = PEDAL_STATUS_SECONDARY_CALIBRATION;
+    } else if (pedal_v3->connection_flags != 0) {
+        pedal_status = PEDAL_STATUS_TRANSFER;
+    }
+
+    uint8_t output_status = 0;
+    if (!force_feedback_state.primary_output_disabled && wheel_phase > WHEEL_PROTOCOL_SELECTING) {
+        if (tuning_profile->force_feedback_strength > 99) {
+            output_status = 0x0f;
+        } else if (tuning_profile->force_feedback_strength == 40 ||
+                   tuning_profile->force_feedback_strength == 32) {
+            output_status = 1;
+        }
+    }
+
+    usb_tuning_status_snapshot = (UsbTuningStatusSnapshot){
+        .base_status = board_identity.variant == BOARD_VARIANT_DD2 ? BASE_STATUS_DD2
+                       : board_identity.hardware_option != 0       ? BASE_STATUS_DD1_OPTION
+                                                                   : BASE_STATUS_DD1,
+        .hardware_mode = board_identity.mode_bits,
+        .auxiliary_mode = wheel_accessory_mode_code(accessory),
+        .auxiliary_flags = wheel_accessory_mode_flags(accessory),
+        .auxiliary_status = accessory->version,
+        .wheel_status_low = wheel_status->status_low,
+        .wheel_status_high = wheel_status->status_high,
+        .wheel_mode = wheel_service_mode(&wheel_service),
+        .button_mode = button_mode,
+        .input = input,
+        .adapter_mode = adapter->connected ? (uint8_t)(adapter->mode + 1u) : 0,
+        .pedal_status = pedal_status,
+        .pedal_auxiliary = (uint8_t)pedals->auxiliary,
+        .pedal_axis_low = (uint8_t)(pedals->axes[0] >> 8) & 0x3fu,
+        .pedal_axis_high = (uint8_t)(pedals->axes[1] >> 8),
+        .tuning_available = tuning_available,
+        .system_active = system_active,
+        .force_effect = accessory->accessory_type,
+        .system_flags = system_flags,
+        .output_status = output_status,
+        .interface_gate =
+            wheel_output_reports_interface_mode_gate(&wheel_service.protocol.output_reports),
+    };
+    if (adapter->connected) {
+        if (adapter->mode == 0) {
+            usb_tuning_status_snapshot.adapter[1] = adapter->profile_flags & 0x3fu;
+        } else {
+            memcpy(usb_tuning_status_snapshot.adapter + 1, adapter->information,
+                   sizeof(adapter->information));
+        }
     }
 }
 
@@ -1564,6 +1670,12 @@ static void prepare_usb_vendor_response(void) {
         usb_vendor_response_kind = USB_VENDOR_RESPONSE_DIAGNOSTIC;
         return;
     }
+    if (usb_tuning_status_report_prepare(&usb_tuning_status_report_service,
+                                         &usb_tuning_status_snapshot, usb_vendor_response)) {
+        usb_vendor_response_length = USB_DEVICE_REPORT_SIZE;
+        usb_vendor_response_kind = USB_VENDOR_RESPONSE_TUNING_STATUS;
+        return;
+    }
     usb_vendor_response_length =
         usb_motor_vendor_service_prepare_response(&usb_motor_vendor_service, usb_vendor_response);
     if (usb_vendor_response_length != 0) {
@@ -1593,6 +1705,8 @@ static void complete_usb_vendor_response(void) {
         }
     } else if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_DIAGNOSTIC) {
         usb_diagnostic_report_commit(&usb_diagnostic_report_service, usb_vendor_response);
+    } else if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_TUNING_STATUS) {
+        usb_tuning_status_report_commit(&usb_tuning_status_report_service, usb_vendor_response);
     } else if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_MOTOR) {
         (void)usb_motor_vendor_service_next_response(&usb_motor_vendor_service,
                                                      usb_vendor_response);
@@ -1627,7 +1741,11 @@ static void service_usb_command_bridge(uint32_t now_ms) {
     (void)motor_command_serial_receive(&command_transport, &serial_service);
     wheel_transfer_service_run(&wheel_transfer_service, &command_transport);
     wheel_accessory_service_run(&wheel_accessory_service, &command_transport);
+    bool adapter_active_synchronization_allowed =
+        wheel_service_mode(&wheel_service) != WHEEL_MODE_REMOTE_TUNING_EXTENDED ||
+        tuning_interaction.phase == TUNING_INTERACTION_CLOSED;
     if (usb_remote_tuning_service_take_adapter_active(&usb_remote_tuning_service,
+                                                      adapter_active_synchronization_allowed,
                                                       &wheel_adapter_remote_tuning_active)) {
         wheel_service_queue_adapter_remote_tuning_active(&wheel_service,
                                                          wheel_adapter_remote_tuning_active);
@@ -1679,6 +1797,7 @@ static void service_usb_command_bridge(uint32_t now_ms) {
         usb_motor_acknowledgement_ready = false;
     }
     update_usb_diagnostic_snapshot(now_ms);
+    update_usb_tuning_status_snapshot();
     prepare_usb_xbox_control_response();
     prepare_usb_xbox_vendor_response();
     prepare_usb_xbox_script_response();
@@ -1892,8 +2011,8 @@ static bool start_runtime_bridge(const UsbOperatingModeCommand *command) {
  *
  * Keeps the motor link on disabled zero-force frames, finishes any in-flight wheel exchange,
  * advances auxiliary-bus, raw-link, or command-routed updater probes, handles the protocol
- * fallback callback, services updater USB after activation, and applies guarded updater reset
- * requests.
+ * fallback callback, services updater USB after activation, and handles a guarded updater reset
+ * request by disabling interrupts and immediately restarting the processor.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  * @return True while runtime bridge mode owns the main loop; otherwise false.
@@ -1957,7 +2076,8 @@ static bool service_runtime_bridge(uint32_t now_ms) {
         }
     }
     if (usb_updater_service_take_reset(&usb_updater_service)) {
-        enter_bootloader();
+        platform_system_interrupts_set(false);
+        platform_system_reset();
     }
     return true;
 }
@@ -2481,8 +2601,8 @@ static void service_usb_output(void) {
         } else if (wheel_service_apply_auxiliary_output_command(&wheel_service,
                                                                 &usb_operating_mode_command)) {
             if (usb_operating_mode_command.opcode == WHEEL_AUXILIARY_OPTION_OPCODE &&
-                base_settings.wheel_auxiliary_disabled != wheel_service.auxiliary_output.disabled) {
-                base_settings.wheel_auxiliary_disabled = wheel_service.auxiliary_output.disabled;
+                base_settings.wheel_auxiliary_option != wheel_service.auxiliary_output.option) {
+                base_settings.wheel_auxiliary_option = wheel_service.auxiliary_output.option;
                 base_settings_persistence_mark_dirty(&settings_persistence);
                 save_base_settings();
             }
@@ -2558,6 +2678,13 @@ static void service_usb_output(void) {
         if (usb_diagnostic_report_apply_command(&usb_diagnostic_report_service,
                                                 &usb_vendor_command)) {
             if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_DIAGNOSTIC) {
+                usb_vendor_response_kind = USB_VENDOR_RESPONSE_NONE;
+            }
+            return;
+        }
+        if (usb_tuning_status_report_apply_command(&usb_tuning_status_report_service,
+                                                   &usb_vendor_command)) {
+            if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_TUNING_STATUS) {
                 usb_vendor_response_kind = USB_VENDOR_RESPONSE_NONE;
             }
             return;
@@ -3545,7 +3672,7 @@ static void service_local_display(void) {
             local_display_auxiliary_calibration_content_active = true;
         }
     } else if (page == LOCAL_DISPLAY_PAGE_IDENTITY) {
-        display_identity_page_render(display_framebuffer, board_identity.variant);
+        display_identity_page_render(display_framebuffer, board_identity);
     } else {
         display_prompt_render_bite_point(display_framebuffer, page == LOCAL_DISPLAY_PAGE_BITE_POINT,
                                          wheel_bite_point_display_percent);

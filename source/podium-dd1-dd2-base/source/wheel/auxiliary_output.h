@@ -15,7 +15,7 @@ enum {
 typedef struct {
     uint16_t report;
     uint8_t latched_bands;
-    bool disabled;
+    uint8_t option;
     bool code_mode;
     bool exclusive_mode;
 } WheelAuxiliaryOutput;

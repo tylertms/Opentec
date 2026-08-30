@@ -21,7 +21,7 @@ static void test_classifies_direct_command_routes(void) {
     } cases[] = {
         {1, USB_VENDOR_COMMAND_WHEEL_OUTPUT_REPORT},   {2, USB_VENDOR_COMMAND_TUNING_MENU},
         {3, USB_VENDOR_COMMAND_DEVICE_CONTROL_UPDATE}, {4, USB_VENDOR_COMMAND_DIAGNOSTIC_SNAPSHOT},
-        {5, USB_VENDOR_COMMAND_REMOTE_TUNING},         {8, USB_VENDOR_COMMAND_STATUS_RESPONSE},
+        {5, USB_VENDOR_COMMAND_REMOTE_TUNING},         {8, USB_VENDOR_COMMAND_TUNING_STATUS},
         {0xff, USB_VENDOR_COMMAND_EXTENDED},
     };
     uint8_t payload[63] = {0};
@@ -135,7 +135,7 @@ static void test_identifies_motor_command_request(void) {
 
     payload[3] = 0;
     assert(!usb_vendor_command_requests_motor_command(&command));
-    command.kind = USB_VENDOR_COMMAND_STATUS_RESPONSE;
+    command.kind = USB_VENDOR_COMMAND_TUNING_STATUS;
     payload[3] = 1;
     assert(!usb_vendor_command_requests_motor_command(&command));
     assert(!usb_vendor_command_requests_motor_command(NULL));

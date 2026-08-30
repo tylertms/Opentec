@@ -2,6 +2,7 @@
 #define OPENTEC_BASE_SETTINGS_STATE_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "analog/auxiliary_axis.h"
 #include "profile/bank.h"
@@ -17,7 +18,7 @@ typedef struct {
     AuxiliaryAxisSettings auxiliary_axis;
     WheelSteeringLimits steering_limits;
     SecurityCodeSettings security_code;
-    bool wheel_auxiliary_disabled;
+    uint8_t wheel_auxiliary_option;
 } BaseSettings;
 
 void base_settings_defaults(BaseSettings *settings);

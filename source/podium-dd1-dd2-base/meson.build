@@ -1,6 +1,7 @@
 base_include = include_directories('source')
 base_source_path = meson.current_source_dir() / 'source'
 common_source_path = meson.project_source_root() / 'source'
+base_python = import('python').find_installation()
 analog_axis_sources = files('source/analog/axis.c')
 auxiliary_axis_sources = files('source/analog/auxiliary_axis.c')
 analog_samples_sources = files('source/analog/samples.c')
@@ -14,9 +15,11 @@ display_auxiliary_calibration_page_sources = files('source/display/auxiliary_cal
 display_force_feedback_analysis_page_sources = files(
   'source/display/force_feedback_analysis_page.c',
 )
+display_bitmap_sources = files('source/display/bitmap.c')
 display_framebuffer_sources = files('source/display/framebuffer.c')
 display_high_torque_icon_sources = files('source/display/high_torque_icon.c')
 display_identity_page_sources = files('source/display/identity_page.c')
+display_identity_logo_sources = files('source/display/identity_logo.c')
 display_motor_data_analysis_page_sources = files('source/display/motor_data_analysis_page.c')
 display_notice_sources = files('source/display/notice.c')
 display_prompt_sources = files('source/display/prompt.c')
@@ -83,6 +86,7 @@ usb_updater_identity_sources = files('source/usb/updater_identity.c')
 usb_updater_service_sources = files('source/usb/updater_service.c')
 usb_descriptor_sources = files('source/usb/descriptor.c')
 usb_diagnostic_report_sources = files('source/usb/diagnostic_report.c')
+usb_tuning_status_report_sources = files('source/usb/tuning_status_report.c')
 usb_tuning_menu_service_sources = files('source/usb/tuning_menu_service.c')
 usb_transfer_request_sources = files('source/usb/transfer_request.c')
 usb_transfer_response_sources = files('source/usb/transfer_response.c')
@@ -165,6 +169,7 @@ profile_tuning_menu_sources = files('source/profile/tuning_menu.c')
 profile_tuning_display_sources = files('source/profile/tuning_display.c')
 security_code_sources = files('source/security/code.c')
 settings_persistence_sources = files('source/settings/persistence.c')
+settings_journal_sources = files('source/settings/journal.c')
 settings_state_sources = files('source/settings/state.c')
 platform_time_sources = files('source/platform/time.c')
 wheel_position_sources = files('source/wheel/position.c')
@@ -242,8 +247,11 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     '-mcpu=33EP512MU810',
     '-mdfp=' + device_pack_path,
     '-mlarge-code',
+    '-mtext=application',
+    '-Os',
+    '-ffunction-sections',
   ]
-  linker_script = device_pack_path / 'support/dsPIC33E/gld/p33EP512MU810.gld'
+  linker_script = files('source/platform/dspic33e/p33EP512MU810.gld')[0]
 
   firmware_objects = []
   foreach name, source : {
@@ -258,9 +266,11 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'display-controller': 'source/display/controller.c',
     'display-auxiliary-calibration-page': 'source/display/auxiliary_calibration_page.c',
     'display-force-feedback-analysis-page': 'source/display/force_feedback_analysis_page.c',
+    'display-bitmap': 'source/display/bitmap.c',
     'display-framebuffer': 'source/display/framebuffer.c',
     'display-high-torque-icon': 'source/display/high_torque_icon.c',
     'display-identity-page': 'source/display/identity_page.c',
+    'display-identity-logo': 'source/display/identity_logo.c',
     'display-motor-data-analysis-page': 'source/display/motor_data_analysis_page.c',
     'display-notice': 'source/display/notice.c',
     'display-prompt': 'source/display/prompt.c',
@@ -323,6 +333,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'usb-updater-service': 'source/usb/updater_service.c',
     'usb-descriptor': 'source/usb/descriptor.c',
     'usb-diagnostic-report': 'source/usb/diagnostic_report.c',
+    'usb-tuning-status-report': 'source/usb/tuning_status_report.c',
     'usb-tuning-menu-service': 'source/usb/tuning_menu_service.c',
     'usb-transfer-request': 'source/usb/transfer_request.c',
     'usb-transfer-response': 'source/usb/transfer_response.c',
@@ -425,6 +436,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'profile-tuning-display': 'source/profile/tuning_display.c',
     'security-code': 'source/security/code.c',
     'settings-persistence': 'source/settings/persistence.c',
+    'settings-journal': 'source/settings/journal.c',
     'settings-state': 'source/settings/state.c',
     'wheel-position': 'source/wheel/position.c',
     'wheel-accessory': 'source/wheel/accessory.c',
@@ -512,9 +524,9 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
   firmware = custom_target(
     'podium-dd1-dd2-base-elf',
     input: firmware_objects,
-    output: 'podium-dd1-dd2-base.elf',
+    output: 'podium-dd1-dd2-base-unqualified.elf',
     command: [compiler] + device_args + [
-      '-Wl,--script=' + linker_script,
+      '-Wl,--script=' + linker_script.full_path(),
       '-o',
       '@OUTPUT@',
       '@INPUT@',
@@ -522,11 +534,24 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     build_by_default: false,
   )
 
+  unqualified_firmware_image = custom_target(
+    'podium-dd1-dd2-base-unqualified-hex',
+    input: firmware,
+    output: 'podium-dd1-dd2-base-unqualified.hex',
+    command: [bin2hex, '@INPUT@'],
+    build_by_default: false,
+  )
+
   custom_target(
     'podium-dd1-dd2-base-hex',
-    input: firmware,
+    input: unqualified_firmware_image,
     output: 'podium-dd1-dd2-base.hex',
-    command: [bin2hex, '@INPUT@'],
+    command: [
+      base_python,
+      files('tools/qualify_flash_image.py'),
+      '@INPUT@',
+      '@OUTPUT@',
+    ],
     build_by_default: true,
   )
 endif
@@ -624,6 +649,15 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  display_bitmap_test = executable(
+    'base-display-bitmap-test',
+    'tests/source/display_bitmap.c',
+    display_bitmap_sources,
+    display_framebuffer_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   display_force_feedback_analysis_page_test = executable(
     'base-display-force-feedback-analysis-page-test',
     'tests/source/display_force_feedback_analysis_page.c',
@@ -637,7 +671,9 @@ if not meson.is_cross_build()
   display_identity_page_test = executable(
     'base-display-identity-page-test',
     'tests/source/display_identity_page.c',
+    display_bitmap_sources,
     display_identity_page_sources,
+    display_identity_logo_sources,
     display_text_sources,
     display_framebuffer_sources,
     build_by_default: false,
@@ -1351,6 +1387,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  usb_tuning_status_report_test = executable(
+    'base-usb-tuning-status-report-test',
+    'tests/source/usb_tuning_status_report.c',
+    usb_tuning_status_report_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   usb_tuning_profile_report_test = executable(
     'base-usb-tuning-profile-report-test',
     'tests/source/usb_tuning_profile_report.c',
@@ -1964,8 +2008,17 @@ if not meson.is_cross_build()
     profile_record_sources,
     profile_bank_sources,
     profile_tuning_sources,
+    usb_tuning_profile_report_sources,
     wheel_position_sources,
     wheel_steering_limit_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  settings_journal_test = executable(
+    'base-settings-journal-test',
+    'tests/source/settings_journal.c',
+    settings_journal_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2635,6 +2688,7 @@ if not meson.is_cross_build()
     suite: ['base', 'display', 'force-feedback'],
   )
   test('base-display-framebuffer', display_framebuffer_test, suite: ['base', 'display'])
+  test('base-display-bitmap', display_bitmap_test, suite: ['base', 'display'])
   test('base-display-identity-page', display_identity_page_test, suite: ['base', 'display'])
   test(
     'base-display-motor-data-analysis-page',
@@ -2878,6 +2932,11 @@ if not meson.is_cross_build()
   )
   test('base-usb-diagnostic-report', usb_diagnostic_report_test, suite: ['base', 'usb', 'output'])
   test(
+    'base-usb-tuning-status-report',
+    usb_tuning_status_report_test,
+    suite: ['base', 'usb', 'output'],
+  )
+  test(
     'base-usb-tuning-menu-service',
     usb_tuning_menu_service_test,
     suite: ['base', 'usb', 'profile'],
@@ -3040,6 +3099,17 @@ if not meson.is_cross_build()
     'base-settings-persistence',
     settings_persistence_test,
     suite: ['base', 'settings', 'persistence'],
+  )
+  test(
+    'base-settings-journal',
+    settings_journal_test,
+    suite: ['base', 'settings', 'persistence', 'safety'],
+  )
+  test(
+    'base-flash-image-qualification',
+    base_python,
+    args: files('tests/tools/qualify_flash_image_test.py'),
+    suite: ['base', 'platform', 'safety'],
   )
   test('base-platform-time', platform_time_test, suite: ['base', 'platform'])
   test('base-wheel-position', wheel_position_test, suite: ['base', 'wheel-position'])

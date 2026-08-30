@@ -50,12 +50,16 @@ static void test_prioritizes_exclusive_bands(void) {
     assert(wheel_auxiliary_output_encode(&output) == 0x50);
 }
 
-static void test_disabled_and_missing_output_are_clear(void) {
+static void test_option_one_and_missing_output_are_clear(void) {
     WheelAuxiliaryOutput output = {
         .report = 0x01ff,
-        .disabled = true,
+        .option = 1,
     };
     assert(wheel_auxiliary_output_encode(&output) == 0);
+    output.option = 2;
+    assert(wheel_auxiliary_output_encode(&output) == 0x51);
+    output.option = UINT8_MAX;
+    assert(wheel_auxiliary_output_encode(&output) == 0x51);
     assert(wheel_auxiliary_output_encode(NULL) == 0);
 }
 
@@ -63,6 +67,6 @@ int main(void) {
     test_combines_report_and_latched_bands();
     test_encodes_cumulative_code_patterns();
     test_prioritizes_exclusive_bands();
-    test_disabled_and_missing_output_are_clear();
+    test_option_one_and_missing_output_are_clear();
     return 0;
 }

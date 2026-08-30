@@ -45,7 +45,7 @@ static int8_t command_kind(uint8_t opcode, const uint8_t *payload, uint8_t lengt
     case 5:
         return USB_VENDOR_COMMAND_REMOTE_TUNING;
     case 8:
-        return USB_VENDOR_COMMAND_STATUS_RESPONSE;
+        return USB_VENDOR_COMMAND_TUNING_STATUS;
     case VENDOR_COMMAND_SCRIPT:
         if (length >= 7 && payload[1] == VENDOR_COMMAND_SCRIPT_GROUP) {
             if (payload[4] == VENDOR_COMMAND_SCRIPT_SAMPLES_SELECTOR &&

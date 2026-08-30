@@ -110,7 +110,7 @@ static void test_rejects_other_routes(void) {
     usb_diagnostic_report_service_init(&service);
     uint8_t arguments[2];
     UsbVendorCommand request = command(1, 0xff, arguments);
-    request.kind = USB_VENDOR_COMMAND_STATUS_RESPONSE;
+    request.kind = USB_VENDOR_COMMAND_TUNING_STATUS;
     assert(!usb_diagnostic_report_apply_command(&service, &request));
     assert(!usb_diagnostic_report_apply_command(NULL, &request));
     assert(!usb_diagnostic_report_apply_command(&service, NULL));

@@ -27,9 +27,9 @@ static void test_profile(UsbInputReportMode mode, uint32_t expected_device_hash,
 }
 
 static void test_profiles(void) {
-    test_profile(USB_INPUT_REPORT_MODE_FANATEC_COMPATIBILITY, 0xfd0d7c70u, 0xfac17d26u);
-    test_profile(USB_INPUT_REPORT_MODE_DRIVING_FORCE_EX, 0xb02eb444u, 0xab5adfa7u);
-    test_profile(USB_INPUT_REPORT_MODE_DRIVING_FORCE_PRO, 0xafed7760u, 0x05c7f27du);
+    test_profile(USB_INPUT_REPORT_MODE_FANATEC_COMPATIBILITY, 0x8d2da375u, 0xfac17d26u);
+    test_profile(USB_INPUT_REPORT_MODE_DRIVING_FORCE_EX, 0xd6c5eafdu, 0xab5adfa7u);
+    test_profile(USB_INPUT_REPORT_MODE_DRIVING_FORCE_PRO, 0x90a47101u, 0x05c7f27du);
     test_profile(USB_INPUT_REPORT_MODE_G27, 0xf2a1bfc1u, 0xaa511e19u);
 }
 

@@ -109,3 +109,59 @@ void platform_system_enter_bootloader(void) {
     *(volatile uint16_t *)BOOTLOADER_REQUEST_ADDRESS = BOOTLOADER_REQUEST_KEY;
     platform_system_reset();
 }
+
+/**
+ * @brief Handles a primary-oscillator failure trap.
+ *
+ * Clears the oscillator-failure source and holds the processor in the trap context.
+ *
+ */
+void __attribute__((interrupt, no_auto_psv)) _OscillatorFail(void) {
+    INTCON1bits.OSCFAIL = 0;
+    for (;;) {
+    }
+}
+
+/**
+ * @brief Handles an address-error trap.
+ *
+ * Clears the address-error source and holds the processor in the trap context.
+ *
+ */
+void __attribute__((interrupt, no_auto_psv)) _AddressError(void) {
+    INTCON1bits.ADDRERR = 0;
+    for (;;) {
+    }
+}
+
+/**
+ * @brief Handles a stack-error trap.
+ *
+ * Clears the stack-error source and holds the processor in the trap context.
+ *
+ */
+void __attribute__((interrupt, no_auto_psv)) _StackError(void) {
+    INTCON1bits.STKERR = 0;
+    for (;;) {
+    }
+}
+
+/**
+ * @brief Handles a math-error trap.
+ *
+ * Clears the math-error source and holds the processor in the trap context.
+ *
+ */
+void __attribute__((interrupt, no_auto_psv)) _MathError(void) {
+    INTCON1bits.MATHERR = 0;
+    for (;;) {
+    }
+}
+
+/**
+ * @brief Handles a DMA-controller error trap.
+ *
+ * Clears the DMA-controller error source and resumes the interrupted execution context.
+ *
+ */
+void __attribute__((interrupt, no_auto_psv)) _DMACError(void) { INTCON1bits.DMACERR = 0; }

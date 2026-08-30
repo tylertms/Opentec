@@ -170,7 +170,7 @@ void display_system_information_page_render_title(DisplayFramebuffer framebuffer
  */
 void display_system_information_page_render(DisplayFramebuffer framebuffer,
                                             const DisplaySystemInformation *information) {
-    static const uint8_t main_firmware[3] = {3, 9, 0};
+    static const uint8_t main_firmware[3] = {3, 9, 1};
     char text[24];
 
     display_framebuffer_clear(framebuffer);

@@ -59,7 +59,7 @@ static void append_version(WheelStartupVersionLine *line, const uint8_t version[
 /**
  * @brief Builds the extended-adapter startup version page.
  *
- * Produces the four lines shown during startup: base firmware 3.9.0, the managed motor version or
+ * Produces the four lines shown during startup: the base firmware version, managed motor version or
  * NA, the extended adapter version, and one blank line.
  *
  * @param[in] motor_identity Identified motor controller, or null when unavailable.
@@ -79,7 +79,7 @@ bool wheel_startup_adapter_version_page_build(const MotorIdentity *motor_identit
     static const uint8_t motor_label[] = {'M', 'O', 'T', 'O', 'R', ':', ' '};
     static const uint8_t wheel_label[] = {'S', 'T', ' ', 'W', 'H', 'E', 'E', 'L', ':', ' '};
     static const uint8_t unavailable[] = {'N', 'A'};
-    static const uint8_t base_version[] = {3, 9, 0};
+    static const uint8_t base_version[] = {3, 9, 1};
 
     append_text(&page->lines[0], base_label, sizeof(base_label));
     append_version(&page->lines[0], base_version);

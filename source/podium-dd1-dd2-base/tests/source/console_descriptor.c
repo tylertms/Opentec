@@ -17,7 +17,7 @@ static void test_xbox_gip_identity(void) {
     UsbDeviceIdentity identity = usb_xbox_gip_device_identity(0x0f50);
     assert(identity.usb_version == 0x0200);
     assert(identity.vendor_id == 0x0eb7 && identity.product_id == 0x0f50);
-    assert(identity.device_version == 0x0523);
+    assert(identity.device_version == 0x0059);
     assert(identity.device_class == 0xff && identity.device_subclass == 0xff);
     assert(identity.device_protocol == 0xff && identity.control_packet_size == 64);
     assert(identity.manufacturer_string == 1 && identity.product_string == 2);
@@ -96,7 +96,7 @@ static void test_playstation_identity(void) {
     UsbDeviceIdentity dd2 = usb_playstation_device_identity(BOARD_VARIANT_DD2);
     assert(dd1.usb_version == 0x0200 && dd1.vendor_id == 0x0eb7);
     assert(dd1.product_id == 0x0e05 && dd2.product_id == 0x0e06);
-    assert(dd1.device_version == 0x0523 && dd1.control_packet_size == 64);
+    assert(dd1.device_version == 0x0059 && dd1.control_packet_size == 64);
     assert(dd1.manufacturer_string == 1 && dd1.product_string == 9);
     assert(strcmp(usb_playstation_product_name(BOARD_VARIANT_DD1),
                   "FANATEC Podium Wheel Base DD1 PlayStation 4") == 0);

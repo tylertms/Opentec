@@ -138,11 +138,55 @@ static void test_rejects_other_routes(void) {
            USB_TUNING_PROFILE_ACTION_NONE);
 }
 
+static void test_rejects_invalid_and_incomplete_profile_commands(void) {
+    uint8_t arguments[62] = {0};
+    UsbVendorCommand update = command(arguments);
+    UsbTuningProfileService service;
+    TuningProfileBank bank;
+    tuning_profile_bank_defaults(&bank);
+    usb_tuning_profile_service_init(&service);
+
+    assert(usb_tuning_profile_service_apply(NULL, &bank, &update, 0) ==
+           USB_TUNING_PROFILE_ACTION_NONE);
+    assert(usb_tuning_profile_service_apply(&service, NULL, &update, 0) ==
+           USB_TUNING_PROFILE_ACTION_NONE);
+    assert(usb_tuning_profile_service_apply(&service, &bank, NULL, 0) ==
+           USB_TUNING_PROFILE_ACTION_NONE);
+    update.arguments = NULL;
+    assert(usb_tuning_profile_service_apply(&service, &bank, &update, 0) ==
+           USB_TUNING_PROFILE_ACTION_NONE);
+    update.arguments = arguments;
+    update.length = 0;
+    assert(usb_tuning_profile_service_apply(&service, &bank, &update, 0) ==
+           USB_TUNING_PROFILE_ACTION_NONE);
+
+    update.length = 1;
+    assert(usb_tuning_profile_service_apply(&service, &bank, &update, 0) ==
+           USB_TUNING_PROFILE_ACTION_CLAIM);
+    update.length = sizeof(arguments);
+    arguments[1] = 0;
+    assert(usb_tuning_profile_service_apply(&service, &bank, &update, 0) ==
+           USB_TUNING_PROFILE_ACTION_CLAIM);
+    arguments[1] = 7;
+    assert(usb_tuning_profile_service_apply(&service, &bank, &update, 0) ==
+           USB_TUNING_PROFILE_ACTION_CLAIM);
+    arguments[0] = 1;
+    update.length = 1;
+    assert(usb_tuning_profile_service_apply(&service, &bank, &update, 0) ==
+           USB_TUNING_PROFILE_ACTION_CLAIM);
+    arguments[0] = UINT8_MAX;
+    update.length = sizeof(arguments);
+    assert(usb_tuning_profile_service_apply(&service, &bank, &update, 0) ==
+           USB_TUNING_PROFILE_ACTION_CLAIM);
+    assert(!usb_tuning_profile_service_response_pending(NULL));
+}
+
 int main(void) {
     test_applies_and_selects_profile();
     test_refresh_and_save_actions();
     test_resets_profiles_with_shared_guard();
     test_rate_limits_mode_changes();
     test_rejects_other_routes();
+    test_rejects_invalid_and_incomplete_profile_commands();
     return 0;
 }

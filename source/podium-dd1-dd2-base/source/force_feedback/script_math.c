@@ -63,7 +63,7 @@ force_feedback_script_math_evaluate(ForceFeedbackScriptMathOperation operation, 
     case FORCE_FEEDBACK_SCRIPT_MATH_SQUARE:
         return value_result(first * first);
     case FORCE_FEEDBACK_SCRIPT_MATH_CUBE:
-        return value_result(powf(first, 3.0f));
+        return value_result(first * first * first);
     case FORCE_FEEDBACK_SCRIPT_MATH_SQUARE_ROOT:
         return first < 0.0f ? skipped_result() : value_result(sqrtf(first));
     case FORCE_FEEDBACK_SCRIPT_MATH_SIGN:

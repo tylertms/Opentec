@@ -4,6 +4,6 @@
 #include "board/identity.h"
 #include "display/framebuffer.h"
 
-void display_identity_page_render(DisplayFramebuffer framebuffer, BoardVariant variant);
+void display_identity_page_render(DisplayFramebuffer framebuffer, BoardIdentity identity);
 
 #endif

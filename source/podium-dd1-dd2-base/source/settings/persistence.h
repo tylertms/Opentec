@@ -13,8 +13,6 @@ typedef enum {
 } BaseSettingsPersistenceResult;
 
 typedef struct {
-    uint32_t generation;
-    uint8_t active_slot;
     bool has_record;
     bool dirty;
 } BaseSettingsPersistence;

@@ -86,6 +86,32 @@ static void test_rejects_invalid_messages(void) {
 
     assert(motor_command_application_apply(&application, &message).result ==
            MOTOR_COMMAND_APPLICATION_INVALID);
+    assert(motor_command_application_apply(NULL, &message).result ==
+           MOTOR_COMMAND_APPLICATION_INVALID);
+    assert(motor_command_application_apply(&application, NULL).result ==
+           MOTOR_COMMAND_APPLICATION_INVALID);
+
+    message.data = NULL;
+    message.data_length = 20;
+    assert(motor_command_application_apply(&application, &message).result ==
+           MOTOR_COMMAND_APPLICATION_INVALID);
+
+    message = (MotorCommandMessage){
+        .kind = MOTOR_COMMAND_MESSAGE_INFORMATION,
+        .selector = UINT8_MAX,
+    };
+    assert(motor_command_application_apply(&application, &message).result ==
+           MOTOR_COMMAND_APPLICATION_INVALID);
+
+    message = (MotorCommandMessage){
+        .kind = MOTOR_COMMAND_MESSAGE_VENDOR_CONTINUATION,
+    };
+    assert(motor_command_application_apply(&application, &message).result ==
+           MOTOR_COMMAND_APPLICATION_INVALID);
+
+    message.kind = (MotorCommandMessageKind)UINT8_MAX;
+    assert(motor_command_application_apply(&application, &message).result ==
+           MOTOR_COMMAND_APPLICATION_INVALID);
 }
 
 int main(void) {

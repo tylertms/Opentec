@@ -33,7 +33,7 @@ static void test_presents_base_version_and_ready_delay(void) {
     assert(wheel_startup_display_update(&display, true, false, true, 0, 2, &output));
     assert(output.glyphs[0] == 0xcf);
     assert(output.glyphs[1] == 0xef);
-    assert(output.glyphs[2] == 0x3f);
+    assert(output.glyphs[2] == 0x06);
     assert(!wheel_startup_display_update(&display, true, false, true, 0, 1000, &output));
     assert(!wheel_startup_display_update(&display, true, false, true, 0, 1001, &output));
     assert(display.phase == WHEEL_STARTUP_DISPLAY_READY_DELAY);

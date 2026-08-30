@@ -12,7 +12,9 @@ typedef struct {
     WheelAccessory accessory;
     uint8_t version_bytes[4];
     uint8_t status_byte;
+    uint8_t accessory_type_byte;
     bool version_stage;
+    bool accessory_type_stage;
     bool request_pending;
 } WheelAccessoryService;
 

@@ -113,10 +113,31 @@ static void test_waits_for_another_command_owner(void) {
     assert(transport.owner == 0x30);
 }
 
+static void test_rejects_invalid_and_overlapping_requests(void) {
+    WheelTransferService service;
+    CommandTransport transport;
+    wheel_transfer_service_init(&service);
+    command_transport_init(&transport);
+
+    assert(!wheel_transfer_service_start(NULL, WHEEL_TRANSFER_READ));
+    assert(!wheel_transfer_service_start(&service, WHEEL_TRANSFER_REQUEST_COUNT));
+    assert(wheel_transfer_service_start(&service, WHEEL_TRANSFER_WRITE));
+    assert(!wheel_transfer_service_start(&service, WHEEL_TRANSFER_READ));
+    wheel_transfer_service_run(NULL, &transport);
+    wheel_transfer_service_run(&service, NULL);
+    WheelTransferService idle;
+    wheel_transfer_service_init(&idle);
+    wheel_transfer_service_run(&idle, &transport);
+    assert(wheel_transfer_service_status(NULL, WHEEL_TRANSFER_READ) == WHEEL_TRANSFER_IDLE);
+    assert(wheel_transfer_service_status(&service, WHEEL_TRANSFER_REQUEST_COUNT) ==
+           WHEEL_TRANSFER_IDLE);
+}
+
 int main(void) {
     test_completes_valid_write_and_read_channels();
     test_rejects_invalid_response_crc();
     test_maps_direction_failures();
     test_waits_for_another_command_owner();
+    test_rejects_invalid_and_overlapping_requests();
     return 0;
 }

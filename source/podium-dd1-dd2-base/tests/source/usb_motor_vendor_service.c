@@ -204,11 +204,66 @@ static void test_applies_mailbox_restart_and_release(void) {
     assert(!command_transport_is_owner(&fixture.transport, MOTOR_COMMAND_MAILBOX_OWNER));
 }
 
+static void test_motor_channel_rejects_invalid_storage_and_requests(void) {
+    Fixture fixture;
+    fixture_init(&fixture);
+    MotorCommandChannel channel;
+    MotorCommandChannelBuffers buffers = fixture.channel.buffers;
+    uint8_t payload[129] = {0};
+
+    assert(!motor_command_channel_init(NULL, &buffers));
+    assert(!motor_command_channel_init(&channel, NULL));
+    buffers.receive_assembly = NULL;
+    assert(!motor_command_channel_init(&channel, &buffers));
+    buffers = fixture.channel.buffers;
+    buffers.receive_assembly_capacity = 0;
+    assert(!motor_command_channel_init(&channel, &buffers));
+    buffers = fixture.channel.buffers;
+    buffers.transmit = NULL;
+    assert(!motor_command_channel_init(&channel, &buffers));
+    buffers = fixture.channel.buffers;
+    buffers.transmit_capacity = MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE - 1;
+    assert(!motor_command_channel_init(&channel, &buffers));
+    buffers = fixture.channel.buffers;
+    buffers.pending_payload = NULL;
+    assert(!motor_command_channel_init(&channel, &buffers));
+    buffers = fixture.channel.buffers;
+    buffers.pending_payload_capacity = 0;
+    assert(!motor_command_channel_init(&channel, &buffers));
+
+    assert(!motor_command_channel_queue_payload(NULL, payload, 1));
+    assert(!motor_command_channel_queue_payload(&fixture.channel, NULL, 1));
+    fixture.channel.command_pending = true;
+    assert(!motor_command_channel_queue_payload(&fixture.channel, payload, 1));
+    fixture.channel.command_pending = false;
+    assert(!motor_command_channel_queue_payload(&fixture.channel, payload, sizeof(payload)));
+    fixture.channel.buffers.transmit_capacity = MOTOR_COMMAND_PACKET_ENCODING_OVERHEAD;
+    assert(!motor_command_channel_queue_payload(&fixture.channel, payload, 1));
+    fixture.channel.buffers.transmit_capacity = sizeof(fixture.motor_transmit);
+
+    assert(!motor_command_channel_queue_sequence_reset(NULL));
+    fixture.channel.command_pending = true;
+    assert(!motor_command_channel_queue_sequence_reset(&fixture.channel));
+    fixture.channel.command_pending = false;
+    fixture.channel.buffers.transmit_capacity = MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE - 1;
+    assert(!motor_command_channel_queue_sequence_reset(&fixture.channel));
+    fixture.channel.buffers.transmit_capacity = sizeof(fixture.motor_transmit);
+    assert(motor_command_channel_queue_sequence_reset(&fixture.channel));
+    assert(!motor_command_channel_queue_information_request(&fixture.channel, 2));
+    assert(!motor_command_channel_queue_information_request(&fixture.channel, 5));
+    assert(motor_command_channel_queue_information_request(&fixture.channel, 3));
+    assert(!motor_command_channel_queue_information_request(&fixture.channel, 4));
+    assert(motor_command_channel_application(NULL) == NULL);
+    assert(motor_command_channel_accept(NULL, payload, 1).actions ==
+           MOTOR_COMMAND_CHANNEL_ACTION_NONE);
+}
+
 int main(void) {
     test_bridges_compact_command_and_response();
     test_acknowledges_segmented_upload_progress();
     test_maps_restart_release_and_retry();
     test_runs_usb_channel_through_mailbox();
     test_applies_mailbox_restart_and_release();
+    test_motor_channel_rejects_invalid_storage_and_requests();
     return 0;
 }

@@ -91,6 +91,9 @@ static void advance_endpoint(WheelAdapterCommandService *service, WheelAdapterIn
     for (uint8_t index = 0; index < sizeof(adapter->firmware_version); index++) {
         adapter->firmware_version[index] = 0;
     }
+    for (uint8_t index = 0; index < sizeof(adapter->information); index++) {
+        adapter->information[index] = 0;
+    }
     adapter->connected = false;
 }
 
@@ -152,6 +155,9 @@ static bool finish_request(WheelAdapterCommandService *service, WheelAdapterInpu
         uint8_t status = service->probe[0];
         if (service->endpoint_index == 1) {
             status &= 0x3fu;
+            for (uint8_t index = 0; index < sizeof(adapter->information); index++) {
+                adapter->information[index] = service->probe[index];
+            }
             adapter->firmware_version[0] = status;
             adapter->firmware_version[1] = service->probe[1];
             adapter->firmware_version[2] = service->probe[2];

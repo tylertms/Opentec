@@ -177,6 +177,8 @@ uint8_t motor_tuning_parameter_encode(MotorTuningParameter parameter, const Tuni
     case MOTOR_TUNING_DAMPER_EFFECT_STRENGTH:
         encode_u8(write, 0x2a, clamp(profile->damper_effect_strength, 12));
         return 1;
+    case MOTOR_TUNING_PARAMETER_COUNT:
+        return 0;
     }
     return 0;
 }

@@ -106,7 +106,7 @@ void wheel_startup_display_init(WheelStartupDisplay *display) {
 /**
  * @brief Advances the attached-wheel startup glyph sequence.
  *
- * Waits for an active wheel, presents three dashes, base firmware 3.9.0, an available managed
+ * Waits for an active wheel, presents three dashes, the base firmware version, an available managed
  * motor version, and a one-second ready delay. Wheels with a tuning display retain the dash glyphs
  * while three seconds are reserved for their separate version presentation. Missing position input
  * alternates the CAL label and a blank display every 500 milliseconds until position becomes
@@ -150,7 +150,7 @@ bool wheel_startup_display_update(WheelStartupDisplay *display, bool wheel_activ
         return changed;
     }
     case WHEEL_STARTUP_DISPLAY_BASE_VERSION: {
-        static const uint8_t version[4] = {3, 9, 0, 1};
+        static const uint8_t version[4] = {3, 9, 1, 1};
         bool changed = tuning_display_supported ? false : show_version(output, version);
         if (now_ms < display->deadline_ms) {
             return changed;

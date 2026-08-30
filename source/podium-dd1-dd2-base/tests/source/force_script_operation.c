@@ -141,6 +141,22 @@ static void test_rejects_invalid_records(void) {
     assert(!result.valid);
 }
 
+static void test_dispatches_every_operation_byte(void) {
+    ForceFeedbackScriptRuntime runtime = {0};
+    const uint8_t script[] = {0x20, 0x20, 0x20, 0x20};
+    for (uint16_t operation = 0; operation <= UINT8_MAX; operation++) {
+        runtime.variables[0] = float_bits(1.0f);
+        ForceFeedbackScriptDestinationResult result = force_feedback_script_operation_execute(
+            &runtime, (uint8_t)operation, script, sizeof(script), 0, false);
+        assert(result.cursor <= sizeof(script));
+
+        runtime.variables[0] = 1;
+        result = force_feedback_script_operation_execute(&runtime, (uint8_t)operation, script,
+                                                         sizeof(script), 0, false);
+        assert(result.cursor <= sizeof(script));
+    }
+}
+
 int main(void) {
     test_executes_float_operation_groups();
     test_executes_bit_operations();
@@ -149,5 +165,6 @@ int main(void) {
     test_scales_rotation_from_runtime_range();
     test_consumes_without_committing();
     test_rejects_invalid_records();
+    test_dispatches_every_operation_byte();
     return 0;
 }

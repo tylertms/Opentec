@@ -13,7 +13,7 @@ static uint8_t sent_frame[PEDAL_FRAME_SIZE];
 static uint8_t received_byte;
 static uint8_t received_frame[PEDAL_FRAME_SIZE];
 static uint8_t sent_transfer[TRANSFER_FRAME_MAX_ENCODED_SIZE];
-static uint8_t received_transfer[TRANSFER_FRAME_MAX_RECEIVED_SIZE];
+static uint8_t received_transfer[TRANSFER_FRAME_MAX_ENCODED_SIZE];
 static uint16_t sent_transfer_length;
 static uint16_t received_transfer_length;
 static uint8_t byte_send_count;

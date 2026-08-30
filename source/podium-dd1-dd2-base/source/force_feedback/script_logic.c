@@ -1,16 +1,24 @@
 #include "force_feedback/script_logic.h"
 
 #include <stdbool.h>
+#include <stdint.h>
+#include <string.h>
 
 /**
  * @brief Tests a script value for ordered nonzero truth.
  *
- * Positive and negative finite values are true. Both zeros and NaN are false.
+ * Positive and negative ordered values, including infinities, are true. Both zeros and NaN are
+ * false.
  *
  * @param[in] value Floating-point script value.
  * @return true when the value is ordered and nonzero; otherwise false.
  */
-static bool ordered_nonzero(float value) { return value < 0.0f || value > 0.0f; }
+static bool ordered_nonzero(float value) {
+    uint32_t representation;
+    memcpy(&representation, &value, sizeof(representation));
+    uint32_t magnitude = representation & UINT32_C(0x7fffffff);
+    return magnitude != 0 && magnitude <= UINT32_C(0x7f800000);
+}
 
 /**
  * @brief Converts a C truth value to the script truth representation.

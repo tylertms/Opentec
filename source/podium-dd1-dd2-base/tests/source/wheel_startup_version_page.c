@@ -25,7 +25,7 @@ static void test_builds_managed_motor_and_adapter_versions(void) {
     WheelStartupVersionPage page;
 
     assert(wheel_startup_adapter_version_page_build(&motor, &adapter, &page));
-    expect_line(&page.lines[0], "BASE: 3.9.0");
+    expect_line(&page.lines[0], "BASE: 3.9.1");
     expect_line(&page.lines[1], "MOTOR: 1.12.203");
     expect_line(&page.lines[2], "ST WHEEL: 5.6.107");
     expect_line(&page.lines[3], " ");

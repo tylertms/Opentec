@@ -24,7 +24,7 @@ bool usb_compatibility_descriptor_profile(UsbInputReportMode mode, UsbDeviceIden
 
     *identity = (UsbDeviceIdentity){
         .usb_version = 0x0200,
-        .device_version = 0x0523,
+        .device_version = 0x0059,
         .control_packet_size = 64,
     };
     *configuration = (UsbHidConfiguration){

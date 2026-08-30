@@ -104,10 +104,70 @@ static void rejects_invalid_or_overlapping_batches(void) {
     assert(!wheel_command_forwarder_queue(&forwarder, payload, 1));
 }
 
+static void handles_transport_contention_and_failures(void) {
+    WheelCommandForwarder forwarder;
+    CommandTransport transport;
+    const uint8_t payload[] = {1};
+    wheel_command_forwarder_init(&forwarder);
+    command_transport_init(&transport);
+    assert(!wheel_command_forwarder_accepting(NULL));
+    wheel_command_forwarder_run(NULL, &transport);
+    wheel_command_forwarder_run(&forwarder, NULL);
+    assert(wheel_command_forwarder_queue(&forwarder, payload, sizeof(payload)));
+
+    command_transport_claim(&transport, 1);
+    wheel_command_forwarder_run(&forwarder, &transport);
+    assert(forwarder.phase == WHEEL_COMMAND_FORWARDER_PROBE_READY);
+    command_transport_release(&transport, 1);
+
+    transport.phase = COMMAND_TRANSPORT_READ_PENDING;
+    transport.owner = 0x41;
+    wheel_command_forwarder_run(&forwarder, &transport);
+    assert(forwarder.phase == WHEEL_COMMAND_FORWARDER_PROBE_READY);
+    transport.phase = COMMAND_TRANSPORT_IDLE;
+    transport.completion = COMMAND_TRANSPORT_READ_REJECTED;
+    wheel_command_forwarder_run(&forwarder, &transport);
+    assert(forwarder.endpoint_index == 1);
+
+    forwarder.phase = WHEEL_COMMAND_FORWARDER_PROBE_PENDING;
+    transport.owner = 0x41;
+    transport.phase = COMMAND_TRANSPORT_READ_PENDING;
+    wheel_command_forwarder_run(&forwarder, &transport);
+    assert(forwarder.phase == WHEEL_COMMAND_FORWARDER_PROBE_PENDING);
+    transport.phase = COMMAND_TRANSPORT_IDLE;
+    transport.completion = COMMAND_TRANSPORT_READ_REJECTED;
+    wheel_command_forwarder_run(&forwarder, &transport);
+    assert(forwarder.phase == WHEEL_COMMAND_FORWARDER_PROBE_READY);
+
+    forwarder.phase = WHEEL_COMMAND_FORWARDER_READY;
+    transport.owner = 1;
+    wheel_command_forwarder_run(&forwarder, &transport);
+    assert(forwarder.phase == WHEEL_COMMAND_FORWARDER_READY);
+    transport.owner = 0x41;
+    transport.phase = COMMAND_TRANSPORT_WRITE_PENDING;
+    wheel_command_forwarder_run(&forwarder, &transport);
+    assert(forwarder.phase == WHEEL_COMMAND_FORWARDER_READY);
+    transport.phase = COMMAND_TRANSPORT_IDLE;
+    transport.completion = COMMAND_TRANSPORT_WRITE_REJECTED;
+    wheel_command_forwarder_run(&forwarder, &transport);
+    assert(forwarder.phase == WHEEL_COMMAND_FORWARDER_PROBE_READY);
+
+    forwarder.phase = WHEEL_COMMAND_FORWARDER_WRITE_PENDING;
+    transport.owner = 0x41;
+    transport.phase = COMMAND_TRANSPORT_WRITE_PENDING;
+    wheel_command_forwarder_run(&forwarder, &transport);
+    assert(forwarder.phase == WHEEL_COMMAND_FORWARDER_WRITE_PENDING);
+    transport.phase = COMMAND_TRANSPORT_IDLE;
+    transport.completion = COMMAND_TRANSPORT_WRITE_REJECTED;
+    wheel_command_forwarder_run(&forwarder, &transport);
+    assert(forwarder.phase == WHEEL_COMMAND_FORWARDER_PROBE_READY);
+}
+
 int main(void) {
     discovers_an_endpoint_when_work_arrives();
     tries_the_extended_endpoint_after_a_failed_probe();
     forwards_batches_to_the_discovered_endpoint();
     rejects_invalid_or_overlapping_batches();
+    handles_transport_contention_and_failures();
     return 0;
 }

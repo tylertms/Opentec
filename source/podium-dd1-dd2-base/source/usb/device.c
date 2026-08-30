@@ -169,7 +169,7 @@ static bool build_descriptors(BoardVariant variant, UsbOperatingMode mode) {
             .usb_version = 0x0200,
             .vendor_id = 0x0eb7,
             .product_id = 0x0004,
-            .device_version = 0x0523,
+            .device_version = 0x0059,
             .control_packet_size = PLATFORM_USB_PACKET_SIZE,
             .manufacturer_string = 1,
             .product_string = 3,

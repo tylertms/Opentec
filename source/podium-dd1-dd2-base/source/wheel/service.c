@@ -919,19 +919,19 @@ void wheel_service_set_vibration_output(WheelService *service, const WheelVibrat
 }
 
 /**
- * @brief Enables or disables attached-wheel auxiliary output.
+ * @brief Applies the attached-wheel auxiliary output option.
  *
- * Updates both scan encoding and alternate-packet suppression from the retained host option.
+ * Retains the raw host value and suppresses scan and alternate-packet output only for option one.
  *
  * @param[in,out] service Attached-wheel service to update.
- * @param[in] disabled True to clear auxiliary output.
+ * @param[in] option Raw attached-wheel auxiliary option.
  */
-void wheel_service_set_auxiliary_output_disabled(WheelService *service, bool disabled) {
+void wheel_service_set_auxiliary_output_option(WheelService *service, uint8_t option) {
     if (service == NULL) {
         return;
     }
-    service->auxiliary_output.disabled = disabled;
-    service->protocol.alternate_output.suppress_auxiliary_display = disabled;
+    service->auxiliary_output.option = option;
+    service->protocol.alternate_output.suppress_auxiliary_display = option == 1;
 }
 
 /**
@@ -1059,8 +1059,8 @@ bool wheel_service_remote_tuning_response_pending(const WheelService *service) {
 /**
  * @brief Applies an auxiliary-output operating-mode command.
  *
- * Opcode 0x06 normalizes the persistent disable option, opcode 0x07 normalizes code mode, and
- * opcode 0x08 updates the shared report from its high-byte and low-byte parameters.
+ * Opcode 0x06 retains the raw auxiliary option, opcode 0x07 normalizes code mode, and opcode 0x08
+ * updates the shared report from its high-byte and low-byte parameters.
  *
  * @param[in,out] service Attached-wheel service and output state.
  * @param[in] command Decoded F8 09 operating-mode command.
@@ -1072,7 +1072,7 @@ bool wheel_service_apply_auxiliary_output_command(WheelService *service,
         return false;
     }
     if (command->opcode == WHEEL_AUXILIARY_OPTION_OPCODE) {
-        wheel_service_set_auxiliary_output_disabled(service, command->parameters[0] != 0);
+        wheel_service_set_auxiliary_output_option(service, command->parameters[0]);
         return true;
     }
     if (command->opcode == WHEEL_AUXILIARY_CODE_MODE_OPCODE) {

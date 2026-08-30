@@ -17,6 +17,7 @@ typedef struct {
     uint32_t version;
     int8_t initial_status;
     uint8_t model;
+    uint8_t accessory_type;
     WheelAccessoryKind kind;
 } WheelAccessory;
 

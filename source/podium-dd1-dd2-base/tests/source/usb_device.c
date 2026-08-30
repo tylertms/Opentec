@@ -19,7 +19,7 @@ static PlatformUsbEvent events[EVENT_CAPACITY];
 static uint8_t event_head;
 static uint8_t event_tail;
 static TransferRecord sent;
-static TransferRecord received[8];
+static TransferRecord received[EVENT_CAPACITY];
 static uint8_t receive_count;
 static uint8_t send_count;
 static uint8_t address;
@@ -106,6 +106,7 @@ bool platform_usb_receive(uint8_t endpoint, uint8_t length, bool data_one) {
     if (endpoint_halted[endpoint][0]) {
         return false;
     }
+    assert(receive_count < EVENT_CAPACITY);
     TransferRecord *record = &received[receive_count++];
     record->endpoint = endpoint;
     record->length = length;
@@ -224,6 +225,24 @@ static void test_enumerates_podium_device(void) {
     assert(received[1].endpoint == 1 && received[1].length == 64 && received[1].data_one);
     push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 0, 0, 0);
     usb_device_service();
+
+    uint8_t input[USB_DEVICE_REPORT_SIZE + 1] = {1};
+    UsbDeviceOutputReport output;
+    assert(!usb_device_take_output(NULL));
+    assert(!usb_device_take_output(&output));
+    assert(!usb_device_send_input(NULL, 1));
+    assert(!usb_device_send_input(input, 0));
+    assert(!usb_device_send_input(input, sizeof(input)));
+    assert(usb_device_send_input(input, USB_DEVICE_REPORT_SIZE));
+    assert(usb_device_send_input(input, USB_DEVICE_REPORT_SIZE));
+    assert(!usb_device_send_vendor_report(NULL, 1));
+    assert(!usb_device_send_vendor_report(input, 0));
+    assert(!usb_device_send_vendor_report(input, sizeof(input)));
+    endpoint_halted[1][1] = true;
+    input[1] = 1;
+    assert(!usb_device_send_input(input, USB_DEVICE_REPORT_SIZE));
+    assert(!usb_device_send_vendor_report(input, USB_DEVICE_REPORT_SIZE));
+    endpoint_halted[1][1] = false;
 }
 
 static void test_returns_xbox_security_descriptor(void) {
@@ -471,6 +490,13 @@ static void test_exchanges_updater_packets(void) {
     assert(received[0].endpoint == 3 && received[0].length == 64);
     assert(received[1].endpoint == 3 && received[1].length == 64);
     assert(usb_device_updater_channel_idle());
+    assert(!usb_device_take_updater_packet(NULL));
+    UsbDeviceUpdaterPacket empty_packet;
+    assert(!usb_device_take_updater_packet(&empty_packet));
+    assert(!usb_device_queue_updater_response(NULL, 1));
+    assert(!usb_device_queue_updater_response(bulk_input, 0));
+    uint8_t oversized_response[USB_DEVICE_UPDATER_RESPONSE_SIZE + 1] = {0};
+    assert(!usb_device_queue_updater_response(oversized_response, sizeof(oversized_response)));
 
     push_event(PLATFORM_USB_EVENT_OUT, 3, bulk_output, sizeof(bulk_output));
     usb_device_service();
@@ -538,6 +564,9 @@ static void test_exchanges_xbox_gip_discovery(void) {
     static const uint8_t activate[] = {5, 0, 0, 0, 0};
 
     usb_device_init(BOARD_VARIANT_DD1);
+    assert(!usb_device_set_operating_mode((UsbOperatingMode)8));
+    assert(!usb_device_set_operating_mode(USB_OPERATING_MODE_XBOX_GIP));
+    assert(!usb_device_set_xbox_mode(6, NULL));
     assert(!usb_device_set_xbox_mode(0, digest));
     assert(usb_device_set_xbox_mode(6, digest));
     assert(usb_device_operating_mode() == USB_OPERATING_MODE_XBOX_GIP);
@@ -577,6 +606,18 @@ static void test_exchanges_xbox_gip_discovery(void) {
     assert(usb_device_take_xbox_session_actions() ==
            (USB_XBOX_GIP_SESSION_ACTION_SEND_READY | USB_XBOX_GIP_SESSION_ACTION_REFRESH_STATE));
     assert(usb_device_take_xbox_session_actions() == USB_XBOX_GIP_SESSION_ACTION_NONE);
+
+    uint8_t invalid_response[USB_DEVICE_REPORT_SIZE + 1] = {0};
+    UsbDeviceOutputReport empty_output;
+    assert(!usb_device_take_output(NULL));
+    assert(!usb_device_take_output(&empty_output));
+    assert(!usb_device_queue_xbox_input(NULL));
+    assert(!usb_device_queue_xbox_extended_status(NULL));
+    assert(!usb_device_queue_xbox_transfer_status(NULL));
+    assert(!usb_device_queue_xbox_response(NULL, 3));
+    assert(!usb_device_queue_xbox_response(invalid_response, 2));
+    assert(!usb_device_queue_xbox_response(invalid_response, sizeof(invalid_response)));
+    assert(!usb_device_queue_xbox_vendor_report(NULL));
 
     UsbXboxGipInputSnapshot snapshot = {
         .buttons = {0x12, 0x34},
@@ -807,6 +848,20 @@ static void test_exchanges_playstation_authentication(void) {
     assert(stalled);
 }
 
+static void test_handles_every_zero_shape_control_request(void) {
+    uint8_t setup[8] = {0};
+    for (uint16_t request_type = 0; request_type <= UINT8_MAX; request_type++) {
+        for (uint16_t request = 0; request <= UINT8_MAX; request++) {
+            usb_device_init(BOARD_VARIANT_DD1);
+            setup[0] = (uint8_t)request_type;
+            setup[1] = (uint8_t)request;
+            push_setup(setup);
+            usb_device_service();
+            assert(event_head == event_tail);
+        }
+    }
+}
+
 int main(void) {
     test_prepares_without_attaching();
     test_enumerates_podium_device();
@@ -818,5 +873,6 @@ int main(void) {
     test_exchanges_updater_packets();
     test_exchanges_xbox_gip_discovery();
     test_exchanges_playstation_authentication();
+    test_handles_every_zero_shape_control_request();
     return 0;
 }

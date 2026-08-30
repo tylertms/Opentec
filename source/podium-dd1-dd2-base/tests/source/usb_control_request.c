@@ -48,6 +48,27 @@ static void test_classifies_enumeration_state_changes(void) {
     assert(request.value == 0x0107);
 }
 
+static void test_classifies_standard_queries(void) {
+    UsbControlRequest request;
+    UsbSetupPacket packet = {
+        .request_type = 0x80,
+        .request = 0,
+        .length = 2,
+    };
+    assert(usb_control_request_classify(&packet, &request));
+    assert(request.kind == USB_CONTROL_GET_STATUS);
+
+    packet.request = 8;
+    packet.length = 1;
+    assert(usb_control_request_classify(&packet, &request));
+    assert(request.kind == USB_CONTROL_GET_CONFIGURATION);
+
+    packet.length = 2;
+    assert(!usb_control_request_classify(&packet, &request));
+    packet.request = UINT8_MAX;
+    assert(!usb_control_request_classify(&packet, &request));
+}
+
 static void test_classifies_both_interface_states(void) {
     const uint8_t get_interface[] = {0x81, 0x0a, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00};
     const uint8_t set_interface[] = {0x01, 0x0b, 0x07, 0x00, 0x01, 0x00, 0x00, 0x00};
@@ -130,6 +151,35 @@ static void test_classifies_hid_requests(void) {
     assert(request.value == 7);
 }
 
+static void test_classifies_remaining_hid_requests(void) {
+    UsbControlRequest request;
+    UsbSetupPacket packet = {
+        .request_type = 0x21,
+        .request = 9,
+        .value = 0x0201,
+        .length = 64,
+    };
+    assert(usb_control_request_classify(&packet, &request));
+    assert(request.kind == USB_CONTROL_HID_SET_REPORT);
+
+    packet.request_type = 0xa1;
+    packet.request = 2;
+    packet.length = 1;
+    assert(usb_control_request_classify(&packet, &request));
+    assert(request.kind == USB_CONTROL_HID_GET_IDLE);
+
+    packet.request = 3;
+    packet.value = 0;
+    assert(usb_control_request_classify(&packet, &request));
+    assert(request.kind == USB_CONTROL_HID_GET_PROTOCOL);
+
+    packet.index = 1;
+    assert(!usb_control_request_classify(&packet, &request));
+    packet.index = 0;
+    packet.request = UINT8_MAX;
+    assert(!usb_control_request_classify(&packet, &request));
+}
+
 static void test_classifies_cdc_requests(void) {
     const uint8_t set_line_coding[] = {0x21, 0x20, 0x00, 0x00, 0x00, 0x00, 0x07, 0x00};
     const uint8_t get_line_coding[] = {0xa1, 0x21, 0x00, 0x00, 0x00, 0x00, 0x07, 0x00};
@@ -177,16 +227,24 @@ static void test_rejects_invalid_requests(void) {
     assert(!usb_control_request_classify(&packet, &request));
     assert(request.kind == USB_CONTROL_UNSUPPORTED);
     assert(!usb_setup_packet_decode(0, &packet));
+    assert(!usb_setup_packet_decode(invalid_address, NULL));
+    assert(!usb_control_request_classify(NULL, &request));
+    assert(!usb_control_request_classify(&packet, NULL));
+
+    packet.request_type = 0x60;
+    assert(!usb_control_request_classify(&packet, &request));
 }
 
 int main(void) {
     test_decodes_setup_packet();
     test_classifies_descriptor_request();
     test_classifies_enumeration_state_changes();
+    test_classifies_standard_queries();
     test_classifies_both_interface_states();
     test_classifies_remote_wakeup_features();
     test_classifies_endpoint_halt_features();
     test_classifies_hid_requests();
+    test_classifies_remaining_hid_requests();
     test_classifies_cdc_requests();
     test_classifies_xbox_security_request();
     test_rejects_invalid_requests();
