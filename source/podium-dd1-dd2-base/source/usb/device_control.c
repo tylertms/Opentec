@@ -116,6 +116,19 @@ static bool supported_endpoint(const UsbControlRequest *request, bool include_co
            (include_control || endpoint != 0) && endpoint < USB_ENDPOINT_COUNT;
 }
 
+/**
+ * @brief Handles a classified endpoint-zero request.
+ *
+ * Applies standard device state changes, serves descriptors and HID state, and describes the
+ * transfer that the control pipe must perform. Interface requests address either interface in the
+ * two-interface updater profile and retain the requested low alternate-setting byte.
+ *
+ * @param[in,out] device Current USB device state.
+ * @param[in] request Classified control request.
+ * @param[in] catalog Active descriptor catalog.
+ * @param[in] endpoint_halted Current halt state for the request endpoint.
+ * @return Control transfer selected for the request.
+ */
 UsbControlTransfer usb_device_control_handle(UsbDeviceControl *device,
                                              const UsbControlRequest *request,
                                              const UsbDescriptorCatalog *catalog,
@@ -159,12 +172,14 @@ UsbControlTransfer usb_device_control_handle(UsbDeviceControl *device,
         device->pending_value = (uint8_t)request->value;
         return acknowledge();
     case USB_CONTROL_GET_INTERFACE:
-        return value(device->alternate_interface, 1);
+        return request->index < USB_DEVICE_INTERFACE_COUNT
+                   ? value(device->alternate_interfaces[request->index], 1)
+                   : stall();
     case USB_CONTROL_SET_INTERFACE:
-        if (request->value != 0) {
+        if (request->index >= USB_DEVICE_INTERFACE_COUNT) {
             return stall();
         }
-        device->alternate_interface = 0;
+        device->alternate_interfaces[request->index] = (uint8_t)request->value;
         return acknowledge();
     case USB_CONTROL_HID_GET_REPORT:
         return hid_report(request, true);

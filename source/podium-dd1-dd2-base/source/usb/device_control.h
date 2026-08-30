@@ -6,6 +6,8 @@
 
 #include "usb/control_request.h"
 
+enum { USB_DEVICE_INTERFACE_COUNT = 2 };
+
 typedef struct {
     const uint8_t *data;
     uint16_t length;
@@ -47,7 +49,7 @@ typedef enum {
 typedef struct {
     uint8_t address;
     uint8_t configuration;
-    uint8_t alternate_interface;
+    uint8_t alternate_interfaces[USB_DEVICE_INTERFACE_COUNT];
     uint8_t hid_idle_rate;
     uint8_t hid_protocol;
     uint8_t pending_value;

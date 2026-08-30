@@ -48,6 +48,24 @@ static void test_classifies_enumeration_state_changes(void) {
     assert(request.value == 1);
 }
 
+static void test_classifies_both_interface_states(void) {
+    const uint8_t get_interface[] = {0x81, 0x0a, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00};
+    const uint8_t set_interface[] = {0x01, 0x0b, 0x07, 0x00, 0x01, 0x00, 0x00, 0x00};
+    UsbControlRequest request;
+
+    UsbSetupPacket packet = decode(get_interface);
+    assert(usb_control_request_classify(&packet, &request));
+    assert(request.kind == USB_CONTROL_GET_INTERFACE && request.index == 1);
+
+    packet = decode(set_interface);
+    assert(usb_control_request_classify(&packet, &request));
+    assert(request.kind == USB_CONTROL_SET_INTERFACE);
+    assert(request.index == 1 && request.value == 7);
+
+    packet.index = 2;
+    assert(!usb_control_request_classify(&packet, &request));
+}
+
 static void test_classifies_remote_wakeup_features(void) {
     const uint8_t set_feature[] = {0x00, 0x03, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00};
     const uint8_t clear_feature[] = {0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -159,6 +177,7 @@ int main(void) {
     test_decodes_setup_packet();
     test_classifies_descriptor_request();
     test_classifies_enumeration_state_changes();
+    test_classifies_both_interface_states();
     test_classifies_remote_wakeup_features();
     test_classifies_endpoint_halt_features();
     test_classifies_hid_requests();

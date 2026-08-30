@@ -35,6 +35,7 @@ enum {
     USB_ENDPOINT_NUMBER_MASK = 0x0f,
     USB_ENDPOINT_ADDRESS_RESERVED_MASK = 0xff70,
     USB_ENDPOINT_COUNT = 5,
+    USB_INTERFACE_COUNT = 2,
 };
 
 static uint16_t read_u16(const uint8_t *data) { return (uint16_t)data[0] | (uint16_t)data[1] << 8; }
@@ -114,13 +115,13 @@ static bool classify_standard(const UsbSetupPacket *packet, UsbControlRequest *r
         break;
     case USB_REQUEST_GET_INTERFACE:
         if (packet->request_type == (USB_DIRECTION_IN | USB_RECIPIENT_INTERFACE) &&
-            packet->value == 0 && packet->index == 0 && packet->length == 1) {
+            packet->value == 0 && packet->index < USB_INTERFACE_COUNT && packet->length == 1) {
             return set_request(packet, request, USB_CONTROL_GET_INTERFACE);
         }
         break;
     case USB_REQUEST_SET_INTERFACE:
-        if (packet->request_type == USB_RECIPIENT_INTERFACE && packet->index == 0 &&
-            packet->length == 0) {
+        if (packet->request_type == USB_RECIPIENT_INTERFACE &&
+            packet->index < USB_INTERFACE_COUNT && packet->length == 0) {
             return set_request(packet, request, USB_CONTROL_SET_INTERFACE);
         }
         break;

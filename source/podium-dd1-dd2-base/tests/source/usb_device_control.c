@@ -114,6 +114,31 @@ static void test_hid_state_and_report_handoff(void) {
     assert(transfer.report_type == 2 && transfer.report_id == 1 && transfer.length == 8);
 }
 
+static void test_tracks_both_alternate_interfaces(void) {
+    UsbDeviceControl device;
+    usb_device_control_init(&device, true, false);
+    UsbControlRequest control = request(USB_CONTROL_SET_INTERFACE);
+    control.index = 1;
+    control.value = 7;
+
+    assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
+           USB_CONTROL_TRANSFER_ACKNOWLEDGE);
+
+    control = request(USB_CONTROL_GET_INTERFACE);
+    control.index = 1;
+    UsbControlTransfer transfer = usb_device_control_handle(&device, &control, &catalog, false);
+    assert(transfer.kind == USB_CONTROL_TRANSFER_VALUE);
+    assert(transfer.value == 7 && transfer.length == 1);
+
+    control.index = 0;
+    transfer = usb_device_control_handle(&device, &control, &catalog, false);
+    assert(transfer.kind == USB_CONTROL_TRANSFER_VALUE && transfer.value == 0);
+
+    control.index = 2;
+    assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
+           USB_CONTROL_TRANSFER_STALL);
+}
+
 static void test_device_status(void) {
     UsbDeviceControl device;
     usb_device_control_init(&device, true, false);
@@ -205,6 +230,7 @@ int main(void) {
     test_configuration_changes_after_status_stage();
     test_selects_and_clips_descriptors();
     test_hid_state_and_report_handoff();
+    test_tracks_both_alternate_interfaces();
     test_device_status();
     test_remote_wakeup_feature();
     test_forces_xbox_wakeup_status();
