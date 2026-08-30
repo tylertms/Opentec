@@ -128,6 +128,7 @@ motor_tuning_parameter_sources = files('source/motor/tuning_parameter.c')
 motor_tuning_service_sources = files('source/motor/tuning_service.c')
 motor_tuning_sync_sources = files('source/motor/tuning_sync.c')
 pedal_frame_sources = files('source/pedal/frame.c')
+pedal_adjustment_probe_sources = files('source/pedal/adjustment_probe.c')
 pedal_axis_sources = files('source/pedal/axis.c')
 pedal_analog_sources = files('source/pedal/analog.c')
 pedal_brake_indicator_sources = files('source/pedal/brake_indicator.c')
@@ -349,6 +350,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'motor-tuning-service': 'source/motor/tuning_service.c',
     'motor-tuning-sync': 'source/motor/tuning_sync.c',
     'pedal-frame': 'source/pedal/frame.c',
+    'pedal-adjustment-probe': 'source/pedal/adjustment_probe.c',
     'pedal-axis': 'source/pedal/axis.c',
     'pedal-analog': 'source/pedal/analog.c',
     'pedal-brake-indicator': 'source/pedal/brake_indicator.c',
@@ -1691,6 +1693,7 @@ if not meson.is_cross_build()
     'base-pedal-service-test',
     'tests/source/pedal_service.c',
     pedal_service_sources,
+    pedal_adjustment_probe_sources,
     pedal_v4_status_sources,
     pedal_v4_tuning_sources,
     pedal_analog_sources,
@@ -1702,6 +1705,14 @@ if not meson.is_cross_build()
     transfer_session_sources,
     analog_axis_sources,
     platform_time_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  pedal_adjustment_probe_test = executable(
+    'base-pedal-adjustment-probe-test',
+    'tests/source/pedal_adjustment_probe.c',
+    pedal_adjustment_probe_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2742,6 +2753,7 @@ if not meson.is_cross_build()
     suite: ['base', 'pedal', 'transport'],
   )
   test('base-pedal-service', pedal_service_test, suite: ['base', 'pedal'])
+  test('base-pedal-adjustment-probe', pedal_adjustment_probe_test, suite: ['base', 'pedal'])
   test('base-pedal-v4-status', pedal_v4_status_test, suite: ['base', 'pedal'])
   test('base-pedal-v4-tuning', pedal_v4_tuning_test, suite: ['base', 'pedal'])
   test('base-profile-tuning', profile_tuning_test, suite: ['base', 'profile'])

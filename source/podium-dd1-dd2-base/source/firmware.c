@@ -860,6 +860,21 @@ static void service_alternate_brake_force(uint32_t now_ms) {
 }
 
 /**
+ * @brief Publishes V4 pedal-adjustment progress on the attached wheel.
+ *
+ * Consumes each transfer-produced display command once and starts or replaces the temporary wheel
+ * presentation at the current monotonic time.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_pedal_adjustment_display(uint32_t now_ms) {
+    PedalAdjustmentDisplay display = pedal_service_take_adjustment_display(&pedal_service);
+    if (display != PEDAL_ADJUSTMENT_DISPLAY_IDLE) {
+        wheel_service_begin_display_overlay(&wheel_service, (uint8_t)display, now_ms);
+    }
+}
+
+/**
  * @brief Loads retained base settings and initializes their runtime consumers.
  *
  * Selects the newest valid settings record and initializes the local auxiliary input and
@@ -3029,6 +3044,7 @@ int main(void) {
         service_analog_input(now_ms);
         service_motor_link();
         pedal_service_run(&pedal_service, now_ms);
+        service_pedal_adjustment_display(now_ms);
         service_led_pattern(now_ms);
         service_alternate_brake_force(now_ms);
         uint8_t brake_indicator_selector = pedal_brake_indicator_update(

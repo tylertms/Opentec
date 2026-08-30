@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "pedal/adjustment_probe.h"
 #include "pedal/frame.h"
 #include "pedal/protocol.h"
 #include "pedal/v4_status.h"
@@ -73,6 +74,7 @@ static void reconnect(PedalService *service, uint32_t now_ms) {
     service->v4_request_active = false;
     service->v4_response_received = false;
     service->alternate_brake_force_received = false;
+    service->adjustment_display_pending = false;
     service->device = PEDAL_DEVICE_NONE;
     service->startup_frame_count = 0;
     service->legacy_channel = PEDAL_LEGACY_AXIS_1;
@@ -133,6 +135,9 @@ void pedal_service_init(PedalService *service) {
     service->v4_request_active = false;
     service->v4_response_received = false;
     service->alternate_brake_force_received = false;
+    service->adjustment_probe_pending = false;
+    service->adjustment_display_pending = false;
+    service->adjustment_display = PEDAL_ADJUSTMENT_DISPLAY_NONE;
     service->clock_ms = 0;
     clear_v3_outbound(service);
 }
@@ -150,12 +155,18 @@ static bool v4_transfer_busy(void *context) {
 static void apply_v4_status(void *context, const uint8_t *data, uint8_t length, uint8_t group,
                             bool complete) {
     PedalService *service = context;
-    (void)complete;
     if (group != 0 || !service->v4_request_active) {
         return;
     }
     if (service->v4_phase == PEDAL_V4_PHASE_STATUS) {
         pedal_v4_status_parse(data, length, service->input.axes);
+    } else if (service->v4_phase == PEDAL_V4_PHASE_ADJUSTMENT_PROBE) {
+        if (!complete) {
+            return;
+        }
+        if (pedal_adjustment_probe_classify(data, length, &service->adjustment_display)) {
+            service->adjustment_display_pending = true;
+        }
     }
     service->connected = true;
     service->v4_response_received = true;
@@ -209,6 +220,33 @@ void pedal_service_set_v4_tuning(PedalService *service, PedalV4Tuning tuning) {
                            PEDAL_V4_TUNING_BRAKE_CURVE, &service->v4_tuning_pending);
     update_v4_tuning_value(&service->v4_tuning.throttle_curve, tuning.throttle_curve,
                            PEDAL_V4_TUNING_THROTTLE_CURVE, &service->v4_tuning_pending);
+}
+
+/**
+ * @brief Queues a V4 pedal-adjustment query.
+ *
+ * Retains one pending query until the active transfer session accepts its fixed group-zero payload.
+ *
+ * @param[in,out] service Pedal service receiving the query request.
+ */
+void pedal_service_request_adjustment_probe(PedalService *service) {
+    service->adjustment_probe_pending = true;
+}
+
+/**
+ * @brief Takes the newest pedal-adjustment display command.
+ *
+ * Returns each hold or response-classification command once and clears its pending indication.
+ *
+ * @param[in,out] service Pedal service retaining the display command.
+ * @return Pending display command, or the idle value when no command was available.
+ */
+PedalAdjustmentDisplay pedal_service_take_adjustment_display(PedalService *service) {
+    if (!service->adjustment_display_pending) {
+        return PEDAL_ADJUSTMENT_DISPLAY_IDLE;
+    }
+    service->adjustment_display_pending = false;
+    return service->adjustment_display;
 }
 
 /**
@@ -449,6 +487,7 @@ static PedalV4TuningSetting v4_phase_setting(PedalV4Phase phase) {
         return PEDAL_V4_TUNING_THROTTLE_CURVE;
     case PEDAL_V4_PHASE_STATUS:
     case PEDAL_V4_PHASE_SELECT:
+    case PEDAL_V4_PHASE_ADJUSTMENT_PROBE:
         return 0;
     }
     return 0;
@@ -482,11 +521,16 @@ static PedalV4Phase next_v4_phase(PedalV4Phase phase) {
         return PEDAL_V4_PHASE_SELECT;
     case PEDAL_V4_PHASE_SELECT:
         return PEDAL_V4_PHASE_SELECT;
+    case PEDAL_V4_PHASE_ADJUSTMENT_PROBE:
+        return PEDAL_V4_PHASE_STATUS;
     }
     return PEDAL_V4_PHASE_SELECT;
 }
 
 static void complete_v4_response(PedalService *service) {
+    if (service->v4_phase == PEDAL_V4_PHASE_ADJUSTMENT_PROBE) {
+        service->adjustment_probe_pending = false;
+    }
     PedalV4TuningSetting setting = v4_phase_setting(service->v4_phase);
     if (setting != 0 && v4_tuning_value(&service->v4_tuning, setting) == service->v4_sent_value) {
         uint8_t mask = v4_setting_mask(setting);
@@ -507,6 +551,8 @@ static void select_v4_phase(PedalService *service) {
         service->v4_phase = PEDAL_V4_PHASE_THROTTLE_CURVE;
     } else if ((pending & v4_setting_mask(PEDAL_V4_TUNING_BRAKE_CURVE)) != 0) {
         service->v4_phase = PEDAL_V4_PHASE_BRAKE_CURVE;
+    } else if (service->adjustment_probe_pending) {
+        service->v4_phase = PEDAL_V4_PHASE_ADJUSTMENT_PROBE;
     } else {
         service->v4_phase = PEDAL_V4_PHASE_STATUS;
     }
@@ -523,6 +569,15 @@ static void send_v4_request(PedalService *service, uint32_t now_ms) {
                                   (uint8_t)sizeof(pedal_v4_status_request), 0)) {
             service->v4_request_active = true;
             service->next_status_ms = now_ms + PEDAL_V4_STATUS_INTERVAL_MS;
+        }
+        return;
+    }
+    if (service->v4_phase == PEDAL_V4_PHASE_ADJUSTMENT_PROBE) {
+        if (transfer_session_send(&service->v4, pedal_adjustment_probe_request(),
+                                  PEDAL_ADJUSTMENT_PROBE_REQUEST_SIZE, 0)) {
+            service->v4_request_active = true;
+            service->adjustment_display = PEDAL_ADJUSTMENT_DISPLAY_HOLD;
+            service->adjustment_display_pending = true;
         }
         return;
     }
@@ -547,9 +602,13 @@ static void send_v4_request(PedalService *service, uint32_t now_ms) {
 }
 
 /**
- * @brief Services V4 tuning writes and status polls in their protocol order.
- * @param service Pedal state, transfer session, and published axes to update.
- * @param now_ms Current monotonic time in milliseconds.
+ * @brief Services V4 requests and status polls in their protocol order.
+ *
+ * Receives transfer frames, completes accepted responses, and selects adjustment, tuning, or
+ * periodic status work whenever the current request slot becomes idle.
+ *
+ * @param[in,out] service Pedal state, transfer session, and published axes to update.
+ * @param[in] now_ms Current monotonic time in milliseconds.
  */
 static void service_v4_stream(PedalService *service, uint32_t now_ms) {
     uint16_t length = platform_pedal_link_take_transfer(service->transfer_buffer,

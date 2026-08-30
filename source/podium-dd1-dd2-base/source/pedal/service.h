@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "pedal/adjustment_probe.h"
 #include "pedal/analog.h"
 #include "pedal/frame.h"
 #include "pedal/input.h"
@@ -34,6 +35,7 @@ typedef enum {
 typedef enum {
     PEDAL_V4_PHASE_STATUS,
     PEDAL_V4_PHASE_SELECT,
+    PEDAL_V4_PHASE_ADJUSTMENT_PROBE,
     PEDAL_V4_PHASE_BRAKE_FORCE,
     PEDAL_V4_PHASE_CLUTCH_CURVE,
     PEDAL_V4_PHASE_BRAKE_CURVE,
@@ -72,6 +74,7 @@ typedef struct {
     PedalProtocolStatus protocol_status;
     PedalProtocolStatus transmitted_status;
     PedalV4Tuning v4_tuning;
+    PedalAdjustmentDisplay adjustment_display;
     PedalV4Phase v4_phase;
     uint16_t analog_samples[PEDAL_INPUT_AXIS_COUNT];
     bool analog_samples_ready;
@@ -85,6 +88,8 @@ typedef struct {
     bool v4_request_active;
     bool v4_response_received;
     bool alternate_brake_force_received;
+    bool adjustment_probe_pending;
+    bool adjustment_display_pending;
 } PedalService;
 
 void pedal_service_init(PedalService *service);
@@ -105,6 +110,8 @@ void pedal_service_request_control(PedalService *service, PedalV3Control control
 void pedal_service_request_input_command(PedalService *service,
                                          const uint8_t values[PEDAL_INPUT_AXIS_COUNT]);
 void pedal_service_request_configuration(PedalService *service, uint8_t brake_force, bool reset);
+void pedal_service_request_adjustment_probe(PedalService *service);
+PedalAdjustmentDisplay pedal_service_take_adjustment_display(PedalService *service);
 uint8_t pedal_service_take_alternate_brake_force(PedalService *service);
 void pedal_service_run(PedalService *service, uint32_t now_ms);
 const PedalInput *pedal_service_input(const PedalService *service);

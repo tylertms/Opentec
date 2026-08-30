@@ -142,6 +142,15 @@ static void assert_v4_tuning_request(uint8_t offset, uint8_t value) {
     assert(request.payload[20] == value);
 }
 
+static void assert_v4_adjustment_probe_request(void) {
+    TransferFrame request;
+    assert(transfer_frame_decode(sent_transfer, sent_transfer_length, &request) ==
+           TRANSFER_FRAME_VALID);
+    assert(request.command == transfer_data_command(0, 0, 0));
+    assert(request.payload_length == PEDAL_ADJUSTMENT_PROBE_REQUEST_SIZE);
+    assert(memcmp(request.payload, pedal_adjustment_probe_request(), request.payload_length) == 0);
+}
+
 static void connect_v3(PedalService *service) {
     pedal_service_run(service, 0);
     assert(sent_byte == 0x0a);
@@ -584,6 +593,38 @@ static void test_prioritizes_throttle_before_brake_at_v4_selection(void) {
     assert_v4_tuning_request(8, 5);
 }
 
+static void test_queries_and_publishes_v4_pedal_adjustment(void) {
+    PedalService service;
+    PedalAdjustmentDisplay display;
+    uint8_t response[40] = {0};
+    response[0x1f] = 'X';
+    reset_link();
+    pedal_service_init(&service);
+    pedal_service_request_adjustment_probe(&service);
+    connect_v4(&service);
+
+    pedal_service_run(&service, 6);
+    complete_v4_request(&service, 7, 8);
+    pedal_service_run(&service, 9);
+    pedal_service_run(&service, 10);
+
+    assert_v4_adjustment_probe_request();
+    display = pedal_service_take_adjustment_display(&service);
+    assert(display == PEDAL_ADJUSTMENT_DISPLAY_HOLD);
+    assert(pedal_service_take_adjustment_display(&service) == PEDAL_ADJUSTMENT_DISPLAY_IDLE);
+
+    receive_transfer(transfer_status_command(0, 0), NULL, 0);
+    pedal_service_run(&service, 11);
+    receive_transfer(transfer_data_command(0, 0, 0), response, sizeof(response));
+    pedal_service_run(&service, 12);
+
+    assert(!service.adjustment_probe_pending);
+    assert(service.v4_phase == PEDAL_V4_PHASE_STATUS);
+    display = pedal_service_take_adjustment_display(&service);
+    assert(display == PEDAL_ADJUSTMENT_DISPLAY_CLUTCH);
+    assert(pedal_service_take_adjustment_display(&service) == PEDAL_ADJUSTMENT_DISPLAY_IDLE);
+}
+
 static void test_reconnects_after_v4_transfer_timeout(void) {
     PedalService service;
     reset_link();
@@ -825,6 +866,7 @@ int main(void) {
     test_polls_and_publishes_v4_input();
     test_sends_v4_tuning_in_protocol_order();
     test_prioritizes_throttle_before_brake_at_v4_selection();
+    test_queries_and_publishes_v4_pedal_adjustment();
     test_reconnects_after_v4_transfer_timeout();
     test_polls_legacy_pedal_channels();
     test_retries_after_discovery_timeout();
