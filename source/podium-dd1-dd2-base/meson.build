@@ -14,6 +14,7 @@ display_framebuffer_sources = files('source/display/framebuffer.c')
 display_notice_sources = files('source/display/notice.c')
 display_prompt_sources = files('source/display/prompt.c')
 display_text_sources = files('source/display/text.c')
+display_tuning_page_sources = files('source/display/tuning_page.c')
 force_feedback_command_sources = files('source/force_feedback/command.c')
 force_feedback_state_sources = files('source/force_feedback/state.c')
 force_output_enable_sources = files('source/force_feedback/output_enable.c')
@@ -246,6 +247,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'display-notice': 'source/display/notice.c',
     'display-prompt': 'source/display/prompt.c',
     'display-text': 'source/display/text.c',
+    'display-tuning-page': 'source/display/tuning_page.c',
     'force-feedback-command': 'source/force_feedback/command.c',
     'force-feedback-state': 'source/force_feedback/state.c',
     'force-output-enable': 'source/force_feedback/output_enable.c',
@@ -605,6 +607,18 @@ if not meson.is_cross_build()
     display_notice_sources,
     display_text_sources,
     display_framebuffer_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  display_tuning_page_test = executable(
+    'base-display-tuning-page-test',
+    'tests/source/display_tuning_page.c',
+    display_tuning_page_sources,
+    display_text_sources,
+    display_framebuffer_sources,
+    profile_bank_sources,
+    profile_tuning_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2494,6 +2508,11 @@ if not meson.is_cross_build()
   test('base-display-framebuffer', display_framebuffer_test, suite: ['base', 'display'])
   test('base-display-notice', display_notice_test, suite: ['base', 'display'])
   test('base-display-prompt', display_prompt_test, suite: ['base', 'display'])
+  test(
+    'base-display-tuning-page',
+    display_tuning_page_test,
+    suite: ['base', 'display', 'profile'],
+  )
   test('base-analog-samples', analog_samples_test, suite: ['base', 'analog'])
   test(
     'base-force-feedback-command',

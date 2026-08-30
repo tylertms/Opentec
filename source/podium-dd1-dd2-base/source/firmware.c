@@ -13,6 +13,7 @@
 #include "cooling/temperature.h"
 #include "display/notice.h"
 #include "display/prompt.h"
+#include "display/tuning_page.h"
 #include "force_feedback/command.h"
 #include "force_feedback/output_enable.h"
 #include "force_feedback/script_report.h"
@@ -333,6 +334,8 @@ static bool usb_wheel_transfer_response_pending[WHEEL_TRANSFER_REQUEST_COUNT];
 static uint8_t local_display_page;
 static uint8_t local_display_rendered_bite_point_percent;
 static SystemNoticeKind local_display_rendered_notice_kind;
+static uint8_t local_display_tuning_revision;
+static uint8_t local_display_rendered_tuning_revision;
 static uint8_t wheel_bite_point_display_percent;
 
 typedef enum {
@@ -368,6 +371,7 @@ enum {
     LOCAL_DISPLAY_PAGE_TORQUE_KEY_PROMPT = 3,
     LOCAL_DISPLAY_PAGE_BITE_POINT = 4,
     LOCAL_DISPLAY_PAGE_SYSTEM_NOTICE = 5,
+    LOCAL_DISPLAY_PAGE_TUNING = 6,
     USB_DISCONNECT_STATUS_CODE = 0x1c,
     TUNING_MENU_RESET_EVENT_CODE = 1,
     WHEEL_CENTER_CALIBRATED_EVENT_CODE = 2,
@@ -2687,9 +2691,14 @@ static void service_tuning_interaction(uint32_t now_ms) {
     TuningNavigationEvent navigation = tuning_interaction_take_navigation(&tuning_interaction);
     update_local_tuning_availability();
     update_local_tuning_adjustment();
+    TuningMenu previous_menu = tuning_menu;
     TuningMenuUpdate menu_update = tuning_menu_update(&tuning_menu, tuning_interaction.phase,
                                                       navigation, &base_settings.tuning_profiles,
                                                       &tuning_availability, &tuning_adjustment);
+    if (menu_update.entry_changed || menu_update.value_changed ||
+        tuning_menu.view != previous_menu.view) {
+        local_display_tuning_revision++;
+    }
     if (menu_update.value_changed) {
         if (base_settings.tuning_profiles.selected_slot ==
             base_settings.tuning_profiles.active_slot) {
@@ -3079,9 +3088,9 @@ static void apply_force_output_prompt_action(ForceOutputEnableAction action) {
  * @brief Updates the local display when its active page changes.
  *
  * Gives motor-originated notices priority over the persistent torque-disabled notice,
- * Torque Key prompt, force-output prompt, and paddle bite-point adjustment. Changes to active
- * notice content or percentage redraw their page, and leaving all display owners clears the
- * display.
+ * Torque Key prompt, force-output prompt, paddle bite-point adjustment, and local tuning page.
+ * Changes to active notice content, percentage, or tuning presentation redraw their page, and
+ * leaving all display owners clears the display.
  */
 static void service_local_display(void) {
     bool bite_point_visible =
@@ -3091,12 +3100,15 @@ static void service_local_display(void) {
                    : torque_key_prompt_visible              ? LOCAL_DISPLAY_PAGE_TORQUE_KEY_PROMPT
                    : force_output_prompt_visible            ? LOCAL_DISPLAY_PAGE_FORCE_OUTPUT_PROMPT
                    : bite_point_visible                     ? LOCAL_DISPLAY_PAGE_BITE_POINT
-                                                            : LOCAL_DISPLAY_PAGE_CLEAR;
+                   : tuning_menu.selected_entry < TUNING_ENTRY_COUNT ? LOCAL_DISPLAY_PAGE_TUNING
+                                                                     : LOCAL_DISPLAY_PAGE_CLEAR;
     if (page == local_display_page &&
         (page != LOCAL_DISPLAY_PAGE_BITE_POINT ||
          wheel_bite_point_display_percent == local_display_rendered_bite_point_percent) &&
         (page != LOCAL_DISPLAY_PAGE_SYSTEM_NOTICE ||
-         system_notice.kind == local_display_rendered_notice_kind)) {
+         system_notice.kind == local_display_rendered_notice_kind) &&
+        (page != LOCAL_DISPLAY_PAGE_TUNING ||
+         local_display_tuning_revision == local_display_rendered_tuning_revision)) {
         return;
     }
 
@@ -3108,6 +3120,9 @@ static void service_local_display(void) {
         display_prompt_render_torque_key(display_framebuffer, true);
     } else if (page == LOCAL_DISPLAY_PAGE_FORCE_OUTPUT_PROMPT) {
         display_prompt_render(display_framebuffer, true);
+    } else if (page == LOCAL_DISPLAY_PAGE_TUNING) {
+        (void)display_tuning_page_render(display_framebuffer, &tuning_menu,
+                                         &base_settings.tuning_profiles);
     } else {
         display_prompt_render_bite_point(display_framebuffer, page == LOCAL_DISPLAY_PAGE_BITE_POINT,
                                          wheel_bite_point_display_percent);
@@ -3116,6 +3131,7 @@ static void service_local_display(void) {
     local_display_page = page;
     local_display_rendered_bite_point_percent = wheel_bite_point_display_percent;
     local_display_rendered_notice_kind = system_notice.kind;
+    local_display_rendered_tuning_revision = local_display_tuning_revision;
 }
 
 /**
