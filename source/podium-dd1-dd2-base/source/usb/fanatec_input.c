@@ -86,6 +86,14 @@ void fanatec_input_apply_wheel_accessory(fanatec_input_state *state, uint8_t fla
     state->accessory[4] = (uint8_t)((state->accessory[4] & 0xf0u) | (flags & 0x0fu));
 }
 
+void fanatec_input_apply_alternative_shifter(fanatec_input_state *state, bool enabled) {
+    if (enabled) {
+        state->accessory[4] |= 0x80u;
+    } else {
+        state->accessory[4] &= 0x7fu;
+    }
+}
+
 /**
  * @brief Applies the multi-position reporting mode to the Fanatec input state.
  *

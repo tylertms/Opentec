@@ -61,7 +61,7 @@ static const TuningPageMetadata page_metadata[TUNING_ENTRY_COUNT] = {
                                  "FullForce Effect Strength modifier"},
     [TUNING_ENTRY_BUTTON_ILLUMINATION] = {"BIL", "Button Illumination",
                                           "Toggle button illumination"},
-    [TUNING_ENTRY_DISPLAY_ROTATION] = {"ROT", "Display Rotation", "Toggle display rotation"},
+    [TUNING_ENTRY_DISPLAY_ROTATION] = {"DIR", "Display Rotation", "Toggle display rotation"},
     [TUNING_ENTRY_BRAKE_PEDAL_CURVE] = {"BPC", "Brake Pedal Character.",
                                         "Brake pedal input curve adjustment"},
     [TUNING_ENTRY_CLUTCH_PEDAL_CURVE] = {"CPC", "Clutch Pedal Character.",

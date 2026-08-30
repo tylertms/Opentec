@@ -53,6 +53,8 @@ static void test_tuning_notices_expire_after_two_seconds(void) {
         SYSTEM_NOTICE_TUNING_MENU_RESET,
         SYSTEM_NOTICE_STANDARD_TUNING_MODE,
         SYSTEM_NOTICE_ADVANCED_TUNING_MODE,
+        SYSTEM_NOTICE_ALTERNATIVE_SHIFTER_ENABLED,
+        SYSTEM_NOTICE_ALTERNATIVE_SHIFTER_DISABLED,
     };
 
     for (size_t index = 0; index < sizeof(kinds) / sizeof(kinds[0]); index++) {

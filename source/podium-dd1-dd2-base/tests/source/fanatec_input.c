@@ -144,6 +144,16 @@ static void test_wheel_accessory_mapping(void) {
     assert(state.accessory[4] == 0xa6);
 }
 
+static void test_alternative_shifter_mapping(void) {
+    fanatec_input_state state = {.accessory = {0, 0, 0, 0, 0x35}};
+
+    fanatec_input_apply_alternative_shifter(&state, true);
+    assert(state.accessory[4] == 0xb5);
+
+    fanatec_input_apply_alternative_shifter(&state, false);
+    assert(state.accessory[4] == 0x35);
+}
+
 static void test_multi_position_mode_mapping(void) {
     fanatec_input_state state = {.accessory = {0, 0, 0, 0, 0xcf}, .transfer_code = 0x87};
 
@@ -333,6 +343,7 @@ int main(void) {
     test_wheel_control_mapping();
     test_restricted_wheel_control_mapping();
     test_wheel_accessory_mapping();
+    test_alternative_shifter_mapping();
     test_multi_position_mode_mapping();
     test_multi_position_encoder_mapping();
     test_multi_position_pulse_mapping();

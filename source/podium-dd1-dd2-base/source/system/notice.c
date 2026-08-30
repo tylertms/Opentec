@@ -28,7 +28,9 @@ static uint32_t notice_duration_ms(SystemNoticeKind kind) {
         return 0;
     }
     if (kind == SYSTEM_NOTICE_TUNING_MENU_RESET || kind == SYSTEM_NOTICE_STANDARD_TUNING_MODE ||
-        kind == SYSTEM_NOTICE_ADVANCED_TUNING_MODE) {
+        kind == SYSTEM_NOTICE_ADVANCED_TUNING_MODE ||
+        kind == SYSTEM_NOTICE_ALTERNATIVE_SHIFTER_ENABLED ||
+        kind == SYSTEM_NOTICE_ALTERNATIVE_SHIFTER_DISABLED) {
         return SYSTEM_NOTICE_TUNING_MODE_DURATION_MS;
     }
     return SYSTEM_NOTICE_DURATION_MS;

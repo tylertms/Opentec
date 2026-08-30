@@ -25,6 +25,12 @@ typedef enum {
     WHEEL_SERVICE_REQUEST_BUTTONS,
 } WheelServiceRequest;
 
+typedef enum {
+    WHEEL_ALTERNATIVE_SHIFTER_UNCHANGED,
+    WHEEL_ALTERNATIVE_SHIFTER_ENABLED,
+    WHEEL_ALTERNATIVE_SHIFTER_DISABLED,
+} WheelAlternativeShifterEvent;
+
 typedef struct {
     uint8_t position;
     WheelRotaryEvent event;
@@ -61,12 +67,15 @@ typedef struct {
     uint8_t button_banks[WHEEL_BUTTON_BANK_COUNT];
     uint8_t scan_samples[WHEEL_SCAN_SAMPLE_DEPTH][WHEEL_BUTTON_BANK_COUNT];
     uint32_t protocol_deadline_ms;
+    uint32_t alternative_shifter_deadline_ms;
     uint8_t scan_phase;
     uint8_t scan_sample_index;
     WheelServiceRequest request_kind;
     bool protocol_deadline_active;
     bool protocol_exchange_completed;
     bool display_override_active;
+    bool alternative_shifter_enabled;
+    bool alternative_shifter_debounced;
 } WheelService;
 
 void wheel_service_init(WheelService *service, SerialService *transport);
@@ -137,6 +146,10 @@ void wheel_service_set_display_rotation(WheelService *service, bool enabled, int
 void wheel_service_queue_system_status(WheelService *service, uint16_t code);
 const uint8_t *wheel_service_buttons(const WheelService *service);
 bool wheel_service_input_snapshot(const WheelService *service, WheelInputSnapshot *snapshot);
+WheelAlternativeShifterEvent wheel_service_update_alternative_shifter(WheelService *service,
+                                                                      bool profile_context_pending,
+                                                                      uint32_t now_ms);
+bool wheel_service_alternative_shifter_enabled(const WheelService *service);
 uint8_t wheel_service_axis_limit(const WheelService *service);
 uint8_t wheel_service_mode_buttons(const WheelService *service);
 const uint8_t *wheel_service_clutch_paddles(const WheelService *service);

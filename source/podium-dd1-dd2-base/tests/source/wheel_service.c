@@ -1354,6 +1354,65 @@ static void test_rejects_invalid_service_requests(void) {
     assert(!wheel_service_input_snapshot(&service, &snapshot));
 }
 
+static void prepare_alternative_shifter_input(WheelService *service, uint8_t mode,
+                                              uint8_t latch_flags) {
+    initialize_service(service);
+    service->protocol.request_ready = true;
+    service->protocol.mode = mode;
+    service->protocol.request[1] = 0x09;
+    if (mode == WHEEL_MODE_LEGACY_ALTERNATE) {
+        service->protocol.packed_input.axis_report_enabled = 1;
+    } else {
+        service->protocol.mode_one_input.axis_report_enabled = 1;
+        service->protocol.mode_one_input.controls.latch_flags = latch_flags;
+    }
+}
+
+static void test_toggles_alternative_shifter_mode(void) {
+    WheelService service;
+    prepare_alternative_shifter_input(&service, 1, 2);
+
+    assert(wheel_service_update_alternative_shifter(&service, true, 1) ==
+           WHEEL_ALTERNATIVE_SHIFTER_UNCHANGED);
+    assert(!wheel_service_alternative_shifter_enabled(&service));
+
+    service.protocol.mode_one_input.controls.latch_flags = 3;
+    assert(wheel_service_update_alternative_shifter(&service, true, 1) ==
+           WHEEL_ALTERNATIVE_SHIFTER_ENABLED);
+    assert(wheel_service_alternative_shifter_enabled(&service));
+    assert(service.protocol.button_latch_enabled);
+    assert(service.protocol.profile_transition_pending);
+
+    assert(wheel_service_update_alternative_shifter(&service, true, 2) ==
+           WHEEL_ALTERNATIVE_SHIFTER_UNCHANGED);
+    service.protocol.request[1] = 0;
+    assert(wheel_service_update_alternative_shifter(&service, true, 3) ==
+           WHEEL_ALTERNATIVE_SHIFTER_UNCHANGED);
+    service.protocol.request[1] = 0x09;
+    assert(wheel_service_update_alternative_shifter(&service, true, 801) ==
+           WHEEL_ALTERNATIVE_SHIFTER_UNCHANGED);
+    assert(wheel_service_update_alternative_shifter(&service, true, 802) ==
+           WHEEL_ALTERNATIVE_SHIFTER_DISABLED);
+    assert(!wheel_service_alternative_shifter_enabled(&service));
+    assert(!service.protocol.button_latch_enabled);
+}
+
+static void test_legacy_alternative_shifter_ignores_latch_flags(void) {
+    WheelService service;
+    prepare_alternative_shifter_input(&service, WHEEL_MODE_LEGACY_ALTERNATE, 0);
+
+    assert(wheel_service_update_alternative_shifter(&service, false, 1) ==
+           WHEEL_ALTERNATIVE_SHIFTER_UNCHANGED);
+    assert(wheel_service_update_alternative_shifter(&service, true, 1) ==
+           WHEEL_ALTERNATIVE_SHIFTER_ENABLED);
+
+    service.protocol.packed_input.axis_report_enabled = 0;
+    assert(wheel_service_update_alternative_shifter(&service, true, 2) ==
+           WHEEL_ALTERNATIVE_SHIFTER_UNCHANGED);
+    assert(!wheel_service_alternative_shifter_enabled(&service));
+    assert(!service.protocol.button_latch_enabled);
+}
+
 int main(void) {
     test_maps_primary_scan_bits();
     test_maps_secondary_scan_bit();
@@ -1399,5 +1458,7 @@ int main(void) {
     test_reports_force_output_readiness();
     test_exposes_playstation_wheel_inputs();
     test_rejects_invalid_service_requests();
+    test_toggles_alternative_shifter_mode();
+    test_legacy_alternative_shifter_ignores_latch_flags();
     return 0;
 }

@@ -426,6 +426,8 @@ enum {
     STANDARD_TUNING_MODE_EVENT_CODE = 0x12,
     ADVANCED_TUNING_MODE_EVENT_CODE = 0x13,
     MAXIMUM_ROTATIONS_EXCEEDED_EVENT_CODE = 0x17,
+    ALTERNATIVE_SHIFTER_ENABLED_EVENT_CODE = 0x20,
+    ALTERNATIVE_SHIFTER_DISABLED_EVENT_CODE = 0x21,
     WHEEL_CENTER_CALIBRATED_STATUS_CODE = 0x1f,
     SHUTDOWN_EVENT_CODE = 0x0e,
     SYSTEM_DISPLAY_DISMISS_EVENT_CODE = 0x11,
@@ -612,6 +614,10 @@ static void service_system_events(uint32_t now_ms) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_UNSUPPORTED_WHEEL_OUTLINED) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_ALTERNATIVE_SHIFTER_ENABLED) {
+        system_notice_show(&system_notice, SYSTEM_NOTICE_ALTERNATIVE_SHIFTER_ENABLED, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_ALTERNATIVE_SHIFTER_DISABLED) {
+        system_notice_show(&system_notice, SYSTEM_NOTICE_ALTERNATIVE_SHIFTER_DISABLED, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_FORCE_OUTPUT_PROMPT) {
         force_output_prompt_visible = true;
     } else if (action == SYSTEM_EVENT_ACTION_DISMISS_FORCE_OUTPUT_PROMPT) {
@@ -1157,8 +1163,10 @@ static void update_usb_tuning_status_snapshot(void) {
         BASE_STATUS_DD1 = 6,
         BASE_STATUS_DD1_OPTION = 7,
         BASE_STATUS_DD2 = 8,
+        SYSTEM_STATUS_BASELINE = 0x01,
         SYSTEM_STATUS_VENDOR_ONE_AVAILABLE = 0x02,
-        SYSTEM_STATUS_ACTIVE = 0x10,
+        SYSTEM_STATUS_VENDOR_FOUR_AVAILABLE = 0x10,
+        SYSTEM_STATUS_DD1_OPTION = 0x30,
         SYSTEM_STATUS_TUNING_AVAILABLE = 0x40,
         PEDAL_STATUS_INACTIVE = 0,
         PEDAL_STATUS_LEGACY = 1,
@@ -1171,17 +1179,16 @@ static void update_usb_tuning_status_snapshot(void) {
     const WheelStatusSnapshot *wheel_status = wheel_status_service_snapshot(&wheel_status_service);
     const WheelAccessory *accessory = wheel_accessory_service_identity(&wheel_accessory_service);
     const WheelAdapterInput *adapter = wheel_service_adapter(&wheel_service);
-    const PedalInput *pedals = pedal_service_input(&pedal_service);
     const PedalV3State *pedal_v3 = pedal_service_v3_state(&pedal_service);
     bool tuning_available = wheel_service_tuning_menu_available(&wheel_service);
-    bool system_active = system_control_state.operating_feature_enabled;
-    uint8_t system_flags = SYSTEM_STATUS_VENDOR_ONE_AVAILABLE;
-    if (system_active) {
-        system_flags |= SYSTEM_STATUS_ACTIVE;
+    uint8_t system_flags = SYSTEM_STATUS_BASELINE | SYSTEM_STATUS_VENDOR_ONE_AVAILABLE;
+    if (board_identity.variant == BOARD_VARIANT_DD1 && board_identity.hardware_option != 0) {
+        system_flags |= SYSTEM_STATUS_DD1_OPTION;
     }
     if (tuning_available) {
         system_flags |= SYSTEM_STATUS_TUNING_AVAILABLE;
     }
+    bool system_active = (system_flags & SYSTEM_STATUS_VENDOR_FOUR_AVAILABLE) != 0;
 
     uint16_t axis_values[2] = {0};
     bool axis_values_available = wheel_service_axis_report_enabled(&wheel_service) &&
@@ -1209,13 +1216,23 @@ static void update_usb_tuning_status_snapshot(void) {
     }
 
     uint8_t output_status = 0;
-    if (!force_feedback_state.primary_output_disabled && wheel_phase > WHEEL_PROTOCOL_SELECTING) {
+    if (!power_controller.torque_disabled &&
+        (wheel_phase > WHEEL_PROTOCOL_SELECTING || force_feedback_state.primary_output_disabled)) {
         if (tuning_profile->force_feedback_strength > 99) {
             output_status = 0x0f;
         } else if (tuning_profile->force_feedback_strength == 40 ||
                    tuning_profile->force_feedback_strength == 32) {
             output_status = 1;
         }
+    }
+
+    uint8_t pedal_auxiliary = 0;
+    uint8_t pedal_axis_low = 0;
+    uint8_t pedal_axis_high = 0;
+    if (pedal_status == PEDAL_STATUS_LEGACY || pedal_status == PEDAL_STATUS_LEGACY_CALIBRATION) {
+        pedal_auxiliary = pedal_v3->shared_axes[2];
+        pedal_axis_low = pedal_v3->shared_axes[0] & 0x3fu;
+        pedal_axis_high = pedal_v3->shared_axes[1];
     }
 
     usb_tuning_status_snapshot = (UsbTuningStatusSnapshot){
@@ -1233,9 +1250,9 @@ static void update_usb_tuning_status_snapshot(void) {
         .input = input,
         .adapter_mode = adapter->connected ? (uint8_t)(adapter->mode + 1u) : 0,
         .pedal_status = pedal_status,
-        .pedal_auxiliary = (uint8_t)pedals->auxiliary,
-        .pedal_axis_low = (uint8_t)(pedals->axes[0] >> 8) & 0x3fu,
-        .pedal_axis_high = (uint8_t)(pedals->axes[1] >> 8),
+        .pedal_auxiliary = pedal_auxiliary,
+        .pedal_axis_low = pedal_axis_low,
+        .pedal_axis_high = pedal_axis_high,
         .tuning_available = tuning_available,
         .system_active = system_active,
         .force_effect = accessory->accessory_type,
@@ -3011,6 +3028,20 @@ static void service_tuning_interaction(uint32_t now_ms) {
     apply_tuning_menu_presentation();
 }
 
+static void service_alternative_shifter(uint32_t now_ms) {
+    bool profile_context_pending =
+        tuning_interaction.phase == TUNING_INTERACTION_ENTRY_OPEN || tuning_interaction.closing;
+    WheelAlternativeShifterEvent event =
+        wheel_service_update_alternative_shifter(&wheel_service, profile_context_pending, now_ms);
+    if (event == WHEEL_ALTERNATIVE_SHIFTER_ENABLED) {
+        (void)system_event_queue_try_push(&system_event_queue,
+                                          ALTERNATIVE_SHIFTER_ENABLED_EVENT_CODE);
+    } else if (event == WHEEL_ALTERNATIVE_SHIFTER_DISABLED) {
+        (void)system_event_queue_try_push(&system_event_queue,
+                                          ALTERNATIVE_SHIFTER_DISABLED_EVENT_CODE);
+    }
+}
+
 /**
  * @brief Builds and submits the current USB input report.
  *
@@ -3064,6 +3095,8 @@ static void service_usb_input(uint32_t now_ms) {
     uint8_t multi_position_mode =
         wheel_service_multi_position_mode(&wheel_service, tuning_profile->multi_position_mode);
     fanatec_input_apply_multi_position_mode(&usb_input_state.fanatec, multi_position_mode);
+    fanatec_input_apply_alternative_shifter(
+        &usb_input_state.fanatec, wheel_service_alternative_shifter_enabled(&wheel_service));
     if (wheel_service_multi_position_input(&wheel_service, now_ms, &wheel_multi_position_input)) {
         fanatec_multi_position_input_state = (fanatec_multi_position_input){
             .remap_selectors = wheel_multi_position_input.remap_selectors,
@@ -3986,6 +4019,7 @@ int main(void) {
         wheel_service_update_interface_mode_gate(&wheel_service, now_ms);
         service_motor_startup_force_mode(now_ms);
         service_tuning_interaction(now_ms);
+        service_alternative_shifter(now_ms);
         if (wheel_service_take_bite_point(&wheel_service, &wheel_adjusted_bite_point_percent)) {
             wheel_steering_limit_command = (WheelSteeringLimitCommand){
                 .percent = wheel_adjusted_bite_point_percent,

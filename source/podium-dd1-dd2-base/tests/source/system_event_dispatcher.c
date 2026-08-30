@@ -53,6 +53,8 @@ static void test_dispatches_motor_notice_actions(void) {
         {0x18, SYSTEM_EVENT_ACTION_DISMISS_TORQUE_KEY_PROMPT},
         {0x1a, SYSTEM_EVENT_ACTION_DISMISS_FORCE_OUTPUT_PROMPT},
         {0x1c, SYSTEM_EVENT_ACTION_SHOW_MOTOR_CALIBRATION_ONGOING},
+        {0x20, SYSTEM_EVENT_ACTION_SHOW_ALTERNATIVE_SHIFTER_ENABLED},
+        {0x21, SYSTEM_EVENT_ACTION_SHOW_ALTERNATIVE_SHIFTER_DISABLED},
     };
 
     for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {

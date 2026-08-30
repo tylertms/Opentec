@@ -34,6 +34,9 @@ enum {
     WHEEL_INPUT_AUXILIARY_OFFSET = 22,
     WHEEL_PACKED_REPORT_TWO_OPCODE = 0x0a,
     WHEEL_PACKED_REPORT_ONE_OPCODE = 0x0b,
+    WHEEL_ALTERNATIVE_SHIFTER_BUTTONS = 0x0009,
+    WHEEL_ALTERNATIVE_SHIFTER_LATCH_FLAGS = 0x03,
+    WHEEL_ALTERNATIVE_SHIFTER_DEBOUNCE_MS = 800,
 };
 
 /**
@@ -485,11 +488,14 @@ void wheel_service_init(WheelService *service, SerialService *transport) {
     wheel_display_overlay_init(&service->display_overlay);
     service->auxiliary_output = (WheelAuxiliaryOutput){0};
     service->protocol_deadline_ms = 0;
+    service->alternative_shifter_deadline_ms = 0;
     service->scan_phase = 0;
     service->request_kind = WHEEL_SERVICE_REQUEST_NONE;
     service->protocol_deadline_active = false;
     service->protocol_exchange_completed = false;
     service->display_override_active = false;
+    service->alternative_shifter_enabled = false;
+    service->alternative_shifter_debounced = false;
 }
 
 /**
@@ -1582,6 +1588,49 @@ bool wheel_service_input_snapshot(const WheelService *service, WheelInputSnapsho
     snapshot->auxiliary_report[2] = request[WHEEL_INPUT_AUXILIARY_OFFSET + 2];
     snapshot->axis_report_enabled = wheel_protocol_axis_report_enabled(&service->protocol);
     return true;
+}
+
+WheelAlternativeShifterEvent wheel_service_update_alternative_shifter(WheelService *service,
+                                                                      bool profile_context_pending,
+                                                                      uint32_t now_ms) {
+    uint8_t controls[8];
+    const uint8_t *request = wheel_protocol_request(&service->protocol);
+    if (request == 0 || !wheel_protocol_axis_report_enabled(&service->protocol)) {
+        service->alternative_shifter_enabled = false;
+        wheel_protocol_set_button_latch(&service->protocol, false, profile_context_pending);
+        return WHEEL_ALTERNATIVE_SHIFTER_UNCHANGED;
+    }
+
+    uint16_t secondary_buttons = (uint16_t)request[WHEEL_INPUT_SECONDARY_OFFSET] |
+                                 (uint16_t)request[WHEEL_INPUT_SECONDARY_OFFSET + 1] << 8;
+    bool activation_input =
+        profile_context_pending && (secondary_buttons & WHEEL_ALTERNATIVE_SHIFTER_BUTTONS) ==
+                                       WHEEL_ALTERNATIVE_SHIFTER_BUTTONS;
+    if (service->protocol.mode != WHEEL_MODE_LEGACY_ALTERNATE) {
+        activation_input = activation_input && wheel_service_controls(service, controls) &&
+                           (controls[3] & WHEEL_ALTERNATIVE_SHIFTER_LATCH_FLAGS) ==
+                               WHEEL_ALTERNATIVE_SHIFTER_LATCH_FLAGS;
+    }
+
+    WheelAlternativeShifterEvent event = WHEEL_ALTERNATIVE_SHIFTER_UNCHANGED;
+    if (!activation_input) {
+        service->alternative_shifter_debounced = false;
+    } else if (!service->alternative_shifter_debounced &&
+               (int32_t)(now_ms - service->alternative_shifter_deadline_ms) > 0) {
+        service->alternative_shifter_enabled = !service->alternative_shifter_enabled;
+        service->alternative_shifter_deadline_ms = now_ms + WHEEL_ALTERNATIVE_SHIFTER_DEBOUNCE_MS;
+        service->alternative_shifter_debounced = true;
+        event = service->alternative_shifter_enabled ? WHEEL_ALTERNATIVE_SHIFTER_ENABLED
+                                                     : WHEEL_ALTERNATIVE_SHIFTER_DISABLED;
+    }
+
+    wheel_protocol_set_button_latch(&service->protocol, service->alternative_shifter_enabled,
+                                    profile_context_pending);
+    return event;
+}
+
+bool wheel_service_alternative_shifter_enabled(const WheelService *service) {
+    return service->alternative_shifter_enabled;
 }
 
 /**

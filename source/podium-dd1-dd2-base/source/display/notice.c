@@ -43,6 +43,8 @@ static const char motor_calibration_completed_text[] = "Motor calib. successfull
 static const char motor_calibration_erased_text[] = "Motor calib. data erased.";
 static const char maximum_rotations_exceeded_text[] = "Exceeded maximum rotations,";
 static const char restart_wheel_base_text[] = "please restart the wheel base";
+static const char alternative_shifter_enabled_text[] = "Alternative Shifter Mode Enabled";
+static const char alternative_shifter_disabled_text[] = "Alternative Shifter Mode Disabled";
 
 /**
  * @brief Draws the warning icon used by operator notices.
@@ -206,5 +208,11 @@ void display_notice_render_system(DisplayFramebuffer framebuffer, SystemNoticeKi
                                    NOTICE_PRIMARY_TEXT_Y, 1, NOTICE_COLOR);
         display_text_draw_centered(framebuffer, unsupported_wheel_secondary_text,
                                    NOTICE_SECONDARY_TEXT_Y, 1, NOTICE_COLOR);
+    } else if (kind == SYSTEM_NOTICE_ALTERNATIVE_SHIFTER_ENABLED ||
+               kind == SYSTEM_NOTICE_ALTERNATIVE_SHIFTER_DISABLED) {
+        const char *text = kind == SYSTEM_NOTICE_ALTERNATIVE_SHIFTER_ENABLED
+                               ? alternative_shifter_enabled_text
+                               : alternative_shifter_disabled_text;
+        display_text_draw_centered(framebuffer, text, NOTICE_TEXT_Y, 1, NOTICE_COLOR);
     }
 }
