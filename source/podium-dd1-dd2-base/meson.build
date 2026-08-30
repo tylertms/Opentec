@@ -152,6 +152,7 @@ settings_persistence_sources = files('source/settings/persistence.c')
 settings_state_sources = files('source/settings/state.c')
 platform_time_sources = files('source/platform/time.c')
 wheel_position_sources = files('source/wheel/position.c')
+wheel_accessory_sources = files('source/wheel/accessory.c')
 wheel_center_capture_sources = files('source/wheel/center_capture.c')
 wheel_steering_limit_sources = files('source/wheel/steering_limit.c')
 wheel_axis_override_sources = files('source/wheel/axis_override.c')
@@ -396,6 +397,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'settings-persistence': 'source/settings/persistence.c',
     'settings-state': 'source/settings/state.c',
     'wheel-position': 'source/wheel/position.c',
+    'wheel-accessory': 'source/wheel/accessory.c',
     'wheel-center-capture': 'source/wheel/center_capture.c',
     'wheel-steering-limit': 'source/wheel/steering_limit.c',
     'wheel-axis-override': 'source/wheel/axis_override.c',
@@ -1824,6 +1826,14 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_accessory_test = executable(
+    'base-wheel-accessory-test',
+    'tests/source/wheel_accessory.c',
+    wheel_accessory_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_center_capture_test = executable(
     'base-wheel-center-capture-test',
     'tests/source/wheel_center_capture.c',
@@ -2813,6 +2823,7 @@ if not meson.is_cross_build()
   )
   test('base-platform-time', platform_time_test, suite: ['base', 'platform'])
   test('base-wheel-position', wheel_position_test, suite: ['base', 'wheel-position'])
+  test('base-wheel-accessory', wheel_accessory_test, suite: ['base', 'wheel', 'accessory'])
   test(
     'base-wheel-center-capture',
     wheel_center_capture_test,
