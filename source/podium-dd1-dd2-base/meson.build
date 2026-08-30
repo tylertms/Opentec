@@ -19,6 +19,7 @@ display_motor_data_analysis_page_sources = files('source/display/motor_data_anal
 display_notice_sources = files('source/display/notice.c')
 display_prompt_sources = files('source/display/prompt.c')
 display_system_information_page_sources = files('source/display/system_information_page.c')
+display_temperature_analysis_page_sources = files('source/display/temperature_analysis_page.c')
 display_text_sources = files('source/display/text.c')
 display_tuning_page_sources = files('source/display/tuning_page.c')
 force_feedback_command_sources = files('source/force_feedback/command.c')
@@ -256,6 +257,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'display-notice': 'source/display/notice.c',
     'display-prompt': 'source/display/prompt.c',
     'display-system-information-page': 'source/display/system_information_page.c',
+    'display-temperature-analysis-page': 'source/display/temperature_analysis_page.c',
     'display-text': 'source/display/text.c',
     'display-tuning-page': 'source/display/tuning_page.c',
     'force-feedback-command': 'source/force_feedback/command.c',
@@ -645,6 +647,16 @@ if not meson.is_cross_build()
     'base-display-system-information-page-test',
     'tests/source/display_system_information_page.c',
     display_system_information_page_sources,
+    display_text_sources,
+    display_framebuffer_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  display_temperature_analysis_page_test = executable(
+    'base-display-temperature-analysis-page-test',
+    'tests/source/display_temperature_analysis_page.c',
+    display_temperature_analysis_page_sources,
     display_text_sources,
     display_framebuffer_sources,
     build_by_default: false,
@@ -2573,6 +2585,11 @@ if not meson.is_cross_build()
     'base-display-system-information-page',
     display_system_information_page_test,
     suite: ['base', 'display'],
+  )
+  test(
+    'base-display-temperature-analysis-page',
+    display_temperature_analysis_page_test,
+    suite: ['base', 'display', 'cooling'],
   )
   test(
     'base-display-tuning-page',

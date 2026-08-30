@@ -17,6 +17,7 @@
 #include "display/notice.h"
 #include "display/prompt.h"
 #include "display/system_information_page.h"
+#include "display/temperature_analysis_page.h"
 #include "display/tuning_page.h"
 #include "force_feedback/command.h"
 #include "force_feedback/output_enable.h"
@@ -351,6 +352,9 @@ static bool local_display_force_feedback_analysis_content_active;
 static DisplayMotorDataAnalysisPage local_display_motor_data_analysis;
 static uint32_t local_display_motor_data_analysis_title_deadline_ms;
 static bool local_display_motor_data_analysis_content_active;
+static DisplayTemperatureAnalysisPage local_display_temperature_analysis;
+static uint32_t local_display_temperature_analysis_title_deadline_ms;
+static bool local_display_temperature_analysis_content_active;
 
 typedef enum {
     USB_VENDOR_RESPONSE_NONE,
@@ -389,6 +393,7 @@ enum {
     LOCAL_DISPLAY_PAGE_SYSTEM_INFORMATION = 8,
     LOCAL_DISPLAY_PAGE_FORCE_FEEDBACK_ANALYSIS = 9,
     LOCAL_DISPLAY_PAGE_MOTOR_DATA_ANALYSIS = 10,
+    LOCAL_DISPLAY_PAGE_TEMPERATURE_ANALYSIS = 11,
     LOCAL_DISPLAY_DIAGNOSTIC_TITLE_MS = 1000,
     USB_DISCONNECT_STATUS_CODE = 0x1c,
     TUNING_MENU_RESET_EVENT_CODE = 1,
@@ -3164,6 +3169,32 @@ static bool system_information_equal(const DisplaySystemInformation *left,
            left->quick_release_runtime_seconds == right->quick_release_runtime_seconds;
 }
 
+/** @brief Latest accepted motor and driver temperatures. */
+typedef struct {
+    int16_t motor;
+    int16_t driver;
+} LocalMotorTemperatures;
+
+/**
+ * @brief Reads the latest valid motor temperatures.
+ *
+ * Publishes zero for either channel until its motor-telemetry response has been accepted.
+ *
+ * @return Motor and driver temperatures in degrees Celsius.
+ */
+static LocalMotorTemperatures read_motor_temperatures(void) {
+    const MotorTelemetry *telemetry =
+        motor_tuning_ready ? motor_telemetry_service_value(&motor_telemetry_service) : NULL;
+    return (LocalMotorTemperatures){
+        .motor = telemetry != NULL && telemetry->motor_temperature_valid
+                     ? (int16_t)telemetry->motor_temperature
+                     : 0,
+        .driver = telemetry != NULL && telemetry->driver_temperature_valid
+                      ? (int16_t)telemetry->driver_temperature
+                      : 0,
+    };
+}
+
 /**
  * @brief Updates the local display when its active page changes.
  *
@@ -3184,6 +3215,8 @@ static void service_local_display(void) {
         usb_tuning_menu_service.active_page == USB_TUNING_MENU_PAGE_FORCE_FEEDBACK_ANALYSIS;
     bool motor_data_analysis_selected =
         usb_tuning_menu_service.active_page == USB_TUNING_MENU_PAGE_MOTOR_DATA_ANALYSIS;
+    bool temperature_analysis_selected =
+        usb_tuning_menu_service.active_page == USB_TUNING_MENU_PAGE_THERMAL_POWER;
     uint8_t page = system_notice.kind != SYSTEM_NOTICE_NONE ? LOCAL_DISPLAY_PAGE_SYSTEM_NOTICE
                    : torque_disabled_notice_visible         ? LOCAL_DISPLAY_PAGE_TORQUE_DISABLED
                    : torque_key_prompt_visible              ? LOCAL_DISPLAY_PAGE_TORQUE_KEY_PROMPT
@@ -3193,6 +3226,7 @@ static void service_local_display(void) {
                    : system_information_selected      ? LOCAL_DISPLAY_PAGE_SYSTEM_INFORMATION
                    : force_feedback_analysis_selected ? LOCAL_DISPLAY_PAGE_FORCE_FEEDBACK_ANALYSIS
                    : motor_data_analysis_selected     ? LOCAL_DISPLAY_PAGE_MOTOR_DATA_ANALYSIS
+                   : temperature_analysis_selected    ? LOCAL_DISPLAY_PAGE_TEMPERATURE_ANALYSIS
                                                       : LOCAL_DISPLAY_PAGE_IDENTITY;
     local_display_system_information = build_system_information(now_ms);
     bool system_information_changed =
@@ -3217,24 +3251,36 @@ static void service_local_display(void) {
          (local_display_force_feedback_analysis_content_active && force_feedback_sampled));
     bool motor_data_changed = false;
     if (page == LOCAL_DISPLAY_PAGE_MOTOR_DATA_ANALYSIS && page == local_display_page) {
-        const MotorTelemetry *telemetry =
-            motor_tuning_ready ? motor_telemetry_service_value(&motor_telemetry_service) : NULL;
-        int16_t motor_temperature = telemetry != NULL && telemetry->motor_temperature_valid
-                                        ? (int16_t)telemetry->motor_temperature
-                                        : 0;
-        int16_t driver_temperature = telemetry != NULL && telemetry->driver_temperature_valid
-                                         ? (int16_t)telemetry->driver_temperature
-                                         : 0;
+        LocalMotorTemperatures temperatures = read_motor_temperatures();
         int16_t torque = motor_position_ready ? (int16_t)motor_position_report.motor_torque : 0;
         motor_data_changed = display_motor_data_analysis_page_update(
-            &local_display_motor_data_analysis, now_ms, torque, motor_temperature,
-            driver_temperature, fan_speed_rpm[PLATFORM_FAN_PRIMARY]);
+            &local_display_motor_data_analysis, now_ms, torque, temperatures.motor,
+            temperatures.driver, fan_speed_rpm[PLATFORM_FAN_PRIMARY]);
     }
     bool motor_data_analysis_changed =
         page == LOCAL_DISPLAY_PAGE_MOTOR_DATA_ANALYSIS && page == local_display_page &&
         ((!local_display_motor_data_analysis_content_active &&
           platform_time_reached(now_ms, local_display_motor_data_analysis_title_deadline_ms)) ||
          (local_display_motor_data_analysis_content_active && motor_data_changed));
+    bool temperature_data_changed = false;
+    if (page == LOCAL_DISPLAY_PAGE_TEMPERATURE_ANALYSIS && page == local_display_page) {
+        int16_t temperatures[DISPLAY_TEMPERATURE_ANALYSIS_CHANNEL_COUNT];
+        LocalMotorTemperatures motor_temperatures = read_motor_temperatures();
+        temperatures[DISPLAY_TEMPERATURE_ANALYSIS_MOTOR] = motor_temperatures.motor;
+        temperatures[DISPLAY_TEMPERATURE_ANALYSIS_DRIVER] = motor_temperatures.driver;
+        temperatures[DISPLAY_TEMPERATURE_ANALYSIS_BASE] =
+            cooling_temperature_monitor.temperatures_c[0];
+        temperatures[DISPLAY_TEMPERATURE_ANALYSIS_QUICK_RELEASE] =
+            (int16_t)wheel_status_service_snapshot(&wheel_status_service)->accessory_value;
+        temperature_data_changed = display_temperature_analysis_page_update(
+            &local_display_temperature_analysis, now_ms, temperatures,
+            fan_speed_rpm[PLATFORM_FAN_PRIMARY], cooling_controller.force_scale_percent);
+    }
+    bool temperature_analysis_changed =
+        page == LOCAL_DISPLAY_PAGE_TEMPERATURE_ANALYSIS && page == local_display_page &&
+        ((!local_display_temperature_analysis_content_active &&
+          platform_time_reached(now_ms, local_display_temperature_analysis_title_deadline_ms)) ||
+         (local_display_temperature_analysis_content_active && temperature_data_changed));
     if (page == local_display_page &&
         (page != LOCAL_DISPLAY_PAGE_BITE_POINT ||
          wheel_bite_point_display_percent == local_display_rendered_bite_point_percent) &&
@@ -3243,7 +3289,7 @@ static void service_local_display(void) {
         (page != LOCAL_DISPLAY_PAGE_TUNING ||
          local_display_tuning_revision == local_display_rendered_tuning_revision) &&
         !system_information_changed && !force_feedback_analysis_changed &&
-        !motor_data_analysis_changed) {
+        !motor_data_analysis_changed && !temperature_analysis_changed) {
         return;
     }
 
@@ -3295,6 +3341,18 @@ static void service_local_display(void) {
             display_motor_data_analysis_page_render(display_framebuffer,
                                                     &local_display_motor_data_analysis);
             local_display_motor_data_analysis_content_active = true;
+        }
+    } else if (page == LOCAL_DISPLAY_PAGE_TEMPERATURE_ANALYSIS) {
+        if (page != local_display_page) {
+            display_temperature_analysis_page_open(&local_display_temperature_analysis, now_ms);
+            display_temperature_analysis_page_render_title(display_framebuffer);
+            local_display_temperature_analysis_title_deadline_ms =
+                now_ms + LOCAL_DISPLAY_DIAGNOSTIC_TITLE_MS;
+            local_display_temperature_analysis_content_active = false;
+        } else {
+            display_temperature_analysis_page_render(display_framebuffer,
+                                                     &local_display_temperature_analysis);
+            local_display_temperature_analysis_content_active = true;
         }
     } else if (page == LOCAL_DISPLAY_PAGE_IDENTITY) {
         display_identity_page_render(display_framebuffer, board_identity.variant);
