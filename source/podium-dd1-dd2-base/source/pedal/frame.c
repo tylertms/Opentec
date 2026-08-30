@@ -2,6 +2,15 @@
 
 #include <stdint.h>
 
+/**
+ * @brief Computes the checksum for a pedal frame.
+ *
+ * Applies the reflected CRC-8 polynomial 0x8c with an initial value of 0xff to the frame type and
+ * eight payload bytes.
+ *
+ * @param[in] input Frame type followed by the eight-byte payload.
+ * @return The eight-bit frame checksum.
+ */
 static uint8_t pedal_checksum(const uint8_t *input) {
     uint8_t crc = UINT8_MAX;
     for (uint8_t index = 0; index < PEDAL_FRAME_PAYLOAD_SIZE + 1; index++) {
@@ -14,10 +23,13 @@ static uint8_t pedal_checksum(const uint8_t *input) {
 }
 
 /**
- * Encodes a pedal protocol message into its 12-byte framed representation.
+ * @brief Encodes a pedal protocol message.
  *
- * @param frame Message type and eight-byte payload to encode.
- * @param output Destination for the framed message.
+ * Writes the start marker, frame type, eight payload bytes, checksum, and end marker in their wire
+ * order. The checksum covers only the type and payload.
+ *
+ * @param[in] frame Message type and eight-byte payload to encode.
+ * @param[out] output Destination for the twelve-byte framed message.
  */
 void pedal_frame_encode(const PedalFrame *frame, uint8_t output[PEDAL_FRAME_SIZE]) {
     output[0] = PEDAL_FRAME_START;
@@ -30,11 +42,14 @@ void pedal_frame_encode(const PedalFrame *frame, uint8_t output[PEDAL_FRAME_SIZE
 }
 
 /**
- * Validates and decodes a 12-byte pedal protocol message.
+ * @brief Validates and decodes a pedal protocol message.
  *
- * @param input Complete framed message.
- * @param frame Destination for the decoded message type and payload.
- * @return Frame status identifying boundary or checksum failures.
+ * Checks the start and end markers before the checksum. The decoded type and payload are written
+ * only after both checks pass.
+ *
+ * @param[in] input Complete twelve-byte framed message.
+ * @param[out] frame Destination for the decoded message type and payload.
+ * @return The frame status identifying boundary or checksum failures.
  */
 PedalFrameResult pedal_frame_decode(const uint8_t input[PEDAL_FRAME_SIZE], PedalFrame *frame) {
     if (input[0] != PEDAL_FRAME_START || input[11] != PEDAL_FRAME_END) {
