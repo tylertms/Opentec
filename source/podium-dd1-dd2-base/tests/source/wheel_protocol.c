@@ -10,6 +10,16 @@ static void mark_ready(uint8_t packet[WHEEL_PROTOCOL_PACKET_SIZE]) {
     packet[WHEEL_PROTOCOL_FLAGS_OFFSET] = WHEEL_PROTOCOL_REQUEST_READY;
 }
 
+static void test_initializes_display_rotation_state(void) {
+    WheelProtocol protocol;
+    memset(&protocol, 0xa5, sizeof(protocol));
+
+    wheel_protocol_init(&protocol);
+
+    assert(protocol.display_rotation_angle == 0);
+    assert(!protocol.display_rotation_enabled);
+}
+
 static void test_selects_response_acknowledgement(void) {
     WheelProtocol protocol;
     wheel_protocol_init(&protocol);
@@ -1841,6 +1851,7 @@ static void test_crc8_vectors(void) {
 }
 
 int main(void) {
+    test_initializes_display_rotation_state();
     test_selects_response_acknowledgement();
     test_synchronizes_and_selects_mode();
     test_selects_scan_variants();

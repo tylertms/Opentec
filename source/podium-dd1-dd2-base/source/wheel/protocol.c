@@ -887,7 +887,9 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     protocol->configured_axis_override_mode = WHEEL_AXIS_OVERRIDE_MODE_NONE;
     protocol->paddle_bite_point_percent = 100;
     protocol->system_status_code = 0;
+    protocol->display_rotation_angle = 0;
     protocol->button_latch_enabled = false;
+    protocol->display_rotation_enabled = false;
     protocol->host_capability_enabled = false;
     protocol->profile_transition_pending = false;
     protocol->system_status_pending = false;
