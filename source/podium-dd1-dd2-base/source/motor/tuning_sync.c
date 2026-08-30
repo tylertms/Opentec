@@ -46,7 +46,12 @@ void motor_tuning_sync_refresh(MotorTuningSync *sync, const TuningProfile *profi
         uint8_t old_length = desired->length;
         uint8_t old_data_0 = desired->data[0];
         uint8_t old_data_1 = desired->data[1];
-        motor_tuning_parameter_encode((MotorTuningParameter)parameter, profile, context, desired);
+        if (!motor_tuning_parameter_encode((MotorTuningParameter)parameter, profile, context,
+                                           desired)) {
+            sync->valid_parameters &= (uint16_t)~bit;
+            sync->dirty_parameters &= (uint16_t)~bit;
+            continue;
+        }
         if ((sync->valid_parameters & bit) == 0 || old_address != desired->address ||
             old_length != desired->length || old_data_0 != desired->data[0] ||
             old_data_1 != desired->data[1]) {

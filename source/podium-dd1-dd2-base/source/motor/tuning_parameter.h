@@ -26,6 +26,7 @@ typedef struct {
     uint8_t strength_percent;
     uint8_t xbox_mode;
     uint8_t calibration_active;
+    uint8_t extended_parameters;
 } MotorTuningContext;
 
 typedef struct {

@@ -37,6 +37,7 @@ static MotorTuningContext default_context(void) {
         .automatic_rotation_degrees = 1080,
         .ramp_percent = 100,
         .strength_percent = 100,
+        .extended_parameters = 1,
     };
 }
 

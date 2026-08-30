@@ -23,6 +23,7 @@ static MotorTuningContext default_context(void) {
         .strength_percent = 100,
         .xbox_mode = 0,
         .calibration_active = 0,
+        .extended_parameters = 1,
     };
     return context;
 }
@@ -102,6 +103,21 @@ static void test_mode_dependent_parameters(void) {
     assert(encode_value(MOTOR_TUNING_INTERPOLATION_FILTER, &profile, &context) == 10);
 }
 
+static void test_extended_parameters_require_controller_support(void) {
+    TuningProfile profile = default_profile();
+    MotorTuningContext context = default_context();
+    MotorParameterWrite write;
+
+    context.extended_parameters = 0;
+    assert(!motor_tuning_parameter_encode(MOTOR_TUNING_FORCE_FEEDBACK_SCALE, &profile, &context,
+                                          &write));
+    assert(
+        !motor_tuning_parameter_encode(MOTOR_TUNING_NATURAL_INERTIA, &profile, &context, &write));
+    assert(!motor_tuning_parameter_encode(MOTOR_TUNING_INTERPOLATION_FILTER, &profile, &context,
+                                          &write));
+    assert(motor_tuning_parameter_encode(MOTOR_TUNING_NATURAL_DAMPER, &profile, &context, &write));
+}
+
 static void test_rotation_encoding(void) {
     TuningProfile profile = default_profile();
     MotorTuningContext context = default_context();
@@ -139,6 +155,7 @@ int main(void) {
     test_parameter_addresses();
     test_friction_scaling();
     test_mode_dependent_parameters();
+    test_extended_parameters_require_controller_support();
     test_rotation_encoding();
     test_limits();
     return 0;

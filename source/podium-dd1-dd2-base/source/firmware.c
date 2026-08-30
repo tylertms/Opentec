@@ -2100,6 +2100,7 @@ static void service_motor(void) {
     motor_probe_run(&motor_probe, platform_time_ms());
     const MotorIdentity *identity = motor_probe_identity(&motor_probe);
     if (!motor_tuning_ready && identity != 0) {
+        motor_tuning_context.extended_parameters = motor_identity_has_extended_parameters(identity);
         motor_telemetry_service_init(&motor_telemetry_service, identity);
         motor_status_service_init(&motor_status_service, identity);
         motor_tuning_service_init(&motor_tuning_service, tuning_profile, &motor_tuning_context);

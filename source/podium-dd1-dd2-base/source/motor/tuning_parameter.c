@@ -122,7 +122,7 @@ static uint8_t encode_sensitivity(const TuningProfile *profile, const MotorTunin
  * @brief Encodes one logical tuning setting as a motor parameter write.
  *
  * Maps supported settings to motor addresses 0x20 through 0x2a and applies each setting's width,
- * scaling, and operating-mode rules.
+ * scaling, operating-mode rules, and controller capability requirements.
  *
  * @param[in] parameter Logical motor tuning setting to encode.
  * @param[in] profile Active tuning profile.
@@ -133,6 +133,12 @@ static uint8_t encode_sensitivity(const TuningProfile *profile, const MotorTunin
 uint8_t motor_tuning_parameter_encode(MotorTuningParameter parameter, const TuningProfile *profile,
                                       const MotorTuningContext *context,
                                       MotorParameterWrite *write) {
+    if (context->extended_parameters == 0 && (parameter == MOTOR_TUNING_FORCE_FEEDBACK_SCALE ||
+                                              parameter == MOTOR_TUNING_NATURAL_INERTIA ||
+                                              parameter == MOTOR_TUNING_INTERPOLATION_FILTER)) {
+        return 0;
+    }
+
     switch (parameter) {
     case MOTOR_TUNING_SENSITIVITY:
         encode_u8(write, 0x20, encode_sensitivity(profile, context));
