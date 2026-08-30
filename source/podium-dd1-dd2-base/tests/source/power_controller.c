@@ -25,6 +25,11 @@ static void test_waits_for_start_button_and_respects_control_gate(void) {
     assert(update(&controller, true, true, 101) == POWER_ACTION_ENABLE_LATCH);
     assert(update(&controller, true, false, 102) == POWER_ACTION_NONE);
     assert(controller.phase == POWER_PHASE_READY);
+    assert(update(&controller, true, false, 5000) == POWER_ACTION_NONE);
+    assert(update(&controller, true, true, 5001) == POWER_ACTION_NONE);
+    assert(controller.phase == POWER_PHASE_BUTTON_HELD);
+    assert(update(&controller, true, true, 6001) == POWER_ACTION_NONE);
+    assert(update(&controller, true, true, 6002) == POWER_ACTION_BEGIN_SHUTDOWN);
 }
 
 static void test_short_release_toggles_requested_state(void) {

@@ -516,14 +516,14 @@ static void apply_power_action(PowerAction action, uint32_t now_ms) {
 /**
  * @brief Services the wheel-base power button.
  *
- * Samples the active-high platform input, advances the short-press and shutdown controller, and
- * applies any resulting hardware transition.
+ * Samples the active-high platform input, advances the short-press and shutdown controller only
+ * while the retained security code is disabled, and applies any resulting hardware transition.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 static void service_power(uint32_t now_ms) {
-    PowerAction action =
-        power_controller_update(&power_controller, platform_power_button_pressed(), true, now_ms);
+    PowerAction action = power_controller_update(&power_controller, platform_power_button_pressed(),
+                                                 !base_settings.security_code.enabled, now_ms);
     apply_power_action(action, now_ms);
 }
 
