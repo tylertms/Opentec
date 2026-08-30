@@ -15,6 +15,7 @@ typedef struct {
     uint16_t filter_position_ms;
     bool inserted;
     bool initialized;
+    bool state_known;
 } TorqueKey;
 
 void torque_key_init(TorqueKey *key);

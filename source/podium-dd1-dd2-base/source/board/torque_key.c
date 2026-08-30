@@ -3,24 +3,29 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-enum { TORQUE_KEY_FILTER_MS = 500 };
+enum {
+    TORQUE_KEY_FILTER_MS = 500,
+    TORQUE_KEY_INITIAL_POSITION_MS = TORQUE_KEY_FILTER_MS / 2,
+};
 
 /**
  * @brief Initializes Torque Key transition filtering.
  *
- * Starts without a reported key state. The first sample reports an already-inserted key
- * immediately and treats an initially removed key as the inactive baseline.
+ * Starts at the midpoint of the 500-millisecond integrator without a reported key state. Either
+ * initial state must remain dominant for 250 milliseconds before it is reported.
  *
  * @param[out] key Torque Key filter to initialize.
  */
-void torque_key_init(TorqueKey *key) { *key = (TorqueKey){0}; }
+void torque_key_init(TorqueKey *key) {
+    *key = (TorqueKey){.filter_position_ms = TORQUE_KEY_INITIAL_POSITION_MS};
+}
 
 /**
  * @brief Filters the active-low Torque Key state into stable transitions.
  *
- * Integrates elapsed milliseconds toward the inserted or removed endpoint. A key present on the
- * first sample reports insertion immediately. Later state changes require 500 milliseconds of net
- * travel across the filter, with opposite samples cancelling prior travel.
+ * Integrates elapsed milliseconds toward the inserted or removed endpoint. The neutral startup
+ * position requires 250 milliseconds to establish either initial state. Later state changes
+ * require 500 milliseconds of net travel, with opposite samples cancelling prior travel.
  *
  * @param[in,out] key Torque Key filter state.
  * @param[in] raw_inserted True while the physical Torque Key input is active.
@@ -31,9 +36,7 @@ TorqueKeyEvent torque_key_update(TorqueKey *key, bool raw_inserted, uint32_t now
     if (!key->initialized) {
         key->initialized = true;
         key->last_update_ms = now_ms;
-        key->filter_position_ms = raw_inserted ? 0 : TORQUE_KEY_FILTER_MS;
-        key->inserted = raw_inserted;
-        return raw_inserted ? TORQUE_KEY_EVENT_INSERTED : TORQUE_KEY_EVENT_NONE;
+        return TORQUE_KEY_EVENT_NONE;
     }
 
     uint32_t elapsed_ms = now_ms - key->last_update_ms;
@@ -46,7 +49,8 @@ TorqueKeyEvent torque_key_update(TorqueKey *key, bool raw_inserted, uint32_t now
         key->filter_position_ms = elapsed_ms >= key->filter_position_ms
                                       ? 0
                                       : (uint16_t)(key->filter_position_ms - elapsed_ms);
-        if (!key->inserted && key->filter_position_ms == 0) {
+        if (key->filter_position_ms == 0 && (!key->state_known || !key->inserted)) {
+            key->state_known = true;
             key->inserted = true;
             return TORQUE_KEY_EVENT_INSERTED;
         }
@@ -54,7 +58,9 @@ TorqueKeyEvent torque_key_update(TorqueKey *key, bool raw_inserted, uint32_t now
         uint32_t position_ms = key->filter_position_ms + elapsed_ms;
         key->filter_position_ms =
             position_ms >= TORQUE_KEY_FILTER_MS ? TORQUE_KEY_FILTER_MS : (uint16_t)position_ms;
-        if (key->inserted && key->filter_position_ms == TORQUE_KEY_FILTER_MS) {
+        if (key->filter_position_ms == TORQUE_KEY_FILTER_MS &&
+            (!key->state_known || key->inserted)) {
+            key->state_known = true;
             key->inserted = false;
             return TORQUE_KEY_EVENT_REMOVED;
         }
