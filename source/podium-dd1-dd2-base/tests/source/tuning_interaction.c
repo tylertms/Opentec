@@ -89,11 +89,80 @@ static void test_resets_when_wheel_input_is_unavailable(void) {
     assert(!tuning_interaction_requests_pedal_adjustment(&interaction, NULL));
 }
 
+static void test_decodes_navigation_priority_and_edges(void) {
+    TuningInteraction interaction;
+    tuning_interaction_init(&interaction);
+
+    TuningInteractionInput sample = input(0x10, 0x0f00, 0x0200);
+    sample.analog_scale = -12;
+    TuningNavigationEvent event = tuning_interaction_read_navigation(&interaction, &sample);
+    assert(event.mode == TUNING_NAVIGATION_ANALOG);
+    assert(event.scale == -12);
+
+    event = tuning_interaction_read_navigation(&interaction, &sample);
+    assert(event.mode == TUNING_NAVIGATION_NONE);
+    assert(event.scale == 0);
+
+    sample.secondary_buttons |= 0x2000;
+    event = tuning_interaction_read_navigation(&interaction, &sample);
+    assert(event.mode == TUNING_NAVIGATION_MENU);
+    assert(event.scale == 0);
+    event = tuning_interaction_read_navigation(&interaction, &sample);
+    assert(event.mode == TUNING_NAVIGATION_MENU);
+}
+
+static void test_decodes_each_digital_navigation_action(void) {
+    static const struct {
+        uint16_t primary;
+        uint16_t secondary;
+        TuningNavigationMode expected;
+    } cases[] = {
+        {0x0100, 0, TUNING_NAVIGATION_INCREASE},    {0x0800, 0, TUNING_NAVIGATION_DECREASE},
+        {0x0200, 0, TUNING_NAVIGATION_PREVIOUS},    {0x0400, 0, TUNING_NAVIGATION_NEXT},
+        {0, 0x0200, TUNING_NAVIGATION_TOGGLE_VIEW},
+    };
+
+    for (unsigned int index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {
+        TuningInteraction interaction;
+        tuning_interaction_init(&interaction);
+        TuningInteractionInput sample = input(0x10, cases[index].primary, cases[index].secondary);
+        assert(tuning_interaction_read_navigation(&interaction, &sample).mode ==
+               cases[index].expected);
+        assert(tuning_interaction_read_navigation(&interaction, &sample).mode ==
+               TUNING_NAVIGATION_NONE);
+        sample.primary_buttons = 0;
+        sample.secondary_buttons = 0;
+        assert(tuning_interaction_read_navigation(&interaction, &sample).mode ==
+               TUNING_NAVIGATION_NONE);
+        sample.primary_buttons = cases[index].primary;
+        sample.secondary_buttons = cases[index].secondary;
+        assert(tuning_interaction_read_navigation(&interaction, &sample).mode ==
+               cases[index].expected);
+    }
+}
+
+static void test_unavailable_navigation_resets_the_edge_latch(void) {
+    TuningInteraction interaction;
+    tuning_interaction_init(&interaction);
+    TuningInteractionInput sample = input(0x10, 0x0100, 0);
+    assert(tuning_interaction_read_navigation(&interaction, &sample).mode ==
+           TUNING_NAVIGATION_INCREASE);
+    sample.available = false;
+    assert(tuning_interaction_read_navigation(&interaction, &sample).mode ==
+           TUNING_NAVIGATION_NONE);
+    sample.available = true;
+    assert(tuning_interaction_read_navigation(&interaction, &sample).mode ==
+           TUNING_NAVIGATION_INCREASE);
+}
+
 int main(void) {
     test_requests_adjustment_from_profile_hold();
     test_applies_profile_shortcut_priority();
     test_requests_legacy_adjustment_from_open_entry();
     test_closes_entries_on_the_next_menu_press();
     test_resets_when_wheel_input_is_unavailable();
+    test_decodes_navigation_priority_and_edges();
+    test_decodes_each_digital_navigation_action();
+    test_unavailable_navigation_resets_the_edge_latch();
     return 0;
 }

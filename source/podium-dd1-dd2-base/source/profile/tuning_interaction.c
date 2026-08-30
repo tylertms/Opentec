@@ -9,10 +9,15 @@ enum {
     WHEEL_MODE_LEGACY_ALTERNATE = 0x0f,
     WHEEL_MODE_LEGACY_COMPATIBILITY = 0x17,
     TUNING_PRIMARY_LEGACY_CENTER = 0x4000,
+    TUNING_PRIMARY_INCREASE = 0x0100,
+    TUNING_PRIMARY_PREVIOUS = 0x0200,
+    TUNING_PRIMARY_NEXT = 0x0400,
+    TUNING_PRIMARY_DECREASE = 0x0800,
     TUNING_SECONDARY_LEGACY_CENTER = 0x0010,
     TUNING_SECONDARY_ADJUSTMENT = 0x0040,
     TUNING_SECONDARY_STANDARD_CENTER = 0x0080,
     TUNING_SECONDARY_PROFILE_SHORTCUT = 0x0100,
+    TUNING_SECONDARY_TOGGLE_VIEW = 0x0200,
     TUNING_SECONDARY_MENU = 0x2000,
     TUNING_SECONDARY_LEGACY_ADJUSTMENT = 0x0140,
 };
@@ -59,6 +64,59 @@ void tuning_interaction_init(TuningInteraction *interaction) {
 }
 
 /**
+ * @brief Decodes one attached-wheel tuning navigation sample.
+ *
+ * Applies the firmware input priority from increase through menu, preserves the signed analog
+ * scale only for analog navigation, suppresses repeated actions, and allows menu to repeat while
+ * held. Unavailable input resets the edge latch.
+ *
+ * @param[in,out] interaction Tuning interaction and navigation edge latch.
+ * @param[in] input Current attached-wheel input sample.
+ * @return Decoded navigation action, or no action when unchanged or unavailable.
+ */
+TuningNavigationEvent tuning_interaction_read_navigation(TuningInteraction *interaction,
+                                                         const TuningInteractionInput *input) {
+    TuningNavigationEvent event = {0};
+    if (interaction == NULL || input == NULL || !input->available) {
+        if (interaction != NULL) {
+            interaction->last_navigation = TUNING_NAVIGATION_NONE;
+        }
+        return event;
+    }
+
+    if ((input->primary_buttons & TUNING_PRIMARY_INCREASE) != 0) {
+        event.mode = TUNING_NAVIGATION_INCREASE;
+    }
+    if ((input->primary_buttons & TUNING_PRIMARY_DECREASE) != 0) {
+        event.mode = TUNING_NAVIGATION_DECREASE;
+    }
+    if ((input->primary_buttons & TUNING_PRIMARY_PREVIOUS) != 0) {
+        event.mode = TUNING_NAVIGATION_PREVIOUS;
+    }
+    if ((input->primary_buttons & TUNING_PRIMARY_NEXT) != 0) {
+        event.mode = TUNING_NAVIGATION_NEXT;
+    }
+    if ((input->secondary_buttons & TUNING_SECONDARY_TOGGLE_VIEW) != 0) {
+        event.mode = TUNING_NAVIGATION_TOGGLE_VIEW;
+    }
+    if (input->analog_scale != 0) {
+        event.mode = TUNING_NAVIGATION_ANALOG;
+        event.scale = input->analog_scale;
+    }
+    if ((input->secondary_buttons & TUNING_SECONDARY_MENU) != 0) {
+        event.mode = TUNING_NAVIGATION_MENU;
+        event.scale = 0;
+    }
+
+    const TuningNavigationMode sampled_mode = event.mode;
+    if (sampled_mode == interaction->last_navigation && event.mode != TUNING_NAVIGATION_MENU) {
+        event = (TuningNavigationEvent){0};
+    }
+    interaction->last_navigation = sampled_mode;
+    return event;
+}
+
+/**
  * @brief Advances the tuning-menu phase and detects a wheel-side pedal-adjustment request.
  *
  * A first menu press enters profile selection. Button 0x40 requests adjustment while that press
@@ -80,7 +138,8 @@ bool tuning_interaction_requests_pedal_adjustment(TuningInteraction *interaction
         return false;
     }
 
-    bool menu_held = (input->secondary_buttons & TUNING_SECONDARY_MENU) != 0;
+    TuningNavigationEvent navigation = tuning_interaction_read_navigation(interaction, input);
+    bool menu_held = navigation.mode == TUNING_NAVIGATION_MENU;
     if (interaction->phase == TUNING_INTERACTION_CLOSED) {
         if (menu_held) {
             interaction->phase = TUNING_INTERACTION_MENU_HELD;

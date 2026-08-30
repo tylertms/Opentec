@@ -30,6 +30,7 @@ enum {
     WHEEL_INPUT_DIRECTIONAL_OFFSET = 0,
     WHEEL_INPUT_SECONDARY_OFFSET = 1,
     WHEEL_INPUT_CLUTCH_OFFSET = 3,
+    WHEEL_INPUT_TUNING_OFFSET = 5,
     WHEEL_INPUT_AUXILIARY_OFFSET = 22,
     WHEEL_PACKED_REPORT_TWO_OPCODE = 0x0a,
     WHEEL_PACKED_REPORT_ONE_OPCODE = 0x0b,
@@ -1551,9 +1552,10 @@ const uint8_t *wheel_service_buttons(const WheelService *service) {
 /**
  * @brief Copies normalized attached-wheel host input fields.
  *
- * Reads the directional byte, sixteen secondary buttons, two clutch paddles, and three auxiliary
- * bytes from the current thirty-byte request view. The separately retained axis-report capability
- * accompanies the values. An unavailable request produces a cleared destination.
+ * Reads the directional byte, sixteen secondary buttons, two clutch paddles, signed tuning input,
+ * and three auxiliary bytes from the current thirty-byte request view. The separately retained
+ * axis-report capability accompanies the values. An unavailable request produces a cleared
+ * destination.
  *
  * @param[in] service Attached-wheel service state.
  * @param[out] snapshot Normalized host input fields.
@@ -1574,6 +1576,7 @@ bool wheel_service_input_snapshot(const WheelService *service, WheelInputSnapsho
                                   (uint16_t)request[WHEEL_INPUT_SECONDARY_OFFSET + 1] << 8;
     snapshot->clutch_paddles[0] = request[WHEEL_INPUT_CLUTCH_OFFSET];
     snapshot->clutch_paddles[1] = request[WHEEL_INPUT_CLUTCH_OFFSET + 1];
+    snapshot->tuning_input = (int8_t)request[WHEEL_INPUT_TUNING_OFFSET];
     snapshot->auxiliary_report[0] = request[WHEEL_INPUT_AUXILIARY_OFFSET];
     snapshot->auxiliary_report[1] = request[WHEEL_INPUT_AUXILIARY_OFFSET + 1];
     snapshot->auxiliary_report[2] = request[WHEEL_INPUT_AUXILIARY_OFFSET + 2];

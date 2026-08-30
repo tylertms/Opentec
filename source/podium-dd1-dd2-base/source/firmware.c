@@ -2489,6 +2489,7 @@ static void service_tuning_interaction(uint32_t now_ms) {
         .wheel_mode = wheel_service_mode(&wheel_service),
         .primary_buttons = (uint16_t)buttons[0] | (uint16_t)buttons[1] << 8,
         .secondary_buttons = available ? tuning_interaction_snapshot.secondary_buttons : 0,
+        .analog_scale = available ? tuning_interaction_snapshot.tuning_input : 0,
         .adapter_profile_shortcut =
             adapter->connected && adapter->mode == 1 && (adapter->buttons[1] & 1u) != 0,
         .available = available,

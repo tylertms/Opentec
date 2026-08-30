@@ -41,6 +41,7 @@ typedef struct {
     uint16_t secondary_buttons;
     uint8_t directional_buttons;
     uint8_t clutch_paddles[2];
+    int8_t tuning_input;
     uint8_t auxiliary_report[3];
     bool axis_report_enabled;
 } WheelInputSnapshot;

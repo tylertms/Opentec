@@ -1186,6 +1186,7 @@ static void test_exposes_playstation_wheel_inputs(void) {
     service.protocol.request[2] = 0x45;
     service.protocol.request[3] = 0x67;
     service.protocol.request[4] = 0x89;
+    service.protocol.request[5] = 0xf4;
     service.protocol.request[22] = 0xab;
     service.protocol.request[23] = 0xcd;
     service.protocol.request[24] = 0xef;
@@ -1204,6 +1205,7 @@ static void test_exposes_playstation_wheel_inputs(void) {
     assert(snapshot.secondary_buttons == 0x4523);
     assert(snapshot.clutch_paddles[0] == 0x67);
     assert(snapshot.clutch_paddles[1] == 0x89);
+    assert(snapshot.tuning_input == -12);
     assert(snapshot.auxiliary_report[0] == 0xab);
     assert(snapshot.auxiliary_report[1] == 0xcd);
     assert(snapshot.auxiliary_report[2] == 0xef);
@@ -1218,6 +1220,7 @@ static void test_exposes_playstation_wheel_inputs(void) {
     assert(!wheel_service_input_snapshot(&service, &snapshot));
     assert(snapshot.directional_buttons == 0);
     assert(snapshot.secondary_buttons == 0);
+    assert(snapshot.tuning_input == 0);
     assert(!snapshot.axis_report_enabled);
 }
 
