@@ -253,6 +253,17 @@ void pedal_service_set_protocol_status(PedalService *service, const PedalProtoco
 }
 
 /**
+ * @brief Clears the complete pedal protocol status.
+ *
+ * Resets the retained value, both selectors, and the legacy scale to zero.
+ *
+ * @param[in,out] service Pedal service receiving the cleared protocol status.
+ */
+void pedal_service_reset_protocol_status(PedalService *service) {
+    service->protocol_status = (PedalProtocolStatus){0};
+}
+
+/**
  * @brief Applies the brake indicator to the pedal protocol selector.
  *
  * Replaces only the first protocol selector and preserves the configured value, second selector,

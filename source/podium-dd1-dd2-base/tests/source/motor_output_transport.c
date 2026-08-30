@@ -76,6 +76,22 @@ static void test_opcode_records_are_zero_filled(void) {
     }
 }
 
+static void test_host_effect_clear_sequence(void) {
+    MotorOutputTransport transport;
+    MotorLiveFrame frame;
+
+    motor_output_transport_init(&transport);
+    assert(motor_output_transport_enqueue_host_effect_clears(&transport) == 16);
+    for (uint8_t slot = 0; slot < 16; slot++) {
+        motor_output_transport_build_frame(&transport, 0, 0, &live_report, &frame);
+        assert(frame.payload[1] == ((uint8_t)(slot << 4) | 3u));
+        for (uint8_t index = 2; index < MOTOR_LIVE_PAYLOAD_SIZE; index++) {
+            assert(frame.payload[index] == 0);
+        }
+    }
+    assert(transport.count == 0);
+}
+
 static void test_queue_capacity_and_wrap(void) {
     MotorOutputTransport transport;
     MotorLiveFrame frame;
@@ -105,6 +121,7 @@ int main(void) {
     test_status_precedes_live_output();
     test_commands_precede_status_changes();
     test_opcode_records_are_zero_filled();
+    test_host_effect_clear_sequence();
     test_queue_capacity_and_wrap();
     return 0;
 }

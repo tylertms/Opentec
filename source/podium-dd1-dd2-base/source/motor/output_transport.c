@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "force_feedback/command.h"
+
 /**
  * @brief Advances a force-command queue index.
  *
@@ -75,6 +77,27 @@ bool motor_output_transport_enqueue_opcode(MotorOutputTransport *transport, uint
     transport->write_index = next_index(transport->write_index);
     transport->count++;
     return true;
+}
+
+/**
+ * @brief Queues the host-effect clear sequence for the motor controller.
+ *
+ * Queues slot-clear opcodes 0x03 through 0xF3 in ascending slot order. Stops when all 16 host
+ * slots are represented or the command queue is full.
+ *
+ * @param[in,out] transport Command transport receiving the clear sequence.
+ * @return Number of slot-clear commands queued.
+ */
+uint8_t motor_output_transport_enqueue_host_effect_clears(MotorOutputTransport *transport) {
+    uint8_t queued = 0;
+    for (uint8_t slot = 0; slot < FORCE_FEEDBACK_EFFECT_SLOT_COUNT; slot++) {
+        uint8_t opcode = (uint8_t)(slot << 4) | 3u;
+        if (!motor_output_transport_enqueue_opcode(transport, opcode)) {
+            break;
+        }
+        queued++;
+    }
+    return queued;
 }
 
 /**

@@ -1027,6 +1027,37 @@ static void test_applies_legacy_axes_to_every_packet_family(void) {
     assert(service.protocol.crc_output.legacy_axes[1] == 0x56);
 }
 
+static void test_resets_host_protocol_outputs(void) {
+    WheelService service;
+    initialize_service(&service);
+    service.protocol.mode = 10;
+    service.protocol.adapter = (WheelAdapterInput){.mode = 1, .connected = true};
+    const WheelVibrationOutput vibration = {.channels = {0x34, 0x56}};
+    const uint8_t axes[2] = {0x78, 0x9a};
+    const uint8_t packed[4] = {0xff, 0xff, 0xff, 0xff};
+    wheel_service_set_vibration_output(&service, &vibration);
+    wheel_service_set_legacy_axes(&service, axes);
+    assert(wheel_output_reports_queue_packed(&service.protocol.output_reports, 2, packed,
+                                             service.protocol.mode));
+    assert(wheel_output_reports_queue_packed(&service.protocol.output_reports, 1, packed,
+                                             service.protocol.mode));
+
+    wheel_service_reset_host_protocol_outputs(&service);
+
+    assert(service.auxiliary_output.report == 0);
+    assert(service.protocol.adapter_output.display_report == 0);
+    assert(service.protocol.mode_one_output.legacy_axes[0] == 0);
+    assert(service.protocol.mode_one_output.legacy_axes[1] == 0);
+    for (uint8_t index = 0; index < WHEEL_OUTPUT_REPORT_ONE_SIZE; index++) {
+        assert(service.protocol.output_reports.report_one[index] == 0);
+    }
+    for (uint8_t index = 0; index < WHEEL_OUTPUT_REPORT_TWO_SIZE; index++) {
+        assert(service.protocol.output_reports.report_two[index] == 0);
+    }
+    assert(service.adapter_commands.report_one_pending);
+    assert(service.adapter_commands.report_two_pending);
+}
+
 static void test_reports_host_capability_recovery_inputs(void) {
     WheelService service;
     initialize_service(&service);
@@ -1128,6 +1159,7 @@ int main(void) {
     test_reports_bite_point_adjustment();
     test_applies_vibration_to_every_packet_family();
     test_applies_legacy_axes_to_every_packet_family();
+    test_resets_host_protocol_outputs();
     test_reports_host_capability_recovery_inputs();
     test_exposes_playstation_wheel_inputs();
     return 0;

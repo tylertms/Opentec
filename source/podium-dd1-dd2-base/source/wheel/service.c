@@ -804,6 +804,34 @@ void wheel_service_set_legacy_axes(WheelService *service, const uint8_t axes[2])
 }
 
 /**
+ * @brief Resets host-controlled attached-wheel protocol outputs.
+ *
+ * Clears both legacy axes and the shared auxiliary report, then queues zero-valued compact reports
+ * two and one in protocol order. Accepted reports are mirrored to the active adapter transport.
+ *
+ * @param[in,out] service Attached-wheel service and retained protocol outputs.
+ */
+void wheel_service_reset_host_protocol_outputs(WheelService *service) {
+    if (service == NULL) {
+        return;
+    }
+    static const uint8_t cleared[4] = {0};
+    set_auxiliary_report(service, 0);
+    wheel_service_set_legacy_axes(service, cleared);
+
+    if (wheel_output_reports_queue_packed(&service->protocol.output_reports, 2, cleared,
+                                          service->protocol.mode)) {
+        wheel_adapter_command_service_queue_report_two(&service->adapter_commands,
+                                                       service->protocol.output_reports.report_two);
+    }
+    if (wheel_output_reports_queue_packed(&service->protocol.output_reports, 1, cleared,
+                                          service->protocol.mode)) {
+        wheel_adapter_command_service_queue_report_one(&service->adapter_commands,
+                                                       service->protocol.output_reports.report_one);
+    }
+}
+
+/**
  * @brief Configures attached-wheel adapter input.
  *
  * Retains adapter buttons, axes, rotary positions, profile flags, mode, connection state, and

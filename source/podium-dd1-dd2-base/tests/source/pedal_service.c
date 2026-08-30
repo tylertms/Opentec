@@ -753,6 +753,12 @@ static void test_applies_pedal_protocol_commands(void) {
     service.phase = PEDAL_SERVICE_LEGACY_REQUEST;
     pedal_service_apply_protocol_command(&service, &command);
     assert(service.protocol_status.scale == 0x88);
+
+    pedal_service_reset_protocol_status(&service);
+    assert(service.protocol_status.value == 0);
+    assert(service.protocol_status.first == 0);
+    assert(service.protocol_status.second == 0);
+    assert(service.protocol_status.scale == 0);
 }
 
 static void test_applies_transport_specific_brake_indicator_selector(void) {

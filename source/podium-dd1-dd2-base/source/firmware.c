@@ -1982,9 +1982,9 @@ static void service_motor(void) {
 /**
  * @brief Forwards a host force-feedback command to the motor controller.
  *
- * Queues full seven-byte records for configuration and position-effect activation. Clear commands
- * carry only their opcode, while primary and secondary output commands are represented by status
- * bits in the next motor-link packet.
+ * Queues full seven-byte records for configuration and position-effect activation. Individual
+ * clears carry only their opcode, while a reset queues one clear for each host effect. Primary and
+ * secondary output commands are represented by status bits in the next motor-link packet.
  *
  * @param[in] command Decoded force-feedback command kind.
  * @param[in] payload Original seven-byte host command.
@@ -2004,10 +2004,26 @@ static void forward_force_feedback_command(const ForceFeedbackCommand *command,
         motor_output_transport_enqueue_opcode(&motor_output_transport, payload[0]);
         break;
 
+    case FORCE_FEEDBACK_COMMAND_RESET_EFFECTS:
+        (void)motor_output_transport_enqueue_host_effect_clears(&motor_output_transport);
+        break;
+
     case FORCE_FEEDBACK_COMMAND_SET_PRIMARY_OUTPUT:
     case FORCE_FEEDBACK_COMMAND_SET_SECONDARY_OUTPUT:
         break;
     }
+}
+
+/**
+ * @brief Clears protocol outputs associated with a host force-feedback session.
+ *
+ * Centers the retained wheel-value override, clears the pedal protocol tuple and scale, and resets
+ * the attached-wheel legacy axes, compact reports, and shared auxiliary report.
+ */
+static void reset_host_force_feedback_outputs(void) {
+    usb_playstation_wheel_value_init(&usb_playstation_wheel_value);
+    pedal_service_reset_protocol_status(&pedal_service);
+    wheel_service_reset_host_protocol_outputs(&wheel_service);
 }
 
 /**
@@ -2178,6 +2194,9 @@ static void service_usb_output(void) {
                 &force_feedback_state, &force_feedback_command,
                 (int32_t)wheel_position_travel_from_degrees(tuning_profile->rotation_degrees))) {
             forward_force_feedback_command(&force_feedback_command, usb_output_command.payload);
+            if (force_feedback_command.kind == FORCE_FEEDBACK_COMMAND_RESET_EFFECTS) {
+                reset_host_force_feedback_outputs();
+            }
         }
         return;
     }

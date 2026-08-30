@@ -93,6 +93,21 @@ static void test_decodes_effect_control(void) {
     assert(command.slot == FORCE_FEEDBACK_POSITION_EFFECT_SLOT);
 }
 
+static void test_decodes_effect_reset(void) {
+    uint8_t payload[7] = {0x0a, 1, 0x1a, 0xaa, 0xbb, 0xcc, 0xdd};
+    UsbOutputCommand output = make_command(payload);
+    ForceFeedbackCommand command;
+
+    assert(force_feedback_command_decode(&output, &command));
+    assert(command.kind == FORCE_FEEDBACK_COMMAND_RESET_EFFECTS);
+
+    payload[1] = 0;
+    assert(!force_feedback_command_decode(&output, &command));
+    payload[1] = 1;
+    payload[2] = 0;
+    assert(!force_feedback_command_decode(&output, &command));
+}
+
 static void test_decodes_output_gates(void) {
     uint8_t payload[7] = {0xfa, 0xc7, 0, 0, 0, 0, 0};
     UsbOutputCommand output = make_command(payload);
@@ -143,6 +158,7 @@ int main(void) {
     test_decodes_kind_2_configuration();
     test_decodes_kind_3_configuration();
     test_decodes_effect_control();
+    test_decodes_effect_reset();
     test_decodes_output_gates();
     test_rejects_other_short_commands();
     return 0;

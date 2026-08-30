@@ -29,6 +29,7 @@ void motor_output_transport_init(MotorOutputTransport *transport);
 bool motor_output_transport_enqueue_command(MotorOutputTransport *transport,
                                             const uint8_t command[MOTOR_OUTPUT_COMMAND_SIZE]);
 bool motor_output_transport_enqueue_opcode(MotorOutputTransport *transport, uint8_t opcode);
+uint8_t motor_output_transport_enqueue_host_effect_clears(MotorOutputTransport *transport);
 void motor_output_transport_build_frame(MotorOutputTransport *transport, uint8_t status,
                                         int16_t center_position, const ForceOutputReport *report,
                                         MotorLiveFrame *frame);

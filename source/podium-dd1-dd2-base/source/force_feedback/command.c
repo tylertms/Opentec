@@ -9,6 +9,9 @@ enum {
     FORCE_FEEDBACK_CLEAR_OPCODE = 3,
     FORCE_FEEDBACK_ACTIVATE_POSITION_OPCODE = 4,
     FORCE_FEEDBACK_CLEAR_POSITION_OPCODE = 5,
+    FORCE_FEEDBACK_RESET_PREFIX = 0x0a,
+    FORCE_FEEDBACK_RESET_MARKER = 1,
+    FORCE_FEEDBACK_RESET_COMMAND = 0x1a,
     FORCE_FEEDBACK_PRIMARY_OUTPUT_PREFIX = 0xfa,
     FORCE_FEEDBACK_SECONDARY_OUTPUT_PREFIX = 0xfb,
     FORCE_FEEDBACK_KIND_1 = 8,
@@ -19,9 +22,9 @@ enum {
 /**
  * @brief Decodes a force-feedback command from the short HID output report.
  *
- * Classifies slot configuration, slot clearing, position-effect control, and the primary or
- * secondary output gates. Configuration payloads are expanded into signed directions, 16-bit
- * strengths, and the signed kind-1 magnitude used by the effect engine.
+ * Classifies slot configuration, slot clearing, the host-slot reset, position-effect control, and
+ * the primary or secondary output gates. Configuration payloads are expanded into signed
+ * directions, 16-bit strengths, and the signed kind-1 magnitude used by the effect engine.
  *
  * @param[in] output Classified short HID output payload.
  * @param[out] command Destination for the decoded force-feedback command.
@@ -34,6 +37,12 @@ bool force_feedback_command_decode(const UsbOutputCommand *output, ForceFeedback
     }
 
     const uint8_t *payload = output->payload;
+    if (payload[0] == FORCE_FEEDBACK_RESET_PREFIX && payload[1] == FORCE_FEEDBACK_RESET_MARKER &&
+        payload[2] == FORCE_FEEDBACK_RESET_COMMAND) {
+        *command = (ForceFeedbackCommand){.kind = FORCE_FEEDBACK_COMMAND_RESET_EFFECTS};
+        return true;
+    }
+
     uint8_t opcode = payload[0] & 0x0f;
     uint8_t slot = payload[0] >> 4;
     *command = (ForceFeedbackCommand){.slot = slot};

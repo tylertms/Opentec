@@ -83,6 +83,7 @@ void wheel_service_set_display_output(WheelService *service, const WheelDisplayO
 void wheel_service_set_vibration_output(WheelService *service, const WheelVibrationOutput *output);
 void wheel_service_set_auxiliary_output_disabled(WheelService *service, bool disabled);
 void wheel_service_set_legacy_axes(WheelService *service, const uint8_t axes[2]);
+void wheel_service_reset_host_protocol_outputs(WheelService *service);
 void wheel_service_set_adapter(WheelService *service, const WheelAdapterInput *adapter);
 void wheel_service_set_host_capability(WheelService *service, bool enabled);
 void wheel_service_configure_axis_processing(WheelService *service, uint8_t interface_mode,
