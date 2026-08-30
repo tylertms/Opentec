@@ -2014,8 +2014,9 @@ static void service_usb_xbox_session_actions(void) {
  *
  * Raises the startup ramp by one percent after each elapsed 50-millisecond deadline, keeps the
  * motor's natural-friction tuning synchronized, and services due script ticks after a motor
- * position is available. Output uses the active profile, thermal limit, Torque Key strength,
- * centered wheel travel, and secondary-output gate.
+ * position is available. A latched motor fault clears primary force and skips script evaluation.
+ * Output uses the active profile, thermal limit, Torque Key strength, centered wheel travel, and
+ * secondary-output gate.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -2028,6 +2029,11 @@ static void service_force_feedback_script(uint32_t now_ms) {
             motor_tuning_service_refresh(&motor_tuning_service, tuning_profile,
                                          &motor_tuning_context);
         }
+    }
+
+    if (motor_tuning_ready && motor_status_service_output_inhibited(&motor_status_service)) {
+        motor_output_report.primary_magnitude = 0;
+        return;
     }
 
     if (!motor_position_ready) {
