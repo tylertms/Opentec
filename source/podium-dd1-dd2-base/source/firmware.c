@@ -3065,6 +3065,7 @@ static void service_analog_input(uint32_t now_ms) {
         }
         uint16_t lateral_position;
         uint16_t longitudinal_position;
+        bool secondary_h_pattern = false;
         bool h_pattern_input_available = shifter_input.primary_mode == SHIFTER_INPUT_H_PATTERN ||
                                          shifter_input.secondary_mode == SHIFTER_INPUT_H_PATTERN;
         bool calibration_start_allowed =
@@ -3079,9 +3080,17 @@ static void service_analog_input(uint32_t now_ms) {
         } else if (shifter_input.secondary_mode == SHIFTER_INPUT_H_PATTERN) {
             lateral_position = analog_samples.secondary_shifter_x;
             longitudinal_position = analog_samples.secondary_shifter_y;
+            secondary_h_pattern = true;
         } else {
             h_pattern_shifter = (HPatternShifter){0};
             return;
+        }
+
+        bool average_longitudinal = h_pattern_calibration_service.active ||
+                                    (base_settings.h_pattern_shifter.calibrated &&
+                                     h_pattern_shifter_update_due(&h_pattern_shifter, now_ms));
+        if (average_longitudinal) {
+            longitudinal_position = platform_adc_average_shifter_y(secondary_h_pattern);
         }
 
         if (h_pattern_calibration_service_capture(

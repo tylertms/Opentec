@@ -39,6 +39,7 @@ typedef struct {
     ShifterGear gear;
 } HPatternShifter;
 
+bool h_pattern_shifter_update_due(const HPatternShifter *shifter, uint32_t now_ms);
 ShifterGear h_pattern_shifter_update(HPatternShifter *shifter,
                                      const HPatternCalibration *calibration,
                                      uint16_t lateral_position, uint16_t longitudinal_position,

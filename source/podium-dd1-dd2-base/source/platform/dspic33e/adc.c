@@ -12,11 +12,15 @@ enum {
     ADC_DMA_REQUEST = 13,
     ADC_DMA_PRIORITY = 2,
     ADC_READY_NONE = 2,
+    ADC_PRIMARY_SHIFTER_Y_INDEX = 3,
+    ADC_SECONDARY_SHIFTER_Y_INDEX = 5,
+    ADC_SHIFTER_AVERAGE_SAMPLE_COUNT = 200,
 };
 
 static volatile uint16_t adc_primary[ANALOG_SCAN_SAMPLE_COUNT];
 static volatile uint16_t adc_secondary[ANALOG_SCAN_SAMPLE_COUNT];
 static volatile uint8_t adc_ready = ADC_READY_NONE;
+static volatile uint8_t adc_latest;
 
 /**
  * @brief Configures continuous ten-channel ADC sampling through DMA channel zero.
@@ -97,6 +101,25 @@ bool platform_adc_read(AnalogSamples *samples) {
 }
 
 /**
+ * @brief Averages the active H-pattern shifter's longitudinal input.
+ *
+ * Accumulates two hundred reads from the newest completed scan buffer. A DMA completion may select
+ * a newer buffer between reads so the result follows the continuously sampled input.
+ *
+ * @param[in] secondary True for the secondary shifter port, false for the primary port.
+ * @return Arithmetic mean of the selected longitudinal input.
+ */
+uint16_t platform_adc_average_shifter_y(bool secondary) {
+    uint32_t total = 0;
+    uint8_t index = secondary ? ADC_SECONDARY_SHIFTER_Y_INDEX : ADC_PRIMARY_SHIFTER_Y_INDEX;
+    for (uint16_t sample = 0; sample < ADC_SHIFTER_AVERAGE_SAMPLE_COUNT; sample++) {
+        const volatile uint16_t *scan = adc_latest == 0 ? adc_primary : adc_secondary;
+        total += scan[index];
+    }
+    return (uint16_t)(total / ADC_SHIFTER_AVERAGE_SAMPLE_COUNT);
+}
+
+/**
  * @brief Publishes the DMA buffer completed by the latest ADC scan.
  *
  * Selects the inactive ping-pong buffer indicated by the DMA controller and clears the channel-zero
@@ -104,5 +127,6 @@ bool platform_adc_read(AnalogSamples *samples) {
  */
 void __attribute__((interrupt, no_auto_psv)) _DMA0Interrupt(void) {
     adc_ready = DMAPPSbits.PPST0 == 0 ? 1 : 0;
+    adc_latest = adc_ready;
     IFS0bits.DMA0IF = 0;
 }

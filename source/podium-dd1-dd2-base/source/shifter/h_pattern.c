@@ -114,6 +114,19 @@ static ShifterGear select_lower_row(const HPatternCalibration *calibration,
 }
 
 /**
+ * @brief Reports whether the next H-pattern classification sample is due.
+ *
+ * Opens the sampling boundary only after the strict ten-millisecond deadline has passed.
+ *
+ * @param[in] shifter H-pattern timing state.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @return True when the caller should acquire and classify a new sample.
+ */
+bool h_pattern_shifter_update_due(const HPatternShifter *shifter, uint32_t now_ms) {
+    return (int32_t)(now_ms - shifter->update_deadline_ms) > 0;
+}
+
+/**
  * @brief Classifies one calibrated H-pattern shifter sample with row hysteresis.
  *
  * Reclassifies after each strict ten-millisecond sampling deadline. Between deadlines it retains
@@ -132,7 +145,7 @@ ShifterGear h_pattern_shifter_update(HPatternShifter *shifter,
                                      const HPatternCalibration *calibration,
                                      uint16_t lateral_position, uint16_t longitudinal_position,
                                      uint32_t now_ms) {
-    if ((int32_t)(now_ms - shifter->update_deadline_ms) <= 0) {
+    if (!h_pattern_shifter_update_due(shifter, now_ms)) {
         return shifter->gear;
     }
     shifter->update_deadline_ms = now_ms + H_PATTERN_UPDATE_INTERVAL_MS;

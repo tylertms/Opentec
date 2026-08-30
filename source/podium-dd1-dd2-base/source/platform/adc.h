@@ -7,5 +7,6 @@
 
 void platform_adc_init(void);
 bool platform_adc_read(AnalogSamples *samples);
+uint16_t platform_adc_average_shifter_y(bool secondary);
 
 #endif

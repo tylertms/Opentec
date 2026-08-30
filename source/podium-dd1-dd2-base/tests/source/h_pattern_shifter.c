@@ -81,9 +81,13 @@ static void test_neutral_hysteresis(void) {
 static void test_reclassifies_after_strict_deadline(void) {
     HPatternShifter shifter = {0};
 
+    assert(!h_pattern_shifter_update_due(&shifter, 0));
+    assert(h_pattern_shifter_update_due(&shifter, 1));
     assert(h_pattern_shifter_update(&shifter, &calibration, 801, 701, 0) == SHIFTER_GEAR_NEUTRAL);
     assert(h_pattern_shifter_update(&shifter, &calibration, 801, 701, 1) == SHIFTER_GEAR_REVERSE);
     shifter.neutral_position = 0;
+    assert(!h_pattern_shifter_update_due(&shifter, 11));
+    assert(h_pattern_shifter_update_due(&shifter, 12));
     assert(h_pattern_shifter_update(&shifter, &calibration, 600, 701, 11) == SHIFTER_GEAR_REVERSE);
     assert(h_pattern_shifter_update(&shifter, &calibration, 600, 701, 12) == SHIFTER_GEAR_THIRD);
 }
