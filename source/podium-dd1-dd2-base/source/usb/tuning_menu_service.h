@@ -10,7 +10,7 @@
 /** @brief Stable one-based page identifiers used by the tuning-menu protocol. */
 typedef enum {
     USB_TUNING_MENU_PAGE_ROOT = 1,
-    USB_TUNING_MENU_PAGE_WHEEL_INPUT = 2,
+    USB_TUNING_MENU_PAGE_SYSTEM_INFORMATION = 2,
     USB_TUNING_MENU_PAGE_AUXILIARY_POSITION = 3,
     USB_TUNING_MENU_PAGE_FORCE_FEEDBACK = 4,
     USB_TUNING_MENU_PAGE_WHEEL_ACCESSORY = 5,

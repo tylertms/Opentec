@@ -14,6 +14,7 @@
 #include "display/identity_page.h"
 #include "display/notice.h"
 #include "display/prompt.h"
+#include "display/system_information_page.h"
 #include "display/tuning_page.h"
 #include "force_feedback/command.h"
 #include "force_feedback/output_enable.h"
@@ -338,6 +339,10 @@ static SystemNoticeKind local_display_rendered_notice_kind;
 static uint8_t local_display_tuning_revision;
 static uint8_t local_display_rendered_tuning_revision;
 static uint8_t wheel_bite_point_display_percent;
+static DisplaySystemInformation local_display_system_information;
+static DisplaySystemInformation local_display_rendered_system_information;
+static uint32_t local_display_system_information_title_deadline_ms;
+static bool local_display_system_information_content_active;
 
 typedef enum {
     USB_VENDOR_RESPONSE_NONE,
@@ -373,6 +378,8 @@ enum {
     LOCAL_DISPLAY_PAGE_SYSTEM_NOTICE = 5,
     LOCAL_DISPLAY_PAGE_TUNING = 6,
     LOCAL_DISPLAY_PAGE_IDENTITY = 7,
+    LOCAL_DISPLAY_PAGE_SYSTEM_INFORMATION = 8,
+    LOCAL_DISPLAY_SYSTEM_INFORMATION_TITLE_MS = 1000,
     USB_DISCONNECT_STATUS_CODE = 0x1c,
     TUNING_MENU_RESET_EVENT_CODE = 1,
     WHEEL_CENTER_CALIBRATED_EVENT_CODE = 2,
@@ -3086,30 +3093,106 @@ static void apply_force_output_prompt_action(ForceOutputEnableAction action) {
 }
 
 /**
+ * @brief Builds the local system-information presentation.
+ *
+ * Collects the base identity straps, motor identity and telemetry, and wheel quick-release status
+ * used by the three diagnostic columns.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @return Current system-information values.
+ */
+static DisplaySystemInformation build_system_information(uint32_t now_ms) {
+    DisplaySystemInformation information = {
+        .main_hardware = board_identity.mode_bits,
+        .main_runtime_seconds = now_ms / 1000u,
+    };
+    const MotorIdentity *identity = motor_probe_identity(&motor_probe);
+    if (identity != NULL) {
+        for (uint8_t index = 0; index < sizeof(information.motor_firmware); index++) {
+            information.motor_firmware[index] = identity->version[index];
+        }
+        information.motor_hardware = identity->model;
+    }
+    if (motor_tuning_ready) {
+        const MotorTelemetry *telemetry = motor_telemetry_service_value(&motor_telemetry_service);
+        information.motor_accessory_type_available = telemetry->accessory_type_valid;
+        information.motor_accessory_type = telemetry->accessory_type;
+        if (telemetry->runtime_valid) {
+            information.motor_runtime_seconds = telemetry->runtime_seconds;
+        }
+    }
+    const WheelStatusSnapshot *quick_release = wheel_status_service_snapshot(&wheel_status_service);
+    information.quick_release_firmware = quick_release->status_high;
+    information.quick_release_hardware = quick_release->status_low;
+    information.quick_release_runtime_seconds = quick_release->runtime_seconds;
+    return information;
+}
+
+/**
+ * @brief Compares two system-information presentations.
+ *
+ * Tests every rendered version, capability, and operating-time field so unchanged content does not
+ * trigger a display transfer.
+ *
+ * @param[in] left First presentation to compare.
+ * @param[in] right Second presentation to compare.
+ * @return True when both presentations render the same values.
+ */
+static bool system_information_equal(const DisplaySystemInformation *left,
+                                     const DisplaySystemInformation *right) {
+    return left->main_hardware == right->main_hardware &&
+           left->main_runtime_seconds == right->main_runtime_seconds &&
+           left->motor_firmware[0] == right->motor_firmware[0] &&
+           left->motor_firmware[1] == right->motor_firmware[1] &&
+           left->motor_firmware[2] == right->motor_firmware[2] &&
+           left->motor_hardware == right->motor_hardware &&
+           left->motor_accessory_type_available == right->motor_accessory_type_available &&
+           left->motor_accessory_type == right->motor_accessory_type &&
+           left->motor_runtime_seconds == right->motor_runtime_seconds &&
+           left->quick_release_firmware == right->quick_release_firmware &&
+           left->quick_release_hardware == right->quick_release_hardware &&
+           left->quick_release_runtime_seconds == right->quick_release_runtime_seconds;
+}
+
+/**
  * @brief Updates the local display when its active page changes.
  *
  * Gives motor-originated notices priority over the persistent torque-disabled notice,
  * Torque Key prompt, force-output prompt, paddle bite-point adjustment, and local tuning page.
- * Changes to active notice content, percentage, or tuning presentation redraw their page, and
- * leaving all temporary display owners restores the base identity page.
+ * The persistent diagnostic selection presents its system-information title for one second and
+ * refreshes changed component values after the title closes. Leaving all temporary display owners
+ * restores the selected diagnostic page.
  */
 static void service_local_display(void) {
+    uint32_t now_ms = platform_time_ms();
     bool bite_point_visible =
         wheel_service_bite_point_adjustment(&wheel_service, &wheel_bite_point_display_percent);
+    bool system_information_selected =
+        usb_tuning_menu_service.active_page == USB_TUNING_MENU_PAGE_SYSTEM_INFORMATION;
     uint8_t page = system_notice.kind != SYSTEM_NOTICE_NONE ? LOCAL_DISPLAY_PAGE_SYSTEM_NOTICE
                    : torque_disabled_notice_visible         ? LOCAL_DISPLAY_PAGE_TORQUE_DISABLED
                    : torque_key_prompt_visible              ? LOCAL_DISPLAY_PAGE_TORQUE_KEY_PROMPT
                    : force_output_prompt_visible            ? LOCAL_DISPLAY_PAGE_FORCE_OUTPUT_PROMPT
                    : bite_point_visible                     ? LOCAL_DISPLAY_PAGE_BITE_POINT
                    : tuning_menu.selected_entry < TUNING_ENTRY_COUNT ? LOCAL_DISPLAY_PAGE_TUNING
-                                                                     : LOCAL_DISPLAY_PAGE_IDENTITY;
+                   : system_information_selected ? LOCAL_DISPLAY_PAGE_SYSTEM_INFORMATION
+                                                 : LOCAL_DISPLAY_PAGE_IDENTITY;
+    local_display_system_information = build_system_information(now_ms);
+    bool system_information_changed =
+        page == LOCAL_DISPLAY_PAGE_SYSTEM_INFORMATION && page == local_display_page &&
+        ((!local_display_system_information_content_active &&
+          platform_time_reached(now_ms, local_display_system_information_title_deadline_ms)) ||
+         (local_display_system_information_content_active &&
+          !system_information_equal(&local_display_system_information,
+                                    &local_display_rendered_system_information)));
     if (page == local_display_page &&
         (page != LOCAL_DISPLAY_PAGE_BITE_POINT ||
          wheel_bite_point_display_percent == local_display_rendered_bite_point_percent) &&
         (page != LOCAL_DISPLAY_PAGE_SYSTEM_NOTICE ||
          system_notice.kind == local_display_rendered_notice_kind) &&
         (page != LOCAL_DISPLAY_PAGE_TUNING ||
-         local_display_tuning_revision == local_display_rendered_tuning_revision)) {
+         local_display_tuning_revision == local_display_rendered_tuning_revision) &&
+        !system_information_changed) {
         return;
     }
 
@@ -3124,6 +3207,18 @@ static void service_local_display(void) {
     } else if (page == LOCAL_DISPLAY_PAGE_TUNING) {
         (void)display_tuning_page_render(display_framebuffer, &tuning_menu,
                                          &base_settings.tuning_profiles);
+    } else if (page == LOCAL_DISPLAY_PAGE_SYSTEM_INFORMATION) {
+        if (page != local_display_page) {
+            display_system_information_page_render_title(display_framebuffer);
+            local_display_system_information_title_deadline_ms =
+                now_ms + LOCAL_DISPLAY_SYSTEM_INFORMATION_TITLE_MS;
+            local_display_system_information_content_active = false;
+        } else {
+            display_system_information_page_render(display_framebuffer,
+                                                   &local_display_system_information);
+            local_display_rendered_system_information = local_display_system_information;
+            local_display_system_information_content_active = true;
+        }
     } else if (page == LOCAL_DISPLAY_PAGE_IDENTITY) {
         display_identity_page_render(display_framebuffer, board_identity.variant);
     } else {

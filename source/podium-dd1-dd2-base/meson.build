@@ -14,6 +14,7 @@ display_framebuffer_sources = files('source/display/framebuffer.c')
 display_identity_page_sources = files('source/display/identity_page.c')
 display_notice_sources = files('source/display/notice.c')
 display_prompt_sources = files('source/display/prompt.c')
+display_system_information_page_sources = files('source/display/system_information_page.c')
 display_text_sources = files('source/display/text.c')
 display_tuning_page_sources = files('source/display/tuning_page.c')
 force_feedback_command_sources = files('source/force_feedback/command.c')
@@ -248,6 +249,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'display-identity-page': 'source/display/identity_page.c',
     'display-notice': 'source/display/notice.c',
     'display-prompt': 'source/display/prompt.c',
+    'display-system-information-page': 'source/display/system_information_page.c',
     'display-text': 'source/display/text.c',
     'display-tuning-page': 'source/display/tuning_page.c',
     'force-feedback-command': 'source/force_feedback/command.c',
@@ -607,6 +609,16 @@ if not meson.is_cross_build()
     'base-display-prompt-test',
     'tests/source/display_prompt.c',
     display_prompt_sources,
+    display_text_sources,
+    display_framebuffer_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  display_system_information_page_test = executable(
+    'base-display-system-information-page-test',
+    'tests/source/display_system_information_page.c',
+    display_system_information_page_sources,
     display_text_sources,
     display_framebuffer_sources,
     build_by_default: false,
@@ -2521,6 +2533,11 @@ if not meson.is_cross_build()
   test('base-display-identity-page', display_identity_page_test, suite: ['base', 'display'])
   test('base-display-notice', display_notice_test, suite: ['base', 'display'])
   test('base-display-prompt', display_prompt_test, suite: ['base', 'display'])
+  test(
+    'base-display-system-information-page',
+    display_system_information_page_test,
+    suite: ['base', 'display'],
+  )
   test(
     'base-display-tuning-page',
     display_tuning_page_test,
