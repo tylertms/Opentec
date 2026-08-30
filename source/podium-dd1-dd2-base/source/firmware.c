@@ -56,6 +56,7 @@
 #include "platform/usb.h"
 #include "profile/bank.h"
 #include "profile/tuning.h"
+#include "profile/tuning_interaction.h"
 #include "secure_element/authentication.h"
 #include "secure_element/session.h"
 #include "serial/service.h"
@@ -236,6 +237,9 @@ static uint8_t wheel_adapter_setup_selection;
 static uint8_t wheel_adapter_display_state;
 static UsbTuningMenuService usb_tuning_menu_service;
 static UsbTuningProfileService usb_tuning_profile_service;
+static TuningInteraction tuning_interaction;
+static TuningInteractionInput tuning_interaction_input;
+static WheelInputSnapshot tuning_interaction_snapshot;
 static UsbDiagnosticSnapshot usb_diagnostic_snapshot;
 static UsbDeviceOutputReport usb_device_output_report;
 static UsbConnectionMonitor usb_connection_monitor;
@@ -935,6 +939,7 @@ static void initialize_usb_command_bridge(void) {
     wheel_command_forwarder_init(&wheel_command_forwarder);
     usb_tuning_menu_service_init(&usb_tuning_menu_service);
     usb_tuning_profile_service_init(&usb_tuning_profile_service);
+    tuning_interaction_init(&tuning_interaction);
     usb_motor_acknowledgement_ready = false;
     xbox_mode_startup_attempted = false;
     xbox_mode_startup_finished = false;
@@ -2406,6 +2411,31 @@ static void service_usb_output(void) {
 }
 
 /**
+ * @brief Services wheel-side pedal-adjustment shortcuts.
+ *
+ * Feeds the tuning interaction with normalized wheel buttons, mode, and the higher-priority adapter
+ * profile shortcut. An accepted request is queued only while the V4 pedal session is active.
+ */
+static void service_tuning_interaction(void) {
+    const uint8_t *buttons = wheel_service_buttons(&wheel_service);
+    const WheelAdapterInput *adapter = wheel_service_adapter(&wheel_service);
+    bool available = wheel_service_input_snapshot(&wheel_service, &tuning_interaction_snapshot);
+    tuning_interaction_input = (TuningInteractionInput){
+        .wheel_mode = wheel_service_mode(&wheel_service),
+        .primary_buttons = (uint16_t)buttons[0] | (uint16_t)buttons[1] << 8,
+        .secondary_buttons = available ? tuning_interaction_snapshot.secondary_buttons : 0,
+        .adapter_profile_shortcut =
+            adapter->connected && adapter->mode == 1 && (adapter->buttons[1] & 1u) != 0,
+        .available = available,
+    };
+    if (tuning_interaction_requests_pedal_adjustment(&tuning_interaction,
+                                                     &tuning_interaction_input) &&
+        pedal_service_adjustment_probe_available(&pedal_service)) {
+        pedal_service_request_adjustment_probe(&pedal_service);
+    }
+}
+
+/**
  * @brief Builds and submits the current USB input report.
  *
  * Combines calibrated motor position, attached-wheel controls and rotary selectors, shifter
@@ -3096,6 +3126,7 @@ int main(void) {
         }
         wheel_service_run(&wheel_service, now_ms, !serial_command_waiting());
         wheel_service_update_interface_mode_gate(&wheel_service, now_ms);
+        service_tuning_interaction();
         if (wheel_service_take_bite_point(&wheel_service, &wheel_adjusted_bite_point_percent)) {
             wheel_steering_limit_command = (WheelSteeringLimitCommand){
                 .percent = wheel_adjusted_bite_point_percent,
