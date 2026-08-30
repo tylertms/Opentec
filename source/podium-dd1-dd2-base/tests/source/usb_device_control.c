@@ -56,21 +56,22 @@ static void test_new_setup_cancels_pending_change(void) {
     assert(device.address == 0);
 }
 
-static void test_configuration_changes_after_status_stage(void) {
+static void test_configuration_changes_during_setup(void) {
     UsbDeviceControl device;
     usb_device_control_init(&device, true, false);
+    device.alternate_interfaces[0] = 3;
+    device.alternate_interfaces[1] = 4;
     UsbControlRequest control = request(USB_CONTROL_SET_CONFIGURATION);
-    control.value = 1;
+    control.value = 0x0107;
 
     usb_device_control_handle(&device, &control, &catalog, false);
-    assert(!usb_device_control_configured(&device));
-    usb_device_control_complete(&device);
     assert(usb_device_control_configured(&device));
+    assert(device.alternate_interfaces[0] == 0 && device.alternate_interfaces[1] == 0);
 
     control = request(USB_CONTROL_GET_CONFIGURATION);
     UsbControlTransfer transfer = usb_device_control_handle(&device, &control, &catalog, false);
     assert(transfer.kind == USB_CONTROL_TRANSFER_VALUE);
-    assert(transfer.value == 1 && transfer.length == 1);
+    assert(transfer.value == 7 && transfer.length == 1);
 }
 
 static void test_selects_and_clips_descriptors(void) {
@@ -251,7 +252,7 @@ static void test_endpoint_halt_feature(void) {
 int main(void) {
     test_address_changes_after_status_stage();
     test_new_setup_cancels_pending_change();
-    test_configuration_changes_after_status_stage();
+    test_configuration_changes_during_setup();
     test_selects_and_clips_descriptors();
     test_hid_state_and_report_handoff();
     test_tracks_both_alternate_interfaces();

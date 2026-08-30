@@ -108,6 +108,8 @@ static UsbXboxGipService xbox_service;
 static UsbXboxGipServiceIdentity xbox_service_identity;
 static UsbXboxGipSessionAction xbox_session_actions;
 
+static void apply_configuration(void);
+
 /** @brief Storage used only by PlayStation USB mode. */
 typedef struct {
     UsbPlaystationAuthentication authentication;
@@ -713,6 +715,10 @@ static void handle_setup(void) {
     control_transfer = usb_device_control_handle(&device_control, &control_request,
                                                  &descriptor_catalog, endpoint_halted);
     if (control_transfer.kind == USB_CONTROL_TRANSFER_ACKNOWLEDGE &&
+        control_request.kind == USB_CONTROL_SET_CONFIGURATION) {
+        apply_configuration();
+    }
+    if (control_transfer.kind == USB_CONTROL_TRANSFER_ACKNOWLEDGE &&
         control_request.recipient == USB_RECIPIENT_ENDPOINT &&
         (control_request.kind == USB_CONTROL_SET_FEATURE ||
          control_request.kind == USB_CONTROL_CLEAR_FEATURE)) {
@@ -774,35 +780,42 @@ static void configure_updater_endpoints(void) {
 }
 
 /**
- * @brief Applies a completed USB address or configuration change.
+ * @brief Applies the active USB configuration to endpoints.
  *
- * Commits the pending control request, updates the device address, and configures or removes the
- * endpoint set selected by the active operating mode.
+ * Configures the endpoint set for any nonzero selection and removes the active mode's endpoints
+ * when configuration zero is selected.
+ */
+static void apply_configuration(void) {
+    if (usb_device_control_configured(&device_control)) {
+        if (operating_mode == USB_OPERATING_MODE_UPDATER) {
+            configure_updater_endpoints();
+        } else {
+            configure_application_endpoints();
+        }
+    } else {
+        if (operating_mode == USB_OPERATING_MODE_UPDATER) {
+            platform_usb_unconfigure_endpoint(USB_UPDATER_NOTIFICATION_ENDPOINT);
+            platform_usb_unconfigure_endpoint(USB_UPDATER_DATA_ENDPOINT);
+        } else {
+            platform_usb_unconfigure_endpoint(USB_PRIMARY_ENDPOINT);
+            if (operating_mode == USB_OPERATING_MODE_PLAYSTATION) {
+                platform_usb_unconfigure_endpoint(USB_PLAYSTATION_OUTPUT_ENDPOINT);
+                platform_usb_unconfigure_endpoint(USB_PLAYSTATION_INPUT_ENDPOINT);
+            }
+        }
+    }
+}
+
+/**
+ * @brief Applies a completed USB address change.
+ *
+ * Commits the pending address after the endpoint-zero status stage and updates the controller.
  */
 static void complete_control_change(void) {
     UsbDevicePendingChange pending_change = device_control.pending_change;
     usb_device_control_complete(&device_control);
     if (pending_change == USB_DEVICE_PENDING_ADDRESS) {
         platform_usb_set_address(device_control.address);
-    } else if (pending_change == USB_DEVICE_PENDING_CONFIGURATION) {
-        if (usb_device_control_configured(&device_control)) {
-            if (operating_mode == USB_OPERATING_MODE_UPDATER) {
-                configure_updater_endpoints();
-            } else {
-                configure_application_endpoints();
-            }
-        } else {
-            if (operating_mode == USB_OPERATING_MODE_UPDATER) {
-                platform_usb_unconfigure_endpoint(USB_UPDATER_NOTIFICATION_ENDPOINT);
-                platform_usb_unconfigure_endpoint(USB_UPDATER_DATA_ENDPOINT);
-            } else {
-                platform_usb_unconfigure_endpoint(USB_PRIMARY_ENDPOINT);
-                if (operating_mode == USB_OPERATING_MODE_PLAYSTATION) {
-                    platform_usb_unconfigure_endpoint(USB_PLAYSTATION_OUTPUT_ENDPOINT);
-                    platform_usb_unconfigure_endpoint(USB_PLAYSTATION_INPUT_ENDPOINT);
-                }
-            }
-        }
     }
 }
 

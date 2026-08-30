@@ -43,7 +43,6 @@ typedef struct {
 typedef enum {
     USB_DEVICE_PENDING_NONE,
     USB_DEVICE_PENDING_ADDRESS,
-    USB_DEVICE_PENDING_CONFIGURATION,
 } UsbDevicePendingChange;
 
 typedef struct {

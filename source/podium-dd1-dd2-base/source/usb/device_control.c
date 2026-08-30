@@ -186,8 +186,10 @@ UsbControlTransfer usb_device_control_handle(UsbDeviceControl *device,
     case USB_CONTROL_GET_CONFIGURATION:
         return value(device->configuration, 1);
     case USB_CONTROL_SET_CONFIGURATION:
-        device->pending_change = USB_DEVICE_PENDING_CONFIGURATION;
-        device->pending_value = (uint8_t)request->value;
+        device->configuration = (uint8_t)request->value;
+        for (uint8_t index = 0; index < USB_DEVICE_INTERFACE_COUNT; index++) {
+            device->alternate_interfaces[index] = 0;
+        }
         return acknowledge();
     case USB_CONTROL_GET_INTERFACE:
         return request->index < USB_DEVICE_INTERFACE_COUNT
@@ -218,14 +220,20 @@ UsbControlTransfer usb_device_control_handle(UsbDeviceControl *device,
     }
 }
 
+/**
+ * @brief Commits a pending USB address.
+ *
+ * Applies the retained address after the status stage, returns configuration state to zero for
+ * address zero, and clears the pending transition.
+ *
+ * @param[in,out] device Current USB device state.
+ */
 void usb_device_control_complete(UsbDeviceControl *device) {
     if (device->pending_change == USB_DEVICE_PENDING_ADDRESS) {
         device->address = device->pending_value;
         if (device->address == 0) {
             device->configuration = 0;
         }
-    } else if (device->pending_change == USB_DEVICE_PENDING_CONFIGURATION) {
-        device->configuration = device->pending_value;
     }
     device->pending_change = USB_DEVICE_PENDING_NONE;
     device->pending_value = 0;

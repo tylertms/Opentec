@@ -108,8 +108,8 @@ static bool classify_standard(const UsbSetupPacket *packet, UsbControlRequest *r
         }
         break;
     case USB_REQUEST_SET_CONFIGURATION:
-        if (packet->request_type == USB_RECIPIENT_DEVICE && packet->value <= 1 &&
-            packet->index == 0 && packet->length == 0) {
+        if (packet->request_type == USB_RECIPIENT_DEVICE && packet->index == 0 &&
+            packet->length == 0) {
             return set_request(packet, request, USB_CONTROL_SET_CONFIGURATION);
         }
         break;

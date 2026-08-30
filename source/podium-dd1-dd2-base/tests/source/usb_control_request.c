@@ -35,7 +35,7 @@ static void test_classifies_descriptor_request(void) {
 
 static void test_classifies_enumeration_state_changes(void) {
     const uint8_t address_data[] = {0x00, 0x05, 0x2a, 0x00, 0x00, 0x00, 0x00, 0x00};
-    const uint8_t configuration_data[] = {0x00, 0x09, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00};
+    const uint8_t configuration_data[] = {0x00, 0x09, 0x07, 0x01, 0x00, 0x00, 0x00, 0x00};
     UsbControlRequest request;
     UsbSetupPacket packet = decode(address_data);
     assert(usb_control_request_classify(&packet, &request));
@@ -45,7 +45,7 @@ static void test_classifies_enumeration_state_changes(void) {
     packet = decode(configuration_data);
     assert(usb_control_request_classify(&packet, &request));
     assert(request.kind == USB_CONTROL_SET_CONFIGURATION);
-    assert(request.value == 1);
+    assert(request.value == 0x0107);
 }
 
 static void test_classifies_both_interface_states(void) {

@@ -217,14 +217,13 @@ static void test_enumerates_podium_device(void) {
     receive_count = 0;
     push_setup(set_configuration);
     usb_device_service();
-    assert(!usb_device_configured());
-    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 0, 0, 0);
-    usb_device_service();
     assert(usb_device_configured());
     assert(hid_configured);
     assert(receive_count == 2);
     assert(received[0].endpoint == 1 && received[0].length == 64 && !received[0].data_one);
     assert(received[1].endpoint == 1 && received[1].length == 64 && received[1].data_one);
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 0, 0, 0);
+    usb_device_service();
 }
 
 static void test_returns_xbox_security_descriptor(void) {
