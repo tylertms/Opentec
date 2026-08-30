@@ -3090,7 +3090,7 @@ static void service_analog_input(uint32_t now_ms) {
             base_settings_persistence_request_save(&settings_persistence, now_ms);
         }
 
-        if (base_settings.h_pattern_shifter.calibrated) {
+        if (base_settings.h_pattern_shifter.calibrated && !h_pattern_calibration_service.active) {
             h_pattern_shifter_update(&h_pattern_shifter,
                                      &base_settings.h_pattern_shifter.calibration, lateral_position,
                                      longitudinal_position, now_ms);

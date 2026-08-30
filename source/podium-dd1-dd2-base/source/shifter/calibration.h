@@ -61,6 +61,7 @@ typedef struct {
 typedef struct {
     HPatternCalibrationSession session;
     uint32_t started_ms;
+    uint32_t finish_deadline_ms;
     uint8_t wheel_mode;
     bool active;
     bool advance_pending;

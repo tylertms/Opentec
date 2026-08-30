@@ -12,6 +12,7 @@ enum {
     H_PATTERN_LEGACY_SHIFTER_PROMPT_MS = 2000,
     H_PATTERN_LEGACY_CALIBRATION_PROMPT_MS = 4000,
     H_PATTERN_EXTENDED_ENTRY_DELAY_MS = 5000,
+    H_PATTERN_EXTENDED_COMPLETION_MS = 1000,
     SEVENTH_BOUNDARY_MINIMUM_SPAN = 5,
     SEVENTH_BOUNDARY_FALLBACK_OFFSET = 20,
 };
@@ -205,7 +206,8 @@ bool h_pattern_calibration_service_start_if_required(HPatternCalibrationService 
  *
  * Legacy wheel modes show the shifter and calibration labels for two seconds each before the first
  * position. Extended mode reserves five seconds for its separate presentation path. Captures are
- * accepted only after the corresponding entry interval expires.
+ * accepted only after the corresponding entry interval expires. Completion returns no prompt
+ * while calibration ownership waits for release.
  *
  * @param[in] service Calibration lifecycle state.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -214,6 +216,9 @@ bool h_pattern_calibration_service_start_if_required(HPatternCalibrationService 
 HPatternCalibrationPrompt
 h_pattern_calibration_service_prompt(const HPatternCalibrationService *service, uint32_t now_ms) {
     if (service == NULL || !service->active) {
+        return H_PATTERN_CALIBRATION_PROMPT_NONE;
+    }
+    if (service->session.next_position == H_PATTERN_CALIBRATION_COMPLETE) {
         return H_PATTERN_CALIBRATION_PROMPT_NONE;
     }
 
@@ -252,8 +257,9 @@ void h_pattern_calibration_service_set_advance_input(HPatternCalibrationService 
  *
  * Ignores samples until the entry presentation completes and either the attached-wheel input or a
  * host advance is active. After each capture, waits for the attached-wheel input to be released
- * before accepting the next position. A successful seventh-gear capture closes the session and
- * enables the new settings.
+ * before accepting the next position. A successful seventh-gear capture enables the new settings,
+ * then retains calibration ownership until input release. Extended mode also retains ownership
+ * through a strict one-second completion deadline.
  *
  * @param[in,out] service Calibration lifecycle state.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -267,9 +273,19 @@ HPatternCalibrationResult h_pattern_calibration_service_capture(HPatternCalibrat
                                                                 uint16_t lateral_position,
                                                                 uint16_t longitudinal_position,
                                                                 HPatternSettings *settings) {
-    if (service == NULL || settings == NULL ||
-        h_pattern_calibration_service_prompt(service, now_ms) !=
-            H_PATTERN_CALIBRATION_PROMPT_POSITION) {
+    if (service == NULL || settings == NULL) {
+        return H_PATTERN_CALIBRATION_NO_CAPTURE;
+    }
+    if (service->active && service->session.next_position == H_PATTERN_CALIBRATION_COMPLETE) {
+        bool completion_elapsed = service->wheel_mode != H_PATTERN_EXTENDED_WHEEL_MODE ||
+                                  (int32_t)(now_ms - service->finish_deadline_ms) > 0;
+        if (!service->advance_input_active && completion_elapsed) {
+            service->active = false;
+        }
+        return H_PATTERN_CALIBRATION_NO_CAPTURE;
+    }
+    if (h_pattern_calibration_service_prompt(service, now_ms) !=
+        H_PATTERN_CALIBRATION_PROMPT_POSITION) {
         return H_PATTERN_CALIBRATION_NO_CAPTURE;
     }
 
@@ -287,7 +303,7 @@ HPatternCalibrationResult h_pattern_calibration_service_capture(HPatternCalibrat
     HPatternCalibrationResult result =
         capture_position(&service->session, lateral_position, longitudinal_position, settings);
     if (result == H_PATTERN_CALIBRATION_COMPLETED) {
-        service->active = false;
+        service->finish_deadline_ms = now_ms + H_PATTERN_EXTENDED_COMPLETION_MS;
     } else if (result == H_PATTERN_CALIBRATION_CAPTURED) {
         service->release_required = true;
     }

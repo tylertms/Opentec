@@ -177,7 +177,7 @@ static void test_calibration_capture_sequence(void) {
     assert(!settings.calibrated);
     assert(capture(&service, &settings, 100, 700) == H_PATTERN_CALIBRATION_COMPLETED);
 
-    assert(!service.active);
+    assert(service.active);
     assert(service.session.next_position == H_PATTERN_CALIBRATION_COMPLETE);
     assert(settings.calibrated);
     assert(settings.calibration.reverse_first_boundary == 800);
@@ -189,6 +189,31 @@ static void test_calibration_capture_sequence(void) {
     assert(settings.calibration.upper_row_threshold == 700);
     assert(settings.calibration.lower_row_threshold == 300);
     assert(capture(&service, &settings, 0, 0) == H_PATTERN_CALIBRATION_NO_CAPTURE);
+    assert(!service.active);
+}
+
+static void test_extended_completion_waits_for_release_and_deadline(void) {
+    HPatternCalibrationService service = {
+        .session = {.next_position = H_PATTERN_CALIBRATION_SEVENTH},
+        .wheel_mode = 0x1c,
+        .active = true,
+        .advance_input_active = true,
+    };
+    HPatternSettings settings = {0};
+
+    assert(h_pattern_calibration_service_capture(&service, 5001, 100, 700, &settings) ==
+           H_PATTERN_CALIBRATION_COMPLETED);
+    assert(service.active);
+    assert(h_pattern_calibration_service_prompt(&service, 5001) ==
+           H_PATTERN_CALIBRATION_PROMPT_NONE);
+
+    h_pattern_calibration_service_set_advance_input(&service, false);
+    assert(h_pattern_calibration_service_capture(&service, 6001, 0, 0, &settings) ==
+           H_PATTERN_CALIBRATION_NO_CAPTURE);
+    assert(service.active);
+    assert(h_pattern_calibration_service_capture(&service, 6002, 0, 0, &settings) ==
+           H_PATTERN_CALIBRATION_NO_CAPTURE);
+    assert(!service.active);
 }
 
 int main(void) {
@@ -199,5 +224,6 @@ int main(void) {
     test_entry_prompts_and_capture_delay();
     test_requires_release_between_physical_captures();
     test_calibration_capture_sequence();
+    test_extended_completion_waits_for_release_and_deadline();
     return 0;
 }
