@@ -134,19 +134,22 @@ static void render_effect_level(WheelDisplayOutput *output, uint8_t value, uint8
 /**
  * @brief Renders the selected setup value.
  *
- * Shows the automatic-setup label for slot zero and the one-based custom setup number for the
- * remaining slots.
+ * Shows the automatic setup, the Standard-mode custom setup, or the numbered Advanced setup.
  *
  * @param[in,out] output Attached-wheel output receiving the setup value.
- * @param[in] selected_slot Zero-based selected setup slot.
+ * @param[in] bank Current tuning profile bank.
  */
-static void render_setup(WheelDisplayOutput *output, uint8_t selected_slot) {
-    if (selected_slot == 0) {
+static void render_setup(WheelDisplayOutput *output, const TuningProfileBank *bank) {
+    if (bank->selected_slot == 0) {
         render_text(output, "A_S");
         return;
     }
+    if (bank->standard_mode_enabled && bank->selected_slot == 1) {
+        render_text(output, "C_S");
+        return;
+    }
     render_text(output, "S_ ");
-    output->glyphs[2] = character_glyph((char)('0' + selected_slot));
+    output->glyphs[2] = character_glyph((char)('0' + bank->selected_slot));
 }
 
 /**
@@ -186,7 +189,7 @@ static void render_value(WheelDisplayOutput *output, TuningEntry entry,
                          const TuningProfileBank *bank, const TuningProfile *profile) {
     switch (entry) {
     case TUNING_ENTRY_SETUP:
-        render_setup(output, bank->selected_slot);
+        render_setup(output, bank);
         break;
     case TUNING_ENTRY_SENSITIVITY:
         render_sensitivity(output, profile);

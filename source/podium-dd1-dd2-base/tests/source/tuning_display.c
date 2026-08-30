@@ -37,12 +37,20 @@ static void renders_entry_labels_from_the_local_catalog(void) {
     assert_glyphs(&output, 0x78, 0x73, 0x39);
 }
 
-static void renders_automatic_and_numbered_setups(void) {
+static void renders_standard_and_advanced_setups(void) {
     TuningProfileBank bank;
     tuning_profile_bank_defaults(&bank);
 
     WheelDisplayOutput output = render(&bank, TUNING_ENTRY_SETUP, TUNING_MENU_VIEW_VALUE);
     assert_glyphs(&output, 0x77, 0x08, 0x6d);
+
+    bank.selected_slot = 1;
+    output = render(&bank, TUNING_ENTRY_SETUP, TUNING_MENU_VIEW_VALUE);
+    assert_glyphs(&output, 0x39, 0x08, 0x6d);
+
+    bank.standard_mode_enabled = false;
+    output = render(&bank, TUNING_ENTRY_SETUP, TUNING_MENU_VIEW_VALUE);
+    assert_glyphs(&output, 0x6d, 0x08, 0x06);
 
     bank.selected_slot = 5;
     output = render(&bank, TUNING_ENTRY_SETUP, TUNING_MENU_VIEW_VALUE);
@@ -127,7 +135,7 @@ static void rejects_a_closed_or_invalid_presentation(void) {
 
 int main(void) {
     renders_entry_labels_from_the_local_catalog();
-    renders_automatic_and_numbered_setups();
+    renders_standard_and_advanced_setups();
     renders_automatic_and_concrete_sensitivity();
     renders_disabled_scaled_and_limit_values();
     renders_modes_flags_and_curves();
