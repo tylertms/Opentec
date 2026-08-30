@@ -27,10 +27,32 @@ typedef union {
     uint32_t bits;
 } OperationValue;
 
+/**
+ * @brief Creates a script-operation result.
+ *
+ * Records the offset following an operation together with its acceptance state.
+ *
+ * @param[in] cursor Offset following the operation.
+ * @param[in] valid true when the operation was accepted; otherwise false.
+ * @return An operation result containing the supplied cursor and state.
+ */
 static ForceFeedbackScriptDestinationResult operation_result(size_t cursor, bool valid) {
     return (ForceFeedbackScriptDestinationResult){.cursor = cursor, .valid = valid};
 }
 
+/**
+ * @brief Writes an operation result through an encoded destination.
+ *
+ * Delegates destination decoding and optional state changes to the operand layer.
+ *
+ * @param[in,out] runtime Script state selected by the destination.
+ * @param[in] script Complete encoded script.
+ * @param[in] length Number of available script bytes.
+ * @param[in] cursor Offset of the destination.
+ * @param[in] value Raw result value.
+ * @param[in] commit true to store the value; false to consume without writing.
+ * @return The following cursor and destination acceptance state.
+ */
 static ForceFeedbackScriptDestinationResult write_value(ForceFeedbackScriptRuntime *runtime,
                                                         const uint8_t *script, size_t length,
                                                         size_t cursor, uint32_t value,
@@ -38,6 +60,18 @@ static ForceFeedbackScriptDestinationResult write_value(ForceFeedbackScriptRunti
     return force_feedback_script_operand_write(runtime, script, length, cursor, value, commit);
 }
 
+/**
+ * @brief Resolves the sample-table base encoded by an operand.
+ *
+ * Direct sample operands contribute their encoded index instead of the current sample value. Other
+ * operands retain their normally resolved value.
+ *
+ * @param[in] runtime Script state referenced by the operand.
+ * @param[in] script Complete encoded script.
+ * @param[in] length Number of available script bytes.
+ * @param[in] cursor Offset of the base operand.
+ * @return The resolved base, following cursor, and validity state.
+ */
 static ForceFeedbackScriptOperandResult read_sample_base(const ForceFeedbackScriptRuntime *runtime,
                                                          const uint8_t *script, size_t length,
                                                          size_t cursor) {
@@ -55,11 +89,33 @@ static ForceFeedbackScriptOperandResult read_sample_base(const ForceFeedbackScri
     return result;
 }
 
+/**
+ * @brief Identifies arithmetic operations that consume two source operands.
+ *
+ * Binary arithmetic covers add through modulo and vector magnitude through multiply-by-sine.
+ *
+ * @param[in] operation Encoded arithmetic operation.
+ * @return true when two source operands are required; otherwise false.
+ */
 static bool math_is_binary(uint8_t operation) {
     return operation <= FORCE_FEEDBACK_SCRIPT_MATH_MODULO ||
            operation >= FORCE_FEEDBACK_SCRIPT_MATH_VECTOR_MAGNITUDE;
 }
 
+/**
+ * @brief Executes one arithmetic operation.
+ *
+ * Decodes the required source operands, evaluates the arithmetic operation, and consumes or writes
+ * its destination.
+ *
+ * @param[in,out] runtime Script state referenced by operands and the destination.
+ * @param[in] operation Encoded arithmetic operation.
+ * @param[in] script Complete encoded script.
+ * @param[in] length Number of available script bytes.
+ * @param[in] cursor Offset of the first source operand.
+ * @param[in] commit true to write the result; false to consume without writing.
+ * @return The following cursor and operation acceptance state.
+ */
 static ForceFeedbackScriptDestinationResult execute_math(ForceFeedbackScriptRuntime *runtime,
                                                          uint8_t operation, const uint8_t *script,
                                                          size_t length, size_t cursor,
@@ -88,6 +144,20 @@ static ForceFeedbackScriptDestinationResult execute_math(ForceFeedbackScriptRunt
                                : operation_result(cursor, false);
 }
 
+/**
+ * @brief Executes one floating-point logical operation.
+ *
+ * Logical NOT consumes one source; the other logical operations consume two. The result is written
+ * as a floating-point truth value through the encoded destination.
+ *
+ * @param[in,out] runtime Script state referenced by operands and the destination.
+ * @param[in] operation Encoded logical operation.
+ * @param[in] script Complete encoded script.
+ * @param[in] length Number of available script bytes.
+ * @param[in] cursor Offset of the first source operand.
+ * @param[in] commit true to write the result; false to consume without writing.
+ * @return The following cursor and operation acceptance state.
+ */
 static ForceFeedbackScriptDestinationResult execute_logic(ForceFeedbackScriptRuntime *runtime,
                                                           uint8_t operation, const uint8_t *script,
                                                           size_t length, size_t cursor,
@@ -115,6 +185,20 @@ static ForceFeedbackScriptDestinationResult execute_logic(ForceFeedbackScriptRun
                        commit);
 }
 
+/**
+ * @brief Executes one floating-point comparison.
+ *
+ * Ordered comparisons consume two sources. Sign tests consume one. The result is written as a
+ * floating-point truth value through the encoded destination.
+ *
+ * @param[in,out] runtime Script state referenced by operands and the destination.
+ * @param[in] operation Encoded comparison operation.
+ * @param[in] script Complete encoded script.
+ * @param[in] length Number of available script bytes.
+ * @param[in] cursor Offset of the first source operand.
+ * @param[in] commit true to write the result; false to consume without writing.
+ * @return The following cursor and operation acceptance state.
+ */
 static ForceFeedbackScriptDestinationResult execute_comparison(ForceFeedbackScriptRuntime *runtime,
                                                                uint8_t operation,
                                                                const uint8_t *script, size_t length,
@@ -142,15 +226,45 @@ static ForceFeedbackScriptDestinationResult execute_comparison(ForceFeedbackScri
                        commit);
 }
 
+/**
+ * @brief Identifies bit operations that consume one source operand.
+ *
+ * Only bitwise NOT is unary.
+ *
+ * @param[in] operation Encoded bit operation.
+ * @return true for bitwise NOT; otherwise false.
+ */
 static bool bit_is_unary(uint8_t operation) {
     return operation == FORCE_FEEDBACK_SCRIPT_BITWISE_NOT;
 }
 
+/**
+ * @brief Identifies bit operations that update their source operand.
+ *
+ * Set-bit and clear-bit write their modified value back through the first source encoding.
+ *
+ * @param[in] operation Encoded bit operation.
+ * @return true for set-bit or clear-bit; otherwise false.
+ */
 static bool bit_updates_source(uint8_t operation) {
     return operation == FORCE_FEEDBACK_SCRIPT_SET_BIT ||
            operation == FORCE_FEEDBACK_SCRIPT_CLEAR_BIT;
 }
 
+/**
+ * @brief Executes one integer bit operation.
+ *
+ * Decodes one or two sources, evaluates the selected operation, and writes either through the
+ * encoded destination or back through the first source for set-bit and clear-bit.
+ *
+ * @param[in,out] runtime Script state referenced by operands and destinations.
+ * @param[in] operation Encoded bit operation.
+ * @param[in] script Complete encoded script.
+ * @param[in] length Number of available script bytes.
+ * @param[in] cursor Offset of the first source operand.
+ * @param[in] commit true to write the result; false to consume without writing.
+ * @return The following cursor and operation acceptance state.
+ */
 static ForceFeedbackScriptDestinationResult execute_bits(ForceFeedbackScriptRuntime *runtime,
                                                          uint8_t operation, const uint8_t *script,
                                                          size_t length, size_t cursor,
@@ -186,11 +300,33 @@ static ForceFeedbackScriptDestinationResult execute_bits(ForceFeedbackScriptRunt
     return write_value(runtime, script, length, cursor, result.value, commit);
 }
 
+/**
+ * @brief Identifies integer operations that consume two source operands.
+ *
+ * Subtract-as-float through unsigned modulo are binary; the conversion operations are unary.
+ *
+ * @param[in] operation Encoded integer operation.
+ * @return true when two source operands are required; otherwise false.
+ */
 static bool integer_is_binary(uint8_t operation) {
     return operation >= FORCE_FEEDBACK_SCRIPT_INTEGER_SUBTRACT_I32_TO_FLOAT &&
            operation <= FORCE_FEEDBACK_SCRIPT_INTEGER_MODULO;
 }
 
+/**
+ * @brief Executes one integer conversion or arithmetic operation.
+ *
+ * Decodes the required sources, evaluates the integer operation, and consumes or writes its
+ * destination.
+ *
+ * @param[in,out] runtime Script state referenced by operands and the destination.
+ * @param[in] operation Encoded integer operation.
+ * @param[in] script Complete encoded script.
+ * @param[in] length Number of available script bytes.
+ * @param[in] cursor Offset of the first source operand.
+ * @param[in] commit true to write the result; false to consume without writing.
+ * @return The following cursor and operation acceptance state.
+ */
 static ForceFeedbackScriptDestinationResult execute_integer(ForceFeedbackScriptRuntime *runtime,
                                                             uint8_t operation,
                                                             const uint8_t *script, size_t length,
@@ -217,6 +353,20 @@ static ForceFeedbackScriptDestinationResult execute_integer(ForceFeedbackScriptR
                                : operation_result(cursor, false);
 }
 
+/**
+ * @brief Executes a copy or sample-table operation.
+ *
+ * Copy resolves one source. Sample reads resolve a base and index, with wrapped and interpolated
+ * variants consuming a third operand before the destination.
+ *
+ * @param[in,out] runtime Script state referenced by operands and the destination.
+ * @param[in] operation Encoded copy or sample operation.
+ * @param[in] script Complete encoded script.
+ * @param[in] length Number of available script bytes.
+ * @param[in] cursor Offset of the first source operand.
+ * @param[in] commit true to write the result; false to consume without writing.
+ * @return The following cursor and operation acceptance state.
+ */
 static ForceFeedbackScriptDestinationResult execute_sample(ForceFeedbackScriptRuntime *runtime,
                                                            uint8_t operation, const uint8_t *script,
                                                            size_t length, size_t cursor,
@@ -263,6 +413,20 @@ static ForceFeedbackScriptDestinationResult execute_sample(ForceFeedbackScriptRu
                                : operation_result(cursor, false);
 }
 
+/**
+ * @brief Executes one range operation.
+ *
+ * Resolves lower bound, upper bound, and value operands before evaluating the range and consuming
+ * or writing its destination.
+ *
+ * @param[in,out] runtime Script state referenced by operands and the destination.
+ * @param[in] operation Encoded range operation.
+ * @param[in] script Complete encoded script.
+ * @param[in] length Number of available script bytes.
+ * @param[in] cursor Offset of the lower-bound operand.
+ * @param[in] commit true to write the result; false to consume without writing.
+ * @return The following cursor and operation acceptance state.
+ */
 static ForceFeedbackScriptDestinationResult execute_range(ForceFeedbackScriptRuntime *runtime,
                                                           uint8_t operation, const uint8_t *script,
                                                           size_t length, size_t cursor,
@@ -289,6 +453,19 @@ static ForceFeedbackScriptDestinationResult execute_range(ForceFeedbackScriptRun
                        (OperationValue){.number = result}.bits, commit);
 }
 
+/**
+ * @brief Executes rotation-range scaling.
+ *
+ * Resolves one floating-point source, scales it from the active rotation range, and consumes or
+ * writes the encoded destination.
+ *
+ * @param[in,out] runtime Script state containing the rotation range and destination state.
+ * @param[in] script Complete encoded script.
+ * @param[in] length Number of available script bytes.
+ * @param[in] cursor Offset of the source operand.
+ * @param[in] commit true to write the result; false to consume without writing.
+ * @return The following cursor and operation acceptance state.
+ */
 static ForceFeedbackScriptDestinationResult
 execute_rotation_scale(ForceFeedbackScriptRuntime *runtime, const uint8_t *script, size_t length,
                        size_t cursor, bool commit) {

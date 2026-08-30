@@ -30,8 +30,28 @@ typedef struct {
     bool valid;
 } ExecutionState;
 
+/**
+ * @brief Tests a raw script value for floating-point zero.
+ *
+ * Positive and negative zero both satisfy the comparison.
+ *
+ * @param[in] value Raw floating-point value.
+ * @return true when the value compares equal to zero; otherwise false.
+ */
 static bool is_zero(uint32_t value) { return (ExecutionValue){.bits = value}.number == 0.0f; }
 
+/**
+ * @brief Starts a record-suppression span.
+ *
+ * Consumes the count operand and stores its low byte plus one when no suppression span is already
+ * active.
+ *
+ * @param[in] runtime Script state referenced by the count operand.
+ * @param[in] script Complete encoded script.
+ * @param[in] length Number of available script bytes.
+ * @param[in] state Current execution cursor, suppression count, and validity state.
+ * @return The updated execution state.
+ */
 static ExecutionState set_advance(const ForceFeedbackScriptRuntime *runtime, const uint8_t *script,
                                   size_t length, ExecutionState state) {
     ForceFeedbackScriptOperandResult count =
@@ -44,6 +64,20 @@ static ExecutionState set_advance(const ForceFeedbackScriptRuntime *runtime, con
     return state;
 }
 
+/**
+ * @brief Selects or skips a conditional suppression count.
+ *
+ * Consumes a condition and then consumes the count operand on both branches. The selected branch
+ * starts suppression; the other branch discards the decoded count.
+ *
+ * @param[in] runtime Script state referenced by both operands.
+ * @param[in] script Complete encoded script.
+ * @param[in] length Number of available script bytes.
+ * @param[in] state Current execution cursor, suppression count, and validity state.
+ * @param[in] advance_when_zero true to select a zero condition; false to select a nonzero
+ * condition.
+ * @return The updated execution state.
+ */
 static ExecutionState conditional_advance(const ForceFeedbackScriptRuntime *runtime,
                                           const uint8_t *script, size_t length,
                                           ExecutionState state, bool advance_when_zero) {
@@ -64,6 +98,14 @@ static ExecutionState conditional_advance(const ForceFeedbackScriptRuntime *runt
     return state;
 }
 
+/**
+ * @brief Faults the active script slot.
+ *
+ * Marks an in-range active slot as faulted and returns the execution fault status.
+ *
+ * @param[in,out] runtime Script state containing the active slot.
+ * @return The execution fault status.
+ */
 static ForceFeedbackScriptExecutionStatus fault(ForceFeedbackScriptRuntime *runtime) {
     if (runtime->active_slot < FORCE_FEEDBACK_SCRIPT_SLOT_COUNT) {
         runtime->slots[runtime->active_slot].state = FORCE_FEEDBACK_SCRIPT_SLOT_FAULT;
@@ -71,6 +113,15 @@ static ForceFeedbackScriptExecutionStatus fault(ForceFeedbackScriptRuntime *runt
     return FORCE_FEEDBACK_SCRIPT_EXECUTION_FAULT;
 }
 
+/**
+ * @brief Completes the active script slot.
+ *
+ * Marks the active slot inactive and returns the explicit completion status.
+ *
+ * @param[in,out] runtime Script state containing the active slot.
+ * @return The explicit completion status.
+ * @pre The active slot index is in range.
+ */
 static ForceFeedbackScriptExecutionStatus complete(ForceFeedbackScriptRuntime *runtime) {
     runtime->slots[runtime->active_slot].state = FORCE_FEEDBACK_SCRIPT_SLOT_INACTIVE;
     return FORCE_FEEDBACK_SCRIPT_EXECUTION_COMPLETED;
