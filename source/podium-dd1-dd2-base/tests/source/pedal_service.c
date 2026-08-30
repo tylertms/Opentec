@@ -653,17 +653,18 @@ static void test_prioritizes_throttle_before_brake_at_v4_selection(void) {
 static void test_queries_and_publishes_v4_pedal_adjustment(void) {
     PedalService service;
     PedalAdjustmentDisplay display;
+    const uint8_t initial_response[] = {0x01};
     uint8_t response[40] = {0};
     response[0x1f] = 'X';
     reset_link();
     pedal_service_init(&service);
-    assert(!pedal_service_adjustment_probe_available(&service));
+    assert(!pedal_service_adjustment_available(&service));
     connect_v4(&service);
-    assert(pedal_service_adjustment_probe_available(&service));
+    assert(pedal_service_adjustment_available(&service));
 
     pedal_service_run(&service, 6);
     complete_v4_request(&service, 7, 8);
-    pedal_service_request_adjustment_probe(&service);
+    pedal_service_request_button_adjustment(&service);
     pedal_service_run(&service, 9);
     pedal_service_run(&service, 10);
 
@@ -674,14 +675,87 @@ static void test_queries_and_publishes_v4_pedal_adjustment(void) {
 
     receive_transfer(transfer_status_command(0, 0), NULL, 0);
     pedal_service_run(&service, 11);
-    receive_transfer(transfer_data_command(0, 0, 0), response, sizeof(response));
+    receive_transfer(transfer_data_command(0, 0, 0), initial_response, sizeof(initial_response));
     pedal_service_run(&service, 12);
 
-    assert(!service.adjustment_probe_pending);
-    assert(service.v4_phase == PEDAL_V4_PHASE_STATUS);
+    assert(service.button_adjustment_pending);
+    assert(service.v4_phase == PEDAL_V4_PHASE_ADJUSTMENT_WAIT);
+    pedal_service_run(&service, 113);
+    TransferFrame keepalive;
+    assert(transfer_frame_decode(sent_transfer, sent_transfer_length, &keepalive) ==
+           TRANSFER_FRAME_VALID);
+    assert(keepalive.command == transfer_empty_command());
+
+    receive_transfer(transfer_data_command(0, 0, 0), response, sizeof(response));
+    pedal_service_run(&service, 114);
+
+    assert(!service.button_adjustment_pending);
+    assert(service.v4_phase == PEDAL_V4_PHASE_SELECT);
     display = pedal_service_take_adjustment_display(&service);
     assert(display == PEDAL_ADJUSTMENT_DISPLAY_CLUTCH);
     assert(pedal_service_take_adjustment_display(&service) == PEDAL_ADJUSTMENT_DISPLAY_IDLE);
+}
+
+static void test_forwards_both_host_adjustment_responses(void) {
+    PedalService service;
+    const uint8_t initial_response[] = {0xaa, 0xbb};
+    uint8_t final_response[40] = {0};
+    const PedalAdjustmentResponse *forwarded;
+    final_response[0x15] = 'X';
+    reset_link();
+    pedal_service_init(&service);
+    connect_v4(&service);
+    pedal_service_run(&service, 6);
+    complete_v4_request(&service, 7, 8);
+    pedal_service_request_host_adjustment(&service);
+    pedal_service_run(&service, 9);
+    pedal_service_run(&service, 10);
+
+    receive_transfer(transfer_status_command(0, 0), NULL, 0);
+    pedal_service_run(&service, 11);
+    receive_transfer(transfer_data_command(0, 0, 0), initial_response, sizeof(initial_response));
+    pedal_service_run(&service, 12);
+    forwarded = pedal_service_adjustment_response(&service);
+    assert(forwarded != NULL);
+    assert(forwarded->length == sizeof(initial_response));
+    assert(memcmp(forwarded->data, initial_response, forwarded->length) == 0);
+    pedal_service_release_adjustment_response(&service);
+
+    receive_transfer(transfer_data_command(0, 0, 0), final_response, sizeof(final_response));
+    pedal_service_run(&service, 13);
+    forwarded = pedal_service_adjustment_response(&service);
+    assert(forwarded != NULL);
+    assert(forwarded->length == sizeof(final_response));
+    assert(memcmp(forwarded->data, final_response, forwarded->length) == 0);
+    pedal_service_release_adjustment_response(&service);
+    assert(!service.host_adjustment_pending);
+    assert(pedal_service_take_adjustment_display(&service) == PEDAL_ADJUSTMENT_DISPLAY_THROTTLE);
+}
+
+static void test_expires_v4_adjustment_operation(void) {
+    PedalService service;
+    const uint8_t initial_response[] = {0x01};
+    reset_link();
+    pedal_service_init(&service);
+    connect_v4(&service);
+    pedal_service_run(&service, 6);
+    complete_v4_request(&service, 7, 8);
+    pedal_service_request_button_adjustment(&service);
+    pedal_service_run(&service, 9);
+    pedal_service_run(&service, 10);
+    receive_transfer(transfer_status_command(0, 0), NULL, 0);
+    pedal_service_run(&service, 11);
+    receive_transfer(transfer_data_command(0, 0, 0), initial_response, sizeof(initial_response));
+    pedal_service_run(&service, 12);
+
+    assert(service.v4_phase == PEDAL_V4_PHASE_ADJUSTMENT_WAIT);
+    for (uint32_t now_ms = 113; now_ms < 20012; now_ms += 101) {
+        pedal_service_run(&service, now_ms);
+    }
+    pedal_service_run(&service, 20012);
+
+    assert(!service.button_adjustment_pending);
+    assert(service.v4_phase == PEDAL_V4_PHASE_SELECT);
 }
 
 static void test_reconnects_after_v4_transfer_timeout(void) {
@@ -997,6 +1071,8 @@ int main(void) {
     test_sends_v4_tuning_in_protocol_order();
     test_prioritizes_throttle_before_brake_at_v4_selection();
     test_queries_and_publishes_v4_pedal_adjustment();
+    test_forwards_both_host_adjustment_responses();
+    test_expires_v4_adjustment_operation();
     test_reconnects_after_v4_transfer_timeout();
     test_polls_legacy_pedal_channels();
     test_delays_legacy_reconnect_after_primary_response();

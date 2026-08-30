@@ -251,6 +251,26 @@ bool transfer_session_send(TransferSession *session, const uint8_t *data, uint8_
 }
 
 /**
+ * @brief Keeps an active transfer operation alive.
+ *
+ * Attempts to submit an empty command and extends both 200-millisecond session deadlines even
+ * when the lower transport cannot accept that command immediately.
+ *
+ * @param[in,out] session Active transfer session to keep alive.
+ * @return True when the empty command is submitted.
+ */
+bool transfer_session_keepalive(TransferSession *session) {
+    if (session == NULL || !session->active) {
+        return false;
+    }
+    bool sent = send_frame(session, transfer_empty_command(), NULL, 0, false);
+    uint32_t now = session->callbacks.clock(session->callback_context);
+    session->activity_deadline = now + TRANSFER_SESSION_TIMEOUT_MS;
+    session->data_deadline = now + TRANSFER_SESSION_TIMEOUT_MS;
+    return sent;
+}
+
+/**
  * @brief Processes one complete encoded frame and advances transfer state.
  *
  * Validates the frame, handles data or status sequencing, and refreshes activity deadlines.

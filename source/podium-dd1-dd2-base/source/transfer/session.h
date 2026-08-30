@@ -55,6 +55,7 @@ bool transfer_session_init(TransferSession *session, const TransferSessionCallba
                            void *callback_context);
 bool transfer_session_send(TransferSession *session, const uint8_t *data, uint8_t length,
                            uint8_t group);
+bool transfer_session_keepalive(TransferSession *session);
 TransferSessionResult transfer_session_receive(TransferSession *session, const uint8_t *data,
                                                uint16_t length);
 TransferSessionResult transfer_session_poll(TransferSession *session);

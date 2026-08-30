@@ -35,12 +35,35 @@ typedef enum {
 typedef enum {
     PEDAL_V4_PHASE_STATUS,
     PEDAL_V4_PHASE_SELECT,
-    PEDAL_V4_PHASE_ADJUSTMENT_PROBE,
+    PEDAL_V4_PHASE_ADJUSTMENT_START,
+    PEDAL_V4_PHASE_ADJUSTMENT_WAIT,
     PEDAL_V4_PHASE_BRAKE_FORCE,
     PEDAL_V4_PHASE_CLUTCH_CURVE,
     PEDAL_V4_PHASE_BRAKE_CURVE,
     PEDAL_V4_PHASE_THROTTLE_CURVE,
 } PedalV4Phase;
+
+/**
+ * @brief Identifies who requested the active V4 pedal adjustment.
+ *
+ * Separates host operations, whose responses return over USB, from wheel-button operations that
+ * only update the local display.
+ */
+typedef enum {
+    PEDAL_ADJUSTMENT_SOURCE_NONE,
+    PEDAL_ADJUSTMENT_SOURCE_HOST,
+    PEDAL_ADJUSTMENT_SOURCE_BUTTON,
+} PedalAdjustmentSource;
+
+/**
+ * @brief Stores one completed host pedal-adjustment response.
+ *
+ * Keeps the payload and its length together while the USB service queues the response.
+ */
+typedef struct {
+    uint8_t data[TRANSFER_FRAME_MAX_SEND_PAYLOAD_SIZE];
+    uint8_t length;
+} PedalAdjustmentResponse;
 
 typedef struct {
     PedalInput input;
@@ -53,6 +76,9 @@ typedef struct {
     uint32_t next_status_ms;
     uint32_t next_input_command_ms;
     uint32_t next_keepalive_ms;
+    uint32_t v4_response_deadline_ms;
+    uint32_t v4_operation_deadline_ms;
+    uint32_t next_v4_keepalive_ms;
     uint32_t clock_ms;
     PedalFrame transmit_frame;
     PedalFrame receive_frame;
@@ -74,7 +100,9 @@ typedef struct {
     PedalProtocolStatus protocol_status;
     PedalProtocolStatus transmitted_status;
     PedalV4Tuning v4_tuning;
+    PedalAdjustmentResponse adjustment_response;
     PedalAdjustmentDisplay adjustment_display;
+    PedalAdjustmentSource adjustment_source;
     PedalV4Phase v4_phase;
     uint16_t analog_samples[PEDAL_INPUT_AXIS_COUNT];
     bool analog_samples_ready;
@@ -89,7 +117,8 @@ typedef struct {
     bool v4_request_active;
     bool v4_response_received;
     bool alternate_brake_force_received;
-    bool adjustment_probe_pending;
+    bool host_adjustment_pending;
+    bool button_adjustment_pending;
     bool adjustment_display_pending;
 } PedalService;
 
@@ -111,8 +140,11 @@ void pedal_service_request_control(PedalService *service, PedalV3Control control
 void pedal_service_request_input_command(PedalService *service,
                                          const uint8_t values[PEDAL_INPUT_AXIS_COUNT]);
 void pedal_service_request_configuration(PedalService *service, uint8_t brake_force, bool reset);
-bool pedal_service_adjustment_probe_available(const PedalService *service);
-void pedal_service_request_adjustment_probe(PedalService *service);
+bool pedal_service_adjustment_available(const PedalService *service);
+void pedal_service_request_host_adjustment(PedalService *service);
+void pedal_service_request_button_adjustment(PedalService *service);
+const PedalAdjustmentResponse *pedal_service_adjustment_response(const PedalService *service);
+void pedal_service_release_adjustment_response(PedalService *service);
 PedalAdjustmentDisplay pedal_service_take_adjustment_display(PedalService *service);
 uint8_t pedal_service_take_alternate_brake_force(PedalService *service);
 void pedal_service_run(PedalService *service, uint32_t now_ms);

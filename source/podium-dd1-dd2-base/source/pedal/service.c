@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "pedal/adjustment_probe.h"
 #include "pedal/frame.h"
@@ -26,6 +27,9 @@ enum {
     PEDAL_INPUT_COMMAND_INTERVAL_MS = 500,
     PEDAL_KEEPALIVE_INTERVAL_MS = 2500,
     PEDAL_V4_STATUS_INTERVAL_MS = 15,
+    PEDAL_V4_RESPONSE_TIMEOUT_MS = 100,
+    PEDAL_V4_OPERATION_TIMEOUT_MS = 20000,
+    PEDAL_V4_KEEPALIVE_INTERVAL_MS = 100,
     PEDAL_LEGACY_RESPONSE_TIMEOUT_MS = 18,
     PEDAL_LEGACY_AXIS_1_RETRY_LIMIT = 5,
     PEDAL_LEGACY_RETRY_LIMIT = 6,
@@ -36,6 +40,19 @@ static const uint8_t pedal_v4_status_request[] = {
     0x12, 0x0a, 0x02, 0x08, 0x02, 0x18, 0x01, 0x20, 0x08, 0xaa, 0x01,
     0x07, 0xba, 0x01, 0x04, 0x52, 0x02, 0x72, 0x00, 0xd7, 0xfb,
 };
+
+/**
+ * @brief Reports whether a monotonic deadline is strictly in the past.
+ *
+ * Uses signed subtraction so comparisons remain valid across the millisecond counter wrap.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[in] deadline_ms Deadline to test.
+ * @return True only after the deadline has passed.
+ */
+static bool time_passed(uint32_t now_ms, uint32_t deadline_ms) {
+    return (int32_t)(now_ms - deadline_ms) > 0;
+}
 
 /**
  * @brief Publishes the selected auxiliary input source.
@@ -84,6 +101,10 @@ static void reconnect(PedalService *service, uint32_t now_ms) {
     service->v4_phase = PEDAL_V4_PHASE_STATUS;
     service->v4_request_active = false;
     service->v4_response_received = false;
+    service->adjustment_source = PEDAL_ADJUSTMENT_SOURCE_NONE;
+    service->v4_response_deadline_ms = 0;
+    service->v4_operation_deadline_ms = 0;
+    service->next_v4_keepalive_ms = 0;
     service->alternate_brake_force_received = false;
     service->adjustment_display_pending = false;
     service->device = PEDAL_DEVICE_NONE;
@@ -121,6 +142,9 @@ void pedal_service_init(PedalService *service) {
     service->next_status_ms = 0;
     service->next_input_command_ms = 0;
     service->next_keepalive_ms = 0;
+    service->v4_response_deadline_ms = 0;
+    service->v4_operation_deadline_ms = 0;
+    service->next_v4_keepalive_ms = 0;
     service->response = 0;
     service->brake_force_percent = 100;
     service->startup_frame_count = 0;
@@ -129,10 +153,12 @@ void pedal_service_init(PedalService *service) {
     service->v4_sent_value = 0;
     service->remote_auxiliary = 0;
     service->auxiliary_override = 0;
+    service->adjustment_response = (PedalAdjustmentResponse){0};
     service->legacy_channel = PEDAL_LEGACY_AXIS_1;
     service->protocol_status = (PedalProtocolStatus){0};
     service->transmitted_status = (PedalProtocolStatus){0};
     service->v4_tuning = (PedalV4Tuning){0};
+    service->adjustment_source = PEDAL_ADJUSTMENT_SOURCE_NONE;
     service->v4_phase = PEDAL_V4_PHASE_STATUS;
     for (uint8_t channel = 0; channel < PEDAL_LEGACY_CHANNEL_COUNT; channel++) {
         service->legacy_retries[channel] = 0;
@@ -146,29 +172,64 @@ void pedal_service_init(PedalService *service) {
     service->v4_request_active = false;
     service->v4_response_received = false;
     service->alternate_brake_force_received = false;
-    service->adjustment_probe_pending = false;
+    service->host_adjustment_pending = false;
+    service->button_adjustment_pending = false;
     service->adjustment_display_pending = false;
     service->adjustment_display = PEDAL_ADJUSTMENT_DISPLAY_NONE;
     service->clock_ms = 0;
     clear_v3_outbound(service);
 }
 
+/**
+ * @brief Submits one encoded V4 frame to the pedal link.
+ *
+ * Adapts the transfer session callback to the asynchronous pedal transmitter.
+ *
+ * @param[in] context Unused pedal service callback context.
+ * @param[in] data Encoded transfer frame.
+ * @param[in] length Encoded frame length.
+ */
 static void send_v4_transfer(void *context, const uint8_t *data, uint16_t length) {
     (void)context;
     (void)platform_pedal_link_send_transfer(data, length);
 }
 
+/**
+ * @brief Reports whether the V4 pedal transmitter is occupied.
+ *
+ * @param[in] context Unused pedal service callback context.
+ * @return True while a prior frame is still being transmitted.
+ */
 static bool v4_transfer_busy(void *context) {
     (void)context;
     return platform_pedal_link_transmit_busy();
 }
 
 /**
- * @brief Accepts a completed group-zero response for the active V4 request.
+ * @brief Retains a completed host adjustment response.
+ *
+ * Keeps the first response of up to 124 bytes until the USB command service takes it. A later
+ * response is left unqueued while that slot remains occupied.
+ *
+ * @param[in,out] service Pedal service retaining the response.
+ * @param[in] data Complete response payload.
+ * @param[in] length Response payload length.
+ */
+static void retain_adjustment_response(PedalService *service, const uint8_t *data, uint8_t length) {
+    if (service->adjustment_response.length != 0 || data == NULL || length == 0 ||
+        length > sizeof(service->adjustment_response.data)) {
+        return;
+    }
+    memcpy(service->adjustment_response.data, data, length);
+    service->adjustment_response.length = length;
+}
+
+/**
+ * @brief Accepts a completed group-zero response for the active V4 operation.
  *
  * Ignores intermediate fragments and responses outside the active pedal channel. A completed
- * status response publishes its axes, while a completed adjustment response publishes the
- * corresponding display selection.
+ * status response publishes its axes, while adjustment replies are retained for the host or
+ * classified for the local display according to the operation phase.
  *
  * @param[in,out] context Pedal service awaiting the response.
  * @param[in] data Response payload from the transfer session.
@@ -179,20 +240,34 @@ static bool v4_transfer_busy(void *context) {
 static void apply_v4_status(void *context, const uint8_t *data, uint8_t length, uint8_t group,
                             bool complete) {
     PedalService *service = context;
-    if (group != 0 || !service->v4_request_active || !complete) {
+    bool adjustment_waiting = service->v4_phase == PEDAL_V4_PHASE_ADJUSTMENT_WAIT;
+    if (group != 0 || (!service->v4_request_active && !adjustment_waiting) || !complete) {
         return;
     }
     if (service->v4_phase == PEDAL_V4_PHASE_STATUS) {
         pedal_v4_status_parse(data, length, service->input.axes);
-    } else if (service->v4_phase == PEDAL_V4_PHASE_ADJUSTMENT_PROBE) {
+    } else if (service->v4_phase == PEDAL_V4_PHASE_ADJUSTMENT_START) {
+        if (service->adjustment_source == PEDAL_ADJUSTMENT_SOURCE_HOST) {
+            retain_adjustment_response(service, data, length);
+        }
+    } else if (service->v4_phase == PEDAL_V4_PHASE_ADJUSTMENT_WAIT) {
         if (pedal_adjustment_probe_classify(data, length, &service->adjustment_display)) {
             service->adjustment_display_pending = true;
+        }
+        if (service->adjustment_source == PEDAL_ADJUSTMENT_SOURCE_HOST) {
+            retain_adjustment_response(service, data, length);
         }
     }
     service->connected = true;
     service->v4_response_received = true;
 }
 
+/**
+ * @brief Reads the time supplied to the current pedal service iteration.
+ *
+ * @param[in] context Pedal service containing the current monotonic time.
+ * @return Current monotonic time in milliseconds.
+ */
 static uint32_t read_v4_clock(void *context) {
     const PedalService *service = context;
     return service->clock_ms;
@@ -251,19 +326,58 @@ void pedal_service_set_v4_tuning(PedalService *service, PedalV4Tuning tuning) {
  * @param[in] service Pedal service containing the transfer session.
  * @return True while the V4 transfer session can accept an adjustment query.
  */
-bool pedal_service_adjustment_probe_available(const PedalService *service) {
+bool pedal_service_adjustment_available(const PedalService *service) {
     return service != 0 && service->v4.active;
 }
 
 /**
- * @brief Queues a V4 pedal-adjustment query.
+ * @brief Queues a host-requested V4 pedal adjustment.
  *
- * Retains one pending query until the active transfer session accepts its fixed group-zero payload.
+ * Gives the host operation priority over a pending wheel-button operation and retains both of its
+ * completed responses for USB forwarding when space is available.
  *
- * @param[in,out] service Pedal service receiving the query request.
+ * @param[in,out] service Pedal service receiving the host request.
  */
-void pedal_service_request_adjustment_probe(PedalService *service) {
-    service->adjustment_probe_pending = true;
+void pedal_service_request_host_adjustment(PedalService *service) {
+    service->host_adjustment_pending = true;
+}
+
+/**
+ * @brief Queues a wheel-button V4 pedal adjustment.
+ *
+ * Retains the operation until its final response or 20-second operation deadline.
+ *
+ * @param[in,out] service Pedal service receiving the wheel-button request.
+ */
+void pedal_service_request_button_adjustment(PedalService *service) {
+    service->button_adjustment_pending = true;
+}
+
+/**
+ * @brief Provides the pending host adjustment response.
+ *
+ * Keeps the response stable until the USB service releases it after successfully queuing a copy.
+ *
+ * @param[in] service Pedal service retaining the response.
+ * @return Pending response, or null when the response slot is empty.
+ */
+const PedalAdjustmentResponse *pedal_service_adjustment_response(const PedalService *service) {
+    return service != NULL && service->adjustment_response.length != 0
+               ? &service->adjustment_response
+               : NULL;
+}
+
+/**
+ * @brief Releases the pending host adjustment response.
+ *
+ * Opens the one-entry response slot after the USB service has retained its own copy.
+ *
+ * @param[in,out] service Pedal service releasing the response.
+ */
+void pedal_service_release_adjustment_response(PedalService *service) {
+    if (service != NULL) {
+        service->adjustment_response.length = 0;
+    }
 }
 
 /**
@@ -531,10 +645,22 @@ static void service_select_protocol(PedalService *service, uint32_t now_ms) {
     }
 }
 
+/**
+ * @brief Maps a V4 tuning setting to its pending-work bit.
+ *
+ * @param[in] setting One-based V4 tuning setting identifier.
+ * @return Pending-work mask for the setting.
+ */
 static uint8_t v4_setting_mask(PedalV4TuningSetting setting) {
     return (uint8_t)(1u << (setting - 1));
 }
 
+/**
+ * @brief Maps a V4 request phase to its tuning setting.
+ *
+ * @param[in] phase Current V4 service phase.
+ * @return Matching tuning setting, or zero for non-tuning phases.
+ */
 static PedalV4TuningSetting v4_phase_setting(PedalV4Phase phase) {
     switch (phase) {
     case PEDAL_V4_PHASE_BRAKE_FORCE:
@@ -547,12 +673,20 @@ static PedalV4TuningSetting v4_phase_setting(PedalV4Phase phase) {
         return PEDAL_V4_TUNING_THROTTLE_CURVE;
     case PEDAL_V4_PHASE_STATUS:
     case PEDAL_V4_PHASE_SELECT:
-    case PEDAL_V4_PHASE_ADJUSTMENT_PROBE:
+    case PEDAL_V4_PHASE_ADJUSTMENT_START:
+    case PEDAL_V4_PHASE_ADJUSTMENT_WAIT:
         return 0;
     }
     return 0;
 }
 
+/**
+ * @brief Selects the configured value for a V4 tuning setting.
+ *
+ * @param[in] tuning Current V4 tuning values.
+ * @param[in] setting Value to select.
+ * @return Configured setting value, or zero for an unknown setting.
+ */
 static uint8_t v4_tuning_value(const PedalV4Tuning *tuning, PedalV4TuningSetting setting) {
     switch (setting) {
     case PEDAL_V4_TUNING_THROTTLE_CURVE:
@@ -567,6 +701,15 @@ static uint8_t v4_tuning_value(const PedalV4Tuning *tuning, PedalV4TuningSetting
     return 0;
 }
 
+/**
+ * @brief Selects the phase following one completed V4 operation.
+ *
+ * Preserves the observed tuning order and returns status or adjustment phases to request
+ * selection.
+ *
+ * @param[in] phase Completed V4 phase.
+ * @return Next V4 service phase.
+ */
 static PedalV4Phase next_v4_phase(PedalV4Phase phase) {
     switch (phase) {
     case PEDAL_V4_PHASE_BRAKE_FORCE:
@@ -581,15 +724,70 @@ static PedalV4Phase next_v4_phase(PedalV4Phase phase) {
         return PEDAL_V4_PHASE_SELECT;
     case PEDAL_V4_PHASE_SELECT:
         return PEDAL_V4_PHASE_SELECT;
-    case PEDAL_V4_PHASE_ADJUSTMENT_PROBE:
-        return PEDAL_V4_PHASE_STATUS;
+    case PEDAL_V4_PHASE_ADJUSTMENT_START:
+    case PEDAL_V4_PHASE_ADJUSTMENT_WAIT:
+        return PEDAL_V4_PHASE_SELECT;
     }
     return PEDAL_V4_PHASE_SELECT;
 }
 
-static void complete_v4_response(PedalService *service) {
-    if (service->v4_phase == PEDAL_V4_PHASE_ADJUSTMENT_PROBE) {
-        service->adjustment_probe_pending = false;
+/**
+ * @brief Enters the asynchronous completion wait for a V4 pedal adjustment.
+ *
+ * Releases the initial request slot, starts the 20-second operation deadline, and schedules the
+ * first empty-command heartbeat after 100 milliseconds.
+ *
+ * @param[in,out] service Pedal adjustment and transfer state to update.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void begin_adjustment_wait(PedalService *service, uint32_t now_ms) {
+    service->v4_phase = PEDAL_V4_PHASE_ADJUSTMENT_WAIT;
+    service->v4_request_active = false;
+    service->v4_response_received = false;
+    service->v4_operation_deadline_ms = now_ms + PEDAL_V4_OPERATION_TIMEOUT_MS;
+    service->next_v4_keepalive_ms = now_ms + PEDAL_V4_KEEPALIVE_INTERVAL_MS;
+}
+
+/**
+ * @brief Finishes the active V4 pedal adjustment.
+ *
+ * Clears the pending source and returns request selection to the remaining tuning, adjustment, or
+ * status work.
+ *
+ * @param[in,out] service Pedal adjustment and phase state to finish.
+ */
+static void finish_adjustment(PedalService *service) {
+    if (service->adjustment_source == PEDAL_ADJUSTMENT_SOURCE_HOST) {
+        service->host_adjustment_pending = false;
+    } else if (service->adjustment_source == PEDAL_ADJUSTMENT_SOURCE_BUTTON) {
+        service->button_adjustment_pending = false;
+    }
+    service->adjustment_source = PEDAL_ADJUSTMENT_SOURCE_NONE;
+    service->v4_phase = PEDAL_V4_PHASE_SELECT;
+    service->v4_request_active = false;
+    service->v4_response_received = false;
+    service->v4_response_deadline_ms = 0;
+    service->v4_operation_deadline_ms = 0;
+    service->next_v4_keepalive_ms = 0;
+}
+
+/**
+ * @brief Completes the current V4 response phase.
+ *
+ * Moves an adjustment from its initial response into the asynchronous wait, finishes a final
+ * adjustment response, or acknowledges the tuning value that was actually sent.
+ *
+ * @param[in,out] service V4 phase and pending-setting state to advance.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void complete_v4_response(PedalService *service, uint32_t now_ms) {
+    if (service->v4_phase == PEDAL_V4_PHASE_ADJUSTMENT_START) {
+        begin_adjustment_wait(service, now_ms);
+        return;
+    }
+    if (service->v4_phase == PEDAL_V4_PHASE_ADJUSTMENT_WAIT) {
+        finish_adjustment(service);
+        return;
     }
     PedalV4TuningSetting setting = v4_phase_setting(service->v4_phase);
     if (setting != 0 && v4_tuning_value(&service->v4_tuning, setting) == service->v4_sent_value) {
@@ -601,6 +799,14 @@ static void complete_v4_response(PedalService *service) {
     service->v4_request_active = false;
 }
 
+/**
+ * @brief Selects the highest-priority pending V4 pedal operation.
+ *
+ * Applies tuning in brake-force, clutch, throttle, and brake order, then selects host and
+ * wheel-button adjustments before the periodic status request.
+ *
+ * @param[in,out] service Pending V4 work and selected phase.
+ */
 static void select_v4_phase(PedalService *service) {
     uint8_t pending = service->v4_tuning_pending;
     if ((pending & v4_setting_mask(PEDAL_V4_TUNING_BRAKE_FORCE)) != 0) {
@@ -611,9 +817,14 @@ static void select_v4_phase(PedalService *service) {
         service->v4_phase = PEDAL_V4_PHASE_THROTTLE_CURVE;
     } else if ((pending & v4_setting_mask(PEDAL_V4_TUNING_BRAKE_CURVE)) != 0) {
         service->v4_phase = PEDAL_V4_PHASE_BRAKE_CURVE;
-    } else if (service->adjustment_probe_pending) {
-        service->v4_phase = PEDAL_V4_PHASE_ADJUSTMENT_PROBE;
+    } else if (service->host_adjustment_pending) {
+        service->adjustment_source = PEDAL_ADJUSTMENT_SOURCE_HOST;
+        service->v4_phase = PEDAL_V4_PHASE_ADJUSTMENT_START;
+    } else if (service->button_adjustment_pending) {
+        service->adjustment_source = PEDAL_ADJUSTMENT_SOURCE_BUTTON;
+        service->v4_phase = PEDAL_V4_PHASE_ADJUSTMENT_START;
     } else {
+        service->adjustment_source = PEDAL_ADJUSTMENT_SOURCE_NONE;
         service->v4_phase = PEDAL_V4_PHASE_STATUS;
     }
 }
@@ -621,8 +832,9 @@ static void select_v4_phase(PedalService *service) {
 /**
  * @brief Submits the request selected by the current V4 service phase.
  *
- * Selects pending tuning and adjustment work, emits periodic status requests when their
- * 15-millisecond deadline is reached, and retains each accepted request until its response arrives.
+ * Selects pending tuning and adjustment work and emits periodic status requests when their
+ * 15-millisecond deadline is reached. Adjustment requests wait up to 100 milliseconds for their
+ * initial response before advancing to the asynchronous operation phase.
  *
  * @param[in,out] service V4 phase, request, tuning, and polling state to update.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -641,10 +853,11 @@ static void send_v4_request(PedalService *service, uint32_t now_ms) {
         }
         return;
     }
-    if (service->v4_phase == PEDAL_V4_PHASE_ADJUSTMENT_PROBE) {
+    if (service->v4_phase == PEDAL_V4_PHASE_ADJUSTMENT_START) {
         if (transfer_session_send(&service->v4, pedal_adjustment_probe_request(),
                                   PEDAL_ADJUSTMENT_PROBE_REQUEST_SIZE, 0)) {
             service->v4_request_active = true;
+            service->v4_response_deadline_ms = now_ms + PEDAL_V4_RESPONSE_TIMEOUT_MS;
             service->adjustment_display = PEDAL_ADJUSTMENT_DISPLAY_HOLD;
             service->adjustment_display_pending = true;
         }
@@ -673,8 +886,9 @@ static void send_v4_request(PedalService *service, uint32_t now_ms) {
 /**
  * @brief Services V4 requests and status polls in their protocol order.
  *
- * Receives transfer frames, completes accepted responses, and selects adjustment, tuning, or
- * periodic status work whenever the current request slot becomes idle.
+ * Receives transfer frames, completes accepted responses, maintains adjustment heartbeats and
+ * deadlines, and selects adjustment, tuning, or periodic status work whenever the current request
+ * slot becomes idle.
  *
  * @param[in,out] service Pedal state, transfer session, and published axes to update.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -691,8 +905,25 @@ static void service_v4_stream(PedalService *service, uint32_t now_ms) {
         reconnect(service, now_ms);
         return;
     }
+    if (service->v4_phase == PEDAL_V4_PHASE_ADJUSTMENT_WAIT) {
+        if (time_passed(now_ms, service->next_v4_keepalive_ms)) {
+            (void)transfer_session_keepalive(&service->v4);
+            service->next_v4_keepalive_ms = now_ms + PEDAL_V4_KEEPALIVE_INTERVAL_MS;
+        }
+        if (service->v4_response_received) {
+            complete_v4_response(service, now_ms);
+        } else if (platform_time_reached(now_ms, service->v4_operation_deadline_ms)) {
+            finish_adjustment(service);
+        }
+        return;
+    }
     if (service->v4_response_received) {
-        complete_v4_response(service);
+        complete_v4_response(service, now_ms);
+        return;
+    }
+    if (service->v4_phase == PEDAL_V4_PHASE_ADJUSTMENT_START && service->v4_request_active &&
+        platform_time_reached(now_ms, service->v4_response_deadline_ms)) {
+        begin_adjustment_wait(service, now_ms);
         return;
     }
     if (service->v4_request_active) {

@@ -238,6 +238,27 @@ static void test_enforces_strict_deadlines(void) {
     assert(transfer_session_poll(&session) == TRANSFER_SESSION_INACTIVE);
 }
 
+static void test_keepalive_refreshes_both_deadlines(void) {
+    TransferSession session;
+    Fixture fixture = {.now = 100};
+    TransferSessionCallbacks valid = callbacks();
+    assert(transfer_session_init(&session, &valid, &fixture));
+
+    fixture.now = 250;
+    assert(transfer_session_keepalive(&session));
+    TransferFrame keepalive = decode_sent(&fixture);
+    assert(keepalive.command == transfer_empty_command());
+    assert(keepalive.payload_length == 0);
+    assert(session.activity_deadline == 450);
+    assert(session.data_deadline == 450);
+
+    fixture.ready = true;
+    fixture.now = 300;
+    assert(!transfer_session_keepalive(&session));
+    assert(session.activity_deadline == 500);
+    assert(session.data_deadline == 500);
+}
+
 static void test_stops_after_repeated_frame_errors(void) {
     TransferSession session;
     Fixture fixture = {0};
@@ -282,6 +303,7 @@ int main(void) {
     test_rejects_bad_sequence_without_immediate_shutdown();
     test_busy_transport_defers_send_and_acknowledgement();
     test_enforces_strict_deadlines();
+    test_keepalive_refreshes_both_deadlines();
     test_stops_after_repeated_frame_errors();
     test_remote_progress_error_stops_session();
     return 0;
