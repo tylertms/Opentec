@@ -31,7 +31,7 @@ static UsbControlRequest request(UsbControlRequestKind kind) {
 
 static void test_address_changes_after_status_stage(void) {
     UsbDeviceControl device;
-    usb_device_control_init(&device, true);
+    usb_device_control_init(&device, true, false);
     UsbControlRequest control = request(USB_CONTROL_SET_ADDRESS);
     control.value = 42;
 
@@ -45,7 +45,7 @@ static void test_address_changes_after_status_stage(void) {
 
 static void test_new_setup_cancels_pending_change(void) {
     UsbDeviceControl device;
-    usb_device_control_init(&device, true);
+    usb_device_control_init(&device, true, false);
     UsbControlRequest control = request(USB_CONTROL_SET_ADDRESS);
     control.value = 42;
 
@@ -58,7 +58,7 @@ static void test_new_setup_cancels_pending_change(void) {
 
 static void test_configuration_changes_after_status_stage(void) {
     UsbDeviceControl device;
-    usb_device_control_init(&device, true);
+    usb_device_control_init(&device, true, false);
     UsbControlRequest control = request(USB_CONTROL_SET_CONFIGURATION);
     control.value = 1;
 
@@ -75,7 +75,7 @@ static void test_configuration_changes_after_status_stage(void) {
 
 static void test_selects_and_clips_descriptors(void) {
     UsbDeviceControl device;
-    usb_device_control_init(&device, true);
+    usb_device_control_init(&device, true, false);
     UsbControlRequest control = request(USB_CONTROL_GET_DESCRIPTOR);
     control.descriptor_type = 1;
     control.length = 2;
@@ -96,7 +96,7 @@ static void test_selects_and_clips_descriptors(void) {
 
 static void test_hid_state_and_report_handoff(void) {
     UsbDeviceControl device;
-    usb_device_control_init(&device, true);
+    usb_device_control_init(&device, true, false);
     UsbControlRequest control = request(USB_CONTROL_HID_SET_IDLE);
     control.value = 0x0700;
     assert(usb_device_control_handle(&device, &control, &catalog).kind ==
@@ -116,7 +116,7 @@ static void test_hid_state_and_report_handoff(void) {
 
 static void test_device_status(void) {
     UsbDeviceControl device;
-    usb_device_control_init(&device, true);
+    usb_device_control_init(&device, true, false);
     device.remote_wakeup = true;
     UsbControlRequest control = request(USB_CONTROL_GET_STATUS);
     control.recipient = 0;
@@ -131,6 +131,35 @@ static void test_device_status(void) {
     assert(transfer.value == 0);
 }
 
+static void test_remote_wakeup_feature(void) {
+    UsbDeviceControl device;
+    usb_device_control_init(&device, true, false);
+    UsbControlRequest control = request(USB_CONTROL_SET_FEATURE);
+
+    assert(usb_device_control_handle(&device, &control, &catalog).kind ==
+           USB_CONTROL_TRANSFER_ACKNOWLEDGE);
+
+    control = request(USB_CONTROL_GET_STATUS);
+    assert(usb_device_control_handle(&device, &control, &catalog).value == 3);
+
+    control = request(USB_CONTROL_CLEAR_FEATURE);
+    assert(usb_device_control_handle(&device, &control, &catalog).kind ==
+           USB_CONTROL_TRANSFER_ACKNOWLEDGE);
+
+    control = request(USB_CONTROL_GET_STATUS);
+    assert(usb_device_control_handle(&device, &control, &catalog).value == 1);
+}
+
+static void test_forces_xbox_wakeup_status(void) {
+    UsbDeviceControl device;
+    usb_device_control_init(&device, true, true);
+    UsbControlRequest control = request(USB_CONTROL_CLEAR_FEATURE);
+    (void)usb_device_control_handle(&device, &control, &catalog);
+
+    control = request(USB_CONTROL_GET_STATUS);
+    assert(usb_device_control_handle(&device, &control, &catalog).value == 3);
+}
+
 int main(void) {
     test_address_changes_after_status_stage();
     test_new_setup_cancels_pending_change();
@@ -138,5 +167,7 @@ int main(void) {
     test_selects_and_clips_descriptors();
     test_hid_state_and_report_handoff();
     test_device_status();
+    test_remote_wakeup_feature();
+    test_forces_xbox_wakeup_status();
     return 0;
 }

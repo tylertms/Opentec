@@ -291,7 +291,7 @@ static bool build_descriptors(BoardVariant variant, UsbOperatingMode mode) {
  * catalog and PlayStation authentication payload across a bus reset.
  */
 static void reset_state(void) {
-    usb_device_control_init(&device_control, true);
+    usb_device_control_init(&device_control, true, operating_mode == USB_OPERATING_MODE_XBOX_GIP);
     control_stage = USB_CONTROL_STAGE_IDLE;
     input_report_length = 0;
     output_ready = false;

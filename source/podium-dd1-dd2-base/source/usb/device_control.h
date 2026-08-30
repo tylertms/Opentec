@@ -54,9 +54,11 @@ typedef struct {
     UsbDevicePendingChange pending_change;
     bool self_powered;
     bool remote_wakeup;
+    bool remote_wakeup_forced;
 } UsbDeviceControl;
 
-void usb_device_control_init(UsbDeviceControl *device, bool self_powered);
+void usb_device_control_init(UsbDeviceControl *device, bool self_powered,
+                             bool remote_wakeup_forced);
 void usb_device_control_cancel(UsbDeviceControl *device);
 UsbControlTransfer usb_device_control_handle(UsbDeviceControl *device,
                                              const UsbControlRequest *request,

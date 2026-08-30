@@ -41,10 +41,12 @@ static UsbControlTransfer data(UsbDescriptorView descriptor, uint16_t requested_
     };
 }
 
-void usb_device_control_init(UsbDeviceControl *device, bool self_powered) {
+void usb_device_control_init(UsbDeviceControl *device, bool self_powered,
+                             bool remote_wakeup_forced) {
     *device = (UsbDeviceControl){
         .hid_protocol = 1,
         .self_powered = self_powered,
+        .remote_wakeup_forced = remote_wakeup_forced,
     };
 }
 
@@ -97,9 +99,16 @@ UsbControlTransfer usb_device_control_handle(UsbDeviceControl *device,
     switch (request->kind) {
     case USB_CONTROL_GET_STATUS:
         return value(request->recipient == USB_RECIPIENT_DEVICE
-                         ? (device->self_powered ? 1 : 0) | (device->remote_wakeup ? 2 : 0)
+                         ? (device->self_powered ? 1 : 0) |
+                               (device->remote_wakeup || device->remote_wakeup_forced ? 2 : 0)
                          : 0,
                      2);
+    case USB_CONTROL_CLEAR_FEATURE:
+        device->remote_wakeup = false;
+        return acknowledge();
+    case USB_CONTROL_SET_FEATURE:
+        device->remote_wakeup = true;
+        return acknowledge();
     case USB_CONTROL_SET_ADDRESS:
         device->pending_change = USB_DEVICE_PENDING_ADDRESS;
         device->pending_value = (uint8_t)request->value;
