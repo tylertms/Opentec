@@ -126,6 +126,7 @@ shifter_display_sources = files('source/shifter/display.c')
 logitech_input_sources = files('source/usb/logitech_input.c')
 motor_identity_sources = files('source/motor/identity.c')
 motor_live_frame_sources = files('source/motor/live_frame.c')
+motor_output_status_sources = files('source/motor/output_status.c')
 motor_output_transport_sources = files('source/motor/output_transport.c')
 motor_output_interlock_sources = files('source/motor/output_interlock.c')
 motor_probe_sources = files('source/motor/probe.c')
@@ -364,6 +365,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'logitech-input': 'source/usb/logitech_input.c',
     'motor-identity': 'source/motor/identity.c',
     'motor-live-frame': 'source/motor/live_frame.c',
+    'motor-output-status': 'source/motor/output_status.c',
     'motor-output-transport': 'source/motor/output_transport.c',
     'motor-output-interlock': 'source/motor/output_interlock.c',
     'motor-probe': 'source/motor/probe.c',
@@ -1629,6 +1631,14 @@ if not meson.is_cross_build()
     motor_output_transport_sources,
     motor_live_frame_sources,
     force_output_report_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
+  motor_output_status_test = executable(
+    'base-motor-output-status-test',
+    'tests/source/motor_output_status.c',
+    motor_output_status_sources,
     build_by_default: false,
     include_directories: base_include,
   )
@@ -2938,6 +2948,7 @@ if not meson.is_cross_build()
     motor_output_transport_test,
     suite: ['base', 'motor', 'transport'],
   )
+  test('base-motor-output-status', motor_output_status_test, suite: ['base', 'motor'])
   test('base-motor-output-interlock', motor_output_interlock_test, suite: ['base', 'motor'])
   test('base-motor-probe', motor_probe_test, suite: ['base', 'motor'])
   test(

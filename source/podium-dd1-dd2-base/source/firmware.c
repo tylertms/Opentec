@@ -33,6 +33,7 @@
 #include "motor/command_serial.h"
 #include "motor/command_startup_service.h"
 #include "motor/live_frame.h"
+#include "motor/output_status.h"
 #include "motor/output_transport.h"
 #include "motor/probe.h"
 #include "motor/rotation_guard.h"
@@ -303,6 +304,8 @@ static uint8_t force_feedback_script_slot_report_index;
 static uint32_t force_feedback_ramp_deadline_ms;
 static ForceOutputReport motor_output_report;
 static MotorLiveFrame motor_live_frame;
+static MotorOutputStatus motor_output_status;
+static MotorOutputStatusInput motor_output_status_input;
 static MotorOutputTransport motor_output_transport;
 static uint8_t motor_received_frame[MOTOR_LIVE_FRAME_SIZE];
 static uint8_t motor_transmitted_frame[MOTOR_LIVE_FRAME_SIZE];
@@ -769,11 +772,12 @@ static void update_fan_speed(PlatformFan fan) {
 /**
  * @brief Initializes the motor controller's live SPI exchange.
  *
- * Clears live output, position, transport, and transmit state before starting the platform motor
- * transport. The first completed exchange selects the initial protocol response.
+ * Clears live output, status, position, transport, and transmit state before starting the platform
+ * motor transport. The first completed exchange selects the initial protocol response.
  */
 static void initialize_motor_link(void) {
     motor_output_report = (ForceOutputReport){0};
+    motor_output_status_init(&motor_output_status);
     motor_output_transport_init(&motor_output_transport);
     memset(motor_transmitted_frame, 0, sizeof(motor_transmitted_frame));
     motor_malformed_frame_count = 0;
@@ -808,44 +812,32 @@ static bool capture_current_wheel_center(void) {
  * Selects direct force during motor and wheel startup and Xbox operation, or remote motor-side
  * effect processing in other modes. Enables force during startup centering or when motor safety,
  * USB connection, operator confirmation, and the power-button torque gate permit runtime output.
- * The remaining flags mirror the torque override, host output gates, USB suspension, and
- * acknowledged full-torque state.
+ * Host output gates and full-torque acknowledgement remain live in every mode, while Xbox direct
+ * force retains the preceding motor-owned gate state.
  *
  * @return Current force-feedback status bits for the next motor-link packet.
  */
 static uint8_t motor_force_feedback_status(void) {
     bool xbox_direct_force = usb_device_operating_mode() == USB_OPERATING_MODE_XBOX_GIP;
-    uint8_t status =
-        motor_startup_direct_force || xbox_direct_force ? 0 : MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS;
     bool startup_force_enabled = motor_startup_centering_active(&motor_startup_centering);
     bool runtime_force_enabled = motor_tuning_ready &&
                                  !motor_status_service_output_inhibited(&motor_status_service) &&
                                  !usb_connection_monitor.disconnected && force_output_enabled &&
                                  !system_torque_transition.applied_disabled;
-    if (startup_force_enabled || runtime_force_enabled) {
-        status |= MOTOR_OUTPUT_STATUS_ENABLED;
-    }
-    if (system_torque_transition.applied_disabled) {
-        status |= MOTOR_OUTPUT_STATUS_OVERRIDE_ACTIVE;
-    }
-    if (!motor_startup_direct_force && !xbox_direct_force &&
-        !force_feedback_state.primary_output_disabled &&
-        wheel_service_force_output_transition_active(&wheel_service)) {
-        status |= MOTOR_OUTPUT_STATUS_TRANSITION_ACTIVE;
-    }
-    if (force_feedback_state.primary_output_disabled) {
-        status |= MOTOR_OUTPUT_STATUS_PRIMARY_DISABLED;
-    }
-    if (force_feedback_state.secondary_output_disabled) {
-        status |= MOTOR_OUTPUT_STATUS_SECONDARY_DISABLED;
-    }
-    if (usb_connection_monitor.disconnected) {
-        status |= MOTOR_OUTPUT_STATUS_USB_DISCONNECTED;
-    }
-    if (torque_key_prompt.phase == TORQUE_KEY_PROMPT_ACKNOWLEDGED) {
-        status |= MOTOR_OUTPUT_STATUS_FULL_TORQUE;
-    }
-    return status;
+    motor_output_status_input = (MotorOutputStatusInput){
+        .direct_force = motor_startup_direct_force,
+        .xbox_mode = xbox_direct_force,
+        .force_enabled = startup_force_enabled || runtime_force_enabled,
+        .override_active = system_torque_transition.applied_disabled,
+        .transition_active = !motor_startup_direct_force &&
+                             !force_feedback_state.primary_output_disabled &&
+                             wheel_service_force_output_transition_active(&wheel_service),
+        .primary_disabled = force_feedback_state.primary_output_disabled,
+        .secondary_disabled = force_feedback_state.secondary_output_disabled,
+        .usb_disconnected = usb_connection_monitor.disconnected,
+        .full_torque = torque_key_prompt.phase == TORQUE_KEY_PROMPT_ACKNOWLEDGED,
+    };
+    return motor_output_status_update(&motor_output_status, &motor_output_status_input);
 }
 
 /**
