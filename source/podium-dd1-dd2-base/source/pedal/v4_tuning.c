@@ -10,10 +10,18 @@ enum {
 };
 
 static const uint8_t tuning_prefix[PEDAL_V4_TUNING_PREFIX_SIZE] = {
-    0x00, 0x00, 0x0a, 0x02, 0x00, 0x00, 0x08, 0x02, 0x00, 0x00,
-    0x18, 0x01, 0x00, 0x00, 0x20, 0x08, 0x00, 0x00, 0xaa,
+    0x14, 0x0a, 0x02, 0x08, 0x02, 0x18, 0x01, 0x20, 0x08, 0xaa,
+    0x01, 0x09, 0xaa, 0x01, 0x06, 0x5a, 0x04, 0x12, 0x02,
 };
 
+/**
+ * @brief Maps a V4 tuning setting to its request offset.
+ *
+ * Selects the four supported eight-byte channel offsets and rejects all other setting values.
+ *
+ * @param[in] setting Tuning setting to map.
+ * @return Request offset, or zero when the setting is unsupported.
+ */
 static uint8_t setting_offset(PedalV4TuningSetting setting) {
     switch (setting) {
     case PEDAL_V4_TUNING_THROTTLE_CURVE:
@@ -28,6 +36,15 @@ static uint8_t setting_offset(PedalV4TuningSetting setting) {
     return 0;
 }
 
+/**
+ * @brief Calculates the V4 tuning payload checksum.
+ *
+ * Applies the reflected 0x8408 polynomial from an all-zero initial value.
+ *
+ * @param[in] data Payload bytes to checksum.
+ * @param[in] length Number of payload bytes.
+ * @return Calculated 16-bit checksum.
+ */
 static uint16_t calculate_crc(const uint8_t *data, uint8_t length) {
     uint16_t crc = 0;
     for (uint8_t index = 0; index < length; index++) {
@@ -42,9 +59,13 @@ static uint16_t calculate_crc(const uint8_t *data, uint8_t length) {
 
 /**
  * @brief Builds a V4 tuning write with its setting offset, raw value, and CRC-16.
- * @param setting Throttle, brake, clutch, or brake-force setting to write.
- * @param value Raw one-byte setting value.
- * @param output Destination for the 23-byte transfer payload.
+ *
+ * Copies the fixed request envelope, inserts the selected channel offset and value, and appends the
+ * checksum over the first 21 bytes.
+ *
+ * @param[in] setting Throttle, brake, clutch, or brake-force setting to write.
+ * @param[in] value Raw one-byte setting value.
+ * @param[out] output Destination for the 23-byte transfer payload.
  * @return True for a supported setting; false without changing output otherwise.
  */
 bool pedal_v4_tuning_request(PedalV4TuningSetting setting, uint8_t value,

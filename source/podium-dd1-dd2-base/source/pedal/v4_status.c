@@ -16,6 +16,16 @@ typedef struct {
     uint16_t offset;
 } ParsedVarint;
 
+/**
+ * @brief Decodes one bounded unsigned variable-length integer.
+ *
+ * Accumulates up to 32 value bits and returns the first offset after the encoded integer.
+ *
+ * @param[in] data Response payload containing the integer.
+ * @param[in] end Exclusive payload boundary.
+ * @param[in] offset Initial integer offset.
+ * @return Parsed value and next payload offset.
+ */
 static ParsedVarint parse_varint(const uint8_t *data, uint16_t end, uint16_t offset) {
     ParsedVarint result = {.value = 0, .offset = offset};
     uint8_t shift = 0;
@@ -33,6 +43,18 @@ static ParsedVarint parse_varint(const uint8_t *data, uint16_t end, uint16_t off
     return result;
 }
 
+/**
+ * @brief Skips an unrecognized bounded status field.
+ *
+ * Advances across variable-length integers and length-delimited fields without crossing the record
+ * boundary. Unsupported wire types consume the rest of the record.
+ *
+ * @param[in] data Response payload containing the field.
+ * @param[in] end Exclusive record boundary.
+ * @param[in] offset Initial field-value offset.
+ * @param[in] wire_type Encoded field wire type.
+ * @return Offset after the skipped field.
+ */
 static uint16_t skip_field(const uint8_t *data, uint16_t end, uint16_t offset, uint8_t wire_type) {
     if (wire_type == PEDAL_V4_WIRE_VARINT) {
         return parse_varint(data, end, offset).offset;
@@ -45,6 +67,16 @@ static uint16_t skip_field(const uint8_t *data, uint16_t end, uint16_t offset, u
     return end;
 }
 
+/**
+ * @brief Extracts a selector and value from one V4 status record.
+ *
+ * Stores values for selectors one through three and ignores unsupported selectors and fields.
+ *
+ * @param[in] data Response payload containing the record.
+ * @param[in] start First record byte.
+ * @param[in] end Exclusive record boundary.
+ * @param[in,out] values Accumulated values indexed by one-based selector.
+ */
 static void parse_record(const uint8_t *data, uint16_t start, uint16_t end,
                          uint32_t values[PEDAL_V4_STATUS_AXIS_COUNT]) {
     uint16_t offset = start;
@@ -76,10 +108,14 @@ static void parse_record(const uint8_t *data, uint16_t start, uint16_t end,
 
 /**
  * @brief Extracts the three pedal axes from a V4 status response.
- * @param data Complete V4 response payload.
- * @param length Response payload length; parsing starts after the 25-byte envelope.
- * @param axes Axis destination ordered as primary, secondary, and tertiary input.
- * @return Nothing. Inputs shorter than the envelope leave the destination unchanged.
+ *
+ * Parses selector/value records after the 25-byte envelope and publishes selectors two, one, and
+ * three as the primary, secondary, and tertiary pedal axes.
+ *
+ * @param[in] data Complete V4 response payload.
+ * @param[in] length Response payload length.
+ * @param[in,out] axes Axis destination ordered as primary, secondary, and tertiary input; retained
+ * unchanged when the response has no record payload.
  */
 void pedal_v4_status_parse(const uint8_t *data, uint16_t length,
                            uint16_t axes[PEDAL_V4_STATUS_AXIS_COUNT]) {
