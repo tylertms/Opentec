@@ -23,10 +23,28 @@ enum {
     INTERFACE_MODE_LOGITECH_G27 = 4,
 };
 
+/**
+ * @brief Reads a two-byte little-endian value.
+ *
+ * Combines the low byte followed by the high byte used for each mode-4 axis value.
+ *
+ * @param[in] data Two source bytes in low-byte-first order.
+ * @return Decoded unsigned 16-bit value.
+ */
 static uint16_t read_little_endian_u16(const uint8_t *data) {
     return (uint16_t)data[0] | (uint16_t)data[1] << 8;
 }
 
+/**
+ * @brief Assigns one source bit to one destination bit.
+ *
+ * Replaces the selected destination bit while preserving every other bit in the byte.
+ *
+ * @param[in,out] destination Byte containing the destination bit.
+ * @param[in] destination_bit Destination bit position from zero through seven.
+ * @param[in] source Byte containing the source bit.
+ * @param[in] source_bit Source bit position from zero through seven.
+ */
 static void assign_bit(uint8_t *destination, uint8_t destination_bit, uint8_t source,
                        uint8_t source_bit) {
     uint8_t mask = (uint8_t)(1u << destination_bit);
@@ -34,6 +52,14 @@ static void assign_bit(uint8_t *destination, uint8_t destination_bit, uint8_t so
                              (((source >> source_bit) & 1u) << destination_bit));
 }
 
+/**
+ * @brief Maps legacy control bits into the two button bytes.
+ *
+ * Applies the interface-mode-zero-through-four button permutation from control bytes two and
+ * three, replacing the corresponding button bits.
+ *
+ * @param[in,out] input Filtered mode-4 input containing controls and buttons.
+ */
 static void map_legacy_controls(WheelPacketModeFourInput *input) {
     static const uint8_t first_destinations[8] = {3, 0, 4, 1, 5, 2, 6, 7};
     static const uint8_t second_destinations[8] = {5, 7, 6, 0, 3, 1, 2, 4};
@@ -43,6 +69,14 @@ static void map_legacy_controls(WheelPacketModeFourInput *input) {
     }
 }
 
+/**
+ * @brief Writes the normalized mode-4 request payload.
+ *
+ * Serializes every logical field into the 30-byte payload view with low-byte-first axis values.
+ *
+ * @param[in] input Normalized logical mode-4 input.
+ * @param[out] snapshot Thirty-byte protocol payload destination.
+ */
 static void write_snapshot(const WheelPacketModeFourInput *input,
                            uint8_t snapshot[WHEEL_PACKET_MODE_FOUR_SNAPSHOT_SIZE]) {
     for (uint8_t index = 0; index < WHEEL_PACKET_MODE_FOUR_BUTTON_COUNT; index++) {
