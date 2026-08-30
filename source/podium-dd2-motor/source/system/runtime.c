@@ -321,8 +321,8 @@ static void motor_runtime_interlock_step(MotorRuntime *runtime) {
  */
 static void motor_runtime_current_calibration_step(MotorRuntime *runtime) {
     if (!runtime->current_calibration_started) {
-        GMCLIB_3COOR_T_F16 duty = {0};
-        motor_pwm_write(FTM0, &duty);
+        runtime->foc_output.duty = (GMCLIB_3COOR_T_F16){0};
+        motor_pwm_write(FTM0, &runtime->foc_output.duty);
         motor_current_calibration_start(&runtime->current_calibration);
         motor_current_calibration_hardware_start();
         runtime->current_calibration_started = true;
@@ -334,6 +334,8 @@ static void motor_runtime_current_calibration_step(MotorRuntime *runtime) {
     }
 
     motor_adc_runtime_initialize(runtime->hardware.adc_auxiliary_channel);
+    runtime->foc_output.duty = (GMCLIB_3COOR_T_F16){0};
+    motor_pwm_enable_outputs();
     runtime->timing.countdowns[kMotorCountdownStartupRamp].active = 1U;
     runtime->mode = motor_control_mode_complete(runtime->mode);
 }
@@ -525,32 +527,37 @@ static void motor_runtime_encoder_direction_step(MotorRuntime *runtime) {
     motor_startup_interlock_outputs_apply(false, true);
 
     MotorCountdown *countdown = &runtime->timing.countdowns[kMotorCountdownEncoderIndex];
-    MotorEncoderIndexSeekStep seek =
-        motor_encoder_index_seek_step(runtime->encoder_index_detected, countdown->ticks);
+    MotorEncoderDirectionPhase phase = runtime->encoder_direction.phase;
+    MotorEncoderIndexSeekStep seek = {0};
+    if (phase == kMotorEncoderDirectionFirstIndex || phase == kMotorEncoderDirectionSecondIndex) {
+        seek = motor_encoder_index_seek_step(runtime->encoder_index_detected, countdown->ticks);
+        countdown->active = seek.countdown_active ? 1U : 0U;
+        runtime->control_current = seek.drive_current;
+        motor_runtime_control_cycle(runtime, runtime->control_current, false);
+    }
     MotorEncoderDirectionStep step = motor_encoder_direction_check_step(
         &runtime->encoder_direction, seek.complete, runtime->encoder.position,
         (int32_t)runtime->hardware.encoder_modulus);
 
-    countdown->active = seek.countdown_active ? 1U : 0U;
     runtime->parameters.entries[MOTOR_PARAMETER_DIRECTION_COMMAND].value = step.status;
     if (step.reset_controller) {
-        motor_foc_initialize(&runtime->foc);
+        motor_velocity_control_controller_reset(&runtime->velocity_control);
     }
     if (step.reset_position) {
         motor_encoder_position_reset(&runtime->encoder);
-        runtime->motion.previous_counter = 0U;
     }
     if (step.restart_index_seek) {
         motor_runtime_index_seek_restart(runtime);
+    }
+    if (phase == kMotorEncoderDirectionReturn || step.result == kMotorEncoderDirectionFailed) {
+        runtime->control_current = step.drive_current;
+        motor_runtime_control_cycle(runtime, runtime->control_current, false);
     }
     if (step.result != kMotorEncoderDirectionPending) {
         countdown->active = 0U;
         motor_encoder_index_interrupt_disable();
         runtime->mode = motor_control_mode_complete(runtime->mode);
     }
-
-    runtime->control_current = step.drive_current;
-    motor_runtime_control_cycle(runtime, runtime->control_current, false);
 }
 
 /**

@@ -66,8 +66,8 @@ void motor_adc_initialize(uint32_t encoder_scale, MotorAdcHandler handler, void 
     ADC16_Init(ADC1, &config);
     ADC16_EnableHardwareTrigger(ADC0, true);
     ADC16_EnableHardwareTrigger(ADC1, true);
-    SIM->SOPT7 |= SIM_SOPT7_ADC0TRGSEL(8U) | SIM_SOPT7_ADC0ALTTRGEN(2U) | SIM_SOPT7_ADC1TRGSEL(8U) |
-                  SIM_SOPT7_ADC1ALTTRGEN(2U);
+    SIM->SOPT7 = SIM_SOPT7_ADC0TRGSEL(8U) | SIM_SOPT7_ADC0ALTTRGEN(2U) | SIM_SOPT7_ADC1TRGSEL(8U) |
+                 SIM_SOPT7_ADC1ALTTRGEN(2U);
 
     adc16_channel_config_t channel_config = {
         .channelNumber = 10U,
@@ -165,7 +165,11 @@ void motor_adc_trigger_enable(void) {
  * The route changes only when the startup state reaches current calibration. All six zero-duty
  * PWM outputs are unmasked at the same transition.
  */
-void motor_current_calibration_hardware_start(void) { motor_pwm_enable_outputs(); }
+void motor_current_calibration_hardware_start(void) {
+    SIM->SOPT7 |= SIM_SOPT7_ADC0TRGSEL(8U) | SIM_SOPT7_ADC0ALTTRGEN(2U) | SIM_SOPT7_ADC1TRGSEL(8U) |
+                  SIM_SOPT7_ADC1ALTTRGEN(2U);
+    motor_pwm_enable_outputs();
+}
 
 /**
  * @brief Polls the active ADC and advances two-phase current-offset calibration.
@@ -226,6 +230,7 @@ MotorCurrentCalibrationResult motor_current_calibration_poll(MotorCurrentCalibra
  * @param auxiliary_channel Board-selected ADC0 auxiliary channel, either four or seven.
  */
 void motor_adc_runtime_initialize(uint32_t auxiliary_channel) {
+    SIM->SOPT7 = 0U;
     adc16_channel_config_t channel_config = {
         .channelNumber = 9U,
         .enableInterruptOnConversionCompleted = true,

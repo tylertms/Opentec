@@ -37,20 +37,12 @@ void motor_velocity_control_initialize(MotorVelocityControlState *state, int16_t
     motor_velocity_control_reset(state);
 }
 
-/**
- * @brief Resets the calibration velocity PI state.
- *
- * The target and published control values return to zero while the recovered gains, limits, and
- * ramp rates remain configured.
- *
- * @param state Velocity controller to reset.
- */
 void motor_velocity_control_reset(MotorVelocityControlState *state) {
     state->target_velocity = 0;
-    state->ramped_velocity = 0;
-    state->velocity_error = 0;
-    state->current_reference = 0;
-    state->stop_integrator = 0;
+    motor_velocity_control_controller_reset(state);
+}
+
+void motor_velocity_control_controller_reset(MotorVelocityControlState *state) {
     GFLIB_CtrlPIpAWInit_F16(0, &state->controller);
 }
 

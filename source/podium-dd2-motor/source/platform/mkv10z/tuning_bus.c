@@ -17,6 +17,7 @@ static uint8_t motor_bus_receive[MOTOR_PARAMETER_REQUEST_SIZE];
 static uint8_t motor_bus_transmit[MOTOR_PARAMETER_RESPONSE_SIZE];
 static MotorBusState motor_bus_state;
 static volatile bool motor_bus_active;
+static bool motor_bus_extended_header_pending;
 static uint16_t motor_bus_active_ticks;
 static uint8_t motor_bus_receive_size;
 
@@ -87,12 +88,26 @@ static void motor_bus_transfer_callback(I2C_Type *base, i2c_slave_transfer_t *tr
     (void)user_data;
 
     switch (transfer->event) {
+    case kI2C_SlaveStartEvent:
+        motor_bus_extended_header_pending = true;
+        break;
     case kI2C_SlaveAddressMatchEvent:
+        motor_bus_extended_header_pending = false;
+        if ((I2C_SlaveGetStatusFlags(base) & (uint32_t)kI2C_TransferDirectionFlag) != 0U) {
+            motor_bus_receive_size = (uint8_t)transfer->transferredCount;
+            transfer->transferredCount = 0U;
+            motor_bus_transmit_prepare(transfer);
+        }
+        motor_bus_active = true;
+        break;
     case kI2C_SlaveGenaralcallEvent:
+        motor_bus_extended_header_pending = false;
         motor_bus_active = true;
         break;
     case kI2C_SlaveReceiveEvent:
-        if (motor_bus_state == kMotorBusIdle) {
+        if (motor_bus_extended_header_pending) {
+            motor_bus_extended_header_pending = false;
+        } else if (motor_bus_state == kMotorBusIdle) {
             transfer->data = motor_bus_receive;
             transfer->dataSize = sizeof(motor_bus_receive);
             motor_bus_state = kMotorBusReceiving;
@@ -110,7 +125,10 @@ static void motor_bus_transfer_callback(I2C_Type *base, i2c_slave_transfer_t *tr
         }
         motor_bus_state = kMotorBusIdle;
         motor_bus_active = false;
+        motor_bus_extended_header_pending = false;
         motor_bus_receive_reset();
+        transfer->data = NULL;
+        transfer->dataSize = 0U;
         break;
     default:
         break;
@@ -130,11 +148,11 @@ static void motor_bus_hardware_initialize(void) {
     I2C_SlaveInit(I2C0, &config, CLOCK_GetFreq(kCLOCK_BusClk));
 
     I2C0->C2 |= I2C_C2_ADEXT_MASK;
-    I2C0->FLT = (I2C0->FLT & I2C_FLT_SHEN_MASK) | I2C_FLT_SSIE_MASK | 4U;
     I2C0->F = 0x27U;
 
     I2C_SlaveTransferCreateHandle(I2C0, &motor_bus_handle, motor_bus_transfer_callback, NULL);
     (void)I2C_SlaveTransferNonBlocking(I2C0, &motor_bus_handle, kI2C_SlaveAllEvents);
+    I2C0->FLT = (I2C0->FLT & 0xa0U) | 4U;
 }
 
 /**
@@ -154,6 +172,7 @@ void motor_bus_initialize(MotorParameterBank *parameters,
     motor_bus_context = context;
     motor_bus_state = kMotorBusIdle;
     motor_bus_active = false;
+    motor_bus_extended_header_pending = false;
     motor_bus_active_ticks = 0U;
     motor_bus_receive_reset();
     motor_bus_hardware_initialize();
@@ -179,6 +198,7 @@ void motor_bus_service(void) {
     I2C_SlaveDeinit(I2C0);
     motor_bus_state = kMotorBusIdle;
     motor_bus_active = false;
+    motor_bus_extended_header_pending = false;
     motor_bus_active_ticks = 0U;
     motor_bus_receive_reset();
     motor_bus_hardware_initialize();

@@ -111,6 +111,11 @@ static void test_direction_check_failure(void) {
     assert(step.result == kMotorEncoderDirectionFailed);
     assert(step.status == 0xbbbbU);
     assert(state.phase == kMotorEncoderDirectionBegin);
+
+    state.phase = (MotorEncoderDirectionPhase)4;
+    step = motor_encoder_direction_check_step(&state, true, 0, 0x5c7f);
+    assert(step.result == kMotorEncoderDirectionPending);
+    assert(step.drive_current == 0);
 }
 
 int main(void) {

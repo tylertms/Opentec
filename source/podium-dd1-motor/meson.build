@@ -175,6 +175,7 @@ if motor_target
       '210',
     ],
     suite: ['motor', 'simulator'],
+    depends: firmware,
     timeout: 120,
   )
   test(
@@ -182,6 +183,7 @@ if motor_target
     motor_scenario,
     args: firmware.full_path(),
     suite: ['motor', 'simulator'],
+    depends: firmware,
     timeout: 300,
   )
 

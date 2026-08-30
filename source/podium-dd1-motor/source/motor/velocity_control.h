@@ -16,6 +16,7 @@ typedef struct {
 
 void motor_velocity_control_initialize(MotorVelocityControlState *state, int16_t current_limit);
 void motor_velocity_control_reset(MotorVelocityControlState *state);
+void motor_velocity_control_controller_reset(MotorVelocityControlState *state);
 void motor_velocity_control_target_set(MotorVelocityControlState *state, int16_t target_velocity);
 int16_t motor_velocity_control_step(MotorVelocityControlState *state, int16_t measured_velocity,
                                     bool_t current_controller_limited);

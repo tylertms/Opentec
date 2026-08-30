@@ -171,6 +171,10 @@ MotorEncoderDirectionStep motor_encoder_direction_check_step(MotorEncoderDirecti
         return step;
     }
 
+    if (state->phase != kMotorEncoderDirectionReturn) {
+        return step;
+    }
+
     if (position > state->start_position) {
         step.drive_current = -MOTOR_ENCODER_INDEX_DRIVE_CURRENT;
         return step;

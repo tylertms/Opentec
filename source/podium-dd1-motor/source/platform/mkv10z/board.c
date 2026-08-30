@@ -3,6 +3,29 @@
 #include <fsl_gpio.h>
 #include <fsl_port.h>
 
+void SystemInitHook(void) {
+    if ((RCM->SRS0 & RCM_SRS0_WAKEUP_MASK) != 0U && (PMC->REGSC & PMC_REGSC_ACKISO_MASK) != 0U) {
+        PMC->REGSC |= PMC_REGSC_ACKISO_MASK;
+    }
+
+    SMC->PMPROT = SMC_PMPROT_AVLP_MASK | SMC_PMPROT_AVLLS_MASK;
+    SIM->CLKDIV1 = SIM_CLKDIV1_OUTDIV4(2U);
+    SIM->SOPT1 &= ~SIM_SOPT1_OSC32KSEL_MASK;
+    SIM->SCGC5 |= SIM_SCGC5_PORTA_MASK;
+    PORTA->PCR[18] &= ~(PORT_PCR_ISF_MASK | PORT_PCR_MUX_MASK);
+    MCG->SC = 0U;
+    MCG->C1 = MCG_C1_IRCLKEN_MASK | MCG_C1_IREFS_MASK;
+    while ((MCG->S & MCG_S_IREFST_MASK) == 0U) {
+    }
+    MCG->C2 &= ~MCG_C2_FCFTRIM_MASK;
+    MCG->C4 = (MCG->C4 & ~(MCG_C4_DMX32_MASK | MCG_C4_DRST_DRS_MASK)) | MCG_C4_DMX32_MASK |
+              MCG_C4_DRST_DRS(2U);
+    OSC0->CR = OSC_CR_ERCLKEN_MASK;
+    MCG->C6 = 0U;
+    while ((MCG->S & MCG_S_CLKST_MASK) != 0U) {
+    }
+}
+
 /**
  * @brief Configures one official hardware-strap input.
  *
