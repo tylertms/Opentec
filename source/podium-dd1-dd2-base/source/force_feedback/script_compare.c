@@ -2,6 +2,14 @@
 
 #include <stdbool.h>
 
+/**
+ * @brief Converts a comparison predicate to its script float value.
+ *
+ * Produces the canonical single-precision values 1.0 for true and 0.0 for false.
+ *
+ * @param[in] value Predicate result to convert.
+ * @return Float 1.0 when true, otherwise float 0.0.
+ */
 static float comparison_value(bool value) { return value ? 1.0f : 0.0f; }
 
 /**
