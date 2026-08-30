@@ -2655,7 +2655,7 @@ static void service_analog_input(uint32_t now_ms) {
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 static void service_shifter_display(uint32_t now_ms) {
-    WheelDisplayOutput *output = &wheel_service.display_output;
+    WheelDisplayOutput *output = wheel_service_default_display_output(&wheel_service);
     bool changed = usb_disconnect_display_update(&usb_disconnect_display,
                                                  usb_disconnect_notice_visible, output);
     if (changed) {
@@ -2710,7 +2710,7 @@ static void queue_wheel_startup_version_presentation(void) {
  */
 static void service_wheel_startup_display(uint32_t now_ms) {
     bool wheel_active = wheel_service_protocol_phase(&wheel_service) == WHEEL_PROTOCOL_ACTIVE;
-    WheelDisplayOutput *output = &wheel_service.display_output;
+    WheelDisplayOutput *output = wheel_service_default_display_output(&wheel_service);
     if (wheel_startup_display_update(&wheel_startup_display, wheel_active,
                                      wheel_service_tuning_display_supported(&wheel_service),
                                      motor_position_ready, motor_probe_identity(&motor_probe),
@@ -3091,6 +3091,7 @@ int main(void) {
         service_wheel_startup_display(now_ms);
         service_shifter_display(now_ms);
         service_wheel_compatibility_alert(now_ms);
+        (void)wheel_service_update_display_overlay(&wheel_service, now_ms);
         service_usb_input(now_ms);
         service_motor();
         service_cooling(now_ms);

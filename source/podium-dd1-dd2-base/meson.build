@@ -160,6 +160,7 @@ wheel_usb_bridge_gate_sources = files('source/wheel/usb_bridge_gate.c')
 wheel_compatibility_alert_sources = files('source/wheel/compatibility_alert.c')
 wheel_auxiliary_output_sources = files('source/wheel/auxiliary_output.c')
 wheel_display_output_sources = files('source/wheel/display_output.c')
+wheel_display_overlay_sources = files('source/wheel/display_overlay.c')
 wheel_startup_display_sources = files('source/wheel/startup_display.c')
 wheel_startup_version_page_sources = files('source/wheel/startup_version_page.c')
 wheel_usb_disconnect_display_sources = files('source/wheel/usb_disconnect_display.c')
@@ -399,6 +400,7 @@ if meson.is_cross_build() and host_machine.cpu_family() == 'dspic'
     'wheel-compatibility-alert': 'source/wheel/compatibility_alert.c',
     'wheel-auxiliary-output': 'source/wheel/auxiliary_output.c',
     'wheel-display-output': 'source/wheel/display_output.c',
+    'wheel-display-overlay': 'source/wheel/display_overlay.c',
     'wheel-startup-display': 'source/wheel/startup_display.c',
     'wheel-startup-version-page': 'source/wheel/startup_version_page.c',
     'wheel-usb-disconnect-display': 'source/wheel/usb_disconnect_display.c',
@@ -1812,6 +1814,15 @@ if not meson.is_cross_build()
     include_directories: base_include,
   )
 
+  wheel_display_overlay_test = executable(
+    'base-wheel-display-overlay-test',
+    'tests/source/wheel_display_overlay.c',
+    wheel_display_overlay_sources,
+    platform_time_sources,
+    build_by_default: false,
+    include_directories: base_include,
+  )
+
   wheel_startup_display_test = executable(
     'base-wheel-startup-display-test',
     'tests/source/wheel_startup_display.c',
@@ -2261,6 +2272,7 @@ if not meson.is_cross_build()
     'base-wheel-service-test',
     'tests/source/wheel_service.c',
     wheel_service_sources,
+    wheel_display_overlay_sources,
     wheel_adapter_command_sources,
     transfer_command_sources,
     transfer_memory_sources,
@@ -2946,6 +2958,11 @@ if not meson.is_cross_build()
     suite: ['base', 'wheel', 'protocol'],
   )
   test('base-wheel-service', wheel_service_test, suite: ['base', 'wheel', 'input'])
+  test(
+    'base-wheel-display-overlay',
+    wheel_display_overlay_test,
+    suite: ['base', 'wheel', 'display'],
+  )
   test('base-wheel-status-service', wheel_status_service_test, suite: ['base', 'wheel', 'status'])
   test(
     'base-wheel-transfer-service',

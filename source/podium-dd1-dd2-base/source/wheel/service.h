@@ -8,6 +8,7 @@
 #include "wheel/adapter_commands.h"
 #include "wheel/auxiliary_output.h"
 #include "wheel/display_output.h"
+#include "wheel/display_overlay.h"
 #include "wheel/protocol.h"
 #include "wheel/rotary_input.h"
 #include "wheel/vibration.h"
@@ -50,6 +51,8 @@ typedef struct {
     WheelAdapterCommandService adapter_commands;
     WheelRotaryInput rotary_input;
     WheelDisplayOutput display_output;
+    WheelDisplayOutput default_display_output;
+    WheelDisplayOverlay display_overlay;
     WheelAuxiliaryOutput auxiliary_output;
     uint8_t adapter_display_state;
     uint8_t request[SERIAL_PACKET_MAX_PAYLOAD_SIZE];
@@ -80,6 +83,10 @@ bool wheel_service_queue_adapter_text_line(WheelService *service, uint8_t line, 
                                            const uint8_t *text, uint8_t length);
 bool wheel_service_queue_adapter_text_close(WheelService *service);
 void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output);
+WheelDisplayOutput *wheel_service_default_display_output(WheelService *service);
+void wheel_service_begin_display_overlay(WheelService *service, uint8_t command, uint32_t now_ms);
+bool wheel_service_update_display_overlay(WheelService *service, uint32_t now_ms);
+bool wheel_service_display_overlay_active(const WheelService *service);
 void wheel_service_set_vibration_output(WheelService *service, const WheelVibrationOutput *output);
 void wheel_service_set_auxiliary_output_disabled(WheelService *service, bool disabled);
 void wheel_service_set_legacy_axes(WheelService *service, const uint8_t axes[2]);

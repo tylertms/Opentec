@@ -9,6 +9,7 @@
 #include "wheel/adapter_commands.h"
 #include "wheel/auxiliary_output.h"
 #include "wheel/display_output.h"
+#include "wheel/display_overlay.h"
 #include "wheel/output_reports.h"
 #include "wheel/protocol.h"
 
@@ -477,11 +478,9 @@ void wheel_service_init(WheelService *service, SerialService *transport) {
     wheel_service_reset_adapter_commands(service);
     wheel_rotary_input_init(&service->rotary_input);
     clear_scan_filter(service);
-    for (uint8_t index = 0; index < WHEEL_DISPLAY_GLYPH_COUNT; index++) {
-        service->display_output.glyphs[index] = 0;
-    }
-    service->display_output.auxiliary = 0;
-    service->display_output.third_glyph_marker = false;
+    service->display_output = (WheelDisplayOutput){0};
+    service->default_display_output = (WheelDisplayOutput){0};
+    wheel_display_overlay_init(&service->display_overlay);
     service->auxiliary_output = (WheelAuxiliaryOutput){0};
     service->protocol_deadline_ms = 0;
     service->scan_phase = 0;
@@ -728,29 +727,123 @@ static void set_auxiliary_report(WheelService *service, uint16_t report) {
 }
 
 /**
- * @brief Updates the output state sent to the attached wheel.
+ * @brief Publishes the visible attached-wheel display output.
  *
  * Applies the same glyph and marker output to each negotiated packet-family encoder while
  * preserving the shared auxiliary report.
  *
  * @param[in,out] service Attached-wheel service to update.
- * @param[in] output Display glyphs and marker state to send.
+ * @param[in] output Visible display glyphs and marker state to send.
  */
-void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output) {
-    service->display_output = *output;
+static void publish_display_output(WheelService *service, WheelDisplayOutput output) {
+    service->display_output = output;
     WheelPacketModeOneOutput mode_one_output = service->protocol.mode_one_output;
-    mode_one_output.display = *output;
+    mode_one_output.display = output;
     service->protocol.mode_one_output = mode_one_output;
     WheelPacketModeFourOutput mode_four_output = service->protocol.mode_four_output;
-    mode_four_output.display = *output;
+    mode_four_output.display = output;
     service->protocol.mode_four_output = mode_four_output;
     WheelPacketCrcOutput crc_output = service->protocol.crc_output;
-    crc_output.display = *output;
+    crc_output.display = output;
     service->protocol.crc_output = crc_output;
     uint8_t alternate_auxiliary = service->protocol.alternate_output.display.auxiliary;
-    service->protocol.alternate_output.display = *output;
+    service->protocol.alternate_output.display = output;
     service->protocol.alternate_output.display.auxiliary = alternate_auxiliary;
-    service->protocol.adapter_output.display = *output;
+    service->protocol.adapter_output.display = output;
+}
+
+/**
+ * @brief Publishes the current temporary attached-wheel display page.
+ *
+ * Overlays its three glyphs on the retained default output so unrelated auxiliary state remains
+ * available while the temporary page owns the display.
+ *
+ * @param[in,out] service Attached-wheel service publishing the temporary page.
+ */
+static void publish_display_overlay(WheelService *service) {
+    WheelDisplayOutput output = service->default_display_output;
+    for (uint8_t index = 0; index < WHEEL_DISPLAY_GLYPH_COUNT; index++) {
+        output.glyphs[index] = service->display_overlay.output.glyphs[index];
+    }
+    output.third_glyph_marker = service->display_overlay.output.third_glyph_marker;
+    publish_display_output(service, output);
+}
+
+/**
+ * @brief Updates the default output state sent to the attached wheel.
+ *
+ * Retains page-zero glyph and marker changes while a temporary page is active. Otherwise publishes
+ * them immediately to every negotiated packet-family encoder.
+ *
+ * @param[in,out] service Attached-wheel service to update.
+ * @param[in] output Default display glyphs and marker state to retain.
+ */
+void wheel_service_set_display_output(WheelService *service, const WheelDisplayOutput *output) {
+    service->default_display_output = *output;
+    if (!service->display_overlay.active) {
+        publish_display_output(service, *output);
+    }
+}
+
+/**
+ * @brief Returns the mutable default attached-wheel display output.
+ *
+ * Provides page-zero state to normal display producers even while a temporary page is visible.
+ *
+ * @param[in,out] service Attached-wheel service retaining both display pages.
+ * @return Mutable default display output.
+ */
+WheelDisplayOutput *wheel_service_default_display_output(WheelService *service) {
+    return &service->default_display_output;
+}
+
+/**
+ * @brief Starts a temporary attached-wheel command presentation.
+ *
+ * Replaces any active page-one presentation, restarts its timing, and immediately publishes its
+ * initial glyphs without changing the retained default page.
+ *
+ * @param[in,out] service Attached-wheel service receiving the command.
+ * @param[in] command Command byte selecting the temporary presentation.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+void wheel_service_begin_display_overlay(WheelService *service, uint8_t command, uint32_t now_ms) {
+    wheel_display_overlay_begin(&service->display_overlay, command, now_ms);
+    publish_display_overlay(service);
+}
+
+/**
+ * @brief Advances the temporary attached-wheel command presentation.
+ *
+ * Publishes changed countdown glyphs while page one is active. When its deadline passes, restores
+ * the newest retained default page.
+ *
+ * @param[in,out] service Attached-wheel service advancing the temporary presentation.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @return True when the visible display output changed.
+ */
+bool wheel_service_update_display_overlay(WheelService *service, uint32_t now_ms) {
+    if (!wheel_display_overlay_update(&service->display_overlay, now_ms)) {
+        return false;
+    }
+    if (service->display_overlay.active) {
+        publish_display_overlay(service);
+    } else {
+        publish_display_output(service, service->default_display_output);
+    }
+    return true;
+}
+
+/**
+ * @brief Reports whether the temporary attached-wheel display page owns the output.
+ *
+ * Returns the current overlay ownership state without advancing its timing.
+ *
+ * @param[in] service Attached-wheel service retaining the temporary page.
+ * @return True while a temporary command presentation is active.
+ */
+bool wheel_service_display_overlay_active(const WheelService *service) {
+    return service->display_overlay.active;
 }
 
 /**
@@ -819,9 +912,9 @@ void wheel_service_reset_host_protocol_outputs(WheelService *service) {
     static const uint8_t cleared[4] = {0};
     set_auxiliary_report(service, 0);
     wheel_service_set_legacy_axes(service, cleared);
-    if (!wheel_service_tuning_display_supported(service)) {
-        service->display_output = (WheelDisplayOutput){0};
-        wheel_service_set_display_output(service, &service->display_output);
+    if (!wheel_service_tuning_display_supported(service) && !service->display_overlay.active) {
+        service->default_display_output = (WheelDisplayOutput){0};
+        publish_display_output(service, service->default_display_output);
     }
 
     if (wheel_output_reports_queue_packed(&service->protocol.output_reports, 2, cleared,

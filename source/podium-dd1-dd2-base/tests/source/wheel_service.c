@@ -1072,6 +1072,48 @@ static void test_resets_host_protocol_outputs(void) {
     assert(!service.display_output.third_glyph_marker);
 }
 
+static void test_preserves_default_display_behind_temporary_overlay(void) {
+    WheelService service;
+    initialize_service(&service);
+    service.protocol.mode = 1;
+    const WheelDisplayOutput first = {
+        .glyphs = {1, 2, 3},
+        .auxiliary = 0x45,
+        .third_glyph_marker = true,
+    };
+    wheel_service_set_display_output(&service, &first);
+
+    wheel_service_begin_display_overlay(&service, 0x93, 100);
+    assert(wheel_service_display_overlay_active(&service));
+    assert(service.display_output.glyphs[0] == 0);
+    assert(service.display_output.glyphs[1] == 0x78);
+    assert(service.display_output.glyphs[2] == 0);
+    assert(service.display_output.auxiliary == 0x45);
+    assert(!service.display_output.third_glyph_marker);
+
+    WheelDisplayOutput *default_output = wheel_service_default_display_output(&service);
+    *default_output = (WheelDisplayOutput){
+        .glyphs = {4, 5, 6},
+        .auxiliary = 0x67,
+        .third_glyph_marker = true,
+    };
+    wheel_service_set_display_output(&service, default_output);
+    wheel_service_reset_host_protocol_outputs(&service);
+    assert(service.display_output.glyphs[1] == 0x78);
+    assert(service.default_display_output.glyphs[0] == 4);
+    assert(service.default_display_output.glyphs[1] == 5);
+    assert(service.default_display_output.glyphs[2] == 6);
+
+    assert(!wheel_service_update_display_overlay(&service, 2099));
+    assert(wheel_service_update_display_overlay(&service, 2100));
+    assert(!wheel_service_display_overlay_active(&service));
+    assert(service.display_output.glyphs[0] == 4);
+    assert(service.display_output.glyphs[1] == 5);
+    assert(service.display_output.glyphs[2] == 6);
+    assert(service.display_output.auxiliary == 0x67);
+    assert(service.display_output.third_glyph_marker);
+}
+
 static void test_reports_host_capability_recovery_inputs(void) {
     WheelService service;
     initialize_service(&service);
@@ -1174,6 +1216,7 @@ int main(void) {
     test_applies_vibration_to_every_packet_family();
     test_applies_legacy_axes_to_every_packet_family();
     test_resets_host_protocol_outputs();
+    test_preserves_default_display_behind_temporary_overlay();
     test_reports_host_capability_recovery_inputs();
     test_exposes_playstation_wheel_inputs();
     return 0;
