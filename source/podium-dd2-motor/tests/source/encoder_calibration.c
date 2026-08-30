@@ -32,6 +32,10 @@ static void test_capture_sequence(void) {
     input.correction = 80;
     step = motor_encoder_calibration_step(&state, &input);
     assert(state.record.forward[11] == 10);
+    input.relative_position = 111U;
+    (void)motor_encoder_calibration_step(&state, &input);
+    input.relative_position = MOTOR_ENCODER_CORRECTION_CAPACITY * 10U;
+    (void)motor_encoder_calibration_step(&state, &input);
     input.relative_position = 100U;
     input.revolution_complete = true;
     step = motor_encoder_calibration_step(&state, &input);
@@ -84,6 +88,22 @@ static void test_velocity_and_center_boundaries(void) {
     input.position = -100;
     assert(motor_encoder_calibration_step(&state, &input).result ==
            kMotorEncoderCalibrationComplete);
+
+    state.phase = kMotorEncoderCalibrationSettleReverse;
+    state.settle_count = 999U;
+    state.velocity_lower = 295;
+    state.velocity_upper = 359;
+    input.velocity = -327;
+    assert(motor_encoder_calibration_step(&state, &input).arm_revolution);
+
+    state.phase = kMotorEncoderCalibrationCenter;
+    input.position = 101;
+    assert(motor_encoder_calibration_step(&state, &input).result ==
+           kMotorEncoderCalibrationPending);
+
+    state.phase = (MotorEncoderCalibrationPhase)UINT8_MAX;
+    assert(motor_encoder_calibration_step(&state, &input).result ==
+           kMotorEncoderCalibrationPending);
 }
 
 static void test_correction_read(void) {

@@ -45,6 +45,13 @@ static void test_interpolation_filter(void) {
     assert(state.output == -1234);
     assert(state.error == 0);
     assert(state.accumulator == 0U);
+
+    state =
+        (MotorDriveInterpolationState){.accumulator = UINT32_C(0x7fffffff), .output = INT16_MAX};
+    assert(motor_drive_interpolation_step(&state, INT16_MAX, 0U) == INT16_MAX);
+    state =
+        (MotorDriveInterpolationState){.accumulator = UINT32_C(0x80000000), .output = INT16_MIN};
+    assert(motor_drive_interpolation_step(&state, INT16_MIN, 0U) == INT16_MIN);
 }
 
 static void test_natural_motion_resistance(void) {
@@ -88,7 +95,6 @@ static void test_product_derating(void) {
     dd1.current_scale = 0x4000;
     assert(motor_drive_product_scale(&dd1, 20000, 2000U, 0x5999, 0x4000, false) == 9999);
     assert(motor_drive_product_scale(&dd1, 20000, 2000U, 0x5999, 0x4000, true) == 10000);
-
     MotorDriveDeratingState dd2;
     motor_drive_derating_initialize(&dd2, 0x770a);
     assert(motor_drive_product_scale(&dd2, 30000, 2000U, 0x770a, 0x5c28, false) == 27898);

@@ -103,6 +103,11 @@ static void test_wire_format(void) {
     assert(motor_parameter_request_apply(&bank, request, 1U, &changed));
     assert(bank.entries[33].value == 0U);
     assert(changed);
+    assert(!motor_parameter_request_apply(&bank, request, 0U, &changed));
+    assert(!changed);
+    assert(!motor_parameter_request_apply(&bank, request, MOTOR_PARAMETER_REQUEST_SIZE + 1U,
+                                          &changed));
+    assert(!changed);
 }
 
 int main(void) {

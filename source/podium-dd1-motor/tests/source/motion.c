@@ -32,6 +32,11 @@ static void test_filter(void) {
     MotorMotionFilter negative = {.shift = 4U};
     assert(motor_motion_filter_step(&negative, -160) == -10);
     assert(negative.accumulator == -150);
+
+    MotorMotionFilter upper = {.accumulator = INT32_MAX, .shift = 0U};
+    assert(motor_motion_filter_step(&upper, 1) == INT16_MAX);
+    MotorMotionFilter lower = {.accumulator = INT32_MIN, .shift = 0U};
+    assert(motor_motion_filter_step(&lower, -1) == INT16_MIN);
 }
 
 static void test_estimator(void) {

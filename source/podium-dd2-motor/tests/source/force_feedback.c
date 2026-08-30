@@ -131,8 +131,13 @@ static void test_directional_effects(void) {
 static void test_filter(void) {
     assert(motor_force_feedback_filter_length(0U) == 40U);
     assert(motor_force_feedback_filter_length(10U) == 35U);
+    assert(motor_force_feedback_filter_length(20U) == 30U);
+    assert(motor_force_feedback_filter_length(30U) == 25U);
+    assert(motor_force_feedback_filter_length(40U) == 20U);
     assert(motor_force_feedback_filter_length(50U) == 15U);
+    assert(motor_force_feedback_filter_length(60U) == 10U);
     assert(motor_force_feedback_filter_length(70U) == 7U);
+    assert(motor_force_feedback_filter_length(80U) == 4U);
     assert(motor_force_feedback_filter_length(90U) == 2U);
     assert(motor_force_feedback_filter_length(100U) == 1U);
     assert(motor_force_feedback_filter_length(99U) == 1U);
@@ -222,11 +227,51 @@ static void test_engine(void) {
     assert(mix.primary.magnitude == 11468U);
     assert(motor_force_feedback_effect_disable(&engine, 0U));
     assert(!motor_force_feedback_effect_disable(&engine, MOTOR_FORCE_FEEDBACK_EFFECT_COUNT));
+    assert(!motor_force_feedback_constant_configure(&engine, MOTOR_FORCE_FEEDBACK_EFFECT_COUNT,
+                                                    constant_payload));
+    assert(!motor_force_feedback_window_configure(&engine, MOTOR_FORCE_FEEDBACK_EFFECT_COUNT,
+                                                  constant_payload));
+    assert(!motor_force_feedback_directional_configure(&engine, MOTOR_FORCE_FEEDBACK_EFFECT_COUNT,
+                                                       constant_payload));
+    assert(!motor_force_feedback_effect_enable(&engine, MOTOR_FORCE_FEEDBACK_EFFECT_COUNT));
 
     engine.ramp_percent = 100U;
     mix = motor_force_feedback_mix(&engine, 4U, 0, 0, 320, false);
     assert(mix.primary.magnitude == 3U);
     assert(mix.secondary == 0);
+
+    motor_force_feedback_engine_initialize(&engine);
+    engine.settings.overall_gain_percent = 100U;
+    engine.settings.filter_setting = 100U;
+    for (uint8_t slot = 0U; slot < MOTOR_FORCE_FEEDBACK_EFFECT_COUNT; ++slot) {
+        assert(motor_force_feedback_constant_configure(&engine, slot, constant_payload));
+        assert(motor_force_feedback_effect_enable(&engine, slot));
+    }
+    mix = motor_force_feedback_mix(&engine, 5U, 0, 0, 0, true);
+    assert(mix.primary.positive);
+    assert(mix.primary.magnitude == UINT16_MAX);
+
+    const uint8_t negative_payload[5] = {0xffU, 0U, 0U, 0U, 0U};
+    for (uint8_t slot = 0U; slot < MOTOR_FORCE_FEEDBACK_EFFECT_COUNT; ++slot)
+        assert(motor_force_feedback_constant_configure(&engine, slot, negative_payload));
+    mix = motor_force_feedback_mix(&engine, 6U, 0, 0, 0, true);
+    assert(!mix.primary.positive);
+    assert(mix.primary.magnitude == UINT16_MAX);
+
+    engine.settings.overall_gain_percent = 0U;
+    mix = motor_force_feedback_mix(&engine, 7U, 0, 0, 0, true);
+    assert(mix.primary.magnitude == 0U);
+
+    motor_force_feedback_engine_initialize(&engine);
+    const uint8_t directional_payload[5] = {1U, 0U, 1U, 0U, 0xa0U};
+    for (uint8_t slot = 0U; slot < MOTOR_FORCE_FEEDBACK_EFFECT_COUNT; ++slot) {
+        assert(motor_force_feedback_directional_configure(&engine, slot, directional_payload));
+        assert(motor_force_feedback_effect_enable(&engine, slot));
+    }
+    mix = motor_force_feedback_mix(&engine, 8U, 0, 0, 1000000, true);
+    assert(mix.secondary == -32767);
+    mix = motor_force_feedback_mix(&engine, 9U, 0, 0, -1000000, true);
+    assert(mix.secondary == 32767);
 }
 
 static void test_commands(void) {
@@ -258,6 +303,12 @@ static void test_commands(void) {
     command[0] = 0x11U;
     command[1] = 7U;
     assert(!motor_force_feedback_command_apply(&engine, command));
+
+    command[0] = 0x11U;
+    command[1] = MOTOR_FORCE_FEEDBACK_EFFECT_WINDOW;
+    assert(motor_force_feedback_command_apply(&engine, command));
+    command[1] = MOTOR_FORCE_FEEDBACK_EFFECT_DIRECTIONAL;
+    assert(motor_force_feedback_command_apply(&engine, command));
 
     command[0] = 0x12U;
     assert(motor_force_feedback_command_apply(&engine, command));

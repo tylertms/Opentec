@@ -6,7 +6,7 @@
 
 enum {
     PRIMARY_FORCE_LIMIT = 65535,
-    SECONDARY_FORCE_MINIMUM = INT32_MIN + 65536,
+    SECONDARY_FORCE_LIMIT = 32767,
     SOFT_STOP_TRANSITION_RANGE = 0x19b1,
 };
 
@@ -28,18 +28,12 @@ static int32_t clamp_primary(int32_t force) {
     return force;
 }
 
-/**
- * @brief Limits the signed secondary force accumulator.
- *
- * The positive side already fits the recovered accumulator while the negative side reserves one
- * 65536-count margin from the signed minimum.
- *
- * @param force Signed accumulated secondary force.
- * @return Secondary force with the official lower limit applied.
- */
 static int32_t clamp_secondary(int32_t force) {
-    if (force < SECONDARY_FORCE_MINIMUM) {
-        return SECONDARY_FORCE_MINIMUM;
+    if (force > SECONDARY_FORCE_LIMIT) {
+        return SECONDARY_FORCE_LIMIT;
+    }
+    if (force < -SECONDARY_FORCE_LIMIT) {
+        return -SECONDARY_FORCE_LIMIT;
     }
     return force;
 }

@@ -155,6 +155,83 @@ static bool adc_calibration_configuration_matches(Kinetis *device) {
     return true;
 }
 
+static bool startup_output_state_safe(Kinetis *device) {
+    uint32_t output_mask = 0U;
+    uint32_t mode = 0U;
+    uint32_t combine = 0U;
+    uint32_t deadtime = 0U;
+    uint32_t modulus = 0U;
+    const bool readable =
+        kinetis_read(device, UINT32_C(0x40038060), &output_mask, sizeof(output_mask)) &&
+        kinetis_read(device, UINT32_C(0x40038054), &mode, sizeof(mode)) &&
+        kinetis_read(device, UINT32_C(0x40038064), &combine, sizeof(combine)) &&
+        kinetis_read(device, UINT32_C(0x40038068), &deadtime, sizeof(deadtime)) &&
+        kinetis_read(device, UINT32_C(0x40038008), &modulus, sizeof(modulus));
+    return readable && output_mask == UINT32_C(0x3f) && (mode & UINT32_C(0x60)) == UINT32_C(0x40) &&
+           (combine & UINT32_C(0x737373)) == UINT32_C(0x737373) &&
+           (deadtime & UINT32_C(0x3f)) == 50U && modulus == 2249U;
+}
+
+static bool call_symbol(Kinetis *device, const char *path, const char *name) {
+    uint32_t address = 0U;
+    uint32_t registers[15];
+    for (uint8_t index = 0U; index < 15U; ++index)
+        registers[index] = cortex_m4_get_register(kinetis_cpu(device), index);
+    const uint32_t return_address = cortex_m4_get_register(kinetis_cpu(device), 15U) & ~1U;
+    if (!cortex_m4_elf_symbol(path, name, &address) ||
+        !cortex_m4_set_breakpoint(kinetis_cpu(device), 1U, return_address, true))
+        return false;
+    cortex_m4_set_register(kinetis_cpu(device), 14U, return_address | 1U);
+    cortex_m4_set_register(kinetis_cpu(device), 15U, address & ~1U);
+    const CortexM4Result result =
+        cortex_m4_run(kinetis_cpu(device),
+                      (CortexM4RunLimits){.instruction_limit = 1000U, .cycle_limit = 20000U});
+    const bool returned = result.stop == CORTEX_M4_STOP_BREAKPOINT && execution_valid(device);
+    const bool disabled = cortex_m4_set_breakpoint(kinetis_cpu(device), 1U, return_address, false);
+    for (uint8_t index = 0U; index < 15U; ++index)
+        cortex_m4_set_register(kinetis_cpu(device), index, registers[index]);
+    return returned && disabled;
+}
+
+static bool pdb_status_clear_matches(Kinetis *device, const char *path) {
+    uint32_t initial_channel_zero = 0U;
+    uint32_t initial_channel_one = 0U;
+    if (!kinetis_read(device, UINT32_C(0x40036014), &initial_channel_zero,
+                      sizeof(initial_channel_zero)) ||
+        !kinetis_read(device, UINT32_C(0x4003603c), &initial_channel_one,
+                      sizeof(initial_channel_one)) ||
+        (initial_channel_zero & UINT32_C(0xff0000)) == 0U ||
+        (initial_channel_one & UINT32_C(0xff0000)) == 0U)
+        return false;
+    if (!call_symbol(device, path, "PDB0_PDB1_IRQHandler"))
+        return false;
+    uint32_t channel_zero = 0U;
+    uint32_t channel_one = 0U;
+    return kinetis_read(device, UINT32_C(0x40036014), &channel_zero, sizeof(channel_zero)) &&
+           kinetis_read(device, UINT32_C(0x4003603c), &channel_one, sizeof(channel_one)) &&
+           (channel_zero & UINT32_C(0xff)) == 0U && (channel_one & UINT32_C(0xff)) == 0U &&
+           (channel_zero & UINT32_C(0xff0000)) == (initial_channel_zero & UINT32_C(0xff0000)) &&
+           (channel_one & UINT32_C(0xff0000)) == (initial_channel_one & UINT32_C(0xff0000));
+}
+
+static bool fatal_output_state_safe(Kinetis *device, const char *path) {
+    uint32_t fault_address = 0U;
+    if (!cortex_m4_elf_symbol(path, "motor_runtime_fault", &fault_address))
+        return false;
+    cortex_m4_set_register(kinetis_cpu(device), 15U, fault_address & ~1U);
+    for (uint32_t instruction = 0U; instruction < 64U; ++instruction) {
+        if (cortex_m4_step(kinetis_cpu(device)).stop != CORTEX_M4_STOP_RUNNING)
+            return false;
+        uint32_t output_mask = 0U;
+        uint32_t port_c_output = 0U;
+        if (kinetis_read(device, UINT32_C(0x40038060), &output_mask, sizeof(output_mask)) &&
+            kinetis_read(device, UINT32_C(0x400ff080), &port_c_output, sizeof(port_c_output)) &&
+            output_mask == UINT32_C(0x3f) && (port_c_output & (1UL << 1U)) == 0U)
+            return true;
+    }
+    return false;
+}
+
 static bool queue_frame(Kinetis *device, const uint8_t *frame, size_t size) {
     for (size_t index = 0U; index < size; ++index) {
         if (!kinetis_serial_receive(device, KINETIS_SERIAL_SPI0, frame[index], 0U))
@@ -542,6 +619,28 @@ static bool i2c_configuration_matches(Kinetis *device) {
     return kinetis_read(device, UINT32_C(0x40066006), &filter, sizeof(uint8_t)) && filter == 0x24U;
 }
 
+static size_t select_owned_coverage(CortexM4Coverage *coverage, const char *path) {
+    static const char *prefixes[] = {
+        "motor_",
+        "firmware_main",
+        "SystemInitHook",
+        "ADC0_IRQHandler",
+        "ADC1_IRQHandler",
+        "DMA0_DMA4_IRQHandler",
+        "DMA1_DMA5_IRQHandler",
+        "FTM2_IRQHandler",
+        "FTM3_IRQHandler",
+        "FTM4_IRQHandler",
+        "I2C0_IRQHandler",
+        "PDB0_PDB1_IRQHandler",
+        "PORTB_PORTC_PORTD_PORTE_IRQHandler",
+    };
+    size_t selected = 0U;
+    for (size_t index = 0U; index < sizeof(prefixes) / sizeof(prefixes[0]); ++index)
+        selected += cortex_m4_coverage_select_elf_functions(coverage, path, prefixes[index]);
+    return selected;
+}
+
 int main(int argc, char **argv) {
     if (argc != 2)
         return EXIT_FAILURE;
@@ -555,19 +654,22 @@ int main(int argc, char **argv) {
 
     uint32_t entry_address = 0U;
     CortexM4Coverage *coverage = cortex_m4_coverage_create_elf(argv[1]);
-    bool passed = coverage != NULL && cortex_m4_load_elf(device, argv[1], &entry_address) &&
-                  kinetis_reset(device) && configure_inputs(device) &&
+    const size_t owned_functions = select_owned_coverage(coverage, argv[1]);
+    bool passed = coverage != NULL && owned_functions != 0U &&
+                  cortex_m4_load_elf(device, argv[1], &entry_address) && kinetis_reset(device) &&
+                  configure_inputs(device) &&
                   queue_frame(device, force_frame, sizeof(force_frame)) &&
                   queue_effect_frames(device);
     if (passed) {
         cortex_m4_set_coverage(kinetis_cpu(device), coverage);
         passed = run_to_symbol(device, argv[1], "ADC16_DoAutoCalibration", 1000000U) &&
                  adc_calibration_configuration_matches(device) &&
+                 startup_output_state_safe(device) &&
                  run_to_symbol(device, argv[1], "motor_link_frame_decode_checked", 10000000U) &&
                  force_frame_checksum_matches(device) && received_force_frame(argv[1], device) &&
                  run_to_symbol(device, argv[1], "motor_protocol_frame_apply", 10000000U) &&
                  run_to_symbol(device, argv[1], "motor_runtime_poll", 20000000U) &&
-                 i2c_configuration_matches(device);
+                 pdb_status_clear_matches(device, argv[1]) && i2c_configuration_matches(device);
         const uint64_t initialization_reads = kinetis_get_uninitialized_sram_read_count(device);
         if (initialization_reads != 2U)
             fprintf(stderr,
@@ -588,7 +690,8 @@ int main(int argc, char **argv) {
                  run_until_encoder_running(device) && stimulate_encoder_cycles(device, 100U) &&
                  stimulate_encoder(device, argv[1]) &&
                  stimulate_encoder_direction_failure(device, argv[1]) &&
-                 stimulate_encoder_direction_pass(device, argv[1]) && run_phase(device, 1000000U);
+                 stimulate_encoder_direction_pass(device, argv[1]) && run_phase(device, 1000000U) &&
+                 fatal_output_state_safe(device, argv[1]);
     }
 
     size_t spi_transfers = 0U;
@@ -597,17 +700,25 @@ int main(int argc, char **argv) {
         ++spi_transfers;
 
     CortexM4CoverageResult result = {0};
+    CortexM4CoverageResult owned_result = {0};
     if (coverage != NULL)
         result = cortex_m4_coverage_result(coverage);
+    if (coverage != NULL)
+        owned_result = cortex_m4_coverage_selected_result(coverage);
     const uint64_t uninitialized_reads = kinetis_get_uninitialized_sram_read_count(device);
     if (uninitialized_reads != 0U)
         fprintf(stderr, "uninitialized SRAM reads: count=%" PRIu64 " first=0x%08" PRIx32 "\n",
                 uninitialized_reads, kinetis_get_first_uninitialized_sram_read(device));
     printf("entry=0x%08" PRIx32 " cfsr=0x%08" PRIx32
-           " spi=%zu coverage=%zu/%zu branch-sites=%zu/%zu\n",
+           " spi=%zu coverage=%zu/%zu branch-sites=%zu/%zu "
+           "owned-functions=%zu owned-coverage=%zu/%zu (%.2f%%) "
+           "owned-branches=%zu/%zu (%.2f%%)\n",
            entry_address, cortex_m4_get_fault_status(kinetis_cpu(device)), spi_transfers,
            result.covered_instructions, result.total_instructions, result.covered_branch_sites,
-           result.total_branch_sites);
+           result.total_branch_sites, owned_functions, owned_result.covered_instructions,
+           owned_result.total_instructions, owned_result.instruction_coverage_percent,
+           owned_result.covered_branch_outcomes, owned_result.total_branch_outcomes,
+           owned_result.branch_outcome_coverage_percent);
 
     static const char *checkpoints[] = {
         "firmware_main",
