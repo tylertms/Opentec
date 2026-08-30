@@ -11,6 +11,7 @@
 #include "cooling/effect_limit.h"
 #include "cooling/tachometer.h"
 #include "cooling/temperature.h"
+#include "display/identity_page.h"
 #include "display/notice.h"
 #include "display/prompt.h"
 #include "display/tuning_page.h"
@@ -365,13 +366,13 @@ enum {
     FAN_STARTUP_DUTY_PERCENT = 25,
     COOLING_STARTUP_TEMPERATURE_C = 20,
     USB_MOTOR_BUFFER_SIZE = MEMORY_TRANSFER_MAX_READ_SIZE,
-    LOCAL_DISPLAY_PAGE_CLEAR = 0,
     LOCAL_DISPLAY_PAGE_TORQUE_DISABLED = 1,
     LOCAL_DISPLAY_PAGE_FORCE_OUTPUT_PROMPT = 2,
     LOCAL_DISPLAY_PAGE_TORQUE_KEY_PROMPT = 3,
     LOCAL_DISPLAY_PAGE_BITE_POINT = 4,
     LOCAL_DISPLAY_PAGE_SYSTEM_NOTICE = 5,
     LOCAL_DISPLAY_PAGE_TUNING = 6,
+    LOCAL_DISPLAY_PAGE_IDENTITY = 7,
     USB_DISCONNECT_STATUS_CODE = 0x1c,
     TUNING_MENU_RESET_EVENT_CODE = 1,
     WHEEL_CENTER_CALIBRATED_EVENT_CODE = 2,
@@ -3090,7 +3091,7 @@ static void apply_force_output_prompt_action(ForceOutputEnableAction action) {
  * Gives motor-originated notices priority over the persistent torque-disabled notice,
  * Torque Key prompt, force-output prompt, paddle bite-point adjustment, and local tuning page.
  * Changes to active notice content, percentage, or tuning presentation redraw their page, and
- * leaving all display owners clears the display.
+ * leaving all temporary display owners restores the base identity page.
  */
 static void service_local_display(void) {
     bool bite_point_visible =
@@ -3101,7 +3102,7 @@ static void service_local_display(void) {
                    : force_output_prompt_visible            ? LOCAL_DISPLAY_PAGE_FORCE_OUTPUT_PROMPT
                    : bite_point_visible                     ? LOCAL_DISPLAY_PAGE_BITE_POINT
                    : tuning_menu.selected_entry < TUNING_ENTRY_COUNT ? LOCAL_DISPLAY_PAGE_TUNING
-                                                                     : LOCAL_DISPLAY_PAGE_CLEAR;
+                                                                     : LOCAL_DISPLAY_PAGE_IDENTITY;
     if (page == local_display_page &&
         (page != LOCAL_DISPLAY_PAGE_BITE_POINT ||
          wheel_bite_point_display_percent == local_display_rendered_bite_point_percent) &&
@@ -3123,6 +3124,8 @@ static void service_local_display(void) {
     } else if (page == LOCAL_DISPLAY_PAGE_TUNING) {
         (void)display_tuning_page_render(display_framebuffer, &tuning_menu,
                                          &base_settings.tuning_profiles);
+    } else if (page == LOCAL_DISPLAY_PAGE_IDENTITY) {
+        display_identity_page_render(display_framebuffer, board_identity.variant);
     } else {
         display_prompt_render_bite_point(display_framebuffer, page == LOCAL_DISPLAY_PAGE_BITE_POINT,
                                          wheel_bite_point_display_percent);
