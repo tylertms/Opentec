@@ -92,6 +92,21 @@ static void test_selects_and_clips_descriptors(void) {
     control.descriptor_index = 1;
     transfer = usb_device_control_handle(&device, &control, &catalog, false);
     assert(transfer.kind == USB_CONTROL_TRANSFER_STALL);
+
+    control.descriptor_type = 0x21;
+    control.descriptor_index = 0;
+    control.recipient = 1;
+    transfer = usb_device_control_handle(&device, &control, &catalog, false);
+    assert(transfer.kind == USB_CONTROL_TRANSFER_STALL);
+
+    device.configuration = 1;
+    transfer = usb_device_control_handle(&device, &control, &catalog, false);
+    assert(transfer.kind == USB_CONTROL_TRANSFER_DATA && transfer.data.data == hid_descriptor);
+
+    device.configuration = 0;
+    control.descriptor_type = 0x23;
+    transfer = usb_device_control_handle(&device, &control, &catalog, false);
+    assert(transfer.kind == USB_CONTROL_TRANSFER_VALUE && transfer.length == 0);
 }
 
 static void test_hid_state_and_report_handoff(void) {
@@ -104,6 +119,15 @@ static void test_hid_state_and_report_handoff(void) {
 
     control = request(USB_CONTROL_HID_GET_IDLE);
     UsbControlTransfer transfer = usb_device_control_handle(&device, &control, &catalog, false);
+    assert(transfer.kind == USB_CONTROL_TRANSFER_VALUE && transfer.value == 7);
+
+    control = request(USB_CONTROL_HID_SET_PROTOCOL);
+    control.value = 7;
+    assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
+           USB_CONTROL_TRANSFER_ACKNOWLEDGE);
+
+    control = request(USB_CONTROL_HID_GET_PROTOCOL);
+    transfer = usb_device_control_handle(&device, &control, &catalog, false);
     assert(transfer.kind == USB_CONTROL_TRANSFER_VALUE && transfer.value == 7);
 
     control = request(USB_CONTROL_HID_SET_REPORT);

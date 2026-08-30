@@ -112,6 +112,7 @@ static void test_classifies_endpoint_halt_features(void) {
 static void test_classifies_hid_requests(void) {
     const uint8_t get_report_data[] = {0xa1, 0x01, 0x01, 0x01, 0x00, 0x00, 0x22, 0x00};
     const uint8_t set_idle_data[] = {0x21, 0x0a, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00};
+    const uint8_t set_protocol_data[] = {0x21, 0x0b, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00};
     UsbControlRequest request;
     UsbSetupPacket packet = decode(get_report_data);
     assert(usb_control_request_classify(&packet, &request));
@@ -122,6 +123,11 @@ static void test_classifies_hid_requests(void) {
     assert(usb_control_request_classify(&packet, &request));
     assert(request.kind == USB_CONTROL_HID_SET_IDLE);
     assert(request.value == 0x0500);
+
+    packet = decode(set_protocol_data);
+    assert(usb_control_request_classify(&packet, &request));
+    assert(request.kind == USB_CONTROL_HID_SET_PROTOCOL);
+    assert(request.value == 7);
 }
 
 static void test_classifies_cdc_requests(void) {
@@ -161,7 +167,7 @@ static void test_classifies_xbox_security_request(void) {
 
 static void test_rejects_invalid_requests(void) {
     const uint8_t invalid_address[] = {0x00, 0x05, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00};
-    const uint8_t invalid_protocol[] = {0x21, 0x0b, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00};
+    const uint8_t invalid_protocol[] = {0x21, 0x0b, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00};
     UsbControlRequest request;
     UsbSetupPacket packet = decode(invalid_address);
     assert(!usb_control_request_classify(&packet, &request));

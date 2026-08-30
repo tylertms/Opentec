@@ -9,6 +9,7 @@ enum {
     USB_DESCRIPTOR_STRING = 3,
     USB_DESCRIPTOR_HID = 0x21,
     USB_DESCRIPTOR_HID_REPORT = 0x22,
+    USB_DESCRIPTOR_HID_PHYSICAL = 0x23,
     USB_RECIPIENT_DEVICE = 0,
     USB_RECIPIENT_INTERFACE = 1,
     USB_RECIPIENT_ENDPOINT = 2,
@@ -61,8 +62,19 @@ void usb_device_control_cancel(UsbDeviceControl *device) {
     device->pending_value = 0;
 }
 
+/**
+ * @brief Selects a descriptor response for endpoint zero.
+ *
+ * Serves device, configuration, and string descriptors by index, gates HID and report descriptors
+ * on an active configuration, and completes physical-descriptor requests with an empty data stage.
+ *
+ * @param[in] request Classified descriptor request.
+ * @param[in] catalog Active descriptor catalog.
+ * @param[in] configured True when configuration one is active.
+ * @return Selected descriptor transfer or a stall for an unsupported request.
+ */
 static UsbControlTransfer get_descriptor(const UsbControlRequest *request,
-                                         const UsbDescriptorCatalog *catalog) {
+                                         const UsbDescriptorCatalog *catalog, bool configured) {
     switch (request->descriptor_type) {
     case USB_DESCRIPTOR_DEVICE:
         return request->recipient == USB_RECIPIENT_DEVICE && request->descriptor_index == 0
@@ -78,12 +90,18 @@ static UsbControlTransfer get_descriptor(const UsbControlRequest *request,
                    ? data(catalog->strings[request->descriptor_index], request->length)
                    : stall();
     case USB_DESCRIPTOR_HID:
-        return request->recipient == USB_RECIPIENT_INTERFACE && request->descriptor_index == 0
+        return configured && request->recipient == USB_RECIPIENT_INTERFACE &&
+                       request->descriptor_index == 0
                    ? data(catalog->hid, request->length)
                    : stall();
     case USB_DESCRIPTOR_HID_REPORT:
-        return request->recipient == USB_RECIPIENT_INTERFACE && request->descriptor_index == 0
+        return configured && request->recipient == USB_RECIPIENT_INTERFACE &&
+                       request->descriptor_index == 0
                    ? data(catalog->report, request->length)
+                   : stall();
+    case USB_DESCRIPTOR_HID_PHYSICAL:
+        return request->recipient == USB_RECIPIENT_INTERFACE && request->descriptor_index == 0
+                   ? value(0, 0)
                    : stall();
     default:
         return stall();
@@ -164,7 +182,7 @@ UsbControlTransfer usb_device_control_handle(UsbDeviceControl *device,
         device->pending_value = (uint8_t)request->value;
         return acknowledge();
     case USB_CONTROL_GET_DESCRIPTOR:
-        return get_descriptor(request, catalog);
+        return get_descriptor(request, catalog, usb_device_control_configured(device));
     case USB_CONTROL_GET_CONFIGURATION:
         return value(device->configuration, 1);
     case USB_CONTROL_SET_CONFIGURATION:

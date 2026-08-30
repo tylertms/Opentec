@@ -163,7 +163,7 @@ static bool classify_hid(const UsbSetupPacket *packet, UsbControlRequest *reques
         }
         break;
     case USB_HID_SET_PROTOCOL:
-        if (!input && packet->value <= 1 && packet->length == 0) {
+        if (!input && packet->length == 0) {
             return set_request(packet, request, USB_CONTROL_HID_SET_PROTOCOL);
         }
         break;
