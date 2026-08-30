@@ -6,6 +6,7 @@
 
 #include "profile/bank.h"
 #include "profile/tuning_interaction.h"
+#include "wheel/accessory.h"
 
 /** @brief Logical settings exposed by the local tuning menu. */
 typedef enum {
@@ -65,7 +66,7 @@ typedef enum {
 typedef struct {
     uint8_t interface_mode;
     uint8_t wheel_mode;
-    uint8_t wheel_aux_state;
+    WheelAccessoryKind wheel_accessory_kind;
     TuningPedalConnection pedal_connection;
     bool wheel_calibration_active;
     bool legacy_pedals;

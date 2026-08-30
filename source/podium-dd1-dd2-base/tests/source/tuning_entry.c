@@ -15,7 +15,7 @@ static const TuningEntryAdjustmentContext default_context = {
 static const TuningEntryAvailabilityContext available_context = {
     .interface_mode = 0,
     .wheel_mode = 0x0e,
-    .wheel_aux_state = 3,
+    .wheel_accessory_kind = WHEEL_ACCESSORY_EXTENDED,
     .pedal_connection = TUNING_PEDALS_TRANSFER,
     .legacy_pedals = true,
     .primary_pedal_calibration_active = true,
@@ -184,7 +184,7 @@ static void test_applies_interface_and_hardware_availability(void) {
     context = available_context;
     context.wheel_calibration_active = true;
     assert(!tuning_entry_available(TUNING_ENTRY_FORCE_SCALE, &bank, &context));
-    context.wheel_aux_state = 0;
+    context.wheel_accessory_kind = WHEEL_ACCESSORY_DISCONNECTED;
     assert(!tuning_entry_available(TUNING_ENTRY_NATURAL_DAMPER, &bank, &context));
     assert(!tuning_entry_available(TUNING_ENTRY_NATURAL_FRICTION, &bank, &context));
     context = available_context;

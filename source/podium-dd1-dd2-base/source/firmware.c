@@ -95,6 +95,7 @@
 #include "usb/xbox_gip_command.h"
 #include "usb/xbox_gip_input.h"
 #include "usb/xbox_gip_vendor_tunnel.h"
+#include "wheel/accessory_service.h"
 #include "wheel/center_capture.h"
 #include "wheel/command_forwarder.h"
 #include "wheel/compatibility_alert.h"
@@ -168,6 +169,7 @@ static MotorCommandChannel motor_command_channel;
 static MotorCommandStartupService motor_command_startup_service;
 static UsbMotorVendorService usb_motor_vendor_service;
 static WheelTransferService wheel_transfer_service;
+static WheelAccessoryService wheel_accessory_service;
 static MotorStatusService motor_status_service;
 static MotorTelemetryService motor_telemetry_service;
 static MotorTuningService motor_tuning_service;
@@ -939,6 +941,7 @@ static void initialize_usb_command_bridge(void) {
     (void)usb_motor_vendor_service_init(&usb_motor_vendor_service, &motor_command_channel,
                                         &usb_motor_buffers);
     wheel_transfer_service_init(&wheel_transfer_service);
+    wheel_accessory_service_init(&wheel_accessory_service);
     usb_diagnostic_report_service_init(&usb_diagnostic_report_service);
     usb_remote_tuning_service_init(&usb_remote_tuning_service);
     wheel_command_forwarder_init(&wheel_command_forwarder);
@@ -1507,6 +1510,7 @@ static void service_usb_command_bridge(uint32_t now_ms) {
     }
     (void)motor_command_serial_receive(&command_transport, &serial_service);
     wheel_transfer_service_run(&wheel_transfer_service, &command_transport);
+    wheel_accessory_service_run(&wheel_accessory_service, &command_transport);
     if (usb_remote_tuning_service_take_adapter_active(&usb_remote_tuning_service,
                                                       &wheel_adapter_remote_tuning_active)) {
         wheel_service_queue_adapter_remote_tuning_active(&wheel_service,

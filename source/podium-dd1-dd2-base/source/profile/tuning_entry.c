@@ -220,7 +220,7 @@ static bool entry_supported_by_hardware(TuningEntry entry, const TuningProfileBa
     case TUNING_ENTRY_FORCE_SCALE:
         return !context->wheel_calibration_active;
     case TUNING_ENTRY_NATURAL_DAMPER:
-        return context->wheel_aux_state != 0;
+        return context->wheel_accessory_kind != WHEEL_ACCESSORY_DISCONNECTED;
     case TUNING_ENTRY_FULL_FORCE:
         return false;
     case TUNING_ENTRY_BUTTON_ILLUMINATION:
@@ -229,7 +229,7 @@ static bool entry_supported_by_hardware(TuningEntry entry, const TuningProfileBa
     case TUNING_ENTRY_NATURAL_FRICTION:
     case TUNING_ENTRY_NATURAL_INERTIA:
     case TUNING_ENTRY_INTERPOLATION_FILTER:
-        return context->wheel_aux_state == 3;
+        return context->wheel_accessory_kind == WHEEL_ACCESSORY_EXTENDED;
     case TUNING_ENTRY_BRAKE_FORCE:
         return context->pedal_connection == TUNING_PEDALS_TRANSFER ||
                context->pedal_connection == TUNING_PEDALS_LEGACY;
