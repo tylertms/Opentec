@@ -142,6 +142,23 @@ static void test_standard_profile_is_regenerated(void) {
     assert(restored.tuning_profiles.slots[1].force_feedback_strength == 70);
 }
 
+static void test_retained_selection_becomes_active(void) {
+    reset_storage();
+    BaseSettingsPersistence persistence;
+    BaseSettings settings;
+    base_settings_persistence_load(&persistence, &settings);
+    settings.tuning_profiles.selected_slot = 4;
+    settings.tuning_profiles.active_slot = 2;
+    assert(base_settings_persistence_save(&persistence, &settings) ==
+           BASE_SETTINGS_PERSISTENCE_SAVED);
+
+    BaseSettingsPersistence loaded;
+    BaseSettings restored;
+    assert(base_settings_persistence_load(&loaded, &restored));
+    assert(restored.tuning_profiles.selected_slot == 4);
+    assert(restored.tuning_profiles.active_slot == 4);
+}
+
 static void test_wheel_reference_is_persisted(void) {
     reset_storage();
     BaseSettingsPersistence persistence;
@@ -587,6 +604,7 @@ int main(void) {
     test_defaults_are_saved_on_initialization();
     test_dirty_changes_wait_for_explicit_save();
     test_standard_profile_is_regenerated();
+    test_retained_selection_becomes_active();
     test_wheel_reference_is_persisted();
     test_shifter_calibration_is_persisted();
     test_auxiliary_axis_settings_are_persisted();

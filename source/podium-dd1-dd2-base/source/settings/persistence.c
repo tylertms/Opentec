@@ -479,8 +479,9 @@ static bool record_matches(PlatformStorageSlot slot,
 /**
  * @brief Restores the newest valid retained base settings.
  *
- * Selects the newer of two redundant records, supplies defaults when neither record is valid, and
- * regenerates setup 1 instead of trusting its retained values.
+ * Selects the newer of two redundant records, supplies defaults when neither record is valid,
+ * restores the retained selection as the active setup, and regenerates setup 1 instead of trusting
+ * its retained values.
  *
  * @param[out] persistence Retained-settings service state.
  * @param[out] settings Restored or default base settings.
@@ -501,6 +502,7 @@ bool base_settings_persistence_load(BaseSettingsPersistence *persistence, BaseSe
 
     if (records[selected].valid) {
         *settings = records[selected].settings;
+        settings->tuning_profiles.active_slot = settings->tuning_profiles.selected_slot;
         tuning_profile_defaults(&settings->tuning_profiles.slots[0]);
         persistence->generation = records[selected].generation;
         persistence->active_slot = selected;
