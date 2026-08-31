@@ -41,7 +41,7 @@ enum {
     SPI_RECEIVE_DMA_SOURCE = 14,
     SPI_TRANSMIT_DMA_SOURCE = 15,
 
-    SPI_RETRY_MILLISECONDS = 2,
+    SPI_RETRY_TICKS = 3,
     I2C_TIMEOUT_MILLISECONDS = 10,
 
     SPI_ERROR_INTERRUPTS =
@@ -81,6 +81,7 @@ static edma_handle_t spi_receive_dma;
 static volatile i2c_phase i2c_state;
 static volatile uint8_t i2c_timeout;
 static volatile bool i2c_recovery_pending;
+static uint8_t i2c_discard;
 static i2c_master_handle_t i2c_handle;
 
 static volatile bool adc_sample_ready;
@@ -224,8 +225,8 @@ static void configure_uart(void) {
 
     nvic_enable(DMA0_IRQn, 15);
     nvic_enable(DMA1_IRQn, 15);
-    nvic_enable(UART1_RX_TX_IRQn, 15);
-    nvic_enable(UART1_ERR_IRQn, 15);
+    NVIC_DisableIRQ(UART1_RX_TX_IRQn);
+    NVIC_EnableIRQ(UART1_ERR_IRQn);
 }
 
 static void configure_pit(void) {
@@ -300,8 +301,8 @@ static void configure_spi(void) {
     DSPI_MasterTransferCreateHandle(SPI0, &spi_word_handle, spi_word_callback, NULL);
 
     nvic_enable(DMA2_IRQn, 14);
-    nvic_enable(DMA3_IRQn, 10);
-    nvic_enable(SPI0_IRQn, 14);
+    nvic_enable(DMA3_IRQn, 14);
+    NVIC_DisableIRQ(SPI0_IRQn);
 }
 
 static void start_spi_dma(void) {
@@ -310,6 +311,7 @@ static void start_spi_dma(void) {
 
     EDMA_AbortTransfer(&spi_receive_dma);
     EDMA_AbortTransfer(&spi_transmit_dma);
+    NVIC_DisableIRQ(SPI0_IRQn);
     DSPI_FlushFifo(SPI0, true, true);
     set_spi_format(8, kDSPI_ClockPhaseSecondEdge);
 
@@ -324,7 +326,7 @@ static void start_spi_dma(void) {
 
     spi_transfer_complete = false;
     spi_transfer_failed = false;
-    spi_retry_delay = SPI_RETRY_MILLISECONDS;
+    spi_retry_delay = SPI_RETRY_TICKS;
     GPIO_PinWrite(GPIOC, 4, 0);
 
     DSPI_EnableDMA(SPI0, kDSPI_RxDmaEnable | kDSPI_TxDmaEnable);
@@ -465,7 +467,8 @@ static wqr_io_result io_i2c_read(void *context, uint8_t address, uint8_t command
         return result;
     }
     if (length == 0) {
-        return WQR_IO_SUCCEEDED;
+        transfer.data = &i2c_discard;
+        transfer.dataSize = 1;
     }
 
     return start_i2c(&transfer);

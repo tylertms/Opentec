@@ -165,11 +165,17 @@ static void test_status_and_reset(void) {
 
 static void test_status_values(void) {
     test_io state = {.inputs = 0xff};
-    wqr_io io = {.context = &state, .read_inputs = test_read_inputs, .request_reset = test_reset};
+    wqr_io io = {
+        .context = &state,
+        .read_inputs = test_read_inputs,
+        .transfer_ready = test_transfer_ready,
+        .request_reset = test_reset,
+    };
     wqr_protocol protocol;
     uint8_t frame[WQR_FRAME_SIZE];
 
     wqr_protocol_init(&protocol, &io);
+    state.inputs = 0;
     wqr_protocol_set_sensor_sample(&protocol, 2048);
     for (size_t tick = 0; tick < 999; ++tick) {
         wqr_protocol_tick(&protocol);
@@ -192,14 +198,15 @@ static void test_status_values(void) {
     wqr_protocol_response_sent(&protocol);
     assert(state.resets == 0);
 
-    protocol.peer_ready_confirmed = true;
+    state.transfer_ready = true;
     assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_STATUS, 1, NULL, 0));
     assert(wqr_protocol_receive(&protocol, frame));
     wqr_protocol_poll(&protocol);
     assert(wqr_protocol_response(&protocol, frame));
     assert(frame[16] == 2);
 
-    protocol.transfer_enabled = true;
+    protocol.transfer_control_asserted = true;
+    wqr_protocol_poll(&protocol);
     assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_STATUS, 2, NULL, 0));
     assert(wqr_protocol_receive(&protocol, frame));
     wqr_protocol_poll(&protocol);
@@ -221,6 +228,7 @@ static void test_fragmented_i2c_read(void) {
     assert(wqr_protocol_receive(&protocol, request));
     assert(wqr_protocol_response(&protocol, response));
     assert((response[1] & 0x0f) == 1);
+    assert(response[4] == 0xff);
     assert(wqr_protocol_build_frame(request, 0x40 | WQR_PAYLOAD_I2C, 1, last, sizeof(last)));
     assert(wqr_protocol_receive(&protocol, request));
     wqr_protocol_poll(&protocol);
@@ -512,7 +520,7 @@ static void test_primary_spi_handshake(void) {
     payload[56] = 1;
     wqr_protocol_init(&protocol, &io);
     wqr_protocol_poll(&protocol);
-    assert(!protocol.peer_ready_confirmed);
+    assert(protocol.peer_ready_confirmed);
     assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_PRIMARY_SPI, 0, payload, sizeof(payload)));
     assert(wqr_protocol_receive(&protocol, frame));
     wqr_protocol_poll(&protocol);
@@ -531,6 +539,33 @@ static void test_primary_spi_handshake(void) {
     assert(frame[4] == 0x5a);
     assert(protocol.transfer_enabled);
     assert(protocol.transfer_detail == 0);
+
+    payload[56] = 0;
+    assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_PRIMARY_SPI, 2, payload, sizeof(payload)));
+    assert(wqr_protocol_receive(&protocol, frame));
+    wqr_protocol_poll(&protocol);
+    assert(wqr_protocol_response(&protocol, frame));
+    assert(state.spi_transfers == 1);
+    assert(!protocol.peer_ready_confirmed);
+    assert(!protocol.transfer_enabled);
+
+    wqr_protocol_poll(&protocol);
+    assert(protocol.peer_ready_confirmed);
+    payload[56] = 1;
+    assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_PRIMARY_SPI, 3, payload, sizeof(payload)));
+    assert(wqr_protocol_receive(&protocol, frame));
+    wqr_protocol_poll(&protocol);
+    assert(wqr_protocol_response(&protocol, frame));
+    assert(state.spi_transfers == 1);
+    assert(!protocol.transfer_enabled);
+
+    wqr_protocol_poll(&protocol);
+    assert(protocol.transfer_enabled);
+    assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_PRIMARY_SPI, 4, payload, sizeof(payload)));
+    assert(wqr_protocol_receive(&protocol, frame));
+    wqr_protocol_poll(&protocol);
+    assert(wqr_protocol_response(&protocol, frame));
+    assert(state.spi_transfers == 2);
 }
 
 static void test_transfer_not_ready(void) {
@@ -583,6 +618,9 @@ static void test_missing_spi_io(void) {
     assert(wqr_protocol_receive(&protocol, frame));
     wqr_protocol_poll(&protocol);
     assert(wqr_protocol_response(&protocol, frame));
+    assert(!protocol.transfer_enabled);
+
+    wqr_protocol_poll(&protocol);
     assert(protocol.transfer_enabled);
 
     assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_ALTERNATE_SPI, 2, payload, sizeof(payload)));

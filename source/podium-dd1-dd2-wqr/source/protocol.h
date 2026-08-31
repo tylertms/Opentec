@@ -38,8 +38,10 @@ typedef struct {
     uint32_t seconds;
 
     int16_t sensor_value;
+    uint8_t inputs;
     uint8_t payload_type;
     uint8_t response_type;
+    uint8_t expected_command;
     uint8_t sequence;
     uint8_t transfer_detail;
     uint8_t command_marker;

@@ -60,17 +60,21 @@ enum {
     DMA_SPI_TRANSMIT_CHANNEL = 2,
     DMA_SPI_RECEIVE_CHANNEL = 3,
     DMA3_INTERRUPT = 3,
+    SPI0_INTERRUPT = 26,
+    UART1_RX_TX_INTERRUPT = 33,
+    UART1_ERROR_INTERRUPT = 34,
     PIT0_INTERRUPT = 48,
     EXPECTED_CORE_CLOCK_HZ = 96000000,
     EXPECTED_UART_RESPONSE_GUARD_TICKS = 467,
     EXPECTED_UART_RECOVERY_GUARD_TICKS = 3964,
     EXPECTED_WDOG_CONTROL = 0x40d5,
     EXPECTED_WDOG_TIMEOUT = 500,
-    DMA3_PRIORITY = 10,
+    DMA3_PRIORITY = 14,
     PIT0_PRIORITY = 11
 };
 
 static const uint32_t NVIC_PRIORITY_BASE = UINT32_C(0xe000e400);
+static const uint32_t NVIC_ENABLE_BASE = UINT32_C(0xe000e100);
 
 typedef struct {
     const uint16_t *spi;
@@ -327,15 +331,30 @@ static bool wait_for_uart_error_clear(Kinetis *device) {
     return false;
 }
 
-static bool interrupt_priorities_are_safe(Kinetis *device) {
+static bool interrupt_priorities_match_reference(Kinetis *device) {
     uint32_t dma_priority = 0;
     uint32_t pit_priority = 0;
+    uint32_t spi_priority = 0;
+    uint32_t uart_error_priority = 0;
+    uint32_t interrupt_enable[2] = {0};
     CortexM4 *cpu = kinetis_cpu(device);
 
     return cortex_m4_read_memory(cpu, NVIC_PRIORITY_BASE + DMA3_INTERRUPT, 1, &dma_priority) &&
            cortex_m4_read_memory(cpu, NVIC_PRIORITY_BASE + PIT0_INTERRUPT, 1, &pit_priority) &&
+           cortex_m4_read_memory(cpu, NVIC_PRIORITY_BASE + SPI0_INTERRUPT, 1, &spi_priority) &&
+           cortex_m4_read_memory(cpu, NVIC_PRIORITY_BASE + UART1_ERROR_INTERRUPT, 1,
+                                 &uart_error_priority) &&
+           cortex_m4_read_memory(cpu, NVIC_ENABLE_BASE, sizeof(interrupt_enable[0]),
+                                 &interrupt_enable[0]) &&
+           cortex_m4_read_memory(cpu, NVIC_ENABLE_BASE + sizeof(interrupt_enable[0]),
+                                 sizeof(interrupt_enable[1]), &interrupt_enable[1]) &&
            dma_priority == DMA3_PRIORITY << 4 && pit_priority == PIT0_PRIORITY << 4 &&
-           dma_priority < pit_priority;
+           spi_priority == 0 && uart_error_priority == 0 &&
+           (interrupt_enable[SPI0_INTERRUPT / 32] & (UINT32_C(1) << (SPI0_INTERRUPT % 32))) == 0 &&
+           (interrupt_enable[UART1_RX_TX_INTERRUPT / 32] &
+            (UINT32_C(1) << (UART1_RX_TX_INTERRUPT % 32))) == 0 &&
+           (interrupt_enable[UART1_ERROR_INTERRUPT / 32] &
+            (UINT32_C(1) << (UART1_ERROR_INTERRUPT % 32))) != 0;
 }
 
 static bool send_uart(Kinetis *device, const uint8_t *data, size_t length) {
@@ -528,12 +547,12 @@ static bool reject_fragment_type_change(Kinetis *device, uint8_t request_sequenc
 
     if (!exchange_frame(device, 0x10 | WQR_PAYLOAD_I2C, request_sequence, payload, sizeof(payload),
                         response) ||
-        !frame_integrity_valid(frame) || frame[1] != 1 || frame[4] != WQR_PAYLOAD_I2C) {
+        !frame_integrity_valid(frame) || frame[1] != 1 || frame[4] != WQR_PAYLOAD_STATUS) {
         return false;
     }
     return exchange_frame(device, 0x40 | WQR_PAYLOAD_STATUS, (uint8_t)(request_sequence + 1), NULL,
                           0, response) &&
-           nack_response_valid(response);
+           nack_response_valid(response) && frame[4] == 1;
 }
 
 static bool primary_response_valid(const uint8_t window[TRANSMIT_WINDOW_SIZE], uint8_t sequence,
@@ -808,10 +827,11 @@ static bool exchange_i2c_read(Kinetis *device, uint8_t request_sequence) {
 
 static bool exchange_empty_i2c_read(Kinetis *device, uint8_t request_sequence) {
     const uint8_t payload[] = {0, 0xa1, 0x10, 0, 0};
+    KinetisI2cTransfer transfers[7];
     uint8_t response[TRANSMIT_WINDOW_SIZE];
     const uint8_t *frame = response + RECEIVE_PREFIX_SIZE;
 
-    expect_i2c(NULL, 0);
+    expect_i2c_read(transfers, 0x10, 1);
     return exchange_frame(device, WQR_PAYLOAD_I2C, request_sequence, payload, sizeof(payload),
                           response) &&
            frame_integrity_valid(frame) && frame[1] == WQR_PAYLOAD_I2C &&
@@ -918,7 +938,7 @@ static bool firmware_passes(const char *path, const char *elf_path, KinetisPacka
                                        run_firmware(device, STARTUP_INSTRUCTIONS));
     VERIFY_STAGE("hardware configuration", hardware_configuration_valid(device));
     VERIFY_STAGE("watchdog configuration", watchdog_configuration_valid(device));
-    VERIFY_STAGE("interrupt priorities", interrupt_priorities_are_safe(device));
+    VERIFY_STAGE("interrupt priorities", interrupt_priorities_match_reference(device));
     VERIFY_STAGE("status", exchange_status(device, 0, 0));
     VERIFY_STAGE("UART response guard",
                  run_firmware(device, INTERRUPT_INSTRUCTIONS) && uart_guard_is_exact(device));
@@ -979,8 +999,8 @@ static bool firmware_passes(const char *path, const char *elf_path, KinetisPacka
     VERIFY_STAGE("status after reset", exchange_status(device, 0, 0) &&
                                            hardware_configuration_valid(device) &&
                                            watchdog_configuration_valid(device));
-    VERIFY_STAGE("inverted inputs",
-                 configure_inputs(device, 2) && exchange_input_status(device, 1, 2));
+    VERIFY_STAGE("input snapshot",
+                 configure_inputs(device, 2) && exchange_input_status(device, 1, INPUT_FLAGS));
     VERIFY_STAGE("shifted UART frame",
                  run_firmware(device, IDLE_INSTRUCTIONS) && exchange_shifted_status(device, 2));
     kinetis_watchdog_advance(device, 500);

@@ -91,20 +91,18 @@ static void apply_transfer_control(wqr_protocol *protocol) {
         (protocol->receive_payload[TRANSFER_CONTROL_OFFSET] & TRANSFER_CONTROL_ASSERTED) != 0;
     set_transfer_control(protocol, asserted);
     if (!asserted) {
+        protocol->peer_ready_confirmed = false;
         protocol->transfer_enabled = false;
     }
 }
 
 void wqr_protocol_poll(wqr_protocol *protocol) {
+    update_transfer_handshake(protocol, transfer_ready(protocol));
     if (!protocol->payload_pending) {
         return;
     }
 
     apply_transfer_control(protocol);
-    if (protocol->payload_type == WQR_PAYLOAD_PRIMARY_SPI ||
-        protocol->payload_type == WQR_PAYLOAD_ALTERNATE_SPI) {
-        update_transfer_handshake(protocol, transfer_ready(protocol));
-    }
     if (process_payload(protocol)) {
         protocol->payload_pending = false;
         protocol->receive_length = 0;
@@ -123,7 +121,7 @@ static void queue_payload(wqr_protocol *protocol, const uint8_t *payload, size_t
 }
 
 static void queue_control(wqr_protocol *protocol, bool acknowledged) {
-    uint8_t payload = protocol->payload_type;
+    uint8_t payload = protocol->expected_command;
 
     queue_payload(protocol, &payload, 1);
     protocol->response_type = acknowledged ? 1 : 0;
@@ -140,9 +138,7 @@ static void encode_status(wqr_protocol *protocol, uint8_t status[WQR_STATUS_SIZE
     memset(status, 0, WQR_STATUS_SIZE);
     status[0] = 7;
 
-    if (protocol->io.read_inputs != NULL) {
-        status[1] = protocol->io.read_inputs(protocol->io.context) & 7;
-    }
+    status[1] = protocol->inputs;
 
     write_u16(status + 2, (uint16_t)protocol->sensor_value);
     write_u32(status + 4, protocol->seconds);
@@ -299,8 +295,12 @@ static bool append_payload(wqr_protocol *protocol, const uint8_t *payload, size_
 void wqr_protocol_init(wqr_protocol *protocol, const wqr_io *io) {
     memset(protocol, 0, sizeof(*protocol));
     protocol->payload_type = 0xff;
+    protocol->expected_command = 0xff;
     if (io != NULL) {
         protocol->io = *io;
+        if (protocol->io.read_inputs != NULL) {
+            protocol->inputs = protocol->io.read_inputs(protocol->io.context) & 7;
+        }
     }
 }
 
@@ -380,9 +380,11 @@ bool wqr_protocol_receive(wqr_protocol *protocol, const uint8_t frame[WQR_FRAME_
     protocol->sequence = (uint8_t)(view.sequence + 1);
     if (fragments == WQR_FRAME_FIRST || fragments == WQR_FRAME_MORE) {
         queue_control(protocol, true);
+        protocol->expected_command = 1;
         protocol->payload_type = type;
         return true;
     }
+    protocol->expected_command = type;
     protocol->fragment_open = false;
     protocol->transmit_length = 0;
     protocol->transmit_offset = 0;
