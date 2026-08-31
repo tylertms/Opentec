@@ -3,11 +3,9 @@ project(
   'c',
   meson_version: '>=1.12.0',
   default_options: [
-    'buildtype=custom',
-    'b_vscrt=md',
+    'buildtype=release',
     'build.c_std=c11',
     'c_std=c11',
-    'debug=false',
     'optimization=2',
     'warning_level=3',
     'werror=true',
