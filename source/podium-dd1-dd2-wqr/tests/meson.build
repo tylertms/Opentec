@@ -42,4 +42,30 @@ if meson.is_cross_build()
     depends: [hex, checksummed_binary],
     suite: ['wqr', 'package'],
   )
+
+  test(
+    'wqr-checksum',
+    python,
+    args: [
+      meson.current_source_dir() / '../tools/checksum.py',
+      '--verify',
+      checksummed_binary.full_path(),
+    ],
+    depends: checksummed_binary,
+    suite: ['wqr', 'package'],
+  )
+
+  test(
+    'wqr-encrypted-package',
+    python,
+    args: [
+      meson.project_source_root() / 'tools/crypto.py',
+      'verify',
+      hex.full_path(),
+      package.full_path(),
+      '--legacy-wide-secret',
+    ],
+    depends: package,
+    suite: ['wqr', 'package'],
+  )
 endif

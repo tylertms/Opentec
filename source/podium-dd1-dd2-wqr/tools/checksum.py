@@ -8,6 +8,9 @@ FLASH_LIMIT = 0x10000
 METADATA_OFFSET = 0x3C0
 CHECKSUM_OFFSET = METADATA_OFFSET + 12
 FLASH_CONFIGURATION_OFFSET = 0x400
+VECTOR_TRIM_OFFSET = 0x2FC
+VECTOR_PADDING_OFFSET = 0x300
+NONDEFAULT_UNUSED_INTERRUPTS = (16, 31, 32, 33)
 METADATA = struct.Struct("<4sIIII12s32s")
 FIRMWARE_VERSION = 0x0064FFFF
 VENDOR_FLASH_CONFIGURATION = b"\xff" * 12 + b"\xfe\xff\xff\xff"
@@ -56,6 +59,18 @@ def add_checksum(image: bytes) -> bytes:
     validate_layout(image)
 
     checksummed = bytearray(image)
+    default_handler = struct.unpack_from("<I", checksummed, VECTOR_TRIM_OFFSET)[0]
+    if (
+        default_handler & 1 == 0
+        or not APPLICATION_BASE <= default_handler - 1 < FLASH_LIMIT
+    ):
+        raise ValueError("firmware default handler is invalid")
+    for interrupt in NONDEFAULT_UNUSED_INTERRUPTS:
+        struct.pack_into("<I", checksummed, (16 + interrupt) * 4, default_handler)
+    struct.pack_into("<I", checksummed, VECTOR_TRIM_OFFSET, 0xFFFFFFFF)
+    checksummed[VECTOR_PADDING_OFFSET:METADATA_OFFSET] = bytes(
+        METADATA_OFFSET - VECTOR_PADDING_OFFSET
+    )
     METADATA.pack_into(
         checksummed,
         METADATA_OFFSET,

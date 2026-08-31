@@ -34,14 +34,31 @@ enum {
     APPLICATION_BASE = 0xa000,
     SRAM_SIZE = 0x4000,
     ADC0_R0_ADDRESS = 0x4003b010,
+    ADC0_CFG1_ADDRESS = 0x4003b008,
+    ADC0_CFG2_ADDRESS = 0x4003b00c,
+    ADC0_SC2_ADDRESS = 0x4003b020,
+    ADC0_SC3_ADDRESS = 0x4003b024,
+    ADC0_PG_ADDRESS = 0x4003b02c,
+    ADC0_MG_ADDRESS = 0x4003b030,
+    MCG_C2_ADDRESS = 0x40064001,
+    MCG_C6_ADDRESS = 0x40064005,
+    MCG_SC_ADDRESS = 0x40064008,
+    PORTA_PCR4_ADDRESS = 0x40049010,
+    PORTA_PCR18_ADDRESS = 0x40049048,
+    PORTA_PCR19_ADDRESS = 0x4004904c,
     SMC_PMSTAT_ADDRESS = 0x4007e003,
     PMC_REGSC_ADDRESS = 0x4007d002,
     RCM_SRS0_ADDRESS = 0x4007f000,
     RCM_SRS1_ADDRESS = 0x4007f001,
     I2C0_F_ADDRESS = 0x40066001,
+    I2C0_C1_ADDRESS = 0x40066002,
     I2C0_FLT_ADDRESS = 0x40066006,
     UART1_S1_ADDRESS = 0x4006b004,
+    UART1_C2_ADDRESS = 0x4006b003,
+    UART1_C3_ADDRESS = 0x4006b006,
+    UART1_C5_ADDRESS = 0x4006b00b,
     UART1_PFIFO_ADDRESS = 0x4006b010,
+    UART1_RWFIFO_ADDRESS = 0x4006b015,
     PIT1_LDVAL_ADDRESS = 0x40037110,
     PIT1_TCTRL_ADDRESS = 0x40037118,
     DMA_CR_ADDRESS = 0x40008000,
@@ -67,8 +84,17 @@ enum {
     DMA_TCD_SLAST_OFFSET = 0x0c,
     DMA_TCD_DOFF_OFFSET = 0x14,
     DMA_TCD_DLAST_OFFSET = 0x18,
+    DMA_TCD_CSR_OFFSET = 0x1c,
+    DMA_TCD_CITER_OFFSET = 0x16,
+    DMA_TCD_BITER_OFFSET = 0x1e,
+    DMAMUX_CHCFG0_ADDRESS = 0x40021000,
+    DMAMUX_CHCFG1_ADDRESS = 0x40021001,
+    DMAMUX_CHCFG2_ADDRESS = 0x40021002,
+    DMAMUX_CHCFG3_ADDRESS = 0x40021003,
     DMA_SPI_TRANSMIT_CHANNEL = 2,
     DMA_SPI_RECEIVE_CHANNEL = 3,
+    DMA_UART_TRANSMIT_CHANNEL = 0,
+    DMA_UART_RECEIVE_CHANNEL = 1,
     DMA0_INTERRUPT = 0,
     DMA3_INTERRUPT = 3,
     SPI0_INTERRUPT = 26,
@@ -77,8 +103,8 @@ enum {
     PIT0_INTERRUPT = 48,
     EXPECTED_CORE_CLOCK_HZ = 96000000,
     EXPECTED_UART_RESPONSE_GUARD_TICKS = 467,
-    EXPECTED_WDOG_CONTROL = 0x40d5,
-    EXPECTED_WDOG_TIMEOUT = 500,
+    EXPECTED_WDOG_CONTROL = 0x40d7,
+    EXPECTED_WDOG_TIMEOUT = 0x004c01f4,
     DMA3_PRIORITY = 14,
     PIT0_PRIORITY = 11
 };
@@ -97,6 +123,7 @@ typedef struct {
     bool i2c_arbitration_loss;
     bool i2c_nack_on_repeated_start;
     bool spi_receive_overflow;
+    bool disconnect_after_spi;
 } peripheral_expectations;
 
 static peripheral_expectations expected;
@@ -105,6 +132,12 @@ static void expect_spi(const uint16_t *transfers, size_t length) {
     expected.spi = transfers;
     expected.spi_length = length;
     expected.spi_index = 0;
+    expected.disconnect_after_spi = false;
+}
+
+static void expect_spi_then_disconnect(const uint16_t *transfers, size_t length) {
+    expect_spi(transfers, length);
+    expected.disconnect_after_spi = true;
 }
 
 static void expect_spi_receive_overflow(const uint16_t *transfers, size_t length) {
@@ -158,6 +191,12 @@ static bool service_spi(Kinetis *device) {
         return false;
     }
     ++expected.spi_index;
+    if (expected.disconnect_after_spi && expected.spi_index == expected.spi_length) {
+        expected.disconnect_after_spi = false;
+        if (!kinetis_gpio_drive(device, GPIO_PORT_C, 2, true)) {
+            return false;
+        }
+    }
     if (expected.spi_receive_overflow) {
         uint32_t discarded;
 
@@ -257,9 +296,71 @@ static bool register_equals(Kinetis *device, uint32_t address, size_t size,
 }
 
 static bool watchdog_configuration_valid(Kinetis *device) {
-    return register_equals(device, WDOG_STCTRLH_ADDRESS, 2, EXPECTED_WDOG_CONTROL) &&
-           register_equals(device, WDOG_TOVALH_ADDRESS, 2, 0) &&
-           register_equals(device, WDOG_TOVALL_ADDRESS, 2, EXPECTED_WDOG_TIMEOUT);
+    uint32_t control = 0;
+    uint32_t timeout_high = 0;
+    uint32_t timeout_low = 0;
+
+    if (!kinetis_read(device, WDOG_STCTRLH_ADDRESS, &control, 2) ||
+        !kinetis_read(device, WDOG_TOVALH_ADDRESS, &timeout_high, 2) ||
+        !kinetis_read(device, WDOG_TOVALL_ADDRESS, &timeout_low, 2)) {
+        return false;
+    }
+    if (control == EXPECTED_WDOG_CONTROL && timeout_high == EXPECTED_WDOG_TIMEOUT >> 16 &&
+        timeout_low == (EXPECTED_WDOG_TIMEOUT & 0xffff)) {
+        return true;
+    }
+    fprintf(stderr, "watchdog mismatch: STCTRLH 0x%04x, TOVALH 0x%04x, TOVALL 0x%04x\n",
+            (unsigned)control, (unsigned)timeout_high, (unsigned)timeout_low);
+    return false;
+}
+
+static bool reference_registers_valid(Kinetis *device) {
+    return register_equals(device, MCG_SC_ADDRESS, 1, 0) &&
+           register_equals(device, MCG_C2_ADDRESS, 1, 0xa0) &&
+           register_equals(device, MCG_C6_ADDRESS, 1, 0) &&
+           register_equals(device, PORTA_PCR4_ADDRESS, 4, 0x113) &&
+           register_equals(device, PORTA_PCR18_ADDRESS, 4, 0x103) &&
+           register_equals(device, PORTA_PCR19_ADDRESS, 4, 0x103) &&
+           register_equals(device, UART1_C2_ADDRESS, 1, 0xac) &&
+           register_equals(device, UART1_C3_ADDRESS, 1, 0x1f) &&
+           register_equals(device, UART1_C5_ADDRESS, 1, 0xa0) &&
+           register_equals(device, UART1_RWFIFO_ADDRESS, 1, 0) &&
+           register_equals(device, I2C0_C1_ADDRESS, 1, 0xc0) &&
+           register_equals(device, ADC0_CFG1_ADDRESS, 4, 0x24) &&
+           register_equals(device, ADC0_CFG2_ADDRESS, 4, 0) &&
+           register_equals(device, ADC0_SC2_ADDRESS, 4, 0) &&
+           register_equals(device, ADC0_SC3_ADDRESS, 4, 7) &&
+           register_equals(device, ADC0_PG_ADDRESS, 4, 0x8200) &&
+           register_equals(device, ADC0_MG_ADDRESS, 4, 0x8200);
+}
+
+static bool uart_descriptors_match_reference(Kinetis *device) {
+    uint32_t transmit = DMA_TCD_BASE + DMA_UART_TRANSMIT_CHANNEL * DMA_TCD_STRIDE;
+    uint32_t receive = DMA_TCD_BASE + DMA_UART_RECEIVE_CHANNEL * DMA_TCD_STRIDE;
+    uint32_t transmit_slast = 0;
+    uint32_t receive_slast = 0;
+    uint32_t receive_dlast = 0;
+
+    if (!kinetis_read(device, transmit + DMA_TCD_SLAST_OFFSET, &transmit_slast, 4) ||
+        !kinetis_read(device, receive + DMA_TCD_SLAST_OFFSET, &receive_slast, 4) ||
+        !kinetis_read(device, receive + DMA_TCD_DLAST_OFFSET, &receive_dlast, 4)) {
+        return false;
+    }
+    if (transmit_slast == (uint32_t)-(int32_t)TRANSMIT_WINDOW_SIZE && receive_slast == 0 &&
+        receive_dlast == (uint32_t)-(int32_t)RECEIVE_WINDOW_SIZE) {
+        return true;
+    }
+    fprintf(stderr, "UART TCD mismatch: TX SLAST 0x%08x, RX SLAST 0x%08x, DLAST 0x%08x\n",
+            transmit_slast, receive_slast, receive_dlast);
+    return false;
+}
+
+static bool startup_uart_descriptor_controls_match_reference(Kinetis *device) {
+    uint32_t transmit = DMA_TCD_BASE + DMA_UART_TRANSMIT_CHANNEL * DMA_TCD_STRIDE;
+    uint32_t receive = DMA_TCD_BASE + DMA_UART_RECEIVE_CHANNEL * DMA_TCD_STRIDE;
+
+    return register_equals(device, transmit + DMA_TCD_CSR_OFFSET, 2, 0x0a) &&
+           register_equals(device, receive + DMA_TCD_CSR_OFFSET, 2, 0x0a);
 }
 
 static bool hardware_configuration_valid(Kinetis *device) {
@@ -268,6 +369,10 @@ static bool hardware_configuration_valid(Kinetis *device) {
     uint32_t i2c_divider = 0;
     uint32_t i2c_filter = 0;
     uint32_t dma_control = 0;
+    uint32_t dmamux_transmit = 0;
+    uint32_t dmamux_receive = 0;
+    uint32_t dmamux_spi_transmit = 0;
+    uint32_t dmamux_spi_receive = 0;
     uint32_t spi_control = 0;
     uint32_t uart_fifo = 0;
     uint32_t gpio_a_direction = 0;
@@ -279,31 +384,42 @@ static bool hardware_configuration_valid(Kinetis *device) {
     bool i2c_divider_read = kinetis_read(device, I2C0_F_ADDRESS, &i2c_divider, 1);
     bool i2c_filter_read = kinetis_read(device, I2C0_FLT_ADDRESS, &i2c_filter, 1);
     bool dma_control_read = kinetis_read(device, DMA_CR_ADDRESS, &dma_control, 4);
+    bool dmamux_transmit_read = kinetis_read(device, DMAMUX_CHCFG0_ADDRESS, &dmamux_transmit, 1);
+    bool dmamux_receive_read = kinetis_read(device, DMAMUX_CHCFG1_ADDRESS, &dmamux_receive, 1);
+    bool dmamux_spi_transmit_read =
+        kinetis_read(device, DMAMUX_CHCFG2_ADDRESS, &dmamux_spi_transmit, 1);
+    bool dmamux_spi_receive_read =
+        kinetis_read(device, DMAMUX_CHCFG3_ADDRESS, &dmamux_spi_receive, 1);
     bool spi_control_read = kinetis_read(device, SPI0_MCR_ADDRESS, &spi_control, 4);
     bool uart_fifo_read = kinetis_read(device, UART1_PFIFO_ADDRESS, &uart_fifo, 1);
     bool gpio_a_direction_read = kinetis_read(device, GPIOA_PDDR_ADDRESS, &gpio_a_direction, 4);
     bool gpio_c_direction_read = kinetis_read(device, GPIOC_PDDR_ADDRESS, &gpio_c_direction, 4);
     if (!power_mode_read || !regulator_read || !i2c_divider_read || !i2c_filter_read ||
-        !dma_control_read || !spi_control_read || !uart_fifo_read || !gpio_a_direction_read ||
-        !gpio_c_direction_read) {
+        !dma_control_read || !dmamux_transmit_read || !dmamux_receive_read ||
+        !dmamux_spi_transmit_read || !dmamux_spi_receive_read || !spi_control_read ||
+        !uart_fifo_read || !gpio_a_direction_read || !gpio_c_direction_read) {
         fprintf(stderr, "hardware register read failed at PC 0x%08x\n",
                 cortex_m4_get_register(kinetis_cpu(device), 15));
         return false;
     }
     if (clock == EXPECTED_CORE_CLOCK_HZ && power_mode == 0x80 && regulator == 0x04 &&
-        i2c_divider == 0x04 && i2c_filter == 0x2a && dma_control == 0 &&
-        (spi_control & SPI_MCR_DISABLE_FIFOS) == SPI_MCR_DISABLE_FIFOS &&
+        i2c_divider == 0x04 && i2c_filter == 0x2a && dma_control == 0 && dmamux_transmit == 0x85 &&
+        dmamux_receive == 0x84 && dmamux_spi_transmit == 0x8f && dmamux_spi_receive == 0x8e &&
+        (spi_control & (SPI_MCR_DISABLE_FIFOS | SPI_MCR_HALT)) == SPI_MCR_DISABLE_FIFOS &&
         (uart_fifo & UART_PFIFO_ENABLE_MASK) == 0 && (gpio_a_direction & INPUT_GPIO_A_MASK) == 0 &&
         (gpio_c_direction & INPUT_GPIO_C_MASK) == 0) {
         return true;
     }
     fprintf(stderr,
             "invalid hardware configuration: clock %u, PMSTAT 0x%02x, REGSC 0x%02x, "
-            "F 0x%02x, FLT 0x%02x, DMA_CR 0x%08x, SPI_MCR 0x%08x, PFIFO 0x%02x, "
+            "F 0x%02x, FLT 0x%02x, DMA_CR 0x%08x, DMAMUX %02x/%02x/%02x/%02x, "
+            "SPI_MCR 0x%08x, PFIFO 0x%02x, "
             "GPIOA_PDDR 0x%08x, GPIOC_PDDR 0x%08x\n",
             clock, (unsigned)power_mode, (unsigned)regulator, (unsigned)i2c_divider,
-            (unsigned)i2c_filter, (unsigned)dma_control, (unsigned)spi_control, (unsigned)uart_fifo,
-            (unsigned)gpio_a_direction, (unsigned)gpio_c_direction);
+            (unsigned)i2c_filter, (unsigned)dma_control, (unsigned)dmamux_transmit,
+            (unsigned)dmamux_receive, (unsigned)dmamux_spi_transmit, (unsigned)dmamux_spi_receive,
+            (unsigned)spi_control, (unsigned)uart_fifo, (unsigned)gpio_a_direction,
+            (unsigned)gpio_c_direction);
     return false;
 }
 
@@ -384,7 +500,7 @@ static bool interrupt_priorities_match_reference(Kinetis *device) {
                                  sizeof(interrupt_enable[1]), &interrupt_enable[1]) &&
            dma_priority == DMA3_PRIORITY << 4 && pit_priority == PIT0_PRIORITY << 4 &&
            spi_priority == 0 && uart_priority == 0 && uart_error_priority == 0 &&
-           (interrupt_enable[SPI0_INTERRUPT / 32] & (UINT32_C(1) << (SPI0_INTERRUPT % 32))) == 0 &&
+           (interrupt_enable[SPI0_INTERRUPT / 32] & (UINT32_C(1) << (SPI0_INTERRUPT % 32))) != 0 &&
            (interrupt_enable[UART1_RX_TX_INTERRUPT / 32] &
             (UINT32_C(1) << (UART1_RX_TX_INTERRUPT % 32))) == 0 &&
            (interrupt_enable[UART1_ERROR_INTERRUPT / 32] &
@@ -409,9 +525,8 @@ static bool send_request(Kinetis *device, const uint8_t frame[WQR_FRAME_SIZE]) {
     return send_uart(device, window, sizeof(window));
 }
 
-static bool receive_response(Kinetis *device, uint8_t window[TRANSMIT_WINDOW_SIZE]) {
-    size_t length = 0;
-
+static bool receive_response_from(Kinetis *device, uint8_t window[TRANSMIT_WINDOW_SIZE],
+                                  size_t length) {
     for (size_t instruction = 0; instruction < RESPONSE_INSTRUCTION_LIMIT; ++instruction) {
         uint8_t value;
 
@@ -426,6 +541,23 @@ static bool receive_response(Kinetis *device, uint8_t window[TRANSMIT_WINDOW_SIZ
         }
     }
     return false;
+}
+
+static bool startup_spi_descriptors_match_reference(Kinetis *device) {
+    uint32_t transmit = DMA_TCD_BASE + DMA_SPI_TRANSMIT_CHANNEL * DMA_TCD_STRIDE;
+    uint32_t receive = DMA_TCD_BASE + DMA_SPI_RECEIVE_CHANNEL * DMA_TCD_STRIDE;
+
+    return spi_dma_is_byte_wide(device) &&
+           register_equals(device, transmit + DMA_TCD_CITER_OFFSET, 2, WQR_SPI_TRANSFER_SIZE) &&
+           register_equals(device, transmit + DMA_TCD_CSR_OFFSET, 2, 0x0a) &&
+           register_equals(device, transmit + DMA_TCD_BITER_OFFSET, 2, WQR_SPI_TRANSFER_SIZE) &&
+           register_equals(device, receive + DMA_TCD_CITER_OFFSET, 2, WQR_SPI_TRANSFER_SIZE) &&
+           register_equals(device, receive + DMA_TCD_CSR_OFFSET, 2, 0x0a) &&
+           register_equals(device, receive + DMA_TCD_BITER_OFFSET, 2, WQR_SPI_TRANSFER_SIZE);
+}
+
+static bool receive_response(Kinetis *device, uint8_t window[TRANSMIT_WINDOW_SIZE]) {
+    return receive_response_from(device, window, 0);
 }
 
 static bool exchange_frame(Kinetis *device, uint8_t type, uint8_t sequence, const uint8_t *payload,
@@ -462,9 +594,19 @@ static bool exchange_status(Kinetis *device, uint8_t request_sequence, uint8_t c
     const uint8_t *payload = command_marker == 0 ? NULL : &command_marker;
     size_t payload_length = command_marker == 0 ? 0 : 1;
 
-    return exchange_frame(device, WQR_PAYLOAD_STATUS, request_sequence, payload, payload_length,
-                          response) &&
-           status_response_valid(response, (uint8_t)(request_sequence + 1), command_marker);
+    if (!exchange_frame(device, WQR_PAYLOAD_STATUS, request_sequence, payload, payload_length,
+                        response)) {
+        fprintf(stderr, "status response timed out\n");
+        return false;
+    }
+    if (!status_response_valid(response, (uint8_t)(request_sequence + 1), command_marker)) {
+        fprintf(stderr,
+                "invalid status response: type 0x%02x sequence %u length %u marker 0x%02x\n",
+                response[RECEIVE_PREFIX_SIZE + 1], response[RECEIVE_PREFIX_SIZE + 2],
+                response[RECEIVE_PREFIX_SIZE + 3], response[RECEIVE_PREFIX_SIZE + 18]);
+        return false;
+    }
+    return true;
 }
 
 static bool exchange_measured_status(Kinetis *device, uint8_t request_sequence) {
@@ -499,6 +641,20 @@ static bool exchange_shifted_status(Kinetis *device, uint8_t request_sequence) {
     return wqr_frame_build(request, WQR_PAYLOAD_STATUS, request_sequence, NULL, 0) &&
            send_uart(device, request, sizeof(request)) && receive_response(device, response) &&
            status_response_valid(response, (uint8_t)(request_sequence + 1), 0);
+}
+
+static bool verify_ack_recovery(Kinetis *device, uint8_t sequence) {
+    uint8_t request[WQR_FRAME_SIZE];
+    uint8_t response[TRANSMIT_WINDOW_SIZE];
+    uint8_t unexpected;
+
+    if (!wqr_frame_build(request, 1, sequence, NULL, 0) || !send_request(device, request) ||
+        !run_firmware(device, IDLE_INSTRUCTIONS) || kinetis_uart1_transmit(device, &unexpected)) {
+        return false;
+    }
+    return exchange_frame(device, 1, sequence, NULL, 0, response) &&
+           nack_response_valid(response) && run_firmware(device, IDLE_INSTRUCTIONS) &&
+           exchange_status(device, (uint8_t)(sequence + 1), 0);
 }
 
 static bool recover_from_noise(Kinetis *device) {
@@ -689,7 +845,8 @@ static bool exchange_after_reconnect(Kinetis *device, uint8_t request_sequence) 
     uint16_t transmitted[WQR_SPI_TRANSFER_SIZE];
     uint8_t request[WQR_FRAME_SIZE];
     uint8_t response[TRANSMIT_WINDOW_SIZE] = {0};
-    const uint8_t *frame = response + RECEIVE_PREFIX_SIZE;
+    uint8_t disconnected_response[TRANSMIT_WINDOW_SIZE] = {0};
+    uint8_t unexpected;
     bool transfer_control = false;
     bool transfer_active = true;
 
@@ -698,26 +855,45 @@ static bool exchange_after_reconnect(Kinetis *device, uint8_t request_sequence) 
         transmitted[index] = payload[index];
     }
     payload[WQR_FRAME_PAYLOAD_SIZE - 1] = 1;
-    expect_spi(transmitted, WQR_SPI_TRANSFER_SIZE);
+    expect_spi_then_disconnect(transmitted, WQR_SPI_TRANSFER_SIZE);
     if (!wqr_frame_build(request, WQR_PAYLOAD_PRIMARY_SPI, request_sequence, payload,
                          sizeof(payload)) ||
         !send_request(device, request)) {
+        fprintf(stderr, "SPI reconnect request setup failed\n");
         return false;
     }
     for (size_t instruction = 0; instruction < RESPONSE_INSTRUCTION_LIMIT; ++instruction) {
-        if (!kinetis_gpio_pin(device, GPIO_PORT_C, 4, &transfer_active) || !step_firmware(device)) {
+        if (!kinetis_gpio_pin(device, GPIO_PORT_C, 4, &transfer_active)) {
             return false;
         }
         if (!transfer_active && spi_expectations_met()) {
             break;
         }
+        if (!step_firmware(device)) {
+            return false;
+        }
     }
-    if (transfer_active || !spi_expectations_met() ||
-        !kinetis_gpio_drive(device, GPIO_PORT_C, 2, true) || !receive_response(device, response) ||
-        !frame_integrity_valid(frame) || frame[1] != WQR_PAYLOAD_PRIMARY_SPI ||
-        frame[2] != (uint8_t)(request_sequence + 1) ||
-        memcmp(frame + 4, payload, WQR_SPI_TRANSFER_SIZE) == 0 || (frame[60] & 2) != 0 ||
-        !kinetis_gpio_pin(device, GPIO_PORT_C, 3, &transfer_control) || !transfer_control) {
+    if (transfer_active || !spi_expectations_met()) {
+        fprintf(stderr, "SPI reconnect transfer did not complete\n");
+        return false;
+    }
+    if (!run_firmware(device, IDLE_INSTRUCTIONS)) {
+        fprintf(stderr, "SPI reconnect disconnect execution failed\n");
+        return false;
+    }
+    if (kinetis_uart1_transmit(device, &unexpected)) {
+        disconnected_response[0] = unexpected;
+        if (!receive_response_from(device, disconnected_response, 1) ||
+            !frame_integrity_valid(disconnected_response + RECEIVE_PREFIX_SIZE) ||
+            !run_firmware(device, IDLE_INSTRUCTIONS) ||
+            kinetis_uart1_transmit(device, &unexpected)) {
+            fprintf(stderr, "SPI reconnect left an invalid or repeated disconnect response\n");
+            return false;
+        }
+    }
+    if (!kinetis_gpio_pin(device, GPIO_PORT_C, 3, &transfer_control) || !transfer_control ||
+        !startup_spi_descriptors_match_reference(device)) {
+        fprintf(stderr, "SPI reconnect transfer control did not reset\n");
         return false;
     }
     expect_spi(transmitted, WQR_SPI_TRANSFER_SIZE);
@@ -727,10 +903,12 @@ static bool exchange_after_reconnect(Kinetis *device, uint8_t request_sequence) 
         !exchange_frame(device, WQR_PAYLOAD_PRIMARY_SPI, (uint8_t)(request_sequence + 1), payload,
                         sizeof(payload), response) ||
         !primary_response_valid(response, (uint8_t)(request_sequence + 2), payload, true)) {
+        fprintf(stderr, "SPI reconnect first exchange failed\n");
         return false;
     }
     if (!run_firmware(device, IDLE_INSTRUCTIONS) ||
         !queue_spi_response(device, payload, WQR_SPI_TRANSFER_SIZE)) {
+        fprintf(stderr, "SPI reconnect repeat setup failed\n");
         return false;
     }
     expect_spi(transmitted, WQR_SPI_TRANSFER_SIZE);
@@ -738,6 +916,7 @@ static bool exchange_after_reconnect(Kinetis *device, uint8_t request_sequence) 
                         sizeof(payload), response) ||
         !primary_response_valid(response, (uint8_t)(request_sequence + 3), payload, true) ||
         !spi_expectations_met()) {
+        fprintf(stderr, "SPI reconnect repeated exchange failed\n");
         return false;
     }
     return true;
@@ -1026,10 +1205,16 @@ static bool firmware_passes(const char *path, const char *elf_path, KinetisPacka
                                        run_firmware(device, STARTUP_INSTRUCTIONS));
     VERIFY_STAGE("hardware configuration", hardware_configuration_valid(device));
     VERIFY_STAGE("watchdog configuration", watchdog_configuration_valid(device));
+    VERIFY_STAGE("reference registers", reference_registers_valid(device));
     VERIFY_STAGE("interrupt priorities", interrupt_priorities_match_reference(device));
+    VERIFY_STAGE("startup UART descriptors",
+                 uart_descriptors_match_reference(device) &&
+                     startup_uart_descriptor_controls_match_reference(device));
+    VERIFY_STAGE("startup SPI descriptors", startup_spi_descriptors_match_reference(device));
     VERIFY_STAGE("status", exchange_status(device, 0, 0));
-    VERIFY_STAGE("UART response guard",
-                 run_firmware(device, INTERRUPT_INSTRUCTIONS * 10) && uart_guard_is_exact(device));
+    VERIFY_STAGE("UART response guard", run_firmware(device, INTERRUPT_INSTRUCTIONS * 10) &&
+                                            uart_guard_is_exact(device) &&
+                                            uart_descriptors_match_reference(device));
     VERIFY_STAGE("measured status", run_firmware(device, SENSOR_SETTLE_INSTRUCTIONS) &&
                                         exchange_measured_status(device, 1));
     VERIFY_STAGE("stale UART completion",
@@ -1090,14 +1275,16 @@ static bool firmware_passes(const char *path, const char *elf_path, KinetisPacka
                                                exchange_status(device, 27, 0xaa) &&
                                                run_firmware(device, STARTUP_INSTRUCTIONS) &&
                                                reset_recorded(device, RCM_SRS1_ADDRESS, 4));
-    VERIFY_STAGE("status after reset", exchange_status(device, 0, 0) &&
-                                           hardware_configuration_valid(device) &&
-                                           watchdog_configuration_valid(device));
+    VERIFY_STAGE("status after reset",
+                 exchange_status(device, 0, 0) && hardware_configuration_valid(device) &&
+                     watchdog_configuration_valid(device) && reference_registers_valid(device));
     VERIFY_STAGE("input snapshot",
                  configure_inputs(device, 2) && exchange_input_status(device, 1, INPUT_FLAGS));
     VERIFY_STAGE("shifted UART frame",
                  run_firmware(device, IDLE_INSTRUCTIONS) && exchange_shifted_status(device, 2));
-    kinetis_watchdog_advance(device, 500);
+    VERIFY_STAGE("ACK recovery",
+                 run_firmware(device, IDLE_INSTRUCTIONS) && verify_ack_recovery(device, 3));
+    kinetis_watchdog_advance(device, EXPECTED_WDOG_TIMEOUT);
     kinetis_advance(device, WATCHDOG_RESET_CYCLES);
     VERIFY_STAGE("watchdog reset source", reset_recorded(device, RCM_SRS0_ADDRESS, 0x20));
     VERIFY_STAGE("watchdog restart", run_firmware(device, STARTUP_INSTRUCTIONS));

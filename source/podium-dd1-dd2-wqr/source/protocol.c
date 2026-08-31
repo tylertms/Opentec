@@ -26,15 +26,39 @@ static const float sensor_resistance[SENSOR_TABLE_SIZE] = {
 
 static bool process_payload(wqr_protocol *protocol);
 
+/**
+ * @brief Reads one little-endian 16-bit protocol field.
+ *
+ * Combines the two bytes beginning at the supplied address into an unsigned value.
+ *
+ * @param[in] data First byte of the field.
+ * @return Decoded unsigned value.
+ */
 static uint16_t read_u16(const uint8_t *data) {
     return (uint16_t)data[0] | (uint16_t)((uint16_t)data[1] << 8);
 }
 
+/**
+ * @brief Writes one little-endian 16-bit protocol field.
+ *
+ * Stores the low byte first at the supplied address.
+ *
+ * @param[out] data First byte of the destination field.
+ * @param[in] value Unsigned value to encode.
+ */
 static void write_u16(uint8_t *data, uint16_t value) {
     data[0] = (uint8_t)value;
     data[1] = (uint8_t)(value >> 8);
 }
 
+/**
+ * @brief Writes one little-endian 32-bit protocol field.
+ *
+ * Stores the value from least-significant through most-significant byte.
+ *
+ * @param[out] data First byte of the destination field.
+ * @param[in] value Unsigned value to encode.
+ */
 static void write_u32(uint8_t *data, uint32_t value) {
     data[0] = (uint8_t)value;
     data[1] = (uint8_t)(value >> 8);
@@ -42,16 +66,41 @@ static void write_u32(uint8_t *data, uint32_t value) {
     data[3] = (uint8_t)(value >> 24);
 }
 
+/**
+ * @brief Reads the peer-presence state used by the transfer handshake.
+ *
+ * Treats a missing platform callback as ready so the protocol remains usable without hardware
+ * handshaking.
+ *
+ * @param[in] protocol Protocol state and platform callbacks.
+ * @return True when the peer is present or no presence callback is installed.
+ */
 static bool transfer_ready(const wqr_protocol *protocol) {
     return protocol->io.transfer_ready == NULL || protocol->io.transfer_ready(protocol->io.context);
 }
 
+/**
+ * @brief Reads the peer transfer-control acknowledgement.
+ *
+ * Uses the locally asserted state when no platform callback is installed.
+ *
+ * @param[in] protocol Protocol state and platform callbacks.
+ * @return Current transfer-control acknowledgement state.
+ */
 static bool transfer_control_ready(const wqr_protocol *protocol) {
     return protocol->io.transfer_control_ready == NULL
                ? protocol->transfer_control_asserted
                : protocol->io.transfer_control_ready(protocol->io.context);
 }
 
+/**
+ * @brief Updates the local transfer-control output.
+ *
+ * Stores the requested state and forwards it to the platform callback when one is installed.
+ *
+ * @param[in,out] protocol Protocol state and platform callbacks.
+ * @param[in] asserted Requested transfer-control state.
+ */
 static void set_transfer_control(wqr_protocol *protocol, bool asserted) {
     protocol->transfer_control_asserted = asserted;
 
@@ -60,14 +109,22 @@ static void set_transfer_control(wqr_protocol *protocol, bool asserted) {
     }
 }
 
+/**
+ * @brief Resets the active peripheral-transfer session.
+ *
+ * Clears accumulated requests, cached frames, response staging, handshake state, and active
+ * peripheral ownership before requesting platform-level transfer cleanup.
+ *
+ * @param[in,out] protocol Protocol state to reset.
+ */
 static void reset_transfer(wqr_protocol *protocol) {
-    if (protocol->peripheral_transfer_active) {
-        uint8_t *response = protocol->payload_type == WQR_PAYLOAD_ALTERNATE_SPI
-                                ? protocol->alternate_response
-                                : protocol->primary_response;
-        memset(response, 0, WQR_SPI_RESPONSE_SIZE);
-    }
+    memset(protocol->primary_response, 0, sizeof(protocol->primary_response));
+    memset(protocol->alternate_response, 0, sizeof(protocol->alternate_response));
     protocol->receive_length = 0;
+    protocol->fragment_open = false;
+    protocol->payload_pending = false;
+    protocol->last_fragment_valid = false;
+    protocol->last_request_valid = false;
     protocol->transfer_state = STATUS_TRANSFER_INITIALIZE;
     protocol->peer_ready_confirmed = false;
     protocol->transfer_enabled = false;
@@ -79,6 +136,14 @@ static void reset_transfer(wqr_protocol *protocol) {
     }
 }
 
+/**
+ * @brief Advances the four-state peripheral transfer handshake.
+ *
+ * Tracks peer presence and control acknowledgement, resets a disconnected session, and publishes
+ * the derived detected and enabled states.
+ *
+ * @param[in,out] protocol Protocol and handshake state to update.
+ */
 static void update_transfer_handshake(wqr_protocol *protocol) {
     bool connected = transfer_ready(protocol);
     bool control_ready = transfer_control_ready(protocol);
@@ -110,6 +175,14 @@ static void update_transfer_handshake(wqr_protocol *protocol) {
     protocol->transfer_enabled = protocol->transfer_state >= STATUS_TRANSFER_READY;
 }
 
+/**
+ * @brief Applies the transfer-control bit carried by a complete SPI request.
+ *
+ * Ignores non-SPI and short requests. A deasserted control bit immediately resets the current
+ * transfer session after updating the platform output.
+ *
+ * @param[in,out] protocol Protocol state containing the pending request.
+ */
 static void apply_transfer_control(wqr_protocol *protocol) {
     bool asserted;
 
@@ -127,6 +200,14 @@ static void apply_transfer_control(wqr_protocol *protocol) {
     }
 }
 
+/**
+ * @brief Services pending protocol work and the transfer handshake.
+ *
+ * Applies SPI transfer control before dispatch, polls asynchronous peripheral operations, advances
+ * connection state, and releases completed request storage.
+ *
+ * @param[in,out] protocol Protocol state to service.
+ */
 void wqr_protocol_poll(wqr_protocol *protocol) {
     bool transfer_started = false;
     bool spi_request = protocol->payload_type == WQR_PAYLOAD_PRIMARY_SPI ||
@@ -151,6 +232,16 @@ void wqr_protocol_poll(wqr_protocol *protocol) {
     }
 }
 
+/**
+ * @brief Queues one payload for fragmented protocol transmission.
+ *
+ * Copies external payload storage into the protocol response buffer and resets transmission
+ * progress for the current request type.
+ *
+ * @param[in,out] protocol Protocol state that owns the response queue.
+ * @param[in] payload Response bytes to queue.
+ * @param[in] length Number of response bytes.
+ */
 static void queue_payload(wqr_protocol *protocol, const uint8_t *payload, size_t length) {
     if (payload != protocol->transmit_payload) {
         memcpy(protocol->transmit_payload, payload, length);
@@ -162,6 +253,15 @@ static void queue_payload(wqr_protocol *protocol, const uint8_t *payload, size_t
     protocol->response_ready = true;
 }
 
+/**
+ * @brief Queues an ACK or NACK control frame.
+ *
+ * Captures the expected command and current sequence so transmission can occur after receive-side
+ * processing completes.
+ *
+ * @param[in,out] protocol Protocol state that owns the control response.
+ * @param[in] acknowledged True to queue an ACK, or false to queue a NACK.
+ */
 static void queue_control(wqr_protocol *protocol, bool acknowledged) {
     protocol->control_type = acknowledged ? 1 : 0;
     protocol->control_payload = protocol->expected_command;
@@ -169,8 +269,25 @@ static void queue_control(wqr_protocol *protocol, bool acknowledged) {
     protocol->control_ready = true;
 }
 
+/**
+ * @brief Reads the wire-visible transfer handshake state.
+ *
+ * Returns the current internal handshake value without translation.
+ *
+ * @param[in] protocol Protocol state to inspect.
+ * @return Current transfer status byte.
+ */
 static uint8_t transfer_status(const wqr_protocol *protocol) { return protocol->transfer_state; }
 
+/**
+ * @brief Encodes the complete WQR runtime status payload.
+ *
+ * Publishes digital inputs, converted sensor value, uptime, error count, transfer state, transfer
+ * detail, and the reset command marker in wire order.
+ *
+ * @param[in] protocol Protocol state containing the current status values.
+ * @param[out] status Fifteen-byte status payload.
+ */
 static void encode_status(wqr_protocol *protocol, uint8_t status[WQR_STATUS_SIZE]) {
     memset(status, 0, WQR_STATUS_SIZE);
     status[0] = 7;
@@ -185,6 +302,15 @@ static void encode_status(wqr_protocol *protocol, uint8_t status[WQR_STATUS_SIZE
     status[14] = protocol->command_marker;
 }
 
+/**
+ * @brief Services one primary byte-oriented SPI request.
+ *
+ * Starts or polls the asynchronous 33-byte transfer when permitted, publishes peer-detection state,
+ * and queues the fixed 57-byte response after completion or immediate failure.
+ *
+ * @param[in,out] protocol Protocol and peripheral-transfer state to service.
+ * @return True when a response was queued, or false while the SPI transfer remains pending.
+ */
 static bool process_primary_spi(wqr_protocol *protocol) {
     uint8_t *response = protocol->primary_response;
     wqr_io_result result = WQR_IO_FAILED;
@@ -215,6 +341,15 @@ static bool process_primary_spi(wqr_protocol *protocol) {
     return true;
 }
 
+/**
+ * @brief Services one alternate word-oriented SPI request.
+ *
+ * Performs the required zero-word mode initialization, starts or polls the asynchronous transfer,
+ * and queues a fixed response containing the received word when transfer control is enabled.
+ *
+ * @param[in,out] protocol Protocol and alternate-SPI state to service.
+ * @return True when a response was queued, or false while the SPI transfer remains pending.
+ */
 static bool process_alternate_spi(wqr_protocol *protocol) {
     uint8_t *response = protocol->alternate_response;
     uint16_t received = 0;
@@ -252,6 +387,15 @@ static bool process_alternate_spi(wqr_protocol *protocol) {
     return true;
 }
 
+/**
+ * @brief Services one encoded I2C read or write request.
+ *
+ * Validates the minimum request shape and read length, starts or polls the platform transfer, and
+ * queues either the completed payload or the three-byte failure response.
+ *
+ * @param[in,out] protocol Protocol and I2C transfer state to service.
+ * @return True when a response was queued, or false while the I2C transfer remains pending.
+ */
 static bool process_i2c(wqr_protocol *protocol) {
     uint8_t *request = protocol->receive_payload;
     uint8_t address;
@@ -298,6 +442,14 @@ static bool process_i2c(wqr_protocol *protocol) {
     return true;
 }
 
+/**
+ * @brief Processes one runtime status request.
+ *
+ * Recognizes the reset marker only in a nonempty request, defers the reset until response delivery,
+ * and queues the current status payload.
+ *
+ * @param[in,out] protocol Protocol state containing the request and response queue.
+ */
 static void process_status(wqr_protocol *protocol) {
     uint8_t status[WQR_STATUS_SIZE];
 
@@ -308,6 +460,15 @@ static void process_status(wqr_protocol *protocol) {
     queue_payload(protocol, status, sizeof(status));
 }
 
+/**
+ * @brief Dispatches the accumulated request payload by WQR command type.
+ *
+ * Routes supported SPI, I2C, and status commands to their service functions. Unsupported types are
+ * left unprocessed.
+ *
+ * @param[in,out] protocol Protocol state containing the pending request.
+ * @return True when request processing completed, or false when it is pending or unsupported.
+ */
 static bool process_payload(wqr_protocol *protocol) {
     switch (protocol->payload_type) {
     case WQR_PAYLOAD_PRIMARY_SPI:
@@ -324,6 +485,17 @@ static bool process_payload(wqr_protocol *protocol) {
     }
 }
 
+/**
+ * @brief Appends one validated fragment to the receive accumulator.
+ *
+ * Rejects additions that exceed the fixed transfer capacity and advances the accumulated length
+ * only after the bytes are copied.
+ *
+ * @param[in,out] protocol Protocol state containing the receive accumulator.
+ * @param[in] payload Fragment payload bytes.
+ * @param[in] length Number of bytes to append.
+ * @return True when the fragment fits and was appended.
+ */
 static bool append_payload(wqr_protocol *protocol, const uint8_t *payload, size_t length) {
     if (length > WQR_TRANSFER_CAPACITY - protocol->receive_length) {
         return false;
@@ -333,6 +505,15 @@ static bool append_payload(wqr_protocol *protocol, const uint8_t *payload, size_
     return true;
 }
 
+/**
+ * @brief Initializes the complete WQR protocol state.
+ *
+ * Clears all runtime state, installs the optional platform interface, initializes command
+ * sentinels, and samples the three digital inputs when supported.
+ *
+ * @param[out] protocol Protocol state to initialize.
+ * @param[in] io Platform interface to copy, or null for a callback-free instance.
+ */
 void wqr_protocol_init(wqr_protocol *protocol, const wqr_io *io) {
     memset(protocol, 0, sizeof(*protocol));
     protocol->payload_type = 0xff;
@@ -345,10 +526,30 @@ void wqr_protocol_init(wqr_protocol *protocol, const wqr_io *io) {
     }
 }
 
+/**
+ * @brief Compares two complete WQR transport frames.
+ *
+ * Tests every byte so duplicate detection includes framing, payload, padding, and CRC state.
+ *
+ * @param[in] left First frame.
+ * @param[in] right Second frame.
+ * @return True when all frame bytes match.
+ */
 static bool frame_matches(const uint8_t left[WQR_FRAME_SIZE], const uint8_t right[WQR_FRAME_SIZE]) {
     return memcmp(left, right, WQR_FRAME_SIZE) == 0;
 }
 
+/**
+ * @brief Validates and consumes one WQR request or control frame.
+ *
+ * Handles retry control, response ACKs, duplicate suppression, canonical fragment sequencing, and
+ * bounded payload accumulation. Completed requests are deferred to the polling service.
+ *
+ * @param[in,out] protocol Protocol state to update.
+ * @param[in] frame Complete received WQR frame.
+ * @return True when the frame was accepted or recognized as a retry or duplicate; false when it
+ * was rejected.
+ */
 bool wqr_protocol_receive(wqr_protocol *protocol, const uint8_t frame[WQR_FRAME_SIZE]) {
     wqr_frame_view view;
     uint8_t type_flags;
@@ -378,19 +579,26 @@ bool wqr_protocol_receive(wqr_protocol *protocol, const uint8_t frame[WQR_FRAME_
     }
 
     if (type == 0) {
-        bool sequence_is_earlier =
-            view.sequence < protocol->sequence || (protocol->sequence == 0 && view.sequence != 0);
+        bool sequence_is_earlier = protocol->sequence != 0 || protocol->transmit_count == 0
+                                       ? view.sequence < protocol->sequence
+                                       : view.sequence > protocol->sequence;
 
-        if (protocol->response_ready && sequence_is_earlier) {
+        if (sequence_is_earlier && wqr_protocol_response_expected(protocol)) {
             return true;
         }
         queue_control(protocol, false);
         return false;
     }
     if (type == 1) {
-        if (!protocol->response_ready ||
-            protocol->transmit_offset + WQR_FRAME_PAYLOAD_SIZE >= protocol->transmit_length) {
+        if (!protocol->response_ready) {
+            queue_control(protocol, false);
+            return false;
+        }
+        if (protocol->transmit_offset + WQR_FRAME_PAYLOAD_SIZE >= protocol->transmit_length) {
             protocol->response_ready = false;
+            protocol->transmit_offset = 0;
+            protocol->last_request_valid = false;
+            ++protocol->sequence;
             return true;
         }
         protocol->transmit_offset += WQR_FRAME_PAYLOAD_SIZE;
@@ -445,6 +653,7 @@ bool wqr_protocol_receive(wqr_protocol *protocol, const uint8_t frame[WQR_FRAME_
     }
     protocol->expected_command = type;
     protocol->fragment_open = false;
+    protocol->last_fragment_valid = false;
     protocol->transmit_length = 0;
     protocol->transmit_offset = 0;
     protocol->response_ready = false;
@@ -454,6 +663,16 @@ bool wqr_protocol_receive(wqr_protocol *protocol, const uint8_t frame[WQR_FRAME_
     return true;
 }
 
+/**
+ * @brief Builds the next queued WQR response frame.
+ *
+ * Prioritizes control responses and otherwise selects the current response fragment and flags from
+ * the queued payload without advancing transmission state.
+ *
+ * @param[in] protocol Protocol state containing the response queue.
+ * @param[out] frame Complete response frame.
+ * @return True when a response frame was available and built.
+ */
 bool wqr_protocol_response(const wqr_protocol *protocol, uint8_t frame[WQR_FRAME_SIZE]) {
     size_t remaining;
     size_t length;
@@ -479,7 +698,30 @@ bool wqr_protocol_response(const wqr_protocol *protocol, uint8_t frame[WQR_FRAME
                            protocol->transmit_payload + protocol->transmit_offset, length);
 }
 
+/**
+ * @brief Tests whether the current transaction can still produce a response.
+ *
+ * Includes queued control or payload output and request work still waiting on dispatch or a
+ * peripheral operation.
+ *
+ * @param[in] protocol Protocol state to inspect.
+ * @return True when response-related work remains active.
+ */
+bool wqr_protocol_response_expected(const wqr_protocol *protocol) {
+    return protocol->control_ready || protocol->payload_pending ||
+           protocol->peripheral_transfer_active || protocol->response_ready;
+}
+
+/**
+ * @brief Records successful transmission of the current response frame.
+ *
+ * Increments the official transmit counter, consumes a queued control response, and requests a
+ * deferred system reset after a completed payload response when armed.
+ *
+ * @param[in,out] protocol Protocol state to update.
+ */
 void wqr_protocol_response_sent(wqr_protocol *protocol) {
+    ++protocol->transmit_count;
     if (protocol->control_ready) {
         protocol->control_ready = false;
         return;
@@ -490,6 +732,14 @@ void wqr_protocol_response_sent(wqr_protocol *protocol) {
     }
 }
 
+/**
+ * @brief Advances protocol uptime by one millisecond.
+ *
+ * Increments the millisecond counter and derives one additional uptime second at each thousandth
+ * tick.
+ *
+ * @param[in,out] protocol Protocol timing state to advance.
+ */
 void wqr_protocol_tick(wqr_protocol *protocol) {
     ++protocol->milliseconds;
     if (protocol->milliseconds % 1000 == 0) {
@@ -497,6 +747,15 @@ void wqr_protocol_tick(wqr_protocol *protocol) {
     }
 }
 
+/**
+ * @brief Converts one 12-bit sensor ADC sample to the official temperature value.
+ *
+ * Calculates divider resistance and linearly interpolates the 5-degree lookup table. Open and
+ * out-of-range endpoints return the official sentinel values.
+ *
+ * @param[in] sample Unsigned ADC sample.
+ * @return Interpolated temperature, `-99` below range, or `999` above range or for an open input.
+ */
 int16_t wqr_sensor_value(uint16_t sample) {
     float resistance;
     size_t index = 0;
@@ -524,6 +783,15 @@ int16_t wqr_sensor_value(uint16_t sample) {
                      15.0f);
 }
 
+/**
+ * @brief Publishes one converted sensor sample in protocol status.
+ *
+ * Converts the raw ADC sample through the official resistance table and stores the resulting
+ * signed value for subsequent status responses.
+ *
+ * @param[in,out] protocol Protocol status state to update.
+ * @param[in] sample Unsigned 12-bit ADC sample.
+ */
 void wqr_protocol_set_sensor_sample(wqr_protocol *protocol, uint16_t sample) {
     protocol->sensor_value = wqr_sensor_value(sample);
 }

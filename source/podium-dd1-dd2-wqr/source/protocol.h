@@ -46,8 +46,9 @@ typedef struct {
     size_t transmit_length;
     size_t transmit_offset;
     uint32_t error_count;
-    uint32_t milliseconds;
-    uint32_t seconds;
+    volatile uint32_t milliseconds;
+    volatile uint32_t seconds;
+    volatile uint32_t transmit_count;
 
     int16_t sensor_value;
     uint8_t inputs;
@@ -68,10 +69,10 @@ typedef struct {
     bool peripheral_transfer_active;
     bool response_ready;
     bool fragment_open;
-    bool reset_after_response;
+    volatile bool reset_after_response;
     bool transfer_control_asserted;
     bool alternate_spi_active;
-    bool control_ready;
+    volatile bool control_ready;
     bool last_fragment_valid;
     bool last_request_valid;
 } wqr_protocol;
@@ -79,6 +80,7 @@ typedef struct {
 void wqr_protocol_init(wqr_protocol *protocol, const wqr_io *io);
 bool wqr_protocol_receive(wqr_protocol *protocol, const uint8_t frame[WQR_FRAME_SIZE]);
 bool wqr_protocol_response(const wqr_protocol *protocol, uint8_t frame[WQR_FRAME_SIZE]);
+bool wqr_protocol_response_expected(const wqr_protocol *protocol);
 void wqr_protocol_response_sent(wqr_protocol *protocol);
 void wqr_protocol_poll(wqr_protocol *protocol);
 void wqr_protocol_tick(wqr_protocol *protocol);

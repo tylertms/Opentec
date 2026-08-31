@@ -5,7 +5,10 @@ from pathlib import Path
 APPLICATION_BASE = 0xA000
 METADATA_OFFSET = 0x3C0
 CHECKSUM_OFFSET = 0x3CC
+FLASH_CONFIGURATION_OFFSET = 0x400
 FIRMWARE_VERSION = 0x0064FFFF
+WQR_FLASH_CONFIGURATION = b"\xff" * 12 + b"\xfe\xfb\xff\xff"
+NORMALIZED_INTERRUPTS = (16, 31, 32, 33)
 
 
 def crc32_mpeg2(data):
@@ -74,8 +77,8 @@ def main():
     assert addresses == list(range(APPLICATION_BASE, APPLICATION_BASE + len(binary)))
     assert bytes(memory[address] for address in addresses) == binary
 
-    magic, base, size, checksum, version = struct.unpack_from(
-        "<4sIIII", binary, METADATA_OFFSET
+    magic, base, size, checksum, version, reserved, padding = struct.unpack_from(
+        "<4sIIII12s32s", binary, METADATA_OFFSET
     )
     checksum_data = binary[:CHECKSUM_OFFSET] + binary[CHECKSUM_OFFSET + 4 :]
     assert magic == b"wqrb"
@@ -83,6 +86,22 @@ def main():
     assert size == len(binary)
     assert checksum == crc32_mpeg2(checksum_data)
     assert version == FIRMWARE_VERSION
+    assert reserved == b"\xff" * len(reserved)
+    assert padding == bytes(len(padding))
+    assert struct.unpack_from("<I", binary, 0x2FC)[0] == 0xFFFFFFFF
+    assert binary[0x300:METADATA_OFFSET] == bytes(METADATA_OFFSET - 0x300)
+    default_handler = struct.unpack_from("<I", binary, 4 * 4)[0]
+    for interrupt in NORMALIZED_INTERRUPTS:
+        assert (
+            struct.unpack_from("<I", binary, (16 + interrupt) * 4)[0] == default_handler
+        )
+    assert (
+        binary[
+            FLASH_CONFIGURATION_OFFSET : FLASH_CONFIGURATION_OFFSET
+            + len(WQR_FLASH_CONFIGURATION)
+        ]
+        == WQR_FLASH_CONFIGURATION
+    )
 
 
 if __name__ == "__main__":

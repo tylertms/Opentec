@@ -51,7 +51,6 @@ if wqr_is_target
     '-fno-pie',
     '-DCPU_MKV30F128VLH10',
     '-DDISABLE_WDOG=1',
-    '-DI2C_RETRY_TIMES=24000',
     '-DNDEBUG',
   ]
   wqr_includes = [wqr_include, sdk_driver_include, sdk_device['includes']]

@@ -543,6 +543,10 @@ static void test_sequence_boundaries(void) {
     assert(wqr_protocol_response(&protocol, response));
     assert(response[2] == 0);
     assert(wqr_frame_build(frame, 0, 255, NULL, 0));
+    assert(!wqr_protocol_receive(&protocol, frame));
+    assert(wqr_protocol_response(&protocol, response));
+    assert(response[1] == 0);
+    wqr_protocol_response_sent(&protocol);
     assert(wqr_protocol_receive(&protocol, frame));
     assert(wqr_protocol_response(&protocol, response));
     assert(response[1] == WQR_PAYLOAD_STATUS);
@@ -777,8 +781,7 @@ static void test_pending_alternate_spi(void) {
     state.transfer_ready = false;
     state.spi_word_complete = true;
     wqr_protocol_poll(&protocol);
-    assert(wqr_protocol_response(&protocol, frame));
-    wqr_protocol_response_sent(&protocol);
+    assert(!wqr_protocol_response(&protocol, frame));
 
     assert(wqr_frame_build(frame, WQR_PAYLOAD_ALTERNATE_SPI, 2, payload, sizeof(payload)));
     assert(wqr_protocol_receive(&protocol, frame));
@@ -965,10 +968,13 @@ static void test_disconnect_cancels_pending_spi(void) {
     assert(!protocol.transfer_enabled);
     assert(protocol.transfer_state == 0);
     assert(state.transfer_resets == 1);
-    assert(wqr_protocol_response(&protocol, frame));
-    for (size_t index = 4; index < 61; ++index) {
-        assert(frame[index] == 0);
-    }
+    assert(!protocol.payload_pending);
+    assert(!protocol.peripheral_transfer_active);
+    assert(!protocol.response_ready);
+    assert(!protocol.fragment_open);
+    assert(!protocol.last_fragment_valid);
+    assert(!protocol.last_request_valid);
+    assert(!wqr_protocol_response(&protocol, frame));
 }
 
 static void test_sensor(void) {
