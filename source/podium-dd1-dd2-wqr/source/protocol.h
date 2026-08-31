@@ -48,6 +48,7 @@ typedef struct {
     uint32_t error_count;
     uint32_t milliseconds;
     uint32_t seconds;
+    uint16_t second_milliseconds;
 
     int16_t sensor_value;
     uint8_t inputs;

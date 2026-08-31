@@ -88,6 +88,7 @@ static i2c_master_handle_t i2c_handle;
 static volatile bool adc_sample_ready;
 static volatile uint16_t adc_sample;
 static volatile bool reset_pending;
+static uint8_t adc_milliseconds;
 
 static void reset_if_failed(status_t status) {
     if (status != kStatus_Success) {
@@ -126,6 +127,7 @@ static void configure_clock(void) {
     LPTMR_GetDefaultConfig(&stability_timer);
     LPTMR_Init(LPTMR0, &stability_timer);
     LPTMR_SetTimerPeriod(LPTMR0, 1);
+    LPTMR_ClearStatusFlags(LPTMR0, kLPTMR_TimerCompareFlag);
     LPTMR_StartTimer(LPTMR0);
     while ((LPTMR_GetStatusFlags(LPTMR0) & kLPTMR_TimerCompareFlag) == 0) {
     }
@@ -473,7 +475,6 @@ static wqr_io_result i2c_result(void) {
 }
 
 static wqr_io_result start_i2c(i2c_master_transfer_t *transfer) {
-    I2C0->FLT &= (uint8_t)~I2C_FLT_SSIE_MASK;
     i2c_timeout = I2C_TIMEOUT_MILLISECONDS;
     i2c_state = I2C_PENDING;
 
@@ -604,6 +605,13 @@ static void io_reset_transfer(void *context) {
     spi_retry_pending = false;
     spi_retry_delay = 0;
     initialize_spi_hardware();
+    if (protocol.alternate_spi_active) {
+        NVIC_DisableIRQ(DMA2_IRQn);
+        NVIC_DisableIRQ(DMA3_IRQn);
+        DMAMUX_DisableChannel(DMAMUX, SPI_TRANSMIT_DMA_CHANNEL);
+        DMAMUX_DisableChannel(DMAMUX, SPI_RECEIVE_DMA_CHANNEL);
+        set_spi_format(16, kDSPI_ClockPhaseFirstEdge);
+    }
 }
 
 static void io_request_reset(void *context) {
@@ -705,9 +713,15 @@ void I2C0_IRQHandler(void) {
     uint8_t detection = I2C0->FLT & (I2C_FLT_STARTF_MASK | I2C_FLT_STOPF_MASK);
     uint8_t status = I2C0->S;
 
-    I2C0->FLT |= detection;
     if ((status & I2C_S_ARBL_MASK) != 0) {
         I2C_MasterClearStatusFlags(I2C0, kI2C_ArbitrationLostFlag);
+        return;
+    }
+    if (detection != 0) {
+        I2C0->FLT |= detection;
+        if ((status & I2C_S_IICIF_MASK) != 0) {
+            I2C_MasterClearStatusFlags(I2C0, kI2C_IntPendingFlag);
+        }
         return;
     }
     if ((status & I2C_S_IICIF_MASK) == 0) {
@@ -772,11 +786,12 @@ void PIT0_IRQHandler(void) {
     wqr_protocol_tick(&protocol);
     update_spi_retry();
     update_i2c_timeout();
-    if (protocol.milliseconds % 100 == 0) {
+    if (++adc_milliseconds == 100) {
         const adc16_channel_config_t channel = {
             .channelNumber = 23,
             .enableInterruptOnConversionCompleted = true,
         };
+        adc_milliseconds = 0;
         ADC16_SetChannelConfig(ADC0, 0, &channel);
     }
     PIT_ClearStatusFlags(PIT, kPIT_Chnl_0, kPIT_TimerFlag);

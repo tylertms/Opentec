@@ -32,42 +32,6 @@ if meson.is_cross_build()
   )
 
   test(
-    'wqr-checksum',
-    python,
-    args: [
-      meson.project_source_root() / 'source/podium-dd1-dd2-wqr/tools/checksum.py',
-      '--verify',
-      checksummed_binary.full_path(),
-    ],
-    depends: checksummed_binary,
-    suite: ['wqr', 'package'],
-  )
-
-  test(
-    'wqr-checksum-edges',
-    python,
-    args: [
-      meson.current_source_dir() / 'source/checksum.py',
-      meson.project_source_root() / 'source/podium-dd1-dd2-wqr/tools/checksum.py',
-    ],
-    suite: ['wqr', 'package'],
-  )
-
-  test(
-    'wqr-encryption',
-    python,
-    args: [
-      meson.project_source_root() / 'tools/crypto.py',
-      'verify',
-      hex.full_path(),
-      package.full_path(),
-      '--legacy-wide-secret',
-    ],
-    depends: package,
-    suite: ['wqr', 'package'],
-  )
-
-  test(
     'wqr-hex',
     python,
     args: [

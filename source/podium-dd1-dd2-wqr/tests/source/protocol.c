@@ -189,6 +189,12 @@ static void test_status_and_reset(void) {
     assert(response[18] == 0xaa);
     assert(wqr_protocol_crc(response + 1, WQR_FRAME_BODY_SIZE) ==
            (uint16_t)(response[61] | (uint16_t)(response[62] << 8)));
+    assert(wqr_protocol_build_frame(request, WQR_PAYLOAD_STATUS, 8, NULL, 0));
+    assert(wqr_protocol_receive(&protocol, request));
+    wqr_protocol_poll(&protocol);
+    assert(wqr_protocol_response(&protocol, response));
+    assert(response[2] == 9);
+    assert(response[18] == 0);
     wqr_protocol_response_sent(&protocol);
     assert(state.resets == 1);
 }
@@ -242,6 +248,13 @@ static void test_status_values(void) {
     wqr_protocol_poll(&protocol);
     assert(wqr_protocol_response(&protocol, frame));
     assert(frame[16] == 4);
+
+    protocol.milliseconds = UINT32_MAX;
+    protocol.second_milliseconds = 999;
+    wqr_protocol_tick(&protocol);
+    assert(protocol.milliseconds == 0);
+    assert(protocol.second_milliseconds == 0);
+    assert(protocol.seconds == 2);
 }
 
 static void test_fragmented_i2c_read(void) {
@@ -732,6 +745,7 @@ static void test_pending_alternate_spi(void) {
     test_io state = {.transfer_ready = true};
     wqr_io io = {
         .context = &state,
+        .spi_transfer = test_pending_spi_transfer,
         .spi_word = test_pending_spi_word,
         .transfer_ready = test_transfer_ready,
         .set_transfer_control = test_set_transfer_control,
@@ -779,6 +793,17 @@ static void test_pending_alternate_spi(void) {
     wqr_protocol_poll(&protocol);
     assert(wqr_protocol_response(&protocol, frame));
     assert(state.spi_word_transfers == 2);
+
+    state.transfer_ready = true;
+    wqr_protocol_poll(&protocol);
+    wqr_protocol_poll(&protocol);
+    wqr_protocol_poll(&protocol);
+    assert(protocol.transfer_enabled);
+    assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_PRIMARY_SPI, 3, payload, sizeof(payload)));
+    assert(wqr_protocol_receive(&protocol, frame));
+    wqr_protocol_poll(&protocol);
+    assert(!protocol.alternate_spi_active);
+    assert(state.spi_transfers == 1);
 }
 
 static void test_chunked_response(void) {

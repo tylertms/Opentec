@@ -95,6 +95,7 @@ typedef struct {
     size_t i2c_index;
     bool i2c_prefix;
     bool i2c_arbitration_loss;
+    bool i2c_nack_on_repeated_start;
     bool spi_receive_overflow;
 } peripheral_expectations;
 
@@ -150,7 +151,10 @@ static bool service_spi(Kinetis *device) {
     }
     if (expected.spi_index >= expected.spi_length ||
         transfer.data != expected.spi[expected.spi_index]) {
-        fprintf(stderr, "unexpected SPI transfer %zu: 0x%04x\n", expected.spi_index, transfer.data);
+        fprintf(stderr, "unexpected SPI transfer %zu: expected 0x%04x, received 0x%04x\n",
+                expected.spi_index,
+                expected.spi_index < expected.spi_length ? expected.spi[expected.spi_index] : 0,
+                transfer.data);
         return false;
     }
     ++expected.spi_index;
@@ -198,6 +202,10 @@ static bool service_i2c(Kinetis *device) {
     if (expected.i2c_arbitration_loss && transfer.type == KINETIS_I2C_START) {
         expected.i2c_arbitration_loss = false;
         return kinetis_i2c_lose_arbitration(device, KINETIS_SERIAL_I2C0);
+    }
+    if (expected.i2c_nack_on_repeated_start && transfer.type == KINETIS_I2C_REPEATED_START) {
+        expected.i2c_nack_on_repeated_start = false;
+        return kinetis_i2c_acknowledge(device, KINETIS_SERIAL_I2C0, false);
     }
     if (transfer.type == KINETIS_I2C_WRITE) {
         return true;
@@ -783,6 +791,18 @@ static bool exchange_alternate_spi_recovery(Kinetis *device, uint8_t request_seq
                                        UINT16_C(0xabcd));
 }
 
+static bool reconnect_after_alternate_spi(Kinetis *device) {
+    bool transfer_control = false;
+
+    expect_spi(NULL, 0);
+    return kinetis_gpio_drive(device, GPIO_PORT_C, 2, true) &&
+           run_firmware(device, IDLE_INSTRUCTIONS) && spi_expectations_met() &&
+           spi_format_is(device, 16, false) &&
+           kinetis_gpio_pin(device, GPIO_PORT_C, 3, &transfer_control) && transfer_control &&
+           kinetis_gpio_drive(device, GPIO_PORT_C, 2, false) &&
+           run_firmware(device, IDLE_INSTRUCTIONS) && spi_format_is(device, 16, false);
+}
+
 static bool exchange_i2c_write(Kinetis *device, uint8_t request_sequence) {
     const uint8_t payload[] = {0, 0xa0, 0x10, 0x22};
     const KinetisI2cTransfer transfers[] = {
@@ -816,6 +836,23 @@ static bool exchange_i2c_nack(Kinetis *device, uint8_t request_sequence) {
                  frame_integrity_valid(frame) && frame[1] == WQR_PAYLOAD_I2C &&
                  frame[2] == (uint8_t)(request_sequence + 1) && frame[3] == 3 && frame[4] == 0 &&
                  frame[5] == payload[1] && frame[6] == payload[2] && i2c_expectations_met();
+    return kinetis_i2c_acknowledge(device, KINETIS_SERIAL_I2C0, true) && valid;
+}
+
+static bool exchange_i2c_read_nack(Kinetis *device, uint8_t request_sequence) {
+    const uint8_t payload[] = {0, 0xa1, 0x10, 3, 0};
+    KinetisI2cTransfer transfers[6];
+    uint8_t response[TRANSMIT_WINDOW_SIZE];
+    const uint8_t *frame = response + RECEIVE_PREFIX_SIZE;
+
+    expect_i2c_read(transfers, 0x10, 0);
+    expected.i2c_nack_on_repeated_start = true;
+    bool valid = exchange_frame(device, WQR_PAYLOAD_I2C, request_sequence, payload, sizeof(payload),
+                                response) &&
+                 frame_integrity_valid(frame) && frame[1] == WQR_PAYLOAD_I2C &&
+                 frame[2] == (uint8_t)(request_sequence + 1) && frame[3] == 3 && frame[4] == 0 &&
+                 frame[5] == payload[1] && frame[6] == payload[2] && i2c_expectations_met() &&
+                 !expected.i2c_nack_on_repeated_start;
     return kinetis_i2c_acknowledge(device, KINETIS_SERIAL_I2C0, true) && valid;
 }
 
@@ -1029,24 +1066,28 @@ static bool firmware_passes(const char *path, const char *elf_path, KinetisPacka
                                             exchange_alternate_spi_error(device, 12));
     VERIFY_STAGE("alternate SPI recovery", run_firmware(device, IDLE_INSTRUCTIONS) &&
                                                exchange_alternate_spi_recovery(device, 13));
+    VERIFY_STAGE("alternate SPI reconnect",
+                 run_firmware(device, IDLE_INSTRUCTIONS) && reconnect_after_alternate_spi(device));
     VERIFY_STAGE("I2C write",
                  run_firmware(device, IDLE_INSTRUCTIONS) && exchange_i2c_write(device, 15));
     VERIFY_STAGE("I2C NACK",
                  run_firmware(device, IDLE_INSTRUCTIONS) && exchange_i2c_nack(device, 16));
+    VERIFY_STAGE("I2C read NACK",
+                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_i2c_read_nack(device, 17));
     VERIFY_STAGE("I2C arbitration loss", run_firmware(device, IDLE_INSTRUCTIONS) &&
-                                             exchange_i2c_arbitration_loss(device, 17));
+                                             exchange_i2c_arbitration_loss(device, 18));
     VERIFY_STAGE("I2C timeout",
-                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_i2c_timeout(device, 18));
+                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_i2c_timeout(device, 19));
     VERIFY_STAGE("empty I2C read",
-                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_empty_i2c_read(device, 19));
+                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_empty_i2c_read(device, 20));
     VERIFY_STAGE("I2C read",
-                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_i2c_read(device, 20));
+                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_i2c_read(device, 21));
     VERIFY_STAGE("fragmented I2C read", run_firmware(device, IDLE_INSTRUCTIONS) &&
-                                            exchange_fragmented_i2c_read(device, 21));
+                                            exchange_fragmented_i2c_read(device, 22));
     VERIFY_STAGE("chunked I2C response",
-                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_chunked_i2c_read(device, 23));
+                 run_firmware(device, IDLE_INSTRUCTIONS) && exchange_chunked_i2c_read(device, 24));
     VERIFY_STAGE("software reset request", run_firmware(device, IDLE_INSTRUCTIONS) &&
-                                               exchange_status(device, 26, 0xaa) &&
+                                               exchange_status(device, 27, 0xaa) &&
                                                run_firmware(device, STARTUP_INSTRUCTIONS) &&
                                                reset_recorded(device, RCM_SRS1_ADDRESS, 4));
     VERIFY_STAGE("status after reset", exchange_status(device, 0, 0) &&

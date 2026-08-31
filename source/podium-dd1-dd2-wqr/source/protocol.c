@@ -482,7 +482,8 @@ void wqr_protocol_response_sent(wqr_protocol *protocol) {
 
 void wqr_protocol_tick(wqr_protocol *protocol) {
     ++protocol->milliseconds;
-    if (protocol->milliseconds % 1000 == 0) {
+    if (++protocol->second_milliseconds == 1000) {
+        protocol->second_milliseconds = 0;
         ++protocol->seconds;
     }
 }

@@ -22,6 +22,7 @@ def crc32_mpeg2(data):
 def parse_hex(path):
     memory = {}
     upper_address = 0
+    start_address = None
     lines = [
         line.strip() for line in Path(path).read_text().splitlines() if line.strip()
     ]
@@ -49,13 +50,19 @@ def parse_hex(path):
             assert length == 2
             assert address == 0
             upper_address = int.from_bytes(data, "big") << 16
-        elif record_type in (3, 5):
+        elif record_type == 3:
             assert length == 4
+            assert address == 0
+            assert start_address is None
+            start_address = int.from_bytes(data, "big")
+        elif record_type == 5:
+            raise AssertionError("linear start records are not accepted")
         else:
             raise AssertionError(f"unsupported Intel HEX record type {record_type}")
 
     assert lines
     assert bytes.fromhex(lines[-1][1:])[3] == 1
+    assert start_address == APPLICATION_BASE
     return memory
 
 
