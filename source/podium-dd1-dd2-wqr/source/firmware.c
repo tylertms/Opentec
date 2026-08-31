@@ -68,9 +68,10 @@ static volatile bool spi_transfer_complete;
 static volatile bool spi_transfer_failed;
 static volatile bool spi_transfer_active;
 static volatile bool spi_word_active;
+static volatile bool spi_retry_pending;
 static volatile uint8_t spi_retry_delay;
 static const uint8_t *spi_transmit_source;
-static uint8_t *spi_receive_destination;
+static uint8_t spi_receive_buffer[WQR_SPI_TRANSFER_SIZE];
 static size_t spi_transfer_length;
 static uint16_t spi_transmitted_word;
 static uint16_t spi_received_word;
@@ -86,6 +87,7 @@ static i2c_master_handle_t i2c_handle;
 
 static volatile bool adc_sample_ready;
 static volatile uint16_t adc_sample;
+static volatile bool reset_pending;
 
 static void reset_if_failed(status_t status) {
     if (status != kStatus_Success) {
@@ -133,6 +135,7 @@ static void configure_clock(void) {
 }
 
 static void configure_pins(void) {
+    const gpio_pin_config_t input = {kGPIO_DigitalInput, 0};
     const gpio_pin_config_t output_low = {kGPIO_DigitalOutput, 0};
     const gpio_pin_config_t output_high = {kGPIO_DigitalOutput, 1};
     uint32_t input_config =
@@ -163,6 +166,10 @@ static void configure_pins(void) {
     PORTA->PCR[18] = input_config;
     PORTA->PCR[19] = input_config;
 
+    GPIO_PinInit(GPIOA, 4, &input);
+    GPIO_PinInit(GPIOA, 18, &input);
+    GPIO_PinInit(GPIOA, 19, &input);
+    GPIO_PinInit(GPIOC, 2, &input);
     GPIO_PinInit(GPIOC, 1, &output_low);
     GPIO_PinInit(GPIOC, 3, &output_low);
     GPIO_PinInit(GPIOC, 4, &output_high);
@@ -218,6 +225,7 @@ static void configure_uart(void) {
 
     UART_TransferCreateHandleEDMA(UART1, &uart_handle, uart_callback, NULL, &uart_transmit_dma,
                                   &uart_receive_dma);
+    UART1->PFIFO &= (uint8_t)~(UART_PFIFO_TXFE_MASK | UART_PFIFO_RXFE_MASK);
     UART_EnableInterrupts(UART1, kUART_RxOverrunInterruptEnable | kUART_NoiseErrorInterruptEnable |
                                      kUART_FramingErrorInterruptEnable |
                                      kUART_ParityErrorInterruptEnable);
@@ -225,8 +233,9 @@ static void configure_uart(void) {
 
     nvic_enable(DMA0_IRQn, 15);
     nvic_enable(DMA1_IRQn, 15);
+    NVIC_SetPriority(UART1_RX_TX_IRQn, 0);
     NVIC_DisableIRQ(UART1_RX_TX_IRQn);
-    NVIC_EnableIRQ(UART1_ERR_IRQn);
+    nvic_enable(UART1_ERR_IRQn, 0);
 }
 
 static void configure_pit(void) {
@@ -245,6 +254,8 @@ static void configure_pit(void) {
 static void configure_adc(void) {
     adc16_config_t config;
 
+    CLOCK_EnableClock(kCLOCK_Adc0);
+    ADC0->SC2 = 0;
     ADC16_GetDefaultConfig(&config);
     config.clockSource = kADC16_ClockSourceAlt0;
     config.clockDivider = kADC16_ClockDivider2;
@@ -279,7 +290,7 @@ static void set_spi_format(unsigned int bits, dspi_clock_phase_t phase) {
     DSPI_StartTransfer(SPI0);
 }
 
-static void configure_spi(void) {
+static void initialize_spi_hardware(void) {
     dspi_master_config_t config;
 
     DSPI_MasterGetDefaultConfig(&config);
@@ -289,49 +300,85 @@ static void configure_spi(void) {
     config.whichPcs = kDSPI_Pcs0;
     config.pcsActiveHighOrLow = kDSPI_PcsActiveLow;
     DSPI_MasterInit(SPI0, &config, BUS_CLOCK);
+    SPI0->MCR |= SPI_MCR_DIS_TXF_MASK | SPI_MCR_DIS_RXF_MASK;
+    SPI0->TCR = 0;
     SPI0->CTAR[0] = UINT32_C(0x3a514204);
+    SPI0->RSER = 0;
+    DSPI_ClearStatusFlags(SPI0, kDSPI_AllStatusFlag);
+    GPIO_PinWrite(GPIOC, 4, 1);
+    DMAMUX_EnableChannel(DMAMUX, SPI_TRANSMIT_DMA_CHANNEL);
+    DMAMUX_EnableChannel(DMAMUX, SPI_RECEIVE_DMA_CHANNEL);
+    NVIC_ClearPendingIRQ(SPI0_IRQn);
+    NVIC_ClearPendingIRQ(DMA2_IRQn);
+    NVIC_ClearPendingIRQ(DMA3_IRQn);
+    NVIC_DisableIRQ(SPI0_IRQn);
+    nvic_enable(DMA2_IRQn, 14);
+    nvic_enable(DMA3_IRQn, 14);
+}
 
+static void configure_spi(void) {
     EDMA_CreateHandle(&spi_transmit_dma, DMA0, SPI_TRANSMIT_DMA_CHANNEL);
     EDMA_CreateHandle(&spi_receive_dma, DMA0, SPI_RECEIVE_DMA_CHANNEL);
     DMAMUX_SetSource(DMAMUX, SPI_TRANSMIT_DMA_CHANNEL, SPI_TRANSMIT_DMA_SOURCE);
     DMAMUX_SetSource(DMAMUX, SPI_RECEIVE_DMA_CHANNEL, SPI_RECEIVE_DMA_SOURCE);
-    DMAMUX_EnableChannel(DMAMUX, SPI_TRANSMIT_DMA_CHANNEL);
-    DMAMUX_EnableChannel(DMAMUX, SPI_RECEIVE_DMA_CHANNEL);
-
     DSPI_MasterTransferCreateHandle(SPI0, &spi_word_handle, spi_word_callback, NULL);
 
-    nvic_enable(DMA2_IRQn, 14);
-    nvic_enable(DMA3_IRQn, 14);
-    NVIC_DisableIRQ(SPI0_IRQn);
+    initialize_spi_hardware();
 }
 
-static void start_spi_dma(void) {
+static bool start_spi_dma(void) {
     edma_transfer_config_t receive;
     edma_transfer_config_t transmit;
+    status_t receive_status;
+    status_t transmit_status;
 
+    NVIC_DisableIRQ(DMA2_IRQn);
+    NVIC_DisableIRQ(DMA3_IRQn);
+    DSPI_MasterTransferAbort(SPI0, &spi_word_handle);
+    DSPI_DisableInterrupts(SPI0, kDSPI_AllInterruptEnable);
     EDMA_AbortTransfer(&spi_receive_dma);
     EDMA_AbortTransfer(&spi_transmit_dma);
+    EDMA_ClearChannelStatusFlags(DMA0, SPI_RECEIVE_DMA_CHANNEL,
+                                 kEDMA_DoneFlag | kEDMA_ErrorFlag | kEDMA_InterruptFlag);
+    EDMA_ClearChannelStatusFlags(DMA0, SPI_TRANSMIT_DMA_CHANNEL,
+                                 kEDMA_DoneFlag | kEDMA_ErrorFlag | kEDMA_InterruptFlag);
+    NVIC_ClearPendingIRQ(DMA2_IRQn);
+    NVIC_ClearPendingIRQ(DMA3_IRQn);
     NVIC_DisableIRQ(SPI0_IRQn);
+    DMAMUX_EnableChannel(DMAMUX, SPI_TRANSMIT_DMA_CHANNEL);
+    DMAMUX_EnableChannel(DMAMUX, SPI_RECEIVE_DMA_CHANNEL);
     DSPI_FlushFifo(SPI0, true, true);
     set_spi_format(8, kDSPI_ClockPhaseSecondEdge);
+    GPIO_PinWrite(GPIOC, 4, 0);
 
     EDMA_PrepareTransfer(&receive, (void *)(uintptr_t)DSPI_GetRxRegisterAddress(SPI0), 1,
-                         spi_receive_destination, 1, 1, spi_transfer_length,
-                         kEDMA_PeripheralToMemory);
+                         spi_receive_buffer, 1, 1, spi_transfer_length, kEDMA_PeripheralToMemory);
     EDMA_PrepareTransfer(&transmit, (void *)(uintptr_t)spi_transmit_source, 1,
                          (void *)(uintptr_t)DSPI_MasterGetTxRegisterAddress(SPI0), 1, 1,
                          spi_transfer_length, kEDMA_MemoryToPeripheral);
-    EDMA_SubmitTransfer(&spi_receive_dma, &receive);
-    EDMA_SubmitTransfer(&spi_transmit_dma, &transmit);
-
     spi_transfer_complete = false;
     spi_transfer_failed = false;
+    spi_retry_pending = false;
     spi_retry_delay = SPI_RETRY_TICKS;
-    GPIO_PinWrite(GPIOC, 4, 0);
+    receive_status = EDMA_SubmitTransfer(&spi_receive_dma, &receive);
+    transmit_status = EDMA_SubmitTransfer(&spi_transmit_dma, &transmit);
+    if (receive_status != kStatus_Success || transmit_status != kStatus_Success) {
+        EDMA_AbortTransfer(&spi_receive_dma);
+        EDMA_AbortTransfer(&spi_transmit_dma);
+        finish_spi(kStatus_Fail);
+        NVIC_EnableIRQ(DMA2_IRQn);
+        NVIC_EnableIRQ(DMA3_IRQn);
+        return false;
+    }
+    DMA0->TCD[SPI_RECEIVE_DMA_CHANNEL].DLAST_SGA = (uint32_t)-(int32_t)spi_transfer_length;
+    DMA0->TCD[SPI_TRANSMIT_DMA_CHANNEL].SLAST = (uint32_t)-(int32_t)spi_transfer_length;
 
     DSPI_EnableDMA(SPI0, kDSPI_RxDmaEnable | kDSPI_TxDmaEnable);
     EDMA_StartTransfer(&spi_receive_dma);
     EDMA_StartTransfer(&spi_transmit_dma);
+    NVIC_EnableIRQ(DMA2_IRQn);
+    NVIC_EnableIRQ(DMA3_IRQn);
+    return true;
 }
 
 static wqr_io_result io_spi_transfer(void *context, const uint8_t *transmit, uint8_t *receive,
@@ -343,15 +390,18 @@ static wqr_io_result io_spi_transfer(void *context, const uint8_t *transmit, uin
         }
         spi_transfer_complete = false;
         spi_transfer_active = false;
-        return spi_transfer_failed ? WQR_IO_FAILED : WQR_IO_SUCCEEDED;
+        if (spi_transfer_failed) {
+            return WQR_IO_FAILED;
+        }
+        memcpy(receive, spi_receive_buffer, length);
+        return WQR_IO_SUCCEEDED;
     }
 
     spi_transmit_source = transmit;
-    spi_receive_destination = receive;
     spi_transfer_length = length;
     spi_word_active = false;
     spi_transfer_active = true;
-    start_spi_dma();
+    (void)start_spi_dma();
     return WQR_IO_PENDING;
 }
 
@@ -369,6 +419,15 @@ static wqr_io_result io_spi_word(void *context, uint16_t transmit, uint16_t *rec
         return spi_transfer_failed ? WQR_IO_FAILED : WQR_IO_SUCCEEDED;
     }
 
+    DSPI_DisableDMA(SPI0, kDSPI_RxDmaEnable | kDSPI_TxDmaEnable);
+    NVIC_DisableIRQ(DMA2_IRQn);
+    NVIC_DisableIRQ(DMA3_IRQn);
+    DMAMUX_DisableChannel(DMAMUX, SPI_TRANSMIT_DMA_CHANNEL);
+    DMAMUX_DisableChannel(DMAMUX, SPI_RECEIVE_DMA_CHANNEL);
+    EDMA_AbortTransfer(&spi_receive_dma);
+    EDMA_AbortTransfer(&spi_transmit_dma);
+    NVIC_ClearPendingIRQ(DMA2_IRQn);
+    NVIC_ClearPendingIRQ(DMA3_IRQn);
     spi_transmitted_word = transmit;
     transfer.txData = (const uint8_t *)&spi_transmitted_word;
     transfer.rxData = (uint8_t *)&spi_received_word;
@@ -396,7 +455,6 @@ static void i2c_callback(I2C_Type *base, i2c_master_handle_t *handle, status_t s
     (void)handle;
     (void)data;
 
-    i2c_timeout = 0;
     I2C0->FLT |= I2C_FLT_SSIE_MASK;
     i2c_state = status == kStatus_Success ? I2C_SUCCEEDED : I2C_FAILED;
 }
@@ -420,8 +478,8 @@ static wqr_io_result start_i2c(i2c_master_transfer_t *transfer) {
     i2c_state = I2C_PENDING;
 
     if (I2C_MasterTransferNonBlocking(I2C0, &i2c_handle, transfer) != kStatus_Success) {
-        i2c_timeout = 0;
-        i2c_state = I2C_FAILED;
+        I2C_DisableInterrupts(I2C0, kI2C_GlobalInterruptEnable);
+        i2c_recovery_pending = true;
         I2C0->FLT |= I2C_FLT_SSIE_MASK;
     }
 
@@ -478,7 +536,7 @@ static void configure_i2c(void) {
     i2c_master_config_t config;
 
     I2C_MasterGetDefaultConfig(&config);
-    config.baudRate_Bps = 1200000;
+    config.baudRate_Bps = 857143;
     config.glitchFilterWidth = 10;
     I2C_MasterInit(I2C0, &config, BUS_CLOCK);
     I2C0->FLT |= I2C_FLT_SSIE_MASK;
@@ -510,17 +568,50 @@ static bool io_transfer_ready(void *context) {
     return GPIO_PinRead(GPIOC, 2) == 0;
 }
 
+static bool io_transfer_control_ready(void *context) {
+    (void)context;
+    return GPIO_PinRead(GPIOC, 3) != 0;
+}
+
 static void io_set_transfer_control(void *context, bool asserted) {
     (void)context;
     GPIO_PinWrite(GPIOC, 3, asserted ? 1 : 0);
 }
 
-static void io_request_reset(void *context) {
+static void io_reset_transfer(void *context) {
     (void)context;
-    NVIC_SystemReset();
+    NVIC_DisableIRQ(DMA2_IRQn);
+    NVIC_DisableIRQ(DMA3_IRQn);
+    NVIC_DisableIRQ(SPI0_IRQn);
+    DSPI_MasterTransferAbort(SPI0, &spi_word_handle);
+    DSPI_DisableInterrupts(SPI0, SPI_ERROR_INTERRUPTS);
+    DSPI_DisableDMA(SPI0, kDSPI_RxDmaEnable | kDSPI_TxDmaEnable);
+    EDMA_AbortTransfer(&spi_receive_dma);
+    EDMA_AbortTransfer(&spi_transmit_dma);
+    EDMA_ClearChannelStatusFlags(DMA0, SPI_RECEIVE_DMA_CHANNEL,
+                                 kEDMA_DoneFlag | kEDMA_ErrorFlag | kEDMA_InterruptFlag);
+    EDMA_ClearChannelStatusFlags(DMA0, SPI_TRANSMIT_DMA_CHANNEL,
+                                 kEDMA_DoneFlag | kEDMA_ErrorFlag | kEDMA_InterruptFlag);
+    NVIC_ClearPendingIRQ(DMA2_IRQn);
+    NVIC_ClearPendingIRQ(DMA3_IRQn);
+    NVIC_ClearPendingIRQ(SPI0_IRQn);
+    memset(spi_receive_buffer, 0, sizeof(spi_receive_buffer));
+    spi_received_word = 0;
+    spi_transfer_complete = false;
+    spi_transfer_failed = false;
+    spi_transfer_active = false;
+    spi_word_active = false;
+    spi_retry_pending = false;
+    spi_retry_delay = 0;
+    initialize_spi_hardware();
 }
 
-void SystemInitHook(void) {
+static void io_request_reset(void *context) {
+    (void)context;
+    reset_pending = true;
+}
+
+static void configure_watchdog(void) {
     wdog_config_t config = {
         .enableWdog = true,
         .clockSource = kWDOG_LpoClockSource,
@@ -542,16 +633,42 @@ static void prepare_transmit_window(void) {
     memset(uart_transmit_window + UART_TRANSMIT_SIZE - UART_FRAME_OFFSET, 0xf0, UART_FRAME_OFFSET);
 }
 
-void DMA0_IRQHandler(void) {
+static bool finish_uart_transmit(void) {
+    uint32_t flags = EDMA_GetChannelStatusFlags(DMA0, UART_TRANSMIT_DMA_CHANNEL);
+
+    if (!uart_transmit_active || (flags & (kEDMA_DoneFlag | kEDMA_InterruptFlag)) == 0) {
+        if (!uart_transmit_active) {
+            EDMA_ClearChannelStatusFlags(DMA0, UART_TRANSMIT_DMA_CHANNEL,
+                                         kEDMA_DoneFlag | kEDMA_ErrorFlag | kEDMA_InterruptFlag);
+        }
+        return false;
+    }
+    UART_EnableTxDMA(UART1, false);
+    EDMA_ClearChannelStatusFlags(DMA0, UART_TRANSMIT_DMA_CHANNEL,
+                                 kEDMA_DoneFlag | kEDMA_ErrorFlag | kEDMA_InterruptFlag);
+    UART_DisableInterrupts(UART1, kUART_TransmissionCompleteInterruptEnable);
+    UART_TransferAbortSendEDMA(UART1, &uart_handle);
+    NVIC_ClearPendingIRQ(UART1_RX_TX_IRQn);
+    NVIC_ClearPendingIRQ(DMA0_IRQn);
     uart_transmit_active = false;
     uart_response_sent_pending = true;
     if (!uart_recovery_active) {
         start_uart_guard(UART_RESPONSE_GUARD_TICKS);
     }
-    EDMA_HandleIRQ(&uart_transmit_dma);
+    return true;
 }
 
-void DMA1_IRQHandler(void) { EDMA_HandleIRQ(&uart_receive_dma); }
+void DMA0_IRQHandler(void) { (void)finish_uart_transmit(); }
+
+void DMA1_IRQHandler(void) {
+    if ((EDMA_GetChannelStatusFlags(DMA0, UART_RECEIVE_DMA_CHANNEL) &
+         (kEDMA_DoneFlag | kEDMA_InterruptFlag)) != 0) {
+        EDMA_HandleIRQ(&uart_receive_dma);
+    } else {
+        EDMA_ClearChannelStatusFlags(DMA0, UART_RECEIVE_DMA_CHANNEL,
+                                     kEDMA_DoneFlag | kEDMA_ErrorFlag | kEDMA_InterruptFlag);
+    }
+}
 
 void DMA2_IRQHandler(void) {
     EDMA_ClearChannelStatusFlags(DMA0, SPI_TRANSMIT_DMA_CHANNEL,
@@ -564,8 +681,11 @@ void DMA3_IRQHandler(void) {
     }
     EDMA_ClearChannelStatusFlags(DMA0, SPI_RECEIVE_DMA_CHANNEL,
                                  kEDMA_DoneFlag | kEDMA_InterruptFlag);
-    DSPI_DisableDMA(SPI0, kDSPI_RxDmaEnable | kDSPI_TxDmaEnable);
+    if (!spi_transfer_active || spi_word_active) {
+        return;
+    }
     finish_spi(kStatus_Success);
+    DSPI_DisableDMA(SPI0, kDSPI_RxDmaEnable | kDSPI_TxDmaEnable);
 }
 
 void SPI0_IRQHandler(void) {
@@ -583,9 +703,18 @@ void SPI0_IRQHandler(void) {
 
 void I2C0_IRQHandler(void) {
     uint8_t detection = I2C0->FLT & (I2C_FLT_STARTF_MASK | I2C_FLT_STOPF_MASK);
+    uint8_t status = I2C0->S;
 
     I2C0->FLT |= detection;
-    if ((I2C0->S & I2C_S_IICIF_MASK) == 0) {
+    if ((status & I2C_S_ARBL_MASK) != 0) {
+        I2C_MasterClearStatusFlags(I2C0, kI2C_ArbitrationLostFlag);
+        return;
+    }
+    if ((status & I2C_S_IICIF_MASK) == 0) {
+        return;
+    }
+    if (i2c_state != I2C_PENDING) {
+        I2C_MasterClearStatusFlags(I2C0, kI2C_IntPendingFlag);
         return;
     }
     I2C_MasterTransferHandleIRQ(I2C0, &i2c_handle);
@@ -594,15 +723,24 @@ void I2C0_IRQHandler(void) {
 void UART1_ERR_DriverIRQHandler(void) {
     uint8_t status = UART1->S1;
 
-    if ((status & (UART_S1_OR_MASK | UART_S1_NF_MASK | UART_S1_FE_MASK | UART_S1_PF_MASK)) != 0) {
+    if ((status & UART_S1_PF_MASK) != 0) {
         (void)UART1->D;
-        uart_receive_ready = false;
-        start_uart_recovery();
+    }
+    if ((status & UART_S1_FE_MASK) != 0) {
+        (void)UART1->D;
+    }
+    if ((status & UART_S1_NF_MASK) != 0) {
+        (void)UART1->D;
+    }
+    if ((status & UART_S1_OR_MASK) != 0) {
+        (void)UART1->D;
     }
 }
 
 static void update_i2c_timeout(void) {
-    if (i2c_timeout == 0) {
+    NVIC_DisableIRQ(I2C0_IRQn);
+    if (i2c_state != I2C_PENDING || i2c_timeout == 0) {
+        NVIC_EnableIRQ(I2C0_IRQn);
         return;
     }
     --i2c_timeout;
@@ -610,6 +748,7 @@ static void update_i2c_timeout(void) {
         I2C_DisableInterrupts(I2C0, kI2C_GlobalInterruptEnable);
         i2c_recovery_pending = true;
     }
+    NVIC_EnableIRQ(I2C0_IRQn);
 }
 
 static void update_spi_retry(void) {
@@ -617,22 +756,27 @@ static void update_spi_retry(void) {
         return;
     }
     if (--spi_retry_delay == 0) {
-        start_spi_dma();
+        spi_retry_pending = true;
     }
 }
 
-void PIT0_IRQHandler(void) {
-    static uint8_t adc_period;
+static void restart_spi_if_due(void) {
+    if (!spi_retry_pending || !spi_transfer_active || spi_word_active || spi_transfer_complete) {
+        spi_retry_pending = false;
+        return;
+    }
+    (void)start_spi_dma();
+}
 
+void PIT0_IRQHandler(void) {
     wqr_protocol_tick(&protocol);
     update_spi_retry();
     update_i2c_timeout();
-    if (++adc_period == 100) {
+    if (protocol.milliseconds % 100 == 0) {
         const adc16_channel_config_t channel = {
             .channelNumber = 23,
             .enableInterruptOnConversionCompleted = true,
         };
-        adc_period = 0;
         ADC16_SetChannelConfig(ADC0, 0, &channel);
     }
     PIT_ClearStatusFlags(PIT, kPIT_Chnl_0, kPIT_TimerFlag);
@@ -687,16 +831,22 @@ static void start_uart_response(void) {
         !wqr_protocol_response(&protocol, uart_transmit_window + UART_FRAME_OFFSET)) {
         return;
     }
-    uart_transmit_active = true;
     transfer.data = uart_transmit_window;
     transfer.dataSize = UART_TRANSMIT_SIZE;
+    NVIC_DisableIRQ(DMA0_IRQn);
+    EDMA_ClearChannelStatusFlags(DMA0, UART_TRANSMIT_DMA_CHANNEL,
+                                 kEDMA_DoneFlag | kEDMA_ErrorFlag | kEDMA_InterruptFlag);
+    NVIC_ClearPendingIRQ(DMA0_IRQn);
 
     if (UART_SendEDMA(UART1, &uart_handle, &transfer) != kStatus_Success) {
         UART_TransferAbortSendEDMA(UART1, &uart_handle);
-        uart_transmit_active = false;
+        NVIC_EnableIRQ(DMA0_IRQn);
+        start_uart_recovery();
         return;
     }
+    uart_transmit_active = true;
     uart_response_due = false;
+    NVIC_EnableIRQ(DMA0_IRQn);
 }
 
 void firmware_main(void) {
@@ -707,7 +857,9 @@ void firmware_main(void) {
         .i2c_read = io_i2c_read,
         .read_inputs = io_read_inputs,
         .transfer_ready = io_transfer_ready,
+        .transfer_control_ready = io_transfer_control_ready,
         .set_transfer_control = io_set_transfer_control,
+        .reset_transfer = io_reset_transfer,
         .request_reset = io_request_reset,
     };
     edma_config_t dma;
@@ -718,31 +870,40 @@ void firmware_main(void) {
     prepare_transmit_window();
 
     EDMA_GetDefaultConfig(&dma);
+    dma.enableHaltOnError = false;
     EDMA_Init(DMA0, &dma);
+    DMA0->CR = 0;
     DMAMUX_Init(DMAMUX);
 
-    configure_uart();
-    configure_pit();
     configure_adc();
     configure_spi();
     configure_i2c();
     wqr_protocol_init(&protocol, &io);
+    configure_uart();
+    configure_pit();
+    configure_watchdog();
     __enable_irq();
 
     for (;;) {
+        NVIC_DisableIRQ(DMA0_IRQn);
+        (void)finish_uart_transmit();
+        NVIC_EnableIRQ(DMA0_IRQn);
         recover_i2c();
-        wqr_protocol_poll(&protocol);
-        if (uart_receive_ready) {
-            uart_receive_ready = false;
-            process_uart_frame();
-        }
-
         if (adc_sample_ready) {
             adc_sample_ready = false;
             wqr_protocol_set_sensor_sample(&protocol, adc_sample);
         }
+        restart_spi_if_due();
+        if (uart_receive_ready) {
+            uart_receive_ready = false;
+            process_uart_frame();
+        }
+        wqr_protocol_poll(&protocol);
 
         start_uart_response();
+        if (reset_pending) {
+            NVIC_SystemReset();
+        }
         WDOG_Refresh(WDOG);
     }
 }

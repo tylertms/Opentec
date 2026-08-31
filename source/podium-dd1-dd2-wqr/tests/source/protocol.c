@@ -9,6 +9,7 @@ typedef struct {
     unsigned int i2c_writes;
     unsigned int spi_transfers;
     unsigned int spi_word_transfers;
+    unsigned int transfer_resets;
     size_t i2c_length;
     uint8_t i2c_address;
     uint8_t i2c_command;
@@ -70,10 +71,24 @@ static bool test_transfer_ready(void *context) {
     return io->transfer_ready;
 }
 
+static bool test_transfer_control_ready(void *context) {
+    test_io *io = context;
+
+    return io->transfer_control;
+}
+
 static void test_set_transfer_control(void *context, bool asserted) {
     test_io *io = context;
 
     io->transfer_control = asserted;
+}
+
+static void test_reset_transfer(void *context) {
+    test_io *io = context;
+
+    ++io->transfer_resets;
+    io->spi_started = false;
+    io->spi_word_started = false;
 }
 
 static wqr_io_result test_i2c_read(void *context, uint8_t address, uint8_t command, uint8_t *data,
@@ -137,6 +152,21 @@ static void test_crc(void) {
     assert(wqr_protocol_crc(value, sizeof(value) - 1) == 0x2189);
 }
 
+static void assert_frame_valid(const uint8_t frame[WQR_FRAME_SIZE], uint8_t type, uint8_t sequence,
+                               const uint8_t *payload, size_t payload_length) {
+    assert(frame[0] == 0x7b);
+    assert(frame[1] == type);
+    assert(frame[2] == sequence);
+    assert(frame[3] == payload_length);
+    assert(memcmp(frame + 4, payload, payload_length) == 0);
+    for (size_t index = payload_length; index < WQR_FRAME_PAYLOAD_SIZE; ++index) {
+        assert(frame[4 + index] == 0);
+    }
+    assert(wqr_protocol_crc(frame + 1, WQR_FRAME_BODY_SIZE) ==
+           (uint16_t)(frame[61] | (uint16_t)(frame[62] << 8)));
+    assert(frame[63] == 0x7d);
+}
+
 static void test_status_and_reset(void) {
     test_io state = {0};
     wqr_io io = {.context = &state, .request_reset = test_reset};
@@ -183,7 +213,7 @@ static void test_status_values(void) {
     assert(protocol.milliseconds == 999);
     assert(protocol.seconds == 0);
     wqr_protocol_tick(&protocol);
-    assert(protocol.milliseconds == 0);
+    assert(protocol.milliseconds == 1000);
     assert(protocol.seconds == 1);
 
     assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_STATUS, 0, NULL, 0));
@@ -229,6 +259,7 @@ static void test_fragmented_i2c_read(void) {
     assert(wqr_protocol_response(&protocol, response));
     assert((response[1] & 0x0f) == 1);
     assert(response[4] == 0xff);
+    wqr_protocol_response_sent(&protocol);
     assert(wqr_protocol_build_frame(request, 0x40 | WQR_PAYLOAD_I2C, 1, last, sizeof(last)));
     assert(wqr_protocol_receive(&protocol, request));
     wqr_protocol_poll(&protocol);
@@ -324,9 +355,9 @@ static void test_i2c_boundaries(void) {
     const uint8_t short_request[] = {0, 0xa0};
     const uint8_t write_request[] = {0, 0xa0, 0x33, 0x44};
     const uint8_t short_read[] = {0, 0xa1, 0x10, 0};
-    const uint8_t oversized_read[] = {0, 0xa1, 0x10, 0xff, 0x01};
+    const uint8_t oversized_read[] = {0, 0xa1, 0x10, 0x01, 0x02};
     const uint8_t empty_read[] = {0, 0xa1, 0x20, 0, 0};
-    const uint8_t maximum_read[] = {0, 0xa1, 0x30, 0xfe, 0x01};
+    const uint8_t maximum_read[] = {0, 0xa1, 0x30, 0, 0x02};
 
     wqr_protocol_init(&protocol, &io);
     assert(
@@ -375,7 +406,7 @@ static void test_i2c_boundaries(void) {
     assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_I2C, 5, maximum_read, sizeof(maximum_read)));
     assert(wqr_protocol_receive(&protocol, frame));
     wqr_protocol_poll(&protocol);
-    assert(protocol.transmit_length == WQR_TRANSFER_CAPACITY);
+    assert(protocol.transmit_length == WQR_RESPONSE_CAPACITY);
     assert(wqr_protocol_response(&protocol, frame));
     assert(frame[1] == (WQR_FRAME_FIRST | WQR_PAYLOAD_I2C));
     assert(frame[2] == 6);
@@ -384,7 +415,7 @@ static void test_i2c_boundaries(void) {
     assert(frame[5] == 0xa1);
     assert(frame[6] == 0x30);
     assert(state.i2c_reads == 2);
-    assert(state.i2c_length == WQR_TRANSFER_CAPACITY - 2);
+    assert(state.i2c_length == WQR_TRANSFER_CAPACITY);
 
     wqr_protocol_init(&protocol, NULL);
     assert(
@@ -440,6 +471,8 @@ static void test_rejected_input(void) {
         assert(wqr_protocol_build_frame(frame, fragments | WQR_PAYLOAD_I2C, sequence, payload,
                                         sizeof(payload)));
         assert(wqr_protocol_receive(&protocol, frame));
+        assert(wqr_protocol_response(&protocol, response));
+        wqr_protocol_response_sent(&protocol);
     }
     assert(wqr_protocol_build_frame(frame, 0x40 | WQR_PAYLOAD_I2C, 8, last_payload,
                                     sizeof(last_payload)));
@@ -456,6 +489,8 @@ static void test_rejected_input(void) {
         assert(wqr_protocol_build_frame(frame, fragments | WQR_PAYLOAD_I2C, sequence, payload,
                                         sizeof(payload)));
         assert(wqr_protocol_receive(&protocol, frame));
+        assert(wqr_protocol_response(&protocol, response));
+        wqr_protocol_response_sent(&protocol);
     }
     assert(protocol.receive_length == sizeof(payload) * 8);
     assert(wqr_protocol_build_frame(frame, 0x20 | WQR_PAYLOAD_I2C, 8, payload, sizeof(payload)));
@@ -463,6 +498,9 @@ static void test_rejected_input(void) {
     assert(protocol.error_count == 1);
     assert(protocol.receive_length == 0);
     assert(!protocol.fragment_open);
+    assert(wqr_protocol_response(&protocol, response));
+    assert(response[1] == 0);
+    wqr_protocol_response_sent(&protocol);
 
     assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_STATUS, 9, NULL, 0));
     assert(wqr_protocol_receive(&protocol, frame));
@@ -471,7 +509,7 @@ static void test_rejected_input(void) {
     assert(response[1] == WQR_PAYLOAD_STATUS);
 }
 
-static void test_sequence_wrap(void) {
+static void test_sequence_boundaries(void) {
     test_io state = {0};
     wqr_io io = {.context = &state, .i2c_read = test_i2c_read};
     wqr_protocol protocol;
@@ -484,6 +522,8 @@ static void test_sequence_wrap(void) {
     assert(wqr_protocol_build_frame(frame, 0x10 | WQR_PAYLOAD_I2C, 255, first, sizeof(first)));
     assert(wqr_protocol_receive(&protocol, frame));
     assert(protocol.sequence == 0);
+    assert(wqr_protocol_response(&protocol, response));
+    wqr_protocol_response_sent(&protocol);
     assert(wqr_protocol_build_frame(frame, 0x40 | WQR_PAYLOAD_I2C, 0, last, sizeof(last)));
     assert(wqr_protocol_receive(&protocol, frame));
     wqr_protocol_poll(&protocol);
@@ -520,7 +560,7 @@ static void test_primary_spi_handshake(void) {
     payload[56] = 1;
     wqr_protocol_init(&protocol, &io);
     wqr_protocol_poll(&protocol);
-    assert(protocol.peer_ready_confirmed);
+    assert(!protocol.peer_ready_confirmed);
     assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_PRIMARY_SPI, 0, payload, sizeof(payload)));
     assert(wqr_protocol_receive(&protocol, frame));
     wqr_protocol_poll(&protocol);
@@ -550,7 +590,7 @@ static void test_primary_spi_handshake(void) {
     assert(!protocol.transfer_enabled);
 
     wqr_protocol_poll(&protocol);
-    assert(protocol.peer_ready_confirmed);
+    assert(!protocol.peer_ready_confirmed);
     payload[56] = 1;
     assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_PRIMARY_SPI, 3, payload, sizeof(payload)));
     assert(wqr_protocol_receive(&protocol, frame));
@@ -610,7 +650,7 @@ static void test_missing_spi_io(void) {
     assert(wqr_protocol_receive(&protocol, frame));
     wqr_protocol_poll(&protocol);
     assert(wqr_protocol_response(&protocol, frame));
-    assert(protocol.peer_ready_confirmed);
+    assert(!protocol.peer_ready_confirmed);
     assert(!protocol.transfer_control_asserted);
 
     payload[56] = 1;
@@ -647,6 +687,7 @@ static void test_pending_spi(void) {
     wqr_protocol_init(&protocol, &io);
     protocol.peer_ready_confirmed = true;
     protocol.transfer_enabled = true;
+    protocol.transfer_state = 4;
     protocol.transfer_control_asserted = true;
     assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_PRIMARY_SPI, 0, payload, sizeof(payload)));
     assert(wqr_protocol_receive(&protocol, frame));
@@ -703,6 +744,7 @@ static void test_pending_alternate_spi(void) {
     wqr_protocol_init(&protocol, &io);
     protocol.peer_ready_confirmed = true;
     protocol.transfer_enabled = true;
+    protocol.transfer_state = 4;
     protocol.transfer_control_asserted = true;
     assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_ALTERNATE_SPI, 0, payload, sizeof(payload)));
     assert(wqr_protocol_receive(&protocol, frame));
@@ -730,6 +772,13 @@ static void test_pending_alternate_spi(void) {
     state.spi_word_complete = true;
     wqr_protocol_poll(&protocol);
     assert(wqr_protocol_response(&protocol, frame));
+    wqr_protocol_response_sent(&protocol);
+
+    assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_ALTERNATE_SPI, 2, payload, sizeof(payload)));
+    assert(wqr_protocol_receive(&protocol, frame));
+    wqr_protocol_poll(&protocol);
+    assert(wqr_protocol_response(&protocol, frame));
+    assert(state.spi_word_transfers == 2);
 }
 
 static void test_chunked_response(void) {
@@ -763,6 +812,146 @@ static void test_chunked_response(void) {
     assert(frame[3] == 8);
 }
 
+static void test_duplicate_fragments(void) {
+    test_io state = {0};
+    wqr_io io = {.context = &state, .i2c_read = test_i2c_read};
+    wqr_protocol protocol;
+    uint8_t frame[WQR_FRAME_SIZE];
+    uint8_t first_frame[WQR_FRAME_SIZE];
+    uint8_t more_frame[WQR_FRAME_SIZE];
+    uint8_t last_frame[WQR_FRAME_SIZE];
+    uint8_t terminal_response[WQR_FRAME_SIZE];
+    const uint8_t first[] = {0, 0xa1, 0x10};
+    const uint8_t more[] = {2, 0};
+    const uint8_t initial_ack = 0xff;
+    const uint8_t fragment_ack = 1;
+
+    wqr_protocol_init(&protocol, &io);
+    assert(wqr_protocol_build_frame(first_frame, WQR_FRAME_FIRST | WQR_PAYLOAD_I2C, 0, first,
+                                    sizeof(first)));
+    assert(wqr_protocol_receive(&protocol, first_frame));
+    assert(protocol.receive_length == sizeof(first));
+    assert(wqr_protocol_response(&protocol, frame));
+    assert_frame_valid(frame, 1, 1, &initial_ack, 1);
+    wqr_protocol_response_sent(&protocol);
+    assert(wqr_protocol_receive(&protocol, first_frame));
+    assert(protocol.receive_length == sizeof(first));
+    assert(wqr_protocol_response(&protocol, frame));
+    assert_frame_valid(frame, 1, 1, &fragment_ack, 1);
+    wqr_protocol_response_sent(&protocol);
+
+    assert(wqr_protocol_build_frame(more_frame, WQR_FRAME_MORE | WQR_PAYLOAD_I2C, 1, more,
+                                    sizeof(more)));
+    assert(wqr_protocol_receive(&protocol, more_frame));
+    assert(protocol.receive_length == sizeof(first) + sizeof(more));
+    assert(wqr_protocol_response(&protocol, frame));
+    assert_frame_valid(frame, 1, 2, &fragment_ack, 1);
+    wqr_protocol_response_sent(&protocol);
+    assert(wqr_protocol_receive(&protocol, more_frame));
+    assert(protocol.receive_length == sizeof(first) + sizeof(more));
+    assert(wqr_protocol_response(&protocol, frame));
+    assert_frame_valid(frame, 1, 2, &fragment_ack, 1);
+    wqr_protocol_response_sent(&protocol);
+
+    assert(wqr_protocol_build_frame(last_frame, WQR_FRAME_LAST | WQR_PAYLOAD_I2C, 2, NULL, 0));
+    assert(wqr_protocol_receive(&protocol, last_frame));
+    wqr_protocol_poll(&protocol);
+    assert(wqr_protocol_response(&protocol, frame));
+    assert(frame[1] == WQR_PAYLOAD_I2C);
+    assert(frame[4] == 1);
+    memcpy(terminal_response, frame, sizeof(terminal_response));
+    wqr_protocol_response_sent(&protocol);
+    assert(wqr_protocol_receive(&protocol, last_frame));
+    assert(wqr_protocol_response(&protocol, frame));
+    assert(memcmp(frame, terminal_response, sizeof(terminal_response)) == 0);
+    assert(state.i2c_reads == 1);
+}
+
+static void test_control_preserves_chunked_response(void) {
+    test_io state = {0};
+    wqr_io io = {.context = &state, .i2c_read = test_i2c_read};
+    wqr_protocol protocol;
+    uint8_t frame[WQR_FRAME_SIZE];
+    const uint8_t request[] = {0, 0xa1, 0x20, 0, 2};
+
+    wqr_protocol_init(&protocol, &io);
+    assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_I2C, 0, request, sizeof(request)));
+    assert(wqr_protocol_receive(&protocol, frame));
+    wqr_protocol_poll(&protocol);
+    assert(protocol.transmit_length == WQR_RESPONSE_CAPACITY);
+    assert(wqr_protocol_response(&protocol, frame));
+    assert(frame[1] == (WQR_FRAME_FIRST | WQR_PAYLOAD_I2C));
+
+    assert(wqr_protocol_build_frame(frame, 1, 1, NULL, 0));
+    frame[61] ^= 1;
+    assert(!wqr_protocol_receive(&protocol, frame));
+    assert(wqr_protocol_response(&protocol, frame));
+    assert(frame[1] == 0);
+    wqr_protocol_response_sent(&protocol);
+
+    assert(wqr_protocol_build_frame(frame, 1, 1, NULL, 0));
+    assert(wqr_protocol_receive(&protocol, frame));
+    assert(wqr_protocol_response(&protocol, frame));
+    assert(frame[1] == (WQR_FRAME_MORE | WQR_PAYLOAD_I2C));
+    assert(frame[2] == 2);
+    assert(protocol.transmit_offset == WQR_FRAME_PAYLOAD_SIZE);
+}
+
+static void test_full_sequence_cycle(void) {
+    wqr_protocol protocol;
+    uint8_t frame[WQR_FRAME_SIZE];
+
+    wqr_protocol_init(&protocol, NULL);
+    for (size_t iteration = 0; iteration <= UINT8_MAX; ++iteration) {
+        uint8_t sequence = (uint8_t)iteration;
+
+        assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_STATUS, sequence, NULL, 0));
+        assert(wqr_protocol_receive(&protocol, frame));
+        wqr_protocol_poll(&protocol);
+        assert(wqr_protocol_response(&protocol, frame));
+        assert(frame[1] == WQR_PAYLOAD_STATUS);
+        assert(frame[2] == (uint8_t)(sequence + 1));
+        assert(frame[3] == WQR_STATUS_SIZE);
+        assert(wqr_protocol_crc(frame + 1, WQR_FRAME_BODY_SIZE) ==
+               (uint16_t)(frame[61] | (uint16_t)(frame[62] << 8)));
+        wqr_protocol_response_sent(&protocol);
+    }
+    assert(protocol.sequence == 0);
+}
+
+static void test_disconnect_cancels_pending_spi(void) {
+    test_io state = {.transfer_ready = true, .transfer_control = true};
+    wqr_io io = {
+        .context = &state,
+        .spi_transfer = test_pending_spi_transfer,
+        .transfer_ready = test_transfer_ready,
+        .transfer_control_ready = test_transfer_control_ready,
+        .reset_transfer = test_reset_transfer,
+    };
+    wqr_protocol protocol;
+    uint8_t frame[WQR_FRAME_SIZE];
+    uint8_t payload[WQR_FRAME_PAYLOAD_SIZE] = {0};
+
+    payload[56] = 1;
+    wqr_protocol_init(&protocol, &io);
+    wqr_protocol_poll(&protocol);
+    wqr_protocol_poll(&protocol);
+    wqr_protocol_poll(&protocol);
+    assert(protocol.transfer_enabled);
+    assert(wqr_protocol_build_frame(frame, WQR_PAYLOAD_PRIMARY_SPI, 0, payload, sizeof(payload)));
+    assert(wqr_protocol_receive(&protocol, frame));
+    wqr_protocol_poll(&protocol);
+    assert(protocol.peripheral_transfer_active);
+
+    state.transfer_ready = false;
+    wqr_protocol_poll(&protocol);
+    assert(!protocol.peripheral_transfer_active);
+    assert(!protocol.transfer_enabled);
+    assert(protocol.transfer_state == 0);
+    assert(state.transfer_resets == 1);
+    assert(wqr_protocol_response(&protocol, frame));
+}
+
 static void test_sensor(void) {
     assert(wqr_sensor_value(0) == 999);
     assert(wqr_sensor_value(1) == 999);
@@ -781,7 +970,7 @@ int main(void) {
     test_control_frames();
     test_i2c_boundaries();
     test_rejected_input();
-    test_sequence_wrap();
+    test_sequence_boundaries();
     test_primary_spi_handshake();
     test_transfer_not_ready();
     test_missing_spi_io();
@@ -789,6 +978,10 @@ int main(void) {
     test_pending_i2c();
     test_pending_alternate_spi();
     test_chunked_response();
+    test_duplicate_fragments();
+    test_control_preserves_chunked_response();
+    test_full_sequence_cycle();
+    test_disconnect_cancels_pending_spi();
     test_sensor();
     return 0;
 }

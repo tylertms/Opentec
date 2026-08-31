@@ -66,4 +66,16 @@ if meson.is_cross_build()
     depends: package,
     suite: ['wqr', 'package'],
   )
+
+  test(
+    'wqr-hex',
+    python,
+    args: [
+      meson.current_source_dir() / 'source/package.py',
+      hex.full_path(),
+      checksummed_binary.full_path(),
+    ],
+    depends: [hex, checksummed_binary],
+    suite: ['wqr', 'package'],
+  )
 endif

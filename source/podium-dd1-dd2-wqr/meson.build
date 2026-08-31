@@ -18,6 +18,11 @@ if wqr_is_target
   linker_script = files('source/firmware.ld')[0]
   objcopy = find_program('objcopy')
   python = import('python').find_installation()
+  fs = import('fs')
+  package_dependencies = files('../../tools/crypto.py')
+  if fs.exists(meson.project_source_root() / '.env')
+    package_dependencies += files('../../.env')
+  endif
 
   sdk_sources = sdk_device['clock']
   foreach driver : [
@@ -45,7 +50,8 @@ if wqr_is_target
     '-fno-pic',
     '-fno-pie',
     '-DCPU_MKV30F128VLH10',
-    '-DDISABLE_WDOG=0',
+    '-DDISABLE_WDOG=1',
+    '-DI2C_RETRY_TIMES=24000',
     '-DNDEBUG',
   ]
   wqr_includes = [wqr_include, sdk_driver_include, sdk_device['includes']]
@@ -100,6 +106,7 @@ if wqr_is_target
       '@INPUT@',
       '@OUTPUT@',
     ],
+    depend_files: files('tools/checksum.py'),
     build_subdir: 'package.p',
   )
   hex = custom_target(
@@ -132,7 +139,9 @@ if wqr_is_target
       '--legacy-wide-secret',
       '--preserve-newlines',
     ],
+    depend_files: package_dependencies,
     build_by_default: true,
+    build_always_stale: true,
   )
 endif
 

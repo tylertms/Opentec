@@ -7,7 +7,13 @@
 
 #include "wqr_frame.h"
 
-enum { WQR_TRANSFER_CAPACITY = 512, WQR_SPI_TRANSFER_SIZE = 33, WQR_STATUS_SIZE = 15 };
+enum {
+    WQR_TRANSFER_CAPACITY = 512,
+    WQR_RESPONSE_CAPACITY = 514,
+    WQR_SPI_TRANSFER_SIZE = 33,
+    WQR_SPI_RESPONSE_SIZE = 57,
+    WQR_STATUS_SIZE = 15
+};
 
 typedef enum { WQR_IO_PENDING, WQR_IO_SUCCEEDED, WQR_IO_FAILED } wqr_io_result;
 
@@ -21,13 +27,19 @@ typedef struct {
                               size_t length);
     uint8_t (*read_inputs)(void *context);
     bool (*transfer_ready)(void *context);
+    bool (*transfer_control_ready)(void *context);
     void (*set_transfer_control)(void *context, bool asserted);
+    void (*reset_transfer)(void *context);
     void (*request_reset)(void *context);
 } wqr_io;
 
 typedef struct {
     uint8_t receive_payload[WQR_TRANSFER_CAPACITY];
-    uint8_t transmit_payload[WQR_TRANSFER_CAPACITY];
+    uint8_t transmit_payload[WQR_RESPONSE_CAPACITY];
+    uint8_t primary_response[WQR_SPI_RESPONSE_SIZE];
+    uint8_t alternate_response[WQR_SPI_RESPONSE_SIZE];
+    uint8_t last_fragment[WQR_FRAME_SIZE];
+    uint8_t last_request[WQR_FRAME_SIZE];
     wqr_io io;
 
     size_t receive_length;
@@ -45,6 +57,10 @@ typedef struct {
     uint8_t sequence;
     uint8_t transfer_detail;
     uint8_t command_marker;
+    uint8_t transfer_state;
+    uint8_t control_type;
+    uint8_t control_payload;
+    uint8_t control_sequence;
 
     bool peer_ready_confirmed;
     bool transfer_enabled;
@@ -55,6 +71,9 @@ typedef struct {
     bool reset_after_response;
     bool transfer_control_asserted;
     bool alternate_spi_active;
+    bool control_ready;
+    bool last_fragment_valid;
+    bool last_request_valid;
 } wqr_protocol;
 
 void wqr_protocol_init(wqr_protocol *protocol, const wqr_io *io);

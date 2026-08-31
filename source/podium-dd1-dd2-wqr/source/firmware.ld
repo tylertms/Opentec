@@ -35,7 +35,7 @@ MEMORY
 {
   m_interrupts          (RX)  : ORIGIN = 0x0000A000, LENGTH = 0x00000400
   m_flash_config        (RX)  : ORIGIN = 0x0000A400, LENGTH = 0x00000010
-  m_text                (RX)  : ORIGIN = 0x0000A410, LENGTH = 0x00015BF0
+  m_text                (RX)  : ORIGIN = 0x0000A410, LENGTH = 0x00005BF0
   m_data                (RW)  : ORIGIN = 0x1FFFE000, LENGTH = 0x00002000
   m_data_2              (RW)  : ORIGIN = 0x20000000, LENGTH = 0x00002000
 }
@@ -208,4 +208,3 @@ SECTIONS
 
   ASSERT(__StackLimit >= __HeapLimit, "region m_data_2 overflowed with stack and heap")
 }
-

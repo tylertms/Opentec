@@ -41,24 +41,35 @@ enum {
     I2C0_F_ADDRESS = 0x40066001,
     I2C0_FLT_ADDRESS = 0x40066006,
     UART1_S1_ADDRESS = 0x4006b004,
+    UART1_PFIFO_ADDRESS = 0x4006b010,
     PIT1_LDVAL_ADDRESS = 0x40037110,
-    PIT1_CVAL_ADDRESS = 0x40037114,
+    PIT1_TCTRL_ADDRESS = 0x40037118,
+    DMA_CR_ADDRESS = 0x40008000,
     SPI0_MCR_ADDRESS = 0x4002c000,
     SPI0_CTAR0_ADDRESS = 0x4002c00c,
     SPI0_POPR_ADDRESS = 0x4002c038,
     WDOG_STCTRLH_ADDRESS = 0x40052000,
     WDOG_TOVALH_ADDRESS = 0x40052004,
     WDOG_TOVALL_ADDRESS = 0x40052006,
+    GPIOA_PDDR_ADDRESS = 0x400ff014,
+    GPIOC_PDDR_ADDRESS = 0x400ff094,
     SPI_MCR_HALT = 1,
+    SPI_MCR_DISABLE_FIFOS = 3u << 12,
+    UART_PFIFO_ENABLE_MASK = 0x88,
+    INPUT_GPIO_A_MASK = (1u << 4) | (1u << 18) | (1u << 19),
+    INPUT_GPIO_C_MASK = 1u << 2,
     SPI_CTAR_CPHA = 1u << 25,
     SPI_CTAR_FMSZ_SHIFT = 27,
     DMA_TCD_BASE = 0x40009000,
     DMA_TCD_STRIDE = 0x20,
     DMA_TCD_ATTR_OFFSET = 0x06,
     DMA_TCD_NBYTES_OFFSET = 0x08,
+    DMA_TCD_SLAST_OFFSET = 0x0c,
     DMA_TCD_DOFF_OFFSET = 0x14,
+    DMA_TCD_DLAST_OFFSET = 0x18,
     DMA_SPI_TRANSMIT_CHANNEL = 2,
     DMA_SPI_RECEIVE_CHANNEL = 3,
+    DMA0_INTERRUPT = 0,
     DMA3_INTERRUPT = 3,
     SPI0_INTERRUPT = 26,
     UART1_RX_TX_INTERRUPT = 33,
@@ -66,7 +77,6 @@ enum {
     PIT0_INTERRUPT = 48,
     EXPECTED_CORE_CLOCK_HZ = 96000000,
     EXPECTED_UART_RESPONSE_GUARD_TICKS = 467,
-    EXPECTED_UART_RECOVERY_GUARD_TICKS = 3964,
     EXPECTED_WDOG_CONTROL = 0x40d5,
     EXPECTED_WDOG_TIMEOUT = 500,
     DMA3_PRIORITY = 14,
@@ -206,8 +216,12 @@ static bool step_firmware(Kinetis *device) {
     if (result.stop == CORTEX_M4_STOP_LOCKUP || result.stop == CORTEX_M4_STOP_UNSUPPORTED ||
         result.stop == CORTEX_M4_STOP_BUS_FAULT || result.stop == CORTEX_M4_STOP_USAGE_FAULT ||
         fault_status != 0) {
-        fprintf(stderr, "firmware stopped: reason %u, fault 0x%08x, PC 0x%08x\n",
-                (unsigned)result.stop, fault_status, cortex_m4_get_register(cpu, 15));
+        fprintf(stderr,
+                "firmware stopped: reason %u, fault 0x%08x, PC 0x%08x, LR 0x%08x, SP 0x%08x, "
+                "exception %u\n",
+                (unsigned)result.stop, fault_status, cortex_m4_get_register(cpu, 15),
+                cortex_m4_get_register(cpu, 14), cortex_m4_get_register(cpu, 13),
+                (unsigned)(cortex_m4_get_xpsr(cpu) & 0x1ff));
         return false;
     }
     return service_spi(device) && service_i2c(device);
@@ -243,26 +257,45 @@ static bool watchdog_configuration_valid(Kinetis *device) {
 static bool hardware_configuration_valid(Kinetis *device) {
     uint32_t power_mode = 0;
     uint32_t regulator = 0;
+    uint32_t i2c_divider = 0;
     uint32_t i2c_filter = 0;
+    uint32_t dma_control = 0;
+    uint32_t spi_control = 0;
+    uint32_t uart_fifo = 0;
+    uint32_t gpio_a_direction = 0;
+    uint32_t gpio_c_direction = 0;
     uint32_t clock = kinetis_core_clock_hz(device);
 
     bool power_mode_read = kinetis_read(device, SMC_PMSTAT_ADDRESS, &power_mode, 1);
     bool regulator_read = kinetis_read(device, PMC_REGSC_ADDRESS, &regulator, 1);
+    bool i2c_divider_read = kinetis_read(device, I2C0_F_ADDRESS, &i2c_divider, 1);
     bool i2c_filter_read = kinetis_read(device, I2C0_FLT_ADDRESS, &i2c_filter, 1);
-    if (!power_mode_read || !regulator_read || !i2c_filter_read) {
-        fprintf(stderr, "hardware register read failed: PMSTAT %u, REGSC %u, FLT %u, PC 0x%08x\n",
-                power_mode_read, regulator_read, i2c_filter_read,
+    bool dma_control_read = kinetis_read(device, DMA_CR_ADDRESS, &dma_control, 4);
+    bool spi_control_read = kinetis_read(device, SPI0_MCR_ADDRESS, &spi_control, 4);
+    bool uart_fifo_read = kinetis_read(device, UART1_PFIFO_ADDRESS, &uart_fifo, 1);
+    bool gpio_a_direction_read = kinetis_read(device, GPIOA_PDDR_ADDRESS, &gpio_a_direction, 4);
+    bool gpio_c_direction_read = kinetis_read(device, GPIOC_PDDR_ADDRESS, &gpio_c_direction, 4);
+    if (!power_mode_read || !regulator_read || !i2c_divider_read || !i2c_filter_read ||
+        !dma_control_read || !spi_control_read || !uart_fifo_read || !gpio_a_direction_read ||
+        !gpio_c_direction_read) {
+        fprintf(stderr, "hardware register read failed at PC 0x%08x\n",
                 cortex_m4_get_register(kinetis_cpu(device), 15));
         return false;
     }
     if (clock == EXPECTED_CORE_CLOCK_HZ && power_mode == 0x80 && regulator == 0x04 &&
-        i2c_filter == 0x2a) {
+        i2c_divider == 0x04 && i2c_filter == 0x2a && dma_control == 0 &&
+        (spi_control & SPI_MCR_DISABLE_FIFOS) == SPI_MCR_DISABLE_FIFOS &&
+        (uart_fifo & UART_PFIFO_ENABLE_MASK) == 0 && (gpio_a_direction & INPUT_GPIO_A_MASK) == 0 &&
+        (gpio_c_direction & INPUT_GPIO_C_MASK) == 0) {
         return true;
     }
     fprintf(stderr,
             "invalid hardware configuration: clock %u, PMSTAT 0x%02x, REGSC 0x%02x, "
-            "FLT 0x%02x\n",
-            clock, (unsigned)power_mode, (unsigned)regulator, (unsigned)i2c_filter);
+            "F 0x%02x, FLT 0x%02x, DMA_CR 0x%08x, SPI_MCR 0x%08x, PFIFO 0x%02x, "
+            "GPIOA_PDDR 0x%08x, GPIOC_PDDR 0x%08x\n",
+            clock, (unsigned)power_mode, (unsigned)regulator, (unsigned)i2c_divider,
+            (unsigned)i2c_filter, (unsigned)dma_control, (unsigned)spi_control, (unsigned)uart_fifo,
+            (unsigned)gpio_a_direction, (unsigned)gpio_c_direction);
     return false;
 }
 
@@ -272,10 +305,14 @@ static bool spi_dma_is_byte_wide(Kinetis *device) {
 
     return register_equals(device, transmit + DMA_TCD_ATTR_OFFSET, 2, 0) &&
            register_equals(device, transmit + DMA_TCD_NBYTES_OFFSET, 4, 1) &&
+           register_equals(device, transmit + DMA_TCD_SLAST_OFFSET, 4,
+                           (uint32_t)-(int32_t)WQR_SPI_TRANSFER_SIZE) &&
            register_equals(device, transmit + DMA_TCD_DOFF_OFFSET, 2, 0) &&
            register_equals(device, receive + DMA_TCD_ATTR_OFFSET, 2, 0) &&
            register_equals(device, receive + DMA_TCD_NBYTES_OFFSET, 4, 1) &&
-           register_equals(device, receive + DMA_TCD_DOFF_OFFSET, 2, 1);
+           register_equals(device, receive + DMA_TCD_DOFF_OFFSET, 2, 1) &&
+           register_equals(device, receive + DMA_TCD_DLAST_OFFSET, 4,
+                           (uint32_t)-(int32_t)WQR_SPI_TRANSFER_SIZE);
 }
 
 static bool spi_format_is(Kinetis *device, unsigned int bits, bool capture_on_second_edge) {
@@ -300,20 +337,6 @@ static bool uart_guard_is_exact(Kinetis *device) {
     return false;
 }
 
-static bool uart_recovery_guard_is_fresh(Kinetis *device) {
-    uint32_t ticks = 0;
-
-    if (!kinetis_read(device, PIT1_CVAL_ADDRESS, &ticks, sizeof(ticks))) {
-        fprintf(stderr, "UART recovery guard register read failed\n");
-        return false;
-    }
-    if (ticks > EXPECTED_UART_RECOVERY_GUARD_TICKS / 2) {
-        return true;
-    }
-    fprintf(stderr, "unexpected UART recovery guard: %u ticks\n", ticks);
-    return false;
-}
-
 static bool wait_for_uart_error_clear(Kinetis *device) {
     for (size_t instruction = 0; instruction < INTERRUPT_INSTRUCTIONS * 10; ++instruction) {
         uint8_t status = 0;
@@ -335,6 +358,7 @@ static bool interrupt_priorities_match_reference(Kinetis *device) {
     uint32_t dma_priority = 0;
     uint32_t pit_priority = 0;
     uint32_t spi_priority = 0;
+    uint32_t uart_priority = 0;
     uint32_t uart_error_priority = 0;
     uint32_t interrupt_enable[2] = {0};
     CortexM4 *cpu = kinetis_cpu(device);
@@ -342,6 +366,8 @@ static bool interrupt_priorities_match_reference(Kinetis *device) {
     return cortex_m4_read_memory(cpu, NVIC_PRIORITY_BASE + DMA3_INTERRUPT, 1, &dma_priority) &&
            cortex_m4_read_memory(cpu, NVIC_PRIORITY_BASE + PIT0_INTERRUPT, 1, &pit_priority) &&
            cortex_m4_read_memory(cpu, NVIC_PRIORITY_BASE + SPI0_INTERRUPT, 1, &spi_priority) &&
+           cortex_m4_read_memory(cpu, NVIC_PRIORITY_BASE + UART1_RX_TX_INTERRUPT, 1,
+                                 &uart_priority) &&
            cortex_m4_read_memory(cpu, NVIC_PRIORITY_BASE + UART1_ERROR_INTERRUPT, 1,
                                  &uart_error_priority) &&
            cortex_m4_read_memory(cpu, NVIC_ENABLE_BASE, sizeof(interrupt_enable[0]),
@@ -349,7 +375,7 @@ static bool interrupt_priorities_match_reference(Kinetis *device) {
            cortex_m4_read_memory(cpu, NVIC_ENABLE_BASE + sizeof(interrupt_enable[0]),
                                  sizeof(interrupt_enable[1]), &interrupt_enable[1]) &&
            dma_priority == DMA3_PRIORITY << 4 && pit_priority == PIT0_PRIORITY << 4 &&
-           spi_priority == 0 && uart_error_priority == 0 &&
+           spi_priority == 0 && uart_priority == 0 && uart_error_priority == 0 &&
            (interrupt_enable[SPI0_INTERRUPT / 32] & (UINT32_C(1) << (SPI0_INTERRUPT % 32))) == 0 &&
            (interrupt_enable[UART1_RX_TX_INTERRUPT / 32] &
             (UINT32_C(1) << (UART1_RX_TX_INTERRUPT % 32))) == 0 &&
@@ -424,7 +450,7 @@ static bool nack_response_valid(const uint8_t window[TRANSMIT_WINDOW_SIZE]) {
 }
 
 static bool exchange_status(Kinetis *device, uint8_t request_sequence, uint8_t command_marker) {
-    uint8_t response[TRANSMIT_WINDOW_SIZE];
+    uint8_t response[TRANSMIT_WINDOW_SIZE] = {0};
     const uint8_t *payload = command_marker == 0 ? NULL : &command_marker;
     size_t payload_length = command_marker == 0 ? 0 : 1;
 
@@ -476,21 +502,18 @@ static bool recover_from_noise(Kinetis *device) {
 }
 
 static bool recover_from_uart_error(Kinetis *device, uint8_t request_sequence) {
-    uint32_t aged_ticks = 0;
-    uint32_t restarted_ticks = 0;
-    uint32_t status = 0;
+    const uint8_t errors[] = {1, 2, 4, 8, 0x0f};
 
-    return kinetis_uart1_error(device, 0x0f) && wait_for_uart_error_clear(device) &&
-           run_firmware(device, INTERRUPT_INSTRUCTIONS) && uart_recovery_guard_is_fresh(device) &&
-           run_firmware(device, INTERRUPT_INSTRUCTIONS * 10) &&
-           kinetis_read(device, PIT1_CVAL_ADDRESS, &aged_ticks, sizeof(aged_ticks)) &&
-           kinetis_uart1_error(device, 0x0f) && wait_for_uart_error_clear(device) &&
-           run_firmware(device, INTERRUPT_INSTRUCTIONS) &&
-           kinetis_read(device, PIT1_CVAL_ADDRESS, &restarted_ticks, sizeof(restarted_ticks)) &&
-           uart_recovery_guard_is_fresh(device) && restarted_ticks > aged_ticks &&
-           run_firmware(device, IDLE_INSTRUCTIONS) &&
-           kinetis_read(device, UART1_S1_ADDRESS, &status, 1) && (status & 0x0f) == 0 &&
-           exchange_status(device, request_sequence, 0);
+    for (size_t index = 0; index < sizeof(errors); ++index) {
+        uint32_t status = 0;
+
+        if (!kinetis_uart1_error(device, errors[index]) || !wait_for_uart_error_clear(device) ||
+            !run_firmware(device, INTERRUPT_INSTRUCTIONS) ||
+            !kinetis_read(device, UART1_S1_ADDRESS, &status, 1) || (status & 0x0f) != 0) {
+            return false;
+        }
+    }
+    return exchange_status(device, request_sequence, 0);
 }
 
 static bool recover_from_bad_end_marker(Kinetis *device) {
@@ -570,7 +593,7 @@ static bool exchange_primary_spi(Kinetis *device, uint8_t request_sequence) {
     uint8_t payload[WQR_FRAME_PAYLOAD_SIZE] = {0};
     uint16_t transmitted[WQR_SPI_TRANSFER_SIZE];
     uint8_t response[TRANSMIT_WINDOW_SIZE];
-    bool transfer_control;
+    bool transfer_control = false;
 
     for (size_t index = 0; index < WQR_SPI_TRANSFER_SIZE; ++index) {
         payload[index] = (uint8_t)(index + 1);
@@ -656,32 +679,46 @@ static bool exchange_primary_spi_after_retry(Kinetis *device, uint8_t request_se
 static bool exchange_after_reconnect(Kinetis *device, uint8_t request_sequence) {
     uint8_t payload[WQR_FRAME_PAYLOAD_SIZE] = {0};
     uint16_t transmitted[WQR_SPI_TRANSFER_SIZE];
-    uint8_t response[TRANSMIT_WINDOW_SIZE];
+    uint8_t request[WQR_FRAME_SIZE];
+    uint8_t response[TRANSMIT_WINDOW_SIZE] = {0};
     const uint8_t *frame = response + RECEIVE_PREFIX_SIZE;
-    bool transfer_control;
+    bool transfer_control = false;
+    bool transfer_active = true;
 
     for (size_t index = 0; index < WQR_SPI_TRANSFER_SIZE; ++index) {
         payload[index] = (uint8_t)(0xa0 + index);
         transmitted[index] = payload[index];
     }
-    payload[WQR_FRAME_PAYLOAD_SIZE - 1] = 0;
-    expect_spi(NULL, 0);
-    if (!kinetis_gpio_drive(device, GPIO_PORT_C, 2, true) ||
-        !exchange_frame(device, WQR_PAYLOAD_PRIMARY_SPI, request_sequence, payload, sizeof(payload),
-                        response) ||
-        !frame_integrity_valid(frame) || frame[1] != WQR_PAYLOAD_PRIMARY_SPI ||
-        frame[2] != (uint8_t)(request_sequence + 1) || (frame[60] & 2) != 0 ||
-        !spi_expectations_met() || !kinetis_gpio_pin(device, GPIO_PORT_C, 3, &transfer_control) ||
-        transfer_control) {
+    payload[WQR_FRAME_PAYLOAD_SIZE - 1] = 1;
+    expect_spi(transmitted, WQR_SPI_TRANSFER_SIZE);
+    if (!wqr_protocol_build_frame(request, WQR_PAYLOAD_PRIMARY_SPI, request_sequence, payload,
+                                  sizeof(payload)) ||
+        !send_request(device, request)) {
         return false;
     }
-    payload[WQR_FRAME_PAYLOAD_SIZE - 1] = 1;
-    if (!run_firmware(device, IDLE_INSTRUCTIONS) ||
-        !kinetis_gpio_drive(device, GPIO_PORT_C, 2, false) ||
+    for (size_t instruction = 0; instruction < RESPONSE_INSTRUCTION_LIMIT; ++instruction) {
+        if (!kinetis_gpio_pin(device, GPIO_PORT_C, 4, &transfer_active) || !step_firmware(device)) {
+            return false;
+        }
+        if (!transfer_active && spi_expectations_met()) {
+            break;
+        }
+    }
+    if (transfer_active || !spi_expectations_met() ||
+        !kinetis_gpio_drive(device, GPIO_PORT_C, 2, true) || !receive_response(device, response) ||
+        !frame_integrity_valid(frame) || frame[1] != WQR_PAYLOAD_PRIMARY_SPI ||
+        frame[2] != (uint8_t)(request_sequence + 1) ||
+        memcmp(frame + 4, payload, WQR_SPI_TRANSFER_SIZE) == 0 || (frame[60] & 2) != 0 ||
+        !kinetis_gpio_pin(device, GPIO_PORT_C, 3, &transfer_control) || !transfer_control) {
+        return false;
+    }
+    expect_spi(transmitted, WQR_SPI_TRANSFER_SIZE);
+    if (!kinetis_gpio_drive(device, GPIO_PORT_C, 2, false) ||
+        !run_firmware(device, IDLE_INSTRUCTIONS) ||
+        !queue_spi_response(device, payload, WQR_SPI_TRANSFER_SIZE) ||
         !exchange_frame(device, WQR_PAYLOAD_PRIMARY_SPI, (uint8_t)(request_sequence + 1), payload,
                         sizeof(payload), response) ||
-        !primary_response_valid(response, (uint8_t)(request_sequence + 2), payload, false) ||
-        !spi_expectations_met()) {
+        !primary_response_valid(response, (uint8_t)(request_sequence + 2), payload, true)) {
         return false;
     }
     if (!run_firmware(device, IDLE_INSTRUCTIONS) ||
@@ -689,10 +726,13 @@ static bool exchange_after_reconnect(Kinetis *device, uint8_t request_sequence) 
         return false;
     }
     expect_spi(transmitted, WQR_SPI_TRANSFER_SIZE);
-    return exchange_frame(device, WQR_PAYLOAD_PRIMARY_SPI, (uint8_t)(request_sequence + 2), payload,
-                          sizeof(payload), response) &&
-           primary_response_valid(response, (uint8_t)(request_sequence + 3), payload, true) &&
-           spi_expectations_met();
+    if (!exchange_frame(device, WQR_PAYLOAD_PRIMARY_SPI, (uint8_t)(request_sequence + 2), payload,
+                        sizeof(payload), response) ||
+        !primary_response_valid(response, (uint8_t)(request_sequence + 3), payload, true) ||
+        !spi_expectations_met()) {
+        return false;
+    }
+    return true;
 }
 
 static bool exchange_alternate_spi_word(Kinetis *device, uint8_t request_sequence,
@@ -910,6 +950,17 @@ static bool ignore_stale_spi_completion(Kinetis *device) {
            !cortex_m4_get_irq_pending(cpu, DMA3_INTERRUPT);
 }
 
+static bool ignore_stale_uart_completion(Kinetis *device) {
+    CortexM4 *cpu = kinetis_cpu(device);
+    uint32_t timer_control = 0;
+
+    cortex_m4_set_irq(cpu, DMA0_INTERRUPT, true);
+    return run_firmware(device, INTERRUPT_INSTRUCTIONS) &&
+           !cortex_m4_get_irq_pending(cpu, DMA0_INTERRUPT) &&
+           kinetis_read(device, PIT1_TCTRL_ADDRESS, &timer_control, sizeof(timer_control)) &&
+           (timer_control & 1) == 0;
+}
+
 static bool firmware_passes(const char *path, const char *elf_path, KinetisPackage package) {
     KinetisConfiguration configuration = kinetis_configuration(KINETIS_PROFILE_MKV30F12810);
     CortexM4CoverageResult coverage_result;
@@ -941,9 +992,11 @@ static bool firmware_passes(const char *path, const char *elf_path, KinetisPacka
     VERIFY_STAGE("interrupt priorities", interrupt_priorities_match_reference(device));
     VERIFY_STAGE("status", exchange_status(device, 0, 0));
     VERIFY_STAGE("UART response guard",
-                 run_firmware(device, INTERRUPT_INSTRUCTIONS) && uart_guard_is_exact(device));
+                 run_firmware(device, INTERRUPT_INSTRUCTIONS * 10) && uart_guard_is_exact(device));
     VERIFY_STAGE("measured status", run_firmware(device, SENSOR_SETTLE_INSTRUCTIONS) &&
                                         exchange_measured_status(device, 1));
+    VERIFY_STAGE("stale UART completion",
+                 run_firmware(device, IDLE_INSTRUCTIONS) && ignore_stale_uart_completion(device));
     VERIFY_STAGE("UART noise recovery",
                  run_firmware(device, IDLE_INSTRUCTIONS) && recover_from_noise(device));
     VERIFY_STAGE("UART recovery turnaround", exchange_status(device, 2, 0));

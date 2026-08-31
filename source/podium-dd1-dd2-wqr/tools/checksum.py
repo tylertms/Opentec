@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 APPLICATION_BASE = 0xA000
-FLASH_LIMIT = 0x20000
+FLASH_LIMIT = 0x10000
 METADATA_OFFSET = 0x3C0
 CHECKSUM_OFFSET = METADATA_OFFSET + 12
 FLASH_CONFIGURATION_OFFSET = 0x400
@@ -111,7 +111,9 @@ def main() -> None:
 
     source = Path(sys.argv[1])
     destination = Path(sys.argv[2])
-    destination.write_bytes(add_checksum(source.read_bytes()))
+    temporary = destination.with_suffix(destination.suffix + ".tmp")
+    temporary.write_bytes(add_checksum(source.read_bytes()))
+    temporary.replace(destination)
 
 
 if __name__ == "__main__":
