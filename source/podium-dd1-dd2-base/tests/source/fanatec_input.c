@@ -295,6 +295,15 @@ static void test_wheel_calibration_status(void) {
     assert(state.status_flags == 0x91);
 }
 
+static void test_pedal_status(void) {
+    fanatec_input_state state = {.status_flags = 0xc1};
+
+    fanatec_input_apply_pedal_status(&state, true, true, true, true, true);
+    assert(state.status_flags == 0xff);
+    fanatec_input_apply_pedal_status(&state, false, false, true, false, false);
+    assert(state.status_flags == 0xc9);
+}
+
 static void test_wheel_input_capability_status(void) {
     fanatec_input_state state = {.status_flags = 0x51};
 
@@ -353,6 +362,7 @@ int main(void) {
     test_h_pattern_shifter_mapping();
     test_sequential_shifter_mapping();
     test_thermal_effect_limit_status();
+    test_pedal_status();
     test_wheel_calibration_status();
     test_wheel_input_capability_status();
     test_wheel_axis_override_mapping();

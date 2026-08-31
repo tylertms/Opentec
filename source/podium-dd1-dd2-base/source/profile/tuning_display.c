@@ -195,7 +195,11 @@ static void render_value(WheelDisplayOutput *output, TuningEntry entry,
         render_sensitivity(output, profile);
         break;
     case TUNING_ENTRY_FORCE_FEEDBACK_STRENGTH:
-        render_effect_level(output, profile->force_feedback_strength, 1);
+        if (profile->force_feedback_strength == 101) {
+            render_text(output, "AUT");
+        } else {
+            render_effect_level(output, profile->force_feedback_strength, 1);
+        }
         break;
     case TUNING_ENTRY_VIBRATION_STRENGTH:
         render_text(output, profile->vibration_strength == 0 ? "0FF" : "0N ");

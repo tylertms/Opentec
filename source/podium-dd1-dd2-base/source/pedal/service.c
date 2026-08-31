@@ -245,6 +245,8 @@ static void send_v4_transfer(void *context, const uint8_t *data, uint16_t length
 /**
  * @brief Reports whether the V4 pedal transmitter is occupied.
  *
+ * Adapts the platform transmitter state to the V4 transfer-session callback interface.
+ *
  * @param[in] context Unused pedal service callback context.
  * @return True while a prior frame is still being transmitted.
  */
@@ -317,6 +319,8 @@ static void apply_v4_status(void *context, const uint8_t *data, uint8_t length, 
 
 /**
  * @brief Reads the time supplied to the current pedal service iteration.
+ *
+ * Adapts the service clock snapshot to the V4 transfer-session callback interface.
  *
  * @param[in] context Pedal service containing the current monotonic time.
  * @return Current monotonic time in milliseconds.
@@ -601,6 +605,21 @@ bool pedal_service_legacy_transport_active(const PedalService *service) {
 }
 
 /**
+ * @brief Reports whether the modern pedal startup handshake is active.
+ *
+ * Includes the switch delay, stream-start phase, and the initial V3 frames that complete startup.
+ *
+ * @param[in] service Current pedal service state.
+ * @return True while the V3 startup handshake is in progress.
+ */
+bool pedal_service_handshake_active(const PedalService *service) {
+    return service != NULL && (service->phase == PEDAL_SERVICE_V3_SWITCH_WAIT ||
+                               service->phase == PEDAL_SERVICE_V3_START ||
+                               (service->phase == PEDAL_SERVICE_V3_STREAM &&
+                                service->startup_frame_count < PEDAL_STARTUP_FRAME_COUNT));
+}
+
+/**
  * @brief Applies a host update to the pedal protocol status.
  *
  * Protocol updates always replace the first selector. Value 0x66 preserves the current value and
@@ -787,6 +806,8 @@ static void service_select_protocol(PedalService *service, uint32_t now_ms) {
 /**
  * @brief Maps a V4 tuning setting to its pending-work bit.
  *
+ * Converts the one-based setting identifier to the corresponding zero-based bit position.
+ *
  * @param[in] setting One-based V4 tuning setting identifier.
  * @return Pending-work mask for the setting.
  */
@@ -796,6 +817,8 @@ static uint8_t v4_setting_mask(PedalV4TuningSetting setting) {
 
 /**
  * @brief Maps a V4 request phase to its tuning setting.
+ *
+ * Recognizes brake-force, clutch-curve, brake-curve, and throttle-curve request phases.
  *
  * @param[in] phase Current V4 service phase.
  * @return Matching tuning setting, or zero for non-tuning phases.
@@ -822,6 +845,8 @@ static PedalV4TuningSetting v4_phase_setting(PedalV4Phase phase) {
 
 /**
  * @brief Selects the configured value for a V4 tuning setting.
+ *
+ * Reads the matching retained V4 setting without modifying pending-work state.
  *
  * @param[in] tuning Current V4 tuning values.
  * @param[in] setting Value to select.

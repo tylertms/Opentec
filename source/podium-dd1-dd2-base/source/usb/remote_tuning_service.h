@@ -33,6 +33,10 @@ typedef struct {
     uint8_t setup_index;
     uint8_t setup_page;
     uint8_t encoder_selection;
+    int8_t physical_previous_input;
+    uint8_t physical_button_flags;
+    uint8_t physical_rotary_position;
+    uint8_t physical_navigation_input;
     RemoteTuningResponse pending_response;
     bool active;
     bool refresh_requested;
@@ -40,6 +44,8 @@ typedef struct {
     bool active_sync_pending;
     bool setup_sync_pending;
     bool refresh_sync_pending;
+    bool physical_input_released;
+    bool physical_rotary_initialized;
 } UsbRemoteTuningService;
 
 void usb_remote_tuning_service_init(UsbRemoteTuningService *service);
@@ -67,5 +73,16 @@ bool usb_remote_tuning_service_take_host_report(UsbRemoteTuningService *service,
 bool usb_remote_tuning_service_take_telemetry_report(UsbRemoteTuningService *service,
                                                      uint8_t wheel_mode,
                                                      uint8_t output[REMOTE_TELEMETRY_REPORT_SIZE]);
+bool usb_remote_tuning_service_update_physical_selection(UsbRemoteTuningService *service,
+                                                         uint8_t wheel_mode, bool profile_mode,
+                                                         bool tuning_display_supported,
+                                                         bool adapter_connected,
+                                                         int8_t tuning_input,
+                                                         uint8_t auxiliary_buttons);
+bool usb_remote_tuning_service_update_legacy_encoder(UsbRemoteTuningService *service,
+                                                     uint8_t wheel_mode, uint8_t rotary_position);
+bool usb_remote_tuning_service_update_setup_navigation(UsbRemoteTuningService *service,
+                                                       uint8_t wheel_mode, bool profile_mode,
+                                                       uint8_t motion);
 
 #endif

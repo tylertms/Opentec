@@ -23,6 +23,7 @@ enum {
     WHEEL_BUTTON_RESPONSE_MASK = 0xe0,
     WHEEL_BUTTON_VALUE_MASK = 0x1f,
     WHEEL_PROTOCOL_ACTIVITY_TIMEOUT_MS = 2000,
+    WHEEL_PROTOCOL_PROOF_TIMEOUT_MS = 3000,
     WHEEL_MULTI_POSITION_PRIMARY_OFFSET = 6,
     WHEEL_MULTI_POSITION_SECONDARY_OFFSET = 7,
     WHEEL_MULTI_POSITION_PACKED_OFFSET = 14,
@@ -78,10 +79,13 @@ static void apply_auxiliary(uint8_t banks[WHEEL_BUTTON_BANK_COUNT], uint8_t samp
  * @param[in,out] banks Three sampled button banks to update.
  * @param[in] sample Five input bits returned by the attached device.
  * @param[in] secondary Adds the secondary-channel mapping for sample bit 1 when true.
+ * @param[in] interface_mode Active host-interface presentation mode selecting the sample-bit map.
  */
-static void apply_first(uint8_t banks[WHEEL_BUTTON_BANK_COUNT], uint8_t sample, bool secondary) {
+static void apply_first(uint8_t banks[WHEEL_BUTTON_BANK_COUNT], uint8_t sample, bool secondary,
+                        uint8_t interface_mode) {
     assign(&banks[2], 5, sample, 0);
-    assign(&banks[2], 1, sample, 3);
+    bool primary_mapping = interface_mode <= 1 || (interface_mode >= 6 && interface_mode <= 8);
+    assign(&banks[2], primary_mapping ? 1 : 3, sample, 3);
     assign(&banks[1], 2, sample, 4);
     assign(&banks[1], 1, sample, 2);
     if (secondary) {
@@ -154,6 +158,8 @@ static uint8_t expected_scan_response(const WheelService *service) {
                : WHEEL_BUTTON_PRIMARY_RESPONSE;
 }
 
+static void clear_scan_filter(WheelService *service);
+
 /**
  * @brief Accepts a command-3 button response.
  *
@@ -164,8 +170,12 @@ static uint8_t expected_scan_response(const WheelService *service) {
  * @param[in] response Received transport message, or null when no message is available.
  */
 static void apply_scan_response(WheelService *service, const SerialMessageAssembly *response) {
-    if (response == 0 || response->length != SERIAL_PACKET_MAX_PAYLOAD_SIZE ||
-        (response->data[SERIAL_PACKET_MAX_PAYLOAD_SIZE - 1] & WHEEL_BUTTON_RESPONSE_READY) == 0) {
+    if (response == 0 || response->length != SERIAL_PACKET_MAX_PAYLOAD_SIZE) {
+        return;
+    }
+    if ((response->data[SERIAL_PACKET_MAX_PAYLOAD_SIZE - 1] & WHEEL_BUTTON_RESPONSE_READY) == 0) {
+        clear_scan_filter(service);
+        service->scan_phase = 0;
         return;
     }
     uint8_t encoded = response->data[1];
@@ -177,7 +187,8 @@ static void apply_scan_response(WheelService *service, const SerialMessageAssemb
     uint8_t *banks = service->scan_samples[service->scan_sample_index];
     switch (service->scan_phase) {
     case WHEEL_SCAN_PHASE_FIRST:
-        apply_first(banks, sample, response_type == WHEEL_BUTTON_SECONDARY_RESPONSE);
+        apply_first(banks, sample, response_type == WHEEL_BUTTON_SECONDARY_RESPONSE,
+                    service->protocol.interface_mode);
         break;
     case WHEEL_SCAN_PHASE_SECOND:
         apply_second(banks, sample);
@@ -398,7 +409,12 @@ static bool protocol_exchange_active(const WheelService *service) {
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 static void refresh_protocol_deadline(WheelService *service, uint32_t now_ms) {
-    service->protocol_deadline_ms = now_ms + WHEEL_PROTOCOL_ACTIVITY_TIMEOUT_MS;
+    uint32_t timeout =
+        service->protocol.phase == WHEEL_PROTOCOL_AUTHENTICATING &&
+                service->protocol.authentication.stage == WHEEL_AUTHENTICATION_AWAITING_PROOF
+            ? WHEEL_PROTOCOL_PROOF_TIMEOUT_MS
+            : WHEEL_PROTOCOL_ACTIVITY_TIMEOUT_MS;
+    service->protocol_deadline_ms = now_ms + timeout;
     service->protocol_deadline_active = true;
 }
 
@@ -671,6 +687,24 @@ bool wheel_service_queue_tuning_display_command(WheelService *service, uint8_t c
         return false;
     }
     wheel_output_reports_queue_display_command(&service->protocol.output_reports, command);
+    return true;
+}
+
+/**
+ * @brief Queues a native tuning-display notification.
+ *
+ * Passes recognized prompt and confirmation commands to the attached-wheel output scheduler. The
+ * scheduler emits them only in remote-tuning wheel modes.
+ *
+ * @param[in,out] service Attached-wheel service receiving the notification.
+ * @param[in] command Native prompt or confirmation command.
+ * @return True when the service was available to accept the command.
+ */
+bool wheel_service_queue_tuning_display_notification(WheelService *service, uint8_t command) {
+    if (service == NULL) {
+        return false;
+    }
+    wheel_output_reports_queue_display_notification(&service->protocol.output_reports, command);
     return true;
 }
 
@@ -958,6 +992,19 @@ void wheel_service_set_legacy_axes(WheelService *service, const uint8_t axes[2])
         service->protocol.mode_four_output.legacy_axes[axis] = axes[axis];
         service->protocol.crc_output.legacy_axes[axis] = axes[axis];
     }
+}
+
+/**
+ * @brief Updates the legacy pedal status returned to the attached wheel.
+ *
+ * Forwards both status bytes to the protocol response state without changing pedal axes.
+ *
+ * @param[in,out] service Attached-wheel service to update.
+ * @param[in] first First pedal status byte.
+ * @param[in] second Second pedal status byte.
+ */
+void wheel_service_set_legacy_pedal_status(WheelService *service, uint8_t first, uint8_t second) {
+    wheel_protocol_set_legacy_pedal_status(&service->protocol, first, second);
 }
 
 /**
@@ -1435,6 +1482,8 @@ bool wheel_service_activate_interface_presentation(WheelService *service, uint8_
 /**
  * @brief Selects character or raw-segment output for mode-nine wheel displays.
  *
+ * Retains the translation mode used when the protocol encodes subsequent mode-nine display data.
+ *
  * @param[in,out] service Attached-wheel service to configure.
  * @param[in] enabled True to translate mode-nine glyphs to protocol characters.
  */
@@ -1595,9 +1644,10 @@ const uint8_t *wheel_service_buttons(const WheelService *service) {
  * @brief Copies normalized attached-wheel host input fields.
  *
  * Reads the directional byte, sixteen secondary buttons, two clutch paddles, signed tuning input,
- * and three auxiliary bytes from the current thirty-byte request view. The separately retained
- * axis-report capability accompanies the values. An unavailable request produces a cleared
- * destination.
+ * motion byte, packed rotary positions, and auxiliary bytes from the current thirty-byte request
+ * view. The first auxiliary byte is replaced by current X and Y axis availability flags, and the
+ * separately retained axis-report capability accompanies the values. An unavailable request
+ * produces a cleared destination.
  *
  * @param[in] service Attached-wheel service state.
  * @param[out] snapshot Normalized host input fields.
@@ -1619,13 +1669,29 @@ bool wheel_service_input_snapshot(const WheelService *service, WheelInputSnapsho
     snapshot->clutch_paddles[0] = request[WHEEL_INPUT_CLUTCH_OFFSET];
     snapshot->clutch_paddles[1] = request[WHEEL_INPUT_CLUTCH_OFFSET + 1];
     snapshot->tuning_input = (int8_t)request[WHEEL_INPUT_TUNING_OFFSET];
+    snapshot->motion = request[WHEEL_INPUT_TUNING_OFFSET];
+    snapshot->packed_rotary_positions = request[13];
     snapshot->auxiliary_report[0] = request[WHEEL_INPUT_AUXILIARY_OFFSET];
     snapshot->auxiliary_report[1] = request[WHEEL_INPUT_AUXILIARY_OFFSET + 1];
     snapshot->auxiliary_report[2] = request[WHEEL_INPUT_AUXILIARY_OFFSET + 2];
     snapshot->axis_report_enabled = wheel_protocol_axis_report_enabled(&service->protocol);
+    const WheelAxisOverrideProcessor *axis = wheel_protocol_axis_overrides(&service->protocol);
+    snapshot->auxiliary_report[0] = (axis->x_available ? 1u : 0u) | (axis->y_available ? 2u : 0u);
     return true;
 }
 
+/**
+ * @brief Updates alternative-shifter mode from the attached-wheel activation chord.
+ *
+ * Requires profile context and axis reporting, adds the mode-specific control latch outside legacy
+ * alternate mode, debounces the chord, toggles alternative-shifter state, and mirrors the resulting
+ * latch into the protocol response.
+ *
+ * @param[in,out] service Attached-wheel service and alternative-shifter latch state.
+ * @param[in] profile_context_pending True while the profile activation context is available.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @return Enabled, disabled, or unchanged transition state.
+ */
 WheelAlternativeShifterEvent wheel_service_update_alternative_shifter(WheelService *service,
                                                                       bool profile_context_pending,
                                                                       uint32_t now_ms) {
@@ -1665,6 +1731,14 @@ WheelAlternativeShifterEvent wheel_service_update_alternative_shifter(WheelServi
     return event;
 }
 
+/**
+ * @brief Reports whether alternative-shifter mode is enabled.
+ *
+ * Returns the debounced mode state without modifying the activation latch or deadline.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return True while alternative-shifter mode is enabled.
+ */
 bool wheel_service_alternative_shifter_enabled(const WheelService *service) {
     return service->alternative_shifter_enabled;
 }
@@ -1826,6 +1900,46 @@ int8_t wheel_service_take_encoder_step(WheelService *service) {
 }
 
 /**
+ * @brief Returns one queued attached-wheel axis motion direction.
+ *
+ * Inspects the selected protocol motion counter without consuming it.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @param[in] axis Zero-based auxiliary motion axis.
+ * @return Negative one, zero, or positive one; zero for an unsupported axis.
+ */
+int8_t wheel_service_axis_motion_direction(const WheelService *service, uint8_t axis) {
+    return wheel_protocol_axis_motion_direction(&service->protocol, axis);
+}
+
+/**
+ * @brief Takes one queued attached-wheel axis motion step.
+ *
+ * Consumes one signed step from the selected protocol motion counter.
+ *
+ * @param[in,out] service Attached-wheel service state.
+ * @param[in] axis Zero-based auxiliary motion axis.
+ * @return Negative one, zero, or positive one; zero for an unsupported axis.
+ */
+int8_t wheel_service_take_axis_motion(WheelService *service, uint8_t axis) {
+    return wheel_protocol_take_axis_motion(&service->protocol, axis);
+}
+
+/**
+ * @brief Takes the latest attached-wheel remote-tuning controls.
+ *
+ * Copies the retained 30-byte control payload and clears its one-shot pending latch.
+ *
+ * @param[in,out] service Attached-wheel service state.
+ * @param[out] output Destination for the complete control payload.
+ * @return True when a pending payload was copied.
+ */
+bool wheel_service_take_remote_tuning_controls(WheelService *service, uint8_t output[30]) {
+    return service != NULL &&
+           wheel_protocol_take_remote_tuning_controls(&service->protocol, output);
+}
+
+/**
  * @brief Discards motion accumulated while tuning owns attached-wheel controls.
  *
  * Clears protocol motion and rotary transition state so tuning navigation cannot emerge later as
@@ -1877,6 +1991,9 @@ bool wheel_service_acknowledgement_input_active(const WheelService *service) {
  * @return True while the mode-specific calibration input is active.
  */
 bool wheel_service_calibration_advance_input_active(const WheelService *service) {
+    if (service->protocol.adapter.connected) {
+        return (service->protocol.adapter.buttons[1] & 0x01u) != 0;
+    }
     const uint8_t *buttons = wheel_service_buttons(service);
     uint8_t mode = service->protocol.mode;
     if (mode == WHEEL_MODE_REMOTE_TUNING_LEGACY || mode == WHEEL_MODE_LEGACY_ALTERNATE ||

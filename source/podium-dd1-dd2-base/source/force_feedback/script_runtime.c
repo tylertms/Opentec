@@ -9,7 +9,24 @@ enum {
     SCRIPT_CONTROL_PACKET = 0x0c,
     SCRIPT_UPLOAD_PACKET = 0x0d,
     SCRIPT_INPUT_PACKET = 0x0e,
+    SCRIPT_INPUT_STATUS_OFFSET = 4,
+    SCRIPT_INPUT_FIRST_SLOT_OFFSET = 9,
+    SCRIPT_INPUT_SLOT_SIZE = 9,
+    SCRIPT_MOTION_POSITION = 4,
 };
+
+/**
+ * @brief Decodes one little-endian 32-bit script value.
+ *
+ * Combines four consecutive packet bytes without requiring aligned storage.
+ *
+ * @param[in] data Four-byte little-endian source.
+ * @return Decoded unsigned value.
+ */
+static uint32_t read_u32(const uint8_t *data) {
+    return (uint32_t)data[0] | (uint32_t)data[1] << 8 | (uint32_t)data[2] << 16 |
+           (uint32_t)data[3] << 24;
+}
 
 /**
  * @brief Initialize the complete force-feedback script runtime.
@@ -43,8 +60,9 @@ void force_feedback_script_runtime_init(ForceFeedbackScriptSystem *system) {
  * @brief Apply one complete host packet to the force-feedback script system.
  *
  * Routes sample updates, slot controls, script uploads, and live inputs to their owning runtime
- * components. Live-input deadlines use the current script sample counter. Unknown opcodes and
- * malformed packets leave the system unchanged.
+ * components. Live-input deadlines use the current script sample counter, and accepted position
+ * inputs update the retained position-motion operand. Unknown opcodes and malformed packets leave
+ * the system unchanged.
  *
  * @param[in,out] system Script runtime, storage, samples, and live inputs to update.
  * @param[in] packet Complete logical host packet beginning with an opcode from 0x0B through 0x0E.
@@ -66,9 +84,22 @@ bool force_feedback_script_runtime_apply_packet(ForceFeedbackScriptSystem *syste
         return force_feedback_script_store_upload(&system->store, system->values.slots, packet,
                                                   length);
     case SCRIPT_INPUT_PACKET:
-        return force_feedback_script_inputs_apply(
-            &system->inputs, system->values.variables[FORCE_FEEDBACK_SCRIPT_SAMPLE_COUNT_VARIABLE],
-            packet, length);
+        if (!force_feedback_script_inputs_apply(
+                &system->inputs,
+                system->values.variables[FORCE_FEEDBACK_SCRIPT_SAMPLE_COUNT_VARIABLE], packet,
+                length)) {
+            return false;
+        }
+        if (packet[SCRIPT_INPUT_STATUS_OFFSET] == FORCE_FEEDBACK_SCRIPT_INPUT_ACTIVE ||
+            packet[SCRIPT_INPUT_STATUS_OFFSET] == FORCE_FEEDBACK_SCRIPT_INPUT_READY) {
+            for (uint8_t index = 0; index < FORCE_FEEDBACK_SCRIPT_INPUT_SLOT_COUNT; index++) {
+                size_t offset = SCRIPT_INPUT_FIRST_SLOT_OFFSET + index * SCRIPT_INPUT_SLOT_SIZE;
+                if (packet[offset] == FORCE_FEEDBACK_SCRIPT_INPUT_POSITION) {
+                    system->values.motion[SCRIPT_MOTION_POSITION] = read_u32(&packet[offset + 1]);
+                }
+            }
+        }
+        return true;
     default:
         return false;
     }

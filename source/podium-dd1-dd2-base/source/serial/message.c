@@ -119,11 +119,13 @@ SerialMessageResult serial_message_accept(SerialMessageAssembly *assembly,
  * Builds a type-one packet whose one-byte payload identifies the acknowledgement control type.
  *
  * @param[in] sequence Transport sequence byte.
+ * @param[in] current_type Acknowledged transport control type.
  * @param[out] output Encoded sixty-four-byte packet.
  * @return True when the destination is usable.
  */
-bool serial_message_acknowledgement_encode(uint8_t sequence, uint8_t output[SERIAL_PACKET_SIZE]) {
-    return serial_packet_encode_byte(1, sequence, 1, output);
+bool serial_message_acknowledgement_encode(uint8_t sequence, uint8_t current_type,
+                                           uint8_t output[SERIAL_PACKET_SIZE]) {
+    return serial_packet_encode_byte(1, sequence, current_type, output);
 }
 
 /**

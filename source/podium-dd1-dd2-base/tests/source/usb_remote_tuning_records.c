@@ -148,7 +148,7 @@ static void keeps_complete_records_within_each_response(void) {
         assert(usb_remote_tuning_records_take_response(&records, REMOTE_TUNING_LINK_LEGACY,
                                                        &response));
         assert(response.record_data_length == 20);
-        assert(response.record_data[1] == record + 1);
+        assert(response.record_data[1] == 3 - record);
     }
     assert(records.count == 0);
 }
@@ -167,8 +167,8 @@ static void forwards_route_three_records_from_both_selector_banks(void) {
     uint8_t length = 0;
     assert(usb_remote_tuning_records_take_forward_batch(&records, output, &length));
     assert(length == 13);
-    assert(memcmp(output, arguments + 1, 7) == 0);
-    assert(memcmp(output + 7, arguments + 13, 6) == 0);
+    assert(memcmp(output, arguments + 13, 6) == 0);
+    assert(memcmp(output + 6, arguments + 1, 7) == 0);
     assert(records.count == 2);
     assert(records.records[0].type == 4);
     assert(records.records[1].type == 2);
@@ -192,15 +192,15 @@ static void keeps_forwarded_records_within_the_transfer_area(void) {
     uint8_t length = 0;
     assert(usb_remote_tuning_records_take_forward_batch(&records, output, &length));
     assert(length == 60);
-    assert(output[1] == 1);
-    assert(output[21] == 2);
-    assert(output[41] == 3);
+    assert(output[1] == 4);
+    assert(output[21] == 3);
+    assert(output[41] == 2);
     assert(records.count == 1);
-    assert(records.records[0].selector == 4);
+    assert(records.records[0].selector == 1);
 
     assert(usb_remote_tuning_records_take_forward_batch(&records, output, &length));
     assert(length == 20);
-    assert(output[1] == 4);
+    assert(output[1] == 1);
     assert(records.count == 0);
 }
 
@@ -216,7 +216,10 @@ static void consumes_both_local_telemetry_banks(void) {
     UsbVendorCommand command = command_for(arguments, sizeof(arguments));
     assert(usb_remote_tuning_records_apply(&records, &command));
 
-    assert(usb_remote_tuning_records_consume_telemetry(&records, &telemetry) == 2);
+    bool reset_requested = false;
+    assert(usb_remote_tuning_records_consume_telemetry(&records, &telemetry, false,
+                                                       &reset_requested) == 2);
+    assert(!reset_requested);
     assert(records.count == 1);
     assert(records.records[0].type == 3);
     assert(records.records[0].selector == 1);

@@ -107,6 +107,20 @@ int8_t wheel_motion_primary_direction(const WheelMotion *motion) {
 }
 
 /**
+ * @brief Returns one queued auxiliary wheel motion direction.
+ *
+ * Inspects the selected wrapping axis counter without consuming it. Unsupported axis indices have
+ * no queued direction.
+ *
+ * @param[in] motion Motion state whose axis direction is requested.
+ * @param[in] axis Zero-based axis index.
+ * @return Negative one, zero, or positive one; zero for an unsupported axis.
+ */
+int8_t wheel_motion_axis_direction(const WheelMotion *motion, uint8_t axis) {
+    return axis < WHEEL_MOTION_AXIS_COUNT ? direction(motion->axes[axis]) : 0;
+}
+
+/**
  * @brief Takes one queued primary wheel motion step.
  *
  * Moves the wrapping primary counter one position toward zero and returns its signed direction.

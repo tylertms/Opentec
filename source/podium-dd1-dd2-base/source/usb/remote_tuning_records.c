@@ -90,25 +90,32 @@ static bool take_matching(UsbRemoteTuningRecords *records, uint8_t route, uint8_
                           uint8_t selector_value, uint8_t *output, uint8_t capacity,
                           uint8_t *length) {
     *length = 0;
-    uint8_t retained = 0;
+    bool consumed[USB_REMOTE_TUNING_RECORD_COUNT] = {false};
     bool full = false;
 
-    for (uint8_t index = 0; index < records->count; index++) {
+    for (uint8_t cursor = records->count; cursor > 0; cursor--) {
+        uint8_t index = cursor - 1;
         UsbRemoteTuningRecord *record = &records->records[index];
         uint8_t record_size = REMOTE_TUNING_RECORD_HEADER_SIZE + record->payload_length;
         bool consume = !full && record_matches(record, route, selector_mask, selector_value);
         if (consume && record_size <= capacity - *length) {
             append_record(record, output, length);
+            consumed[index] = true;
             continue;
         }
         if (consume) {
             full = true;
         }
-        records->records[retained++] = *record;
     }
 
     if (*length == 0) {
         return false;
+    }
+    uint8_t retained = 0;
+    for (uint8_t index = 0; index < records->count; index++) {
+        if (!consumed[index]) {
+            records->records[retained++] = records->records[index];
+        }
     }
     memset(records->records + retained, 0,
            (records->count - retained) * sizeof(records->records[0]));
@@ -251,38 +258,68 @@ bool usb_remote_tuning_records_take_forward_batch(
  *
  * Applies route-two records from both selector banks in arrival order. The selector low nibble
  * chooses the telemetry channel and bit seven chooses primary or overlay content. Every matching
- * record is consumed after one pass, while all other routes retain their relative order.
+ * record is consumed after one pass, while all other routes retain their relative order. Extended
+ * mode retains ignored records and requests a reset for an ignored primary record. Legacy mode
+ * consumes the first ignored record and stops processing later records.
  *
  * @param[in,out] records Arrival-order remote-tuning record store.
  * @param[in,out] telemetry Selected telemetry mappings and report state.
+ * @param[in] extended_mode True to retain ignored records using extended-mode recovery semantics.
+ * @param[out] reset_requested Set when an ignored primary record requests extended-mode recovery;
+ * null when the caller does not need this state.
  * @return Number of route-two records consumed.
  */
 uint8_t usb_remote_tuning_records_consume_telemetry(UsbRemoteTuningRecords *records,
-                                                    RemoteTelemetry *telemetry) {
+                                                    RemoteTelemetry *telemetry, bool extended_mode,
+                                                    bool *reset_requested) {
     if (records == NULL || telemetry == NULL) {
         return 0;
     }
 
-    uint8_t retained = 0;
+    bool consumed_records[USB_REMOTE_TUNING_RECORD_COUNT] = {false};
     uint8_t consumed = 0;
-    for (uint8_t index = 0; index < records->count; index++) {
+    if (reset_requested != NULL) {
+        *reset_requested = false;
+    }
+    for (uint8_t cursor = records->count; cursor > 0; cursor--) {
+        uint8_t index = cursor - 1;
         UsbRemoteTuningRecord *record = &records->records[index];
         if (record->type != REMOTE_TUNING_RECORD_ROUTE_TWO) {
-            records->records[retained++] = *record;
             continue;
         }
 
         uint8_t channel = record->selector & 0x0f;
+        RemoteTelemetryRecordResult result;
         if ((record->selector & REMOTE_TUNING_ALTERNATE_RECORD_FLAG) != 0) {
-            (void)remote_telemetry_apply_overlay(telemetry, channel, record->value, record->payload,
-                                                 record->payload_length);
+            result = remote_telemetry_apply_overlay(telemetry, channel, record->value,
+                                                    record->payload, record->payload_length);
         } else {
-            (void)remote_telemetry_apply_primary(telemetry, channel, record->value, record->payload,
-                                                 record->payload_length);
+            result = remote_telemetry_apply_primary(telemetry, channel, record->value,
+                                                    record->payload, record->payload_length);
         }
+        if (result != REMOTE_TELEMETRY_RECORD_IGNORED) {
+            consumed_records[index] = true;
+            consumed++;
+            continue;
+        }
+        if (extended_mode) {
+            if ((record->selector & REMOTE_TUNING_ALTERNATE_RECORD_FLAG) == 0 &&
+                reset_requested != NULL) {
+                *reset_requested = true;
+            }
+            continue;
+        }
+        consumed_records[index] = true;
         consumed++;
+        break;
     }
 
+    uint8_t retained = 0;
+    for (uint8_t index = 0; index < records->count; index++) {
+        if (!consumed_records[index]) {
+            records->records[retained++] = records->records[index];
+        }
+    }
     memset(records->records + retained, 0,
            (records->count - retained) * sizeof(records->records[0]));
     records->count = retained;

@@ -31,8 +31,8 @@ static void test_decodes_calibration_message(void) {
 }
 
 static void test_decodes_vendor_messages(void) {
-    static const uint8_t continuation[] = {0xc0, 1, 2};
-    static const uint8_t final[] = {0xc1, 3, 4};
+    static const uint8_t continuation[] = {0xc1, 1, 2};
+    static const uint8_t final[] = {0xc2, 3, 4};
     MotorCommandMessage message;
 
     assert(motor_command_message_decode(continuation, sizeof(continuation), &message));
@@ -48,11 +48,13 @@ static void test_decodes_vendor_messages(void) {
 
 static void test_rejects_unsupported_or_truncated_messages(void) {
     static const uint8_t unsupported[] = {0x84};
+    static const uint8_t obsolete_vendor[] = {0xc0, 1};
     static const uint8_t short_information[] = {0x85, 0, 3, 0};
     static const uint8_t truncated_data[] = {0x85, 0, 3, 0, 2, 0x12};
     MotorCommandMessage message;
 
     assert(!motor_command_message_decode(unsupported, sizeof(unsupported), &message));
+    assert(!motor_command_message_decode(obsolete_vendor, sizeof(obsolete_vendor), &message));
     assert(!motor_command_message_decode(short_information, sizeof(short_information), &message));
     assert(!motor_command_message_decode(truncated_data, sizeof(truncated_data), &message));
 }

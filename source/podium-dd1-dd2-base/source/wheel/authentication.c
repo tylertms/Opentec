@@ -410,6 +410,7 @@ static bool accept_proof(WheelAuthentication *authentication,
                          bool checksum_valid, uint8_t response[WHEEL_AUTHENTICATION_CONTENT_SIZE]) {
     if (!checksum_valid) {
         increment_counter(authentication->retry_counter);
+        increment_counter(authentication->receive_counter);
         memset(&response[AUTHENTICATION_REPLY_PREFIX_SIZE], 0,
                WHEEL_AUTHENTICATION_CONTENT_SIZE - AUTHENTICATION_REPLY_PREFIX_SIZE);
         xcrypt_content(authentication->transmit_round_keys, authentication->transmit_counter,

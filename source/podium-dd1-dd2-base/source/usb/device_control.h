@@ -20,6 +20,8 @@ typedef struct {
     UsbDescriptorView report;
     const UsbDescriptorView *strings;
     uint8_t string_count;
+    uint8_t string_alias;
+    uint8_t string_alias_target;
 } UsbDescriptorCatalog;
 
 typedef enum {

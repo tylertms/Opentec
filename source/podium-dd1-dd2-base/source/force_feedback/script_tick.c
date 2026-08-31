@@ -101,6 +101,7 @@ ForceFeedbackScriptTickDecision force_feedback_script_tick(ForceFeedbackScriptSy
     if (schedule == FORCE_FEEDBACK_SCRIPT_SCHEDULE_EXPIRED) {
         return (ForceFeedbackScriptTickDecision){
             .output_policy = FORCE_FEEDBACK_SCRIPT_OUTPUT_ZERO,
+            .immediate_zero = true,
         };
     }
 
@@ -145,9 +146,11 @@ ForceFeedbackScriptTickDecision force_feedback_script_tick(ForceFeedbackScriptSy
 /**
  * @brief Service one force-script tick and conditionally update the motor output report.
  *
- * Leaves the existing report untouched when no motor write is selected. Zero-output policies
- * pass zero motion through the same smoothing, ramp, position-limit, clamp, and motor-scaling
- * path used for a script motion write.
+ * Gives a pending position request priority and converts normalized wheel position through its
+ * unsmoothed output path. Otherwise it leaves the existing report untouched when no motor write is
+ * selected. Expired input clears primary force immediately. Other zero-output policies pass zero
+ * motion through the same smoothing, ramp, position-limit, clamp, and motor-scaling path used for
+ * a script motion write.
  *
  * @param[in,out] system Complete script runtime and scheduler state.
  * @param[in,out] output_state Script smoothing and wheel-range end-stop state.
@@ -162,10 +165,25 @@ ForceFeedbackScriptTickResult force_feedback_script_tick_output(
     ForceFeedbackScriptSystem *system, ForceFeedbackScriptOutputState *output_state, uint32_t now,
     int32_t wheel_position, uint32_t half_travel, const ForceFeedbackScriptOutputConfig *config,
     ForceOutputReport *report) {
+    if (system->store.position_request_pending) {
+        bool outside_travel = force_feedback_script_position_output_apply(
+            output_state, wheel_position, half_travel, now, config, report);
+        return (ForceFeedbackScriptTickResult){
+            .wrote_output = true,
+            .outside_travel = outside_travel,
+        };
+    }
     ForceFeedbackScriptTickDecision decision =
         force_feedback_script_tick(system, now, wheel_position, half_travel);
     if (decision.output_policy == FORCE_FEEDBACK_SCRIPT_OUTPUT_NONE) {
         return (ForceFeedbackScriptTickResult){.slot_faulted = decision.slot_faulted};
+    }
+    if (decision.immediate_zero) {
+        report->primary_magnitude = 0;
+        return (ForceFeedbackScriptTickResult){
+            .wrote_output = true,
+            .slot_faulted = decision.slot_faulted,
+        };
     }
 
     uint32_t motion = decision.output_policy == FORCE_FEEDBACK_SCRIPT_OUTPUT_ZERO

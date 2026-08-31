@@ -134,6 +134,21 @@ static void test_routes_complete_script_packets(void) {
     input[27] = FORCE_FEEDBACK_SCRIPT_INPUT_UNUSED;
     assert(force_feedback_script_runtime_apply_packet(&system, input, sizeof(input)));
     assert(system.inputs.deadline == 125);
+
+    uint8_t live_input[FORCE_FEEDBACK_SCRIPT_PACKET_SIZE] = {
+        [0] = 0x0e,
+        [4] = FORCE_FEEDBACK_SCRIPT_INPUT_ACTIVE,
+        [5] = 25,
+        [9] = FORCE_FEEDBACK_SCRIPT_INPUT_POSITION,
+        [10] = 0x78,
+        [11] = 0x56,
+        [12] = 0x34,
+        [13] = 0x12,
+        [18] = FORCE_FEEDBACK_SCRIPT_INPUT_UNUSED,
+        [27] = FORCE_FEEDBACK_SCRIPT_INPUT_UNUSED,
+    };
+    assert(force_feedback_script_runtime_apply_packet(&system, live_input, sizeof(live_input)));
+    assert(system.values.motion[4] == UINT32_C(0x12345678));
 }
 
 static void test_rejects_unknown_or_incomplete_script_packets(void) {

@@ -36,6 +36,7 @@ typedef struct {
     uint8_t report_seventeen_sequence;
     uint8_t remote_telemetry_transmissions;
     uint8_t display_command;
+    uint8_t display_notifications_pending;
     uint8_t interface_presentation_command;
     uint8_t interface_presentation_transmissions;
     uint8_t pending;
@@ -58,6 +59,7 @@ void wheel_output_reports_queue_six(WheelOutputReports *reports, uint8_t first, 
 void wheel_output_reports_queue_seventeen(
     WheelOutputReports *reports, const uint8_t payload[WHEEL_OUTPUT_REPORT_SEVENTEEN_SIZE]);
 void wheel_output_reports_queue_display_command(WheelOutputReports *reports, uint8_t command);
+void wheel_output_reports_queue_display_notification(WheelOutputReports *reports, uint8_t command);
 void wheel_output_reports_activate_interface_presentation(WheelOutputReports *reports,
                                                           uint8_t mode);
 bool wheel_output_reports_queue_remote_telemetry(

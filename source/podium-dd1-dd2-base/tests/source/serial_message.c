@@ -77,7 +77,7 @@ static void test_encodes_and_assembles_maximum_message(void) {
         packet_count++;
         if (next_offset == sizeof(message)) {
             assert(packet.type_flags == (4 | SERIAL_PACKET_FINAL_FRAGMENT));
-            assert(packet.payload_length == 56);
+            assert(packet.payload_length == 2);
             assert(result == SERIAL_MESSAGE_COMPLETE);
             assert(!acknowledgement_required);
         } else {
@@ -89,7 +89,7 @@ static void test_encodes_and_assembles_maximum_message(void) {
         offset = next_offset;
     }
 
-    assert(packet_count == 9);
+    assert(packet_count == 10);
     assert(assembly.type == 4);
     assert(assembly.length == sizeof(message));
     assert(memcmp(assembly.data, message, sizeof(message)) == 0);
@@ -99,12 +99,12 @@ static void test_encodes_acknowledgement(void) {
     uint8_t encoded[SERIAL_PACKET_SIZE];
     SerialPacket packet;
 
-    assert(serial_message_acknowledgement_encode(0x31, encoded));
+    assert(serial_message_acknowledgement_encode(0x31, 4, encoded));
     assert(serial_packet_decode(encoded, &packet) == SERIAL_PACKET_VALID);
     assert(packet.type_flags == 1);
     assert(packet.sequence == 0x31);
     assert(packet.payload_length == 1);
-    assert(packet.payload[0] == 1);
+    assert(packet.payload[0] == 4);
 }
 
 static void test_rejects_invalid_messages(void) {

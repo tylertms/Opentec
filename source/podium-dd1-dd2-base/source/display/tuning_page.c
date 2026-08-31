@@ -224,7 +224,11 @@ static void format_value(char *destination, size_t size, TuningEntry entry,
         }
         break;
     case TUNING_ENTRY_FORCE_FEEDBACK_STRENGTH:
-        format_level(destination, size, profile->force_feedback_strength, 1);
+        if (profile->force_feedback_strength == 101) {
+            copy_text(destination, size, "Automatic");
+        } else {
+            format_level(destination, size, profile->force_feedback_strength, 1);
+        }
         break;
     case TUNING_ENTRY_VIBRATION_STRENGTH:
         copy_text(destination, size, profile->vibration_strength == 0 ? "Off" : "On");

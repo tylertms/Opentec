@@ -18,10 +18,11 @@ enum {
     USB_UPDATER_SERVICE_INTERVAL_MS = 10,
     USB_UPDATER_PROBE_SIZE = 2,
     USB_UPDATER_PROBE_RESPONSE_SIZE = 10,
-    USB_UPDATER_PROBE_COMMAND_OFFSET = 2,
+    USB_UPDATER_PROBE_COMMAND_OFFSET = 6,
+    USB_UPDATER_PROBE_RESPONSE_OPCODE = 0xa7,
 };
 
-static const uint8_t probe[USB_UPDATER_PROBE_SIZE] = {0x5a, 0xa7};
+static const uint8_t probe[USB_UPDATER_PROBE_SIZE] = {0x5a, 0xa6};
 
 /**
  * @brief Reports whether a runtime mode uses the auxiliary bus.
@@ -149,7 +150,7 @@ static bool take_exchange_response(UsbUpdaterService *service, const uint8_t **r
  */
 static void finish_exchange(UsbUpdaterService *service, const uint8_t *response, uint8_t length) {
     bool valid_probe = length == USB_UPDATER_PROBE_RESPONSE_SIZE && response[0] == probe[0] &&
-                       response[1] == probe[1];
+                       response[1] == USB_UPDATER_PROBE_RESPONSE_OPCODE;
     if (valid_probe) {
         service->response_selector = usb_updater_identity_selector(
             service->runtime_mode, response[USB_UPDATER_PROBE_COMMAND_OFFSET]);

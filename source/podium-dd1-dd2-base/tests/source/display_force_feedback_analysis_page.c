@@ -69,7 +69,7 @@ static void renders_the_title_and_analysis_content(void) {
     assert(display_force_feedback_analysis_page_update(&page, 25, 0, 0x8000));
     display_force_feedback_analysis_page_render(framebuffer, &page);
     assert(has_lit_pixel(framebuffer, 4, 168, 2, 8));
-    assert(pixel(framebuffer, 4, 62) == 15);
+    assert(pixel(framebuffer, 5, 62) == 15);
     assert(pixel(framebuffer, 215, 61) == 6);
     assert(pixel(framebuffer, 230, 61) == 0);
 

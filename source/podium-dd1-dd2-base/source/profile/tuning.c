@@ -145,7 +145,9 @@ void tuning_profile_defaults(TuningProfile *profile) {
 void tuning_profile_normalize(TuningProfile *profile) {
     profile->rotation_degrees = normalize_rotation(profile->rotation_degrees);
     profile->automatic_rotation = normalize_boolean(profile->automatic_rotation);
-    profile->force_feedback_strength = clamp_u8(profile->force_feedback_strength, 0, 100);
+    profile->force_feedback_strength = profile->force_feedback_strength == 101
+                                           ? 101
+                                           : clamp_u8(profile->force_feedback_strength, 0, 100);
     profile->vibration_strength =
         clamp_u8(profile->vibration_strength, 0, TUNING_VIBRATION_STRENGTH_MAX);
     profile->brake_indicator_level = clamp_u8(profile->brake_indicator_level, 1, 101);

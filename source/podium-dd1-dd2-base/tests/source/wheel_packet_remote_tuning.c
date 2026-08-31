@@ -39,6 +39,11 @@ static void encodes_setup_and_refresh_values(void) {
     assert(wheel_packet_remote_tuning_encode(&output, packet));
     assert(packet[0] == 0xa7 && packet[1] == 4 && packet[2] == 5);
 
+    RemoteTuningResponse next = response(REMOTE_TUNING_RESPONSE_NEXT_SETUP_PAGE, 2);
+    assert(wheel_packet_remote_tuning_queue(&output, &next));
+    assert(wheel_packet_remote_tuning_encode(&output, packet));
+    assert(packet[0] == 0xa7 && packet[1] == 4 && packet[2] == 2);
+
     RemoteTuningResponse refresh = response(REMOTE_TUNING_RESPONSE_REFRESH, 1);
     assert(wheel_packet_remote_tuning_queue(&output, &refresh));
     assert(wheel_packet_remote_tuning_encode(&output, packet));

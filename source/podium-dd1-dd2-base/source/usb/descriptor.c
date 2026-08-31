@@ -97,7 +97,7 @@ static void encode_interface(const UsbHidConfiguration *configuration, uint8_t *
     output[5] = USB_CLASS_HID;
     output[6] = 0;
     output[7] = configuration->interface_protocol;
-    output[8] = 0;
+    output[8] = configuration->interface_string;
 }
 
 /**

@@ -152,6 +152,7 @@ void pedal_service_set_protocol_status(PedalService *service, const PedalProtoco
 void pedal_service_reset_protocol_status(PedalService *service);
 void pedal_service_set_brake_indicator_selector(PedalService *service, uint8_t selector);
 bool pedal_service_legacy_transport_active(const PedalService *service);
+bool pedal_service_handshake_active(const PedalService *service);
 void pedal_service_apply_protocol_command(PedalService *service,
                                           const PedalProtocolCommand *command);
 void pedal_service_request_control(PedalService *service, PedalV3Control control);

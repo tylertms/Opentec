@@ -95,6 +95,7 @@
 #include "usb/fallback_tuning.h"
 #include "usb/fanatec_encoder.h"
 #include "usb/fanatec_input.h"
+#include "usb/feature_report.h"
 #include "usb/host_capability_recovery.h"
 #include "usb/input_report.h"
 #include "usb/motor_vendor_service.h"
@@ -242,6 +243,7 @@ static uint8_t xbox_profile_force_feedback_percent;
 static WheelMultiPositionInput wheel_multi_position_input;
 static fanatec_multi_position_input fanatec_multi_position_input_state;
 static uint8_t usb_input_report[USB_INPUT_REPORT_MAX_SIZE];
+static uint8_t usb_feature_reports[4][USB_DEVICE_REPORT_SIZE];
 static uint8_t usb_motor_acknowledgement[USB_DEVICE_REPORT_SIZE];
 static uint8_t usb_motor_acknowledgement_length;
 static uint8_t usb_vendor_response[USB_DEVICE_REPORT_SIZE];
@@ -357,6 +359,9 @@ static bool usb_disconnect_notice_visible;
 static bool usb_motor_acknowledgement_ready;
 static bool xbox_mode_startup_attempted;
 static bool xbox_mode_startup_finished;
+static uint8_t console_wheel_mode;
+static uint8_t observed_wheel_mode;
+static uint8_t selected_base_mode;
 static bool playstation_authentication_response_published;
 static bool usb_wheel_transfer_response_pending[WHEEL_TRANSFER_REQUEST_COUNT];
 static uint8_t local_display_page;
@@ -398,6 +403,7 @@ typedef enum {
 typedef enum {
     USB_XBOX_CONTROL_RESPONSE_NONE,
     USB_XBOX_CONTROL_RESPONSE_CAPABILITIES,
+    USB_XBOX_CONTROL_RESPONSE_SNAPSHOT,
     USB_XBOX_CONTROL_RESPONSE_EXTENDED_STATUS,
     USB_XBOX_CONTROL_RESPONSE_TRANSFER_STATUS,
 } UsbXboxControlResponseKind;
@@ -430,6 +436,8 @@ enum {
     STANDARD_TUNING_MODE_EVENT_CODE = 0x12,
     ADVANCED_TUNING_MODE_EVENT_CODE = 0x13,
     MAXIMUM_ROTATIONS_EXCEEDED_EVENT_CODE = 0x17,
+    TORQUE_REDUCED_EVENT_CODE = 6,
+    TORQUE_REDUCED_STEERING_WHEEL_EVENT_CODE = 0x16,
     ALTERNATIVE_SHIFTER_ENABLED_EVENT_CODE = 0x20,
     ALTERNATIVE_SHIFTER_DISABLED_EVENT_CODE = 0x21,
     WHEEL_CENTER_CALIBRATED_STATUS_CODE = 0x1f,
@@ -452,6 +460,10 @@ enum {
     MOTOR_LINK_MALFORMED_FRAME_LIMIT = 100,
     WHEEL_STARTUP_VERSION_COMMAND = 0x0a,
     WHEEL_STARTUP_TEXT_METADATA = 0x10,
+    WHEEL_DISPLAY_TORQUE_KEY_PROMPT = 0x1a,
+    WHEEL_DISPLAY_TORQUE_KEY_CONFIRMED = 0x28,
+    WHEEL_DISPLAY_ENABLE_TORQUE_PROMPT = 0x29,
+    WHEEL_DISPLAY_ENABLE_TORQUE_CONFIRMED = 0x2a,
 };
 
 /** @brief Storage used only by the native and Xbox motor-command transports. */
@@ -519,16 +531,20 @@ static void apply_power_action(PowerAction action) {
     case POWER_ACTION_BEGIN_SHUTDOWN:
         save_base_settings();
         force_output_enabled = false;
+        motor_output_report = (ForceOutputReport){0};
+        pedal_service_request_configuration(&pedal_service, tuning_profile->alternate_brake_force,
+                                            true);
+        platform_cooling_set_duty(0, 0, true);
         (void)system_event_queue_try_push(&system_event_queue, SHUTDOWN_EVENT_CODE);
         system_control_state_set_status(&system_control_state, wheel_service_mode(&wheel_service),
                                         SHUTDOWN_STATUS_CODE);
         system_control_state_set_active_event(&system_control_state, SHUTDOWN_EVENT_CODE);
+        platform_usb_detach();
         platform_power_latch_set(false);
         break;
     case POWER_ACTION_FINISH_SHUTDOWN:
         system_control_state_set_active_event(&system_control_state,
                                               SYSTEM_DISPLAY_DISMISS_EVENT_CODE);
-        platform_usb_detach();
         break;
     case POWER_ACTION_NONE:
     case POWER_ACTION_TORQUE_REQUEST_CHANGED:
@@ -595,6 +611,8 @@ static void service_system_events(uint32_t now_ms) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_POSITION_SENSOR_TEST_FAILED, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_TORQUE_REDUCED) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_TORQUE_REDUCED, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_TORQUE_REDUCED_STEERING_WHEEL) {
+        system_notice_show(&system_notice, SYSTEM_NOTICE_TORQUE_REDUCED_STEERING_WHEEL, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_MOTOR_CALIBRATION_DISCONNECT_WHEEL) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_MOTOR_CALIBRATION_DISCONNECT_WHEEL,
                            now_ms);
@@ -652,6 +670,8 @@ static void apply_torque_key_prompt_action(TorqueKeyPromptAction action) {
         if (system_event_queue_try_push(&system_event_queue, TORQUE_KEY_PROMPT_EVENT_CODE)) {
             system_control_state_set_active_event(&system_control_state,
                                                   TORQUE_KEY_PROMPT_EVENT_CODE);
+            (void)wheel_service_queue_tuning_display_notification(&wheel_service,
+                                                                  WHEEL_DISPLAY_TORQUE_KEY_PROMPT);
         }
         break;
     case TORQUE_KEY_PROMPT_ACTION_CANCEL:
@@ -659,12 +679,16 @@ static void apply_torque_key_prompt_action(TorqueKeyPromptAction action) {
                                         TORQUE_KEY_PROMPT_DISMISS_EVENT_CODE)) {
             system_control_state_set_active_event(&system_control_state,
                                                   SYSTEM_DISPLAY_DISMISS_EVENT_CODE);
+            (void)wheel_service_queue_tuning_display_notification(
+                &wheel_service, WHEEL_DISPLAY_TORQUE_KEY_CONFIRMED);
         }
         break;
     case TORQUE_KEY_PROMPT_ACTION_DISMISS:
         torque_key_prompt_visible = false;
         system_control_state_set_active_event(&system_control_state,
                                               SYSTEM_DISPLAY_DISMISS_EVENT_CODE);
+        (void)wheel_service_queue_tuning_display_notification(&wheel_service,
+                                                              WHEEL_DISPLAY_TORQUE_KEY_CONFIRMED);
         break;
     case TORQUE_KEY_PROMPT_ACTION_NONE:
         break;
@@ -713,10 +737,20 @@ static void service_torque_key(uint32_t now_ms) {
                            ? FORCE_FEEDBACK_DD1_REDUCED_STRENGTH_PERCENT
                            : FORCE_FEEDBACK_DD2_REDUCED_STRENGTH_PERCENT;
     if (motor_tuning_context.strength_percent != strength) {
+        bool torque_reduced =
+            motor_tuning_context.strength_percent == FORCE_FEEDBACK_FULL_STRENGTH_PERCENT &&
+            strength != FORCE_FEEDBACK_FULL_STRENGTH_PERCENT;
         motor_tuning_context.strength_percent = strength;
         if (motor_tuning_ready) {
             motor_tuning_service_refresh(&motor_tuning_service, tuning_profile,
                                          &motor_tuning_context);
+        }
+        if (torque_reduced) {
+            WheelProtocolPhase phase = wheel_service_protocol_phase(&wheel_service);
+            uint8_t event_code = phase == WHEEL_PROTOCOL_ACTIVE
+                                     ? TORQUE_REDUCED_EVENT_CODE
+                                     : TORQUE_REDUCED_STEERING_WHEEL_EVENT_CODE;
+            (void)system_event_queue_try_push(&system_event_queue, event_code);
         }
     }
 }
@@ -756,6 +790,9 @@ static void service_cooling(uint32_t now_ms) {
         motor_tuning_ready && motor_status_service_output_inhibited(&motor_status_service);
     cooling_controller_update(&cooling_controller, motor_temperature, managed_motor_present,
                               output_inhibited, now_ms);
+    if (cooling_controller.automatic_control_suspended) {
+        return;
+    }
     CoolingEffectStrengths previous_strengths = cooling_effect_strengths;
     cooling_effect_limit_update(&cooling_effect_limit, &cooling_effect_strengths,
                                 &cooling_controller, motor_temperature, managed_motor_present,
@@ -1000,11 +1037,13 @@ static void service_pedal_adjustment_display(uint32_t now_ms) {
 /**
  * @brief Loads retained base settings and initializes their runtime consumers.
  *
- * Selects the newest valid settings record and initializes the local auxiliary input and
- * attached-wheel auxiliary output from their retained settings.
+ * Selects the newest valid settings record, restores the retained USB base mode, and initializes
+ * the local auxiliary input and attached-wheel auxiliary output from their retained settings.
  */
 static void initialize_base_settings(void) {
     base_settings_persistence_load(&settings_persistence, &base_settings);
+    selected_base_mode =
+        base_settings.operating_mode_valid ? base_settings.operating_mode : UINT8_MAX;
     save_base_settings();
     auxiliary_axis_init(&auxiliary_axis, &base_settings.auxiliary_axis);
     wheel_service_set_auxiliary_output_option(&wheel_service, base_settings.wheel_auxiliary_option);
@@ -1041,7 +1080,8 @@ static void initialize_motor(void) {
  * @brief Initializes the host command bridge.
  *
  * Attaches report-6 mailbox storage and wheel-transfer requests to the shared type-four command
- * transport, restarts adapter discovery, then initializes diagnostic and tuning vendor responses.
+ * transport, restarts adapter discovery, initializes diagnostic and tuning vendor responses, and
+ * resets console startup state from the retained base-mode selection.
  */
 static void initialize_usb_command_bridge(void) {
     command_transport_init(&command_transport);
@@ -1073,6 +1113,10 @@ static void initialize_usb_command_bridge(void) {
     usb_motor_acknowledgement_ready = false;
     xbox_mode_startup_attempted = false;
     xbox_mode_startup_finished = false;
+    console_wheel_mode = UINT8_MAX;
+    observed_wheel_mode = UINT8_MAX;
+    selected_base_mode =
+        base_settings.operating_mode_valid ? base_settings.operating_mode : UINT8_MAX;
     usb_motor_acknowledgement_length = 0;
     usb_vendor_response_kind = USB_VENDOR_RESPONSE_NONE;
     usb_vendor_response_length = 0;
@@ -1173,6 +1217,12 @@ static void update_usb_diagnostic_snapshot(uint32_t now_ms) {
     }
 }
 
+/**
+ * @brief Refreshes the native USB tuning-status snapshot.
+ *
+ * Combines the current base, wheel, adapter, pedal, input, tuning, and system-control state into
+ * the status layout returned by the vendor tuning-status report.
+ */
 static void update_usb_tuning_status_snapshot(void) {
     enum {
         BASE_STATUS_DD1 = 6,
@@ -1186,6 +1236,7 @@ static void update_usb_tuning_status_snapshot(void) {
         PEDAL_STATUS_INACTIVE = 0,
         PEDAL_STATUS_LEGACY = 1,
         PEDAL_STATUS_LEGACY_CALIBRATION = 2,
+        PEDAL_STATUS_ANALOG = 3,
         PEDAL_STATUS_CALIBRATION = 4,
         PEDAL_STATUS_SECONDARY_CALIBRATION = 5,
         PEDAL_STATUS_TRANSFER = 6,
@@ -1218,7 +1269,9 @@ static void update_usb_tuning_status_snapshot(void) {
                          : wheel_service_axis_limit(&wheel_service) & 0x3fu;
 
     uint8_t pedal_status = PEDAL_STATUS_INACTIVE;
-    if (pedal_service_legacy_transport_active(&pedal_service)) {
+    if (pedal_service.phase == PEDAL_SERVICE_ANALOG) {
+        pedal_status = PEDAL_STATUS_ANALOG;
+    } else if (pedal_service_legacy_transport_active(&pedal_service)) {
         pedal_status = pedal_service_calibration_active(&pedal_service)
                            ? PEDAL_STATUS_LEGACY_CALIBRATION
                            : PEDAL_STATUS_LEGACY;
@@ -1318,11 +1371,13 @@ static bool accept_usb_motor_report(const UsbDeviceOutputReport *report) {
 }
 
 /**
- * @brief Starts the default Xbox interface for a capable attached wheel.
+ * @brief Starts the selected Xbox interface for a capable attached wheel.
  *
- * Waits for a supported wheel mode with tuning-menu capability, runs the motor-command identity
- * exchange once, and applies the resulting digest and wheel-specific product identity to USB mode
- * six. The startup exchange has exclusive use of the motor-command mailbox while active.
+ * Runs only when retained base mode six is selected or no mode has been retained. It waits for a
+ * supported wheel mode with tuning-menu capability, runs the motor-command identity exchange once,
+ * and applies the resulting digest and wheel-specific product identity. An unavailable Xbox mode
+ * falls back to native mode zero and persists that selection. The startup exchange has exclusive
+ * use of the motor-command mailbox while active.
  *
  * @return True while the startup exchange owns the motor-command channel.
  */
@@ -1331,10 +1386,25 @@ static bool service_xbox_mode_startup(void) {
         return false;
     }
 
+    if (selected_base_mode != UINT8_MAX && selected_base_mode != 6) {
+        return false;
+    }
+
     uint8_t wheel_mode = wheel_service_mode(&wheel_service);
     if (!xbox_mode_startup_attempted) {
+        if (wheel_service_protocol_phase(&wheel_service) != WHEEL_PROTOCOL_ACTIVE) {
+            return false;
+        }
         if (!wheel_service_tuning_menu_available(&wheel_service) ||
             usb_xbox_gip_mode_code(board_identity.variant, wheel_mode) == 0) {
+            if (selected_base_mode == UINT8_MAX || selected_base_mode == 6) {
+                selected_base_mode = 0;
+                base_settings.operating_mode = 0;
+                base_settings.operating_mode_valid = true;
+                base_settings_persistence_mark_dirty(&settings_persistence);
+                save_base_settings();
+                xbox_mode_startup_finished = true;
+            }
             return false;
         }
         motor_command_application_init(&motor_command_channel.application);
@@ -1355,17 +1425,24 @@ static bool service_xbox_mode_startup(void) {
         const MotorCommandApplication *application =
             motor_command_channel_application(&motor_command_channel);
         synchronize_xbox_controls_with_profile();
-        (void)usb_device_set_xbox_mode(wheel_mode, application->digest);
+        if (usb_device_set_xbox_mode(wheel_mode, application->digest)) {
+            console_wheel_mode = wheel_mode;
+            selected_base_mode = 6;
+            base_settings.operating_mode = 6;
+            base_settings.operating_mode_valid = true;
+            base_settings_persistence_mark_dirty(&settings_persistence);
+            save_base_settings();
+        }
     }
     return false;
 }
 
 /**
- * @brief Selects PlayStation USB for a compatible attached-wheel mode.
+ * @brief Starts the selected PlayStation USB interface.
  *
- * Changes the base from its initial Fanatec interface to mode seven when the attached wheel reports
- * operating mode 2, 4, or 5. The change waits until the shared motor-command transport and its
- * retained response state are idle so the mode-exclusive workspace can change owners safely.
+ * Changes the base from its initial Fanatec interface when retained base mode two, four, or five is
+ * selected. The change waits until the shared motor-command transport and retained response state
+ * are idle, applies the matching PlayStation identity, and persists the active selection.
  *
  * @return True when PlayStation mode was selected; otherwise false.
  */
@@ -1374,15 +1451,64 @@ static bool service_playstation_mode_startup(void) {
         return false;
     }
 
-    uint8_t wheel_mode = wheel_service_mode(&wheel_service);
-    if (wheel_mode != 2 && wheel_mode != 4 && wheel_mode != 5) {
+    uint8_t base_mode = selected_base_mode;
+    if (base_mode != 2 && base_mode != 4 && base_mode != 5) {
         return false;
     }
     if (command_transport.phase != COMMAND_TRANSPORT_IDLE ||
         motor_command_channel.command_pending || usb_motor_vendor_service.response_active) {
         return false;
     }
-    return usb_device_set_playstation_mode();
+    if (!usb_device_set_playstation_wheel_mode(base_mode)) {
+        return false;
+    }
+    console_wheel_mode = base_mode;
+    selected_base_mode = base_mode;
+    base_settings.operating_mode = base_mode;
+    base_settings.operating_mode_valid = true;
+    base_settings_persistence_mark_dirty(&settings_persistence);
+    save_base_settings();
+    return true;
+}
+
+/**
+ * @brief Returns an invalid active console interface to native USB mode.
+ *
+ * Restarts Xbox startup when the attached-wheel mode changes. A PlayStation interface becomes stale
+ * when its retained base mode changes, while an Xbox interface becomes stale when its
+ * attached-wheel mode changes or loses Xbox support. The transition waits for all shared command
+ * state to become idle before restoring the native interface.
+ *
+ * @return True when a stale console interface was returned to native USB mode.
+ */
+static bool service_console_mode_transition(void) {
+    uint8_t wheel_mode = wheel_service_mode(&wheel_service);
+    if (wheel_mode != observed_wheel_mode) {
+        observed_wheel_mode = wheel_mode;
+        xbox_mode_startup_attempted = false;
+        xbox_mode_startup_finished = false;
+    }
+
+    UsbOperatingMode mode = usb_device_operating_mode();
+    uint8_t base_mode = selected_base_mode;
+    bool stale_playstation =
+        mode == USB_OPERATING_MODE_PLAYSTATION &&
+        ((base_mode != 2 && base_mode != 4 && base_mode != 5) || base_mode != console_wheel_mode);
+    bool stale_xbox = mode == USB_OPERATING_MODE_XBOX_GIP &&
+                      (usb_xbox_gip_mode_code(board_identity.variant, wheel_mode) == 0 ||
+                       wheel_mode != console_wheel_mode);
+    if (!stale_playstation && !stale_xbox) {
+        return false;
+    }
+    if (command_transport.phase != COMMAND_TRANSPORT_IDLE ||
+        motor_command_channel.command_pending || usb_motor_vendor_service.response_active ||
+        !usb_device_set_operating_mode(USB_OPERATING_MODE_FANATEC)) {
+        return false;
+    }
+    console_wheel_mode = UINT8_MAX;
+    xbox_mode_startup_attempted = false;
+    xbox_mode_startup_finished = false;
+    return true;
 }
 
 /**
@@ -1563,6 +1689,9 @@ static void prepare_usb_xbox_control_response(void) {
     case USB_XBOX_CONTROL_RESPONSE_CAPABILITIES:
         queued = usb_device_queue_xbox_capabilities();
         break;
+    case USB_XBOX_CONTROL_RESPONSE_SNAPSHOT:
+        queued = usb_device_queue_xbox_input(&xbox_input_snapshot);
+        break;
     case USB_XBOX_CONTROL_RESPONSE_EXTENDED_STATUS: {
         build_xbox_extended_status(&xbox_extended_status);
         queued = usb_device_queue_xbox_extended_status(&xbox_extended_status);
@@ -1575,7 +1704,10 @@ static void prepare_usb_xbox_control_response(void) {
         return;
     }
     if (queued) {
-        usb_xbox_control_response_pending = USB_XBOX_CONTROL_RESPONSE_NONE;
+        usb_xbox_control_response_pending =
+            usb_xbox_control_response_pending == USB_XBOX_CONTROL_RESPONSE_CAPABILITIES
+                ? USB_XBOX_CONTROL_RESPONSE_SNAPSHOT
+                : USB_XBOX_CONTROL_RESPONSE_NONE;
     }
 }
 
@@ -1602,6 +1734,32 @@ static void prepare_usb_xbox_vendor_response(void) {
         usb_vendor_response_kind = USB_VENDOR_RESPONSE_REMOTE_TUNING;
     }
     if (usb_device_queue_xbox_vendor_report(usb_vendor_response)) {
+        usb_vendor_response_kind = USB_VENDOR_RESPONSE_NONE;
+    }
+}
+
+/**
+ * @brief Publishes a pending remote-tuning report on PlayStation USB.
+ *
+ * Retains the 64-byte report until the PlayStation feature-report slot accepts it. Other vendor
+ * response owners remain undisturbed while their response is pending.
+ */
+static void prepare_usb_playstation_remote_tuning_response(void) {
+    if (usb_device_operating_mode() != USB_OPERATING_MODE_PLAYSTATION ||
+        (usb_vendor_response_kind != USB_VENDOR_RESPONSE_NONE &&
+         usb_vendor_response_kind != USB_VENDOR_RESPONSE_REMOTE_TUNING)) {
+        return;
+    }
+    if (usb_vendor_response_kind == USB_VENDOR_RESPONSE_NONE) {
+        if (!usb_remote_tuning_service_take_host_report(
+                &usb_remote_tuning_service, wheel_service_mode(&wheel_service),
+                USB_REMOTE_TUNING_HOST_PLAYSTATION, usb_vendor_response)) {
+            return;
+        }
+        usb_vendor_response_length = USB_REMOTE_TUNING_HOST_REPORT_SIZE;
+        usb_vendor_response_kind = USB_VENDOR_RESPONSE_REMOTE_TUNING;
+    }
+    if (usb_device_publish_playstation_remote_tuning_report(usb_vendor_response)) {
         usb_vendor_response_kind = USB_VENDOR_RESPONSE_NONE;
     }
 }
@@ -1751,12 +1909,17 @@ static void complete_usb_vendor_response(void) {
  *
  * Queues remote-tuning responses and telemetry for the attached wheel, forwards system display
  * states, polls attached-adapter state, batches generic tuning records, advances wheel-transfer and
- * mailbox requests, and selects the console interface at an idle transport boundary. Motor mailbox
- * and vendor-report work stop while PlayStation mode owns the shared workspace.
+ * mailbox requests, and applies the retained console-mode selection at an idle transport boundary.
+ * Motor mailbox and vendor-report work stop while PlayStation mode owns the shared workspace.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 static void service_usb_command_bridge(uint32_t now_ms) {
+    uint8_t remote_tuning_controls[REMOTE_TELEMETRY_REPORT_SIZE];
+    if (wheel_service_take_remote_tuning_controls(&wheel_service, remote_tuning_controls)) {
+        (void)usb_remote_tuning_service_queue_host_controls(&usb_remote_tuning_service,
+                                                            remote_tuning_controls);
+    }
     if (!wheel_service_remote_tuning_response_pending(&wheel_service) &&
         usb_remote_tuning_service_take_response(&usb_remote_tuning_service,
                                                 wheel_service_mode(&wheel_service),
@@ -1807,6 +1970,7 @@ static void service_usb_command_bridge(uint32_t now_ms) {
                                             wheel_command_batch_length);
     }
     wheel_command_forwarder_run(&wheel_command_forwarder, &command_transport);
+    (void)service_console_mode_transition();
     bool playstation_mode_selected = service_playstation_mode_startup();
     if (playstation_mode_selected) {
         initialize_playstation_services();
@@ -1820,6 +1984,7 @@ static void service_usb_command_bridge(uint32_t now_ms) {
         (void)motor_command_serial_submit(&command_transport, &serial_service, now_ms);
     }
     if (playstation_mode_active) {
+        prepare_usb_playstation_remote_tuning_response();
         return;
     }
 
@@ -2033,6 +2198,7 @@ static bool start_runtime_bridge(const UsbOperatingModeCommand *command) {
     }
     force_output_enabled = false;
     motor_output_report = (ForceOutputReport){0};
+    platform_cooling_set_duty(0, 0, true);
     apply_runtime_bridge_actions(
         runtime_bridge_start(&runtime_bridge, usb_runtime_transition.mode));
     return true;
@@ -2225,6 +2391,12 @@ static void service_force_feedback_script(uint32_t now_ms) {
 
     int32_t position = wheel_position_center(motor_position_report.wheel_position,
                                              base_settings.wheel_position.center);
+    uint16_t rotation_range = tuning_profile->rotation_degrees / 10u;
+    force_feedback_script_system.values.extended_rotation_range = rotation_range;
+    force_feedback_script_system.values.rotation_range_code =
+        tuning_profile->automatic_rotation ? 126u
+        : rotation_range > 125u            ? 127u
+                                           : (uint8_t)rotation_range;
     force_feedback_script_output_config = (ForceFeedbackScriptOutputConfig){
         .soft_stop = {.travel_limit = (int32_t)travel},
         .available_percent = cooling_controller.force_scale_percent,
@@ -2284,6 +2456,26 @@ static void publish_motor_calibration_event(void) {
 }
 
 /**
+ * @brief Refreshes motor tuning when its runtime context changes.
+ *
+ * Tracks Xbox operation and motor-calibration ownership, then reapplies the active tuning profile
+ * only when either context flag changes and motor tuning is available.
+ */
+static void refresh_motor_tuning_context(void) {
+    uint8_t xbox_mode = usb_device_operating_mode() == USB_OPERATING_MODE_XBOX_GIP;
+    uint8_t calibration_active = motor_calibration_service_pending(&motor_calibration_service);
+    if (motor_tuning_context.xbox_mode == xbox_mode &&
+        motor_tuning_context.calibration_active == calibration_active) {
+        return;
+    }
+    motor_tuning_context.xbox_mode = xbox_mode;
+    motor_tuning_context.calibration_active = calibration_active;
+    if (motor_tuning_ready) {
+        motor_tuning_service_refresh(&motor_tuning_service, tuning_profile, &motor_tuning_context);
+    }
+}
+
+/**
  * @brief Services motor discovery, configuration, telemetry, and status exchange.
  *
  * Initializes protocol-specific services after discovery, schedules calibration or normal bus
@@ -2304,6 +2496,7 @@ static void service_motor(void) {
         motor_command_request_pending = false;
     }
     if (motor_tuning_ready) {
+        refresh_motor_tuning_context();
         publish_motor_status_event();
         publish_motor_calibration_event();
         bool calibration_pending = motor_calibration_service_pending(&motor_calibration_service);
@@ -2321,6 +2514,7 @@ static void service_motor(void) {
         }
         publish_motor_status_event();
         publish_motor_calibration_event();
+        refresh_motor_tuning_context();
     }
 }
 
@@ -2503,6 +2697,10 @@ static void apply_fallback_command(const UsbFallbackCommand *command) {
         cooling_controller_apply_service_override(&cooling_controller, command->parameters[0],
                                                   command->parameters[1], command->parameters[2],
                                                   command->parameters[3]);
+        if (cooling_controller.automatic_control_suspended) {
+            platform_cooling_set_duty(cooling_controller.primary_duty_percent,
+                                      cooling_controller.secondary_duty_percent, false);
+        }
         break;
     case USB_FALLBACK_SECURITY_DISABLE:
         base_settings.security_code.enabled = false;
@@ -3147,6 +3345,7 @@ static void update_local_tuning_availability(void) {
         .pedal_connection = local_tuning_pedal_connection(pedal_state, pedal_interface_active,
                                                           wheel_protocol_active),
         .legacy_pedal_mode = pedal_state->legacy_calibration,
+        .motor_calibration_active = motor_calibration_service_pending(&motor_calibration_service),
         .primary_pedal_calibration_active = pedal_state->primary_calibration,
         .secondary_pedal_calibration_active = pedal_state->secondary_calibration,
         .multi_position_supported = wheel_service_multi_position_supported(&wheel_service),
@@ -3165,13 +3364,26 @@ static void update_local_tuning_availability(void) {
  */
 static void update_local_tuning_adjustment(void) {
     const PedalV3State *pedal_state = pedal_service_v3_state(&pedal_service);
+    if (wheel_service_mode(&wheel_service) == 0x09) {
+        TuningProfile *selected =
+            &base_settings.tuning_profiles.slots[base_settings.tuning_profiles.selected_slot];
+        if (selected->multi_position_mode == TUNING_MULTI_POSITION_ENCODER) {
+            selected->multi_position_mode = TUNING_MULTI_POSITION_PULSE;
+            if (base_settings.tuning_profiles.selected_slot ==
+                base_settings.tuning_profiles.active_slot) {
+                apply_active_tuning_profile();
+            }
+            base_settings_persistence_mark_dirty(&settings_persistence);
+        }
+    }
     tuning_adjustment = (TuningEntryAdjustmentContext){
         .security_code_active = security_code_update_state.active,
         .automatic_setup_selected = base_settings.tuning_profiles.selected_slot == 0,
         .alternate_brake_fine_step =
             (pedal_state->primary_calibration && !pedal_state->legacy_calibration) ||
             pedal_state->secondary_calibration,
-        .multi_position_automatic_available = wheel_service_mode(&wheel_service) == 0x09,
+        .multi_position_automatic_available = wheel_service_mode(&wheel_service) != 0x09,
+        .xbox_mode = usb_device_operating_mode() == USB_OPERATING_MODE_XBOX_GIP,
     };
 }
 
@@ -3206,6 +3418,11 @@ static void service_tuning_interaction(uint32_t now_ms) {
     const uint8_t *buttons = wheel_service_buttons(&wheel_service);
     const WheelAdapterInput *adapter = wheel_service_adapter(&wheel_service);
     bool available = wheel_service_input_snapshot(&wheel_service, &tuning_interaction_snapshot);
+    if (available) {
+        (void)usb_remote_tuning_service_update_legacy_encoder(
+            &usb_remote_tuning_service, wheel_service_mode(&wheel_service),
+            tuning_interaction_snapshot.packed_rotary_positions >> 4);
+    }
     security_code_input = (SecurityCodeInput){
         .wheel_mode = wheel_service_mode(&wheel_service),
         .primary_buttons = (uint16_t)buttons[0] | (uint16_t)buttons[1] << 8,
@@ -3258,6 +3475,23 @@ static void service_tuning_interaction(uint32_t now_ms) {
     TuningInteractionAction action =
         tuning_interaction_update(&tuning_interaction, &tuning_interaction_input, now_ms);
     apply_tuning_interaction_action(action);
+    bool profile_mode = tuning_interaction.phase == TUNING_INTERACTION_MENU_HELD;
+    if (available) {
+        (void)usb_remote_tuning_service_update_physical_selection(
+            &usb_remote_tuning_service, wheel_service_mode(&wheel_service), profile_mode,
+            wheel_service_tuning_display_supported(&wheel_service), adapter->connected,
+            tuning_interaction_snapshot.tuning_input,
+            tuning_interaction_snapshot.auxiliary_report[1]);
+        (void)usb_remote_tuning_service_update_setup_navigation(
+            &usb_remote_tuning_service, wheel_service_mode(&wheel_service), profile_mode,
+            tuning_interaction_snapshot.motion);
+    }
+    if (tuning_interaction.phase == TUNING_INTERACTION_CLOSING &&
+        previous_phase != TUNING_INTERACTION_CLOSING) {
+        pedal_service_request_configuration(&pedal_service, tuning_profile->alternate_brake_force,
+                                            true);
+        save_base_settings();
+    }
     if (tuning_interaction.phase != previous_phase) {
         local_display_tuning_revision++;
     }
@@ -3366,6 +3600,7 @@ static void service_usb_input(uint32_t now_ms) {
     fanatec_input_apply_multi_position_mode(&usb_input_state.fanatec, multi_position_mode);
     fanatec_input_apply_alternative_shifter(
         &usb_input_state.fanatec, wheel_service_alternative_shifter_enabled(&wheel_service));
+    wheel_multi_position_input = (WheelMultiPositionInput){0};
     if (!tuning_host_suppressed &&
         wheel_service_multi_position_input(&wheel_service, now_ms, &wheel_multi_position_input)) {
         fanatec_multi_position_input_state = (fanatec_multi_position_input){
@@ -3414,6 +3649,27 @@ static void service_usb_input(uint32_t now_ms) {
         usb_input_state.fanatec.pedals[axis] = pedal_input_hid_axis(pedal_input->axes[axis]);
     }
     usb_input_state.fanatec.auxiliary_pedal = pedal_input_hid_auxiliary(pedal_input->auxiliary);
+    const PedalV3State *pedal_status = pedal_service_v3_state(&pedal_service);
+    bool pedal_legacy = pedal_service_legacy_transport_active(&pedal_service);
+    bool pedal_auxiliary = (pedal_legacy || pedal_status->primary_calibration ||
+                            pedal_status->secondary_calibration) &&
+                           (pedal_status->connection_flags & 0xaau) == 0;
+    uint8_t legacy_pedal_first = 0;
+    uint8_t legacy_pedal_second = 0;
+    if (pedal_legacy) {
+        legacy_pedal_first = pedal_status->primary_calibration ? 4 : 0x3b;
+        legacy_pedal_second = pedal_status->primary_calibration ? 0x62 : 0x18;
+    } else if (pedal_status->primary_calibration) {
+        legacy_pedal_first = 5;
+        legacy_pedal_second = 0x62;
+    } else if (pedal_status->secondary_calibration) {
+        legacy_pedal_first = 6;
+        legacy_pedal_second = 0x62;
+    }
+    wheel_service_set_legacy_pedal_status(&wheel_service, legacy_pedal_first, legacy_pedal_second);
+    fanatec_input_apply_pedal_status(&usb_input_state.fanatec, pedal_legacy, pedal_auxiliary,
+                                     pedal_service_handshake_active(&pedal_service), false,
+                                     pedal_status->primary_calibration);
     const WheelAxisOverrides *axis_overrides = wheel_service_axis_overrides(&wheel_service);
     fanatec_input_apply_wheel_axis_overrides(&usb_input_state.fanatec, axis_overrides);
     if (usb_device_operating_mode() == USB_OPERATING_MODE_PLAYSTATION) {
@@ -3517,6 +3773,81 @@ static void service_usb_input(uint32_t now_ms) {
 }
 
 /**
+ * @brief Publishes the native USB feature-report snapshots.
+ *
+ * Encodes reports 31, 32, 33, and 36 from current system, tuning, wheel, pedal, shifter, and rotary
+ * state. Reading report 33 consumes the queued per-axis motion pulses represented by that snapshot.
+ */
+static void service_usb_feature_reports(void) {
+    const PedalV3State *pedal_status = pedal_service_v3_state(&pedal_service);
+    bool pedal_legacy = pedal_service_legacy_transport_active(&pedal_service);
+    bool pedal_io_active = (pedal_legacy || pedal_status->primary_calibration ||
+                            pedal_status->secondary_calibration) &&
+                           (pedal_status->connection_flags & 0xaau) == 0;
+    uint8_t pedal_active =
+        pedal_status->secondary_calibration
+            ? 0x10
+            : (uint8_t)((pedal_status->primary_calibration ? 2 : 0) | (pedal_legacy ? 1 : 0));
+    const WheelAccessory *accessory = wheel_accessory_service_identity(&wheel_accessory_service);
+    uint8_t rotary_mode =
+        wheel_service_multi_position_mode(&wheel_service, tuning_profile->multi_position_mode);
+    UsbFeatureReport31State report31 = {
+        .status = system_control_state.status_code,
+        .wheel_mode = wheel_service_mode(&wheel_service),
+        .pedal_active = pedal_active,
+        .auxiliary_profile = pedal_service.auxiliary_override_active,
+        .axis_modes = {(uint8_t)shifter_input.primary_mode, (uint8_t)shifter_input.secondary_mode},
+        .transfer_code = accessory != 0 ? wheel_accessory_transfer_code(accessory) : 0,
+        .rotary_mode = rotary_mode,
+        .pedal_legacy = pedal_legacy,
+        .pedal_io_active = pedal_io_active,
+        .pedal_handshake_active = pedal_service_handshake_active(&pedal_service),
+        .pedal_calibration_active = pedal_status->primary_calibration,
+        .wheel_calibration_available = wheel_service_calibration_available(&wheel_service),
+        .wheel_axis_report_enabled = wheel_service_axis_report_enabled(&wheel_service),
+        .adapter_connected = wheel_service_adapter_connected(&wheel_service),
+    };
+    usb_feature_report_31_encode(&report31, usb_feature_reports[0]);
+    usb_feature_report_32_encode(&base_settings.tuning_profiles, settings_persistence.dirty,
+                                 usb_feature_reports[1]);
+
+    WheelInputSnapshot snapshot = {0};
+    (void)wheel_service_input_snapshot(&wheel_service, &snapshot);
+    UsbFeatureReport33State report33 = {
+        .pulse_directions =
+            {
+                wheel_service_axis_motion_direction(&wheel_service, 0),
+                wheel_service_axis_motion_direction(&wheel_service, 1),
+                wheel_service_axis_motion_direction(&wheel_service, 2),
+                wheel_service_axis_motion_direction(&wheel_service, 3),
+            },
+        .extended_buttons = snapshot.auxiliary_report[2],
+        .auxiliary_buttons = {shifter_input.primary_transition, shifter_input.secondary_transition,
+                              snapshot.auxiliary_report[0]},
+        .rotary_mode = rotary_mode,
+        .remap_selectors = wheel_multi_position_input.remap_selectors,
+    };
+    for (uint8_t channel = 0; channel < WHEEL_MULTI_POSITION_CHANNEL_COUNT; channel++) {
+        report33.positions[channel] = wheel_multi_position_input.channels[channel].position;
+        report33.events[channel] = (int8_t)wheel_multi_position_input.channels[channel].event;
+    }
+    report33.tertiary_active = wheel_multi_position_input.channels[2].active;
+    usb_feature_report_33_encode(&report33, usb_feature_reports[2]);
+    usb_feature_report_36_encode((uint8_t)usb_tuning_menu_service.active_page,
+                                 usb_feature_reports[3]);
+    static const uint8_t report_ids[4] = {0x31, 0x32, 0x33, 0x36};
+    for (uint8_t index = 0; index < 4; index++) {
+        (void)usb_device_publish_feature_report(report_ids[index], usb_feature_reports[index],
+                                                USB_DEVICE_REPORT_SIZE);
+    }
+    if (usb_device_take_feature_report_request(0x33)) {
+        for (uint8_t axis = 0; axis < WHEEL_MOTION_AXIS_COUNT; axis++) {
+            (void)wheel_service_take_axis_motion(&wheel_service, axis);
+        }
+    }
+}
+
+/**
  * @brief Samples and publishes all base-side analog inputs.
  *
  * Updates cooling temperatures, pedal fallback samples, the local auxiliary override, and the
@@ -3555,10 +3886,14 @@ static void service_analog_input(uint32_t now_ms) {
                                          shifter_input.secondary_mode == SHIFTER_INPUT_H_PATTERN;
         bool calibration_start_allowed =
             h_pattern_input_available && wheel_startup_display_ready(&wheel_startup_display) &&
-            wheel_service_protocol_phase(&wheel_service) == WHEEL_PROTOCOL_ACTIVE;
-        (void)h_pattern_calibration_service_start_if_required(
-            &h_pattern_calibration_service, calibration_start_allowed,
-            base_settings.h_pattern_shifter.calibrated, wheel_service_mode(&wheel_service), now_ms);
+            wheel_service_protocol_phase(&wheel_service) == WHEEL_PROTOCOL_ACTIVE &&
+            shifter_display.refresh_requested;
+        if (h_pattern_calibration_service_start_if_required(
+                &h_pattern_calibration_service, calibration_start_allowed,
+                base_settings.h_pattern_shifter.calibrated, wheel_service_mode(&wheel_service),
+                now_ms)) {
+            shifter_display.refresh_requested = false;
+        }
         if (shifter_input.primary_mode == SHIFTER_INPUT_H_PATTERN) {
             lateral_position = analog_samples.primary_shifter_x;
             longitudinal_position = analog_samples.primary_shifter_y;
@@ -3689,6 +4024,8 @@ static void apply_force_output_prompt_action(ForceOutputEnableAction action) {
         if (system_event_queue_try_push(&system_event_queue, FORCE_OUTPUT_PROMPT_EVENT_CODE)) {
             system_control_state_set_active_event(&system_control_state,
                                                   FORCE_OUTPUT_PROMPT_EVENT_CODE);
+            (void)wheel_service_queue_tuning_display_notification(
+                &wheel_service, WHEEL_DISPLAY_ENABLE_TORQUE_PROMPT);
         }
         break;
     case FORCE_OUTPUT_ENABLE_ACTION_CANCEL_PROMPT:
@@ -3696,12 +4033,16 @@ static void apply_force_output_prompt_action(ForceOutputEnableAction action) {
                                         FORCE_OUTPUT_PROMPT_DISMISS_EVENT_CODE)) {
             system_control_state_set_active_event(&system_control_state,
                                                   SYSTEM_DISPLAY_DISMISS_EVENT_CODE);
+            (void)wheel_service_queue_tuning_display_notification(
+                &wheel_service, WHEEL_DISPLAY_ENABLE_TORQUE_CONFIRMED);
         }
         break;
     case FORCE_OUTPUT_ENABLE_ACTION_DISMISS_PROMPT:
         force_output_prompt_visible = false;
         system_control_state_set_active_event(&system_control_state,
                                               SYSTEM_DISPLAY_DISMISS_EVENT_CODE);
+        (void)wheel_service_queue_tuning_display_notification(
+            &wheel_service, WHEEL_DISPLAY_ENABLE_TORQUE_CONFIRMED);
         break;
     case FORCE_OUTPUT_ENABLE_ACTION_NONE:
         break;
@@ -3843,11 +4184,13 @@ static void service_local_display(void) {
                                     &local_display_rendered_system_information)));
     bool force_feedback_sampled = false;
     if (page == LOCAL_DISPLAY_PAGE_FORCE_FEEDBACK_ANALYSIS && page == local_display_page) {
-        uint8_t direction =
-            motor_position_ready && motor_position_report.auxiliary_negative ? 1 : 0;
-        uint16_t position = motor_position_ready ? motor_position_report.auxiliary_position : 0;
+        int32_t torque = motor_position_ready ? (int16_t)motor_position_report.motor_torque : 0;
+        uint32_t torque_limit =
+            board_identity.variant == BOARD_VARIANT_DD1 ? UINT32_C(20000) : UINT32_C(25000);
+        uint32_t magnitude = torque < 0 ? (uint32_t)-torque : (uint32_t)torque;
+        magnitude = magnitude >= torque_limit ? UINT16_MAX : magnitude * UINT16_MAX / torque_limit;
         force_feedback_sampled = display_force_feedback_analysis_page_update(
-            &local_display_force_feedback_analysis, now_ms, direction, position);
+            &local_display_force_feedback_analysis, now_ms, torque >= 0, (uint16_t)magnitude);
     }
     bool force_feedback_analysis_changed =
         page == LOCAL_DISPLAY_PAGE_FORCE_FEEDBACK_ANALYSIS && page == local_display_page &&
@@ -4217,6 +4560,7 @@ int main(void) {
     initialize_motor();
     initialize_force_feedback_script();
     initialize_startup_usb();
+    service_usb_feature_reports();
     usb_connection_monitor_init(&usb_connection_monitor);
     usb_host_capability_recovery_init(&usb_host_capability_recovery);
     for (;;) {
@@ -4225,13 +4569,13 @@ int main(void) {
         service_usb_output();
         platform_aux_bus_service();
         uint32_t now_ms = platform_time_ms();
+        service_power(now_ms);
+        service_power_torque_request();
         if (service_runtime_bridge(now_ms)) {
             continue;
         }
         service_playstation_authentication(now_ms);
         service_usb_host_capability_recovery(now_ms);
-        service_power(now_ms);
-        service_power_torque_request();
         service_system_events(now_ms);
         UsbConnectionAction usb_connection_action = usb_connection_monitor_update(
             &usb_connection_monitor, platform_usb_connected(),
@@ -4325,6 +4669,7 @@ int main(void) {
         service_wheel_compatibility_alert(now_ms);
         (void)wheel_service_update_display_overlay(&wheel_service, now_ms);
         service_usb_input(now_ms);
+        service_usb_feature_reports();
         service_motor();
         service_cooling(now_ms);
     }

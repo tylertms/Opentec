@@ -7,7 +7,7 @@
 
 static void test_selects_crc_modes(void) {
     for (uint8_t mode = 0; mode <= 0x1e; mode++) {
-        assert(wheel_packet_crc_applies(mode) == (mode == 6 || mode == 0x15 || mode == 0x18));
+        assert(wheel_packet_crc_applies(mode) == (mode == 6 || mode == 0x15));
     }
 }
 
@@ -94,29 +94,29 @@ static void test_averages_three_axis_control_samples(void) {
     WheelPacketCrcInput input = {0};
     wheel_packet_crc_filter_init(&filter);
 
-    input.controls[4] = 30;
-    input.controls[5] = 60;
-    wheel_packet_crc_smooth_axes(&filter, &input);
-    assert(input.controls[4] == 10);
-    assert(input.controls[5] == 20);
-
-    input.controls[4] = 30;
-    input.controls[5] = 90;
-    wheel_packet_crc_smooth_axes(&filter, &input);
-    assert(input.controls[4] == 20);
-    assert(input.controls[5] == 50);
-
-    input.controls[4] = 30;
-    input.controls[5] = 120;
-    wheel_packet_crc_smooth_axes(&filter, &input);
-    assert(input.controls[4] == 30);
-    assert(input.controls[5] == 90);
-
-    input.controls[4] = 15;
     input.controls[5] = 30;
+    input.controls[6] = 60;
     wheel_packet_crc_smooth_axes(&filter, &input);
-    assert(input.controls[4] == 25);
-    assert(input.controls[5] == 80);
+    assert(input.controls[5] == 10);
+    assert(input.controls[6] == 20);
+
+    input.controls[5] = 30;
+    input.controls[6] = 90;
+    wheel_packet_crc_smooth_axes(&filter, &input);
+    assert(input.controls[5] == 20);
+    assert(input.controls[6] == 50);
+
+    input.controls[5] = 30;
+    input.controls[6] = 120;
+    wheel_packet_crc_smooth_axes(&filter, &input);
+    assert(input.controls[5] == 30);
+    assert(input.controls[6] == 90);
+
+    input.controls[5] = 15;
+    input.controls[6] = 30;
+    wheel_packet_crc_smooth_axes(&filter, &input);
+    assert(input.controls[5] == 25);
+    assert(input.controls[6] == 80);
 }
 
 static void test_prepares_authenticated_podium_buttons(void) {

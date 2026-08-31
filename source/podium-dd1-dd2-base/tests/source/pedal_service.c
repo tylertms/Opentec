@@ -931,7 +931,7 @@ static void test_polls_legacy_pedal_channels(void) {
 
     const PedalInput *input = pedal_service_input(&service);
     assert(input->axes[0] == 0x5a00);
-    assert(input->axes[1] == 0xff00);
+    assert(input->axes[1] == UINT16_MAX);
     assert(input->axes[2] == 0);
     assert(input->auxiliary == 0x35);
     assert(service.connected);
@@ -1013,7 +1013,7 @@ static void test_selects_analog_input_after_discovery_timeout(void) {
     assert(input->axes[2] == 0);
 
     pedal_service_set_analog_samples(&service, samples);
-    assert(input->axes[0] == 45);
+    assert(input->axes[0] == 0);
 
     const uint16_t disconnected[PEDAL_INPUT_AXIS_COUNT] = {0, 0, 0};
     pedal_service_set_analog_samples(&service, disconnected);
@@ -1151,6 +1151,21 @@ static void test_applies_transport_specific_brake_indicator_selector(void) {
     assert(!pedal_service_legacy_transport_active(&service));
 }
 
+static void test_reports_v3_handshake_activity(void) {
+    PedalService service;
+    reset_link();
+    pedal_service_init(&service);
+
+    assert(!pedal_service_handshake_active(&service));
+    service.phase = PEDAL_SERVICE_V3_SWITCH_WAIT;
+    assert(pedal_service_handshake_active(&service));
+    service.phase = PEDAL_SERVICE_V3_STREAM;
+    service.startup_frame_count = 249;
+    assert(pedal_service_handshake_active(&service));
+    service.startup_frame_count = 250;
+    assert(!pedal_service_handshake_active(&service));
+}
+
 static void test_publishes_each_v3_alternate_brake_force_report_once(void) {
     PedalService service;
     reset_link();
@@ -1241,6 +1256,7 @@ int main(void) {
     test_selects_auxiliary_automatic_calibration_from_pedal_state();
     test_applies_pedal_protocol_commands();
     test_applies_transport_specific_brake_indicator_selector();
+    test_reports_v3_handshake_activity();
     test_publishes_each_v3_alternate_brake_force_report_once();
     test_restarts_pedal_discovery();
     return 0;

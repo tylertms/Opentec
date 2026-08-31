@@ -51,9 +51,8 @@ static void test_encodes_maximum_payload_packet(void) {
                                                sizeof(packet), &length));
     assert(length == sizeof(packet));
     assert(packet[1] == 0x03);
-    assert(packet[2] == 0xf2);
-    assert(packet[sizeof(packet) - 2] == 0x53);
-    assert(packet[sizeof(packet) - 1] == 0x83);
+    assert(packet[2] == 0xec);
+    assert(motor_command_packet_checksum_valid(packet, sizeof(packet)));
 }
 
 static void test_encodes_digest_request(void) {

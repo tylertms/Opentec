@@ -10,7 +10,7 @@ enum {
     TRANSFER_REQUEST_FINAL = 0x13,
     TRANSFER_REQUEST_SINGLE_HEADER_SIZE = 3,
     TRANSFER_REQUEST_FIRST_CAPACITY = 60,
-    TRANSFER_REQUEST_FINAL_CAPACITY = 62,
+    TRANSFER_REQUEST_FINAL_CAPACITY = 61,
 };
 
 /**
@@ -49,12 +49,14 @@ void usb_transfer_request_init(UsbTransferRequest *request) { *request = (UsbTra
  * @return True when the command selects a single, first, or final transfer form.
  */
 bool usb_transfer_request_apply(UsbTransferRequest *request, const UsbVendorCommand *command) {
-    if (request == NULL || command == NULL || command->kind != USB_VENDOR_COMMAND_TUNING_MENU ||
-        command->arguments == NULL || command->length == 0) {
+    if (request == NULL || command == NULL || command->arguments == NULL || command->length == 0 ||
+        (command->kind != USB_VENDOR_COMMAND_TUNING_MENU &&
+         command->kind != USB_VENDOR_COMMAND_TRANSFER_REQUEST)) {
         return false;
     }
 
-    uint8_t type = command->arguments[0];
+    bool direct = command->kind == USB_VENDOR_COMMAND_TRANSFER_REQUEST;
+    uint8_t type = direct ? command->opcode : command->arguments[0];
     if (type != TRANSFER_REQUEST_SINGLE && type != TRANSFER_REQUEST_FIRST &&
         type != TRANSFER_REQUEST_FINAL) {
         return false;
@@ -64,41 +66,47 @@ bool usb_transfer_request_apply(UsbTransferRequest *request, const UsbVendorComm
     }
 
     if (type == TRANSFER_REQUEST_SINGLE) {
-        if (command->length < 3) {
+        uint8_t length_index = direct ? 0 : 2;
+        if (command->length <= length_index) {
             return true;
         }
-        uint16_t declared = (uint16_t)command->arguments[2] + TRANSFER_REQUEST_SINGLE_HEADER_SIZE;
-        uint8_t available = (uint8_t)(command->length - 2u);
+        uint16_t declared =
+            (uint16_t)command->arguments[length_index] + TRANSFER_REQUEST_SINGLE_HEADER_SIZE;
+        uint8_t available = (uint8_t)(command->length - length_index);
         if (declared > USB_TRANSFER_REQUEST_PAYLOAD_CAPACITY || declared > available) {
             return true;
         }
         uint8_t length = (uint8_t)declared;
-        memcpy(request->payload.data, command->arguments + 2, length);
+        memcpy(request->payload.data, command->arguments + length_index, length);
         request->payload.length = length;
         request->ready = true;
         return true;
     }
 
     if (type == TRANSFER_REQUEST_FIRST) {
-        if (command->length < 3) {
+        uint8_t length_index = direct ? 0 : 1;
+        if (command->length < (uint8_t)(length_index + 2u)) {
             return true;
         }
-        uint16_t declared = (uint16_t)command->arguments[1] << 8 | command->arguments[2];
+        uint16_t declared =
+            (uint16_t)command->arguments[length_index] << 8 | command->arguments[length_index + 1u];
         if (declared > USB_TRANSFER_REQUEST_PAYLOAD_CAPACITY) {
             return true;
         }
         request->payload.length = (uint8_t)declared;
         request->cursor = 0;
         request->active = true;
-        uint8_t available = (uint8_t)(command->length - 3u);
+        uint8_t data_index = (uint8_t)(length_index + 2u);
+        uint8_t available = (uint8_t)(command->length - data_index);
         uint8_t length =
             fragment_length(request->payload.length, available, TRANSFER_REQUEST_FIRST_CAPACITY);
-        memcpy(request->payload.data, command->arguments + 3, length);
+        memcpy(request->payload.data, command->arguments + data_index, length);
         request->cursor = length;
         return true;
     }
 
-    if (!request->active || command->length < 2) {
+    uint8_t data_index = direct ? 1 : 2;
+    if (!request->active || command->length <= data_index) {
         return true;
     }
     if (request->cursor >= request->payload.length) {
@@ -106,9 +114,9 @@ bool usb_transfer_request_apply(UsbTransferRequest *request, const UsbVendorComm
         return true;
     }
     uint8_t remaining = (uint8_t)(request->payload.length - request->cursor);
-    uint8_t available = (uint8_t)(command->length - 2u);
+    uint8_t available = (uint8_t)(command->length - data_index);
     uint8_t length = fragment_length(remaining, available, TRANSFER_REQUEST_FINAL_CAPACITY);
-    memcpy(request->payload.data + request->cursor, command->arguments + 2, length);
+    memcpy(request->payload.data + request->cursor, command->arguments + data_index, length);
     request->cursor = (uint8_t)(request->cursor + length);
     if (request->cursor == request->payload.length) {
         request->active = false;

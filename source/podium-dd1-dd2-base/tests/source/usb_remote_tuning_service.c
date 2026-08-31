@@ -350,7 +350,7 @@ static void converts_local_records_to_wheel_telemetry(void) {
     assert(!usb_remote_tuning_service_take_telemetry_report(&service, 1, wheel_report));
 }
 
-static void retains_local_records_in_extended_mode(void) {
+static void processes_valid_local_records_in_extended_mode(void) {
     UsbRemoteTuningService service;
     usb_remote_tuning_service_init(&service);
     uint8_t arguments[] = {1, 2, 0, 1, 0, 2, 123, 0};
@@ -361,7 +361,23 @@ static void retains_local_records_in_extended_mode(void) {
     uint8_t report[REMOTE_TELEMETRY_REPORT_SIZE];
     assert(!usb_remote_tuning_service_take_telemetry_report(
         &service, WHEEL_MODE_REMOTE_TUNING_EXTENDED, report));
+    assert(service.records.count == 0);
+}
+
+static void retains_invalid_local_records_in_extended_mode(void) {
+    UsbRemoteTuningService service;
+    usb_remote_tuning_service_init(&service);
+    service.refresh_requested = true;
+    uint8_t arguments[] = {1, 2, 0, 0, 0, 0};
+    UsbVendorCommand command = command_for(arguments, sizeof(arguments));
+    assert(usb_remote_tuning_service_apply(&service, &command, 100,
+                                           WHEEL_MODE_REMOTE_TUNING_EXTENDED, true, false));
+
+    uint8_t report[REMOTE_TELEMETRY_REPORT_SIZE];
+    assert(!usb_remote_tuning_service_take_telemetry_report(
+        &service, WHEEL_MODE_REMOTE_TUNING_EXTENDED, report));
     assert(service.records.count == 1);
+    assert(!service.refresh_requested);
 }
 
 static void forwards_adapter_host_controls(void) {
@@ -381,6 +397,84 @@ static void forwards_adapter_host_controls(void) {
                   REMOTE_TELEMETRY_SUBSCRIPTION_SIZE) == 0);
 }
 
+static void selects_telemetry_from_physical_controls(void) {
+    UsbRemoteTuningService service;
+    usb_remote_tuning_service_init(&service);
+    service.active = true;
+
+    assert(
+        usb_remote_tuning_service_update_physical_selection(&service, 1, true, true, false, 1, 0));
+    assert(service.telemetry.metric == REMOTE_TELEMETRY_SPEED);
+    assert(
+        !usb_remote_tuning_service_update_physical_selection(&service, 1, true, true, false, 1, 0));
+    assert(
+        usb_remote_tuning_service_update_physical_selection(&service, 1, true, true, false, -1, 0));
+    assert(service.telemetry.metric == REMOTE_TELEMETRY_NONE);
+
+    usb_remote_tuning_service_init(&service);
+    service.active = true;
+    assert(!usb_remote_tuning_service_update_physical_selection(&service, 0x10, true, true, false,
+                                                                0, 0x04));
+    assert(service.physical_input_released);
+    assert(usb_remote_tuning_service_update_physical_selection(&service, 0x10, true, true, false, 0,
+                                                               0x04));
+    assert(service.telemetry.metric == REMOTE_TELEMETRY_SPEED);
+    assert(!usb_remote_tuning_service_update_physical_selection(&service, 0x10, true, true, false,
+                                                                0, 0x04));
+    assert(!usb_remote_tuning_service_update_physical_selection(&service, 0x10, true, true, false,
+                                                                0, 0));
+    assert(service.physical_input_released);
+    assert(usb_remote_tuning_service_update_physical_selection(&service, 0x10, true, true, false, 0,
+                                                               0x02));
+    assert(service.telemetry.metric == REMOTE_TELEMETRY_NONE);
+
+    service.active = false;
+    service.telemetry.metric = REMOTE_TELEMETRY_SPEED;
+    assert(
+        usb_remote_tuning_service_update_physical_selection(&service, 1, false, true, false, 0, 0));
+    assert(service.telemetry.metric == REMOTE_TELEMETRY_NONE);
+}
+
+static void advances_legacy_encoder_from_rotary_position(void) {
+    UsbRemoteTuningService service;
+    usb_remote_tuning_service_init(&service);
+    service.active = true;
+    service.encoder_counter = 1;
+    assert(!usb_remote_tuning_service_update_legacy_encoder(&service,
+                                                            WHEEL_MODE_REMOTE_TUNING_LEGACY, 12));
+    assert(usb_remote_tuning_service_update_legacy_encoder(&service,
+                                                           WHEEL_MODE_REMOTE_TUNING_LEGACY, 1));
+    assert(service.encoder_selection == 2);
+    assert(service.pending_response.code == REMOTE_TUNING_RESPONSE_SETUP);
+    assert(service.pending_response.value == 2);
+    assert(usb_remote_tuning_service_update_legacy_encoder(&service,
+                                                           WHEEL_MODE_REMOTE_TUNING_LEGACY, 12));
+    assert(service.encoder_selection == 1);
+}
+
+static void navigates_all_six_extended_setup_pages(void) {
+    UsbRemoteTuningService service;
+    usb_remote_tuning_service_init(&service);
+    assert(usb_remote_tuning_service_update_setup_navigation(
+        &service, WHEEL_MODE_REMOTE_TUNING_EXTENDED, true, 0x10));
+    assert(service.setup_page == 1);
+    assert(service.pending_response.code == REMOTE_TUNING_RESPONSE_NEXT_SETUP_PAGE);
+    assert(service.pending_response.value == 1);
+    assert(!usb_remote_tuning_service_update_setup_navigation(
+        &service, WHEEL_MODE_REMOTE_TUNING_EXTENDED, true, 0x10));
+    assert(!usb_remote_tuning_service_update_setup_navigation(
+        &service, WHEEL_MODE_REMOTE_TUNING_EXTENDED, true, 0x30));
+    assert(usb_remote_tuning_service_update_setup_navigation(
+        &service, WHEEL_MODE_REMOTE_TUNING_EXTENDED, true, 0x10));
+    assert(service.setup_page == 2);
+    assert(!usb_remote_tuning_service_update_setup_navigation(
+        &service, WHEEL_MODE_REMOTE_TUNING_EXTENDED, true, 0x30));
+    assert(usb_remote_tuning_service_update_setup_navigation(
+        &service, WHEEL_MODE_REMOTE_TUNING_EXTENDED, true, 0x20));
+    assert(service.setup_page == 1);
+    assert(!usb_remote_tuning_service_update_setup_navigation(&service, 1, true, 0x10));
+}
+
 int main(void) {
     retains_records_and_extends_the_session();
     applies_active_state_and_routes_responses();
@@ -394,7 +488,11 @@ int main(void) {
     selects_telemetry_and_frames_host_records();
     clears_selected_telemetry();
     converts_local_records_to_wheel_telemetry();
-    retains_local_records_in_extended_mode();
+    processes_valid_local_records_in_extended_mode();
+    retains_invalid_local_records_in_extended_mode();
     forwards_adapter_host_controls();
+    selects_telemetry_from_physical_controls();
+    advances_legacy_encoder_from_rotary_position();
+    navigates_all_six_extended_setup_pages();
     return 0;
 }

@@ -391,7 +391,7 @@ static void test_multiplexes_crc_packet_axes(void) {
     assert(processor.multiplex_phase == WHEEL_AXIS_MULTIPLEX_X);
     assert(axes[0] == 0x11);
     process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 6, 0, 0, controls, axes);
-    assert(axes[0] == 0x70);
+    assert(axes[0] == 0x10);
 
     controls[5] = UINT8_MAX;
     process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 6, 0, 0, controls, axes);

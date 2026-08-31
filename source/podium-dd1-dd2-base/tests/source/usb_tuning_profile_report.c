@@ -61,6 +61,20 @@ static void test_rejects_null_inputs(void) {
     assert(!usb_tuning_profile_report_decode(input, NULL));
 }
 
+static void test_ignores_invalid_values(void) {
+    TuningProfile expected;
+    TuningProfile actual;
+    uint8_t input[USB_TUNING_PROFILE_VALUE_COUNT];
+    tuning_profile_defaults(&expected);
+    actual = expected;
+    memset(input, UINT8_MAX, sizeof(input));
+    input[0] = 127;
+
+    assert(usb_tuning_profile_report_decode(input, &actual));
+
+    assert(memcmp(&actual, &expected, sizeof(expected)) == 0);
+}
+
 static void test_encodes_profile_response(void) {
     TuningProfileBank bank;
     uint8_t output[USB_DEVICE_REPORT_SIZE];
@@ -89,6 +103,7 @@ int main(void) {
     test_round_trips_manual_rotation();
     test_automatic_rotation_keeps_concrete_range();
     test_rejects_null_inputs();
+    test_ignores_invalid_values();
     test_encodes_profile_response();
     return 0;
 }

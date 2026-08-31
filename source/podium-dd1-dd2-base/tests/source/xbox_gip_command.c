@@ -39,11 +39,11 @@ static void test_decodes_control_commands(void) {
 
 static void test_normalizes_control_values(void) {
     assert(usb_xbox_gip_steering_range_normalize(0) == 90);
-    assert(usb_xbox_gip_steering_range_normalize(89) == 90);
-    assert(usb_xbox_gip_steering_range_normalize(90) == 90);
-    assert(usb_xbox_gip_steering_range_normalize(109) == 100);
-    assert(usb_xbox_gip_steering_range_normalize(1080) == 1080);
-    assert(usb_xbox_gip_steering_range_normalize(1081) == 1080);
+    assert(usb_xbox_gip_steering_range_normalize(899) == 90);
+    assert(usb_xbox_gip_steering_range_normalize(900) == 90);
+    assert(usb_xbox_gip_steering_range_normalize(1099) == 100);
+    assert(usb_xbox_gip_steering_range_normalize(10800) == 1080);
+    assert(usb_xbox_gip_steering_range_normalize(UINT16_MAX) == 1080);
 
     assert(usb_xbox_gip_force_feedback_strength_normalize(0) == 0);
     assert(usb_xbox_gip_force_feedback_strength_normalize(1) == 0);

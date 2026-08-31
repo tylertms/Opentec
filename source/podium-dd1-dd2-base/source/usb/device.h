@@ -50,10 +50,13 @@ UsbInputReportMode usb_device_input_mode(void);
 bool usb_device_set_operating_mode(UsbOperatingMode mode);
 bool usb_device_set_xbox_mode(uint8_t wheel_mode, const uint8_t digest[USB_XBOX_GIP_DIGEST_SIZE]);
 bool usb_device_set_playstation_mode(void);
+bool usb_device_set_playstation_wheel_mode(uint8_t wheel_mode);
 UsbOperatingMode usb_device_operating_mode(void);
 void usb_device_service(void);
 bool usb_device_configured(void);
 bool usb_device_take_output(UsbDeviceOutputReport *report);
+bool usb_device_publish_feature_report(uint8_t report_id, const uint8_t *report, uint8_t length);
+bool usb_device_take_feature_report_request(uint8_t report_id);
 bool usb_device_send_input(const uint8_t *report, uint8_t length);
 bool usb_device_queue_xbox_input(const UsbXboxGipInputSnapshot *snapshot);
 bool usb_device_queue_xbox_capabilities(void);
@@ -72,6 +75,8 @@ bool usb_device_publish_playstation_authentication_response(const uint8_t *respo
                                                             uint16_t response_length);
 bool usb_device_playstation_authentication_response_active(void);
 void usb_device_fail_playstation_authentication(void);
+bool usb_device_publish_playstation_remote_tuning_report(
+    const uint8_t report[USB_DEVICE_REPORT_SIZE]);
 bool usb_device_send_playstation_input(const UsbPlaystationInputState *state);
 
 #endif

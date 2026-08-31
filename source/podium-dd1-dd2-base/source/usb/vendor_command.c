@@ -68,6 +68,10 @@ static int8_t command_kind(uint8_t opcode, const uint8_t *payload, uint8_t lengt
             }
         }
         return -1;
+    case 0x10:
+    case 0x11:
+    case 0x13:
+        return USB_VENDOR_COMMAND_TRANSFER_REQUEST;
     case 0xff:
         return USB_VENDOR_COMMAND_EXTENDED;
     default:

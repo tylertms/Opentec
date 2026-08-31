@@ -121,8 +121,8 @@ void motor_command_channel_reset(MotorCommandChannel *channel) {
 /**
  * @brief Queues an application request on the motor-command channel.
  *
- * Retains the payload for resend handling, advances the transmit sequence, and frames the request
- * against the most recently accepted receive sequence.
+ * Retains the payload for resend handling, frames the request with the current transmit sequence
+ * and most recently accepted receive sequence, then advances the sequence for the next request.
  *
  * @param[in,out] channel Active motor-command channel.
  * @param[in] payload Application request bytes.
@@ -138,13 +138,13 @@ bool motor_command_channel_queue_payload(MotorCommandChannel *channel, const uin
         return false;
     }
     memmove(channel->buffers.pending_payload, payload, payload_length);
-    motor_command_sequence_advance(&channel->receiver.sequence);
     if (!motor_command_packet_payload_encode(
             0, channel->receiver.sequence.transmit, channel->receiver.sequence.receive_previous,
             channel->buffers.pending_payload, payload_length, channel->buffers.transmit,
             channel->buffers.transmit_capacity, &channel->transmit_length)) {
         return false;
     }
+    motor_command_sequence_advance(&channel->receiver.sequence);
     channel->pending_payload_length = payload_length;
     channel->command_pending = true;
     return true;
@@ -210,8 +210,9 @@ bool motor_command_channel_queue_information_request(MotorCommandChannel *channe
  * @brief Accepts one motor-command protocol packet.
  *
  * Applies sequence and fragment handling, rebuilds retained requests for resend or retry, emits
- * acknowledgement or retry control, and routes complete application messages into accumulated
- * information and digest state.
+ * acknowledgement or retry control, and validates complete application messages before releasing
+ * the pending command. Valid messages update accumulated information and digest state; invalid
+ * messages retain the command and request a retry.
  *
  * @param[in,out] channel Active motor-command channel.
  * @param[in] packet Received motor-command packet.
@@ -256,16 +257,31 @@ MotorCommandChannelEvent motor_command_channel_accept(MotorCommandChannel *chann
         return event;
     }
 
+    MotorCommandApplicationEvent application = {0};
+    if (receive.result == MOTOR_COMMAND_RECEIVE_MESSAGE) {
+        if (!motor_command_message_decode(receive.payload, receive.payload_length,
+                                          &channel->message)) {
+            if (build_control(channel, true)) {
+                event = write_event(channel);
+                event.receive_result = MOTOR_COMMAND_RECEIVE_INVALID;
+            }
+            return event;
+        }
+        application = motor_command_application_apply(&channel->application, &channel->message);
+        if (application.result == MOTOR_COMMAND_APPLICATION_INVALID) {
+            if (build_control(channel, true)) {
+                event = write_event(channel);
+                event.receive_result = MOTOR_COMMAND_RECEIVE_INVALID;
+            }
+            return event;
+        }
+    }
     channel->command_pending = false;
     channel->pending_payload_length = 0;
     if (build_control(channel, false)) {
         event = write_event(channel);
         event.receive_result = receive.result;
-    }
-    if (receive.result == MOTOR_COMMAND_RECEIVE_MESSAGE &&
-        motor_command_message_decode(receive.payload, receive.payload_length, &channel->message)) {
-        event.application =
-            motor_command_application_apply(&channel->application, &channel->message);
+        event.application = application;
     }
     return event;
 }

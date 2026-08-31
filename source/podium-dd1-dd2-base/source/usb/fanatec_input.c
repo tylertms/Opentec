@@ -86,6 +86,14 @@ void fanatec_input_apply_wheel_accessory(fanatec_input_state *state, uint8_t fla
     state->accessory[4] = (uint8_t)((state->accessory[4] & 0xf0u) | (flags & 0x0fu));
 }
 
+/**
+ * @brief Applies alternative-shifter status to the Fanatec input state.
+ *
+ * Replaces bit seven of the final accessory byte while preserving all other accessory flags.
+ *
+ * @param[in,out] state Input report state to update.
+ * @param[in] enabled True while alternative-shifter mode is active.
+ */
 void fanatec_input_apply_alternative_shifter(fanatec_input_state *state, bool enabled) {
     if (enabled) {
         state->accessory[4] |= 0x80u;
@@ -242,6 +250,36 @@ void fanatec_input_apply_shifter(fanatec_input_state *state, const ShifterInputS
 void fanatec_input_apply_thermal_limit(fanatec_input_state *state, bool active) {
     state->status_flags = (uint8_t)((state->status_flags & (uint8_t)~STATUS_THERMAL_EFFECT_LIMIT) |
                                     (active ? STATUS_THERMAL_EFFECT_LIMIT : 0));
+}
+
+/**
+ * @brief Applies pedal transport status to the Fanatec input state.
+ *
+ * Replaces status bits one through five with the current legacy, auxiliary, handshake, resistance,
+ * and calibration states while preserving every unrelated status bit.
+ *
+ * @param[in,out] state Input report state to update.
+ * @param[in] legacy True while legacy pedal transport is active.
+ * @param[in] auxiliary True while the auxiliary pedal profile is active.
+ * @param[in] handshake True while the modern pedal startup handshake is active.
+ * @param[in] resistance True while pedal resistance adjustment is active.
+ * @param[in] calibration True while pedal calibration is active.
+ */
+void fanatec_input_apply_pedal_status(fanatec_input_state *state, bool legacy, bool auxiliary,
+                                      bool handshake, bool resistance, bool calibration) {
+    enum {
+        PEDAL_LEGACY = 1u << 1,
+        PEDAL_AUXILIARY = 1u << 2,
+        PEDAL_HANDSHAKE = 1u << 3,
+        PEDAL_RESISTANCE = 1u << 4,
+        PEDAL_CALIBRATION = 1u << 5,
+        PEDAL_MASK =
+            PEDAL_LEGACY | PEDAL_AUXILIARY | PEDAL_HANDSHAKE | PEDAL_RESISTANCE | PEDAL_CALIBRATION,
+    };
+    uint8_t status = (legacy ? PEDAL_LEGACY : 0) | (auxiliary ? PEDAL_AUXILIARY : 0) |
+                     (handshake ? PEDAL_HANDSHAKE : 0) | (resistance ? PEDAL_RESISTANCE : 0) |
+                     (calibration ? PEDAL_CALIBRATION : 0);
+    state->status_flags = (uint8_t)((state->status_flags & (uint8_t)~PEDAL_MASK) | status);
 }
 
 /**

@@ -19,6 +19,8 @@ bool usb_fallback_tuning_range_allowed(const TuningProfile *profile) {
 /**
  * @brief Constrains an official fallback setting to its supported maximum.
  *
+ * Preserves values within the inclusive range from zero through the supplied maximum.
+ *
  * @param[in] value Requested unsigned setting.
  * @param[in] maximum Highest accepted setting.
  * @return Requested value or the supported maximum.

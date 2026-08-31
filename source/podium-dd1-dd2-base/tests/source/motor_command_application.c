@@ -44,7 +44,7 @@ static void test_derives_calibration_digest(void) {
 
 static void test_exposes_forwarded_responses(void) {
     static const uint8_t information_payload[25] = {0x85, 0, 2, 0, 20};
-    static const uint8_t vendor_data[] = {0xc1, 0x12, 0x34};
+    static const uint8_t vendor_data[] = {0xc2, 0x12, 0x34};
     MotorCommandApplication application;
     motor_command_application_init(&application);
     MotorCommandMessage message = {

@@ -56,6 +56,7 @@ base_sources = files(
   'source/force_feedback/filter.c',
   'source/force_feedback/soft_stop.c',
   'source/usb/fanatec_input.c',
+  'source/usb/feature_report.c',
   'source/usb/fanatec_encoder.c',
   'source/usb/input_report.c',
   'source/usb/compatibility_report_descriptor.c',
@@ -288,6 +289,7 @@ if base_is_dspic
     include_directories: [base_include, base_common_include],
     link_args: common_device_args + [
       '-mtext=application',
+      '-Wl,--gc-sections',
       '-Wl,--script=' + firmware_linker_script.full_path(),
     ],
     link_depends: firmware_linker_script,

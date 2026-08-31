@@ -40,11 +40,44 @@ static uint8_t encode_rotation(const TuningProfile *profile) {
  * @param[in,out] profile Logical tuning profile to update.
  */
 static void decode_rotation(uint8_t value, TuningProfile *profile) {
-    profile->automatic_rotation = value == AUTOMATIC_ROTATION_CODE;
-    if (!profile->automatic_rotation) {
-        profile->rotation_degrees =
-            (uint16_t)((int16_t)(int8_t)value + ROTATION_ENCODING_BIAS) * ROTATION_UNIT_DEGREES;
+    if (value == AUTOMATIC_ROTATION_CODE) {
+        profile->automatic_rotation = 1;
+        return;
     }
+    uint16_t degrees =
+        (uint16_t)((int16_t)(int8_t)value + ROTATION_ENCODING_BIAS) * ROTATION_UNIT_DEGREES;
+    if (degrees >= TUNING_ROTATION_MIN_DEGREES && degrees <= TUNING_ROTATION_MAX_DEGREES) {
+        profile->automatic_rotation = 0;
+        profile->rotation_degrees = degrees;
+    }
+}
+
+/**
+ * @brief Retains a bounded tuning value.
+ *
+ * Accepts the candidate only when it lies within the inclusive range.
+ *
+ * @param[in] value Candidate encoded value.
+ * @param[in] current Current value retained on rejection.
+ * @param[in] minimum Inclusive minimum.
+ * @param[in] maximum Inclusive maximum.
+ * @return Accepted candidate or the current value when out of range.
+ */
+static uint8_t retain_range(uint8_t value, uint8_t current, uint8_t minimum, uint8_t maximum) {
+    return value >= minimum && value <= maximum ? value : current;
+}
+
+/**
+ * @brief Retains an encoded Boolean tuning value.
+ *
+ * Accepts zero or one and preserves the current value for every other encoding.
+ *
+ * @param[in] value Candidate encoded Boolean.
+ * @param[in] current Current value retained on rejection.
+ * @return Accepted candidate or the current value when invalid.
+ */
+static uint8_t retain_boolean(uint8_t value, uint8_t current) {
+    return value <= 1 ? value : current;
 }
 
 /**
@@ -65,31 +98,48 @@ bool usb_tuning_profile_report_decode(const uint8_t input[USB_TUNING_PROFILE_VAL
     }
 
     decode_rotation(input[0], profile);
-    profile->force_feedback_strength = input[1];
-    profile->vibration_strength = input[2];
-    profile->brake_indicator_level = input[3];
-    profile->force_scale = (TuningForceScale)input[4];
-    profile->steering_deadzone = input[5];
-    profile->drift_compensation = input[6];
-    profile->force_effect_strength = input[7];
-    profile->spring_effect_strength = input[8];
-    profile->damper_effect_strength = input[9];
-    profile->natural_damper = input[10];
-    profile->natural_friction = input[11];
-    profile->brake_force = input[12];
-    profile->alternate_brake_force = input[13];
-    profile->force_effect_intensity = input[14];
-    profile->multi_position_mode = (TuningMultiPositionMode)input[15];
-    profile->paddle_mode = (TuningPaddleMode)input[16];
-    profile->interpolation_filter = input[17];
-    profile->natural_inertia = input[18];
-    profile->full_force_enabled = input[19];
-    profile->button_illumination_enabled = input[20];
-    profile->display_rotation_enabled = input[21];
-    profile->brake_pedal_curve = (TuningPedalCurve)input[22];
-    profile->clutch_pedal_curve = (TuningPedalCurve)input[23];
-    profile->throttle_pedal_curve = (TuningPedalCurve)input[24];
-    tuning_profile_normalize(profile);
+    profile->force_feedback_strength =
+        input[1] <= 101 ? input[1] : profile->force_feedback_strength;
+    profile->vibration_strength = retain_range(input[2], profile->vibration_strength, 0, 10);
+    profile->brake_indicator_level = retain_range(input[3], profile->brake_indicator_level, 1, 101);
+    profile->force_scale =
+        (TuningForceScale)retain_range(input[4], (uint8_t)profile->force_scale,
+                                       TUNING_FORCE_SCALE_LINEAR, TUNING_FORCE_SCALE_PEAK);
+    profile->steering_deadzone = retain_range(input[5], profile->steering_deadzone, 0, 10);
+    profile->drift_compensation = retain_boolean(input[6], profile->drift_compensation);
+    profile->force_effect_strength = retain_range(input[7], profile->force_effect_strength, 0, 12);
+    profile->spring_effect_strength =
+        retain_range(input[8], profile->spring_effect_strength, 0, 12);
+    profile->damper_effect_strength =
+        retain_range(input[9], profile->damper_effect_strength, 0, 12);
+    profile->natural_damper = retain_range(input[10], profile->natural_damper, 0, 100);
+    profile->natural_friction = retain_range(input[11], profile->natural_friction, 0, 100);
+    profile->brake_force = retain_range(input[12], profile->brake_force, 0, 100);
+    profile->alternate_brake_force =
+        retain_range(input[13], profile->alternate_brake_force, 0, 100);
+    profile->force_effect_intensity =
+        retain_range(input[14], profile->force_effect_intensity, 0, 100);
+    profile->multi_position_mode = (TuningMultiPositionMode)retain_range(
+        input[15], (uint8_t)profile->multi_position_mode, TUNING_MULTI_POSITION_ENCODER,
+        TUNING_MULTI_POSITION_AUTOMATIC);
+    profile->paddle_mode = (TuningPaddleMode)retain_range(input[16], (uint8_t)profile->paddle_mode,
+                                                          TUNING_CLUTCH_BRAKE, TUNING_DUAL_ANALOG);
+    profile->interpolation_filter = retain_range(input[17], profile->interpolation_filter, 0, 20);
+    profile->natural_inertia = retain_range(input[18], profile->natural_inertia, 0, 100);
+    profile->full_force_enabled = retain_boolean(input[19], profile->full_force_enabled);
+    profile->button_illumination_enabled =
+        retain_boolean(input[20], profile->button_illumination_enabled);
+    profile->display_rotation_enabled =
+        retain_boolean(input[21], profile->display_rotation_enabled);
+    profile->brake_pedal_curve =
+        (TuningPedalCurve)retain_range(input[22], (uint8_t)profile->brake_pedal_curve,
+                                       TUNING_PEDAL_CURVE_ONE, TUNING_PEDAL_CURVE_DEGREES);
+    profile->clutch_pedal_curve =
+        (TuningPedalCurve)retain_range(input[23], (uint8_t)profile->clutch_pedal_curve,
+                                       TUNING_PEDAL_CURVE_ONE, TUNING_PEDAL_CURVE_DEGREES);
+    profile->throttle_pedal_curve =
+        (TuningPedalCurve)retain_range(input[24], (uint8_t)profile->throttle_pedal_curve,
+                                       TUNING_PEDAL_CURVE_ONE, TUNING_PEDAL_CURVE_DEGREES);
     return true;
 }
 

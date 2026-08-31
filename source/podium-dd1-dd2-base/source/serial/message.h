@@ -7,7 +7,7 @@
 #include "serial/packet.h"
 
 enum {
-    SERIAL_MESSAGE_MAX_SIZE = 512,
+    SERIAL_MESSAGE_MAX_SIZE = 515,
     SERIAL_MESSAGE_FIRST_TYPE = 2,
     SERIAL_MESSAGE_LAST_TYPE = 5,
 };
@@ -32,7 +32,8 @@ bool serial_message_fragment_encode(uint8_t type, uint8_t sequence, const uint8_
                                     bool *acknowledgement_required);
 SerialMessageResult serial_message_accept(SerialMessageAssembly *assembly,
                                           const SerialPacket *packet);
-bool serial_message_acknowledgement_encode(uint8_t sequence, uint8_t output[SERIAL_PACKET_SIZE]);
+bool serial_message_acknowledgement_encode(uint8_t sequence, uint8_t current_type,
+                                           uint8_t output[SERIAL_PACKET_SIZE]);
 bool serial_message_resynchronization_encode(uint8_t sequence, uint8_t current_type,
                                              uint8_t output[SERIAL_PACKET_SIZE]);
 

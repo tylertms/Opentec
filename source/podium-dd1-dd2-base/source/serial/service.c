@@ -9,7 +9,7 @@
 
 enum {
     SERIAL_SERVICE_TIMEOUT_MS = 10,
-    SERIAL_SERVICE_MAX_ATTEMPTS = 4,
+    SERIAL_SERVICE_MAX_ATTEMPTS = 5,
 };
 
 /**
@@ -85,7 +85,7 @@ bool serial_service_start(SerialService *service, uint8_t type, const uint8_t *m
  *
  * Accepts completed packets, emits required fragment acknowledgements or resynchronization
  * packets, publishes a matching completed logical response, and retransmits a packet at each
- * ten-millisecond deadline before the fourth missed response fails the request.
+ * ten-millisecond deadline before the fifth missed response fails the request.
  *
  * @param[in,out] service Serial service to advance.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -112,7 +112,7 @@ void serial_service_run(SerialService *service, uint32_t now_ms) {
         }
         return;
     }
-    if (service->packet_pending && platform_time_reached(now_ms, service->deadline_ms)) {
+    if (service->packet_pending && platform_time_reached(now_ms, service->deadline_ms + 1u)) {
         service->error_count++;
         platform_serial_link_reset();
         if (service->attempts < SERIAL_SERVICE_MAX_ATTEMPTS &&

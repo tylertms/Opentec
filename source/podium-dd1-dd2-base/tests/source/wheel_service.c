@@ -70,6 +70,14 @@ static void respond_scan(uint8_t sample) {
     respond_frame(&frame);
 }
 
+static void respond_scan_not_ready(void) {
+    SerialPacket frame = {
+        .type_flags = 3,
+        .payload_length = SERIAL_PACKET_MAX_PAYLOAD_SIZE,
+    };
+    respond_frame(&frame);
+}
+
 static void respond_protocol(uint8_t command, uint8_t mode) {
     SerialPacket frame = {
         .type_flags = 2,
@@ -262,6 +270,21 @@ static void test_releases_scan_button_on_first_zero(void) {
     respond_scan(WHEEL_BUTTON_PRIMARY_RESPONSE);
     run_service(&service, now_ms);
     assert((wheel_service_buttons(&service)[2] & 0x04) == 0);
+}
+
+static void test_ready_clear_response_restarts_scan_state(void) {
+    WheelService service;
+    received_ready = false;
+    uint32_t now_ms = begin_scan(&service);
+    assert(request().payload[0] == WHEEL_SCAN_PHASE_AUXILIARY);
+
+    respond_scan(WHEEL_BUTTON_PRIMARY_RESPONSE);
+    run_service(&service, now_ms++);
+    assert(request().payload[0] == WHEEL_SCAN_PHASE_THIRD);
+
+    respond_scan_not_ready();
+    run_service(&service, now_ms);
+    assert(request().payload[0] == WHEEL_SCAN_PHASE_AUXILIARY);
 }
 
 static void test_sends_display_output_with_each_scan_phase(void) {
@@ -458,11 +481,9 @@ static void test_restarts_discovery_after_scan_timeout(void) {
     service.protocol.capabilities.input_available = true;
     wheel_protocol_set_button_latch(&service.protocol, true, true);
     wheel_service_set_host_capability(&service, true);
-    run_service(&service, now_ms + 10);
-    run_service(&service, now_ms + 20);
-    run_service(&service, now_ms + 30);
-    assert(wheel_service_protocol_phase(&service) == WHEEL_PROTOCOL_SCANNING_PRIMARY);
-    run_service(&service, now_ms + 40);
+    for (uint32_t elapsed_ms = 10; elapsed_ms <= 100; elapsed_ms += 10) {
+        run_service(&service, now_ms + elapsed_ms);
+    }
 
     const uint8_t *buttons = wheel_service_buttons(&service);
     assert(buttons[0] == 0);
@@ -1017,6 +1038,13 @@ static void test_selects_calibration_advance_button_by_wheel_mode(void) {
     assert(wheel_service_calibration_advance_input_active(&service));
     service.button_banks[1] = 0;
     assert(!wheel_service_calibration_advance_input_active(&service));
+
+    service.protocol.adapter.connected = true;
+    service.protocol.adapter.buttons[1] = 0x01;
+    assert(wheel_service_calibration_advance_input_active(&service));
+    service.protocol.adapter.buttons[1] = 0;
+    service.button_banks[1] = 0x80;
+    assert(!wheel_service_calibration_advance_input_active(&service));
 }
 
 static void test_reports_mode_gated_input_capability(void) {
@@ -1300,7 +1328,7 @@ static void test_exposes_playstation_wheel_inputs(void) {
     assert(snapshot.clutch_paddles[0] == 0x67);
     assert(snapshot.clutch_paddles[1] == 0x89);
     assert(snapshot.tuning_input == -12);
-    assert(snapshot.auxiliary_report[0] == 0xab);
+    assert(snapshot.auxiliary_report[0] == 0);
     assert(snapshot.auxiliary_report[1] == 0xcd);
     assert(snapshot.auxiliary_report[2] == 0xef);
     assert(snapshot.axis_report_enabled);
@@ -1460,6 +1488,7 @@ int main(void) {
     test_maps_secondary_scan_bit();
     test_negotiates_before_scanning_and_maps_buttons();
     test_releases_scan_button_on_first_zero();
+    test_ready_clear_response_restarts_scan_state();
     test_sends_display_output_with_each_scan_phase();
     test_keeps_protocol_transport_for_packet_modes();
     test_publishes_packet_mode_buttons();

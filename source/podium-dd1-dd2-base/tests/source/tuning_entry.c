@@ -48,6 +48,9 @@ static void test_reports_catalog_and_runtime_limits(void) {
     context.multi_position_automatic_available = false;
     limits = tuning_entry_limits(TUNING_ENTRY_MULTI_POSITION_MODE, &bank, &context);
     assert(limits.minimum == 1);
+    context.xbox_mode = true;
+    limits = tuning_entry_limits(TUNING_ENTRY_FORCE_FEEDBACK_STRENGTH, &bank, &context);
+    assert(limits.maximum == 101);
 
     bank.standard_mode_enabled = true;
     limits = tuning_entry_limits(TUNING_ENTRY_SETUP, &bank, &context);
@@ -74,6 +77,11 @@ static void test_adjusts_and_clamps_scalar_entries(void) {
     assert(bank.slots[0].force_feedback_strength == 100);
     assert(!tuning_entry_adjust(&bank, TUNING_ENTRY_FORCE_FEEDBACK_STRENGTH,
                                 navigation(TUNING_NAVIGATION_INCREASE, 0), &default_context));
+    TuningEntryAdjustmentContext xbox_context = default_context;
+    xbox_context.xbox_mode = true;
+    assert(tuning_entry_adjust(&bank, TUNING_ENTRY_FORCE_FEEDBACK_STRENGTH,
+                               navigation(TUNING_NAVIGATION_INCREASE, 0), &xbox_context));
+    assert(bank.slots[0].force_feedback_strength == 101);
     assert(tuning_entry_adjust(&bank, TUNING_ENTRY_FORCE_EFFECT_INTENSITY,
                                navigation(TUNING_NAVIGATION_DECREASE, 0), &default_context));
     assert(bank.slots[0].force_effect_intensity == 90);
@@ -120,11 +128,8 @@ static void test_adjusts_sensitivity_through_automatic_range(void) {
     assert(bank.slots[0].automatic_rotation == 0);
     assert(bank.slots[0].rotation_degrees == 2520);
     assert(tuning_entry_adjust(&bank, TUNING_ENTRY_SENSITIVITY,
-                               navigation(TUNING_NAVIGATION_ANALOG, -120), &default_context));
-    assert(bank.slots[0].rotation_degrees == 1320);
-    assert(tuning_entry_adjust(&bank, TUNING_ENTRY_SENSITIVITY,
-                               navigation(TUNING_NAVIGATION_ANALOG, -120), &default_context));
-    assert(bank.slots[0].rotation_degrees == 120);
+                               navigation(TUNING_NAVIGATION_DECREASE, 0), &default_context));
+    assert(bank.slots[0].rotation_degrees == 2430);
     assert(tuning_entry_adjust(&bank, TUNING_ENTRY_SENSITIVITY,
                                navigation(TUNING_NAVIGATION_ANALOG, -120), &default_context));
     assert(bank.slots[0].rotation_degrees == 90);
@@ -203,8 +208,10 @@ static void test_applies_interface_and_hardware_availability(void) {
 
     context = available_context;
     context.legacy_pedal_mode = true;
-    assert(!tuning_entry_available(TUNING_ENTRY_FORCE_SCALE, &bank, &context));
+    assert(tuning_entry_available(TUNING_ENTRY_FORCE_SCALE, &bank, &context));
     assert(tuning_entry_available(TUNING_ENTRY_BRAKE_INDICATOR_LEVEL, &bank, &context));
+    context.motor_calibration_active = true;
+    assert(!tuning_entry_available(TUNING_ENTRY_FORCE_SCALE, &bank, &context));
     context.wheel_accessory_kind = WHEEL_ACCESSORY_DISCONNECTED;
     assert(!tuning_entry_available(TUNING_ENTRY_NATURAL_DAMPER, &bank, &context));
     assert(!tuning_entry_available(TUNING_ENTRY_NATURAL_FRICTION, &bank, &context));
@@ -249,11 +256,11 @@ static void test_navigates_available_entries_in_display_order(void) {
     assert(tuning_entry_navigate(TUNING_ENTRY_SETUP, TUNING_NAVIGATION_NEXT, &bank,
                                  &available_context) == TUNING_ENTRY_SENSITIVITY);
     assert(tuning_entry_navigate(TUNING_ENTRY_FORCE_FEEDBACK_STRENGTH, TUNING_NAVIGATION_NEXT,
-                                 &bank, &available_context) == TUNING_ENTRY_FORCE_SCALE);
+                                 &bank, &available_context) == TUNING_ENTRY_VIBRATION_STRENGTH);
     assert(tuning_entry_navigate(TUNING_ENTRY_NATURAL_DAMPER, TUNING_NAVIGATION_PREVIOUS, &bank,
-                                 &available_context) == TUNING_ENTRY_FORCE_SCALE);
+                                 &available_context) == TUNING_ENTRY_DAMPER_EFFECT_STRENGTH);
     assert(tuning_entry_navigate(TUNING_ENTRY_SETUP, TUNING_NAVIGATION_PREVIOUS, &bank,
-                                 &available_context) == TUNING_ENTRY_DISPLAY_ROTATION);
+                                 &available_context) == TUNING_ENTRY_THROTTLE_PEDAL_CURVE);
     assert(tuning_entry_navigate(TUNING_ENTRY_SETUP, TUNING_NAVIGATION_INCREASE, &bank,
                                  &available_context) == TUNING_ENTRY_SETUP);
 }

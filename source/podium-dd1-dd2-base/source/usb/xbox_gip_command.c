@@ -136,6 +136,7 @@ bool usb_xbox_gip_command_decode(const uint8_t *packet, size_t length, UsbXboxGi
  * @return Effective steering range in degrees.
  */
 uint16_t usb_xbox_gip_steering_range_normalize(uint16_t requested_degrees) {
+    requested_degrees /= 10u;
     if (requested_degrees < XBOX_GIP_STEERING_RANGE_MINIMUM_DEGREES) {
         return XBOX_GIP_STEERING_RANGE_MINIMUM_DEGREES;
     }

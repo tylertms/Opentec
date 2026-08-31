@@ -23,6 +23,7 @@ enum {
 typedef struct {
     ForceFeedbackScriptOutputPolicy output_policy;
     bool slot_faulted;
+    bool immediate_zero;
 } ForceFeedbackScriptTickDecision;
 
 /**

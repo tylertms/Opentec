@@ -38,7 +38,7 @@ static void test_captures_and_scales_analog_samples(void) {
     assert(input.axes[2] == 0);
 
     assert(pedal_analog_update(&analog, samples, &input));
-    assert(input.axes[0] == 45);
+    assert(input.axes[0] == 0);
     assert(input.axes[1] == 0);
     assert(input.axes[2] == 0);
     assert(input.auxiliary == 0);

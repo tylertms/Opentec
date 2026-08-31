@@ -117,7 +117,7 @@ static void test_counts_invalid_packets(void) {
     assert(serial_service_error_count(&service) == 1);
 }
 
-static void test_retries_four_timed_out_packets(void) {
+static void test_retries_four_times_after_initial_send(void) {
     SerialService service;
     reset_link();
     serial_service_init(&service);
@@ -128,17 +128,22 @@ static void test_retries_four_timed_out_packets(void) {
     assert(service.status == SERIAL_SERVICE_PENDING);
     serial_service_run(&service, 110);
     assert(service.status == SERIAL_SERVICE_PENDING);
+    assert(reset_count == 0);
+    serial_service_run(&service, 111);
+    assert(service.status == SERIAL_SERVICE_PENDING);
     assert(reset_count == 1);
     assert(start_count == 2);
-    serial_service_run(&service, 120);
+    serial_service_run(&service, 122);
     assert(service.status == SERIAL_SERVICE_PENDING);
-    serial_service_run(&service, 130);
+    serial_service_run(&service, 133);
     assert(service.status == SERIAL_SERVICE_PENDING);
-    serial_service_run(&service, 140);
+    serial_service_run(&service, 144);
+    assert(service.status == SERIAL_SERVICE_PENDING);
+    serial_service_run(&service, 155);
     assert(service.status == SERIAL_SERVICE_FAILED);
-    assert(reset_count == 4);
-    assert(start_count == 4);
-    assert(serial_service_error_count(&service) == 4);
+    assert(reset_count == 5);
+    assert(start_count == 5);
+    assert(serial_service_error_count(&service) == 5);
 }
 
 int main(void) {
@@ -146,6 +151,6 @@ int main(void) {
     test_rejects_overlapping_transaction();
     test_fails_mismatched_response();
     test_counts_invalid_packets();
-    test_retries_four_timed_out_packets();
+    test_retries_four_times_after_initial_send();
     return 0;
 }

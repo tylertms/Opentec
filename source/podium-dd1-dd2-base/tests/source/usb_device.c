@@ -337,6 +337,25 @@ static void test_retains_hid_state_across_bus_reset(void) {
     complete_control_input();
 }
 
+static void test_serves_hidden_feature_reports(void) {
+    static const uint8_t get_feature_report[] = {0xa1, 1, 0x31, 3, 0, 0, 64, 0};
+    uint8_t report[USB_DEVICE_REPORT_SIZE] = {0x31, 1, 0xa5, 0x5a};
+
+    usb_device_init(BOARD_VARIANT_DD1);
+    assert(!usb_device_publish_feature_report(0x30, report, sizeof(report)));
+    assert(!usb_device_publish_feature_report(0x31, NULL, sizeof(report)));
+    assert(usb_device_publish_feature_report(0x31, report, sizeof(report)));
+    assert(!usb_device_take_feature_report_request(0x31));
+
+    push_setup(get_feature_report);
+    usb_device_service();
+    assert(sent.length == USB_DEVICE_REPORT_SIZE);
+    assert(memcmp(sent.data, report, sizeof(report)) == 0);
+    assert(usb_device_take_feature_report_request(0x31));
+    assert(!usb_device_take_feature_report_request(0x31));
+    complete_control_input();
+}
+
 static void test_controls_endpoint_halt(void) {
     static const uint8_t set_configuration[] = {0x00, 9, 1, 0, 0, 0, 0, 0};
     static const uint8_t set_input_halt[] = {0x02, 3, 0, 0, 0x81, 0, 0, 0};
@@ -418,9 +437,21 @@ static void test_reenumerates_compatibility_modes(void) {
         usb_device_service();
         uint16_t report_size = (uint16_t)sent.data[25] | (uint16_t)sent.data[26] << 8;
         assert(report_size == report_sizes[index]);
+        if (mode == USB_INPUT_REPORT_MODE_DRIVING_FORCE_PRO) {
+            assert(sent.data[8] == 0x28);
+        }
+        if (mode == USB_INPUT_REPORT_MODE_DRIVING_FORCE_PRO || mode == USB_INPUT_REPORT_MODE_G27) {
+            assert(sent.data[16] == 0 && sent.data[17] == 0xfe);
+        }
         complete_control_input();
 
         assert_string_descriptor(product_indices[index], products[index]);
+        if (mode == USB_INPUT_REPORT_MODE_FANATEC_COMPATIBILITY) {
+            assert_string_descriptor(9, products[index]);
+        }
+        if (mode == USB_INPUT_REPORT_MODE_DRIVING_FORCE_PRO || mode == USB_INPUT_REPORT_MODE_G27) {
+            assert_string_descriptor(0xfe, products[index]);
+        }
     }
     assert(!usb_device_set_input_mode((UsbInputReportMode)5));
     assert(usb_device_input_mode() == USB_INPUT_REPORT_MODE_G27);
@@ -505,11 +536,16 @@ static void test_exchanges_updater_packets(void) {
     assert(!usb_device_queue_updater_response(oversized_response, sizeof(oversized_response)));
 
     push_event(PLATFORM_USB_EVENT_OUT, 3, bulk_output, sizeof(bulk_output));
+    static const uint8_t second_output[] = {0x78, 0x9a};
+    push_event(PLATFORM_USB_EVENT_OUT, 3, second_output, sizeof(second_output));
     usb_device_service();
     UsbDeviceUpdaterPacket packet;
     assert(usb_device_take_updater_packet(&packet));
     assert(packet.length == sizeof(bulk_output));
     assert(memcmp(packet.data, bulk_output, sizeof(bulk_output)) == 0);
+    assert(usb_device_take_updater_packet(&packet));
+    assert(packet.length == sizeof(second_output));
+    assert(memcmp(packet.data, second_output, sizeof(second_output)) == 0);
     assert(!usb_device_take_updater_packet(&packet));
 
     assert(usb_device_queue_updater_response(bulk_input, sizeof(bulk_input)));
@@ -713,6 +749,8 @@ static void test_exchanges_playstation_authentication(void) {
     static const uint8_t get_configuration_descriptor[] = {0x80, 6, 0, 2, 0, 0, 41, 0};
     static const uint8_t set_configuration[] = {0x00, 9, 1, 0, 0, 0, 0, 0};
     static const uint8_t get_format_report[] = {0xa1, 1, 0xf3, 3, 0, 0, 8, 0};
+    static const uint8_t get_feature_report[] = {0xa1, 1, 3, 3, 0, 0, 48, 0};
+    static const uint8_t get_remote_tuning_report[] = {0xa1, 1, 0x35, 3, 0, 0, 64, 0};
     static const uint8_t get_status_report[] = {0xa1, 1, 0xf2, 3, 0, 0, 16, 0};
     static const uint8_t get_response_report[] = {0xa1, 1, 0xf1, 3, 0, 0, 64, 0};
     static const uint8_t set_request_report[] = {0x21, 9, 0xf0, 3, 0, 0, 64, 0};
@@ -728,15 +766,26 @@ static void test_exchanges_playstation_authentication(void) {
     }
 
     usb_device_init(BOARD_VARIANT_DD2);
-    assert(usb_device_set_playstation_mode());
+    assert(!usb_device_set_playstation_wheel_mode(3));
+    assert(usb_device_set_playstation_wheel_mode(5));
     assert(usb_device_operating_mode() == USB_OPERATING_MODE_PLAYSTATION);
 
     push_setup(get_device_descriptor);
     usb_device_service();
     assert(sent.data[8] == 0xb7 && sent.data[9] == 0x0e);
-    assert(sent.data[10] == 0x06 && sent.data[11] == 0x0e);
+    assert(sent.data[10] == 0x04 && sent.data[11] == 0x0e);
     assert(sent.data[15] == 9);
     complete_control_input();
+
+    uint8_t remote_tuning_report[USB_DEVICE_REPORT_SIZE] = {0x35, 5, 1, 0xa5};
+    assert(usb_device_publish_playstation_remote_tuning_report(remote_tuning_report));
+    assert(!usb_device_publish_playstation_remote_tuning_report(remote_tuning_report));
+    push_setup(get_remote_tuning_report);
+    usb_device_service();
+    assert(sent.length == USB_DEVICE_REPORT_SIZE);
+    assert(memcmp(sent.data, remote_tuning_report, sizeof(remote_tuning_report)) == 0);
+    complete_control_input();
+    assert(usb_device_publish_playstation_remote_tuning_report(remote_tuning_report));
 
     push_setup(get_configuration_descriptor);
     usb_device_service();
@@ -790,6 +839,14 @@ static void test_exchanges_playstation_authentication(void) {
                   8) == 0);
     assert(usb_device_send_playstation_input(&input_state));
     assert(send_count == previous_send_count + 1);
+
+    push_setup(get_feature_report);
+    usb_device_service();
+    static const uint8_t expected_feature_prefix[] = {3, 0x21, 0x27, 4, 0x18, 6};
+    assert(sent.length == 48);
+    assert(memcmp(sent.data, expected_feature_prefix, sizeof(expected_feature_prefix)) == 0);
+    assert(sent.data[24] == 0x0f && sent.data[25] == 0xd8 && sent.data[26] == 9);
+    complete_control_input();
 
     push_setup(get_format_report);
     usb_device_service();
@@ -883,6 +940,7 @@ int main(void) {
     test_returns_xbox_security_descriptor();
     test_exchanges_hid_reports();
     test_retains_hid_state_across_bus_reset();
+    test_serves_hidden_feature_reports();
     test_controls_endpoint_halt();
     test_reenumerates_compatibility_modes();
     test_exchanges_updater_packets();

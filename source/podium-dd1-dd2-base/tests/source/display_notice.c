@@ -101,6 +101,10 @@ static void test_renders_two_line_torque_reduction_notice(void) {
 
     assert(has_lit_pixel(framebuffer, 0, 30, DISPLAY_FRAMEBUFFER_WIDTH, 7));
     assert(has_lit_pixel(framebuffer, 0, 40, DISPLAY_FRAMEBUFFER_WIDTH, 7));
+
+    display_notice_render_system(framebuffer, SYSTEM_NOTICE_TORQUE_REDUCED_STEERING_WHEEL);
+    assert(has_lit_pixel(framebuffer, 0, 30, DISPLAY_FRAMEBUFFER_WIDTH, 7));
+    assert(has_lit_pixel(framebuffer, 0, 40, DISPLAY_FRAMEBUFFER_WIDTH, 7));
 }
 
 static void test_renders_tuning_mode_notices(void) {

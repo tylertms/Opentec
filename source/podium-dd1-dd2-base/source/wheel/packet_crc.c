@@ -254,16 +254,13 @@ static void write_snapshot(const WheelPacketCrcInput *input,
 /**
  * @brief Reports whether a wheel mode uses the shared CRC packet codec.
  *
- * Selects the standard mode-6 exchange, its authenticated mode-0x15 variant, and the filtered
- * pulse-input mode 0x18.
+ * Selects the standard mode-6 exchange and its authenticated mode-0x15 variant.
  *
  * @param[in] wheel_mode Selected attached-wheel mode.
- * @return True for mode 6, mode 0x15, or mode 0x18.
+ * @return True for mode 6 or mode 0x15.
  */
 bool wheel_packet_crc_applies(uint8_t wheel_mode) {
-    return wheel_mode == WHEEL_PACKET_CRC_MODE ||
-           wheel_mode == WHEEL_PACKET_CRC_AUTHENTICATED_MODE ||
-           wheel_mode == WHEEL_PACKET_CRC_PULSE_MODE;
+    return wheel_mode == WHEEL_PACKET_CRC_MODE || wheel_mode == WHEEL_PACKET_CRC_AUTHENTICATED_MODE;
 }
 
 /**
@@ -405,12 +402,12 @@ void wheel_packet_crc_filter(WheelPacketCrcFilter *filter, WheelPacketCrcInput *
  */
 void wheel_packet_crc_smooth_axes(WheelPacketCrcFilter *filter, WheelPacketCrcInput *input) {
     for (uint8_t axis = 0; axis < WHEEL_PACKET_CRC_AXIS_VALUE_COUNT; axis++) {
-        filter->axis_samples[filter->next_axis_sample][axis] = input->controls[axis + 4];
+        filter->axis_samples[filter->next_axis_sample][axis] = input->controls[axis + 5];
         uint16_t total = 0;
         for (uint8_t sample = 0; sample < WHEEL_PACKET_CRC_HISTORY_DEPTH; sample++) {
             total += filter->axis_samples[sample][axis];
         }
-        input->controls[axis + 4] = (uint8_t)(total / WHEEL_PACKET_CRC_HISTORY_DEPTH);
+        input->controls[axis + 5] = (uint8_t)(total / WHEEL_PACKET_CRC_HISTORY_DEPTH);
     }
     filter->next_axis_sample++;
     if (filter->next_axis_sample == WHEEL_PACKET_CRC_HISTORY_DEPTH) {

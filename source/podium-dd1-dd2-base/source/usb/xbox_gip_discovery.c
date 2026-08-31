@@ -44,7 +44,7 @@ UsbXboxGipDiscoveryAction usb_xbox_gip_discovery_poll(UsbXboxGipDiscovery *disco
     if (request_id == XBOX_GIP_SESSION_COMMAND) {
         return USB_XBOX_GIP_DISCOVERY_SESSION_COMMAND;
     }
-    if (now > discovery->deadline) {
+    if ((int32_t)(now - discovery->deadline) >= 0) {
         discovery->phase = USB_XBOX_GIP_DISCOVERY_SEND_DIGEST;
     }
     return USB_XBOX_GIP_DISCOVERY_IDLE;

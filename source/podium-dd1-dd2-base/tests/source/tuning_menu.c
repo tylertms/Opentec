@@ -51,7 +51,7 @@ static void navigates_in_display_order_and_skips_unavailable_entries(void) {
                                                  navigation(TUNING_NAVIGATION_NEXT, 0), &bank,
                                                  &availability, &adjustment);
     assert(update.entry_changed);
-    assert(menu.selected_entry == TUNING_ENTRY_FORCE_SCALE);
+    assert(menu.selected_entry == TUNING_ENTRY_VIBRATION_STRENGTH);
     assert(menu.view == TUNING_MENU_VIEW_LABEL);
 }
 

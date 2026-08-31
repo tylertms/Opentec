@@ -88,6 +88,10 @@ static void renders_disabled_scaled_and_limit_values(void) {
     output = render(&bank, TUNING_ENTRY_FORCE_FEEDBACK_STRENGTH, TUNING_MENU_VIEW_VALUE);
     assert_glyphs(&output, 0x00, 0x4f, 0x6d);
 
+    bank.slots[0].force_feedback_strength = 101;
+    output = render(&bank, TUNING_ENTRY_FORCE_FEEDBACK_STRENGTH, TUNING_MENU_VIEW_VALUE);
+    assert_glyphs(&output, 0x77, 0x3e, 0x78);
+
     bank.slots[0].force_effect_strength = 12;
     output = render(&bank, TUNING_ENTRY_FORCE_EFFECT_STRENGTH, TUNING_MENU_VIEW_VALUE);
     assert_glyphs(&output, 0x06, 0x5b, 0x3f);

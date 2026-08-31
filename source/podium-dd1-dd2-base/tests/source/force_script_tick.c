@@ -20,6 +20,7 @@ static ForceFeedbackScriptSystem prepare_system(const uint8_t *script, uint16_t 
     system.inputs.sample_count = 5;
     system.values.rotation_range_code = 36;
     system.values.slots[0].state = FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE;
+    system.store.position_request_pending = false;
     system.store.slots[0] =
         (ForceFeedbackScriptStorageSlot){.offset = 0, .size = length, .allocated = true};
     system.store.used = length;
@@ -64,6 +65,7 @@ static void test_selects_zero_for_active_expired_and_suppressed_output(void) {
     expired.values.variables[10] = 1;
     assert(force_feedback_script_tick(&expired, 1, 0, 1000).output_policy ==
            FORCE_FEEDBACK_SCRIPT_OUTPUT_ZERO);
+    assert(force_feedback_script_tick(&expired, 1, 0, 1000).immediate_zero);
     assert(expired.values.slots[0].execution_count == 0);
 
     ForceFeedbackScriptSystem suppressed = prepare_system(script, sizeof(script));
@@ -134,6 +136,35 @@ static void test_updates_report_only_for_selected_output(void) {
     assert(report.primary_magnitude == UINT16_MAX);
 }
 
+static void test_prioritizes_live_position_and_immediately_clears_expired_force(void) {
+    const uint8_t script[] = {0x00};
+    ForceFeedbackScriptSystem position = prepare_system(script, sizeof(script));
+    position.store.position_request_pending = true;
+    ForceFeedbackScriptOutputState output_state;
+    force_feedback_script_output_init(&output_state);
+    ForceFeedbackScriptOutputConfig config = full_output_config();
+    ForceOutputReport report = {0};
+
+    ForceFeedbackScriptTickResult result =
+        force_feedback_script_tick_output(&position, &output_state, 1, 500, 1000, &config, &report);
+    assert(result.wrote_output);
+    assert(!report.positive_direction && report.primary_magnitude > 0);
+
+    ForceFeedbackScriptSystem expired = prepare_system(script, sizeof(script));
+    expired.inputs.deadline = 1;
+    expired.values.variables[10] = 1;
+    report = (ForceOutputReport){
+        .positive_direction = true,
+        .primary_magnitude = 4321,
+        .secondary_magnitude = 1234,
+    };
+    result =
+        force_feedback_script_tick_output(&expired, &output_state, 1, 0, 1000, &config, &report);
+    assert(result.wrote_output);
+    assert(report.positive_direction && report.primary_magnitude == 0);
+    assert(report.secondary_magnitude == 1234);
+}
+
 static void test_propagates_slot_faults(void) {
     const uint8_t invalid_script[] = {0x0a};
     ForceFeedbackScriptSystem system = prepare_system(invalid_script, sizeof(invalid_script));
@@ -157,6 +188,7 @@ int main(void) {
     test_selects_zero_for_active_expired_and_suppressed_output();
     test_handles_position_only_and_idle_selector();
     test_updates_report_only_for_selected_output();
+    test_prioritizes_live_position_and_immediately_clears_expired_force();
     test_propagates_slot_faults();
     return 0;
 }

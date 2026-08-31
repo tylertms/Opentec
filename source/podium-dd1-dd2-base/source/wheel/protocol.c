@@ -67,7 +67,7 @@ static void clear(uint8_t *data, uint8_t length) {
  * @brief Adds the legacy wheel-status fields used for display rotation.
  *
  * Mode 0x0E receives the signed angle in bytes 9 and 10 when profile rotation is enabled, followed
- * by state code 6, a clear adapter flag, and the idle pedal-status pair.
+ * by state code 6, a clear adapter flag, and the current two-byte legacy pedal status.
  *
  * @param[in] protocol Active attached-wheel protocol state.
  * @param[in,out] response Cleared response receiving the legacy status fields.
@@ -82,8 +82,8 @@ static void encode_legacy_status(const WheelProtocol *protocol, uint8_t *respons
     }
     response[12] = 6;
     response[13] = 0;
-    response[14] = 0;
-    response[15] = 0;
+    response[14] = protocol->legacy_pedal_status[0];
+    response[15] = protocol->legacy_pedal_status[1];
 }
 
 /**
@@ -233,6 +233,21 @@ static void build_active_response(WheelProtocol *protocol) {
 void wheel_protocol_set_display_rotation(WheelProtocol *protocol, bool enabled, int16_t angle) {
     protocol->display_rotation_enabled = enabled;
     protocol->display_rotation_angle = angle;
+}
+
+/**
+ * @brief Updates the legacy pedal status returned to the attached wheel.
+ *
+ * Replaces both retained status bytes used by legacy wheel responses.
+ *
+ * @param[in,out] protocol Attached-wheel protocol state.
+ * @param[in] first First pedal status byte.
+ * @param[in] second Second pedal status byte.
+ */
+void wheel_protocol_set_legacy_pedal_status(WheelProtocol *protocol, uint8_t first,
+                                            uint8_t second) {
+    protocol->legacy_pedal_status[0] = first;
+    protocol->legacy_pedal_status[1] = second;
 }
 
 /**
@@ -412,7 +427,7 @@ static void accumulate_adapter_motion(WheelProtocol *protocol) {
     wheel_motion_accumulate_primary(&protocol->motion, motion);
 
     uint8_t flags;
-    if (protocol->interface_mode == 10) {
+    if (protocol->interface_mode == 7 || protocol->interface_mode == 10) {
         flags = motion < 0 ? 0x20 : motion > 0 ? 0x10 : 0;
     } else if (protocol->interface_mode == 6) {
         flags = (uint8_t)motion;
@@ -496,16 +511,22 @@ static bool common_buttons_acknowledgement_input_active(const WheelPacketCommonI
 /**
  * @brief Captures an active attached-wheel request.
  *
- * Decodes and normalizes the selected mode's request, records display-acknowledgement input,
- * latches attached-wheel input capability, updates the change snapshot, and preserves separately
- * consumed report fields.
+ * Captures extended remote-tuning control packets separately. Other requests are decoded and
+ * normalized for the selected mode, record display-acknowledgement input, latch attached-wheel
+ * input capability, update the change snapshot, and preserve separately consumed report fields.
  *
  * @param[in,out] protocol Protocol state that owns the request snapshot and change latch.
  * @param[in] request Complete 57-byte attached-wheel request.
  */
 static void capture_request(WheelProtocol *protocol,
                             const uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE]) {
-    if (wheel_packet_mode_one_applies(protocol->mode)) {
+    if (protocol->mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED &&
+        request[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE_REPLY) {
+        for (uint8_t index = 0; index < sizeof(protocol->remote_tuning_controls); index++) {
+            protocol->remote_tuning_controls[index] = request[index + 2];
+        }
+        protocol->remote_tuning_controls_pending = true;
+    } else if (wheel_packet_mode_one_applies(protocol->mode)) {
         uint8_t snapshot[WHEEL_PACKET_MODE_ONE_SNAPSHOT_SIZE];
         bool authenticated_controls =
             protocol->mode == 0x13 || protocol->mode == 0x14 || protocol->mode == 0x16;
@@ -769,6 +790,30 @@ static void capture_request(WheelProtocol *protocol,
 }
 
 /**
+ * @brief Reports whether an attached-wheel mode is supported.
+ *
+ * Rejects unknown or out-of-range modes and the seven reference mode values that intentionally
+ * enter the unsupported protocol phase.
+ *
+ * @param[in] mode Requested attached-wheel mode.
+ * @return True when the mode can enter authentication or active traffic.
+ */
+static bool mode_supported(uint8_t mode) {
+    switch (mode) {
+    case 0x05:
+    case 0x07:
+    case 0x08:
+    case 0x0d:
+    case 0x18:
+    case 0x19:
+    case 0x1a:
+        return false;
+    default:
+        return mode != WHEEL_MODE_UNKNOWN && mode <= WHEEL_MODE_MAXIMUM;
+    }
+}
+
+/**
  * @brief Selects the attached-wheel packet mode.
  *
  * Recognizes the two scan commands and command A5. Supported A5 modes enter authentication or
@@ -790,7 +835,7 @@ static void select_mode(WheelProtocol *protocol,
         protocol->phase = WHEEL_PROTOCOL_SCANNING_SECONDARY;
         break;
     case WHEEL_PROTOCOL_COMMAND_SELECT_MODE:
-        if (request[1] == WHEEL_MODE_UNKNOWN || request[1] > WHEEL_MODE_MAXIMUM) {
+        if (!mode_supported(request[1])) {
             protocol->phase = WHEEL_PROTOCOL_UNSUPPORTED;
             break;
         }
@@ -902,6 +947,7 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     protocol->request_ready = false;
     protocol->request_changed = false;
     protocol->acknowledgement_input_active = false;
+    protocol->remote_tuning_controls_pending = false;
 }
 
 /**
@@ -1836,6 +1882,52 @@ int8_t wheel_protocol_motion_direction(const WheelProtocol *protocol) {
  */
 int8_t wheel_protocol_take_motion(WheelProtocol *protocol) {
     return wheel_motion_take_primary(&protocol->motion);
+}
+
+/**
+ * @brief Returns one queued attached-wheel axis motion direction.
+ *
+ * Inspects the selected protocol motion counter without consuming it.
+ *
+ * @param[in] protocol Attached-wheel protocol state.
+ * @param[in] axis Zero-based auxiliary motion axis.
+ * @return Negative one, zero, or positive one; zero for an unsupported axis.
+ */
+int8_t wheel_protocol_axis_motion_direction(const WheelProtocol *protocol, uint8_t axis) {
+    return wheel_motion_axis_direction(&protocol->motion, axis);
+}
+
+/**
+ * @brief Takes one queued attached-wheel axis motion step.
+ *
+ * Moves the selected protocol motion counter one position toward zero.
+ *
+ * @param[in,out] protocol Attached-wheel protocol state.
+ * @param[in] axis Zero-based auxiliary motion axis.
+ * @return Negative one, zero, or positive one; zero for an unsupported axis.
+ */
+int8_t wheel_protocol_take_axis_motion(WheelProtocol *protocol, uint8_t axis) {
+    return wheel_motion_take_axis(&protocol->motion, axis);
+}
+
+/**
+ * @brief Takes the latest attached-wheel remote-tuning controls.
+ *
+ * Copies the retained 30-byte control payload and clears its one-shot pending latch.
+ *
+ * @param[in,out] protocol Attached-wheel protocol state.
+ * @param[out] output Destination for the complete control payload.
+ * @return True when a pending payload was copied.
+ */
+bool wheel_protocol_take_remote_tuning_controls(WheelProtocol *protocol, uint8_t output[30]) {
+    if (protocol == NULL || output == NULL || !protocol->remote_tuning_controls_pending) {
+        return false;
+    }
+    for (uint8_t index = 0; index < sizeof(protocol->remote_tuning_controls); index++) {
+        output[index] = protocol->remote_tuning_controls[index];
+    }
+    protocol->remote_tuning_controls_pending = false;
+    return true;
 }
 
 /**

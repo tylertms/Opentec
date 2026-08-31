@@ -48,6 +48,8 @@ typedef struct {
     uint8_t directional_buttons;
     uint8_t clutch_paddles[2];
     int8_t tuning_input;
+    uint8_t motion;
+    uint8_t packed_rotary_positions;
     uint8_t auxiliary_report[3];
     bool axis_report_enabled;
 } WheelInputSnapshot;
@@ -91,6 +93,7 @@ void wheel_service_queue_adapter_refresh_state(WheelService *service, bool activ
 void wheel_service_queue_adapter_setup_selection(WheelService *service, uint8_t selection);
 void wheel_service_queue_adapter_display_state(WheelService *service, uint8_t state);
 bool wheel_service_queue_tuning_display_command(WheelService *service, uint8_t command);
+bool wheel_service_queue_tuning_display_notification(WheelService *service, uint8_t command);
 bool wheel_service_activate_interface_presentation(WheelService *service, uint8_t mode);
 bool wheel_service_queue_adapter_text_line(WheelService *service, uint8_t line, uint8_t metadata,
                                            const uint8_t *text, uint8_t length);
@@ -106,6 +109,7 @@ void wheel_service_set_vibration_output(WheelService *service, const WheelVibrat
 void wheel_service_set_auxiliary_report(WheelService *service, uint16_t report);
 void wheel_service_set_auxiliary_output_option(WheelService *service, uint8_t option);
 void wheel_service_set_legacy_axes(WheelService *service, const uint8_t axes[2]);
+void wheel_service_set_legacy_pedal_status(WheelService *service, uint8_t first, uint8_t second);
 void wheel_service_reset_host_protocol_outputs(WheelService *service);
 void wheel_service_set_adapter(WheelService *service, const WheelAdapterInput *adapter);
 void wheel_service_set_host_capability(WheelService *service, bool enabled);
@@ -164,6 +168,9 @@ bool wheel_service_extended_report_fields(const WheelService *service);
 uint8_t wheel_service_accessory_flags(const WheelService *service);
 int8_t wheel_service_encoder_direction(const WheelService *service);
 int8_t wheel_service_take_encoder_step(WheelService *service);
+int8_t wheel_service_axis_motion_direction(const WheelService *service, uint8_t axis);
+int8_t wheel_service_take_axis_motion(WheelService *service, uint8_t axis);
+bool wheel_service_take_remote_tuning_controls(WheelService *service, uint8_t output[30]);
 void wheel_service_discard_host_motion(WheelService *service);
 bool wheel_service_acknowledgement_input_active(const WheelService *service);
 bool wheel_service_calibration_advance_input_active(const WheelService *service);

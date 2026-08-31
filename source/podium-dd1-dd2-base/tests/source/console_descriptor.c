@@ -94,8 +94,10 @@ static void test_xbox_gip_control_descriptors(void) {
 static void test_playstation_identity(void) {
     UsbDeviceIdentity dd1 = usb_playstation_device_identity(BOARD_VARIANT_DD1);
     UsbDeviceIdentity dd2 = usb_playstation_device_identity(BOARD_VARIANT_DD2);
+    UsbDeviceIdentity vendor_five = usb_playstation_device_identity_for_mode(BOARD_VARIANT_DD2, 5);
     assert(dd1.usb_version == 0x0200 && dd1.vendor_id == 0x0eb7);
     assert(dd1.product_id == 0x0e05 && dd2.product_id == 0x0e06);
+    assert(vendor_five.product_id == 0x0e04);
     assert(dd1.device_version == 0x0059 && dd1.control_packet_size == 64);
     assert(dd1.manufacturer_string == 1 && dd1.product_string == 9);
     assert(strcmp(usb_playstation_product_name(BOARD_VARIANT_DD1),

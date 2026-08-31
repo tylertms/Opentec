@@ -133,8 +133,14 @@ static UsbControlTransfer get_descriptor(const UsbControlRequest *request,
                    ? data(catalog->configuration, request->length)
                    : stall();
     case USB_DESCRIPTOR_STRING:
-        return request->recipient == USB_RECIPIENT_DEVICE &&
-                       request->descriptor_index < catalog->string_count
+        if (request->recipient != USB_RECIPIENT_DEVICE) {
+            return stall();
+        }
+        if (request->descriptor_index == catalog->string_alias &&
+            catalog->string_alias_target < catalog->string_count) {
+            return data(catalog->strings[catalog->string_alias_target], request->length);
+        }
+        return request->descriptor_index < catalog->string_count
                    ? data(catalog->strings[request->descriptor_index], request->length)
                    : stall();
     case USB_DESCRIPTOR_HID:

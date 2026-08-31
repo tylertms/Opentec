@@ -10,8 +10,8 @@ enum {
 /**
  * @brief Tests whether a response has a supported attached-wheel encoding.
  *
- * Accepts standard records, active, alternate records, inactive, setup-page, and refresh
- * responses.
+ * Accepts standard records, active, alternate records, inactive, setup-page, refresh, and the
+ * internal next-setup-page response.
  *
  * @param[in] code Semantic remote-tuning response code.
  * @return True when the response can be encoded.
@@ -20,7 +20,7 @@ static bool response_supported(RemoteTuningResponseCode code) {
     return code == REMOTE_TUNING_RESPONSE_RECORDS || code == REMOTE_TUNING_RESPONSE_ACTIVE ||
            code == REMOTE_TUNING_RESPONSE_ALTERNATE_RECORDS ||
            code == REMOTE_TUNING_RESPONSE_INACTIVE || code == REMOTE_TUNING_RESPONSE_SETUP ||
-           code == REMOTE_TUNING_RESPONSE_REFRESH;
+           code == REMOTE_TUNING_RESPONSE_REFRESH || code == REMOTE_TUNING_RESPONSE_NEXT_SETUP_PAGE;
 }
 
 /**
@@ -92,8 +92,10 @@ bool wheel_packet_remote_tuning_pending(const WheelPacketRemoteTuningOutput *out
  *
  * Writes report ID 0xA7. Standard and alternate records use response fields 1 and 3 and copy their
  * 30-byte record area. Active and inactive responses use field 2 with values one and zero. Setup
- * and refresh responses retain their response field and supplied value. The pending response is
- * consumed after encoding; the caller supplies cleared payload storage and writes the checksum.
+ * and refresh responses retain their response field and supplied value. The internal next-page
+ * response is normalized to setup response field four with its supplied page value. The pending
+ * response is consumed after encoding; the caller supplies cleared payload storage and writes the
+ * checksum.
  *
  * @param[in,out] output Pending response consumed by a successful encoding.
  * @param[out] packet Thirty-three-byte destination for the response fields.
@@ -116,7 +118,9 @@ bool wheel_packet_remote_tuning_encode(WheelPacketRemoteTuningOutput *output,
         packet[1] = REMOTE_TUNING_RESPONSE_ACTIVE;
         packet[2] = response.code == REMOTE_TUNING_RESPONSE_ACTIVE ? 1 : 0;
     } else {
-        packet[1] = (uint8_t)response.code;
+        packet[1] = response.code == REMOTE_TUNING_RESPONSE_NEXT_SETUP_PAGE
+                        ? REMOTE_TUNING_RESPONSE_SETUP
+                        : (uint8_t)response.code;
         packet[2] = response.value;
     }
     output->response = (RemoteTuningResponse){0};

@@ -30,6 +30,14 @@ static uint16_t crc16_shift(uint16_t crc, uint8_t byte) {
     return crc;
 }
 
+/**
+ * @brief Calculates the motor live-frame checksum.
+ *
+ * Applies CRC-16/CCITT with a zero seed to the nine payload bytes following the frame identifier.
+ *
+ * @param[in] input Nine-byte checksum input.
+ * @return Calculated CRC-16 value.
+ */
 static uint16_t checksum(const uint8_t *input) {
     uint16_t crc = 0;
     for (uint8_t index = 0; index < MOTOR_LIVE_CHECKSUM_INPUT_SIZE; index++) {

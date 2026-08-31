@@ -176,14 +176,18 @@ void platform_motor_link_confirm_synchronized(void) {
 /**
  * @brief Queues the next motor-link transmit frame.
  *
- * Replaces the pending thirteen-byte frame while excluding the DMA9 completion handler that moves
- * it into the active transmit buffer.
+ * Replaces both pending and active thirteen-byte frame storage, then restarts DMA8 immediately
+ * while excluding the DMA9 completion handler.
  *
  * @param[in] frame Frame to transmit after the current exchange.
  */
 void platform_motor_link_set_transmit(const uint8_t frame[PLATFORM_MOTOR_LINK_FRAME_SIZE]) {
     IEC7bits.DMA9IE = 0;
     copy_to_volatile(next_transmit, frame);
+    DMA8CONbits.CHEN = 0;
+    copy_to_volatile(transmitted_dma, frame);
+    DMA8CONbits.CHEN = 1;
+    DMA8REQbits.FORCE = 1;
     IEC7bits.DMA9IE = 1;
 }
 
@@ -209,6 +213,8 @@ bool platform_motor_link_take_received(uint8_t frame[PLATFORM_MOTOR_LINK_FRAME_S
 
 /**
  * @brief Clears a normal SPI1 interrupt request.
+ *
+ * Acknowledges the interrupt because motor-link traffic is transferred exclusively by DMA.
  */
 void __attribute__((interrupt, no_auto_psv)) _SPI1Interrupt(void) { IFS0bits.SPI1IF = 0; }
 
@@ -228,22 +234,20 @@ void __attribute__((interrupt, no_auto_psv)) _SPI1ErrInterrupt(void) {
 
 /**
  * @brief Clears a completed motor-link transmit request.
+ *
+ * Acknowledges DMA8 completion after the queued frame has left the transmit buffer.
  */
 void __attribute__((interrupt, no_auto_psv)) _DMA8Interrupt(void) { IFS7bits.DMA8IF = 0; }
 
 /**
- * @brief Publishes a received motor frame and prepares the next transmission.
+ * @brief Publishes a received motor frame and stops the completed exchange.
  *
- * Snapshots the completed receive frame, activates the pending transmit frame, restarts DMA8, and
- * acknowledges the DMA9 completion request.
+ * Snapshots the completed receive frame, marks it available to the main loop, disables DMA8, and
+ * acknowledges the DMA9 completion request. The next transmit setter restarts the exchange.
  */
 void __attribute__((interrupt, no_auto_psv)) _DMA9Interrupt(void) {
     copy_between_volatile(received_frame, received_dma);
     received_ready = true;
-
     DMA8CONbits.CHEN = 0;
-    copy_between_volatile(transmitted_dma, next_transmit);
-    DMA8CONbits.CHEN = 1;
-    DMA8REQbits.FORCE = 1;
     IFS7bits.DMA9IF = 0;
 }

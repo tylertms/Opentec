@@ -32,5 +32,10 @@ bool force_feedback_script_output_apply(ForceFeedbackScriptOutputState *state, u
                                         int32_t position, uint32_t now_ms,
                                         const ForceFeedbackScriptOutputConfig *config,
                                         ForceOutputReport *report);
+bool force_feedback_script_position_output_apply(ForceFeedbackScriptOutputState *state,
+                                                 int32_t position, uint32_t half_travel,
+                                                 uint32_t now_ms,
+                                                 const ForceFeedbackScriptOutputConfig *config,
+                                                 ForceOutputReport *report);
 
 #endif

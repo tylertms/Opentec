@@ -97,3 +97,41 @@ bool force_feedback_script_output_apply(ForceFeedbackScriptOutputState *state, u
     force_output_scale_apply(limited.force, 0, scale, report);
     return limited.outside_travel;
 }
+
+/**
+ * @brief Converts wheel position into the position-mode force-script output.
+ *
+ * Normalizes centered position against half travel, applies tuning strength and the startup ramp,
+ * limits force at the configured travel boundary, and scales the result into the motor report.
+ * Position mode intentionally bypasses motion-output smoothing.
+ *
+ * @param[in,out] state Wheel-range end-stop state.
+ * @param[in] position Centered wheel position.
+ * @param[in] half_travel Positive half-range used to normalize position.
+ * @param[in] now_ms Current system time in milliseconds.
+ * @param[in] config Current strength, ramp, range, and output limits.
+ * @param[in,out] report Motor output report to update.
+ * @return True when the centered wheel position is outside the configured travel limit.
+ */
+bool force_feedback_script_position_output_apply(ForceFeedbackScriptOutputState *state,
+                                                 int32_t position, uint32_t half_travel,
+                                                 uint32_t now_ms,
+                                                 const ForceFeedbackScriptOutputConfig *config,
+                                                 ForceOutputReport *report) {
+    float normalized = -(float)position / (float)half_travel;
+    int32_t force =
+        force_feedback_script_output_request((OutputValue){.number = normalized}.bits,
+                                             config->tuning_strength, config->automatic_strength);
+    force = force_feedback_script_output_ramp(force, config->ramp_percent);
+    ForceSoftStopResult limited =
+        force_soft_stop_update(&state->soft_stop, &config->soft_stop, position, force,
+                               config->secondary_output_disabled, now_ms);
+    ForceOutputScale scale = {
+        .available_percent = config->available_percent,
+        .tuning_strength_percent = config->tuning_strength,
+        .output_strength_percent = config->output_strength_percent,
+        .secondary_output_disabled = config->secondary_output_disabled,
+    };
+    force_output_scale_apply(limited.force, 0, scale, report);
+    return limited.outside_travel;
+}

@@ -69,7 +69,8 @@ bool serial_session_next_packet(SerialSession *session, uint8_t output[SERIAL_PA
             session->transmit_type, session->sequence, session->transmit_message,
             session->transmit_length, session->transmit_offset, output, 0, 0);
     } else if (session->pending_transmit == SERIAL_TRANSMIT_ACKNOWLEDGEMENT) {
-        encoded = serial_message_acknowledgement_encode(session->sequence, output);
+        encoded =
+            serial_message_acknowledgement_encode(session->sequence, session->control_type, output);
     } else if (session->pending_transmit == SERIAL_TRANSMIT_RESYNCHRONIZATION) {
         encoded = serial_message_resynchronization_encode(session->sequence, session->control_type,
                                                           output);
@@ -104,7 +105,7 @@ SerialSessionResult serial_session_accept(SerialSession *session,
 
     uint8_t type = session->receive_packet.type_flags & SERIAL_PACKET_TYPE_MASK;
     if (type == 0) {
-        session->pending_transmit = session->receive_packet.sequence < session->sequence
+        session->pending_transmit = session->receive_packet.sequence > session->sequence
                                         ? SERIAL_TRANSMIT_RESYNCHRONIZATION
                                     : session->transmit_active ? SERIAL_TRANSMIT_DATA
                                                                : SERIAL_TRANSMIT_NONE;
@@ -130,7 +131,7 @@ SerialSessionResult serial_session_accept(SerialSession *session,
     SerialMessageResult result =
         serial_message_accept(&session->receive_message, &session->receive_packet);
     if (result == SERIAL_MESSAGE_ACKNOWLEDGE) {
-        session->control_type = 1;
+        session->control_type = type;
         session->pending_transmit = SERIAL_TRANSMIT_ACKNOWLEDGEMENT;
         return SERIAL_SESSION_ACCEPTED;
     }

@@ -13,12 +13,16 @@ enum {
     SETTINGS_FORMAT_VALUE = 0x0300,
     WHEEL_CENTER_LOW_INDEX = 1,
     WHEEL_CENTER_HIGH_INDEX = 2,
+    GLOBAL_FIRST_INDEX = 3,
+    GLOBAL_VALUE_COUNT = 2,
     STANDARD_MODE_INDEX = 5,
     SELECTED_PROFILE_INDEX = 6,
     H_PATTERN_FIRST_INDEX = 7,
-    H_PATTERN_VALUE_COUNT = 8,
+    H_PATTERN_VALUE_COUNT = 9,
     H_PATTERN_VALID_INDEX = 17,
     SECURITY_CODE_INDEX = 18,
+    OPERATING_MODE_INDEX = 19,
+    OPERATING_MODE_PREFIX = 0xaa00,
     STEERING_LIMIT_FIRST_INDEX = 20,
     STEERING_LIMIT_PREFIX = 0xaa00,
     WHEEL_AUXILIARY_OPTION_INDEX = 26,
@@ -125,6 +129,8 @@ static void tuning_profiles_load(BaseSettings *settings) {
         if (complete) {
             usb_tuning_profile_report_decode(encoded, &settings->tuning_profiles.slots[profile]);
         }
+        value_read(first + USB_TUNING_PROFILE_VALUE_COUNT,
+                   &settings->retained_profile_values[profile]);
     }
 }
 
@@ -225,6 +231,26 @@ static void extended_settings_load(BaseSettings *settings) {
 }
 
 /**
+ * @brief Loads retained compatibility values and the selected base mode.
+ *
+ * Restores the six global compatibility words and accepts operating-mode index 19 only when its
+ * stored high byte contains the expected validity prefix.
+ *
+ * @param[in,out] settings Base settings receiving retained compatibility state.
+ */
+static void compatibility_settings_load(BaseSettings *settings) {
+    for (uint8_t index = 0; index < GLOBAL_VALUE_COUNT; index++) {
+        value_read(GLOBAL_FIRST_INDEX + index, &settings->retained_global_values[index]);
+    }
+    uint16_t operating_mode;
+    if (value_read(OPERATING_MODE_INDEX, &operating_mode) &&
+        (operating_mode & UINT16_C(0xff00)) == OPERATING_MODE_PREFIX) {
+        settings->operating_mode = (uint8_t)operating_mode;
+        settings->operating_mode_valid = true;
+    }
+}
+
+/**
  * @brief Writes six logical tuning profiles.
  *
  * Encodes each profile in device-control order and writes the first 25 values of its 26-index
@@ -242,6 +268,10 @@ static bool tuning_profiles_save(const BaseSettings *settings) {
             if (!platform_storage_value_write(first + field, encoded[field])) {
                 return false;
             }
+        }
+        if (!platform_storage_value_write(first + USB_TUNING_PROFILE_VALUE_COUNT,
+                                          settings->retained_profile_values[profile])) {
+            return false;
         }
     }
     return true;
@@ -338,6 +368,7 @@ bool base_settings_persistence_load(BaseSettingsPersistence *persistence, BaseSe
     security_code_load(settings);
     steering_limits_load(settings);
     extended_settings_load(settings);
+    compatibility_settings_load(settings);
     persistence->has_record = true;
     persistence->dirty = false;
     return true;
@@ -373,12 +404,17 @@ BaseSettingsPersistenceResult base_settings_persistence_save(BaseSettingsPersist
     int32_t center = settings->wheel_position.calibrated ? settings->wheel_position.center : 0;
     bool successful =
         value_write_i32(WHEEL_CENTER_LOW_INDEX, center) &&
+        platform_storage_value_write(GLOBAL_FIRST_INDEX, settings->retained_global_values[0]) &&
+        platform_storage_value_write(GLOBAL_FIRST_INDEX + 1, settings->retained_global_values[1]) &&
         platform_storage_value_write(STANDARD_MODE_INDEX,
                                      settings->tuning_profiles.standard_mode_enabled ? 1 : 0) &&
         settings->tuning_profiles.selected_slot < TUNING_PROFILE_SLOT_COUNT &&
         platform_storage_value_write(SELECTED_PROFILE_INDEX,
                                      settings->tuning_profiles.selected_slot + 1) &&
         h_pattern_save(settings) && security_code_save(settings) &&
+        (!settings->operating_mode_valid ||
+         platform_storage_value_write(OPERATING_MODE_INDEX,
+                                      OPERATING_MODE_PREFIX | settings->operating_mode)) &&
         steering_limits_save(settings) && tuning_profiles_save(settings) &&
         platform_storage_value_write(AUXILIARY_MINIMUM_INDEX, settings->auxiliary_axis.minimum) &&
         platform_storage_value_write(AUXILIARY_MAXIMUM_INDEX, settings->auxiliary_axis.maximum) &&

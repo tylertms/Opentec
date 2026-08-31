@@ -271,6 +271,39 @@ static void test_sends_native_display_command_after_report_seventeen(void) {
     assert(!wheel_output_reports_encode_next(&reports, 0x10, frame));
 }
 
+static void test_prioritizes_native_display_notification(void) {
+    WheelOutputReports reports;
+    wheel_output_reports_init(&reports);
+    uint8_t packed[4] = {1, 2, 3, 4};
+    uint8_t frame[33] = {0};
+
+    assert(wheel_output_reports_queue_packed(&reports, 1, packed, 0x10));
+    wheel_output_reports_queue_display_command(&reports, 0x0a);
+    wheel_output_reports_queue_display_notification(&reports, 0x1a);
+    wheel_output_reports_queue_display_notification(&reports, 0x29);
+
+    assert(wheel_output_reports_encode_next(&reports, 0x10, frame));
+    assert(frame[1] == 1);
+    assert(wheel_output_reports_encode_next(&reports, 0x0e, frame));
+    assert(frame[0] == 0xa6);
+    assert(frame[1] == 0x82);
+    assert(frame[2] == 0x29);
+    assert(wheel_output_reports_encode_next(&reports, 0x0e, frame));
+    assert(frame[2] == 0x29);
+
+    wheel_output_reports_queue_display_notification(&reports, 0x28);
+    assert(wheel_output_reports_encode_next(&reports, 0x0e, frame));
+    assert(frame[2] == 0x28);
+    assert(wheel_output_reports_encode_next(&reports, 0x0e, frame));
+    assert(frame[2] == 0x29);
+
+    wheel_output_reports_queue_display_notification(&reports, 0x2a);
+    assert(wheel_output_reports_encode_next(&reports, 0x0e, frame));
+    assert(frame[2] == 0x2a);
+    assert(wheel_output_reports_encode_next(&reports, 0x0e, frame));
+    assert(frame[2] == 0x0a);
+}
+
 static void test_activates_legacy_interface_presentations(void) {
     WheelOutputReports reports;
     uint8_t frame[33];
@@ -381,6 +414,7 @@ int main(void) {
     test_queues_report_six_from_shared_report_four_payload();
     test_streams_report_seventeen_after_direct_reports();
     test_sends_native_display_command_after_report_seventeen();
+    test_prioritizes_native_display_notification();
     test_activates_legacy_interface_presentations();
     test_streams_interface_catalogs();
     test_repeats_remote_telemetry_after_report_seventeen();

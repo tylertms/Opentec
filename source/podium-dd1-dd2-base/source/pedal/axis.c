@@ -36,6 +36,9 @@ uint16_t pedal_axis_update(PedalAxisCalibration *calibration, uint16_t sample) {
     uint16_t end = calibration->maximum >= calibration->upper_deadzone
                        ? (uint16_t)(calibration->maximum - calibration->upper_deadzone)
                        : calibration->upper_deadzone;
+    if (end < start) {
+        return 0;
+    }
     uint16_t available = (uint16_t)(end - start);
     uint16_t used = (uint16_t)(calibration->lower_deadzone + calibration->upper_deadzone);
     if (available < used) {

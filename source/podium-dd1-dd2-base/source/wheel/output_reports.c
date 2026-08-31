@@ -28,6 +28,14 @@ enum {
     WHEEL_OUTPUT_INTERFACE_PRESENTATION_DISPLAY_MODE = 3,
     WHEEL_OUTPUT_INTERFACE_PRESENTATION_DISPLAY_COMMAND = 1,
     WHEEL_OUTPUT_BUTTON_ILLUMINATION_COMMAND = 0x16,
+    WHEEL_DISPLAY_TORQUE_KEY_PROMPT = 0x1a,
+    WHEEL_DISPLAY_TORQUE_KEY_CONFIRMED = 0x28,
+    WHEEL_DISPLAY_ENABLE_TORQUE_PROMPT = 0x29,
+    WHEEL_DISPLAY_ENABLE_TORQUE_CONFIRMED = 0x2a,
+    WHEEL_DISPLAY_TORQUE_KEY_PROMPT_PENDING = 1u << 0,
+    WHEEL_DISPLAY_TORQUE_KEY_CONFIRMED_PENDING = 1u << 1,
+    WHEEL_DISPLAY_ENABLE_TORQUE_PROMPT_PENDING = 1u << 2,
+    WHEEL_DISPLAY_ENABLE_TORQUE_CONFIRMED_PENDING = 1u << 3,
     WHEEL_MODE_REMOTE_TUNING_LEGACY = 0x0e,
     WHEEL_MODE_REMOTE_TUNING_EXTENDED = 0x1c,
     WHEEL_MODE_LEGACY_ALTERNATE = 0x0f,
@@ -129,6 +137,38 @@ void wheel_output_reports_queue_display_command(WheelOutputReports *reports, uin
     }
     reports->display_command = command;
     reports->pending |= WHEEL_OUTPUT_DISPLAY_COMMAND_PENDING;
+}
+
+/**
+ * @brief Queues a native attached-wheel display notification.
+ *
+ * Latches recognized Torque Key and force-output prompt or confirmation commands independently.
+ * Prompts repeat in remote-tuning wheel modes until the matching confirmation is sent;
+ * confirmations consume both themselves and their corresponding prompt.
+ *
+ * @param[in,out] reports Retained display-notification state.
+ * @param[in] command Native prompt or confirmation command.
+ */
+void wheel_output_reports_queue_display_notification(WheelOutputReports *reports, uint8_t command) {
+    if (reports == NULL) {
+        return;
+    }
+    switch (command) {
+    case WHEEL_DISPLAY_TORQUE_KEY_PROMPT:
+        reports->display_notifications_pending |= WHEEL_DISPLAY_TORQUE_KEY_PROMPT_PENDING;
+        break;
+    case WHEEL_DISPLAY_TORQUE_KEY_CONFIRMED:
+        reports->display_notifications_pending |= WHEEL_DISPLAY_TORQUE_KEY_CONFIRMED_PENDING;
+        break;
+    case WHEEL_DISPLAY_ENABLE_TORQUE_PROMPT:
+        reports->display_notifications_pending |= WHEEL_DISPLAY_ENABLE_TORQUE_PROMPT_PENDING;
+        break;
+    case WHEEL_DISPLAY_ENABLE_TORQUE_CONFIRMED:
+        reports->display_notifications_pending |= WHEEL_DISPLAY_ENABLE_TORQUE_CONFIRMED_PENDING;
+        break;
+    default:
+        break;
+    }
 }
 
 /**
@@ -369,13 +409,14 @@ void wheel_output_reports_queue_six(WheelOutputReports *reports, uint8_t first, 
 /**
  * @brief Encodes the next pending attached-wheel output report.
  *
- * Selects reports in the order 1, 2, 4, 5, 6, 17, host-interface catalogs, native display command,
- * remote telemetry, and changed button illumination. Single-frame reports write their report
- * number and retained payload at frame offsets one and two, then consume their pending state.
- * Reports four and six use the same 25-byte payload. Report 17 emits its next segmented transfer
- * frame. Catalogs emit one definition or indexed-help chunk. Remote telemetry writes command 3 and
- * its 30-byte payload for three successive selections. Button illumination uses command 0x16 only
- * in remote-tuning wheel modes. The caller supplies the checksum.
+ * In remote-tuning wheel modes, selects prompt and confirmation notifications before all other
+ * work. It then selects reports in the order 1, 2, 4, 5, 6, 17, host-interface catalogs, native
+ * display command, remote telemetry, and changed button illumination. Single-frame reports write
+ * their report number and retained payload at frame offsets one and two, then consume their pending
+ * state. Reports four and six use the same 25-byte payload. Report 17 emits its next segmented
+ * transfer frame. Catalogs emit one definition or indexed-help chunk. Remote telemetry writes
+ * command 3 and its 30-byte payload for three successive selections. Button illumination uses
+ * command 0x16 only in remote-tuning wheel modes. The caller supplies the checksum.
  *
  * @param[in,out] reports Retained report payloads and pending state.
  * @param[in] wheel_mode Negotiated attached-wheel mode.
@@ -389,6 +430,34 @@ bool wheel_output_reports_encode_next(WheelOutputReports *reports, uint8_t wheel
     uint8_t size;
     uint8_t pending;
 
+    if ((wheel_mode == WHEEL_MODE_REMOTE_TUNING_LEGACY ||
+         wheel_mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED) &&
+        reports->display_notifications_pending != 0) {
+        uint8_t command;
+        if ((reports->display_notifications_pending &
+             WHEEL_DISPLAY_ENABLE_TORQUE_CONFIRMED_PENDING) != 0) {
+            command = WHEEL_DISPLAY_ENABLE_TORQUE_CONFIRMED;
+            reports->display_notifications_pending &=
+                (uint8_t)~(WHEEL_DISPLAY_ENABLE_TORQUE_CONFIRMED_PENDING |
+                           WHEEL_DISPLAY_ENABLE_TORQUE_PROMPT_PENDING);
+        } else if ((reports->display_notifications_pending &
+                    WHEEL_DISPLAY_TORQUE_KEY_CONFIRMED_PENDING) != 0) {
+            command = WHEEL_DISPLAY_TORQUE_KEY_CONFIRMED;
+            reports->display_notifications_pending &=
+                (uint8_t)~(WHEEL_DISPLAY_TORQUE_KEY_CONFIRMED_PENDING |
+                           WHEEL_DISPLAY_TORQUE_KEY_PROMPT_PENDING);
+        } else if ((reports->display_notifications_pending &
+                    WHEEL_DISPLAY_ENABLE_TORQUE_PROMPT_PENDING) != 0) {
+            command = WHEEL_DISPLAY_ENABLE_TORQUE_PROMPT;
+        } else {
+            command = WHEEL_DISPLAY_TORQUE_KEY_PROMPT;
+        }
+        memset(frame + 1, 0, 31);
+        frame[0] = WHEEL_OUTPUT_DISPLAY_COMMAND_REPORT_ID;
+        frame[1] = WHEEL_OUTPUT_DISPLAY_COMMAND_PACKET_TYPE;
+        frame[2] = command;
+        return true;
+    }
     if ((reports->pending & WHEEL_OUTPUT_REPORT_ONE_PENDING) != 0) {
         report = 1;
         payload = reports->report_one;

@@ -20,29 +20,29 @@ static const TuningEntry display_order[TUNING_ENTRY_COUNT] = {
     TUNING_ENTRY_SETUP,
     TUNING_ENTRY_SENSITIVITY,
     TUNING_ENTRY_FORCE_FEEDBACK_STRENGTH,
-    TUNING_ENTRY_FULL_FORCE,
+    TUNING_ENTRY_VIBRATION_STRENGTH,
+    TUNING_ENTRY_BRAKE_INDICATOR_LEVEL,
     TUNING_ENTRY_FORCE_SCALE,
     TUNING_ENTRY_STEERING_DEADZONE,
     TUNING_ENTRY_DRIFT_COMPENSATION,
-    TUNING_ENTRY_NATURAL_DAMPER,
-    TUNING_ENTRY_NATURAL_FRICTION,
-    TUNING_ENTRY_NATURAL_INERTIA,
-    TUNING_ENTRY_INTERPOLATION_FILTER,
-    TUNING_ENTRY_FORCE_EFFECT_INTENSITY,
     TUNING_ENTRY_FORCE_EFFECT_STRENGTH,
     TUNING_ENTRY_SPRING_EFFECT_STRENGTH,
     TUNING_ENTRY_DAMPER_EFFECT_STRENGTH,
-    TUNING_ENTRY_BRAKE_INDICATOR_LEVEL,
-    TUNING_ENTRY_VIBRATION_STRENGTH,
-    TUNING_ENTRY_MULTI_POSITION_MODE,
-    TUNING_ENTRY_PADDLE_MODE,
+    TUNING_ENTRY_NATURAL_DAMPER,
+    TUNING_ENTRY_NATURAL_FRICTION,
     TUNING_ENTRY_BRAKE_FORCE,
     TUNING_ENTRY_ALTERNATE_BRAKE_FORCE,
+    TUNING_ENTRY_FORCE_EFFECT_INTENSITY,
+    TUNING_ENTRY_MULTI_POSITION_MODE,
+    TUNING_ENTRY_PADDLE_MODE,
+    TUNING_ENTRY_INTERPOLATION_FILTER,
+    TUNING_ENTRY_NATURAL_INERTIA,
+    TUNING_ENTRY_FULL_FORCE,
+    TUNING_ENTRY_BUTTON_ILLUMINATION,
+    TUNING_ENTRY_DISPLAY_ROTATION,
     TUNING_ENTRY_BRAKE_PEDAL_CURVE,
     TUNING_ENTRY_CLUTCH_PEDAL_CURVE,
     TUNING_ENTRY_THROTTLE_PEDAL_CURVE,
-    TUNING_ENTRY_BUTTON_ILLUMINATION,
-    TUNING_ENTRY_DISPLAY_ROTATION,
 };
 
 static const TuningEntryLimits base_limits[TUNING_ENTRY_COUNT] = {
@@ -137,6 +137,9 @@ TuningEntryLimits tuning_entry_limits(TuningEntry entry, const TuningProfileBank
     if (entry == TUNING_ENTRY_MULTI_POSITION_MODE && !context->multi_position_automatic_available) {
         limits.minimum = 1;
     }
+    if (entry == TUNING_ENTRY_FORCE_FEEDBACK_STRENGTH && context->xbox_mode) {
+        limits.maximum = 101;
+    }
     if (!bank->standard_mode_enabled) {
         return limits;
     }
@@ -218,7 +221,7 @@ static bool entry_supported_by_hardware(TuningEntry entry, const TuningProfileBa
                                         const TuningEntryAvailabilityContext *context) {
     switch (entry) {
     case TUNING_ENTRY_FORCE_SCALE:
-        return !context->legacy_pedal_mode;
+        return !context->motor_calibration_active;
     case TUNING_ENTRY_NATURAL_DAMPER:
         return context->wheel_accessory_kind != WHEEL_ACCESSORY_DISCONNECTED;
     case TUNING_ENTRY_FULL_FORCE:
@@ -539,7 +542,9 @@ static bool adjust_sensitivity(TuningProfile *profile, int16_t count, TuningEntr
                           ? AUTOMATIC_SENSITIVITY
                           : (int16_t)(profile->rotation_degrees / SENSITIVITY_UNIT_DEGREES) -
                                 SENSITIVITY_ENCODING_BIAS;
-    int16_t requested = encoded + count * limits.step;
+    uint8_t step =
+        ((encoded >= -18 && encoded <= 125) || (encoded == -19 && count > 0)) ? 9 : limits.step;
+    int16_t requested = encoded + count * step;
     int16_t adjusted = requested > limits.maximum && count > 0
                            ? AUTOMATIC_SENSITIVITY
                            : clamp_value(requested, limits.minimum, limits.maximum);

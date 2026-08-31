@@ -85,7 +85,8 @@ uint8_t pedal_legacy_request(PedalLegacyChannel channel, uint8_t protocol_first,
 void pedal_legacy_apply_response(PedalLegacyChannel channel, uint8_t response,
                                  bool auxiliary_locked, PedalInput *input) {
     if (channel < PEDAL_LEGACY_AUXILIARY) {
-        input->axes[channel] = (uint16_t)(uint8_t)~response << 8;
+        uint16_t value = (uint16_t)(uint8_t)~response << 8;
+        input->axes[channel] = value == UINT16_C(0xff00) ? UINT16_MAX : value;
     } else if (channel == PEDAL_LEGACY_AUXILIARY && !auxiliary_locked) {
         input->auxiliary = response;
     }

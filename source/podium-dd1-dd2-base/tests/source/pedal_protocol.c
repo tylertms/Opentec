@@ -32,7 +32,7 @@ static void test_applies_legacy_responses(void) {
     pedal_legacy_apply_response(PEDAL_LEGACY_AXIS_2, 0x00, false, &input);
     pedal_legacy_apply_response(PEDAL_LEGACY_AXIS_3, 0xff, false, &input);
     assert(input.axes[0] == 0x5a00);
-    assert(input.axes[1] == 0xff00);
+    assert(input.axes[1] == UINT16_MAX);
     assert(input.axes[2] == 0);
 
     pedal_legacy_apply_response(PEDAL_LEGACY_AUXILIARY, 0x35, true, &input);

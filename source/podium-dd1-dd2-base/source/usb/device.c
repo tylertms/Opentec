@@ -78,6 +78,10 @@ static char xbox_serial[USB_XBOX_GIP_SERIAL_SIZE];
 static uint8_t xbox_serial_descriptor[USB_XBOX_GIP_SERIAL_TEXT_SIZE * 2 + 2];
 static uint8_t xbox_response_length;
 static uint8_t input_report[USB_DEVICE_REPORT_SIZE];
+static uint8_t feature_reports[4][USB_DEVICE_REPORT_SIZE];
+static uint8_t feature_report_lengths[4];
+static const uint8_t feature_report_ids[4] = {0x31, 0x32, 0x33, 0x36};
+static uint8_t feature_report_requests;
 static uint8_t updater_response[USB_DEVICE_UPDATER_RESPONSE_SIZE];
 static uint8_t input_report_length;
 static uint8_t updater_response_length;
@@ -87,7 +91,8 @@ static uint8_t control_report_type;
 static uint8_t control_report_id;
 static UsbControlStage control_stage;
 static bool output_ready;
-static bool updater_packet_ready;
+static uint8_t updater_packet_head;
+static uint8_t updater_packet_count;
 static bool updater_response_ready;
 static bool updater_input_busy;
 static bool updater_zero_length_pending;
@@ -99,11 +104,14 @@ static bool xbox_identity_ready;
 static bool xbox_request_ready;
 static bool xbox_response_ready;
 static bool xbox_input_busy;
+static bool playstation_remote_tuning_ready;
+static uint8_t playstation_remote_tuning_report[USB_DEVICE_REPORT_SIZE];
 static BoardVariant board_variant;
+static uint8_t playstation_wheel_mode;
 static UsbInputReportMode input_mode;
 static UsbOperatingMode operating_mode;
 static UsbUpdaterControl updater_control;
-static UsbDeviceUpdaterPacket updater_packet;
+static UsbDeviceUpdaterPacket updater_packets[2];
 static UsbXboxGipService xbox_service;
 static UsbXboxGipServiceIdentity xbox_service_identity;
 static UsbXboxGipSessionAction xbox_session_actions;
@@ -150,7 +158,8 @@ static bool input_report_matches(const uint8_t *report, uint8_t length) {
  * @brief Builds the descriptor catalog for one USB operating mode.
  *
  * Selects the device identity, configuration, report, and string descriptors used during the next
- * enumeration. PlayStation mode uses the dedicated HID profile and product string index nine.
+ * enumeration. PlayStation mode uses the dedicated HID profile, product string index nine, and the
+ * product identity selected by retained base mode two, four, or five.
  *
  * @param[in] variant Wheel-base hardware variant.
  * @param[in] mode USB operating mode to build.
@@ -230,7 +239,8 @@ static bool build_descriptors(BoardVariant variant, UsbOperatingMode mode) {
         configuration_length = USB_XBOX_GIP_CONFIGURATION_DESCRIPTOR_SIZE;
         report_length = 0;
     } else if (mode == USB_OPERATING_MODE_PLAYSTATION) {
-        descriptor_identity = usb_playstation_device_identity(variant);
+        descriptor_identity =
+            usb_playstation_device_identity_for_mode(variant, playstation_wheel_mode);
         product = usb_playstation_product_name(variant);
         product_index = descriptor_identity.product_string;
         usb_playstation_configuration_descriptor_encode(configuration_descriptor);
@@ -266,6 +276,9 @@ static bool build_descriptors(BoardVariant variant, UsbOperatingMode mode) {
     }
     strings[product_index] =
         (UsbDescriptorView){.data = product_descriptor_data, .length = (uint16_t)product_length};
+    if (mode == USB_OPERATING_MODE_FANATEC_COMPATIBILITY) {
+        strings[9] = strings[product_index];
+    }
     if (mode == USB_OPERATING_MODE_XBOX_GIP) {
         size_t serial_length = usb_string_descriptor_encode(xbox_serial, xbox_serial_descriptor,
                                                             sizeof(xbox_serial_descriptor));
@@ -291,6 +304,10 @@ static bool build_descriptors(BoardVariant variant, UsbOperatingMode mode) {
                    .length = (uint16_t)report_length},
         .strings = strings,
         .string_count = USB_STRING_COUNT,
+        .string_alias =
+            mode == USB_OPERATING_MODE_DRIVING_FORCE_PRO || mode == USB_OPERATING_MODE_G27 ? 0xfe
+                                                                                           : 0xff,
+        .string_alias_target = product_index,
     };
     operating_mode = mode;
     if (mode <= USB_OPERATING_MODE_G27) {
@@ -319,7 +336,8 @@ static void reset_state(bool preserve_hid_state) {
     control_stage = USB_CONTROL_STAGE_IDLE;
     input_report_length = 0;
     output_ready = false;
-    updater_packet_ready = false;
+    updater_packet_head = 0;
+    updater_packet_count = 0;
     updater_response_ready = false;
     updater_input_busy = false;
     updater_zero_length_pending = false;
@@ -333,6 +351,7 @@ static void reset_state(bool preserve_hid_state) {
     xbox_request_ready = false;
     xbox_response_ready = false;
     xbox_input_busy = false;
+    playstation_remote_tuning_ready = false;
     xbox_session_actions = USB_XBOX_GIP_SESSION_ACTION_NONE;
     for (uint8_t index = 0; index < USB_XBOX_GIP_METADATA_PACKET_SIZE; index++) {
         xbox_request[index] = 0;
@@ -350,6 +369,7 @@ static void reset_state(bool preserve_hid_state) {
  */
 void usb_device_prepare(BoardVariant variant) {
     board_variant = variant;
+    playstation_wheel_mode = 4;
     xbox_identity_ready = false;
     usb_xbox_gip_security_descriptor_encode(xbox_security_descriptor);
     usb_xbox_gip_os_string_descriptor_encode(xbox_os_string_descriptor);
@@ -422,12 +442,27 @@ bool usb_device_set_operating_mode(UsbOperatingMode mode) {
 /**
  * @brief Selects PlayStation USB mode.
  *
- * Rebuilds the device around the PlayStation HID descriptors, resets authentication transport
- * state, and restarts enumeration.
+ * Selects base mode four, rebuilds the device around its PlayStation HID descriptors, resets
+ * authentication transport state, and restarts enumeration.
  *
  * @return True when the PlayStation profile was activated; otherwise false.
  */
-bool usb_device_set_playstation_mode(void) {
+bool usb_device_set_playstation_mode(void) { return usb_device_set_playstation_wheel_mode(4); }
+
+/**
+ * @brief Selects PlayStation USB for a specific base mode.
+ *
+ * Accepts modes two, four, and five, retains the selected identity mode, rebuilds the PlayStation
+ * descriptors, resets console transport state, and restarts enumeration.
+ *
+ * @param[in] wheel_mode Selected PlayStation base mode.
+ * @return True when the selected PlayStation profile was activated.
+ */
+bool usb_device_set_playstation_wheel_mode(uint8_t wheel_mode) {
+    if (wheel_mode != 2 && wheel_mode != 4 && wheel_mode != 5) {
+        return false;
+    }
+    playstation_wheel_mode = wheel_mode;
     return usb_device_set_operating_mode(USB_OPERATING_MODE_PLAYSTATION);
 }
 
@@ -536,19 +571,31 @@ static void begin_value_input(void) {
  *
  * @return True when the retained report satisfies the request; otherwise false.
  */
-static bool report_matches_request(void) {
-    return control_transfer.report_type == USB_DEVICE_HID_REPORT_INPUT &&
-           input_report_length != 0 &&
-           (input_mode == USB_INPUT_REPORT_MODE_FANATEC
-                ? input_report[0] == control_transfer.report_id
-                : control_transfer.report_id == 0);
+static UsbDescriptorView requested_report(void) {
+    if (control_transfer.report_type == USB_DEVICE_HID_REPORT_INPUT && input_report_length != 0 &&
+        (input_mode == USB_INPUT_REPORT_MODE_FANATEC ? input_report[0] == control_transfer.report_id
+                                                     : control_transfer.report_id == 0)) {
+        return (UsbDescriptorView){.data = input_report, .length = input_report_length};
+    }
+    if (control_transfer.report_type == USB_DEVICE_HID_REPORT_FEATURE) {
+        for (uint8_t index = 0; index < 4; index++) {
+            if (feature_report_ids[index] == control_transfer.report_id &&
+                feature_report_lengths[index] != 0) {
+                feature_report_requests |= (uint8_t)(1u << index);
+                return (UsbDescriptorView){.data = feature_reports[index],
+                                           .length = feature_report_lengths[index]};
+            }
+        }
+    }
+    return (UsbDescriptorView){0};
 }
 
 /**
- * @brief Handles PlayStation authentication feature reports.
+ * @brief Handles PlayStation feature reports.
  *
- * Builds F1 response fragments, F2 status, and F3 format reports for feature reads. A feature write
- * for F0 arms one 64-byte control output transfer.
+ * Builds the fixed report 3, returns and consumes a pending remote-tuning report 35, and builds F1
+ * response fragments, F2 status, and F3 format reports for feature reads. A feature write for F0
+ * arms one 64-byte authentication output transfer.
  *
  * @return True when the active control request belongs to the authentication transport; otherwise
  * false.
@@ -562,7 +609,33 @@ static bool handle_playstation_authentication_setup(void) {
     if (control_request.kind == USB_CONTROL_HID_GET_REPORT) {
         uint16_t report_length;
         uint8_t report_id = (uint8_t)control_request.value;
-        if (report_id == 0xf1) {
+        if (report_id == 3) {
+            uint8_t *report = console_workspace.playstation.feature_report;
+            for (uint8_t index = 0; index < USB_PLAYSTATION_AUTHENTICATION_REPORT_SIZE; index++) {
+                report[index] = 0;
+            }
+            report[0] = 3;
+            report[1] = 0x21;
+            report[2] = 0x27;
+            report[3] = 4;
+            report[4] = 0x18;
+            report[5] = 6;
+            report[24] = 0x0f;
+            report[25] = 0xd8;
+            report[26] = 9;
+            report_length = 48;
+        } else if (report_id == 0x35) {
+            if (!playstation_remote_tuning_ready) {
+                stall_control();
+                return true;
+            }
+            for (uint8_t index = 0; index < USB_DEVICE_REPORT_SIZE; index++) {
+                console_workspace.playstation.feature_report[index] =
+                    playstation_remote_tuning_report[index];
+            }
+            playstation_remote_tuning_ready = false;
+            report_length = USB_DEVICE_REPORT_SIZE;
+        } else if (report_id == 0xf1) {
             if (!usb_playstation_authentication_response_report(
                     &console_workspace.playstation.authentication,
                     console_workspace.playstation.feature_report)) {
@@ -683,10 +756,9 @@ static void handle_control_transfer(void) {
         begin_value_input();
         break;
     case USB_CONTROL_TRANSFER_REPORT_IN:
-        if (report_matches_request()) {
-            begin_control_input(
-                (UsbDescriptorView){.data = input_report, .length = input_report_length},
-                control_request.length);
+        control_transfer.data = requested_report();
+        if (control_transfer.data.data != 0) {
+            begin_control_input(control_transfer.data, control_request.length);
         } else {
             stall_control();
         }
@@ -1026,15 +1098,18 @@ static void handle_xbox_output(void) {
 /**
  * @brief Captures one motor-updater output packet.
  *
- * Stores the received endpoint 3 payload for the updater protocol service and rearms the completed
- * output bank for another 64-byte transfer.
+ * Appends the received endpoint 3 payload to the two-packet updater queue when space is available,
+ * then rearms the completed output bank for another 64-byte transfer.
  */
 static void handle_updater_output(void) {
-    updater_packet.length = usb_event.length;
-    for (uint8_t index = 0; index < usb_event.length; index++) {
-        updater_packet.data[index] = usb_event.data[index];
+    if (updater_packet_count < 2) {
+        uint8_t slot = (updater_packet_head + updater_packet_count) & 1u;
+        updater_packets[slot].length = usb_event.length;
+        for (uint8_t index = 0; index < usb_event.length; index++) {
+            updater_packets[slot].data[index] = usb_event.data[index];
+        }
+        updater_packet_count++;
     }
-    updater_packet_ready = true;
     if (platform_usb_receive(USB_UPDATER_DATA_ENDPOINT, USB_DEVICE_REPORT_SIZE,
                              updater_output_data_one)) {
         updater_output_data_one = !updater_output_data_one;
@@ -1212,6 +1287,54 @@ bool usb_device_take_output(UsbDeviceOutputReport *report) {
     *report = output_report;
     output_ready = false;
     return true;
+}
+
+/**
+ * @brief Publishes one native USB feature-report snapshot.
+ *
+ * Replaces the retained payload for supported report IDs 31, 32, 33, and 36. Invalid pointers,
+ * empty reports, oversized reports, and unsupported IDs are rejected.
+ *
+ * @param[in] report_id Feature report identifier.
+ * @param[in] report Encoded feature-report bytes.
+ * @param[in] length Number of encoded bytes.
+ * @return True when the report was retained.
+ */
+bool usb_device_publish_feature_report(uint8_t report_id, const uint8_t *report, uint8_t length) {
+    if (report == 0 || length == 0 || length > USB_DEVICE_REPORT_SIZE) {
+        return false;
+    }
+    for (uint8_t index = 0; index < 4; index++) {
+        if (feature_report_ids[index] != report_id) {
+            continue;
+        }
+        for (uint8_t offset = 0; offset < length; offset++) {
+            feature_reports[index][offset] = report[offset];
+        }
+        feature_report_lengths[index] = length;
+        return true;
+    }
+    return false;
+}
+
+/**
+ * @brief Takes a completed host request for a native feature report.
+ *
+ * Clears the one-shot request latch for the matching supported report ID without changing its
+ * retained response payload.
+ *
+ * @param[in] report_id Feature report identifier to inspect.
+ * @return True when a matching request was pending.
+ */
+bool usb_device_take_feature_report_request(uint8_t report_id) {
+    for (uint8_t index = 0; index < 4; index++) {
+        uint8_t mask = (uint8_t)(1u << index);
+        if (feature_report_ids[index] == report_id && (feature_report_requests & mask) != 0) {
+            feature_report_requests &= (uint8_t)~mask;
+            return true;
+        }
+    }
+    return false;
 }
 
 /**
@@ -1402,17 +1525,19 @@ bool usb_device_send_vendor_report(const uint8_t *report, uint8_t length) {
 /**
  * @brief Takes one received motor-updater packet.
  *
- * Transfers ownership of the pending endpoint 3 output payload to the caller.
+ * Transfers ownership of the oldest payload in the two-packet endpoint 3 receive queue to the
+ * caller.
  *
  * @param[out] packet Destination for the packet bytes and length.
  * @return True when a packet was available; otherwise false.
  */
 bool usb_device_take_updater_packet(UsbDeviceUpdaterPacket *packet) {
-    if (!updater_packet_ready || packet == 0) {
+    if (updater_packet_count == 0 || packet == 0) {
         return false;
     }
-    *packet = updater_packet;
-    updater_packet_ready = false;
+    *packet = updater_packets[updater_packet_head];
+    updater_packet_head = (updater_packet_head + 1) & 1u;
+    updater_packet_count--;
     return true;
 }
 
@@ -1522,6 +1647,28 @@ void usb_device_fail_playstation_authentication(void) {
     if (operating_mode == USB_OPERATING_MODE_PLAYSTATION) {
         usb_playstation_authentication_fail(&console_workspace.playstation.authentication);
     }
+}
+
+/**
+ * @brief Publishes one PlayStation remote-tuning feature report.
+ *
+ * Retains a report-35 payload only while PlayStation mode is active and the single response slot is
+ * empty. The host consumes the retained bytes through the PlayStation feature-report path.
+ *
+ * @param[in] report Complete 64-byte report-35 payload.
+ * @return True when the response slot accepted the report.
+ */
+bool usb_device_publish_playstation_remote_tuning_report(
+    const uint8_t report[USB_DEVICE_REPORT_SIZE]) {
+    if (operating_mode != USB_OPERATING_MODE_PLAYSTATION || report == NULL || report[0] != 0x35 ||
+        playstation_remote_tuning_ready) {
+        return false;
+    }
+    for (uint8_t index = 0; index < USB_DEVICE_REPORT_SIZE; index++) {
+        playstation_remote_tuning_report[index] = report[index];
+    }
+    playstation_remote_tuning_ready = true;
+    return true;
 }
 
 /**

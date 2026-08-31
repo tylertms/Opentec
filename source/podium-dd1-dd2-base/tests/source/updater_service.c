@@ -186,7 +186,7 @@ static void test_routes_auxiliary_handshake_and_probe(void) {
     assert(usb_updater_service_start_probe(&service));
     input.now_ms = 2;
     usb_updater_service_run(&service, &input);
-    const uint8_t expected_probe[] = {0x5a, 0xa7};
+    const uint8_t expected_probe[] = {0x5a, 0xa6};
     assert(aux_address == 0x10);
     assert(aux_register == 0);
     assert(aux_length == sizeof(expected_probe));
@@ -203,7 +203,7 @@ static void test_routes_startup_recovery_without_handshake(void) {
 
     UsbUpdaterServiceInput input = input_at(0);
     usb_updater_service_run(&service, &input);
-    const uint8_t expected_probe[] = {0x5a, 0xa7};
+    const uint8_t expected_probe[] = {0x5a, 0xa6};
     assert(aux_address == 0x10);
     assert(aux_register == 0);
     assert(aux_length == sizeof(expected_probe));
@@ -238,7 +238,7 @@ static void complete_direct_exchange(UsbUpdaterService *service, const uint8_t *
 }
 
 static void test_probes_direct_route_and_selects_identity(void) {
-    static const uint8_t response[] = {0x5a, 0xa7, 0x8a, 1, 2, 3, 4, 5, 6, 7};
+    static const uint8_t response[] = {0x5a, 0xa7, 1, 2, 3, 4, 0x8a, 5, 6, 7};
     static const uint8_t identity_request[] = {0xf8, 0x01};
     UsbUpdaterService service;
     reset_fakes();
@@ -249,7 +249,7 @@ static void test_probes_direct_route_and_selects_identity(void) {
     assert(!usb_updater_service_start_probe(&service));
     complete_direct_exchange(&service, response, sizeof(response), 100);
     assert(transmitted_length == 2);
-    assert(memcmp(transmitted, "\x5a\xa7", 2) == 0);
+    assert(memcmp(transmitted, "\x5a\xa6", 2) == 0);
     assert(usb_updater_service_probe_status(&service) == USB_UPDATER_PROBE_COMPLETE);
 
     assert(usb_updater_service_select_mode(&service, USB_RUNTIME_MODE_USB_BRIDGE) == false);
@@ -298,7 +298,7 @@ static void test_routes_probe_to_protocol_target(void) {
     assert(length == 5);
     assert(request[0] == 2);
     assert(request[1] == (WHEEL_UPDATER_TARGET_PROTOCOL << 1));
-    assert(request[2] == 0 && request[3] == 0x5a && request[4] == 0xa7);
+    assert(request[2] == 0 && request[3] == 0x5a && request[4] == 0xa6);
 }
 
 int main(void) {

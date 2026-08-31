@@ -12,8 +12,7 @@ enum {
     USB_BANK_COUNT = 2,
     USB_DIRECTION_COUNT = 2,
     USB_DESCRIPTOR_COUNT = USB_ENDPOINT_COUNT * USB_BANK_COUNT * USB_DIRECTION_COUNT,
-    USB_EVENT_CAPACITY = 8,
-    USB_EVENT_MASK = USB_EVENT_CAPACITY - 1,
+    USB_EVENT_CAPACITY = 12,
     USB_INTERRUPT_PRIORITY = 4,
     USB_PACKET_ID_SETUP = 0x0d,
     USB_TRANSACTION_ODD_BANK = 0x04,
@@ -107,7 +106,10 @@ static void arm_setup_bank(bool odd_bank) {
  */
 static void push_event(PlatformUsbEventType type, uint8_t endpoint, const volatile uint8_t *data,
                        uint8_t length) {
-    uint8_t next = (event_head + 1) & USB_EVENT_MASK;
+    uint8_t next = event_head + 1;
+    if (next == USB_EVENT_CAPACITY) {
+        next = 0;
+    }
     if (next == event_tail) {
         return;
     }
@@ -271,7 +273,10 @@ bool platform_usb_take_event(PlatformUsbEvent *event) {
         for (uint8_t index = 0; index < source->length; index++) {
             event->data[index] = source->data[index];
         }
-        event_tail = (event_tail + 1) & USB_EVENT_MASK;
+        event_tail++;
+        if (event_tail == USB_EVENT_CAPACITY) {
+            event_tail = 0;
+        }
     }
     IEC5bits.USB1IE = interrupt_enabled;
     return available;
@@ -558,6 +563,15 @@ static void handle_transaction(void) {
  *
  */
 void __attribute__((interrupt, no_auto_psv)) _USB1Interrupt(void) {
+    if (U1OTGIEbits.ACTVIE != 0 && U1OTGIRbits.ACTVIF != 0) {
+        U1OTGIRbits.ACTVIF = 1;
+        U1OTGIEbits.ACTVIE = 0;
+        U1PWRCbits.USUSPEND = 0;
+    }
+    if (U1PWRCbits.USUSPEND != 0) {
+        IFS5bits.USB1IF = 0;
+        return;
+    }
     if (U1IRbits.URSTIF != 0) {
         reset_controller();
         push_event(PLATFORM_USB_EVENT_RESET, 0, 0, 0);
@@ -566,6 +580,9 @@ void __attribute__((interrupt, no_auto_psv)) _USB1Interrupt(void) {
     if (U1IRbits.IDLEIF != 0) {
         push_event(PLATFORM_USB_EVENT_SUSPEND, 0, 0, 0);
         U1IR = 0x10;
+        U1OTGIRbits.ACTVIF = 1;
+        U1OTGIEbits.ACTVIE = 1;
+        U1PWRCbits.USUSPEND = 1;
     }
     if (U1IRbits.UERRIF != 0) {
         U1EIR = 0xff;

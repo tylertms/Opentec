@@ -45,6 +45,7 @@ typedef struct {
     bool automatic_setup_selected;
     bool alternate_brake_fine_step;
     bool multi_position_automatic_available;
+    bool xbox_mode;
 } TuningEntryAdjustmentContext;
 
 /** @brief Inclusive adjustment interval and increment for one tuning entry. */
@@ -69,6 +70,7 @@ typedef struct {
     WheelAccessoryKind wheel_accessory_kind;
     TuningPedalConnection pedal_connection;
     bool legacy_pedal_mode;
+    bool motor_calibration_active;
     bool primary_pedal_calibration_active;
     bool secondary_pedal_calibration_active;
     bool multi_position_supported;

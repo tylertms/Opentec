@@ -66,10 +66,11 @@ static void test_erased_storage_loads_defaults_and_saves_reference_format(void) 
     assert(storage[28] == 0x00c8);
     assert(storage[29] == 1);
     assert(storage[26] == 0xaa00);
+    assert(!present[19]);
     for (uint8_t profile = 0; profile < TUNING_PROFILE_SLOT_COUNT; profile++) {
         assert(storage[20 + profile] == 0xaa64);
         assert(present[30 + profile * 26]);
-        assert(!present[30 + profile * 26 + 25]);
+        assert(present[30 + profile * 26 + 25]);
     }
     assert(persistence.has_record);
     assert(!persistence.dirty);
@@ -92,7 +93,7 @@ static void test_all_supported_settings_round_trip(void) {
     expected.tuning_profiles.slots[2].throttle_pedal_curve = TUNING_PEDAL_CURVE_PROGRESSIVE;
     expected.h_pattern_shifter.calibrated = true;
     uint16_t *thresholds = &expected.h_pattern_shifter.calibration.reverse_first_boundary;
-    for (uint8_t index = 0; index < 8; index++) {
+    for (uint8_t index = 0; index < 9; index++) {
         thresholds[index] = (uint16_t)(1000 + index * 100);
     }
     expected.security_code.enabled = true;
@@ -106,6 +107,13 @@ static void test_all_supported_settings_round_trip(void) {
     expected.auxiliary_axis.maximum = 3900;
     expected.auxiliary_axis.reset_on_start = false;
     expected.wheel_auxiliary_option = 1;
+    expected.retained_global_values[0] = 0x1234;
+    expected.retained_global_values[1] = 0x5678;
+    expected.operating_mode = 6;
+    expected.operating_mode_valid = true;
+    for (uint8_t profile = 0; profile < TUNING_PROFILE_SLOT_COUNT; profile++) {
+        expected.retained_profile_values[profile] = (uint16_t)(0x7000 + profile);
+    }
     storage[55] = 0xbeef;
     present[55] = true;
 
@@ -114,7 +122,7 @@ static void test_all_supported_settings_round_trip(void) {
     assert(storage[18] == 0xa472);
     assert(storage[26] == 0xaa01);
     assert(storage[6] == 5);
-    assert(storage[55] == 0xbeef);
+    assert(storage[55] == 0x7000);
 
     BaseSettingsPersistence loaded_state;
     BaseSettings actual;
@@ -130,7 +138,7 @@ static void test_all_supported_settings_round_trip(void) {
     assert(actual.tuning_profiles.slots[2].natural_friction == 31);
     assert(actual.tuning_profiles.slots[2].throttle_pedal_curve == TUNING_PEDAL_CURVE_PROGRESSIVE);
     assert(actual.h_pattern_shifter.calibrated);
-    for (uint8_t index = 0; index < 8; index++) {
+    for (uint8_t index = 0; index < 9; index++) {
         uint16_t *actual_thresholds = &actual.h_pattern_shifter.calibration.reverse_first_boundary;
         assert(actual_thresholds[index] == thresholds[index]);
     }
@@ -145,6 +153,14 @@ static void test_all_supported_settings_round_trip(void) {
     assert(actual.auxiliary_axis.maximum == 3900);
     assert(!actual.auxiliary_axis.reset_on_start);
     assert(actual.wheel_auxiliary_option == 0);
+    assert(actual.retained_global_values[0] == 0x1234);
+    assert(actual.retained_global_values[1] == 0x5678);
+    assert(actual.operating_mode == 6);
+    assert(actual.operating_mode_valid);
+    assert(storage[19] == 0xaa06);
+    for (uint8_t profile = 0; profile < TUNING_PROFILE_SLOT_COUNT; profile++) {
+        assert(actual.retained_profile_values[profile] == (uint16_t)(0x7000 + profile));
+    }
     assert(storage[26] == 0xaa00);
 }
 
@@ -174,6 +190,7 @@ static void test_unformatted_and_invalid_values_keep_defaults(void) {
     assert(settings.steering_limits.percent[0] == 100);
     assert(settings.auxiliary_axis.minimum == 0x0f38);
     assert(settings.auxiliary_axis.maximum == 0x00c8);
+    assert(!settings.operating_mode_valid);
 
     storage[0] = 0x1234;
     assert(!base_settings_persistence_load(&persistence, &settings));

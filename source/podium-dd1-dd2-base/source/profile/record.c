@@ -14,6 +14,15 @@ enum {
     RECORD_DATA_SIZE = TUNING_PROFILE_RECORD_SIZE - TUNING_PROFILE_RECORD_CHECKSUM_SIZE,
 };
 
+/**
+ * @brief Calculates a tuning-profile record checksum.
+ *
+ * Applies non-reflected CRC-16/CCITT with seed 0xFFFF to the requested record bytes.
+ *
+ * @param[in] data Record bytes to checksum.
+ * @param[in] size Number of input bytes.
+ * @return Calculated CRC-16 value.
+ */
 static uint16_t record_checksum(const uint8_t *data, uint16_t size) {
     uint16_t checksum = UINT16_C(0xffff);
     for (uint16_t index = 0; index < size; index++) {
@@ -27,20 +36,59 @@ static uint16_t record_checksum(const uint8_t *data, uint16_t size) {
     return checksum;
 }
 
+/**
+ * @brief Writes one byte to a tuning-profile record.
+ *
+ * Stores the value at the current cursor and advances past it.
+ *
+ * @param[in,out] output Record receiving the value.
+ * @param[in] cursor Current write offset.
+ * @param[in] value Byte to write.
+ * @return Offset following the written byte.
+ */
 static uint16_t write_u8(uint8_t *output, uint16_t cursor, uint8_t value) {
     output[cursor] = value;
     return cursor + 1;
 }
 
+/**
+ * @brief Writes one little-endian 16-bit record value.
+ *
+ * Stores the low byte followed by the high byte and advances past both.
+ *
+ * @param[in,out] output Record receiving the value.
+ * @param[in] cursor Current write offset.
+ * @param[in] value Value to write.
+ * @return Offset following the written value.
+ */
 static uint16_t write_u16(uint8_t *output, uint16_t cursor, uint16_t value) {
     cursor = write_u8(output, cursor, (uint8_t)value);
     return write_u8(output, cursor, (uint8_t)(value >> 8));
 }
 
+/**
+ * @brief Reads one little-endian 16-bit record value.
+ *
+ * Combines the two bytes at the supplied offset without alignment requirements.
+ *
+ * @param[in] input Encoded tuning-profile record.
+ * @param[in] cursor Current read offset.
+ * @return Decoded unsigned value.
+ */
 static uint16_t read_u16(const uint8_t *input, uint16_t cursor) {
     return (uint16_t)input[cursor] | ((uint16_t)input[cursor + 1] << 8);
 }
 
+/**
+ * @brief Writes one logical tuning profile to a record.
+ *
+ * Serializes steering range and every retained one-byte tuning field in the stable record order.
+ *
+ * @param[in,out] output Record receiving the profile.
+ * @param[in] cursor Current write offset.
+ * @param[in] profile Logical tuning profile to encode.
+ * @return Offset following the encoded profile.
+ */
 static uint16_t write_profile(uint8_t *output, uint16_t cursor, const TuningProfile *profile) {
     cursor = write_u16(output, cursor, profile->rotation_degrees);
     cursor = write_u8(output, cursor, profile->automatic_rotation);
@@ -70,6 +118,16 @@ static uint16_t write_profile(uint8_t *output, uint16_t cursor, const TuningProf
     return write_u8(output, cursor, (uint8_t)profile->throttle_pedal_curve);
 }
 
+/**
+ * @brief Reads one logical tuning profile from a record.
+ *
+ * Decodes every retained field in stable record order and normalizes the resulting profile.
+ *
+ * @param[in] input Encoded tuning-profile record.
+ * @param[in] cursor Current read offset.
+ * @param[out] profile Decoded and normalized tuning profile.
+ * @return Offset following the decoded profile.
+ */
 static uint16_t read_profile(const uint8_t *input, uint16_t cursor, TuningProfile *profile) {
     profile->rotation_degrees = read_u16(input, cursor);
     cursor += 2;
@@ -102,6 +160,16 @@ static uint16_t read_profile(const uint8_t *input, uint16_t cursor, TuningProfil
     return cursor;
 }
 
+/**
+ * @brief Encodes a complete tuning-profile bank record.
+ *
+ * Writes the OTPF header, version, selected and active slots, Standard-mode flag, all six profiles,
+ * and the trailing CRC-16 checksum. Invalid slot selections are rejected.
+ *
+ * @param[in] bank Tuning-profile bank to encode.
+ * @param[out] output Fixed-size encoded record.
+ * @return True when a complete record was encoded.
+ */
 bool tuning_profile_record_encode(const TuningProfileBank *bank,
                                   uint8_t output[TUNING_PROFILE_RECORD_SIZE]) {
     if (bank->selected_slot >= TUNING_PROFILE_SLOT_COUNT ||
@@ -131,6 +199,16 @@ bool tuning_profile_record_encode(const TuningProfileBank *bank,
     return cursor == TUNING_PROFILE_RECORD_SIZE;
 }
 
+/**
+ * @brief Decodes a complete tuning-profile bank record.
+ *
+ * Validates the OTPF header, supported version, slot count, selected and active slots, and CRC-16
+ * before decoding all six profiles. Legacy version one enables Standard mode implicitly.
+ *
+ * @param[in] input Fixed-size encoded record.
+ * @param[out] bank Validated and normalized tuning-profile bank.
+ * @return True when the record is valid and complete.
+ */
 bool tuning_profile_record_decode(const uint8_t input[TUNING_PROFILE_RECORD_SIZE],
                                   TuningProfileBank *bank) {
     uint16_t stored_checksum =

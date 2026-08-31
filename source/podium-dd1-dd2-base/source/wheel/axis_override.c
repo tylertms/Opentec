@@ -395,7 +395,7 @@ static void process_packet_multiplexed_axes(WheelAxisOverrideProcessor *processo
         if (x == AXIS_UNAVAILABLE) {
             processor->multiplex_phase = WHEEL_AXIS_MULTIPLEX_SELECT;
         } else if (interface_mode == 6) {
-            axes[0] = (uint8_t)(0x80u - ((uint16_t)x >> 1));
+            axes[0] = x >> 1;
         } else if (interface_mode == 7) {
             axes[0] = (uint8_t)(0x7fu - ((uint16_t)x >> 1));
         } else {

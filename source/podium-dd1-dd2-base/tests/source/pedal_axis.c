@@ -93,6 +93,16 @@ static void test_limits_output_to_configured_scale(void) {
     assert(pedal_axis_update(&calibration, 1000) == 255);
 }
 
+static void test_rejects_reversed_learned_range(void) {
+    PedalAxisCalibration calibration = {
+        .minimum = 800,
+        .maximum = 200,
+        .output_scale = UINT16_MAX,
+    };
+
+    assert(pedal_axis_update(&calibration, 500) == 0);
+}
+
 int main(void) {
     test_scales_with_deadzones();
     test_learns_enabled_limits();
@@ -101,5 +111,6 @@ int main(void) {
     test_requires_margin_width_beyond_the_scaled_span();
     test_uses_upper_margin_when_maximum_is_below_it();
     test_limits_output_to_configured_scale();
+    test_rejects_reversed_learned_range();
     return 0;
 }

@@ -65,7 +65,7 @@ static void test_receives_fragmented_message(void) {
     assert(acknowledgement.type_flags == 1);
     assert(acknowledgement.sequence == 1);
     assert(acknowledgement.payload_length == 1);
-    assert(acknowledgement.payload[0] == 1);
+    assert(acknowledgement.payload[0] == 4);
 
     encode(4 | SERIAL_PACKET_FINAL_FRAGMENT, 1, message + 57, 1, encoded);
     assert(serial_session_accept(&session, encoded) == SERIAL_SESSION_MESSAGE_COMPLETE);
@@ -89,7 +89,7 @@ static void test_resynchronizes_or_retries_from_type_zero(void) {
     assert(serial_session_next_packet(&session, encoded));
 
     static const uint8_t current_type = 4;
-    encode(0, 1, &current_type, 1, encoded);
+    encode(0, 3, &current_type, 1, encoded);
     assert(serial_session_accept(&session, encoded) == SERIAL_SESSION_ACCEPTED);
     assert(serial_session_next_packet(&session, encoded));
     SerialPacket resynchronization = decode(encoded);
@@ -97,7 +97,7 @@ static void test_resynchronizes_or_retries_from_type_zero(void) {
     assert(resynchronization.sequence == 2);
     assert(resynchronization.payload[0] == 4);
 
-    encode(0, 2, &current_type, 1, encoded);
+    encode(0, 1, &current_type, 1, encoded);
     assert(serial_session_accept(&session, encoded) == SERIAL_SESSION_ACCEPTED);
     assert(serial_session_next_packet(&session, encoded));
     SerialPacket retry = decode(encoded);

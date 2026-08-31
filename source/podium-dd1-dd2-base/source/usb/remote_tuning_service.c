@@ -24,6 +24,19 @@ enum {
     REMOTE_TUNING_HOST_REPORT_XBOX_MARKER = 0x36,
     REMOTE_TUNING_HOST_REPORT_HEADER_SIZE = 3,
     REMOTE_TUNING_HOST_REPORT_RECORD_COUNT = 12,
+    REMOTE_TUNING_PHYSICAL_SELECTION_MAXIMUM = 10,
+    REMOTE_TUNING_STANDARD_NEXT_BUTTON = 0x04,
+    REMOTE_TUNING_STANDARD_PREVIOUS_BUTTON = 0x02,
+    REMOTE_TUNING_STANDARD_BUTTON_MASK = 0x0f,
+    REMOTE_TUNING_ENCODER_INPUT_FIRST = 1,
+    REMOTE_TUNING_ENCODER_INPUT_LAST = 12,
+    REMOTE_TUNING_ENCODER_SELECTION_FIRST = 1,
+    REMOTE_TUNING_ENCODER_SELECTION_LAST = 5,
+    REMOTE_TUNING_NAVIGATION_NEXT = 0x10,
+    REMOTE_TUNING_NAVIGATION_PREVIOUS = 0x20,
+    REMOTE_TUNING_NAVIGATION_NEUTRAL = 0x30,
+    REMOTE_TUNING_SETUP_PAGE_COUNT = 6,
+    WHEEL_MODE_STANDARD = 0x10,
 };
 
 /**
@@ -261,6 +274,167 @@ static void apply_refresh(UsbRemoteTuningService *service, uint8_t value, uint8_
 void usb_remote_tuning_service_init(UsbRemoteTuningService *service) {
     memset(service, 0, sizeof(*service));
     remote_telemetry_init(&service->telemetry);
+}
+
+/**
+ * @brief Updates physical remote-telemetry selection controls.
+ *
+ * While remote tuning and profile presentation are active, consumes tuning-input edges on modern
+ * wheels or the standard wheel's next and previous buttons to cycle the telemetry metric. Leaving
+ * the active presentation clears any selected metric.
+ *
+ * @param[in,out] service Remote-tuning selection and input-latch state.
+ * @param[in] wheel_mode Current attached-wheel mode.
+ * @param[in] profile_mode True while the wheel presents the profile context.
+ * @param[in] tuning_display_supported True when the wheel supports tuning presentation.
+ * @param[in] adapter_connected Current adapter connection state retained for interface parity.
+ * @param[in] tuning_input Current signed tuning-control input.
+ * @param[in] auxiliary_buttons Current standard-wheel navigation buttons.
+ * @return True when the selected telemetry metric changed.
+ */
+bool usb_remote_tuning_service_update_physical_selection(UsbRemoteTuningService *service,
+                                                         uint8_t wheel_mode, bool profile_mode,
+                                                         bool tuning_display_supported,
+                                                         bool adapter_connected,
+                                                         int8_t tuning_input,
+                                                         uint8_t auxiliary_buttons) {
+    if (service == NULL) {
+        return false;
+    }
+    (void)adapter_connected;
+
+    RemoteTelemetryMetric selection = service->telemetry.metric;
+    if (service->active && tuning_display_supported && profile_mode) {
+        if (wheel_mode != WHEEL_MODE_STANDARD) {
+            if (tuning_input != service->physical_previous_input) {
+                if (tuning_input > 0) {
+                    selection =
+                        selection >= (RemoteTelemetryMetric)REMOTE_TUNING_PHYSICAL_SELECTION_MAXIMUM
+                            ? REMOTE_TELEMETRY_NONE
+                            : (RemoteTelemetryMetric)(selection + 1);
+                } else if (tuning_input < 0) {
+                    selection = selection == REMOTE_TELEMETRY_NONE
+                                    ? REMOTE_TELEMETRY_DELTA
+                                    : (RemoteTelemetryMetric)(selection - 1);
+                }
+            }
+            service->physical_previous_input = tuning_input;
+        } else {
+            uint8_t flags = auxiliary_buttons & REMOTE_TUNING_STANDARD_BUTTON_MASK;
+            if (service->physical_input_released) {
+                if ((flags & REMOTE_TUNING_STANDARD_NEXT_BUTTON) != 0) {
+                    service->physical_button_flags = flags;
+                    service->physical_input_released = false;
+                    selection =
+                        selection >= (RemoteTelemetryMetric)REMOTE_TUNING_PHYSICAL_SELECTION_MAXIMUM
+                            ? REMOTE_TELEMETRY_NONE
+                            : (RemoteTelemetryMetric)(selection + 1);
+                } else if ((flags & REMOTE_TUNING_STANDARD_PREVIOUS_BUTTON) != 0) {
+                    service->physical_button_flags = flags;
+                    service->physical_input_released = false;
+                    selection = selection == REMOTE_TELEMETRY_NONE
+                                    ? REMOTE_TELEMETRY_DELTA
+                                    : (RemoteTelemetryMetric)(selection - 1);
+                }
+            }
+            if (service->physical_button_flags != flags) {
+                service->physical_input_released = true;
+            }
+        }
+    } else if (!service->active && selection != REMOTE_TELEMETRY_NONE) {
+        selection = REMOTE_TELEMETRY_NONE;
+    }
+
+    return selection != service->telemetry.metric &&
+           remote_telemetry_select(&service->telemetry, selection);
+}
+
+/**
+ * @brief Updates legacy remote-tuning selection from a physical rotary encoder.
+ *
+ * Detects direction across normal and wraparound position changes, advances the one-based selection
+ * counter with wrapping, and queues a setup response while legacy remote tuning is active.
+ *
+ * @param[in,out] service Remote-tuning selection and rotary history.
+ * @param[in] wheel_mode Current attached-wheel mode.
+ * @param[in] rotary_position Current physical rotary position.
+ * @return True when a changed encoder position queued a new selection.
+ */
+bool usb_remote_tuning_service_update_legacy_encoder(UsbRemoteTuningService *service,
+                                                     uint8_t wheel_mode, uint8_t rotary_position) {
+    if (service == NULL) {
+        return false;
+    }
+    bool changed = false;
+    if (service->active && wheel_mode == WHEEL_MODE_REMOTE_TUNING_LEGACY &&
+        service->physical_rotary_initialized &&
+        rotary_position != service->physical_rotary_position) {
+        bool increase = service->physical_rotary_position < rotary_position;
+        if (service->physical_rotary_position == REMOTE_TUNING_ENCODER_INPUT_LAST &&
+            rotary_position == REMOTE_TUNING_ENCODER_INPUT_FIRST) {
+            increase = true;
+        } else if (service->physical_rotary_position == REMOTE_TUNING_ENCODER_INPUT_FIRST &&
+                   rotary_position == REMOTE_TUNING_ENCODER_INPUT_LAST) {
+            increase = false;
+        }
+        uint16_t counter = service->encoder_counter;
+        counter = increase ? counter + 1 : counter - 1;
+        if (counter > REMOTE_TUNING_ENCODER_SELECTION_LAST) {
+            counter = REMOTE_TUNING_ENCODER_SELECTION_FIRST;
+        } else if (counter == 0 || counter > UINT8_MAX) {
+            counter = REMOTE_TUNING_ENCODER_SELECTION_LAST;
+        }
+        service->encoder_counter = counter;
+        service->encoder_selection = (uint8_t)counter;
+        queue_response(service, wheel_mode, REMOTE_TUNING_RESPONSE_SETUP,
+                       service->encoder_selection);
+        changed = true;
+    }
+    service->physical_rotary_position = rotary_position;
+    service->physical_rotary_initialized = true;
+    return changed;
+}
+
+/**
+ * @brief Updates extended remote-tuning setup-page navigation.
+ *
+ * Latches each non-neutral motion so one physical action advances at most once, wraps next and
+ * previous navigation across the setup-page range, and queues the internal next-page response. The
+ * wheel encoder normalizes that response to setup response code four on the wire.
+ *
+ * @param[in,out] service Remote-tuning setup-page and motion-latch state.
+ * @param[in] wheel_mode Current attached-wheel mode.
+ * @param[in] profile_mode True while the wheel presents the profile context.
+ * @param[in] motion Current setup-navigation motion code.
+ * @return True when the setup page changed and a response was queued.
+ */
+bool usb_remote_tuning_service_update_setup_navigation(UsbRemoteTuningService *service,
+                                                       uint8_t wheel_mode, bool profile_mode,
+                                                       uint8_t motion) {
+    if (service == NULL || wheel_mode != WHEEL_MODE_REMOTE_TUNING_EXTENDED || !profile_mode) {
+        return false;
+    }
+    uint8_t previous = service->physical_navigation_input;
+    if (motion == previous) {
+        return false;
+    }
+    service->physical_navigation_input = motion;
+    if (motion == REMOTE_TUNING_NAVIGATION_NEUTRAL) {
+        return false;
+    }
+    if (motion == REMOTE_TUNING_NAVIGATION_NEXT) {
+        service->setup_page = service->setup_page >= REMOTE_TUNING_SETUP_PAGE_COUNT - 1
+                                  ? 0
+                                  : (uint8_t)(service->setup_page + 1);
+    } else if (motion == REMOTE_TUNING_NAVIGATION_PREVIOUS) {
+        service->setup_page = service->setup_page == 0 ? REMOTE_TUNING_SETUP_PAGE_COUNT - 1
+                                                       : (uint8_t)(service->setup_page - 1);
+    } else {
+        return false;
+    }
+    queue_response(service, wheel_mode, REMOTE_TUNING_RESPONSE_NEXT_SETUP_PAGE,
+                   service->setup_page);
+    return true;
 }
 
 /**
@@ -510,9 +684,10 @@ bool usb_remote_tuning_service_take_host_report(
 /**
  * @brief Takes the next locally generated attached-wheel telemetry report.
  *
- * Applies any pending selection and consumes all route-two host records outside extended mode,
- * then encodes the next dirty telemetry channel. Extended mode retains those records for its own
- * remote-tuning path.
+ * Applies any pending selection and consumes applicable route-two host records. Extended mode
+ * retains ignored records, clears pending refresh and response state when a primary record requests
+ * recovery, and does not emit local telemetry. Other modes encode the next dirty telemetry channel
+ * while the remote-tuning session is active.
  *
  * @param[in,out] service Remote-tuning session, records, and telemetry state.
  * @param[in] wheel_mode Current attached-wheel mode.
@@ -522,10 +697,20 @@ bool usb_remote_tuning_service_take_host_report(
 bool usb_remote_tuning_service_take_telemetry_report(UsbRemoteTuningService *service,
                                                      uint8_t wheel_mode,
                                                      uint8_t output[REMOTE_TELEMETRY_REPORT_SIZE]) {
-    if (service == NULL || output == NULL || wheel_mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED) {
+    if (service == NULL || output == NULL) {
         return false;
     }
     apply_telemetry_selection(service, wheel_mode);
-    (void)usb_remote_tuning_records_consume_telemetry(&service->records, &service->telemetry);
+    bool reset_requested = false;
+    bool extended_mode = wheel_mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED;
+    (void)usb_remote_tuning_records_consume_telemetry(&service->records, &service->telemetry,
+                                                      extended_mode, &reset_requested);
+    if (reset_requested) {
+        service->refresh_requested = false;
+        service->pending_response = (RemoteTuningResponse){0};
+    }
+    if (extended_mode) {
+        return false;
+    }
     return service->active && remote_telemetry_take_report(&service->telemetry, output);
 }

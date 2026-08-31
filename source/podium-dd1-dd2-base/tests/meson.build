@@ -187,6 +187,13 @@ base_tests = {
   'force-filter': ['source/force_filter.c', 'force_feedback/filter.c'],
   'force-soft-stop': ['source/force_soft_stop.c', 'force_feedback/soft_stop.c'],
   'fanatec-input': ['source/fanatec_input.c', 'usb/fanatec_input.c'],
+  'usb-feature-report': [
+    'source/usb_feature_report.c',
+    'usb/feature_report.c',
+    'usb/tuning_profile_report.c',
+    'profile/bank.c',
+    'profile/tuning.c',
+  ],
   'fanatec-encoder': ['source/fanatec_encoder.c', 'usb/fanatec_encoder.c', 'platform/time.c'],
   'usb-input-report': [
     'source/usb_input_report.c',

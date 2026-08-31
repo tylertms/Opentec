@@ -304,7 +304,7 @@ void platform_serial_link_reset(void) {
  * Places the 64-byte transport frame between four leading and trailing padding bytes, then starts
  * the transmit DMA. Only one exchange can be active at a time.
  *
- * @param[in] frame Transport frame to transmit.
+ * @param[in] packet Transport packet to transmit.
  * @return true when the exchange starts; false when another exchange is active.
  */
 bool platform_serial_link_start(const uint8_t packet[SERIAL_PACKET_SIZE]) {
@@ -339,7 +339,7 @@ bool platform_serial_link_start(const uint8_t packet[SERIAL_PACKET_SIZE]) {
  *
  * Copies a newly aligned 64-byte response into caller storage and consumes its ready state.
  *
- * @param[out] frame Storage that receives the transport frame.
+ * @param[out] packet Storage that receives the transport packet.
  * @return true when a frame was copied; false when no response is ready.
  */
 bool platform_serial_link_take_received(uint8_t packet[SERIAL_PACKET_SIZE]) {

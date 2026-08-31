@@ -23,6 +23,7 @@ typedef struct {
     uint16_t third_fifth_boundary;
     uint16_t fourth_sixth_boundary;
     uint16_t fifth_seventh_boundary;
+    uint16_t retained_boundary;
     uint16_t upper_row_threshold;
     uint16_t lower_row_threshold;
 } HPatternCalibration;

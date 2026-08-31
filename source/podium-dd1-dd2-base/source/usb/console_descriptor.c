@@ -39,10 +39,25 @@ UsbDeviceIdentity usb_xbox_gip_device_identity(uint16_t product_id) {
  * @return PlayStation USB identity.
  */
 UsbDeviceIdentity usb_playstation_device_identity(BoardVariant variant) {
+    return usb_playstation_device_identity_for_mode(variant, 4);
+}
+
+/**
+ * @brief Returns the PlayStation USB identity for a selected base mode.
+ *
+ * Mode five selects product ID 0x0E04. Modes two and four select the DD1 or DD2 product ID while
+ * retaining the common Fanatec identity and PlayStation product string index.
+ *
+ * @param[in] variant Wheel-base hardware variant.
+ * @param[in] wheel_mode Selected PlayStation base mode.
+ * @return Matching PlayStation USB identity.
+ */
+UsbDeviceIdentity usb_playstation_device_identity_for_mode(BoardVariant variant,
+                                                           uint8_t wheel_mode) {
     return (UsbDeviceIdentity){
         .usb_version = 0x0200,
         .vendor_id = 0x0eb7,
-        .product_id = variant == BOARD_VARIANT_DD1 ? 0x0e05 : 0x0e06,
+        .product_id = wheel_mode == 5 ? 0x0e04 : (variant == BOARD_VARIANT_DD1 ? 0x0e05 : 0x0e06),
         .device_version = 0x0059,
         .control_packet_size = 64,
         .manufacturer_string = 1,

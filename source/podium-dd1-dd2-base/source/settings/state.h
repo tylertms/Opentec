@@ -18,7 +18,11 @@ typedef struct {
     AuxiliaryAxisSettings auxiliary_axis;
     WheelSteeringLimits steering_limits;
     SecurityCodeSettings security_code;
+    uint16_t retained_global_values[2];
+    uint16_t retained_profile_values[TUNING_PROFILE_SLOT_COUNT];
+    uint8_t operating_mode;
     uint8_t wheel_auxiliary_option;
+    bool operating_mode_valid;
 } BaseSettings;
 
 void base_settings_defaults(BaseSettings *settings);

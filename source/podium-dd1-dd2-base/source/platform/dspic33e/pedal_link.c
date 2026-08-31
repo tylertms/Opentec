@@ -15,19 +15,30 @@ enum {
 
 static volatile uint8_t received_dma[PEDAL_FRAME_SIZE];
 static volatile uint8_t received_frame[PEDAL_FRAME_SIZE];
-static volatile uint8_t received_transfer[TRANSFER_FRAME_MAX_RECEIVED_SIZE];
+static volatile uint8_t received_transfer[2][TRANSFER_FRAME_MAX_RECEIVED_SIZE];
 static volatile uint8_t transfer_buffer[TRANSFER_FRAME_MAX_RECEIVED_SIZE];
 static volatile uint8_t transmitted_dma[TRANSFER_FRAME_MAX_ENCODED_SIZE];
 static volatile uint8_t received_byte;
-static volatile uint16_t received_transfer_length;
+static volatile uint16_t received_transfer_length[2];
 static volatile uint16_t transfer_buffer_length;
 static volatile bool byte_ready;
 static volatile bool frame_ready;
-static volatile bool transfer_ready;
+static volatile uint8_t received_transfer_head;
+static volatile uint8_t received_transfer_count;
 static volatile bool transmit_active;
 static volatile bool resynchronizing;
 static volatile bool transfer_receiving;
 static volatile bool transfer_receive_enabled;
+
+/**
+ * @brief Clears all completed V4 pedal receive frames.
+ *
+ * Resets the double-buffer queue head and count without changing the in-progress receive buffer.
+ */
+static void clear_transfer_queue(void) {
+    received_transfer_head = 0;
+    received_transfer_count = 0;
+}
 
 /**
  * @brief Empties the UART2 receive FIFO.
@@ -120,12 +131,11 @@ static void configure_interrupts(void) {
 void platform_pedal_link_init(void) {
     byte_ready = false;
     frame_ready = false;
-    transfer_ready = false;
+    clear_transfer_queue();
     transmit_active = false;
     resynchronizing = false;
     transfer_receiving = false;
     transfer_receive_enabled = false;
-    received_transfer_length = 0;
     transfer_buffer_length = 0;
     configure_uart();
     configure_receive_dma();
@@ -151,7 +161,7 @@ void platform_pedal_link_begin_discovery(void) {
     clear_receive_fifo();
     byte_ready = false;
     frame_ready = false;
-    transfer_ready = false;
+    clear_transfer_queue();
     resynchronizing = false;
     transfer_receiving = false;
     transfer_receive_enabled = false;
@@ -177,7 +187,7 @@ void platform_pedal_link_begin_analog(void) {
     TRISFbits.TRISF1 = 1;
     byte_ready = false;
     frame_ready = false;
-    transfer_ready = false;
+    clear_transfer_queue();
     resynchronizing = false;
     transfer_receiving = false;
     transfer_receive_enabled = false;
@@ -196,7 +206,7 @@ void platform_pedal_link_begin_framed_receive(void) {
     clear_receive_fifo();
     byte_ready = false;
     frame_ready = false;
-    transfer_ready = false;
+    clear_transfer_queue();
     resynchronizing = false;
     transfer_receiving = false;
     transfer_receive_enabled = false;
@@ -220,11 +230,10 @@ void platform_pedal_link_begin_transfer_receive(void) {
     clear_receive_fifo();
     byte_ready = false;
     frame_ready = false;
-    transfer_ready = false;
+    clear_transfer_queue();
     resynchronizing = false;
     transfer_receiving = false;
     transfer_receive_enabled = true;
-    received_transfer_length = 0;
     transfer_buffer_length = 0;
     IFS1bits.U2RXIF = 0;
     IEC1bits.U2RXIE = 1;
@@ -374,13 +383,15 @@ bool platform_pedal_link_take_frame(uint8_t frame[PEDAL_FRAME_SIZE]) {
  */
 uint16_t platform_pedal_link_take_transfer(uint8_t *data, uint16_t capacity) {
     IEC1bits.U2RXIE = 0;
-    uint16_t length =
-        transfer_ready && received_transfer_length <= capacity ? received_transfer_length : 0;
+    uint16_t pending_length =
+        received_transfer_count != 0 ? received_transfer_length[received_transfer_head] : 0;
+    uint16_t length = pending_length <= capacity ? pending_length : 0;
     if (length != 0) {
         for (uint16_t index = 0; index < length; index++) {
-            data[index] = received_transfer[index];
+            data[index] = received_transfer[received_transfer_head][index];
         }
-        transfer_ready = false;
+        received_transfer_head ^= 1u;
+        received_transfer_count--;
     }
     IEC1bits.U2RXIE = 1;
     return length;
@@ -390,7 +401,8 @@ uint16_t platform_pedal_link_take_transfer(uint8_t *data, uint16_t capacity) {
  * @brief Accumulates one encoded V4 transfer byte.
  *
  * Starts or restarts collection at the opening marker, abandons oversized partial frames, and
- * publishes a complete frame at the closing marker without replacing an unread result.
+ * appends a complete frame to the two-entry receive queue at the closing marker. A completed frame
+ * is dropped when both queue entries remain unread.
  *
  * @param[in] value Received encoded byte.
  */
@@ -415,12 +427,13 @@ static void receive_transfer_byte(uint8_t value) {
         return;
     }
 
-    if (!transfer_ready) {
+    if (received_transfer_count < 2) {
+        uint8_t slot = (uint8_t)((received_transfer_head + received_transfer_count) & 1u);
         for (uint16_t index = 0; index < transfer_buffer_length; index++) {
-            received_transfer[index] = transfer_buffer[index];
+            received_transfer[slot][index] = transfer_buffer[index];
         }
-        received_transfer_length = transfer_buffer_length;
-        transfer_ready = true;
+        received_transfer_length[slot] = transfer_buffer_length;
+        received_transfer_count++;
     }
     transfer_buffer_length = 0;
     transfer_receiving = false;
@@ -436,7 +449,11 @@ void __attribute__((interrupt, no_auto_psv)) _U2RXInterrupt(void) {
     uint8_t last = 0;
     bool received = false;
     while (U2STAbits.URXDA != 0) {
+        bool error = U2STAbits.FERR != 0 || U2STAbits.OERR != 0;
         last = (uint8_t)U2RXREG;
+        if (error) {
+            continue;
+        }
         received = true;
         if (transfer_receive_enabled) {
             receive_transfer_byte(last);

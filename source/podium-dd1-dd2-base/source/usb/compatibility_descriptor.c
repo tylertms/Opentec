@@ -65,8 +65,9 @@ bool usb_compatibility_descriptor_profile(UsbInputReportMode mode, UsbDeviceIden
         configuration->hid_version = 0x0111;
         configuration->report_descriptor_size = USB_DRIVING_FORCE_PRO_REPORT_DESCRIPTOR_SIZE;
         configuration->endpoint_packet_size = 8;
+        configuration->maximum_power_ma = 80;
         configuration->poll_interval_ms = 2;
-        configuration->interface_protocol = 0xfe;
+        configuration->interface_string = 0xfe;
         return true;
 
     case USB_INPUT_REPORT_MODE_G27:
@@ -78,7 +79,7 @@ bool usb_compatibility_descriptor_profile(UsbInputReportMode mode, UsbDeviceIden
         configuration->report_descriptor_size = USB_G27_REPORT_DESCRIPTOR_SIZE;
         configuration->endpoint_packet_size = 16;
         configuration->poll_interval_ms = 2;
-        configuration->interface_protocol = 0xfe;
+        configuration->interface_string = 0xfe;
         return true;
 
     default:

@@ -106,6 +106,8 @@ typedef struct {
     uint8_t configured_axis_override_mode;
     uint8_t paddle_bite_point_percent;
     uint8_t system_status_code;
+    uint8_t legacy_pedal_status[2];
+    uint8_t remote_tuning_controls[30];
     int16_t display_rotation_angle;
     bool button_latch_enabled;
     bool display_character_mode;
@@ -116,6 +118,7 @@ typedef struct {
     bool request_ready;
     bool request_changed;
     bool acknowledgement_input_active;
+    bool remote_tuning_controls_pending;
 } WheelProtocol;
 
 void wheel_protocol_init(WheelProtocol *protocol);
@@ -144,6 +147,7 @@ void wheel_protocol_set_button_latch(WheelProtocol *protocol, bool enabled,
                                      bool profile_transition_pending);
 void wheel_protocol_set_display_character_mode(WheelProtocol *protocol, bool enabled);
 void wheel_protocol_set_display_rotation(WheelProtocol *protocol, bool enabled, int16_t angle);
+void wheel_protocol_set_legacy_pedal_status(WheelProtocol *protocol, uint8_t first, uint8_t second);
 void wheel_protocol_queue_system_status(WheelProtocol *protocol, uint16_t code);
 void wheel_protocol_accept(WheelProtocol *protocol,
                            const uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE]);
@@ -172,6 +176,9 @@ bool wheel_protocol_axis_values(const WheelProtocol *protocol, uint16_t values[2
 bool wheel_protocol_controls(const WheelProtocol *protocol, uint8_t controls[8]);
 int8_t wheel_protocol_motion_direction(const WheelProtocol *protocol);
 int8_t wheel_protocol_take_motion(WheelProtocol *protocol);
+int8_t wheel_protocol_axis_motion_direction(const WheelProtocol *protocol, uint8_t axis);
+int8_t wheel_protocol_take_axis_motion(WheelProtocol *protocol, uint8_t axis);
+bool wheel_protocol_take_remote_tuning_controls(WheelProtocol *protocol, uint8_t output[30]);
 bool wheel_protocol_request_changed(WheelProtocol *protocol);
 bool wheel_protocol_acknowledgement_input_active(const WheelProtocol *protocol);
 uint8_t wheel_protocol_message_checksum(const uint8_t packet[WHEEL_PROTOCOL_PACKET_SIZE]);

@@ -64,7 +64,7 @@ static void test_bridges_compact_command_and_response(void) {
     assert(fixture.usb_packet[2] == 0x2a && fixture.usb_packet[6] == 0x30);
     assert(fixture.usb_packet[7] == 12 && fixture.usb_packet[11] == 12);
     assert(result.motor_packet == fixture.motor_transmit && result.motor_packet_length == 9);
-    assert(fixture.motor_transmit[0] == 7);
+    assert(fixture.motor_transmit[0] == 3);
     assert(memcmp(fixture.motor_transmit + 4, request + 5, 3) == 0);
     assert(motor_command_packet_checksum_valid(fixture.motor_transmit, result.motor_packet_length));
 
