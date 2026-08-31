@@ -2095,16 +2095,14 @@ static void enter_bootloader(void) {
 /**
  * @brief Returns the wheel to its retained center before USB startup.
  *
- * Configures full-scale natural damping for supported controllers, polls motor readiness for up to
- * five seconds, then applies the four-second restoring-force profile when readiness is reported.
- * The loop continues motor packets, auxiliary transfers, and power-button handling; force uses
- * full command availability and the board's reduced Torque Key limit.
+ * Polls motor readiness for up to five seconds, then applies the four-second restoring-force
+ * profile when readiness is reported. The loop continues motor packets, auxiliary transfers, and
+ * power-button handling; force uses full command availability and the board's reduced Torque Key
+ * limit.
  *
  */
 static void run_motor_startup_centering(void) {
-    const MotorIdentity *identity = motor_probe_identity(&motor_probe);
-    bool damping_required = identity != NULL && identity->protocol != MOTOR_PROTOCOL_LEGACY;
-    motor_startup_centering_init(&motor_startup_centering, platform_time_ms(), damping_required);
+    motor_startup_centering_init(&motor_startup_centering, platform_time_ms());
     ForceOutputScale scale = {
         .available_percent = cooling_controller.force_scale_percent,
         .tuning_strength_percent = FORCE_FEEDBACK_FULL_STRENGTH_PERCENT,

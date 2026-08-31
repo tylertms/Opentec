@@ -9,8 +9,6 @@
 enum {
     MOTOR_AUX_BUS_ADDRESS = 0x78,
     MOTOR_STARTUP_READINESS_REGISTER = 0x08,
-    MOTOR_STARTUP_DAMPING_REGISTER = 0x23,
-    MOTOR_STARTUP_DAMPING_VALUE = 0xff,
     MOTOR_STARTUP_READINESS_TIMEOUT_MS = 5000,
     MOTOR_STARTUP_CENTERING_DURATION_MS = 4000,
     MOTOR_STARTUP_CENTERING_STEP_MS = 400,
@@ -20,29 +18,25 @@ enum {
 /**
  * @brief Starts the motor-controller readiness and wheel-centering sequence.
  *
- * Starts with the full-scale damping write when the identified controller supports it. Other
- * controllers open the five-second readiness window immediately.
+ * Opens the five-second motor-readiness window immediately. This matches the released firmware's
+ * bounded startup path and ensures failed readiness transactions cannot prevent normal startup.
  *
  * @param[out] centering Startup-centering state to initialize.
  * @param[in] now_ms Current monotonic time in milliseconds.
- * @param[in] damping_required True when startup must configure full-scale natural damping.
  */
-void motor_startup_centering_init(MotorStartupCentering *centering, uint32_t now_ms,
-                                  bool damping_required) {
+void motor_startup_centering_init(MotorStartupCentering *centering, uint32_t now_ms) {
     *centering = (MotorStartupCentering){
-        .phase =
-            damping_required ? MOTOR_STARTUP_CENTERING_PREPARING : MOTOR_STARTUP_CENTERING_WAITING,
-        .deadline_ms = damping_required ? 0 : now_ms + MOTOR_STARTUP_READINESS_TIMEOUT_MS,
-        .parameter_value = damping_required ? MOTOR_STARTUP_DAMPING_VALUE : 0,
+        .phase = MOTOR_STARTUP_CENTERING_WAITING,
+        .deadline_ms = now_ms + MOTOR_STARTUP_READINESS_TIMEOUT_MS,
     };
 }
 
 /**
  * @brief Finishes an active startup-parameter transfer.
  *
- * Releases the auxiliary bus. A successful damping write opens the readiness window, and a
- * successful nonzero readiness read starts the four-second centering interval. Failed operations
- * and zero-valued readiness reads remain eligible for retry.
+ * Releases the auxiliary bus. A successful nonzero readiness read starts the four-second
+ * centering interval. Failed operations and zero-valued readiness reads remain eligible for retry
+ * until the fixed startup deadline.
  *
  * @param[in,out] centering Startup-centering state and parameter storage.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -55,34 +49,10 @@ static void finish_transfer(MotorStartupCentering *centering, uint32_t now_ms) {
 
     platform_aux_bus_clear();
     centering->transfer_active = false;
-    if (centering->phase == MOTOR_STARTUP_CENTERING_PREPARING) {
-        if (status == PLATFORM_AUX_BUS_SUCCEEDED) {
-            centering->phase = MOTOR_STARTUP_CENTERING_WAITING;
-            centering->deadline_ms = now_ms + MOTOR_STARTUP_READINESS_TIMEOUT_MS;
-            centering->parameter_value = 0;
-        }
-        return;
-    }
     if (centering->phase == MOTOR_STARTUP_CENTERING_WAITING &&
         status == PLATFORM_AUX_BUS_SUCCEEDED && centering->parameter_value != 0) {
         centering->phase = MOTOR_STARTUP_CENTERING_ACTIVE;
         centering->deadline_ms = now_ms + MOTOR_STARTUP_CENTERING_DURATION_MS;
-    }
-}
-
-/**
- * @brief Advances the startup damping write.
- *
- * Retries a one-byte full-scale natural-damper write whenever the shared auxiliary bus becomes
- * idle. Readiness timing does not start until this write succeeds.
- *
- * @param[in,out] centering Startup-centering state and transfer ownership.
- */
-static void prepare_damping(MotorStartupCentering *centering) {
-    if (centering->phase == MOTOR_STARTUP_CENTERING_PREPARING &&
-        platform_aux_bus_status() == PLATFORM_AUX_BUS_IDLE) {
-        centering->transfer_active = platform_aux_bus_start_write(
-            MOTOR_AUX_BUS_ADDRESS, MOTOR_STARTUP_DAMPING_REGISTER, &centering->parameter_value, 1);
     }
 }
 
@@ -149,9 +119,6 @@ static int32_t calculate_centering_force(int32_t centered_position, uint32_t ela
 int32_t motor_startup_centering_run(MotorStartupCentering *centering, uint32_t now_ms,
                                     bool position_available, int32_t centered_position) {
     finish_transfer(centering, now_ms);
-    if (centering->phase == MOTOR_STARTUP_CENTERING_PREPARING) {
-        prepare_damping(centering);
-    }
     if (centering->phase == MOTOR_STARTUP_CENTERING_WAITING) {
         wait_for_readiness(centering, now_ms);
     }
