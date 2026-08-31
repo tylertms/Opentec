@@ -223,6 +223,7 @@ def parse_arguments():
     verify_parser = commands.add_parser("verify")
     verify_parser.add_argument("input", type=Path)
     verify_parser.add_argument("encrypted", type=Path)
+    verify_parser.add_argument("--header")
     verify_parser.add_argument("--legacy-wide-secret", action="store_true")
 
     return parser.parse_args()
@@ -312,10 +313,11 @@ def main():
     else:
         with FirmwareCipher(secret) as cipher:
             decrypted = cipher.decrypt(arguments.encrypted.read_bytes())
-        if decrypted != arguments.input.read_bytes():
-            raise ValueError(
-                "Encrypted firmware does not reproduce its Intel HEX input"
-            )
+        expected = arguments.input.read_bytes()
+        if arguments.header is not None:
+            expected = prepare_payload(expected, arguments.header)
+        if decrypted != expected:
+            raise ValueError("Encrypted firmware payload does not match its input")
         return
 
     write_atomically(arguments.output, output)
