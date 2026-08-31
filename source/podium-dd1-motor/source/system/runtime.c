@@ -19,6 +19,7 @@
 #include "motor/encoder_calibration.h"
 #include "motor/foc.h"
 #include "motor/motion.h"
+#include "motor/pi.h"
 #include "motor/velocity_control.h"
 #include "platform/board.h"
 #include "platform/io.h"
@@ -57,7 +58,14 @@ enum {
     MOTOR_PARAMETER_CONSTANT_GAIN = 40,
     MOTOR_PARAMETER_WINDOW_GAIN = 41,
     MOTOR_PARAMETER_DIRECTIONAL_GAIN = 42,
+    MOTOR_ENCODER_CALIBRATION_TIMEOUT = 30000U,
 };
+
+typedef enum {
+    kMotorMaintenanceNone,
+    kMotorMaintenanceEraseCalibration,
+    kMotorMaintenanceStoreCalibration,
+} MotorMaintenanceRequest;
 
 typedef struct {
     MotorHardwareProfile hardware;
@@ -88,20 +96,43 @@ typedef struct {
     GFLIB_CTRL_PI_P_AW_T_A32 derating_controller;
     MotorControlMode mode;
     uint32_t service_tick;
+    uint32_t encoder_calibration_deadline;
     int16_t electrical_angle;
     int16_t control_current;
     int16_t friction_current;
     uint8_t identity;
-    bool_t derating_stop_integrator;
     bool control_update_pending;
     bool current_calibration_started;
     bool calibration_valid;
     bool correction_reverse;
     bool encoder_zero_captured;
     volatile bool encoder_index_detected;
+    volatile MotorMaintenanceRequest maintenance_request;
 } MotorRuntime;
 
 static MotorRuntime motor_runtime;
+
+static bool motor_runtime_tick_reached(uint32_t now, uint32_t deadline) {
+    return (int32_t)(now - deadline) >= 0;
+}
+
+static void motor_runtime_safe_reset(void) {
+    motor_pwm_disable_outputs();
+    motor_startup_interlock_outputs_apply(true, false);
+    NVIC_SystemReset();
+}
+
+static void motor_runtime_maintenance_schedule(MotorRuntime *runtime,
+                                               MotorMaintenanceRequest request) {
+    runtime->control_current = 0;
+    runtime->live_drive.primary_current = 0;
+    runtime->live_drive.secondary_current = 0;
+    motor_spi_link_active_set(false);
+    motor_pwm_disable_outputs();
+    motor_startup_interlock_outputs_apply(true, false);
+    runtime->mode = kMotorControlInactive;
+    runtime->maintenance_request = request;
+}
 
 static void motor_runtime_fault_serial_service(void) {
     uint8_t status = UART0->S1;
@@ -346,7 +377,6 @@ static void motor_runtime_current_calibration_step(MotorRuntime *runtime) {
     motor_adc_runtime_initialize(runtime->hardware.adc_auxiliary_channel);
     runtime->foc_output.duty = (GMCLIB_3COOR_T_F16){0};
     motor_pwm_enable_outputs();
-    runtime->timing.countdowns[kMotorCountdownStartupRamp].active = 1U;
     runtime->mode = motor_control_mode_complete(runtime->mode);
 }
 
@@ -360,6 +390,7 @@ static void motor_runtime_current_calibration_step(MotorRuntime *runtime) {
  */
 static void motor_runtime_startup_ramp_step(MotorRuntime *runtime) {
     MotorCountdown *countdown = &runtime->timing.countdowns[kMotorCountdownStartupRamp];
+    countdown->active = 1U;
     uint16_t current = motor_control_startup_ramp_current(countdown->ticks);
     motor_runtime_control_cycle(runtime, (int16_t)current, true);
     if (countdown->ticks != 0U) {
@@ -370,7 +401,9 @@ static void motor_runtime_startup_ramp_step(MotorRuntime *runtime) {
     runtime->control_current = 0;
     motor_encoder_overflow_interrupt_enable();
     motor_encoder_position_reset(&runtime->encoder);
+    motor_runtime_encoder_position_refresh(runtime);
     runtime->motion = (MotorMotionState){0};
+    runtime->motion_sample = (MotorMotionSample){0};
     runtime->position_filter.accumulator = 0;
     runtime->velocity_filter.accumulator = 0;
     motor_runtime_index_seek_restart(runtime);
@@ -397,6 +430,7 @@ static void motor_runtime_startup_gate_step(MotorRuntime *runtime) {
         countdown->ticks = 5000U;
         motor_encoder_index_interrupt_disable();
         runtime->motion.previous_counter = (uint32_t)runtime->encoder.position;
+        runtime->motion_sample = (MotorMotionSample){0};
         runtime->mode = motor_control_mode_complete(runtime->mode);
     }
     motor_startup_interlock_outputs_apply(false, true);
@@ -412,17 +446,7 @@ static void motor_runtime_startup_gate_step(MotorRuntime *runtime) {
  * @param runtime Active motor runtime and calibration state.
  */
 static void motor_runtime_encoder_calibration_erase(MotorRuntime *runtime) {
-    memset(&runtime->encoder_calibration.record, 0, sizeof(runtime->encoder_calibration.record));
-    uint32_t interrupt_mask = DisableGlobalIRQ();
-    status_t status = motor_calibration_storage_erase();
-    if (status != kStatus_Success) {
-        motor_runtime_fault();
-    }
-    EnableGlobalIRQ(interrupt_mask);
-
-    runtime->parameters.entries[MOTOR_PARAMETER_CALIBRATION_COMMAND].value = 0U;
-    runtime->parameters.entries[MOTOR_PARAMETER_CALIBRATION_VERSION].value = 0U;
-    runtime->calibration_valid = false;
+    motor_runtime_maintenance_schedule(runtime, kMotorMaintenanceEraseCalibration);
 }
 
 /**
@@ -434,20 +458,7 @@ static void motor_runtime_encoder_calibration_erase(MotorRuntime *runtime) {
  * @param runtime Active motor runtime and completed calibration record.
  */
 static void motor_runtime_encoder_calibration_store(MotorRuntime *runtime) {
-    uint32_t interrupt_mask = DisableGlobalIRQ();
-    status_t status = motor_calibration_storage_erase();
-    if (status == kStatus_Success) {
-        status = motor_calibration_storage_program(&runtime->encoder_calibration.record);
-    }
-    if (status != kStatus_Success) {
-        motor_runtime_fault();
-    }
-    EnableGlobalIRQ(interrupt_mask);
-
-    runtime->parameters.entries[MOTOR_PARAMETER_CALIBRATION_COMMAND].value = 0U;
-    runtime->parameters.entries[MOTOR_PARAMETER_CALIBRATION_VERSION].value =
-        runtime->encoder_calibration.record.version;
-    runtime->calibration_valid = true;
+    motor_runtime_maintenance_schedule(runtime, kMotorMaintenanceStoreCalibration);
 }
 
 /**
@@ -467,10 +478,23 @@ static void motor_runtime_request_apply(MotorRuntime *runtime) {
         return;
     }
     if (request == kMotorControlRequestCalibrateEncoder) {
+        if (!runtime->encoder_index_detected) {
+            runtime->parameters.entries[MOTOR_PARAMETER_CALIBRATION_COMMAND].value = 0U;
+            return;
+        }
+        motor_encoder_calibration_initialize(&runtime->encoder_calibration);
+        motor_velocity_control_reset(&runtime->velocity_control);
+        runtime->encoder_calibration_deadline =
+            runtime->service_tick + MOTOR_ENCODER_CALIBRATION_TIMEOUT;
         runtime->mode = motor_control_request_apply(runtime->mode, request);
         return;
     }
     if (request != kMotorControlRequestCheckEncoderDirection) {
+        return;
+    }
+
+    if (!runtime->encoder_index_detected) {
+        runtime->parameters.entries[MOTOR_PARAMETER_DIRECTION_COMMAND].value = 0xbbbbU;
         return;
     }
 
@@ -488,6 +512,9 @@ static void motor_runtime_request_apply(MotorRuntime *runtime) {
  * @param runtime Active motor runtime, velocity controller, and calibration capture state.
  */
 static void motor_runtime_encoder_calibration_step(MotorRuntime *runtime) {
+    if (motor_runtime_tick_reached(runtime->service_tick, runtime->encoder_calibration_deadline)) {
+        motor_runtime_safe_reset();
+    }
     motor_runtime_encoder_position_refresh(runtime);
     motor_startup_interlock_outputs_apply(false, true);
 
@@ -516,7 +543,7 @@ static void motor_runtime_encoder_calibration_step(MotorRuntime *runtime) {
     }
     if (step.result == kMotorEncoderCalibrationComplete) {
         motor_runtime_encoder_calibration_store(runtime);
-        runtime->mode = motor_control_mode_complete(runtime->mode);
+        return;
     }
 
     runtime->control_current = runtime->velocity_control.current_reference;
@@ -553,9 +580,6 @@ static void motor_runtime_encoder_direction_step(MotorRuntime *runtime) {
     if (step.reset_controller) {
         motor_velocity_control_controller_reset(&runtime->velocity_control);
     }
-    if (step.reset_position) {
-        motor_encoder_position_reset(&runtime->encoder);
-    }
     if (step.restart_index_seek) {
         motor_runtime_index_seek_restart(runtime);
     }
@@ -581,6 +605,9 @@ static void motor_runtime_encoder_direction_step(MotorRuntime *runtime) {
 static void motor_runtime_run_step(MotorRuntime *runtime) {
     motor_runtime_encoder_position_refresh(runtime);
     motor_runtime_request_apply(runtime);
+    if (runtime->maintenance_request != kMotorMaintenanceNone) {
+        return;
+    }
     motor_startup_interlock_outputs_apply(false, true);
     motor_runtime_control_cycle(runtime, runtime->control_current, false);
 }
@@ -676,6 +703,10 @@ static void motor_runtime_encoder_index_handler(uint16_t counter, void *context)
 static void motor_runtime_service_handler(void *context) {
     MotorRuntime *runtime = context;
     ++runtime->service_tick;
+    if (runtime->mode == kMotorControlEncoderCalibration &&
+        motor_runtime_tick_reached(runtime->service_tick, runtime->encoder_calibration_deadline)) {
+        motor_runtime_safe_reset();
+    }
     runtime->motion_sample =
         motor_motion_sample(&runtime->motion, &runtime->position_filter, &runtime->velocity_filter,
                             (uint32_t)runtime->encoder.position, runtime->hardware.velocity_scale);
@@ -686,8 +717,8 @@ static void motor_runtime_service_handler(void *context) {
     bool derating_update_due = motor_service_timing_tick(&runtime->timing);
     if (derating_update_due) {
         runtime->drive_derating.current_scale =
-            GFLIB_CtrlPIpAW_F16(runtime->drive_derating.error, &runtime->derating_stop_integrator,
-                                &runtime->derating_controller);
+            motor_pi_step(runtime->drive_derating.error, &runtime->derating_controller.bLimFlag,
+                          &runtime->derating_controller);
     }
     int16_t measured_current = runtime->foc_output.measured_current.f16Q;
     runtime->parameters.entries[MOTOR_PARAMETER_DRIVE_CURRENT].value = (uint16_t)measured_current;
@@ -709,13 +740,12 @@ static void motor_runtime_service_handler(void *context) {
  */
 static void motor_runtime_spi_prepare(uint8_t frame[MOTOR_SPI_TRANSFER_SIZE], void *context) {
     MotorRuntime *runtime = context;
-    MotorLinkPositionReport report = {
-        .position = runtime->encoder.position,
-        .torque = (uint16_t)runtime->parameters.entries[MOTOR_PARAMETER_TORQUE].value,
-        .drive_current = runtime->live_drive.primary_current,
-        .positive = runtime->live_drive.primary_positive,
-        .replay = runtime->protocol.replay,
-    };
+    MotorLinkPositionReport report;
+    report.torque = (uint16_t)runtime->parameters.entries[MOTOR_PARAMETER_TORQUE].value;
+    report.drive_current = runtime->live_drive.primary_current;
+    report.positive = runtime->live_drive.primary_positive;
+    report.replay = runtime->protocol.replay;
+    report.position = runtime->encoder.position;
     motor_link_position_frame_encode(&report, frame);
 }
 
@@ -738,10 +768,10 @@ static bool motor_runtime_spi_receive(const uint8_t frame[MOTOR_SPI_TRANSFER_SIZ
         motor_runtime_drive_apply(runtime);
     }
     if (applied && decoded.type == MOTOR_LINK_FORCE_TYPE) {
-        (void)motor_center_command_apply(
-            &runtime->center, runtime->protocol.center, (int32_t)runtime->hardware.encoder_modulus,
-            (uint16_t)FTM2->CNT, (uint16_t)runtime->encoder.zero_counter,
-            &runtime->encoder.revolution_offset);
+        (void)motor_center_command_apply(&runtime->center, runtime->protocol.center,
+                                         (int32_t)runtime->hardware.encoder_modulus, &FTM2->CNT,
+                                         (uint16_t)runtime->encoder.zero_counter,
+                                         &runtime->encoder.revolution_offset);
     }
 
     return result != MOTOR_LINK_FRAME_VALID || decoded.type != MOTOR_LINK_STATUS_TYPE || applied;
@@ -806,8 +836,10 @@ void motor_runtime_initialize(void) {
     motor_tick_timer_initialize((uint16_t)motor_runtime.hardware.encoder_modulus,
                                 motor_runtime_encoder_overflow_handler,
                                 motor_runtime_encoder_index_handler, &motor_runtime);
-    motor_adc_initialize(motor_runtime.hardware.position_scale, motor_runtime_adc_handler,
-                         &motor_runtime);
+    if (!motor_adc_initialize(motor_runtime.hardware.position_scale, motor_runtime_adc_handler,
+                              &motor_runtime)) {
+        motor_runtime_fault();
+    }
     motor_adc_trigger_initialize();
     motor_bus_initialize(&motor_runtime.parameters, motor_runtime_settings_apply, &motor_runtime);
     motor_spi_initialize(&motor_runtime.spi, motor_runtime_spi_prepare, motor_runtime_spi_receive,
@@ -829,6 +861,20 @@ void motor_runtime_initialize(void) {
  * deferred work completes.
  */
 void motor_runtime_poll(void) {
+    MotorMaintenanceRequest maintenance = motor_runtime.maintenance_request;
+    if (maintenance != kMotorMaintenanceNone) {
+        uint32_t interrupt_mask = DisableGlobalIRQ();
+        status_t status = motor_calibration_storage_erase();
+        if (status == kStatus_Success && maintenance == kMotorMaintenanceStoreCalibration) {
+            status = motor_calibration_storage_program(&motor_runtime.encoder_calibration.record);
+        }
+        if (status != kStatus_Success) {
+            motor_runtime_fault();
+        }
+        EnableGlobalIRQ(interrupt_mask);
+        NVIC_SystemReset();
+    }
+
     if (motor_runtime.parameters.entries[MOTOR_PARAMETER_RESET_COMMAND].value == 0x05faU) {
         NVIC_SystemReset();
     }
@@ -837,7 +883,7 @@ void motor_runtime_poll(void) {
                                                                 motor_runtime.center.requested);
     if (motor_protocol_force_feedback_service(
             &motor_runtime.protocol, motor_runtime.service_tick, centered_position,
-            motor_runtime.motion_sample.filtered_position_delta)) {
+            motor_runtime.encoder.position, motor_runtime.motion_sample.filtered_position_delta)) {
         motor_runtime_drive_apply(&motor_runtime);
     }
 
@@ -856,7 +902,9 @@ void motor_runtime_poll(void) {
         motor_runtime.control_current = motor_runtime_current_resolve(&motor_runtime);
     }
 
-    if (motor_auxiliary_samples_resolve(&motor_runtime.auxiliary_accumulator,
+    if (motor_runtime.timing.countdowns[kMotorCountdownStartupRamp].ticks == 0U &&
+        motor_runtime.encoder_index_detected &&
+        motor_auxiliary_samples_resolve(&motor_runtime.auxiliary_accumulator,
                                         &motor_runtime.auxiliary_telemetry)) {
         motor_runtime.parameters.entries[MOTOR_PARAMETER_MOTOR_TEMPERATURE].value =
             (uint32_t)(int32_t)motor_runtime.auxiliary_telemetry.motor_temperature;

@@ -1,7 +1,20 @@
 #include "platform/board.h"
 
+#include <fsl_common.h>
 #include <fsl_gpio.h>
 #include <fsl_port.h>
+
+enum {
+    MOTOR_CLOCK_STATUS_TIMEOUT = 1000000U,
+};
+
+static bool motor_clock_status_wait(uint8_t mask, uint8_t expected) {
+    uint32_t remaining = MOTOR_CLOCK_STATUS_TIMEOUT;
+    while ((MCG->S & mask) != expected && remaining != 0U) {
+        --remaining;
+    }
+    return remaining != 0U;
+}
 
 void SystemInitHook(void) {
     if ((RCM->SRS0 & RCM_SRS0_WAKEUP_MASK) != 0U && (PMC->REGSC & PMC_REGSC_ACKISO_MASK) != 0U) {
@@ -15,14 +28,16 @@ void SystemInitHook(void) {
     PORTA->PCR[18] &= ~(PORT_PCR_ISF_MASK | PORT_PCR_MUX_MASK);
     MCG->SC = 0U;
     MCG->C1 = MCG_C1_IRCLKEN_MASK | MCG_C1_IREFS_MASK;
-    while ((MCG->S & MCG_S_IREFST_MASK) == 0U) {
+    if (!motor_clock_status_wait(MCG_S_IREFST_MASK, MCG_S_IREFST_MASK)) {
+        NVIC_SystemReset();
     }
     MCG->C2 &= ~MCG_C2_FCFTRIM_MASK;
     MCG->C4 = (MCG->C4 & ~(MCG_C4_DMX32_MASK | MCG_C4_DRST_DRS_MASK)) | MCG_C4_DMX32_MASK |
               MCG_C4_DRST_DRS(2U);
     OSC0->CR = OSC_CR_ERCLKEN_MASK;
     MCG->C6 = 0U;
-    while ((MCG->S & MCG_S_CLKST_MASK) != 0U) {
+    if (!motor_clock_status_wait(MCG_S_CLKST_MASK, 0U)) {
+        NVIC_SystemReset();
     }
 }
 

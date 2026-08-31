@@ -8,7 +8,6 @@ enum {
     MOTOR_CALIBRATION_FLASH_START = 0x0001d800U,
     MOTOR_CALIBRATION_FLASH_END = 0x00020000U,
     MOTOR_CALIBRATION_FLASH_SECTOR_SIZE = 0x800U,
-    MOTOR_CALIBRATION_FLASH_VERIFY_SIZE = 0x100U,
 };
 
 static flash_config_t motor_calibration_flash;
@@ -36,8 +35,7 @@ bool motor_calibration_storage_load(MotorEncoderCalibrationRecord *record) {
         return true;
     }
 
-    memset(record->forward, 0, sizeof(record->forward));
-    memset(record->reverse, 0, sizeof(record->reverse));
+    memset(record, 0, sizeof(*record));
     return false;
 }
 
@@ -61,7 +59,7 @@ status_t motor_calibration_storage_erase(void) {
         for (ftfx_margin_value_t margin = kFTFx_MarginValueNormal; margin <= kFTFx_MarginValueUser;
              ++margin) {
             status = FLASH_VerifyErase(&motor_calibration_flash, address,
-                                       MOTOR_CALIBRATION_FLASH_VERIFY_SIZE, margin);
+                                       MOTOR_CALIBRATION_FLASH_SECTOR_SIZE, margin);
             if (status != kStatus_FLASH_Success) {
                 return status;
             }
@@ -80,14 +78,32 @@ status_t motor_calibration_storage_erase(void) {
  * @return NXP SDK flash status.
  */
 status_t motor_calibration_storage_program(const MotorEncoderCalibrationRecord *record) {
-    status_t status = FLASH_Program(&motor_calibration_flash, MOTOR_CALIBRATION_FLASH_START,
-                                    (uint8_t *)(uintptr_t)record, sizeof(*record));
+    if (!motor_encoder_calibration_record_is_valid(record)) {
+        return kStatus_Fail;
+    }
+
+    const uint8_t *bytes = (const uint8_t *)record;
+    status_t status = FLASH_Program(&motor_calibration_flash, MOTOR_CALIBRATION_FLASH_START + 4U,
+                                    (uint8_t *)(uintptr_t)(bytes + 4U), sizeof(*record) - 4U);
     if (status != kStatus_FLASH_Success) {
         return status;
     }
 
     uint32_t failed_address;
     uint32_t failed_data;
+    status = FLASH_VerifyProgram(&motor_calibration_flash, MOTOR_CALIBRATION_FLASH_START + 4U,
+                                 sizeof(*record) - 4U, bytes + 4U, kFTFx_MarginValueUser,
+                                 &failed_address, &failed_data);
+    if (status != kStatus_FLASH_Success) {
+        return status;
+    }
+
+    status = FLASH_Program(&motor_calibration_flash, MOTOR_CALIBRATION_FLASH_START,
+                           (uint8_t *)(uintptr_t)bytes, 4U);
+    if (status != kStatus_FLASH_Success) {
+        return status;
+    }
+
     return FLASH_VerifyProgram(&motor_calibration_flash, MOTOR_CALIBRATION_FLASH_START,
                                sizeof(*record), (const uint8_t *)record, kFTFx_MarginValueUser,
                                &failed_address, &failed_data);

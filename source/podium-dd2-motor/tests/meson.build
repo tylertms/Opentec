@@ -10,9 +10,23 @@ motor_tests = [
     'sources': ['source/control.c', '../source/motor/control.c'],
   },
   {
+    'name': 'pi',
+    'suite': 'control',
+    'sources': ['source/pi.c', '../source/motor/pi.c'],
+  },
+  {
     'name': 'velocity-control',
     'suite': 'control',
-    'sources': ['source/velocity_control.c', '../source/motor/velocity_control.c'],
+    'sources': [
+      'source/velocity_control.c',
+      '../source/motor/velocity_control.c',
+      '../source/motor/pi.c',
+    ],
+  },
+  {
+    'name': 'storage',
+    'suite': 'storage',
+    'sources': ['source/storage.c', '../source/platform/mkv10z/storage.c'],
   },
   {
     'name': 'center',
@@ -102,7 +116,7 @@ foreach definition : motor_tests
     sources += files(source)
   endforeach
   test_includes = motor_include
-  if definition['name'] == 'velocity-control'
+  if definition['name'] == 'pi' or definition['name'] == 'velocity-control' or definition['name'] == 'storage'
     test_includes = [include_directories('stubs'), motor_include]
   endif
   image = executable(

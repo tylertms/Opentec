@@ -54,9 +54,17 @@ SECTIONS
   .flash_config :
   {
     . = ALIGN(4);
-    KEEP(*(.FlashConfig))    /* Flash Configuration Field (FCF) */
+    LONG(0xFFFFFFFF)
+    LONG(0xFFFFFFFF)
+    LONG(0xFFFFFFFF)
+    LONG(0xFFFFFBFE)
     . = ALIGN(4);
   } > m_flash_config
+
+  /DISCARD/ :
+  {
+    *(.FlashConfig)
+  }
 
   /* The program code and other data goes into internal flash */
   .text :

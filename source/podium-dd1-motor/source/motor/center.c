@@ -19,7 +19,7 @@ enum {
  * @return True when an active center command changed.
  */
 bool motor_center_command_apply(MotorCenterState *state, int16_t requested, int32_t encoder_modulus,
-                                uint16_t encoder_counter, uint16_t wrap_threshold,
+                                const volatile uint32_t *encoder_counter, uint16_t wrap_threshold,
                                 int32_t *encoder_offset) {
     if (!state->active || state->requested == requested) {
         return false;
@@ -30,9 +30,9 @@ bool motor_center_command_apply(MotorCenterState *state, int16_t requested, int3
         *encoder_offset = encoder_modulus;
     } else if (*encoder_offset < -encoder_modulus) {
         *encoder_offset = -encoder_modulus;
-    } else if (*encoder_offset == -encoder_modulus && encoder_counter < wrap_threshold) {
+    } else if (*encoder_offset == -encoder_modulus && (uint16_t)*encoder_counter < wrap_threshold) {
         *encoder_offset = 0;
-    } else if (*encoder_offset == encoder_modulus && encoder_counter >= wrap_threshold) {
+    } else if (*encoder_offset == encoder_modulus && (uint16_t)*encoder_counter >= wrap_threshold) {
         *encoder_offset = 0;
     }
     return true;

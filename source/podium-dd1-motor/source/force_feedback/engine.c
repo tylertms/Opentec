@@ -200,7 +200,8 @@ bool motor_force_feedback_effect_disable(MotorForceFeedbackEngine *engine, uint8
  * @return Primary direction and magnitude plus the signed secondary force.
  */
 MotorForceFeedbackMix motor_force_feedback_mix(MotorForceFeedbackEngine *engine, uint32_t now,
-                                               int32_t center, int32_t position, int32_t velocity,
+                                               int32_t centered_position, int32_t soft_stop_center,
+                                               int32_t soft_stop_position, int32_t velocity,
                                                bool soft_stop_disabled) {
     int32_t primary = 0;
     int32_t secondary = 0;
@@ -214,9 +215,10 @@ MotorForceFeedbackMix motor_force_feedback_mix(MotorForceFeedbackEngine *engine,
                 &effect->data.constant, engine->settings.constant_gain_tenths);
         } else if (effect->type == MOTOR_FORCE_FEEDBACK_EFFECT_WINDOW) {
             primary += motor_force_feedback_window_evaluate(
-                &effect->data.window, position, velocity, engine->settings.window_multiplier,
-                engine->settings.window_gain_tenths, slot, &engine->window_compensation,
-                engine->settings.directional_gain_tenths, engine->settings.overall_gain_percent);
+                &effect->data.window, centered_position, velocity,
+                engine->settings.window_multiplier, engine->settings.window_gain_tenths, slot,
+                &engine->window_compensation, engine->settings.directional_gain_tenths,
+                engine->settings.overall_gain_percent);
         } else if (effect->type == MOTOR_FORCE_FEEDBACK_EFFECT_DIRECTIONAL) {
             secondary += motor_force_feedback_directional_evaluate(
                 &effect->data.directional, velocity, engine->settings.directional_gain_tenths,
@@ -233,8 +235,8 @@ MotorForceFeedbackMix motor_force_feedback_mix(MotorForceFeedbackEngine *engine,
     secondary = secondary * engine->ramp_percent / 100;
 
     bool damper_active = motor_force_feedback_soft_stop_apply(
-        &engine->soft_stop, now, engine->settings.position_half_range, center, position,
-        engine->soft_stop_transition_range, soft_stop_disabled, &primary);
+        &engine->soft_stop, now, engine->settings.position_half_range, soft_stop_center,
+        soft_stop_position, engine->soft_stop_transition_range, soft_stop_disabled, &primary);
     engine->effects[MOTOR_FORCE_FEEDBACK_DAMPER_SLOT].active = damper_active;
 
     return (MotorForceFeedbackMix){

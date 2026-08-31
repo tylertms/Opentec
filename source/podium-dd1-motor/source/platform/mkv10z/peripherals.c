@@ -27,6 +27,41 @@ static uint16_t adc_auxiliary_first_sample;
 static uint8_t adc_control_conversion_count;
 static bool adc_auxiliary_second_sample;
 
+enum {
+    MOTOR_ADC_CALIBRATION_TIMEOUT = 1000000U,
+};
+
+static bool motor_adc_calibrate(ADC_Type *base) {
+    bool hardware_trigger = (base->SC2 & ADC_SC2_ADTRG_MASK) != 0U;
+    base->SC2 &= ~ADC_SC2_ADTRG_MASK;
+    base->SC3 |= ADC_SC3_CAL_MASK | ADC_SC3_CALF_MASK;
+
+    uint32_t remaining = MOTOR_ADC_CALIBRATION_TIMEOUT;
+    while ((ADC16_GetChannelStatusFlags(base, 0U) & kADC16_ChannelConversionDoneFlag) == 0U &&
+           (ADC16_GetStatusFlags(base) & kADC16_CalibrationFailedFlag) == 0U && remaining != 0U) {
+        --remaining;
+    }
+
+    bool complete =
+        (ADC16_GetChannelStatusFlags(base, 0U) & kADC16_ChannelConversionDoneFlag) != 0U;
+    bool failed = (ADC16_GetStatusFlags(base) & kADC16_CalibrationFailedFlag) != 0U;
+    if (complete) {
+        (void)base->R[0];
+    }
+    if (hardware_trigger) {
+        base->SC2 |= ADC_SC2_ADTRG_MASK;
+    }
+    if (!complete || failed) {
+        return false;
+    }
+
+    uint32_t gain = base->CLP0 + base->CLP1 + base->CLP2 + base->CLP3 + base->CLP4 + base->CLPS;
+    base->PG = 0x8000U | (gain >> 1U);
+    gain = base->CLM0 + base->CLM1 + base->CLM2 + base->CLM3 + base->CLM4 + base->CLMS;
+    base->MG = 0x8000U | (gain >> 1U);
+    return true;
+}
+
 /**
  * @brief Calibrates and configures both motor-current ADCs for PDB triggering.
  *
@@ -37,7 +72,7 @@ static bool adc_auxiliary_second_sample;
  * @param handler Function invoked for each completed motor ADC conversion.
  * @param context Caller context passed to the ADC handler.
  */
-void motor_adc_initialize(uint32_t encoder_scale, MotorAdcHandler handler, void *context) {
+bool motor_adc_initialize(uint32_t encoder_scale, MotorAdcHandler handler, void *context) {
     adc16_config_t config;
 
     adc_encoder_scale = encoder_scale;
@@ -55,8 +90,7 @@ void motor_adc_initialize(uint32_t encoder_scale, MotorAdcHandler handler, void 
 
     ADC16_Init(ADC0, &config);
     ADC16_Init(ADC1, &config);
-    (void)ADC16_DoAutoCalibration(ADC0);
-    (void)ADC16_DoAutoCalibration(ADC1);
+    bool calibrated = motor_adc_calibrate(ADC0) && motor_adc_calibrate(ADC1);
 
     config.clockDivider = kADC16_ClockDivider2;
     config.enableContinuousConversion = false;
@@ -75,6 +109,7 @@ void motor_adc_initialize(uint32_t encoder_scale, MotorAdcHandler handler, void 
         .enableDifferentialConversion = false,
     };
     ADC16_SetChannelConfig(ADC1, 0U, &channel_config);
+    return calibrated;
 }
 
 /**
@@ -363,6 +398,8 @@ void motor_pwm_initialize(void) {
  */
 void motor_pwm_enable_outputs(void) { FTM0->OUTMASK = 0U; }
 
+void motor_pwm_disable_outputs(void) { FTM0->OUTMASK = 0x3fU; }
+
 /**
  * @brief Configures the FTM2 motor scheduling timer.
  *
@@ -391,6 +428,7 @@ void motor_tick_timer_initialize(uint16_t modulus, MotorEncoderOverflowHandler h
     FTM2->CONF = 0xc0U;
     FTM2->QDCTRL = FTM_QDCTRL_QUADEN_MASK | FTM_QDCTRL_PHBFLTREN_MASK | FTM_QDCTRL_PHAFLTREN_MASK;
     FTM2->FILTER = 0U;
+    FTM_ClearStatusFlags(FTM2, kFTM_TimeOverflowFlag);
     FTM2->SC = 8U;
 }
 
@@ -483,10 +521,10 @@ void PORTB_PORTC_PORTD_PORTE_IRQHandler(void) {
     }
 
     uint16_t counter = (uint16_t)FTM2->CNT;
-    motor_encoder_index_interrupt_disable();
     if (encoder_index_handler != NULL) {
         encoder_index_handler(counter, encoder_index_context);
     }
+    motor_encoder_index_interrupt_disable();
 }
 
 /**

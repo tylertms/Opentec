@@ -44,6 +44,7 @@ typedef struct {
     bool replay;
 } MotorLinkPositionReport;
 
+bool motor_link_frame_boundaries_valid(const uint8_t input[MOTOR_LINK_FRAME_SIZE]);
 MotorLinkFrameResult motor_link_frame_decode_checked(const uint8_t input[MOTOR_LINK_FRAME_SIZE],
                                                      uint16_t checksum, MotorLinkFrame *frame);
 bool motor_link_force_command_decode(const MotorLinkFrame *frame, MotorLinkForceCommand *command);

@@ -16,6 +16,10 @@ enum {
     MOTOR_FORCE_RAMP_INTERVAL = 50U,
 };
 
+static bool motor_protocol_tick_passed(uint32_t now, uint32_t deadline) {
+    return (int32_t)(now - deadline) > 0;
+}
+
 /**
  * @brief Initializes the official motor-link status, drive, and force-feedback state.
  *
@@ -98,7 +102,8 @@ bool motor_protocol_frame_result_apply(MotorProtocolState *state, MotorLinkFrame
  * @return True when a new live drive command was produced.
  */
 bool motor_protocol_force_feedback_service(MotorProtocolState *state, uint32_t now,
-                                           int32_t centered_position, int32_t velocity) {
+                                           int32_t centered_position, int32_t position,
+                                           int32_t velocity) {
     if ((state->status & MOTOR_STATUS_REMOTE_EFFECTS) == 0U) {
         return false;
     }
@@ -116,19 +121,21 @@ bool motor_protocol_force_feedback_service(MotorProtocolState *state, uint32_t n
         for (uint8_t slot = 0U; slot < MOTOR_HOST_EFFECT_COUNT; ++slot) {
             (void)motor_force_feedback_effect_disable(&state->force_feedback, slot);
         }
-    } else if (state->force_feedback.ramp_percent < 100U && state->next_force_ramp_tick < now) {
+    } else if (state->force_feedback.ramp_percent < 100U &&
+               motor_protocol_tick_passed(now, state->next_force_ramp_tick)) {
         ++state->force_feedback.ramp_percent;
         state->next_force_ramp_tick = now + MOTOR_FORCE_RAMP_INTERVAL;
     }
 
-    if (state->next_force_feedback_tick > now) {
+    if (state->next_force_feedback_tick != now &&
+        !motor_protocol_tick_passed(now, state->next_force_feedback_tick)) {
         return false;
     }
     state->next_force_feedback_tick = now + 1U;
 
-    MotorForceFeedbackMix mix =
-        motor_force_feedback_mix(&state->force_feedback, now, 0, centered_position, velocity,
-                                 (state->status & MOTOR_STATUS_SECONDARY_DISABLED) != 0U);
+    MotorForceFeedbackMix mix = motor_force_feedback_mix(
+        &state->force_feedback, now, centered_position, state->center, position, velocity,
+        (state->status & MOTOR_STATUS_SECONDARY_DISABLED) != 0U);
     state->live_drive = motor_drive_command_resolve(
         mix.primary.positive, mix.primary.magnitude, mix.secondary, state->normal_output_percent,
         (state->status & MOTOR_STATUS_FULL_TORQUE) != 0U,

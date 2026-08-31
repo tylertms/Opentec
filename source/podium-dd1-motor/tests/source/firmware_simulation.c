@@ -147,7 +147,7 @@ static bool adc_calibration_configuration_matches(Kinetis *device) {
         kinetis_read(device, UINT32_C(0x4003b008), &adc0_configuration,
                      sizeof(adc0_configuration)) &&
         kinetis_read(device, UINT32_C(0x4003c008), &adc1_configuration, sizeof(adc1_configuration));
-    if (!readable || adc0_configuration != UINT8_C(0x04) || adc1_configuration != UINT8_C(0x04)) {
+    if (!readable || adc0_configuration != UINT8_C(0x24) || adc1_configuration != UINT8_C(0x24)) {
         fprintf(stderr, "ADC calibration CFG1: adc0=0x%02" PRIx8 " adc1=0x%02" PRIx8 "\n",
                 adc0_configuration, adc1_configuration);
         return false;
@@ -856,28 +856,43 @@ int main(int argc, char **argv) {
     uint32_t entry_address = 0U;
     CortexM4Coverage *coverage = cortex_m4_coverage_create_elf(argv[1]);
     const size_t owned_functions = select_owned_coverage(coverage, argv[1]);
-    bool passed = coverage != NULL && owned_functions != 0U &&
-                  cortex_m4_load_elf(device, argv[1], &entry_address) && kinetis_reset(device) &&
-                  configure_inputs(device) &&
-                  queue_frame(device, force_frame, sizeof(force_frame)) &&
-                  queue_effect_frames(device);
+    bool passed = coverage != NULL && owned_functions != 0U;
+    if (passed && !cortex_m4_load_elf(device, argv[1], &entry_address)) {
+        fprintf(stderr, "startup preparation failed: load\n");
+        passed = false;
+    }
+    if (passed && !kinetis_reset(device)) {
+        fprintf(stderr, "startup preparation failed: reset\n");
+        passed = false;
+    }
+    if (passed && !configure_inputs(device)) {
+        fprintf(stderr, "startup preparation failed: inputs\n");
+        passed = false;
+    }
+    if (passed && !queue_frame(device, force_frame, sizeof(force_frame))) {
+        fprintf(stderr, "startup preparation failed: frame\n");
+        passed = false;
+    }
+    if (passed && !queue_effect_frames(device)) {
+        fprintf(stderr, "startup preparation failed: effects\n");
+        passed = false;
+    }
     if (passed) {
         cortex_m4_set_coverage(kinetis_cpu(device), coverage);
-        passed = run_to_symbol(device, argv[1], "ADC16_DoAutoCalibration", 1000000U) &&
+        passed = run_to_symbol(device, argv[1], "motor_link_frame_decode_checked", 10000000U) &&
                  adc_calibration_configuration_matches(device) &&
-                 startup_output_state_safe(device) &&
-                 run_to_symbol(device, argv[1], "motor_link_frame_decode_checked", 10000000U) &&
-                 force_frame_checksum_matches(device) && received_force_frame(argv[1], device) &&
+                 startup_output_state_safe(device) && force_frame_checksum_matches(device) &&
+                 received_force_frame(argv[1], device) &&
                  run_to_symbol(device, argv[1], "motor_protocol_frame_apply", 10000000U) &&
                  run_to_symbol(device, argv[1], "motor_runtime_poll", 20000000U) &&
                  pdb_status_clear_matches(device, argv[1]) && i2c_configuration_matches(device);
         const uint64_t initialization_reads = kinetis_get_uninitialized_sram_read_count(device);
-        if (initialization_reads != 2U)
+        if (initialization_reads != 0U)
             fprintf(stderr,
                     "unexpected initialization SRAM reads: count=%" PRIu64 " first=0x%08" PRIx32
                     "\n",
                     initialization_reads, kinetis_get_first_uninitialized_sram_read(device));
-        passed = passed && initialization_reads == 2U;
+        passed = passed && initialization_reads == 0U;
         kinetis_clear_uninitialized_sram_reads(device);
         static const uint8_t steering_range_response[] = {0x82U, 0U, 0U, 0U, 1U};
         passed = passed && stimulate_bare_start_timeout(device, argv[1]) &&

@@ -10,8 +10,8 @@ static MotorSpiTransferBuffers *transfer_buffers;
 static MotorSpiPrepareHandler transfer_prepare_handler;
 static MotorSpiReceiveHandler transfer_receive_handler;
 static void *transfer_context;
-static bool transfer_active;
-static bool response_pending;
+static volatile bool transfer_active;
+static volatile bool response_pending;
 
 /**
  * @brief Configures the official SPI0 motor-link controller.
@@ -62,6 +62,8 @@ static void motor_spi_dma_channel_initialize(uint32_t channel, int32_t request,
  */
 static void motor_spi_dma_initialize(void) {
     edma_transfer_config_t transfer;
+
+    DMA0->CR = 0U;
 
     EDMA_PrepareTransfer(&transfer, transfer_buffers->transmit, 1U, (void *)&SPI0->PUSHR, 1U, 1U,
                          MOTOR_SPI_TRANSFER_SIZE, kEDMA_MemoryToPeripheral);
@@ -127,7 +129,9 @@ void motor_spi_link_active_set(bool active) { transfer_active = active; }
  */
 void motor_spi_timeout_service(void *context) {
     (void)context;
-    if (!transfer_active || !response_pending) {
+    bool pending = response_pending;
+    bool active = transfer_active;
+    if (!pending || !active) {
         return;
     }
 

@@ -10,7 +10,7 @@ enum {
     MOTOR_ENCODER_CALIBRATION_SETTLE_COUNT = 1000,
     MOTOR_ENCODER_CALIBRATION_CENTER_TOLERANCE = 100,
     MOTOR_ENCODER_CALIBRATION_SAMPLE_DIVISOR = 10,
-    MOTOR_ENCODER_CALIBRATION_VERSION = 3U,
+    MOTOR_ENCODER_CALIBRATION_VERSION = 4U,
     MOTOR_ENCODER_CALIBRATION_SCALE = 0x3333U,
     MOTOR_ENCODER_CALIBRATION_SAMPLE_OFFSET = 2U,
     MOTOR_ENCODER_CORRECTION_DIRECTION_THRESHOLD = 82,
@@ -18,8 +18,21 @@ enum {
 
 #define MOTOR_ENCODER_CALIBRATION_MAGIC UINT32_C(0xaaaaaaaa)
 
-_Static_assert(sizeof(MotorEncoderCalibrationRecord) == 0x2558U,
+_Static_assert(sizeof(MotorEncoderCalibrationRecord) == 0x255cU,
                "unexpected encoder calibration record size");
+
+static uint32_t motor_encoder_calibration_checksum(const MotorEncoderCalibrationRecord *record) {
+    const uint8_t *bytes = (const uint8_t *)record;
+    uint32_t checksum = UINT32_MAX;
+    for (uint32_t index = 0U; index < sizeof(*record) - sizeof(record->checksum); ++index) {
+        checksum ^= bytes[index];
+        for (uint32_t bit = 0U; bit < 8U; ++bit) {
+            uint32_t mask = 0U - (checksum & 1U);
+            checksum = (checksum >> 1U) ^ (UINT32_C(0xedb88320) & mask);
+        }
+    }
+    return ~checksum;
+}
 
 /**
  * @brief Resolves the calibration velocity magnitude.
@@ -183,6 +196,7 @@ motor_encoder_calibration_step(MotorEncoderCalibrationState *state,
         state->record.version = MOTOR_ENCODER_CALIBRATION_VERSION;
         state->record.correction_scale = MOTOR_ENCODER_CALIBRATION_SCALE;
         state->record.sample_offset = MOTOR_ENCODER_CALIBRATION_SAMPLE_OFFSET;
+        motor_encoder_calibration_record_finalize(&state->record);
         state->target_velocity = 0;
         state->phase = kMotorEncoderCalibrationInitialize;
         step.target_velocity = state->target_velocity;
@@ -238,6 +252,10 @@ bool motor_encoder_correction_direction_update(bool reverse, int16_t filtered_po
     return reverse;
 }
 
+void motor_encoder_calibration_record_finalize(MotorEncoderCalibrationRecord *record) {
+    record->checksum = motor_encoder_calibration_checksum(record);
+}
+
 /**
  * @brief Validates the official persisted encoder correction record header.
  *
@@ -248,5 +266,6 @@ bool motor_encoder_correction_direction_update(bool reverse, int16_t filtered_po
  */
 bool motor_encoder_calibration_record_is_valid(const MotorEncoderCalibrationRecord *record) {
     return record->magic == MOTOR_ENCODER_CALIBRATION_MAGIC &&
-           record->version == MOTOR_ENCODER_CALIBRATION_VERSION;
+           record->version == MOTOR_ENCODER_CALIBRATION_VERSION &&
+           record->checksum == motor_encoder_calibration_checksum(record);
 }

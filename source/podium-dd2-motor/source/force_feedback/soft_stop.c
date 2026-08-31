@@ -10,6 +10,10 @@ enum {
     RANGE_REDUCTION_RESET_THRESHOLD = 480,
 };
 
+static bool motor_force_feedback_tick_passed(uint32_t now, uint32_t deadline) {
+    return (int32_t)(now - deadline) > 0;
+}
+
 /**
  * @brief Applies the official travel-limit force ramp and selects the internal damper state.
  *
@@ -35,7 +39,8 @@ bool motor_force_feedback_soft_stop_apply(MotorForceFeedbackSoftStop *soft_stop,
     }
     soft_stop->previous_half_range = half_range;
 
-    if (soft_stop->ramp_percent < RAMP_MAXIMUM_PERCENT && soft_stop->next_ramp_tick < now) {
+    if (soft_stop->ramp_percent < RAMP_MAXIMUM_PERCENT &&
+        motor_force_feedback_tick_passed(now, soft_stop->next_ramp_tick)) {
         ++soft_stop->ramp_percent;
         soft_stop->next_ramp_tick = now + RAMP_PERIOD_TICKS;
     }

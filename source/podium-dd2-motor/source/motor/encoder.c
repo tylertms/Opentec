@@ -133,7 +133,6 @@ MotorEncoderDirectionStep motor_encoder_direction_check_step(MotorEncoderDirecti
         state->phase = kMotorEncoderDirectionFirstIndex;
         step.status = state->status;
         step.reset_controller = true;
-        step.reset_position = true;
         step.restart_index_seek = true;
         return step;
     }
@@ -146,7 +145,6 @@ MotorEncoderDirectionStep motor_encoder_direction_check_step(MotorEncoderDirecti
 
         state->first_index_position = position;
         state->phase = kMotorEncoderDirectionSecondIndex;
-        step.reset_position = true;
         step.restart_index_seek = true;
         return step;
     }

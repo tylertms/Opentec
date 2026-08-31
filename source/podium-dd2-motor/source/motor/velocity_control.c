@@ -3,6 +3,8 @@
 #include <limits.h>
 #include <mlib.h>
 
+#include "motor/pi.h"
+
 #if defined(__GNUC__)
 #pragma GCC optimize("O2")
 #endif
@@ -41,11 +43,17 @@ void motor_velocity_control_initialize(MotorVelocityControlState *state, int16_t
 
 void motor_velocity_control_reset(MotorVelocityControlState *state) {
     state->target_velocity = 0;
+    state->target_ramp.f32State = 0;
+    state->ramped_velocity = 0;
+    state->velocity_error = 0;
+    state->current_reference = 0;
+    state->stop_integrator = 0U;
     motor_velocity_control_controller_reset(state);
 }
 
 void motor_velocity_control_controller_reset(MotorVelocityControlState *state) {
     GFLIB_CtrlPIpAWInit_F16(0, &state->controller);
+    state->controller.bLimFlag = 0U;
 }
 
 /**
@@ -74,14 +82,12 @@ void motor_velocity_control_target_set(MotorVelocityControlState *state, int16_t
  */
 int16_t motor_velocity_control_step(MotorVelocityControlState *state, int16_t measured_velocity,
                                     bool_t current_controller_limited) {
-    bool_t target_speed_covers_measured =
-        (bool_t)(MLIB_AbsSat_F16(state->target_velocity) >= MLIB_AbsSat_F16(measured_velocity));
-    state->stop_integrator = (bool_t)((current_controller_limited | state->controller.bLimFlag) &
-                                      target_speed_covers_measured & UINT8_MAX);
+    state->stop_integrator =
+        (bool_t)((current_controller_limited | state->controller.bLimFlag) & UINT8_MAX);
     frac32_t ramped = GFLIB_Ramp_F32(MLIB_Conv_F32s(state->target_velocity), &state->target_ramp);
     state->ramped_velocity = MLIB_Conv_F16l(ramped);
     state->velocity_error = MLIB_SubSat_F16(state->ramped_velocity, measured_velocity);
     state->current_reference =
-        GFLIB_CtrlPIpAW_F16(state->velocity_error, &state->stop_integrator, &state->controller);
+        motor_pi_step(state->velocity_error, &state->stop_integrator, &state->controller);
     return state->current_reference;
 }

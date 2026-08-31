@@ -61,7 +61,7 @@ static void test_capture_sequence(void) {
     assert(step.result == kMotorEncoderCalibrationComplete);
     assert(step.target_velocity == 0);
     assert(state.record.magic == 0xaaaaaaaaU);
-    assert(state.record.version == 3U);
+    assert(state.record.version == 4U);
     assert(state.record.correction_scale == 0x3333U);
     assert(state.record.sample_offset == 2U);
 }
@@ -161,16 +161,22 @@ static void test_correction_direction_hysteresis(void) {
 static void test_persistent_record_validation(void) {
     MotorEncoderCalibrationRecord record = {
         .magic = UINT32_C(0xaaaaaaaa),
-        .version = 3U,
+        .version = 4U,
     };
+    motor_encoder_calibration_record_finalize(&record);
 
     assert(motor_encoder_calibration_record_is_valid(&record));
+
+    record.forward[0] = 1;
+    assert(!motor_encoder_calibration_record_is_valid(&record));
+    record.forward[0] = 0;
+    motor_encoder_calibration_record_finalize(&record);
 
     record.magic = 0U;
     assert(!motor_encoder_calibration_record_is_valid(&record));
 
     record.magic = UINT32_C(0xaaaaaaaa);
-    record.version = 2U;
+    record.version = 3U;
     assert(!motor_encoder_calibration_record_is_valid(&record));
 }
 

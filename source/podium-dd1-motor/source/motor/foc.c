@@ -1,10 +1,17 @@
 #include "motor/foc.h"
 
+#include <limits.h>
 #include <mlib.h>
+
+#include "motor/pi.h"
 
 #pragma GCC optimize("O2")
 
 volatile uint16_t gu16CntMmdvsq;
+
+static frac16_t motor_foc_square(frac16_t value) {
+    return value == INT16_MIN ? INT16_MAX : MLIB_Mul_F16(value, value);
+}
 
 /**
  * @brief Initializes both current controllers and current filters.
@@ -67,6 +74,22 @@ void motor_foc_step(MotorFocState *state, const MotorFocInput *input, MotorFocOu
     output->filtered_current.f16D =
         GDFLIB_FilterIIR1_F16(rotating_current.f16D, &state->d_current_filter);
 
+    if (input->dc_bus_voltage <= 0) {
+        state->stop_d_integrator = 1U;
+        state->stop_q_integrator = 1U;
+        output->voltage = (GMCLIB_2COOR_DQ_T_F16){0};
+        output->duty = (GMCLIB_3COOR_T_F16){
+            .f16A = 0x4000,
+            .f16B = 0x4000,
+            .f16C = 0x4000,
+        };
+        output->sector = 0U;
+        return;
+    }
+
+    state->stop_d_integrator = 0U;
+    state->stop_q_integrator = 0U;
+
     current_error.f16D =
         MLIB_SubSat_F16(input->current_reference.f16D, output->filtered_current.f16D);
     current_error.f16Q =
@@ -75,14 +98,13 @@ void motor_foc_step(MotorFocState *state, const MotorFocInput *input, MotorFocOu
     state->d_controller.f16UpperLim = input->dc_bus_voltage;
     state->d_controller.f16LowerLim = MLIB_NegSat_F16(input->dc_bus_voltage);
     output->voltage.f16D =
-        GFLIB_CtrlPIpAW_F16(current_error.f16D, &state->stop_d_integrator, &state->d_controller);
+        motor_pi_step(current_error.f16D, &state->stop_d_integrator, &state->d_controller);
 
-    state->q_controller.f16UpperLim =
-        GFLIB_Sqrt_F16(MLIB_SubSat_F16(MLIB_Mul_F16(input->dc_bus_voltage, input->dc_bus_voltage),
-                                       MLIB_Mul_F16(output->voltage.f16D, output->voltage.f16D)));
+    state->q_controller.f16UpperLim = GFLIB_Sqrt_F16(MLIB_SubSat_F16(
+        motor_foc_square(input->dc_bus_voltage), motor_foc_square(output->voltage.f16D)));
     state->q_controller.f16LowerLim = MLIB_NegSat_F16(state->q_controller.f16UpperLim);
     output->voltage.f16Q =
-        GFLIB_CtrlPIpAW_F16(current_error.f16Q, &state->stop_q_integrator, &state->q_controller);
+        motor_pi_step(current_error.f16Q, &state->stop_q_integrator, &state->q_controller);
 
     GMCLIB_ParkInv_F16(&output->voltage, &input->rotor_sin_cos, &stationary_voltage);
     GMCLIB_ElimDcBusRipFOC_F16(input->dc_bus_voltage, &stationary_voltage, &compensated_voltage);

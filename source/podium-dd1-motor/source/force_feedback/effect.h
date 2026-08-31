@@ -23,6 +23,7 @@ typedef struct {
     int8_t lower_direction;
     int8_t upper_direction;
     uint16_t saturation;
+    uint16_t reserved;
 } MotorWindowEffect;
 
 typedef struct {

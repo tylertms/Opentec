@@ -16,7 +16,7 @@ typedef struct {
     uint16_t driver;
 } MotorAdcAuxiliarySamples;
 
-void motor_adc_initialize(uint32_t encoder_scale, MotorAdcHandler handler, void *context);
+bool motor_adc_initialize(uint32_t encoder_scale, MotorAdcHandler handler, void *context);
 void motor_adc_trigger_initialize(void);
 void motor_adc_trigger_enable(void);
 void motor_current_calibration_hardware_start(void);
@@ -28,6 +28,7 @@ void motor_reset_filter_initialize(void);
 void motor_interrupts_initialize(void);
 void motor_pwm_initialize(void);
 void motor_pwm_enable_outputs(void);
+void motor_pwm_disable_outputs(void);
 void motor_tick_timer_initialize(uint16_t modulus, MotorEncoderOverflowHandler handler,
                                  MotorEncoderIndexHandler index_handler, void *context);
 void motor_encoder_overflow_interrupt_enable(void);

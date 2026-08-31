@@ -34,6 +34,10 @@ static void write_uint16(uint8_t *output, uint16_t value) {
     output[1] = (uint8_t)(value >> 8U);
 }
 
+bool motor_link_frame_boundaries_valid(const uint8_t input[MOTOR_LINK_FRAME_SIZE]) {
+    return input[0] == FRAME_START && input[MOTOR_LINK_FRAME_SIZE - 1U] == FRAME_END;
+}
+
 /**
  * @brief Validates and decodes one official thirteen-byte motor-link frame.
  *
@@ -46,7 +50,7 @@ static void write_uint16(uint8_t *output, uint16_t value) {
  */
 MotorLinkFrameResult motor_link_frame_decode_checked(const uint8_t input[MOTOR_LINK_FRAME_SIZE],
                                                      uint16_t checksum, MotorLinkFrame *frame) {
-    if (input[0] != FRAME_START || input[MOTOR_LINK_FRAME_SIZE - 1U] != FRAME_END) {
+    if (!motor_link_frame_boundaries_valid(input)) {
         return MOTOR_LINK_FRAME_INVALID_BOUNDARY;
     }
     if (read_uint16(input + FRAME_CHECKSUM_OFFSET) != checksum) {

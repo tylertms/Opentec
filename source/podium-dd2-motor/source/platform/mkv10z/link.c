@@ -34,6 +34,9 @@ uint16_t motor_link_crc_calculate(const uint8_t *data, size_t length) {
  */
 MotorLinkFrameResult motor_link_frame_decode(const uint8_t input[MOTOR_LINK_FRAME_SIZE],
                                              MotorLinkFrame *frame) {
+    if (!motor_link_frame_boundaries_valid(input)) {
+        return MOTOR_LINK_FRAME_INVALID_BOUNDARY;
+    }
     uint16_t checksum = motor_link_crc_calculate(input + 1U, MOTOR_LINK_CHECKSUM_INPUT_SIZE);
     return motor_link_frame_decode_checked(input, checksum, frame);
 }

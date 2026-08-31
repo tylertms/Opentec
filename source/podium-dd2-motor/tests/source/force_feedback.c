@@ -193,6 +193,14 @@ static void test_soft_stop(void) {
                                                 &force));
     assert(soft_stop.ramp_percent == 1U);
     assert(force == -655);
+
+    soft_stop.ramp_percent = 0U;
+    soft_stop.next_ramp_tick = UINT32_MAX - 10U;
+    force = 0;
+    assert(motor_force_feedback_soft_stop_apply(&soft_stop, 40U, 35520, 0, 42097, 6577U, false,
+                                                &force));
+    assert(soft_stop.ramp_percent == 1U);
+    assert(soft_stop.next_ramp_tick == 90U);
 }
 
 static void test_engine(void) {
@@ -208,7 +216,7 @@ static void test_engine(void) {
     assert(engine.soft_stop_transition_range == 0x19b1U);
     assert(engine.ramp_percent == 100U);
 
-    MotorForceFeedbackMix mix = motor_force_feedback_mix(&engine, 1U, 0, 0, 0, false);
+    MotorForceFeedbackMix mix = motor_force_feedback_mix(&engine, 1U, 0, 0, 0, 0, false);
     assert(mix.primary.positive);
     assert(mix.primary.magnitude == 0U);
     assert(mix.secondary == 0);
@@ -217,13 +225,13 @@ static void test_engine(void) {
     const uint8_t constant_payload[5] = {0U, 0U, 0U, 0U, 0U};
     assert(motor_force_feedback_constant_configure(&engine, 0U, constant_payload));
     assert(motor_force_feedback_effect_enable(&engine, 0U));
-    mix = motor_force_feedback_mix(&engine, 2U, 0, 0, 0, false);
+    mix = motor_force_feedback_mix(&engine, 2U, 0, 0, 0, 0, false);
     assert(mix.primary.positive);
     assert(mix.primary.magnitude == 22937U);
     assert(mix.secondary == 0);
 
     engine.ramp_percent = 50U;
-    mix = motor_force_feedback_mix(&engine, 3U, 0, 0, 0, false);
+    mix = motor_force_feedback_mix(&engine, 3U, 0, 0, 0, 0, false);
     assert(mix.primary.magnitude == 11468U);
     assert(motor_force_feedback_effect_disable(&engine, 0U));
     assert(!motor_force_feedback_effect_disable(&engine, MOTOR_FORCE_FEEDBACK_EFFECT_COUNT));
@@ -236,7 +244,7 @@ static void test_engine(void) {
     assert(!motor_force_feedback_effect_enable(&engine, MOTOR_FORCE_FEEDBACK_EFFECT_COUNT));
 
     engine.ramp_percent = 100U;
-    mix = motor_force_feedback_mix(&engine, 4U, 0, 0, 320, false);
+    mix = motor_force_feedback_mix(&engine, 4U, 0, 0, 0, 320, false);
     assert(mix.primary.magnitude == 3U);
     assert(mix.secondary == 0);
 
@@ -247,19 +255,19 @@ static void test_engine(void) {
         assert(motor_force_feedback_constant_configure(&engine, slot, constant_payload));
         assert(motor_force_feedback_effect_enable(&engine, slot));
     }
-    mix = motor_force_feedback_mix(&engine, 5U, 0, 0, 0, true);
+    mix = motor_force_feedback_mix(&engine, 5U, 0, 0, 0, 0, true);
     assert(mix.primary.positive);
     assert(mix.primary.magnitude == UINT16_MAX);
 
     const uint8_t negative_payload[5] = {0xffU, 0U, 0U, 0U, 0U};
     for (uint8_t slot = 0U; slot < MOTOR_FORCE_FEEDBACK_EFFECT_COUNT; ++slot)
         assert(motor_force_feedback_constant_configure(&engine, slot, negative_payload));
-    mix = motor_force_feedback_mix(&engine, 6U, 0, 0, 0, true);
+    mix = motor_force_feedback_mix(&engine, 6U, 0, 0, 0, 0, true);
     assert(!mix.primary.positive);
     assert(mix.primary.magnitude == UINT16_MAX);
 
     engine.settings.overall_gain_percent = 0U;
-    mix = motor_force_feedback_mix(&engine, 7U, 0, 0, 0, true);
+    mix = motor_force_feedback_mix(&engine, 7U, 0, 0, 0, 0, true);
     assert(mix.primary.magnitude == 0U);
 
     motor_force_feedback_engine_initialize(&engine);
@@ -268,10 +276,21 @@ static void test_engine(void) {
         assert(motor_force_feedback_directional_configure(&engine, slot, directional_payload));
         assert(motor_force_feedback_effect_enable(&engine, slot));
     }
-    mix = motor_force_feedback_mix(&engine, 8U, 0, 0, 1000000, true);
+    mix = motor_force_feedback_mix(&engine, 8U, 0, 0, 0, 1000000, true);
     assert(mix.secondary == -32767);
-    mix = motor_force_feedback_mix(&engine, 9U, 0, 0, -1000000, true);
+    mix = motor_force_feedback_mix(&engine, 9U, 0, 0, 0, -1000000, true);
     assert(mix.secondary == 32767);
+
+    motor_force_feedback_engine_initialize(&engine);
+    for (uint8_t slot = 0U; slot < MOTOR_FORCE_FEEDBACK_EFFECT_COUNT; ++slot) {
+        engine.effects[slot].active = false;
+    }
+    engine.settings.position_half_range = 82880;
+    engine.settings.filter_setting = 100U;
+    engine.soft_stop.ramp_percent = 100U;
+    mix = motor_force_feedback_mix(&engine, 10U, 82880, 1000, 90457, 0, false);
+    assert(!mix.primary.positive);
+    assert(mix.primary.magnitude == UINT16_MAX);
 }
 
 static void test_commands(void) {

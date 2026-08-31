@@ -25,6 +25,7 @@ bool motor_protocol_frame_apply(MotorProtocolState *state, const MotorLinkFrame 
 bool motor_protocol_frame_result_apply(MotorProtocolState *state, MotorLinkFrameResult result,
                                        const MotorLinkFrame *frame);
 bool motor_protocol_force_feedback_service(MotorProtocolState *state, uint32_t now,
-                                           int32_t centered_position, int32_t velocity);
+                                           int32_t centered_position, int32_t position,
+                                           int32_t velocity);
 
 #endif

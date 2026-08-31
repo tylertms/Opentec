@@ -51,7 +51,8 @@ bool motor_force_feedback_directional_configure(MotorForceFeedbackEngine *engine
 bool motor_force_feedback_effect_enable(MotorForceFeedbackEngine *engine, uint8_t slot);
 bool motor_force_feedback_effect_disable(MotorForceFeedbackEngine *engine, uint8_t slot);
 MotorForceFeedbackMix motor_force_feedback_mix(MotorForceFeedbackEngine *engine, uint32_t now,
-                                               int32_t center, int32_t position, int32_t velocity,
+                                               int32_t centered_position, int32_t soft_stop_center,
+                                               int32_t soft_stop_position, int32_t velocity,
                                                bool soft_stop_disabled);
 
 #endif

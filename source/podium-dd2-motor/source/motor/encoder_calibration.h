@@ -15,6 +15,7 @@ typedef struct {
     uint32_t sample_offset;
     int16_t forward[MOTOR_ENCODER_CORRECTION_CAPACITY];
     int16_t reverse[MOTOR_ENCODER_CORRECTION_CAPACITY];
+    uint32_t checksum;
 } MotorEncoderCalibrationRecord;
 
 typedef enum {
@@ -67,6 +68,7 @@ motor_encoder_calibration_step(MotorEncoderCalibrationState *state,
 int16_t motor_encoder_correction_read(const MotorEncoderCalibrationRecord *record, bool reverse,
                                       uint16_t relative_position, uint16_t table_length);
 bool motor_encoder_correction_direction_update(bool reverse, int16_t filtered_position_delta);
+void motor_encoder_calibration_record_finalize(MotorEncoderCalibrationRecord *record);
 bool motor_encoder_calibration_record_is_valid(const MotorEncoderCalibrationRecord *record);
 
 #endif
