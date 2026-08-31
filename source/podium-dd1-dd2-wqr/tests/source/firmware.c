@@ -432,7 +432,7 @@ static bool exchange_frame(Kinetis *device, uint8_t type, uint8_t sequence, cons
                            size_t payload_length, uint8_t response[TRANSMIT_WINDOW_SIZE]) {
     uint8_t request[WQR_FRAME_SIZE];
 
-    return wqr_protocol_build_frame(request, type, sequence, payload, payload_length) &&
+    return wqr_frame_build(request, type, sequence, payload, payload_length) &&
            send_request(device, request) && receive_response(device, response);
 }
 
@@ -440,7 +440,7 @@ static bool frame_integrity_valid(const uint8_t frame[WQR_FRAME_SIZE]) {
     uint16_t crc = (uint16_t)frame[61] | (uint16_t)((uint16_t)frame[62] << 8);
 
     return frame[0] == 0x7b && frame[63] == 0x7d &&
-           wqr_protocol_crc(frame + 1, WQR_FRAME_BODY_SIZE) == crc;
+           wqr_frame_crc(frame + 1, WQR_FRAME_BODY_SIZE) == crc;
 }
 
 static bool status_response_valid(const uint8_t window[TRANSMIT_WINDOW_SIZE], uint8_t sequence,
@@ -496,7 +496,7 @@ static bool exchange_shifted_status(Kinetis *device, uint8_t request_sequence) {
     uint8_t request[RECEIVE_WINDOW_SIZE] = {0};
     uint8_t response[TRANSMIT_WINDOW_SIZE];
 
-    return wqr_protocol_build_frame(request, WQR_PAYLOAD_STATUS, request_sequence, NULL, 0) &&
+    return wqr_frame_build(request, WQR_PAYLOAD_STATUS, request_sequence, NULL, 0) &&
            send_uart(device, request, sizeof(request)) && receive_response(device, response) &&
            status_response_valid(response, (uint8_t)(request_sequence + 1), 0);
 }
@@ -528,7 +528,7 @@ static bool recover_from_bad_end_marker(Kinetis *device) {
     uint8_t request[WQR_FRAME_SIZE];
     uint8_t response[TRANSMIT_WINDOW_SIZE];
 
-    if (!wqr_protocol_build_frame(request, WQR_PAYLOAD_STATUS, 1, NULL, 0)) {
+    if (!wqr_frame_build(request, WQR_PAYLOAD_STATUS, 1, NULL, 0)) {
         return false;
     }
     request[WQR_FRAME_SIZE - 1] = 0;
@@ -540,7 +540,7 @@ static bool reject_invalid_crc(Kinetis *device, uint8_t request_sequence) {
     uint8_t request[WQR_FRAME_SIZE];
     uint8_t response[TRANSMIT_WINDOW_SIZE];
 
-    if (!wqr_protocol_build_frame(request, WQR_PAYLOAD_STATUS, request_sequence, NULL, 0)) {
+    if (!wqr_frame_build(request, WQR_PAYLOAD_STATUS, request_sequence, NULL, 0)) {
         return false;
     }
     request[61] ^= 1;
@@ -553,11 +553,11 @@ static bool reject_oversized_payload(Kinetis *device, uint8_t request_sequence) 
     uint8_t response[TRANSMIT_WINDOW_SIZE];
     uint16_t crc;
 
-    if (!wqr_protocol_build_frame(request, WQR_PAYLOAD_STATUS, request_sequence, NULL, 0)) {
+    if (!wqr_frame_build(request, WQR_PAYLOAD_STATUS, request_sequence, NULL, 0)) {
         return false;
     }
     request[3] = WQR_FRAME_PAYLOAD_SIZE + 1;
-    crc = wqr_protocol_crc(request + 1, WQR_FRAME_BODY_SIZE);
+    crc = wqr_frame_crc(request + 1, WQR_FRAME_BODY_SIZE);
     request[61] = (uint8_t)crc;
     request[62] = (uint8_t)(crc >> 8);
     return send_request(device, request) && receive_response(device, response) &&
@@ -657,8 +657,8 @@ static bool exchange_primary_spi_after_retry(Kinetis *device, uint8_t request_se
     }
     payload[WQR_FRAME_PAYLOAD_SIZE - 1] = 1;
     if (!queue_spi_response(device, payload, WQR_SPI_TRANSFER_SIZE) ||
-        !wqr_protocol_build_frame(request, WQR_PAYLOAD_PRIMARY_SPI, request_sequence, payload,
-                                  sizeof(payload)) ||
+        !wqr_frame_build(request, WQR_PAYLOAD_PRIMARY_SPI, request_sequence, payload,
+                         sizeof(payload)) ||
         !send_request(device, request)) {
         return false;
     }
@@ -699,8 +699,8 @@ static bool exchange_after_reconnect(Kinetis *device, uint8_t request_sequence) 
     }
     payload[WQR_FRAME_PAYLOAD_SIZE - 1] = 1;
     expect_spi(transmitted, WQR_SPI_TRANSFER_SIZE);
-    if (!wqr_protocol_build_frame(request, WQR_PAYLOAD_PRIMARY_SPI, request_sequence, payload,
-                                  sizeof(payload)) ||
+    if (!wqr_frame_build(request, WQR_PAYLOAD_PRIMARY_SPI, request_sequence, payload,
+                         sizeof(payload)) ||
         !send_request(device, request)) {
         return false;
     }
@@ -797,10 +797,10 @@ static bool reconnect_after_alternate_spi(Kinetis *device) {
     expect_spi(NULL, 0);
     return kinetis_gpio_drive(device, GPIO_PORT_C, 2, true) &&
            run_firmware(device, IDLE_INSTRUCTIONS) && spi_expectations_met() &&
-           spi_format_is(device, 16, false) &&
+           spi_format_is(device, 8, true) &&
            kinetis_gpio_pin(device, GPIO_PORT_C, 3, &transfer_control) && transfer_control &&
            kinetis_gpio_drive(device, GPIO_PORT_C, 2, false) &&
-           run_firmware(device, IDLE_INSTRUCTIONS) && spi_format_is(device, 16, false);
+           run_firmware(device, IDLE_INSTRUCTIONS) && spi_format_is(device, 8, true);
 }
 
 static bool exchange_i2c_write(Kinetis *device, uint8_t request_sequence) {

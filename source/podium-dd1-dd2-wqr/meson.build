@@ -69,7 +69,6 @@ if wqr_is_target
   firmware = executable(
     wqr_name,
     wqr_sources,
-    'source/reset.S',
     sdk_device['sources'],
     build_by_default: false,
     c_args: wqr_c_args + [

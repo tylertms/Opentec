@@ -88,7 +88,6 @@ static i2c_master_handle_t i2c_handle;
 static volatile bool adc_sample_ready;
 static volatile uint16_t adc_sample;
 static volatile bool reset_pending;
-static uint8_t adc_milliseconds;
 
 static void reset_if_failed(status_t status) {
     if (status != kStatus_Success) {
@@ -237,6 +236,7 @@ static void configure_uart(void) {
     nvic_enable(DMA1_IRQn, 15);
     NVIC_SetPriority(UART1_RX_TX_IRQn, 0);
     NVIC_DisableIRQ(UART1_RX_TX_IRQn);
+    NVIC_ClearPendingIRQ(UART1_RX_TX_IRQn);
     nvic_enable(UART1_ERR_IRQn, 0);
 }
 
@@ -295,6 +295,11 @@ static void set_spi_format(unsigned int bits, dspi_clock_phase_t phase) {
 static void initialize_spi_hardware(void) {
     dspi_master_config_t config;
 
+    GPIO_PinWrite(GPIOC, 4, 1);
+    if ((SIM->SCGC6 & SIM_SCGC6_SPI0_MASK) != 0) {
+        DSPI_StopTransfer(SPI0);
+        DSPI_FlushFifo(SPI0, true, true);
+    }
     DSPI_MasterGetDefaultConfig(&config);
     config.whichCtar = kDSPI_Ctar0;
     config.ctarConfig.bitsPerFrame = 8;
@@ -336,6 +341,9 @@ static bool start_spi_dma(void) {
 
     NVIC_DisableIRQ(DMA2_IRQn);
     NVIC_DisableIRQ(DMA3_IRQn);
+    DSPI_DisableDMA(SPI0, kDSPI_RxDmaEnable | kDSPI_TxDmaEnable);
+    DMAMUX_DisableChannel(DMAMUX, SPI_TRANSMIT_DMA_CHANNEL);
+    DMAMUX_DisableChannel(DMAMUX, SPI_RECEIVE_DMA_CHANNEL);
     DSPI_MasterTransferAbort(SPI0, &spi_word_handle);
     DSPI_DisableInterrupts(SPI0, kDSPI_AllInterruptEnable);
     EDMA_AbortTransfer(&spi_receive_dma);
@@ -605,13 +613,6 @@ static void io_reset_transfer(void *context) {
     spi_retry_pending = false;
     spi_retry_delay = 0;
     initialize_spi_hardware();
-    if (protocol.alternate_spi_active) {
-        NVIC_DisableIRQ(DMA2_IRQn);
-        NVIC_DisableIRQ(DMA3_IRQn);
-        DMAMUX_DisableChannel(DMAMUX, SPI_TRANSMIT_DMA_CHANNEL);
-        DMAMUX_DisableChannel(DMAMUX, SPI_RECEIVE_DMA_CHANNEL);
-        set_spi_format(16, kDSPI_ClockPhaseFirstEdge);
-    }
 }
 
 static void io_request_reset(void *context) {
@@ -672,6 +673,7 @@ void DMA1_IRQHandler(void) {
     if ((EDMA_GetChannelStatusFlags(DMA0, UART_RECEIVE_DMA_CHANNEL) &
          (kEDMA_DoneFlag | kEDMA_InterruptFlag)) != 0) {
         EDMA_HandleIRQ(&uart_receive_dma);
+        EDMA_ClearChannelStatusFlags(DMA0, UART_RECEIVE_DMA_CHANNEL, kEDMA_DoneFlag);
     } else {
         EDMA_ClearChannelStatusFlags(DMA0, UART_RECEIVE_DMA_CHANNEL,
                                      kEDMA_DoneFlag | kEDMA_ErrorFlag | kEDMA_InterruptFlag);
@@ -713,12 +715,12 @@ void I2C0_IRQHandler(void) {
     uint8_t detection = I2C0->FLT & (I2C_FLT_STARTF_MASK | I2C_FLT_STOPF_MASK);
     uint8_t status = I2C0->S;
 
+    I2C0->FLT |= detection;
     if ((status & I2C_S_ARBL_MASK) != 0) {
-        I2C_MasterClearStatusFlags(I2C0, kI2C_ArbitrationLostFlag);
+        I2C_MasterClearStatusFlags(I2C0, kI2C_ArbitrationLostFlag | kI2C_IntPendingFlag);
         return;
     }
     if (detection != 0) {
-        I2C0->FLT |= detection;
         if ((status & I2C_S_IICIF_MASK) != 0) {
             I2C_MasterClearStatusFlags(I2C0, kI2C_IntPendingFlag);
         }
@@ -735,18 +737,16 @@ void I2C0_IRQHandler(void) {
 }
 
 void UART1_ERR_DriverIRQHandler(void) {
-    uint8_t status = UART1->S1;
-
-    if ((status & UART_S1_PF_MASK) != 0) {
+    if ((UART1->S1 & UART_S1_PF_MASK) != 0) {
         (void)UART1->D;
     }
-    if ((status & UART_S1_FE_MASK) != 0) {
+    if ((UART1->S1 & UART_S1_FE_MASK) != 0) {
         (void)UART1->D;
     }
-    if ((status & UART_S1_NF_MASK) != 0) {
+    if ((UART1->S1 & UART_S1_NF_MASK) != 0) {
         (void)UART1->D;
     }
-    if ((status & UART_S1_OR_MASK) != 0) {
+    if ((UART1->S1 & UART_S1_OR_MASK) != 0) {
         (void)UART1->D;
     }
 }
@@ -786,12 +786,11 @@ void PIT0_IRQHandler(void) {
     wqr_protocol_tick(&protocol);
     update_spi_retry();
     update_i2c_timeout();
-    if (++adc_milliseconds == 100) {
+    if (protocol.milliseconds % 100 == 0) {
         const adc16_channel_config_t channel = {
             .channelNumber = 23,
             .enableInterruptOnConversionCompleted = true,
         };
-        adc_milliseconds = 0;
         ADC16_SetChannelConfig(ADC0, 0, &channel);
     }
     PIT_ClearStatusFlags(PIT, kPIT_Chnl_0, kPIT_TimerFlag);
@@ -908,12 +907,12 @@ void firmware_main(void) {
             adc_sample_ready = false;
             wqr_protocol_set_sensor_sample(&protocol, adc_sample);
         }
-        restart_spi_if_due();
         if (uart_receive_ready) {
             uart_receive_ready = false;
             process_uart_frame();
         }
         wqr_protocol_poll(&protocol);
+        restart_spi_if_due();
 
         start_uart_response();
         if (reset_pending) {

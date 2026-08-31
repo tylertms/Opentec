@@ -48,7 +48,6 @@ typedef struct {
     uint32_t error_count;
     uint32_t milliseconds;
     uint32_t seconds;
-    uint16_t second_milliseconds;
 
     int16_t sensor_value;
     uint8_t inputs;
@@ -84,9 +83,6 @@ void wqr_protocol_response_sent(wqr_protocol *protocol);
 void wqr_protocol_poll(wqr_protocol *protocol);
 void wqr_protocol_tick(wqr_protocol *protocol);
 void wqr_protocol_set_sensor_sample(wqr_protocol *protocol, uint16_t sample);
-uint16_t wqr_protocol_crc(const uint8_t *data, size_t length);
-bool wqr_protocol_build_frame(uint8_t frame[WQR_FRAME_SIZE], uint8_t type_flags, uint8_t sequence,
-                              const uint8_t *payload, size_t payload_length);
 int16_t wqr_sensor_value(uint16_t sample);
 
 #endif
