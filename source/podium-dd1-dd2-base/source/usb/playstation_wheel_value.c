@@ -29,6 +29,28 @@ void usb_playstation_wheel_value_init(UsbPlaystationWheelValue *value) {
 }
 
 /**
+ * @brief Sets the attached-wheel protocol value and refreshes its timeout.
+ *
+ * Stores the high byte before the low byte in attached-wheel report order, arms the release latch,
+ * and starts the same three-second lifetime used by PlayStation report five.
+ *
+ * @param[in,out] value Wheel-value state to replace.
+ * @param[in] low Low protocol-value byte.
+ * @param[in] high High protocol-value byte.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+void usb_playstation_wheel_value_set(UsbPlaystationWheelValue *value, uint8_t low, uint8_t high,
+                                     uint32_t now_ms) {
+    if (value == NULL) {
+        return;
+    }
+    value->legacy_axes[0] = high;
+    value->legacy_axes[1] = low;
+    value->deadline_ms = now_ms + PLAYSTATION_WHEEL_VALUE_TIMEOUT_MS;
+    value->release_pending = true;
+}
+
+/**
  * @brief Applies a PlayStation wheel-value output report.
  *
  * An asserted value flag with either nonzero value byte replaces the attached-wheel legacy axes,

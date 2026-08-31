@@ -16,6 +16,15 @@ static void test_live_force(void) {
     assert(state.live_drive.primary_current == 17366);
     assert(state.live_drive.secondary_current == 8683);
     assert(state.live_drive.controller_coefficient == 0x9999U);
+    assert(state.live_drive.primary_positive);
+
+    MotorLinkFrame zero = frame;
+    zero.payload[2] = 0U;
+    zero.payload[3] = 1U;
+    zero.payload[4] = 0U;
+    assert(motor_protocol_frame_apply(&state, &zero));
+    assert(state.live_drive.primary_current == 0);
+    assert(!state.live_drive.primary_positive);
 
     state.live_drive_updated = false;
     state.status = 0x80U | 0x20U | 0x04U;

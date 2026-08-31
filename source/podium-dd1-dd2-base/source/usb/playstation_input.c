@@ -250,9 +250,6 @@ static void map_auxiliary_buttons(UsbPlaystationInputMapper *mapper,
     }
 
     assign_button(buttons, 12, button_bit(secondary, 9));
-    if (input->system_button_suppressed || (secondary & 0x2000u) != 0) {
-        assign_button(buttons, 12, false);
-    }
     if (mode == PLAYSTATION_WHEEL_MODE_0A || mode == PLAYSTATION_WHEEL_MODE_10 ||
         mode == PLAYSTATION_WHEEL_MODE_0E) {
         assign_button(buttons, 12, button_bit(secondary, 8));
@@ -297,6 +294,9 @@ static void map_auxiliary_buttons(UsbPlaystationInputMapper *mapper,
         mode != PLAYSTATION_WHEEL_MODE_1C && mode != PLAYSTATION_WHEEL_MODE_0C &&
         !adapter_owns_button) {
         merge_button(buttons, 1, button_bit(secondary, 10));
+    }
+    if (input->system_button_suppressed || (secondary & 0x2000u) != 0) {
+        assign_button(buttons, 12, false);
     }
 }
 

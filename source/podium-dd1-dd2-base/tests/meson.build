@@ -315,6 +315,10 @@ base_tests = {
     'transfer/memory.c',
   ],
   'usb-output-command': ['source/usb_output_command.c', 'usb/output_command.c'],
+  'usb-fallback-command': [
+    'source/usb_fallback_command.c',
+    'usb/fallback_command.c',
+  ],
   'usb-operating-mode-command': [
     'source/usb_operating_mode_command.c',
     'usb/operating_mode_command.c',
@@ -734,6 +738,7 @@ base_tests = {
     'wheel/authentication.c',
     'wheel/axis_override.c',
     'wheel/capability.c',
+    'wheel/display_output.c',
     'wheel/motion.c',
     'wheel/pulse_gate.c',
     'wheel/output_reports.c',
@@ -829,6 +834,12 @@ base_tests = {
   ],
 }
 
+if base_is_dspic
+  base_tests += {
+    'platform-power': ['source/platform_power.c', 'platform/dspic33e/power.c'],
+  }
+endif
+
 foreach name, source_names : base_tests
   test_sources = []
   foreach source_index : range(1, source_names.length())
@@ -847,6 +858,16 @@ foreach name, source_names : base_tests
   )
 
   if base_is_dspic
+    if name == 'settings-journal'
+      instruction_limit = '70000000'
+      test_timeout = 1800
+    elif name == 'usb-device'
+      instruction_limit = '6000000'
+      test_timeout = 180
+    else
+      instruction_limit = '3000000'
+      test_timeout = 120
+    endif
     test(
       'base-' + name,
       base_simulator_runner,
@@ -861,14 +882,14 @@ foreach name, source_names : base_tests
         '--fail-address',
         '_abort',
         '--max-instructions',
-        '1000000',
+        instruction_limit,
         '--max-cycles',
-        '10000000',
+        '0',
         '--coverage',
       ],
       depends: image,
+      timeout: test_timeout,
       suite: 'base',
-      timeout: 120,
     )
   else
     test('base-' + name, image, suite: 'base')

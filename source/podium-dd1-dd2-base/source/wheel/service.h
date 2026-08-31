@@ -91,6 +91,7 @@ void wheel_service_queue_adapter_refresh_state(WheelService *service, bool activ
 void wheel_service_queue_adapter_setup_selection(WheelService *service, uint8_t selection);
 void wheel_service_queue_adapter_display_state(WheelService *service, uint8_t state);
 bool wheel_service_queue_tuning_display_command(WheelService *service, uint8_t command);
+bool wheel_service_activate_interface_presentation(WheelService *service, uint8_t mode);
 bool wheel_service_queue_adapter_text_line(WheelService *service, uint8_t line, uint8_t metadata,
                                            const uint8_t *text, uint8_t length);
 bool wheel_service_queue_adapter_text_close(WheelService *service);
@@ -142,6 +143,7 @@ bool wheel_service_queue_remote_telemetry(
     WheelService *service, const uint8_t payload[WHEEL_OUTPUT_REMOTE_TELEMETRY_SIZE]);
 bool wheel_service_remote_telemetry_pending(const WheelService *service);
 void wheel_service_set_button_illumination(WheelService *service, bool enabled);
+void wheel_service_set_display_character_mode(WheelService *service, bool enabled);
 void wheel_service_set_display_rotation(WheelService *service, bool enabled, int16_t angle);
 void wheel_service_queue_system_status(WheelService *service, uint16_t code);
 const uint8_t *wheel_service_buttons(const WheelService *service);
@@ -162,6 +164,7 @@ bool wheel_service_extended_report_fields(const WheelService *service);
 uint8_t wheel_service_accessory_flags(const WheelService *service);
 int8_t wheel_service_encoder_direction(const WheelService *service);
 int8_t wheel_service_take_encoder_step(WheelService *service);
+void wheel_service_discard_host_motion(WheelService *service);
 bool wheel_service_acknowledgement_input_active(const WheelService *service);
 bool wheel_service_calibration_advance_input_active(const WheelService *service);
 bool wheel_service_adapter_connected(const WheelService *service);

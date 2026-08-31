@@ -948,6 +948,28 @@ static void test_routes_tuning_display_output_by_connection(void) {
     assert(service.adapter_commands.text_close_pending);
 }
 
+static void test_activates_interface_presentation_by_connection(void) {
+    WheelService service = {0};
+    uint8_t frame[33] = {0};
+
+    service.protocol.mode = 16;
+    assert(wheel_service_activate_interface_presentation(&service, 2));
+    assert(wheel_output_reports_encode_next(&service.protocol.output_reports, 16, frame));
+    assert(frame[1] == 0x21);
+
+    service = (WheelService){0};
+    service.protocol.mode = 4;
+    service.protocol.adapter.connected = true;
+    service.protocol.adapter.mode = 1;
+    assert(wheel_service_activate_interface_presentation(&service, 1));
+    assert(service.adapter_commands.interface_presentation_pending);
+    assert(service.adapter_commands.interface_presentation_offset == 0x20);
+
+    service.protocol.adapter.connected = false;
+    assert(!wheel_service_activate_interface_presentation(&service, 1));
+    assert(!wheel_service_activate_interface_presentation(NULL, 1));
+}
+
 static void test_selects_calibration_advance_button_by_wheel_mode(void) {
     WheelService service;
     initialize_service(&service);
@@ -1445,6 +1467,7 @@ int main(void) {
     test_gates_torque_key_acknowledgement();
     test_reports_tuning_display_support();
     test_routes_tuning_display_output_by_connection();
+    test_activates_interface_presentation_by_connection();
     test_selects_calibration_advance_button_by_wheel_mode();
     test_reports_mode_gated_input_capability();
     test_exposes_axis_overrides();

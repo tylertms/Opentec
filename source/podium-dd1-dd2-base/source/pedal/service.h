@@ -140,6 +140,7 @@ typedef struct {
 } PedalService;
 
 void pedal_service_init(PedalService *service);
+void pedal_service_request_startup(PedalService *service);
 void pedal_service_set_analog_samples(PedalService *service,
                                       const uint16_t samples[PEDAL_INPUT_AXIS_COUNT]);
 void pedal_service_set_brake_force(PedalService *service, uint8_t force_percent);
@@ -154,6 +155,7 @@ bool pedal_service_legacy_transport_active(const PedalService *service);
 void pedal_service_apply_protocol_command(PedalService *service,
                                           const PedalProtocolCommand *command);
 void pedal_service_request_control(PedalService *service, PedalV3Control control);
+bool pedal_service_control_pending(const PedalService *service);
 void pedal_service_request_input_command(PedalService *service,
                                          const uint8_t values[PEDAL_INPUT_AXIS_COUNT]);
 void pedal_service_request_configuration(PedalService *service, uint8_t brake_force, bool reset);

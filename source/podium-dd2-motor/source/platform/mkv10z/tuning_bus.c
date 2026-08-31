@@ -138,7 +138,6 @@ static void motor_bus_transfer_callback(I2C_Type *base, i2c_slave_transfer_t *tr
 /**
  * @brief Configures and starts the NXP SDK I2C slave transaction engine.
  *
- * The peripheral uses extended address 0x78 and all transfer events.
  */
 static void motor_bus_hardware_initialize(void) {
     i2c_slave_config_t config;
@@ -147,7 +146,6 @@ static void motor_bus_hardware_initialize(void) {
     config.slaveAddress = 0x78U;
     I2C_SlaveInit(I2C0, &config, CLOCK_GetFreq(kCLOCK_BusClk));
 
-    I2C0->C2 |= I2C_C2_ADEXT_MASK;
     I2C0->F = 0x27U;
 
     I2C_SlaveTransferCreateHandle(I2C0, &motor_bus_handle, motor_bus_transfer_callback, NULL);

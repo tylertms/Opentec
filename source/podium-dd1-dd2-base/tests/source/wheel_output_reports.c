@@ -271,6 +271,37 @@ static void test_sends_native_display_command_after_report_seventeen(void) {
     assert(!wheel_output_reports_encode_next(&reports, 0x10, frame));
 }
 
+static void test_activates_legacy_interface_presentations(void) {
+    WheelOutputReports reports;
+    uint8_t frame[33];
+    wheel_output_reports_init(&reports);
+
+    for (uint8_t mode = 1; mode <= 3; mode++) {
+        wheel_output_reports_activate_interface_presentation(&reports, mode);
+        for (uint8_t transmission = 0; transmission < 3; transmission++) {
+            memset(frame, 0xff, sizeof(frame));
+            assert(wheel_output_reports_encode_next(&reports, 0, frame));
+            assert(frame[1] == (uint8_t)(0x1f + mode));
+            for (uint8_t index = 2; index < 32; index++) {
+                assert(frame[index] == 0);
+            }
+        }
+        if (mode == 3) {
+            assert(wheel_output_reports_encode_next(&reports, 0, frame));
+            assert(frame[0] == 0xa6);
+            assert(frame[1] == 0x82);
+            assert(frame[2] == 1);
+        } else {
+            assert(!wheel_output_reports_encode_next(&reports, 0, frame));
+        }
+    }
+
+    wheel_output_reports_activate_interface_presentation(&reports, 2);
+    wheel_output_reports_activate_interface_presentation(&reports, 4);
+    assert(!wheel_output_reports_encode_next(&reports, 0, frame));
+    wheel_output_reports_activate_interface_presentation(NULL, 1);
+}
+
 static void test_sends_button_illumination_changes_to_remote_tuning_modes(void) {
     WheelOutputReports reports;
     wheel_output_reports_init(&reports);
@@ -301,6 +332,7 @@ int main(void) {
     test_queues_report_six_from_shared_report_four_payload();
     test_streams_report_seventeen_after_direct_reports();
     test_sends_native_display_command_after_report_seventeen();
+    test_activates_legacy_interface_presentations();
     test_repeats_remote_telemetry_after_report_seventeen();
     test_sends_button_illumination_changes_to_remote_tuning_modes();
     return 0;

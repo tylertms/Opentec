@@ -184,17 +184,45 @@ bool motor_force_feedback_effect_disable(MotorForceFeedbackEngine *engine, uint8
 }
 
 /**
+ * @brief Rescales configured position-window endpoints after a steering-range change.
+ *
+ * Preserves each window's relative position and activation state while replacing the steering
+ * half-range used by the live effect engine.
+ *
+ * @param[in,out] engine Force-feedback engine containing configured effects.
+ * @param[in] previous_half_range Steering half-range used by the stored endpoints.
+ * @param[in] current_half_range Replacement steering half-range.
+ */
+void motor_force_feedback_engine_rescale_windows(MotorForceFeedbackEngine *engine,
+                                                 int32_t previous_half_range,
+                                                 int32_t current_half_range) {
+    if (previous_half_range <= 0 || previous_half_range == current_half_range) {
+        return;
+    }
+    for (uint8_t slot = 0U; slot < MOTOR_FORCE_FEEDBACK_EFFECT_COUNT; ++slot) {
+        MotorForceFeedbackEffect *effect = &engine->effects[slot];
+        if (effect->type != MOTOR_FORCE_FEEDBACK_EFFECT_WINDOW) {
+            continue;
+        }
+        effect->data.window.lower_position = (int32_t)((int64_t)effect->data.window.lower_position *
+                                                       current_half_range / previous_half_range);
+        effect->data.window.upper_position = (int32_t)((int64_t)effect->data.window.upper_position *
+                                                       current_half_range / previous_half_range);
+    }
+}
+
+/**
  * @brief Mixes the twenty official effect slots and applies gain, filtering, ramp, and soft stop.
  *
  * Active effects contribute to primary or secondary accumulators before the shared output stages
  * and travel-limit safety path produce the live force command.
  *
- * @param engine Force-feedback engine state.
- * @param now Current motor service tick.
- * @param center Configured encoder center.
- * @param position Current encoder position.
- * @param velocity Current signed encoder velocity.
- * @param soft_stop_disabled True when motor status suppresses the travel-limit effect.
+ * @param[in,out] engine Force-feedback engine state.
+ * @param[in] now Current motor service tick.
+ * @param[in] center Configured encoder center.
+ * @param[in] position Current encoder position.
+ * @param[in] velocity Current signed encoder velocity.
+ * @param[in] soft_stop_disabled True when motor status suppresses the travel-limit effect.
  * @return Primary direction and magnitude plus the signed secondary force.
  */
 MotorForceFeedbackMix motor_force_feedback_mix(MotorForceFeedbackEngine *engine, uint32_t now,

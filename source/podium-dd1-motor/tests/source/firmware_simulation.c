@@ -161,15 +161,45 @@ static bool startup_output_state_safe(Kinetis *device) {
     uint32_t combine = 0U;
     uint32_t deadtime = 0U;
     uint32_t modulus = 0U;
+    uint32_t ftm2_configuration = 0U;
+    uint32_t ftm2_synchronization = 0U;
+    uint32_t spi_input_control = 0U;
     const bool readable =
         kinetis_read(device, UINT32_C(0x40038060), &output_mask, sizeof(output_mask)) &&
         kinetis_read(device, UINT32_C(0x40038054), &mode, sizeof(mode)) &&
         kinetis_read(device, UINT32_C(0x40038064), &combine, sizeof(combine)) &&
         kinetis_read(device, UINT32_C(0x40038068), &deadtime, sizeof(deadtime)) &&
-        kinetis_read(device, UINT32_C(0x40038008), &modulus, sizeof(modulus));
-    return readable && output_mask == UINT32_C(0x3f) && (mode & UINT32_C(0x60)) == UINT32_C(0x40) &&
-           (combine & UINT32_C(0x737373)) == UINT32_C(0x737373) &&
-           (deadtime & UINT32_C(0x3f)) == 50U && modulus == 2249U;
+        kinetis_read(device, UINT32_C(0x40038008), &modulus, sizeof(modulus)) &&
+        kinetis_read(device, UINT32_C(0x4003a084), &ftm2_configuration,
+                     sizeof(ftm2_configuration)) &&
+        kinetis_read(device, UINT32_C(0x4003a08c), &ftm2_synchronization,
+                     sizeof(ftm2_synchronization)) &&
+        kinetis_read(device, UINT32_C(0x4004c01c), &spi_input_control, sizeof(spi_input_control));
+    if (!readable || output_mask != UINT32_C(0x3f) || (mode & UINT32_C(0x60)) != UINT32_C(0x40) ||
+        (combine & UINT32_C(0x737373)) != UINT32_C(0x737373) ||
+        (deadtime & UINT32_C(0x3f)) != 50U || modulus != 2249U ||
+        ftm2_configuration != UINT32_C(0xc0) || ftm2_synchronization != 0U ||
+        (spi_input_control & UINT32_C(3)) != UINT32_C(2)) {
+        fprintf(stderr,
+                "startup registers: readable=%u outmask=0x%08" PRIx32 " mode=0x%08" PRIx32
+                " combine=0x%08" PRIx32 " deadtime=0x%08" PRIx32 " mod=%" PRIu32
+                " ftm2-conf=0x%08" PRIx32 " ftm2-synconf=0x%08" PRIx32 " spi-input=0x%08" PRIx32
+                "\n",
+                readable, output_mask, mode, combine, deadtime, modulus, ftm2_configuration,
+                ftm2_synchronization, spi_input_control);
+        return false;
+    }
+    for (uint32_t channel = 0U; channel < 6U; ++channel) {
+        uint32_t channel_control = 0U;
+        if (!kinetis_read(device, UINT32_C(0x4003800c) + channel * 8U, &channel_control,
+                          sizeof(channel_control)) ||
+            (channel_control & UINT32_C(0x0c)) != UINT32_C(0x08)) {
+            fprintf(stderr, "PWM channel %" PRIu32 " control: 0x%08" PRIx32 "\n", channel,
+                    channel_control);
+            return false;
+        }
+    }
+    return true;
 }
 
 static bool call_symbol(Kinetis *device, const char *path, const char *name) {
@@ -209,14 +239,12 @@ static bool pdb_status_clear_matches(Kinetis *device, const char *path) {
     uint32_t channel_one = 0U;
     return kinetis_read(device, UINT32_C(0x40036014), &channel_zero, sizeof(channel_zero)) &&
            kinetis_read(device, UINT32_C(0x4003603c), &channel_one, sizeof(channel_one)) &&
-           (channel_zero & UINT32_C(0xff)) == 0U && (channel_one & UINT32_C(0xff)) == 0U &&
-           (channel_zero & UINT32_C(0xff0000)) == (initial_channel_zero & UINT32_C(0xff0000)) &&
-           (channel_one & UINT32_C(0xff0000)) == (initial_channel_one & UINT32_C(0xff0000));
+           (channel_zero & UINT32_C(0xff00ff)) == 0U && (channel_one & UINT32_C(0xff00ff)) == 0U;
 }
 
 static bool fatal_output_state_safe(Kinetis *device, const char *path) {
     uint32_t fault_address = 0U;
-    if (!cortex_m4_elf_symbol(path, "motor_runtime_fault", &fault_address))
+    if (!cortex_m4_elf_symbol(path, "WDOG_EWM_IRQHandler", &fault_address))
         return false;
     cortex_m4_set_register(kinetis_cpu(device), 15U, fault_address & ~1U);
     for (uint32_t instruction = 0U; instruction < 64U; ++instruction) {
@@ -460,9 +488,6 @@ static bool stimulate_parameter_write(Kinetis *device, const char *path, const u
                          !finish_interrupt(device, 1000U))) ||
         !kinetis_i2c_address(device, KINETIS_SERIAL_I2C0, 0x78U, false) ||
         !run_to_symbol(device, path, "I2C0_IRQHandler", 100000U) ||
-        !finish_interrupt(device, 1000U) ||
-        !kinetis_i2c_address(device, KINETIS_SERIAL_I2C0, 0x78U, false) ||
-        !run_to_symbol(device, path, "I2C0_IRQHandler", 100000U) ||
         !finish_interrupt(device, 1000U)) {
         return false;
     }
@@ -503,9 +528,6 @@ static bool stimulate_parameter_write(Kinetis *device, const char *path, const u
 static bool parameter_read_matches(Kinetis *device, const char *path, uint8_t selector,
                                    const uint8_t *expected, size_t size) {
     if (!kinetis_i2c_detect_start(device, KINETIS_SERIAL_I2C0) ||
-        !run_to_symbol(device, path, "I2C0_IRQHandler", 100000U) ||
-        !finish_interrupt(device, 1000U) ||
-        !kinetis_i2c_address(device, KINETIS_SERIAL_I2C0, 0x78U, false) ||
         !run_to_symbol(device, path, "I2C0_IRQHandler", 100000U) ||
         !finish_interrupt(device, 1000U) ||
         !kinetis_i2c_address(device, KINETIS_SERIAL_I2C0, 0x78U, false) ||
@@ -616,7 +638,10 @@ static bool executed_symbol(const char *path, const CortexM4Coverage *coverage, 
 
 static bool i2c_configuration_matches(Kinetis *device) {
     uint32_t filter = 0U;
-    return kinetis_read(device, UINT32_C(0x40066006), &filter, sizeof(uint8_t)) && filter == 0x24U;
+    uint32_t secondary_control = 0U;
+    return kinetis_read(device, UINT32_C(0x40066006), &filter, sizeof(uint8_t)) &&
+           kinetis_read(device, UINT32_C(0x40066005), &secondary_control, sizeof(uint8_t)) &&
+           filter == 0x24U && (secondary_control & UINT32_C(0x40)) == 0U;
 }
 
 static size_t select_owned_coverage(CortexM4Coverage *coverage, const char *path) {
@@ -634,6 +659,7 @@ static size_t select_owned_coverage(CortexM4Coverage *coverage, const char *path
         "I2C0_IRQHandler",
         "PDB0_PDB1_IRQHandler",
         "PORTB_PORTC_PORTD_PORTE_IRQHandler",
+        "WDOG_EWM_IRQHandler",
     };
     size_t selected = 0U;
     for (size_t index = 0U; index < sizeof(prefixes) / sizeof(prefixes[0]); ++index)

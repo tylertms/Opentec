@@ -40,9 +40,22 @@ static void test_prioritizes_lower_scan_phase_bits(void) {
                                                     WHEEL_SCAN_PHASE_AUXILIARY) == 0x09);
 }
 
+static void test_decodes_protocol_characters(void) {
+    static const uint8_t glyphs[] = {0x3f, 0x06, 0x30, 0x5b, 0x4f, 0x66, 0x6d, 0x7d,
+                                     0x07, 0x27, 0x7f, 0x6f, 0x39, 0x0f, 0x50, 0x54};
+    static const uint8_t characters[] = {'0', '1', '1', '2', '3', '4', '5', '6',
+                                         '7', '7', '8', '9', '(', ')', 'R', 'N'};
+    for (uint8_t index = 0; index < sizeof(glyphs); index++) {
+        assert(wheel_display_output_character(glyphs[index]) == characters[index]);
+        assert(wheel_display_output_character(glyphs[index] | 0x80U) == characters[index]);
+    }
+    assert(wheel_display_output_character(0) == ' ');
+}
+
 int main(void) {
     test_selects_and_encodes_each_scan_phase();
     test_adds_the_phase_four_marker();
     test_prioritizes_lower_scan_phase_bits();
+    test_decodes_protocol_characters();
     return 0;
 }

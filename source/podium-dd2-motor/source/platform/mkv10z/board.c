@@ -89,7 +89,8 @@ void motor_pins_initialize(void) {
     PORT_SetPinMux(PORTD, 6U, kPORT_MuxAlt7);
     motor_gpio_output_initialize(PORTC, GPIOC, 0U, true);
 
-    PORTD->PCR[7] |= PORT_PCR_PE_MASK | PORT_PCR_PS_MASK | PORT_PCR_PFE_MASK;
+    PORTD->PCR[7] &= ~PORT_PCR_PS_MASK;
+    PORTD->PCR[7] |= PORT_PCR_PE_MASK | PORT_PCR_PFE_MASK;
     PORTD->PCR[6] |= PORT_PCR_DSE_MASK | PORT_PCR_PFE_MASK;
 
     PORT_SetPinMux(PORTC, 6U, kPORT_MuxAlt7);

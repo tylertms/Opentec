@@ -91,6 +91,7 @@
 #include "usb/console_descriptor.h"
 #include "usb/device.h"
 #include "usb/diagnostic_report.h"
+#include "usb/fallback_command.h"
 #include "usb/fanatec_encoder.h"
 #include "usb/fanatec_input.h"
 #include "usb/host_capability_recovery.h"
@@ -282,6 +283,7 @@ static UsbDeviceOutputReport usb_device_output_report;
 static UsbConnectionMonitor usb_connection_monitor;
 static UsbHostCapabilityRecovery usb_host_capability_recovery;
 static UsbOutputCommand usb_output_command;
+static UsbFallbackCommand usb_fallback_command;
 static UsbPlaystationWheelValue usb_playstation_wheel_value;
 static UsbPlaystationInputMapper usb_playstation_input_mapper;
 static UsbOperatingModeCommand usb_operating_mode_command;
@@ -291,6 +293,7 @@ static UsbRuntimeModeTransition usb_runtime_transition;
 static RuntimeBridgeInput runtime_bridge_input;
 static UsbUpdaterServiceInput usb_updater_input;
 static bool usb_operating_status_enabled;
+static uint8_t fallback_interface_mode_count;
 static PedalCalibrationCommand pedal_calibration_command;
 static PedalCalibrationActions pedal_calibration_actions;
 static PedalProtocolCommand pedal_protocol_command;
@@ -1761,7 +1764,7 @@ static void service_usb_command_bridge(uint32_t now_ms) {
     wheel_accessory_service_run(&wheel_accessory_service, &command_transport);
     bool adapter_active_synchronization_allowed =
         wheel_service_mode(&wheel_service) != WHEEL_MODE_REMOTE_TUNING_EXTENDED ||
-        tuning_interaction.phase == TUNING_INTERACTION_CLOSED;
+        !tuning_interaction_blocks_adapter_synchronization(&tuning_interaction);
     if (usb_remote_tuning_service_take_adapter_active(&usb_remote_tuning_service,
                                                       adapter_active_synchronization_allowed,
                                                       &wheel_adapter_remote_tuning_active)) {
@@ -2383,6 +2386,261 @@ static void reset_host_force_feedback_outputs(void) {
 }
 
 /**
+ * @brief Constrains an official fallback setting to its supported maximum.
+ *
+ * @param[in] value Requested unsigned setting.
+ * @param[in] maximum Highest accepted setting.
+ * @return Requested value or the supported maximum.
+ */
+static uint8_t fallback_clamp(uint8_t value, uint8_t maximum) {
+    return value > maximum ? maximum : value;
+}
+
+/**
+ * @brief Applies a transient automatic steering-range update.
+ *
+ * Changes range only while automatic sensitivity is selected, rescales the base-side position
+ * effects, and refreshes the motor tuning service with the new concrete range.
+ *
+ * @param[in] degrees Requested lock-to-lock steering range.
+ */
+static void apply_fallback_steering_range(uint16_t degrees) {
+    if (tuning_profile->automatic_rotation == 0) {
+        return;
+    }
+    uint32_t previous = wheel_position_travel_from_degrees(tuning_profile->rotation_degrees);
+    runtime_tuning_profile.rotation_degrees = degrees;
+    tuning_profile_normalize(&runtime_tuning_profile);
+    uint32_t current = wheel_position_travel_from_degrees(tuning_profile->rotation_degrees);
+    (void)force_feedback_state_rescale_positions(&force_feedback_state, (int32_t)previous,
+                                                 (int32_t)current);
+    motor_tuning_context.automatic_rotation_degrees = tuning_profile->rotation_degrees;
+    if (motor_tuning_ready) {
+        motor_tuning_service_refresh(&motor_tuning_service, tuning_profile, &motor_tuning_context);
+    }
+}
+
+/**
+ * @brief Applies an active-slot fallback tuning command.
+ *
+ * The direct tuning interface updates official setup one only. Values use their command-specific
+ * clamps, then the clean profile is applied to all runtime consumers and scheduled for storage.
+ * Sensitivity additionally rescales base-side position effects.
+ *
+ * @param[in] command Decoded fallback tuning command.
+ */
+static void apply_fallback_tuning(const UsbFallbackCommand *command) {
+    if (base_settings.tuning_profiles.active_slot != 0) {
+        return;
+    }
+
+    TuningProfile *profile = &base_settings.tuning_profiles.slots[0];
+    uint32_t previous = wheel_position_travel_from_degrees(tuning_profile->rotation_degrees);
+    switch (command->kind) {
+    case USB_FALLBACK_SENSITIVITY: {
+        uint8_t encoded = (uint8_t)(command->value / 10U - 127U);
+        if (encoded == 126U) {
+            profile->automatic_rotation = 1;
+            profile->rotation_degrees = TUNING_ROTATION_MAX_DEGREES;
+        } else {
+            int16_t signed_encoded = encoded <= INT8_MAX ? encoded : (int16_t)encoded - 256;
+            int16_t units = signed_encoded + 127;
+            profile->automatic_rotation = 0;
+            profile->rotation_degrees =
+                units > 0 ? (uint16_t)units * TUNING_ROTATION_STEP_DEGREES : 0;
+        }
+        break;
+    }
+    case USB_FALLBACK_FORCE_FEEDBACK_STRENGTH:
+        profile->force_feedback_strength = fallback_clamp(command->parameters[0], 100);
+        break;
+    case USB_FALLBACK_FORCE_SCALE:
+        profile->force_scale =
+            command->parameters[0] == 2 ? TUNING_FORCE_SCALE_PEAK : TUNING_FORCE_SCALE_LINEAR;
+        break;
+    case USB_FALLBACK_NATURAL_DAMPER:
+        profile->natural_damper = fallback_clamp(command->parameters[0], 100);
+        break;
+    case USB_FALLBACK_NATURAL_FRICTION:
+        profile->natural_friction = fallback_clamp(command->parameters[0], 100);
+        break;
+    case USB_FALLBACK_NATURAL_INERTIA:
+        profile->natural_inertia = fallback_clamp(command->parameters[0], 100);
+        break;
+    case USB_FALLBACK_INTERPOLATION:
+        profile->interpolation_filter = fallback_clamp(command->parameters[0], 20);
+        break;
+    case USB_FALLBACK_FORCE_EFFECT_INTENSITY:
+        profile->force_effect_intensity = fallback_clamp(command->parameters[0], 100);
+        break;
+    case USB_FALLBACK_FORCE_EFFECT_STRENGTH:
+        profile->force_effect_strength = fallback_clamp(command->parameters[0], 12);
+        break;
+    case USB_FALLBACK_SPRING_EFFECT_STRENGTH:
+        profile->spring_effect_strength = fallback_clamp(command->parameters[0], 12);
+        break;
+    case USB_FALLBACK_DAMPER_EFFECT_STRENGTH:
+        profile->damper_effect_strength = fallback_clamp(command->parameters[0], 12);
+        break;
+    case USB_FALLBACK_VIBRATION_STRENGTH:
+        profile->vibration_strength = fallback_clamp(command->parameters[0], 12);
+        break;
+    default:
+        return;
+    }
+
+    tuning_profile_normalize(profile);
+    apply_active_tuning_profile();
+    if (command->kind == USB_FALLBACK_SENSITIVITY) {
+        uint32_t current = wheel_position_travel_from_degrees(tuning_profile->rotation_degrees);
+        (void)force_feedback_state_rescale_positions(&force_feedback_state, (int32_t)previous,
+                                                     (int32_t)current);
+    }
+    base_settings_persistence_mark_dirty(&settings_persistence);
+}
+
+/**
+ * @brief Expands compact display flags to the nine-bit auxiliary report.
+ *
+ * The five input flags select the top indicator and four adjacent two-indicator bands.
+ *
+ * @param[in] flags Compact display flag byte.
+ * @return Expanded nine-bit auxiliary report.
+ */
+static uint16_t fallback_display_report(uint8_t flags) {
+    uint16_t report = (flags & 1U) != 0 ? 0x100U : 0U;
+    if ((flags & 2U) != 0) {
+        report |= 0x0c0U;
+    }
+    if ((flags & 4U) != 0) {
+        report |= 0x030U;
+    }
+    if ((flags & 8U) != 0) {
+        report |= 0x00cU;
+    }
+    if ((flags & 16U) != 0) {
+        report |= 0x003U;
+    }
+    return report;
+}
+
+/**
+ * @brief Applies one decoded direct fallback command.
+ *
+ * Routes steering, tuning, display, cooling, and security operations to their existing subsystem
+ * boundaries. Security disable is stored immediately; other tuning changes use normal deferred
+ * settings persistence.
+ *
+ * @param[in] command Decoded direct fallback command.
+ */
+static void apply_fallback_command(const UsbFallbackCommand *command) {
+    switch (command->kind) {
+    case USB_FALLBACK_STEERING_RANGE_LOW:
+        apply_fallback_steering_range(200);
+        break;
+    case USB_FALLBACK_STEERING_RANGE_HIGH:
+        apply_fallback_steering_range(TUNING_ROTATION_MAX_DEGREES);
+        break;
+    case USB_FALLBACK_DISPLAY_FLAGS:
+        wheel_service_set_auxiliary_report(&wheel_service,
+                                           fallback_display_report(command->parameters[0]));
+        break;
+    case USB_FALLBACK_STEERING_LIMIT: {
+        uint16_t degrees = command->value <= 89 ? TUNING_ROTATION_MIN_DEGREES
+                                                : (uint16_t)(command->value / 10U * 10U);
+        apply_fallback_steering_range(degrees);
+        break;
+    }
+    case USB_FALLBACK_COOLING_OVERRIDE:
+        cooling_controller_apply_service_override(&cooling_controller, command->parameters[0],
+                                                  command->parameters[1], command->parameters[2],
+                                                  command->parameters[3]);
+        break;
+    case USB_FALLBACK_SECURITY_DISABLE:
+        base_settings.security_code.enabled = false;
+        base_settings_persistence_mark_dirty(&settings_persistence);
+        save_base_settings();
+        break;
+    default:
+        apply_fallback_tuning(command);
+        break;
+    }
+}
+
+/**
+ * @brief Applies one nested F8 09 device-control command.
+ *
+ * Routes direct wheel display and protocol values, pedal discovery, tuning presentation, shifter
+ * display, force-feedback reset, and repeated host-interface activation through existing services.
+ *
+ * @param[in] command Decoded F8 09 operating-mode command.
+ * @return True when opcode one selected a supported device-control operation.
+ */
+static bool apply_fallback_device_command(const UsbOperatingModeCommand *command) {
+    if (command->opcode != 1) {
+        return false;
+    }
+
+    switch (command->parameters[0]) {
+    case 0x02: {
+        if (!usb_remote_tuning_service.active) {
+            WheelDisplayOutput output = *wheel_service_default_display_output(&wheel_service);
+            output.glyphs[0] = command->parameters[1];
+            output.glyphs[1] = command->parameters[2];
+            output.glyphs[2] = command->parameters[3];
+            wheel_service_set_display_output(&wheel_service, &output);
+        }
+        return true;
+    }
+    case 0x03:
+        if (tuning_profile->brake_indicator_level == 101) {
+            usb_playstation_wheel_value_set(&usb_playstation_wheel_value, command->parameters[1],
+                                            command->parameters[2], platform_time_ms());
+            if (command->parameters[3] != 0) {
+                wheel_service_set_legacy_axes(
+                    &wheel_service, usb_playstation_wheel_value_axes(&usb_playstation_wheel_value));
+            }
+        }
+        return true;
+    case 0x05:
+        pedal_service_request_startup(&pedal_service);
+        return true;
+    case 0x18:
+        wheel_service_set_display_character_mode(&wheel_service, command->parameters[1] == 1);
+        return true;
+    case 0x19:
+        if (command->parameters[1] == 1) {
+            shifter_display_request_refresh(&shifter_display);
+        } else if (command->parameters[1] == 2) {
+            h_pattern_calibration_service_request(
+                &h_pattern_calibration_service, H_PATTERN_CALIBRATION_COMMAND_ADVANCE,
+                wheel_service_mode(&wheel_service), platform_time_ms());
+        }
+        return true;
+    case 0x1a:
+        force_feedback_state_deactivate_host_effects(&force_feedback_state);
+        (void)motor_output_transport_enqueue_host_effect_clears(&motor_output_transport);
+        reset_host_force_feedback_outputs();
+        return true;
+    case 0x50:
+        if (fallback_interface_mode_count <= 4) {
+            if (wheel_service_activate_interface_presentation(&wheel_service,
+                                                              command->parameters[1])) {
+                tuning_interaction_init(&tuning_interaction);
+            }
+            fallback_interface_mode_count++;
+        }
+        if (fallback_interface_mode_count == 4) {
+            tuning_interaction_request_close(&tuning_interaction);
+            fallback_interface_mode_count = 0;
+        }
+        return true;
+    default:
+        return false;
+    }
+}
+
+/**
  * @brief Applies routed pedal and local auxiliary calibration actions.
  *
  * Queues attached-pedal control or input reports and translates the independent local action into
@@ -2558,6 +2816,11 @@ static void service_usb_output(void) {
         return;
     }
 
+    if (usb_fallback_command_decode(&usb_output_command, &usb_fallback_command)) {
+        apply_fallback_command(&usb_fallback_command);
+        return;
+    }
+
     WheelCenterCaptureAction center_capture_action = wheel_center_capture_command_apply(
         &wheel_center_capture_command, &usb_output_command, platform_time_ms());
     if (center_capture_action != WHEEL_CENTER_CAPTURE_UNHANDLED) {
@@ -2583,6 +2846,9 @@ static void service_usb_output(void) {
     }
 
     if (usb_operating_mode_command_decode(&usb_output_command, &usb_operating_mode_command)) {
+        if (apply_fallback_device_command(&usb_operating_mode_command)) {
+            return;
+        }
         if (usb_operating_mode_command_requests_native_reset(&usb_operating_mode_command)) {
             bool leaving_playstation =
                 usb_device_operating_mode() == USB_OPERATING_MODE_PLAYSTATION;
@@ -2804,20 +3070,46 @@ static void publish_tuning_interaction_event(uint8_t event_code) {
 /**
  * @brief Applies one action emitted by the wheel-side tuning interaction.
  *
- * Routes pedal adjustment to the active V4 session, toggles Standard or Advanced profile mode, or
- * restores all six tuning setups. Profile changes are applied to runtime behavior and retained for
- * persistence.
+ * Routes independent center, pedal, shifter-display, profile-mode, and profile-reset effects.
+ * Profile changes are applied to runtime behavior and retained for persistence.
  *
  * @param[in] action Interaction action to apply.
  */
 static void apply_tuning_interaction_action(TuningInteractionAction action) {
-    if (action == TUNING_INTERACTION_ACTION_PEDAL_ADJUSTMENT) {
+    if ((action & TUNING_INTERACTION_ACTION_PEDAL_ADJUSTMENT) != 0) {
         if (pedal_service_adjustment_available(&pedal_service)) {
             pedal_service_request_button_adjustment(&pedal_service);
         }
-        return;
     }
-    if (action == TUNING_INTERACTION_ACTION_TOGGLE_PROFILE_MODE) {
+    if ((action & TUNING_INTERACTION_ACTION_SHOW_SHIFTER) != 0 ||
+        (action & TUNING_INTERACTION_ACTION_SHOW_EXTENDED_SHIFTER) != 0) {
+        shifter_display_request_refresh(&shifter_display);
+    }
+    if ((action & TUNING_INTERACTION_ACTION_SHOW_CENTER_CAPTURE) != 0) {
+        (void)wheel_service_queue_tuning_display_command(&wheel_service,
+                                                         WHEEL_CENTER_CALIBRATED_STATUS_CODE);
+    }
+    if ((action & TUNING_INTERACTION_ACTION_CAPTURE_CENTER) != 0 &&
+        capture_current_wheel_center()) {
+        system_control_state_set_status(&system_control_state, wheel_service_mode(&wheel_service),
+                                        WHEEL_CENTER_CALIBRATED_STATUS_CODE);
+        publish_tuning_interaction_event(WHEEL_CENTER_CALIBRATED_EVENT_CODE);
+    }
+    if ((action & TUNING_INTERACTION_ACTION_PEDAL_UP) != 0) {
+        pedal_service_request_control(&pedal_service, PEDAL_V3_CONTROL_UP);
+    }
+    if ((action & TUNING_INTERACTION_ACTION_PEDAL_DOWN) != 0) {
+        pedal_service_request_control(&pedal_service, PEDAL_V3_CONTROL_DOWN);
+    }
+    if ((action & TUNING_INTERACTION_ACTION_PEDAL_AUTOMATIC) != 0) {
+        pedal_service_request_control(&pedal_service, PEDAL_V3_CONTROL_AUTOMATIC);
+    }
+    if ((action & (TUNING_INTERACTION_ACTION_PEDAL_UP_COMPLETE |
+                   TUNING_INTERACTION_ACTION_PEDAL_DOWN_COMPLETE |
+                   TUNING_INTERACTION_ACTION_PEDAL_AUTOMATIC_COMPLETE)) != 0) {
+        local_display_tuning_revision++;
+    }
+    if ((action & TUNING_INTERACTION_ACTION_TOGGLE_PROFILE_MODE) != 0) {
         bool enable_standard = !base_settings.tuning_profiles.standard_mode_enabled;
         if (tuning_profile_bank_set_standard_mode(&base_settings.tuning_profiles,
                                                   enable_standard)) {
@@ -2828,9 +3120,8 @@ static void apply_tuning_interaction_action(TuningInteractionAction action) {
             publish_tuning_interaction_event(enable_standard ? STANDARD_TUNING_MODE_EVENT_CODE
                                                              : ADVANCED_TUNING_MODE_EVENT_CODE);
         }
-        return;
     }
-    if (action == TUNING_INTERACTION_ACTION_RESET_PROFILES) {
+    if ((action & TUNING_INTERACTION_ACTION_RESET_PROFILES) != 0) {
         tuning_profile_bank_defaults(&base_settings.tuning_profiles);
         apply_active_tuning_profile();
         base_settings_persistence_mark_dirty(&settings_persistence);
@@ -2999,15 +3290,29 @@ static void service_tuning_interaction(uint32_t now_ms) {
         .primary_buttons = (uint16_t)buttons[0] | (uint16_t)buttons[1] << 8,
         .secondary_buttons = available ? tuning_interaction_snapshot.secondary_buttons : 0,
         .analog_scale = available ? tuning_interaction_snapshot.tuning_input : 0,
+        .auxiliary_report = {available ? tuning_interaction_snapshot.auxiliary_report[0] : 0,
+                             available ? tuning_interaction_snapshot.auxiliary_report[1] : 0,
+                             available ? tuning_interaction_snapshot.auxiliary_report[2] : 0},
+        .adapter_buttons = {adapter->buttons[0], adapter->buttons[1], adapter->buttons[2]},
+        .adapter_mode = adapter->mode,
         .adapter_profile_shortcut =
             adapter->connected && adapter->mode == 1 && (adapter->buttons[1] & 1u) != 0,
+        .adapter_connected = adapter->connected,
         .profile_selector_active =
             available && (tuning_interaction_snapshot.auxiliary_report[1] & 0x0fu) != 0,
+        .entry_showing_label = tuning_menu.view == TUNING_MENU_VIEW_LABEL,
+        .legacy_pedal_calibration_available =
+            pedal_service.connected && pedal_service_v3_state(&pedal_service)->legacy_calibration,
+        .pedal_operation_pending = pedal_service_control_pending(&pedal_service),
         .available = available,
     };
+    TuningInteractionPhase previous_phase = tuning_interaction.phase;
     TuningInteractionAction action =
         tuning_interaction_update(&tuning_interaction, &tuning_interaction_input, now_ms);
     apply_tuning_interaction_action(action);
+    if (tuning_interaction.phase != previous_phase) {
+        local_display_tuning_revision++;
+    }
     TuningNavigationEvent navigation = tuning_interaction_take_navigation(&tuning_interaction);
     update_local_tuning_availability();
     update_local_tuning_adjustment();
@@ -3029,9 +3334,17 @@ static void service_tuning_interaction(uint32_t now_ms) {
     apply_tuning_menu_presentation();
 }
 
+/**
+ * @brief Advances the attached wheel's alternative-shifter selection.
+ *
+ * Keeps profile-related selection pending through the tuning close phase, applies the selected
+ * mode to the active profile, and persists a changed selection.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 static void service_alternative_shifter(uint32_t now_ms) {
-    bool profile_context_pending =
-        tuning_interaction.phase == TUNING_INTERACTION_ENTRY_OPEN || tuning_interaction.closing;
+    bool profile_context_pending = tuning_interaction.phase == TUNING_INTERACTION_ENTRY_OPEN ||
+                                   tuning_interaction.phase == TUNING_INTERACTION_CLOSING;
     WheelAlternativeShifterEvent event =
         wheel_service_update_alternative_shifter(&wheel_service, profile_context_pending, now_ms);
     if (event == WHEEL_ALTERNATIVE_SHIFTER_ENABLED) {
@@ -3055,6 +3368,13 @@ static void service_alternative_shifter(uint32_t now_ms) {
 static void service_usb_input(uint32_t now_ms) {
     if (!motor_position_ready) {
         return;
+    }
+
+    bool tuning_host_suppressed = tuning_interaction_suppresses_host_input(&tuning_interaction);
+    bool tuning_system_button_suppressed =
+        tuning_interaction_suppresses_system_button(&tuning_interaction);
+    if (tuning_host_suppressed) {
+        wheel_service_discard_host_motion(&wheel_service);
     }
 
     bool xbox_mode = usb_device_operating_mode() == USB_OPERATING_MODE_XBOX_GIP;
@@ -3084,7 +3404,7 @@ static void service_usb_input(uint32_t now_ms) {
         usb_input_state.fanatec.clutch_paddles[1] = clutch_paddles[1];
     }
     uint8_t wheel_controls[8] = {0};
-    if (wheel_service_controls(&wheel_service, wheel_controls)) {
+    if (!tuning_host_suppressed && wheel_service_controls(&wheel_service, wheel_controls)) {
         bool include_extended = wheel_service_extended_report_fields(&wheel_service);
         fanatec_input_apply_wheel_controls(&usb_input_state.fanatec, wheel_controls,
                                            include_extended);
@@ -3098,7 +3418,8 @@ static void service_usb_input(uint32_t now_ms) {
     fanatec_input_apply_multi_position_mode(&usb_input_state.fanatec, multi_position_mode);
     fanatec_input_apply_alternative_shifter(
         &usb_input_state.fanatec, wheel_service_alternative_shifter_enabled(&wheel_service));
-    if (wheel_service_multi_position_input(&wheel_service, now_ms, &wheel_multi_position_input)) {
+    if (!tuning_host_suppressed &&
+        wheel_service_multi_position_input(&wheel_service, now_ms, &wheel_multi_position_input)) {
         fanatec_multi_position_input_state = (fanatec_multi_position_input){
             .remap_selectors = wheel_multi_position_input.remap_selectors,
         };
@@ -3117,7 +3438,16 @@ static void service_usb_input(uint32_t now_ms) {
     for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {
         usb_input_state.fanatec.button_banks[bank] = wheel_buttons[bank];
     }
-    if (fanatec_encoder_update(&fanatec_encoder, wheel_service_encoder_direction(&wheel_service),
+    if (tuning_host_suppressed) {
+        usb_input_state.fanatec.button_banks[0] &= 0xf0u;
+        usb_input_state.fanatec.button_banks[2] &= 0xfdu;
+        uint8_t wheel_mode = wheel_service_mode(&wheel_service);
+        if (wheel_mode != 0x0fu && wheel_mode != 0x17u) {
+            usb_input_state.fanatec.button_banks[2] &= 0xfbu;
+        }
+    }
+    if (!tuning_host_suppressed &&
+        fanatec_encoder_update(&fanatec_encoder, wheel_service_encoder_direction(&wheel_service),
                                now_ms, &usb_input_state.fanatec)) {
         (void)wheel_service_take_encoder_step(&wheel_service);
     }
@@ -3159,8 +3489,8 @@ static void service_usb_input(uint32_t now_ms) {
             .axis_modes = {(uint8_t)shifter_input.primary_mode,
                            (uint8_t)shifter_input.secondary_mode},
             .adapter_connected = adapter->connected,
-            .hat_suppressed = shifter_display_active,
-            .system_button_suppressed = shifter_display_active,
+            .hat_suppressed = shifter_display_active || tuning_host_suppressed,
+            .system_button_suppressed = shifter_display_active || tuning_system_button_suppressed,
         };
         workspace->state = (UsbPlaystationInputState){
             .steering = usb_input_state.fanatec.steering,
@@ -3642,8 +3972,11 @@ static void service_local_display(void) {
     } else if (page == LOCAL_DISPLAY_PAGE_FORCE_OUTPUT_PROMPT) {
         display_prompt_render(display_framebuffer, true);
     } else if (page == LOCAL_DISPLAY_PAGE_TUNING) {
-        (void)display_tuning_page_render(display_framebuffer, &tuning_menu,
-                                         &base_settings.tuning_profiles);
+        if (tuning_interaction.result_deadline_ms == 0 ||
+            !display_tuning_operation_render(display_framebuffer, tuning_interaction.phase)) {
+            (void)display_tuning_page_render(display_framebuffer, &tuning_menu,
+                                             &base_settings.tuning_profiles);
+        }
     } else if (page == LOCAL_DISPLAY_PAGE_SYSTEM_INFORMATION) {
         if (page != local_display_page) {
             display_system_information_page_render_title(display_framebuffer);
@@ -3891,19 +4224,19 @@ int main(void) {
     board_identity = platform_board_identity_read();
     platform_pin_mux_init();
     platform_system_init();
+    platform_power_init();
+    power_controller_init(&power_controller);
+    service_power(0);
     platform_system_enable_firmware_protection();
     platform_led_pattern_init();
-    platform_power_init();
     platform_torque_key_init();
     torque_key_init(&torque_key);
     torque_key_prompt_init(&torque_key_prompt);
-    power_controller_init(&power_controller);
     system_control_state_init(&system_control_state);
     system_torque_transition_init(&system_torque_transition);
     system_event_queue_init(&system_event_queue);
     system_event_dispatcher_init(&system_event_dispatcher);
     system_notice_init(&system_notice);
-    service_power(0);
     platform_time_init();
     initialize_cooling();
     led_pattern_controller_init(&led_pattern_controller);

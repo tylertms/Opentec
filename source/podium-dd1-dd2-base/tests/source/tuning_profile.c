@@ -57,7 +57,7 @@ static void test_numeric_limits(void) {
     tuning_profile_normalize(&profile);
     assert(profile.rotation_degrees == TUNING_ROTATION_MAX_DEGREES);
     assert(profile.force_feedback_strength == 100);
-    assert(profile.vibration_strength == 10);
+    assert(profile.vibration_strength == TUNING_VIBRATION_STRENGTH_MAX);
     assert(profile.brake_indicator_level == 1);
     assert(profile.steering_deadzone == 10);
     assert(profile.force_effect_strength == 12);

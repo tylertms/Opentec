@@ -133,6 +133,23 @@ static void test_suspend_and_output_inhibit(void) {
     assert(controller.force_scale_percent == 0);
 }
 
+static void test_service_override(void) {
+    CoolingController controller;
+    cooling_controller_init(&controller, true);
+
+    cooling_controller_apply_service_override(&controller, UINT8_MAX, 25, 75, 120);
+    assert(controller.automatic_control_suspended);
+    assert(controller.primary_duty_percent == 25);
+    assert(controller.secondary_duty_percent == 75);
+    assert(controller.force_scale_percent == 100);
+
+    cooling_controller_apply_service_override(&controller, 0, 1, 2, 3);
+    assert(!controller.automatic_control_suspended);
+    assert(controller.primary_duty_percent == 25);
+    assert(controller.secondary_duty_percent == 75);
+    assert(controller.force_scale_percent == 100);
+}
+
 int main(void) {
     test_standard_fan_profile();
     test_standard_hysteresis_and_limit();
@@ -140,5 +157,6 @@ int main(void) {
     test_managed_window();
     test_configuration_limits();
     test_suspend_and_output_inhibit();
+    test_service_override();
     return 0;
 }

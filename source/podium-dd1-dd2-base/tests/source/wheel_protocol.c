@@ -1531,6 +1531,32 @@ static void test_captures_axis_mode_packets(void) {
     assert(wheel_protocol_message_valid(wheel_protocol_response(&protocol)));
 }
 
+static void test_selects_mode_nine_display_encoding(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    const WheelPacketModeOneOutput output = {
+        .display = {.glyphs = {0x3f, 0x06, 0x50}},
+    };
+    wheel_protocol_init(&protocol);
+    wheel_protocol_set_mode_one_output(&protocol, &output);
+    synchronize(&protocol, request);
+    select_mode(&protocol, request, 0x09);
+    memset(request, 0, sizeof(request));
+    mark_ready(request);
+
+    wheel_protocol_set_display_character_mode(&protocol, true);
+    accept_active_request(&protocol, request);
+    assert(wheel_protocol_response(&protocol)[2] == '0');
+    assert(wheel_protocol_response(&protocol)[3] == '1');
+    assert(wheel_protocol_response(&protocol)[4] == 'R');
+
+    wheel_protocol_set_display_character_mode(&protocol, false);
+    accept_active_request(&protocol, request);
+    assert(wheel_protocol_response(&protocol)[2] == 0x3f);
+    assert(wheel_protocol_response(&protocol)[3] == 0x06);
+    assert(wheel_protocol_response(&protocol)[4] == 0x50);
+}
+
 static void test_captures_extended_packets(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -1904,6 +1930,7 @@ int main(void) {
     test_captures_direct_filtered_pulses();
     test_applies_crc_family_axis_controls();
     test_captures_axis_mode_packets();
+    test_selects_mode_nine_display_encoding();
     test_captures_extended_packets();
     test_captures_metadata_packets();
     test_captures_adapter_packets();

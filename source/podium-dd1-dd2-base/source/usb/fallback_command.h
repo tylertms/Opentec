@@ -1,0 +1,38 @@
+#ifndef OPENTEC_BASE_USB_FALLBACK_COMMAND_H
+#define OPENTEC_BASE_USB_FALLBACK_COMMAND_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "usb/output_command.h"
+
+typedef enum {
+    USB_FALLBACK_STEERING_RANGE_LOW,
+    USB_FALLBACK_STEERING_RANGE_HIGH,
+    USB_FALLBACK_DISPLAY_FLAGS,
+    USB_FALLBACK_SENSITIVITY,
+    USB_FALLBACK_FORCE_FEEDBACK_STRENGTH,
+    USB_FALLBACK_FORCE_SCALE,
+    USB_FALLBACK_NATURAL_DAMPER,
+    USB_FALLBACK_NATURAL_FRICTION,
+    USB_FALLBACK_NATURAL_INERTIA,
+    USB_FALLBACK_INTERPOLATION,
+    USB_FALLBACK_FORCE_EFFECT_INTENSITY,
+    USB_FALLBACK_FORCE_EFFECT_STRENGTH,
+    USB_FALLBACK_SPRING_EFFECT_STRENGTH,
+    USB_FALLBACK_DAMPER_EFFECT_STRENGTH,
+    USB_FALLBACK_VIBRATION_STRENGTH,
+    USB_FALLBACK_STEERING_LIMIT,
+    USB_FALLBACK_COOLING_OVERRIDE,
+    USB_FALLBACK_SECURITY_DISABLE,
+} UsbFallbackCommandKind;
+
+typedef struct {
+    UsbFallbackCommandKind kind;
+    uint16_t value;
+    uint8_t parameters[4];
+} UsbFallbackCommand;
+
+bool usb_fallback_command_decode(const UsbOutputCommand *output, UsbFallbackCommand *command);
+
+#endif

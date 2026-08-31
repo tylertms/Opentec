@@ -13,6 +13,8 @@ typedef struct {
 } UsbPlaystationWheelValue;
 
 void usb_playstation_wheel_value_init(UsbPlaystationWheelValue *value);
+void usb_playstation_wheel_value_set(UsbPlaystationWheelValue *value, uint8_t low, uint8_t high,
+                                     uint32_t now_ms);
 bool usb_playstation_wheel_value_apply(UsbPlaystationWheelValue *value,
                                        const UsbDeviceOutputReport *report, uint32_t now_ms);
 bool usb_playstation_wheel_value_expire(UsbPlaystationWheelValue *value, uint32_t now_ms);

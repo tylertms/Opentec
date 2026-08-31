@@ -9,11 +9,17 @@ static void test_normal_product_scales(void) {
     assert(dd1.secondary_current == 530);
     assert(dd1.controller_coefficient == 0x9999U);
     assert(dd1.controller_scale == 0x147U);
+    assert(dd1.primary_positive);
 
     MotorDriveCommand dd2 =
         motor_drive_command_resolve(false, 65535U, -1000, 40U, false, false, false);
     assert(dd2.primary_current == -13107);
     assert(dd2.secondary_current == -400);
+    assert(!dd2.primary_positive);
+
+    MotorDriveCommand zero = motor_drive_command_resolve(false, 1U, 0, 40U, false, false, false);
+    assert(zero.primary_current == 0);
+    assert(!zero.primary_positive);
 }
 
 static void test_full_torque_and_gates(void) {

@@ -422,3 +422,29 @@ bool display_tuning_page_render(DisplayFramebuffer framebuffer, const TuningMenu
     draw_description(framebuffer, content.description);
     return true;
 }
+
+/**
+ * @brief Renders a completed local V3 pedal operation.
+ *
+ * Selects the short operation result associated with the active pedal phase and centers it on the
+ * base display without changing tuning selection.
+ *
+ * @param[in,out] framebuffer Complete local-display framebuffer.
+ * @param[in] phase Active pedal operation phase.
+ * @return True when the phase selected a pedal result.
+ */
+bool display_tuning_operation_render(DisplayFramebuffer framebuffer, TuningInteractionPhase phase) {
+    const char *text;
+    if (phase == TUNING_INTERACTION_PEDAL_UP) {
+        text = "PEDAL UP";
+    } else if (phase == TUNING_INTERACTION_PEDAL_DOWN) {
+        text = "PEDAL DOWN";
+    } else if (phase == TUNING_INTERACTION_PEDAL_AUTOMATIC) {
+        text = "AUTOMATIC";
+    } else {
+        return false;
+    }
+    display_framebuffer_clear(framebuffer);
+    display_text_draw_centered(framebuffer, text, PAGE_PRIMARY_Y, 2, PAGE_COLOR);
+    return true;
+}

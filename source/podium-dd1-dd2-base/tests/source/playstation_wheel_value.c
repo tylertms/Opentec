@@ -47,6 +47,19 @@ static void test_applies_one_release_value(void) {
     assert(value.legacy_axes[1] == 0x78);
 }
 
+static void test_sets_protocol_value_directly(void) {
+    UsbPlaystationWheelValue value;
+    usb_playstation_wheel_value_init(&value);
+
+    usb_playstation_wheel_value_set(&value, 0x34, 0x12, 500);
+
+    assert(value.legacy_axes[0] == 0x12);
+    assert(value.legacy_axes[1] == 0x34);
+    assert(value.deadline_ms == 3500);
+    assert(value.release_pending);
+    usb_playstation_wheel_value_set(NULL, 0, 0, 0);
+}
+
 static void test_expires_strictly_after_deadline(void) {
     UsbPlaystationWheelValue value;
     usb_playstation_wheel_value_init(&value);
@@ -83,6 +96,7 @@ static void test_rejects_other_reports(void) {
 int main(void) {
     test_applies_asserted_value_in_wheel_order();
     test_applies_one_release_value();
+    test_sets_protocol_value_directly();
     test_expires_strictly_after_deadline();
     test_rejects_other_reports();
     return 0;

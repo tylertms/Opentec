@@ -6,10 +6,10 @@
 /**
  * @brief Configures the wheel-base power button and hold output.
  *
- * Selects RD9 as the active-high button input and RD8 as the power-hold output, initially low.
+ * Selects RD9 as the active-high button input and RD8 as the power-hold output without writing the
+ * output latch before the first power-button sample.
  */
 void platform_power_init(void) {
-    LATDbits.LATD8 = 0;
     TRISDbits.TRISD9 = 1;
     TRISDbits.TRISD8 = 0;
 }

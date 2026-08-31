@@ -723,7 +723,7 @@ bool wheel_service_queue_adapter_text_close(WheelService *service) {
  * @param[in] report Shared auxiliary report.
  */
 void wheel_service_set_auxiliary_report(WheelService *service, uint16_t report) {
-    if (service == NULL) {
+    if (service == 0) {
         return;
     }
     service->auxiliary_output.report = report;
@@ -1409,6 +1409,41 @@ void wheel_service_set_button_illumination(WheelService *service, bool enabled) 
 }
 
 /**
+ * @brief Activates a legacy host-interface presentation on the attached wheel.
+ *
+ * Requires a wheel-side tuning display, replaces the direct wheel presentation cycle, and mirrors
+ * modes one through three to an active extended adapter with zero-length commands 0x20 through
+ * 0x22.
+ *
+ * @param[in,out] service Attached-wheel service receiving the presentation request.
+ * @param[in] mode Requested legacy host-interface presentation mode.
+ * @return True when the active wheel supports tuning-display presentation.
+ */
+bool wheel_service_activate_interface_presentation(WheelService *service, uint8_t mode) {
+    if (service == NULL || !wheel_service_tuning_display_supported(service)) {
+        return false;
+    }
+    wheel_output_reports_activate_interface_presentation(&service->protocol.output_reports, mode);
+    if (service->protocol.adapter.connected && service->protocol.adapter.mode == 1) {
+        wheel_adapter_command_service_queue_interface_presentation(&service->adapter_commands,
+                                                                   mode);
+    }
+    return true;
+}
+
+/**
+ * @brief Selects character or raw-segment output for mode-nine wheel displays.
+ *
+ * @param[in,out] service Attached-wheel service to configure.
+ * @param[in] enabled True to translate mode-nine glyphs to protocol characters.
+ */
+void wheel_service_set_display_character_mode(WheelService *service, bool enabled) {
+    if (service != NULL) {
+        wheel_protocol_set_display_character_mode(&service->protocol, enabled);
+    }
+}
+
+/**
  * @brief Applies active-profile display rotation to the attached wheel.
  *
  * Retains the profile flag and current signed angle for legacy remote-tuning wheel responses.
@@ -1787,6 +1822,22 @@ int8_t wheel_service_encoder_direction(const WheelService *service) {
  */
 int8_t wheel_service_take_encoder_step(WheelService *service) {
     return wheel_protocol_take_motion(&service->protocol);
+}
+
+/**
+ * @brief Discards motion accumulated while tuning owns attached-wheel controls.
+ *
+ * Clears protocol motion and rotary transition state so tuning navigation cannot emerge later as
+ * a delayed host input event.
+ *
+ * @param[in,out] service Attached-wheel protocol and rotary input state.
+ */
+void wheel_service_discard_host_motion(WheelService *service) {
+    if (service == NULL) {
+        return;
+    }
+    wheel_motion_init(&service->protocol.motion);
+    wheel_rotary_input_init(&service->rotary_input);
 }
 
 /**

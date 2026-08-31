@@ -39,3 +39,49 @@ uint8_t wheel_display_output_encode(const WheelDisplayOutput *output, uint8_t ph
     }
     return encoded;
 }
+
+/**
+ * @brief Converts a raw seven-segment glyph to its protocol character.
+ *
+ * Recognizes decimal digits, both accepted one and seven patterns, parentheses, R, and N after
+ * discarding the decimal-point bit. Unsupported patterns become a space.
+ *
+ * @param[in] glyph Raw seven-segment glyph.
+ * @return Character used by the attached-wheel character display protocol.
+ */
+uint8_t wheel_display_output_character(uint8_t glyph) {
+    switch (glyph & 0x7fU) {
+    case 0x3f:
+        return '0';
+    case 0x06:
+    case 0x30:
+        return '1';
+    case 0x5b:
+        return '2';
+    case 0x4f:
+        return '3';
+    case 0x66:
+        return '4';
+    case 0x6d:
+        return '5';
+    case 0x7d:
+        return '6';
+    case 0x07:
+    case 0x27:
+        return '7';
+    case 0x7f:
+        return '8';
+    case 0x6f:
+        return '9';
+    case 0x39:
+        return '(';
+    case 0x0f:
+        return ')';
+    case 0x50:
+        return 'R';
+    case 0x54:
+        return 'N';
+    default:
+        return ' ';
+    }
+}

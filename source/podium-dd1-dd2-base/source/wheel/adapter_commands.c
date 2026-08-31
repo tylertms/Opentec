@@ -14,6 +14,9 @@ enum {
     WHEEL_ADAPTER_REMOTE_TUNING_ACTIVE_OFFSET = 0x0e,
     WHEEL_ADAPTER_REFRESH_STATE_OFFSET = 0x17,
     WHEEL_ADAPTER_DISPLAY_STATE_OFFSET = 0x18,
+    WHEEL_ADAPTER_INTERFACE_PRESENTATION_FIRST_OFFSET = 0x20,
+    WHEEL_ADAPTER_INTERFACE_PRESENTATION_FIRST_MODE = 1,
+    WHEEL_ADAPTER_INTERFACE_PRESENTATION_LAST_MODE = 3,
     WHEEL_ADAPTER_TEXT_LINE_OFFSET = 0x1a,
     WHEEL_ADAPTER_REPORT_TWO_OFFSET = 0x04,
     WHEEL_ADAPTER_REPORT_ONE_OFFSET = 0x05,
@@ -74,6 +77,7 @@ static void advance_endpoint(WheelAdapterCommandService *service, WheelAdapterIn
     service->text_close_pending = false;
     service->host_controls_pending = false;
     service->host_controls_ready = false;
+    service->interface_presentation_pending = false;
     service->remote_tuning_active_pending = false;
     service->refresh_state_pending = false;
     service->setup_selection_pending = false;
@@ -182,6 +186,7 @@ static bool finish_request(WheelAdapterCommandService *service, WheelAdapterInpu
         service->host_controls_pending = false;
         service->host_controls_ready = true;
         break;
+    case WHEEL_ADAPTER_COMMAND_INTERFACE_PRESENTATION_PENDING:
     case WHEEL_ADAPTER_COMMAND_REMOTE_TUNING_ACTIVE_PENDING:
     case WHEEL_ADAPTER_COMMAND_REFRESH_STATE_PENDING:
     case WHEEL_ADAPTER_COMMAND_SETUP_SELECTION_PENDING:
@@ -268,6 +273,16 @@ static CommandTransportResult queue_request(WheelAdapterCommandService *service,
             service->host_controls, sizeof(service->host_controls));
         if (result == COMMAND_TRANSPORT_COMPLETE) {
             service->phase = WHEEL_ADAPTER_COMMAND_HOST_CONTROLS_PENDING;
+        }
+        return result;
+    }
+    if (service->interface_presentation_pending && service->endpoint_index == 1) {
+        CommandTransportResult result =
+            command_transport_queue_write_to(transport, WHEEL_ADAPTER_COMMAND_OWNER, target,
+                                             service->interface_presentation_offset, 0, 0);
+        if (result == COMMAND_TRANSPORT_COMPLETE) {
+            service->interface_presentation_pending = false;
+            service->phase = WHEEL_ADAPTER_COMMAND_INTERFACE_PRESENTATION_PENDING;
         }
         return result;
     }
@@ -513,6 +528,26 @@ void wheel_adapter_command_service_queue_remote_tuning_active(WheelAdapterComman
     }
     service->remote_tuning_active = active ? 1u : 0u;
     service->remote_tuning_active_pending = true;
+}
+
+/**
+ * @brief Queues an extended-adapter legacy interface presentation command.
+ *
+ * Modes one through three select zero-length writes to offsets 0x20 through 0x22. A newer valid
+ * mode replaces an earlier queued presentation command. Unsupported values clear no state.
+ *
+ * @param[in,out] service Adapter command service retaining the command.
+ * @param[in] mode Requested legacy host-interface presentation mode.
+ */
+void wheel_adapter_command_service_queue_interface_presentation(WheelAdapterCommandService *service,
+                                                                uint8_t mode) {
+    if (service == 0 || mode < WHEEL_ADAPTER_INTERFACE_PRESENTATION_FIRST_MODE ||
+        mode > WHEEL_ADAPTER_INTERFACE_PRESENTATION_LAST_MODE) {
+        return;
+    }
+    service->interface_presentation_offset =
+        (uint8_t)(WHEEL_ADAPTER_INTERFACE_PRESENTATION_FIRST_OFFSET + mode - 1u);
+    service->interface_presentation_pending = true;
 }
 
 /**

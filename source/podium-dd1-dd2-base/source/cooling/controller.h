@@ -39,6 +39,10 @@ void cooling_controller_set_high_threshold_offset(CoolingController *controller,
 void cooling_controller_set_primary_delay_seconds(CoolingController *controller, int8_t seconds);
 void cooling_controller_set_secondary_delay_seconds(CoolingController *controller, int8_t seconds);
 void cooling_controller_set_suspend_request(CoolingController *controller, uint8_t request);
+void cooling_controller_apply_service_override(CoolingController *controller, uint8_t request,
+                                               uint8_t primary_duty_percent,
+                                               uint8_t secondary_duty_percent,
+                                               uint8_t force_scale_percent);
 void cooling_controller_update(CoolingController *controller, float motor_temperature_c,
                                bool managed_motor_present, bool output_inhibited, uint32_t now_ms);
 

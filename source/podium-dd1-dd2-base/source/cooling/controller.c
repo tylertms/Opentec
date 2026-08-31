@@ -310,6 +310,33 @@ void cooling_controller_set_suspend_request(CoolingController *controller, uint8
 }
 
 /**
+ * @brief Applies the service cooling and output override.
+ *
+ * A request of 0xFF suspends automatic thermal control and replaces both fan duties and the force
+ * availability scale. Each percentage is constrained to one hundred. Other request values resume
+ * automatic control without replacing its last outputs.
+ *
+ * @param[in,out] controller Thermal controller state and output percentages.
+ * @param[in] request Suspension request byte.
+ * @param[in] primary_duty_percent Requested primary fan duty.
+ * @param[in] secondary_duty_percent Requested secondary fan duty.
+ * @param[in] force_scale_percent Requested available force percentage.
+ */
+void cooling_controller_apply_service_override(CoolingController *controller, uint8_t request,
+                                               uint8_t primary_duty_percent,
+                                               uint8_t secondary_duty_percent,
+                                               uint8_t force_scale_percent) {
+    cooling_controller_set_suspend_request(controller, request);
+    if (!controller->automatic_control_suspended) {
+        return;
+    }
+    controller->primary_duty_percent = primary_duty_percent > 100 ? 100 : primary_duty_percent;
+    controller->secondary_duty_percent =
+        secondary_duty_percent > 100 ? 100 : secondary_duty_percent;
+    controller->force_scale_percent = force_scale_percent > 100 ? 100 : force_scale_percent;
+}
+
+/**
  * @brief Advances fan output, thermal phase, timed limits, and force-feedback derating.
  *
  * Leaves suspended state unchanged; otherwise updates the fan profile and output-strength scale

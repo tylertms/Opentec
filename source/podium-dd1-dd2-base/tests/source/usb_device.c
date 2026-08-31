@@ -55,6 +55,12 @@ static void reset_platform(void) {
 
 static void push_event(PlatformUsbEventType type, uint8_t endpoint, const uint8_t *data,
                        uint8_t length) {
+    if (event_head == event_tail) {
+        event_head = 0;
+        event_tail = 0;
+    }
+    assert(event_head < EVENT_CAPACITY);
+    assert(length <= PLATFORM_USB_PACKET_SIZE);
     PlatformUsbEvent *event = &events[event_head++];
     event->type = type;
     event->endpoint = endpoint;

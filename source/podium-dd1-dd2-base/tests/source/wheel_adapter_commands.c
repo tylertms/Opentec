@@ -251,6 +251,23 @@ static void writes_remote_tuning_active_state(void) {
     wheel_adapter_command_service_run(&service, &adapter, &transport);
 }
 
+static void writes_extended_interface_presentation(void) {
+    WheelAdapterCommandService service;
+    WheelAdapterInput adapter;
+    CommandTransport transport;
+    command_transport_init(&transport);
+    wheel_adapter_command_service_init(&service, &adapter);
+    complete_extended_probe(&service, &adapter, &transport);
+
+    wheel_adapter_command_service_queue_interface_presentation(&service, 2);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    const uint8_t expected[] = {2, 0x2c, 0x21};
+    expect_request(&transport, expected, sizeof(expected));
+    assert(!service.interface_presentation_pending);
+    complete_write(&transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+}
+
 static void writes_refresh_state(void) {
     WheelAdapterCommandService service;
     WheelAdapterInput adapter;
@@ -500,6 +517,10 @@ static void rejects_invalid_adapter_command_inputs(void) {
     wheel_adapter_command_service_queue_setup_selection(&service, 0);
     wheel_adapter_command_service_queue_display_state(NULL, 1);
     wheel_adapter_command_service_queue_display_state(&service, 0);
+    wheel_adapter_command_service_queue_interface_presentation(NULL, 1);
+    wheel_adapter_command_service_queue_interface_presentation(&service, 0);
+    wheel_adapter_command_service_queue_interface_presentation(&service, 4);
+    assert(!service.interface_presentation_pending);
     assert(!wheel_adapter_command_service_queue_text_line(NULL, 1, 0, text, 1));
     assert(!wheel_adapter_command_service_queue_text_line(&service, 1, 0, NULL, 1));
     assert(!wheel_adapter_command_service_queue_text_line(&service, 0, 0, text, 1));
@@ -535,6 +556,7 @@ int main(void) {
     writes_requested_glyphs();
     writes_remote_setup_selections();
     writes_remote_tuning_active_state();
+    writes_extended_interface_presentation();
     writes_refresh_state();
     writes_system_display_state();
     writes_standard_output_reports();

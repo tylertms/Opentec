@@ -131,6 +131,22 @@ static void test_calibration_entry_prompts(void) {
     assert(output.glyphs[2] == 0x38);
 }
 
+static void test_requested_refresh_shows_current_gear(void) {
+    ShifterDisplay display;
+    WheelDisplayOutput output = {0};
+    shifter_display_init(&display);
+    shifter_display_request_refresh(&display);
+    assert(!shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, false,
+                                   H_PATTERN_CALIBRATION_PROMPT_NONE,
+                                   H_PATTERN_CALIBRATION_COMPLETE, 0, &output));
+    assert(display.refresh_requested);
+    assert(shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true,
+                                  H_PATTERN_CALIBRATION_PROMPT_NONE, H_PATTERN_CALIBRATION_COMPLETE,
+                                  1, &output));
+    assert(output.glyphs[1] == 0x54);
+    assert(!display.refresh_requested);
+}
+
 int main(void) {
     test_waits_for_connection_and_next_gear();
     test_clears_after_strict_one_second_deadline();
@@ -138,5 +154,6 @@ int main(void) {
     test_does_not_replace_busy_display();
     test_calibration_stage_and_completion();
     test_calibration_entry_prompts();
+    test_requested_refresh_shows_current_gear();
     return 0;
 }

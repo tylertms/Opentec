@@ -21,6 +21,12 @@ enum {
     WHEEL_OUTPUT_REMOTE_TELEMETRY_TRANSMISSIONS = 3,
     WHEEL_OUTPUT_DISPLAY_COMMAND_REPORT_ID = 0xa6,
     WHEEL_OUTPUT_DISPLAY_COMMAND_PACKET_TYPE = 0x82,
+    WHEEL_OUTPUT_INTERFACE_PRESENTATION_FIRST_MODE = 1,
+    WHEEL_OUTPUT_INTERFACE_PRESENTATION_LAST_MODE = 3,
+    WHEEL_OUTPUT_INTERFACE_PRESENTATION_FIRST_COMMAND = 0x20,
+    WHEEL_OUTPUT_INTERFACE_PRESENTATION_TRANSMISSIONS = 3,
+    WHEEL_OUTPUT_INTERFACE_PRESENTATION_DISPLAY_MODE = 3,
+    WHEEL_OUTPUT_INTERFACE_PRESENTATION_DISPLAY_COMMAND = 1,
     WHEEL_OUTPUT_BUTTON_ILLUMINATION_COMMAND = 0x16,
     WHEEL_MODE_REMOTE_TUNING_LEGACY = 0x0e,
     WHEEL_MODE_REMOTE_TUNING_EXTENDED = 0x1c,
@@ -122,6 +128,37 @@ void wheel_output_reports_queue_display_command(WheelOutputReports *reports, uin
     }
     reports->display_command = command;
     reports->pending |= WHEEL_OUTPUT_DISPLAY_COMMAND_PENDING;
+}
+
+/**
+ * @brief Activates one legacy host-interface presentation on the attached wheel.
+ *
+ * Replaces any earlier presentation cycle. Modes one through three emit the empty command records
+ * 0x20 through 0x22 three times. Mode three also queues display command one. Other mode values
+ * clear an active presentation cycle without disturbing independent output reports.
+ *
+ * @param[in,out] reports Retained attached-wheel output state.
+ * @param[in] mode Requested legacy host-interface presentation mode.
+ */
+void wheel_output_reports_activate_interface_presentation(WheelOutputReports *reports,
+                                                          uint8_t mode) {
+    if (reports == NULL) {
+        return;
+    }
+    reports->interface_presentation_command = 0;
+    reports->interface_presentation_transmissions = 0;
+    if (mode < WHEEL_OUTPUT_INTERFACE_PRESENTATION_FIRST_MODE ||
+        mode > WHEEL_OUTPUT_INTERFACE_PRESENTATION_LAST_MODE) {
+        return;
+    }
+    reports->interface_presentation_command =
+        (uint8_t)(WHEEL_OUTPUT_INTERFACE_PRESENTATION_FIRST_COMMAND + mode - 1u);
+    reports->interface_presentation_transmissions =
+        WHEEL_OUTPUT_INTERFACE_PRESENTATION_TRANSMISSIONS;
+    if (mode == WHEEL_OUTPUT_INTERFACE_PRESENTATION_DISPLAY_MODE) {
+        wheel_output_reports_queue_display_command(
+            reports, WHEEL_OUTPUT_INTERFACE_PRESENTATION_DISPLAY_COMMAND);
+    }
 }
 
 /**
@@ -375,6 +412,11 @@ bool wheel_output_reports_encode_next(WheelOutputReports *reports, uint8_t wheel
         pending = WHEEL_OUTPUT_REPORT_SIX_PENDING;
     } else if ((reports->pending & WHEEL_OUTPUT_REPORT_SEVENTEEN_PENDING) != 0) {
         encode_report_seventeen(reports, frame);
+        return true;
+    } else if (reports->interface_presentation_transmissions != 0) {
+        memset(frame + 1, 0, 31);
+        frame[1] = reports->interface_presentation_command;
+        reports->interface_presentation_transmissions--;
         return true;
     } else if ((reports->pending & WHEEL_OUTPUT_DISPLAY_COMMAND_PENDING) != 0) {
         memset(frame + 1, 0, 31);

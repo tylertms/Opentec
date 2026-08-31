@@ -165,6 +165,7 @@ if motor_is_target
       '3500',
       '--minimum-branches-covered',
       '210',
+      '--expect-instruction-limit',
     ],
     suite: ['motor', 'simulator'],
     depends: firmware,

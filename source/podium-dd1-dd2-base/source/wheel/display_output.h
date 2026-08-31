@@ -19,5 +19,6 @@ typedef struct {
 } WheelDisplayOutput;
 
 uint8_t wheel_display_output_encode(const WheelDisplayOutput *output, uint8_t phase);
+uint8_t wheel_display_output_character(uint8_t glyph);
 
 #endif

@@ -170,9 +170,15 @@ static void build_active_response(WheelProtocol *protocol) {
                wheel_packet_axis_mode_applies(protocol->mode) ||
                wheel_packet_extended_applies(protocol->mode) ||
                wheel_packet_metadata_applies(protocol->mode)) {
-        wheel_packet_common_response_encode(
-            &protocol->mode_one_output.display, protocol->mode_one_output.vibration,
-            protocol->mode_one_output.legacy_axes, protocol->response);
+        WheelDisplayOutput display = protocol->mode_one_output.display;
+        if (protocol->display_character_mode && protocol->mode == 0x09) {
+            for (uint8_t index = 0; index < WHEEL_DISPLAY_GLYPH_COUNT; index++) {
+                display.glyphs[index] = wheel_display_output_character(display.glyphs[index]);
+            }
+        }
+        wheel_packet_common_response_encode(&display, protocol->mode_one_output.vibration,
+                                            protocol->mode_one_output.legacy_axes,
+                                            protocol->response);
     } else if (wheel_packet_packed_applies(protocol->mode)) {
         wheel_packet_packed_encode(&protocol->mode_one_output.display,
                                    protocol->mode_one_output.vibration,
@@ -1124,6 +1130,21 @@ void wheel_protocol_set_button_latch(WheelProtocol *protocol, bool enabled,
                                      bool profile_transition_pending) {
     protocol->button_latch_enabled = enabled;
     protocol->profile_transition_pending = profile_transition_pending;
+}
+
+/**
+ * @brief Selects character or raw-segment output for mode-nine wheel displays.
+ *
+ * Character mode translates page glyphs before the next attached-wheel response. Raw mode keeps
+ * the seven-segment bit patterns used by tuning displays and all other wheel modes.
+ *
+ * @param[in,out] protocol Attached-wheel protocol state.
+ * @param[in] enabled True to translate mode-nine glyphs to characters.
+ */
+void wheel_protocol_set_display_character_mode(WheelProtocol *protocol, bool enabled) {
+    if (protocol != NULL) {
+        protocol->display_character_mode = enabled;
+    }
 }
 
 /**

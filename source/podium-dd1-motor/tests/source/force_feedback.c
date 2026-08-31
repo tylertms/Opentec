@@ -314,6 +314,24 @@ static void test_commands(void) {
     assert(motor_force_feedback_command_apply(&engine, command));
 }
 
+static void test_window_rescale(void) {
+    MotorForceFeedbackEngine engine;
+    motor_force_feedback_engine_initialize(&engine);
+    const uint8_t payload[5] = {0x40U, 0xc0U, 0x44U, 0U, 0xffU};
+    assert(motor_force_feedback_window_configure(&engine, 2U, payload));
+    assert(motor_force_feedback_effect_enable(&engine, 2U));
+    int32_t lower = engine.effects[2].data.window.lower_position;
+    int32_t upper = engine.effects[2].data.window.upper_position;
+
+    motor_force_feedback_engine_rescale_windows(&engine, engine.settings.position_half_range,
+                                                engine.settings.position_half_range / 2);
+    assert(engine.effects[2].data.window.lower_position == lower / 2);
+    assert(engine.effects[2].data.window.upper_position == upper / 2);
+    assert(engine.effects[2].active);
+    assert(engine.effects[MOTOR_FORCE_FEEDBACK_POSITION_SLOT].data.window.lower_position == 0);
+    assert(engine.effects[MOTOR_FORCE_FEEDBACK_POSITION_SLOT].data.window.upper_position == 0);
+}
+
 int main(void) {
     test_defaults();
     test_parameter_settings();
@@ -325,5 +343,6 @@ int main(void) {
     test_soft_stop();
     test_engine();
     test_commands();
+    test_window_rescale();
     return 0;
 }

@@ -113,10 +113,10 @@ void ADC1_IRQHandler(void) { motor_adc_interrupt_dispatch(); }
  */
 void PDB0_PDB1_IRQHandler(void) {
     PDB0->SC &= ~PDB_SC_PDBEN_MASK;
-    PDB0->CH[0].S &= ~UINT32_C(0xff);
-    PDB0->CH[0].S &= ~UINT32_C(0xff);
-    PDB0->CH[1].S &= ~UINT32_C(0xff);
-    PDB0->CH[1].S &= ~UINT32_C(0xff);
+    PDB0->CH[0].S &= ~PDB_S_CF_MASK;
+    PDB0->CH[0].S &= ~PDB_S_ERR_MASK;
+    PDB0->CH[1].S &= ~PDB_S_CF_MASK;
+    PDB0->CH[1].S &= ~PDB_S_ERR_MASK;
     PDB0->SC |= PDB_SC_PDBEN_MASK;
 }
 
@@ -347,7 +347,7 @@ void motor_pwm_initialize(void) {
     FTM0->CONTROLS[5].CnV = 1125U;
 
     for (uint32_t channel = 0U; channel < 6U; ++channel) {
-        FTM0->CONTROLS[channel].CnSC |= FTM_CnSC_ELSA_MASK;
+        FTM0->CONTROLS[channel].CnSC |= FTM_CnSC_ELSB_MASK;
     }
 
     FTM0->PWMLOAD |= FTM_PWMLOAD_LDOK_MASK;
@@ -384,11 +384,11 @@ void motor_tick_timer_initialize(uint16_t modulus, MotorEncoderOverflowHandler h
     encoder_revolution_complete = false;
     CLOCK_EnableClock(kCLOCK_Ftm2);
     FTM2->MODE = FTM_MODE_FTMEN_MASK;
-    FTM2->SYNCONF = 0xc0U;
+    FTM2->SYNCONF = 0U;
     FTM2->MOD = modulus;
     FTM2->CNTIN = 0U;
     FTM2->EXTTRIG = 0U;
-    FTM2->CONF = 0U;
+    FTM2->CONF = 0xc0U;
     FTM2->QDCTRL = FTM_QDCTRL_QUADEN_MASK | FTM_QDCTRL_PHBFLTREN_MASK | FTM_QDCTRL_PHAFLTREN_MASK;
     FTM2->SC &= ~FTM_SC_TOF_MASK;
     FTM_StartTimer(FTM2, kFTM_SystemClock);

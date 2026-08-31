@@ -24,6 +24,7 @@ typedef enum {
     WHEEL_ADAPTER_COMMAND_AXES_PENDING,
     WHEEL_ADAPTER_COMMAND_ROTARY_PENDING,
     WHEEL_ADAPTER_COMMAND_HOST_CONTROLS_PENDING,
+    WHEEL_ADAPTER_COMMAND_INTERFACE_PRESENTATION_PENDING,
     WHEEL_ADAPTER_COMMAND_REMOTE_TUNING_ACTIVE_PENDING,
     WHEEL_ADAPTER_COMMAND_REFRESH_STATE_PENDING,
     WHEEL_ADAPTER_COMMAND_SETUP_SELECTION_PENDING,
@@ -51,6 +52,7 @@ typedef struct {
     uint8_t refresh_state;
     uint8_t setup_selection;
     uint8_t display_state;
+    uint8_t interface_presentation_offset;
     uint8_t report_one[WHEEL_OUTPUT_REPORT_ONE_SIZE];
     uint8_t report_two[WHEEL_OUTPUT_REPORT_TWO_SIZE];
     uint8_t report_four[WHEEL_OUTPUT_REPORT_FOUR_SIZE];
@@ -66,6 +68,7 @@ typedef struct {
     bool text_close_pending;
     bool host_controls_pending;
     bool host_controls_ready;
+    bool interface_presentation_pending;
     bool remote_tuning_active_pending;
     bool refresh_state_pending;
     bool setup_selection_pending;
@@ -93,6 +96,8 @@ void wheel_adapter_command_service_queue_setup_selection(WheelAdapterCommandServ
                                                          uint8_t selection);
 void wheel_adapter_command_service_queue_display_state(WheelAdapterCommandService *service,
                                                        uint8_t state);
+void wheel_adapter_command_service_queue_interface_presentation(WheelAdapterCommandService *service,
+                                                                uint8_t mode);
 bool wheel_adapter_command_service_queue_text_line(WheelAdapterCommandService *service,
                                                    uint8_t line, uint8_t metadata,
                                                    const uint8_t *text, uint8_t length);

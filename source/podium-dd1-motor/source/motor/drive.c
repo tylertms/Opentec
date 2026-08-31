@@ -88,6 +88,7 @@ MotorDriveCommand motor_drive_command_resolve(bool positive, uint32_t primary, i
                                       ? REDUCED_CONTROLLER_COEFFICIENT
                                       : ACTIVE_CONTROLLER_COEFFICIENT,
         .controller_scale = CONTROLLER_SCALE,
+        .primary_positive = positive,
     };
 }
 

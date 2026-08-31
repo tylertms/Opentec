@@ -21,5 +21,6 @@ bool display_tuning_page_present(const TuningMenu *menu, const TuningProfileBank
                                  TuningPageContent *content);
 bool display_tuning_page_render(DisplayFramebuffer framebuffer, const TuningMenu *menu,
                                 const TuningProfileBank *bank);
+bool display_tuning_operation_render(DisplayFramebuffer framebuffer, TuningInteractionPhase phase);
 
 #endif

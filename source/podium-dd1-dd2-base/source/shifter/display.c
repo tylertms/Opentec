@@ -123,6 +123,20 @@ static void clear_glyphs(WheelDisplayOutput *output) {
 void shifter_display_init(ShifterDisplay *display) { *display = (ShifterDisplay){0}; }
 
 /**
+ * @brief Requests presentation of the current H-pattern gear.
+ *
+ * Retains the request until an active attached-wheel display can present the gear, including the
+ * neutral glyph.
+ *
+ * @param[in,out] display Persistent gear display state.
+ */
+void shifter_display_request_refresh(ShifterDisplay *display) {
+    if (display != NULL) {
+        display->refresh_requested = true;
+    }
+}
+
+/**
  * @brief Updates the temporary H-pattern gear display.
  *
  * Calibration owns the glyph display while active, presents the shifter and calibration labels,
@@ -196,6 +210,18 @@ bool shifter_display_update(ShifterDisplay *display, ShifterGear gear, bool whee
         display->clear_after_ms = 0;
         display->last_gear = gear;
         return true;
+    }
+
+    if (display->refresh_requested && display_idle(output)) {
+        uint8_t glyph = gear == SHIFTER_GEAR_NEUTRAL ? GLYPH_NEUTRAL : gear_glyph(gear);
+        display->refresh_requested = false;
+        if (glyph != 0) {
+            output->glyphs[GEAR_DISPLAY_POSITION] = glyph;
+            display->last_gear = gear;
+            display->clear_after_ms = now_ms + DISPLAY_HOLD_DURATION_MS;
+            display->phase = SHIFTER_DISPLAY_SHOWING;
+            return true;
+        }
     }
 
     if (display->phase == SHIFTER_DISPLAY_WAITING) {

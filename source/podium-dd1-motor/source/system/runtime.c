@@ -119,6 +119,8 @@ _Noreturn static void motor_runtime_fault(void) {
     }
 }
 
+void WDOG_EWM_IRQHandler(void) { motor_runtime_fault(); }
+
 /**
  * @brief Applies the live parameter bank to force-feedback processing.
  *
@@ -130,6 +132,7 @@ _Noreturn static void motor_runtime_fault(void) {
 static void motor_runtime_settings_apply(void *context) {
     MotorRuntime *runtime = context;
     MotorForceFeedbackSettings *settings = &runtime->protocol.force_feedback.settings;
+    int32_t previous_half_range = settings->position_half_range;
     motor_force_feedback_settings_apply(
         settings, (int8_t)runtime->parameters.entries[MOTOR_PARAMETER_STEERING_RANGE].value,
         (uint8_t)runtime->parameters.entries[MOTOR_PARAMETER_OVERALL_GAIN].value,
@@ -137,6 +140,8 @@ static void motor_runtime_settings_apply(void *context) {
         (uint8_t)runtime->parameters.entries[MOTOR_PARAMETER_CONSTANT_GAIN].value,
         (uint8_t)runtime->parameters.entries[MOTOR_PARAMETER_WINDOW_GAIN].value,
         (uint8_t)runtime->parameters.entries[MOTOR_PARAMETER_DIRECTIONAL_GAIN].value);
+    motor_force_feedback_engine_rescale_windows(&runtime->protocol.force_feedback,
+                                                previous_half_range, settings->position_half_range);
     motor_force_feedback_filter_configure(&runtime->protocol.force_feedback.filter,
                                           settings->filter_setting);
 }
@@ -703,7 +708,7 @@ static void motor_runtime_spi_prepare(uint8_t frame[MOTOR_SPI_TRANSFER_SIZE], vo
         .position = runtime->encoder.position,
         .torque = (uint16_t)runtime->parameters.entries[MOTOR_PARAMETER_TORQUE].value,
         .drive_current = runtime->live_drive.primary_current,
-        .positive = runtime->live_drive.primary_current >= 0,
+        .positive = runtime->live_drive.primary_positive,
         .replay = runtime->protocol.replay,
     };
     motor_link_position_frame_encode(&report, frame);

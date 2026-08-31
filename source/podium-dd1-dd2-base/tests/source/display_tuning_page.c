@@ -163,6 +163,15 @@ static void rejects_closed_or_incomplete_pages(void) {
     assert(!display_tuning_page_render(framebuffer, &closed, &bank));
 }
 
+static void renders_pedal_operation_results(void) {
+    uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE] = {0};
+    assert(display_tuning_operation_render(framebuffer, TUNING_INTERACTION_PEDAL_UP));
+    assert(has_lit_pixel(framebuffer, 15, 36));
+    assert(display_tuning_operation_render(framebuffer, TUNING_INTERACTION_PEDAL_DOWN));
+    assert(display_tuning_operation_render(framebuffer, TUNING_INTERACTION_PEDAL_AUTOMATIC));
+    assert(!display_tuning_operation_render(framebuffer, TUNING_INTERACTION_ENTRY_OPEN));
+}
+
 int main(void) {
     presents_the_complete_direct_catalog();
     presents_automatic_standard_and_advanced_setups();
@@ -170,5 +179,6 @@ int main(void) {
     renders_label_value_and_wrapped_description_rows();
     supports_every_character_used_by_tuning_pages();
     rejects_closed_or_incomplete_pages();
+    renders_pedal_operation_results();
     return 0;
 }

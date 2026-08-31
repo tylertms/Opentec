@@ -206,6 +206,29 @@ void pedal_service_init(PedalService *service) {
 }
 
 /**
+ * @brief Restarts attached-pedal discovery.
+ *
+ * Releases the published pedal source, clears the active digital identity and connection, returns
+ * the transport to byte discovery, and schedules the detection request immediately.
+ *
+ * @param[in,out] service Pedal service to restart.
+ */
+void pedal_service_request_startup(PedalService *service) {
+    if (service == NULL) {
+        return;
+    }
+    pedal_input_release(&service->input);
+    service->v4.active = false;
+    service->device = PEDAL_DEVICE_NONE;
+    service->connected = false;
+    service->digital_activity = false;
+    service->phase = PEDAL_SERVICE_DETECT_REQUEST;
+    service->deadline_ms = 0;
+    service->next_service_ms = 0;
+    platform_pedal_link_begin_discovery();
+}
+
+/**
  * @brief Submits one encoded V4 frame to the pedal link.
  *
  * Adapts the transfer session callback to the asynchronous pedal transmitter.
@@ -629,6 +652,19 @@ bool pedal_service_calibration_active(const PedalService *service) {
  */
 void pedal_service_request_control(PedalService *service, PedalV3Control control) {
     service->pending_control |= (uint8_t)control;
+}
+
+/**
+ * @brief Reports whether a pedal calibration control awaits transmission.
+ *
+ * Exposes completion of the existing control queue without coupling tuning interaction to the
+ * pedal transport representation.
+ *
+ * @param[in] service Pedal service and pending control mask.
+ * @return True while at least one control remains queued.
+ */
+bool pedal_service_control_pending(const PedalService *service) {
+    return service != NULL && service->pending_control != 0;
 }
 
 /**

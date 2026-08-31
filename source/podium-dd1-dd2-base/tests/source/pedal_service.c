@@ -377,6 +377,7 @@ static void test_schedules_v3_commands_and_calibration_frames(void) {
     pedal_service_run(&service, 12);
     pedal_service_request_control(&service, PEDAL_V3_CONTROL_UP | PEDAL_V3_CONTROL_ENABLE |
                                                 PEDAL_V3_CONTROL_AUTOMATIC);
+    assert(pedal_service_control_pending(&service));
     pedal_service_run(&service, 13);
     assert(frame_send_count == 4);
     assert(pedal_frame_decode(sent_frame, &frame) == PEDAL_FRAME_VALID);
@@ -395,6 +396,7 @@ static void test_schedules_v3_commands_and_calibration_frames(void) {
     assert(frame.payload[4] == 0);
     assert(frame.payload[5] == UINT8_MAX);
     assert(service.pending_control == 0);
+    assert(!pedal_service_control_pending(&service));
 
     pedal_service_run(&service, 15);
     assert(frame_send_count == 6);
@@ -1175,6 +1177,37 @@ static void test_publishes_each_v3_alternate_brake_force_report_once(void) {
            PEDAL_ALTERNATE_BRAKE_FORCE_NO_UPDATE);
 }
 
+static void test_restarts_pedal_discovery(void) {
+    PedalService service;
+    reset_link();
+    pedal_service_init(&service);
+    service.device = PEDAL_DEVICE_V3;
+    service.connected = true;
+    service.digital_activity = true;
+    service.v4.active = true;
+    service.phase = PEDAL_SERVICE_V3_STREAM;
+    service.input.axes[0] = 1;
+    service.input.axes[1] = 2;
+    service.input.axes[2] = 3;
+    service.input.auxiliary = 4;
+
+    pedal_service_request_startup(&service);
+
+    assert(service.device == PEDAL_DEVICE_NONE);
+    assert(!service.connected);
+    assert(!service.digital_activity);
+    assert(!service.v4.active);
+    assert(service.phase == PEDAL_SERVICE_DETECT_REQUEST);
+    assert(service.deadline_ms == 0);
+    assert(service.next_service_ms == 0);
+    assert(service.input.axes[0] == 0);
+    assert(service.input.axes[1] == 0);
+    assert(service.input.axes[2] == 0);
+    assert(service.input.auxiliary == 0);
+    assert(discovery_count == 1);
+    pedal_service_request_startup(NULL);
+}
+
 int main(void) {
     test_connects_and_publishes_v3_input();
     test_applies_active_brake_force();
@@ -1209,5 +1242,6 @@ int main(void) {
     test_applies_pedal_protocol_commands();
     test_applies_transport_specific_brake_indicator_selector();
     test_publishes_each_v3_alternate_brake_force_report_once();
+    test_restarts_pedal_discovery();
     return 0;
 }

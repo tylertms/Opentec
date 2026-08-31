@@ -11,6 +11,7 @@ typedef struct {
     int16_t secondary_current;
     uint16_t controller_coefficient;
     uint16_t controller_scale;
+    uint16_t primary_positive;
 } MotorDriveCommand;
 
 typedef struct {
