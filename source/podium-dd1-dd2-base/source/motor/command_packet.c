@@ -3,29 +3,31 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/** @brief Internal offsets, flags, commands, and sizes used by packet encoding and decoding. */
 enum {
-    MOTOR_COMMAND_PACKET_SEQUENCE_MASK = 3,
-    MOTOR_COMMAND_PACKET_SEQUENCE_SHIFT = 2,
-    MOTOR_COMMAND_PACKET_MODE_SHIFT = 5,
-    MOTOR_COMMAND_PACKET_RESPONSE_FLAG = 0x80,
-    MOTOR_COMMAND_PACKET_RESET_FLAG = 0x40,
-    MOTOR_COMMAND_PACKET_MODE_MASK = 0x60,
-    MOTOR_COMMAND_PACKET_DIGEST_COMMAND = 7,
-    MOTOR_COMMAND_PACKET_INFO_COMMAND = 5,
-    MOTOR_COMMAND_PACKET_DIGEST_LENGTH = 20,
-    MOTOR_COMMAND_PACKET_COMMAND_BODY_LENGTH = 6,
-    MOTOR_COMMAND_PACKET_DIGEST_RESPONSE_COMMAND = 0x87,
-    MOTOR_COMMAND_PACKET_INFO_RESPONSE_COMMAND = 0x85,
-    MOTOR_COMMAND_PACKET_FRAGMENT_MASK = 7,
-    MOTOR_COMMAND_PACKET_FRAGMENT_OFFSET = 3,
-    MOTOR_COMMAND_PACKET_COMMAND_OFFSET = 4,
-    MOTOR_COMMAND_PACKET_SELECTOR_OFFSET = 6,
-    MOTOR_COMMAND_PACKET_DIGEST_SOURCE_OFFSET = 9,
-    MOTOR_COMMAND_PACKET_INFO_SOURCE_OFFSET = 9,
-    MOTOR_COMMAND_PACKET_CHECKSUM_SIZE = 2,
-    MOTOR_COMMAND_PACKET_MIN_PACKET_SIZE = 3,
+    MOTOR_COMMAND_PACKET_SEQUENCE_MASK = 3, /**< Mask selecting the two-bit sequence value. */
+    MOTOR_COMMAND_PACKET_SEQUENCE_SHIFT = 2, /**< Header shift for the current sequence. */
+    MOTOR_COMMAND_PACKET_MODE_SHIFT = 5, /**< Header shift for the packet mode. */
+    MOTOR_COMMAND_PACKET_RESPONSE_FLAG = 0x80, /**< Header flag marking a control response. */
+    MOTOR_COMMAND_PACKET_RESET_FLAG = 0x40, /**< Header flag requesting sequence reset. */
+    MOTOR_COMMAND_PACKET_MODE_MASK = 0x60, /**< Mask selecting mode bits in a header. */
+    MOTOR_COMMAND_PACKET_DIGEST_COMMAND = 7, /**< Command identifier for digest requests. */
+    MOTOR_COMMAND_PACKET_INFO_COMMAND = 5, /**< Command identifier for information requests. */
+    MOTOR_COMMAND_PACKET_DIGEST_LENGTH = 20, /**< Data length declared by digest requests. */
+    MOTOR_COMMAND_PACKET_COMMAND_BODY_LENGTH = 6, /**< Fixed body length of command requests. */
+    MOTOR_COMMAND_PACKET_DIGEST_RESPONSE_COMMAND = 0x87, /**< Command identifier for digest responses. */
+    MOTOR_COMMAND_PACKET_INFO_RESPONSE_COMMAND = 0x85, /**< Command identifier for information responses. */
+    MOTOR_COMMAND_PACKET_FRAGMENT_MASK = 7, /**< Mask selecting the fragment marker. */
+    MOTOR_COMMAND_PACKET_FRAGMENT_OFFSET = 3, /**< Packet offset of the fragment marker. */
+    MOTOR_COMMAND_PACKET_COMMAND_OFFSET = 4, /**< Packet offset of the command byte. */
+    MOTOR_COMMAND_PACKET_SELECTOR_OFFSET = 6, /**< Packet offset of the information selector. */
+    MOTOR_COMMAND_PACKET_DIGEST_SOURCE_OFFSET = 9, /**< Packet offset of digest source data. */
+    MOTOR_COMMAND_PACKET_INFO_SOURCE_OFFSET = 9, /**< Packet offset of information response data. */
+    MOTOR_COMMAND_PACKET_CHECKSUM_SIZE = 2, /**< Number of trailing checksum bytes. */
+    MOTOR_COMMAND_PACKET_MIN_PACKET_SIZE = 3, /**< Minimum packet length accepted by checksum validation. */
 };
 
+/** @brief Expected response data lengths indexed by information selector. */
 static const uint8_t info_lengths[] = {0, 2, 20, 2, 2, 1, 2, 16, 4, 50};
 
 /**
@@ -64,16 +66,6 @@ static uint16_t checksum(const uint8_t *data, uint16_t length) {
     return value;
 }
 
-/**
- * @brief Validates a motor-command packet checksum.
- *
- * Rejects packets outside the supported mailbox size and compares the trailing checksum in
- * high-byte-first order against the checksum of all preceding bytes.
- *
- * @param[in] input Received packet.
- * @param[in] length Received byte count.
- * @return True when the packet length and checksum are valid.
- */
 bool motor_command_packet_checksum_valid(const uint8_t *input, uint16_t length) {
     if (input == 0 || length < MOTOR_COMMAND_PACKET_MIN_PACKET_SIZE ||
         length > MOTOR_COMMAND_PACKET_MAX_PACKET_SIZE) {
@@ -127,23 +119,6 @@ static void finish(uint8_t *output, uint16_t body_length) {
     output[body_length + 1] = (uint8_t)value;
 }
 
-/**
- * @brief Encodes a motor-command payload packet.
- *
- * Builds the two-bit mode, current sequence, and adjacent sequence header, declares the fragment
- * marker plus payload length in big-endian order, copies the payload after a zero fragment marker,
- * and appends the packet checksum. An out-of-range current sequence resets to zero.
- *
- * @param[in] mode Two-bit packet mode.
- * @param[in] sequence Current two-bit sequence, or an out-of-range value to reset it to zero.
- * @param[in] adjacent_sequence Previous or next two-bit sequence selected by the packet mode.
- * @param[in] payload Command payload.
- * @param[in] payload_length Command payload byte count.
- * @param[out] output Encoded packet destination.
- * @param[in] output_capacity Available destination byte count.
- * @param[out] output_length Encoded packet byte count.
- * @return True when the payload and destination are valid.
- */
 bool motor_command_packet_payload_encode(uint8_t mode, uint8_t sequence, uint8_t adjacent_sequence,
                                          const uint8_t *payload, uint16_t payload_length,
                                          uint8_t *output, uint16_t output_capacity,
@@ -172,17 +147,6 @@ bool motor_command_packet_payload_encode(uint8_t mode, uint8_t sequence, uint8_t
     return true;
 }
 
-/**
- * @brief Encodes a motor-command digest request.
- *
- * Builds command 7 with its fixed body length and digest length, normal or retry sequencing, and
- * a big-endian checksum over the first nine bytes.
- *
- * @param[in] sequence Current two-bit sequence, or an out-of-range value to reset it to zero.
- * @param[in] adjacent_sequence Previous sequence for normal mode or next sequence for retry mode.
- * @param[in] retry Selects retry header mode when true.
- * @param[out] output Eleven-byte digest request.
- */
 void motor_command_packet_digest_request_encode(
     uint8_t sequence, uint8_t adjacent_sequence, bool retry,
     uint8_t output[MOTOR_COMMAND_PACKET_DIGEST_REQUEST_SIZE]) {
@@ -201,19 +165,6 @@ void motor_command_packet_digest_request_encode(
     finish(output, MOTOR_COMMAND_PACKET_DIGEST_REQUEST_SIZE - 2);
 }
 
-/**
- * @brief Encodes a motor-command information request.
- *
- * Builds command 5 with the selected information identifier, its fixed response length, normal
- * or retry sequencing, and a big-endian checksum over the first nine bytes.
- *
- * @param[in] selector Information selector from one through nine.
- * @param[in] sequence Current two-bit sequence, or an out-of-range value to reset it to zero.
- * @param[in] adjacent_sequence Previous sequence for normal mode or next sequence for retry mode.
- * @param[in] retry Selects retry header mode when true.
- * @param[out] output Eleven-byte information request.
- * @return True when the selector is supported.
- */
 bool motor_command_packet_info_request_encode(
     uint8_t selector, uint8_t sequence, uint8_t adjacent_sequence, bool retry,
     uint8_t output[MOTOR_COMMAND_PACKET_INFO_REQUEST_SIZE]) {
@@ -237,15 +188,6 @@ bool motor_command_packet_info_request_encode(
     return true;
 }
 
-/**
- * @brief Encodes a motor-command acknowledgement.
- *
- * Builds a response header carrying the previous sequence and appends a big-endian checksum over
- * its three-byte body.
- *
- * @param[in] previous_sequence Previous two-bit sequence.
- * @param[out] output Five-byte acknowledgement packet.
- */
 void motor_command_packet_acknowledgement_encode(
     uint8_t previous_sequence, uint8_t output[MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE]) {
     output[0] = MOTOR_COMMAND_PACKET_RESPONSE_FLAG |
@@ -255,14 +197,6 @@ void motor_command_packet_acknowledgement_encode(
     finish(output, MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE - 2);
 }
 
-/**
- * @brief Encodes a motor-command sequence reset.
- *
- * Builds the response and reset flags with an empty body and appends a big-endian checksum over
- * the first three bytes.
- *
- * @param[out] output Five-byte sequence-reset packet.
- */
 void motor_command_packet_sequence_reset_encode(
     uint8_t output[MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE]) {
     output[0] = MOTOR_COMMAND_PACKET_RESPONSE_FLAG | MOTOR_COMMAND_PACKET_RESET_FLAG;
@@ -271,15 +205,6 @@ void motor_command_packet_sequence_reset_encode(
     finish(output, MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE - 2);
 }
 
-/**
- * @brief Encodes a motor-command retry response.
- *
- * Builds the response and retry flags with the next two-bit sequence, an empty body, and a
- * big-endian checksum over the first three bytes.
- *
- * @param[in] next_sequence Next two-bit sequence requested from the peer.
- * @param[out] output Five-byte retry packet.
- */
 void motor_command_packet_retry_encode(uint8_t next_sequence,
                                        uint8_t output[MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE]) {
     output[0] = MOTOR_COMMAND_PACKET_RESPONSE_FLAG | (1U << MOTOR_COMMAND_PACKET_MODE_SHIFT) |
@@ -289,18 +214,6 @@ void motor_command_packet_retry_encode(uint8_t next_sequence,
     finish(output, MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE - 2);
 }
 
-/**
- * @brief Decodes a motor-command digest response.
- *
- * Accepts a checksum-valid, unfragmented command 0x87 carrying the expected prior sequence and
- * copies its sixteen-byte digest source.
- *
- * @param[in] previous_sequence Expected prior two-bit sequence.
- * @param[in] input Received motor-command packet.
- * @param[in] length Received byte count.
- * @param[out] source Sixteen-byte digest source.
- * @return True when the packet contains a valid digest response.
- */
 bool motor_command_packet_digest_response_decode(uint8_t previous_sequence, const uint8_t *input,
                                                  uint16_t length,
                                                  uint8_t source[MOTOR_COMMAND_DIGEST_SOURCE_SIZE]) {
@@ -317,20 +230,6 @@ bool motor_command_packet_digest_response_decode(uint8_t previous_sequence, cons
     return true;
 }
 
-/**
- * @brief Decodes a motor-command information response.
- *
- * Accepts a checksum-valid, unfragmented command 0x85 for the expected selector and copies its
- * fixed-size payload. Selectors one through nine carry 2, 20, 2, 2, 1, 2, 16, 4, and 50 bytes.
- *
- * @param[in] previous_sequence Expected prior two-bit sequence.
- * @param[in] expected_selector Expected information selector from one through nine.
- * @param[in] input Received motor-command packet.
- * @param[in] length Received byte count.
- * @param[out] output Destination for the selector payload.
- * @param[in] output_capacity Available destination byte count.
- * @return Decoded payload length, or zero when the response is invalid.
- */
 uint8_t motor_command_packet_info_response_decode(uint8_t previous_sequence,
                                                   uint8_t expected_selector, const uint8_t *input,
                                                   uint16_t length, uint8_t *output,
@@ -354,19 +253,6 @@ uint8_t motor_command_packet_info_response_decode(uint8_t previous_sequence,
     return data_length;
 }
 
-/**
- * @brief Decodes a two-byte motor-command information response.
- *
- * Accepts a checksum-valid, unfragmented command 0x85 for selector 3 or 4 and combines its two
- * data bytes in big-endian order.
- *
- * @param[in] previous_sequence Expected prior two-bit sequence.
- * @param[in] expected_selector Expected information selector, 3 or 4.
- * @param[in] input Received motor-command packet.
- * @param[in] length Received byte count.
- * @param[out] value Decoded 16-bit information value.
- * @return True when the packet contains the expected information response.
- */
 bool motor_command_packet_info_word_response_decode(uint8_t previous_sequence,
                                                     uint8_t expected_selector, const uint8_t *input,
                                                     uint16_t length, uint16_t *value) {

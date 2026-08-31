@@ -4,18 +4,6 @@
 #include "motor/command_mailbox.h"
 #include "transfer/command.h"
 
-/**
- * @brief Advances a motor-command channel through its remote mailbox.
- *
- * Polls the mailbox while owner 0x20 holds the shared transport, passes received packets through
- * the protocol channel, and queues any acknowledgement, retry, or rebuilt request produced by the
- * channel.
- *
- * @param[in,out] channel Motor-command protocol channel.
- * @param[in,out] exchange Remote mailbox exchange.
- * @param[in,out] transport Shared command transport.
- * @return Mailbox progress, protocol event, and any reported remote status.
- */
 MotorCommandChannelMailboxEvent
 motor_command_channel_mailbox_run(MotorCommandChannel *channel,
                                   MotorCommandMailboxExchange *exchange,

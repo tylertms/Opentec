@@ -3,10 +3,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/** @brief Fixed markers and checksum location in one motor-link frame. */
 enum {
-    FRAME_START = 0x7b,
-    FRAME_END = 0x7d,
-    FRAME_CHECKSUM_OFFSET = 10,
+    FRAME_START = 0x7b,            /**< Start marker at byte zero. */
+    FRAME_END = 0x7d,              /**< End marker at byte twelve. */
+    FRAME_CHECKSUM_OFFSET = 10,    /**< Little-endian checksum field offset. */
 };
 
 /**
@@ -14,7 +15,7 @@ enum {
  *
  * Motor-link fields are byte-aligned and do not require packed C structures.
  *
- * @param input First byte of the field.
+ * @param[in] input First byte of the field.
  * @return Decoded unsigned value.
  */
 static uint16_t read_uint16(const uint8_t *input) {
@@ -26,8 +27,8 @@ static uint16_t read_uint16(const uint8_t *input) {
  *
  * The two bytes are emitted explicitly so the wire representation is independent of host layout.
  *
- * @param output First output byte of the field.
- * @param value Unsigned value to encode.
+ * @param[out] output First output byte of the field.
+ * @param[in] value Unsigned value to encode.
  */
 static void write_uint16(uint8_t *output, uint16_t value) {
     output[0] = (uint8_t)value;
@@ -38,16 +39,6 @@ bool motor_link_frame_boundaries_valid(const uint8_t input[MOTOR_LINK_FRAME_SIZE
     return input[0] == FRAME_START && input[MOTOR_LINK_FRAME_SIZE - 1U] == FRAME_END;
 }
 
-/**
- * @brief Validates and decodes one official thirteen-byte motor-link frame.
- *
- * Boundary bytes and the stored little-endian CRC are checked before payload fields are exposed.
- *
- * @param input Complete received frame.
- * @param checksum CRC peripheral result for frame bytes one through nine.
- * @param frame Decoded frame type and payload.
- * @return Boundary, checksum, or valid result.
- */
 MotorLinkFrameResult motor_link_frame_decode_checked(const uint8_t input[MOTOR_LINK_FRAME_SIZE],
                                                      uint16_t checksum, MotorLinkFrame *frame) {
     if (!motor_link_frame_boundaries_valid(input)) {
@@ -64,15 +55,6 @@ MotorLinkFrameResult motor_link_frame_decode_checked(const uint8_t input[MOTOR_L
     return MOTOR_LINK_FRAME_VALID;
 }
 
-/**
- * @brief Decodes the official live-force motor-link payload.
- *
- * Only type-one frames supply center, direction, primary magnitude, and signed secondary force.
- *
- * @param frame Decoded motor-link frame.
- * @param command Live center and force output fields.
- * @return True when the frame is a live-force command.
- */
 bool motor_link_force_command_decode(const MotorLinkFrame *frame, MotorLinkForceCommand *command) {
     if (frame->type != MOTOR_LINK_FORCE_TYPE) {
         return false;
@@ -84,15 +66,6 @@ bool motor_link_force_command_decode(const MotorLinkFrame *frame, MotorLinkForce
     return true;
 }
 
-/**
- * @brief Decodes the official status and effect-command motor-link payload.
- *
- * Type-two frames expose one status byte and the seven-byte local-effect command body.
- *
- * @param frame Decoded motor-link frame.
- * @param command Status byte and seven-byte force-feedback command.
- * @return True when the frame is a status command.
- */
 bool motor_link_status_command_decode(const MotorLinkFrame *frame,
                                       MotorLinkStatusCommand *command) {
     if (frame->type != MOTOR_LINK_STATUS_TYPE) {
@@ -105,15 +78,6 @@ bool motor_link_status_command_decode(const MotorLinkFrame *frame,
     return true;
 }
 
-/**
- * @brief Prepares the official motor position, torque, and drive-current response body.
- *
- * The response preserves signed position and torque fields while packing current direction and
- * replay status into their wire bits.
- *
- * @param report Current motor response values and replay flag.
- * @param output Thirteen-byte frame awaiting its CRC result.
- */
 void motor_link_position_frame_prepare(const MotorLinkPositionReport *report,
                                        uint8_t output[MOTOR_LINK_FRAME_SIZE]) {
     output[0] = FRAME_START;
@@ -133,14 +97,6 @@ void motor_link_position_frame_prepare(const MotorLinkPositionReport *report,
     output[12] = FRAME_END;
 }
 
-/**
- * @brief Writes the official little-endian CRC field into a prepared motor-link frame.
- *
- * The CRC covers the nine response-body bytes between the fixed boundary markers.
- *
- * @param frame Prepared thirteen-byte motor-link frame.
- * @param checksum CRC peripheral result for frame bytes one through nine.
- */
 void motor_link_frame_checksum_write(uint8_t frame[MOTOR_LINK_FRAME_SIZE], uint16_t checksum) {
     write_uint16(frame + FRAME_CHECKSUM_OFFSET, checksum);
 }

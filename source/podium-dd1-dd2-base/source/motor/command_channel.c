@@ -10,12 +10,13 @@
 #include "motor/command_receiver.h"
 #include "motor/command_sequence.h"
 
+/** @brief Internal sizes and command identifiers used by the motor-command channel. */
 enum {
-    MOTOR_COMMAND_CHANNEL_REQUEST_SIZE = 5,
-    MOTOR_COMMAND_CHANNEL_DIGEST_COMMAND = 7,
-    MOTOR_COMMAND_CHANNEL_INFORMATION_COMMAND = 5,
-    MOTOR_COMMAND_CHANNEL_DIGEST_LENGTH = 20,
-    MOTOR_COMMAND_CHANNEL_INFORMATION_WORD_LENGTH = 2,
+    MOTOR_COMMAND_CHANNEL_REQUEST_SIZE = 5, /**< Size of the channel's fixed application requests. */
+    MOTOR_COMMAND_CHANNEL_DIGEST_COMMAND = 7, /**< Command identifier for the calibration digest request. */
+    MOTOR_COMMAND_CHANNEL_INFORMATION_COMMAND = 5, /**< Command identifier for an information request. */
+    MOTOR_COMMAND_CHANNEL_DIGEST_LENGTH = 20, /**< Calibration digest response length requested by the channel. */
+    MOTOR_COMMAND_CHANNEL_INFORMATION_WORD_LENGTH = 2, /**< Length requested for selectors 3 and 4. */
 };
 
 /**
@@ -78,16 +79,6 @@ static bool build_control(MotorCommandChannel *channel, bool retry) {
     return true;
 }
 
-/**
- * @brief Initializes a motor-command protocol channel.
- *
- * Attaches receive assembly, transmit, and retained-request storage, clears application state, and
- * starts both sequence counters at zero.
- *
- * @param[out] channel Channel to initialize.
- * @param[in] buffers Caller-owned protocol storage.
- * @return True when all required storage is present and large enough for control packets.
- */
 bool motor_command_channel_init(MotorCommandChannel *channel,
                                 const MotorCommandChannelBuffers *buffers) {
     if (channel == 0 || buffers == 0 || buffers->receive_assembly == 0 ||
@@ -102,14 +93,6 @@ bool motor_command_channel_init(MotorCommandChannel *channel,
     return true;
 }
 
-/**
- * @brief Resets motor-command protocol progress.
- *
- * Restarts receive assembly and sequence tracking and discards any retained request while keeping
- * accumulated application information and attached storage.
- *
- * @param[in,out] channel Channel to reset.
- */
 void motor_command_channel_reset(MotorCommandChannel *channel) {
     motor_command_receiver_init(&channel->receiver, channel->buffers.receive_assembly,
                                 channel->buffers.receive_assembly_capacity);
@@ -118,17 +101,6 @@ void motor_command_channel_reset(MotorCommandChannel *channel) {
     channel->command_pending = false;
 }
 
-/**
- * @brief Queues an application request on the motor-command channel.
- *
- * Retains the payload for resend handling, frames the request with the current transmit sequence
- * and most recently accepted receive sequence, then advances the sequence for the next request.
- *
- * @param[in,out] channel Active motor-command channel.
- * @param[in] payload Application request bytes.
- * @param[in] payload_length Application request byte count.
- * @return True when no request is pending and the payload fits the attached storage.
- */
 bool motor_command_channel_queue_payload(MotorCommandChannel *channel, const uint8_t *payload,
                                          uint16_t payload_length) {
     if (channel == 0 || payload == 0 || channel->command_pending ||
@@ -150,14 +122,6 @@ bool motor_command_channel_queue_payload(MotorCommandChannel *channel, const uin
     return true;
 }
 
-/**
- * @brief Queues a motor-command sequence reset.
- *
- * Builds the five-byte reset control packet without retaining an application request.
- *
- * @param[in,out] channel Active motor-command channel.
- * @return True when the channel is idle and its transmit storage holds a control packet.
- */
 bool motor_command_channel_queue_sequence_reset(MotorCommandChannel *channel) {
     if (channel == 0 || channel->command_pending ||
         channel->buffers.transmit_capacity < MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE) {
@@ -168,15 +132,6 @@ bool motor_command_channel_queue_sequence_reset(MotorCommandChannel *channel) {
     return true;
 }
 
-/**
- * @brief Queues the motor calibration digest request.
- *
- * Requests command 7 with its fixed twenty-byte calibration response and uses the channel's normal
- * application-request sequencing and resend retention.
- *
- * @param[in,out] channel Active motor-command channel.
- * @return True when the request was queued.
- */
 bool motor_command_channel_queue_digest_request(MotorCommandChannel *channel) {
     const uint8_t payload[MOTOR_COMMAND_CHANNEL_REQUEST_SIZE] = {
         MOTOR_COMMAND_CHANNEL_DIGEST_COMMAND, 0, 0, 0, MOTOR_COMMAND_CHANNEL_DIGEST_LENGTH,
@@ -184,16 +139,6 @@ bool motor_command_channel_queue_digest_request(MotorCommandChannel *channel) {
     return motor_command_channel_queue_payload(channel, payload, sizeof(payload));
 }
 
-/**
- * @brief Queues a two-byte motor information request.
- *
- * Requests command 5 for selector 3 or 4 and uses the channel's normal application-request
- * sequencing and resend retention.
- *
- * @param[in,out] channel Active motor-command channel.
- * @param[in] selector Information selector 3 or 4.
- * @return True when the selector is supported and the request was queued.
- */
 bool motor_command_channel_queue_information_request(MotorCommandChannel *channel,
                                                      uint8_t selector) {
     if (selector != 3 && selector != 4) {
@@ -206,19 +151,6 @@ bool motor_command_channel_queue_information_request(MotorCommandChannel *channe
     return motor_command_channel_queue_payload(channel, payload, sizeof(payload));
 }
 
-/**
- * @brief Accepts one motor-command protocol packet.
- *
- * Applies sequence and fragment handling, rebuilds retained requests for resend or retry, emits
- * acknowledgement or retry control, and validates complete application messages before releasing
- * the pending command. Valid messages update accumulated information and digest state; invalid
- * messages retain the command and request a retry.
- *
- * @param[in,out] channel Active motor-command channel.
- * @param[in] packet Received motor-command packet.
- * @param[in] length Received packet byte count.
- * @return Receive result, optional application event, and any packet that must be written.
- */
 MotorCommandChannelEvent motor_command_channel_accept(MotorCommandChannel *channel,
                                                       const uint8_t *packet, uint16_t length) {
     MotorCommandChannelEvent event = {0};
@@ -286,15 +218,6 @@ MotorCommandChannelEvent motor_command_channel_accept(MotorCommandChannel *chann
     return event;
 }
 
-/**
- * @brief Returns accumulated motor-command application state.
- *
- * Exposes the current information-selector values and derived calibration digest without changing
- * channel progress.
- *
- * @param[in] channel Active motor-command channel.
- * @return Application state, or null when the channel is absent.
- */
 const MotorCommandApplication *
 motor_command_channel_application(const MotorCommandChannel *channel) {
     return channel == 0 ? 0 : &channel->application;

@@ -3,22 +3,14 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/** @brief Motor-link force-feedback command opcodes handled by this module. */
 enum {
-    CONFIGURE_OPCODE = 1,
-    DISABLE_OPCODE = 3,
-    ENABLE_POSITION_OPCODE = 4,
-    DISABLE_POSITION_OPCODE = 5,
+    CONFIGURE_OPCODE = 1,          /**< Configures and enables one effect slot. */
+    DISABLE_OPCODE = 3,            /**< Disables one host-controlled effect slot. */
+    ENABLE_POSITION_OPCODE = 4,    /**< Enables the built-in position effect slot. */
+    DISABLE_POSITION_OPCODE = 5,   /**< Disables the built-in position effect slot. */
 };
 
-/**
- * @brief Applies one official seven-byte motor force-feedback command.
- *
- * Slot opcodes configure, enable, or disable host effects and the internal position effect.
- *
- * @param engine Force-feedback engine to update.
- * @param command Slot, opcode, effect kind, and five-byte effect payload.
- * @return False only when a configure command names an unsupported effect kind.
- */
 bool motor_force_feedback_command_apply(MotorForceFeedbackEngine *engine,
                                         const uint8_t command[7]) {
     uint8_t slot = command[0] >> 4U;

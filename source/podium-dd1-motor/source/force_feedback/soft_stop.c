@@ -3,33 +3,27 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/** @brief Travel-limit force and ramp configuration constants. */
 enum {
-    FORCE_LIMIT = 65535,
-    RAMP_PERIOD_TICKS = 50,
-    RAMP_MAXIMUM_PERCENT = 100,
-    RANGE_REDUCTION_RESET_THRESHOLD = 480,
+    FORCE_LIMIT = 65535,                    /**< Maximum absolute travel-limit force. */
+    RAMP_PERIOD_TICKS = 50,                 /**< Service ticks between ramp increments. */
+    RAMP_MAXIMUM_PERCENT = 100,             /**< Full travel-limit ramp percentage. */
+    RANGE_REDUCTION_RESET_THRESHOLD = 480,  /**< Range reduction that restarts the ramp. */
 };
 
+/**
+ * @brief Tests whether a wrap-safe soft-stop ramp deadline has passed.
+ *
+ * Signed tick subtraction preserves ordering across one unsigned counter wrap.
+ *
+ * @param[in] now Current motor service tick.
+ * @param[in] deadline Scheduled ramp tick.
+ * @return True only after the scheduled tick has passed.
+ */
 static bool motor_force_feedback_tick_passed(uint32_t now, uint32_t deadline) {
     return (int32_t)(now - deadline) > 0;
 }
 
-/**
- * @brief Applies the official travel-limit force ramp and selects the internal damper state.
- *
- * Penetration beyond either centered travel limit blends the current force toward the restoring
- * endpoint while range reductions recover through the fifty-tick ramp.
- *
- * @param soft_stop Travel-limit ramp state.
- * @param now Current motor service tick.
- * @param half_range Configured positive travel limit relative to center.
- * @param center Configured encoder center.
- * @param position Current encoder position.
- * @param transition_range Encoder distance over which force reaches full scale.
- * @param disabled True when the motor status suppresses travel-limit effects.
- * @param force Primary force command to update.
- * @return True when the internal travel-limit damper must be active.
- */
 bool motor_force_feedback_soft_stop_apply(MotorForceFeedbackSoftStop *soft_stop, uint32_t now,
                                           int32_t half_range, int32_t center, int32_t position,
                                           uint16_t transition_range, bool disabled,

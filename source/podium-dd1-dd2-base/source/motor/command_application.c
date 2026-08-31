@@ -7,32 +7,15 @@
 #include "motor/command_information.h"
 #include "motor/command_message.h"
 
+/** @brief Internal application-response sizes. */
 enum {
-    MOTOR_COMMAND_APPLICATION_CALIBRATION_SIZE = 20,
+    MOTOR_COMMAND_APPLICATION_CALIBRATION_SIZE = 20, /**< Required calibration response data length. */
 };
 
-/**
- * @brief Initializes motor-command application state.
- *
- * Clears all accumulated information-selector values and the derived calibration digest.
- *
- * @param[out] application Application state to initialize.
- */
 void motor_command_application_init(MotorCommandApplication *application) {
     memset(application, 0, sizeof(*application));
 }
 
-/**
- * @brief Applies one decoded motor-command application message.
- *
- * Routes information responses into logical selector state, derives the calibration digest from
- * the first sixteen bytes of a twenty-byte calibration response, and exposes selector 2 and vendor
- * responses to the caller for forwarding.
- *
- * @param[in,out] application Accumulated motor-command application state.
- * @param[in] message Decoded application message.
- * @return Application update, forwarding request, or invalid-message event.
- */
 MotorCommandApplicationEvent motor_command_application_apply(MotorCommandApplication *application,
                                                              const MotorCommandMessage *message) {
     MotorCommandApplicationEvent event = {.result = MOTOR_COMMAND_APPLICATION_INVALID};

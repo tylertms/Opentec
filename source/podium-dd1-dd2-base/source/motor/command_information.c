@@ -5,16 +5,17 @@
 
 #include "motor/command_message.h"
 
+/** @brief Internal information selector identifiers. */
 enum {
-    MOTOR_COMMAND_INFORMATION_SELECTOR_1 = 1,
-    MOTOR_COMMAND_INFORMATION_SELECTOR_2 = 2,
-    MOTOR_COMMAND_INFORMATION_SELECTOR_3 = 3,
-    MOTOR_COMMAND_INFORMATION_SELECTOR_4 = 4,
-    MOTOR_COMMAND_INFORMATION_SELECTOR_5 = 5,
-    MOTOR_COMMAND_INFORMATION_SELECTOR_6 = 6,
-    MOTOR_COMMAND_INFORMATION_SELECTOR_7 = 7,
-    MOTOR_COMMAND_INFORMATION_SELECTOR_8 = 8,
-    MOTOR_COMMAND_INFORMATION_SELECTOR_9 = 9,
+    MOTOR_COMMAND_INFORMATION_SELECTOR_1 = 1, /**< Information selector 1. */
+    MOTOR_COMMAND_INFORMATION_SELECTOR_2 = 2, /**< Information selector 2. */
+    MOTOR_COMMAND_INFORMATION_SELECTOR_3 = 3, /**< Information selector 3. */
+    MOTOR_COMMAND_INFORMATION_SELECTOR_4 = 4, /**< Information selector 4. */
+    MOTOR_COMMAND_INFORMATION_SELECTOR_5 = 5, /**< Information selector 5. */
+    MOTOR_COMMAND_INFORMATION_SELECTOR_6 = 6, /**< Information selector 6. */
+    MOTOR_COMMAND_INFORMATION_SELECTOR_7 = 7, /**< Information selector 7. */
+    MOTOR_COMMAND_INFORMATION_SELECTOR_8 = 8, /**< Information selector 8. */
+    MOTOR_COMMAND_INFORMATION_SELECTOR_9 = 9, /**< Information selector 9. */
 };
 
 /**
@@ -27,17 +28,6 @@ enum {
  */
 static uint16_t decode_word(const uint8_t data[2]) { return ((uint16_t)data[0] << 8) | data[1]; }
 
-/**
- * @brief Applies one motor-controller information response.
- *
- * Stores selectors 1 and 3 through 9 in logical fields using their fixed lengths. Two-byte
- * values retain their high-byte-first numeric order, including selector 6. Selector 2 is returned
- * to the caller for vendor-response forwarding instead of being copied into information state.
- *
- * @param[in,out] state Accumulated motor-controller information.
- * @param[in] message Decoded information response.
- * @return Stored, forward, or invalid response disposition.
- */
 MotorCommandInformationResult motor_command_information_apply(MotorCommandInformation *state,
                                                               const MotorCommandMessage *message) {
     if (state == 0 || message == 0 || message->kind != MOTOR_COMMAND_MESSAGE_INFORMATION ||

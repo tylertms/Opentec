@@ -4,26 +4,18 @@
 
 #include "motor/command_packet.h"
 
+/** @brief Internal packet offsets and fragment markers used by the assembler. */
 enum {
-    MOTOR_COMMAND_FRAGMENT_TYPE_OFFSET = 3,
-    MOTOR_COMMAND_FRAGMENT_TYPE_MASK = 7,
-    MOTOR_COMMAND_FRAGMENT_FIRST = 1,
-    MOTOR_COMMAND_FRAGMENT_CONTINUATION = 2,
-    MOTOR_COMMAND_FRAGMENT_FINAL = 4,
-    MOTOR_COMMAND_FRAGMENT_CONTINUATION_DATA_OFFSET = 4,
-    MOTOR_COMMAND_FRAGMENT_CHECKSUM_SIZE = 2,
-    MOTOR_COMMAND_FRAGMENT_ENVELOPE_SIZE = 3,
+    MOTOR_COMMAND_FRAGMENT_TYPE_OFFSET = 3, /**< Packet offset of the fragment marker. */
+    MOTOR_COMMAND_FRAGMENT_TYPE_MASK = 7, /**< Mask selecting fragment marker bits. */
+    MOTOR_COMMAND_FRAGMENT_FIRST = 1, /**< Marker for the first fragment. */
+    MOTOR_COMMAND_FRAGMENT_CONTINUATION = 2, /**< Marker for a continuation fragment. */
+    MOTOR_COMMAND_FRAGMENT_FINAL = 4, /**< Marker for the final fragment. */
+    MOTOR_COMMAND_FRAGMENT_CONTINUATION_DATA_OFFSET = 4, /**< Packet offset of continuation data. */
+    MOTOR_COMMAND_FRAGMENT_CHECKSUM_SIZE = 2, /**< Number of checksum bytes excluded from fragment data. */
+    MOTOR_COMMAND_FRAGMENT_ENVELOPE_SIZE = 3, /**< Number of packet envelope bytes before the body. */
 };
 
-/**
- * @brief Initializes a motor-command fragment assembler.
- *
- * Attaches the caller-owned assembly buffer and clears the assembled and completed content lengths.
- *
- * @param[out] fragment Fragment assembler to initialize.
- * @param[out] data Caller-owned assembly buffer.
- * @param[in] capacity Available assembly buffer byte count.
- */
 void motor_command_fragment_init(MotorCommandFragment *fragment, uint8_t *data, uint16_t capacity) {
     fragment->data = data;
     fragment->capacity = capacity;
@@ -31,18 +23,6 @@ void motor_command_fragment_init(MotorCommandFragment *fragment, uint8_t *data, 
     fragment->content_length = 0;
 }
 
-/**
- * @brief Accepts a motor-command packet fragment.
- *
- * A first fragment copies its envelope and body without the checksum. Continuation and final
- * fragments append the declared bytes after their four-byte envelope without the checksum. A
- * final fragment publishes the assembled length after the first three envelope bytes.
- *
- * @param[in,out] fragment Fragment assembler and caller-owned destination.
- * @param[in] packet Candidate fragment packet.
- * @param[in] length Received packet byte count.
- * @return Waiting, complete, or invalid fragment status.
- */
 MotorCommandFragmentResult motor_command_fragment_accept(MotorCommandFragment *fragment,
                                                          const uint8_t *packet, uint16_t length) {
     if (fragment == 0 || fragment->data == 0 || packet == 0 ||

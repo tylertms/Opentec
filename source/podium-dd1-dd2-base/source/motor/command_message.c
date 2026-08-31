@@ -3,28 +3,17 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/** @brief Internal command identifiers and offsets in motor application payloads. */
 enum {
-    MOTOR_COMMAND_MESSAGE_INFORMATION_COMMAND = 0x85,
-    MOTOR_COMMAND_MESSAGE_CALIBRATION_COMMAND = 0x87,
-    MOTOR_COMMAND_MESSAGE_VENDOR_CONTINUATION_COMMAND = 0xc1,
-    MOTOR_COMMAND_MESSAGE_VENDOR_FINAL_COMMAND = 0xc2,
-    MOTOR_COMMAND_MESSAGE_SELECTOR_OFFSET = 2,
-    MOTOR_COMMAND_MESSAGE_LENGTH_OFFSET = 4,
-    MOTOR_COMMAND_MESSAGE_DATA_OFFSET = 5,
+    MOTOR_COMMAND_MESSAGE_INFORMATION_COMMAND = 0x85, /**< Information response command identifier. */
+    MOTOR_COMMAND_MESSAGE_CALIBRATION_COMMAND = 0x87, /**< Calibration response command identifier. */
+    MOTOR_COMMAND_MESSAGE_VENDOR_CONTINUATION_COMMAND = 0xc1, /**< Vendor continuation command identifier. */
+    MOTOR_COMMAND_MESSAGE_VENDOR_FINAL_COMMAND = 0xc2, /**< Vendor final command identifier. */
+    MOTOR_COMMAND_MESSAGE_SELECTOR_OFFSET = 2, /**< Payload offset of the information selector. */
+    MOTOR_COMMAND_MESSAGE_LENGTH_OFFSET = 4, /**< Payload offset of the data length. */
+    MOTOR_COMMAND_MESSAGE_DATA_OFFSET = 5, /**< Payload offset of command data. */
 };
 
-/**
- * @brief Decodes a complete motor-command application message.
- *
- * Classifies information, calibration, and vendor-transfer responses. Information and calibration
- * messages expose their selector and bounded data field, while vendor responses expose the whole
- * application payload for the vendor service.
- *
- * @param[in] payload Complete application payload after transport reassembly.
- * @param[in] length Application payload byte count.
- * @param[out] message Decoded command view.
- * @return True when the command and its required fields are supported and complete.
- */
 bool motor_command_message_decode(const uint8_t *payload, uint16_t length,
                                   MotorCommandMessage *message) {
     if (payload == 0 || message == 0 || length == 0) {

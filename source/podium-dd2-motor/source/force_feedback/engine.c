@@ -4,10 +4,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/** @brief Force-mixing limits and travel-limit transition configuration. */
 enum {
-    PRIMARY_FORCE_LIMIT = 65535,
-    SECONDARY_FORCE_LIMIT = 32767,
-    SOFT_STOP_TRANSITION_RANGE = 0x19b1,
+    PRIMARY_FORCE_LIMIT = 65535,       /**< Maximum absolute primary force accumulator. */
+    SECONDARY_FORCE_LIMIT = 32767,     /**< Maximum absolute secondary force accumulator. */
+    SOFT_STOP_TRANSITION_RANGE = 0x19b1, /**< Travel distance for soft-stop force interpolation. */
 };
 
 /**
@@ -15,7 +16,7 @@ enum {
  *
  * The recovered force mixer uses symmetric positive and negative limits of 65535.
  *
- * @param force Signed accumulated primary force.
+ * @param[in] force Signed accumulated primary force.
  * @return Primary force limited to the official range.
  */
 static int32_t clamp_primary(int32_t force) {
@@ -28,6 +29,14 @@ static int32_t clamp_primary(int32_t force) {
     return force;
 }
 
+/**
+ * @brief Limits the signed secondary force accumulator.
+ *
+ * The secondary path uses symmetric positive and negative limits of 32767.
+ *
+ * @param[in] force Signed accumulated secondary force.
+ * @return Secondary force limited to the official range.
+ */
 static int32_t clamp_secondary(int32_t force) {
     if (force > SECONDARY_FORCE_LIMIT) {
         return SECONDARY_FORCE_LIMIT;
@@ -43,8 +52,8 @@ static int32_t clamp_secondary(int32_t force) {
  *
  * Zero suppresses output and one hundred bypasses division.
  *
- * @param force Signed force before overall scaling.
- * @param gain_percent Overall force gain from zero through one hundred.
+ * @param[in] force Signed force before overall scaling.
+ * @param[in] gain_percent Overall force gain from zero through one hundred.
  * @return Scaled signed force.
  */
 static int32_t apply_overall_gain(int32_t force, uint8_t gain_percent) {
@@ -54,14 +63,6 @@ static int32_t apply_overall_gain(int32_t force, uint8_t gain_percent) {
     return gain_percent == 100U ? force : force * gain_percent / 100;
 }
 
-/**
- * @brief Installs the official effect defaults and internal position and damper effects.
- *
- * All slots start clear before the recovered travel-window and directional damper payloads are
- * configured and enabled.
- *
- * @param engine Force-feedback engine state to initialize.
- */
 void motor_force_feedback_engine_initialize(MotorForceFeedbackEngine *engine) {
     *engine = (MotorForceFeedbackEngine){0};
     engine->settings = motor_force_feedback_settings_default();
@@ -88,16 +89,6 @@ void motor_force_feedback_engine_initialize(MotorForceFeedbackEngine *engine) {
     motor_force_feedback_effect_enable(engine, MOTOR_FORCE_FEEDBACK_DAMPER_SLOT);
 }
 
-/**
- * @brief Configures one official constant-force effect slot.
- *
- * Valid slots replace their type and decoded constant-force payload without changing activation.
- *
- * @param engine Force-feedback engine to update.
- * @param slot Effect slot from zero through nineteen.
- * @param payload Five-byte effect payload.
- * @return True when the slot was valid.
- */
 bool motor_force_feedback_constant_configure(MotorForceFeedbackEngine *engine, uint8_t slot,
                                              const uint8_t payload[5]) {
     if (slot >= MOTOR_FORCE_FEEDBACK_EFFECT_COUNT) {
@@ -108,16 +99,6 @@ bool motor_force_feedback_constant_configure(MotorForceFeedbackEngine *engine, u
     return true;
 }
 
-/**
- * @brief Configures one official position-window effect slot.
- *
- * The payload is decoded against the current steering half-range for a valid effect slot.
- *
- * @param engine Force-feedback engine to update.
- * @param slot Effect slot from zero through nineteen.
- * @param payload Five-byte effect payload.
- * @return True when the slot was valid.
- */
 bool motor_force_feedback_window_configure(MotorForceFeedbackEngine *engine, uint8_t slot,
                                            const uint8_t payload[5]) {
     if (slot >= MOTOR_FORCE_FEEDBACK_EFFECT_COUNT) {
@@ -129,16 +110,6 @@ bool motor_force_feedback_window_configure(MotorForceFeedbackEngine *engine, uin
     return true;
 }
 
-/**
- * @brief Configures one official directional effect slot.
- *
- * Valid slots receive the decoded positive and negative velocity-response coefficients.
- *
- * @param engine Force-feedback engine to update.
- * @param slot Effect slot from zero through nineteen.
- * @param payload Five-byte effect payload.
- * @return True when the slot was valid.
- */
 bool motor_force_feedback_directional_configure(MotorForceFeedbackEngine *engine, uint8_t slot,
                                                 const uint8_t payload[5]) {
     if (slot >= MOTOR_FORCE_FEEDBACK_EFFECT_COUNT) {
@@ -151,15 +122,6 @@ bool motor_force_feedback_directional_configure(MotorForceFeedbackEngine *engine
     return true;
 }
 
-/**
- * @brief Enables one official force-feedback effect slot.
- *
- * Activation changes only for indices inside the twenty-slot engine.
- *
- * @param engine Force-feedback engine to update.
- * @param slot Effect slot from zero through nineteen.
- * @return True when the slot was valid.
- */
 bool motor_force_feedback_effect_enable(MotorForceFeedbackEngine *engine, uint8_t slot) {
     if (slot >= MOTOR_FORCE_FEEDBACK_EFFECT_COUNT) {
         return false;
@@ -168,15 +130,6 @@ bool motor_force_feedback_effect_enable(MotorForceFeedbackEngine *engine, uint8_
     return true;
 }
 
-/**
- * @brief Disables one official force-feedback effect slot.
- *
- * Deactivation changes only for indices inside the twenty-slot engine.
- *
- * @param engine Force-feedback engine to update.
- * @param slot Effect slot from zero through nineteen.
- * @return True when the slot was valid.
- */
 bool motor_force_feedback_effect_disable(MotorForceFeedbackEngine *engine, uint8_t slot) {
     if (slot >= MOTOR_FORCE_FEEDBACK_EFFECT_COUNT) {
         return false;
@@ -185,20 +138,6 @@ bool motor_force_feedback_effect_disable(MotorForceFeedbackEngine *engine, uint8
     return true;
 }
 
-/**
- * @brief Mixes the twenty official effect slots and applies gain, filtering, ramp, and soft stop.
- *
- * Active effects contribute to primary or secondary accumulators before the shared output stages
- * and travel-limit safety path produce the live force command.
- *
- * @param[in,out] engine Force-feedback engine state.
- * @param[in] now Current motor service tick.
- * @param[in] center Configured encoder center.
- * @param[in] position Current encoder position.
- * @param[in] velocity Current signed encoder velocity.
- * @param[in] soft_stop_disabled True when motor status suppresses the travel-limit effect.
- * @return Primary direction and magnitude plus the signed secondary force.
- */
 MotorForceFeedbackMix motor_force_feedback_mix(MotorForceFeedbackEngine *engine, uint32_t now,
                                                int32_t centered_position, int32_t soft_stop_center,
                                                int32_t soft_stop_position, int32_t velocity,
