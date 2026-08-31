@@ -20,6 +20,8 @@ static volatile bool motor_bus_active;
 static bool motor_bus_extended_header_pending;
 static uint16_t motor_bus_active_ticks;
 static uint8_t motor_bus_receive_size;
+static uint8_t motor_bus_selected_parameter;
+static bool motor_bus_selected_parameter_valid;
 
 /**
  * @brief Restores the official idle parameter-selection buffer.
@@ -41,7 +43,9 @@ static void motor_bus_receive_reset(void) {
  */
 static void motor_bus_transmit_prepare(i2c_slave_transfer_t *transfer) {
     MotorParameterResponse response = {0};
-    if (!motor_parameter_read(motor_bus_parameters, motor_bus_receive[0], &response)) {
+    const uint8_t selected_parameter =
+        motor_bus_selected_parameter_valid ? motor_bus_selected_parameter : motor_bus_receive[0];
+    if (!motor_parameter_read(motor_bus_parameters, selected_parameter, &response)) {
         transfer->data = NULL;
         transfer->dataSize = 0U;
         return;
@@ -72,6 +76,16 @@ static void motor_bus_receive_complete(const i2c_slave_transfer_t *transfer) {
     }
 }
 
+static void motor_bus_transfer_reset(i2c_slave_transfer_t *transfer) {
+    motor_bus_state = kMotorBusIdle;
+    motor_bus_extended_header_pending = false;
+    motor_bus_receive_reset();
+    motor_bus_selected_parameter_valid = false;
+    transfer->data = NULL;
+    transfer->dataSize = 0U;
+    transfer->transferredCount = 0U;
+}
+
 /**
  * @brief Handles NXP SDK slave-transfer events for the motor parameter bank.
  *
@@ -89,19 +103,34 @@ static void motor_bus_transfer_callback(I2C_Type *base, i2c_slave_transfer_t *tr
 
     switch (transfer->event) {
     case kI2C_SlaveStartEvent:
+        if (motor_bus_state == kMotorBusReceiving && transfer->transferredCount == 1U) {
+            motor_bus_selected_parameter = motor_bus_receive[0];
+            motor_bus_selected_parameter_valid = true;
+        } else {
+            motor_bus_selected_parameter_valid = false;
+        }
+        motor_bus_state = kMotorBusIdle;
+        motor_bus_receive_reset();
+        transfer->data = NULL;
+        transfer->dataSize = 0U;
+        transfer->transferredCount = 0U;
         motor_bus_extended_header_pending = true;
+        motor_bus_active = true;
+        motor_bus_active_ticks = 0U;
         break;
     case kI2C_SlaveAddressMatchEvent:
         motor_bus_extended_header_pending = false;
         if ((I2C_SlaveGetStatusFlags(base) & (uint32_t)kI2C_TransferDirectionFlag) != 0U) {
-            motor_bus_receive_size = (uint8_t)transfer->transferredCount;
             transfer->transferredCount = 0U;
             motor_bus_transmit_prepare(transfer);
+        } else {
+            motor_bus_selected_parameter_valid = false;
         }
         motor_bus_active = true;
         break;
     case kI2C_SlaveGenaralcallEvent:
         motor_bus_extended_header_pending = false;
+        motor_bus_selected_parameter_valid = false;
         motor_bus_active = true;
         break;
     case kI2C_SlaveReceiveEvent:
@@ -116,20 +145,27 @@ static void motor_bus_transfer_callback(I2C_Type *base, i2c_slave_transfer_t *tr
         }
         break;
     case kI2C_SlaveTransmitEvent:
-        motor_bus_transmit_prepare(transfer);
+        if (motor_bus_state == kMotorBusTransmitting && transfer->dataSize == 0U) {
+            motor_bus_transfer_reset(transfer);
+        } else {
+            motor_bus_transmit_prepare(transfer);
+        }
         break;
-    case kI2C_SlaveCompletionEvent:
+    case kI2C_SlaveCompletionEvent: {
         if (motor_bus_state == kMotorBusReceiving &&
             transfer->completionStatus == kStatus_Success) {
             motor_bus_receive_complete(transfer);
         }
-        motor_bus_state = kMotorBusIdle;
-        motor_bus_active = false;
-        motor_bus_extended_header_pending = false;
-        motor_bus_receive_reset();
-        transfer->data = NULL;
-        transfer->dataSize = 0U;
+        const bool completed = transfer->completionStatus == kStatus_Success;
+        motor_bus_transfer_reset(transfer);
+        motor_bus_active = !completed;
+        if (completed) {
+            motor_bus_active_ticks = 0U;
+        } else {
+            motor_bus_handle.isBusy = true;
+        }
         break;
+    }
     default:
         break;
     }
@@ -172,6 +208,7 @@ void motor_bus_initialize(MotorParameterBank *parameters,
     motor_bus_active = false;
     motor_bus_extended_header_pending = false;
     motor_bus_active_ticks = 0U;
+    motor_bus_selected_parameter_valid = false;
     motor_bus_receive_reset();
     motor_bus_hardware_initialize();
 }
@@ -198,6 +235,7 @@ void motor_bus_service(void) {
     motor_bus_active = false;
     motor_bus_extended_header_pending = false;
     motor_bus_active_ticks = 0U;
+    motor_bus_selected_parameter_valid = false;
     motor_bus_receive_reset();
     motor_bus_hardware_initialize();
 }

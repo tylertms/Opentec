@@ -5,7 +5,7 @@
 #include "motor/live_frame.h"
 
 static const uint8_t position_frame[MOTOR_LIVE_FRAME_SIZE] = {
-    0x7b, 0x01, 0x05, 0x06, 0x07, 0x08, 0xcd, 0xab, 0x68, 0x24, 0xfb, 0xa4, 0x7d,
+    0x7b, 0x01, 0x05, 0x06, 0x07, 0x08, 0xcd, 0xab, 0x68, 0x24, 0xfe, 0xe9, 0x7d,
 };
 
 static void test_decode_position(void) {
@@ -19,11 +19,15 @@ static void test_decode_position(void) {
     assert(report.motor_torque == 0xabcd);
     assert(!report.auxiliary_negative);
     assert(report.auxiliary_position == 0x48d0);
+
+    uint8_t reencoded[MOTOR_LIVE_FRAME_SIZE];
+    motor_live_frame_encode(&frame, reencoded);
+    assert(memcmp(reencoded, position_frame, sizeof(reencoded)) == 0);
 }
 
 static void test_decode_replay(void) {
     const uint8_t encoded[MOTOR_LIVE_FRAME_SIZE] = {
-        0x7b, 0x81, 0xde, 0xad, 0xbe, 0xef, 0x68, 0x24, 0xe0, 0xac, 0x6b, 0x04, 0x7d,
+        0x7b, 0x81, 0xde, 0xad, 0xbe, 0xef, 0x68, 0x24, 0xe0, 0xac, 0x59, 0x14, 0x7d,
     };
     MotorLiveFrame frame;
     MotorPositionReport report;
@@ -60,6 +64,8 @@ static void test_encode_force(void) {
     assert(encoded[7] == 0x78);
     assert(encoded[8] == 0x56);
     assert(encoded[9] == 0);
+    assert(encoded[10] == 0x3b);
+    assert(encoded[11] == 0x32);
     assert(encoded[12] == MOTOR_LIVE_FRAME_END);
     assert(motor_live_frame_decode(encoded, &decoded) == MOTOR_LIVE_FRAME_VALID);
     assert(memcmp(&decoded, &frame, sizeof(frame)) == 0);

@@ -10,6 +10,11 @@ motor_tests = [
     'sources': ['source/control.c', '../source/motor/control.c'],
   },
   {
+    'name': 'velocity-control',
+    'suite': 'control',
+    'sources': ['source/velocity_control.c', '../source/motor/velocity_control.c'],
+  },
+  {
     'name': 'center',
     'suite': 'encoder',
     'sources': ['source/center.c', '../source/motor/center.c'],
@@ -96,11 +101,15 @@ foreach definition : motor_tests
   foreach source : definition['sources']
     sources += files(source)
   endforeach
+  test_includes = motor_include
+  if definition['name'] == 'velocity-control'
+    test_includes = [include_directories('stubs'), motor_include]
+  endif
   image = executable(
     motor_test_prefix + '-' + definition['name'] + '-test',
     sources,
     build_by_default: false,
-    include_directories: motor_include,
+    include_directories: test_includes,
   )
   test(
     motor_test_prefix + '-' + definition['name'],

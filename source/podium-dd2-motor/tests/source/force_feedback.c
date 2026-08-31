@@ -314,7 +314,7 @@ static void test_commands(void) {
     assert(motor_force_feedback_command_apply(&engine, command));
 }
 
-static void test_window_rescale(void) {
+static void test_window_range_change(void) {
     MotorForceFeedbackEngine engine;
     motor_force_feedback_engine_initialize(&engine);
     const uint8_t payload[5] = {0x40U, 0xc0U, 0x44U, 0U, 0xffU};
@@ -323,13 +323,43 @@ static void test_window_rescale(void) {
     int32_t lower = engine.effects[2].data.window.lower_position;
     int32_t upper = engine.effects[2].data.window.upper_position;
 
-    motor_force_feedback_engine_rescale_windows(&engine, engine.settings.position_half_range,
-                                                engine.settings.position_half_range / 2);
-    assert(engine.effects[2].data.window.lower_position == lower / 2);
-    assert(engine.effects[2].data.window.upper_position == upper / 2);
+    motor_force_feedback_settings_apply(&engine.settings, 126, 35U, 100U, 10U, 10U, 10U);
+    assert(engine.settings.position_half_range == 82880);
+    assert(engine.effects[2].data.window.lower_position == lower);
+    assert(engine.effects[2].data.window.upper_position == upper);
     assert(engine.effects[2].active);
     assert(engine.effects[MOTOR_FORCE_FEEDBACK_POSITION_SLOT].data.window.lower_position == 0);
     assert(engine.effects[MOTOR_FORCE_FEEDBACK_POSITION_SLOT].data.window.upper_position == 0);
+}
+
+static void test_directional_reconfiguration(void) {
+    const uint8_t directional_payload[5] = {1U, 0U, 1U, 0U, 0xa0U};
+    const uint8_t window_payloads[2][5] = {
+        {0x40U, 0xc0U, 0x44U, 0U, 0xffU},
+        {0x40U, 0xc0U, 0x44U, 0x11U, 0xffU},
+    };
+    const int8_t markers[2] = {-1, 1};
+
+    for (uint8_t slot = 0U; slot < 16U; ++slot) {
+        for (uint8_t marker = 0U; marker < 2U; ++marker) {
+            MotorForceFeedbackEngine engine;
+            motor_force_feedback_engine_initialize(&engine);
+            assert(motor_force_feedback_window_configure(&engine, slot, window_payloads[marker]));
+            assert(motor_force_feedback_directional_configure(&engine, slot, directional_payload));
+            assert(engine.effects[slot].data.window.lower_direction == markers[marker]);
+            assert(engine.effects[slot].data.window.upper_direction == markers[marker]);
+            assert(engine.effects[slot].data.directional.steering_scaled);
+            assert(motor_force_feedback_directional_evaluate(&engine.effects[slot].data.directional,
+                                                             320, 10U, 35U, slot) == -20);
+        }
+    }
+
+    MotorForceFeedbackEngine engine;
+    motor_force_feedback_engine_initialize(&engine);
+    assert(motor_force_feedback_directional_configure(&engine, 0U, directional_payload));
+    assert(!engine.effects[0].data.directional.steering_scaled);
+    assert(motor_force_feedback_directional_evaluate(&engine.effects[0].data.directional, 320, 10U,
+                                                     35U, 0U) == -10);
 }
 
 int main(void) {
@@ -343,6 +373,7 @@ int main(void) {
     test_soft_stop();
     test_engine();
     test_commands();
-    test_window_rescale();
+    test_window_range_change();
+    test_directional_reconfiguration();
     return 0;
 }

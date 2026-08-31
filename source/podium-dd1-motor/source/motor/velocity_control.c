@@ -3,7 +3,9 @@
 #include <limits.h>
 #include <mlib.h>
 
+#if defined(__GNUC__)
 #pragma GCC optimize("O2")
+#endif
 
 enum {
     MOTOR_VELOCITY_PROPORTIONAL_GAIN = 0x14000,
@@ -72,8 +74,10 @@ void motor_velocity_control_target_set(MotorVelocityControlState *state, int16_t
  */
 int16_t motor_velocity_control_step(MotorVelocityControlState *state, int16_t measured_velocity,
                                     bool_t current_controller_limited) {
-    state->stop_integrator =
-        (bool_t)((current_controller_limited | state->controller.bLimFlag) & UINT8_MAX);
+    bool_t target_speed_covers_measured =
+        (bool_t)(MLIB_AbsSat_F16(state->target_velocity) >= MLIB_AbsSat_F16(measured_velocity));
+    state->stop_integrator = (bool_t)((current_controller_limited | state->controller.bLimFlag) &
+                                      target_speed_covers_measured & UINT8_MAX);
     frac32_t ramped = GFLIB_Ramp_F32(MLIB_Conv_F32s(state->target_velocity), &state->target_ramp);
     state->ramped_velocity = MLIB_Conv_F16l(ramped);
     state->velocity_error = MLIB_SubSat_F16(state->ramped_velocity, measured_velocity);

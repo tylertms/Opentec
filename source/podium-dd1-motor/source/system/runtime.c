@@ -57,7 +57,6 @@ enum {
     MOTOR_PARAMETER_CONSTANT_GAIN = 40,
     MOTOR_PARAMETER_WINDOW_GAIN = 41,
     MOTOR_PARAMETER_DIRECTIONAL_GAIN = 42,
-    MOTOR_TORQUE_SCALE = 0x75c2,
 };
 
 typedef struct {
@@ -104,6 +103,15 @@ typedef struct {
 
 static MotorRuntime motor_runtime;
 
+static void motor_runtime_fault_serial_service(void) {
+    uint8_t status = UART0->S1;
+    *((volatile uint8_t *)(void *)&UART0->S1) = 0x1fU;
+    if ((status & UART_S1_RDRF_MASK) == 0U && (status & UART_S1_OR_MASK) != 0U) {
+        (void)UART0->D;
+    }
+    FMSTR_SerialIsr();
+}
+
 /**
  * @brief Stops motor output after an unrecoverable runtime failure.
  *
@@ -115,7 +123,7 @@ _Noreturn static void motor_runtime_fault(void) {
     for (;;) {
         GPIO_PortClear(GPIOC, 1UL << 1U);
         FTM0->OUTMASK = 0x3fU;
-        FMSTR_SerialIsr();
+        motor_runtime_fault_serial_service();
     }
 }
 
@@ -132,7 +140,6 @@ void WDOG_EWM_IRQHandler(void) { motor_runtime_fault(); }
 static void motor_runtime_settings_apply(void *context) {
     MotorRuntime *runtime = context;
     MotorForceFeedbackSettings *settings = &runtime->protocol.force_feedback.settings;
-    int32_t previous_half_range = settings->position_half_range;
     motor_force_feedback_settings_apply(
         settings, (int8_t)runtime->parameters.entries[MOTOR_PARAMETER_STEERING_RANGE].value,
         (uint8_t)runtime->parameters.entries[MOTOR_PARAMETER_OVERALL_GAIN].value,
@@ -140,8 +147,6 @@ static void motor_runtime_settings_apply(void *context) {
         (uint8_t)runtime->parameters.entries[MOTOR_PARAMETER_CONSTANT_GAIN].value,
         (uint8_t)runtime->parameters.entries[MOTOR_PARAMETER_WINDOW_GAIN].value,
         (uint8_t)runtime->parameters.entries[MOTOR_PARAMETER_DIRECTIONAL_GAIN].value);
-    motor_force_feedback_engine_rescale_windows(&runtime->protocol.force_feedback,
-                                                previous_half_range, settings->position_half_range);
     motor_force_feedback_filter_configure(&runtime->protocol.force_feedback.filter,
                                           settings->filter_setting);
 }
@@ -410,10 +415,10 @@ static void motor_runtime_encoder_calibration_erase(MotorRuntime *runtime) {
     memset(&runtime->encoder_calibration.record, 0, sizeof(runtime->encoder_calibration.record));
     uint32_t interrupt_mask = DisableGlobalIRQ();
     status_t status = motor_calibration_storage_erase();
-    EnableGlobalIRQ(interrupt_mask);
     if (status != kStatus_Success) {
         motor_runtime_fault();
     }
+    EnableGlobalIRQ(interrupt_mask);
 
     runtime->parameters.entries[MOTOR_PARAMETER_CALIBRATION_COMMAND].value = 0U;
     runtime->parameters.entries[MOTOR_PARAMETER_CALIBRATION_VERSION].value = 0U;
@@ -434,10 +439,10 @@ static void motor_runtime_encoder_calibration_store(MotorRuntime *runtime) {
     if (status == kStatus_Success) {
         status = motor_calibration_storage_program(&runtime->encoder_calibration.record);
     }
-    EnableGlobalIRQ(interrupt_mask);
     if (status != kStatus_Success) {
         motor_runtime_fault();
     }
+    EnableGlobalIRQ(interrupt_mask);
 
     runtime->parameters.entries[MOTOR_PARAMETER_CALIBRATION_COMMAND].value = 0U;
     runtime->parameters.entries[MOTOR_PARAMETER_CALIBRATION_VERSION].value =
@@ -493,7 +498,7 @@ static void motor_runtime_encoder_calibration_step(MotorRuntime *runtime) {
         .relative_position = motor_encoder_relative_position(
             (uint16_t)FTM2->CNT, (uint16_t)runtime->encoder.zero_counter,
             (uint16_t)runtime->hardware.encoder_modulus),
-        .encoder_period = (uint16_t)runtime->hardware.encoder_modulus,
+        .encoder_period = runtime->hardware.encoder_period,
         .revolution_complete = motor_encoder_revolution_is_complete(),
     };
     MotorEncoderCalibrationStep step =
@@ -674,23 +679,23 @@ static void motor_runtime_service_handler(void *context) {
     runtime->motion_sample =
         motor_motion_sample(&runtime->motion, &runtime->position_filter, &runtime->velocity_filter,
                             (uint32_t)runtime->encoder.position, runtime->hardware.velocity_scale);
-    bool derating_update_due = motor_service_timing_tick(&runtime->timing);
+    if (runtime->service_tick % 1000U == 0U) {
+        ++runtime->parameters.entries[MOTOR_PARAMETER_UPTIME].value;
+    }
     motor_bus_service();
+    bool derating_update_due = motor_service_timing_tick(&runtime->timing);
     if (derating_update_due) {
         runtime->drive_derating.current_scale =
             GFLIB_CtrlPIpAW_F16(runtime->drive_derating.error, &runtime->derating_stop_integrator,
                                 &runtime->derating_controller);
     }
+    int16_t measured_current = runtime->foc_output.measured_current.f16Q;
+    runtime->parameters.entries[MOTOR_PARAMETER_DRIVE_CURRENT].value = (uint16_t)measured_current;
+    runtime->parameters.entries[MOTOR_PARAMETER_TORQUE].value = (uint16_t)motor_q15_scale_wrap(
+        motor_product_configuration.torque_telemetry_scale, measured_current);
     (void)motor_velocity_control_step(&runtime->velocity_control,
                                       runtime->motion_sample.filtered_position_delta,
                                       runtime->foc.q_controller.bLimFlag);
-    if (runtime->service_tick % 1000U == 0U) {
-        ++runtime->parameters.entries[MOTOR_PARAMETER_UPTIME].value;
-    }
-    int16_t measured_current = runtime->foc_output.measured_current.f16Q;
-    runtime->parameters.entries[MOTOR_PARAMETER_DRIVE_CURRENT].value = (uint16_t)measured_current;
-    runtime->parameters.entries[MOTOR_PARAMETER_TORQUE].value =
-        (uint16_t)motor_q15_scale_wrap(MOTOR_TORQUE_SCALE, measured_current);
 }
 
 /**
@@ -854,9 +859,9 @@ void motor_runtime_poll(void) {
     if (motor_auxiliary_samples_resolve(&motor_runtime.auxiliary_accumulator,
                                         &motor_runtime.auxiliary_telemetry)) {
         motor_runtime.parameters.entries[MOTOR_PARAMETER_MOTOR_TEMPERATURE].value =
-            (uint16_t)motor_runtime.auxiliary_telemetry.motor_temperature;
+            (uint32_t)(int32_t)motor_runtime.auxiliary_telemetry.motor_temperature;
         motor_runtime.parameters.entries[MOTOR_PARAMETER_DRIVER_TEMPERATURE].value =
-            (uint16_t)motor_runtime.auxiliary_telemetry.driver_temperature;
+            (uint32_t)(int32_t)motor_runtime.auxiliary_telemetry.driver_temperature;
     }
 
     WDOG_Refresh(WDOG);

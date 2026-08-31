@@ -144,8 +144,10 @@ bool motor_force_feedback_directional_configure(MotorForceFeedbackEngine *engine
     if (slot >= MOTOR_FORCE_FEEDBACK_EFFECT_COUNT) {
         return false;
     }
+    bool steering_scaled = engine->effects[slot].data.window.lower_direction != 0;
     engine->effects[slot].type = MOTOR_FORCE_FEEDBACK_EFFECT_DIRECTIONAL;
     engine->effects[slot].data.directional = motor_force_feedback_directional_decode(payload);
+    engine->effects[slot].data.directional.steering_scaled = steering_scaled;
     return true;
 }
 
@@ -181,34 +183,6 @@ bool motor_force_feedback_effect_disable(MotorForceFeedbackEngine *engine, uint8
     }
     engine->effects[slot].active = false;
     return true;
-}
-
-/**
- * @brief Rescales configured position-window endpoints after a steering-range change.
- *
- * Preserves each window's relative position and activation state while replacing the steering
- * half-range used by the live effect engine.
- *
- * @param[in,out] engine Force-feedback engine containing configured effects.
- * @param[in] previous_half_range Steering half-range used by the stored endpoints.
- * @param[in] current_half_range Replacement steering half-range.
- */
-void motor_force_feedback_engine_rescale_windows(MotorForceFeedbackEngine *engine,
-                                                 int32_t previous_half_range,
-                                                 int32_t current_half_range) {
-    if (previous_half_range <= 0 || previous_half_range == current_half_range) {
-        return;
-    }
-    for (uint8_t slot = 0U; slot < MOTOR_FORCE_FEEDBACK_EFFECT_COUNT; ++slot) {
-        MotorForceFeedbackEffect *effect = &engine->effects[slot];
-        if (effect->type != MOTOR_FORCE_FEEDBACK_EFFECT_WINDOW) {
-            continue;
-        }
-        effect->data.window.lower_position = (int32_t)((int64_t)effect->data.window.lower_position *
-                                                       current_half_range / previous_half_range);
-        effect->data.window.upper_position = (int32_t)((int64_t)effect->data.window.upper_position *
-                                                       current_half_range / previous_half_range);
-    }
 }
 
 /**

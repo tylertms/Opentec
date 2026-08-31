@@ -106,6 +106,35 @@ static void test_velocity_and_center_boundaries(void) {
            kMotorEncoderCalibrationPending);
 }
 
+static void test_encoder_period_boundaries(void) {
+    MotorEncoderCalibrationState state;
+    motor_encoder_calibration_initialize(&state);
+    state.phase = kMotorEncoderCalibrationSettleForward;
+    state.settle_count = 999U;
+    state.velocity_lower = 295;
+    state.velocity_upper = 359;
+
+    MotorEncoderCalibrationInput input = {
+        .velocity = 327,
+        .position = 0x5c80U / 2U - 1U,
+        .encoder_period = 0x5c80U,
+    };
+    assert(!motor_encoder_calibration_step(&state, &input).arm_revolution);
+    input.position = 0x5c80U / 2U;
+    assert(motor_encoder_calibration_step(&state, &input).arm_revolution);
+
+    motor_encoder_calibration_initialize(&state);
+    state.phase = kMotorEncoderCalibrationSettleForward;
+    state.settle_count = 999U;
+    state.velocity_lower = 295;
+    state.velocity_upper = 359;
+    input.position = 0x5d2cU / 2U - 1U;
+    input.encoder_period = 0x5d2cU;
+    assert(!motor_encoder_calibration_step(&state, &input).arm_revolution);
+    input.position = 0x5d2cU / 2U;
+    assert(motor_encoder_calibration_step(&state, &input).arm_revolution);
+}
+
 static void test_correction_read(void) {
     MotorEncoderCalibrationRecord record = {
         .correction_scale = 0x00004000U,
@@ -148,6 +177,7 @@ static void test_persistent_record_validation(void) {
 int main(void) {
     test_capture_sequence();
     test_velocity_and_center_boundaries();
+    test_encoder_period_boundaries();
     test_correction_read();
     test_correction_direction_hysteresis();
     test_persistent_record_validation();

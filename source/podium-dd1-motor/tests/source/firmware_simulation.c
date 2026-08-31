@@ -163,6 +163,8 @@ static bool startup_output_state_safe(Kinetis *device) {
     uint32_t modulus = 0U;
     uint32_t ftm2_configuration = 0U;
     uint32_t ftm2_synchronization = 0U;
+    uint32_t ftm2_filter = 0U;
+    uint32_t ftm2_status = 0U;
     uint32_t spi_input_control = 0U;
     const bool readable =
         kinetis_read(device, UINT32_C(0x40038060), &output_mask, sizeof(output_mask)) &&
@@ -174,19 +176,21 @@ static bool startup_output_state_safe(Kinetis *device) {
                      sizeof(ftm2_configuration)) &&
         kinetis_read(device, UINT32_C(0x4003a08c), &ftm2_synchronization,
                      sizeof(ftm2_synchronization)) &&
+        kinetis_read(device, UINT32_C(0x4003a078), &ftm2_filter, sizeof(ftm2_filter)) &&
+        kinetis_read(device, UINT32_C(0x4003a000), &ftm2_status, sizeof(ftm2_status)) &&
         kinetis_read(device, UINT32_C(0x4004c01c), &spi_input_control, sizeof(spi_input_control));
     if (!readable || output_mask != UINT32_C(0x3f) || (mode & UINT32_C(0x60)) != UINT32_C(0x40) ||
         (combine & UINT32_C(0x737373)) != UINT32_C(0x737373) ||
         (deadtime & UINT32_C(0x3f)) != 50U || modulus != 2249U ||
-        ftm2_configuration != UINT32_C(0xc0) || ftm2_synchronization != 0U ||
-        (spi_input_control & UINT32_C(3)) != UINT32_C(2)) {
+        ftm2_configuration != UINT32_C(0xc0) || ftm2_synchronization != 0U || ftm2_filter != 0U ||
+        ftm2_status != 8U || (spi_input_control & UINT32_C(3)) != UINT32_C(2)) {
         fprintf(stderr,
                 "startup registers: readable=%u outmask=0x%08" PRIx32 " mode=0x%08" PRIx32
                 " combine=0x%08" PRIx32 " deadtime=0x%08" PRIx32 " mod=%" PRIu32
-                " ftm2-conf=0x%08" PRIx32 " ftm2-synconf=0x%08" PRIx32 " spi-input=0x%08" PRIx32
-                "\n",
+                " ftm2-conf=0x%08" PRIx32 " ftm2-synconf=0x%08" PRIx32 " ftm2-filter=0x%08" PRIx32
+                " ftm2-sc=0x%08" PRIx32 " spi-input=0x%08" PRIx32 "\n",
                 readable, output_mask, mode, combine, deadtime, modulus, ftm2_configuration,
-                ftm2_synchronization, spi_input_control);
+                ftm2_synchronization, ftm2_filter, ftm2_status, spi_input_control);
         return false;
     }
     for (uint32_t channel = 0U; channel < 6U; ++channel) {
@@ -221,6 +225,26 @@ static bool call_symbol(Kinetis *device, const char *path, const char *name) {
     for (uint8_t index = 0U; index < 15U; ++index)
         cortex_m4_set_register(kinetis_cpu(device), index, registers[index]);
     return returned && disabled;
+}
+
+static bool ftm2_reinitialization_matches(Kinetis *device, const char *path) {
+    const uint32_t dirty_status = UINT32_C(0xe7);
+    const uint32_t dirty_filter = UINT32_MAX;
+    if (!kinetis_write(device, UINT32_C(0x4003a000), &dirty_status, sizeof(dirty_status)) ||
+        !kinetis_write(device, UINT32_C(0x4003a078), &dirty_filter, sizeof(dirty_filter)))
+        return false;
+    CortexM4 *cpu = kinetis_cpu(device);
+    cortex_m4_set_register(cpu, 0U, 2249U);
+    cortex_m4_set_register(cpu, 1U, 0U);
+    cortex_m4_set_register(cpu, 2U, 0U);
+    cortex_m4_set_register(cpu, 3U, 0U);
+    if (!call_symbol(device, path, "motor_tick_timer_initialize"))
+        return false;
+    uint32_t status = 0U;
+    uint32_t filter = 0U;
+    return kinetis_read(device, UINT32_C(0x4003a000), &status, sizeof(status)) &&
+           kinetis_read(device, UINT32_C(0x4003a078), &filter, sizeof(filter)) && status == 8U &&
+           filter == 0U;
 }
 
 static bool pdb_status_clear_matches(Kinetis *device, const char *path) {
@@ -526,6 +550,157 @@ static bool stimulate_parameter_write(Kinetis *device, const char *path, const u
 }
 
 static bool parameter_read_matches(Kinetis *device, const char *path, uint8_t selector,
+                                   const uint8_t *expected, size_t size);
+
+static bool motor_bus_symbol_read(const Kinetis *device, const char *path, const char *name,
+                                  void *value, size_t size) {
+    uint32_t address = 0U;
+    return cortex_m4_elf_symbol(path, name, &address) && kinetis_read(device, address, value, size);
+}
+
+static bool motor_bus_active_matches(const Kinetis *device, const char *path, bool expected) {
+    uint8_t active = 0U;
+    return motor_bus_symbol_read(device, path, "motor_bus_active", &active, sizeof(active)) &&
+           active == expected;
+}
+
+static bool motor_bus_state_matches(const Kinetis *device, const char *path, uint8_t expected) {
+    uint8_t state = 0U;
+    return motor_bus_symbol_read(device, path, "motor_bus_state", &state, sizeof(state)) &&
+           state == expected;
+}
+
+static bool motor_bus_interrupt(Kinetis *device, const char *path) {
+    return run_to_symbol(device, path, "I2C0_IRQHandler", 100000U) &&
+           finish_interrupt(device, 1000U);
+}
+
+static bool motor_bus_service_tick(Kinetis *device, const char *path) {
+    return run_to_symbol(device, path, "motor_runtime_service_handler", 1000000U) &&
+           finish_interrupt(device, 1000000U);
+}
+
+static bool stimulate_bare_start_timeout(Kinetis *device, const char *path) {
+    if (!kinetis_i2c_detect_start(device, KINETIS_SERIAL_I2C0) ||
+        !motor_bus_interrupt(device, path) || !motor_bus_active_matches(device, path, true)) {
+        return false;
+    }
+    for (uint8_t tick = 0U; tick < 9U; ++tick) {
+        if (!motor_bus_service_tick(device, path) || !motor_bus_active_matches(device, path, true))
+            return false;
+    }
+    if (!motor_bus_service_tick(device, path) || !motor_bus_active_matches(device, path, false) ||
+        !motor_bus_state_matches(device, path, 0U))
+        return false;
+    return kinetis_i2c_detect_stop(device, KINETIS_SERIAL_I2C0);
+}
+
+static bool motor_bus_read_start(Kinetis *device, const char *path, uint8_t selector) {
+    return kinetis_i2c_detect_start(device, KINETIS_SERIAL_I2C0) &&
+           motor_bus_interrupt(device, path) &&
+           kinetis_i2c_address(device, KINETIS_SERIAL_I2C0, 0x78U, false) &&
+           motor_bus_interrupt(device, path) &&
+           kinetis_i2c_receive(device, KINETIS_SERIAL_I2C0, selector) &&
+           motor_bus_interrupt(device, path) &&
+           kinetis_i2c_detect_start(device, KINETIS_SERIAL_I2C0) &&
+           motor_bus_interrupt(device, path) &&
+           kinetis_i2c_address(device, KINETIS_SERIAL_I2C0, 0x78U, true) &&
+           motor_bus_interrupt(device, path);
+}
+
+static bool stimulate_partial_write_repeated_start(Kinetis *device, const char *path) {
+    static const uint8_t partial[] = {32U, 0x11U};
+    static const uint8_t complete[] = {32U, 0x82U};
+    static const uint8_t expected[] = {0x82U, 0U, 0U, 0U, 1U};
+    if (!kinetis_i2c_detect_start(device, KINETIS_SERIAL_I2C0) ||
+        !motor_bus_interrupt(device, path) ||
+        !kinetis_i2c_address(device, KINETIS_SERIAL_I2C0, 0x78U, false) ||
+        !motor_bus_interrupt(device, path)) {
+        return false;
+    }
+    for (size_t index = 0U; index < sizeof(partial); ++index) {
+        if (!kinetis_i2c_receive(device, KINETIS_SERIAL_I2C0, partial[index]) ||
+            !motor_bus_interrupt(device, path)) {
+            return false;
+        }
+    }
+    if (!kinetis_i2c_detect_start(device, KINETIS_SERIAL_I2C0) ||
+        !motor_bus_interrupt(device, path) ||
+        !kinetis_i2c_address(device, KINETIS_SERIAL_I2C0, 0x78U, false) ||
+        !motor_bus_interrupt(device, path)) {
+        return false;
+    }
+    for (size_t index = 0U; index < sizeof(complete); ++index) {
+        if (!kinetis_i2c_receive(device, KINETIS_SERIAL_I2C0, complete[index]) ||
+            !motor_bus_interrupt(device, path)) {
+            return false;
+        }
+    }
+    return kinetis_i2c_detect_stop(device, KINETIS_SERIAL_I2C0) &&
+           motor_bus_interrupt(device, path) &&
+           parameter_read_matches(device, path, 32U, expected, sizeof(expected));
+}
+
+static bool stimulate_early_read_nack(Kinetis *device, const char *path) {
+    uint16_t value = 0U;
+    if (!motor_bus_read_start(device, path, 32U) ||
+        !kinetis_serial_transmit(device, KINETIS_SERIAL_I2C0, &value) ||
+        !kinetis_i2c_acknowledge(device, KINETIS_SERIAL_I2C0, false) ||
+        !motor_bus_interrupt(device, path) || !motor_bus_active_matches(device, path, true) ||
+        !motor_bus_state_matches(device, path, 0U)) {
+        return false;
+    }
+    for (uint8_t tick = 0U; tick < 9U; ++tick) {
+        if (!motor_bus_service_tick(device, path) || !motor_bus_active_matches(device, path, true))
+            return false;
+    }
+    if (!motor_bus_service_tick(device, path) || !motor_bus_active_matches(device, path, false))
+        return false;
+    return kinetis_i2c_detect_stop(device, KINETIS_SERIAL_I2C0);
+}
+
+static bool stimulate_final_read_nack(Kinetis *device, const char *path) {
+    static const uint8_t expected[] = {0x82U, 0U, 0U, 0U, 1U};
+    uint16_t value = 0U;
+    if (!motor_bus_read_start(device, path, 32U))
+        return false;
+    for (size_t index = 0U; index < sizeof(expected); ++index) {
+        if (!kinetis_serial_transmit(device, KINETIS_SERIAL_I2C0, &value) ||
+            value != expected[index] ||
+            !kinetis_i2c_acknowledge(device, KINETIS_SERIAL_I2C0, index + 1U < sizeof(expected)) ||
+            !motor_bus_interrupt(device, path)) {
+            return false;
+        }
+    }
+    return motor_bus_active_matches(device, path, true) &&
+           kinetis_i2c_detect_stop(device, KINETIS_SERIAL_I2C0) &&
+           motor_bus_interrupt(device, path) && motor_bus_active_matches(device, path, false) &&
+           motor_bus_state_matches(device, path, 0U);
+}
+
+static bool stimulate_read_overread(Kinetis *device, const char *path) {
+    static const uint8_t expected[] = {0x82U, 0U, 0U, 0U, 1U};
+    uint16_t value = 0U;
+    if (!motor_bus_read_start(device, path, 32U))
+        return false;
+    for (size_t index = 0U; index < sizeof(expected); ++index) {
+        if (!kinetis_serial_transmit(device, KINETIS_SERIAL_I2C0, &value) ||
+            value != expected[index] ||
+            !kinetis_i2c_acknowledge(device, KINETIS_SERIAL_I2C0, true) ||
+            !motor_bus_interrupt(device, path)) {
+            return false;
+        }
+    }
+    if (kinetis_serial_transmit(device, KINETIS_SERIAL_I2C0, &value) ||
+        !motor_bus_active_matches(device, path, true) ||
+        !motor_bus_state_matches(device, path, 0U)) {
+        return false;
+    }
+    return kinetis_i2c_detect_stop(device, KINETIS_SERIAL_I2C0) &&
+           motor_bus_interrupt(device, path) && motor_bus_active_matches(device, path, false);
+}
+
+static bool parameter_read_matches(Kinetis *device, const char *path, uint8_t selector,
                                    const uint8_t *expected, size_t size) {
     if (!kinetis_i2c_detect_start(device, KINETIS_SERIAL_I2C0) ||
         !run_to_symbol(device, path, "I2C0_IRQHandler", 100000U) ||
@@ -705,7 +880,11 @@ int main(int argc, char **argv) {
         passed = passed && initialization_reads == 2U;
         kinetis_clear_uninitialized_sram_reads(device);
         static const uint8_t steering_range_response[] = {0x82U, 0U, 0U, 0U, 1U};
-        passed = passed &&
+        passed = passed && stimulate_bare_start_timeout(device, argv[1]) &&
+                 stimulate_partial_write_repeated_start(device, argv[1]) &&
+                 stimulate_early_read_nack(device, argv[1]) &&
+                 stimulate_final_read_nack(device, argv[1]) &&
+                 stimulate_read_overread(device, argv[1]) &&
                  stimulate_parameter_write(device, argv[1], steering_range_request,
                                            sizeof(steering_range_request), true) &&
                  parameter_read_matches(device, argv[1], 32U, steering_range_response,
@@ -717,6 +896,7 @@ int main(int argc, char **argv) {
                  stimulate_encoder(device, argv[1]) &&
                  stimulate_encoder_direction_failure(device, argv[1]) &&
                  stimulate_encoder_direction_pass(device, argv[1]) && run_phase(device, 1000000U) &&
+                 ftm2_reinitialization_matches(device, argv[1]) &&
                  fatal_output_state_safe(device, argv[1]);
     }
 

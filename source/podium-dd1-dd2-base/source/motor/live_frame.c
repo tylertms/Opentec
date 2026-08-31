@@ -30,22 +30,12 @@ static uint16_t crc16_shift(uint16_t crc, uint8_t byte) {
     return crc;
 }
 
-/**
- * @brief Calculates the motor-link frame checksum.
- *
- * Processes the nine bytes from the packet type through the payload with an initial value of zero,
- * then appends two zero bytes to obtain the transmitted CRC remainder.
- *
- * @param[in] input Packet type followed by the eight-byte payload.
- * @return CRC-16/CCITT remainder stored in the frame.
- */
 static uint16_t checksum(const uint8_t *input) {
     uint16_t crc = 0;
     for (uint8_t index = 0; index < MOTOR_LIVE_CHECKSUM_INPUT_SIZE; index++) {
         crc = crc16_shift(crc, input[index]);
     }
-    crc = crc16_shift(crc, 0);
-    return crc16_shift(crc, 0);
+    return crc;
 }
 
 /**

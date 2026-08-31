@@ -50,9 +50,6 @@ bool motor_force_feedback_directional_configure(MotorForceFeedbackEngine *engine
                                                 const uint8_t payload[5]);
 bool motor_force_feedback_effect_enable(MotorForceFeedbackEngine *engine, uint8_t slot);
 bool motor_force_feedback_effect_disable(MotorForceFeedbackEngine *engine, uint8_t slot);
-void motor_force_feedback_engine_rescale_windows(MotorForceFeedbackEngine *engine,
-                                                 int32_t previous_half_range,
-                                                 int32_t current_half_range);
 MotorForceFeedbackMix motor_force_feedback_mix(MotorForceFeedbackEngine *engine, uint32_t now,
                                                int32_t center, int32_t position, int32_t velocity,
                                                bool soft_stop_disabled);

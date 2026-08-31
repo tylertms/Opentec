@@ -93,6 +93,14 @@ static void test_wire_format(void) {
     assert(response_bytes[3] == 0x78U);
     assert(response_bytes[4] == 4U);
 
+    response = (MotorParameterResponse){.value = UINT32_MAX, .width = 2U};
+    motor_parameter_response_encode(&response, response_bytes);
+    assert(response_bytes[0] == 0xffU);
+    assert(response_bytes[1] == 0xffU);
+    assert(response_bytes[2] == 0xffU);
+    assert(response_bytes[3] == 0xffU);
+    assert(response_bytes[4] == 2U);
+
     MotorParameterBank bank = {0};
     bank.entries[33] = (MotorParameter){.width = 4U, .writable = true};
     uint8_t request[MOTOR_PARAMETER_REQUEST_SIZE] = {33U, 0x78U, 0x56U, 0x34U, 0x12U};

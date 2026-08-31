@@ -41,6 +41,9 @@ motor_is_target = (
 )
 
 if motor_is_target
+  if meson.get_compiler('c').version() != '15.3.1'
+    error('Arm GNU Toolchain 15.3.1 is required for release builds')
+  endif
   mcux_sdk = subproject('mcux-sdk')
   cmsis = subproject('cmsis')
   freemaster = subproject('freemaster')
@@ -55,6 +58,11 @@ if motor_is_target
   linker_script = files('source/firmware.ld')[0]
   objcopy = find_program('objcopy')
   python = import('python').find_installation()
+  fs = import('fs')
+  package_dependencies = files('../../tools/crypto.py')
+  if fs.exists(meson.project_source_root() / '.env')
+    package_dependencies += files('../../.env')
+  endif
 
   sdk_sources = sdk_device['clock']
   foreach driver : [
@@ -198,6 +206,7 @@ if motor_is_target
       '@INPUT@',
       '@OUTPUT@',
     ],
+    depend_files: files('tools/checksum.py'),
     build_subdir: 'package.p',
   )
   hex = custom_target(
@@ -230,7 +239,9 @@ if motor_is_target
       '--legacy-wide-secret',
       '--preserve-newlines',
     ],
+    depend_files: package_dependencies,
     build_by_default: true,
+    build_always_stale: true,
   )
 endif
 
