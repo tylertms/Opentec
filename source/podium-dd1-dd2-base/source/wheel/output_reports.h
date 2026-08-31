@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "wheel/interface_catalog.h"
+
 enum {
     WHEEL_OUTPUT_REPORT_ONE_SIZE = 12,
     WHEEL_OUTPUT_REPORT_TWO_SIZE = 18,
@@ -29,6 +31,7 @@ typedef struct {
     uint8_t report_five[WHEEL_OUTPUT_REPORT_FIVE_SIZE];
     uint8_t report_seventeen[WHEEL_OUTPUT_REPORT_SEVENTEEN_SIZE];
     uint8_t remote_telemetry[WHEEL_OUTPUT_REMOTE_TELEMETRY_SIZE];
+    WheelInterfaceCatalog interface_catalog;
     uint32_t interface_mode_toggle_deadline_ms;
     uint8_t report_seventeen_sequence;
     uint8_t remote_telemetry_transmissions;

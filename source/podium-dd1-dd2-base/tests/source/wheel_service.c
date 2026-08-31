@@ -660,8 +660,8 @@ static void test_filters_adapter_remote_tuning_active_state(void) {
     wheel_service_queue_adapter_remote_tuning_active(&service, true);
     assert(service.adapter_commands.remote_tuning_active == 0);
 
-    service.protocol.adapter.connected = false;
     service.protocol.mode = 4;
+    service.protocol.adapter.connected = false;
     wheel_service_queue_adapter_remote_tuning_active(&service, true);
     assert(service.adapter_commands.remote_tuning_active == 0);
 }
@@ -965,6 +965,26 @@ static void test_activates_interface_presentation_by_connection(void) {
     assert(service.adapter_commands.interface_presentation_pending);
     assert(service.adapter_commands.interface_presentation_offset == 0x20);
 
+    service = (WheelService){0};
+    service.protocol.mode = 16;
+    service.protocol.adapter.connected = true;
+    service.protocol.adapter.mode = 1;
+    assert(wheel_service_activate_interface_presentation(&service, 4));
+    assert(!service.adapter_commands.interface_presentation_pending);
+    assert(wheel_output_reports_encode_next(&service.protocol.output_reports, 16, frame));
+    assert(frame[1] == 0x80);
+
+    service = (WheelService){0};
+    service.protocol.mode = 16;
+    service.protocol.adapter.connected = true;
+    service.protocol.adapter.mode = 1;
+    assert(wheel_service_activate_interface_presentation(&service, 5));
+    assert(!service.adapter_commands.interface_presentation_pending);
+    assert(wheel_output_reports_encode_next(&service.protocol.output_reports, 16, frame));
+    assert(frame[0] == 0xa6);
+    assert(frame[1] == 0x81);
+
+    service.protocol.mode = 4;
     service.protocol.adapter.connected = false;
     assert(!wheel_service_activate_interface_presentation(&service, 1));
     assert(!wheel_service_activate_interface_presentation(NULL, 1));

@@ -81,11 +81,45 @@ bool usb_playstation_wheel_value_apply(UsbPlaystationWheelValue *value,
         value->legacy_axes[1] = low;
         value->deadline_ms = now_ms + PLAYSTATION_WHEEL_VALUE_TIMEOUT_MS;
         value->release_pending = true;
+        value->axis_copy_enabled = true;
     } else if (value->release_pending) {
         value->legacy_axes[0] = high;
         value->legacy_axes[1] = low;
         value->release_pending = false;
     }
+    return true;
+}
+
+/**
+ * @brief Selects continuous attached-wheel axis copying.
+ *
+ * Retains the normalized gate until another host command replaces it.
+ *
+ * @param[in,out] value Current wheel-value state.
+ * @param[in] enabled True to copy processed attached-wheel axes continuously.
+ */
+void usb_playstation_wheel_value_set_axis_copy(UsbPlaystationWheelValue *value, bool enabled) {
+    if (value != NULL) {
+        value->axis_copy_enabled = enabled;
+    }
+}
+
+/**
+ * @brief Copies processed attached-wheel axes into the protocol value.
+ *
+ * While the persistent gate is enabled, swaps the two source axes into the high-byte-first legacy
+ * protocol order without changing the host-command expiry deadline.
+ *
+ * @param[in,out] value Current wheel-value state.
+ * @param[in] axes Two processed attached-wheel axis bytes.
+ * @return True when the gated axes were copied.
+ */
+bool usb_playstation_wheel_value_copy_axes(UsbPlaystationWheelValue *value, const uint8_t axes[2]) {
+    if (value == NULL || axes == NULL || !value->axis_copy_enabled) {
+        return false;
+    }
+    value->legacy_axes[0] = axes[1];
+    value->legacy_axes[1] = axes[0];
     return true;
 }
 

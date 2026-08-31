@@ -92,6 +92,7 @@
 #include "usb/device.h"
 #include "usb/diagnostic_report.h"
 #include "usb/fallback_command.h"
+#include "usb/fallback_tuning.h"
 #include "usb/fanatec_encoder.h"
 #include "usb/fanatec_input.h"
 #include "usb/host_capability_recovery.h"
@@ -916,14 +917,12 @@ static void service_motor_link(void) {
 }
 
 /**
- * @brief Applies the active retained tuning profile to runtime consumers.
+ * @brief Refreshes consumers of the current runtime tuning profile.
  *
- * Copies the active slot into runtime storage and refreshes cooling, pedal, wheel, and motor
- * settings that take effect immediately.
+ * Applies the current runtime values to cooling, pedal, wheel, and motor services without
+ * changing retained setup storage.
  */
-static void apply_active_tuning_profile(void) {
-    runtime_tuning_profile = *tuning_profile_bank_active(&base_settings.tuning_profiles);
-    tuning_profile = &runtime_tuning_profile;
+static void refresh_runtime_tuning_profile(void) {
     cooling_effect_strengths = (CoolingEffectStrengths){
         .force = tuning_profile->force_effect_strength,
         .spring = tuning_profile->spring_effect_strength,
@@ -947,6 +946,18 @@ static void apply_active_tuning_profile(void) {
     if (motor_tuning_ready) {
         motor_tuning_service_refresh(&motor_tuning_service, tuning_profile, &motor_tuning_context);
     }
+}
+
+/**
+ * @brief Applies the active retained tuning profile to runtime consumers.
+ *
+ * Copies the active slot into runtime storage and refreshes cooling, pedal, wheel, and motor
+ * settings that take effect immediately.
+ */
+static void apply_active_tuning_profile(void) {
+    runtime_tuning_profile = *tuning_profile_bank_active(&base_settings.tuning_profiles);
+    tuning_profile = &runtime_tuning_profile;
+    refresh_runtime_tuning_profile();
 }
 
 /**
@@ -2386,31 +2397,25 @@ static void reset_host_force_feedback_outputs(void) {
 }
 
 /**
- * @brief Constrains an official fallback setting to its supported maximum.
- *
- * @param[in] value Requested unsigned setting.
- * @param[in] maximum Highest accepted setting.
- * @return Requested value or the supported maximum.
- */
-static uint8_t fallback_clamp(uint8_t value, uint8_t maximum) {
-    return value > maximum ? maximum : value;
-}
-
-/**
  * @brief Applies a transient automatic steering-range update.
  *
- * Changes range only while automatic sensitivity is selected, rescales the base-side position
- * effects, and refreshes the motor tuning service with the new concrete range.
+ * Changes range only for the official 1300-degree or automatic sensitivity gates, rescales the
+ * base-side position effects, and refreshes the motor tuning service with the new concrete range.
  *
  * @param[in] degrees Requested lock-to-lock steering range.
  */
 static void apply_fallback_steering_range(uint16_t degrees) {
-    if (tuning_profile->automatic_rotation == 0) {
+    if (!usb_fallback_tuning_range_allowed(tuning_profile)) {
         return;
     }
     uint32_t previous = wheel_position_travel_from_degrees(tuning_profile->rotation_degrees);
-    runtime_tuning_profile.rotation_degrees = degrees;
-    tuning_profile_normalize(&runtime_tuning_profile);
+    if (degrees < TUNING_ROTATION_MIN_DEGREES) {
+        degrees = TUNING_ROTATION_MIN_DEGREES;
+    } else if (degrees > TUNING_ROTATION_MAX_DEGREES) {
+        degrees = TUNING_ROTATION_MAX_DEGREES;
+    }
+    runtime_tuning_profile.rotation_degrees =
+        (uint16_t)(degrees / TUNING_ROTATION_STEP_DEGREES * TUNING_ROTATION_STEP_DEGREES);
     uint32_t current = wheel_position_travel_from_degrees(tuning_profile->rotation_degrees);
     (void)force_feedback_state_rescale_positions(&force_feedback_state, (int32_t)previous,
                                                  (int32_t)current);
@@ -2423,80 +2428,24 @@ static void apply_fallback_steering_range(uint16_t degrees) {
 /**
  * @brief Applies an active-slot fallback tuning command.
  *
- * The direct tuning interface updates official setup one only. Values use their command-specific
- * clamps, then the clean profile is applied to all runtime consumers and scheduled for storage.
- * Sensitivity additionally rescales base-side position effects.
+ * The direct tuning interface accepts official setup one only. Values use their command-specific
+ * clamps and update runtime consumers without changing retained setup storage. Sensitivity also
+ * rescales base-side position effects.
  *
  * @param[in] command Decoded fallback tuning command.
  */
 static void apply_fallback_tuning(const UsbFallbackCommand *command) {
-    if (base_settings.tuning_profiles.active_slot != 0) {
-        return;
-    }
-
-    TuningProfile *profile = &base_settings.tuning_profiles.slots[0];
     uint32_t previous = wheel_position_travel_from_degrees(tuning_profile->rotation_degrees);
-    switch (command->kind) {
-    case USB_FALLBACK_SENSITIVITY: {
-        uint8_t encoded = (uint8_t)(command->value / 10U - 127U);
-        if (encoded == 126U) {
-            profile->automatic_rotation = 1;
-            profile->rotation_degrees = TUNING_ROTATION_MAX_DEGREES;
-        } else {
-            int16_t signed_encoded = encoded <= INT8_MAX ? encoded : (int16_t)encoded - 256;
-            int16_t units = signed_encoded + 127;
-            profile->automatic_rotation = 0;
-            profile->rotation_degrees =
-                units > 0 ? (uint16_t)units * TUNING_ROTATION_STEP_DEGREES : 0;
-        }
-        break;
-    }
-    case USB_FALLBACK_FORCE_FEEDBACK_STRENGTH:
-        profile->force_feedback_strength = fallback_clamp(command->parameters[0], 100);
-        break;
-    case USB_FALLBACK_FORCE_SCALE:
-        profile->force_scale =
-            command->parameters[0] == 2 ? TUNING_FORCE_SCALE_PEAK : TUNING_FORCE_SCALE_LINEAR;
-        break;
-    case USB_FALLBACK_NATURAL_DAMPER:
-        profile->natural_damper = fallback_clamp(command->parameters[0], 100);
-        break;
-    case USB_FALLBACK_NATURAL_FRICTION:
-        profile->natural_friction = fallback_clamp(command->parameters[0], 100);
-        break;
-    case USB_FALLBACK_NATURAL_INERTIA:
-        profile->natural_inertia = fallback_clamp(command->parameters[0], 100);
-        break;
-    case USB_FALLBACK_INTERPOLATION:
-        profile->interpolation_filter = fallback_clamp(command->parameters[0], 20);
-        break;
-    case USB_FALLBACK_FORCE_EFFECT_INTENSITY:
-        profile->force_effect_intensity = fallback_clamp(command->parameters[0], 100);
-        break;
-    case USB_FALLBACK_FORCE_EFFECT_STRENGTH:
-        profile->force_effect_strength = fallback_clamp(command->parameters[0], 12);
-        break;
-    case USB_FALLBACK_SPRING_EFFECT_STRENGTH:
-        profile->spring_effect_strength = fallback_clamp(command->parameters[0], 12);
-        break;
-    case USB_FALLBACK_DAMPER_EFFECT_STRENGTH:
-        profile->damper_effect_strength = fallback_clamp(command->parameters[0], 12);
-        break;
-    case USB_FALLBACK_VIBRATION_STRENGTH:
-        profile->vibration_strength = fallback_clamp(command->parameters[0], 12);
-        break;
-    default:
+    if (!usb_fallback_tuning_apply(command, base_settings.tuning_profiles.active_slot,
+                                   &runtime_tuning_profile)) {
         return;
     }
-
-    tuning_profile_normalize(profile);
-    apply_active_tuning_profile();
+    refresh_runtime_tuning_profile();
     if (command->kind == USB_FALLBACK_SENSITIVITY) {
         uint32_t current = wheel_position_travel_from_degrees(tuning_profile->rotation_degrees);
         (void)force_feedback_state_rescale_positions(&force_feedback_state, (int32_t)previous,
                                                      (int32_t)current);
     }
-    base_settings_persistence_mark_dirty(&settings_persistence);
 }
 
 /**
@@ -2528,8 +2477,7 @@ static uint16_t fallback_display_report(uint8_t flags) {
  * @brief Applies one decoded direct fallback command.
  *
  * Routes steering, tuning, display, cooling, and security operations to their existing subsystem
- * boundaries. Security disable is stored immediately; other tuning changes use normal deferred
- * settings persistence.
+ * boundaries. Security disable is stored immediately; tuning changes remain transient.
  *
  * @param[in] command Decoded direct fallback command.
  */
@@ -2596,10 +2544,10 @@ static bool apply_fallback_device_command(const UsbOperatingModeCommand *command
         if (tuning_profile->brake_indicator_level == 101) {
             usb_playstation_wheel_value_set(&usb_playstation_wheel_value, command->parameters[1],
                                             command->parameters[2], platform_time_ms());
-            if (command->parameters[3] != 0) {
-                wheel_service_set_legacy_axes(
-                    &wheel_service, usb_playstation_wheel_value_axes(&usb_playstation_wheel_value));
-            }
+            usb_playstation_wheel_value_set_axis_copy(&usb_playstation_wheel_value,
+                                                      command->parameters[3] == 1);
+            wheel_service_set_legacy_axes(
+                &wheel_service, usb_playstation_wheel_value_axes(&usb_playstation_wheel_value));
         }
         return true;
     case 0x05:
@@ -4328,8 +4276,12 @@ int main(void) {
             wheel_steering_limits_active(&base_settings.steering_limits,
                                          base_settings.tuning_profiles.active_slot),
             now_ms);
-        if (usb_device_operating_mode() == USB_OPERATING_MODE_PLAYSTATION &&
-            usb_playstation_wheel_value_expire(&usb_playstation_wheel_value, now_ms)) {
+        if (usb_playstation_wheel_value_expire(&usb_playstation_wheel_value, now_ms)) {
+            wheel_service_set_legacy_axes(
+                &wheel_service, usb_playstation_wheel_value_axes(&usb_playstation_wheel_value));
+        }
+        if (usb_playstation_wheel_value_copy_axes(&usb_playstation_wheel_value,
+                                                  wheel_service_clutch_paddles(&wheel_service))) {
             wheel_service_set_legacy_axes(
                 &wheel_service, usb_playstation_wheel_value_axes(&usb_playstation_wheel_value));
         }

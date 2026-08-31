@@ -93,11 +93,29 @@ static void test_rejects_other_reports(void) {
     assert(usb_playstation_wheel_value_axes(NULL) == NULL);
 }
 
+static void test_persistently_copies_attached_wheel_axes(void) {
+    UsbPlaystationWheelValue value;
+    usb_playstation_wheel_value_init(&value);
+    const uint8_t axes[] = {0x12, 0x34};
+
+    assert(!usb_playstation_wheel_value_copy_axes(&value, axes));
+    usb_playstation_wheel_value_set_axis_copy(&value, true);
+    assert(usb_playstation_wheel_value_copy_axes(&value, axes));
+    assert(value.legacy_axes[0] == 0x34);
+    assert(value.legacy_axes[1] == 0x12);
+
+    usb_playstation_wheel_value_set_axis_copy(&value, false);
+    assert(!usb_playstation_wheel_value_copy_axes(&value, axes));
+    assert(!usb_playstation_wheel_value_copy_axes(NULL, axes));
+    assert(!usb_playstation_wheel_value_copy_axes(&value, NULL));
+}
+
 int main(void) {
     test_applies_asserted_value_in_wheel_order();
     test_applies_one_release_value();
     test_sets_protocol_value_directly();
     test_expires_strictly_after_deadline();
     test_rejects_other_reports();
+    test_persistently_copies_attached_wheel_axes();
     return 0;
 }

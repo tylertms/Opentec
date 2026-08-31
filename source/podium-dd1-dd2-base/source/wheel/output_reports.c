@@ -45,6 +45,7 @@ enum {
  */
 void wheel_output_reports_init(WheelOutputReports *reports) {
     memset(reports, 0, sizeof(*reports));
+    wheel_interface_catalog_init(&reports->interface_catalog);
 }
 
 /**
@@ -133,9 +134,9 @@ void wheel_output_reports_queue_display_command(WheelOutputReports *reports, uin
 /**
  * @brief Activates one legacy host-interface presentation on the attached wheel.
  *
- * Replaces any earlier presentation cycle. Modes one through three emit the empty command records
- * 0x20 through 0x22 three times. Mode three also queues display command one. Other mode values
- * clear an active presentation cycle without disturbing independent output reports.
+ * Replaces any earlier direct presentation cycle. Modes one through three emit the empty command
+ * records 0x20 through 0x22 three times, with mode three also queuing display command one. Modes
+ * four and five restart the remote-tuning record and indexed-help catalog streams.
  *
  * @param[in,out] reports Retained attached-wheel output state.
  * @param[in] mode Requested legacy host-interface presentation mode.
@@ -147,6 +148,9 @@ void wheel_output_reports_activate_interface_presentation(WheelOutputReports *re
     }
     reports->interface_presentation_command = 0;
     reports->interface_presentation_transmissions = 0;
+    if (wheel_interface_catalog_activate(&reports->interface_catalog, mode)) {
+        return;
+    }
     if (mode < WHEEL_OUTPUT_INTERFACE_PRESENTATION_FIRST_MODE ||
         mode > WHEEL_OUTPUT_INTERFACE_PRESENTATION_LAST_MODE) {
         return;
@@ -365,13 +369,13 @@ void wheel_output_reports_queue_six(WheelOutputReports *reports, uint8_t first, 
 /**
  * @brief Encodes the next pending attached-wheel output report.
  *
- * Selects reports in the order 1, 2, 4, 5, 6, 17, native display command, remote telemetry, and
- * changed button illumination. Single-frame reports write their report number and retained payload
- * at frame offsets one and two, then consume their pending state. Reports four and six use the same
- * 25-byte payload. Report 17 emits its next segmented transfer frame. Remote telemetry writes
- * command 3 and its 30-byte payload for three successive selections. Button illumination uses
- * command 0x16 only in remote-tuning wheel modes. The caller supplies the command byte and
- * checksum.
+ * Selects reports in the order 1, 2, 4, 5, 6, 17, host-interface catalogs, native display command,
+ * remote telemetry, and changed button illumination. Single-frame reports write their report
+ * number and retained payload at frame offsets one and two, then consume their pending state.
+ * Reports four and six use the same 25-byte payload. Report 17 emits its next segmented transfer
+ * frame. Catalogs emit one definition or indexed-help chunk. Remote telemetry writes command 3 and
+ * its 30-byte payload for three successive selections. Button illumination uses command 0x16 only
+ * in remote-tuning wheel modes. The caller supplies the checksum.
  *
  * @param[in,out] reports Retained report payloads and pending state.
  * @param[in] wheel_mode Negotiated attached-wheel mode.
@@ -412,6 +416,9 @@ bool wheel_output_reports_encode_next(WheelOutputReports *reports, uint8_t wheel
         pending = WHEEL_OUTPUT_REPORT_SIX_PENDING;
     } else if ((reports->pending & WHEEL_OUTPUT_REPORT_SEVENTEEN_PENDING) != 0) {
         encode_report_seventeen(reports, frame);
+        return true;
+    } else if (wheel_interface_catalog_encode_next(&reports->interface_catalog, wheel_mode,
+                                                   frame)) {
         return true;
     } else if (reports->interface_presentation_transmissions != 0) {
         memset(frame + 1, 0, 31);

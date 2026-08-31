@@ -297,9 +297,58 @@ static void test_activates_legacy_interface_presentations(void) {
     }
 
     wheel_output_reports_activate_interface_presentation(&reports, 2);
-    wheel_output_reports_activate_interface_presentation(&reports, 4);
+    wheel_output_reports_activate_interface_presentation(&reports, 6);
     assert(!wheel_output_reports_encode_next(&reports, 0, frame));
     wheel_output_reports_activate_interface_presentation(NULL, 1);
+}
+
+static void test_streams_interface_catalogs(void) {
+    WheelOutputReports reports;
+    uint8_t frame[33];
+    wheel_output_reports_init(&reports);
+
+    wheel_output_reports_activate_interface_presentation(&reports, 4);
+    for (uint8_t record = 0; record < 26; record++) {
+        memset(frame, 0xff, sizeof(frame));
+        assert(wheel_output_reports_encode_next(&reports, 0, frame));
+        assert(frame[1] == 0x80);
+    }
+    assert(!wheel_output_reports_encode_next(&reports, 0, frame));
+
+    wheel_output_reports_activate_interface_presentation(&reports, 4);
+    for (uint8_t record = 0; record < 5; record++) {
+        assert(wheel_output_reports_encode_next(&reports, 0x1c, frame));
+    }
+    assert(frame[2] == 0x06);
+
+    wheel_output_reports_init(&reports);
+    wheel_output_reports_activate_interface_presentation(&reports, 5);
+    assert(wheel_output_reports_encode_next(&reports, 0, frame));
+    assert(frame[0] == 0xa6);
+    assert(frame[1] == 0x81);
+    assert(frame[2] == 0);
+    assert(frame[3] == 3);
+    assert(memcmp(frame + 5, "SETUP", 5) == 0);
+    assert(wheel_output_reports_encode_next(&reports, 0, frame));
+    assert(frame[3] == 0);
+    assert(memcmp(frame + 5, "Selected Tuning Menu Setup", 25) == 0);
+
+    uint16_t transfers = 2;
+    bool found_page_sixteen_high = false;
+    while (wheel_output_reports_encode_next(&reports, 0, frame)) {
+        transfers++;
+        assert(transfers < 512);
+        assert(!(frame[2] == 16 && frame[3] == 14));
+        if (found_page_sixteen_high) {
+            assert(frame[2] == 17);
+            assert(frame[3] == 3);
+            found_page_sixteen_high = false;
+        }
+        if (frame[2] == 16 && frame[3] == 13) {
+            found_page_sixteen_high = true;
+        }
+    }
+    assert(transfers > 26 * 7);
 }
 
 static void test_sends_button_illumination_changes_to_remote_tuning_modes(void) {
@@ -333,6 +382,7 @@ int main(void) {
     test_streams_report_seventeen_after_direct_reports();
     test_sends_native_display_command_after_report_seventeen();
     test_activates_legacy_interface_presentations();
+    test_streams_interface_catalogs();
     test_repeats_remote_telemetry_after_report_seventeen();
     test_sends_button_illumination_changes_to_remote_tuning_modes();
     return 0;

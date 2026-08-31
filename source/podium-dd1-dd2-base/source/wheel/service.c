@@ -1424,7 +1424,8 @@ bool wheel_service_activate_interface_presentation(WheelService *service, uint8_
         return false;
     }
     wheel_output_reports_activate_interface_presentation(&service->protocol.output_reports, mode);
-    if (service->protocol.adapter.connected && service->protocol.adapter.mode == 1) {
+    if (mode >= 1 && mode <= 3 && service->protocol.adapter.connected &&
+        service->protocol.adapter.mode == 1) {
         wheel_adapter_command_service_queue_interface_presentation(&service->adapter_commands,
                                                                    mode);
     }
