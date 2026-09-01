@@ -61,7 +61,7 @@ static void test_reset_clears_runtime_history(void) {
     assert(state.controller.bLimFlag == 0U);
 }
 
-int main(void) {
+int motor_test_velocity_control(void) {
     test_current_limiter_stops_integration();
     test_velocity_limiter_stops_integration();
     test_saturated_absolute_gate();

@@ -62,7 +62,7 @@ static void test_estimator(void) {
     assert(motor_encoder_delta_scale(&state, 0U, 0x002985a1U) == 83);
 }
 
-int main(void) {
+int motor_test_motion(void) {
     test_fixed_point_scaling();
     test_saturated_difference();
     test_filter();

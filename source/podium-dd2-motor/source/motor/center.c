@@ -1,7 +1,8 @@
 #include "motor/center.h"
 
+/** @brief Limits used by centered force-feedback position conversion. */
 enum {
-    CENTERED_POSITION_LIMIT = 0x143c0,
+    CENTERED_POSITION_LIMIT = 0x143c0, /**< Inclusive absolute centered-position limit. */
 };
 
 /**
@@ -10,12 +11,12 @@ enum {
  * A changed command retains the supplied circular offset inside one encoder revolution and
  * normalizes either shared endpoint according to the raw timer counter.
  *
- * @param state Persistent requested center and activation state.
- * @param requested New signed center command from the motor link.
- * @param encoder_modulus Positive encoder offset limit for one revolution.
- * @param encoder_counter Current raw encoder timer count.
- * @param wrap_threshold Timer count separating the two representations of the shared endpoint.
- * @param encoder_offset Persistent signed revolution offset to normalize.
+ * @param[in,out] state Persistent requested center and activation state.
+ * @param[in] requested New signed center command from the motor link.
+ * @param[in] encoder_modulus FTM2 modulus for one encoder revolution.
+ * @param[in] encoder_counter Current raw encoder timer count.
+ * @param[in] wrap_threshold Timer count separating the two representations of the shared endpoint.
+ * @param[in,out] encoder_offset Persistent signed revolution offset to normalize.
  * @return True when an active center command changed.
  */
 bool motor_center_command_apply(MotorCenterState *state, int16_t requested, int32_t encoder_modulus,
@@ -44,8 +45,8 @@ bool motor_center_command_apply(MotorCenterState *state, int16_t requested, int3
  * The commanded center is removed from the extended encoder position before the result is limited
  * to the range consumed by the force-feedback engine.
  *
- * @param position Current extended encoder position.
- * @param center Signed center command from the motor link.
+ * @param[in] position Current extended encoder position.
+ * @param[in] center Signed center command from the motor link.
  * @return Centered position clamped to plus or minus 82,880 counts.
  */
 int32_t motor_centered_position_resolve(int32_t position, int16_t center) {

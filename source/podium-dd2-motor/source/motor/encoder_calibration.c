@@ -3,24 +3,34 @@
 #include <limits.h>
 #include <string.h>
 
+/** @brief Encoder correction calibration targets, limits, and record constants. */
 enum {
-    MOTOR_ENCODER_CALIBRATION_SWEEP_VELOCITY = 327,
-    MOTOR_ENCODER_CALIBRATION_CENTER_VELOCITY = 655,
-    MOTOR_ENCODER_CALIBRATION_VELOCITY_TOLERANCE = 32,
-    MOTOR_ENCODER_CALIBRATION_SETTLE_COUNT = 1000,
-    MOTOR_ENCODER_CALIBRATION_CENTER_TOLERANCE = 100,
-    MOTOR_ENCODER_CALIBRATION_SAMPLE_DIVISOR = 10,
-    MOTOR_ENCODER_CALIBRATION_VERSION = 4U,
-    MOTOR_ENCODER_CALIBRATION_SCALE = 0x3333U,
-    MOTOR_ENCODER_CALIBRATION_SAMPLE_OFFSET = 2U,
-    MOTOR_ENCODER_CORRECTION_DIRECTION_THRESHOLD = 82,
+    MOTOR_ENCODER_CALIBRATION_SWEEP_VELOCITY = 327, /**< Absolute velocity target for sweeps. */
+    MOTOR_ENCODER_CALIBRATION_CENTER_VELOCITY = 655, /**< Absolute velocity target for centering. */
+    MOTOR_ENCODER_CALIBRATION_VELOCITY_TOLERANCE = 32, /**< Inclusive sweep velocity tolerance. */
+    MOTOR_ENCODER_CALIBRATION_SETTLE_COUNT = 1000, /**< Required settle service-step count. */
+    MOTOR_ENCODER_CALIBRATION_CENTER_TOLERANCE = 100, /**< Inclusive center-position tolerance. */
+    MOTOR_ENCODER_CALIBRATION_SAMPLE_DIVISOR = 10, /**< Position divisor for table samples. */
+    MOTOR_ENCODER_CALIBRATION_VERSION = 4U, /**< Supported persisted record version. */
+    MOTOR_ENCODER_CALIBRATION_SCALE = 0x3333U, /**< Persisted correction fixed-point scale. */
+    MOTOR_ENCODER_CALIBRATION_SAMPLE_OFFSET = 2U, /**< Persisted directional table sample offset. */
+    MOTOR_ENCODER_CORRECTION_DIRECTION_THRESHOLD = 82, /**< Direction-selection delta threshold. */
 };
 
+/** @brief Magic value identifying an encoder calibration record. */
 #define MOTOR_ENCODER_CALIBRATION_MAGIC UINT32_C(0xaaaaaaaa)
 
 _Static_assert(sizeof(MotorEncoderCalibrationRecord) == 0x255cU,
                "unexpected encoder calibration record size");
 
+/**
+ * @brief Calculates the CRC-32 for one encoder calibration record.
+ *
+ * The reflected polynomial covers every record byte before the checksum field.
+ *
+ * @param[in] record Calibration header and correction tables.
+ * @return Inverted CRC-32 value stored with the record.
+ */
 static uint32_t motor_encoder_calibration_checksum(const MotorEncoderCalibrationRecord *record) {
     const uint8_t *bytes = (const uint8_t *)record;
     uint32_t checksum = UINT32_MAX;
@@ -40,7 +50,7 @@ static uint32_t motor_encoder_calibration_checksum(const MotorEncoderCalibration
  * The most-negative signed value retains its wrapped representation, matching the official
  * fixed-point absolute-value primitive.
  *
- * @param value Signed calibration velocity.
+ * @param[in] value Signed calibration velocity.
  * @return Nonnegative magnitude, or the retained most-negative value.
  */
 static int16_t motor_encoder_calibration_abs(int16_t value) {
@@ -55,8 +65,8 @@ static int16_t motor_encoder_calibration_abs(int16_t value) {
  *
  * Both recovered limits are inclusive.
  *
- * @param state Calibration state containing the active velocity limits.
- * @param velocity Signed velocity sample to test.
+ * @param[in] state Calibration state containing the active velocity limits.
+ * @param[in] velocity Signed velocity sample to test.
  * @return True when the sample is inside the active window.
  */
 static bool motor_encoder_calibration_velocity_ready(const MotorEncoderCalibrationState *state,
@@ -70,10 +80,10 @@ static bool motor_encoder_calibration_velocity_ready(const MotorEncoderCalibrati
  * Every tenth relative encoder position advances the shift-three correction filter and stores the
  * result in the selected directional table.
  *
- * @param state Calibration filter and persistent correction tables.
- * @param reverse True to update the reverse table, or false to update the forward table.
- * @param relative_position Encoder position within one revolution.
- * @param correction Signed velocity-controller error sample.
+ * @param[in,out] state Calibration filter and persistent correction tables.
+ * @param[in] reverse True to update the reverse table, or false to update the forward table.
+ * @param[in] relative_position Encoder position within one revolution.
+ * @param[in] correction Signed velocity-controller error sample.
  */
 static void motor_encoder_calibration_sample(MotorEncoderCalibrationState *state, bool reverse,
                                              uint16_t relative_position, int16_t correction) {
@@ -100,7 +110,7 @@ static void motor_encoder_calibration_sample(MotorEncoderCalibrationState *state
  * Calibration begins with a zero velocity target and a shift-three correction filter while the
  * persistent record is cleared for a fresh pair of directional sweeps.
  *
- * @param state Calibration phase, filter, captured table, and persistent record.
+ * @param[out] state Calibration phase, filter, captured table, and persistent record.
  */
 void motor_encoder_calibration_initialize(MotorEncoderCalibrationState *state) {
     memset(state, 0, sizeof(*state));
@@ -111,10 +121,12 @@ void motor_encoder_calibration_initialize(MotorEncoderCalibrationState *state) {
  * @brief Advances one encoder correction calibration sample.
  *
  * The state machine settles at each recovered velocity target, captures one complete revolution
- * in each direction, returns the shaft to center, and finalizes the persistent record header.
+ * in each direction, returns the shaft to center, and prepares the persistent record header.
  *
- * @param state Persistent calibration phase, velocity window, filter, and correction tables.
- * @param input Current velocity, correction error, position, encoder phase, and revolution event.
+ * @param[in,out] state Persistent calibration phase, velocity window, filter, and correction
+ * tables.
+ * @param[in] input Current velocity, correction error, position, encoder phase, and revolution
+ * event.
  * @return Velocity and synchronization actions plus the completion result.
  */
 MotorEncoderCalibrationStep
@@ -196,7 +208,6 @@ motor_encoder_calibration_step(MotorEncoderCalibrationState *state,
         state->record.version = MOTOR_ENCODER_CALIBRATION_VERSION;
         state->record.correction_scale = MOTOR_ENCODER_CALIBRATION_SCALE;
         state->record.sample_offset = MOTOR_ENCODER_CALIBRATION_SAMPLE_OFFSET;
-        motor_encoder_calibration_record_finalize(&state->record);
         state->target_velocity = 0;
         state->phase = kMotorEncoderCalibrationInitialize;
         step.target_velocity = state->target_velocity;
@@ -212,10 +223,10 @@ motor_encoder_calibration_step(MotorEncoderCalibrationState *state,
  *
  * Direction applies the persisted sample offset before the board-selected table wrap and Q15 scale.
  *
- * @param record Valid persisted encoder correction record.
- * @param reverse True for the reverse-direction correction table.
- * @param relative_position Encoder position within one revolution.
- * @param table_length Board-selected correction-table wrap length.
+ * @param[in] record Valid persisted encoder correction record.
+ * @param[in] reverse True for the reverse-direction correction table.
+ * @param[in] relative_position Encoder position within one revolution.
+ * @param[in] table_length Board-selected correction-table wrap length.
  * @return Signed scaled encoder correction.
  */
 int16_t motor_encoder_correction_read(const MotorEncoderCalibrationRecord *record, bool reverse,
@@ -235,11 +246,11 @@ int16_t motor_encoder_correction_read(const MotorEncoderCalibrationRecord *recor
 /**
  * @brief Updates the encoder correction-table direction.
  *
- * The filtered position delta selects a new table only after crossing the official
- * direction threshold. Motion inside the dead band retains the previous selection.
+ * The filtered position delta selects a new table when it reaches the official direction threshold.
+ * Motion inside the dead band retains the previous selection.
  *
- * @param reverse Previously selected correction-table direction.
- * @param filtered_position_delta Filtered position change for the current control cycle.
+ * @param[in] reverse Previously selected correction-table direction.
+ * @param[in] filtered_position_delta Filtered position change for the current control cycle.
  * @return True when the reverse correction table must be used.
  */
 bool motor_encoder_correction_direction_update(bool reverse, int16_t filtered_position_delta) {
@@ -252,6 +263,13 @@ bool motor_encoder_correction_direction_update(bool reverse, int16_t filtered_po
     return reverse;
 }
 
+/**
+ * @brief Finalizes one encoder calibration record for persistent storage.
+ *
+ * The checksum covers the complete record except for the checksum field itself.
+ *
+ * @param[in,out] record Completed calibration header and correction tables.
+ */
 void motor_encoder_calibration_record_finalize(MotorEncoderCalibrationRecord *record) {
     record->checksum = motor_encoder_calibration_checksum(record);
 }
@@ -259,10 +277,10 @@ void motor_encoder_calibration_record_finalize(MotorEncoderCalibrationRecord *re
 /**
  * @brief Validates the official persisted encoder correction record header.
  *
- * Both the fixed magic and recovered calibration version must match.
+ * The fixed magic, recovered calibration version, and calculated CRC-32 must all match.
  *
- * @param record Encoder correction record loaded from calibration flash.
- * @return True when the magic and version match the official format.
+ * @param[in] record Encoder correction record loaded from calibration flash.
+ * @return True when the magic, version, and checksum match the official format.
  */
 bool motor_encoder_calibration_record_is_valid(const MotorEncoderCalibrationRecord *record) {
     return record->magic == MOTOR_ENCODER_CALIBRATION_MAGIC &&

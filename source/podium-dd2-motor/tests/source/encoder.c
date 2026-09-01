@@ -116,7 +116,7 @@ static void test_direction_check_failure(void) {
     assert(step.drive_current == 0);
 }
 
-int main(void) {
+int motor_test_encoder(void) {
     test_overflow_extension();
     test_position_update();
     test_reset();

@@ -60,7 +60,7 @@ static void test_centered_position(void) {
     assert(motor_centered_position_resolve(-100000, 1000) == -82880);
 }
 
-int main(void) {
+int motor_test_center(void) {
     test_inactive_and_unchanged();
     test_offset_clamp();
     test_shared_endpoint();

@@ -79,7 +79,7 @@ static void test_current_reference(void) {
     assert(reference.q == INT16_MIN);
 }
 
-int main(void) {
+int motor_test_control(void) {
     test_startup_sequence();
     test_calibration_transitions();
     test_request_decode();

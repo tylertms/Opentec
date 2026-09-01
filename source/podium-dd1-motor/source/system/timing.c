@@ -1,12 +1,5 @@
 #include "system/timing.h"
 
-/**
- * @brief Initializes the five official motor service countdown values.
- *
- * Telemetry, startup, ramp, index-search, and interlock timers receive their recovered defaults.
- *
- * @param timing Periodic motor-service timing state.
- */
 void motor_service_timing_initialize(MotorServiceTiming *timing) {
     *timing = (MotorServiceTiming){
         .countdowns =
@@ -20,15 +13,6 @@ void motor_service_timing_initialize(MotorServiceTiming *timing) {
     };
 }
 
-/**
- * @brief Advances five gated countdowns and the derating-control cadence.
- *
- * Active countdowns advance every service interrupt. The returned cadence event occurs after each
- * group of ten interrupts and matches the product current-derating controller schedule.
- *
- * @param timing Periodic motor-service timing state.
- * @return True every tenth service tick.
- */
 bool motor_service_timing_tick(MotorServiceTiming *timing) {
     for (uint32_t index = 0U; index < MOTOR_SERVICE_COUNTDOWN_COUNT; ++index) {
         MotorCountdown *countdown = &timing->countdowns[index];

@@ -134,7 +134,7 @@ static void test_local_force_feedback_gates(void) {
     assert(state.next_force_ramp_tick == 90U);
 }
 
-int main(void) {
+int motor_test_protocol(void) {
     test_live_force();
     test_remote_effects();
     test_status_command();

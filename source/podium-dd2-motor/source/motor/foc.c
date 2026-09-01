@@ -1,14 +1,19 @@
 #include "motor/foc.h"
 
 #include <limits.h>
-#include <mlib.h>
-
 #include "motor/pi.h"
 
-#pragma GCC optimize("O2")
-
+/** @brief Volatile counter retained by the FOC module. */
 volatile uint16_t gu16CntMmdvsq;
 
+/**
+ * @brief Squares one fixed-point value with the official endpoint saturation.
+ *
+ * The most-negative input saturates to the positive maximum instead of wrapping.
+ *
+ * @param[in] value Signed Q15 value to square.
+ * @return Saturated Q15 square.
+ */
 static frac16_t motor_foc_square(frac16_t value) {
     return value == INT16_MIN ? INT16_MAX : MLIB_Mul_F16(value, value);
 }
@@ -19,7 +24,7 @@ static frac16_t motor_foc_square(frac16_t value) {
  * D-axis and Q-axis paths receive the recovered gains, limits, filter coefficients, and cleared
  * anti-windup state.
  *
- * @param state Field-oriented control state to initialize.
+ * @param[out] state Field-oriented control state to initialize.
  */
 void motor_foc_initialize(MotorFocState *state) {
     state->d_controller.a32PGain = 0x9999;
@@ -54,9 +59,9 @@ void motor_foc_initialize(MotorFocState *state) {
  * The cycle transforms measured phase current, regulates D/Q error, compensates bus ripple, and
  * produces the next space-vector modulation duties.
  *
- * @param state Persistent current filters, PI controllers, and anti-windup flags.
- * @param input Phase currents, current references, rotor angle, and DC-bus voltage.
- * @param output Filtered currents, commanded voltage, SVM duties, and sector.
+ * @param[in,out] state Persistent current filters, PI controllers, and anti-windup flags.
+ * @param[in] input Phase currents, current references, rotor angle, and DC-bus voltage.
+ * @param[out] output Measured and filtered currents, commanded voltage, SVM duties, and sector.
  */
 void motor_foc_step(MotorFocState *state, const MotorFocInput *input, MotorFocOutput *output) {
     GMCLIB_2COOR_ALBE_T_F16 stationary_current;
@@ -77,6 +82,8 @@ void motor_foc_step(MotorFocState *state, const MotorFocInput *input, MotorFocOu
     if (input->dc_bus_voltage <= 0) {
         state->stop_d_integrator = 1U;
         state->stop_q_integrator = 1U;
+        state->d_controller.bLimFlag = 1U;
+        state->q_controller.bLimFlag = 1U;
         output->voltage = (GMCLIB_2COOR_DQ_T_F16){0};
         output->duty = (GMCLIB_3COOR_T_F16){
             .f16A = 0x4000,

@@ -1,10 +1,11 @@
 #include "motor/encoder.h"
 
+/** @brief Constants used by index seeking and direction diagnostics. */
 enum {
-    MOTOR_ENCODER_INDEX_DRIVE_CURRENT = 491,
-    MOTOR_ENCODER_DIRECTION_TOLERANCE = 10,
-    MOTOR_ENCODER_DIRECTION_RUNNING_STATUS = 0xaaaaU,
-    MOTOR_ENCODER_DIRECTION_FAILED_STATUS = 0xbbbbU,
+    MOTOR_ENCODER_INDEX_DRIVE_CURRENT = 491, /**< Fixed current used during index seeking. */
+    MOTOR_ENCODER_DIRECTION_TOLERANCE = 10, /**< Strict absolute error threshold for index spacing. */
+    MOTOR_ENCODER_DIRECTION_RUNNING_STATUS = 0xaaaaU, /**< Status word during diagnostics. */
+    MOTOR_ENCODER_DIRECTION_FAILED_STATUS = 0xbbbbU, /**< Status word after diagnostic failure. */
 };
 
 /**
@@ -12,9 +13,9 @@ enum {
  *
  * The board-selected encoder modulus is added or subtracted according to the hardware direction.
  *
- * @param state Persistent encoder position state.
- * @param modulus Board-selected encoder modulus.
- * @param increasing True when the FTM overflow direction is increasing.
+ * @param[in,out] state Persistent encoder position state.
+ * @param[in] modulus Board-selected encoder modulus.
+ * @param[in] increasing True when the FTM overflow direction is increasing.
  */
 void motor_encoder_overflow_apply(MotorEncoderState *state, int32_t modulus, bool increasing) {
     state->revolution_offset += increasing ? modulus : -modulus;
@@ -25,10 +26,10 @@ void motor_encoder_overflow_apply(MotorEncoderState *state, int32_t modulus, boo
  *
  * A pending overflow defers publication so the interrupt can update the revolution offset first.
  *
- * @param state Persistent encoder position state.
- * @param overflow_pending True while FTM2 has an unhandled overflow.
- * @param counter Current sixteen-bit FTM2 quadrature count.
- * @param position_limit Exclusive positive and negative safety limit.
+ * @param[in,out] state Persistent encoder position state.
+ * @param[in] overflow_pending True while FTM2 has an unhandled overflow.
+ * @param[in] counter Current sixteen-bit FTM2 quadrature count.
+ * @param[in] position_limit Exclusive positive and negative safety limit.
  * @return Pending, updated, or out-of-range result.
  */
 MotorEncoderPositionResult motor_encoder_position_update(MotorEncoderState *state,
@@ -50,7 +51,7 @@ MotorEncoderPositionResult motor_encoder_position_update(MotorEncoderState *stat
  *
  * The captured index zero remains available while the live revolution and position return to zero.
  *
- * @param state Persistent encoder position state.
+ * @param[in,out] state Persistent encoder position state whose zero counter is preserved.
  */
 void motor_encoder_position_reset(MotorEncoderState *state) {
     state->revolution_offset = 0;
@@ -62,9 +63,9 @@ void motor_encoder_position_reset(MotorEncoderState *state) {
  *
  * Counts before the captured zero wrap through the supplied hardware modulus.
  *
- * @param counter Current hardware quadrature counter.
- * @param zero_counter Captured encoder zero counter.
- * @param modulus Board-selected encoder counts per revolution.
+ * @param[in] counter Current hardware quadrature counter.
+ * @param[in] zero_counter Captured encoder zero counter.
+ * @param[in] modulus Board-selected encoder counts per revolution.
  * @return Unsigned encoder position relative to zero with one-revolution wrapping.
  */
 uint16_t motor_encoder_relative_position(uint16_t counter, uint16_t zero_counter,
@@ -81,8 +82,8 @@ uint16_t motor_encoder_relative_position(uint16_t counter, uint16_t zero_counter
  *
  * The fixed search current remains active until the index arrives or the countdown expires.
  *
- * @param index_detected True after the PORTE index interrupt captures a position.
- * @param timeout_remaining Active five-thousand-tick search countdown.
+ * @param[in] index_detected True after the PORTE index interrupt captures a position.
+ * @param[in] timeout_remaining Active five-thousand-tick search countdown.
  * @return Drive current, countdown state, and completion result for the search.
  */
 MotorEncoderIndexSeekStep motor_encoder_index_seek_step(bool index_detected,
@@ -102,7 +103,7 @@ MotorEncoderIndexSeekStep motor_encoder_index_seek_step(bool index_detected,
  *
  * A fresh diagnostic begins before the first forward index capture.
  *
- * @param state Diagnostic phase, captured positions, and reporting status.
+ * @param[out] state Diagnostic phase, captured positions, and reporting status.
  */
 void motor_encoder_direction_initialize(MotorEncoderDirectionState *state) {
     *state = (MotorEncoderDirectionState){0};
@@ -111,12 +112,13 @@ void motor_encoder_direction_initialize(MotorEncoderDirectionState *state) {
 /**
  * @brief Advances the official two-index encoder-direction diagnostic.
  *
- * Forward index captures establish one revolution before the motor returns to its start position.
+ * Forward index captures establish one revolution before the motor reaches or passes its start
+ * position on return.
  *
- * @param state Persistent diagnostic phase and captured positions.
- * @param index_seek_complete True when the active index search detected an index or timed out.
- * @param position Current extended encoder position.
- * @param encoder_modulus Expected encoder counts per revolution.
+ * @param[in,out] state Persistent diagnostic phase and captured positions.
+ * @param[in] index_seek_complete True when the active index search detected an index or timed out.
+ * @param[in] position Current extended encoder position.
+ * @param[in] encoder_modulus Expected encoder counts per revolution.
  * @return Diagnostic result and the drive, status, and index-search actions to apply.
  */
 MotorEncoderDirectionStep motor_encoder_direction_check_step(MotorEncoderDirectionState *state,

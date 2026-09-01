@@ -1,6 +1,7 @@
 #include "motor/pi.h"
 
 #include <assert.h>
+#include <stddef.h>
 #include <stdint.h>
 
 static GFLIB_CTRL_PI_P_AW_T_A32 controller(void) {
@@ -144,7 +145,7 @@ static void test_exhaustive_reference_equivalence(void) {
     }
 }
 
-int main(void) {
+int motor_test_pi(void) {
     test_reference_rounding();
     test_stopped_error_state();
     test_limits();

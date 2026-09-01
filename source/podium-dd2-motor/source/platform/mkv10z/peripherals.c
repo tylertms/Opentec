@@ -9,28 +9,58 @@
 #include "motor/control.h"
 #include "motor/motion.h"
 
+/** @brief Callback invoked by the FTM3 service timer. */
 static MotorTimerHandler service_timer_handler;
+/** @brief Context passed to the FTM3 service-timer callback. */
 static void *service_timer_context;
+/** @brief Callback invoked by the FTM4 communication timer. */
 static MotorTimerHandler communication_timer_handler;
+/** @brief Context passed to the FTM4 communication-timer callback. */
 static void *communication_timer_context;
+/** @brief Callback invoked for each FTM2 quadrature overflow. */
 static MotorEncoderOverflowHandler encoder_overflow_handler;
+/** @brief Context passed to the FTM2 overflow callback. */
 static void *encoder_overflow_context;
+/** @brief Callback invoked for a captured encoder index. */
 static MotorEncoderIndexHandler encoder_index_handler;
+/** @brief Context passed to the encoder-index callback. */
 static void *encoder_index_context;
+/** @brief True when the next FTM2 overflow completes an armed revolution. */
 static volatile bool encoder_revolution_armed;
+/** @brief True after an armed FTM2 overflow has completed a revolution. */
 static volatile bool encoder_revolution_complete;
+/** @brief Callback invoked for each completed ADC conversion. */
 static MotorAdcHandler adc_handler;
+/** @brief Context passed to the ADC callback. */
 static void *adc_context;
+/** @brief Fixed-point scale used to convert FTM2 counts to electrical angle. */
 static uint32_t adc_encoder_scale;
+/** @brief Board-selected ADC0 DC-bus channel. */
 static uint32_t adc0_auxiliary_channel;
+/** @brief Motor auxiliary sample retained until the driver sample completes the pair. */
 static uint16_t adc_auxiliary_first_sample;
+/** @brief Divider state for the deferred control-update cadence. */
 static uint8_t adc_control_conversion_count;
+/** @brief True when the next auxiliary conversion completes the retained sample pair. */
 static bool adc_auxiliary_second_sample;
 
+/**
+ * @brief ADC calibration polling constants.
+ */
 enum {
-    MOTOR_ADC_CALIBRATION_TIMEOUT = 1000000U,
+    /** @brief Maximum number of status reads for one ADC calibration. */
+    MOTOR_ADC_CALIBRATION_TIMEOUT = 1000000U, /**< Maximum ADC-calibration polling iterations. */
 };
 
+/**
+ * @brief Runs one bounded ADC hardware calibration.
+ *
+ * Software triggering is selected during calibration, completion and failure are polled with a
+ * fixed bound, and gain registers are published only after successful completion.
+ *
+ * @param[in,out] base ADC register block to calibrate.
+ * @return True when calibration completed without a hardware failure.
+ */
 static bool motor_adc_calibrate(ADC_Type *base) {
     bool hardware_trigger = (base->SC2 & ADC_SC2_ADTRG_MASK) != 0U;
     base->SC2 &= ~ADC_SC2_ADTRG_MASK;
@@ -62,16 +92,6 @@ static bool motor_adc_calibrate(ADC_Type *base) {
     return true;
 }
 
-/**
- * @brief Calibrates and configures both motor-current ADCs for PDB triggering.
- *
- * Both ADC modules are calibrated with hardware averaging, then restored to twelve-bit,
- * divider-two, non-continuous operation. ADC1 channel ten supplies the startup interrupt.
- *
- * @param encoder_scale Board-selected fixed-point electrical-angle scale.
- * @param handler Function invoked for each completed motor ADC conversion.
- * @param context Caller context passed to the ADC handler.
- */
 bool motor_adc_initialize(uint32_t encoder_scale, MotorAdcHandler handler, void *context) {
     adc16_config_t config;
 
@@ -113,10 +133,10 @@ bool motor_adc_initialize(uint32_t encoder_scale, MotorAdcHandler handler, void 
 }
 
 /**
- * @brief Publishes one official motor ADC interrupt sample to the control layer.
+ * @brief Dispatches one completed motor ADC interrupt to the control layer.
  *
  * The quadrature count is converted to electrical angle and the seven-conversion deferred cadence
- * is advanced before the runtime callback executes.
+ * is advanced before the runtime callback receives the electrical angle and cadence flag.
  */
 static void motor_adc_interrupt_dispatch(void) {
     int16_t electrical_angle =
@@ -155,12 +175,6 @@ void PDB0_PDB1_IRQHandler(void) {
     PDB0->SC |= PDB_SC_PDBEN_MASK;
 }
 
-/**
- * @brief Configures the PDB timing used to trigger both ADC modules.
- *
- * The shared modulus, midpoint interrupt, and two pretrigger delays reproduce the PWM-aligned
- * current and auxiliary conversion schedule.
- */
 void motor_adc_trigger_initialize(void) {
     pdb_config_t config;
 
@@ -178,11 +192,6 @@ void motor_adc_trigger_initialize(void) {
     PDB_DoLoadValues(PDB0);
 }
 
-/**
- * @brief Enables both timed ADC pretriggers after current-offset calibration.
- *
- * Both ADC channels receive two enabled output pretriggers without back-to-back operation.
- */
 void motor_adc_trigger_enable(void) {
     pdb_adc_pretrigger_config_t config = {
         .enablePreTriggerMask = 0x3U,
@@ -194,27 +203,12 @@ void motor_adc_trigger_enable(void) {
     PDB_SetADCPreTriggerConfig(PDB0, kPDB_ADCTriggerChannel1, &config);
 }
 
-/**
- * @brief Routes both current ADCs through the PDB for offset calibration.
- *
- * The route changes only when the startup state reaches current calibration. All six zero-duty
- * PWM outputs are unmasked at the same transition.
- */
 void motor_current_calibration_hardware_start(void) {
     SIM->SOPT7 |= SIM_SOPT7_ADC0TRGSEL(8U) | SIM_SOPT7_ADC0ALTTRGEN(2U) | SIM_SOPT7_ADC1TRGSEL(8U) |
                   SIM_SOPT7_ADC1ALTTRGEN(2U);
     motor_pwm_enable_outputs();
 }
 
-/**
- * @brief Polls the active ADC and advances two-phase current-offset calibration.
- *
- * The active calibration phase selects its ADC and installs the next channel routing at each phase
- * transition.
- *
- * @param state Current calibration stage, accumulation, and resulting offsets.
- * @return Pending, phase-B transition, or completed calibration.
- */
 MotorCurrentCalibrationResult motor_current_calibration_poll(MotorCurrentCalibrationState *state) {
     ADC_Type *adc;
 
@@ -256,14 +250,6 @@ MotorCurrentCalibrationResult motor_current_calibration_poll(MotorCurrentCalibra
     return result;
 }
 
-/**
- * @brief Selects the four PDB-triggered ADC channels used during motor control.
- *
- * ADC0 samples phase B and the board-selected auxiliary input. ADC1 samples phase A and starts
- * the alternating auxiliary sequence on channel two.
- *
- * @param auxiliary_channel Board-selected ADC0 auxiliary channel, either four or seven.
- */
 void motor_adc_runtime_initialize(uint32_t auxiliary_channel) {
     SIM->SOPT7 = 0U;
     adc16_channel_config_t channel_config = {
@@ -315,22 +301,11 @@ void motor_adc_auxiliary_rearm(void) {
     adc_auxiliary_second_sample = !adc_auxiliary_second_sample;
 }
 
-/**
- * @brief Configures the reset-pin filter for run, wait, and stop operation.
- *
- * The recovered reset filter mode and maximum filter width are applied without changing other RCM
- * fields.
- */
 void motor_reset_filter_initialize(void) {
     RCM->RPFC |= RCM_RPFC_RSTFLTSRW(1U);
     RCM->RPFW |= RCM_RPFW_RSTFLTSEL(31U);
 }
 
-/**
- * @brief Enables the eight interrupt sources and priorities used by motor firmware.
- *
- * ADC, PDB, I2C, FTM, and combined-port vectors receive the priorities recovered from both images.
- */
 void motor_interrupts_initialize(void) {
     EnableIRQ(ADC1_IRQn);
     NVIC_SetPriority(ADC1_IRQn, 2U);
@@ -350,12 +325,6 @@ void motor_interrupts_initialize(void) {
     NVIC_SetPriority(FTM4_IRQn, 1U);
 }
 
-/**
- * @brief Configures masked complementary PWM for all three motor phases.
- *
- * FTM0 receives the recovered period, dead time, complementary pairs, fault behavior, initial
- * compares, synchronization, and masked startup state.
- */
 void motor_pwm_initialize(void) {
     CLOCK_EnableClock(kCLOCK_Ftm0);
 
@@ -391,26 +360,10 @@ void motor_pwm_initialize(void) {
     FTM_StartTimer(FTM0, kFTM_SystemClock);
 }
 
-/**
- * @brief Unmasks all six PWM outputs for zero-duty current-offset calibration.
- *
- * The output mask is cleared only after zero-duty compares have been installed.
- */
 void motor_pwm_enable_outputs(void) { FTM0->OUTMASK = 0U; }
 
 void motor_pwm_disable_outputs(void) { FTM0->OUTMASK = 0x3fU; }
 
-/**
- * @brief Configures the FTM2 motor scheduling timer.
- *
- * The timer runs as a filtered quadrature decoder and retains callbacks for overflow and one-shot
- * encoder-index events.
- *
- * @param modulus Runtime timer period selected by the motor configuration.
- * @param handler Function invoked with the quadrature overflow direction.
- * @param index_handler Function invoked with the counter captured at the encoder index.
- * @param context Caller context passed to the overflow handler.
- */
 void motor_tick_timer_initialize(uint16_t modulus, MotorEncoderOverflowHandler handler,
                                  MotorEncoderIndexHandler index_handler, void *context) {
     encoder_overflow_handler = handler;
@@ -432,11 +385,6 @@ void motor_tick_timer_initialize(uint16_t modulus, MotorEncoderOverflowHandler h
     FTM2->SC = 8U;
 }
 
-/**
- * @brief Enables the official FTM2 overflow interrupt after the startup current ramp.
- *
- * The hardware count and calibration-revolution state are cleared before overflow extension starts.
- */
 void motor_encoder_overflow_interrupt_enable(void) {
     FTM2->CNT = 0U;
     encoder_revolution_armed = false;
@@ -445,48 +393,20 @@ void motor_encoder_overflow_interrupt_enable(void) {
     FTM_EnableInterrupts(FTM2, kFTM_TimeOverflowInterruptEnable);
 }
 
-/**
- * @brief Arms the official encoder calibration full-revolution event.
- *
- * The next FTM2 overflow publishes the one-shot revolution completion state.
- */
 void motor_encoder_revolution_arm(void) { encoder_revolution_armed = true; }
 
-/**
- * @brief Clears the encoder calibration full-revolution capture.
- *
- * Both the one-shot arm and completion state are released after each captured sweep, matching the
- * two flags cleared by both official motor images.
- */
 void motor_encoder_revolution_clear(void) {
     encoder_revolution_armed = false;
     encoder_revolution_complete = false;
 }
 
-/**
- * @brief Reads the official encoder calibration full-revolution event.
- *
- * The event remains set until the calibration state machine explicitly clears it.
- *
- * @return True after an armed FTM2 overflow.
- */
 bool motor_encoder_revolution_is_complete(void) { return encoder_revolution_complete; }
 
-/**
- * @brief Enables the official falling-edge encoder-index interrupt on PORTE24.
- *
- * Any stale port flag is cleared before the one-shot falling-edge trigger is armed.
- */
 void motor_encoder_index_interrupt_enable(void) {
     PORT_ClearPinsInterruptFlags(PORTE, 1UL << 24U);
     PORT_SetPinInterruptConfig(PORTE, 24U, kPORT_InterruptFallingEdge);
 }
 
-/**
- * @brief Disables and clears the official encoder-index interrupt on PORTE24.
- *
- * The port trigger is removed and any captured flag is discarded.
- */
 void motor_encoder_index_interrupt_disable(void) {
     PORT_SetPinInterruptConfig(PORTE, 24U, kPORT_InterruptOrDMADisabled);
     PORT_ClearPinsInterruptFlags(PORTE, 1UL << 24U);
@@ -533,9 +453,9 @@ void PORTB_PORTC_PORTD_PORTE_IRQHandler(void) {
  * The timer uses the system clock, divide-by-two prescaling, three overflow repetitions, and an
  * enabled overflow interrupt.
  *
- * @param timer FTM peripheral to configure.
- * @param clock Clock gate associated with the FTM peripheral.
- * @param modulus Timer modulus in peripheral clock counts.
+ * @param[in,out] timer FTM peripheral to configure.
+ * @param[in] clock Clock gate associated with the FTM peripheral.
+ * @param[in] modulus Timer modulus in peripheral clock counts.
  */
 static void motor_periodic_timer_initialize(FTM_Type *timer, clock_ip_name_t clock,
                                             uint16_t modulus) {
@@ -554,28 +474,12 @@ static void motor_periodic_timer_initialize(FTM_Type *timer, clock_ip_name_t clo
     timer->SC = (timer->SC & ~FTM_SC_PS_MASK) | FTM_SC_PS(1U);
 }
 
-/**
- * @brief Configures the FTM3 periodic motor-service interrupt at modulus 9000.
- *
- * The recovered shared periodic-timer configuration is bound to the runtime service callback.
- *
- * @param handler Function invoked for each service period.
- * @param context Caller context passed to the service handler.
- */
 void motor_service_timer_initialize(MotorTimerHandler handler, void *context) {
     service_timer_handler = handler;
     service_timer_context = context;
     motor_periodic_timer_initialize(FTM3, kCLOCK_Ftm3, 9000U);
 }
 
-/**
- * @brief Configures the FTM4 communication-timeout interrupt at modulus 3600.
- *
- * The recovered shared periodic-timer configuration is bound to delayed SPI response service.
- *
- * @param handler Function invoked for each communication period.
- * @param context Caller context passed to the communication handler.
- */
 void motor_communication_timeout_timer_initialize(MotorTimerHandler handler, void *context) {
     communication_timer_handler = handler;
     communication_timer_context = context;

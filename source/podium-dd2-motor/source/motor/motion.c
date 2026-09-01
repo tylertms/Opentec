@@ -7,7 +7,7 @@
  *
  * Values inside the range pass through unchanged.
  *
- * @param value Signed value to limit.
+ * @param[in] value Signed value to limit.
  * @return Sixteen-bit saturated result.
  */
 static int16_t motor_int16_saturate(int32_t value) {
@@ -25,7 +25,7 @@ static int16_t motor_int16_saturate(int32_t value) {
  *
  * Values inside the range pass through unchanged.
  *
- * @param value Wide signed accumulator value.
+ * @param[in] value Wide signed accumulator value.
  * @return Thirty-two-bit saturated result.
  */
 static int32_t motor_int32_saturate(int64_t value) {
@@ -43,8 +43,8 @@ static int32_t motor_int32_saturate(int64_t value) {
  *
  * The recovered mixed-width multiply is limited to the signed sixteen-bit output range.
  *
- * @param scale Unsigned fixed-point scale.
- * @param value Signed input value.
+ * @param[in] scale Unsigned fixed-point scale.
+ * @param[in] value Signed input value.
  * @return Scaled signed value limited to the sixteen-bit range.
  */
 int16_t motor_q15_scale_saturate(uint32_t scale, int16_t value) {
@@ -59,8 +59,8 @@ int16_t motor_q15_scale_saturate(uint32_t scale, int16_t value) {
  *
  * The recovered mixed-width multiply retains the low signed sixteen-bit result.
  *
- * @param scale Unsigned fixed-point scale.
- * @param value Signed input value.
+ * @param[in] scale Unsigned fixed-point scale.
+ * @param[in] value Signed input value.
  * @return Low sixteen bits of the scaled signed value.
  */
 int16_t motor_q15_scale_wrap(uint32_t scale, int16_t value) {
@@ -75,8 +75,8 @@ int16_t motor_q15_scale_wrap(uint32_t scale, int16_t value) {
  *
  * Subtraction clamps at the signed sixteen-bit endpoints.
  *
- * @param value Current sample.
- * @param previous Previous sample.
+ * @param[in] value Current sample.
+ * @param[in] previous Previous sample.
  * @return Signed difference limited to the sixteen-bit range.
  */
 int16_t motor_signed_difference_saturate(int16_t value, int16_t previous) {
@@ -89,8 +89,8 @@ int16_t motor_signed_difference_saturate(int16_t value, int16_t previous) {
  * The current input is accumulated, the shifted output is published, and that output leaks back
  * out of the persistent accumulator.
  *
- * @param filter Persistent filter accumulator and binary shift.
- * @param sample Current signed input sample.
+ * @param[in,out] filter Persistent filter accumulator and binary shift.
+ * @param[in] sample Current signed input sample.
  * @return Filter output limited to the sixteen-bit range.
  */
 int16_t motor_motion_filter_step(MotorMotionFilter *filter, int16_t sample) {
@@ -105,9 +105,9 @@ int16_t motor_motion_filter_step(MotorMotionFilter *filter, int16_t sample) {
  *
  * Counter subtraction intentionally wraps before the board-specific fixed-point conversion.
  *
- * @param state Persistent counter history.
- * @param counter Current hardware counter value.
- * @param scale Board-selected fixed-point scale.
+ * @param[in,out] state Persistent counter history.
+ * @param[in] counter Current hardware counter value.
+ * @param[in] scale Board-selected fixed-point scale.
  * @return Scaled signed counter difference.
  */
 int16_t motor_encoder_delta_scale(MotorMotionState *state, uint32_t counter, uint32_t scale) {
@@ -121,9 +121,9 @@ int16_t motor_encoder_delta_scale(MotorMotionState *state, uint32_t counter, uin
  *
  * Successive filtered positions produce the acceleration-like velocity delta channel.
  *
- * @param state Persistent filtered-position history.
- * @param filtered_delta Current filtered position delta.
- * @param scale Board-selected fixed-point scale.
+ * @param[in,out] state Persistent filtered-position history.
+ * @param[in] filtered_delta Current filtered position delta.
+ * @param[in] scale Board-selected fixed-point scale.
  * @return Scaled signed velocity difference.
  */
 int16_t motor_velocity_delta_scale(MotorMotionState *state, int16_t filtered_delta,
@@ -140,11 +140,11 @@ int16_t motor_velocity_delta_scale(MotorMotionState *state, int16_t filtered_del
  * Wrapped count deltas feed the position filter, and successive filtered outputs feed the velocity
  * filter and its scaled derivative.
  *
- * @param state Persistent estimator history.
- * @param position_filter Position-delta filter configured with shift four.
- * @param velocity_filter Velocity-delta filter configured with shift six.
- * @param counter Current encoder counter value.
- * @param scale Board-selected fixed-point scale.
+ * @param[in,out] state Persistent estimator history.
+ * @param[in,out] position_filter Position-delta filter configured with shift four.
+ * @param[in,out] velocity_filter Velocity-delta filter configured with shift six.
+ * @param[in] counter Current encoder counter value.
+ * @param[in] scale Board-selected fixed-point scale.
  * @return Raw and filtered position and velocity deltas.
  */
 MotorMotionSample motor_motion_sample(MotorMotionState *state, MotorMotionFilter *position_filter,

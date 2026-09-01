@@ -6,11 +6,17 @@
 #include <fsl_gpio.h>
 #include <string.h>
 
+/** @brief Persistent transmit and receive buffers used by both SPI DMA channels. */
 static MotorSpiTransferBuffers *transfer_buffers;
+/** @brief Callback that prepares a pending outgoing response frame. */
 static MotorSpiPrepareHandler transfer_prepare_handler;
+/** @brief Callback that processes each completed incoming frame. */
 static MotorSpiReceiveHandler transfer_receive_handler;
+/** @brief Context passed to the SPI transfer callbacks. */
 static void *transfer_context;
+/** @brief True when startup permits delayed SPI responses. */
 static volatile bool transfer_active;
+/** @brief True when the received frame needs a delayed response. */
 static volatile bool response_pending;
 
 /**
@@ -41,9 +47,9 @@ static void motor_spi_controller_initialize(void) {
  * The channel is reset, loaded with its transfer descriptor, connected to its DMAMUX request, and
  * enabled with a major-loop interrupt.
  *
- * @param channel DMA and DMAMUX channel number.
- * @param request Peripheral request source selected by the DMAMUX.
- * @param transfer Prepared NXP SDK transfer descriptor.
+ * @param[in] channel DMA and DMAMUX channel number.
+ * @param[in] request Peripheral request source selected by the DMAMUX.
+ * @param[in] transfer Prepared NXP SDK transfer descriptor.
  */
 static void motor_spi_dma_channel_initialize(uint32_t channel, int32_t request,
                                              edma_transfer_config_t *transfer) {
@@ -77,17 +83,6 @@ static void motor_spi_dma_initialize(void) {
     EDMA_EnableChannelRequest(DMA0, 0U);
 }
 
-/**
- * @brief Configures SPI0 and two 13-byte DMA channels for full-duplex motor transfers.
- *
- * Persistent buffers and callbacks are installed before the controller, DMAMUX, DMA engine, and
- * channel interrupts are enabled.
- *
- * @param buffers Persistent transmit and receive buffers used directly by DMA.
- * @param prepare_handler Function that prepares the next response before a scheduled transfer.
- * @param receive_handler Function that processes a completed receive and approves its response.
- * @param context Caller context passed to the receive handler.
- */
 void motor_spi_initialize(MotorSpiTransferBuffers *buffers, MotorSpiPrepareHandler prepare_handler,
                           MotorSpiReceiveHandler receive_handler, void *context) {
     memset(buffers, 0, sizeof(*buffers));
@@ -111,22 +106,8 @@ void motor_spi_initialize(MotorSpiTransferBuffers *buffers, MotorSpiPrepareHandl
     EnableIRQ(DMA1_DMA5_IRQn);
 }
 
-/**
- * @brief Enables or disables the official delayed motor-link response scheduler.
- *
- * Link responses remain blocked until startup alignment and encoder setup complete.
- *
- * @param active True after motor startup permits link responses.
- */
 void motor_spi_link_active_set(bool active) { transfer_active = active; }
 
-/**
- * @brief Starts one pending motor-link response on the official FTM4 cadence.
- *
- * An active pending response is rebuilt in the transmit buffer before both DMA channels restart.
- *
- * @param context Unused timer callback context.
- */
 void motor_spi_timeout_service(void *context) {
     (void)context;
     bool pending = response_pending;
@@ -142,12 +123,6 @@ void motor_spi_timeout_service(void *context) {
     motor_spi_transfer_restart();
 }
 
-/**
- * @brief Rebuilds and enables both official thirteen-byte SPI DMA transfers.
- *
- * Chip select is asserted, stale receive data is flushed, and fresh transmit and receive transfer
- * descriptors are installed.
- */
 void motor_spi_transfer_restart(void) {
     GPIO_PortClear(GPIOC, 1UL << 0U);
     if ((SPI0->SR & SPI_SR_RXCTR_MASK) != 0U) {

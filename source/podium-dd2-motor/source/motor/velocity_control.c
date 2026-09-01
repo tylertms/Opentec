@@ -1,27 +1,22 @@
 #include "motor/velocity_control.h"
 
 #include <limits.h>
-#include <mlib.h>
-
 #include "motor/pi.h"
 
-#if defined(__GNUC__)
-#pragma GCC optimize("O2")
-#endif
-
+/** @brief Fixed-point gains used by calibration velocity control. */
 enum {
-    MOTOR_VELOCITY_PROPORTIONAL_GAIN = 0x14000,
-    MOTOR_VELOCITY_INTEGRAL_GAIN = 0x617,
+    MOTOR_VELOCITY_PROPORTIONAL_GAIN = 0x14000, /**< Velocity-loop proportional gain. */
+    MOTOR_VELOCITY_INTEGRAL_GAIN = 0x617, /**< Velocity-loop integral gain. */
 };
 
 /**
  * @brief Initializes the calibration velocity controller.
  *
- * The controller uses the product current limit and the NXP Q31 ramp and anti-windup PI settings
- * recovered identically from the DD1 and DD2 motor images.
+ * The controller uses the product current limit with fixed-point ramp and anti-windup PI settings.
  *
- * @param state Velocity target, ramp, PI controller, and published control values.
- * @param current_limit Product-specific positive current limit; its negative is the lower limit.
+ * @param[out] state Velocity target, ramp, PI controller, and published control values.
+ * @param[in] current_limit Product-specific positive current limit; its negative is the lower
+ * limit.
  */
 void motor_velocity_control_initialize(MotorVelocityControlState *state, int16_t current_limit) {
     *state = (MotorVelocityControlState){
@@ -41,6 +36,14 @@ void motor_velocity_control_initialize(MotorVelocityControlState *state, int16_t
     motor_velocity_control_reset(state);
 }
 
+/**
+ * @brief Clears all calibration velocity-controller runtime history.
+ *
+ * Target, ramp, error, output, integration-stop, integrator, previous-error, and limiter state are
+ * reset before a fresh calibration run.
+ *
+ * @param[in,out] state Velocity controller to reset.
+ */
 void motor_velocity_control_reset(MotorVelocityControlState *state) {
     state->target_velocity = 0;
     state->target_ramp.f32State = 0;
@@ -51,6 +54,13 @@ void motor_velocity_control_reset(MotorVelocityControlState *state) {
     motor_velocity_control_controller_reset(state);
 }
 
+/**
+ * @brief Clears the calibration velocity PI controller history.
+ *
+ * Integral accumulation, previous error, and the published limiter flag return to zero.
+ *
+ * @param[in,out] state Velocity controller containing the PI state.
+ */
 void motor_velocity_control_controller_reset(MotorVelocityControlState *state) {
     GFLIB_CtrlPIpAWInit_F16(0, &state->controller);
     state->controller.bLimFlag = 0U;
@@ -62,8 +72,8 @@ void motor_velocity_control_controller_reset(MotorVelocityControlState *state) {
  * The service-rate controller consumes this target independently from the ADC-rate calibration
  * state machine.
  *
- * @param state Active velocity controller.
- * @param target_velocity Signed filtered encoder delta requested by calibration.
+ * @param[in,out] state Active velocity controller.
+ * @param[in] target_velocity Signed filtered encoder delta requested by calibration.
  */
 void motor_velocity_control_target_set(MotorVelocityControlState *state, int16_t target_velocity) {
     state->target_velocity = target_velocity;
@@ -75,9 +85,10 @@ void motor_velocity_control_target_set(MotorVelocityControlState *state, int16_t
  * The requested velocity passes through the NXP Q31 ramp, its saturated error drives the NXP
  * parallel PI controller, and either current-loop or velocity-loop limiting stops integration.
  *
- * @param state Persistent velocity ramp and PI controller.
- * @param measured_velocity Shift-four filtered encoder delta from the periodic motion estimator.
- * @param current_controller_limited Current-loop PI saturation flag.
+ * @param[in,out] state Persistent velocity ramp and PI controller.
+ * @param[in] measured_velocity Shift-four filtered encoder delta from the periodic motion
+ * estimator.
+ * @param[in] current_controller_limited Current-loop PI saturation flag.
  * @return Signed Q-axis current reference for the field-oriented controller.
  */
 int16_t motor_velocity_control_step(MotorVelocityControlState *state, int16_t measured_velocity,

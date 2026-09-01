@@ -9,7 +9,7 @@ static void submit_samples(MotorCurrentCalibrationState *state, uint16_t sample)
     }
 }
 
-int main(void) {
+int motor_test_current_calibration(void) {
     MotorCurrentCalibrationState state = {
         .offsets = {.phase_a = 111, .phase_b = 222},
     };

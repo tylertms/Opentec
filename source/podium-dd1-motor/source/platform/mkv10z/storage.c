@@ -4,31 +4,23 @@
 
 #include "fsl_flash.h"
 
+/**
+ * @brief Flash region constants for the persisted calibration record.
+ */
 enum {
-    MOTOR_CALIBRATION_FLASH_START = 0x0001d800U,
-    MOTOR_CALIBRATION_FLASH_END = 0x00020000U,
-    MOTOR_CALIBRATION_FLASH_SECTOR_SIZE = 0x800U,
+    /** @brief First flash address reserved for calibration storage. */
+    MOTOR_CALIBRATION_FLASH_START = 0x0001d800U, /**< Calibration-storage base address. */
+    /** @brief First flash address after the calibration-storage region. */
+    MOTOR_CALIBRATION_FLASH_END = 0x00020000U, /**< Exclusive calibration-storage end address. */
+    /** @brief Flash sector size used by the calibration-storage region. */
+    MOTOR_CALIBRATION_FLASH_SECTOR_SIZE = 0x800U, /**< Calibration-storage sector size in bytes. */
 };
 
+/** @brief NXP flash-driver configuration shared by calibration operations. */
 static flash_config_t motor_calibration_flash;
 
-/**
- * @brief Initializes the official NXP flash driver used by calibration storage.
- *
- * The shared flash configuration is prepared before any calibration record operation.
- *
- * @return NXP SDK flash status.
- */
 status_t motor_calibration_storage_initialize(void) { return FLASH_Init(&motor_calibration_flash); }
 
-/**
- * @brief Loads and validates the official encoder correction record from flash.
- *
- * Invalid record headers clear both directional correction tables before control continues.
- *
- * @param record Destination record in RAM.
- * @return True when the persisted magic and version are valid.
- */
 bool motor_calibration_storage_load(MotorEncoderCalibrationRecord *record) {
     memcpy(record, (const void *)MOTOR_CALIBRATION_FLASH_START, sizeof(*record));
     if (motor_encoder_calibration_record_is_valid(record)) {
@@ -39,13 +31,6 @@ bool motor_calibration_storage_load(MotorEncoderCalibrationRecord *record) {
     return false;
 }
 
-/**
- * @brief Erases and verifies the official encoder calibration flash range.
- *
- * Every covered sector is erased and checked at both supported verification margins.
- *
- * @return NXP SDK flash status.
- */
 status_t motor_calibration_storage_erase(void) {
     for (uint32_t address = MOTOR_CALIBRATION_FLASH_START;
          address + MOTOR_CALIBRATION_FLASH_SECTOR_SIZE <= MOTOR_CALIBRATION_FLASH_END;
@@ -69,14 +54,6 @@ status_t motor_calibration_storage_erase(void) {
     return kStatus_FLASH_Success;
 }
 
-/**
- * @brief Programs and verifies one official encoder correction record.
- *
- * The complete record is written at the calibration base and checked at the user margin.
- *
- * @param record Completed calibration record in RAM.
- * @return NXP SDK flash status.
- */
 status_t motor_calibration_storage_program(const MotorEncoderCalibrationRecord *record) {
     if (!motor_encoder_calibration_record_is_valid(record)) {
         return kStatus_Fail;

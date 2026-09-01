@@ -3,24 +3,40 @@
 #include <fsl_i2c.h>
 #include <string.h>
 
+/**
+ * @brief Internal state of one motor parameter-bus transaction.
+ */
 typedef enum {
-    kMotorBusIdle,
-    kMotorBusReceiving,
-    kMotorBusTransmitting,
+    kMotorBusIdle,         /**< No receive or transmit payload is active. */
+    kMotorBusReceiving,    /**< A parameter write payload is being received. */
+    kMotorBusTransmitting, /**< A parameter response payload is being transmitted. */
 } MotorBusState;
 
+/** @brief NXP I2C slave-transfer handle for the parameter bus. */
 static i2c_slave_handle_t motor_bus_handle;
+/** @brief Parameter bank exposed through the I2C service. */
 static MotorParameterBank *motor_bus_parameters;
+/** @brief Callback invoked after an accepted live-control parameter change. */
 static MotorParameterChangedHandler motor_bus_changed_handler;
+/** @brief Context passed to the parameter-change callback. */
 static void *motor_bus_context;
+/** @brief Receive buffer for one parameter request. */
 static uint8_t motor_bus_receive[MOTOR_PARAMETER_REQUEST_SIZE];
+/** @brief Transmit buffer for one parameter response. */
 static uint8_t motor_bus_transmit[MOTOR_PARAMETER_RESPONSE_SIZE];
+/** @brief Current internal parameter-bus transaction state. */
 static MotorBusState motor_bus_state;
+/** @brief True while an I2C transaction requires service or completion. */
 static volatile bool motor_bus_active;
+/** @brief True while the first receive event after a start is the extended header. */
 static bool motor_bus_extended_header_pending;
+/** @brief Number of service ticks elapsed during the active transaction. */
 static uint16_t motor_bus_active_ticks;
+/** @brief Number of request bytes received for the current transaction. */
 static uint8_t motor_bus_receive_size;
+/** @brief Parameter index selected by the preceding write transaction. */
 static uint8_t motor_bus_selected_parameter;
+/** @brief True when the retained parameter index is valid for a repeated-start read. */
 static bool motor_bus_selected_parameter_valid;
 
 /**
@@ -39,7 +55,7 @@ static void motor_bus_receive_reset(void) {
  *
  * A valid selection publishes its encoded five-byte value, while an invalid index suppresses data.
  *
- * @param transfer Active NXP SDK slave transfer descriptor.
+ * @param[out] transfer Active NXP SDK slave transfer descriptor.
  */
 static void motor_bus_transmit_prepare(i2c_slave_transfer_t *transfer) {
     MotorParameterResponse response = {0};
@@ -61,7 +77,7 @@ static void motor_bus_transmit_prepare(i2c_slave_transfer_t *transfer) {
  *
  * Accepted live-control writes notify the runtime after updating the parameter bank.
  *
- * @param transfer Completed NXP SDK slave transfer descriptor.
+ * @param[in] transfer Completed NXP SDK slave transfer descriptor.
  */
 static void motor_bus_receive_complete(const i2c_slave_transfer_t *transfer) {
     bool control_settings_changed;
@@ -76,6 +92,13 @@ static void motor_bus_receive_complete(const i2c_slave_transfer_t *transfer) {
     }
 }
 
+/**
+ * @brief Restores an I2C transfer descriptor to the idle receive state.
+ *
+ * Transaction state, selected-parameter validity, data pointers, and transfer counters are cleared.
+ *
+ * @param[out] transfer Active NXP SDK slave transfer descriptor.
+ */
 static void motor_bus_transfer_reset(i2c_slave_transfer_t *transfer) {
     motor_bus_state = kMotorBusIdle;
     motor_bus_extended_header_pending = false;
@@ -92,9 +115,9 @@ static void motor_bus_transfer_reset(i2c_slave_transfer_t *transfer) {
  * Receive transactions accept an index plus up to four value bytes. Transmit transactions return
  * the selected value and its declared width.
  *
- * @param base Active I2C peripheral instance.
- * @param transfer NXP SDK transfer descriptor for the current event.
- * @param user_data Unused callback context.
+ * @param[in] base Active I2C peripheral instance.
+ * @param[in,out] transfer NXP SDK transfer descriptor for the current event.
+ * @param[in] user_data Unused callback context.
  */
 static void motor_bus_transfer_callback(I2C_Type *base, i2c_slave_transfer_t *transfer,
                                         void *user_data) {
@@ -174,6 +197,7 @@ static void motor_bus_transfer_callback(I2C_Type *base, i2c_slave_transfer_t *tr
 /**
  * @brief Configures and starts the NXP SDK I2C slave transaction engine.
  *
+ * Address, timing, filtering, callback state, and the nonblocking event mask are restored.
  */
 static void motor_bus_hardware_initialize(void) {
     i2c_slave_config_t config;
@@ -189,16 +213,6 @@ static void motor_bus_hardware_initialize(void) {
     I2C0->FLT = (I2C0->FLT & 0xa0U) | 4U;
 }
 
-/**
- * @brief Starts the motor parameter service on I2C address 0x78.
- *
- * The service exposes the official sixty-four-entry parameter bank through five-byte read and write
- * transactions.
- *
- * @param parameters Parameter bank shared with the motor runtime.
- * @param changed_handler Function invoked after live control settings change.
- * @param context Caller context passed to the change handler.
- */
 void motor_bus_initialize(MotorParameterBank *parameters,
                           MotorParameterChangedHandler changed_handler, void *context) {
     motor_bus_parameters = parameters;
@@ -213,11 +227,6 @@ void motor_bus_initialize(MotorParameterBank *parameters,
     motor_bus_hardware_initialize();
 }
 
-/**
- * @brief Recovers an I2C parameter transaction that remains active for ten service ticks.
- *
- * The stalled SDK transfer is aborted and the official slave configuration is restored.
- */
 void motor_bus_service(void) {
     if (!motor_bus_active) {
         motor_bus_active_ticks = 0U;

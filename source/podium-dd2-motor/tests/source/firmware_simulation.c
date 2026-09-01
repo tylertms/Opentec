@@ -738,7 +738,8 @@ static bool parameter_read_matches(Kinetis *device, const char *path, uint8_t se
 
 static bool trigger_encoder_index_handler(Kinetis *device, const char *path) {
     uint32_t interrupt_flags = 0U;
-    return kinetis_gpio_drive(device, 4U, 24U, true) && run_phase(device, 100U) &&
+    return kinetis_gpio_drive(device, 4U, 24U, false) &&
+           kinetis_gpio_drive(device, 4U, 24U, true) &&
            kinetis_gpio_drive(device, 4U, 24U, false) &&
            kinetis_read(device, UINT32_C(0x4004d0a0), &interrupt_flags, sizeof(interrupt_flags)) &&
            (interrupt_flags & (1UL << 24U)) != 0U &&

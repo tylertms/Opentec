@@ -145,6 +145,78 @@ if motor_is_target
     name_suffix: 'elf',
   )
 
+  motor_target_test_sources = files(
+    'tests/source/target.c',
+    'tests/source/current_calibration.c',
+    'tests/source/control.c',
+    'tests/source/pi.c',
+    'tests/source/foc.c',
+    'tests/source/velocity_control.c',
+    'tests/source/center.c',
+    'tests/source/encoder.c',
+    'tests/source/encoder_calibration.c',
+    'tests/source/service_timing.c',
+    'tests/source/force_feedback.c',
+    'tests/source/link_frame.c',
+    'tests/source/drive.c',
+    'tests/source/hardware_profile.c',
+    'tests/source/motion.c',
+    'tests/source/telemetry.c',
+    'tests/source/parameter.c',
+    'tests/source/protocol.c',
+  )
+  target_tests = executable(
+    motor_name + '-target-tests',
+    motor_sources,
+    motor_target_test_sources,
+    sdk_device['sources'],
+    build_by_default: false,
+    c_args: motor_c_args + [
+      '-UNDEBUG',
+      '-fno-common',
+      '-D__START=motor_test_main',
+      '-D__STARTUP_CLEAR_BSS',
+    ],
+    dependencies: [cmsis_dependency, rtcesl_dependency],
+    include_directories: motor_includes,
+    link_args: [
+      '-nostartfiles',
+      '-no-pie',
+      '-Wl,--gc-sections',
+      '-T' + linker_script.full_path(),
+    ],
+    link_depends: linker_script,
+    link_with: [sdk_library, freemaster_library],
+    name_suffix: 'elf',
+  )
+
+  storage_tests = executable(
+    motor_name + '-storage-tests',
+    'source/motor/encoder_calibration.c',
+    'source/platform/mkv10z/storage.c',
+    'tests/source/storage.c',
+    'tests/source/storage_target.c',
+    sdk_device['sources'],
+    build_by_default: false,
+    c_args: motor_c_args + [
+      '-UNDEBUG',
+      '-fno-common',
+      '-D__START=motor_storage_test_main',
+      '-D__STARTUP_CLEAR_BSS',
+    ],
+    dependencies: [cmsis_dependency, rtcesl_dependency],
+    include_directories: motor_includes,
+    link_args: [
+      '-nostartfiles',
+      '-no-pie',
+      '-Wl,--gc-sections',
+      '-T' + linker_script.full_path(),
+    ],
+    link_depends: linker_script,
+    link_with: sdk_library,
+    name_suffix: 'elf',
+  )
+
   simulator = subproject('kinetis-sim', native: true)
   simulator_runner = simulator.get_variable('kinetis_firmware_runner')
   simulator_image = simulator.get_variable('kinetis_firmware_image_dependency')
@@ -187,6 +259,48 @@ if motor_is_target
     suite: ['motor', 'simulator'],
     depends: firmware,
     timeout: 300,
+  )
+  test(
+    motor_name + '-target-tests',
+    simulator_runner,
+    args: [
+      target_tests.full_path(),
+      '--profile',
+      'MKV10Z1287',
+      '--package',
+      'LH',
+      '--reset-address',
+      '0xa000',
+      '--max-instructions',
+      '150000000',
+      '--max-cycles',
+      '500000000',
+      '--expect-instruction-limit',
+    ],
+    suite: ['motor', 'simulator'],
+    depends: target_tests,
+    timeout: 300,
+  )
+  test(
+    motor_name + '-storage-tests',
+    simulator_runner,
+    args: [
+      storage_tests.full_path(),
+      '--profile',
+      'MKV10Z1287',
+      '--package',
+      'LH',
+      '--reset-address',
+      '0xa000',
+      '--max-instructions',
+      '5000000',
+      '--max-cycles',
+      '100000000',
+      '--expect-instruction-limit',
+    ],
+    suite: ['motor', 'simulator'],
+    depends: storage_tests,
+    timeout: 120,
   )
 
   binary = custom_target(
@@ -244,9 +358,4 @@ if motor_is_target
     build_by_default: true,
     build_always_stale: true,
   )
-endif
-
-if not meson.is_cross_build()
-  motor_test_prefix = motor_name
-  subdir('tests')
 endif

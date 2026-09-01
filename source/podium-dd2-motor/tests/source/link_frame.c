@@ -72,7 +72,7 @@ static void test_rejects_invalid_frame(void) {
     assert(motor_link_frame_decode_checked(input, 0U, &frame) == MOTOR_LINK_FRAME_INVALID_CHECKSUM);
 }
 
-int main(void) {
+int motor_test_link_frame(void) {
     test_force_frame();
     test_position_frame();
     test_status_frame();

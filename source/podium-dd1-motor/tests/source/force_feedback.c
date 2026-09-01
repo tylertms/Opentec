@@ -381,7 +381,7 @@ static void test_directional_reconfiguration(void) {
                                                      35U, 0U) == -10);
 }
 
-int main(void) {
+int motor_test_force_feedback(void) {
     test_defaults();
     test_parameter_settings();
     test_constant_effects();

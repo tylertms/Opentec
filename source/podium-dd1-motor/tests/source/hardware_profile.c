@@ -2,7 +2,7 @@
 
 #include "profile/hardware.h"
 
-int main(void) {
+int motor_test_hardware_profile(void) {
     MotorHardwareProfile standard = motor_hardware_profile_select(false);
     assert(standard.encoder_period == 0x5c80U);
     assert(standard.encoder_modulus == 0x5c7fU);

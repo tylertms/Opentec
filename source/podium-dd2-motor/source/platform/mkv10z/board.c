@@ -4,18 +4,37 @@
 #include <fsl_gpio.h>
 #include <fsl_port.h>
 
+/**
+ * @brief Clock-startup polling constants.
+ */
 enum {
-    MOTOR_CLOCK_STATUS_TIMEOUT = 1000000U,
+    /** @brief Maximum number of status reads for one clock transition. */
+    MOTOR_CLOCK_STATUS_TIMEOUT = 1000000U, /**< Maximum clock-transition polling iterations. */
 };
 
+/**
+ * @brief Waits for one masked clock-generator status value.
+ *
+ * The bounded poll accepts readiness observed on the final permitted status read.
+ *
+ * @param[in] mask Clock-status bits to inspect.
+ * @param[in] expected Expected masked status value.
+ * @return True when the expected status is observed before or on the final poll.
+ */
 static bool motor_clock_status_wait(uint8_t mask, uint8_t expected) {
     uint32_t remaining = MOTOR_CLOCK_STATUS_TIMEOUT;
     while ((MCG->S & mask) != expected && remaining != 0U) {
         --remaining;
     }
-    return remaining != 0U;
+    return (MCG->S & mask) == expected;
 }
 
+/**
+ * @brief Applies the early motor clock and low-power startup configuration.
+ *
+ * Isolation acknowledgement, power permissions, clock dividers, and the internal reference clock
+ * are configured before normal runtime startup. A stalled clock transition requests reset.
+ */
 void SystemInitHook(void) {
     if ((RCM->SRS0 & RCM_SRS0_WAKEUP_MASK) != 0U && (PMC->REGSC & PMC_REGSC_ACKISO_MASK) != 0U) {
         PMC->REGSC |= PMC_REGSC_ACKISO_MASK;
@@ -46,9 +65,9 @@ void SystemInitHook(void) {
  *
  * The pin uses the GPIO mux with an enabled pull-up and passive input filter.
  *
- * @param port Port-control block for the pin.
- * @param gpio GPIO block containing the pin direction.
- * @param pin Zero-based pin number.
+ * @param[in,out] port Port-control block for the pin.
+ * @param[in,out] gpio GPIO block containing the pin direction.
+ * @param[in] pin Zero-based pin number.
  */
 static void motor_filtered_pullup_input_initialize(PORT_Type *port, GPIO_Type *gpio, uint32_t pin) {
     PORT_SetPinMux(port, pin, kPORT_MuxAsGpio);
@@ -61,10 +80,10 @@ static void motor_filtered_pullup_input_initialize(PORT_Type *port, GPIO_Type *g
  *
  * The requested output latch is installed before the pin direction changes to output.
  *
- * @param port Port-control block for the pin.
- * @param gpio GPIO block containing the output and direction registers.
- * @param pin Zero-based pin number.
- * @param high True to preset a high output, or false to preset a low output.
+ * @param[in,out] port Port-control block for the pin.
+ * @param[in,out] gpio GPIO block containing the output and direction registers.
+ * @param[in] pin Zero-based pin number.
+ * @param[in] high True to preset a high output, or false to preset a low output.
  */
 static void motor_gpio_output_initialize(PORT_Type *port, GPIO_Type *gpio, uint32_t pin,
                                          bool high) {
@@ -77,12 +96,6 @@ static void motor_gpio_output_initialize(PORT_Type *port, GPIO_Type *gpio, uint3
     gpio->PDDR |= 1UL << pin;
 }
 
-/**
- * @brief Configures all motor-controller GPIO, PWM, serial, and timer pins.
- *
- * Output latch levels are established before direction changes, then each pin receives its
- * recovered mux, drive strength, filter, and pull configuration.
- */
 void motor_pins_initialize(void) {
     CLOCK_EnableClock(kCLOCK_PortA);
     CLOCK_EnableClock(kCLOCK_PortB);
@@ -124,13 +137,6 @@ void motor_pins_initialize(void) {
     motor_gpio_output_initialize(PORTB, GPIOB, 16U, false);
 }
 
-/**
- * @brief Reads the five hardware straps and packs the motor board identity byte.
- *
- * Active-low strap samples occupy the recovered identity bit positions with fixed marker bits.
- *
- * @return Identity byte with fixed marker bits in positions zero and seven.
- */
 uint8_t motor_board_identity_read(void) {
     uint8_t identity = 0x81U;
     identity |= (uint8_t)(((GPIOC->PDIR >> 3U) & 1U) << 2U);
@@ -141,14 +147,6 @@ uint8_t motor_board_identity_read(void) {
     return identity;
 }
 
-/**
- * @brief Applies the two official active-low startup interlock outputs.
- *
- * Each logical interlock state is translated to the corresponding board GPIO level.
- *
- * @param interlock_a True to pull GPIOC1 low, or false to release it high.
- * @param interlock_b True to pull GPIOA19 low, or false to release it high.
- */
 void motor_startup_interlock_outputs_apply(bool interlock_a, bool interlock_b) {
     if (interlock_a) {
         GPIO_PortClear(GPIOC, 1UL << 1U);

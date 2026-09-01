@@ -123,7 +123,7 @@ static void test_overspeed_latch(void) {
     assert(motor_drive_overspeed_apply(&state, 1234, 0) == 0);
 }
 
-int main(void) {
+int motor_test_drive(void) {
     test_normal_product_scales();
     test_full_torque_and_gates();
     test_interpolation_filter();

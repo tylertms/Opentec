@@ -1,19 +1,20 @@
 #include "motor/control.h"
 
+/** @brief Protocol command words and startup-control constants. */
 enum {
-    MOTOR_ENCODER_CALIBRATION_COMMAND = 0xaaaaU,
-    MOTOR_ENCODER_CALIBRATION_ERASE_COMMAND = 0xbbbbU,
-    MOTOR_ENCODER_DIRECTION_CHECK_COMMAND = 0xabcdU,
-    MOTOR_STARTUP_RAMP_TICKS = 2000U,
-    MOTOR_STARTUP_RAMP_STEP = 10U,
-    MOTOR_STARTUP_RAMP_LIMIT = 10000U,
-    MOTOR_D_AXIS_CURRENT_LIMIT = 0x1999,
+    MOTOR_ENCODER_CALIBRATION_COMMAND = 0xaaaaU, /**< Encoder calibration command word. */
+    MOTOR_ENCODER_CALIBRATION_ERASE_COMMAND = 0xbbbbU, /**< Encoder-calibration erase command. */
+    MOTOR_ENCODER_DIRECTION_CHECK_COMMAND = 0xabcdU, /**< Encoder direction-check command word. */
+    MOTOR_STARTUP_RAMP_TICKS = 2000U, /**< Number of startup-ramp countdown ticks. */
+    MOTOR_STARTUP_RAMP_STEP = 10U, /**< Current counts added per elapsed ramp tick. */
+    MOTOR_STARTUP_RAMP_LIMIT = 10000U, /**< Maximum startup-ramp current command. */
+    MOTOR_D_AXIS_CURRENT_LIMIT = 0x1999, /**< Absolute D-axis current limit. */
 };
 
 /**
  * @brief Selects the official first motor startup interlock state.
  *
- * Startup always begins with the two-hundred-tick interlock delay.
+ * The returned mode is the first state consumed by the startup state machine.
  *
  * @return Initial motor control mode.
  */
@@ -22,9 +23,10 @@ MotorControlMode motor_control_mode_initialize(void) { return kMotorControlStart
 /**
  * @brief Advances one completed official motor control mode.
  *
- * Startup phases advance in order, while calibration and diagnostic phases return to run mode.
+ * Startup phases advance in order; encoder calibration, startup gating, and direction diagnostics
+ * return to run mode when complete.
  *
- * @param mode Current motor control mode.
+ * @param[in] mode Current motor control mode.
  * @return Next mode, or the current mode when it has no completion transition.
  */
 MotorControlMode motor_control_mode_complete(MotorControlMode mode) {
@@ -47,13 +49,13 @@ MotorControlMode motor_control_mode_complete(MotorControlMode mode) {
 }
 
 /**
- * @brief Applies an official run-mode calibration request to the control mode.
+ * @brief Applies an official run-mode start request to the control mode.
  *
- * Requests are accepted only while normal motor control is active.
+ * Encoder-calibration and direction-check start requests are accepted only while run mode is active.
  *
- * @param mode Current motor control mode.
- * @param request Decoded calibration request.
- * @return Requested calibration mode, or the unchanged current mode.
+ * @param[in] mode Current motor control mode.
+ * @param[in] request Decoded calibration or direction-check request.
+ * @return Requested calibration or diagnostic mode, or the unchanged current mode.
  */
 MotorControlMode motor_control_request_apply(MotorControlMode mode, MotorControlRequest request) {
     if (mode != kMotorControlRun) {
@@ -70,12 +72,12 @@ MotorControlMode motor_control_request_apply(MotorControlMode mode, MotorControl
 }
 
 /**
- * @brief Decodes the official run-mode encoder calibration command words.
+ * @brief Decodes the official encoder calibration and direction-check command words.
  *
  * Calibration and erase commands take priority over the independent direction diagnostic.
  *
- * @param calibration_command Encoder calibration or erase command word.
- * @param direction_command Encoder direction-check command word.
+ * @param[in] calibration_command Encoder calibration or erase command word.
+ * @param[in] direction_command Encoder direction-check command word.
  * @return Highest-priority recognized request.
  */
 MotorControlRequest motor_control_request_decode(uint32_t calibration_command,
@@ -98,7 +100,7 @@ MotorControlRequest motor_control_request_decode(uint32_t calibration_command,
  *
  * The divider raises one deferred control update after every seventh completed ADC interrupt.
  *
- * @param conversion_count Persistent interrupt divider from zero through six.
+ * @param[in,out] conversion_count Persistent interrupt divider from zero through six.
  * @return True when the deferred control update is due.
  */
 bool motor_control_update_due(uint8_t *conversion_count) {
@@ -117,7 +119,7 @@ bool motor_control_update_due(uint8_t *conversion_count) {
  *
  * Elapsed ticks add ten current counts until the ten-thousand-count alignment limit is reached.
  *
- * @param ticks_remaining Countdown initialized to two thousand service ticks.
+ * @param[in] ticks_remaining Countdown initialized to two thousand service ticks.
  * @return Current command rising by ten per elapsed tick and limited to ten thousand.
  */
 uint16_t motor_control_startup_ramp_current(uint16_t ticks_remaining) {
@@ -129,10 +131,11 @@ uint16_t motor_control_startup_ramp_current(uint16_t ticks_remaining) {
 /**
  * @brief Resolves the official D/Q references from a signed torque-current command.
  *
- * Torque remains on the Q axis while its limited magnitude produces the negative D-axis command.
+ * Torque remains on the Q axis while its representable magnitude is capped for the negative D-axis
+ * command; the most-negative input retains its wrapped signed representation.
  *
- * @param torque_current Signed Q-axis torque-current command.
- * @return Q-axis torque current and limited negative D-axis magnitude.
+ * @param[in] torque_current Signed Q-axis torque-current command.
+ * @return Q-axis torque current and negative D-axis current reference.
  */
 MotorControlCurrentReference motor_control_current_reference(int16_t torque_current) {
     uint16_t sign = torque_current < 0 ? UINT16_MAX : 0U;

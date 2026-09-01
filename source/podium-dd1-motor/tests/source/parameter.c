@@ -118,7 +118,7 @@ static void test_wire_format(void) {
     assert(!changed);
 }
 
-int main(void) {
+int motor_test_parameter(void) {
     test_initialization();
     test_read();
     test_write();

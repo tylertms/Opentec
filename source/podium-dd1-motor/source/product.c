@@ -1,5 +1,8 @@
 #include "product.h"
 
+/**
+ * @brief Scaling constants for the Podium DD1 motor product.
+ */
 const MotorProductConfiguration motor_product_configuration = {
     .normal_output_percent = 53U,
     .normal_current_scale = 0x5999,

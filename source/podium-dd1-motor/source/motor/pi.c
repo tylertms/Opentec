@@ -1,16 +1,39 @@
 #include "motor/pi.h"
 
 #include <stdint.h>
-#if defined(__GNUC__)
-#pragma GCC optimize("O2")
-#endif
-
+/**
+ * @brief Reinterprets one unsigned controller word as signed.
+ *
+ * The target two's-complement conversion preserves the official wrapped accumulator bits.
+ *
+ * @param[in] bits Unsigned controller word.
+ * @return Signed value with the same target bit pattern.
+ */
 static inline int32_t motor_pi_signed(uint32_t bits) { return (int32_t)bits; }
 
+/**
+ * @brief Extracts the signed Q16 result from one wide accumulator.
+ *
+ * The upper thirty-two bits are retained after the official sixteen-bit fixed-point shift.
+ *
+ * @param[in] value Wide fixed-point accumulator.
+ * @return Signed shifted controller value.
+ */
 static inline int32_t motor_pi_q16(int64_t value) {
     return motor_pi_signed((uint32_t)((uint64_t)value >> 16U));
 }
 
+/**
+ * @brief Advances the official parallel anti-windup PI controller.
+ *
+ * Integration uses the retained previous error, upward residue rounding, strict integral limits,
+ * current-error proportional gain, inclusive output limits, and a published limiter flag.
+ *
+ * @param[in] error Current signed controller error.
+ * @param[in] stop_integrator True to exclude the current error from the integration input.
+ * @param[in,out] controller Persistent PI gains, limits, history, and limiter state.
+ * @return Signed controller output limited to the configured range.
+ */
 frac16_t motor_pi_step(frac16_t error, const bool_t *stop_integrator,
                        GFLIB_CTRL_PI_P_AW_T_A32 *controller) {
     int32_t integration_error = controller->f16InErrK_1;

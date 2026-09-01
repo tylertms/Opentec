@@ -31,7 +31,7 @@ static void test_auxiliary_accumulation(void) {
     assert(!motor_auxiliary_samples_resolve(&accumulator, &telemetry));
 }
 
-int main(void) {
+int motor_test_telemetry(void) {
     test_temperature_interpolation();
     test_auxiliary_accumulation();
     return 0;

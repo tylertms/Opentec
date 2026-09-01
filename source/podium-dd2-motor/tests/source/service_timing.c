@@ -16,7 +16,7 @@ static void test_initial_values(void) {
     }
 }
 
-int main(void) {
+int motor_test_service_timing(void) {
     test_initial_values();
 
     MotorServiceTiming timing = {

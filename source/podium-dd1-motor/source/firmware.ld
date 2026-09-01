@@ -190,6 +190,8 @@ SECTIONS
   {
     /* This is used by the startup in order to initialize the .bss section */
     . = ALIGN(4);
+    __STARTUP_BSS_GUARD = .;
+    . += 4;
     __START_BSS = .;
     __bss_start__ = .;
     *(.bss)

@@ -5,7 +5,7 @@
  *
  * Existing offsets remain available until both new phase averages have completed.
  *
- * @param state Calibration state while preserving the last valid offsets.
+ * @param[in,out] state Calibration state while preserving the last valid offsets.
  */
 void motor_current_calibration_start(MotorCurrentCalibrationState *state) {
     state->stage = kMotorCurrentCalibrationPhaseA;
@@ -18,9 +18,9 @@ void motor_current_calibration_start(MotorCurrentCalibrationState *state) {
  *
  * Phase A completes before phase B begins, and only ready conversions advance either average.
  *
- * @param state Current calibration stage, accumulation, and resulting offsets.
- * @param sample_ready True when the active ADC conversion completed.
- * @param sample Raw unsigned ADC conversion result.
+ * @param[in,out] state Current calibration stage, accumulation, and resulting offsets.
+ * @param[in] sample_ready True when the active ADC conversion completed.
+ * @param[in] sample Raw unsigned ADC conversion result.
  * @return Pending, phase-B transition, or completed calibration.
  */
 MotorCurrentCalibrationResult motor_current_calibration_step(MotorCurrentCalibrationState *state,

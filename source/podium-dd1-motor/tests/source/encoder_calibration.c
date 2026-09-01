@@ -64,6 +64,9 @@ static void test_capture_sequence(void) {
     assert(state.record.version == 4U);
     assert(state.record.correction_scale == 0x3333U);
     assert(state.record.sample_offset == 2U);
+    assert(state.record.checksum == 0U);
+    motor_encoder_calibration_record_finalize(&state.record);
+    assert(motor_encoder_calibration_record_is_valid(&state.record));
 }
 
 static void test_velocity_and_center_boundaries(void) {
@@ -180,7 +183,7 @@ static void test_persistent_record_validation(void) {
     assert(!motor_encoder_calibration_record_is_valid(&record));
 }
 
-int main(void) {
+int motor_test_encoder_calibration(void) {
     test_capture_sequence();
     test_velocity_and_center_boundaries();
     test_encoder_period_boundaries();

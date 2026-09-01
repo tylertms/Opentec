@@ -6,9 +6,7 @@
 #include <fsl_ftm.h>
 #include <fsl_gpio.h>
 #include <fsl_wdog.h>
-#include <gflib.h>
 #include <limits.h>
-#include <mlib.h>
 #include <string.h>
 
 #include "link/protocol.h"
@@ -34,94 +32,127 @@
 #include "telemetry/auxiliary.h"
 #include "tuning/parameter.h"
 
-#pragma GCC optimize("O2")
-
+/**
+ * @brief Identifies motor parameter entries and runtime timing constants.
+ */
 enum {
-    MOTOR_PARAMETER_RESET_COMMAND = 3,
-    MOTOR_PARAMETER_DIRECTION_COMMAND = 5,
-    MOTOR_PARAMETER_CALIBRATION_COMMAND = 6,
-    MOTOR_PARAMETER_CALIBRATION_VERSION = 7,
-    MOTOR_PARAMETER_ENCODER_INDEX = 8,
-    MOTOR_PARAMETER_TORQUE = 16,
-    MOTOR_PARAMETER_UPTIME = 17,
-    MOTOR_PARAMETER_MOTOR_TEMPERATURE = 18,
-    MOTOR_PARAMETER_DRIVER_TEMPERATURE = 19,
-    MOTOR_PARAMETER_DRIVE_CURRENT = 20,
-    MOTOR_PARAMETER_STEERING_RANGE = 32,
-    MOTOR_PARAMETER_OVERALL_GAIN = 33,
-    MOTOR_PARAMETER_MINIMUM_CURRENT_MODE = 34,
-    MOTOR_PARAMETER_NATURAL_DAMPING = 35,
-    MOTOR_PARAMETER_NATURAL_FRICTION = 36,
-    MOTOR_PARAMETER_NATURAL_INERTIA = 37,
-    MOTOR_PARAMETER_INTERPOLATION = 38,
-    MOTOR_PARAMETER_FILTER = 39,
-    MOTOR_PARAMETER_CONSTANT_GAIN = 40,
-    MOTOR_PARAMETER_WINDOW_GAIN = 41,
-    MOTOR_PARAMETER_DIRECTIONAL_GAIN = 42,
-    MOTOR_ENCODER_CALIBRATION_TIMEOUT = 30000U,
+    MOTOR_PARAMETER_RESET_COMMAND = 3, /**< Reset-command parameter index. */
+    MOTOR_PARAMETER_DIRECTION_COMMAND = 5, /**< Encoder-direction command index. */
+    MOTOR_PARAMETER_CALIBRATION_COMMAND = 6, /**< Encoder-calibration command index. */
+    MOTOR_PARAMETER_CALIBRATION_VERSION = 7, /**< Stored-calibration version index. */
+    MOTOR_PARAMETER_ENCODER_INDEX = 8, /**< Encoder-index status index. */
+    MOTOR_PARAMETER_TORQUE = 16, /**< Measured torque telemetry index. */
+    MOTOR_PARAMETER_UPTIME = 17, /**< Uptime telemetry index. */
+    MOTOR_PARAMETER_MOTOR_TEMPERATURE = 18, /**< Motor-temperature telemetry index. */
+    MOTOR_PARAMETER_DRIVER_TEMPERATURE = 19, /**< Driver-temperature telemetry index. */
+    MOTOR_PARAMETER_DRIVE_CURRENT = 20, /**< Measured drive-current telemetry index. */
+    MOTOR_PARAMETER_STEERING_RANGE = 32, /**< Steering-range setting index. */
+    MOTOR_PARAMETER_OVERALL_GAIN = 33, /**< Overall-gain setting index. */
+    MOTOR_PARAMETER_MINIMUM_CURRENT_MODE = 34, /**< Minimum-current-mode setting index. */
+    MOTOR_PARAMETER_NATURAL_DAMPING = 35, /**< Natural-damping setting index. */
+    MOTOR_PARAMETER_NATURAL_FRICTION = 36, /**< Natural-friction setting index. */
+    MOTOR_PARAMETER_NATURAL_INERTIA = 37, /**< Natural-inertia setting index. */
+    MOTOR_PARAMETER_INTERPOLATION = 38, /**< Force-interpolation setting index. */
+    MOTOR_PARAMETER_FILTER = 39, /**< Force-feedback filter setting index. */
+    MOTOR_PARAMETER_CONSTANT_GAIN = 40, /**< Force-feedback constant-gain setting index. */
+    MOTOR_PARAMETER_WINDOW_GAIN = 41, /**< Force-feedback window-gain setting index. */
+    MOTOR_PARAMETER_DIRECTIONAL_GAIN = 42, /**< Force-feedback directional-gain setting index. */
+    MOTOR_ENCODER_CALIBRATION_TIMEOUT = 30000U, /**< Maximum encoder-calibration service ticks. */
 };
 
+/**
+ * @brief Identifies deferred flash-maintenance operations.
+ */
 typedef enum {
-    kMotorMaintenanceNone,
-    kMotorMaintenanceEraseCalibration,
-    kMotorMaintenanceStoreCalibration,
+    kMotorMaintenanceNone, /**< No flash-maintenance operation is pending. */
+    kMotorMaintenanceEraseCalibration, /**< Erase the persisted encoder calibration. */
+    kMotorMaintenanceStoreCalibration, /**< Store the completed encoder calibration. */
 } MotorMaintenanceRequest;
 
+/**
+ * @brief Aggregates all persistent and transient state used by the motor runtime.
+ */
 typedef struct {
-    MotorHardwareProfile hardware;
-    MotorParameterBank parameters;
-    MotorProtocolState protocol;
-    MotorFocState foc;
-    MotorFocOutput foc_output;
-    MotorVelocityControlState velocity_control;
-    MotorAdcSample adc_sample;
-    MotorCurrentCalibrationState current_calibration;
-    MotorEncoderState encoder;
-    MotorCenterState center;
-    MotorEncoderCalibrationState encoder_calibration;
-    MotorEncoderDirectionState encoder_direction;
-    MotorMotionState motion;
-    MotorMotionFilter position_filter;
-    MotorMotionFilter velocity_filter;
-    MotorMotionSample motion_sample;
-    MotorServiceTiming timing;
-    MotorAuxiliaryAccumulator auxiliary_accumulator;
-    MotorAuxiliaryTelemetry auxiliary_telemetry;
-    MotorSpiTransferBuffers spi;
-    MotorDriveCommand live_drive;
-    MotorDriveInterpolationState drive_interpolation;
-    MotorDriveFrictionState drive_friction;
-    MotorDriveDeratingState drive_derating;
-    MotorDriveOverspeedState drive_overspeed;
-    GFLIB_CTRL_PI_P_AW_T_A32 derating_controller;
-    MotorControlMode mode;
-    uint32_t service_tick;
-    uint32_t encoder_calibration_deadline;
-    int16_t electrical_angle;
-    int16_t control_current;
-    int16_t friction_current;
-    uint8_t identity;
-    bool control_update_pending;
-    bool current_calibration_started;
-    bool calibration_valid;
-    bool correction_reverse;
-    bool encoder_zero_captured;
-    volatile bool encoder_index_detected;
-    volatile MotorMaintenanceRequest maintenance_request;
+    MotorHardwareProfile hardware; /**< Selected board hardware profile. */
+    MotorParameterBank parameters; /**< Live and telemetry motor parameters. */
+    MotorProtocolState protocol; /**< Decoded link and force-feedback state. */
+    MotorFocState foc; /**< Field-oriented current controller state. */
+    MotorFocOutput foc_output; /**< Latest FOC duty and measured-current output. */
+    MotorVelocityControlState velocity_control; /**< Encoder-calibration velocity controller state. */
+    MotorAdcSample adc_sample; /**< Latest phase-current and bus-voltage ADC sample. */
+    MotorCurrentCalibrationState current_calibration; /**< Startup current-offset calibration state. */
+    MotorEncoderState encoder; /**< Extended encoder position state. */
+    MotorCenterState center; /**< Requested and active center-command state. */
+    MotorEncoderCalibrationState encoder_calibration; /**< Encoder correction calibration state. */
+    MotorEncoderDirectionState encoder_direction; /**< Encoder-direction diagnostic state. */
+    MotorMotionState motion; /**< Raw motion estimator state. */
+    MotorMotionFilter position_filter; /**< Position-delta filter state. */
+    MotorMotionFilter velocity_filter; /**< Velocity-delta filter state. */
+    MotorMotionSample motion_sample; /**< Latest filtered motion sample. */
+    MotorServiceTiming timing; /**< Service countdown and cadence state. */
+    MotorAuxiliaryAccumulator auxiliary_accumulator; /**< Auxiliary ADC accumulation state. */
+    MotorAuxiliaryTelemetry auxiliary_telemetry; /**< Latest resolved auxiliary telemetry. */
+    MotorSpiTransferBuffers spi; /**< Persistent SPI transmit and receive buffers. */
+    MotorDriveCommand live_drive; /**< Currently applied live drive command. */
+    MotorDriveInterpolationState drive_interpolation; /**< Primary-force interpolation state. */
+    MotorDriveFrictionState drive_friction; /**< Natural-friction compensation state. */
+    MotorDriveDeratingState drive_derating; /**< Thermal current-derating state. */
+    MotorDriveOverspeedState drive_overspeed; /**< Overspeed protection state. */
+    GFLIB_CTRL_PI_P_AW_T_A32 derating_controller; /**< Thermal derating PI controller state. */
+    MotorControlMode mode; /**< Current startup, run, diagnostic, or inactive mode. */
+    uint32_t service_tick; /**< Current motor service tick. */
+    uint32_t encoder_calibration_deadline; /**< Service tick at which calibration expires. */
+    int16_t electrical_angle; /**< Latest wrapped electrical rotor angle. */
+    int16_t control_current; /**< Current reference used by the ADC control cycle. */
+    int16_t friction_current; /**< Latest natural-friction current compensation. */
+    uint8_t identity; /**< Board identity read during initialization. */
+    bool control_update_pending; /**< True when a deferred control update awaits service. */
+    bool current_calibration_started; /**< True after startup current calibration begins. */
+    bool calibration_valid; /**< True when persisted encoder calibration is valid. */
+    bool correction_reverse; /**< Direction selected for encoder correction lookup. */
+    bool encoder_zero_captured; /**< True after the first encoder index establishes zero. */
+    volatile bool encoder_index_detected; /**< True after an encoder index interrupt. */
+    volatile MotorMaintenanceRequest maintenance_request; /**< Pending flash-maintenance request. */
 } MotorRuntime;
 
+/**
+ * @brief Shared runtime state accessed by the main loop and motor interrupts.
+ */
 static MotorRuntime motor_runtime;
 
+/**
+ * @brief Tests whether a wrap-safe runtime deadline has been reached.
+ *
+ * Signed tick subtraction preserves ordering across one unsigned counter wrap.
+ *
+ * @param[in] now Current motor service tick.
+ * @param[in] deadline Scheduled motor service tick.
+ * @return True when the deadline is current or past.
+ */
 static bool motor_runtime_tick_reached(uint32_t now, uint32_t deadline) {
     return (int32_t)(now - deadline) >= 0;
 }
 
+/**
+ * @brief Requests a reset after placing motor outputs in a safe state.
+ *
+ * PWM is masked and the safe startup interlock is applied before the system reset request.
+ */
 static void motor_runtime_safe_reset(void) {
     motor_pwm_disable_outputs();
     motor_startup_interlock_outputs_apply(true, false);
     NVIC_SystemReset();
 }
 
+/**
+ * @brief Transfers a flash maintenance request to the main loop.
+ *
+ * Live current is cleared, communication and PWM are disabled, the safe interlock is applied,
+ * and control becomes inactive before the request is published.
+ *
+ * @param[in,out] runtime Active motor runtime and maintenance handoff state.
+ * @param[in] request Erase or store operation to run outside the control ISR.
+ */
 static void motor_runtime_maintenance_schedule(MotorRuntime *runtime,
                                                MotorMaintenanceRequest request) {
     runtime->control_current = 0;
@@ -134,6 +165,11 @@ static void motor_runtime_maintenance_schedule(MotorRuntime *runtime,
     runtime->maintenance_request = request;
 }
 
+/**
+ * @brief Services the diagnostic UART while the motor remains faulted.
+ *
+ * UART status is acknowledged, overrun data is drained, and the FreeMASTER ISR is dispatched.
+ */
 static void motor_runtime_fault_serial_service(void) {
     uint8_t status = UART0->S1;
     *((volatile uint8_t *)(void *)&UART0->S1) = 0x1fU;
@@ -158,6 +194,11 @@ _Noreturn static void motor_runtime_fault(void) {
     }
 }
 
+/**
+ * @brief Routes watchdog and external-watchdog faults to the permanent safe state.
+ *
+ * The shared fault handler masks motor output and does not return.
+ */
 void WDOG_EWM_IRQHandler(void) { motor_runtime_fault(); }
 
 /**
@@ -166,7 +207,7 @@ void WDOG_EWM_IRQHandler(void) { motor_runtime_fault(); }
  * Only the six settings consumed by the official live refresh path are transferred. The filter
  * reconfiguration is idempotent when its parameter did not change.
  *
- * @param context Active motor runtime supplied by the parameter bus callback.
+ * @param[in,out] context Active motor runtime supplied by the parameter bus callback.
  */
 static void motor_runtime_settings_apply(void *context) {
     MotorRuntime *runtime = context;
@@ -188,7 +229,7 @@ static void motor_runtime_settings_apply(void *context) {
  * The signed primary and secondary current fields become the live run-mode command. Both current
  * controllers receive the coefficient pair selected by the official output path.
  *
- * @param runtime Active motor runtime and protocol state.
+ * @param[in,out] runtime Active motor runtime and protocol state.
  */
 static void motor_runtime_drive_apply(MotorRuntime *runtime) {
     runtime->live_drive = runtime->protocol.live_drive;
@@ -205,7 +246,7 @@ static void motor_runtime_drive_apply(MotorRuntime *runtime) {
  * A pending quadrature overflow defers publication until the overflow handler updates the
  * revolution offset. Positions outside the board-selected safety range enter the safe state.
  *
- * @param runtime Active motor runtime and encoder state.
+ * @param[in,out] runtime Active motor runtime and encoder state.
  */
 static void motor_runtime_encoder_position_refresh(MotorRuntime *runtime) {
     bool overflow_pending = (FTM2->SC & FTM_SC_TOF_MASK) != 0U;
@@ -224,7 +265,7 @@ static void motor_runtime_encoder_position_refresh(MotorRuntime *runtime) {
  * derating. A valid indexed encoder adds the directional calibration correction selected by the
  * motion hysteresis.
  *
- * @param runtime Active motor runtime and latest link, motion, and calibration state.
+ * @param[in,out] runtime Active motor runtime and latest link, motion, and calibration state.
  * @return Saturated current command for the normal FOC cycle.
  */
 static int16_t motor_runtime_current_resolve(MotorRuntime *runtime) {
@@ -272,9 +313,9 @@ static int16_t motor_runtime_current_resolve(MotorRuntime *runtime) {
  * measured electrical angle and the resolved D/Q current reference. The cycle also advances the
  * alternating temperature sample pair.
  *
- * @param runtime Active motor runtime and persistent control state.
- * @param torque_current Signed current command for this cycle.
- * @param rotor_aligned True during the startup rotor-alignment ramp.
+ * @param[in,out] runtime Active motor runtime and persistent control state.
+ * @param[in] torque_current Signed current command for this cycle.
+ * @param[in] rotor_aligned True during the startup rotor-alignment ramp.
  */
 static void motor_runtime_control_cycle(MotorRuntime *runtime, int16_t torque_current,
                                         bool rotor_aligned) {
@@ -311,7 +352,7 @@ static void motor_runtime_control_cycle(MotorRuntime *runtime, int16_t torque_cu
  *
  * The one-shot PORTE interrupt is re-enabled and its five-thousand-tick timeout is restored.
  *
- * @param runtime Active motor runtime and service countdown state.
+ * @param[in,out] runtime Active motor runtime and service countdown state.
  */
 static void motor_runtime_index_seek_restart(MotorRuntime *runtime) {
     runtime->encoder_index_detected = false;
@@ -327,7 +368,7 @@ static void motor_runtime_index_seek_restart(MotorRuntime *runtime) {
  * Interlock A remains asserted for two hundred service ticks. Interlock B is asserted after the
  * following ten-tick release delay, then current calibration begins.
  *
- * @param runtime Active motor runtime and startup countdowns.
+ * @param[in,out] runtime Active motor runtime and startup countdowns.
  */
 static void motor_runtime_interlock_step(MotorRuntime *runtime) {
     if (runtime->mode == kMotorControlStartupInterlockA) {
@@ -358,7 +399,7 @@ static void motor_runtime_interlock_step(MotorRuntime *runtime) {
  * The first visit installs zero PWM, routes both ADC triggers, and unmasks the PWM outputs. After
  * 1024 samples per phase, the normal four ADC channels and startup ramp are enabled.
  *
- * @param runtime Active motor runtime and current calibration state.
+ * @param[in,out] runtime Active motor runtime and current calibration state.
  */
 static void motor_runtime_current_calibration_step(MotorRuntime *runtime) {
     if (!runtime->current_calibration_started) {
@@ -386,7 +427,7 @@ static void motor_runtime_current_calibration_step(MotorRuntime *runtime) {
  * D-axis current rises by ten per service tick to ten thousand. Completion enables quadrature
  * overflow extension, the motor link, motion estimation, and the first encoder-index search.
  *
- * @param runtime Active motor runtime and startup ramp countdown.
+ * @param[in,out] runtime Active motor runtime and startup ramp countdown.
  */
 static void motor_runtime_startup_ramp_step(MotorRuntime *runtime) {
     MotorCountdown *countdown = &runtime->timing.countdowns[kMotorCountdownStartupRamp];
@@ -417,7 +458,7 @@ static void motor_runtime_startup_ramp_step(MotorRuntime *runtime) {
  * The motor applies the fixed index current until the index arrives or the five-thousand-tick
  * timeout expires. Either result releases the search and enters normal run mode.
  *
- * @param runtime Active motor runtime and encoder-index search state.
+ * @param[in,out] runtime Active motor runtime and encoder-index search state.
  */
 static void motor_runtime_startup_gate_step(MotorRuntime *runtime) {
     motor_runtime_encoder_position_refresh(runtime);
@@ -438,24 +479,24 @@ static void motor_runtime_startup_gate_step(MotorRuntime *runtime) {
 }
 
 /**
- * @brief Erases the persisted encoder correction record.
+ * @brief Schedules erasure of the persisted encoder correction record.
  *
- * Flash operations run with interrupts masked. The in-memory record, calibration command,
- * published version, and correction enable are cleared after a successful erase.
+ * The main-loop maintenance path performs the flash operation while interrupts are masked and
+ * resets the runtime after completion.
  *
- * @param runtime Active motor runtime and calibration state.
+ * @param[in,out] runtime Active motor runtime and calibration state.
  */
 static void motor_runtime_encoder_calibration_erase(MotorRuntime *runtime) {
     motor_runtime_maintenance_schedule(runtime, kMotorMaintenanceEraseCalibration);
 }
 
 /**
- * @brief Persists a completed encoder correction record.
+ * @brief Schedules persistence of a completed encoder correction record.
  *
- * Flash erase and programming run inside one interrupt-masked transaction. Success publishes the
- * new version, clears the calibration command, and enables correction lookup immediately.
+ * The main-loop maintenance path erases and programs flash while interrupts are masked, then
+ * resets the runtime after completion.
  *
- * @param runtime Active motor runtime and completed calibration record.
+ * @param[in,out] runtime Active motor runtime and completed calibration record.
  */
 static void motor_runtime_encoder_calibration_store(MotorRuntime *runtime) {
     motor_runtime_maintenance_schedule(runtime, kMotorMaintenanceStoreCalibration);
@@ -467,7 +508,7 @@ static void motor_runtime_encoder_calibration_store(MotorRuntime *runtime) {
  * Calibration and erase share parameter six and therefore take priority over the independent
  * direction diagnostic in parameter five.
  *
- * @param runtime Active motor runtime and writable parameter bank.
+ * @param[in,out] runtime Active motor runtime and writable parameter bank.
  */
 static void motor_runtime_request_apply(MotorRuntime *runtime) {
     MotorControlRequest request = motor_control_request_decode(
@@ -509,7 +550,7 @@ static void motor_runtime_request_apply(MotorRuntime *runtime) {
  * tenth encoder count. The service-rate velocity PI supplies Q-axis current until both directional
  * sweeps are captured, the shaft returns to center, and the record is persisted.
  *
- * @param runtime Active motor runtime, velocity controller, and calibration capture state.
+ * @param[in,out] runtime Active motor runtime, velocity controller, and calibration capture state.
  */
 static void motor_runtime_encoder_calibration_step(MotorRuntime *runtime) {
     if (motor_runtime_tick_reached(runtime->service_tick, runtime->encoder_calibration_deadline)) {
@@ -557,7 +598,7 @@ static void motor_runtime_encoder_calibration_step(MotorRuntime *runtime) {
  * a reverse return to the captured start position. The writable direction parameter reports the
  * running, failed, or completed status.
  *
- * @param runtime Active motor runtime, encoder state, and index-search countdown.
+ * @param[in,out] runtime Active motor runtime, encoder state, and index-search countdown.
  */
 static void motor_runtime_encoder_direction_step(MotorRuntime *runtime) {
     motor_runtime_encoder_position_refresh(runtime);
@@ -600,7 +641,7 @@ static void motor_runtime_encoder_direction_step(MotorRuntime *runtime) {
  * The encoder position is refreshed and the normal rotor-angle FOC path consumes the current
  * command most recently published by the main-loop drive service.
  *
- * @param runtime Active motor runtime and run-mode state.
+ * @param[in,out] runtime Active motor runtime and run-mode state.
  */
 static void motor_runtime_run_step(MotorRuntime *runtime) {
     motor_runtime_encoder_position_refresh(runtime);
@@ -618,9 +659,9 @@ static void motor_runtime_run_step(MotorRuntime *runtime) {
  * The electrical angle and deferred-update event are published before the startup or run state
  * consumes the synchronized ADC results.
  *
- * @param electrical_angle Wrapped electrical rotor angle for this conversion.
- * @param control_update_due True after every seventh ADC interrupt.
- * @param context Active motor runtime supplied during ADC initialization.
+ * @param[in] electrical_angle Wrapped electrical rotor angle for this conversion.
+ * @param[in] control_update_due True after every seventh ADC interrupt.
+ * @param[in,out] context Active motor runtime supplied during ADC initialization.
  */
 static void motor_runtime_adc_handler(int16_t electrical_angle, bool control_update_due,
                                       void *context) {
@@ -662,8 +703,8 @@ static void motor_runtime_adc_handler(int16_t electrical_angle, bool control_upd
  *
  * The hardware direction selects addition or subtraction of the board-specific encoder modulus.
  *
- * @param increasing True when the hardware counter overflowed in the increasing direction.
- * @param context Active motor runtime supplied during FTM2 initialization.
+ * @param[in] increasing True when the hardware counter overflowed in the increasing direction.
+ * @param[in,out] context Active motor runtime supplied during FTM2 initialization.
  */
 static void motor_runtime_encoder_overflow_handler(bool increasing, void *context) {
     MotorRuntime *runtime = context;
@@ -674,11 +715,11 @@ static void motor_runtime_encoder_overflow_handler(bool increasing, void *contex
 /**
  * @brief Captures the one-shot encoder index event.
  *
- * The first index establishes the persistent counter zero. Every index publishes a fresh event for
+ * The first index establishes the runtime counter zero. Every index publishes a fresh event for
  * startup, calibration, or direction-check state.
  *
- * @param counter FTM2 counter captured by the PORTE24 interrupt.
- * @param context Active motor runtime supplied during index initialization.
+ * @param[in] counter FTM2 counter captured by the PORTE24 interrupt.
+ * @param[in,out] context Active motor runtime supplied during index initialization.
  */
 static void motor_runtime_encoder_index_handler(uint16_t counter, void *context) {
     MotorRuntime *runtime = context;
@@ -698,7 +739,7 @@ static void motor_runtime_encoder_index_handler(uint16_t counter, void *context)
  * services the parameter bus, advances product derating every tenth tick, and updates the remaining
  * service-rate controls.
  *
- * @param context Active motor runtime supplied during service timer initialization.
+ * @param[in,out] context Active motor runtime supplied during service timer initialization.
  */
 static void motor_runtime_service_handler(void *context) {
     MotorRuntime *runtime = context;
@@ -735,8 +776,8 @@ static void motor_runtime_service_handler(void *context) {
  * The extended encoder position, measured Q-axis torque, and live primary drive current are
  * encoded into the transmit buffer before the next SPI transfer.
  *
- * @param frame Motor-link transfer buffer to populate.
- * @param context Active motor runtime supplied during SPI initialization.
+ * @param[out] frame Motor-link transfer buffer to populate.
+ * @param[in] context Active motor runtime supplied during SPI initialization.
  */
 static void motor_runtime_spi_prepare(uint8_t frame[MOTOR_SPI_TRANSFER_SIZE], void *context) {
     MotorRuntime *runtime = context;
@@ -755,8 +796,8 @@ static void motor_runtime_spi_prepare(uint8_t frame[MOTOR_SPI_TRANSFER_SIZE], vo
  * Valid live-force commands immediately update drive current and both FOC controller coefficient
  * pairs. Local effect frames retain their state until the deferred force-feedback service runs.
  *
- * @param frame Complete received motor-link transfer buffer.
- * @param context Active motor runtime supplied during SPI initialization.
+ * @param[in] frame Complete received motor-link transfer buffer.
+ * @param[in,out] context Active motor runtime supplied during SPI initialization.
  * @return False only when an unsupported effect configuration suppresses the next response.
  */
 static bool motor_runtime_spi_receive(const uint8_t frame[MOTOR_SPI_TRANSFER_SIZE], void *context) {
@@ -777,14 +818,6 @@ static bool motor_runtime_spi_receive(const uint8_t frame[MOTOR_SPI_TRANSFER_SIZ
     return result != MOTOR_LINK_FRAME_VALID || decoded.type != MOTOR_LINK_STATUS_TYPE || applied;
 }
 
-/**
- * @brief Initializes the complete motor runtime and its interrupt graph.
- *
- * Board identity selects the hardware profile, product configuration selects normal output scale,
- * watchdog-reset startup enters the safe state, calibration flash is loaded, and all SDK
- * peripherals are configured while global interrupts are masked. Startup begins with the first
- * interlock delay.
- */
 void motor_runtime_initialize(void) {
     memset(&motor_runtime, 0, sizeof(motor_runtime));
     motor_pins_initialize();
@@ -850,19 +883,12 @@ void motor_runtime_initialize(void) {
     EnableGlobalIRQ(interrupt_mask);
 }
 
-/**
- * @brief Services deferred motor runtime work.
- *
- * The reset parameter is serviced before local force feedback is mixed once per service tick and
- * applied to the live FOC command.
- * Seven-ADC events advance the selected force interpolation response. Run mode publishes natural
- * friction and the complete product-scaled current command. Published temperature windows are
- * exposed through the read-only parameter bank. The hardware watchdog is refreshed after all
- * deferred work completes.
- */
 void motor_runtime_poll(void) {
     MotorMaintenanceRequest maintenance = motor_runtime.maintenance_request;
     if (maintenance != kMotorMaintenanceNone) {
+        if (maintenance == kMotorMaintenanceStoreCalibration) {
+            motor_encoder_calibration_record_finalize(&motor_runtime.encoder_calibration.record);
+        }
         uint32_t interrupt_mask = DisableGlobalIRQ();
         status_t status = motor_calibration_storage_erase();
         if (status == kStatus_Success && maintenance == kMotorMaintenanceStoreCalibration) {
