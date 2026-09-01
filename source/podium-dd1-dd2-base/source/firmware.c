@@ -698,8 +698,16 @@ enum {
     FORCE_FEEDBACK_RAMP_INTERVAL_MS = 50, /**< Force-feedback ramp interval in milliseconds. */
     DISPLAY_STARTUP_FRAME_SETTLE_MS = 33, /**< Display frame settle interval in milliseconds. */
     MOTOR_STARTUP_AUTOMATIC_STEERING_TRAVEL =
-        35520,                            /**< Automatic steering travel after startup centering. */
-    MOTOR_STARTUP_STATUS_SETTLE_MS = 300, /**< Motor status settle interval in milliseconds. */
+        35520,                        /**< Automatic steering travel after startup centering. */
+    MOTOR_STARTUP_AUX_ADDRESS = 0x78, /**< Auxiliary-bus address of the motor controller. */
+    MOTOR_STARTUP_OUTPUT_OVERRIDE_REGISTER =
+        0x23, /**< Motor natural-damper register used by the startup override. */
+    MOTOR_STARTUP_OUTPUT_OVERRIDE_VALUE =
+        0xff, /**< Motor natural-damper value used by the startup override. */
+    MOTOR_STARTUP_DRIFT_MODE_VALUE =
+        0xfb, /**< Temporary signed drift-mode byte used by the startup override. */
+    MOTOR_STARTUP_NATURAL_DAMPER_PERCENT =
+        100, /**< Temporary natural-damper percentage used by the startup override. */
     MOTOR_STARTUP_WHEEL_DISCOVERY_TIMEOUT_MS =
         500, /**< Attached-wheel discovery timeout during startup in milliseconds. */
     MOTOR_STARTUP_BUTTON_SCAN_FINISH_MS =
@@ -714,6 +722,12 @@ enum {
     WHEEL_DISPLAY_ENABLE_TORQUE_PROMPT = 0x29,    /**< Wheel glyph code for torque-enable prompt. */
     WHEEL_DISPLAY_ENABLE_TORQUE_CONFIRMED = 0x2a, /**< Wheel glyph code for confirmed torque. */
 };
+
+/** @brief Tuning values preserved while the official startup output override is active. */
+typedef struct {
+    uint8_t drift_mode;     /**< Runtime drift-mode byte before the override. */
+    uint8_t natural_damper; /**< Runtime natural-damper percentage before the override. */
+} MotorStartupOutputOverride;
 
 /**
  * @brief Storage used only by the native and Xbox motor-command transports.
@@ -2348,7 +2362,9 @@ static void apply_runtime_bridge_actions(uint16_t actions) {
         (void)wheel_protocol_bridge_service_request(&wheel_protocol_bridge_service);
     }
     if ((actions & RUNTIME_BRIDGE_ACTION_ACTIVATE_UPDATER_USB) != 0 &&
-        usb_device_set_operating_mode(USB_OPERATING_MODE_UPDATER)) {
+        (usb_device_operating_mode() == USB_OPERATING_MODE_UPDATER ||
+         usb_device_set_operating_mode(USB_OPERATING_MODE_UPDATER))) {
+        platform_usb_attach();
         usb_updater_service_set_usb_active(&usb_updater_service, true);
     }
     if ((actions & RUNTIME_BRIDGE_ACTION_RESTORE_NORMAL_USB) != 0) {
@@ -2508,8 +2524,8 @@ static void finish_unavailable_xbox_startup(void) {
  * @brief Selects the retained USB identity before the first host attachment.
  *
  * Prepares native USB state, applies a retained PlayStation identity immediately, or completes the
- * supported Xbox motor-command startup exchange. Native USB is attached only when neither console
- * identity became active.
+ * supported Xbox motor-command startup exchange. Native USB remains detached until the caller has
+ * restored the startup motor override and refreshed steering calibration.
  */
 static void initialize_startup_console_usb(void) {
     usb_device_prepare(board_identity.variant);
@@ -2545,9 +2561,6 @@ static void initialize_startup_console_usb(void) {
         }
     }
     motor_startup_direct_force = false;
-    if (usb_device_operating_mode() == USB_OPERATING_MODE_FANATEC) {
-        platform_usb_attach();
-    }
 }
 
 /**
@@ -2560,9 +2573,8 @@ static void initialize_startup_console_usb(void) {
  */
 static bool start_startup_status_bridge(void) {
     platform_display_reset();
-    usb_device_prepare(board_identity.variant);
-    if (!usb_updater_service_select_mode(&usb_updater_service, USB_RUNTIME_MODE_STATUS_BRIDGE)) {
-        platform_usb_attach();
+    if (!usb_device_prepare_updater(board_identity.variant) ||
+        !usb_updater_service_select_mode(&usb_updater_service, USB_RUNTIME_MODE_STATUS_BRIDGE)) {
         return false;
     }
     motor_startup_direct_force = false;
@@ -2590,14 +2602,68 @@ static void run_led_pattern_startup_sequence(void) {
 }
 
 /**
+ * @brief Applies the official motor output override before startup centering.
+ *
+ * Preserves the active drift-mode and natural-damper bytes, selects signed drift mode -5 and
+ * 100-percent natural damper, and writes the corresponding full-scale damper byte to motor register
+ * 0x23 for standard and position controllers. Failed auxiliary-bus transfers are reset and retried
+ * until the write succeeds. Legacy controllers do not support this override.
+ *
+ * @param[in] identity Identified motor controller.
+ * @param[out] override Preserved runtime tuning values.
+ * @return True when the override was applied; otherwise false.
+ */
+static bool apply_motor_startup_output_override(const MotorIdentity *identity,
+                                                MotorStartupOutputOverride *override) {
+    if (identity->protocol == MOTOR_PROTOCOL_LEGACY) {
+        return false;
+    }
+
+    override->drift_mode = runtime_tuning_profile.drift_compensation;
+    override->natural_damper = runtime_tuning_profile.natural_damper;
+    runtime_tuning_profile.drift_compensation = MOTOR_STARTUP_DRIFT_MODE_VALUE;
+    runtime_tuning_profile.natural_damper = MOTOR_STARTUP_NATURAL_DAMPER_PERCENT;
+
+    uint8_t value = MOTOR_STARTUP_OUTPUT_OVERRIDE_VALUE;
+    for (;;) {
+        platform_aux_bus_clear();
+        if (!platform_aux_bus_start_write(MOTOR_STARTUP_AUX_ADDRESS,
+                                          MOTOR_STARTUP_OUTPUT_OVERRIDE_REGISTER, &value, 1)) {
+            continue;
+        }
+
+        while (platform_aux_bus_status() == PLATFORM_AUX_BUS_BUSY) {
+            platform_aux_bus_service();
+        }
+        if (platform_aux_bus_status() == PLATFORM_AUX_BUS_SUCCEEDED) {
+            platform_aux_bus_clear();
+            return true;
+        }
+    }
+}
+
+/**
+ * @brief Restores runtime tuning values after the startup output override.
+ *
+ * Reinstates the drift-mode and natural-damper bytes preserved before centering. The motor tuning
+ * service subsequently publishes the restored damper value through its normal parameter sync.
+ *
+ * @param[in] override Preserved runtime tuning values.
+ */
+static void restore_motor_startup_output_override(const MotorStartupOutputOverride *override) {
+    runtime_tuning_profile.drift_compensation = override->drift_mode;
+    runtime_tuning_profile.natural_damper = override->natural_damper;
+}
+
+/**
  * @brief Selects the startup USB path after motor-controller discovery.
  *
  * Services the shared auxiliary bus through motor discovery. A recognized controller centers the
- * motor, waits through the status-link settling interval, validates wheel status, discovers the
- * wheel, resolves the retained console mode, and only then exposes the selected USB identity.
- * Status failure selects direct updater recovery. A missing controller leaves normal USB detached
- * while runtime mode two probes the auxiliary updater endpoint; rejected recovery falls back to the
- * prepared normal profile.
+ * motor with the required output override, validates wheel status, discovers the wheel, resolves
+ * the retained console mode, and only then exposes the selected USB identity. Status failure
+ * selects direct updater recovery. A missing controller leaves normal USB detached while runtime
+ * mode two probes the auxiliary updater endpoint; rejected recovery falls back to the prepared
+ * normal profile.
  */
 static void initialize_startup_usb(void) {
     motor_probe_start(&motor_probe, platform_time_ms());
@@ -2605,20 +2671,31 @@ static void initialize_startup_usb(void) {
         platform_aux_bus_service();
         motor_probe_run(&motor_probe, platform_time_ms());
     }
-    if (motor_probe_identity(&motor_probe) != NULL) {
+    const MotorIdentity *motor_identity = motor_probe_identity(&motor_probe);
+    if (motor_identity != NULL) {
         run_led_pattern_startup_sequence();
+        MotorStartupOutputOverride output_override;
+        bool output_override_active =
+            apply_motor_startup_output_override(motor_identity, &output_override);
         run_motor_startup_centering();
         automatic_steering_travel = MOTOR_STARTUP_AUTOMATIC_STEERING_TRAVEL;
-        uint32_t status_settle_deadline_ms = platform_time_ms() + MOTOR_STARTUP_STATUS_SETTLE_MS;
-        while (!platform_time_reached(platform_time_ms(), status_settle_deadline_ms + 1u)) {
-        }
+        platform_serial_link_init();
+        serial_service_init(&serial_service);
+        wheel_status_service_init(&wheel_status_service, &serial_service);
         if (!run_wheel_startup_status_transaction()) {
             (void)start_startup_status_bridge();
             return;
         }
+        wheel_service_init(&wheel_service, &serial_service);
         run_wheel_startup_discovery();
         initialize_startup_console_usb();
+        if (output_override_active) {
+            restore_motor_startup_output_override(&output_override);
+        }
         refresh_wheel_position_calibration();
+        if (usb_device_operating_mode() == USB_OPERATING_MODE_FANATEC) {
+            platform_usb_attach();
+        }
         return;
     }
 
@@ -5003,13 +5080,9 @@ int main(void) {
     platform_pedal_link_init();
     pedal_service_init(&pedal_service);
     pedal_brake_indicator_init(&pedal_brake_indicator);
-    platform_serial_link_init();
-    serial_service_init(&serial_service);
-    wheel_service_init(&wheel_service, &serial_service);
     wheel_compatibility_alert_init(&wheel_compatibility_alert);
     fanatec_encoder_init(&fanatec_encoder);
     usb_xbox_gip_input_builder_init(&xbox_input_builder);
-    wheel_status_service_init(&wheel_status_service, &serial_service);
     runtime_bridge_init(&runtime_bridge);
     initialize_usb_command_bridge();
     wheel_velocity_reset(&wheel_velocity_estimator);

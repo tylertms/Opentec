@@ -68,6 +68,17 @@ void usb_device_init(BoardVariant variant);
 void usb_device_prepare(BoardVariant variant);
 
 /**
+ * @brief Prepares the detached wheel-base updater USB device.
+ *
+ * Builds the EBLDC updater descriptor profile, initializes console service data, resets transfer
+ * state, and prepares the USB controller without attaching it to the host.
+ *
+ * @param[in] variant Wheel-base hardware variant.
+ * @return True when the updater descriptor profile was prepared; otherwise false.
+ */
+bool usb_device_prepare_updater(BoardVariant variant);
+
+/**
  * @brief Selects the primary USB input-report operating mode.
  *
  * Builds the descriptor profile and selects a native or compatibility input-report mode.

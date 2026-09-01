@@ -196,6 +196,14 @@ static void test_prepares_without_attaching(void) {
     assert(usb_device_operating_mode() == USB_OPERATING_MODE_FANATEC);
 }
 
+static void test_prepares_updater_without_restarting_or_attaching(void) {
+    assert(usb_device_prepare_updater(BOARD_VARIANT_DD1));
+    assert(!attached);
+    assert(restart_count == 0);
+    assert(control_ready_count == 1);
+    assert(usb_device_operating_mode() == USB_OPERATING_MODE_UPDATER);
+}
+
 static void test_enumerates_podium_device(void) {
     static const uint8_t get_device_descriptor[] = {0x80, 6, 0, 1, 0, 0, 18, 0};
     static const uint8_t set_address[] = {0x00, 5, 42, 0, 0, 0, 0, 0};
@@ -936,6 +944,7 @@ static void test_handles_representative_zero_shape_control_requests(void) {
 
 int main(void) {
     test_prepares_without_attaching();
+    test_prepares_updater_without_restarting_or_attaching();
     test_enumerates_podium_device();
     test_returns_xbox_security_descriptor();
     test_exchanges_hid_reports();

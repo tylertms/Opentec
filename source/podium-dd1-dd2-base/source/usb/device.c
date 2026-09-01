@@ -430,7 +430,17 @@ static void reset_state(bool preserve_hid_state) {
     usb_xbox_gip_service_init(&xbox_service);
 }
 
-void usb_device_prepare(BoardVariant variant) {
+/**
+ * @brief Prepares one detached wheel-base USB operating mode.
+ *
+ * Initializes shared console identity data, builds the selected descriptor profile, resets device
+ * transfer state, and prepares endpoint zero without attaching the controller to the host.
+ *
+ * @param[in] variant Wheel-base hardware variant.
+ * @param[in] mode Initial USB operating mode.
+ * @return True when the selected descriptor profile was prepared; otherwise false.
+ */
+static bool prepare_device(BoardVariant variant, UsbOperatingMode mode) {
     board_variant = variant;
     playstation_wheel_mode = 4;
     xbox_identity_ready = false;
@@ -442,10 +452,21 @@ void usb_device_prepare(BoardVariant variant) {
         .digest = xbox_digest,
         .metadata = console_workspace.xbox_metadata,
     };
-    (void)build_descriptors(variant, USB_OPERATING_MODE_FANATEC);
+    if (!build_descriptors(variant, mode)) {
+        return false;
+    }
     reset_state(false);
     platform_usb_init();
     platform_usb_control_ready();
+    return true;
+}
+
+void usb_device_prepare(BoardVariant variant) {
+    (void)prepare_device(variant, USB_OPERATING_MODE_FANATEC);
+}
+
+bool usb_device_prepare_updater(BoardVariant variant) {
+    return prepare_device(variant, USB_OPERATING_MODE_UPDATER);
 }
 
 void usb_device_init(BoardVariant variant) {
