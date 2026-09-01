@@ -265,7 +265,7 @@ if base_is_dspic
   device_pack_path = device_pack.get_variable('device_pack_path')
   device = '-mcpu=33EP512MU810'
   pack = '-mdfp=' + device_pack_path
-  common_device_args = [device, pack, '-mlarge-code']
+  common_device_args = [device, pack, '-mlarge-code', '-mlarge-aggregate']
   warning_args = [
     '-Wall',
     '-Wextra',
