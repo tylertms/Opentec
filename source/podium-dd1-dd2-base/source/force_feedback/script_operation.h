@@ -31,4 +31,12 @@ force_feedback_script_operation_execute(ForceFeedbackScriptRuntime *runtime, uin
                                         const uint8_t *script, size_t length, size_t cursor,
                                         bool commit);
 
+/**
+ * @brief Reports whether an operation code is implemented by the script runtime.
+ *
+ * @param[in] operation Script operation code to inspect.
+ * @return True when the operation has defined execution behavior; otherwise false.
+ */
+bool force_feedback_script_operation_supported(uint8_t operation);
+
 #endif

@@ -9,16 +9,16 @@
 /** @brief Internal constants for the motor calibration bus protocol. */
 enum {
     MOTOR_AUX_BUS_ADDRESS = 0x78, /**< Auxiliary-bus address of the motor controller. */
-    MOTOR_CALIBRATION_REGISTER = 6, /**< Controller register used for calibration commands and results. */
+    MOTOR_CALIBRATION_REGISTER =
+        6, /**< Controller register used for calibration commands and results. */
     MOTOR_CALIBRATION_COMMAND_SIZE = 7, /**< Length of the host calibration command signature. */
-    MOTOR_CALIBRATION_COMMAND_PREFIX = 0xf9, /**< Host calibration command prefix byte. */
-    MOTOR_CALIBRATION_COMMAND_SUBCOMMAND = 4, /**< Host calibration command subcommand byte. */
+    MOTOR_CALIBRATION_COMMAND_PREFIX = 0xf9,       /**< Host calibration command prefix byte. */
+    MOTOR_CALIBRATION_COMMAND_SUBCOMMAND = 4,      /**< Host calibration command subcommand byte. */
     MOTOR_CALIBRATION_CALIBRATE_REQUEST = 1u << 0, /**< Pending-request bit for calibration. */
-    MOTOR_CALIBRATION_ERASE_REQUEST = 1u << 1, /**< Pending-request bit for erasure. */
-    MOTOR_CALIBRATION_CALIBRATE_VALUE = 0xaa, /**< Repeated command value for calibration. */
-    MOTOR_CALIBRATION_ERASE_VALUE = 0xbb, /**< Repeated command value for erasure. */
-    MOTOR_CALIBRATION_REQUIRED_WHEEL_MODE = 0, /**< Wheel mode required before calibration. */
-    MOTOR_CALIBRATION_RESULT_HOLD_MS = 4000, /**< Duration for holding a completed calibration result. */
+    MOTOR_CALIBRATION_ERASE_REQUEST = 1u << 1,     /**< Pending-request bit for erasure. */
+    MOTOR_CALIBRATION_CALIBRATE_VALUE = 0xaa,      /**< Repeated command value for calibration. */
+    MOTOR_CALIBRATION_ERASE_VALUE = 0xbb,          /**< Repeated command value for erasure. */
+    MOTOR_CALIBRATION_REQUIRED_WHEEL_MODE = 0,     /**< Wheel mode required before calibration. */
 };
 
 bool motor_calibration_command_decode(const UsbOutputCommand *output,
@@ -97,15 +97,9 @@ static bool begin_request(MotorCalibrationService *service, uint8_t wheel_mode,
         return false;
     }
 
-    uint8_t value = service->operation == MOTOR_CALIBRATION_OPERATION_CALIBRATE
-                        ? MOTOR_CALIBRATION_CALIBRATE_VALUE
-                        : MOTOR_CALIBRATION_ERASE_VALUE;
-    service->data[0] = value;
-    service->data[1] = value;
-    service->phase = MOTOR_CALIBRATION_WRITE_COMMAND;
-    if (service->operation == MOTOR_CALIBRATION_OPERATION_CALIBRATE) {
-        service->event = MOTOR_CALIBRATION_EVENT_STARTED;
-    }
+    service->data[0] = 0;
+    service->data[1] = 0;
+    service->phase = MOTOR_CALIBRATION_READ_IDLE;
     return true;
 }
 
@@ -121,26 +115,37 @@ static bool begin_request(MotorCalibrationService *service, uint8_t wheel_mode,
  * @param[in] succeeded True when the auxiliary-bus transfer completed successfully.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
-static void finish_transfer(MotorCalibrationService *service, bool succeeded, uint32_t now_ms) {
+static void finish_transfer(MotorCalibrationService *service, bool succeeded) {
     platform_aux_bus_clear();
     service->transfer_active = false;
     if (!succeeded) {
         return;
     }
-    if (service->phase == MOTOR_CALIBRATION_WRITE_COMMAND) {
+    if (service->phase == MOTOR_CALIBRATION_READ_IDLE) {
+        if (service->data[0] != 0 || service->data[1] != 0) {
+            return;
+        }
+        uint8_t value = service->operation == MOTOR_CALIBRATION_OPERATION_CALIBRATE
+                            ? MOTOR_CALIBRATION_CALIBRATE_VALUE
+                            : MOTOR_CALIBRATION_ERASE_VALUE;
+        service->data[0] = value;
+        service->data[1] = value;
+        service->phase = MOTOR_CALIBRATION_WRITE_COMMAND;
+        if (service->operation == MOTOR_CALIBRATION_OPERATION_CALIBRATE) {
+            service->event = MOTOR_CALIBRATION_EVENT_STARTED;
+        }
+    } else if (service->phase == MOTOR_CALIBRATION_WRITE_COMMAND) {
         service->data[0] = 0;
         service->data[1] = 0;
         service->phase = MOTOR_CALIBRATION_READ_RESPONSE;
-    } else if (service->data[0] != 0 || service->data[1] != 0) {
+    } else if (service->data[0] == 0 && service->data[1] == 0) {
         service->requests &= (uint8_t)~request_bit(service->operation);
         if (service->operation == MOTOR_CALIBRATION_OPERATION_CALIBRATE) {
-            service->phase = MOTOR_CALIBRATION_HOLD_RESULT;
-            service->result_deadline_ms = now_ms + MOTOR_CALIBRATION_RESULT_HOLD_MS;
             service->event = MOTOR_CALIBRATION_EVENT_COMPLETED;
         } else {
-            service->phase = MOTOR_CALIBRATION_IDLE;
             service->event = MOTOR_CALIBRATION_EVENT_ERASED;
         }
+        service->phase = MOTOR_CALIBRATION_IDLE;
     }
 }
 
@@ -165,21 +170,14 @@ static void start_transfer(MotorCalibrationService *service) {
 }
 
 void motor_calibration_service_run(MotorCalibrationService *service, uint8_t wheel_mode,
-                                   const MotorTelemetry *telemetry, uint32_t now_ms) {
+                                   const MotorTelemetry *telemetry) {
     PlatformAuxBusStatus bus_status = platform_aux_bus_status();
     if (service->transfer_active) {
         if (bus_status == PLATFORM_AUX_BUS_BUSY) {
             return;
         }
-        finish_transfer(service, bus_status == PLATFORM_AUX_BUS_SUCCEEDED, now_ms);
+        finish_transfer(service, bus_status == PLATFORM_AUX_BUS_SUCCEEDED);
         bus_status = PLATFORM_AUX_BUS_IDLE;
-    }
-
-    if (service->phase == MOTOR_CALIBRATION_HOLD_RESULT) {
-        if ((int32_t)(now_ms - service->result_deadline_ms) > 0) {
-            service->phase = MOTOR_CALIBRATION_IDLE;
-        }
-        return;
     }
 
     while (service->phase == MOTOR_CALIBRATION_IDLE && service->requests != 0) {
@@ -195,6 +193,17 @@ void motor_calibration_service_run(MotorCalibrationService *service, uint8_t whe
 bool motor_calibration_service_pending(const MotorCalibrationService *service) {
     return service->requests != 0 || service->phase != MOTOR_CALIBRATION_IDLE ||
            service->transfer_active;
+}
+
+/**
+ * @brief Reports whether motor calibration is in an active exchange phase.
+ *
+ * @param[in] service Calibration service to inspect.
+ * @return True while an exchange is active; otherwise false.
+ */
+bool motor_calibration_service_active(const MotorCalibrationService *service) {
+    return service->phase == MOTOR_CALIBRATION_WRITE_COMMAND ||
+           service->phase == MOTOR_CALIBRATION_READ_RESPONSE;
 }
 
 bool motor_calibration_service_owns_bus(const MotorCalibrationService *service) {

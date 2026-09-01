@@ -23,4 +23,18 @@ bool force_feedback_script_service_run(ForceFeedbackScriptRuntime *runtime,
                                        const ForceFeedbackScriptStore *store,
                                        ForceFeedbackScriptClock *clock);
 
+/**
+ * @brief Runs one script-service pass with optional execution-state tracking.
+ *
+ * @param[in,out] runtime Script runtime to advance.
+ * @param[in] store Script storage containing the selected program.
+ * @param[in,out] clock Script clock to advance.
+ * @param[in] track_execution True to publish execution-state transitions.
+ * @return True when script execution remains active; otherwise false.
+ */
+bool force_feedback_script_service_run_tracked(ForceFeedbackScriptRuntime *runtime,
+                                               const ForceFeedbackScriptStore *store,
+                                               ForceFeedbackScriptClock *clock,
+                                               bool track_execution);
+
 #endif

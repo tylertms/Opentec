@@ -157,6 +157,12 @@ void motor_output_transport_build_frame(MotorOutputTransport *transport, uint8_t
                                         int16_t center_position, const ForceOutputReport *report,
                                         MotorLiveFrame *frame) {
     if (transport->count != 0) {
+        uint8_t expected_read_index =
+            transport->write_index >= transport->count
+                ? (uint8_t)(transport->write_index - transport->count)
+                : (uint8_t)(transport->write_index + MOTOR_OUTPUT_QUEUE_CAPACITY -
+                            transport->count);
+        transport->read_index = expected_read_index;
         frame->type = MOTOR_LIVE_STATUS_TYPE;
         frame->payload[0] = status;
         memcpy(frame->payload + 1, transport->commands[transport->read_index],

@@ -26,6 +26,8 @@ enum {
         1, /**< Process zero script force through the output path. */
     FORCE_FEEDBACK_SCRIPT_OUTPUT_MOTION =
         2, /**< Process script motion force through the output path. */
+    FORCE_FEEDBACK_SCRIPT_OUTPUT_POSITION =
+        3, /**< Process script position force through the output path. */
 };
 
 /**

@@ -11,37 +11,44 @@
 /** @brief Actions requested by a motor-command channel event. */
 typedef enum {
     MOTOR_COMMAND_CHANNEL_ACTION_NONE = 0, /**< No packet must be written. */
-    MOTOR_COMMAND_CHANNEL_ACTION_WRITE = 1 << 0, /**< Write the packet referenced by the event to the motor. */
+    MOTOR_COMMAND_CHANNEL_ACTION_WRITE =
+        1 << 0, /**< Write the packet referenced by the event to the motor. */
 } MotorCommandChannelAction;
 
 /** @brief Caller-owned storage used by a motor-command channel. */
 typedef struct {
-    uint8_t *receive_assembly; /**< Buffer used to assemble fragmented received packets. */
+    uint8_t *receive_assembly;          /**< Buffer used to assemble fragmented received packets. */
     uint16_t receive_assembly_capacity; /**< Capacity of receive_assembly in bytes. */
-    uint8_t *transmit; /**< Buffer used for the current encoded transmit packet. */
-    uint16_t transmit_capacity; /**< Capacity of transmit in bytes. */
+    uint8_t *transmit;                  /**< Buffer used for the current encoded transmit packet. */
+    uint16_t transmit_capacity;         /**< Capacity of transmit in bytes. */
     uint8_t *pending_payload; /**< Buffer retaining the application payload for retransmission. */
     uint16_t pending_payload_capacity; /**< Capacity of pending_payload in bytes. */
 } MotorCommandChannelBuffers;
 
 /** @brief Reports the result of accepting one motor-command packet. */
 typedef struct {
-    MotorCommandChannelAction actions; /**< Packet-channel actions required by the caller. */
+    MotorCommandChannelAction actions;        /**< Packet-channel actions required by the caller. */
     MotorCommandReceiveResult receive_result; /**< Receive-layer result for the accepted packet. */
-    MotorCommandApplicationEvent application; /**< Application-layer result for a complete message, when applicable. */
-    const uint8_t *packet; /**< Encoded control or retransmission packet to write when WRITE is set. */
+    MotorCommandApplicationEvent
+        application; /**< Application-layer result for a complete message, when applicable. */
+    const uint8_t
+        *packet; /**< Encoded control or retransmission packet to write when WRITE is set. */
     uint16_t packet_length; /**< Number of bytes available at packet. */
 } MotorCommandChannelEvent;
 
 /** @brief Maintains motor-command receive, transmit, and application state. */
 typedef struct {
-    MotorCommandReceiver receiver; /**< Sequence and fragment state for received and sent packets. */
+    MotorCommandReceiver
+        receiver; /**< Sequence and fragment state for received and sent packets. */
     MotorCommandApplication application; /**< Accumulated decoded application state. */
-    MotorCommandMessage message; /**< View of the most recently decoded complete message. */
-    MotorCommandChannelBuffers buffers; /**< Caller-owned buffers attached to this channel. */
+    MotorCommandMessage message;         /**< View of the most recently decoded complete message. */
+    MotorCommandChannelBuffers buffers;  /**< Caller-owned buffers attached to this channel. */
     uint16_t transmit_length; /**< Length of the encoded packet currently in buffers.transmit. */
     uint16_t pending_payload_length; /**< Length of the retained application payload. */
+    uint8_t control_packet[5];       /**< Retained control packet awaiting transmission. */
+    uint8_t retry_count;             /**< Number of transmissions of the active command. */
     bool command_pending; /**< Whether a queued application payload awaits acknowledgement. */
+    bool command_sent;    /**< True after the active command has reached the physical link. */
 } MotorCommandChannel;
 
 /**
@@ -91,6 +98,14 @@ bool motor_command_channel_queue_payload(MotorCommandChannel *channel, const uin
  * @return true when the reset packet was queued; otherwise false.
  */
 bool motor_command_channel_queue_sequence_reset(MotorCommandChannel *channel);
+
+/**
+ * @brief Records that a channel packet was written to the physical transport.
+ *
+ * @param[in,out] channel Motor command channel retaining acknowledgement state.
+ * @param[in] packet Packet accepted by the physical transport.
+ */
+void motor_command_channel_mark_written(MotorCommandChannel *channel, const uint8_t *packet);
 
 /**
  * @brief Queues a calibration-digest request.

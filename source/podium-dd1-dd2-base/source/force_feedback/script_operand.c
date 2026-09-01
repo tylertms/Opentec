@@ -337,7 +337,12 @@ force_feedback_script_operand_write(ForceFeedbackScriptRuntime *runtime, const u
         runtime->variables[opcode - OPERAND_VARIABLE_FIRST] = value;
     } else if (opcode >= OPERAND_VARIABLE_SAMPLE_FIRST && opcode <= OPERAND_VARIABLE_SAMPLE_LAST) {
         size_t variable = opcode - OPERAND_VARIABLE_SAMPLE_FIRST;
-        runtime->samples.values[(uint8_t)runtime->variables[variable]] = value;
+        size_t index = runtime->variables[variable];
+        if (index < FORCE_FEEDBACK_SCRIPT_SAMPLE_COUNT) {
+            runtime->samples.values[index] = value;
+        } else {
+            valid = false;
+        }
     } else if (opcode >= OPERAND_SLOT_VALUE_FIRST && opcode <= OPERAND_SLOT_SAMPLE_LAST) {
         valid = write_slot_operand(runtime, opcode, value);
     } else if (opcode >= OPERAND_MOTION_FIRST && opcode <= OPERAND_MOTION_LAST) {

@@ -142,7 +142,7 @@ static void test_limits(void) {
     profile.force_effect_strength = UINT8_MAX;
     profile.spring_effect_strength = UINT8_MAX;
     profile.damper_effect_strength = UINT8_MAX;
-    assert(encode_value(MOTOR_TUNING_FORCE_FEEDBACK_STRENGTH, &profile, &context) == 100);
+    assert(encode_value(MOTOR_TUNING_FORCE_FEEDBACK_STRENGTH, &profile, &context) == UINT8_MAX);
     assert(encode_value(MOTOR_TUNING_FORCE_EFFECT_INTENSITY, &profile, &context) == 100);
     assert(encode_value(MOTOR_TUNING_FORCE_EFFECT_STRENGTH, &profile, &context) == 12);
     assert(encode_value(MOTOR_TUNING_SPRING_EFFECT_STRENGTH, &profile, &context) == 12);

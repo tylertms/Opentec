@@ -26,7 +26,7 @@ static void test_maps_normal_mode_conditions(void) {
         .full_torque = true,
     };
 
-    assert(motor_output_status_update(&status, &input) == UINT8_MAX);
+    assert(motor_output_status_update(&status, &input) == 0xf7);
 }
 
 static void test_xbox_mode_retains_motor_gates(void) {
@@ -70,7 +70,7 @@ static void test_non_xbox_direct_force_refreshes_motor_gates(void) {
 
     uint8_t value = motor_output_status_update(&status, &input);
 
-    assert(value == MOTOR_OUTPUT_STATUS_ENABLED);
+    assert(value == (MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS | MOTOR_OUTPUT_STATUS_ENABLED));
 }
 
 int main(void) {

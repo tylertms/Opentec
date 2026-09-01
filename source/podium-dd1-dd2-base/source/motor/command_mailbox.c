@@ -8,9 +8,9 @@
 /** @brief Internal remote offsets used by the motor-command mailbox. */
 enum {
     MOTOR_COMMAND_MAILBOX_PAYLOAD_OFFSET = 0x80, /**< Remote mailbox payload record offset. */
-    MOTOR_COMMAND_MAILBOX_LENGTH_OFFSET = 0x81, /**< Remote mailbox length record offset. */
+    MOTOR_COMMAND_MAILBOX_LENGTH_OFFSET = 0x81,  /**< Remote mailbox length record offset. */
     MOTOR_COMMAND_MAILBOX_CONTROL_OFFSET = 0x82, /**< Remote mailbox control record offset. */
-    MOTOR_COMMAND_MAILBOX_STATUS_OFFSET = 0x90, /**< Remote mailbox status record offset. */
+    MOTOR_COMMAND_MAILBOX_STATUS_OFFSET = 0x90,  /**< Remote mailbox status record offset. */
 };
 
 /**
@@ -168,6 +168,8 @@ motor_command_mailbox_exchange_run(MotorCommandMailboxExchange *exchange,
     }
     if (exchange->phase == MOTOR_COMMAND_MAILBOX_EXCHANGE_PAYLOAD_WRITE_WAIT) {
         exchange->phase = MOTOR_COMMAND_MAILBOX_EXCHANGE_CONTROL_QUEUE;
+        output.packet = exchange->write_packet;
+        output.packet_length = exchange->write_length;
         exchange->write_packet = 0;
         exchange->write_length = 0;
         output.event = MOTOR_COMMAND_MAILBOX_EXCHANGE_PACKET_WRITTEN;

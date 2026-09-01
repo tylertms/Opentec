@@ -101,7 +101,7 @@ static void test_reports_slot_faults(void) {
     store.data[0] = 0x0a;
     store.slots[0].size = 1;
 
-    assert(force_feedback_script_service_run(&runtime, &store, &clock));
+    assert(!force_feedback_script_service_run(&runtime, &store, &clock));
     assert(runtime.slots[0].state == FORCE_FEEDBACK_SCRIPT_SLOT_FAULT);
     assert(runtime.slots[0].execution_count == 1);
 

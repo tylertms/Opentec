@@ -22,10 +22,12 @@
  * @return Failed startup result.
  */
 static MotorCommandStartupServiceResult fail(MotorCommandStartupService *service,
+                                             MotorCommandChannel *channel,
                                              MotorCommandMailboxExchange *exchange,
                                              CommandTransport *transport) {
     service->failed = true;
     service->startup.active = false;
+    motor_command_channel_reset(channel);
     motor_command_mailbox_exchange_reset(exchange);
     command_transport_release(transport, MOTOR_COMMAND_STARTUP_OWNER);
     return MOTOR_COMMAND_STARTUP_SERVICE_FAILED;
@@ -102,7 +104,7 @@ motor_command_startup_service_run(MotorCommandStartupService *service, MotorComm
             return MOTOR_COMMAND_STARTUP_SERVICE_RUNNING;
         }
         if (status != COMMAND_TRANSPORT_COMPLETE) {
-            return fail(service, exchange, transport);
+            return fail(service, channel, exchange, transport);
         }
         service->status_read_pending = false;
     } else if (service->startup.active &&
@@ -114,7 +116,7 @@ motor_command_startup_service_run(MotorCommandStartupService *service, MotorComm
         MotorCommandChannelMailboxEvent event =
             motor_command_channel_mailbox_run(channel, exchange, transport);
         if (event.mailbox_event == MOTOR_COMMAND_MAILBOX_EXCHANGE_FAILED) {
-            return fail(service, exchange, transport);
+            return fail(service, channel, exchange, transport);
         }
         if (event.mailbox_event == MOTOR_COMMAND_MAILBOX_EXCHANGE_PACKET_WRITTEN) {
             if (service->pending_write == MOTOR_COMMAND_STARTUP_WRITE_RESET) {
@@ -149,7 +151,7 @@ motor_command_startup_service_run(MotorCommandStartupService *service, MotorComm
     MotorCommandStartupAction action =
         motor_command_startup_run(&service->startup, transport, input);
     if (!queue_action(service, channel, exchange, transport, action)) {
-        return fail(service, exchange, transport);
+        return fail(service, channel, exchange, transport);
     }
     return service->startup.complete ? MOTOR_COMMAND_STARTUP_SERVICE_COMPLETE
                                      : MOTOR_COMMAND_STARTUP_SERVICE_RUNNING;

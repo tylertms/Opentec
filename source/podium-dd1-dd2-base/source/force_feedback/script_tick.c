@@ -99,6 +99,11 @@ ForceFeedbackScriptTickDecision force_feedback_script_tick(ForceFeedbackScriptSy
             .immediate_zero = true,
         };
     }
+    if (system->store.position_request_pending) {
+        return (ForceFeedbackScriptTickDecision){
+            .output_policy = FORCE_FEEDBACK_SCRIPT_OUTPUT_POSITION,
+        };
+    }
 
     system->values.motion[MOTION_FORCE] = 0;
     system->values.motion[MOTION_SELECTOR] = 0;
@@ -118,7 +123,8 @@ ForceFeedbackScriptTickDecision force_feedback_script_tick(ForceFeedbackScriptSy
 
     update_engine_timing(system, schedule);
     bool slot_faulted =
-        force_feedback_script_service_run(&system->values, &system->store, &system->clock);
+        force_feedback_script_service_run_tracked(&system->values, &system->store, &system->clock,
+                                                  schedule == FORCE_FEEDBACK_SCRIPT_SCHEDULE_IDLE);
     force_feedback_script_motion_update(&system->values, &system->inputs, &system->motion,
                                         system->clock.motion_ticks, wheel_position, half_travel,
                                         host_tick);
@@ -142,7 +148,9 @@ ForceFeedbackScriptTickResult force_feedback_script_tick_output(
     ForceFeedbackScriptSystem *system, ForceFeedbackScriptOutputState *output_state, uint32_t now,
     int32_t wheel_position, uint32_t half_travel, const ForceFeedbackScriptOutputConfig *config,
     ForceOutputReport *report) {
-    if (system->store.position_request_pending) {
+    ForceFeedbackScriptTickDecision decision =
+        force_feedback_script_tick(system, now, wheel_position, half_travel);
+    if (decision.output_policy == FORCE_FEEDBACK_SCRIPT_OUTPUT_POSITION) {
         bool outside_travel = force_feedback_script_position_output_apply(
             output_state, wheel_position, half_travel, now, config, report);
         return (ForceFeedbackScriptTickResult){
@@ -150,8 +158,6 @@ ForceFeedbackScriptTickResult force_feedback_script_tick_output(
             .outside_travel = outside_travel,
         };
     }
-    ForceFeedbackScriptTickDecision decision =
-        force_feedback_script_tick(system, now, wheel_position, half_travel);
     if (decision.output_policy == FORCE_FEEDBACK_SCRIPT_OUTPUT_NONE) {
         return (ForceFeedbackScriptTickResult){.slot_faulted = decision.slot_faulted};
     }

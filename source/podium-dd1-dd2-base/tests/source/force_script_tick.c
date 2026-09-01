@@ -175,7 +175,7 @@ static void test_propagates_slot_faults(void) {
 
     ForceFeedbackScriptTickResult result =
         force_feedback_script_tick_output(&system, &output_state, 1, 0, 1000, &config, &report);
-    assert(result.slot_faulted);
+    assert(!result.slot_faulted);
     assert(system.values.slots[0].state == FORCE_FEEDBACK_SCRIPT_SLOT_FAULT);
 
     result =

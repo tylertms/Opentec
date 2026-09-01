@@ -14,11 +14,11 @@ enum {
     COMMAND_ADVANCE = 0x01,         /**< Starts or preserves an unconditional suppression span. */
     COMMAND_ADVANCE_IF_ZERO = 0x02, /**< Advances when the condition is floating-point zero. */
     COMMAND_ADVANCE_IF_NONZERO =
-        0x03,                       /**< Advances when the condition is not floating-point zero. */
-    COMMAND_STOP = 0x04,            /**< Stops execution when the current record is committed. */
-    COMMAND_STOP_IF_ZERO = 0x05,    /**< Stops when the condition is floating-point zero. */
-    COMMAND_STOP_IF_NONZERO = 0x06, /**< Stops when the condition is not floating-point zero. */
-    COMMAND_COMPLETE = 0x07, /**< Completes execution when the current record is committed. */
+        0x03, /**< Advances when the condition is not floating-point zero. */
+    COMMAND_ENSURE_CURSOR = 0x04,
+    COMMAND_REWIND_IF_ZERO = 0x05,
+    COMMAND_REWIND_IF_NONZERO = 0x06,
+    COMMAND_RESERVE_SLOT = 0x07,
     COMMAND_COMPLETE_IF_ZERO = 0x08, /**< Completes when the condition is floating-point zero. */
     COMMAND_COMPLETE_IF_NONZERO =
         0x09, /**< Completes when the condition is not floating-point zero. */
@@ -174,32 +174,37 @@ force_feedback_script_execute(ForceFeedbackScriptRuntime *runtime, const uint8_t
             }
             continue;
         }
-        if (command == COMMAND_STOP) {
+        if (command == COMMAND_ENSURE_CURSOR) {
             if (commit) {
-                return FORCE_FEEDBACK_SCRIPT_EXECUTION_STOPPED;
+                return FORCE_FEEDBACK_SCRIPT_EXECUTION_FINISHED;
             }
             continue;
         }
-        if (command == COMMAND_COMPLETE) {
+        if (command == COMMAND_RESERVE_SLOT) {
             if (commit) {
                 return complete(runtime);
             }
             continue;
         }
-        if (command >= COMMAND_STOP_IF_ZERO && command <= COMMAND_COMPLETE_IF_NONZERO) {
+        if (command >= COMMAND_REWIND_IF_ZERO && command <= COMMAND_COMPLETE_IF_NONZERO) {
             ForceFeedbackScriptOperandResult condition =
                 force_feedback_script_operand_read(runtime, script, length, state.cursor);
             state.cursor = condition.cursor;
             if (!condition.valid) {
                 return fault(runtime);
             }
-            bool selected = is_zero(condition.value) == (command == COMMAND_STOP_IF_ZERO ||
+            bool selected = is_zero(condition.value) == (command == COMMAND_REWIND_IF_ZERO ||
                                                          command == COMMAND_COMPLETE_IF_ZERO);
             if (selected && commit) {
-                return command <= COMMAND_STOP_IF_NONZERO ? FORCE_FEEDBACK_SCRIPT_EXECUTION_STOPPED
-                                                          : complete(runtime);
+                return command <= COMMAND_REWIND_IF_NONZERO
+                           ? FORCE_FEEDBACK_SCRIPT_EXECUTION_FINISHED
+                           : complete(runtime);
             }
             continue;
+        }
+        if (!force_feedback_script_operation_supported(command)) {
+            fault(runtime);
+            return FORCE_FEEDBACK_SCRIPT_EXECUTION_SILENT_FAULT;
         }
         ForceFeedbackScriptDestinationResult operation = force_feedback_script_operation_execute(
             runtime, command, script, length, state.cursor, commit);

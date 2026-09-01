@@ -9,7 +9,7 @@
 
 /** @brief Internal application-response sizes. */
 enum {
-    MOTOR_COMMAND_APPLICATION_CALIBRATION_SIZE = 20, /**< Required calibration response data length. */
+    MOTOR_COMMAND_APPLICATION_CALIBRATION_SIZE = 16,
 };
 
 void motor_command_application_init(MotorCommandApplication *application) {

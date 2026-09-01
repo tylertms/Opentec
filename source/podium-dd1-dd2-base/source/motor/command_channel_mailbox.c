@@ -16,6 +16,14 @@ motor_command_channel_mailbox_run(MotorCommandChannel *channel,
 
     MotorCommandMailboxExchangeResult mailbox =
         motor_command_mailbox_exchange_run(exchange, transport);
+    if (mailbox.event == MOTOR_COMMAND_MAILBOX_EXCHANGE_PACKET_WRITTEN) {
+        motor_command_channel_mark_written(channel, mailbox.packet);
+        if (channel->command_pending && !channel->command_sent &&
+            mailbox.packet != channel->buffers.transmit) {
+            (void)motor_command_mailbox_exchange_queue(exchange, channel->buffers.transmit,
+                                                       channel->transmit_length);
+        }
+    }
     if (mailbox.event == MOTOR_COMMAND_MAILBOX_EXCHANGE_PACKET_READ) {
         event.channel_event =
             motor_command_channel_accept(channel, mailbox.packet, mailbox.packet_length);

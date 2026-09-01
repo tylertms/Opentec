@@ -49,13 +49,13 @@ static void fixture_init(Fixture *fixture) {
 }
 
 static void prepare_response(Fixture *fixture) {
-    uint8_t payload[25] = {0};
+    uint8_t payload[21] = {0};
     uint16_t payload_length;
     uint8_t selector = 0;
     if (fixture->service.startup.phase == MOTOR_COMMAND_STARTUP_WAIT_DIGEST) {
         payload[0] = 0x87;
-        payload[4] = 20;
-        for (uint8_t index = 0; index < 20; index++) {
+        payload[4] = 16;
+        for (uint8_t index = 0; index < 16; index++) {
             payload[5 + index] = index;
         }
         payload_length = sizeof(payload);

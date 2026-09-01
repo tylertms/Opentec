@@ -51,13 +51,13 @@ static void test_stop_commands_leave_slot_state(void) {
     runtime.slots[4].state = FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE;
     const uint8_t stop[] = {0x04, 0x10, 0x02, 0x02, 0x20};
     assert(force_feedback_script_execute(&runtime, stop, sizeof(stop)) ==
-           FORCE_FEEDBACK_SCRIPT_EXECUTION_STOPPED);
+           FORCE_FEEDBACK_SCRIPT_EXECUTION_FINISHED);
     assert(runtime.slots[4].state == FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE);
     assert(runtime.variables[0] == 0);
 
     const uint8_t stop_if_nonzero[] = {0x06, 0x02};
     assert(force_feedback_script_execute(&runtime, stop_if_nonzero, sizeof(stop_if_nonzero)) ==
-           FORCE_FEEDBACK_SCRIPT_EXECUTION_STOPPED);
+           FORCE_FEEDBACK_SCRIPT_EXECUTION_FINISHED);
 }
 
 static void test_completion_commands_deactivate_slot(void) {
@@ -80,7 +80,7 @@ static void test_faults_invalid_scripts(void) {
     runtime.slots[1].state = FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE;
     const uint8_t invalid_command[] = {0x0a};
     assert(force_feedback_script_execute(&runtime, invalid_command, sizeof(invalid_command)) ==
-           FORCE_FEEDBACK_SCRIPT_EXECUTION_FAULT);
+           FORCE_FEEDBACK_SCRIPT_EXECUTION_SILENT_FAULT);
     assert(runtime.slots[1].state == FORCE_FEEDBACK_SCRIPT_SLOT_FAULT);
 
     runtime.slots[1].state = FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE;

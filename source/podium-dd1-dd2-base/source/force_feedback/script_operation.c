@@ -501,6 +501,35 @@ execute_rotation_scale(ForceFeedbackScriptRuntime *runtime, const uint8_t *scrip
                        (OperationValue){.number = result}.bits, commit);
 }
 
+/**
+ * @brief Reports whether a script operation has implemented execution behavior.
+ *
+ * @param[in] operation Script operation code.
+ * @return True when the operation is supported; otherwise false.
+ */
+bool force_feedback_script_operation_supported(uint8_t operation) {
+    return (operation >= FORCE_FEEDBACK_SCRIPT_MATH_ADD &&
+            operation <= FORCE_FEEDBACK_SCRIPT_MATH_RECIPROCAL) ||
+           (operation >= FORCE_FEEDBACK_SCRIPT_MATH_SINE &&
+            operation <= FORCE_FEEDBACK_SCRIPT_MATH_TANGENT) ||
+           (operation >= FORCE_FEEDBACK_SCRIPT_MATH_MULTIPLY_PI &&
+            operation <= FORCE_FEEDBACK_SCRIPT_MATH_RADIANS_TO_DEGREES) ||
+           (operation >= FORCE_FEEDBACK_SCRIPT_MATH_VECTOR_MAGNITUDE &&
+            operation <= FORCE_FEEDBACK_SCRIPT_MATH_MULTIPLY_SINE) ||
+           (operation >= FORCE_FEEDBACK_SCRIPT_LOGICAL_AND &&
+            operation <= FORCE_FEEDBACK_SCRIPT_LOGICAL_XNOR) ||
+           (operation >= FORCE_FEEDBACK_SCRIPT_GREATER_THAN &&
+            operation <= FORCE_FEEDBACK_SCRIPT_POSITIVE) ||
+           (operation >= FORCE_FEEDBACK_SCRIPT_BITWISE_AND &&
+            operation <= FORCE_FEEDBACK_SCRIPT_CLEAR_BIT) ||
+           (operation >= OPERATION_COPY && operation <= OPERATION_SAMPLE_INTERPOLATE) ||
+           (operation >= FORCE_FEEDBACK_SCRIPT_RANGE_CLASSIFY &&
+            operation <= FORCE_FEEDBACK_SCRIPT_RANGE_NORMALIZE) ||
+           (operation >= FORCE_FEEDBACK_SCRIPT_INTEGER_U32_TO_FLOAT &&
+            operation <= FORCE_FEEDBACK_SCRIPT_INTEGER_DEGREES_TO_RADIANS) ||
+           operation == OPERATION_ROTATION_SCALE;
+}
+
 ForceFeedbackScriptDestinationResult
 force_feedback_script_operation_execute(ForceFeedbackScriptRuntime *runtime, uint8_t operation,
                                         const uint8_t *script, size_t length, size_t cursor,

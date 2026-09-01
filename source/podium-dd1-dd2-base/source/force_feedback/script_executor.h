@@ -18,9 +18,11 @@ typedef uint8_t ForceFeedbackScriptExecutionStatus;
  * @brief Force-feedback script execution status values.
  */
 enum {
-    FORCE_FEEDBACK_SCRIPT_EXECUTION_FINISHED = 0,      /**< Script ended at its input length. */
-    FORCE_FEEDBACK_SCRIPT_EXECUTION_STOPPED = 1,       /**< Script executed a stop command. */
-    FORCE_FEEDBACK_SCRIPT_EXECUTION_COMPLETED = 2,     /**< Script executed a completion command. */
+    FORCE_FEEDBACK_SCRIPT_EXECUTION_FINISHED = 0,  /**< Script ended at its input length. */
+    FORCE_FEEDBACK_SCRIPT_EXECUTION_STOPPED = 1,   /**< Script executed a stop command. */
+    FORCE_FEEDBACK_SCRIPT_EXECUTION_COMPLETED = 2, /**< Script executed a completion command. */
+    FORCE_FEEDBACK_SCRIPT_EXECUTION_SILENT_FAULT =
+        0xfe, /**< Script faulted without publishing the standard fault report. */
     FORCE_FEEDBACK_SCRIPT_EXECUTION_FAULT = UINT8_MAX, /**< Script input or state was rejected. */
 };
 

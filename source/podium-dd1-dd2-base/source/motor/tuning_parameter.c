@@ -144,7 +144,7 @@ uint8_t motor_tuning_parameter_encode(MotorTuningParameter parameter, const Tuni
         encode_u8(write, 0x20, encode_sensitivity(profile, context));
         return 1;
     case MOTOR_TUNING_FORCE_FEEDBACK_STRENGTH:
-        encode_u8(write, 0x21, clamp(profile->force_feedback_strength, 100));
+        encode_u8(write, 0x21, profile->force_feedback_strength);
         return 1;
     case MOTOR_TUNING_FORCE_FEEDBACK_SCALE:
         encode_u8(write, 0x22,

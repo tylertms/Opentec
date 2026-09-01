@@ -132,7 +132,7 @@ static void test_rejects_partial_or_malformed_signatures(void) {
     assert(!motor_calibration_command_decode(&command, NULL));
 }
 
-static void test_calibrates_until_nonzero_response(void) {
+static void test_calibrates_after_idle_until_zero_response(void) {
     MotorCalibrationService service;
     MotorTelemetry telemetry = available_accessory();
     reset_bus();
@@ -140,38 +140,46 @@ static void test_calibrates_until_nonzero_response(void) {
     assert(motor_calibration_service_take_event(&service) == MOTOR_CALIBRATION_EVENT_NONE);
     motor_calibration_service_request(&service, MOTOR_CALIBRATION_OPERATION_CALIBRATE);
 
-    motor_calibration_service_run(&service, 0, &telemetry, 0);
-    assert(motor_calibration_service_take_event(&service) == MOTOR_CALIBRATION_EVENT_STARTED);
+    motor_calibration_service_run(&service, 0, &telemetry);
     assert(motor_calibration_service_take_event(&service) == MOTOR_CALIBRATION_EVENT_NONE);
-    assert(transfer_kind == TRANSFER_WRITE);
+    assert(transfer_kind == TRANSFER_READ);
     assert(bus_address == 0x78);
     assert(register_address == 6);
     assert(transfer_length == 2);
-    assert(transfer_data[0] == 0xaa && transfer_data[1] == 0xaa);
     assert(motor_calibration_service_owns_bus(&service));
-
-    finish_write(true);
-    motor_calibration_service_run(&service, 0, &telemetry, 0);
-    assert(transfer_kind == TRANSFER_READ);
-    assert(start_count == 2);
-
-    finish_read(0, true);
-    motor_calibration_service_run(&service, 0, &telemetry, 0);
-    assert(transfer_kind == TRANSFER_READ);
-    assert(start_count == 3);
-    assert(motor_calibration_service_pending(&service));
+    assert(!motor_calibration_service_active(&service));
 
     finish_read(1, true);
-    motor_calibration_service_run(&service, 0, &telemetry, 100);
-    assert(motor_calibration_service_pending(&service));
-    assert(!motor_calibration_service_owns_bus(&service));
-    assert(motor_calibration_service_take_event(&service) == MOTOR_CALIBRATION_EVENT_COMPLETED);
+    motor_calibration_service_run(&service, 0, &telemetry);
+    assert(transfer_kind == TRANSFER_READ);
+    assert(start_count == 2);
     assert(motor_calibration_service_take_event(&service) == MOTOR_CALIBRATION_EVENT_NONE);
 
-    motor_calibration_service_run(&service, 0, &telemetry, 4100);
+    finish_read(0, true);
+    motor_calibration_service_run(&service, 0, &telemetry);
+    assert(transfer_kind == TRANSFER_WRITE);
+    assert(transfer_data[0] == 0xaa && transfer_data[1] == 0xaa);
+    assert(start_count == 3);
+    assert(motor_calibration_service_active(&service));
+    assert(motor_calibration_service_take_event(&service) == MOTOR_CALIBRATION_EVENT_STARTED);
+
+    finish_write(true);
+    motor_calibration_service_run(&service, 0, &telemetry);
+    assert(transfer_kind == TRANSFER_READ);
+    assert(start_count == 4);
+
+    finish_read(1, true);
+    motor_calibration_service_run(&service, 0, &telemetry);
+    assert(transfer_kind == TRANSFER_READ);
+    assert(start_count == 5);
     assert(motor_calibration_service_pending(&service));
-    motor_calibration_service_run(&service, 0, &telemetry, 4101);
+
+    finish_read(0, true);
+    motor_calibration_service_run(&service, 0, &telemetry);
     assert(!motor_calibration_service_pending(&service));
+    assert(!motor_calibration_service_active(&service));
+    assert(motor_calibration_service_take_event(&service) == MOTOR_CALIBRATION_EVENT_COMPLETED);
+    assert(motor_calibration_service_take_event(&service) == MOTOR_CALIBRATION_EVENT_NONE);
 }
 
 static void test_erases_in_any_wheel_mode(void) {
@@ -181,13 +189,18 @@ static void test_erases_in_any_wheel_mode(void) {
     motor_calibration_service_init(&service);
     motor_calibration_service_request(&service, MOTOR_CALIBRATION_OPERATION_ERASE);
 
-    motor_calibration_service_run(&service, 7, &telemetry, 0);
+    motor_calibration_service_run(&service, 7, &telemetry);
+    assert(transfer_kind == TRANSFER_READ);
+    finish_read(0, true);
+    motor_calibration_service_run(&service, 7, &telemetry);
     assert(transfer_kind == TRANSFER_WRITE);
     assert(transfer_data[0] == 0xbb && transfer_data[1] == 0xbb);
     finish_write(true);
-    motor_calibration_service_run(&service, 7, &telemetry, 0);
+    motor_calibration_service_run(&service, 7, &telemetry);
     finish_read(1, true);
-    motor_calibration_service_run(&service, 7, &telemetry, 0);
+    motor_calibration_service_run(&service, 7, &telemetry);
+    finish_read(0, true);
+    motor_calibration_service_run(&service, 7, &telemetry);
     assert(motor_calibration_service_take_event(&service) == MOTOR_CALIBRATION_EVENT_ERASED);
 }
 
@@ -198,14 +211,14 @@ static void test_rejects_unavailable_operations(void) {
     reset_bus();
     motor_calibration_service_init(&service);
     motor_calibration_service_request(&service, MOTOR_CALIBRATION_OPERATION_CALIBRATE);
-    motor_calibration_service_run(&service, 1, &telemetry, 0);
+    motor_calibration_service_run(&service, 1, &telemetry);
     assert(!motor_calibration_service_pending(&service));
     assert(start_count == 0);
     assert(motor_calibration_service_take_event(&service) ==
            MOTOR_CALIBRATION_EVENT_DISCONNECT_WHEEL);
 
     motor_calibration_service_request(&service, MOTOR_CALIBRATION_OPERATION_ERASE);
-    motor_calibration_service_run(&service, 0, &unavailable, 0);
+    motor_calibration_service_run(&service, 0, &unavailable);
     assert(!motor_calibration_service_pending(&service));
     assert(start_count == 0);
     assert(motor_calibration_service_take_event(&service) == MOTOR_CALIBRATION_EVENT_UNSUPPORTED);
@@ -219,32 +232,36 @@ static void test_prioritizes_calibration_and_retries_failures(void) {
     motor_calibration_service_request(&service, MOTOR_CALIBRATION_OPERATION_ERASE);
     motor_calibration_service_request(&service, MOTOR_CALIBRATION_OPERATION_CALIBRATE);
 
-    motor_calibration_service_run(&service, 0, &telemetry, 0);
-    assert(transfer_data[0] == 0xaa);
-    finish_write(false);
-    motor_calibration_service_run(&service, 0, &telemetry, 0);
-    assert(transfer_data[0] == 0xaa);
+    motor_calibration_service_run(&service, 0, &telemetry);
+    assert(transfer_kind == TRANSFER_READ);
+    finish_read(0, false);
+    motor_calibration_service_run(&service, 0, &telemetry);
+    assert(transfer_kind == TRANSFER_READ);
     assert(start_count == 2);
 
-    finish_write(true);
-    motor_calibration_service_run(&service, 0, &telemetry, 0);
-    finish_read(1, true);
-    motor_calibration_service_run(&service, 0, &telemetry, 0);
+    finish_read(0, true);
+    motor_calibration_service_run(&service, 0, &telemetry);
+    assert(transfer_data[0] == 0xaa);
     assert(start_count == 3);
 
-    motor_calibration_service_run(&service, 0, &telemetry, 4000);
-    assert(start_count == 3);
-    motor_calibration_service_run(&service, 0, &telemetry, 4001);
-    assert(start_count == 3);
-    motor_calibration_service_run(&service, 0, &telemetry, 4002);
+    finish_write(true);
+    motor_calibration_service_run(&service, 0, &telemetry);
+    finish_read(0, true);
+    motor_calibration_service_run(&service, 0, &telemetry);
+    assert(transfer_kind == TRANSFER_READ);
+    assert(start_count == 5);
+
+    finish_read(0, true);
+    motor_calibration_service_run(&service, 0, &telemetry);
     assert(transfer_kind == TRANSFER_WRITE);
     assert(transfer_data[0] == 0xbb);
+    assert(start_count == 6);
 }
 
 int main(void) {
     test_decodes_host_signatures();
     test_rejects_partial_or_malformed_signatures();
-    test_calibrates_until_nonzero_response();
+    test_calibrates_after_idle_until_zero_response();
     test_erases_in_any_wheel_mode();
     test_rejects_unavailable_operations();
     test_prioritizes_calibration_and_retries_failures();

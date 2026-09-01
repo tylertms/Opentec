@@ -12,11 +12,16 @@
 
 /** @brief Internal sizes and command identifiers used by the motor-command channel. */
 enum {
-    MOTOR_COMMAND_CHANNEL_REQUEST_SIZE = 5, /**< Size of the channel's fixed application requests. */
-    MOTOR_COMMAND_CHANNEL_DIGEST_COMMAND = 7, /**< Command identifier for the calibration digest request. */
-    MOTOR_COMMAND_CHANNEL_INFORMATION_COMMAND = 5, /**< Command identifier for an information request. */
-    MOTOR_COMMAND_CHANNEL_DIGEST_LENGTH = 20, /**< Calibration digest response length requested by the channel. */
-    MOTOR_COMMAND_CHANNEL_INFORMATION_WORD_LENGTH = 2, /**< Length requested for selectors 3 and 4. */
+    MOTOR_COMMAND_CHANNEL_REQUEST_SIZE =
+        5, /**< Size of the channel's fixed application requests. */
+    MOTOR_COMMAND_CHANNEL_DIGEST_COMMAND =
+        7, /**< Command identifier for the calibration digest request. */
+    MOTOR_COMMAND_CHANNEL_INFORMATION_COMMAND =
+        5, /**< Command identifier for an information request. */
+    MOTOR_COMMAND_CHANNEL_DIGEST_LENGTH =
+        20, /**< Calibration digest response length requested by the channel. */
+    MOTOR_COMMAND_CHANNEL_INFORMATION_WORD_LENGTH =
+        2, /**< Length requested for selectors 3 and 4. */
 };
 
 /**
@@ -65,18 +70,22 @@ static bool rebuild_payload(MotorCommandChannel *channel) {
  * @return True when the transmit storage can hold the control packet.
  */
 static bool build_control(MotorCommandChannel *channel, bool retry) {
-    if (channel->buffers.transmit_capacity < MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE) {
-        return false;
-    }
     if (retry) {
         motor_command_packet_retry_encode(channel->receiver.sequence.receive_next,
-                                          channel->buffers.transmit);
+                                          channel->control_packet);
     } else {
         motor_command_packet_acknowledgement_encode(channel->receiver.sequence.receive_previous,
-                                                    channel->buffers.transmit);
+                                                    channel->control_packet);
     }
-    channel->transmit_length = MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE;
     return true;
+}
+
+static MotorCommandChannelEvent control_event(const MotorCommandChannel *channel) {
+    return (MotorCommandChannelEvent){
+        .actions = MOTOR_COMMAND_CHANNEL_ACTION_WRITE,
+        .packet = channel->control_packet,
+        .packet_length = MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE,
+    };
 }
 
 bool motor_command_channel_init(MotorCommandChannel *channel,
@@ -98,7 +107,9 @@ void motor_command_channel_reset(MotorCommandChannel *channel) {
                                 channel->buffers.receive_assembly_capacity);
     channel->transmit_length = 0;
     channel->pending_payload_length = 0;
+    channel->retry_count = 0;
     channel->command_pending = false;
+    channel->command_sent = false;
 }
 
 bool motor_command_channel_queue_payload(MotorCommandChannel *channel, const uint8_t *payload,
@@ -116,10 +127,24 @@ bool motor_command_channel_queue_payload(MotorCommandChannel *channel, const uin
             channel->buffers.transmit_capacity, &channel->transmit_length)) {
         return false;
     }
-    motor_command_sequence_advance(&channel->receiver.sequence);
     channel->pending_payload_length = payload_length;
     channel->command_pending = true;
+    channel->command_sent = false;
     return true;
+}
+
+/**
+ * @brief Records physical transmission of the active motor command packet.
+ *
+ * @param[in,out] channel Channel retaining command transmission state.
+ * @param[in] packet Packet accepted by the physical transport.
+ */
+void motor_command_channel_mark_written(MotorCommandChannel *channel, const uint8_t *packet) {
+    if (channel != 0 && packet == channel->buffers.transmit && channel->command_pending &&
+        !channel->command_sent) {
+        motor_command_sequence_advance(&channel->receiver.sequence);
+        channel->command_sent = true;
+    }
 }
 
 bool motor_command_channel_queue_sequence_reset(MotorCommandChannel *channel) {
@@ -158,16 +183,32 @@ MotorCommandChannelEvent motor_command_channel_accept(MotorCommandChannel *chann
         return event;
     }
 
+    MotorCommandSequence sequence_before = channel->receiver.sequence;
+    uint16_t fragment_length_before = channel->receiver.fragment.length;
+    uint16_t fragment_content_length_before = channel->receiver.fragment.content_length;
     MotorCommandReceiveEvent receive =
         motor_command_receiver_accept(&channel->receiver, packet, length);
     event.receive_result = receive.result;
     if (receive.result == MOTOR_COMMAND_RECEIVE_ACKNOWLEDGED) {
-        channel->command_pending = false;
-        channel->pending_payload_length = 0;
+        channel->retry_count = 0;
+        if (channel->command_sent) {
+            channel->command_pending = false;
+            channel->command_sent = false;
+            channel->pending_payload_length = 0;
+        }
         return event;
     }
     if (receive.result == MOTOR_COMMAND_RECEIVE_RESEND ||
         receive.result == MOTOR_COMMAND_RECEIVE_RETRY) {
+        channel->retry_count++;
+        if (!channel->command_pending || channel->retry_count >= 4u) {
+            motor_command_channel_reset(channel);
+            if (motor_command_channel_queue_sequence_reset(channel)) {
+                return write_event(channel);
+            }
+            return event;
+        }
+        channel->command_sent = false;
         return rebuild_payload(channel) ? write_event(channel) : event;
     }
     if (receive.result == MOTOR_COMMAND_RECEIVE_RESET) {
@@ -178,7 +219,7 @@ MotorCommandChannelEvent motor_command_channel_accept(MotorCommandChannel *chann
     if (receive.result == MOTOR_COMMAND_RECEIVE_INVALID) {
         if (packet != 0 && length >= MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE &&
             build_control(channel, true)) {
-            event = write_event(channel);
+            event = control_event(channel);
             event.receive_result = MOTOR_COMMAND_RECEIVE_INVALID;
         }
         return event;
@@ -190,28 +231,38 @@ MotorCommandChannelEvent motor_command_channel_accept(MotorCommandChannel *chann
     }
 
     MotorCommandApplicationEvent application = {0};
+    channel->retry_count = 0;
     if (receive.result == MOTOR_COMMAND_RECEIVE_MESSAGE) {
         if (!motor_command_message_decode(receive.payload, receive.payload_length,
                                           &channel->message)) {
+            channel->receiver.sequence = sequence_before;
+            channel->receiver.fragment.length = fragment_length_before;
+            channel->receiver.fragment.content_length = fragment_content_length_before;
             if (build_control(channel, true)) {
-                event = write_event(channel);
+                event = control_event(channel);
                 event.receive_result = MOTOR_COMMAND_RECEIVE_INVALID;
             }
             return event;
         }
         application = motor_command_application_apply(&channel->application, &channel->message);
         if (application.result == MOTOR_COMMAND_APPLICATION_INVALID) {
+            channel->receiver.sequence = sequence_before;
+            channel->receiver.fragment.length = fragment_length_before;
+            channel->receiver.fragment.content_length = fragment_content_length_before;
             if (build_control(channel, true)) {
-                event = write_event(channel);
+                event = control_event(channel);
                 event.receive_result = MOTOR_COMMAND_RECEIVE_INVALID;
             }
             return event;
         }
     }
-    channel->command_pending = false;
-    channel->pending_payload_length = 0;
+    if (channel->command_sent) {
+        channel->command_pending = false;
+        channel->command_sent = false;
+        channel->pending_payload_length = 0;
+    }
     if (build_control(channel, false)) {
-        event = write_event(channel);
+        event = control_event(channel);
         event.receive_result = receive.result;
         event.application = application;
     }

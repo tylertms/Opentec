@@ -54,9 +54,19 @@ static void update_metrics(ForceFeedbackScriptSlot *slot, uint32_t current_ticks
                                   (float)FORCE_FEEDBACK_TICKS_PER_SECOND);
 }
 
-bool force_feedback_script_service_run(ForceFeedbackScriptRuntime *runtime,
-                                       const ForceFeedbackScriptStore *store,
-                                       ForceFeedbackScriptClock *clock) {
+/**
+ * @brief Runs one script-service pass with optional execution tracking.
+ *
+ * @param[in,out] runtime Script runtime to advance.
+ * @param[in] store Script storage containing the selected program.
+ * @param[in,out] clock Script clock to advance.
+ * @param[in] track_execution True to update execution metrics and state.
+ * @return True while script execution remains active; otherwise false.
+ */
+bool force_feedback_script_service_run_tracked(ForceFeedbackScriptRuntime *runtime,
+                                               const ForceFeedbackScriptStore *store,
+                                               ForceFeedbackScriptClock *clock,
+                                               bool track_execution) {
     if (runtime == NULL || store == NULL || clock == NULL) {
         return false;
     }
@@ -75,7 +85,7 @@ bool force_feedback_script_service_run(ForceFeedbackScriptRuntime *runtime,
         slot->tick_snapshot = clock->slot_ticks[index];
 
         const ForceFeedbackScriptStorageSlot *storage = &store->slots[index];
-        clock->script_executing = true;
+        clock->script_executing = track_execution;
         ForceFeedbackScriptExecutionStatus status =
             force_feedback_script_execute(runtime, &store->data[storage->offset], storage->size);
         slot_faulted = slot_faulted || status == FORCE_FEEDBACK_SCRIPT_EXECUTION_FAULT;
@@ -83,4 +93,10 @@ bool force_feedback_script_service_run(ForceFeedbackScriptRuntime *runtime,
         clock->script_executing = false;
     }
     return slot_faulted;
+}
+
+bool force_feedback_script_service_run(ForceFeedbackScriptRuntime *runtime,
+                                       const ForceFeedbackScriptStore *store,
+                                       ForceFeedbackScriptClock *clock) {
+    return force_feedback_script_service_run_tracked(runtime, store, clock, true);
 }

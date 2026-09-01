@@ -82,8 +82,6 @@ void motor_telemetry_set_runtime(MotorTelemetry *telemetry, const uint8_t data[4
  * @param[in] value Accessory type response byte.
  */
 void motor_telemetry_set_accessory_type(MotorTelemetry *telemetry, uint8_t value) {
-    if (value != UINT8_MAX) {
-        telemetry->accessory_type = value;
-        telemetry->accessory_type_valid = true;
-    }
+    telemetry->accessory_type = value;
+    telemetry->accessory_type_valid = value != UINT8_MAX;
 }

@@ -23,9 +23,9 @@ static void test_applies_information(void) {
 }
 
 static void test_derives_calibration_digest(void) {
-    static const uint8_t data[20] = {
-        0x22, 0x44, 0x10, 0x80, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc,
-        0xde, 0xf0, 0x11, 0x22, 0x33, 0x44, 0,    0,    0,    0,
+    static const uint8_t data[16] = {
+        0x22, 0x44, 0x10, 0x80, 0x12, 0x34, 0x56, 0x78,
+        0x9a, 0xbc, 0xde, 0xf0, 0x11, 0x22, 0x33, 0x44,
     };
     static const uint8_t expected[] = {0x99, 0xaa, 0xbb, 0xcc, 0x01, 0xa2, 0, 0};
     MotorCommandMessage message = {
@@ -75,7 +75,7 @@ static void test_exposes_forwarded_responses(void) {
 }
 
 static void test_rejects_invalid_messages(void) {
-    static const uint8_t short_calibration[16] = {0};
+    static const uint8_t short_calibration[15] = {0};
     MotorCommandApplication application;
     motor_command_application_init(&application);
     MotorCommandMessage message = {
