@@ -3,10 +3,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/**
+ * @brief Brake-indicator selector and threshold constants.
+ */
 enum {
-    PEDAL_BRAKE_INDICATOR_FRAMED_SELECTOR = 0x3f,
-    PEDAL_BRAKE_INDICATOR_LEGACY_SELECTOR = 0xff,
-    PEDAL_BRAKE_INDICATOR_LEVEL_MAX = 100,
+    PEDAL_BRAKE_INDICATOR_FRAMED_SELECTOR = 0x3f, /**< Selector used by framed pedal transport. */
+    PEDAL_BRAKE_INDICATOR_LEGACY_SELECTOR = 0xff, /**< Selector used by legacy pedal transport. */
+    PEDAL_BRAKE_INDICATOR_LEVEL_MAX = 100,        /**< Maximum configured activation percentage. */
 };
 
 /**

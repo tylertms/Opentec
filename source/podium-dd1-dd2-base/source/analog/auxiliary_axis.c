@@ -5,25 +5,39 @@
 
 #include "analog/axis.h"
 
+/**
+ * @brief Auxiliary-axis signal, calibration, and timing constants.
+ *
+ * These values describe the ADC encoding, endpoint margins, and automatic-learning intervals used
+ * by the auxiliary-axis state machine.
+ */
 enum {
-    AUXILIARY_AXIS_SIGNAL_MASK = 0x0ffe,
-    AUXILIARY_AXIS_PRESENT_SIGNAL_LIMIT = 0x0fc0,
-    AUXILIARY_AXIS_SAMPLE_RANGE = 0x1000,
-    AUXILIARY_AXIS_DEFAULT_MINIMUM = 0x0f38,
-    AUXILIARY_AXIS_DEFAULT_MAXIMUM = 0x00c8,
-    AUXILIARY_AXIS_FILTER_DEADBAND = 10,
-    AUXILIARY_AXIS_ENDPOINT_MARGIN = 40,
-    AUXILIARY_AXIS_MINIMUM_TRAVEL = 200,
-    AUXILIARY_AXIS_MINIMUM_SAMPLE_COUNT = 10,
-    AUXILIARY_AXIS_SETTLE_OFFSET = 240,
-    AUXILIARY_AXIS_SETTLE_TIME_MS = 2000,
+    AUXILIARY_AXIS_SIGNAL_MASK =
+        0x0ffe, /**< Bit mask retaining the even-valued inverted 12-bit signal. */
+    AUXILIARY_AXIS_PRESENT_SIGNAL_LIMIT =
+        0x0fc0, /**< Highest inverted signal considered to indicate a connected input. */
+    AUXILIARY_AXIS_SAMPLE_RANGE = 0x1000, /**< One past the maximum normalized 12-bit sample. */
+    AUXILIARY_AXIS_DEFAULT_MINIMUM =
+        0x0f38, /**< Startup sentinel and minimum-learning candidate. */
+    AUXILIARY_AXIS_DEFAULT_MAXIMUM = 0x00c8, /**< Startup sentinel for the maximum endpoint. */
+    AUXILIARY_AXIS_FILTER_DEADBAND = 10,     /**< Deadband passed to the analog-axis filter. */
+    AUXILIARY_AXIS_ENDPOINT_MARGIN =
+        40, /**< Inward margin applied when recording either endpoint. */
+    AUXILIARY_AXIS_MINIMUM_TRAVEL =
+        200, /**< Minimum usable travel required before accepting a maximum endpoint. */
+    AUXILIARY_AXIS_MINIMUM_SAMPLE_COUNT =
+        10, /**< Number of active samples used to learn the minimum endpoint. */
+    AUXILIARY_AXIS_SETTLE_OFFSET =
+        240, /**< Offset above the learned minimum that starts maximum settling. */
+    AUXILIARY_AXIS_SETTLE_TIME_MS =
+        2000, /**< Duration of the automatic maximum settling interval in milliseconds. */
 };
 
 /**
  * @brief Converts one ADC sample to the auxiliary input's normalized signal.
  *
- * Removes the unused least-significant bit and restores the increasing ADC orientation used by
- * endpoint calibration and output scaling.
+ * Restores the increasing normalized orientation used by endpoint calibration and output scaling.
+ * The unused least-significant bit was already cleared by read_signal().
  *
  * @param[in] signal Inverted 12-bit auxiliary input signal.
  * @return Normalized auxiliary sample in the inclusive range 2 through 4096.
@@ -45,9 +59,10 @@ static uint16_t read_signal(uint16_t adc_sample) {
 }
 
 /**
- * @brief Reports whether the electrical input is above its disconnected level.
+ * @brief Reports whether the electrical input indicates a connected local source.
  *
- * Uses the unfiltered signal so source ownership changes without waiting for the moving average.
+ * Uses the unfiltered inverted signal so source presence changes without waiting for the moving
+ * average.
  *
  * @param[in] signal Inverted auxiliary input signal.
  * @return True when a local auxiliary input is present.
@@ -108,7 +123,7 @@ static void learn_minimum(AuxiliaryAxis *axis, uint16_t sample) {
 /**
  * @brief Tracks the initial maximum endpoint while calibration is incomplete.
  *
- * Requires at least 200 counts of usable travel. Manual mode follows every new maximum and arms a
+ * Requires more than 200 counts of usable travel. Manual mode follows every new maximum and arms a
  * future automatic capture; automatic mode captures only the first qualifying maximum before its
  * settle timer takes ownership.
  *
@@ -167,7 +182,7 @@ static void apply_manual_adjustments(AuxiliaryAxis *axis, uint16_t sample) {
  *
  * Starts a two-second hold when the input stays beyond the learned threshold. Completion subtracts
  * the 40-count margin, finalizes the calibration, and schedules the resulting settings snapshot.
- * Moving back below the threshold cancels the hold.
+ * Moving back to or below the threshold cancels the hold.
  *
  * @param[in,out] axis Auxiliary calibration state to update.
  * @param[in] sample Filtered normalized sample.
@@ -196,8 +211,8 @@ static void settle_maximum(AuxiliaryAxis *axis, uint16_t sample, uint32_t now_ms
 /**
  * @brief Scales one calibrated auxiliary sample to its published byte.
  *
- * Clamps below the minimum to zero and above the maximum to 255, with linear integer scaling
- * between valid endpoints.
+ * Clamps values at or below the minimum to zero and values at or above the maximum to 255, with
+ * linear integer scaling between valid endpoints.
  *
  * @param[in] axis Auxiliary calibration state.
  * @param[in] sample Filtered normalized sample.
@@ -259,7 +274,8 @@ void auxiliary_axis_reset(AuxiliaryAxis *axis) { reset_limits(axis); }
 /**
  * @brief Queues one manual endpoint capture.
  *
- * Records the requested endpoint for the next active sample and schedules a settings snapshot.
+ * Records the requested endpoint for the next active sample and schedules a settings snapshot. A
+ * maximum capture is ignored unless the sample exceeds the current minimum by more than 200 counts.
  *
  * @param[in,out] axis Auxiliary calibration state to update.
  * @param[in] adjustment Minimum or maximum endpoint to capture.

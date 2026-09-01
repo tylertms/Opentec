@@ -4,20 +4,22 @@
 
 #include "usb/tuning_profile_report.h"
 
+/** @brief Native feature report identifiers and rotary presentation modes. */
 enum {
-    REPORT_31 = 0x31,
-    REPORT_32 = 0x32,
-    REPORT_33 = 0x33,
-    REPORT_36 = 0x36,
-    ROTARY_EVENTS = 0,
-    ROTARY_POSITION_CHANGES = 1,
-    ROTARY_POSITIONS = 2,
+    REPORT_31 = 0x31,            /**< Native status feature report identifier. */
+    REPORT_32 = 0x32,            /**< Native tuning-profile feature report identifier. */
+    REPORT_33 = 0x33,            /**< Native rotary and button feature report identifier. */
+    REPORT_36 = 0x36,            /**< Native tuning-menu feature report identifier. */
+    ROTARY_EVENTS = 0,           /**< Rotary event presentation mode. */
+    ROTARY_POSITION_CHANGES = 1, /**< Rotary position-change presentation mode. */
+    ROTARY_POSITIONS = 2,        /**< Rotary constant-position presentation mode. */
 };
 
 /**
  * @brief Combines two shifter axis modes for feature report 31.
  *
- * Gives mode one priority, then mode two, and returns zero when neither input selects an axis mode.
+ * Returns code one when either input selects code one, then code two when either input selects code
+ * two, and zero when neither input selects an axis mode.
  *
  * @param[in] modes Primary and secondary shifter axis modes.
  * @return Combined axis-mode code.
@@ -29,15 +31,6 @@ static uint8_t axis_mode(const uint8_t modes[2]) {
     return modes[0] == 2 || modes[1] == 2 ? 2 : 0;
 }
 
-/**
- * @brief Encodes native feature report 31.
- *
- * Publishes current wheel, pedal, shifter, adapter, rotary, transfer, calibration, and system
- * status in the reference 64-byte layout and clears all reserved bytes.
- *
- * @param[in] state Current feature-report status sources.
- * @param[out] output Encoded 64-byte report.
- */
 void usb_feature_report_31_encode(const UsbFeatureReport31State *state,
                                   uint8_t output[USB_DEVICE_REPORT_SIZE]) {
     memset(output, 0, USB_DEVICE_REPORT_SIZE);
@@ -62,16 +55,6 @@ void usb_feature_report_31_encode(const UsbFeatureReport31State *state,
     output[13] = (uint8_t)(state->status >> 8);
 }
 
-/**
- * @brief Encodes native feature report 32.
- *
- * Publishes one-based active and selected profile slots, the persistence-dirty flag, and the active
- * profile values in device-control order while clearing all reserved bytes.
- *
- * @param[in] bank Current tuning-profile bank.
- * @param[in] dirty True when retained settings require persistence.
- * @param[out] output Encoded 64-byte report.
- */
 void usb_feature_report_32_encode(const TuningProfileBank *bank, bool dirty,
                                   uint8_t output[USB_DEVICE_REPORT_SIZE]) {
     memset(output, 0, USB_DEVICE_REPORT_SIZE);
@@ -104,7 +87,7 @@ static uint16_t selector(uint8_t position, bool remap) {
  * @brief Packs one multi-position selector into feature report 33.
  *
  * Places the 12-bit selector in the channel-specific split fields while preserving neighboring
- * channel bits that share an output byte. Unsupported channel indices do not change the report.
+ * channel bits that share an output byte.
  *
  * @param[in,out] output Feature-report payload receiving the selector.
  * @param[in] channel Zero-based selector channel.
@@ -138,16 +121,6 @@ static uint8_t pulse_bit(int8_t direction, uint8_t positive, uint8_t negative) {
     return direction > 0 ? positive : direction < 0 ? negative : 0;
 }
 
-/**
- * @brief Encodes native feature report 33.
- *
- * Publishes rotary events or positions according to the active rotary mode, includes four queued
- * motion directions, and copies extended and auxiliary button state into the reference layout.
- * Reserved bytes are cleared before fields are packed.
- *
- * @param[in] state Current rotary, motion, and button sources.
- * @param[out] output Encoded 64-byte report.
- */
 void usb_feature_report_33_encode(const UsbFeatureReport33State *state,
                                   uint8_t output[USB_DEVICE_REPORT_SIZE]) {
     memset(output, 0, USB_DEVICE_REPORT_SIZE);
@@ -180,15 +153,6 @@ void usb_feature_report_33_encode(const UsbFeatureReport33State *state,
     output[15] = state->auxiliary_buttons[2];
 }
 
-/**
- * @brief Encodes native feature report 36.
- *
- * Publishes the fixed presentation code and current tuning-menu page while clearing all reserved
- * bytes in the 64-byte report.
- *
- * @param[in] page Current tuning-menu page identifier.
- * @param[out] output Encoded 64-byte report.
- */
 void usb_feature_report_36_encode(uint8_t page, uint8_t output[USB_DEVICE_REPORT_SIZE]) {
     memset(output, 0, USB_DEVICE_REPORT_SIZE);
     output[0] = REPORT_36;

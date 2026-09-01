@@ -11,21 +11,37 @@
 #include "profile/tuning_entry.h"
 #include "profile/tuning_menu.h"
 
+/**
+ * @brief Defines tuning-page colors, positions, and description width.
+ *
+ * These constants control the fixed layout used to render the local OLED tuning page.
+ */
 enum {
-    PAGE_COLOR = 15,
-    PAGE_LABEL_Y = 0,
-    PAGE_PRIMARY_Y = 15,
-    PAGE_DESCRIPTION_Y = 43,
-    PAGE_SECOND_DESCRIPTION_Y = 54,
-    PAGE_DESCRIPTION_LINE_LENGTH = 42,
+    PAGE_COLOR = 15,                   /**< Foreground grayscale value for tuning-page content. */
+    PAGE_LABEL_Y = 0,                  /**< Entry-label top coordinate. */
+    PAGE_PRIMARY_Y = 15,               /**< Primary title or value top coordinate. */
+    PAGE_DESCRIPTION_Y = 43,           /**< First description-line top coordinate. */
+    PAGE_SECOND_DESCRIPTION_Y = 54,    /**< Second description-line top coordinate. */
+    PAGE_DESCRIPTION_LINE_LENGTH = 42, /**< Maximum characters kept on one description line. */
 };
 
+/**
+ * @brief Stores catalog metadata for one tuning entry.
+ *
+ * The metadata supplies the short label, title, and description displayed for an entry.
+ */
 typedef struct {
-    const char *label;
-    const char *title;
-    const char *description;
+    const char *label;       /**< Short entry label. */
+    const char *title;       /**< Entry title. */
+    const char *description; /**< Entry description. */
 } TuningPageMetadata;
 
+/**
+ * @brief Contains display metadata for every tuning entry.
+ *
+ * Entries are indexed by TuningEntry values so page content can be selected without changing the
+ * profile data.
+ */
 static const TuningPageMetadata page_metadata[TUNING_ENTRY_COUNT] = {
     [TUNING_ENTRY_SETUP] = {"SET", "Auto Setup", "Values set by game or default"},
     [TUNING_ENTRY_SENSITIVITY] = {"SEN", "Sensitivity", "Steering range in degrees"},
@@ -206,9 +222,12 @@ static void format_setup(char *destination, size_t size, const TuningProfileBank
  */
 static void format_value(char *destination, size_t size, TuningEntry entry,
                          const TuningProfileBank *bank, const TuningProfile *profile) {
+    /** @brief Display names for multi-position switch modes. */
     static const char *const multi_position_modes[] = {"Encoder", "Pulse", "Constant", "Auto"};
+    /** @brief Display names for analogue paddle modes. */
     static const char *const paddle_modes[] = {"Off", "Clutch Bite Point", "Clutch + Handbrake",
                                                "Brake + Throttle", "Analogue Axes"};
+    /** @brief Display names for pedal response curves. */
     static const char *const pedal_curves[] = {"Custom 1", "Custom 2",    "Custom 3",
                                                "Linear",   "Progressive", "Degressive"};
 
@@ -329,7 +348,8 @@ static void format_value(char *destination, size_t size, TuningEntry entry,
 /**
  * @brief Draws a tuning description on one or two centered lines.
  *
- * Keeps words together when the directly visible description exceeds one display row.
+ * Uses one centered row when the description fits and otherwise splits at the last available
+ * space before the display row limit.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
  * @param[in] description Null-terminated description to draw.

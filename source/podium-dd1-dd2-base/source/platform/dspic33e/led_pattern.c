@@ -3,15 +3,21 @@
 #include <stdint.h>
 #include <xc.h>
 
+/**
+ * @brief LED PWM and Timer 3 configuration values.
+ */
 enum {
-    LED_PATTERN_PWM_PERIOD = 0x03ff,
-    LED_PATTERN_TIMER_PRESCALER = 2,
-    LED_PATTERN_INTERRUPT_PRIORITY = 1,
-    LED_PATTERN_OUTPUT_CLOCK = 7,
-    LED_PATTERN_OUTPUT_MODE = 6,
-    LED_PATTERN_OUTPUT_SYNC = 0x1f,
+    LED_PATTERN_PWM_PERIOD = 0x03ff,    /**< LED PWM period and maximum compare value. */
+    LED_PATTERN_TIMER_PRESCALER = 2,    /**< Timer 3 prescaler encoding. */
+    LED_PATTERN_INTERRUPT_PRIORITY = 1, /**< Timer 3 interrupt priority. */
+    LED_PATTERN_OUTPUT_CLOCK = 7,       /**< Output Compare 2 clock-source encoding. */
+    LED_PATTERN_OUTPUT_MODE = 6,        /**< Output Compare 2 operating-mode encoding. */
+    LED_PATTERN_OUTPUT_SYNC = 0x1f,     /**< Output Compare 2 synchronization-source encoding. */
 };
 
+/**
+ * @brief LED duty value waiting for the next Timer 3 boundary.
+ */
 static volatile uint16_t led_pattern_duty;
 
 /**
@@ -46,7 +52,7 @@ void platform_led_pattern_init(void) {
 /**
  * @brief Queues a board LED PWM duty.
  *
- * Retains the next 10-bit duty for transfer to OC2 at the following Timer3 boundary.
+ * Retains the requested duty for transfer to OC2 at the following Timer3 boundary.
  *
  * @param[in] duty PWM duty to apply.
  */

@@ -75,10 +75,15 @@ bool wheel_startup_adapter_version_page_build(const MotorIdentity *motor_identit
     }
     *page = (WheelStartupVersionPage){0};
 
+    /** @brief Label prefix for the base firmware version line. */
     static const uint8_t base_label[] = {'B', 'A', 'S', 'E', ':', ' '};
+    /** @brief Label prefix for the motor-controller version line. */
     static const uint8_t motor_label[] = {'M', 'O', 'T', 'O', 'R', ':', ' '};
+    /** @brief Label prefix for the adapter firmware version line. */
     static const uint8_t wheel_label[] = {'S', 'T', ' ', 'W', 'H', 'E', 'E', 'L', ':', ' '};
+    /** @brief Text shown when motor identity is unavailable. */
     static const uint8_t unavailable[] = {'N', 'A'};
+    /** @brief Base firmware version shown on the adapter page. */
     static const uint8_t base_version[] = {3, 9, 1};
 
     append_text(&page->lines[0], base_label, sizeof(base_label));

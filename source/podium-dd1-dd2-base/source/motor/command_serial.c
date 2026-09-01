@@ -7,21 +7,13 @@
 #include "serial/service.h"
 #include "transfer/command.h"
 
+/**
+ * @brief Logical serial message type used for command transport requests.
+ */
 enum {
-    MOTOR_COMMAND_SERIAL_MESSAGE_TYPE = 4,
+    MOTOR_COMMAND_SERIAL_MESSAGE_TYPE = 4, /**< Type assigned to command transport messages. */
 };
 
-/**
- * @brief Submits a queued command through the shared serial session.
- *
- * Queues the complete command request as a type-four logical message and advances the command
- * transport to its response-wait phase after the serial session accepts it.
- *
- * @param[in,out] transport Command transport with a queued request.
- * @param[in,out] service Shared serial service accepting the request.
- * @param[in] now_ms Current monotonic time in milliseconds.
- * @return True when the request was queued for serial transmission.
- */
 bool motor_command_serial_submit(CommandTransport *transport, SerialService *service,
                                  uint32_t now_ms) {
     if (transport == 0 || service == 0) {
@@ -36,16 +28,6 @@ bool motor_command_serial_submit(CommandTransport *transport, SerialService *ser
     return command_transport_request_sent(transport);
 }
 
-/**
- * @brief Applies a type-four serial command response.
- *
- * Routes a completed type-four logical message to the command transport, consumes the incoming
- * message, and releases the corresponding outgoing serial request.
- *
- * @param[in,out] transport Command transport awaiting a response.
- * @param[in,out] service Shared serial service holding the completed message.
- * @return True when a type-four response was applied.
- */
 bool motor_command_serial_receive(CommandTransport *transport, SerialService *service) {
     if (transport == 0 || service == 0 ||
         service->request_type != MOTOR_COMMAND_SERIAL_MESSAGE_TYPE) {

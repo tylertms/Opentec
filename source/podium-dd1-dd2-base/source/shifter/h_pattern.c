@@ -3,7 +3,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-enum { H_PATTERN_UPDATE_INTERVAL_MS = 10 };
+/**
+ * @brief H-pattern classification timing constants.
+ */
+enum { H_PATTERN_UPDATE_INTERVAL_MS = 10 /**< Minimum interval between classification samples. */ };
 
 /**
  * @brief Identifies gears in the upper H-pattern row.
@@ -131,8 +134,8 @@ bool h_pattern_shifter_update_due(const HPatternShifter *shifter, uint32_t now_m
  *
  * Reclassifies after each strict ten-millisecond sampling deadline. Between deadlines it retains
  * the published gear. An eligible sample retains the previous gear inside its longitudinal
- * allowance, otherwise selects the active row and applies its lateral gear boundaries. Samples
- * between the row thresholds update the neutral reference.
+ * allowance, otherwise selects the active row and applies its lateral gear boundaries. A sample
+ * between the row thresholds updates the neutral reference when it is not retained as latched.
  *
  * @param[in,out] shifter Persistent neutral reference, last accepted row position, and gear.
  * @param[in] calibration Ordered lateral gear boundaries and longitudinal row thresholds.

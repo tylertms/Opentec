@@ -3,33 +3,24 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/** @brief Wire values recognized by the force-feedback command decoder. */
 enum {
-    FORCE_FEEDBACK_COMMAND_SIZE = 7,
-    FORCE_FEEDBACK_CONFIGURE_OPCODE = 1,
-    FORCE_FEEDBACK_CLEAR_OPCODE = 3,
-    FORCE_FEEDBACK_ACTIVATE_POSITION_OPCODE = 4,
-    FORCE_FEEDBACK_CLEAR_POSITION_OPCODE = 5,
-    FORCE_FEEDBACK_RESET_PREFIX = 0x0a,
-    FORCE_FEEDBACK_RESET_MARKER = 1,
-    FORCE_FEEDBACK_RESET_COMMAND = 0x1a,
-    FORCE_FEEDBACK_PRIMARY_OUTPUT_PREFIX = 0xfa,
-    FORCE_FEEDBACK_SECONDARY_OUTPUT_PREFIX = 0xfb,
-    FORCE_FEEDBACK_KIND_1 = 8,
-    FORCE_FEEDBACK_KIND_2 = 0x0b,
-    FORCE_FEEDBACK_KIND_3 = 0x0c,
+    FORCE_FEEDBACK_COMMAND_SIZE = 7,             /**< Required short command payload length. */
+    FORCE_FEEDBACK_CONFIGURE_OPCODE = 1,         /**< Opcode for effect configuration. */
+    FORCE_FEEDBACK_CLEAR_OPCODE = 3,             /**< Opcode for clearing a host effect slot. */
+    FORCE_FEEDBACK_ACTIVATE_POSITION_OPCODE = 4, /**< Opcode for activating the position effect. */
+    FORCE_FEEDBACK_CLEAR_POSITION_OPCODE = 5,    /**< Opcode for clearing the position effect. */
+    FORCE_FEEDBACK_RESET_PREFIX = 0x0a,  /**< First byte of the host-effect reset command. */
+    FORCE_FEEDBACK_RESET_MARKER = 1,     /**< Second byte of the host-effect reset command. */
+    FORCE_FEEDBACK_RESET_COMMAND = 0x1a, /**< Third byte of the host-effect reset command. */
+    FORCE_FEEDBACK_PRIMARY_OUTPUT_PREFIX = 0xfa, /**< Prefix for a primary-output gate command. */
+    FORCE_FEEDBACK_SECONDARY_OUTPUT_PREFIX =
+        0xfb,                     /**< Prefix for a secondary-output gate command. */
+    FORCE_FEEDBACK_KIND_1 = 8,    /**< Wire identifier for a kind-1 effect. */
+    FORCE_FEEDBACK_KIND_2 = 0x0b, /**< Wire identifier for a kind-2 effect. */
+    FORCE_FEEDBACK_KIND_3 = 0x0c, /**< Wire identifier for a kind-3 effect. */
 };
 
-/**
- * @brief Decodes a force-feedback command from the short HID output report.
- *
- * Classifies slot configuration, slot clearing, the host-slot reset, position-effect control, and
- * the primary or secondary output gates. Configuration payloads are expanded into signed
- * directions, 16-bit strengths, and the signed kind-1 magnitude used by the effect engine.
- *
- * @param[in] output Classified short HID output payload.
- * @param[out] command Destination for the decoded force-feedback command.
- * @return True when the seven-byte payload is a supported force-feedback command.
- */
 bool force_feedback_command_decode(const UsbOutputCommand *output, ForceFeedbackCommand *command) {
     if (output == NULL || command == NULL || output->kind != USB_OUTPUT_COMMAND_SHORT ||
         output->payload == NULL || output->length != FORCE_FEEDBACK_COMMAND_SIZE) {

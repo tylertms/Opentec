@@ -5,44 +5,24 @@
 
 #include "usb/feature_upload.h"
 
+/** @brief Internal fields and markers in motor-command upload packets. */
 enum {
-    MOTOR_COMMAND_UPLOAD_SEGMENTED = 0xf0,
-    MOTOR_COMMAND_UPLOAD_COMPACT_FLAG = 0x10,
-    MOTOR_COMMAND_UPLOAD_LENGTH_OFFSET = 3,
-    MOTOR_COMMAND_UPLOAD_CONTROL_OFFSET = 4,
-    MOTOR_COMMAND_UPLOAD_PAYLOAD_OFFSET = 5,
-    MOTOR_COMMAND_UPLOAD_WRAPPER_SIZE = 9,
-    MOTOR_COMMAND_UPLOAD_COMPACT_CAPACITY = USB_FEATURE_UPLOAD_PACKET_SIZE - 4,
+    MOTOR_COMMAND_UPLOAD_SEGMENTED = 0xf0,    /**< Segmented-upload packet marker. */
+    MOTOR_COMMAND_UPLOAD_COMPACT_FLAG = 0x10, /**< Compact-upload acknowledgement flag. */
+    MOTOR_COMMAND_UPLOAD_LENGTH_OFFSET = 3,   /**< Compact wrapper length byte offset. */
+    MOTOR_COMMAND_UPLOAD_CONTROL_OFFSET = 4,  /**< Compact control byte offset. */
+    MOTOR_COMMAND_UPLOAD_PAYLOAD_OFFSET = 5,  /**< Compact payload byte offset. */
+    MOTOR_COMMAND_UPLOAD_WRAPPER_SIZE = 9, /**< Protocol wrapper size included in compact length. */
+    MOTOR_COMMAND_UPLOAD_COMPACT_CAPACITY =
+        USB_FEATURE_UPLOAD_PACKET_SIZE - 4, /**< Maximum compact wrapper length. */
 };
 
-/**
- * @brief Initializes motor-command upload state.
- *
- * Attaches the caller-owned segmented assembly buffer and selects feature report 6.
- *
- * @param[out] upload Motor-command upload state to initialize.
- * @param[out] assembly Caller-owned segmented command assembly buffer.
- * @param[in] assembly_capacity Available assembly byte count.
- * @return True when the state and assembly storage are usable.
- */
 bool usb_motor_command_upload_init(UsbMotorCommandUpload *upload, uint8_t *assembly,
                                    uint16_t assembly_capacity) {
     return upload != 0 && usb_feature_upload_init(&upload->feature, USB_MOTOR_COMMAND_REPORT_ID,
                                                   assembly, assembly_capacity);
 }
 
-/**
- * @brief Accepts one USB motor-command feature packet.
- *
- * Recognizes restart and release controls, exposes compact application payloads after their leading
- * status byte, and maps segmented upload progress into report 0xFD acknowledgement requests and a
- * completed application payload.
- *
- * @param[in,out] upload Active motor-command upload state.
- * @param[in] packet Sixty-four-byte feature report 6 packet.
- * @param[in] length Received packet byte count.
- * @return Invalid input, upload progress, acknowledgement request, control, or completed command.
- */
 UsbMotorCommandUploadEvent
 usb_motor_command_upload_accept(UsbMotorCommandUpload *upload,
                                 const uint8_t packet[USB_FEATURE_UPLOAD_PACKET_SIZE],

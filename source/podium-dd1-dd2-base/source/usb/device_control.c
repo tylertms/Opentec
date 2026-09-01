@@ -3,21 +3,22 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/** @brief Descriptor, recipient, feature, and endpoint constants for USB control handling. */
 enum {
-    USB_DESCRIPTOR_DEVICE = 1,
-    USB_DESCRIPTOR_CONFIGURATION = 2,
-    USB_DESCRIPTOR_STRING = 3,
-    USB_DESCRIPTOR_HID = 0x21,
-    USB_DESCRIPTOR_HID_REPORT = 0x22,
-    USB_DESCRIPTOR_HID_PHYSICAL = 0x23,
-    USB_RECIPIENT_DEVICE = 0,
-    USB_RECIPIENT_INTERFACE = 1,
-    USB_RECIPIENT_ENDPOINT = 2,
-    USB_FEATURE_ENDPOINT_HALT = 0,
-    USB_FEATURE_DEVICE_REMOTE_WAKEUP = 1,
-    USB_ENDPOINT_NUMBER_MASK = 0x0f,
-    USB_ENDPOINT_ADDRESS_RESERVED_MASK = 0xff70,
-    USB_ENDPOINT_COUNT = 5,
+    USB_DESCRIPTOR_DEVICE = 1,                   /**< USB device descriptor type. */
+    USB_DESCRIPTOR_CONFIGURATION = 2,            /**< USB configuration descriptor type. */
+    USB_DESCRIPTOR_STRING = 3,                   /**< USB string descriptor type. */
+    USB_DESCRIPTOR_HID = 0x21,                   /**< HID class descriptor type. */
+    USB_DESCRIPTOR_HID_REPORT = 0x22,            /**< HID report descriptor type. */
+    USB_DESCRIPTOR_HID_PHYSICAL = 0x23,          /**< HID physical descriptor type. */
+    USB_RECIPIENT_DEVICE = 0,                    /**< Device request recipient. */
+    USB_RECIPIENT_INTERFACE = 1,                 /**< Interface request recipient. */
+    USB_RECIPIENT_ENDPOINT = 2,                  /**< Endpoint request recipient. */
+    USB_FEATURE_ENDPOINT_HALT = 0,               /**< Endpoint-halt feature selector. */
+    USB_FEATURE_DEVICE_REMOTE_WAKEUP = 1,        /**< Device remote-wakeup feature selector. */
+    USB_ENDPOINT_NUMBER_MASK = 0x0f,             /**< Endpoint-number bit mask. */
+    USB_ENDPOINT_ADDRESS_RESERVED_MASK = 0xff70, /**< Reserved endpoint-address bit mask. */
+    USB_ENDPOINT_COUNT = 5,                      /**< Number of supported endpoint numbers. */
 };
 
 /**
@@ -80,16 +81,6 @@ static UsbControlTransfer data(UsbDescriptorView descriptor, uint16_t requested_
     };
 }
 
-/**
- * @brief Initializes endpoint-zero device state.
- *
- * Clears the address, configuration, interface, HID, feature, and pending-change state while
- * retaining the supplied device capability flags.
- *
- * @param[out] device Endpoint-zero state to initialize.
- * @param[in] self_powered True when the active configuration is self-powered.
- * @param[in] remote_wakeup_forced True when status must always advertise remote wakeup.
- */
 void usb_device_control_init(UsbDeviceControl *device, bool self_powered,
                              bool remote_wakeup_forced) {
     *device = (UsbDeviceControl){
@@ -98,13 +89,6 @@ void usb_device_control_init(UsbDeviceControl *device, bool self_powered,
     };
 }
 
-/**
- * @brief Cancels a deferred endpoint-zero state change.
- *
- * Clears the pending address operation and its retained value when a new setup transaction starts.
- *
- * @param[in,out] device Current endpoint-zero state.
- */
 void usb_device_control_cancel(UsbDeviceControl *device) {
     device->pending_change = USB_DEVICE_PENDING_NONE;
     device->pending_value = 0;
@@ -197,19 +181,6 @@ static bool supported_endpoint(const UsbControlRequest *request, bool include_co
            (include_control || endpoint != 0) && endpoint < USB_ENDPOINT_COUNT;
 }
 
-/**
- * @brief Handles a classified endpoint-zero request.
- *
- * Applies standard device state changes, serves descriptors and HID state, and describes the
- * transfer that the control pipe must perform. Interface requests address either interface in the
- * two-interface updater profile and retain the requested low alternate-setting byte.
- *
- * @param[in,out] device Current USB device state.
- * @param[in] request Classified control request.
- * @param[in] catalog Active descriptor catalog.
- * @param[in] endpoint_halted Current halt state for the request endpoint.
- * @return Control transfer selected for the request.
- */
 UsbControlTransfer usb_device_control_handle(UsbDeviceControl *device,
                                              const UsbControlRequest *request,
                                              const UsbDescriptorCatalog *catalog,
@@ -283,14 +254,6 @@ UsbControlTransfer usb_device_control_handle(UsbDeviceControl *device,
     }
 }
 
-/**
- * @brief Commits a pending USB address.
- *
- * Applies the retained address after the status stage, returns configuration state to zero for
- * address zero, and clears the pending transition.
- *
- * @param[in,out] device Current USB device state.
- */
 void usb_device_control_complete(UsbDeviceControl *device) {
     if (device->pending_change == USB_DEVICE_PENDING_ADDRESS) {
         device->address = device->pending_value;
@@ -302,14 +265,6 @@ void usb_device_control_complete(UsbDeviceControl *device) {
     device->pending_value = 0;
 }
 
-/**
- * @brief Reports whether the USB device has an active configuration.
- *
- * Treats every nonzero configuration value as configured, matching endpoint request gating.
- *
- * @param[in] device Current endpoint-zero state.
- * @return True when the configuration value is nonzero; otherwise false.
- */
 bool usb_device_control_configured(const UsbDeviceControl *device) {
     return device->configuration != 0;
 }

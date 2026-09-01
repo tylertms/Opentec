@@ -9,23 +9,26 @@
 #include "usb/operating_mode_command.h"
 #include "usb/updater_protocol.h"
 
+/** @brief Private selectors, table indices, and offsets used by updater identity selection. */
 enum {
-    USB_UPDATER_HIGH_SELECTOR = 0x80,
-    USB_UPDATER_SELECTOR_INDEX = 0x7f,
-    USB_UPDATER_USB_FALLBACK_INDEX = 5,
-    USB_UPDATER_USB_DIRECT_INDEX = 6,
-    USB_UPDATER_USB_ADAPTER_INDEX = 7,
-    USB_UPDATER_HIGH_DEFAULT_INDEX = 20,
-    USB_UPDATER_PULSE_WHEEL_MODE = 0x1b,
-    USB_UPDATER_DD_VARIANT_CHARACTER = 2,
+    USB_UPDATER_HIGH_SELECTOR = 0x80,    /**< Bit selecting the high identity family. */
+    USB_UPDATER_SELECTOR_INDEX = 0x7f,   /**< Mask selecting an identity table index. */
+    USB_UPDATER_USB_FALLBACK_INDEX = 5,  /**< Low-table index for the USB fallback identity. */
+    USB_UPDATER_USB_DIRECT_INDEX = 6,    /**< Low-table index for the direct USB identity. */
+    USB_UPDATER_USB_ADAPTER_INDEX = 7,   /**< Low-table index for the USB adapter identity. */
+    USB_UPDATER_HIGH_DEFAULT_INDEX = 20, /**< High-table index for the protocol default identity. */
+    USB_UPDATER_PULSE_WHEEL_MODE = 0x1b, /**< Wheel mode using high-family automatic selection. */
+    USB_UPDATER_DD_VARIANT_CHARACTER = 2, /**< Character position carrying the DD variant. */
 };
 
+/** @brief Low-family four-character updater identities indexed by selector. */
 static const uint8_t low_identities[][USB_UPDATER_DEVICE_IDENTITY_SIZE + 1] = {
     "FFFF", "kcfg", "dd10", "pdqr", "r650", "rfor", "wmcl", "phub", "pbpe",
     "FFFF", "FFFF", "wgts", "chub", "wwrc", "w918", "wbmw", "xhub", "wf1e",
     "FFFF", "FFFF", "FFFF", "FFFF", "FFFF", "FFFF", "wgt3", "wgt3",
 };
 
+/** @brief High-family four-character updater identities indexed by selector. */
 static const uint8_t high_identities[][USB_UPDATER_DEVICE_IDENTITY_SIZE + 1] = {
     "FFFF", "FFFF", "FFFF", "FFFF", "FFFF", "zfor", "zmcl", "FFFF", "FFFF", "FFFF", "FFFF",
     "zgts", "FFFF", "FFFF", "FFFF", "FFFF", "zhub", "FFFF", "zgtx", "zbm4", "zpbr", "zpvg",
@@ -149,16 +152,6 @@ static uint8_t high_selector(uint8_t command) {
     }
 }
 
-/**
- * @brief Selects the identity override carried by an updater probe response.
- *
- * USB bridge modes select the low or high command family from command bit seven. Protocol bridge
- * mode recognizes its PBPE and ZPBR commands. Other runtime modes retain automatic selection.
- *
- * @param[in] runtime_mode Active updater bridge route.
- * @param[in] command Command byte returned by the 0x5A/0xA7 probe.
- * @return Identity selector for later device-information responses.
- */
 uint8_t usb_updater_identity_selector(UsbRuntimeMode runtime_mode, uint8_t command) {
     if (runtime_mode == USB_RUNTIME_MODE_USB_BRIDGE ||
         runtime_mode == USB_RUNTIME_MODE_PROTOCOL_RECOVERY) {
@@ -174,16 +167,6 @@ uint8_t usb_updater_identity_selector(UsbRuntimeMode runtime_mode, uint8_t comma
     return command == 0x15 ? 8 : USB_UPDATER_IDENTITY_AUTOMATIC;
 }
 
-/**
- * @brief Selects the updater device identity for the active bridge path.
- *
- * Maps auxiliary and status runtimes directly, derives USB bridge identities from attached-wheel
- * mode and adapter state, and uses the high protocol default for protocol bridge mode. Explicit
- * response selectors override the automatic wheel-derived choice where supported.
- *
- * @param[in] input Current runtime, wheel mode, selector, and adapter state.
- * @param[out] identity Selected four-character updater identity.
- */
 void usb_updater_identity_select(const UsbUpdaterIdentityInput *input,
                                  uint8_t identity[USB_UPDATER_DEVICE_IDENTITY_SIZE]) {
     if (input == NULL || identity == NULL) {

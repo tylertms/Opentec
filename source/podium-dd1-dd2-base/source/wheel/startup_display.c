@@ -7,18 +7,19 @@
 #include "motor/identity.h"
 #include "wheel/display_output.h"
 
+/** @brief Startup display timing and segment constants. */
 enum {
-    BASE_VERSION_DURATION_MS = 1000,
-    TUNING_DISPLAY_VERSION_DURATION_MS = 3000,
-    TUNING_DISPLAY_PAGE_DURATION_MS = 3500,
-    MOTOR_VERSION_DURATION_MS = 1000,
-    READY_DURATION_MS = 1000,
-    CALIBRATION_DURATION_MS = 500,
-    GLYPH_DASH = 0x40,
-    GLYPH_A = 0x77,
-    GLYPH_C = 0x39,
-    GLYPH_L = 0x38,
-    GLYPH_DECIMAL_POINT = 0x80,
+    BASE_VERSION_DURATION_MS = 1000,           /**< Standard base-version presentation duration. */
+    TUNING_DISPLAY_VERSION_DURATION_MS = 3000, /**< Tuning-display version interval. */
+    TUNING_DISPLAY_PAGE_DURATION_MS = 3500,    /**< Adapter version-page presentation interval. */
+    MOTOR_VERSION_DURATION_MS = 1000,          /**< Motor-version presentation duration. */
+    READY_DURATION_MS = 1000,                  /**< Ready-dash presentation duration. */
+    CALIBRATION_DURATION_MS = 500,             /**< Calibration-label and blank interval. */
+    GLYPH_DASH = 0x40,                         /**< Seven-segment dash glyph. */
+    GLYPH_A = 0x77,                            /**< Seven-segment A glyph. */
+    GLYPH_C = 0x39,                            /**< Seven-segment C glyph. */
+    GLYPH_L = 0x38,                            /**< Seven-segment L glyph. */
+    GLYPH_DECIMAL_POINT = 0x80,                /**< Seven-segment decimal-point bit. */
 };
 
 /**
@@ -53,6 +54,7 @@ static bool set_glyphs(WheelDisplayOutput *output, uint8_t first, uint8_t second
  * @return Raw seven-segment glyph, or zero for a non-decimal value.
  */
 static uint8_t digit_glyph(uint8_t digit) {
+    /** @brief Raw seven-segment glyphs indexed by decimal digit. */
     static const uint8_t glyphs[] = {0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f};
     return digit < sizeof(glyphs) ? glyphs[digit] : 0;
 }
@@ -150,6 +152,7 @@ bool wheel_startup_display_update(WheelStartupDisplay *display, bool wheel_activ
         return changed;
     }
     case WHEEL_STARTUP_DISPLAY_BASE_VERSION: {
+        /** @brief Base firmware version shown during startup. */
         static const uint8_t version[4] = {3, 9, 1, 1};
         bool changed = tuning_display_supported ? false : show_version(output, version);
         if (now_ms < display->deadline_ms) {
@@ -236,10 +239,10 @@ bool wheel_startup_display_take_version_presentation(WheelStartupDisplay *displa
 }
 
 /**
- * @brief Takes the pending adapter version-page close request.
+ * @brief Takes the pending tuning-display version close request.
  *
- * Returns one request after the 3.5-second text-page interval and clears it so the close record is
- * not queued again.
+ * Returns one request after the 3.5-second tuning-display version interval and clears it so the
+ * close action is not queued again.
  *
  * @param[in,out] display Persistent startup display state.
  * @return True once when the tuning-display version page is due to close.

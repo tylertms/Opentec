@@ -7,27 +7,80 @@
 #include "usb/device.h"
 #include "usb/vendor_command.h"
 
-/** @brief Stable one-based page identifiers used by the tuning-menu protocol. */
+/**
+ * @brief Stable one-based page identifiers used by the tuning-menu protocol.
+ *
+ * Values are sent in the page-status response.
+ */
 typedef enum {
-    USB_TUNING_MENU_PAGE_ROOT = 1,
-    USB_TUNING_MENU_PAGE_SYSTEM_INFORMATION = 2,
-    USB_TUNING_MENU_PAGE_FORCE_FEEDBACK_ANALYSIS = 3,
-    USB_TUNING_MENU_PAGE_MOTOR_DATA_ANALYSIS = 4,
-    USB_TUNING_MENU_PAGE_THERMAL_POWER = 5,
-    USB_TUNING_MENU_PAGE_AUXILIARY_CALIBRATION = 6,
+    USB_TUNING_MENU_PAGE_ROOT = 1,                    /**< Root tuning page. */
+    USB_TUNING_MENU_PAGE_SYSTEM_INFORMATION = 2,      /**< System-information page. */
+    USB_TUNING_MENU_PAGE_FORCE_FEEDBACK_ANALYSIS = 3, /**< Force-feedback analysis page. */
+    USB_TUNING_MENU_PAGE_MOTOR_DATA_ANALYSIS = 4,     /**< Motor-data analysis page. */
+    USB_TUNING_MENU_PAGE_THERMAL_POWER = 5,           /**< Thermal and power page. */
+    USB_TUNING_MENU_PAGE_AUXILIARY_CALIBRATION = 6,   /**< Auxiliary-calibration page. */
 } UsbTuningMenuPage;
 
-/** @brief Active tuning-menu page and pending USB status state. */
+/**
+ * @brief Active tuning-menu page and pending USB status state.
+ *
+ * Tracks the page encoded in the next status response and whether that response is due.
+ */
 typedef struct {
-    UsbTuningMenuPage active_page;
-    bool response_pending;
+    UsbTuningMenuPage active_page; /**< Currently selected one-based page. */
+    bool response_pending;         /**< True when a page-status response must be encoded. */
 } UsbTuningMenuService;
 
+/**
+ * @brief Initializes the USB tuning-menu service.
+ *
+ * Selects the root page and clears the pending-response state.
+ *
+ * @param[out] service Tuning-menu state to initialize.
+ */
 void usb_tuning_menu_service_init(UsbTuningMenuService *service);
+
+/**
+ * @brief Applies one tuning-menu command.
+ *
+ * Handles page selection and explicit status refresh actions while retaining the current page for
+ * unsupported page selectors.
+ *
+ * @param[in,out] service Tuning-menu state to update.
+ * @param[in] command Decoded tuning-menu vendor command.
+ * @return True when the command has a recognized action and required arguments; otherwise false.
+ */
 bool usb_tuning_menu_service_apply(UsbTuningMenuService *service, const UsbVendorCommand *command);
+
+/**
+ * @brief Reports whether a tuning-menu status response is pending.
+ *
+ * Reads the response latch without changing the selected page or pending state.
+ *
+ * @param[in] service Tuning-menu state to inspect.
+ * @return True when a status response is pending; otherwise false.
+ */
 bool usb_tuning_menu_service_response_pending(const UsbTuningMenuService *service);
+
+/**
+ * @brief Encodes the pending tuning-menu status response.
+ *
+ * Clears the output and writes the fixed vendor header followed by the active one-based page
+ * identifier.
+ *
+ * @param[in] service Tuning-menu state providing the active page.
+ * @param[out] output Destination for the complete USB report.
+ */
 void usb_tuning_menu_service_encode_response(const UsbTuningMenuService *service,
                                              uint8_t output[USB_DEVICE_REPORT_SIZE]);
+
+/**
+ * @brief Marks a tuning-menu status response as sent.
+ *
+ * Clears the response latch after the encoded report has been accepted by the USB endpoint.
+ *
+ * @param[in,out] service Tuning-menu state to update.
+ */
 void usb_tuning_menu_service_response_sent(UsbTuningMenuService *service);
 
 #endif

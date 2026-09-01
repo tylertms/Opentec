@@ -8,16 +8,17 @@
 #include "usb/xbox_gip_response.h"
 #include "usb/xbox_gip_session.h"
 
+/** @brief Xbox GIP packet identifiers classified as application output. */
 enum {
-    XBOX_GIP_COMMAND_PACKET = 0x0a,
-    XBOX_GIP_VENDOR_PACKET = 0x0f,
+    XBOX_GIP_COMMAND_PACKET = 0x0a, /**< First application-output packet identifier. */
+    XBOX_GIP_VENDOR_PACKET = 0x0f,  /**< Last application-output packet identifier. */
 };
 
 /**
  * @brief Classifies an Xbox GIP force-feedback application packet.
  *
- * Accepts command queries, the four complete script-system packet types, and the vendor tunnel
- * packet used for operating-mode and generic vendor commands.
+ * Classifies packet identifiers 0x0A through 0x0F as force-feedback application traffic, covering
+ * command queries, four script-system packet types, and the vendor tunnel packet.
  *
  * @param[in] request Received Xbox GIP endpoint packet.
  * @return True when the packet belongs to the force-feedback application path.
@@ -57,8 +58,8 @@ static uint8_t emit_session_response(UsbXboxGipService *service, const uint8_t r
 /**
  * @brief Services an active Xbox GIP metadata download.
  *
- * Accepts matching acknowledgement packets and emits the next transfer packet when its
- * acknowledgement boundary permits progress.
+ * Checks acknowledgement packets against the current transfer progress and emits the next packet
+ * when its acknowledgement boundary permits progress.
  *
  * @param[in,out] service Active GIP service.
  * @param[in] identity Identity data containing the metadata document.
@@ -90,32 +91,12 @@ static uint8_t service_metadata(UsbXboxGipService *service,
     return response_length;
 }
 
-/**
- * @brief Initializes the Xbox GIP endpoint service.
- *
- * Starts discovery and session state with response sequence 1 and no active metadata transfer.
- *
- * @param[out] service GIP service state to initialize.
- */
 void usb_xbox_gip_service_init(UsbXboxGipService *service) {
     *service = (UsbXboxGipService){.next_sequence = 1};
     usb_xbox_gip_discovery_init(&service->discovery);
     usb_xbox_gip_session_init(&service->session);
 }
 
-/**
- * @brief Services one Xbox GIP endpoint cycle.
- *
- * Runs discovery, starts and advances metadata transfer, applies session commands, and emits at
- * most one response packet for the cycle.
- *
- * @param[in,out] service Active GIP service.
- * @param[in] identity Base, wheel, digest, and metadata identity inputs.
- * @param[in] request Current 64-byte request packet, or an all-zero packet when none was received.
- * @param[in] now Current monotonic time in milliseconds.
- * @param[out] response Destination for a response packet.
- * @return Session actions, response length, and application-output classification for the cycle.
- */
 UsbXboxGipServiceResult
 usb_xbox_gip_service_poll(UsbXboxGipService *service, const UsbXboxGipServiceIdentity *identity,
                           const uint8_t request[USB_XBOX_GIP_METADATA_PACKET_SIZE], uint32_t now,

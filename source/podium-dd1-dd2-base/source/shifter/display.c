@@ -7,17 +7,20 @@
 #include "shifter/h_pattern.h"
 #include "wheel/display_output.h"
 
+/**
+ * @brief H-pattern display timing, position, and glyph constants.
+ */
 enum {
-    DISPLAY_HOLD_DURATION_MS = 1000,
-    GEAR_DISPLAY_POSITION = 1,
-    GLYPH_A = 0x77,
-    GLYPH_C = 0x39,
-    GLYPH_F = 0x71,
-    GLYPH_L = 0x38,
-    GLYPH_NEUTRAL = 0x54,
-    GLYPH_REVERSE = 0x50,
-    GLYPH_S = 0x6d,
-    GLYPH_T = 0x78,
+    DISPLAY_HOLD_DURATION_MS = 1000, /**< Duration of a temporary gear glyph. */
+    GEAR_DISPLAY_POSITION = 1,       /**< Display slot used for gear glyphs. */
+    GLYPH_A = 0x77,                  /**< Seven-segment glyph for the letter A. */
+    GLYPH_C = 0x39,                  /**< Seven-segment glyph for the letter C. */
+    GLYPH_F = 0x71,                  /**< Seven-segment glyph for the letter F. */
+    GLYPH_L = 0x38,                  /**< Seven-segment glyph for the letter L. */
+    GLYPH_NEUTRAL = 0x54,            /**< Seven-segment glyph for neutral. */
+    GLYPH_REVERSE = 0x50,            /**< Seven-segment glyph for reverse. */
+    GLYPH_S = 0x6d,                  /**< Seven-segment glyph for the letter S. */
+    GLYPH_T = 0x78,                  /**< Seven-segment glyph for the letter T. */
 };
 
 /**
@@ -30,6 +33,9 @@ enum {
  * @return Seven-segment glyph, or zero when the gear has no display glyph.
  */
 static uint8_t gear_glyph(ShifterGear gear) {
+    /**
+     * @brief Seven-segment glyphs indexed by forward gear number.
+     */
     static const uint8_t digits[] = {0x00, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07};
     switch (gear) {
     case SHIFTER_GEAR_REVERSE:

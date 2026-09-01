@@ -4,17 +4,23 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/**
+ * @brief Report masks, latch flags, and scan output values for auxiliary encoding.
+ *
+ * The report uses three cumulative bands, while latched bands and encoded output use separate
+ * bit positions.
+ */
 enum {
-    AUXILIARY_REPORT_MASK = 0x01ff,
-    AUXILIARY_LOW_BAND_MASK = 0x0007,
-    AUXILIARY_MIDDLE_BAND_MASK = 0x0038,
-    AUXILIARY_HIGH_BAND_MASK = 0x01c0,
-    AUXILIARY_LATCH_MIDDLE = 0x01,
-    AUXILIARY_LATCH_HIGH = 0x02,
-    AUXILIARY_LATCH_LOW = 0x04,
-    AUXILIARY_OUTPUT_LOW = 0x01,
-    AUXILIARY_OUTPUT_MIDDLE = 0x40,
-    AUXILIARY_OUTPUT_HIGH = 0x10,
+    AUXILIARY_REPORT_MASK = 0x01ff,      /**< Mask for the nine supported report bits. */
+    AUXILIARY_LOW_BAND_MASK = 0x0007,    /**< Mask for the low cumulative band. */
+    AUXILIARY_MIDDLE_BAND_MASK = 0x0038, /**< Mask for the middle cumulative band. */
+    AUXILIARY_HIGH_BAND_MASK = 0x01c0,   /**< Mask for the high cumulative band. */
+    AUXILIARY_LATCH_MIDDLE = 0x01,       /**< Latched-band bit for the middle band. */
+    AUXILIARY_LATCH_HIGH = 0x02,         /**< Latched-band bit for the high band. */
+    AUXILIARY_LATCH_LOW = 0x04,          /**< Latched-band bit for the low band. */
+    AUXILIARY_OUTPUT_LOW = 0x01,         /**< Scan-output bit for the low band. */
+    AUXILIARY_OUTPUT_MIDDLE = 0x40,      /**< Scan-output bit for the middle band. */
+    AUXILIARY_OUTPUT_HIGH = 0x10,        /**< Scan-output bit for the high band. */
 };
 
 /**
@@ -123,7 +129,7 @@ static uint8_t encode_exclusive(uint16_t report, uint8_t latched_bands) {
  * always clear.
  *
  * @param[in] output Auxiliary report and encoding policy.
- * @return Encoded auxiliary scan byte.
+ * @return Encoded auxiliary scan byte, or zero when output is null or option one disables output.
  */
 uint8_t wheel_auxiliary_output_encode(const WheelAuxiliaryOutput *output) {
     if (output == NULL || output->option == 1) {

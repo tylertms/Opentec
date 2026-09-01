@@ -4,34 +4,35 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/** @brief Internal wheel, button, and adapter masks for tuning interaction. */
 enum {
-    WHEEL_MODE_LEGACY = 0x0e,
-    WHEEL_MODE_LEGACY_ALTERNATE = 0x0f,
-    WHEEL_MODE_STANDARD = 0x10,
-    WHEEL_MODE_STANDARD_ALTERNATE = 0x11,
-    WHEEL_MODE_LEGACY_COMPATIBILITY = 0x17,
-    WHEEL_MODE_PULSE_INPUT = 0x1b,
-    WHEEL_MODE_EXTENDED = 0x1c,
-    TUNING_PRIMARY_INCREASE = 0x0100,
-    TUNING_PRIMARY_PREVIOUS = 0x0200,
-    TUNING_PRIMARY_NEXT = 0x0400,
-    TUNING_PRIMARY_DECREASE = 0x0800,
-    TUNING_PRIMARY_STANDARD_CENTER = 0x1000,
-    TUNING_PRIMARY_LEGACY_CENTER = 0x4000,
-    TUNING_SECONDARY_PEDAL_CHORD = 0x0009,
-    TUNING_SECONDARY_LEGACY_CENTER = 0x0010,
-    TUNING_SECONDARY_PULSE_CENTER = 0x0012,
-    TUNING_SECONDARY_ADJUSTMENT = 0x0040,
-    TUNING_SECONDARY_STANDARD_CENTER = 0x0080,
-    TUNING_SECONDARY_PROFILE_SHORTCUT = 0x0100,
-    TUNING_SECONDARY_TOGGLE_VIEW = 0x0200,
-    TUNING_SECONDARY_CENTER_PAIR = 0x0600,
-    TUNING_SECONDARY_MENU = 0x2000,
-    TUNING_SECONDARY_LEGACY_DISPLAY = 0x0110,
-    TUNING_SECONDARY_LEGACY_ADJUSTMENT = 0x0140,
-    TUNING_ADAPTER_EXTENDED_CENTER_PRIMARY = 0x10,
-    TUNING_ADAPTER_EXTENDED_CENTER_SECONDARY = 0x04,
-    TUNING_ADAPTER_STANDARD_CENTER = 0x0c,
+    WHEEL_MODE_LEGACY = 0x0e,                        /**< Legacy wheel mode. */
+    WHEEL_MODE_LEGACY_ALTERNATE = 0x0f,              /**< Alternate legacy wheel mode. */
+    WHEEL_MODE_STANDARD = 0x10,                      /**< Standard wheel mode. */
+    WHEEL_MODE_STANDARD_ALTERNATE = 0x11,            /**< Alternate standard wheel mode. */
+    WHEEL_MODE_LEGACY_COMPATIBILITY = 0x17,          /**< Legacy compatibility mode. */
+    WHEEL_MODE_PULSE_INPUT = 0x1b,                   /**< Pulse-input wheel mode. */
+    WHEEL_MODE_EXTENDED = 0x1c,                      /**< Extended wheel mode. */
+    TUNING_PRIMARY_INCREASE = 0x0100,                /**< Primary increase button. */
+    TUNING_PRIMARY_PREVIOUS = 0x0200,                /**< Primary previous button. */
+    TUNING_PRIMARY_NEXT = 0x0400,                    /**< Primary next button. */
+    TUNING_PRIMARY_DECREASE = 0x0800,                /**< Primary decrease button. */
+    TUNING_PRIMARY_STANDARD_CENTER = 0x1000,         /**< Primary standard center button. */
+    TUNING_PRIMARY_LEGACY_CENTER = 0x4000,           /**< Primary legacy center button. */
+    TUNING_SECONDARY_PEDAL_CHORD = 0x0009,           /**< Pedal-operation chord. */
+    TUNING_SECONDARY_LEGACY_CENTER = 0x0010,         /**< Legacy center button. */
+    TUNING_SECONDARY_PULSE_CENTER = 0x0012,          /**< Pulse center chord. */
+    TUNING_SECONDARY_ADJUSTMENT = 0x0040,            /**< Profile adjustment chord. */
+    TUNING_SECONDARY_STANDARD_CENTER = 0x0080,       /**< Standard center button. */
+    TUNING_SECONDARY_PROFILE_SHORTCUT = 0x0100,      /**< Profile shortcut. */
+    TUNING_SECONDARY_TOGGLE_VIEW = 0x0200,           /**< Toggle-view button. */
+    TUNING_SECONDARY_CENTER_PAIR = 0x0600,           /**< Standard center button pair. */
+    TUNING_SECONDARY_MENU = 0x2000,                  /**< Menu button. */
+    TUNING_SECONDARY_LEGACY_DISPLAY = 0x0110,        /**< Legacy display shortcut. */
+    TUNING_SECONDARY_LEGACY_ADJUSTMENT = 0x0140,     /**< Legacy adjustment shortcut. */
+    TUNING_ADAPTER_EXTENDED_CENTER_PRIMARY = 0x10,   /**< Extended adapter center primary bit. */
+    TUNING_ADAPTER_EXTENDED_CENTER_SECONDARY = 0x04, /**< Extended adapter center secondary bit. */
+    TUNING_ADAPTER_STANDARD_CENTER = 0x0c,           /**< Standard adapter center chord. */
 };
 
 /**
@@ -41,7 +42,7 @@ enum {
  *
  * @param[in] buttons Current button word.
  * @param[in] mask Required button bits.
- * @return True when every required bit is asserted.
+ * @return true when every required bit is asserted; false otherwise.
  */
 static bool buttons_include(uint16_t buttons, uint16_t mask) { return (buttons & mask) == mask; }
 
@@ -51,7 +52,7 @@ static bool buttons_include(uint16_t buttons, uint16_t mask) { return (buttons &
  * Applies the attached-wheel shortcut priority that precedes the pedal end-stop query.
  *
  * @param[in] input Current attached-wheel and adapter inputs.
- * @return True when a higher-priority shortcut suppresses the pedal query.
+ * @return true when a higher-priority shortcut suppresses the pedal query; false otherwise.
  */
 static bool profile_shortcut_precedes_adjustment(const TuningInteractionInput *input) {
     bool legacy_profile_shortcut =
@@ -72,7 +73,7 @@ static bool profile_shortcut_precedes_adjustment(const TuningInteractionInput *i
  * chord, and the mode-0x11 legacy-layout chord.
  *
  * @param[in] input Current attached-wheel input.
- * @return True while the release gate remains asserted.
+ * @return true while the release gate remains asserted; false otherwise.
  */
 static bool default_center_chord_held(const TuningInteractionInput *input) {
     return buttons_include(input->secondary_buttons, TUNING_SECONDARY_CENTER_PAIR) ||
@@ -89,7 +90,7 @@ static bool default_center_chord_held(const TuningInteractionInput *input) {
  * Selects the distinct standard and extended adapter button layouts.
  *
  * @param[in] input Current attached-adapter state.
- * @return True when the active adapter layout carries its complete center chord.
+ * @return true when the active adapter layout carries its complete center chord; false otherwise.
  */
 static bool adapter_center_requested(const TuningInteractionInput *input) {
     if (!input->adapter_connected) {
@@ -111,7 +112,8 @@ static bool adapter_center_requested(const TuningInteractionInput *input) {
  *
  * @param[in,out] interaction Interaction state to advance.
  * @param[in] input Current attached-wheel and adapter inputs.
- * @return Center-presentation action, or no action when no center chord is active.
+ * @return Center-presentation action for a legacy chord; no action for a nonlegacy or absent
+ * center chord.
  */
 static TuningInteractionAction start_center_capture(TuningInteraction *interaction,
                                                     const TuningInteractionInput *input) {
@@ -139,27 +141,12 @@ static TuningInteractionAction start_center_capture(TuningInteraction *interacti
     return legacy ? TUNING_INTERACTION_ACTION_SHOW_CENTER_CAPTURE : TUNING_INTERACTION_ACTION_NONE;
 }
 
-/**
- * @brief Initializes tuning-menu interaction state.
- *
- * Starts with the profile selector and tuning entries closed.
- *
- * @param[out] interaction Interaction state to initialize.
- */
 void tuning_interaction_init(TuningInteraction *interaction) {
     if (interaction != NULL) {
         *interaction = (TuningInteraction){0};
     }
 }
 
-/**
- * @brief Requests the local tuning menu close phase.
- *
- * Preserves the interaction state needed by the normal close service while marking the menu as
- * closing and discarding pending navigation.
- *
- * @param[in,out] interaction Local tuning interaction to close.
- */
 void tuning_interaction_request_close(TuningInteraction *interaction) {
     if (interaction == NULL) {
         return;
@@ -169,17 +156,6 @@ void tuning_interaction_request_close(TuningInteraction *interaction) {
     interaction->navigation = (TuningNavigationEvent){0};
 }
 
-/**
- * @brief Decodes one attached-wheel tuning navigation sample.
- *
- * Applies the firmware input priority from increase through menu, preserves the signed analog
- * scale only for analog navigation, suppresses repeated actions, and allows menu to repeat while
- * held. Unavailable input resets the edge latch.
- *
- * @param[in,out] interaction Tuning interaction and navigation edge latch.
- * @param[in] input Current attached-wheel input sample.
- * @return Decoded navigation action, or no action when unchanged or unavailable.
- */
 TuningNavigationEvent tuning_interaction_read_navigation(TuningInteraction *interaction,
                                                          const TuningInteractionInput *input) {
     TuningNavigationEvent event = {0};
@@ -222,15 +198,6 @@ TuningNavigationEvent tuning_interaction_read_navigation(TuningInteraction *inte
     return event;
 }
 
-/**
- * @brief Takes the navigation event produced by the latest interaction update.
- *
- * Returns the retained event once and clears it so entry navigation and value adjustment cannot
- * process the same input twice.
- *
- * @param[in,out] interaction Tuning interaction retaining the event.
- * @return Latest navigation event, or no action when none is pending.
- */
 TuningNavigationEvent tuning_interaction_take_navigation(TuningInteraction *interaction) {
     if (interaction == NULL) {
         return (TuningNavigationEvent){0};
@@ -260,7 +227,7 @@ static void clear_profile_hold(TuningInteraction *interaction) {
  * shortcuts from the timed profile-mode and reset actions.
  *
  * @param[in] input Current attached-wheel and adapter inputs.
- * @return True when a higher-priority profile interaction is active.
+ * @return true when a higher-priority profile interaction is active; false otherwise.
  */
 static bool profile_hold_blocked(const TuningInteractionInput *input) {
     bool profile_selector_active =
@@ -319,7 +286,7 @@ static TuningInteractionAction profile_shortcut_action(TuningInteraction *intera
  * @param[in,out] interaction Active menu-hold state.
  * @param[in] input Current attached-wheel and adapter inputs.
  * @param[in] now_ms Current monotonic time in milliseconds.
- * @return Action produced by the held profile selector.
+ * @return Shortcut, mode-toggle, reset, or no action according to the current held input.
  */
 static TuningInteractionAction update_profile_hold(TuningInteraction *interaction,
                                                    const TuningInteractionInput *input,
@@ -362,7 +329,7 @@ static TuningInteractionAction update_profile_hold(TuningInteraction *interactio
  *
  * @param[in,out] interaction Tuning interaction to advance.
  * @param[in] input Current attached-wheel and pedal capability state.
- * @return True when a V3 operation state was entered.
+ * @return true when a V3 operation state was entered; false otherwise.
  */
 static bool start_pedal_operation(TuningInteraction *interaction,
                                   const TuningInteractionInput *input) {
@@ -395,7 +362,8 @@ static bool start_pedal_operation(TuningInteraction *interaction,
  * @param[in,out] interaction Active V3 pedal operation.
  * @param[in] input Current wheel chord and pedal operation state.
  * @param[in] now_ms Current monotonic time in milliseconds.
- * @return Pedal control or result action produced by this update.
+ * @return Pedal control or completion action when its phase reaches a transition; no action while
+ * waiting.
  */
 static TuningInteractionAction update_pedal_operation(TuningInteraction *interaction,
                                                       const TuningInteractionInput *input,
@@ -449,7 +417,7 @@ static TuningInteractionAction update_pedal_operation(TuningInteraction *interac
  *
  * @param[in,out] interaction Current interaction and pedal-query edge latch.
  * @param[in] input Current attached-wheel input.
- * @return Combined shortcut actions for the current sample.
+ * @return Combined shortcut action bits, or no action when no legacy shortcut is active.
  */
 static TuningInteractionAction entry_shortcut_action(TuningInteraction *interaction,
                                                      const TuningInteractionInput *input) {
@@ -469,18 +437,6 @@ static TuningInteractionAction entry_shortcut_action(TuningInteraction *interact
     return actions;
 }
 
-/**
- * @brief Advances one local tuning-menu interaction sample.
- *
- * Implements release-gated center capture, local V3 pedal operations, profile shortcuts, reset
- * result and cleanup phases, and extended-wheel reconnect grace while keeping the menu and its
- * consumers separated from device transport details.
- *
- * @param[in,out] interaction Current logical tuning-menu state.
- * @param[in] input Current attached-wheel, adapter, and pedal inputs.
- * @param[in] now_ms Current monotonic time in milliseconds.
- * @return Bitwise actions produced by the current sample.
- */
 TuningInteractionAction tuning_interaction_update(TuningInteraction *interaction,
                                                   const TuningInteractionInput *input,
                                                   uint32_t now_ms) {
@@ -571,44 +527,17 @@ TuningInteractionAction tuning_interaction_update(TuningInteraction *interaction
     return shortcuts;
 }
 
-/**
- * @brief Reports whether tuning controls must be hidden from ordinary host input.
- *
- * Covers the two entry views, center-release wait, and held profile interaction represented by the
- * modern phase model.
- *
- * @param[in] interaction Current tuning interaction.
- * @return True while ordinary host controls require tuning suppression.
- */
 bool tuning_interaction_suppresses_host_input(const TuningInteraction *interaction) {
     return interaction != NULL && (interaction->phase == TUNING_INTERACTION_ENTRY_OPEN ||
                                    interaction->phase == TUNING_INTERACTION_CENTER_CAPTURE ||
                                    interaction->phase == TUNING_INTERACTION_MENU_HELD);
 }
 
-/**
- * @brief Reports whether the console system button must be hidden during tuning.
- *
- * Matches the reference states for the entry views and center-release wait while leaving the held
- * profile phase available to its distinct host rule.
- *
- * @param[in] interaction Current tuning interaction.
- * @return True when the console system button must be suppressed.
- */
 bool tuning_interaction_suppresses_system_button(const TuningInteraction *interaction) {
     return interaction != NULL && (interaction->phase == TUNING_INTERACTION_ENTRY_OPEN ||
                                    interaction->phase == TUNING_INTERACTION_CENTER_CAPTURE);
 }
 
-/**
- * @brief Reports whether 3.9.1.1 blocks adapter-active synchronization.
- *
- * Maps the official label/value, profile-held, and close-cleanup states to their clean modern
- * equivalents while allowing center capture, reset result, and pedal-operation phases.
- *
- * @param[in] interaction Current tuning interaction.
- * @return True only for phases corresponding to official states 1, 2, 4, and 6.
- */
 bool tuning_interaction_blocks_adapter_synchronization(const TuningInteraction *interaction) {
     return interaction != NULL && (interaction->phase == TUNING_INTERACTION_ENTRY_OPEN ||
                                    interaction->phase == TUNING_INTERACTION_MENU_HELD ||

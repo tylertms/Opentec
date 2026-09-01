@@ -6,9 +6,10 @@
 #include "platform/aux_bus.h"
 #include "secure_element/a71ch.h"
 
+/** @brief Internal SCI2C addressing constants. */
 enum {
-    A71CH_DEVICE_ADDRESS = 0x48,
-    A71CH_RESPONSE_CONTROL = 0x82,
+    A71CH_DEVICE_ADDRESS = 0x48,   /**< Seven-bit A71CH device address. */
+    A71CH_RESPONSE_CONTROL = 0x82, /**< SCI2C control byte for response reads. */
 };
 
 /**

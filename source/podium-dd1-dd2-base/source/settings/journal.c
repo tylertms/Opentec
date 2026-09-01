@@ -5,18 +5,20 @@
 #include <stdint.h>
 #include <string.h>
 
+/** @brief Internal settings-journal layout and marker constants. */
 enum {
-    SETTINGS_PER_LOGICAL_PAGE = 255,
-    HEADER_ACTIVE_MASK = 1 << 3,
-    HEADER_EPOCH_MASK = 1 << 4,
-    HEADER_INITIAL_TAG = 0xf3,
-    ERASED_TAG = 0xff,
+    SETTINGS_PER_LOGICAL_PAGE = 255, /**< Value indexes per logical page. */
+    HEADER_ACTIVE_MASK = 1 << 3,     /**< Header bit cleared for an active slot. */
+    HEADER_EPOCH_MASK = 1 << 4,      /**< Header bit indicating an eligible epoch. */
+    HEADER_INITIAL_TAG = 0xf3,       /**< Initial committed header tag. */
+    ERASED_TAG = 0xff,               /**< Tag value of an erased instruction. */
 };
 
+/** @brief Result of an internal journal search. */
 typedef enum {
-    JOURNAL_SEARCH_ERROR,
-    JOURNAL_SEARCH_ABSENT,
-    JOURNAL_SEARCH_FOUND,
+    JOURNAL_SEARCH_ERROR,  /**< Search failed because storage could not be read. */
+    JOURNAL_SEARCH_ABSENT, /**< No matching or free instruction was found. */
+    JOURNAL_SEARCH_FOUND,  /**< A matching or free instruction was found. */
 } JournalSearchResult;
 
 /**
@@ -165,7 +167,7 @@ static uint8_t active_slots(SettingsJournal *journal, uint8_t logical_page,
 /**
  * @brief Confirms that a logical page has a bit-four-eligible slot.
  *
- * Scans all three headers and requires at least one page whose epoch marker remains set.
+ * Scans all three headers and requires at least one slot whose epoch marker remains set.
  *
  * @param[in] journal Settings journal instance.
  * @param[in] logical_page Logical settings page.
@@ -236,7 +238,8 @@ static bool logical_page_recover(SettingsJournal *journal, uint8_t logical_page,
  * @param[in] logical_page Logical settings page.
  * @param[in] local_index Index within the logical page.
  * @param[out] value Stored value when a matching record exists.
- * @return True when a stored value was found; otherwise false.
+ * @return JOURNAL_SEARCH_FOUND when a stored value was found, JOURNAL_SEARCH_ABSENT when no value
+ * matches, or JOURNAL_SEARCH_ERROR when storage cannot be read.
  */
 static JournalSearchResult local_value_find(SettingsJournal *journal, uint8_t logical_page,
                                             uint8_t local_index, uint16_t *value) {
@@ -263,7 +266,8 @@ static JournalSearchResult local_value_find(SettingsJournal *journal, uint8_t lo
  * @param[in] journal Settings journal instance.
  * @param[in] logical_page Logical settings page.
  * @param[out] instruction First unused instruction offset.
- * @return True when free record space exists; otherwise false.
+ * @return JOURNAL_SEARCH_FOUND when free space exists, JOURNAL_SEARCH_ABSENT when the slot is full,
+ * or JOURNAL_SEARCH_ERROR when storage cannot be read.
  */
 static JournalSearchResult free_instruction_find(SettingsJournal *journal, uint8_t logical_page,
                                                  uint16_t *instruction) {
@@ -367,18 +371,6 @@ static bool logical_page_compact(SettingsJournal *journal, uint8_t logical_page)
     return true;
 }
 
-/**
- * @brief Initializes the reference-compatible retained-settings journal.
- *
- * Examines both groups of three flash pages, creates an empty committed slot when a group has no
- * active page, accepts one active page, and repairs the two-active-page state left by an
- * interrupted rotation. Three active pages or an I/O failure are rejected.
- *
- * @param[out] journal Settings journal instance.
- * @param[in] operations Flash instruction read, program, and page-erase operations.
- * @param[in] context Caller-owned storage context passed to every operation.
- * @return True when both logical pages have one usable active slot; otherwise false.
- */
 bool settings_journal_initialize(SettingsJournal *journal,
                                  const SettingsJournalOperations *operations, void *context) {
     if (journal == NULL || operations == NULL || operations->read == NULL ||
@@ -425,17 +417,6 @@ bool settings_journal_initialize(SettingsJournal *journal,
     return true;
 }
 
-/**
- * @brief Reads one retained 16-bit setting.
- *
- * Splits the global index into one of two 255-value logical pages and returns the newest matching
- * append record from that page.
- *
- * @param[in] journal Initialized settings journal.
- * @param[in] index Global settings index from zero through 509.
- * @param[out] value Newest stored value.
- * @return True when the index has a stored value; otherwise false.
- */
 bool settings_journal_read(SettingsJournal *journal, uint16_t index, uint16_t *value) {
     if (journal == NULL || value == NULL || !journal->initialized ||
         index >= SETTINGS_JOURNAL_VALUE_COUNT) {
@@ -446,17 +427,6 @@ bool settings_journal_read(SettingsJournal *journal, uint16_t index, uint16_t *v
     return local_value_find(journal, logical_page, local_index, value) == JOURNAL_SEARCH_FOUND;
 }
 
-/**
- * @brief Appends one retained 16-bit setting.
- *
- * Avoids a write when the newest value already matches, compacts a full slot before appending, and
- * compacts immediately after consuming the final record so the next update retains free space.
- *
- * @param[in,out] journal Initialized settings journal.
- * @param[in] index Global settings index from zero through 509.
- * @param[in] value Value to retain.
- * @return True when the value is stored or already current; otherwise false.
- */
 bool settings_journal_write(SettingsJournal *journal, uint16_t index, uint16_t value) {
     if (journal == NULL || !journal->initialized || index >= SETTINGS_JOURNAL_VALUE_COUNT) {
         return false;

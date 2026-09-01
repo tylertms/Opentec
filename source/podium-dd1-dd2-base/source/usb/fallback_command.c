@@ -3,25 +3,16 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/** @brief Short fallback command framing and family constants. */
 enum {
-    FALLBACK_COMMAND_SIZE = 7,
-    FALLBACK_F8_FAMILY = 0xf8,
-    FALLBACK_F9_FAMILY = 0xf9,
-    FALLBACK_COOLING_COMMAND = 0x02,
-    FALLBACK_SECURITY_COMMAND = 0xa0,
-    FALLBACK_SECURITY_DISABLE = 1,
+    FALLBACK_COMMAND_SIZE = 7,        /**< Required short command length. */
+    FALLBACK_F8_FAMILY = 0xf8,        /**< Direct tuning command family. */
+    FALLBACK_F9_FAMILY = 0xf9,        /**< Cooling and security command family. */
+    FALLBACK_COOLING_COMMAND = 0x02,  /**< Cooling override command code. */
+    FALLBACK_SECURITY_COMMAND = 0xa0, /**< Security command code. */
+    FALLBACK_SECURITY_DISABLE = 1,    /**< Security-disable parameter value. */
 };
 
-/**
- * @brief Decodes one official short fallback command.
- *
- * Accepts the direct F8 tuning and steering commands, the F9 cooling override, and the guarded
- * F9 security-disable request. F8 09 remains owned by the operating-mode decoder.
- *
- * @param[in] output Classified seven-byte short output report.
- * @param[out] command Destination for the command kind and parameters.
- * @return True when the report is a supported fallback command.
- */
 bool usb_fallback_command_decode(const UsbOutputCommand *output, UsbFallbackCommand *command) {
     if (output == NULL || command == NULL || output->kind != USB_OUTPUT_COMMAND_SHORT ||
         output->payload == NULL || output->length != FALLBACK_COMMAND_SIZE) {

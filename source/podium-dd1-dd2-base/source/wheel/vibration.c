@@ -3,10 +3,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/** @brief Vibration strength and mode limits. */
 enum {
-    WHEEL_VIBRATION_STRENGTH_MAX = 10,
-    WHEEL_VIBRATION_LOW_RANGE_MODE_A = 0x0a,
-    WHEEL_VIBRATION_LOW_RANGE_MODE_B = 0x1c,
+    WHEEL_VIBRATION_STRENGTH_MAX = 10,       /**< Largest accepted vibration strength. */
+    WHEEL_VIBRATION_LOW_RANGE_MODE_A = 0x0a, /**< First low-range vibration mode. */
+    WHEEL_VIBRATION_LOW_RANGE_MODE_B = 0x1c, /**< Second low-range vibration mode. */
 };
 
 /**
@@ -14,7 +15,7 @@ enum {
  *
  * Uses the high byte of the calibrated brake position on both vibration channels while the brake
  * indicator is active. Strength values one through ten select a mode-dependent amplitude ceiling;
- * zero and larger values disable the output.
+ * zero and values above ten disable the output.
  *
  * @param[out] output Two attached-wheel vibration channels.
  * @param[in] brake_position Calibrated sixteen-bit brake position.

@@ -6,17 +6,18 @@
 
 #include "platform/time.h"
 
+/** @brief Updater frame, opcode, size, and timing constants. */
 enum {
-    WHEEL_UPDATER_FRAME_MARKER = 0x5a,
-    WHEEL_UPDATER_RETRY_OPCODE = 0xa1,
-    WHEEL_UPDATER_ACKNOWLEDGEMENT_OPCODE = 0xa2,
-    WHEEL_UPDATER_VARIABLE_OPCODE = 0xa4,
-    WHEEL_UPDATER_FIXED_OPCODE = 0xa7,
-    WHEEL_UPDATER_FIXED_PAYLOAD_SIZE = 8,
-    WHEEL_UPDATER_LENGTH_SIZE = 2,
-    WHEEL_UPDATER_METADATA_SIZE = 2,
-    WHEEL_UPDATER_READ_DELAY_MS = 2,
-    WHEEL_UPDATER_RETRY_TIMEOUT_MS = 2000,
+    WHEEL_UPDATER_FRAME_MARKER = 0x5a,           /**< Updater frame marker byte. */
+    WHEEL_UPDATER_RETRY_OPCODE = 0xa1,           /**< Retry-response opcode. */
+    WHEEL_UPDATER_ACKNOWLEDGEMENT_OPCODE = 0xa2, /**< Acknowledgement-response opcode. */
+    WHEEL_UPDATER_VARIABLE_OPCODE = 0xa4,        /**< Variable-payload response opcode. */
+    WHEEL_UPDATER_FIXED_OPCODE = 0xa7,           /**< Fixed-payload response opcode. */
+    WHEEL_UPDATER_FIXED_PAYLOAD_SIZE = 8,        /**< Fixed response payload length. */
+    WHEEL_UPDATER_LENGTH_SIZE = 2,               /**< Variable-payload length field size. */
+    WHEEL_UPDATER_METADATA_SIZE = 2,             /**< Variable-payload metadata size. */
+    WHEEL_UPDATER_READ_DELAY_MS = 2,       /**< Delay after a request write in milliseconds. */
+    WHEEL_UPDATER_RETRY_TIMEOUT_MS = 2000, /**< Retry-response timeout in milliseconds. */
 };
 
 /**
@@ -56,7 +57,7 @@ static WheelUpdaterOperation current_operation(const WheelUpdaterBridge *bridge)
 /**
  * @brief Publishes the assembled updater response.
  *
- * Retains the response bytes until the USB owner takes them.
+ * Retains the response bytes until the owning transport service takes them.
  *
  * @param[in,out] bridge Updater bridge completing its response.
  * @return No wheel transport operation.
@@ -274,7 +275,7 @@ WheelUpdaterOperation wheel_updater_bridge_step(WheelUpdaterBridge *bridge, Whee
 /**
  * @brief Takes one complete updater response.
  *
- * Exposes the retained response and returns the bridge to idle for the next USB request.
+ * Exposes the retained response and returns the bridge to idle for the next updater request.
  *
  * @param[in,out] bridge Updater bridge holding a complete response.
  * @param[out] response Retained response bytes.

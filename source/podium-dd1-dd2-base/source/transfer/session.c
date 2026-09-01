@@ -4,18 +4,23 @@
 #include <stdint.h>
 #include <string.h>
 
+/**
+ * @brief Internal transfer-session command, sequence, error, and retry constants.
+ *
+ * These values define the session state machine's command classification and error handling.
+ */
 enum {
-    TRANSFER_COMMAND_EMPTY = 0,
-    TRANSFER_COMMAND_DATA = 1,
-    TRANSFER_COMMAND_STATUS = 2,
-    TRANSFER_SEQUENCE_SINGLE = 0,
-    TRANSFER_SEQUENCE_START = 1,
-    TRANSFER_SEQUENCE_CONTINUE = 2,
-    TRANSFER_SEQUENCE_END = 3,
-    TRANSFER_ERROR_CHECKSUM = 0,
-    TRANSFER_ERROR_SEQUENCE = 1,
-    TRANSFER_ERROR_FORMAT = 2,
-    TRANSFER_MAX_ERRORS = 4,
+    TRANSFER_COMMAND_EMPTY = 0,     /**< Empty transfer command type. */
+    TRANSFER_COMMAND_DATA = 1,      /**< Data transfer command type. */
+    TRANSFER_COMMAND_STATUS = 2,    /**< Status or progress command type. */
+    TRANSFER_SEQUENCE_SINGLE = 0,   /**< Single-frame data sequence value. */
+    TRANSFER_SEQUENCE_START = 1,    /**< First frame of a segmented sequence. */
+    TRANSFER_SEQUENCE_CONTINUE = 2, /**< Middle frame of a segmented sequence. */
+    TRANSFER_SEQUENCE_END = 3,      /**< Final frame of a segmented sequence. */
+    TRANSFER_ERROR_CHECKSUM = 0,    /**< Progress value for a checksum error. */
+    TRANSFER_ERROR_SEQUENCE = 1,    /**< Progress value for a sequence error. */
+    TRANSFER_ERROR_FORMAT = 2,      /**< Progress value for a frame-format error. */
+    TRANSFER_MAX_ERRORS = 4,        /**< Number of local errors retained before deactivation. */
 };
 
 /**
@@ -70,8 +75,8 @@ static bool send_status(TransferSession *session, uint8_t progress) {
 /**
  * @brief Records a local frame error and stops after the fifth consecutive error.
  *
- * Sends the protocol progress response that identifies the final error before disabling the
- * session.
+ * Attempts to send the protocol progress response that identifies the final error before
+ * disabling the session.
  *
  * @param[in,out] session Transfer session and consecutive-error counter.
  * @param[in] reason Protocol progress value describing the error.
@@ -136,8 +141,8 @@ static int8_t advance_receive_sequence(TransferSession *session, uint8_t sequenc
 /**
  * @brief Handles one inbound data frame.
  *
- * Validates its sequence transition, acknowledges the current parameter, and delivers the payload
- * with the message-completion state.
+ * Validates its sequence transition, attempts to acknowledge the current parameter, and delivers
+ * the payload with the message-completion state.
  *
  * @param[in,out] session Transfer session receiving the frame.
  * @param[in] frame Decoded data frame.
@@ -162,8 +167,8 @@ static TransferSessionResult receive_data(TransferSession *session, const Transf
  * @brief Handles one inbound status or progress command.
  *
  * A matching zero-progress status completes the retained outbound frame. A mismatched
- * acknowledgement follows the local error threshold, while a remote progress error ends the
- * active session on its first occurrence.
+ * acknowledgement follows the local error threshold, while the first two remote progress errors
+ * deactivate the session; later errors attempt a retry when the session remains active.
  *
  * @param[in,out] session Transfer session awaiting a status response.
  * @param[in] command Decoded status command.
@@ -195,16 +200,6 @@ static TransferSessionResult receive_status(TransferSession *session, uint16_t c
     return TRANSFER_SESSION_OK;
 }
 
-/**
- * @brief Starts a transfer session with transport, data, and clock callbacks.
- *
- * Initializes transfer sequencing, retry counters, and activity deadlines.
- *
- * @param[out] session Session state to initialize.
- * @param[in] callbacks Required send, ready, data, and clock callbacks.
- * @param[in] callback_context Opaque value passed to every callback.
- * @return True when all callbacks are present and the session starts.
- */
 bool transfer_session_init(TransferSession *session, const TransferSessionCallbacks *callbacks,
                            void *callback_context) {
     if (session == NULL || callbacks == NULL || callbacks->send == NULL ||
@@ -222,17 +217,6 @@ bool transfer_session_init(TransferSession *session, const TransferSessionCallba
     return true;
 }
 
-/**
- * @brief Sends one complete transfer data message and waits for its status response.
- *
- * Encodes and submits one single-frame payload when the session and lower transport are available.
- *
- * @param[in,out] session Active transfer session.
- * @param[in] data Payload bytes.
- * @param[in] length Payload length from zero through 124 bytes.
- * @param[in] group Two-bit transfer group.
- * @return True when the frame is accepted by the transport.
- */
 bool transfer_session_send(TransferSession *session, const uint8_t *data, uint8_t length,
                            uint8_t group) {
     if (session == NULL || !session->active || session->outbound_pending ||
@@ -250,15 +234,6 @@ bool transfer_session_send(TransferSession *session, const uint8_t *data, uint8_
     return true;
 }
 
-/**
- * @brief Keeps an active transfer operation alive.
- *
- * Attempts to submit an empty command and extends both 200-millisecond session deadlines even
- * when the lower transport cannot accept that command immediately.
- *
- * @param[in,out] session Active transfer session to keep alive.
- * @return True when the empty command is submitted.
- */
 bool transfer_session_keepalive(TransferSession *session) {
     if (session == NULL || !session->active) {
         return false;
@@ -270,16 +245,6 @@ bool transfer_session_keepalive(TransferSession *session) {
     return sent;
 }
 
-/**
- * @brief Processes one complete encoded frame and advances transfer state.
- *
- * Validates the frame, handles data or status sequencing, and refreshes activity deadlines.
- *
- * @param[in,out] session Active transfer session.
- * @param[in] data Encoded frame including boundary markers.
- * @param[in] length Encoded frame length.
- * @return Processing result for delivery, sequencing, remote errors, or invalid data.
- */
 TransferSessionResult transfer_session_receive(TransferSession *session, const uint8_t *data,
                                                uint16_t length) {
     if (session == NULL || !session->active) {
@@ -319,14 +284,6 @@ TransferSessionResult transfer_session_receive(TransferSession *session, const u
     return result;
 }
 
-/**
- * @brief Checks the transfer activity and data deadlines.
- *
- * Stops the session after either strict 200-millisecond deadline expires.
- *
- * @param[in,out] session Transfer session to service.
- * @return Okay while active, timed out after either 200 ms deadline, or inactive.
- */
 TransferSessionResult transfer_session_poll(TransferSession *session) {
     if (session == NULL || !session->active) {
         return TRANSFER_SESSION_INACTIVE;

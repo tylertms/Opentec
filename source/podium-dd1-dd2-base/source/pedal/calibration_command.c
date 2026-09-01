@@ -7,15 +7,18 @@
 #include "pedal/protocol.h"
 #include "usb/operating_mode_command.h"
 
+/**
+ * @brief Operating-mode selectors for pedal and auxiliary calibration commands.
+ */
 enum {
-    PEDAL_CALIBRATION_OPCODE = 1,
-    PEDAL_CALIBRATION_UP_SELECTOR = 0x11,
-    PEDAL_CALIBRATION_DOWN_SELECTOR = 0x12,
-    PEDAL_CALIBRATION_ENABLE_SELECTOR = 0x13,
-    PEDAL_CALIBRATION_DISABLE_SELECTOR = 0x14,
-    PEDAL_CALIBRATION_INPUT_SELECTOR = 0x15,
-    PEDAL_AUXILIARY_INPUT_GROUP = 1,
-    PEDAL_AUXILIARY_INPUT_CHANNEL = 3,
+    PEDAL_CALIBRATION_OPCODE = 1,              /**< Pedal calibration operating-mode opcode. */
+    PEDAL_CALIBRATION_UP_SELECTOR = 0x11,      /**< Selector for upward calibration. */
+    PEDAL_CALIBRATION_DOWN_SELECTOR = 0x12,    /**< Selector for downward calibration. */
+    PEDAL_CALIBRATION_ENABLE_SELECTOR = 0x13,  /**< Selector for calibration enable. */
+    PEDAL_CALIBRATION_DISABLE_SELECTOR = 0x14, /**< Selector for calibration disable. */
+    PEDAL_CALIBRATION_INPUT_SELECTOR = 0x15,   /**< Selector for calibration input values. */
+    PEDAL_AUXILIARY_INPUT_GROUP = 1,           /**< Auxiliary endpoint input group. */
+    PEDAL_AUXILIARY_INPUT_CHANNEL = 3,         /**< Auxiliary endpoint input channel. */
 };
 
 /**

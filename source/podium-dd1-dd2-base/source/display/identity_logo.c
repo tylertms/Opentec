@@ -5,11 +5,22 @@
 #include "display/bitmap.h"
 #include "display/framebuffer.h"
 
+/**
+ * @brief Defines the identity logo bitmap dimensions.
+ *
+ * The logo bitmap spans the full display width and is rendered as 26 rows of packed grayscale
+ * pixels.
+ */
 enum {
-    IDENTITY_LOGO_WIDTH = 256,
-    IDENTITY_LOGO_HEIGHT = 26,
+    IDENTITY_LOGO_WIDTH = 256, /**< Logo width in pixels. */
+    IDENTITY_LOGO_HEIGHT = 26, /**< Logo height in pixels. */
 };
 
+/**
+ * @brief Stores the packed Opentec identity logo bitmap.
+ *
+ * Pixels are arranged in row-major order with two four-bit grayscale pixels per byte.
+ */
 static const uint8_t identity_logo[] = {
     +0x00, 0x00, 0x00, 0x00, 0x00, 0x14, 0xbc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc,
     0xcc,  0xcc, 0xcc, 0x82, 0x00, 0x00, 0x00, 0x1b, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc,
@@ -222,7 +233,7 @@ static const uint8_t identity_logo[] = {
 };
 
 /**
- * @brief Draws the OpenTec identity logo.
+ * @brief Draws the Opentec identity logo.
  *
  * Renders the full-width 256-by-26 grayscale logo above the Podium Wheel Base model text.
  *

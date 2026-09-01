@@ -3,12 +3,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/** @brief Internal extended-packet masks and direct-pulse timing. */
 enum {
-    PRIMARY_POSITIVE_PULSE = 0x10,
-    PRIMARY_NEGATIVE_PULSE = 0x20,
-    FIRST_REMAPPED_BUTTON = 0x01,
-    SECOND_REMAPPED_BUTTON = 0x08,
-    DIRECT_PULSE_HOLD_MS = 80,
+    PRIMARY_POSITIVE_PULSE = 0x10, /**< Primary positive-direction pulse flag. */
+    PRIMARY_NEGATIVE_PULSE = 0x20, /**< Primary negative-direction pulse flag. */
+    FIRST_REMAPPED_BUTTON = 0x01,  /**< First compatibility button mask. */
+    SECOND_REMAPPED_BUTTON = 0x08, /**< Second compatibility button mask. */
+    DIRECT_PULSE_HOLD_MS = 80,     /**< Direct pulse retention interval in milliseconds. */
 };
 
 /**

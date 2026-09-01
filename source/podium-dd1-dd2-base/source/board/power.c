@@ -3,9 +3,15 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/**
+ * @brief Power-button timing constants.
+ *
+ * These intervals define the strict hold threshold and the delay between shutdown actions.
+ */
 enum {
-    POWER_BUTTON_HOLD_MS = 1000,
-    POWER_SHUTDOWN_DELAY_MS = 1000,
+    POWER_BUTTON_HOLD_MS = 1000, /**< Strict hold deadline interval in milliseconds. */
+    POWER_SHUTDOWN_DELAY_MS =
+        1000, /**< Strict shutdown-completion deadline interval in milliseconds. */
 };
 
 /**
@@ -25,8 +31,8 @@ static bool deadline_passed(uint32_t now_ms, uint32_t deadline_ms) {
 /**
  * @brief Initializes the wheel-base power controller.
  *
- * Starts with the power hold disabled and waits for an active button sample before accepting
- * normal short-press and shutdown behavior.
+ * Clears the state and waits for a pressed-button sample before requesting the hardware power
+ * latch; later samples then select short-press or shutdown behavior.
  *
  * @param[out] controller Power state to initialize.
  */
@@ -35,14 +41,15 @@ void power_controller_init(PowerController *controller) { *controller = (PowerCo
 /**
  * @brief Advances power-button and shutdown behavior.
  *
- * Enables the power hold on the first active sample. Subsequent short releases toggle the torque
- * disable request. A continuously active sample starts shutdown after 1,000 ms and finishes the
- * shutdown interval after another 1,000 ms. Release is evaluated before the hold deadline,
- * including when service resumes after that deadline.
+ * Enables the power hold on the first active sample. When button control is enabled, a press while
+ * ready starts the hold deadline; release is handled before checking that strict deadline and
+ * toggles the torque-disable request, while a continuously active input starts shutdown after the
+ * deadline and finishes after a second strict interval.
  *
  * @param[in,out] controller Persistent power phase, deadline, and torque disable request.
  * @param[in] button_pressed True while the active-high power button input is asserted.
- * @param[in] button_control_enabled True to accept short-press and hold behavior.
+ * @param[in] button_control_enabled True to allow a ready-state press to begin short-press or hold
+ * handling.
  * @param[in] now_ms Current monotonic time in milliseconds.
  * @return The single transition action produced by this update.
  */

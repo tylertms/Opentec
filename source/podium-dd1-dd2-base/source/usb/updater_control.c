@@ -3,14 +3,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/**
- * @brief Initializes the motor updater serial controls.
- *
- * Selects the 19,200-baud, eight-data-bit, no-parity, one-stop-bit line coding and clears the
- * control-line state.
- *
- * @param[out] control Updater serial control state.
- */
 void usb_updater_control_init(UsbUpdaterControl *control) {
     if (control == 0) {
         return;
@@ -21,15 +13,6 @@ void usb_updater_control_init(UsbUpdaterControl *control) {
     };
 }
 
-/**
- * @brief Encodes the motor updater serial line coding.
- *
- * Writes the baud rate in little-endian order followed by the stop-bit, parity, and data-bit
- * fields used by the seven-byte CDC line-coding response.
- *
- * @param[in] control Updater serial control state.
- * @param[out] output Destination for the seven-byte line coding.
- */
 void usb_updater_line_coding_encode(const UsbUpdaterControl *control,
                                     uint8_t output[USB_UPDATER_LINE_CODING_SIZE]) {
     output[0] = (uint8_t)control->baud_rate;
@@ -41,16 +24,6 @@ void usb_updater_line_coding_encode(const UsbUpdaterControl *control,
     output[6] = control->data_bits;
 }
 
-/**
- * @brief Decodes the motor updater serial line coding.
- *
- * Replaces all serial format fields from a complete seven-byte CDC line-coding payload.
- *
- * @param[in,out] control Updater serial control state.
- * @param[in] data CDC line-coding payload.
- * @param[in] length Payload length in bytes.
- * @return True when a complete payload was decoded; otherwise false.
- */
 bool usb_updater_line_coding_decode(UsbUpdaterControl *control, const uint8_t *data,
                                     uint8_t length) {
     if (control == 0 || data == 0 || length != USB_UPDATER_LINE_CODING_SIZE) {
@@ -64,14 +37,6 @@ bool usb_updater_line_coding_decode(UsbUpdaterControl *control, const uint8_t *d
     return true;
 }
 
-/**
- * @brief Stores the motor updater serial control-line state.
- *
- * Retains the low request byte supplied with the CDC control-line-state command.
- *
- * @param[in,out] control Updater serial control state.
- * @param[in] state Low control-line-state request byte.
- */
 void usb_updater_control_set_lines(UsbUpdaterControl *control, uint8_t state) {
     if (control != 0) {
         control->control_line_state = state;

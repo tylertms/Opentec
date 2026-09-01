@@ -46,17 +46,6 @@ static UsbMotorVendorServiceResult apply_channel_event(UsbMotorVendorService *se
     return result;
 }
 
-/**
- * @brief Initializes the USB motor vendor bridge.
- *
- * Attaches an initialized motor-command channel plus caller-owned USB assembly and response
- * storage, then resets upload and response state.
- *
- * @param[out] service Motor vendor service to initialize.
- * @param[in,out] channel Motor-command protocol channel used by the bridge.
- * @param[in] buffers Caller-owned storage used by the service.
- * @return True when the channel and required USB storage are present and nonempty.
- */
 bool usb_motor_vendor_service_init(UsbMotorVendorService *service, MotorCommandChannel *channel,
                                    const UsbMotorVendorServiceBuffers *buffers) {
     if (service == 0 || channel == 0 || buffers == 0 || buffers->upload_assembly == 0 ||
@@ -73,18 +62,6 @@ bool usb_motor_vendor_service_init(UsbMotorVendorService *service, MotorCommandC
     return true;
 }
 
-/**
- * @brief Accepts one USB vendor request for the motor command channel.
- *
- * Claims report 6 traffic, maps restart and release controls, emits compact or segmented upload
- * acknowledgements, and frames completed application commands for the motor link.
- *
- * @param[in,out] service Active motor vendor service.
- * @param[in] request Sixty-four-byte USB feature request.
- * @param[in] length Received request byte count.
- * @param[out] usb_packet Destination for an upload acknowledgement.
- * @return Transport ownership, control, USB write, and motor write actions for the request.
- */
 UsbMotorVendorServiceResult usb_motor_vendor_service_accept_usb(
     UsbMotorVendorService *service, const uint8_t request[USB_FEATURE_UPLOAD_PACKET_SIZE],
     uint8_t length, uint8_t usb_packet[USB_FEATURE_UPLOAD_PACKET_SIZE]) {
@@ -135,20 +112,6 @@ UsbMotorVendorServiceResult usb_motor_vendor_service_accept_usb(
     return result;
 }
 
-/**
- * @brief Accepts a USB motor request through the command mailbox.
- *
- * Applies report 6 ownership, resets both packet and mailbox state for restart requests, releases
- * the channel when requested, and queues completed motor packets for owner 0x20 transport.
- *
- * @param[in,out] service Active motor vendor service.
- * @param[in,out] exchange Motor-command mailbox exchange.
- * @param[in,out] transport Shared command transport.
- * @param[in] request Sixty-four-byte USB feature request.
- * @param[in] length Received request byte count.
- * @param[out] usb_packet Destination for an upload acknowledgement.
- * @return USB, ownership, motor-write, and mailbox actions produced by the request.
- */
 UsbMotorVendorServiceResult usb_motor_vendor_service_accept_usb_mailbox(
     UsbMotorVendorService *service, MotorCommandMailboxExchange *exchange,
     CommandTransport *transport, const uint8_t request[USB_FEATURE_UPLOAD_PACKET_SIZE],
@@ -178,18 +141,6 @@ UsbMotorVendorServiceResult usb_motor_vendor_service_accept_usb_mailbox(
     return result;
 }
 
-/**
- * @brief Accepts one packet from the motor command channel.
- *
- * Applies sequence and fragment handling, acknowledges accepted payloads, retries invalid packets,
- * rebuilds retained commands for peer retry requests, applies local responses, and publishes
- * forwardable motor responses for USB download.
- *
- * @param[in,out] service Active motor vendor service.
- * @param[in] packet Received motor command packet.
- * @param[in] length Received packet byte count.
- * @return Motor write and USB response-ready actions produced by the packet.
- */
 UsbMotorVendorServiceResult usb_motor_vendor_service_accept_motor(UsbMotorVendorService *service,
                                                                   const uint8_t *packet,
                                                                   uint16_t length) {
@@ -200,17 +151,6 @@ UsbMotorVendorServiceResult usb_motor_vendor_service_accept_motor(UsbMotorVendor
     return apply_channel_event(service, event);
 }
 
-/**
- * @brief Advances the USB motor channel over the command mailbox.
- *
- * Polls only while owner 0x20 holds the transport, passes received mailbox packets through the
- * motor command protocol, and queues any acknowledgement, retry, or rebuilt command it produces.
- *
- * @param[in,out] service Active motor vendor service.
- * @param[in,out] exchange Motor-command mailbox exchange.
- * @param[in,out] transport Shared command transport.
- * @return USB, motor-write, mailbox, and status events produced by this service call.
- */
 UsbMotorVendorServiceResult
 usb_motor_vendor_service_run_mailbox(UsbMotorVendorService *service,
                                      MotorCommandMailboxExchange *exchange,
@@ -229,16 +169,6 @@ usb_motor_vendor_service_run_mailbox(UsbMotorVendorService *service,
     return result;
 }
 
-/**
- * @brief Prepares the next USB packet without advancing response progress.
- *
- * Restores the download cursor after encoding so endpoint backpressure or a higher-priority vendor
- * response can discard the packet without changing acknowledgement progress.
- *
- * @param[in] service Active motor vendor service.
- * @param[out] packet Destination for the candidate USB response packet.
- * @return Number of response bytes prepared, or zero while waiting or when no response is active.
- */
 uint8_t usb_motor_vendor_service_prepare_response(UsbMotorVendorService *service,
                                                   uint8_t packet[USB_MOTOR_RESPONSE_PACKET_SIZE]) {
     if (service == 0 || !service->response_active) {
@@ -257,16 +187,6 @@ uint8_t usb_motor_vendor_service_prepare_response(UsbMotorVendorService *service
     return length;
 }
 
-/**
- * @brief Builds the next USB packet for a completed motor response.
- *
- * Advances compact or segmented report 6 framing and releases the retained application response
- * after the terminal packet is emitted.
- *
- * @param[in,out] service Active motor vendor service.
- * @param[out] packet Destination for the next USB response packet.
- * @return Number of response bytes produced, or zero while waiting or when no response is active.
- */
 uint8_t usb_motor_vendor_service_next_response(UsbMotorVendorService *service,
                                                uint8_t packet[USB_MOTOR_RESPONSE_PACKET_SIZE]) {
     if (service == 0 || !service->response_active) {
@@ -281,15 +201,6 @@ uint8_t usb_motor_vendor_service_next_response(UsbMotorVendorService *service,
     return length;
 }
 
-/**
- * @brief Accepts USB progress acknowledgement for the active motor response.
- *
- * Matches report, progress, and remaining length against the current report 6 download boundary.
- *
- * @param[in,out] service Active motor vendor service.
- * @param[in] acknowledgement Thirteen-byte USB transfer acknowledgement.
- * @return True when the acknowledgement advances the active response download.
- */
 bool usb_motor_vendor_service_acknowledge_response(
     UsbMotorVendorService *service,
     const uint8_t acknowledgement[USB_MOTOR_RESPONSE_ACKNOWLEDGEMENT_SIZE]) {

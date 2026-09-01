@@ -4,12 +4,22 @@
 
 #include "display/framebuffer.h"
 
+/**
+ * @brief Defines the high-torque icon bitmap dimensions.
+ *
+ * The packed bitmap stores two four-bit grayscale pixels per byte for each icon row.
+ */
 enum {
-    HIGH_TORQUE_ICON_WIDTH = 11,
-    HIGH_TORQUE_ICON_HEIGHT = 10,
-    HIGH_TORQUE_ICON_ROW_BYTES = 6,
+    HIGH_TORQUE_ICON_WIDTH = 11,    /**< Icon width in pixels. */
+    HIGH_TORQUE_ICON_HEIGHT = 10,   /**< Icon height in pixels. */
+    HIGH_TORQUE_ICON_ROW_BYTES = 6, /**< Packed bytes in one icon row. */
 };
 
+/**
+ * @brief Stores the packed high-torque icon bitmap.
+ *
+ * Pixels are arranged in row-major order with the high nibble preceding the low nibble.
+ */
 static const uint8_t high_torque_icon[] = {
     0x00, 0x00, 0x3f, 0x30, 0x00, 0x00, 0x00, 0x01, 0xef, 0xe1, 0x00, 0x00, 0x00, 0x0c, 0xff,
     0xfc, 0x00, 0x00, 0x00, 0x3f, 0xf0, 0xff, 0x30, 0x00, 0x00, 0xcf, 0xf0, 0xff, 0xc0, 0x00,

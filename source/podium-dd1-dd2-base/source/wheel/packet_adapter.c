@@ -3,9 +3,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/** @brief Internal adapter-response command and display cadence. */
 enum {
-    WHEEL_PACKET_COMMAND_AUTHENTICATE = 0xa6,
-    DISPLAY_REFRESH_MS = 50,
+    WHEEL_PACKET_COMMAND_AUTHENTICATE = 0xa6, /**< Authenticated response command. */
+    DISPLAY_REFRESH_MS = 50, /**< Minimum display refresh interval in milliseconds. */
 };
 
 /**

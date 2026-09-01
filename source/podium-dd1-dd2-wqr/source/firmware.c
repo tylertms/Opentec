@@ -17,82 +17,129 @@
 
 #include "protocol.h"
 
+/** @brief WQR firmware timing, peripheral, DMA, and watchdog constants. */
 enum {
-    UART_WINDOW_SIZE = 68,
-    UART_TRANSMIT_SIZE = 72,
-    UART_FRAME_OFFSET = 4,
-    UART_FRAME_START = 0x7b,
-    UART_FRAME_END = 0x7d,
-    UART_SOURCE_CLOCK = 96000000,
-    UART_BAUD_RATE = 5000000,
-    UART_RESPONSE_GUARD_TICKS = 467,
-    UART_RECOVERY_GUARD_TICKS = 3964,
+    UART_WINDOW_SIZE = 68,            /**< Number of bytes in the UART receive window. */
+    UART_TRANSMIT_SIZE = 72,          /**< Number of bytes in the guarded UART transmit window. */
+    UART_FRAME_OFFSET = 4,            /**< Number of leading guard bytes in a UART frame window. */
+    UART_FRAME_START = 0x7b,          /**< UART frame start marker. */
+    UART_FRAME_END = 0x7d,            /**< UART frame end marker. */
+    UART_SOURCE_CLOCK = 96000000,     /**< UART source clock frequency in hertz. */
+    UART_BAUD_RATE = 5000000,         /**< WQR UART baud rate in bits per second. */
+    UART_RESPONSE_GUARD_TICKS = 467,  /**< PIT ticks reserved after a UART response. */
+    UART_RECOVERY_GUARD_TICKS = 3964, /**< PIT ticks reserved for UART recovery. */
 
-    BUS_CLOCK = 24000000,
-    PIT_TICKS_PER_MILLISECOND = 24000,
+    BUS_CLOCK = 24000000,              /**< Peripheral bus clock frequency in hertz. */
+    PIT_TICKS_PER_MILLISECOND = 24000, /**< PIT ticks in one millisecond at the bus clock. */
 
-    UART_TRANSMIT_DMA_CHANNEL = 0,
-    UART_RECEIVE_DMA_CHANNEL = 1,
-    SPI_TRANSMIT_DMA_CHANNEL = 2,
-    SPI_RECEIVE_DMA_CHANNEL = 3,
+    UART_TRANSMIT_DMA_CHANNEL = 0, /**< DMA channel assigned to UART transmission. */
+    UART_RECEIVE_DMA_CHANNEL = 1,  /**< DMA channel assigned to UART reception. */
+    SPI_TRANSMIT_DMA_CHANNEL = 2,  /**< DMA channel assigned to SPI transmission. */
+    SPI_RECEIVE_DMA_CHANNEL = 3,   /**< DMA channel assigned to SPI reception. */
 
-    UART_RECEIVE_DMA_SOURCE = 4,
-    UART_TRANSMIT_DMA_SOURCE = 5,
-    SPI_RECEIVE_DMA_SOURCE = 14,
-    SPI_TRANSMIT_DMA_SOURCE = 15,
+    UART_RECEIVE_DMA_SOURCE = 4,  /**< DMAMUX source assigned to UART reception. */
+    UART_TRANSMIT_DMA_SOURCE = 5, /**< DMAMUX source assigned to UART transmission. */
+    SPI_RECEIVE_DMA_SOURCE = 14,  /**< DMAMUX source assigned to SPI reception. */
+    SPI_TRANSMIT_DMA_SOURCE = 15, /**< DMAMUX source assigned to SPI transmission. */
 
-    SPI_RETRY_TICKS = 3,
-    I2C_TIMEOUT_MILLISECONDS = 10,
+    SPI_RETRY_TICKS = 3, /**< Milliseconds to wait before retrying a primary SPI transfer. */
+    I2C_TIMEOUT_MILLISECONDS = 10, /**< Timeout applied to one asynchronous I2C transfer. */
 
-    WATCHDOG_UNLOCK_FIRST = 0xc520,
-    WATCHDOG_UNLOCK_SECOND = 0xd928,
-    WATCHDOG_CONTROL_SET = 0x40d5,
-    WATCHDOG_CONTROL_CLEAR = 0x042a,
-    WATCHDOG_TIMEOUT_LOW = 500,
+    WATCHDOG_UNLOCK_FIRST = 0xc520,  /**< First watchdog unlock halfword. */
+    WATCHDOG_UNLOCK_SECOND = 0xd928, /**< Second watchdog unlock halfword. */
+    WATCHDOG_CONTROL_SET = 0x40d5,   /**< Watchdog control bits written during setup. */
+    WATCHDOG_CONTROL_CLEAR = 0x042a, /**< Watchdog control bits cleared during setup. */
+    WATCHDOG_TIMEOUT_LOW = 500,      /**< Low half of the watchdog timeout value. */
 
     SPI_ERROR_INTERRUPTS =
-        kDSPI_TxFifoUnderflowInterruptEnable | kDSPI_RxFifoOverflowInterruptEnable,
-    SPI_ERROR_FLAGS = kDSPI_TxFifoUnderflowFlag | kDSPI_RxFifoOverflowFlag
+        kDSPI_TxFifoUnderflowInterruptEnable |
+        kDSPI_RxFifoOverflowInterruptEnable, /**< SPI FIFO error interrupt mask. */
+    SPI_ERROR_FLAGS =
+        kDSPI_TxFifoUnderflowFlag | kDSPI_RxFifoOverflowFlag /**< SPI FIFO error status mask. */
 };
 
-typedef enum { I2C_IDLE, I2C_PENDING, I2C_SUCCEEDED, I2C_FAILED } i2c_phase;
+/**
+ * @brief Phase of the asynchronous I2C transfer state machine.
+ *
+ * The phase records whether a transfer can start, is awaiting an interrupt, or has a terminal
+ * result ready for the protocol service.
+ */
+typedef enum {
+    I2C_IDLE,      /**< No I2C transfer is active. */
+    I2C_PENDING,   /**< An I2C transfer is awaiting completion. */
+    I2C_SUCCEEDED, /**< The active I2C transfer completed successfully. */
+    I2C_FAILED     /**< The last I2C transfer failed and recovery has completed. */
+} i2c_phase;
 
+/** @brief Protocol endpoint state shared by the firmware main loop and interrupts. */
 static wqr_protocol protocol;
 
+/** @brief Aligned UART receive window containing one guarded frame. */
 static uint8_t uart_receive_window[UART_WINDOW_SIZE] __attribute__((aligned(4)));
+/** @brief Aligned UART transmit window containing guards and one response frame. */
 static uint8_t uart_transmit_window[UART_TRANSMIT_SIZE] __attribute__((aligned(4)));
+/** @brief Set by the UART receive path when a complete window is ready. */
 static volatile bool uart_receive_ready;
+/** @brief Set while a UART response DMA transfer is active. */
 static volatile bool uart_transmit_active;
+/** @brief Set after UART response DMA completes until the guard expires. */
 static volatile bool uart_response_sent_pending;
+/** @brief Set when the main loop has a protocol response waiting to transmit. */
 static volatile bool uart_response_due;
+/** @brief Set while the UART receive path is in guarded recovery. */
 static volatile bool uart_recovery_active;
+/** @brief SDK state for the shared UART eDMA transfer callbacks. */
 static uart_edma_handle_t uart_handle;
+/** @brief eDMA handle for UART transmission. */
 static edma_handle_t uart_transmit_dma;
+/** @brief eDMA handle for UART reception. */
 static edma_handle_t uart_receive_dma;
 
+/** @brief Set when the active SPI transfer has reached a terminal state. */
 static volatile bool spi_transfer_complete;
+/** @brief Set when the active SPI transfer failed. */
 static volatile bool spi_transfer_failed;
+/** @brief Set while any SPI transfer is active. */
 static volatile bool spi_transfer_active;
+/** @brief Set while or after the alternate word-oriented SPI path owns the SPI module. */
 static volatile bool spi_word_active;
+/** @brief Set when the primary SPI retry delay has expired. */
 static volatile bool spi_retry_pending;
+/** @brief Remaining milliseconds before retrying a primary SPI transfer. */
 static volatile uint8_t spi_retry_delay;
+/** @brief Stable transmit storage for the active primary SPI DMA transfer. */
 static uint8_t spi_transmit_buffer[WQR_SPI_TRANSFER_SIZE];
+/** @brief Stable receive storage for the active primary SPI DMA transfer. */
 static uint8_t spi_receive_buffer[WQR_SPI_TRANSFER_SIZE];
+/** @brief Number of bytes in the active primary SPI transfer. */
 static size_t spi_transfer_length;
+/** @brief Transmit word retained for the active alternate SPI transfer. */
 static uint16_t spi_transmitted_word;
+/** @brief Receive word storage for the active alternate SPI transfer. */
 static uint16_t spi_received_word;
+/** @brief SDK state for interrupt-driven alternate SPI transfers. */
 static dspi_master_handle_t spi_word_handle;
+/** @brief eDMA handle for primary SPI transmission. */
 static edma_handle_t spi_transmit_dma;
+/** @brief eDMA handle for primary SPI reception. */
 static edma_handle_t spi_receive_dma;
 
+/** @brief Current asynchronous I2C transfer phase. */
 static volatile i2c_phase i2c_state;
+/** @brief Remaining milliseconds before the active I2C transfer times out. */
 static volatile uint8_t i2c_timeout;
+/** @brief Set when the main loop must reinitialize the I2C peripheral. */
 static volatile bool i2c_recovery_pending;
+/** @brief Sink byte used for zero-length I2C reads. */
 static uint8_t i2c_discard;
+/** @brief SDK state for the nonblocking I2C transfer callback. */
 static i2c_master_handle_t i2c_handle;
 
+/** @brief Set by the ADC interrupt when a new sensor sample is available. */
 static volatile bool adc_sample_ready;
+/** @brief Latest ADC sample published by the ADC interrupt. */
 static volatile uint16_t adc_sample;
+/** @brief Set when the protocol has requested a deferred system reset. */
 static volatile bool reset_pending;
 
 static void restore_uart_registers(void);
@@ -550,8 +597,8 @@ static void reset_spi_command(void) {
  * @brief Restores the complete idle SPI hardware configuration.
  *
  * Releases chip select, safely tears down retained module state, initializes the official CTAR and
- * request registers, clears commands and status, starts the idle module, and enables its DMA and
- * error interrupt vectors.
+ * request registers, clears commands and status, starts the idle module, and enables the SPI error
+ * and DMA interrupt vectors.
  */
 static void initialize_spi_hardware(void) {
     dspi_master_config_t config;
@@ -587,9 +634,8 @@ static void initialize_spi_hardware(void) {
 /**
  * @brief Prebuilds the official 33-byte SPI DMA descriptors.
  *
- * Keeps request routing disabled while submitting byte-wide transmit and receive descriptors,
- * installs their source and destination rewinds, and enables each route only after its descriptor
- * is complete.
+ * Disables each request route while submitting its byte-wide descriptor, installs the source or
+ * destination rewind, and enables the route after its descriptor setup is complete.
  */
 static void prepare_spi_dma_descriptors(void) {
     edma_transfer_config_t receive;
@@ -794,8 +840,8 @@ static wqr_io_result io_spi_word(void *context, uint16_t transmit, uint16_t *rec
 /**
  * @brief Publishes completion of one nonblocking I2C transfer.
  *
- * Restores start/stop detection after success and exposes the completed buffer through a memory
- * barrier. Failures disable transfer interrupts and defer full peripheral recovery to the main
+ * Restores start/stop detection, exposes successful completion through a memory barrier, and
+ * disables transfer interrupts while deferring full peripheral recovery for failures to the main
  * loop.
  *
  * @param[in] base I2C instance supplied by the SDK callback.
@@ -1166,8 +1212,9 @@ void DMA0_IRQHandler(void) { (void)finish_uart_transmit(); }
 /**
  * @brief Handles UART receive DMA completion.
  *
- * Accepts only done or interrupt status, clears it before aborting the one-shot SDK receive, and
- * publishes the completed window through the UART callback. Stale or error-only state is discarded.
+ * Accepts completion status, clears done and interrupt flags before aborting the one-shot SDK
+ * receive, and publishes the completed window through the UART callback. Stale or error-only state
+ * is discarded.
  */
 void DMA1_IRQHandler(void) {
     if ((EDMA_GetChannelStatusFlags(DMA0, UART_RECEIVE_DMA_CHANNEL) &
@@ -1340,8 +1387,8 @@ void PIT0_IRQHandler(void) {
  * @brief Handles expiration of the UART response or recovery guard.
  *
  * Stops the one-shot timer, reports completed response transmission, drains receive errors, and
- * rearms the receive descriptor. Busy or failed rearm attempts are aborted or rescheduled through
- * guarded recovery.
+ * rearms the receive descriptor when no response is already due. Busy or failed rearm attempts are
+ * aborted or rescheduled through guarded recovery.
  */
 void PIT1_IRQHandler(void) {
     bool response_sent = uart_response_sent_pending;
@@ -1413,9 +1460,10 @@ static void process_uart_frame(void) {
 /**
  * @brief Starts transmission of the next queued protocol response.
  *
- * Waits for an eligible transport state, builds the framed response, disables receive requests,
- * clears stale transmit status, submits the 72-byte DMA window, restores descriptor rewind and
- * request routing, and enters guarded recovery on submission failure.
+ * Starts only when a response is due and neither transmission nor recovery is active, builds the
+ * framed response, disables receive requests, clears stale transmit status, submits the 72-byte DMA
+ * window, restores descriptor rewind and request routing, and enters guarded recovery on submission
+ * failure.
  */
 static void start_uart_response(void) {
     uart_transfer_t transfer;

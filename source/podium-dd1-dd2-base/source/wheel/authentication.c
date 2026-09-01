@@ -4,24 +4,37 @@
 #include <stdint.h>
 #include <string.h>
 
+/**
+ * @brief AES and attached-wheel authentication protocol constants.
+ *
+ * The authentication exchange uses AES-128 blocks and fixed command, marker, nonce, and key-pair
+ * values from the attached-wheel protocol.
+ */
 enum {
-    AES_BLOCK_SIZE = 16,
-    AES_ROUNDS = 10,
-    AUTHENTICATION_COMMAND_CHALLENGE = 0xa6,
-    AUTHENTICATION_COMMAND_PROOF = 0xa7,
-    AUTHENTICATION_RESPONSE_COMMAND = 0xa5,
-    AUTHENTICATION_CHALLENGE_MARKER = 0xaa,
-    AUTHENTICATION_NONCE_OFFSET = 2,
-    AUTHENTICATION_NONCE_SIZE = 8,
-    AUTHENTICATION_REPLY_PREFIX_SIZE = 10,
-    KEY_PAIR_UNSUPPORTED = 0xff,
+    AES_BLOCK_SIZE = 16,                     /**< Number of bytes in one AES block. */
+    AES_ROUNDS = 10,                         /**< Number of rounds in AES-128 encryption. */
+    AUTHENTICATION_COMMAND_CHALLENGE = 0xa6, /**< Decrypted command identifying a challenge. */
+    AUTHENTICATION_COMMAND_PROOF = 0xa7,     /**< Decrypted command identifying a proof. */
+    AUTHENTICATION_RESPONSE_COMMAND = 0xa5,  /**< Command used for an intermediate response. */
+    AUTHENTICATION_CHALLENGE_MARKER = 0xaa,  /**< Marker placed in a challenge response. */
+    AUTHENTICATION_NONCE_OFFSET = 2,         /**< Offset of the eight-byte nonce in content. */
+    AUTHENTICATION_NONCE_SIZE = 8,           /**< Number of nonce bytes copied into counters. */
+    AUTHENTICATION_REPLY_PREFIX_SIZE =
+        10,                      /**< Number of response bytes before the encrypted tail. */
+    KEY_PAIR_UNSUPPORTED = 0xff, /**< Sentinel for a wheel mode without authentication keys. */
 };
 
+/**
+ * @brief Transmit and receive AES keys for one attached-wheel mode.
+ *
+ * The two directions may use distinct keys and are expanded independently for the exchange.
+ */
 typedef struct {
-    uint8_t transmit[WHEEL_AUTHENTICATION_KEY_SIZE];
-    uint8_t receive[WHEEL_AUTHENTICATION_KEY_SIZE];
+    uint8_t transmit[WHEEL_AUTHENTICATION_KEY_SIZE]; /**< AES key used to encrypt responses. */
+    uint8_t receive[WHEEL_AUTHENTICATION_KEY_SIZE];  /**< AES key used to decrypt proofs. */
 } WheelAuthenticationKeys;
 
+/** @brief AES substitution-box lookup table. */
 static const uint8_t aes_s_box[256] = {
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
     0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -41,6 +54,7 @@ static const uint8_t aes_s_box[256] = {
     0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16,
 };
 
+/** @brief Shared transmit and receive key pairs indexed by authentication key-pair number. */
 static const WheelAuthenticationKeys key_pairs[] = {
     {{0x70, 0x32, 0x73, 0x35, 0x76, 0x38, 0x79, 0x2f, 0x42, 0x3f, 0x45, 0x28, 0x48, 0x2b, 0x4d,
       0x62},
@@ -88,6 +102,7 @@ static const WheelAuthenticationKeys key_pairs[] = {
       0xa4}},
 };
 
+/** @brief Authentication key-pair index for each supported wheel mode. */
 static const uint8_t mode_key_pair[] = {
     0,
     0,
@@ -334,7 +349,7 @@ static const WheelAuthenticationKeys *keys_for_mode(uint8_t wheel_mode) {
  *
  * @param[in,out] authentication Authentication exchange state.
  * @param[in] request Challenge content containing the eight-byte counter prefix.
- * @return True when the selected wheel mode has a key pair.
+ * @return true when the selected wheel mode has a key pair; false when no key pair is defined.
  */
 static bool initialize_ciphers(WheelAuthentication *authentication,
                                const uint8_t request[WHEEL_AUTHENTICATION_CONTENT_SIZE]) {
@@ -364,7 +379,7 @@ static bool initialize_ciphers(WheelAuthentication *authentication,
  * @param[in] request Challenge content.
  * @param[in] checksum_valid True when the request checksum matches its content.
  * @param[in,out] response Persistent response content.
- * @return False because a challenge never completes authentication.
+ * @return false because a challenge never completes authentication.
  */
 static bool accept_challenge(WheelAuthentication *authentication,
                              const uint8_t request[WHEEL_AUTHENTICATION_CONTENT_SIZE],
@@ -403,7 +418,8 @@ static bool accept_challenge(WheelAuthentication *authentication,
  * @param[in] request Encrypted proof content.
  * @param[in] checksum_valid True when the encrypted request checksum matches its content.
  * @param[in,out] response Persistent response content.
- * @return True only when the decrypted command is A7.
+ * @return true only when the decrypted command is A7; false for a checksum failure or another
+ * decrypted command.
  */
 static bool accept_proof(WheelAuthentication *authentication,
                          const uint8_t request[WHEEL_AUTHENTICATION_CONTENT_SIZE],
@@ -443,7 +459,7 @@ static bool accept_proof(WheelAuthentication *authentication,
  * Selects modes with a supported authentication key pair.
  *
  * @param[in] wheel_mode Selected attached-wheel mode.
- * @return True when the mode requires authentication.
+ * @return true when the mode has a supported authentication key pair; false otherwise.
  */
 bool wheel_authentication_required(uint8_t wheel_mode) { return keys_for_mode(wheel_mode) != 0; }
 
@@ -471,7 +487,7 @@ void wheel_authentication_init(WheelAuthentication *authentication, uint8_t whee
  * @param[in] request First 32 bytes of the attached-wheel request.
  * @param[in] checksum_valid True when the request checksum matches its content.
  * @param[in,out] response First 32 bytes of the persistent attached-wheel response.
- * @return True after a correctly encrypted proof command is received.
+ * @return true only after a correctly encrypted proof command is received; false otherwise.
  */
 bool wheel_authentication_accept(WheelAuthentication *authentication,
                                  const uint8_t request[WHEEL_AUTHENTICATION_CONTENT_SIZE],

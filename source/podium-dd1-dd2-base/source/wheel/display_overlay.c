@@ -6,19 +6,20 @@
 #include "platform/time.h"
 #include "wheel/display_output.h"
 
+/** @brief Internal display-overlay commands, timings, and glyph patterns. */
 enum {
-    HOLD_COMMAND = 0x80,
-    CLUTCH_AND_THROTTLE_COMMAND = 0x91,
-    THROTTLE_COMMAND = 0x93,
-    CLUTCH_COMMAND = 0x95,
-    HOLD_LABEL_DURATION_MS = 750,
-    HOLD_DURATION_MS = 15000,
-    COMMAND_DURATION_MS = 2000,
-    COUNTDOWN_ROUNDING_MS = 1749,
-    MAXIMUM_COUNTDOWN = 15,
-    GLYPH_C = 0x39,
-    GLYPH_P = 0x73,
-    GLYPH_T = 0x78,
+    HOLD_COMMAND = 0x80,                /**< Hold-command code. */
+    CLUTCH_AND_THROTTLE_COMMAND = 0x91, /**< Clutch-and-throttle command code. */
+    THROTTLE_COMMAND = 0x93,            /**< Throttle command code. */
+    CLUTCH_COMMAND = 0x95,              /**< Clutch command code. */
+    HOLD_LABEL_DURATION_MS = 750,       /**< Hold-label duration in milliseconds. */
+    HOLD_DURATION_MS = 15000,           /**< Hold presentation duration in milliseconds. */
+    COMMAND_DURATION_MS = 2000,         /**< Short command presentation duration in milliseconds. */
+    COUNTDOWN_ROUNDING_MS = 1749,       /**< Countdown rounding offset in milliseconds. */
+    MAXIMUM_COUNTDOWN = 15,             /**< Maximum displayed countdown seconds. */
+    GLYPH_C = 0x39,                     /**< Seven-segment C glyph. */
+    GLYPH_P = 0x73,                     /**< Seven-segment P glyph. */
+    GLYPH_T = 0x78,                     /**< Seven-segment T glyph. */
 };
 
 /**
@@ -130,7 +131,7 @@ void wheel_display_overlay_begin(WheelDisplayOverlay *overlay, uint8_t command, 
 /**
  * @brief Advances the temporary attached-wheel command presentation.
  *
- * Retains the initial `PPC` label until its strict 750-millisecond deadline, then updates a
+ * Retains the initial `PPC` label until its 750-millisecond deadline, then updates a
  * countdown capped at fifteen. At the presentation deadline, clears the temporary page and
  * releases display ownership.
  *

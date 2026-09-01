@@ -4,17 +4,20 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/**
+ * @brief H-pattern calibration protocol and timing constants.
+ */
 enum {
-    H_PATTERN_CALIBRATION_OPCODE = 0x19,
-    H_PATTERN_CALIBRATION_START_SELECTOR = 1,
-    H_PATTERN_CALIBRATION_ADVANCE_SELECTOR = 2,
-    H_PATTERN_EXTENDED_WHEEL_MODE = 0x1c,
-    H_PATTERN_LEGACY_SHIFTER_PROMPT_MS = 2000,
-    H_PATTERN_LEGACY_CALIBRATION_PROMPT_MS = 4000,
-    H_PATTERN_EXTENDED_ENTRY_DELAY_MS = 5000,
-    H_PATTERN_EXTENDED_COMPLETION_MS = 1000,
-    SEVENTH_BOUNDARY_MINIMUM_SPAN = 5,
-    SEVENTH_BOUNDARY_FALLBACK_OFFSET = 20,
+    H_PATTERN_CALIBRATION_OPCODE = 0x19, /**< Operating-mode opcode for H-pattern calibration. */
+    H_PATTERN_CALIBRATION_START_SELECTOR = 1,   /**< Selector that starts calibration. */
+    H_PATTERN_CALIBRATION_ADVANCE_SELECTOR = 2, /**< Selector that advances calibration. */
+    H_PATTERN_EXTENDED_WHEEL_MODE = 0x1c, /**< Wheel mode with extended calibration presentation. */
+    H_PATTERN_LEGACY_SHIFTER_PROMPT_MS = 2000, /**< Legacy shifter-label presentation duration. */
+    H_PATTERN_LEGACY_CALIBRATION_PROMPT_MS = 4000, /**< Legacy calibration-label deadline. */
+    H_PATTERN_EXTENDED_ENTRY_DELAY_MS = 5000,      /**< Extended-mode entry delay. */
+    H_PATTERN_EXTENDED_COMPLETION_MS = 1000,       /**< Extended-mode completion hold duration. */
+    SEVENTH_BOUNDARY_MINIMUM_SPAN = 5, /**< Maximum fifth-to-seventh span for fallback boundary. */
+    SEVENTH_BOUNDARY_FALLBACK_OFFSET = 20, /**< Offset below fifth gear for fallback boundary. */
 };
 
 /**
@@ -150,7 +153,7 @@ static HPatternCalibrationResult capture_position(HPatternCalibrationSession *se
  * @brief Applies a calibration lifecycle command.
  *
  * Start clears the collected samples and opens a new session. Advance queues one capture for the
- * next available H-pattern analog sample. A new session retains its wheel mode and start time for
+ * next available H-pattern analog sample. A new session records its wheel mode and start time for
  * entry presentation and capture gating.
  *
  * @param[in,out] service Calibration lifecycle state.
@@ -257,9 +260,9 @@ void h_pattern_calibration_service_set_advance_input(HPatternCalibrationService 
  *
  * Ignores samples until the entry presentation completes and either the attached-wheel input or a
  * host advance is active. After each capture, waits for the attached-wheel input to be released
- * before accepting the next position. A successful seventh-gear capture enables the new settings,
- * then retains calibration ownership until input release. Extended mode also retains ownership
- * through a strict one-second completion deadline.
+ * before accepting the next position. A successful seventh-gear capture enables the new settings
+ * and retains calibration ownership while an advance input remains active. Extended mode also
+ * retains ownership through a strict one-second completion deadline.
  *
  * @param[in,out] service Calibration lifecycle state.
  * @param[in] now_ms Current monotonic time in milliseconds.

@@ -7,12 +7,17 @@
 #include "display/high_torque_icon.h"
 #include "display/text.h"
 
+/**
+ * @brief Defines prompt font, color, and icon layout values.
+ *
+ * The constants position prompt content in the local display framebuffer.
+ */
 enum {
-    GLYPH_HEIGHT = 7,
-    GLYPH_SCALE = 2,
-    PROMPT_COLOR = 15,
-    TORQUE_KEY_ICON_X = 123,
-    TORQUE_KEY_ICON_Y = 16,
+    GLYPH_HEIGHT = 7,        /**< Built-in glyph height in pixels. */
+    GLYPH_SCALE = 2,         /**< Scale used by the large force-output prompt text. */
+    PROMPT_COLOR = 15,       /**< Foreground grayscale value for prompt content. */
+    TORQUE_KEY_ICON_X = 123, /**< Torque Key icon left coordinate. */
+    TORQUE_KEY_ICON_Y = 16,  /**< Torque Key icon top coordinate. */
 };
 
 /**
@@ -20,7 +25,7 @@ enum {
  *
  * Clears the display and, while visible, draws both centered prompt lines at their selected rows.
  *
- * @param[out] framebuffer Complete local-display framebuffer.
+ * @param[in,out] framebuffer Complete local-display framebuffer.
  * @param[in] visible True while the acknowledgement prompt owns the display.
  */
 void display_prompt_render(DisplayFramebuffer framebuffer, bool visible) {
@@ -38,7 +43,7 @@ void display_prompt_render(DisplayFramebuffer framebuffer, bool visible) {
  * Clears the display and, while visible, draws the 11-by-10 high-torque icon, both 41-character
  * safety lines, and the acknowledgement label at their selected rows.
  *
- * @param[out] framebuffer Complete local-display framebuffer.
+ * @param[in,out] framebuffer Complete local-display framebuffer.
  * @param[in] visible True while the Torque Key acknowledgement prompt owns the display.
  */
 void display_prompt_render_torque_key(DisplayFramebuffer framebuffer, bool visible) {
@@ -61,7 +66,7 @@ void display_prompt_render_torque_key(DisplayFramebuffer framebuffer, bool visib
  * Clears the framebuffer and, while visible, renders the unpadded decimal percentage
  * right-aligned in a centered three-character field.
  *
- * @param[out] framebuffer Complete local-display framebuffer.
+ * @param[in,out] framebuffer Complete local-display framebuffer.
  * @param[in] visible True while paddle bite-point adjustment owns the display.
  * @param[in] percent Current bite-point percentage from zero through one hundred.
  */

@@ -6,28 +6,42 @@
 
 #include "force_feedback/script_operation.h"
 
+/**
+ * @brief Force-feedback script executor command bytes.
+ */
 enum {
-    COMMAND_CURSOR = 0x00,
-    COMMAND_ADVANCE = 0x01,
-    COMMAND_ADVANCE_IF_ZERO = 0x02,
-    COMMAND_ADVANCE_IF_NONZERO = 0x03,
-    COMMAND_STOP = 0x04,
-    COMMAND_STOP_IF_ZERO = 0x05,
-    COMMAND_STOP_IF_NONZERO = 0x06,
-    COMMAND_COMPLETE = 0x07,
-    COMMAND_COMPLETE_IF_ZERO = 0x08,
-    COMMAND_COMPLETE_IF_NONZERO = 0x09,
+    COMMAND_CURSOR = 0x00,          /**< Consumes a cursor command without further action. */
+    COMMAND_ADVANCE = 0x01,         /**< Starts or preserves an unconditional suppression span. */
+    COMMAND_ADVANCE_IF_ZERO = 0x02, /**< Advances when the condition is floating-point zero. */
+    COMMAND_ADVANCE_IF_NONZERO =
+        0x03,                       /**< Advances when the condition is not floating-point zero. */
+    COMMAND_STOP = 0x04,            /**< Stops execution when the current record is committed. */
+    COMMAND_STOP_IF_ZERO = 0x05,    /**< Stops when the condition is floating-point zero. */
+    COMMAND_STOP_IF_NONZERO = 0x06, /**< Stops when the condition is not floating-point zero. */
+    COMMAND_COMPLETE = 0x07, /**< Completes execution when the current record is committed. */
+    COMMAND_COMPLETE_IF_ZERO = 0x08, /**< Completes when the condition is floating-point zero. */
+    COMMAND_COMPLETE_IF_NONZERO =
+        0x09, /**< Completes when the condition is not floating-point zero. */
 };
 
+/**
+ * @brief Provides floating-point and raw-bit views of one executor value.
+ *
+ * The executor uses the union to test raw script values as single-precision values without
+ * converting their bit patterns.
+ */
 typedef union {
-    float number;
-    uint32_t bits;
+    float number;  /**< Single-precision interpretation of the value. */
+    uint32_t bits; /**< Raw 32-bit interpretation of the value. */
 } ExecutionValue;
 
+/**
+ * @brief Tracks the executor cursor, suppression state, and input validity.
+ */
 typedef struct {
-    size_t cursor;
-    uint16_t remaining;
-    bool valid;
+    size_t cursor;      /**< Offset of the next command or operand to consume. */
+    uint16_t remaining; /**< Internal suppression count still pending. */
+    bool valid;         /**< Whether the most recently consumed encoding was valid. */
 } ExecutionState;
 
 /**
@@ -68,7 +82,7 @@ static ExecutionState set_advance(const ForceFeedbackScriptRuntime *runtime, con
  * @brief Selects or skips a conditional suppression count.
  *
  * Consumes a condition and then consumes the count operand on both branches. The selected branch
- * starts suppression; the other branch discards the decoded count.
+ * applies the count to suppression state; the other branch discards the decoded count.
  *
  * @param[in] runtime Script state referenced by both operands.
  * @param[in] script Complete encoded script.
@@ -127,21 +141,6 @@ static ForceFeedbackScriptExecutionStatus complete(ForceFeedbackScriptRuntime *r
     return FORCE_FEEDBACK_SCRIPT_EXECUTION_COMPLETED;
 }
 
-/**
- * @brief Execute a complete force-feedback script byte sequence.
- *
- * Processes records in order, decodes operation operands, applies conditional record suppression,
- * and honors stop and completion commands. Suppressed records are fully decoded and evaluated but
- * do not write their destinations. Invalid commands, operands, operation domains, active slots, or
- * an unfinished suppression span fault the active slot. Dynamic commands 0xF0 through 0xF2 have no
- * initialized firmware handlers and are rejected as invalid commands.
- *
- * @param[in,out] runtime Script state and active slot selected by the caller.
- * @param[in] script Complete encoded script.
- * @param[in] length Number of script bytes.
- * @return The natural-finish, stopped, completed, or fault status.
- * @pre runtime and script point to valid objects.
- */
 ForceFeedbackScriptExecutionStatus
 force_feedback_script_execute(ForceFeedbackScriptRuntime *runtime, const uint8_t *script,
                               size_t length) {

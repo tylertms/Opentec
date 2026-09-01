@@ -7,9 +7,10 @@
 #include "platform/time.h"
 #include "serial/session.h"
 
+/** @brief Internal serial request retry constants. */
 enum {
-    SERIAL_SERVICE_TIMEOUT_MS = 10,
-    SERIAL_SERVICE_MAX_ATTEMPTS = 5,
+    SERIAL_SERVICE_TIMEOUT_MS = 10,  /**< Response window for one packet attempt in milliseconds. */
+    SERIAL_SERVICE_MAX_ATTEMPTS = 5, /**< Maximum attempts for one packet before failure. */
 };
 
 /**
@@ -54,13 +55,13 @@ void serial_service_init(SerialService *service) {
 /**
  * @brief Starts one logical attached-device request.
  *
- * Queues a type-two through type-five message on the one shared session and immediately starts its
- * first fixed packet exchange.
+ * Queues a type-two through type-five message of up to 515 bytes on the shared session and
+ * immediately starts its first fixed packet exchange.
  *
  * @param[in,out] service Idle serial service accepting the request.
  * @param[in] type Logical message type from two through five.
  * @param[in] message Complete request message.
- * @param[in] length Request length from one through 512 bytes.
+ * @param[in] length Request length from one through 515 bytes.
  * @param[in] now_ms Current monotonic time in milliseconds.
  * @return True when the request and first packet exchange start.
  */
@@ -84,8 +85,9 @@ bool serial_service_start(SerialService *service, uint8_t type, const uint8_t *m
  * @brief Advances the shared attached-device request and response exchange.
  *
  * Accepts completed packets, emits required fragment acknowledgements or resynchronization
- * packets, publishes a matching completed logical response, and retransmits a packet at each
- * ten-millisecond deadline before the fifth missed response fails the request.
+ * packets, publishes a matching completed logical response, and retries a packet after each
+ * ten-millisecond response deadline for up to five attempts. A failed restart or fifth missed
+ * response fails the request.
  *
  * @param[in,out] service Serial service to advance.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -143,8 +145,8 @@ const SerialMessageAssembly *serial_service_response(const SerialService *servic
 /**
  * @brief Returns the attached-device serial error count.
  *
- * Reports the cumulative number of expired response windows and rejected incoming packets since
- * serial service initialization.
+ * Reports the cumulative number of expired response windows and rejected or overflowing incoming
+ * packets since serial service initialization.
  *
  * @param[in] service Serial service to inspect.
  * @return Cumulative transport error count, or zero when the service is unavailable.

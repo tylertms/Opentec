@@ -3,27 +3,16 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/** @brief Internal report identifiers and payload sizes accepted by output decoding. */
 enum {
-    SHORT_REPORT_ID = 1,
-    SHORT_REPORT_PAYLOAD_SIZE = 7,
-    VENDOR_TRANSFER_REPORT_ID = 0xff,
-    VENDOR_TRANSFER_PAYLOAD_SIZE = 63,
-    PLAYSTATION_SHORT_REPORT_ID = 0x30,
-    PLAYSTATION_VENDOR_TRANSFER_REPORT_ID = 0x34,
-    PLAYSTATION_REPORT_SIZE = 64,
+    SHORT_REPORT_ID = 1,                          /**< Numbered short-report identifier. */
+    SHORT_REPORT_PAYLOAD_SIZE = 7,                /**< Short command payload size in bytes. */
+    VENDOR_TRANSFER_REPORT_ID = 0xff,             /**< Native vendor-transfer report identifier. */
+    VENDOR_TRANSFER_PAYLOAD_SIZE = 63,            /**< Vendor-transfer payload size in bytes. */
+    PLAYSTATION_SHORT_REPORT_ID = 0x30,           /**< PlayStation short-report identifier. */
+    PLAYSTATION_VENDOR_TRANSFER_REPORT_ID = 0x34, /**< PlayStation vendor-transfer identifier. */
+    PLAYSTATION_REPORT_SIZE = 64,                 /**< PlayStation report size in bytes. */
 };
-
-/**
- * @brief Classifies a complete primary HID output report.
- *
- * Exposes a seven-byte shared command from an unnumbered compatibility report, native report 1,
- * or PlayStation report 48. Native report 255 and PlayStation report 52 expose the same 63-byte
- * vendor-transfer payload.
- *
- * @param[in] report HID output report with its endpoint-specific report-ID classification.
- * @param[out] command Destination for the command kind, payload, and payload length.
- * @return True for the shared short report or the full vendor-transfer report.
- */
 bool usb_output_command_decode(const UsbDeviceOutputReport *report, UsbOutputCommand *command) {
     if (report == NULL || command == NULL || report->report_type != USB_DEVICE_HID_REPORT_OUTPUT ||
         report->length == 0) {

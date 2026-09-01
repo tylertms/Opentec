@@ -21,12 +21,13 @@
 #include "wheel/packet_remote_tuning.h"
 #include "wheel/pulse_gate.h"
 
+/** @brief Internal legacy-status response values and offsets. */
 enum {
-    WHEEL_STATUS_SELECT_PREFIX_MODE = 9,
-    WHEEL_STATUS_RESPONSE_CODE = 0x82,
-    WHEEL_STATUS_IDLE = 0x1e,
-    WHEEL_STATUS_SETUP_PAGE_OFFSET = 0x1f,
-    WHEEL_SETUP_PAGE_MAXIMUM = 5,
+    WHEEL_STATUS_SELECT_PREFIX_MODE = 9,   /**< Mode prefix that includes status fields. */
+    WHEEL_STATUS_RESPONSE_CODE = 0x82,     /**< Legacy status response code. */
+    WHEEL_STATUS_IDLE = 0x1e,              /**< Idle status value. */
+    WHEEL_STATUS_SETUP_PAGE_OFFSET = 0x1f, /**< Setup-page status offset. */
+    WHEEL_SETUP_PAGE_MAXIMUM = 5,          /**< Highest setup page value. */
 };
 
 /**
@@ -70,7 +71,7 @@ static void clear(uint8_t *data, uint8_t length) {
  * by state code 6, a clear adapter flag, and the current two-byte legacy pedal status.
  *
  * @param[in] protocol Active attached-wheel protocol state.
- * @param[in,out] response Cleared response receiving the legacy status fields.
+ * @param[out] response Cleared response receiving the legacy status fields.
  */
 static void encode_legacy_status(const WheelProtocol *protocol, uint8_t *response) {
     if (protocol->mode != WHEEL_MODE_REMOTE_TUNING_LEGACY) {
@@ -223,8 +224,8 @@ static void build_active_response(WheelProtocol *protocol) {
 /**
  * @brief Selects the attached-wheel display rotation output.
  *
- * Retains the active profile flag and current signed angle for the next legacy remote-tuning
- * response.
+ * Retains whether display rotation is enabled and the current signed angle for the next legacy
+ * remote-tuning response.
  *
  * @param[in,out] protocol Attached-wheel protocol state.
  * @param[in] enabled True to include the display angle.
@@ -292,8 +293,7 @@ bool wheel_protocol_queue_system_control_response(WheelProtocol *protocol,
 /**
  * @brief Detects input eligible to acknowledge a display overlay.
  *
- * Accepts any directional or button bit and the first auxiliary byte from the standard packet
- * codec.
+ * Accepts any filtered button bit or an active authenticated button-latch flag.
  *
  * @param[in] input Decoded and button-filtered attached-wheel request.
  * @return True while an eligible input is active.
@@ -413,8 +413,8 @@ static void accumulate_axis_mode_motion(WheelProtocol *protocol) {
  * @brief Accumulates adapter-oriented rotary and interface pulse input.
  *
  * Queues the adapter's consumed signed motion on the primary counter. Xbox reports interpret the
- * signed byte as three pulse pairs after the 90 ms gate. Auxiliary-pulse reports convert the sign
- * to the primary pair after the shared 15 ms gate.
+ * signed byte as three pulse pairs after the 90 ms gate. PlayStation and auxiliary-pulse reports
+ * convert the sign to the primary pair after the shared 15 ms gate.
  *
  * @param[in,out] protocol Protocol state containing adapter input, pulse timing, and counters.
  */
@@ -966,7 +966,7 @@ void wheel_protocol_set_mode_one_output(WheelProtocol *protocol,
 /**
  * @brief Updates mode-four wheel output.
  *
- * Replaces the display, display-state, and legacy-axis output encoded for mode-four packets.
+ * Replaces the display, vibration, and legacy-axis output encoded for mode-four packets.
  *
  * @param[in,out] protocol Wheel protocol state to update.
  * @param[in] output Mode-four output state.
@@ -979,8 +979,8 @@ void wheel_protocol_set_mode_four_output(WheelProtocol *protocol,
 /**
  * @brief Updates CRC-family wheel output.
  *
- * Replaces the display, motor-link restart, and report-status output encoded for CRC-family
- * packets.
+ * Replaces the display, vibration, legacy-axis, motor-link restart, and report-status output
+ * encoded for CRC-family packets.
  *
  * @param[in,out] protocol Wheel protocol state to update.
  * @param[in] output CRC-family output state.
@@ -1114,8 +1114,9 @@ bool wheel_protocol_remote_telemetry_pending(const WheelProtocol *protocol) {
 /**
  * @brief Configures attached-wheel axis processing.
  *
- * Retains the host interface mode, analog-paddle mode, and bite-point percentage applied to
- * incoming standard, common-payload, and CRC-family controls.
+ * Retains the host interface mode, configured analog-paddle mode, and current time used by
+ * incoming standard, common-payload, and CRC-family controls. Updates the bite-point percentage
+ * unless an adjustment is in progress.
  *
  * @param[in,out] protocol Wheel protocol state to configure.
  * @param[in] interface_mode Active host interface mode.
@@ -1636,7 +1637,7 @@ const uint8_t *wheel_protocol_axis_outputs(const WheelProtocol *protocol) {
 /**
  * @brief Reports whether the attached wheel enabled its axis report.
  *
- * Selects the capability flag retained by the current mode-one, mode-four, display, remapped,
+ * Selects the axis-report flag retained by the current mode-one, mode-four, display, remapped,
  * alternate, packed, axis-mode, extended, adapter-oriented, or CRC-family input packet.
  * Unsupported and inactive modes report disabled.
  *

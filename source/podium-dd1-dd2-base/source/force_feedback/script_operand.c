@@ -4,40 +4,51 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/**
+ * @brief Encoded operand ranges and destination identifiers.
+ *
+ * The values identify literal, sample, variable, slot, motion, and axis operand encodings.
+ */
 enum {
-    OPERAND_CONSTANT_FLOAT_NEGATIVE_ONE = 0x04,
-    OPERAND_IMMEDIATE_FIRST = 0x10,
-    OPERAND_IMMEDIATE_LAST = 0x13,
-    OPERAND_SAMPLE_LOW = 0x14,
-    OPERAND_SAMPLE_HIGH = 0x15,
-    OPERAND_PERCENT = 0x18,
-    OPERAND_NEGATIVE_PERCENT = 0x19,
-    OPERAND_PER_MILLE = 0x1a,
-    OPERAND_NEGATIVE_PER_MILLE = 0x1b,
-    OPERAND_VARIABLE_FIRST = 0x20,
-    OPERAND_VARIABLE_LAST = 0x2b,
-    OPERAND_VARIABLE_SAMPLE_FIRST = 0x30,
-    OPERAND_VARIABLE_SAMPLE_LAST = 0x37,
-    OPERAND_SLOT_VALUE_FIRST = 0x40,
-    OPERAND_SLOT_VALUE_LAST = 0x43,
-    OPERAND_SLOT_SAMPLE_FIRST = 0x44,
-    OPERAND_SLOT_SAMPLE_LAST = 0x47,
-    OPERAND_SLOT_DELTA_RATE = 0x48,
-    OPERAND_SLOT_AVERAGE_RATE = 0x49,
-    OPERAND_SLOT_EXECUTION_COUNT = 0x4a,
-    OPERAND_SLOT_TICK_SNAPSHOT = 0x4b,
-    OPERAND_MOTION_FIRST = 0x50,
-    OPERAND_MOTION_PRIMARY = 0x50,
-    OPERAND_MOTION_SECONDARY = 0x52,
-    OPERAND_MOTION_ACCUMULATE = 0x53,
-    OPERAND_MOTION_LAST = 0x57,
-    OPERAND_AXIS_FIRST = 0x60,
-    OPERAND_AXIS_LAST = 0x69,
+    OPERAND_CONSTANT_FLOAT_NEGATIVE_ONE = 0x04, /**< Last built-in constant operand. */
+    OPERAND_IMMEDIATE_FIRST = 0x10,             /**< First big-endian immediate operand. */
+    OPERAND_IMMEDIATE_LAST = 0x13,              /**< Last big-endian immediate operand. */
+    OPERAND_SAMPLE_LOW = 0x14,                  /**< One-byte sample index operand. */
+    OPERAND_SAMPLE_HIGH = 0x15,                 /**< High-bank one-byte sample index operand. */
+    OPERAND_PERCENT = 0x18,               /**< Positive one-byte percentage literal operand. */
+    OPERAND_NEGATIVE_PERCENT = 0x19,      /**< Negative one-byte percentage literal operand. */
+    OPERAND_PER_MILLE = 0x1a,             /**< Positive two-byte per-mille literal operand. */
+    OPERAND_NEGATIVE_PER_MILLE = 0x1b,    /**< Negative two-byte per-mille literal operand. */
+    OPERAND_VARIABLE_FIRST = 0x20,        /**< First direct variable operand. */
+    OPERAND_VARIABLE_LAST = 0x2b,         /**< Last direct variable operand. */
+    OPERAND_VARIABLE_SAMPLE_FIRST = 0x30, /**< First variable-indexed sample operand. */
+    OPERAND_VARIABLE_SAMPLE_LAST = 0x37,  /**< Last variable-indexed sample operand. */
+    OPERAND_SLOT_VALUE_FIRST = 0x40,      /**< First active-slot value operand. */
+    OPERAND_SLOT_VALUE_LAST = 0x43,       /**< Last active-slot value operand. */
+    OPERAND_SLOT_SAMPLE_FIRST = 0x44,     /**< First active-slot sample operand. */
+    OPERAND_SLOT_SAMPLE_LAST = 0x47,      /**< Last active-slot sample operand. */
+    OPERAND_SLOT_DELTA_RATE = 0x48,       /**< Active-slot elapsed-rate operand. */
+    OPERAND_SLOT_AVERAGE_RATE = 0x49,     /**< Active-slot average-rate operand. */
+    OPERAND_SLOT_EXECUTION_COUNT = 0x4a,  /**< Active-slot execution-count operand. */
+    OPERAND_SLOT_TICK_SNAPSHOT = 0x4b,    /**< Active-slot tick-snapshot operand. */
+    OPERAND_MOTION_FIRST = 0x50,          /**< First motion operand. */
+    OPERAND_MOTION_PRIMARY = 0x50,        /**< Primary motion destination operand. */
+    OPERAND_MOTION_SECONDARY = 0x52,      /**< Secondary motion destination operand. */
+    OPERAND_MOTION_ACCUMULATE = 0x53,     /**< Secondary motion accumulation destination operand. */
+    OPERAND_MOTION_LAST = 0x57,           /**< Last motion operand. */
+    OPERAND_AXIS_FIRST = 0x60,            /**< First axis operand. */
+    OPERAND_AXIS_LAST = 0x69,             /**< Last axis operand. */
 };
 
+/**
+ * @brief Provides numeric and raw-bit views of a script value.
+ *
+ * Operand decoding and writing use this representation to preserve the raw 32-bit value while
+ * applying floating-point scaling or accumulation.
+ */
 typedef union {
-    float number;
-    uint32_t bits;
+    float number;  /**< Single-precision numeric view. */
+    uint32_t bits; /**< Raw 32-bit representation. */
 } OperandValue;
 
 /**
@@ -150,24 +161,10 @@ static uint32_t slot_metric(const ForceFeedbackScriptSlot *slot, uint8_t opcode)
     }
 }
 
-/**
- * @brief Read one encoded script operand.
- *
- * Resolves constants, big-endian immediates, scaled numeric literals, samples, variables, active
- * slot values and metrics, motion values, and axes. The returned cursor follows the complete
- * operand. Invalid or incomplete operands return an invalid result; incomplete input moves the
- * returned cursor to the end.
- *
- * @param[in] runtime Script state referenced by indirect operands.
- * @param[in] script Encoded script bytes.
- * @param[in] length Number of available script bytes.
- * @param[in] cursor Offset of the operand.
- * @return The resolved raw value, following cursor, and validity state.
- * @pre runtime and script point to valid objects.
- */
 ForceFeedbackScriptOperandResult
 force_feedback_script_operand_read(const ForceFeedbackScriptRuntime *runtime, const uint8_t *script,
                                    size_t length, size_t cursor) {
+    /** @brief Raw values for the built-in constant operand encodings. */
     static const uint32_t constants[] = {
         0, 1, UINT32_C(0x3f800000), UINT32_MAX, UINT32_C(0xbf800000),
     };
@@ -239,7 +236,7 @@ force_feedback_script_operand_read(const ForceFeedbackScriptRuntime *runtime, co
 }
 
 /**
- * @brief Limits a finite force value to the normalized output range.
+ * @brief Limits a force value to the normalized output range.
  *
  * Values above one become one and values below negative one become negative one.
  *
@@ -259,8 +256,8 @@ static float clamp_force(float value) {
 /**
  * @brief Writes an operand through the active script slot.
  *
- * Codes 0x40 through 0x43 select one of four slot values. Codes 0x44 through 0x47 use the
- * corresponding slot value as a sample index.
+ * Codes 0x40 through 0x43 select one of four slot values. Codes 0x44 through 0x47 use the low byte
+ * of the corresponding slot value as a sample index.
  *
  * @param[in,out] runtime Script state containing the active slot and sample store.
  * @param[in] opcode Encoded active-slot destination.
@@ -286,7 +283,7 @@ static bool write_slot_operand(ForceFeedbackScriptRuntime *runtime, uint8_t opco
  * @brief Writes a motion destination.
  *
  * Stores primary or secondary motion directly. The accumulator adds a floating-point value to the
- * secondary motion output and limits finite results to the normalized force range.
+ * secondary motion output and clamps finite sums to the normalized force range.
  *
  * @param[in,out] runtime Script state containing motion outputs.
  * @param[in] opcode Encoded motion destination.
@@ -312,23 +309,6 @@ static bool write_motion_operand(ForceFeedbackScriptRuntime *runtime, uint8_t op
     return false;
 }
 
-/**
- * @brief Write a value through one encoded script destination.
- *
- * Stores raw values in direct or indexed samples, writable variables, active-slot values, the
- * primary or secondary motion output, or axes. The accumulator destination adds floating-point
- * values to the secondary motion output and limits finite results to -1 through 1. When commit is
- * false, the destination is only consumed; direct sample operands still consume their index byte.
- *
- * @param[in,out] runtime Script state selected by the destination.
- * @param[in] script Encoded script bytes.
- * @param[in] length Number of available script bytes.
- * @param[in] cursor Offset of the destination.
- * @param[in] value Raw 32-bit value to store.
- * @param[in] commit true to change runtime state; false to consume without writing.
- * @return The following cursor and whether the destination was consumed and accepted.
- * @pre runtime and script point to valid objects.
- */
 ForceFeedbackScriptDestinationResult
 force_feedback_script_operand_write(ForceFeedbackScriptRuntime *runtime, const uint8_t *script,
                                     size_t length, size_t cursor, uint32_t value, bool commit) {

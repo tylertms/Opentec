@@ -3,66 +3,84 @@
 #include <stddef.h>
 #include <string.h>
 
+/** @brief Internal remote telemetry protocol constants. */
 enum {
-    REMOTE_TELEMETRY_ROUTE = 2,
-    REMOTE_TELEMETRY_OVERLAY_SELECTOR = 0x80,
-    REMOTE_TELEMETRY_MAXIMUM_KEY = 1007,
-    REMOTE_TELEMETRY_FORMAT_TEXT = 1,
-    REMOTE_TELEMETRY_FORMAT_UINT8 = 2,
-    REMOTE_TELEMETRY_FORMAT_INT8 = 3,
-    REMOTE_TELEMETRY_FORMAT_UINT16 = 4,
-    REMOTE_TELEMETRY_FORMAT_INT16 = 5,
-    REMOTE_TELEMETRY_FORMAT_UINT32 = 6,
-    REMOTE_TELEMETRY_FORMAT_INT32 = 7,
-    REMOTE_TELEMETRY_FORMAT_FLOAT = 8,
-    REMOTE_TELEMETRY_FORMAT_UINT16_ALTERNATE = 9,
-    REMOTE_TELEMETRY_FORMAT_SIGNED_FLOAT = 10,
-    REMOTE_TELEMETRY_BEHAVIOR_PRIMARY = 1u << 0,
-    REMOTE_TELEMETRY_BEHAVIOR_RANGE_SOURCE = 1u << 1,
-    REMOTE_TELEMETRY_BEHAVIOR_SCALE_BYTE = 1u << 2,
-    REMOTE_TELEMETRY_BEHAVIOR_RANGE_LIMIT = 1u << 3,
-    REMOTE_TELEMETRY_BEHAVIOR_GEAR = 1u << 4,
+    REMOTE_TELEMETRY_ROUTE = 2,                   /**< Control-record route identifier. */
+    REMOTE_TELEMETRY_OVERLAY_SELECTOR = 0x80,     /**< Selector bit for overlay records. */
+    REMOTE_TELEMETRY_MAXIMUM_KEY = 1007,          /**< Highest accepted host subscription key. */
+    REMOTE_TELEMETRY_FORMAT_TEXT = 1,             /**< Text payload format. */
+    REMOTE_TELEMETRY_FORMAT_UINT8 = 2,            /**< Unsigned eight-bit format. */
+    REMOTE_TELEMETRY_FORMAT_INT8 = 3,             /**< Signed eight-bit format. */
+    REMOTE_TELEMETRY_FORMAT_UINT16 = 4,           /**< Unsigned sixteen-bit format. */
+    REMOTE_TELEMETRY_FORMAT_INT16 = 5,            /**< Signed sixteen-bit format. */
+    REMOTE_TELEMETRY_FORMAT_UINT32 = 6,           /**< Unsigned thirty-two-bit format. */
+    REMOTE_TELEMETRY_FORMAT_INT32 = 7,            /**< Signed thirty-two-bit format. */
+    REMOTE_TELEMETRY_FORMAT_FLOAT = 8,            /**< Unsigned-display floating-point format. */
+    REMOTE_TELEMETRY_FORMAT_UINT16_ALTERNATE = 9, /**< Alternate unsigned sixteen-bit format. */
+    REMOTE_TELEMETRY_FORMAT_SIGNED_FLOAT = 10,    /**< Signed floating-point format. */
+    REMOTE_TELEMETRY_BEHAVIOR_PRIMARY = 1u << 0,  /**< Channel has primary content. */
+    REMOTE_TELEMETRY_BEHAVIOR_RANGE_SOURCE = 1u << 1, /**< Channel supplies a scale range. */
+    REMOTE_TELEMETRY_BEHAVIOR_SCALE_BYTE = 1u << 2,   /**< Channel payload supplies a scale byte. */
+    REMOTE_TELEMETRY_BEHAVIOR_RANGE_LIMIT = 1u << 3,  /**< Channel supplies a scale limit. */
+    REMOTE_TELEMETRY_BEHAVIOR_GEAR = 1u << 4,         /**< Channel uses gear formatting. */
 };
 
+/** @brief Static definition of one telemetry channel. */
 typedef struct {
-    uint16_t key;
-    uint8_t format;
-    uint8_t behavior;
-    uint8_t source;
-    uint8_t overlay_capacity;
-    bool overlay_enabled;
+    uint16_t key;             /**< Host subscription key. */
+    uint8_t format;           /**< Host payload format. */
+    uint8_t behavior;         /**< Channel behavior flags. */
+    uint8_t source;           /**< Source-definition index. */
+    uint8_t overlay_capacity; /**< Maximum overlay bytes. */
+    bool overlay_enabled;     /**< True when an overlay subscription is configured. */
 } RemoteTelemetryChannelDefinition;
 
+/** @brief Static definition of one telemetry metric. */
 typedef struct {
-    RemoteTelemetryChannelDefinition channels[REMOTE_TELEMETRY_CHANNEL_COUNT];
-    uint8_t channel_count;
+    RemoteTelemetryChannelDefinition
+        channels[REMOTE_TELEMETRY_CHANNEL_COUNT]; /**< Channel definitions. */
+    uint8_t channel_count;                        /**< Number of active channel definitions. */
 } RemoteTelemetryMetricDefinition;
 
+/** @brief Static definition of one attached-wheel telemetry source. */
 typedef struct {
-    const uint8_t *secondary_payload;
-    uint16_t value;
-    uint8_t report_id;
-    uint8_t payload_offset;
-    uint8_t payload_length;
-    uint8_t secondary_length;
-    uint8_t metadata[3];
-    uint8_t scale_limit;
+    const uint8_t *secondary_payload; /**< Secondary label bytes. */
+    uint16_t value;                   /**< Fixed report value. */
+    uint8_t report_id;                /**< Attached-wheel report identifier. */
+    uint8_t payload_offset;           /**< Offset of primary text in display template. */
+    uint8_t payload_length;           /**< Primary payload length. */
+    uint8_t secondary_length;         /**< Secondary label length. */
+    uint8_t metadata[3];              /**< Report metadata bytes. */
+    uint8_t scale_limit;              /**< Initial scale limit. */
 } RemoteTelemetrySourceDefinition;
 
+/** @brief Fixed-width display template used by telemetry sources. */
 static const uint8_t display_template[] =
     "---     ---    - ---    ---    ---          --------.--      ";
+/** @brief Speed source label. */
 static const uint8_t speed_label[] = "SPEED";
+/** @brief RPM source label. */
 static const uint8_t rpm_label[] = "RPM";
+/** @brief Gear source label. */
 static const uint8_t gear_label[] = "GEAR";
+/** @brief Position source label. */
 static const uint8_t position_label[] = "POSITION";
+/** @brief Lap source label. */
 static const uint8_t lap_label[] = "LAP";
+/** @brief Fuel source label. */
 static const uint8_t fuel_label[] = "FUEL";
+/** @brief DRS source label. */
 static const uint8_t drs_label[] = "DRS";
+/** @brief Driver-aids ABS source label. */
 static const uint8_t abs_label[] = "ABS";
+/** @brief Driver-aids traction-control source label. */
 static const uint8_t traction_control_label[] = "TC";
+/** @brief ERS source label. */
 static const uint8_t ers_label[] = "ERS";
+/** @brief Delta source label. */
 static const uint8_t delta_label[] = "DELTA";
 
+/** @brief Static attached-wheel source definitions. */
 static const RemoteTelemetrySourceDefinition source_definitions[] = {
     {speed_label, 0x1000, 1, 0, 4, sizeof(speed_label) - 1, {0x00, 0x30, 0x00}, 0},
     {rpm_label, 0x1000, 1, 8, 6, sizeof(rpm_label) - 1, {0x00, 0x30, 0x00}, 127},
@@ -84,6 +102,7 @@ static const RemoteTelemetrySourceDefinition source_definitions[] = {
     {delta_label, 0x1000, 1, 51, 4, sizeof(delta_label) - 1, {0x00, 0x30, 0x00}, 0},
 };
 
+/** @brief Static host-channel definitions for each telemetry metric. */
 static const RemoteTelemetryMetricDefinition metric_definitions[] = {
     [REMOTE_TELEMETRY_SPEED] = {{{1, 0x34, REMOTE_TELEMETRY_BEHAVIOR_PRIMARY, 0, 3, true}}, 1},
     [REMOTE_TELEMETRY_RPM] =
@@ -173,7 +192,7 @@ static uint8_t format_integer(uint8_t *output, int32_t value, uint8_t width) {
 }
 
 /**
- * @brief Formats a finite float with fixed decimal precision.
+ * @brief Formats a float with fixed decimal precision.
  *
  * Uses the absolute value, rounds the fractional digits to the requested precision, and omits a
  * sign. Callers that need a sign add it explicitly.
@@ -238,9 +257,10 @@ static uint32_t read_u32(const uint8_t *payload) {
  * @return Decoded float value.
  */
 static float read_float(const uint8_t *payload) {
+    /** @brief Bit-preserving view of one single-precision value. */
     union {
-        uint32_t bits;
-        float value;
+        uint32_t bits; /**< IEEE-754 bit representation. */
+        float value;   /**< Single-precision value representation. */
     } decoded = {.bits = read_u32(payload)};
     return decoded.value;
 }
@@ -248,7 +268,7 @@ static float read_float(const uint8_t *payload) {
 /**
  * @brief Returns the payload size required by one telemetry format.
  *
- * Text accepts any payload length. Numeric formats require their native one-, two-, or four-byte
+ * Text has no fixed required size. Numeric formats require their native one-, two-, or four-byte
  * representation.
  *
  * @param[in] format Telemetry format identifier.
@@ -276,14 +296,15 @@ static uint8_t required_payload_size(uint8_t format) {
 /**
  * @brief Applies primary text or numeric content to a report source.
  *
- * Formats the channel payload according to its format and width or precision nibble. Signed delta
+ * Formats the channel payload according to its format and width or precision nibble. Signed-float
  * values receive an explicit leading sign and two fractional digits.
  *
  * @param[in,out] source Dynamic report source.
  * @param[in] channel Selected telemetry channel.
  * @param[in] payload Host-provided value bytes.
  * @param[in] payload_length Number of available value bytes.
- * @return True when report content was updated.
+ * @return true when the format and payload are accepted; false for unsupported formats, short
+ * payloads, or an unsupported signed-float width.
  */
 static bool apply_primary_content(RemoteTelemetrySource *source,
                                   const RemoteTelemetryChannel *channel, const uint8_t *payload,
@@ -373,7 +394,7 @@ static void update_range_scale(RemoteTelemetry *telemetry, uint8_t channel_index
  * @param[in] telemetry Selected telemetry state.
  * @param[in] channel_index Channel whose source supplies the report.
  * @param[out] output Encoded report.
- * @return True when the payload and overlay fit the report.
+ * @return true when the payload and overlay fit the report; false when they exceed the report area.
  */
 static bool encode_report(const RemoteTelemetry *telemetry, uint8_t channel_index,
                           uint8_t output[REMOTE_TELEMETRY_REPORT_SIZE]) {
@@ -409,7 +430,7 @@ static bool encode_report(const RemoteTelemetry *telemetry, uint8_t channel_inde
  * @param[in] selector Channel and selector-bank bits.
  * @param[in] key Subscription key or 0xFFFF clear value.
  * @param[in] format Subscription format.
- * @return True when a queue slot was available.
+ * @return true when a queue slot was available and the record was queued; false when full.
  */
 static bool queue_control_record(RemoteTelemetry *telemetry, uint8_t selector, uint16_t key,
                                  uint8_t format) {
@@ -419,28 +440,8 @@ static bool queue_control_record(RemoteTelemetry *telemetry, uint8_t selector, u
     return remote_telemetry_queue_control_record(telemetry, record);
 }
 
-/**
- * @brief Initializes remote telemetry state.
- *
- * Clears the selected metric, channel mappings, dynamic reports, control queue, and report
- * scheduler.
- *
- * @param[out] telemetry Telemetry state to initialize.
- */
 void remote_telemetry_init(RemoteTelemetry *telemetry) { memset(telemetry, 0, sizeof(*telemetry)); }
 
-/**
- * @brief Selects one remote telemetry metric.
- *
- * Queues clears for the previous mapping, replaces the active channels with the metric's one- or
- * two-channel definition, restores every referenced report source, and queues the new
- * subscriptions. Selection zero clears the service without adding subscriptions. The change is
- * atomic when the control queue lacks space.
- *
- * @param[in,out] telemetry Telemetry state to configure.
- * @param[in] metric Requested metric.
- * @return True when the metric is supported and the complete change was accepted.
- */
 bool remote_telemetry_select(RemoteTelemetry *telemetry, RemoteTelemetryMetric metric) {
     if (telemetry == NULL || metric > REMOTE_TELEMETRY_DELTA) {
         return false;
@@ -503,14 +504,6 @@ bool remote_telemetry_select(RemoteTelemetry *telemetry, RemoteTelemetryMetric m
     return true;
 }
 
-/**
- * @brief Returns the active telemetry subscription count.
- *
- * Reports zero for no selection and otherwise returns the selected metric's channel count.
- *
- * @param[in] telemetry Selected telemetry state.
- * @return Number of active subscriptions.
- */
 uint8_t remote_telemetry_subscription_count(const RemoteTelemetry *telemetry) {
     if (telemetry == NULL || telemetry->metric == REMOTE_TELEMETRY_NONE) {
         return 0;
@@ -518,17 +511,6 @@ uint8_t remote_telemetry_subscription_count(const RemoteTelemetry *telemetry) {
     return metric_definitions[telemetry->metric].channel_count;
 }
 
-/**
- * @brief Reads one active telemetry subscription.
- *
- * Exposes the expected key and format with the channel index in the selector low nibble and the
- * overlay capability in the selector high bit.
- *
- * @param[in] telemetry Selected telemetry state.
- * @param[in] channel Active channel index.
- * @param[out] subscription Logical subscription fields.
- * @return True when the requested channel is active.
- */
 bool remote_telemetry_subscription(const RemoteTelemetry *telemetry, uint8_t channel,
                                    RemoteTelemetrySubscription *subscription) {
     if (telemetry == NULL || subscription == NULL ||
@@ -543,14 +525,6 @@ bool remote_telemetry_subscription(const RemoteTelemetry *telemetry, uint8_t cha
     return true;
 }
 
-/**
- * @brief Encodes one telemetry subscription record.
- *
- * Writes route two, selector, little-endian key, and format as the five-byte host record.
- *
- * @param[in] subscription Logical subscription fields.
- * @param[out] output Encoded five-byte record.
- */
 void remote_telemetry_encode_subscription(const RemoteTelemetrySubscription *subscription,
                                           uint8_t output[REMOTE_TELEMETRY_SUBSCRIPTION_SIZE]) {
     output[0] = REMOTE_TELEMETRY_ROUTE;
@@ -560,16 +534,6 @@ void remote_telemetry_encode_subscription(const RemoteTelemetrySubscription *sub
     output[4] = subscription->format;
 }
 
-/**
- * @brief Queues one encoded telemetry control record for the host.
- *
- * Appends the five bytes unchanged to the 32-entry arrival-order queue. A full queue rejects the
- * record without changing any retained entry.
- *
- * @param[in,out] telemetry Telemetry state that owns the control queue.
- * @param[in] input Complete five-byte control record.
- * @return True when the record was queued.
- */
 bool remote_telemetry_queue_control_record(
     RemoteTelemetry *telemetry, const uint8_t input[REMOTE_TELEMETRY_SUBSCRIPTION_SIZE]) {
     if (telemetry == NULL || input == NULL ||
@@ -583,16 +547,6 @@ bool remote_telemetry_queue_control_record(
     return true;
 }
 
-/**
- * @brief Takes the oldest queued telemetry control record.
- *
- * Copies and consumes one five-byte subscription or clear record while preserving the order of
- * all remaining records.
- *
- * @param[in,out] telemetry Telemetry state that owns the control queue.
- * @param[out] output Oldest encoded control record.
- * @return True when a record was available.
- */
 bool remote_telemetry_take_control_record(RemoteTelemetry *telemetry,
                                           uint8_t output[REMOTE_TELEMETRY_SUBSCRIPTION_SIZE]) {
     if (telemetry == NULL || output == NULL || telemetry->control_count == 0) {
@@ -608,20 +562,6 @@ bool remote_telemetry_take_control_record(RemoteTelemetry *telemetry,
     return true;
 }
 
-/**
- * @brief Applies a primary telemetry value record.
- *
- * Validates the channel key, formats primary content, updates scale or range state, and marks the
- * affected channel for report emission. A valid but unexpected key requests that the host clear
- * the stale subscription.
- *
- * @param[in,out] telemetry Selected telemetry state.
- * @param[in] channel Target channel index.
- * @param[in] key Host record key.
- * @param[in] payload Host record payload.
- * @param[in] payload_length Number of payload bytes.
- * @return Record disposition.
- */
 RemoteTelemetryRecordResult remote_telemetry_apply_primary(RemoteTelemetry *telemetry,
                                                            uint8_t channel, uint16_t key,
                                                            const uint8_t *payload,
@@ -689,19 +629,6 @@ RemoteTelemetryRecordResult remote_telemetry_apply_primary(RemoteTelemetry *tele
     return applied ? REMOTE_TELEMETRY_RECORD_APPLIED : REMOTE_TELEMETRY_RECORD_IGNORED;
 }
 
-/**
- * @brief Applies an overlay telemetry record.
- *
- * Copies at most the configured overlay capacity and marks the channel for report emission. A
- * valid unexpected key requests a clear only for channels that do not accept overlays.
- *
- * @param[in,out] telemetry Selected telemetry state.
- * @param[in] channel Target channel index.
- * @param[in] key Host record key.
- * @param[in] payload Host record payload.
- * @param[in] payload_length Number of payload bytes.
- * @return Record disposition.
- */
 RemoteTelemetryRecordResult remote_telemetry_apply_overlay(RemoteTelemetry *telemetry,
                                                            uint8_t channel, uint16_t key,
                                                            const uint8_t *payload,
@@ -732,17 +659,6 @@ RemoteTelemetryRecordResult remote_telemetry_apply_overlay(RemoteTelemetry *tele
     return REMOTE_TELEMETRY_RECORD_APPLIED;
 }
 
-/**
- * @brief Takes the next dirty telemetry wheel report.
- *
- * Services channel zero and then channel one on alternating calls when both are configured. Either
- * channel being dirty can cause the current channel's report to be emitted; only the emitted
- * channel's dirty state is consumed.
- *
- * @param[in,out] telemetry Selected telemetry state and report scheduler.
- * @param[out] output Encoded 30-byte wheel report.
- * @return True when a report was produced.
- */
 bool remote_telemetry_take_report(RemoteTelemetry *telemetry,
                                   uint8_t output[REMOTE_TELEMETRY_REPORT_SIZE]) {
     if (telemetry == NULL || output == NULL) {

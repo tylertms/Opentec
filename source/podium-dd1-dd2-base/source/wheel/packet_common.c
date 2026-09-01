@@ -2,27 +2,28 @@
 
 #include <stdint.h>
 
+/** @brief Internal common-packet identifiers, offsets, and normalization masks. */
 enum {
-    WHEEL_PACKET_COMMAND_AUTHENTICATE = 0xa6,
-    REQUEST_PAYLOAD_OFFSET = 2,
-    REQUEST_AXIS_OUTPUTS_OFFSET = 3,
-    REQUEST_MOTION_OFFSET = 5,
-    REQUEST_CONTROLS_OFFSET = 6,
-    REQUEST_RESERVED_AXES_OFFSET = 14,
-    REQUEST_AXIS_VALUES_OFFSET = 16,
-    REQUEST_MODE_BUTTONS_OFFSET = 20,
-    REQUEST_AXIS_REPORT_ENABLED_OFFSET = 21,
-    REQUEST_AUXILIARY_OFFSET = 22,
-    REQUEST_REPORT_MODE_OFFSET = 26,
-    REQUEST_RESERVED_REPORT_OFFSET = 27,
-    REQUEST_REPORT_CAPABILITIES_OFFSET = 28,
-    REQUEST_AXIS_LIMIT_OFFSET = 29,
-    FILTERED_AXIS_FIRST_CONTROL = 4,
-    PACKED_OUTPUT_CONTROL = 7,
-    FIRST_LATCH_BUTTON = 0x01,
-    SECOND_LATCH_BUTTON = 0x08,
-    FIRST_LATCH_FLAG = 0x01,
-    SECOND_LATCH_FLAG = 0x02,
+    WHEEL_PACKET_COMMAND_AUTHENTICATE = 0xa6, /**< Authenticated response command. */
+    REQUEST_PAYLOAD_OFFSET = 2,               /**< Request payload offset. */
+    REQUEST_AXIS_OUTPUTS_OFFSET = 3,          /**< Axis-output offset within the payload. */
+    REQUEST_MOTION_OFFSET = 5,                /**< Motion offset within the payload. */
+    REQUEST_CONTROLS_OFFSET = 6,              /**< Control offset within the payload. */
+    REQUEST_RESERVED_AXES_OFFSET = 14,        /**< Reserved-axis offset within the payload. */
+    REQUEST_AXIS_VALUES_OFFSET = 16,          /**< Axis-value offset within the payload. */
+    REQUEST_MODE_BUTTONS_OFFSET = 20,         /**< Mode-button offset within the payload. */
+    REQUEST_AXIS_REPORT_ENABLED_OFFSET = 21,  /**< Axis-report flag offset. */
+    REQUEST_AUXILIARY_OFFSET = 22,            /**< Auxiliary-data offset. */
+    REQUEST_REPORT_MODE_OFFSET = 26,          /**< Report-mode offset. */
+    REQUEST_RESERVED_REPORT_OFFSET = 27,      /**< Reserved-report offset. */
+    REQUEST_REPORT_CAPABILITIES_OFFSET = 28,  /**< Report-capability offset. */
+    REQUEST_AXIS_LIMIT_OFFSET = 29,           /**< Axis-limit offset. */
+    FILTERED_AXIS_FIRST_CONTROL = 4, /**< First control index treated as an auxiliary axis. */
+    PACKED_OUTPUT_CONTROL = 7,       /**< Control index carrying packed output bits. */
+    FIRST_LATCH_BUTTON = 0x01,       /**< First latch button mask. */
+    SECOND_LATCH_BUTTON = 0x08,      /**< Second latch button mask. */
+    FIRST_LATCH_FLAG = 0x01,         /**< First latch-control flag. */
+    SECOND_LATCH_FLAG = 0x02,        /**< Second latch-control flag. */
 };
 
 /**

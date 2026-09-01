@@ -4,12 +4,14 @@
 #include <stdint.h>
 #include <string.h>
 
+/** @brief Feature-upload framing and marker constants. */
 enum {
-    FEATURE_UPLOAD_HEADER_SIZE = 6,
-    FEATURE_UPLOAD_PAYLOAD_SIZE = USB_FEATURE_UPLOAD_PACKET_SIZE - FEATURE_UPLOAD_HEADER_SIZE,
-    FEATURE_UPLOAD_INITIAL = 0xf0,
-    FEATURE_UPLOAD_TERMINAL = 0xa0,
-    FEATURE_UPLOAD_MARKER = 0x80,
+    FEATURE_UPLOAD_HEADER_SIZE = 6, /**< Segmented packet header size. */
+    FEATURE_UPLOAD_PAYLOAD_SIZE = USB_FEATURE_UPLOAD_PACKET_SIZE -
+                                  FEATURE_UPLOAD_HEADER_SIZE, /**< Segmented packet payload size. */
+    FEATURE_UPLOAD_INITIAL = 0xf0,                            /**< Initial packet marker. */
+    FEATURE_UPLOAD_TERMINAL = 0xa0,                           /**< Terminal packet marker. */
+    FEATURE_UPLOAD_MARKER = 0x80, /**< Mark bit for segmented offsets. */
 };
 
 /**
@@ -25,18 +27,6 @@ static uint16_t decode_offset(uint8_t low, uint8_t high) {
     return (uint16_t)((uint16_t)high << 7) | (low & (FEATURE_UPLOAD_MARKER - 1u));
 }
 
-/**
- * @brief Initializes a segmented USB feature upload.
- *
- * Attaches the caller-owned assembly storage, selects the accepted report identifier, and resets
- * transfer progress.
- *
- * @param[out] upload Upload state to initialize.
- * @param[in] report_id Accepted feature report identifier.
- * @param[out] data Caller-owned upload assembly storage.
- * @param[in] capacity Available assembly byte count.
- * @return True when the state and assembly storage are usable.
- */
 bool usb_feature_upload_init(UsbFeatureUpload *upload, uint8_t report_id, uint8_t *data,
                              uint16_t capacity) {
     if (upload == 0 || data == 0 || capacity == 0) {
@@ -50,18 +40,6 @@ bool usb_feature_upload_init(UsbFeatureUpload *upload, uint8_t report_id, uint8_
     return true;
 }
 
-/**
- * @brief Accepts one segmented USB feature-upload packet.
- *
- * Reads the marked total length from the initial packet, assembles 58-byte continuation payloads
- * and the final short payload, requests acknowledgements after the initial and final data packets,
- * and completes after the empty terminal packet confirms the assembled length.
- *
- * @param[in,out] upload Active feature upload.
- * @param[in] packet Sixty-four-byte feature packet.
- * @param[in] length Received packet byte count.
- * @return Invalid input, continuation progress, acknowledgement request, or completed upload.
- */
 UsbFeatureUploadEvent
 usb_feature_upload_accept(UsbFeatureUpload *upload,
                           const uint8_t packet[USB_FEATURE_UPLOAD_PACKET_SIZE], uint8_t length) {

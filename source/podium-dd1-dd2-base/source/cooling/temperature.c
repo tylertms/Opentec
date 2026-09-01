@@ -3,10 +3,23 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/**
+ * @brief Number of entries in the thermistor resistance lookup table.
+ *
+ * Entries are ordered from the highest resistance to the lowest resistance in five-degree
+ * calibration increments.
+ */
 enum {
-    COOLING_TEMPERATURE_LOOKUP_COUNT = 34,
+    COOLING_TEMPERATURE_LOOKUP_COUNT =
+        34, /**< Number of resistance entries in the calibration curve. */
 };
 
+/**
+ * @brief Thermistor resistance calibration entries.
+ *
+ * The table maps resistance in ohms to five-degree temperature intervals used by
+ * cooling_temperature_from_resistance().
+ */
 static const float resistance_lookup[COOLING_TEMPERATURE_LOOKUP_COUNT] = {
     336851.0f,
     256115.796875f,
@@ -47,8 +60,8 @@ static const float resistance_lookup[COOLING_TEMPERATURE_LOOKUP_COUNT] = {
 /**
  * @brief Converts thermistor resistance through the board's 5-degree calibration curve.
  *
- * Interpolates between adjacent resistance entries and returns the defined sentinel outside the
- * supported calibration range.
+ * Interpolates between adjacent resistance entries. Returns -99.9 degrees at or above the highest
+ * table resistance and 999.9 degrees below the lowest table resistance.
  *
  * @param[in] resistance_ohms Thermistor resistance in ohms.
  * @return Interpolated temperature in degrees Celsius, or the out-of-range sentinel.

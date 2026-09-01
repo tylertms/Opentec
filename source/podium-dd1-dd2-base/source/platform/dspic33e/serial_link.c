@@ -5,54 +5,124 @@
 #include <stdint.h>
 #include <xc.h>
 
+/**
+ * @brief Framed and direct-mode serial-link hardware settings.
+ */
 enum {
-    SERIAL_LINK_TRANSMIT_SIZE = 72,
-    SERIAL_LINK_RECEIVE_SIZE = 68,
-    SERIAL_LINK_FRAME_OFFSET = 4,
-    SERIAL_LINK_ALIGNMENT_LIMIT = 5,
-    SERIAL_LINK_PADDING = 0xf0,
-    SERIAL_LINK_BAUD_PERIOD = 2,
-    SERIAL_LINK_TRANSMIT_DMA_REQUEST = 0x53,
-    SERIAL_LINK_RECEIVE_DMA_REQUEST = 0x52,
-    SERIAL_LINK_TRANSMIT_PRIORITY = 5,
-    SERIAL_LINK_RECEIVE_PRIORITY = 4,
-    SERIAL_LINK_TIMER_PRIORITY = 6,
-    SERIAL_LINK_TRANSMIT_GUARD_PERIOD = 0x4b0,
-    SERIAL_LINK_RECEIVE_TIMEOUT_PERIOD = 10000,
-    SERIAL_LINK_DIRECT_TRANSMIT_CAPACITY = 63,
-    SERIAL_LINK_DIRECT_RECEIVE_CAPACITY = 66,
-    SERIAL_LINK_DIRECT_BAUD_PERIOD = 0xc2,
-    SERIAL_LINK_DIRECT_SERVICE_PERIOD = 600,
-    SERIAL_LINK_DIRECT_TURNAROUND_TICKS = 2,
+    SERIAL_LINK_TRANSMIT_SIZE = 72, /**< Number of bytes sent by one framed DMA transfer. */
+    SERIAL_LINK_RECEIVE_SIZE = 68,  /**< Number of bytes received by one framed DMA transfer. */
+    SERIAL_LINK_FRAME_OFFSET = 4, /**< Offset of the transport packet within the transmit buffer. */
+    SERIAL_LINK_ALIGNMENT_LIMIT =
+        5, /**< Number of leading receive offsets searched for a frame marker. */
+    SERIAL_LINK_PADDING = 0xf0,  /**< Padding byte surrounding a framed transport packet. */
+    SERIAL_LINK_BAUD_PERIOD = 2, /**< UART3 baud-period register value for framed mode. */
+    SERIAL_LINK_TRANSMIT_DMA_REQUEST = 0x53,   /**< DMA request number for UART3 transmission. */
+    SERIAL_LINK_RECEIVE_DMA_REQUEST = 0x52,    /**< DMA request number for UART3 reception. */
+    SERIAL_LINK_TRANSMIT_PRIORITY = 5,         /**< Framed transmit-DMA interrupt priority. */
+    SERIAL_LINK_RECEIVE_PRIORITY = 4,          /**< Framed receive-DMA interrupt priority. */
+    SERIAL_LINK_TIMER_PRIORITY = 6,            /**< Serial-link Timer 6 interrupt priority. */
+    SERIAL_LINK_TRANSMIT_GUARD_PERIOD = 0x4b0, /**< Delay before arming framed receive DMA. */
+    SERIAL_LINK_RECEIVE_TIMEOUT_PERIOD =
+        10000, /**< Timer period for an incomplete framed response. */
+    SERIAL_LINK_DIRECT_TRANSMIT_CAPACITY = 63, /**< Maximum queued direct-mode request bytes. */
+    SERIAL_LINK_DIRECT_RECEIVE_CAPACITY = 66,  /**< Maximum retained direct-mode response bytes. */
+    SERIAL_LINK_DIRECT_BAUD_PERIOD = 0xc2, /**< UART3 baud-period register value for direct mode. */
+    SERIAL_LINK_DIRECT_SERVICE_PERIOD = 600, /**< Direct-mode service timer period. */
+    SERIAL_LINK_DIRECT_TURNAROUND_TICKS = 2, /**< Direct-mode receive-turnaround service ticks. */
 };
 
+/**
+ * @brief Action selected for Timer 6 completion.
+ */
 typedef enum {
-    SERIAL_LINK_TIMER_IDLE,
-    SERIAL_LINK_TIMER_RECEIVE_TIMEOUT,
-    SERIAL_LINK_TIMER_START_RECEIVE,
-    SERIAL_LINK_TIMER_DIRECT_SERVICE,
+    SERIAL_LINK_TIMER_IDLE,            /**< No Timer 6 action is pending. */
+    SERIAL_LINK_TIMER_RECEIVE_TIMEOUT, /**< Abort an incomplete framed receive. */
+    SERIAL_LINK_TIMER_START_RECEIVE,   /**< Arm framed receive DMA after transmit guard time. */
+    SERIAL_LINK_TIMER_DIRECT_SERVICE,  /**< Advance direct-mode transmission or reception. */
 } SerialLinkTimerAction;
 
+/**
+ * @brief Phase of the direct-mode serial exchange.
+ */
 typedef enum {
-    SERIAL_LINK_DIRECT_IDLE,
-    SERIAL_LINK_DIRECT_TRANSMITTING,
-    SERIAL_LINK_DIRECT_TURNAROUND,
+    SERIAL_LINK_DIRECT_IDLE, /**< Ready to start a queued request or collect response bytes. */
+    SERIAL_LINK_DIRECT_TRANSMITTING, /**< A queued request is being transmitted. */
+    SERIAL_LINK_DIRECT_TURNAROUND,   /**< Waiting before enabling response reception. */
 } SerialLinkDirectPhase;
 
+/**
+ * @brief UART3 transmit DMA storage for framed transfers.
+ */
 static volatile uint8_t transmit_dma[SERIAL_LINK_TRANSMIT_SIZE];
+
+/**
+ * @brief UART3 receive DMA storage for framed transfers.
+ */
 static volatile uint8_t receive_dma[SERIAL_LINK_RECEIVE_SIZE];
+
+/**
+ * @brief Most recently aligned received transport packet.
+ */
 static volatile uint8_t received_packet[SERIAL_PACKET_SIZE];
+
+/**
+ * @brief True while a framed request and response exchange is active.
+ */
 static volatile bool transfer_active;
+
+/**
+ * @brief True when an aligned framed response is ready for the foreground.
+ */
 static volatile bool frame_ready;
+
+/**
+ * @brief Timer 6 completion action currently scheduled.
+ */
 static volatile SerialLinkTimerAction timer_action;
+
+/**
+ * @brief Direct-mode transmit buffer.
+ */
 static volatile uint8_t direct_transmit[SERIAL_LINK_DIRECT_TRANSMIT_CAPACITY];
+
+/**
+ * @brief Direct-mode receive buffer.
+ */
 static volatile uint8_t direct_receive[SERIAL_LINK_DIRECT_RECEIVE_CAPACITY];
+
+/**
+ * @brief Number of direct-mode transmit bytes pending.
+ */
 static volatile uint8_t direct_transmit_length;
+
+/**
+ * @brief Index of the next direct-mode transmit byte.
+ */
 static volatile uint8_t direct_transmit_index;
+
+/**
+ * @brief Number of direct-mode response bytes retained.
+ */
 static volatile uint8_t direct_receive_length;
+
+/**
+ * @brief Remaining direct-mode turnaround service ticks.
+ */
 static volatile uint8_t direct_turnaround_ticks;
+
+/**
+ * @brief True after the link has entered direct updater mode.
+ */
 static volatile bool direct_mode;
+
+/**
+ * @brief True while a direct-mode request is being transmitted.
+ */
 static volatile bool direct_transmit_active;
+
+/**
+ * @brief Current direct-mode serial phase.
+ */
 static volatile SerialLinkDirectPhase direct_phase;
 
 /**
@@ -276,7 +346,7 @@ void platform_serial_link_init(void) {
 /**
  * @brief Resets the attached-device UART3 exchange layer.
  *
- * Stops all active DMA and timer work, clears pending receive data, and releases the transaction.
+ * Stops all active DMA and timer work, clears pending receive state, and releases the transaction.
  *
  */
 void platform_serial_link_reset(void) {
@@ -302,7 +372,7 @@ void platform_serial_link_reset(void) {
  * @brief Starts one attached-device request and response exchange.
  *
  * Places the 64-byte transport frame between four leading and trailing padding bytes, then starts
- * the transmit DMA. Only one exchange can be active at a time.
+ * the transmit DMA. Framed mode accepts only one exchange at a time.
  *
  * @param[in] packet Transport packet to transmit.
  * @return true when the exchange starts; false when another exchange is active.
@@ -337,7 +407,8 @@ bool platform_serial_link_start(const uint8_t packet[SERIAL_PACKET_SIZE]) {
 /**
  * @brief Takes the completed attached-device response frame.
  *
- * Copies a newly aligned 64-byte response into caller storage and consumes its ready state.
+ * Copies a newly aligned 64-byte response into caller storage and consumes its ready state. The
+ * operation returns false while direct mode is active.
  *
  * @param[out] packet Storage that receives the transport packet.
  * @return true when a frame was copied; false when no response is ready.
@@ -410,8 +481,9 @@ void platform_serial_link_enter_direct_mode(void) {
 /**
  * @brief Queues raw updater request bytes.
  *
- * Retains up to 63 bytes for the periodic direct-mode transmitter. A request remains pending until
- * UART interrupts send every byte and the service releases its length.
+ * Retains one nonempty request of up to 63 bytes for the periodic direct-mode transmitter. A
+ * request remains pending until UART interrupts send every byte and the service releases its
+ * length.
  *
  * @param[in] data Request bytes to transmit.
  * @param[in] length Request byte count.
@@ -432,8 +504,8 @@ bool platform_serial_link_direct_write(const uint8_t *data, uint8_t length) {
 /**
  * @brief Takes a requested number of raw updater response bytes.
  *
- * Copies and consumes the oldest received bytes only when the complete requested fragment is
- * available. Up to 66 valid response bytes are retained.
+ * Copies and consumes the oldest received bytes only in direct mode and when the complete requested
+ * fragment is available. Up to 66 valid response bytes are retained.
  *
  * @param[out] data Storage that receives the requested response fragment.
  * @param[in] length Requested response byte count.

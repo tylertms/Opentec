@@ -7,38 +7,77 @@
 
 #include "usb/buffer_descriptor.h"
 
+/**
+ * @brief USB controller dimensions, status masks, and control values.
+ */
 enum {
-    USB_ENDPOINT_COUNT = 5,
-    USB_BANK_COUNT = 2,
-    USB_DIRECTION_COUNT = 2,
-    USB_DESCRIPTOR_COUNT = USB_ENDPOINT_COUNT * USB_BANK_COUNT * USB_DIRECTION_COUNT,
-    USB_EVENT_CAPACITY = 12,
-    USB_INTERRUPT_PRIORITY = 4,
-    USB_PACKET_ID_SETUP = 0x0d,
-    USB_TRANSACTION_ODD_BANK = 0x04,
-    USB_TRANSACTION_INPUT = 0x08,
-    USB_TRANSACTION_ENDPOINT_MASK = 0xf0,
-    USB_ENDPOINT_STALL = 0x02,
-    USB_ENDPOINT_HANDSHAKE = 0x01,
-    USB_ENDPOINT_TRANSMIT = 0x04,
-    USB_ENDPOINT_RECEIVE = 0x08,
-    USB_ENDPOINT_CONTROL_DISABLE = 0x10,
-    USB_ENDPOINT_CONTROL = USB_ENDPOINT_HANDSHAKE | USB_ENDPOINT_TRANSMIT | USB_ENDPOINT_RECEIVE,
-    USB_ENDPOINT_DIRECTION_IN = 0x80,
-    USB_ENDPOINT_NUMBER_MASK = 0x0f,
-    USB_ENDPOINT_ADDRESS_RESERVED_MASK = 0x70,
+    USB_ENDPOINT_COUNT = 5,  /**< Number of endpoint numbers supported by the controller. */
+    USB_BANK_COUNT = 2,      /**< Number of ping-pong banks per endpoint direction. */
+    USB_DIRECTION_COUNT = 2, /**< Number of endpoint directions. */
+    USB_DESCRIPTOR_COUNT =
+        USB_ENDPOINT_COUNT * USB_BANK_COUNT * USB_DIRECTION_COUNT, /**< Total descriptor entries. */
+    USB_EVENT_CAPACITY = 12,              /**< Number of event-ring storage entries. */
+    USB_INTERRUPT_PRIORITY = 4,           /**< USB interrupt priority. */
+    USB_PACKET_ID_SETUP = 0x0d,           /**< USB packet identifier for a setup transaction. */
+    USB_TRANSACTION_ODD_BANK = 0x04,      /**< U1STAT mask for the odd ping-pong bank. */
+    USB_TRANSACTION_INPUT = 0x08,         /**< U1STAT mask for a device-to-host transaction. */
+    USB_TRANSACTION_ENDPOINT_MASK = 0xf0, /**< U1STAT mask for the endpoint number. */
+    USB_ENDPOINT_STALL = 0x02,            /**< Endpoint-control stall bit. */
+    USB_ENDPOINT_HANDSHAKE = 0x01,        /**< Endpoint-control handshake-enable bit. */
+    USB_ENDPOINT_TRANSMIT = 0x04,         /**< Endpoint-control device-to-host-enable bit. */
+    USB_ENDPOINT_RECEIVE = 0x08,          /**< Endpoint-control host-to-device-enable bit. */
+    USB_ENDPOINT_CONTROL_DISABLE = 0x10,  /**< Endpoint-control control-transfer-disable bit. */
+    USB_ENDPOINT_CONTROL = USB_ENDPOINT_HANDSHAKE | USB_ENDPOINT_TRANSMIT |
+                           USB_ENDPOINT_RECEIVE, /**< Default endpoint-zero control flags. */
+    USB_ENDPOINT_DIRECTION_IN = 0x80, /**< Endpoint-address device-to-host direction bit. */
+    USB_ENDPOINT_NUMBER_MASK = 0x0f,  /**< Endpoint-address number mask. */
+    USB_ENDPOINT_ADDRESS_RESERVED_MASK = 0x70, /**< Endpoint-address reserved-bit mask. */
 };
 
+/**
+ * @brief Delay cycles required before reconnecting the USB controller.
+ */
 static const uint32_t USB_RESTART_DELAY_CYCLES = 0x9000UL * 0x0c81UL * 2UL;
+
+/**
+ * @brief Delay cycles before asserting the USB resume signal.
+ */
 static const uint32_t USB_RESUME_PREPARE_DELAY_CYCLES = 0x0e10UL;
+
+/**
+ * @brief Delay cycles for the USB resume signal pulse.
+ */
 static const uint32_t USB_RESUME_SIGNAL_DELAY_CYCLES = 0x09c4UL;
 
+/**
+ * @brief USB buffer-descriptor table shared with the controller.
+ */
 static volatile UsbBufferDescriptor descriptors[USB_DESCRIPTOR_COUNT] __attribute__((aligned(512)));
+
+/**
+ * @brief USB packet buffers indexed by endpoint, direction, and ping-pong bank.
+ */
 static volatile uint8_t buffers[USB_ENDPOINT_COUNT][USB_DIRECTION_COUNT][USB_BANK_COUNT]
                                [PLATFORM_USB_PACKET_SIZE];
+
+/**
+ * @brief Interrupt-to-foreground USB event ring.
+ */
 static volatile PlatformUsbEvent events[USB_EVENT_CAPACITY];
+
+/**
+ * @brief Next event-ring insertion index.
+ */
 static volatile uint8_t event_head;
+
+/**
+ * @brief Next event-ring removal index.
+ */
 static volatile uint8_t event_tail;
+
+/**
+ * @brief Next ping-pong bank to try for each endpoint direction.
+ */
 static volatile uint8_t next_bank[USB_ENDPOINT_COUNT][USB_DIRECTION_COUNT];
 
 /**
@@ -96,8 +135,8 @@ static void arm_setup_bank(bool odd_bank) {
 /**
  * @brief Queues one USB controller event.
  *
- * Copies the completed packet into the eight-entry interrupt-to-main event ring and drops the
- * event when the ring is full.
+ * Copies the completed packet into the interrupt-to-main event ring and drops the event when the
+ * ring's usable slots are full.
  *
  * @param[in] type Controller event type.
  * @param[in] endpoint Endpoint associated with the event.
@@ -221,7 +260,7 @@ void platform_usb_detach(void) {
  * @brief Restarts the USB device controller after its reattachment delay.
  *
  * Disables the controller, discards queued transfers, waits for 0x9000 groups of 0x0c81
- * two-cycle delay operations, resets both endpoint banks, and reconnects to the bus.
+ * two-cycle delay operations, resets all endpoint banks, and reconnects to the bus.
  *
  */
 void platform_usb_restart(void) {
@@ -234,7 +273,7 @@ void platform_usb_restart(void) {
 }
 
 /**
- * @brief Signals USB resume after a suspended Xbox host-capability exchange.
+ * @brief Signals USB resume to the host.
  *
  * Disables the USB interrupt, waits 0x0e10 delay cycles, asserts the controller resume bit for
  * 0x09c4 delay cycles, clears the bit, and re-enables the USB interrupt.
@@ -385,7 +424,7 @@ void platform_usb_control_ready(void) {
 /**
  * @brief Applies the enumerated USB device address.
  *
- * Writes the low seven address bits after the status stage completes.
+ * Writes the low seven address bits to the controller.
  *
  * @param[in] address Host-assigned device address.
  */

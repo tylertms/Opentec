@@ -14,14 +14,17 @@
 #include "wheel/updater_command_service.h"
 #include "wheel/updater_direct_service.h"
 
+/** @brief Private timing, framing, and offsets used by the updater service. */
 enum {
-    USB_UPDATER_SERVICE_INTERVAL_MS = 10,
-    USB_UPDATER_PROBE_SIZE = 2,
-    USB_UPDATER_PROBE_RESPONSE_SIZE = 10,
-    USB_UPDATER_PROBE_COMMAND_OFFSET = 6,
-    USB_UPDATER_PROBE_RESPONSE_OPCODE = 0xa7,
+    USB_UPDATER_SERVICE_INTERVAL_MS = 10, /**< Minimum interval between updater USB polls. */
+    USB_UPDATER_PROBE_SIZE = 2,           /**< Number of bytes in the route probe request. */
+    USB_UPDATER_PROBE_RESPONSE_SIZE = 10, /**< Number of bytes in the expected probe response. */
+    USB_UPDATER_PROBE_COMMAND_OFFSET =
+        6, /**< Offset of the identity command in the probe response. */
+    USB_UPDATER_PROBE_RESPONSE_OPCODE = 0xa7, /**< Opcode expected in a valid probe response. */
 };
 
+/** @brief Two-byte request used to discover an updater route. */
 static const uint8_t probe[USB_UPDATER_PROBE_SIZE] = {0x5a, 0xa6};
 
 /**
@@ -234,15 +237,6 @@ static void handle_request(UsbUpdaterService *service, const UsbUpdaterServiceIn
     service->pending_response_length = USB_UPDATER_DEVICE_INFO_RESPONSE_SIZE;
 }
 
-/**
- * @brief Initializes updater USB session state.
- *
- * Attaches the shared command transport, selects automatic identity response behavior, and leaves
- * route and USB service inactive.
- *
- * @param[out] service Updater service to initialize.
- * @param[in,out] transport Shared command transport used by non-direct routes.
- */
 void usb_updater_service_init(UsbUpdaterService *service, CommandTransport *transport) {
     if (service == NULL) {
         return;
@@ -253,16 +247,6 @@ void usb_updater_service_init(UsbUpdaterService *service, CommandTransport *tran
     };
 }
 
-/**
- * @brief Selects and initializes an updater transport route.
- *
- * Accepts runtime modes one through six while idle, clears prior probe and host-response state,
- * and initializes the auxiliary bus, raw UART, or matching shared command adapter.
- *
- * @param[in,out] service Idle updater service selecting a route.
- * @param[in] mode Requested updater runtime mode.
- * @return True when the route was selected; otherwise false.
- */
 bool usb_updater_service_select_mode(UsbUpdaterService *service, UsbRuntimeMode mode) {
     if (service == NULL || mode < USB_RUNTIME_MODE_AUXILIARY ||
         mode > USB_RUNTIME_MODE_PROTOCOL_RECOVERY || exchange_active(service) ||
@@ -286,15 +270,6 @@ bool usb_updater_service_select_mode(UsbUpdaterService *service, UsbRuntimeMode 
     return true;
 }
 
-/**
- * @brief Selects auxiliary updater recovery after startup discovery fails.
- *
- * Initializes runtime mode two and satisfies its normal-controller shutdown prerequisite because
- * the startup discovery window already established that the normal endpoint is unavailable.
- *
- * @param[in,out] service Idle updater service selecting startup recovery.
- * @return True when the auxiliary recovery route was prepared; otherwise false.
- */
 bool usb_updater_service_select_startup_recovery(UsbUpdaterService *service) {
     if (!usb_updater_service_select_mode(service, USB_RUNTIME_MODE_AUXILIARY_RECOVERY)) {
         return false;
@@ -303,41 +278,17 @@ bool usb_updater_service_select_startup_recovery(UsbUpdaterService *service) {
     return true;
 }
 
-/**
- * @brief Requests the prerequisite auxiliary shutdown handshake.
- *
- * Forwards the request only while an auxiliary updater route is selected.
- *
- * @param[in,out] service Configured updater service receiving the request.
- */
 void usb_updater_service_request_auxiliary_handshake(UsbUpdaterService *service) {
     if (service != NULL && auxiliary_route(service->runtime_mode)) {
         wheel_updater_aux_service_request_handshake(&service->route.auxiliary);
     }
 }
 
-/**
- * @brief Reports whether the selected auxiliary route completed its shutdown handshake.
- *
- * Rejects non-auxiliary and null services without inspecting inactive union storage.
- *
- * @param[in] service Configured updater service to inspect.
- * @return True after the auxiliary handshake succeeds; otherwise false.
- */
 bool usb_updater_service_auxiliary_handshake_complete(const UsbUpdaterService *service) {
     return service != NULL && auxiliary_route(service->runtime_mode) &&
            wheel_updater_aux_service_handshake_complete(&service->route.auxiliary);
 }
 
-/**
- * @brief Starts the updater route discovery probe.
- *
- * Sends the two-byte 0x5A/0xA7 request used before updater USB activation and reports the probe
- * pending until its ten-byte response completes or the route rejects it.
- *
- * @param[in,out] service Idle configured updater route.
- * @return True when the probe started; otherwise false.
- */
 bool usb_updater_service_start_probe(UsbUpdaterService *service) {
     if (service == NULL || service->probe_status == USB_UPDATER_PROBE_PENDING ||
         exchange_active(service) || !start_exchange(service, probe, sizeof(probe))) {
@@ -348,31 +299,12 @@ bool usb_updater_service_start_probe(UsbUpdaterService *service) {
     return true;
 }
 
-/**
- * @brief Enables or disables updater USB request service.
- *
- * Applies the runtime transition's updater USB activation state without changing its selected
- * route, probe result, or response selector.
- *
- * @param[in,out] service Configured updater service.
- * @param[in] active True to accept updater USB requests; false to stop accepting them.
- */
 void usb_updater_service_set_usb_active(UsbUpdaterService *service, bool active) {
     if (service != NULL) {
         service->usb_active = active;
     }
 }
 
-/**
- * @brief Advances updater transport and USB request service.
- *
- * Services an active route on every call. After USB activation, polls only after each strict
- * ten-millisecond deadline, waits for both the updater input stream and route to become idle,
- * publishes retained responses, and accepts one supported host request.
- *
- * @param[in,out] service Configured updater service to advance.
- * @param[in] input Current time, board variant, wheel mode, and adapter state.
- */
 void usb_updater_service_run(UsbUpdaterService *service, const UsbUpdaterServiceInput *input) {
     if (service == NULL || input == NULL) {
         return;
@@ -403,26 +335,10 @@ void usb_updater_service_run(UsbUpdaterService *service, const UsbUpdaterService
     }
 }
 
-/**
- * @brief Returns the current updater route probe result.
- *
- * Exposes idle, pending, complete, or failed state without consuming it.
- *
- * @param[in] service Updater service to inspect.
- * @return Current probe result, or idle for a null service.
- */
 UsbUpdaterProbeStatus usb_updater_service_probe_status(const UsbUpdaterService *service) {
     return service == NULL ? USB_UPDATER_PROBE_IDLE : service->probe_status;
 }
 
-/**
- * @brief Takes a guarded updater USB reset request.
- *
- * Clears the one-shot reset latch after exposing it to the runtime owner.
- *
- * @param[in,out] service Updater service holding the reset latch.
- * @return True once for each accepted F8/09/01/FE request; otherwise false.
- */
 bool usb_updater_service_take_reset(UsbUpdaterService *service) {
     if (service == NULL || !service->reset_requested) {
         return false;

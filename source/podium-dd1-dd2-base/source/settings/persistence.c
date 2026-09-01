@@ -8,30 +8,31 @@
 #include "usb/tuning_profile_report.h"
 #include "wheel/position.h"
 
+/** @brief Reference-compatible indexes and markers for retained settings. */
 enum {
-    SETTINGS_FORMAT_INDEX = 0,
-    SETTINGS_FORMAT_VALUE = 0x0300,
-    WHEEL_CENTER_LOW_INDEX = 1,
-    WHEEL_CENTER_HIGH_INDEX = 2,
-    GLOBAL_FIRST_INDEX = 3,
-    GLOBAL_VALUE_COUNT = 2,
-    STANDARD_MODE_INDEX = 5,
-    SELECTED_PROFILE_INDEX = 6,
-    H_PATTERN_FIRST_INDEX = 7,
-    H_PATTERN_VALUE_COUNT = 9,
-    H_PATTERN_VALID_INDEX = 17,
-    SECURITY_CODE_INDEX = 18,
-    OPERATING_MODE_INDEX = 19,
-    OPERATING_MODE_PREFIX = 0xaa00,
-    STEERING_LIMIT_FIRST_INDEX = 20,
-    STEERING_LIMIT_PREFIX = 0xaa00,
-    WHEEL_AUXILIARY_OPTION_INDEX = 26,
-    WHEEL_AUXILIARY_OPTION_PREFIX = 0xaa00,
-    AUXILIARY_MINIMUM_INDEX = 27,
-    AUXILIARY_MAXIMUM_INDEX = 28,
-    AUXILIARY_RESET_INDEX = 29,
-    PROFILE_FIRST_INDEX = 30,
-    PROFILE_STORAGE_STRIDE = 26,
+    SETTINGS_FORMAT_INDEX = 0,              /**< Settings format value index. */
+    SETTINGS_FORMAT_VALUE = 0x0300,         /**< Supported settings format marker. */
+    WHEEL_CENTER_LOW_INDEX = 1,             /**< Low word of the wheel center. */
+    WHEEL_CENTER_HIGH_INDEX = 2,            /**< High word of the wheel center. */
+    GLOBAL_FIRST_INDEX = 3,                 /**< First global compatibility value. */
+    GLOBAL_VALUE_COUNT = 2,                 /**< Number of global compatibility values. */
+    STANDARD_MODE_INDEX = 5,                /**< Standard-mode value index. */
+    SELECTED_PROFILE_INDEX = 6,             /**< One-based selected-profile index. */
+    H_PATTERN_FIRST_INDEX = 7,              /**< First H-pattern calibration index. */
+    H_PATTERN_VALUE_COUNT = 9,              /**< Number of H-pattern retained values. */
+    H_PATTERN_VALID_INDEX = 17,             /**< H-pattern validity index. */
+    SECURITY_CODE_INDEX = 18,               /**< Security-code value index. */
+    OPERATING_MODE_INDEX = 19,              /**< Operating-mode value index. */
+    OPERATING_MODE_PREFIX = 0xaa00,         /**< Operating-mode validity prefix. */
+    STEERING_LIMIT_FIRST_INDEX = 20,        /**< First steering-limit index. */
+    STEERING_LIMIT_PREFIX = 0xaa00,         /**< Steering-limit validity prefix. */
+    WHEEL_AUXILIARY_OPTION_INDEX = 26,      /**< Wheel auxiliary-option index. */
+    WHEEL_AUXILIARY_OPTION_PREFIX = 0xaa00, /**< Wheel auxiliary-option marker. */
+    AUXILIARY_MINIMUM_INDEX = 27,           /**< Auxiliary minimum index. */
+    AUXILIARY_MAXIMUM_INDEX = 28,           /**< Auxiliary maximum index. */
+    AUXILIARY_RESET_INDEX = 29,             /**< Auxiliary reset flag index. */
+    PROFILE_FIRST_INDEX = 30,               /**< First retained profile index. */
+    PROFILE_STORAGE_STRIDE = 26,            /**< Retained values per profile block. */
 };
 
 /**
@@ -40,7 +41,7 @@ enum {
  * Leaves the destination unchanged when the indexed journal has no value.
  *
  * @param[in] index Reference-compatible settings index.
- * @param[in,out] value Destination retaining its prior value when the index is absent.
+ * @param[out] value Destination receiving the retained value when present.
  * @return True when the index has a retained value; otherwise false.
  */
 static bool value_read(uint16_t index, uint16_t *value) {
@@ -109,7 +110,7 @@ static void tuning_bank_state_load(BaseSettings *settings) {
  *
  * Reads the first 25 low-byte values from each 26-index profile block and decodes the same logical
  * values used by the device-control tuning report. The unimplemented final value in each reference
- * block remains untouched in flash.
+ * block is retained separately for round-trip persistence.
  *
  * @param[in,out] settings Base settings receiving tuning profiles.
  */
@@ -137,7 +138,7 @@ static void tuning_profiles_load(BaseSettings *settings) {
 /**
  * @brief Restores H-pattern calibration values.
  *
- * Accepts the eight consecutive thresholds only when reference validity index 17 contains one.
+ * Accepts the nine consecutive thresholds only when reference validity index 17 contains one.
  *
  * @param[in,out] settings Base settings receiving shifter calibration.
  */
@@ -159,7 +160,7 @@ static void h_pattern_load(BaseSettings *settings) {
  * @brief Restores the three-digit security code.
  *
  * Recognizes the A marker nibble and extracts the three decimal digits from consecutive nibbles.
- * Invalid or absent encodings leave security disabled.
+ * Invalid or absent encodings leave the existing security state unchanged.
  *
  * @param[in,out] settings Base settings receiving security-code state.
  */
@@ -231,9 +232,9 @@ static void extended_settings_load(BaseSettings *settings) {
 }
 
 /**
- * @brief Loads retained compatibility values and the selected base mode.
+ * @brief Loads retained compatibility values and operating mode.
  *
- * Restores the six global compatibility words and accepts operating-mode index 19 only when its
+ * Restores the two global compatibility words and accepts operating-mode index 19 only when its
  * stored high byte contains the expected validity prefix.
  *
  * @param[in,out] settings Base settings receiving retained compatibility state.
@@ -254,7 +255,7 @@ static void compatibility_settings_load(BaseSettings *settings) {
  * @brief Writes six logical tuning profiles.
  *
  * Encodes each profile in device-control order and writes the first 25 values of its 26-index
- * reference block without disturbing the unknown final index.
+ * reference block and re-emits the retained unknown final index.
  *
  * @param[in] settings Base settings containing the profiles.
  * @return True when every implemented profile value is retained; otherwise false.
@@ -280,7 +281,7 @@ static bool tuning_profiles_save(const BaseSettings *settings) {
 /**
  * @brief Writes H-pattern calibration values and validity.
  *
- * Writes all eight thresholds before publishing validity index 17 so incomplete first-time writes
+ * Writes all nine thresholds before publishing validity index 17 so incomplete first-time writes
  * are not accepted as calibrated.
  *
  * @param[in] settings Base settings containing shifter calibration.
@@ -341,16 +342,6 @@ static bool steering_limits_save(const BaseSettings *settings) {
     return true;
 }
 
-/**
- * @brief Restores retained base settings.
- *
- * Initializes the six-page settings journal, supplies logical defaults, and loads every supported
- * reference or OpenTec setting only after format index zero contains 0x0300.
- *
- * @param[out] persistence Retained-settings service state.
- * @param[out] settings Restored or default base settings.
- * @return True when a formatted settings journal was restored; otherwise false.
- */
 bool base_settings_persistence_load(BaseSettingsPersistence *persistence, BaseSettings *settings) {
     base_settings_defaults(settings);
     persistence->has_record = false;
@@ -374,27 +365,10 @@ bool base_settings_persistence_load(BaseSettingsPersistence *persistence, BaseSe
     return true;
 }
 
-/**
- * @brief Marks retained settings as changed.
- *
- * Defers journal updates until an explicit save boundary.
- *
- * @param[in,out] persistence Retained-settings state to mark.
- */
 void base_settings_persistence_mark_dirty(BaseSettingsPersistence *persistence) {
     persistence->dirty = true;
 }
 
-/**
- * @brief Saves changed base settings.
- *
- * Appends all implemented reference-compatible values and writes format index zero last when
- * initializing an erased journal. Individual unchanged values do not consume flash records.
- *
- * @param[in,out] persistence Retained-settings state.
- * @param[in] settings Current base settings.
- * @return Saved, retry, or idle according to the write result and dirty state.
- */
 BaseSettingsPersistenceResult base_settings_persistence_save(BaseSettingsPersistence *persistence,
                                                              const BaseSettings *settings) {
     if (!persistence->dirty) {

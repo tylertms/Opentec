@@ -3,21 +3,24 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/**
+ * @brief Pedal discovery, legacy, and V3 protocol constants.
+ */
 enum {
-    PEDAL_V3_PROTOCOL_RESPONSE = 0x15,
-    PEDAL_V4_PROTOCOL_RESPONSE = 0x26,
-    PEDAL_LEGACY_AXIS_1_COMMAND = 0x40,
-    PEDAL_LEGACY_AXIS_2_COMMAND = 0x80,
-    PEDAL_LEGACY_AXIS_3_COMMAND = 0xc0,
-    PEDAL_LEGACY_CHANNEL_MASK = 0x3f,
-    PEDAL_V3_HANDSHAKE_FRAME = 2,
-    PEDAL_V3_STATUS_FRAME = 0,
-    PEDAL_V3_INPUT_COMMAND_FRAME = 3,
-    PEDAL_V3_CONFIGURATION_FRAME = 6,
-    PEDAL_V3_KEEPALIVE_FRAME = 0x10,
-    PEDAL_V3_NORMAL_BRAKE_STEP = 10,
-    PEDAL_V3_CALIBRATION_BRAKE_STEP = 5,
-    PEDAL_V3_DIRECT_CONTROL_MASK = 0x0f,
+    PEDAL_V3_PROTOCOL_RESPONSE = 0x15,   /**< V3 protocol response byte. */
+    PEDAL_V4_PROTOCOL_RESPONSE = 0x26,   /**< V4 protocol response byte. */
+    PEDAL_LEGACY_AXIS_1_COMMAND = 0x40,  /**< Legacy first-axis request prefix. */
+    PEDAL_LEGACY_AXIS_2_COMMAND = 0x80,  /**< Legacy second-axis request prefix. */
+    PEDAL_LEGACY_AXIS_3_COMMAND = 0xc0,  /**< Legacy third-axis request prefix. */
+    PEDAL_LEGACY_CHANNEL_MASK = 0x3f,    /**< Mask for legacy channel selector bits. */
+    PEDAL_V3_HANDSHAKE_FRAME = 2,        /**< V3 handshake frame type. */
+    PEDAL_V3_STATUS_FRAME = 0,           /**< V3 status frame type. */
+    PEDAL_V3_INPUT_COMMAND_FRAME = 3,    /**< V3 input-command frame type. */
+    PEDAL_V3_CONFIGURATION_FRAME = 6,    /**< V3 configuration frame type. */
+    PEDAL_V3_KEEPALIVE_FRAME = 0x10,     /**< V3 calibration keepalive frame type. */
+    PEDAL_V3_NORMAL_BRAKE_STEP = 10,     /**< Brake-force step outside fine calibration. */
+    PEDAL_V3_CALIBRATION_BRAKE_STEP = 5, /**< Brake-force step during fine calibration. */
+    PEDAL_V3_DIRECT_CONTROL_MASK = 0x0f, /**< Mask covering direct V3 controls. */
 };
 
 /**

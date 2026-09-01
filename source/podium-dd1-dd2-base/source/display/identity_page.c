@@ -5,19 +5,24 @@
 #include "display/identity_logo.h"
 #include "display/text.h"
 
+/**
+ * @brief Defines identity-page colors and fixed layout coordinates.
+ *
+ * The coordinates place the logo and selected model name in the local display framebuffer.
+ */
 enum {
-    IDENTITY_COLOR = 15,
-    IDENTITY_LOGO_X = 0,
-    IDENTITY_LOGO_Y = 19,
-    IDENTITY_MODEL_X = 70,
-    IDENTITY_PLAYSTATION_MODEL_X = 63,
-    IDENTITY_MODEL_Y = 50,
+    IDENTITY_COLOR = 15,               /**< Foreground grayscale value for identity-page content. */
+    IDENTITY_LOGO_X = 0,               /**< Logo left coordinate. */
+    IDENTITY_LOGO_Y = 19,              /**< Logo top coordinate. */
+    IDENTITY_MODEL_X = 70,             /**< Standard model-name left coordinate. */
+    IDENTITY_PLAYSTATION_MODEL_X = 63, /**< PS4 model-name left coordinate. */
+    IDENTITY_MODEL_Y = 50,             /**< Model-name top coordinate. */
 };
 
 /**
  * @brief Renders the base identity page.
  *
- * Shows the Fanatec logo bitmap and the hardware-selected Podium Wheel Base DD1 or DD2 model text,
+ * Shows the Opentec logo bitmap and the hardware-selected Podium Wheel Base DD1 or DD2 model text,
  * including the PS4 suffix when the option strap is set.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.

@@ -7,12 +7,13 @@
 #include "usb/device.h"
 #include "usb/vendor_command.h"
 
+/** @brief Diagnostic vendor-report identifiers and command values. */
 enum {
-    DIAGNOSTIC_REPORT_IDENTIFIER = 0x0903,
-    DIAGNOSTIC_REPORT_ROUTE = 4,
-    DIAGNOSTIC_REPORT_ENABLE = 1,
-    DIAGNOSTIC_REPORT_REFRESH = 2,
-    DIAGNOSTIC_REPORT_ENABLED_VALUE = 0xff,
+    DIAGNOSTIC_REPORT_IDENTIFIER = 0x0903,  /**< Diagnostic report identifier. */
+    DIAGNOSTIC_REPORT_ROUTE = 4,            /**< Diagnostic vendor route number. */
+    DIAGNOSTIC_REPORT_ENABLE = 1,           /**< Diagnostic enable command. */
+    DIAGNOSTIC_REPORT_REFRESH = 2,          /**< Diagnostic refresh command. */
+    DIAGNOSTIC_REPORT_ENABLED_VALUE = 0xff, /**< Command value that enables publication. */
 };
 
 /**
@@ -93,29 +94,12 @@ static void encode_report(const UsbDiagnosticSnapshot *snapshot,
     output[63] = (uint8_t)snapshot->wheel_velocity;
 }
 
-/**
- * @brief Initializes diagnostic report publication state.
- *
- * Disables publication and clears the forced-refresh flag and previous report image.
- *
- * @param[out] service Diagnostic report service to initialize.
- */
 void usb_diagnostic_report_service_init(UsbDiagnosticReportService *service) {
     if (service != 0) {
         *service = (UsbDiagnosticReportService){0};
     }
 }
 
-/**
- * @brief Applies a vendor command 4 diagnostic request.
- *
- * Action one enables publication only when its value is 0xFF. Action two forces the next enabled
- * snapshot to be published even when its bytes are unchanged.
- *
- * @param[in,out] service Diagnostic report service receiving the request.
- * @param[in] command Decoded vendor command and arguments.
- * @return True when the command uses the diagnostic snapshot route.
- */
 bool usb_diagnostic_report_apply_command(UsbDiagnosticReportService *service,
                                          const UsbVendorCommand *command) {
     if (service == 0 || command == 0 || command->kind != USB_VENDOR_COMMAND_DIAGNOSTIC_SNAPSHOT ||
@@ -130,17 +114,6 @@ bool usb_diagnostic_report_apply_command(UsbDiagnosticReportService *service,
     return true;
 }
 
-/**
- * @brief Prepares a changed or explicitly refreshed diagnostic report.
- *
- * Encodes the current snapshot and compares it with the last committed 64-byte report while
- * publication is enabled.
- *
- * @param[in] service Diagnostic report publication state.
- * @param[in] snapshot Logical diagnostic values to encode.
- * @param[out] output Encoded report when publication is due.
- * @return True when the caller should submit the encoded report.
- */
 bool usb_diagnostic_report_prepare(const UsbDiagnosticReportService *service,
                                    const UsbDiagnosticSnapshot *snapshot,
                                    uint8_t output[USB_DEVICE_REPORT_SIZE]) {
@@ -152,14 +125,6 @@ bool usb_diagnostic_report_prepare(const UsbDiagnosticReportService *service,
            memcmp(output, service->previous, USB_DEVICE_REPORT_SIZE) != 0;
 }
 
-/**
- * @brief Commits a submitted diagnostic report.
- *
- * Retains the exact 64-byte report for change detection and clears the forced-refresh flag.
- *
- * @param[in,out] service Diagnostic report service completing publication.
- * @param[in] report Submitted 64-byte diagnostic report.
- */
 void usb_diagnostic_report_commit(UsbDiagnosticReportService *service,
                                   const uint8_t report[USB_DEVICE_REPORT_SIZE]) {
     if (service == 0 || report == 0) {

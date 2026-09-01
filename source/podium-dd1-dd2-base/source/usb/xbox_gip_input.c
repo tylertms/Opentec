@@ -4,13 +4,14 @@
 #include <stdint.h>
 #include <string.h>
 
+/** @brief Wheel modes with mode-specific Xbox GIP input mappings. */
 enum {
-    WHEEL_MODE_CRC = 6,
-    WHEEL_MODE_NINE = 9,
-    WHEEL_MODE_TEN = 10,
-    WHEEL_MODE_ELEVEN = 11,
-    WHEEL_MODE_CRC_AUTHENTICATED = 21,
-    WHEEL_MODE_EXTENDED_BUTTON = 29,
+    WHEEL_MODE_CRC = 6,                /**< CRC wheel mode. */
+    WHEEL_MODE_NINE = 9,               /**< Wheel mode 9. */
+    WHEEL_MODE_TEN = 10,               /**< Wheel mode 10. */
+    WHEEL_MODE_ELEVEN = 11,            /**< Wheel mode 11. */
+    WHEEL_MODE_CRC_AUTHENTICATED = 21, /**< Authenticated CRC wheel mode. */
+    WHEEL_MODE_EXTENDED_BUTTON = 29,   /**< Wheel mode with a dedicated extended button. */
 };
 
 /**
@@ -57,8 +58,8 @@ static void map_primary_buttons(UsbXboxGipInputBuilder *builder, const UsbXboxGi
 /**
  * @brief Maps secondary wheel controls into GIP extension fields.
  *
- * Packs the four common secondary inputs, mode-specific control bits, six-button status field,
- * and the dedicated mode-29 extension input.
+ * Packs common secondary-input flags, mode-specific control bits, and the dedicated mode-29
+ * extension input.
  *
  * @param[in] state Current normalized wheel input.
  * @param[out] snapshot Xbox snapshot receiving extension fields.
@@ -92,28 +93,10 @@ static void map_extended_buttons(const UsbXboxGipInputState *state,
         state->wheel_mode == WHEEL_MODE_EXTENDED_BUTTON ? read_bit(extended, 10) : 0;
 }
 
-/**
- * @brief Initializes Xbox GIP input composition.
- *
- * Clears the alternating packet state so the first built snapshot asserts its packet bit.
- *
- * @param[out] builder Input builder to initialize.
- */
 void usb_xbox_gip_input_builder_init(UsbXboxGipInputBuilder *builder) {
     *builder = (UsbXboxGipInputBuilder){0};
 }
 
-/**
- * @brief Builds a logical Xbox GIP input snapshot.
- *
- * Maps normalized wheel buttons and extension controls, copies the live steering and pedal axes,
- * lays out three rotary selector groups around the signed encoder event, and scales the active
- * force-feedback percentage to the protocol byte range.
- *
- * @param[in,out] builder Input builder containing the alternating packet state.
- * @param[in] state Current normalized wheel, pedal, profile, and shifter state.
- * @param[out] snapshot Logical Xbox GIP snapshot.
- */
 void usb_xbox_gip_input_build(UsbXboxGipInputBuilder *builder, const UsbXboxGipInputState *state,
                               UsbXboxGipInputSnapshot *snapshot) {
     *snapshot = (UsbXboxGipInputSnapshot){0};

@@ -3,24 +3,17 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/**
+ * @brief Encoded offsets and sizes for force-feedback script control packets.
+ */
 enum {
-    SCRIPT_CONTROL_OPCODE = 0x0c,
-    SCRIPT_CONTROL_FIRST_SLOT_OFFSET = 4,
-    SCRIPT_CONTROL_PACKED_SLOT_COUNT = 8,
-    SCRIPT_CONTROL_RUNTIME_MODE_OFFSET = 12,
-    SCRIPT_CONTROL_PACKET_SIZE = 13,
+    SCRIPT_CONTROL_OPCODE = 0x0c,            /**< Script-control packet opcode. */
+    SCRIPT_CONTROL_FIRST_SLOT_OFFSET = 4,    /**< Offset of the first packed slot-command byte. */
+    SCRIPT_CONTROL_PACKED_SLOT_COUNT = 8,    /**< Number of packed bytes carrying slot commands. */
+    SCRIPT_CONTROL_RUNTIME_MODE_OFFSET = 12, /**< Offset of the runtime-mode byte. */
+    SCRIPT_CONTROL_PACKET_SIZE = 13,         /**< Minimum packet length required for decoding. */
 };
 
-/**
- * @brief Decode the script-slot controls and force-feedback runtime mode.
- *
- * Reads two four-bit slot commands from each of bytes 4 through 11 and reads the shared runtime
- * mode from byte 12 of a script-control feature packet.
- *
- * @param[in] packet Feature-command packet beginning with the script-control opcode.
- * @param[in] length Number of available packet bytes.
- * @return The decoded controls and whether the packet contains the complete command.
- */
 ForceFeedbackScriptControlResult force_feedback_script_control_decode(const uint8_t *packet,
                                                                       size_t length) {
     ForceFeedbackScriptControlResult result = {0};
@@ -39,17 +32,6 @@ ForceFeedbackScriptControlResult force_feedback_script_control_decode(const uint
     return result;
 }
 
-/**
- * @brief Apply a lifecycle command to one force-feedback script slot.
- *
- * Clear always empties the slot. Start is ignored for an empty slot; otherwise it clears all four
- * slot values and all four timing metrics before activating the slot. Stop is ignored for an empty
- * slot. Pause and resume apply only to active and paused slots, respectively.
- *
- * @param[in,out] slot Script slot to update.
- * @param[in] command Requested clear, start, stop, pause, or resume operation.
- * @return True when the command changes or clears the slot state.
- */
 bool force_feedback_script_slot_apply(ForceFeedbackScriptSlot *slot,
                                       ForceFeedbackScriptSlotCommand command) {
     if (slot == NULL) {
@@ -96,15 +78,6 @@ bool force_feedback_script_slot_apply(ForceFeedbackScriptSlot *slot,
     }
 }
 
-/**
- * @brief Advance the force-feedback timer state by one interrupt.
- *
- * Advances the engine clock in active and zero-output modes, advances the active slot clock while
- * a script is executing, and always advances the motion clock.
- *
- * @param[in,out] clock Runtime clock state containing engine, slot, and motion counters.
- * @param[in] mode Current force-feedback runtime mode.
- */
 void force_feedback_script_clock_tick(ForceFeedbackScriptClock *clock,
                                       ForceFeedbackRuntimeMode mode) {
     if (clock == NULL) {

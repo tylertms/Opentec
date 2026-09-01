@@ -4,15 +4,16 @@
 #include <stdint.h>
 #include <string.h>
 
+/** @brief Tuning-status command, report, and protocol constants. */
 enum {
-    TUNING_STATUS_ROUTE = 8,
-    TUNING_STATUS_ENABLE = 1,
-    TUNING_STATUS_REFRESH = 2,
-    TUNING_STATUS_ENABLED_VALUE = 0xff,
-    TUNING_STATUS_HARDWARE_HIGH = 9,
-    TUNING_STATUS_PROTOCOL_LOW = 3,
-    TUNING_STATUS_PROTOCOL_HIGH = 1,
-    TUNING_STATUS_CODE = 0x0d,
+    TUNING_STATUS_ROUTE = 8,            /**< Vendor command route for tuning status. */
+    TUNING_STATUS_ENABLE = 1,           /**< Enable or disable action. */
+    TUNING_STATUS_REFRESH = 2,          /**< Explicit refresh action. */
+    TUNING_STATUS_ENABLED_VALUE = 0xff, /**< Argument value that enables publication. */
+    TUNING_STATUS_HARDWARE_HIGH = 9,    /**< Fixed hardware-status field value. */
+    TUNING_STATUS_PROTOCOL_LOW = 3,     /**< Fixed protocol field low value. */
+    TUNING_STATUS_PROTOCOL_HIGH = 1,    /**< Fixed protocol field high value. */
+    TUNING_STATUS_CODE = 0x0d,          /**< Fixed tuning-status report code. */
 };
 
 /**
@@ -90,30 +91,12 @@ static void encode_report(const UsbTuningStatusSnapshot *snapshot,
     output[56] = snapshot->interface_gate ? 1 : 0;
 }
 
-/**
- * @brief Initializes the USB tuning-status report service.
- *
- * Disables publication and clears refresh, previous-report, and comparison state.
- *
- * @param[out] service Report service to initialize.
- */
 void usb_tuning_status_report_service_init(UsbTuningStatusReportService *service) {
     if (service != 0) {
         *service = (UsbTuningStatusReportService){0};
     }
 }
 
-/**
- * @brief Applies one host tuning-status control command.
- *
- * Claims valid tuning-status commands, enables publication only for value 0xFF, and marks the next
- * enabled report dirty for refresh command two. Unknown subcommands are claimed without a state
- * change.
- *
- * @param[in,out] service Tuning-status publication state.
- * @param[in] command Decoded vendor tuning-status command.
- * @return True when the command belongs to the tuning-status service.
- */
 bool usb_tuning_status_report_apply_command(UsbTuningStatusReportService *service,
                                             const UsbVendorCommand *command) {
     if (service == 0 || command == 0 || command->kind != USB_VENDOR_COMMAND_TUNING_STATUS ||
@@ -128,17 +111,6 @@ bool usb_tuning_status_report_apply_command(UsbTuningStatusReportService *servic
     return true;
 }
 
-/**
- * @brief Prepares a changed or explicitly refreshed tuning-status report.
- *
- * Encodes the current snapshot whenever publication is enabled, then compares it with the last
- * committed report. Disabled or invalid requests leave the destination untouched.
- *
- * @param[in] service Tuning-status publication and comparison state.
- * @param[in] snapshot Current tuning-status sources.
- * @param[out] output Encoded 64-byte candidate report.
- * @return True when the candidate is dirty, new, or different from the committed report.
- */
 bool usb_tuning_status_report_prepare(const UsbTuningStatusReportService *service,
                                       const UsbTuningStatusSnapshot *snapshot,
                                       uint8_t output[USB_DEVICE_REPORT_SIZE]) {
@@ -150,15 +122,6 @@ bool usb_tuning_status_report_prepare(const UsbTuningStatusReportService *servic
            memcmp(output, service->previous, USB_DEVICE_REPORT_SIZE) != 0;
 }
 
-/**
- * @brief Commits a published tuning-status report.
- *
- * Retains all 64 bytes for change detection, marks the comparison baseline valid, and clears the
- * explicit refresh request.
- *
- * @param[in,out] service Tuning-status publication and comparison state.
- * @param[in] report Successfully published 64-byte report.
- */
 void usb_tuning_status_report_commit(UsbTuningStatusReportService *service,
                                      const uint8_t report[USB_DEVICE_REPORT_SIZE]) {
     if (service == 0 || report == 0) {

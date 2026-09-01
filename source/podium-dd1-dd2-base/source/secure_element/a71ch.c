@@ -4,20 +4,24 @@
 #include <stdint.h>
 #include <string.h>
 
+/** @brief Internal A71CH status and session constants. */
 enum {
-    A71CH_STATUS_READY = 0x07,
-    A71CH_STATUS_PROCESSING = 0x17,
-    A71CH_UNEXPECTED_RETRY_LIMIT = 2,
-    A71CH_SESSION_ATTEMPT_LIMIT = 3,
-    A71CH_SESSION_RETRY_DELAY_MS = 5,
-    A71CH_ATR_SIZE = 29,
+    A71CH_STATUS_READY = 0x07,        /**< Status byte indicating that the device is ready. */
+    A71CH_STATUS_PROCESSING = 0x17,   /**< Status byte indicating that processing continues. */
+    A71CH_UNEXPECTED_RETRY_LIMIT = 2, /**< Maximum retry count for unexpected status bytes. */
+    A71CH_SESSION_ATTEMPT_LIMIT =
+        3, /**< Maximum completed attempts at one stage before restarting the session. */
+    A71CH_SESSION_RETRY_DELAY_MS = 5, /**< Delay before retrying an invalid soft-reset response. */
+    A71CH_ATR_SIZE = 29,              /**< Number of bytes in the expected answer-to-reset. */
 };
 
+/** @brief Expected A71CH answer-to-reset byte sequence. */
 static const uint8_t expected_atr[A71CH_ATR_SIZE] = {
     0xb8, 0x04, 0x11, 0x01, 0x05, 0x04, 0xb9, 0x02, 0x01, 0x01, 0xba, 0x01, 0x01, 0xbb, 0x0c,
     0x41, 0x37, 0x31, 0x30, 0x35, 0x43, 0x43, 0x32, 0x34, 0x32, 0x52, 0x31, 0xbc, 0x00,
 };
 
+/** @brief Fixed-control request metadata indexed by A71chCommand. */
 static const A71chControlRequest control_requests[] = {
     [A71CH_WAKE_UP] = {.selector = 0x0f},
     [A71CH_SOFT_RESET] = {.selector = 0x1f, .response_length = 2},
@@ -39,7 +43,7 @@ void a71ch_status_poll_init(A71chStatusPoll *poll) { poll->retry_count = 0; }
  * @brief Evaluates one SCI2C status response while waiting for the A71CH.
  *
  * Status 0x07 reports that command processing is complete and clears the retry count. Status 0x17
- * reports that processing continues. Other values receive three attempts before rejection.
+ * reports that processing continues. Other values are retried until the retry limit is exceeded.
  *
  * @param[in,out] poll Persistent status retry state.
  * @param[in] response SCI2C status response byte.
@@ -344,9 +348,9 @@ void a71ch_exchange_init(A71chExchange *exchange) {
  * @brief Processes a ready or command-acceptance status.
  *
  * During the initial ready poll, response 0x07 advances to command submission, response 0x17
- * remains busy, and three unexpected responses are retried before the fourth fails. During command
- * acceptance, response 0x07 advances to the final response, response 0x17 remains busy, and every
- * other response fails immediately.
+ * remains busy, and unexpected responses are retried until the retry limit is exceeded. During
+ * command acceptance, response 0x07 advances to the final response, response 0x17 remains busy,
+ * and every other response fails immediately.
  *
  * @param[in,out] exchange Active command exchange.
  * @param[in] response Device status byte.
@@ -459,8 +463,8 @@ bool a71ch_session_current(A71chSession *session, uint32_t now_ms, A71chCommand 
 /**
  * @brief Applies one completed A71CH session command.
  *
- * Advances through wake-up, soft reset, the 29-byte A71CH answer-to-reset, maximum-size parameter
- * exchange response 0xCC, and ready status 0x07. Invalid soft-reset responses wait five
+ * Advances through wake-up, soft reset, the 29-byte A71CH answer-to-reset, a parameter-exchange
+ * response with status 0xCC, and ready status 0x07. Invalid soft-reset responses wait five
  * milliseconds. Four failed responses at one stage restart the session, as does a negative final
  * status.
  *

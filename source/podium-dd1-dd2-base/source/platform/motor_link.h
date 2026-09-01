@@ -4,11 +4,46 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-enum { PLATFORM_MOTOR_LINK_FRAME_SIZE = 13 };
+/**
+ * @brief Number of bytes in one motor-link SPI frame.
+ */
+enum {
+    PLATFORM_MOTOR_LINK_FRAME_SIZE = 13 /**< Number of bytes in one motor-link SPI frame. */
+};
 
+/**
+ * @brief Initializes the motor-link SPI transport.
+ *
+ * Configures SPI1 and DMA and primes transmission with the supplied initial frame.
+ *
+ * @param[in] initial_frame First frame to transmit.
+ */
 void platform_motor_link_init(const uint8_t initial_frame[PLATFORM_MOTOR_LINK_FRAME_SIZE]);
+
+/**
+ * @brief Enables motor-link overflow recovery.
+ *
+ * Marks the transport synchronized so SPI error interrupts may recover receive overflow.
+ */
 void platform_motor_link_confirm_synchronized(void);
+
+/**
+ * @brief Queues the next motor-link transmit frame.
+ *
+ * Replaces the active and pending frame and restarts DMA transmission.
+ *
+ * @param[in] frame Frame to transmit.
+ */
 void platform_motor_link_set_transmit(const uint8_t frame[PLATFORM_MOTOR_LINK_FRAME_SIZE]);
+
+/**
+ * @brief Takes one completed motor-link receive frame.
+ *
+ * Copies and consumes the newest completed frame.
+ *
+ * @param[out] frame Destination for the received frame.
+ * @return True when a frame was available; otherwise false.
+ */
 bool platform_motor_link_take_received(uint8_t frame[PLATFORM_MOTOR_LINK_FRAME_SIZE]);
 
 #endif

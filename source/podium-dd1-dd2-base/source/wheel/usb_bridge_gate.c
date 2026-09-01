@@ -4,7 +4,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-enum { WHEEL_USB_BRIDGE_PROTOCOL_TIMEOUT_MS = 2000 };
+/** @brief USB bridge protocol timeout. */
+enum {
+    WHEEL_USB_BRIDGE_PROTOCOL_TIMEOUT_MS =
+        2000 /**< Timeout after first exchange in milliseconds. */
+};
 
 /**
  * @brief Initializes USB bridge protocol gating.

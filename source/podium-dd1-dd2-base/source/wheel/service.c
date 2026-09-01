@@ -13,31 +13,32 @@
 #include "wheel/output_reports.h"
 #include "wheel/protocol.h"
 
+/** @brief Attached-wheel protocol, packet-layout, and timing constants. */
 enum {
-    WHEEL_PROTOCOL_TRANSPORT_COMMAND = 2,
-    WHEEL_BUTTON_COMMAND = 3,
-    WHEEL_BUTTON_REQUEST_READY = 1,
-    WHEEL_BUTTON_RESPONSE_READY = 2,
-    WHEEL_BUTTON_PRIMARY_RESPONSE = 0xe0,
-    WHEEL_BUTTON_SECONDARY_RESPONSE = 0xc0,
-    WHEEL_BUTTON_RESPONSE_MASK = 0xe0,
-    WHEEL_BUTTON_VALUE_MASK = 0x1f,
-    WHEEL_PROTOCOL_ACTIVITY_TIMEOUT_MS = 2000,
-    WHEEL_PROTOCOL_PROOF_TIMEOUT_MS = 3000,
-    WHEEL_MULTI_POSITION_PRIMARY_OFFSET = 6,
-    WHEEL_MULTI_POSITION_SECONDARY_OFFSET = 7,
-    WHEEL_MULTI_POSITION_PACKED_OFFSET = 14,
-    WHEEL_ACCESSORY_FLAGS_OFFSET = 15,
-    WHEEL_INPUT_DIRECTIONAL_OFFSET = 0,
-    WHEEL_INPUT_SECONDARY_OFFSET = 1,
-    WHEEL_INPUT_CLUTCH_OFFSET = 3,
-    WHEEL_INPUT_TUNING_OFFSET = 5,
-    WHEEL_INPUT_AUXILIARY_OFFSET = 22,
-    WHEEL_PACKED_REPORT_TWO_OPCODE = 0x0a,
-    WHEEL_PACKED_REPORT_ONE_OPCODE = 0x0b,
-    WHEEL_ALTERNATIVE_SHIFTER_BUTTONS = 0x0009,
-    WHEEL_ALTERNATIVE_SHIFTER_LATCH_FLAGS = 0x03,
-    WHEEL_ALTERNATIVE_SHIFTER_DEBOUNCE_MS = 800,
+    WHEEL_PROTOCOL_TRANSPORT_COMMAND = 2,      /**< Serial message type for command-two traffic. */
+    WHEEL_BUTTON_COMMAND = 3,                  /**< Serial message type for command-three scans. */
+    WHEEL_BUTTON_REQUEST_READY = 1,            /**< Ready flag in a command-three request. */
+    WHEEL_BUTTON_RESPONSE_READY = 2,           /**< Ready flag in a command-three response. */
+    WHEEL_BUTTON_PRIMARY_RESPONSE = 0xe0,      /**< Primary command-three response marker. */
+    WHEEL_BUTTON_SECONDARY_RESPONSE = 0xc0,    /**< Secondary command-three response marker. */
+    WHEEL_BUTTON_RESPONSE_MASK = 0xe0,         /**< Mask for a command-three response marker. */
+    WHEEL_BUTTON_VALUE_MASK = 0x1f,            /**< Mask for a command-three sample value. */
+    WHEEL_PROTOCOL_ACTIVITY_TIMEOUT_MS = 2000, /**< Normal protocol activity timeout. */
+    WHEEL_PROTOCOL_PROOF_TIMEOUT_MS = 3000,    /**< Authentication-proof timeout. */
+    WHEEL_MULTI_POSITION_PRIMARY_OFFSET = 6,   /**< Primary rotary position offset. */
+    WHEEL_MULTI_POSITION_SECONDARY_OFFSET = 7, /**< Secondary rotary position offset. */
+    WHEEL_MULTI_POSITION_PACKED_OFFSET = 14,   /**< Packed rotary position offset. */
+    WHEEL_ACCESSORY_FLAGS_OFFSET = 15,         /**< Accessory flags offset. */
+    WHEEL_INPUT_DIRECTIONAL_OFFSET = 0,        /**< Directional button offset. */
+    WHEEL_INPUT_SECONDARY_OFFSET = 1,          /**< Secondary-button offset. */
+    WHEEL_INPUT_CLUTCH_OFFSET = 3,             /**< Clutch-paddle offset. */
+    WHEEL_INPUT_TUNING_OFFSET = 5,             /**< Tuning and motion offset. */
+    WHEEL_INPUT_AUXILIARY_OFFSET = 22,         /**< Auxiliary-report offset. */
+    WHEEL_PACKED_REPORT_TWO_OPCODE = 0x0a,     /**< Operating-mode opcode for compact report two. */
+    WHEEL_PACKED_REPORT_ONE_OPCODE = 0x0b,     /**< Operating-mode opcode for compact report one. */
+    WHEEL_ALTERNATIVE_SHIFTER_BUTTONS = 0x0009,   /**< Secondary-button activation mask. */
+    WHEEL_ALTERNATIVE_SHIFTER_LATCH_FLAGS = 0x03, /**< Control-latch activation mask. */
+    WHEEL_ALTERNATIVE_SHIFTER_DEBOUNCE_MS = 800,  /**< Alternative-shifter debounce interval. */
 };
 
 /**
@@ -209,7 +210,7 @@ static void apply_scan_response(WheelService *service, const SerialMessageAssemb
  * Zeros all three published button banks and their three-sample histories, then resets the sample
  * insertion position.
  *
- * @param[out] service Attached-wheel service whose scan filter is cleared.
+ * @param[in,out] service Attached-wheel service whose scan filter is cleared.
  */
 static void clear_scan_filter(WheelService *service) {
     for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {
@@ -403,7 +404,8 @@ static bool protocol_exchange_active(const WheelService *service) {
 /**
  * @brief Extends the active command-2 exchange deadline.
  *
- * Starts a new two-second activity window after an attached wheel marks a packet ready.
+ * Starts a two-second activity window after a packet-ready event, or a three-second window while
+ * the authentication proof is pending.
  *
  * @param[in,out] service Wheel service that owns the command-2 exchange.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -914,8 +916,8 @@ void wheel_service_begin_display_overlay(WheelService *service, uint8_t command,
 /**
  * @brief Advances the temporary attached-wheel command presentation.
  *
- * Publishes changed countdown glyphs while page one is active. When its deadline passes, restores
- * the newest retained default page.
+ * Advances countdown glyphs while page one is active and publishes them unless an interaction
+ * override owns the output. When the deadline passes, restores the highest-priority lower page.
  *
  * @param[in,out] service Attached-wheel service advancing the temporary presentation.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -945,10 +947,10 @@ bool wheel_service_display_overlay_active(const WheelService *service) {
 }
 
 /**
- * @brief Updates the shared auxiliary report sent to the attached wheel.
+ * @brief Sets attached-wheel vibration output.
  *
- * Applies the two vibration channels to each packet family, the alternate packet's auxiliary
- * fields, the scan encoder, and the adapter display report.
+ * Converts both vibration channel amplitudes into the shared auxiliary report and propagates it to
+ * each packet family, the alternate packet, the scan encoder, and the adapter display report.
  *
  * @param[in,out] service Attached-wheel service to update.
  * @param[in] output Two attached-wheel vibration channels.
@@ -977,8 +979,7 @@ void wheel_service_set_auxiliary_output_option(WheelService *service, uint8_t op
 /**
  * @brief Updates the legacy axes sent to the attached wheel.
  *
- * Applies the same high-byte and low-byte axis values to each packet family that publishes the
- * shared legacy-axis fields.
+ * Copies both axis bytes to each packet family that publishes the shared legacy-axis fields.
  *
  * @param[in,out] service Attached-wheel service to update.
  * @param[in] axes Two legacy-axis bytes in attached-wheel response order.
@@ -1010,9 +1011,11 @@ void wheel_service_set_legacy_pedal_status(WheelService *service, uint8_t first,
 /**
  * @brief Resets host-controlled attached-wheel protocol outputs.
  *
- * Clears both legacy axes and the shared auxiliary report, then queues zero-valued compact reports
- * two and one in protocol order. Accepted reports are mirrored to the active adapter transport.
- * Wheels without a tuning display also receive a cleared default three-glyph page.
+ * Clears both legacy axes and the shared auxiliary report, then attempts to queue zero-valued
+ * compact reports two and one in protocol order; report two remains suppressed while its legacy
+ * interface gate is closed. Accepted reports are mirrored to the active adapter transport.
+ * Wheels without a tuning display receive a cleared default three-glyph page when no higher-
+ * priority display page is active.
  *
  * @param[in,out] service Attached-wheel service and retained protocol outputs.
  */
@@ -1020,6 +1023,7 @@ void wheel_service_reset_host_protocol_outputs(WheelService *service) {
     if (service == NULL) {
         return;
     }
+    /** @brief Zero-filled compact report payload used to reset host outputs. */
     static const uint8_t cleared[4] = {0};
     wheel_service_set_auxiliary_report(service, 0);
     wheel_service_set_legacy_axes(service, cleared);
@@ -1071,7 +1075,7 @@ void wheel_service_set_host_capability(WheelService *service, bool enabled) {
  * @brief Queues a remote-tuning response for the attached wheel.
  *
  * Retains the response only when its selected legacy or extended link matches the currently
- * negotiated remote-tuning wheel mode.
+ * negotiated remote-tuning wheel mode and the response is representable by the protocol.
  *
  * @param[in,out] service Attached-wheel service that owns protocol output.
  * @param[in] response Remote-tuning link, response code, and value.
@@ -1086,7 +1090,7 @@ bool wheel_service_queue_remote_tuning_response(WheelService *service,
  * @brief Queues a system-owned remote-tuning response.
  *
  * Retains the response across connection discovery in a priority slot separate from host-owned
- * remote-tuning work.
+ * remote-tuning work when its link, code, and value are supported by the protocol.
  *
  * @param[in,out] service Attached-wheel service that owns protocol output.
  * @param[in] response Semantic system-control response.
@@ -1235,8 +1239,8 @@ bool wheel_service_apply_interface_mode_command(WheelService *service,
 /**
  * @brief Updates the local legacy wheel interface-mode shortcut.
  *
- * Samples the current secondary buttons only in wheel modes 0x0F and 0x17, then advances the
- * retained interface gate chord latch and deadline.
+ * When a request is ready in wheel modes 0x0F and 0x17, samples the current secondary buttons and
+ * advances the retained interface gate chord latch and deadline.
  *
  * @param[in,out] service Attached-wheel service and retained output state.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -1645,9 +1649,9 @@ const uint8_t *wheel_service_buttons(const WheelService *service) {
  *
  * Reads the directional byte, sixteen secondary buttons, two clutch paddles, signed tuning input,
  * motion byte, packed rotary positions, and auxiliary bytes from the current thirty-byte request
- * view. The first auxiliary byte is replaced by current X and Y axis availability flags, and the
- * separately retained axis-report capability accompanies the values. An unavailable request
- * produces a cleared destination.
+ * view. The motion field is copied from the same tuning-input byte. The first auxiliary byte is
+ * replaced by current X and Y axis availability flags, and the separately retained axis-report
+ * capability accompanies the values. An unavailable request produces a cleared destination.
  *
  * @param[in] service Attached-wheel service state.
  * @param[out] snapshot Normalized host input fields.

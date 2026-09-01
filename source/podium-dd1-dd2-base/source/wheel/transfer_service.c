@@ -5,7 +5,10 @@
 
 #include "transfer/command.h"
 
+/** @brief Command-transport owner identifier for each transfer request channel. */
 static const uint8_t request_owners[WHEEL_TRANSFER_REQUEST_COUNT] = {0x31, 0x30};
+
+/** @brief Fixed probe payload sent to start a wheel-transfer handshake. */
 static const uint8_t probe[WHEEL_TRANSFER_PAYLOAD_SIZE] = {'E', 'n', 'd', 'O', 'f',
                                                            'L', 'i', 'n', 'e', '+'};
 

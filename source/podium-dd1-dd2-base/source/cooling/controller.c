@@ -3,14 +3,24 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/**
+ * @brief Thermal controller default duties, offsets, and managed-window durations.
+ *
+ * These constants initialize the controller and define the nominal timing windows before any
+ * service adjustments are applied.
+ */
 enum {
-    FAN_STARTUP_DUTY_PERCENT = 25,
-    COOLING_DEFAULT_LOW_THRESHOLD_OFFSET = 5,
-    COOLING_DEFAULT_HIGH_THRESHOLD_OFFSET = 4,
-    COOLING_DEFAULT_PRIMARY_DELAY_MS = -30000,
-    COOLING_DEFAULT_SECONDARY_DELAY_MS = -120000,
-    MANAGED_PRIMARY_WINDOW_MS = 210000,
-    MANAGED_SECONDARY_WINDOW_MS = 300000,
+    FAN_STARTUP_DUTY_PERCENT = 25, /**< Startup duty percentage for each fan output. */
+    COOLING_DEFAULT_LOW_THRESHOLD_OFFSET =
+        5, /**< Default managed low-threshold offset in degrees Celsius. */
+    COOLING_DEFAULT_HIGH_THRESHOLD_OFFSET =
+        4, /**< Default managed high-threshold offset in degrees Celsius. */
+    COOLING_DEFAULT_PRIMARY_DELAY_MS =
+        -30000, /**< Default primary-window delay adjustment in milliseconds. */
+    COOLING_DEFAULT_SECONDARY_DELAY_MS =
+        -120000, /**< Default secondary-window delay adjustment in milliseconds. */
+    MANAGED_PRIMARY_WINDOW_MS = 210000,   /**< Nominal managed primary window in milliseconds. */
+    MANAGED_SECONDARY_WINDOW_MS = 300000, /**< Nominal managed secondary window in milliseconds. */
 };
 
 /**
@@ -217,8 +227,8 @@ static void update_force_scale(CoolingController *controller, float temperature,
 /**
  * @brief Initializes the thermal controller with its startup fan and force limits.
  *
- * Starts in the idle phase with the retained threshold and timing defaults, requests 25 percent
- * from both fan outputs, permits full force output, and selects the standard or dual-fan duty map.
+ * Starts in the idle phase with default threshold and timing offsets, requests 25 percent from both
+ * fan outputs, permits full force output, and selects the standard or dual-fan duty map.
  *
  * @param[out] controller Thermal fan and force-derating state.
  * @param[in] dual_fan_mode True for the alternate two-output fan duty map.

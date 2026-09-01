@@ -6,16 +6,21 @@
 #include "display/framebuffer.h"
 #include "display/text.h"
 
+/**
+ * @brief Defines legacy-display colors and seven-segment bit assignments.
+ *
+ * The bit assignments match the raw glyph values supplied by the wheel-service display output.
+ */
 enum {
-    AUXILIARY_CALIBRATION_COLOR = 15,
-    AUXILIARY_CALIBRATION_SEGMENT_TOP = 1 << 0,
-    AUXILIARY_CALIBRATION_SEGMENT_UPPER_RIGHT = 1 << 1,
-    AUXILIARY_CALIBRATION_SEGMENT_LOWER_RIGHT = 1 << 2,
-    AUXILIARY_CALIBRATION_SEGMENT_BOTTOM = 1 << 3,
-    AUXILIARY_CALIBRATION_SEGMENT_LOWER_LEFT = 1 << 4,
-    AUXILIARY_CALIBRATION_SEGMENT_UPPER_LEFT = 1 << 5,
-    AUXILIARY_CALIBRATION_SEGMENT_MIDDLE = 1 << 6,
-    AUXILIARY_CALIBRATION_DECIMAL_POINT = 1 << 7,
+    AUXILIARY_CALIBRATION_COLOR = 15, /**< Foreground grayscale value for legacy display content. */
+    AUXILIARY_CALIBRATION_SEGMENT_TOP = 1 << 0,         /**< Top segment bit. */
+    AUXILIARY_CALIBRATION_SEGMENT_UPPER_RIGHT = 1 << 1, /**< Upper-right segment bit. */
+    AUXILIARY_CALIBRATION_SEGMENT_LOWER_RIGHT = 1 << 2, /**< Lower-right segment bit. */
+    AUXILIARY_CALIBRATION_SEGMENT_BOTTOM = 1 << 3,      /**< Bottom segment bit. */
+    AUXILIARY_CALIBRATION_SEGMENT_LOWER_LEFT = 1 << 4,  /**< Lower-left segment bit. */
+    AUXILIARY_CALIBRATION_SEGMENT_UPPER_LEFT = 1 << 5,  /**< Upper-left segment bit. */
+    AUXILIARY_CALIBRATION_SEGMENT_MIDDLE = 1 << 6,      /**< Middle segment bit. */
+    AUXILIARY_CALIBRATION_DECIMAL_POINT = 1 << 7,       /**< Decimal-point bit. */
 };
 
 /**

@@ -3,43 +3,24 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/**
+ * @brief Internal torque transition event, status, and wheel-mode values.
+ *
+ * These values are translated into SystemTorqueTransitionAction fields for the integration layer.
+ */
 enum {
-    SYSTEM_EVENT_TORQUE_DISABLED = 0x0d,
-    SYSTEM_EVENT_IDLE = 0x11,
-    SYSTEM_EVENT_TORQUE_ENABLED = 0x1b,
-    SYSTEM_STATUS_IDLE = 0x1e,
-    SYSTEM_STATUS_TORQUE_DISABLED = 0x2b,
-    WHEEL_MODE_EXTENDED = 0x1c,
+    SYSTEM_EVENT_TORQUE_DISABLED = 0x0d,  /**< Event code published when torque is disabled. */
+    SYSTEM_EVENT_IDLE = 0x11,             /**< Event code published when torque is restored. */
+    SYSTEM_EVENT_TORQUE_ENABLED = 0x1b,   /**< Event code queued when torque is restored. */
+    SYSTEM_STATUS_IDLE = 0x1e,            /**< Extended-wheel status for inactive operation. */
+    SYSTEM_STATUS_TORQUE_DISABLED = 0x2b, /**< Extended-wheel status for disabled torque. */
+    WHEEL_MODE_EXTENDED = 0x1c,           /**< Wheel mode receiving extended transition updates. */
 };
 
-/**
- * @brief Initializes the applied torque disable state.
- *
- * Starts with torque enabled and ready to accept a disable request.
- *
- * @param[out] transition Torque transition state to initialize.
- */
 void system_torque_transition_init(SystemTorqueTransition *transition) {
     *transition = (SystemTorqueTransition){0};
 }
 
-/**
- * @brief Builds a queued system transition for a torque disable-state change.
- *
- * Leaves the request pending while the event slot is occupied. Disabling torque emits event 0x0d.
- * Restoring torque queues event 0x1b and selects active event 0x11. Wheel mode 0x1c additionally
- * changes its feature state and selects status 0x2b while disabled; when restoring torque it
- * selects status 0x1e for operating status zero or requests the current setup-page response
- * otherwise.
- *
- * @param[in,out] transition Last torque disable state accepted by the system event path.
- * @param[in] disable_requested Requested torque disable state.
- * @param[in] event_slot_available True when the single pending-event slot can accept a code.
- * @param[in] wheel_mode Current attached-wheel mode.
- * @param[in] operating_status Current operating-mode status byte.
- * @param[out] action Transition codes and optional mode-specific updates.
- * @return True when a new transition was accepted and action was populated.
- */
 bool system_torque_transition_update(SystemTorqueTransition *transition, bool disable_requested,
                                      bool event_slot_available, uint8_t wheel_mode,
                                      uint8_t operating_status,

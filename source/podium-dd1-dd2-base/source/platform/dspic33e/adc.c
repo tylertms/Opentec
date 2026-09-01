@@ -4,22 +4,42 @@
 #include <stdint.h>
 #include <xc.h>
 
+/**
+ * @brief ADC scan, DMA, and shifter-sampling configuration values.
+ */
 enum {
-    ADC_SCAN_CHANNELS = 0xff41,
-    ADC_SAMPLE_COUNT = ANALOG_SCAN_SAMPLE_COUNT - 1,
-    ADC_SAMPLE_TIME = 31,
-    ADC_CONVERSION_CLOCK = 63,
-    ADC_DMA_REQUEST = 13,
-    ADC_DMA_PRIORITY = 2,
-    ADC_READY_NONE = 2,
-    ADC_PRIMARY_SHIFTER_Y_INDEX = 3,
-    ADC_SECONDARY_SHIFTER_Y_INDEX = 5,
-    ADC_SHIFTER_AVERAGE_SAMPLE_COUNT = 200,
+    ADC_SCAN_CHANNELS = 0xff41,                      /**< ADC scan-channel mask. */
+    ADC_SAMPLE_COUNT = ANALOG_SCAN_SAMPLE_COUNT - 1, /**< ADC samples-per-scan register value. */
+    ADC_SAMPLE_TIME = 31,                            /**< ADC sample-time register value. */
+    ADC_CONVERSION_CLOCK = 63,                       /**< ADC conversion-clock register value. */
+    ADC_DMA_REQUEST = 13,            /**< DMA request number for ADC conversion results. */
+    ADC_DMA_PRIORITY = 2,            /**< ADC DMA interrupt priority. */
+    ADC_READY_NONE = 2,              /**< Sentinel indicating that no completed scan is pending. */
+    ADC_PRIMARY_SHIFTER_Y_INDEX = 3, /**< Scan index of the primary shifter longitudinal input. */
+    ADC_SECONDARY_SHIFTER_Y_INDEX =
+        5, /**< Scan index of the secondary shifter longitudinal input. */
+    ADC_SHIFTER_AVERAGE_SAMPLE_COUNT =
+        200, /**< Number of samples accumulated for shifter averaging. */
 };
 
+/**
+ * @brief First ADC DMA ping-pong buffer.
+ */
 static volatile uint16_t adc_primary[ANALOG_SCAN_SAMPLE_COUNT];
+
+/**
+ * @brief Alternate ADC DMA ping-pong buffer.
+ */
 static volatile uint16_t adc_secondary[ANALOG_SCAN_SAMPLE_COUNT];
+
+/**
+ * @brief Index of the ADC buffer awaiting foreground decoding, or ADC_READY_NONE.
+ */
 static volatile uint8_t adc_ready = ADC_READY_NONE;
+
+/**
+ * @brief Index of the most recently completed ADC buffer.
+ */
 static volatile uint8_t adc_latest;
 
 /**
@@ -104,7 +124,7 @@ bool platform_adc_read(AnalogSamples *samples) {
  * @brief Averages the active H-pattern shifter's longitudinal input.
  *
  * Accumulates two hundred reads from the newest completed scan buffer. A DMA completion may select
- * a newer buffer between reads so the result follows the continuously sampled input.
+ * a newer buffer between reads, so the result follows the continuously sampled input.
  *
  * @param[in] secondary True for the secondary shifter port, false for the primary port.
  * @return Arithmetic mean of the selected longitudinal input.

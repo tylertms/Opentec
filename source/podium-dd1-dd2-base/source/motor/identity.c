@@ -3,18 +3,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/**
- * @brief Classifies a motor controller and extracts its model, version, and transfer code.
- *
- * Retains the complete version response, separates the six-bit transfer code, and selects the
- * legacy, standard, or position-capable protocol from the initial status byte. Both position
- * encodings share one protocol because they expose the same runtime behavior.
- *
- * @param[in] status Initial controller status byte.
- * @param[in] version Four-byte controller version response.
- * @param[out] identity Decoded controller identity, including partial fields on failure.
- * @return True for legacy, standard, and either position-capable encoding.
- */
 bool motor_identity_decode(uint8_t status, const uint8_t version[4], MotorIdentity *identity) {
     identity->initial_status = status;
     for (uint8_t index = 0; index < sizeof(identity->version); index++) {
@@ -42,55 +30,19 @@ bool motor_identity_decode(uint8_t status, const uint8_t version[4], MotorIdenti
     }
 }
 
-/**
- * @brief Reports whether a motor protocol supports the extended parameter exchange.
- *
- * Accepts the position-capable protocol and rejects the legacy and standard protocols.
- *
- * @param[in] identity Decoded motor-controller identity.
- * @return True for the position-capable protocol.
- */
 bool motor_identity_has_extended_parameters(const MotorIdentity *identity) {
     return identity->protocol == MOTOR_PROTOCOL_POSITION;
 }
 
-/**
- * @brief Selects the motor-controller code published in the input report.
- *
- * Returns the low six-bit identification code for standard and position-capable controllers.
- * Legacy and unavailable controllers publish zero.
- *
- * @param[in] identity Decoded motor-controller identity, or null when unavailable.
- * @return Input-report transfer code.
- */
 uint8_t motor_identity_input_transfer_code(const MotorIdentity *identity) {
     return identity != 0 && identity->protocol != MOTOR_PROTOCOL_LEGACY ? identity->transfer_code
                                                                         : 0;
 }
 
-/**
- * @brief Selects the motor-controller state used by runtime transition commands.
- *
- * Maps unavailable, legacy, standard, and position-capable controllers to states zero through
- * three respectively.
- *
- * @param[in] identity Decoded motor-controller identity, or null when unavailable.
- * @return Runtime motor-controller state code.
- */
 uint8_t motor_identity_runtime_state(const MotorIdentity *identity) {
     return identity == 0 ? 0 : (uint8_t)identity->protocol + 1;
 }
 
-/**
- * @brief Selects the absolute-position modulus for a motor controller.
- *
- * Position-capable controllers whose model has bit one clear use 23,679 counts. Controllers with
- * that bit set, standard controllers, legacy controllers, and unavailable identities use the
- * 23,851-count default.
- *
- * @param[in] identity Decoded motor-controller identity, or null when unavailable.
- * @return Signed-remainder modulus for retained wheel-center samples.
- */
 uint32_t motor_identity_position_modulus(const MotorIdentity *identity) {
     if (identity != 0 && identity->protocol == MOTOR_PROTOCOL_POSITION &&
         (identity->model & 2u) == 0) {

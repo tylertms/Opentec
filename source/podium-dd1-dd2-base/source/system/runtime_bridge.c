@@ -5,12 +5,18 @@
 
 #include "usb/operating_mode_command.h"
 
+/**
+ * @brief Internal runtime bridge delays.
+ *
+ * These intervals separate USB preparation, protocol acknowledgement, transfer start, and
+ * updater activation.
+ */
 enum {
-    RUNTIME_BRIDGE_USB_START_DELAY_MS = 10,
-    RUNTIME_BRIDGE_STANDARD_SETTLE_MS = 100,
-    RUNTIME_BRIDGE_USB_SETTLE_MS = 300,
-    RUNTIME_BRIDGE_PROTOCOL_WAIT_MS = 1000,
-    RUNTIME_BRIDGE_PROTOCOL_START_DELAY_MS = 500,
+    RUNTIME_BRIDGE_USB_START_DELAY_MS = 10,  /**< Delay before a standard USB transfer starts. */
+    RUNTIME_BRIDGE_STANDARD_SETTLE_MS = 100, /**< Standard USB settling interval. */
+    RUNTIME_BRIDGE_USB_SETTLE_MS = 300,      /**< USB bridge settling interval. */
+    RUNTIME_BRIDGE_PROTOCOL_WAIT_MS = 1000,  /**< Protocol-command acknowledgement timeout. */
+    RUNTIME_BRIDGE_PROTOCOL_START_DELAY_MS = 500, /**< Delay before protocol transfer starts. */
 };
 
 /**
@@ -51,7 +57,7 @@ static uint16_t prepare_transfer(RuntimeBridge *bridge, uint32_t now_ms, uint16_
 /**
  * @brief Initializes runtime bridge state.
  *
- * Selects normal runtime mode and leaves the bridge idle.
+ * Clears transition state and leaves the bridge idle in normal runtime mode.
  *
  * @param[out] bridge Runtime bridge state to initialize.
  */
@@ -64,9 +70,8 @@ void runtime_bridge_init(RuntimeBridge *bridge) {
 /**
  * @brief Starts a requested runtime bridge transition.
  *
- * Selects the auxiliary, status, USB, or protocol prerequisite path. Auxiliary modes request their
- * shutdown handshake, status mode marks its next wheel response, USB mode waits for the protocol
- * timeout gate, and protocol mode starts with the wheel-transfer probe.
+ * Selects the prerequisite path for auxiliary, status, USB, or protocol bridge modes and emits
+ * the initial operation flags when the bridge is idle.
  *
  * @param[in,out] bridge Idle runtime bridge accepting the transition.
  * @param[in] mode Requested runtime service mode.
@@ -101,11 +106,9 @@ uint16_t runtime_bridge_start(RuntimeBridge *bridge, UsbRuntimeMode mode) {
 }
 
 /**
- * @brief Starts the startup auxiliary-updater recovery path.
+ * @brief Starts startup auxiliary-updater recovery.
  *
- * Skips the normal-controller shutdown handshake after the startup discovery window found no
- * controller, then applies the common ten-millisecond probe delay and 100-millisecond USB settling
- * interval.
+ * Enters the common USB preparation path without the normal-controller shutdown handshake.
  *
  * @param[in,out] bridge Idle runtime bridge accepting the recovery path.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -242,10 +245,10 @@ uint16_t runtime_bridge_step(RuntimeBridge *bridge, const RuntimeBridgeInput *in
 /**
  * @brief Reports whether updater bridge service is active.
  *
- * Distinguishes the completed bridge transition from its prerequisite and timing phases.
+ * Returns true only after the transition reaches the active phase that requests updater service.
  *
  * @param[in] bridge Runtime bridge state to inspect.
- * @return True after updater USB activation; otherwise false.
+ * @return True when updater USB service is active; otherwise false.
  */
 bool runtime_bridge_active(const RuntimeBridge *bridge) {
     return bridge != NULL && bridge->phase == RUNTIME_BRIDGE_ACTIVE;

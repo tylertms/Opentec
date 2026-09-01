@@ -3,10 +3,17 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/**
+ * @brief Timing values for unsupported-wheel compatibility presentation.
+ *
+ * The icon toggles once per second, while the segment warning uses a 250-millisecond blink period
+ * with a 125-millisecond blank interval.
+ */
 enum {
-    WHEEL_COMPATIBILITY_ICON_INTERVAL_MS = 1000,
-    WHEEL_COMPATIBILITY_SEGMENT_PERIOD_MS = 250,
-    WHEEL_COMPATIBILITY_SEGMENT_OFF_MS = 125,
+    WHEEL_COMPATIBILITY_ICON_INTERVAL_MS = 1000, /**< Interval between icon presentation toggles. */
+    WHEEL_COMPATIBILITY_SEGMENT_PERIOD_MS = 250, /**< Segment-display blink period. */
+    WHEEL_COMPATIBILITY_SEGMENT_OFF_MS =
+        125, /**< Blank portion at the start of each blink period. */
 };
 
 /**

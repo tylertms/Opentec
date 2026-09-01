@@ -2,9 +2,10 @@
 
 #include <stdint.h>
 
+/** @brief Internal remapped-packet mode and interface selector. */
 enum {
-    WHEEL_PACKET_REMAPPED_MODE = 0x11,
-    INTERFACE_MODE_PLAYSTATION_4 = 7,
+    WHEEL_PACKET_REMAPPED_MODE = 0x11, /**< Remapped packet mode. */
+    INTERFACE_MODE_PLAYSTATION_4 = 7,  /**< PlayStation 4 interface mode. */
 };
 
 /**
@@ -52,7 +53,7 @@ void wheel_packet_remapped_filter_init(WheelPacketRemappedFilter *filter) {
 /**
  * @brief Remaps and filters one remapped-packet button sample.
  *
- * In PlayStation mode, moves the third button byte's second bit into the first byte's fifth bit,
+ * In PlayStation mode, copies the third button byte's second bit into the first byte's fifth bit,
  * mirrors its first bit into its second bit, and exchanges the second byte's first and fourth bits.
  * The resulting buttons retain only bits present in all three recent samples.
  *

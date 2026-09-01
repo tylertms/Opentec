@@ -8,43 +8,74 @@
 #include "display/text.h"
 #include "system/notice.h"
 
+/**
+ * @brief Defines notice colors, icon geometry, and text positions.
+ *
+ * The constants place notice graphics and one- or two-line messages in the local display
+ * framebuffer.
+ */
 enum {
-    NOTICE_COLOR = 15,
-    WARNING_ICON_X = 123,
-    WARNING_ICON_Y = 17,
-    WARNING_ICON_WIDTH = 11,
-    WARNING_ICON_HEIGHT = 10,
-    NOTICE_TEXT_Y = 37,
-    NOTICE_PRIMARY_TEXT_Y = 30,
-    NOTICE_SECONDARY_TEXT_Y = 40,
+    NOTICE_COLOR = 15,          /**< Foreground grayscale value for notice content. */
+    WARNING_ICON_X = 123,       /**< Warning-icon left coordinate. */
+    WARNING_ICON_Y = 17,        /**< Warning-icon top coordinate. */
+    WARNING_ICON_WIDTH = 11,    /**< Warning-icon width in pixels. */
+    WARNING_ICON_HEIGHT = 10,   /**< Warning-icon height in pixels. */
+    NOTICE_TEXT_Y = 37,         /**< Vertical coordinate for one-line notice text. */
+    NOTICE_PRIMARY_TEXT_Y = 30, /**< Vertical coordinate for the first line of a two-line notice. */
+    NOTICE_SECONDARY_TEXT_Y =
+        40, /**< Vertical coordinate for the second line of a two-line notice. */
 };
 
+/** @brief Text displayed when the power button disables torque. */
 static const char torque_disabled_text[] = "Torque disabled by Powerbutton";
+/** @brief Text displayed when tuning-menu parameters are reset. */
 static const char tuning_menu_reset_text[] = "RESET Tuning Menu Parameters.";
+/** @brief Text displayed when standard tuning mode is activated. */
 static const char standard_tuning_mode_text[] = "Standard Tuning Menu mode";
+/** @brief Text displayed when advanced tuning mode is activated. */
 static const char advanced_tuning_mode_text[] = "Advanced Tuning Menu mode";
+/** @brief Text displayed below a tuning-mode activation message. */
 static const char tuning_mode_activated_text[] = "activated";
+/** @brief Text displayed while the wheel base shuts down. */
 static const char shutdown_text[] = "Switching off Podium DD Wheel Base";
+/** @brief Primary text for an unsupported steering-wheel notice. */
 static const char unsupported_wheel_primary_text[] = "WARNING";
+/** @brief Secondary text for an unsupported steering-wheel notice. */
 static const char unsupported_wheel_secondary_text[] = "Steering Wheel not supported!";
+/** @brief Text displayed after wheel-center calibration succeeds. */
 static const char wheel_center_calibrated_text[] = "Wheel center calibrated.";
+/** @brief Text displayed after a position-sensor test succeeds. */
 static const char position_sensor_succeeded_text[] = "Position Sensor Test Successful.";
+/** @brief Text displayed when a position-sensor test starts. */
 static const char position_sensor_started_text[] = "Position Sensor Test Started.";
+/** @brief Text displayed when a position-sensor test fails. */
 static const char position_sensor_failed_text[] = "Position Sensor Test Failed!";
+/** @brief Primary text for a torque-reduced notice. */
 static const char torque_reduced_primary_text[] = "NOTE: Torque is reduced to prevent damage";
+/** @brief Secondary text for torque reduction on the simplified quick-release system. */
 static const char torque_reduced_secondary_text[] = "  on the simplified quick-release system.";
+/** @brief Secondary text for torque reduction on the steering wheel. */
 static const char torque_reduced_steering_wheel_text[] = "  on the steering wheel.";
+/** @brief Text requesting wheel disconnection before motor calibration. */
 static const char motor_calibration_disconnect_text[] =
     "Please disconnect steering wheel to calibrate motor.";
+/** @brief Text displayed when motor calibration is unsupported. */
 static const char motor_calibration_unsupported_text[] =
     "Motor cal. not supported by current firmware version.";
+/** @brief Text displayed while motor calibration is running. */
 static const char motor_calibration_ongoing_text[] =
     "Motor calib. ongoing. Do not touch the shaft.";
+/** @brief Text displayed after motor calibration succeeds. */
 static const char motor_calibration_completed_text[] = "Motor calib. successfully completed.";
+/** @brief Text displayed after motor calibration data is erased. */
 static const char motor_calibration_erased_text[] = "Motor calib. data erased.";
+/** @brief Primary text for a maximum-rotations notice. */
 static const char maximum_rotations_exceeded_text[] = "Exceeded maximum rotations,";
+/** @brief Secondary text requesting a wheel-base restart. */
 static const char restart_wheel_base_text[] = "please restart the wheel base";
+/** @brief Text displayed when alternative shifter mode is enabled. */
 static const char alternative_shifter_enabled_text[] = "Alternative Shifter Mode Enabled";
+/** @brief Text displayed when alternative shifter mode is disabled. */
 static const char alternative_shifter_disabled_text[] = "Alternative Shifter Mode Disabled";
 
 /**
@@ -116,7 +147,7 @@ static void draw_error_icon(DisplayFramebuffer framebuffer) {
  * Clears the display, then shows the centered warning icon and exact torque-disabled message while
  * the notice is visible.
  *
- * @param[out] framebuffer Complete local-display framebuffer.
+ * @param[in,out] framebuffer Complete local-display framebuffer.
  * @param[in] visible True while the torque-disabled notice owns the display.
  */
 void display_notice_render_torque_disabled(DisplayFramebuffer framebuffer, bool visible) {
@@ -134,7 +165,7 @@ void display_notice_render_torque_disabled(DisplayFramebuffer framebuffer, bool 
  * Clears the display, selects the warning or error icon, and lays out the exact one-line or
  * two-line operator message associated with the notice.
  *
- * @param[out] framebuffer Complete local-display framebuffer.
+ * @param[in,out] framebuffer Complete local-display framebuffer.
  * @param[in] kind Active system notice kind.
  */
 void display_notice_render_system(DisplayFramebuffer framebuffer, SystemNoticeKind kind) {

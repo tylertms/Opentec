@@ -5,34 +5,39 @@
 
 #include "system/event_queue.h"
 
+/**
+ * @brief Internal system event codes and dispatch interval.
+ *
+ * The dispatcher maps these wire event codes to public presentation actions.
+ */
 enum {
-    SYSTEM_EVENT_TUNING_MENU_RESET = 1,
-    SYSTEM_EVENT_WHEEL_CENTER_CALIBRATED = 2,
-    SYSTEM_EVENT_POSITION_SENSOR_TEST_SUCCEEDED = 3,
-    SYSTEM_EVENT_POSITION_SENSOR_TEST_STARTED = 4,
-    SYSTEM_EVENT_POSITION_SENSOR_TEST_FAILED = 5,
-    SYSTEM_EVENT_TORQUE_REDUCED = 6,
-    SYSTEM_EVENT_TORQUE_REDUCED_STEERING_WHEEL = 0x16,
-    SYSTEM_EVENT_TORQUE_KEY_PROMPT = 7,
-    SYSTEM_EVENT_MOTOR_CALIBRATION_DISCONNECT_WHEEL = 8,
-    SYSTEM_EVENT_MOTOR_CALIBRATION_UNSUPPORTED = 9,
-    SYSTEM_EVENT_MOTOR_CALIBRATION_COMPLETED = 10,
-    SYSTEM_EVENT_MOTOR_CALIBRATION_ERASED = 11,
-    SYSTEM_EVENT_FORCE_OUTPUT_PROMPT = 12,
-    SYSTEM_EVENT_TORQUE_DISABLED = 0x0d,
-    SYSTEM_EVENT_SHUTDOWN = 0x0e,
-    SYSTEM_EVENT_UNSUPPORTED_WHEEL_INVERTED = 0x0f,
-    SYSTEM_EVENT_UNSUPPORTED_WHEEL_OUTLINED = 0x10,
-    SYSTEM_EVENT_STANDARD_TUNING_MODE = 0x12,
-    SYSTEM_EVENT_ADVANCED_TUNING_MODE = 0x13,
-    SYSTEM_EVENT_MAXIMUM_ROTATIONS_EXCEEDED = 0x17,
-    SYSTEM_EVENT_DISMISS_TORQUE_KEY_PROMPT = 0x18,
-    SYSTEM_EVENT_DISMISS_FORCE_OUTPUT_PROMPT = 0x1a,
-    SYSTEM_EVENT_TORQUE_ENABLED = 0x1b,
-    SYSTEM_EVENT_MOTOR_CALIBRATION_ONGOING = 0x1c,
-    SYSTEM_EVENT_ALTERNATIVE_SHIFTER_ENABLED = 0x20,
-    SYSTEM_EVENT_ALTERNATIVE_SHIFTER_DISABLED = 0x21,
-    SYSTEM_EVENT_DISPATCH_INTERVAL_MS = 100,
+    SYSTEM_EVENT_TUNING_MENU_RESET = 1,                  /**< Tuning-menu reset event code. */
+    SYSTEM_EVENT_WHEEL_CENTER_CALIBRATED = 2,            /**< Wheel-center calibrated event code. */
+    SYSTEM_EVENT_POSITION_SENSOR_TEST_SUCCEEDED = 3,     /**< Successful sensor-test event code. */
+    SYSTEM_EVENT_POSITION_SENSOR_TEST_STARTED = 4,       /**< Sensor-test started event code. */
+    SYSTEM_EVENT_POSITION_SENSOR_TEST_FAILED = 5,        /**< Failed sensor-test event code. */
+    SYSTEM_EVENT_TORQUE_REDUCED = 6,                     /**< Reduced-torque event code. */
+    SYSTEM_EVENT_TORQUE_REDUCED_STEERING_WHEEL = 0x16,   /**< Reduced steering-wheel torque code. */
+    SYSTEM_EVENT_TORQUE_KEY_PROMPT = 7,                  /**< Torque Key prompt event code. */
+    SYSTEM_EVENT_MOTOR_CALIBRATION_DISCONNECT_WHEEL = 8, /**< Calibration disconnect event code. */
+    SYSTEM_EVENT_MOTOR_CALIBRATION_UNSUPPORTED = 9,      /**< Unsupported calibration event code. */
+    SYSTEM_EVENT_MOTOR_CALIBRATION_COMPLETED = 10,       /**< Calibration completed event code. */
+    SYSTEM_EVENT_MOTOR_CALIBRATION_ERASED = 11,          /**< Calibration erased event code. */
+    SYSTEM_EVENT_FORCE_OUTPUT_PROMPT = 12,               /**< Force-output prompt event code. */
+    SYSTEM_EVENT_TORQUE_DISABLED = 0x0d,                 /**< Torque-disabled event code. */
+    SYSTEM_EVENT_SHUTDOWN = 0x0e,                        /**< Shutdown event code. */
+    SYSTEM_EVENT_UNSUPPORTED_WHEEL_INVERTED = 0x0f,      /**< Inverted-wheel event code. */
+    SYSTEM_EVENT_UNSUPPORTED_WHEEL_OUTLINED = 0x10,      /**< Outlined-wheel event code. */
+    SYSTEM_EVENT_STANDARD_TUNING_MODE = 0x12,            /**< Standard tuning-mode event code. */
+    SYSTEM_EVENT_ADVANCED_TUNING_MODE = 0x13,            /**< Advanced tuning-mode event code. */
+    SYSTEM_EVENT_MAXIMUM_ROTATIONS_EXCEEDED = 0x17,      /**< Maximum-rotation event code. */
+    SYSTEM_EVENT_DISMISS_TORQUE_KEY_PROMPT = 0x18,       /**< Torque Key dismissal event code. */
+    SYSTEM_EVENT_DISMISS_FORCE_OUTPUT_PROMPT = 0x1a,     /**< Force-output dismissal event code. */
+    SYSTEM_EVENT_TORQUE_ENABLED = 0x1b,                  /**< Torque-enabled event code. */
+    SYSTEM_EVENT_MOTOR_CALIBRATION_ONGOING = 0x1c,       /**< Calibration-ongoing event code. */
+    SYSTEM_EVENT_ALTERNATIVE_SHIFTER_ENABLED = 0x20,     /**< Alternative-shifter enabled code. */
+    SYSTEM_EVENT_ALTERNATIVE_SHIFTER_DISABLED = 0x21,    /**< Alternative-shifter disabled code. */
+    SYSTEM_EVENT_DISPATCH_INTERVAL_MS = 100, /**< Minimum interval between dispatched events. */
 };
 
 /**
@@ -49,30 +54,10 @@ static bool dispatch_due(uint32_t now_ms, uint32_t next_dispatch_ms) {
     return (int32_t)(now_ms - next_dispatch_ms) >= 0;
 }
 
-/**
- * @brief Initializes system event dispatch timing.
- *
- * Allows the first recognized event to dispatch immediately.
- *
- * @param[out] dispatcher Event dispatcher to initialize.
- */
 void system_event_dispatcher_init(SystemEventDispatcher *dispatcher) {
     *dispatcher = (SystemEventDispatcher){0};
 }
 
-/**
- * @brief Dispatches a queued system notice event.
- *
- * Maps tuning-menu, wheel-center, position-sensor, motor-calibration, Torque Key,
- * unsupported-wheel, force-output, torque-reduction, and power-button event codes to display
- * actions. Recognized events complete their queue slot and start a 100-millisecond minimum
- * interval. Other event codes remain available for their owning dispatcher.
- *
- * @param[in,out] dispatcher Shared event dispatch cadence.
- * @param[in,out] queue Single-slot system event queue.
- * @param[in] now_ms Current monotonic time in milliseconds.
- * @return Semantic action for the notice owner, or no action while idle or waiting.
- */
 SystemEventAction system_event_dispatcher_update(SystemEventDispatcher *dispatcher,
                                                  SystemEventQueue *queue, uint32_t now_ms) {
     SystemEventAction action;

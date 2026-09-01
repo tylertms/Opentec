@@ -18,29 +18,12 @@ static int32_t center_position(uint8_t position, int32_t scale) {
     return (int32_t)((int64_t)scale * position * 2 / 256) - scale;
 }
 
-/**
- * @brief Deactivates all host-controlled force-feedback effects.
- *
- * Clears the active state of slots zero through 15 while preserving their configurations, the
- * built-in position effect, and both output gates.
- *
- * @param[in,out] state Force-feedback state containing the host-controlled effects.
- */
 void force_feedback_state_deactivate_host_effects(ForceFeedbackState *state) {
     for (uint8_t slot = 0; slot < FORCE_FEEDBACK_EFFECT_SLOT_COUNT; ++slot) {
         state->effects[slot].active = false;
     }
 }
 
-/**
- * @brief Initializes the host-controlled force-feedback state.
- *
- * Clears the 16 host effect slots and creates the active built-in position effect in slot 16.
- * The built-in effect is centered on both axes, uses axis mode 4 in both directions, opposes
- * motion in both directions, and starts at full strength.
- *
- * @param[out] state Force-feedback state to initialize.
- */
 void force_feedback_state_init(ForceFeedbackState *state) {
     memset(state, 0, sizeof(*state));
 
@@ -54,19 +37,6 @@ void force_feedback_state_init(ForceFeedbackState *state) {
     position->kind_2.strength = UINT16_MAX;
 }
 
-/**
- * @brief Applies one decoded short force-feedback command to the effect state.
- *
- * Replaces and activates configured host slots, deactivates cleared slots without deleting their
- * configuration, clears all host-controlled effects on reset, controls the built-in position
- * effect, and updates both output gates. A primary output-gate command also deactivates all 16
- * host-controlled effects.
- *
- * @param[in,out] state Force-feedback state to update.
- * @param[in] command Decoded short force-feedback command.
- * @param[in] position_scale Positive and negative wheel-position limit for kind-2 positions.
- * @return True when the command and effect slot are accepted.
- */
 bool force_feedback_state_apply(ForceFeedbackState *state, const ForceFeedbackCommand *command,
                                 int32_t position_scale) {
     if (state == NULL || command == NULL) {
@@ -148,18 +118,6 @@ bool force_feedback_state_apply(ForceFeedbackState *state, const ForceFeedbackCo
     return false;
 }
 
-/**
- * @brief Rescales all kind-2 effect positions after the wheel-position scale changes.
- *
- * Visits the 16 host-controlled effects and built-in slot 16 regardless of active state. Each
- * stored position is multiplied by the new scale shifted right by seven, then divided by the old
- * scale shifted right by seven with truncation toward zero.
- *
- * @param[in,out] state Force-feedback state containing the positions to update.
- * @param[in] previous_scale Wheel-position scale used to configure the stored positions.
- * @param[in] current_scale Replacement wheel-position scale.
- * @return True when the state is accepted and the previous scaled divisor is nonzero.
- */
 bool force_feedback_state_rescale_positions(ForceFeedbackState *state, int32_t previous_scale,
                                             int32_t current_scale) {
     if (state == NULL) {

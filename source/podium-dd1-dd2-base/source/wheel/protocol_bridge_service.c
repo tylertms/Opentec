@@ -6,13 +6,17 @@
 
 #include "transfer/command.h"
 
+/** @brief Internal callback endpoint, owner, and payload selectors. */
 enum {
-    WHEEL_PROTOCOL_BRIDGE_ENDPOINT_COUNT = 2,
-    WHEEL_PROTOCOL_BRIDGE_OWNER = 0x42,
-    WHEEL_PROTOCOL_BRIDGE_CALLBACK_OFFSET = 0x0d,
+    WHEEL_PROTOCOL_BRIDGE_ENDPOINT_COUNT = 2,     /**< Number of callback endpoints to try. */
+    WHEEL_PROTOCOL_BRIDGE_OWNER = 0x42,           /**< Command-transport owner identifier. */
+    WHEEL_PROTOCOL_BRIDGE_CALLBACK_OFFSET = 0x0d, /**< Callback write offset. */
 };
 
+/** @brief Supported attached-wheel callback endpoints in retry order. */
 static const uint8_t endpoints[WHEEL_PROTOCOL_BRIDGE_ENDPOINT_COUNT] = {0x15, 0x16};
+
+/** @brief Callback token written to the selected endpoint. */
 static const uint8_t callback[] = {0xfa, 0x05};
 
 /**
@@ -22,7 +26,7 @@ static const uint8_t callback[] = {0xfa, 0x05};
  * acknowledgement.
  *
  * @param[out] service Protocol callback service to initialize.
- * @param[in,out] transport Shared attached-wheel command transport.
+ * @param[in] transport Shared attached-wheel command transport to attach.
  */
 void wheel_protocol_bridge_service_init(WheelProtocolBridgeService *service,
                                         CommandTransport *transport) {

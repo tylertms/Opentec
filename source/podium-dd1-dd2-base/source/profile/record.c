@@ -3,15 +3,18 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/** @brief Internal constants for the tuning-profile record format. */
 enum {
-    RECORD_MAGIC_0 = 'O',
-    RECORD_MAGIC_1 = 'T',
-    RECORD_MAGIC_2 = 'P',
-    RECORD_MAGIC_3 = 'F',
-    RECORD_LEGACY_VERSION = 1,
-    RECORD_STANDARD_MODE_MASK = 0x80,
-    RECORD_SLOT_COUNT_MASK = 0x7f,
-    RECORD_DATA_SIZE = TUNING_PROFILE_RECORD_SIZE - TUNING_PROFILE_RECORD_CHECKSUM_SIZE,
+    RECORD_MAGIC_0 = 'O',             /**< First magic byte. */
+    RECORD_MAGIC_1 = 'T',             /**< Second magic byte. */
+    RECORD_MAGIC_2 = 'P',             /**< Third magic byte. */
+    RECORD_MAGIC_3 = 'F',             /**< Fourth magic byte. */
+    RECORD_LEGACY_VERSION = 1,        /**< Legacy supported record version. */
+    RECORD_STANDARD_MODE_MASK = 0x80, /**< Header bit indicating Standard mode. */
+    RECORD_SLOT_COUNT_MASK = 0x7f,    /**< Header mask for the retained slot count. */
+    RECORD_DATA_SIZE =
+        TUNING_PROFILE_RECORD_SIZE -
+        TUNING_PROFILE_RECORD_CHECKSUM_SIZE, /**< Bytes covered by the record checksum. */
 };
 
 /**
@@ -160,16 +163,6 @@ static uint16_t read_profile(const uint8_t *input, uint16_t cursor, TuningProfil
     return cursor;
 }
 
-/**
- * @brief Encodes a complete tuning-profile bank record.
- *
- * Writes the OTPF header, version, selected and active slots, Standard-mode flag, all six profiles,
- * and the trailing CRC-16 checksum. Invalid slot selections are rejected.
- *
- * @param[in] bank Tuning-profile bank to encode.
- * @param[out] output Fixed-size encoded record.
- * @return True when a complete record was encoded.
- */
 bool tuning_profile_record_encode(const TuningProfileBank *bank,
                                   uint8_t output[TUNING_PROFILE_RECORD_SIZE]) {
     if (bank->selected_slot >= TUNING_PROFILE_SLOT_COUNT ||
@@ -199,16 +192,6 @@ bool tuning_profile_record_encode(const TuningProfileBank *bank,
     return cursor == TUNING_PROFILE_RECORD_SIZE;
 }
 
-/**
- * @brief Decodes a complete tuning-profile bank record.
- *
- * Validates the OTPF header, supported version, slot count, selected and active slots, and CRC-16
- * before decoding all six profiles. Legacy version one enables Standard mode implicitly.
- *
- * @param[in] input Fixed-size encoded record.
- * @param[out] bank Validated and normalized tuning-profile bank.
- * @return True when the record is valid and complete.
- */
 bool tuning_profile_record_decode(const uint8_t input[TUNING_PROFILE_RECORD_SIZE],
                                   TuningProfileBank *bank) {
     uint16_t stored_checksum =

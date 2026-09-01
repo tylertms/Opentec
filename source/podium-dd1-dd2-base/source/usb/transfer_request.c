@@ -4,13 +4,17 @@
 #include <stdint.h>
 #include <string.h>
 
+/** @brief Transfer request wire-format constants. */
 enum {
-    TRANSFER_REQUEST_SINGLE = 0x10,
-    TRANSFER_REQUEST_FIRST = 0x11,
-    TRANSFER_REQUEST_FINAL = 0x13,
-    TRANSFER_REQUEST_SINGLE_HEADER_SIZE = 3,
-    TRANSFER_REQUEST_FIRST_CAPACITY = 60,
-    TRANSFER_REQUEST_FINAL_CAPACITY = 61,
+    TRANSFER_REQUEST_SINGLE = 0x10, /**< Single transfer request form. */
+    TRANSFER_REQUEST_FIRST = 0x11,  /**< First segmented transfer request form. */
+    TRANSFER_REQUEST_FINAL = 0x13,  /**< Final or continuation segmented request form. */
+    TRANSFER_REQUEST_SINGLE_HEADER_SIZE =
+        3, /**< Header bytes included in a single request length. */
+    TRANSFER_REQUEST_FIRST_CAPACITY =
+        60, /**< Payload bytes available after a first-fragment header. */
+    TRANSFER_REQUEST_FINAL_CAPACITY =
+        61, /**< Payload bytes available after a continuation/final header. */
 };
 
 /**
@@ -28,26 +32,8 @@ static uint8_t fragment_length(uint8_t remaining, uint8_t available, uint8_t cap
     return length < capacity ? length : capacity;
 }
 
-/**
- * @brief Initializes an empty USB transfer request reassembler.
- *
- * Clears retained payload, cursor, and completion state.
- *
- * @param[out] request Request reassembler to initialize.
- */
 void usb_transfer_request_init(UsbTransferRequest *request) { *request = (UsbTransferRequest){0}; }
 
-/**
- * @brief Applies one tuning-menu transfer request report.
- *
- * Single reports carry their declared logical payload directly. First reports start a big-endian
- * length-bearing request, and one or more final reports append their sequence-bearing payload until
- * the declared length is complete. Unsupported tuning commands are not claimed.
- *
- * @param[in,out] request Request reassembly state.
- * @param[in] command Decoded vendor command containing the tuning-menu transfer report.
- * @return True when the command selects a single, first, or final transfer form.
- */
 bool usb_transfer_request_apply(UsbTransferRequest *request, const UsbVendorCommand *command) {
     if (request == NULL || command == NULL || command->arguments == NULL || command->length == 0 ||
         (command->kind != USB_VENDOR_COMMAND_TUNING_MENU &&
@@ -125,25 +111,10 @@ bool usb_transfer_request_apply(UsbTransferRequest *request, const UsbVendorComm
     return true;
 }
 
-/**
- * @brief Provides the completed logical USB transfer request.
- *
- * Keeps the completed payload stable until the caller releases it.
- *
- * @param[in] request Request reassembly state.
- * @return Completed request, or null while no request is ready.
- */
 const UsbTransferRequestPayload *usb_transfer_request_payload(const UsbTransferRequest *request) {
     return request != NULL && request->ready ? &request->payload : NULL;
 }
 
-/**
- * @brief Releases the completed USB transfer request.
- *
- * Leaves any independently active segmented request intact and opens the completed payload slot.
- *
- * @param[in,out] request Request reassembly state to release.
- */
 void usb_transfer_request_release(UsbTransferRequest *request) {
     if (request != NULL) {
         request->payload.length = 0;

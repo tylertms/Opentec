@@ -3,15 +3,28 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/**
+ * @brief Clock conversion constants used by script service metrics.
+ *
+ * Script clock counters advance at 10 kHz and are converted to seconds for the reported delta
+ * metric.
+ */
 enum {
-    FORCE_FEEDBACK_TICKS_PER_SECOND = 10000,
+    FORCE_FEEDBACK_TICKS_PER_SECOND = 10000, /**< Script clock frequency in ticks per second. */
 };
 
+/** @brief Clock value above which the service resets its counters before execution. */
 static const uint32_t FORCE_FEEDBACK_TICK_RESET_THRESHOLD = UINT32_C(0x337f9800);
 
+/**
+ * @brief Provides numeric and raw-bit views of a script service value.
+ *
+ * Metric calculations preserve floating-point results in the raw representation used by script
+ * operands.
+ */
 typedef union {
-    float number;
-    uint32_t bits;
+    float number;  /**< Single-precision numeric view. */
+    uint32_t bits; /**< Raw 32-bit representation. */
 } ServiceValue;
 
 /**
@@ -27,8 +40,8 @@ static uint32_t float_bits(float value) { return (ServiceValue){.number = value}
 /**
  * @brief Updates one script slot's execution timing metrics.
  *
- * Increments the execution count and records the average execution rate and elapsed time since the
- * slot's tick snapshot.
+ * Increments the execution count, stores the snapshot divided by that count and scaled by the
+ * 10 kHz clock in average_rate, and stores elapsed time since the slot's tick snapshot in seconds.
  *
  * @param[in,out] slot Script slot whose metrics are updated.
  * @param[in] current_ticks Current slot clock value after execution.
@@ -41,20 +54,6 @@ static void update_metrics(ForceFeedbackScriptSlot *slot, uint32_t current_ticks
                                   (float)FORCE_FEEDBACK_TICKS_PER_SECOND);
 }
 
-/**
- * @brief Run every active force-feedback script slot once.
- *
- * Visits the 16 slots in ascending order. For each active slot, selects its stored byte sequence,
- * normalizes an aged timing counter, snapshots the counter, executes the script, and updates the
- * execution count and timing values. The clock identifies the slot while execution is in progress
- * so timer interrupts can charge elapsed ticks to the correct slot.
- *
- * @param[in,out] runtime Script operands, samples, outputs, axes, and per-slot runtime state.
- * @param[in] store Allocated byte sequences for the script slots.
- * @param[in,out] clock Per-slot timing counters and current execution markers.
- * @return True when at least one active slot faulted during this service pass.
- * @pre Every active runtime slot has a corresponding valid allocation in store.
- */
 bool force_feedback_script_service_run(ForceFeedbackScriptRuntime *runtime,
                                        const ForceFeedbackScriptStore *store,
                                        ForceFeedbackScriptClock *clock) {

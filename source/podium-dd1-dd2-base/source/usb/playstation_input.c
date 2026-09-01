@@ -4,43 +4,45 @@
 #include <stdint.h>
 #include <string.h>
 
+/** @brief Internal report layout values and wheel modes used by PlayStation input mapping. */
 enum {
-    PLAYSTATION_INPUT_REPORT_ID = 1,
-    PLAYSTATION_INPUT_NEUTRAL_AXIS = 0x80,
-    PLAYSTATION_INPUT_AXES_OFFSET = 1,
-    PLAYSTATION_INPUT_CONTROLS_OFFSET = 5,
-    PLAYSTATION_INPUT_STEERING_OFFSET = 0x2b,
-    PLAYSTATION_INPUT_PEDALS_OFFSET = 0x2d,
-    PLAYSTATION_INPUT_WHEEL_HAT_OFFSET = 0x33,
-    PLAYSTATION_INPUT_AUXILIARY_AXIS_OFFSET = 0x34,
-    PLAYSTATION_INPUT_BUTTON_MASK = 0x3fff,
-    PLAYSTATION_INPUT_VENDOR_BUTTON_MASK = 0x3f,
-    PLAYSTATION_INPUT_HAT_NEUTRAL = 8,
-    PLAYSTATION_WHEEL_MODE_01 = 0x01,
-    PLAYSTATION_WHEEL_MODE_02 = 0x02,
-    PLAYSTATION_WHEEL_MODE_03 = 0x03,
-    PLAYSTATION_WHEEL_MODE_04 = 0x04,
-    PLAYSTATION_WHEEL_MODE_06 = 0x06,
-    PLAYSTATION_WHEEL_MODE_09 = 0x09,
-    PLAYSTATION_WHEEL_MODE_0A = 0x0a,
-    PLAYSTATION_WHEEL_MODE_0B = 0x0b,
-    PLAYSTATION_WHEEL_MODE_0C = 0x0c,
-    PLAYSTATION_WHEEL_MODE_0E = 0x0e,
-    PLAYSTATION_WHEEL_MODE_0F = 0x0f,
-    PLAYSTATION_WHEEL_MODE_10 = 0x10,
-    PLAYSTATION_WHEEL_MODE_11 = 0x11,
-    PLAYSTATION_WHEEL_MODE_13 = 0x13,
-    PLAYSTATION_WHEEL_MODE_14 = 0x14,
-    PLAYSTATION_WHEEL_MODE_15 = 0x15,
-    PLAYSTATION_WHEEL_MODE_16 = 0x16,
-    PLAYSTATION_WHEEL_MODE_17 = 0x17,
-    PLAYSTATION_WHEEL_MODE_1C = 0x1c,
-    PLAYSTATION_WHEEL_MODE_1D = 0x1d,
-    PLAYSTATION_DUAL_CLUTCH_PADDLE_MODE = 4,
-    PLAYSTATION_SYSTEM_BUTTON_HOLD_MS = 3000,
-    PLAYSTATION_REPORT_BUTTON_COUNT = 13,
+    PLAYSTATION_INPUT_REPORT_ID = 1,                /**< PlayStation input report identifier. */
+    PLAYSTATION_INPUT_NEUTRAL_AXIS = 0x80,          /**< Neutral controller-axis value. */
+    PLAYSTATION_INPUT_AXES_OFFSET = 1,              /**< Controller-axis field offset. */
+    PLAYSTATION_INPUT_CONTROLS_OFFSET = 5,          /**< Hat and button field offset. */
+    PLAYSTATION_INPUT_STEERING_OFFSET = 0x2b,       /**< Steering field offset. */
+    PLAYSTATION_INPUT_PEDALS_OFFSET = 0x2d,         /**< Pedal field offset. */
+    PLAYSTATION_INPUT_WHEEL_HAT_OFFSET = 0x33,      /**< Attached-wheel hat field offset. */
+    PLAYSTATION_INPUT_AUXILIARY_AXIS_OFFSET = 0x34, /**< Auxiliary-axis field offset. */
+    PLAYSTATION_INPUT_BUTTON_MASK = 0x3fff,         /**< Encoded PlayStation button mask. */
+    PLAYSTATION_INPUT_VENDOR_BUTTON_MASK = 0x3f,    /**< Encoded vendor-button mask. */
+    PLAYSTATION_INPUT_HAT_NEUTRAL = 8,              /**< Neutral PlayStation hat value. */
+    PLAYSTATION_WHEEL_MODE_01 = 0x01,               /**< Wheel mode 0x01. */
+    PLAYSTATION_WHEEL_MODE_02 = 0x02,               /**< Wheel mode 0x02. */
+    PLAYSTATION_WHEEL_MODE_03 = 0x03,               /**< Wheel mode 0x03. */
+    PLAYSTATION_WHEEL_MODE_04 = 0x04,               /**< Wheel mode 0x04. */
+    PLAYSTATION_WHEEL_MODE_06 = 0x06,               /**< Wheel mode 0x06. */
+    PLAYSTATION_WHEEL_MODE_09 = 0x09,               /**< Wheel mode 0x09. */
+    PLAYSTATION_WHEEL_MODE_0A = 0x0a,               /**< Wheel mode 0x0A. */
+    PLAYSTATION_WHEEL_MODE_0B = 0x0b,               /**< Wheel mode 0x0B. */
+    PLAYSTATION_WHEEL_MODE_0C = 0x0c,               /**< Wheel mode 0x0C. */
+    PLAYSTATION_WHEEL_MODE_0E = 0x0e,               /**< Wheel mode 0x0E. */
+    PLAYSTATION_WHEEL_MODE_0F = 0x0f,               /**< Wheel mode 0x0F. */
+    PLAYSTATION_WHEEL_MODE_10 = 0x10,               /**< Wheel mode 0x10. */
+    PLAYSTATION_WHEEL_MODE_11 = 0x11,               /**< Wheel mode 0x11. */
+    PLAYSTATION_WHEEL_MODE_13 = 0x13,               /**< Wheel mode 0x13. */
+    PLAYSTATION_WHEEL_MODE_14 = 0x14,               /**< Wheel mode 0x14. */
+    PLAYSTATION_WHEEL_MODE_15 = 0x15,               /**< Wheel mode 0x15. */
+    PLAYSTATION_WHEEL_MODE_16 = 0x16,               /**< Wheel mode 0x16. */
+    PLAYSTATION_WHEEL_MODE_17 = 0x17,               /**< Wheel mode 0x17. */
+    PLAYSTATION_WHEEL_MODE_1C = 0x1c,               /**< Wheel mode 0x1C. */
+    PLAYSTATION_WHEEL_MODE_1D = 0x1d,               /**< Wheel mode 0x1D. */
+    PLAYSTATION_DUAL_CLUTCH_PADDLE_MODE = 4,        /**< Dual-clutch paddle mode value. */
+    PLAYSTATION_SYSTEM_BUTTON_HOLD_MS = 3000,       /**< Required system-button hold duration. */
+    PLAYSTATION_REPORT_BUTTON_COUNT = 13,           /**< Number of PlayStation report buttons. */
 };
 
+/** @brief Maps encoded wheel direction combinations to PlayStation hat values. */
 static const uint8_t playstation_hat_map[16] = {8, 2, 6, 8, 4, 3, 5, 0, 0, 1, 7, 0, 8, 0, 2, 5};
 
 /**
@@ -50,7 +52,7 @@ static const uint8_t playstation_hat_map[16] = {8, 2, 6, 8, 4, 3, 5, 0, 0, 1, 7,
  *
  * @param[in] value Source button field.
  * @param[in] bit Zero-based source bit.
- * @return True when the source bit is set.
+ * @return True when the source bit is set; otherwise false.
  */
 static bool button_bit(uint16_t value, uint8_t bit) { return ((value >> bit) & 1u) != 0; }
 
@@ -89,7 +91,7 @@ static void merge_button(uint16_t *buttons, uint8_t button, bool active) {
  * Selects the four modes that can replace or merge wheel controls with adapter buttons.
  *
  * @param[in] wheel_mode Attached-wheel protocol mode.
- * @return True when adapter button mapping applies.
+ * @return True when adapter button mapping applies; otherwise false.
  */
 static bool uses_adapter_buttons(uint8_t wheel_mode) {
     return wheel_mode == PLAYSTATION_WHEEL_MODE_04 || wheel_mode == PLAYSTATION_WHEEL_MODE_06 ||
@@ -103,7 +105,7 @@ static bool uses_adapter_buttons(uint8_t wheel_mode) {
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  * @param[in] deadline_ms Target monotonic time in milliseconds.
- * @return True at or after the deadline.
+ * @return True at or after the deadline; otherwise false.
  */
 static bool deadline_reached(uint32_t now_ms, uint32_t deadline_ms) {
     return (int32_t)(now_ms - deadline_ms) >= 0;
@@ -188,8 +190,8 @@ static void map_wheel_buttons(const UsbPlaystationButtonInput *input, uint16_t *
 /**
  * @brief Applies attached-adapter button overrides and merges.
  *
- * Uses the adapter's two supported layouts to replace controls owned by the adapter and then ORs
- * every additional adapter source into its report button.
+ * Uses the adapter's two supported layouts to replace selected wheel controls and merge selected
+ * adapter controls into the report button field.
  *
  * @param[in] input Current attached-wheel and adapter button sources.
  * @param[in,out] buttons Logical PlayStation report buttons.
@@ -231,8 +233,8 @@ static void map_adapter_buttons(const UsbPlaystationButtonInput *input, uint16_t
 /**
  * @brief Applies auxiliary and mode-specific system buttons.
  *
- * Merges shifter buttons, selects the mode-specific system-button source, enforces suppression,
- * and handles the three-second hold required by mode 0x0C without an adapter.
+ * Maps auxiliary button fields, selects the mode-specific system-button source, enforces
+ * suppression, and handles the three-second hold required by mode 0x0C without an adapter.
  *
  * @param[in,out] mapper Retained system-button hold timing.
  * @param[in] input Current attached-wheel, adapter, and auxiliary sources.
@@ -300,13 +302,6 @@ static void map_auxiliary_buttons(UsbPlaystationInputMapper *mapper,
     }
 }
 
-/**
- * @brief Initializes PlayStation input mapping state.
- *
- * Clears the retained system-button hold timer and active latch.
- *
- * @param[out] mapper Mapping state to initialize.
- */
 void usb_playstation_input_mapper_init(UsbPlaystationInputMapper *mapper) {
     *mapper = (UsbPlaystationInputMapper){0};
 }
@@ -314,11 +309,11 @@ void usb_playstation_input_mapper_init(UsbPlaystationInputMapper *mapper) {
 /**
  * @brief Reports whether a wheel mode supplies one PlayStation clutch axis.
  *
- * Selects the four wheel modes that center the second clutch axis and suppress the first axis when
- * the attached wheel does not advertise its axis report.
+ * Selects the four wheel modes that use the first clutch axis when the attached wheel advertises
+ * it and center the second clutch axis.
  *
  * @param[in] wheel_mode Attached-wheel protocol mode.
- * @return True when the mode supplies one clutch axis.
+ * @return True when the mode supplies one clutch axis; otherwise false.
  */
 static bool uses_single_clutch_axis(uint8_t wheel_mode) {
     return wheel_mode == PLAYSTATION_WHEEL_MODE_09 || wheel_mode == PLAYSTATION_WHEEL_MODE_0B ||
@@ -328,10 +323,10 @@ static bool uses_single_clutch_axis(uint8_t wheel_mode) {
 /**
  * @brief Reports whether a wheel mode can source clutch axes from an adapter.
  *
- * Selects the four modes that use attached-adapter axes unless dual-clutch paddle mode is active.
+ * Selects the four modes whose mapping can use attached-adapter clutch axes.
  *
  * @param[in] wheel_mode Attached-wheel protocol mode.
- * @return True when the mode can source adapter clutch axes.
+ * @return True when the mode can source adapter clutch axes; otherwise false.
  */
 static bool uses_adapter_clutch_axes(uint8_t wheel_mode) {
     return wheel_mode == PLAYSTATION_WHEEL_MODE_04 || wheel_mode == PLAYSTATION_WHEEL_MODE_06 ||
@@ -345,7 +340,7 @@ static bool uses_adapter_clutch_axes(uint8_t wheel_mode) {
  * center.
  *
  * @param[in] wheel_mode Attached-wheel protocol mode.
- * @return True when the mode supplies two clutch axes.
+ * @return True when the mode supplies two clutch axes; otherwise false.
  */
 static bool uses_dual_clutch_axes(uint8_t wheel_mode) {
     return (wheel_mode >= PLAYSTATION_WHEEL_MODE_01 && wheel_mode <= PLAYSTATION_WHEEL_MODE_03) ||
@@ -381,15 +376,6 @@ static void map_dual_clutch_axes(uint8_t axes[2], const uint8_t wheel_axes[2]) {
     axes[1] = (uint8_t)(PLAYSTATION_INPUT_NEUTRAL_AXIS + wheel_axes[1]);
 }
 
-/**
- * @brief Converts encoded directional buttons to the PlayStation hat value.
- *
- * Permutes the four low input bits into the lookup order used by the PlayStation report and maps
- * invalid or neutral combinations to the corresponding table value.
- *
- * @param[in] directional_buttons Encoded attached-wheel directional buttons.
- * @return PlayStation hat value from zero through eight.
- */
 uint8_t usb_playstation_input_map_hat(uint8_t directional_buttons) {
     uint8_t index =
         (uint8_t)(((directional_buttons & 0x01u) << 3) | ((directional_buttons >> 1) & 0x04u) |
@@ -397,15 +383,6 @@ uint8_t usb_playstation_input_map_hat(uint8_t directional_buttons) {
     return playstation_hat_map[index];
 }
 
-/**
- * @brief Maps attached-wheel clutch controls to two PlayStation controller axes.
- *
- * Applies the mode-specific single-paddle, dual-paddle, or adapter source policy. Unsupported modes
- * and disconnected adapters produce centered axes.
- *
- * @param[out] axes Two clutch-axis output bytes.
- * @param[in] input Attached-wheel mode, paddle, capability, and adapter values.
- */
 void usb_playstation_input_map_clutch(uint8_t axes[2], const UsbPlaystationClutchInput *input) {
     if (axes == 0) {
         return;
@@ -434,19 +411,6 @@ void usb_playstation_input_map_clutch(uint8_t axes[2], const UsbPlaystationClutc
     }
 }
 
-/**
- * @brief Maps attached-wheel controls to PlayStation hat and buttons.
- *
- * Applies the direct wheel, adapter, auxiliary, suppression, and held system-button policies to a
- * clean logical report state. The vendor-button field is cleared because this interface exposes no
- * active vendor buttons.
- *
- * @param[in,out] mapper Retained system-button hold timing.
- * @param[in] input Current attached-wheel, adapter, and auxiliary button sources.
- * @param[in] now_ms Current monotonic time in milliseconds.
- * @param[in,out] state Logical PlayStation input state to update.
- * @return True when the controls were mapped; otherwise false.
- */
 bool usb_playstation_input_map_buttons(UsbPlaystationInputMapper *mapper,
                                        const UsbPlaystationButtonInput *input, uint32_t now_ms,
                                        UsbPlaystationInputState *state) {
@@ -489,16 +453,6 @@ static void write_axis(uint8_t *destination, uint16_t value) {
  */
 static uint8_t rotate_wheel_hat(uint8_t value) { return (uint8_t)((value << 7) | (value >> 1)); }
 
-/**
- * @brief Encodes the PlayStation 64-byte input report.
- *
- * Writes report ID one, the four controller axes, packed hat and button fields, and the extended
- * steering, pedal, wheel-hat, and auxiliary axes. Unused vendor bytes remain zero.
- *
- * @param[out] report Destination for the complete input report.
- * @param[in] state Logical PlayStation input values.
- * @return True when the report was encoded; otherwise false.
- */
 bool usb_playstation_input_encode(uint8_t report[USB_PLAYSTATION_INPUT_REPORT_SIZE],
                                   const UsbPlaystationInputState *state) {
     if (report == 0 || state == 0 || state->hat > PLAYSTATION_INPUT_HAT_NEUTRAL) {

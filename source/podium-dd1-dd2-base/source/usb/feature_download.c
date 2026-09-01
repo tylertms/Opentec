@@ -3,18 +3,22 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/** @brief Feature-download framing, marker, and acknowledgement constants. */
 enum {
-    FEATURE_DOWNLOAD_HEADER_SIZE = 6,
-    FEATURE_DOWNLOAD_COMPACT_HEADER_SIZE = 4,
-    FEATURE_DOWNLOAD_PAYLOAD_SIZE = USB_FEATURE_DOWNLOAD_PACKET_SIZE - FEATURE_DOWNLOAD_HEADER_SIZE,
-    FEATURE_DOWNLOAD_INITIAL = 0xf0,
-    FEATURE_DOWNLOAD_CONTINUE = 0xa0,
-    FEATURE_DOWNLOAD_GROUP_END = 0xb0,
-    FEATURE_DOWNLOAD_SINGLE = 0x30,
-    FEATURE_DOWNLOAD_COMPACT_PROGRESS = 0xba,
-    FEATURE_DOWNLOAD_COMPACT_PROGRESS_LIMIT = 0x7f,
-    FEATURE_DOWNLOAD_OFFSET_LOW_MARKER = 0x80,
-    FEATURE_DOWNLOAD_CONTINUATIONS_PER_ACKNOWLEDGEMENT = 5,
+    FEATURE_DOWNLOAD_HEADER_SIZE = 6,         /**< Segmented packet header size. */
+    FEATURE_DOWNLOAD_COMPACT_HEADER_SIZE = 4, /**< Compact packet header size. */
+    FEATURE_DOWNLOAD_PAYLOAD_SIZE =
+        USB_FEATURE_DOWNLOAD_PACKET_SIZE -
+        FEATURE_DOWNLOAD_HEADER_SIZE,         /**< Segmented packet payload size. */
+    FEATURE_DOWNLOAD_INITIAL = 0xf0,          /**< Initial segmented packet marker. */
+    FEATURE_DOWNLOAD_CONTINUE = 0xa0,         /**< Continuation or terminal packet marker. */
+    FEATURE_DOWNLOAD_GROUP_END = 0xb0,        /**< Acknowledgement-group final packet marker. */
+    FEATURE_DOWNLOAD_SINGLE = 0x30,           /**< Compact single-packet marker. */
+    FEATURE_DOWNLOAD_COMPACT_PROGRESS = 0xba, /**< Compact progress marker. */
+    FEATURE_DOWNLOAD_COMPACT_PROGRESS_LIMIT = 0x7f, /**< Largest compact progress value. */
+    FEATURE_DOWNLOAD_OFFSET_LOW_MARKER = 0x80,      /**< Segmented offset low-field marker. */
+    FEATURE_DOWNLOAD_CONTINUATIONS_PER_ACKNOWLEDGEMENT =
+        5, /**< Continuations per acknowledgement. */
 };
 
 /**
@@ -77,18 +81,6 @@ static void copy_payload(UsbFeatureDownload *download, const uint8_t *data, uint
     download->offset += count;
 }
 
-/**
- * @brief Initializes a segmented USB feature download.
- *
- * Selects the report identifier, sequence, logical transfer length, and optional leading zero, and
- * resets progress and acknowledgement cadence.
- *
- * @param[out] download Download state to initialize.
- * @param[in] report_id Feature report identifier.
- * @param[in] sequence Sequence carried by every transfer packet.
- * @param[in] total_length Logical transfer byte count including an optional leading zero.
- * @param[in] leading_zero Inserts a zero before the caller-owned source when true.
- */
 void usb_feature_download_init(UsbFeatureDownload *download, uint8_t report_id, uint8_t sequence,
                                uint16_t total_length, bool leading_zero) {
     *download = (UsbFeatureDownload){
@@ -99,17 +91,6 @@ void usb_feature_download_init(UsbFeatureDownload *download, uint8_t report_id, 
     };
 }
 
-/**
- * @brief Builds the next segmented USB feature packet.
- *
- * Emits compact single packets, 58-byte initial and continuation packets, acknowledgement group
- * boundaries every five continuations, final short packets, and the terminal empty packet.
- *
- * @param[in,out] download Active feature download.
- * @param[in] data Source bytes excluding the optional leading zero.
- * @param[out] packet Destination for the next feature packet.
- * @return Number of packet bytes produced, or zero while waiting or after completion.
- */
 uint8_t usb_feature_download_next(UsbFeatureDownload *download, const uint8_t *data,
                                   uint8_t packet[USB_FEATURE_DOWNLOAD_PACKET_SIZE]) {
     uint16_t prefix = download != 0 && download->leading_zero ? 1u : 0u;
@@ -177,16 +158,6 @@ uint8_t usb_feature_download_next(UsbFeatureDownload *download, const uint8_t *d
     return FEATURE_DOWNLOAD_HEADER_SIZE;
 }
 
-/**
- * @brief Accepts a segmented feature-download acknowledgement.
- *
- * Matches status, response code, report identifier, transferred byte count, and remaining byte
- * count at the current acknowledgement boundary.
- *
- * @param[in,out] download Download waiting for acknowledgement.
- * @param[in] acknowledgement Thirteen-byte acknowledgement packet.
- * @return True when every acknowledgement field matches current transfer progress.
- */
 bool usb_feature_download_acknowledge(
     UsbFeatureDownload *download,
     const uint8_t acknowledgement[USB_FEATURE_DOWNLOAD_ACKNOWLEDGEMENT_SIZE]) {

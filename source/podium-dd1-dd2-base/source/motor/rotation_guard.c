@@ -3,7 +3,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-enum { MOTOR_ROTATION_GUARD_HOLD_MS = 4500 };
+/**
+ * @brief Duration of the maximum-rotation runtime hold in milliseconds.
+ */
+enum {
+    MOTOR_ROTATION_GUARD_HOLD_MS = 4500 /**< Hold interval before the warning is emitted. */
+};
 
 /**
  * @brief Initializes maximum-rotation monitoring.

@@ -6,6 +6,19 @@
 #include "force_feedback/script_executor.h"
 #include "force_feedback/script_store.h"
 
+/**
+ * @brief Execute every active force-feedback script slot once.
+ *
+ * Visits slots in ascending order. For each active slot, selects its stored script, resets an aged
+ * timing counter, snapshots the counter, executes the script, and updates its execution metrics
+ * while the clock attributes elapsed ticks to that slot.
+ *
+ * @param[in,out] runtime Script values, samples, outputs, axes, and slot state to update.
+ * @param[in] store Uploaded script byte sequences and allocation records.
+ * @param[in,out] clock Timing counters and active-execution markers to update.
+ * @return true when an active slot faults during execution; otherwise false.
+ * @pre Every active runtime slot has a corresponding valid allocation in store.
+ */
 bool force_feedback_script_service_run(ForceFeedbackScriptRuntime *runtime,
                                        const ForceFeedbackScriptStore *store,
                                        ForceFeedbackScriptClock *clock);

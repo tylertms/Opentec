@@ -7,24 +7,45 @@
 #include "cooling/pwm.h"
 #include "platform/time.h"
 
+/**
+ * @brief Fan PWM and tachometer timing configuration values.
+ */
 enum {
-    FAN_PWM_PERIOD = 3192,
-    FAN_PWM_REGISTER_PERIOD = FAN_PWM_PERIOD - 1,
-    FAN_CAPTURE_INTERVAL_MS = 50,
-    FAN_CAPTURE_INTERRUPT_PRIORITY = 4,
+    FAN_PWM_PERIOD = 3192,                        /**< Fan PWM period count. */
+    FAN_PWM_REGISTER_PERIOD = FAN_PWM_PERIOD - 1, /**< Fan PWM period-register value. */
+    FAN_CAPTURE_INTERVAL_MS = 50,       /**< Interval between alternating fan capture windows. */
+    FAN_CAPTURE_INTERRUPT_PRIORITY = 4, /**< Fan capture interrupt priority. */
 };
 
+/**
+ * @brief Internal state for one fan tachometer capture channel.
+ */
 typedef struct {
-    volatile uint32_t previous;
-    volatile uint32_t current;
-    volatile bool ready;
-    volatile bool present;
-    volatile bool active;
+    volatile uint32_t previous; /**< Previous captured edge timestamp. */
+    volatile uint32_t current;  /**< Current captured edge timestamp. */
+    volatile bool ready;        /**< True when a result awaits foreground retrieval. */
+    volatile bool present;      /**< True when the capture window received a tachometer signal. */
+    volatile bool active;       /**< True when a capture window has completed with an edge pair. */
 } FanCaptureState;
 
+/**
+ * @brief Internal capture state for the primary and secondary fans.
+ */
 static FanCaptureState captures[2];
+
+/**
+ * @brief True when fan PWM compare polarity is inverted.
+ */
 static bool pwm_inverted;
+
+/**
+ * @brief Fan whose capture window is serviced next.
+ */
 static PlatformFan next_fan;
+
+/**
+ * @brief Deadline for the next alternating fan capture service.
+ */
 static uint32_t next_capture_ms;
 
 /**

@@ -23,12 +23,13 @@ void serial_session_init(SerialSession *session) {
 /**
  * @brief Queues one logical attached-device serial message.
  *
- * Copies a message of type two through five into the session and schedules its first data packet.
+ * Copies a message of type two through five and up to 515 bytes into the session, then schedules
+ * its first data packet.
  *
  * @param[in,out] session Session accepting the message.
  * @param[in] type Message type from two through five.
  * @param[in] message Complete logical message payload.
- * @param[in] length Logical message length from one through 512 bytes.
+ * @param[in] length Logical message length from one through 515 bytes.
  * @return True when the idle transmitter accepts the message.
  */
 bool serial_session_queue(SerialSession *session, uint8_t type, const uint8_t *message,
@@ -85,9 +86,9 @@ bool serial_session_next_packet(SerialSession *session, uint8_t output[SERIAL_PA
  * @brief Applies one fixed packet to an attached-device serial session.
  *
  * Valid data and type-one packets advance the shared sequence. Type-one packets advance the
- * outgoing message by 57 bytes. Partial data schedules an acknowledgement, complete data publishes
- * a logical message, and type-zero packets choose resynchronization or data retransmission from the
- * packet sequence.
+ * outgoing message by one packet, up to 57 bytes. Partial data schedules an acknowledgement,
+ * complete data publishes a logical message, and type-zero packets choose resynchronization or
+ * data retransmission from the packet sequence.
  *
  * @param[in,out] session Session receiving the packet.
  * @param[in] input Received sixty-four-byte packet.

@@ -3,38 +3,39 @@
 #include <stddef.h>
 #include <string.h>
 
+/** @brief Fanatec report offsets, status masks, and multi-position mode constants. */
 enum {
-    BUTTONS_OFFSET = 0,
-    ROTARY_OFFSET = 5,
-    ACCESSORY_OFFSET = 10,
-    TRANSFER_CODE_OFFSET = 15,
-    STEERING_OFFSET = 16,
-    PEDALS_OFFSET = 18,
-    CLUTCH_PADDLES_OFFSET = 24,
-    AUXILIARY_PEDAL_OFFSET = 26,
-    ENCODER_OFFSET = 27,
-    STATUS_OFFSET = 28,
-    MODE_OFFSET = 29,
-    AXIS_LIMIT_OFFSET = 30,
-    USAGE_PAGE_OFFSET = 31,
-    USAGE_OFFSET = 32,
-    BUTTON_USAGE_PAGE = 9,
-    BUTTON_USAGE = 3,
-    BITE_POINT_UPDATE_OFFSET = 30,
-    BITE_POINT_UPDATE_MARKER = 0xff,
-    BITE_POINT_UPDATE_TYPE = 2,
-    SHIFTER_TRANSITION_BUTTON_BANK = 1,
-    SHIFTER_GEAR_BUTTON_BANK = 2,
-    SHIFTER_SEQUENTIAL_BUTTON_BANK = 4,
-    SHIFTER_TRANSITION_BUTTON_0 = 1 << 0,
-    SHIFTER_TRANSITION_BUTTON_1 = 1 << 1,
-    STATUS_SEQUENTIAL_SHIFTERS = 1 << 0,
-    STATUS_THERMAL_EFFECT_LIMIT = 1 << 4,
-    STATUS_WHEEL_CALIBRATION_AVAILABLE = 1 << 6,
-    STATUS_WHEEL_INPUT_CAPABILITY = 1 << 7,
-    MULTI_POSITION_ENCODER_MODE = 0,
-    MULTI_POSITION_PULSE_MODE = 1,
-    MULTI_POSITION_CONSTANT_MODE = 2,
+    BUTTONS_OFFSET = 0,                          /**< Button-bank payload offset. */
+    ROTARY_OFFSET = 5,                           /**< Rotary payload offset. */
+    ACCESSORY_OFFSET = 10,                       /**< Accessory payload offset. */
+    TRANSFER_CODE_OFFSET = 15,                   /**< Transfer-code payload offset. */
+    STEERING_OFFSET = 16,                        /**< Steering payload offset. */
+    PEDALS_OFFSET = 18,                          /**< Pedal payload offset. */
+    CLUTCH_PADDLES_OFFSET = 24,                  /**< Clutch-paddle payload offset. */
+    AUXILIARY_PEDAL_OFFSET = 26,                 /**< Auxiliary-pedal payload offset. */
+    ENCODER_OFFSET = 27,                         /**< Encoder-position payload offset. */
+    STATUS_OFFSET = 28,                          /**< Status payload offset. */
+    MODE_OFFSET = 29,                            /**< Wheel-mode payload offset. */
+    AXIS_LIMIT_OFFSET = 30,                      /**< Axis-limit payload offset. */
+    USAGE_PAGE_OFFSET = 31,                      /**< Button usage-page payload offset. */
+    USAGE_OFFSET = 32,                           /**< Button usage payload offset. */
+    BUTTON_USAGE_PAGE = 9,                       /**< HID button usage page value. */
+    BUTTON_USAGE = 3,                            /**< HID button usage value. */
+    BITE_POINT_UPDATE_OFFSET = 30,               /**< Native bite-point update offset. */
+    BITE_POINT_UPDATE_MARKER = 0xff,             /**< Native bite-point update marker. */
+    BITE_POINT_UPDATE_TYPE = 2,                  /**< Native bite-point update type. */
+    SHIFTER_TRANSITION_BUTTON_BANK = 1,          /**< H-pattern transition button bank. */
+    SHIFTER_GEAR_BUTTON_BANK = 2,                /**< H-pattern gear button bank. */
+    SHIFTER_SEQUENTIAL_BUTTON_BANK = 4,          /**< Sequential shifter button bank. */
+    SHIFTER_TRANSITION_BUTTON_0 = 1 << 0,        /**< Primary transition button bit. */
+    SHIFTER_TRANSITION_BUTTON_1 = 1 << 1,        /**< Secondary transition button bit. */
+    STATUS_SEQUENTIAL_SHIFTERS = 1 << 0,         /**< Status bit for all-sequential shifters. */
+    STATUS_THERMAL_EFFECT_LIMIT = 1 << 4,        /**< Status bit for thermal effect limiting. */
+    STATUS_WHEEL_CALIBRATION_AVAILABLE = 1 << 6, /**< Status bit for wheel calibration support. */
+    STATUS_WHEEL_INPUT_CAPABILITY = 1 << 7,      /**< Status bit for wheel input capability. */
+    MULTI_POSITION_ENCODER_MODE = 0,             /**< Multi-position encoder-event mode. */
+    MULTI_POSITION_PULSE_MODE = 1,               /**< Multi-position pulse mode. */
+    MULTI_POSITION_CONSTANT_MODE = 2,            /**< Multi-position constant-position mode. */
 };
 
 /**
@@ -50,16 +51,6 @@ static void write_u16(uint8_t *destination, uint16_t value) {
     destination[1] = (uint8_t)(value >> 8);
 }
 
-/**
- * @brief Applies attached-wheel controls to the Fanatec input fields.
- *
- * Always copies the first two rotary values. When extended controls are enabled, also copies the
- * remaining rotary values and the first accessory byte.
- *
- * @param[in,out] state Input report state to update.
- * @param[in] controls Eight attached-wheel control bytes.
- * @param[in] include_extended True to include control bytes two through five.
- */
 void fanatec_input_apply_wheel_controls(fanatec_input_state *state, const uint8_t controls[8],
                                         bool include_extended) {
     state->rotary[0] = controls[0];
@@ -73,27 +64,10 @@ void fanatec_input_apply_wheel_controls(fanatec_input_state *state, const uint8_
     state->accessory[0] = controls[5];
 }
 
-/**
- * @brief Applies attached-wheel accessory flags to the Fanatec input state.
- *
- * Replaces the low nibble of the final accessory byte while preserving the reporting-mode bits in
- * its high nibble.
- *
- * @param[in,out] state Input report state to update.
- * @param[in] flags Attached-wheel accessory flags.
- */
 void fanatec_input_apply_wheel_accessory(fanatec_input_state *state, uint8_t flags) {
     state->accessory[4] = (uint8_t)((state->accessory[4] & 0xf0u) | (flags & 0x0fu));
 }
 
-/**
- * @brief Applies alternative-shifter status to the Fanatec input state.
- *
- * Replaces bit seven of the final accessory byte while preserving all other accessory flags.
- *
- * @param[in,out] state Input report state to update.
- * @param[in] enabled True while alternative-shifter mode is active.
- */
 void fanatec_input_apply_alternative_shifter(fanatec_input_state *state, bool enabled) {
     if (enabled) {
         state->accessory[4] |= 0x80u;
@@ -102,15 +76,6 @@ void fanatec_input_apply_alternative_shifter(fanatec_input_state *state, bool en
     }
 }
 
-/**
- * @brief Applies the multi-position reporting mode to the Fanatec input state.
- *
- * Replaces bits four and five of the final accessory byte with the low two bits of the effective
- * mode.
- *
- * @param[in,out] state Input report state to update.
- * @param[in] mode Effective multi-position reporting mode.
- */
 void fanatec_input_apply_multi_position_mode(fanatec_input_state *state, uint8_t mode) {
     const uint8_t mask = 0x30;
     state->accessory[4] = (uint8_t)((state->accessory[4] & (uint8_t)~mask) | ((mode << 4) & mask));
@@ -141,7 +106,8 @@ static uint16_t multi_position_selector(uint8_t position, bool remap) {
 /**
  * @brief Packs one rotary selector into the Fanatec rotary fields.
  *
- * Places each channel in its twelve-bit report slot without changing bits outside that slot.
+ * Places the selected channel in its twelve-bit report slot without changing bits outside that
+ * slot.
  *
  * @param[in,out] state Input report state to update.
  * @param[in] channel Rotary channel index.
@@ -161,17 +127,6 @@ static void apply_multi_position_selector(fanatec_input_state *state, uint8_t ch
     }
 }
 
-/**
- * @brief Applies multi-position rotary values to the Fanatec input state.
- *
- * Encoder mode emits direction events. Pulse mode emits a position while its transition event is
- * active. Constant mode continuously emits each active position. Other modes leave all rotary
- * fields clear.
- *
- * @param[in,out] state Input report state to update.
- * @param[in] mode Effective multi-position reporting mode.
- * @param[in] input Logical rotary channels and selector layout.
- */
 void fanatec_input_apply_multi_position_rotaries(fanatec_input_state *state, uint8_t mode,
                                                  const fanatec_multi_position_input *input) {
     memset(state->rotary, 0, sizeof(state->rotary));
@@ -200,16 +155,6 @@ void fanatec_input_apply_multi_position_rotaries(fanatec_input_state *state, uin
     }
 }
 
-/**
- * @brief Applies shifter input to the Fanatec button fields.
- *
- * Places the current H-pattern gear or sequential transition buttons according to the two shifter
- * port modes. Status bit zero indicates that both ports use sequential input.
- *
- * @param[in,out] state Input report state to update.
- * @param[in] shifter Mode and transition state for both shifter ports.
- * @param[in] gear Current H-pattern gear bit, or neutral.
- */
 void fanatec_input_apply_shifter(fanatec_input_state *state, const ShifterInputState *shifter,
                                  ShifterGear gear) {
     const bool sequential_only = shifter->primary_mode == SHIFTER_INPUT_SEQUENTIAL &&
@@ -238,43 +183,22 @@ void fanatec_input_apply_shifter(fanatec_input_state *state, const ShifterInputS
     }
 }
 
-/**
- * @brief Applies the thermal effect-limit indication to the Fanatec input state.
- *
- * Replaces status bit four with the current effect-strength limit state while preserving every
- * other status bit.
- *
- * @param[in,out] state Input report state to update.
- * @param[in] active True while thermal management limits the effect strengths.
- */
 void fanatec_input_apply_thermal_limit(fanatec_input_state *state, bool active) {
     state->status_flags = (uint8_t)((state->status_flags & (uint8_t)~STATUS_THERMAL_EFFECT_LIMIT) |
                                     (active ? STATUS_THERMAL_EFFECT_LIMIT : 0));
 }
 
-/**
- * @brief Applies pedal transport status to the Fanatec input state.
- *
- * Replaces status bits one through five with the current legacy, auxiliary, handshake, resistance,
- * and calibration states while preserving every unrelated status bit.
- *
- * @param[in,out] state Input report state to update.
- * @param[in] legacy True while legacy pedal transport is active.
- * @param[in] auxiliary True while the auxiliary pedal profile is active.
- * @param[in] handshake True while the modern pedal startup handshake is active.
- * @param[in] resistance True while pedal resistance adjustment is active.
- * @param[in] calibration True while pedal calibration is active.
- */
 void fanatec_input_apply_pedal_status(fanatec_input_state *state, bool legacy, bool auxiliary,
                                       bool handshake, bool resistance, bool calibration) {
+    /** @brief Pedal transport status bit masks. */
     enum {
-        PEDAL_LEGACY = 1u << 1,
-        PEDAL_AUXILIARY = 1u << 2,
-        PEDAL_HANDSHAKE = 1u << 3,
-        PEDAL_RESISTANCE = 1u << 4,
-        PEDAL_CALIBRATION = 1u << 5,
-        PEDAL_MASK =
-            PEDAL_LEGACY | PEDAL_AUXILIARY | PEDAL_HANDSHAKE | PEDAL_RESISTANCE | PEDAL_CALIBRATION,
+        PEDAL_LEGACY = 1u << 1,      /**< Legacy pedal transport status bit. */
+        PEDAL_AUXILIARY = 1u << 2,   /**< Auxiliary pedal status bit. */
+        PEDAL_HANDSHAKE = 1u << 3,   /**< Pedal startup handshake status bit. */
+        PEDAL_RESISTANCE = 1u << 4,  /**< Pedal resistance status bit. */
+        PEDAL_CALIBRATION = 1u << 5, /**< Pedal calibration status bit. */
+        PEDAL_MASK = PEDAL_LEGACY | PEDAL_AUXILIARY | PEDAL_HANDSHAKE | PEDAL_RESISTANCE |
+                     PEDAL_CALIBRATION, /**< Mask covering all pedal transport status bits. */
     };
     uint8_t status = (legacy ? PEDAL_LEGACY : 0) | (auxiliary ? PEDAL_AUXILIARY : 0) |
                      (handshake ? PEDAL_HANDSHAKE : 0) | (resistance ? PEDAL_RESISTANCE : 0) |
@@ -282,45 +206,18 @@ void fanatec_input_apply_pedal_status(fanatec_input_state *state, bool legacy, b
     state->status_flags = (uint8_t)((state->status_flags & (uint8_t)~PEDAL_MASK) | status);
 }
 
-/**
- * @brief Applies attached-wheel calibration availability to the Fanatec input state.
- *
- * Replaces status bit six with the effective wheel capability while preserving every other status
- * bit.
- *
- * @param[in,out] state Input report state to update.
- * @param[in] available True when the attached wheel exposes calibration controls.
- */
 void fanatec_input_apply_wheel_calibration(fanatec_input_state *state, bool available) {
     state->status_flags =
         (uint8_t)((state->status_flags & (uint8_t)~STATUS_WHEEL_CALIBRATION_AVAILABLE) |
                   (available ? STATUS_WHEEL_CALIBRATION_AVAILABLE : 0));
 }
 
-/**
- * @brief Applies attached-wheel input capability to the Fanatec input state.
- *
- * Replaces status bit seven with the effective wheel capability while preserving every other
- * status bit.
- *
- * @param[in,out] state Input report state to update.
- * @param[in] available True when the attached wheel exposes its latched input capability.
- */
 void fanatec_input_apply_wheel_input_capability(fanatec_input_state *state, bool available) {
     state->status_flags =
         (uint8_t)((state->status_flags & (uint8_t)~STATUS_WHEEL_INPUT_CAPABILITY) |
                   (available ? STATUS_WHEEL_INPUT_CAPABILITY : 0));
 }
 
-/**
- * @brief Merges attached-wheel axes into the Fanatec pedal fields.
- *
- * Expands enabled wheel axis bytes across the sixteen-bit pedal range and retains the lower value
- * from each wheel and pedal source. The auxiliary channel applies the same rule at eight bits.
- *
- * @param[in,out] state Input report state whose pedal fields receive the merged values.
- * @param[in] overrides Attached-wheel axis channels and availability flags.
- */
 void fanatec_input_apply_wheel_axis_overrides(fanatec_input_state *state,
                                               const WheelAxisOverrides *overrides) {
     const WheelAxisOverride *pedal_overrides[FANATEC_INPUT_PEDAL_AXES] = {
@@ -341,15 +238,6 @@ void fanatec_input_apply_wheel_axis_overrides(fanatec_input_state *state,
     }
 }
 
-/**
- * @brief Applies a live bite-point update to the native Fanatec report.
- *
- * Marks the next report to replace its final four bytes with the bite-point update marker, type,
- * percentage, and trailing zero.
- *
- * @param[in,out] state Input report state to update.
- * @param[in] percent Current bite-point percentage.
- */
 void fanatec_input_apply_bite_point_update(fanatec_input_state *state, uint8_t percent) {
     state->bite_point_percent = percent;
     state->bite_point_update = true;
@@ -385,17 +273,6 @@ static void encode_payload(uint8_t report[FANATEC_INPUT_COMPATIBILITY_REPORT_SIZ
     report[USAGE_OFFSET] = BUTTON_USAGE;
 }
 
-/**
- * @brief Encodes the native Fanatec input report.
- *
- * Writes report ID one followed by the complete thirty-three-byte Fanatec input payload. A live
- * bite-point update replaces the report's final four bytes with its marker, type, percentage, and
- * trailing zero.
- *
- * @param[out] report Buffer that receives the encoded report.
- * @param[in] state Logical Fanatec input values.
- * @return True when the report was encoded; otherwise false.
- */
 bool fanatec_input_encode(uint8_t report[FANATEC_INPUT_REPORT_SIZE],
                           const fanatec_input_state *state) {
     if (report == NULL || state == NULL) {
@@ -413,15 +290,6 @@ bool fanatec_input_encode(uint8_t report[FANATEC_INPUT_REPORT_SIZE],
     return true;
 }
 
-/**
- * @brief Encodes the Fanatec compatibility input report.
- *
- * Writes the complete Fanatec input payload without a leading HID report ID.
- *
- * @param[out] report Buffer that receives the encoded report.
- * @param[in] state Logical Fanatec input values.
- * @return True when the report was encoded; otherwise false.
- */
 bool fanatec_input_compatibility_encode(uint8_t report[FANATEC_INPUT_COMPATIBILITY_REPORT_SIZE],
                                         const fanatec_input_state *state) {
     if (report == NULL || state == NULL) {

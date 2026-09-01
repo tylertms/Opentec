@@ -3,10 +3,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/** @brief Internal axis-mode packet selectors. */
 enum {
-    WHEEL_PACKET_AXIS_MODE_STANDARD = 0x09,
-    WHEEL_PACKET_AXIS_MODE_AUTHENTICATED = 0x0b,
-    WHEEL_PACKET_AXIS_MODE_EXTENDED = 0x1d,
+    WHEEL_PACKET_AXIS_MODE_STANDARD = 0x09,      /**< Standard axis-mode value. */
+    WHEEL_PACKET_AXIS_MODE_AUTHENTICATED = 0x0b, /**< Authenticated axis-mode value. */
+    WHEEL_PACKET_AXIS_MODE_EXTENDED = 0x1d,      /**< Extended axis-mode value. */
 };
 
 /**

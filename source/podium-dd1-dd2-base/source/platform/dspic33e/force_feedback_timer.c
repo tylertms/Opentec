@@ -2,12 +2,22 @@
 
 #include <xc.h>
 
+/**
+ * @brief Force-feedback timer configuration values.
+ */
 enum {
-    FORCE_FEEDBACK_TIMER_PERIOD = 0x16a8,
-    FORCE_FEEDBACK_TIMER_PRIORITY = 4,
+    FORCE_FEEDBACK_TIMER_PERIOD = 0x16a8, /**< Timer 2 period register value. */
+    FORCE_FEEDBACK_TIMER_PRIORITY = 4,    /**< Timer 2 interrupt priority. */
 };
 
+/**
+ * @brief Runtime callback invoked for each force-feedback timer tick.
+ */
 static PlatformForceFeedbackTickHandler tick_handler;
+
+/**
+ * @brief Caller-owned context passed to the runtime tick callback.
+ */
 static void *tick_context;
 
 /**

@@ -5,56 +5,52 @@
 
 #include "usb/console_descriptor.h"
 
+/** @brief Private wire values used by Xbox GIP response encoders. */
 enum {
-    XBOX_GIP_DIGEST_RESPONSE = 2,
-    XBOX_GIP_TRANSFER_STATUS_RESPONSE = 1,
-    XBOX_GIP_CAPABILITY_RESPONSE = 0x21,
-    XBOX_GIP_READY_RESPONSE = 3,
-    XBOX_GIP_INPUT_RESPONSE = 0x20,
-    XBOX_GIP_SEQUENCE_SUBCOMMAND = 0x20,
-    XBOX_GIP_DIGEST_PAYLOAD_SIZE = 0x1c,
-    XBOX_GIP_READY_PAYLOAD_SIZE = 4,
-    XBOX_GIP_TRANSFER_STATUS_PAYLOAD_SIZE = 9,
-    XBOX_GIP_TRANSFER_STATUS_ERROR = 2,
-    XBOX_GIP_CAPABILITY_PAYLOAD_SIZE = 0x33,
-    XBOX_GIP_CAPABILITY_CLASS = 0x10,
-    XBOX_GIP_CAPABILITY_AXIS_COUNT = 8,
-    XBOX_GIP_CAPABILITY_RANGE_UPPER = 0x5a,
-    XBOX_GIP_CAPABILITY_RANGE_LOWER = 0x38,
-    XBOX_GIP_CAPABILITY_PEDAL_COUNT = 4,
-    XBOX_GIP_CAPABILITY_FLAGS = 0x48,
-    XBOX_GIP_EXTENDED_STATUS_RESPONSE = 0x11,
-    XBOX_GIP_EXTENDED_STATUS_PAYLOAD_SIZE = 0x0d,
-    XBOX_GIP_EXTENDED_STATUS_READY = 1 << 0,
-    XBOX_GIP_EXTENDED_STATUS_LEGACY_PEDALS = 1 << 1,
-    XBOX_GIP_EXTENDED_STATUS_AUXILIARY_CALIBRATION = 1 << 2,
-    XBOX_GIP_EXTENDED_STATUS_PEDAL_RECOVERY = 1 << 3,
-    XBOX_GIP_EXTENDED_STATUS_THERMAL_LIMIT = 1 << 4,
-    XBOX_GIP_EXTENDED_STATUS_PEDAL_CALIBRATION = 1 << 5,
-    XBOX_GIP_EXTENDED_STATUS_WHEEL_CALIBRATION = 1 << 6,
-    XBOX_GIP_EXTENDED_STATUS_WHEEL_INPUT = 1 << 7,
-    XBOX_GIP_EXTENDED_STATUS_SECONDARY_PEDAL_CALIBRATION = 1 << 4,
-    XBOX_GIP_EXTENDED_STATUS_PROFILE_VERSION = 3,
-    XBOX_GIP_EXTENDED_STATUS_PROTOCOL_VERSION = 9,
-    XBOX_GIP_EXTENDED_STATUS_WHEEL_MODE = 0x1d,
-    XBOX_GIP_INPUT_PAYLOAD_SIZE = 0x32,
-    XBOX_GIP_INPUT_AXIS_MODE = 0x66,
-    XBOX_GIP_INPUT_AXIS_FLAGS = 0x08,
-    XBOX_GIP_INPUT_AUXILIARY_AXIS_FLAG = 1 << 4,
-    XBOX_GIP_INPUT_THIRD_PEDAL_FLAG = 1 << 5,
-    XBOX_GIP_INPUT_SECOND_PEDAL_FLAG = 1 << 6,
-    XBOX_GIP_INPUT_FIRST_PEDAL_FLAG = 1 << 7,
+    XBOX_GIP_DIGEST_RESPONSE = 2,                    /**< Digest response type. */
+    XBOX_GIP_TRANSFER_STATUS_RESPONSE = 1,           /**< Transfer-status response type. */
+    XBOX_GIP_CAPABILITY_RESPONSE = 0x21,             /**< Capability response type. */
+    XBOX_GIP_READY_RESPONSE = 3,                     /**< Ready response type. */
+    XBOX_GIP_INPUT_RESPONSE = 0x20,                  /**< Input response type. */
+    XBOX_GIP_SEQUENCE_SUBCOMMAND = 0x20,             /**< Sequence subcommand value. */
+    XBOX_GIP_DIGEST_PAYLOAD_SIZE = 0x1c,             /**< Digest payload size. */
+    XBOX_GIP_READY_PAYLOAD_SIZE = 4,                 /**< Ready payload size. */
+    XBOX_GIP_TRANSFER_STATUS_PAYLOAD_SIZE = 9,       /**< Transfer-status payload size. */
+    XBOX_GIP_TRANSFER_STATUS_ERROR = 2,              /**< Transfer-status error value. */
+    XBOX_GIP_CAPABILITY_PAYLOAD_SIZE = 0x33,         /**< Capability payload size. */
+    XBOX_GIP_CAPABILITY_CLASS = 0x10,                /**< Capability class value. */
+    XBOX_GIP_CAPABILITY_AXIS_COUNT = 8,              /**< Number of capability axes. */
+    XBOX_GIP_CAPABILITY_RANGE_UPPER = 0x5a,          /**< Capability range upper byte. */
+    XBOX_GIP_CAPABILITY_RANGE_LOWER = 0x38,          /**< Capability range lower byte. */
+    XBOX_GIP_CAPABILITY_PEDAL_COUNT = 4,             /**< Number of capability pedals. */
+    XBOX_GIP_CAPABILITY_FLAGS = 0x48,                /**< Capability flags value. */
+    XBOX_GIP_EXTENDED_STATUS_RESPONSE = 0x11,        /**< Extended-status response type. */
+    XBOX_GIP_EXTENDED_STATUS_PAYLOAD_SIZE = 0x0d,    /**< Extended-status payload size. */
+    XBOX_GIP_EXTENDED_STATUS_READY = 1 << 0,         /**< H-pattern-ready status bit. */
+    XBOX_GIP_EXTENDED_STATUS_LEGACY_PEDALS = 1 << 1, /**< Legacy-pedal status bit. */
+    XBOX_GIP_EXTENDED_STATUS_AUXILIARY_CALIBRATION = 1
+                                                     << 2, /**< Auxiliary-calibration status bit. */
+    XBOX_GIP_EXTENDED_STATUS_PEDAL_RECOVERY = 1 << 3,      /**< Pedal-recovery status bit. */
+    XBOX_GIP_EXTENDED_STATUS_THERMAL_LIMIT = 1 << 4,       /**< Thermal-limit status bit. */
+    XBOX_GIP_EXTENDED_STATUS_PEDAL_CALIBRATION = 1
+                                                 << 5, /**< Primary pedal-calibration status bit. */
+    XBOX_GIP_EXTENDED_STATUS_WHEEL_CALIBRATION = 1 << 6, /**< Wheel-calibration status bit. */
+    XBOX_GIP_EXTENDED_STATUS_WHEEL_INPUT = 1 << 7,       /**< Wheel-input status bit. */
+    XBOX_GIP_EXTENDED_STATUS_SECONDARY_PEDAL_CALIBRATION =
+        1 << 4, /**< Protocol value for secondary pedal calibration. */
+    XBOX_GIP_EXTENDED_STATUS_PROFILE_VERSION = 3,  /**< Extended-status profile version. */
+    XBOX_GIP_EXTENDED_STATUS_PROTOCOL_VERSION = 9, /**< Extended-status protocol version. */
+    XBOX_GIP_EXTENDED_STATUS_WHEEL_MODE =
+        0x1d,                           /**< Wheel mode selecting extended-status version 5. */
+    XBOX_GIP_INPUT_PAYLOAD_SIZE = 0x32, /**< Input payload size. */
+    XBOX_GIP_INPUT_AXIS_MODE = 0x66,    /**< Encoded active axis mode value. */
+    XBOX_GIP_INPUT_AXIS_FLAGS = 0x08,   /**< Base input-axis flags. */
+    XBOX_GIP_INPUT_AUXILIARY_AXIS_FLAG = 1 << 4, /**< Auxiliary-axis active bit. */
+    XBOX_GIP_INPUT_THIRD_PEDAL_FLAG = 1 << 5,    /**< Third-pedal active bit. */
+    XBOX_GIP_INPUT_SECOND_PEDAL_FLAG = 1 << 6,   /**< Second-pedal active bit. */
+    XBOX_GIP_INPUT_FIRST_PEDAL_FLAG = 1 << 7,    /**< First-pedal active bit. */
 };
 
-/**
- * @brief Takes the next Xbox GIP response sequence.
- *
- * Returns the current sequence and advances it, except that value 255 is replaced with 1 and
- * stored as the next value.
- *
- * @param[in,out] next_sequence Sequence state to consume and advance.
- * @return Sequence value for the current response.
- */
 uint8_t usb_xbox_gip_sequence_take(uint8_t *next_sequence) {
     uint8_t sequence = *next_sequence;
     if (sequence == UINT8_MAX) {
@@ -66,18 +62,6 @@ uint8_t usb_xbox_gip_sequence_take(uint8_t *next_sequence) {
     return sequence;
 }
 
-/**
- * @brief Encodes the Xbox GIP discovery digest response.
- *
- * Emits the 32-byte discovery identity, including the eight-byte device digest, base and wheel
- * mode code, protocol version, status version, and three feature versions.
- *
- * @param[in] variant DD1 or DD2 hardware variant.
- * @param[in] wheel_mode Attached wheel mode used for the mode and status versions.
- * @param[in] sequence Response sequence value.
- * @param[in] digest Eight-byte device digest.
- * @param[out] output Destination for the digest response.
- */
 void usb_xbox_gip_digest_response_encode(BoardVariant variant, uint8_t wheel_mode, uint8_t sequence,
                                          const uint8_t digest[USB_XBOX_GIP_DIGEST_SIZE],
                                          uint8_t output[USB_XBOX_GIP_DIGEST_RESPONSE_SIZE]) {
@@ -96,6 +80,7 @@ void usb_xbox_gip_digest_response_encode(BoardVariant variant, uint8_t wheel_mod
         output[15] = 0x0f;
     }
 
+    /** @brief Protocol-version bytes included in a digest response. */
     static const uint8_t protocol_version[] = {3, 0, 9, 0, 0, 0, 1, 0};
     memcpy(&output[16], protocol_version, sizeof(protocol_version));
     output[24] = wheel_mode == XBOX_GIP_EXTENDED_STATUS_WHEEL_MODE ? 5 : 4;
@@ -104,15 +89,6 @@ void usb_xbox_gip_digest_response_encode(BoardVariant variant, uint8_t wheel_mod
     output[30] = 1;
 }
 
-/**
- * @brief Encodes the Xbox GIP ready response.
- *
- * Emits the eight-byte response returned after accepted activation, pause, suspend, and reset
- * session commands.
- *
- * @param[in] sequence Response sequence value.
- * @param[out] output Destination for the ready response.
- */
 void usb_xbox_gip_ready_response_encode(uint8_t sequence,
                                         uint8_t output[USB_XBOX_GIP_READY_RESPONSE_SIZE]) {
     memset(output, 0, USB_XBOX_GIP_READY_RESPONSE_SIZE);
@@ -124,16 +100,6 @@ void usb_xbox_gip_ready_response_encode(uint8_t sequence,
     output[5] = 1;
 }
 
-/**
- * @brief Encodes the Xbox GIP transfer-status response.
- *
- * Echoes the first two request bytes and reports transfer status 2 with zero transferred and
- * remaining counts.
- *
- * @param[in] sequence Current response sequence value without advancing it.
- * @param[in] request First two bytes of the triggering session request.
- * @param[out] output Destination for the transfer-status response.
- */
 void usb_xbox_gip_transfer_status_response_encode(
     uint8_t sequence, const uint8_t request[2],
     uint8_t output[USB_XBOX_GIP_TRANSFER_STATUS_RESPONSE_SIZE]) {
@@ -147,15 +113,6 @@ void usb_xbox_gip_transfer_status_response_encode(
     output[6] = request[1];
 }
 
-/**
- * @brief Encodes the Xbox GIP wheel capability response.
- *
- * Emits the 51-byte capability payload describing the wheel class, eight axes, fixed range fields,
- * four pedals, and capability flags. Reserved payload bytes are cleared.
- *
- * @param[in] sequence Response sequence value.
- * @param[out] output Destination for the capability response.
- */
 void usb_xbox_gip_capability_response_encode(
     uint8_t sequence, uint8_t output[USB_XBOX_GIP_CAPABILITY_RESPONSE_SIZE]) {
     memset(output, 0, USB_XBOX_GIP_CAPABILITY_RESPONSE_SIZE);
@@ -174,16 +131,6 @@ void usb_xbox_gip_capability_response_encode(
     output[14] = XBOX_GIP_CAPABILITY_FLAGS;
 }
 
-/**
- * @brief Encodes the Xbox GIP attached-device status response.
- *
- * Emits the wheel, pedal, shifter, thermal-limit, motor-controller, multi-position, adapter, and
- * base-identity state in the 13-byte type-11 payload. Reserved bytes are cleared.
- *
- * @param[in] sequence Response sequence value.
- * @param[in] status Current logical attached-device status.
- * @param[out] output Destination for the extended-status response.
- */
 void usb_xbox_gip_extended_status_response_encode(
     uint8_t sequence, const UsbXboxGipExtendedStatus *status,
     uint8_t output[USB_XBOX_GIP_EXTENDED_STATUS_RESPONSE_SIZE]) {
@@ -214,6 +161,7 @@ void usb_xbox_gip_extended_status_response_encode(
     output[10] = XBOX_GIP_EXTENDED_STATUS_PROTOCOL_VERSION;
     output[11] = status->transfer_code;
     if (status->multi_position_supported) {
+        /** @brief Protocol values corresponding to supported multi-position modes. */
         static const uint8_t variants[] = {1, 3, 2, 0};
         output[12] = status->multi_position_mode < sizeof(variants)
                          ? variants[status->multi_position_mode]
@@ -225,17 +173,6 @@ void usb_xbox_gip_extended_status_response_encode(
     output[14] = status->board_variant == BOARD_VARIANT_DD2 ? 8 : status->hardware_option ? 7 : 6;
 }
 
-/**
- * @brief Encodes the Xbox GIP input-state response.
- *
- * Emits the 50-byte controller payload with buttons, steering, pedals, wheel controls, active-axis
- * flags, auxiliary buttons, and the fixed extension marker. The remaining reserved payload bytes
- * are cleared.
- *
- * @param[in] sequence Response sequence value.
- * @param[in] snapshot Logical controller state to encode.
- * @param[out] output Destination for the input-state response.
- */
 void usb_xbox_gip_input_response_encode(uint8_t sequence, const UsbXboxGipInputSnapshot *snapshot,
                                         uint8_t output[USB_XBOX_GIP_INPUT_RESPONSE_SIZE]) {
     memset(output, 0, USB_XBOX_GIP_INPUT_RESPONSE_SIZE);

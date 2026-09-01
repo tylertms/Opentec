@@ -3,12 +3,17 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/**
+ * @brief Wire identifiers and offsets used by script uploads.
+ *
+ * The values describe the upload packet opcode and its slot, size, chunk, and data fields.
+ */
 enum {
-    SCRIPT_UPLOAD_OPCODE = 0x0d,
-    SCRIPT_UPLOAD_SLOT_OFFSET = 4,
-    SCRIPT_UPLOAD_SIZE_OFFSET = 5,
-    SCRIPT_UPLOAD_CHUNK_OFFSET = 7,
-    SCRIPT_UPLOAD_DATA_OFFSET = 9,
+    SCRIPT_UPLOAD_OPCODE = 0x0d,    /**< Script upload packet opcode. */
+    SCRIPT_UPLOAD_SLOT_OFFSET = 4,  /**< Upload slot-index field offset. */
+    SCRIPT_UPLOAD_SIZE_OFFSET = 5,  /**< Upload script-size field offset. */
+    SCRIPT_UPLOAD_CHUNK_OFFSET = 7, /**< Upload chunk-offset field offset. */
+    SCRIPT_UPLOAD_DATA_OFFSET = 9,  /**< First upload data byte offset. */
 };
 
 /**
@@ -63,35 +68,12 @@ static void move_left(uint8_t *data, uint16_t start, uint16_t end, uint16_t dist
     }
 }
 
-/**
- * @brief Initialize force-feedback script storage.
- *
- * Clears the shared 2,048-byte buffer, all 16 allocation records, the used-byte count, and the
- * pending position-request marker.
- *
- * @param[out] store Script storage to initialize.
- */
 void force_feedback_script_store_init(ForceFeedbackScriptStore *store) {
     if (store != NULL) {
         *store = (ForceFeedbackScriptStore){0};
     }
 }
 
-/**
- * @brief Apply one script upload packet to the shared script store.
- *
- * Uses packet byte 4 as the slot, bytes 5 and 6 as the little-endian script size, bytes 7 and 8
- * as the chunk offset, and bytes 9 through 56 as a 48-byte chunk. A first chunk inserts storage in
- * slot order and moves later scripts without changing their contents. A final chunk sets the slot
- * inactive. Continuation chunks preserve the current slot state until the declared final bytes are
- * copied.
- *
- * @param[in,out] store Shared 2,048-byte script store and per-slot allocation records.
- * @param[in,out] runtime_slots Runtime state for all 16 script slots.
- * @param[in] packet Complete 64-byte vendor-HID packet beginning with opcode 0x0D.
- * @param[in] length Number of available packet bytes.
- * @return True when the upload fields describe an in-range allocation or continuation chunk.
- */
 bool force_feedback_script_store_upload(ForceFeedbackScriptStore *store,
                                         ForceFeedbackScriptSlot *runtime_slots,
                                         const uint8_t *packet, size_t length) {
@@ -149,15 +131,6 @@ bool force_feedback_script_store_upload(ForceFeedbackScriptStore *store,
     return true;
 }
 
-/**
- * @brief Reclaim scripts whose runtime slots are empty.
- *
- * Removes each empty slot allocation, closes its gap in the shared script bytes, and updates every
- * later allocation offset. Allocations for nonempty slots keep their byte contents and slot order.
- *
- * @param[in,out] store Shared script store to compact.
- * @param[in] runtime_slots Runtime states for all 16 script slots.
- */
 void force_feedback_script_store_compact(ForceFeedbackScriptStore *store,
                                          const ForceFeedbackScriptSlot *runtime_slots) {
     if (store == NULL || runtime_slots == NULL) {
@@ -185,17 +158,6 @@ void force_feedback_script_store_compact(ForceFeedbackScriptStore *store,
     }
 }
 
-/**
- * @brief Get the stored byte sequence for one force-feedback script slot.
- *
- * Returns the allocated sequence without copying it and reports its declared size. Empty and
- * out-of-range slots do not produce a sequence.
- *
- * @param[in] store Shared script storage containing all slot allocations.
- * @param[in] slot Script slot index from 0 through 15.
- * @param[out] size Declared byte count for the selected sequence.
- * @return The stored sequence, or null when the slot has no valid allocation.
- */
 const uint8_t *force_feedback_script_store_data(const ForceFeedbackScriptStore *store, uint8_t slot,
                                                 uint16_t *size) {
     if (store == NULL || size == NULL || slot >= FORCE_FEEDBACK_SCRIPT_SLOT_COUNT ||

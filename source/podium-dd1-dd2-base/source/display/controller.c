@@ -3,11 +3,21 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/**
+ * @brief Stores one display-controller bus event.
+ *
+ * Each event identifies the bus mode and byte emitted in a controller command sequence.
+ */
 typedef struct {
-    DisplayBusMode mode;
-    uint8_t value;
+    DisplayBusMode mode; /**< Command or data mode for the emitted byte. */
+    uint8_t value;       /**< Byte emitted on the display bus. */
 } DisplayBusEvent;
 
+/**
+ * @brief Contains the display-controller initialization event sequence.
+ *
+ * The events configure the panel before the first framebuffer transfer.
+ */
 static const DisplayBusEvent initialization[] = {
     {DISPLAY_BUS_COMMAND, 0xfd}, {DISPLAY_BUS_DATA, 0x12},    {DISPLAY_BUS_COMMAND, 0xae},
     {DISPLAY_BUS_COMMAND, 0xb3}, {DISPLAY_BUS_DATA, 0x91},    {DISPLAY_BUS_COMMAND, 0xca},
@@ -26,6 +36,11 @@ static const DisplayBusEvent initialization[] = {
     {DISPLAY_BUS_COMMAND, 0xa6}, {DISPLAY_BUS_COMMAND, 0xaf}, {DISPLAY_BUS_COMMAND, 0x5c},
 };
 
+/**
+ * @brief Contains the event sequence that begins one framebuffer transfer.
+ *
+ * The events select the panel window and enter display-RAM write mode.
+ */
 static const DisplayBusEvent begin_frame[] = {
     {DISPLAY_BUS_COMMAND, 0x15}, {DISPLAY_BUS_DATA, 0x1c}, {DISPLAY_BUS_DATA, 0x5b},
     {DISPLAY_BUS_COMMAND, 0x75}, {DISPLAY_BUS_DATA, 0x00}, {DISPLAY_BUS_DATA, 0x3f},

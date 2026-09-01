@@ -3,9 +3,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/** @brief USB connection debounce and notification intervals. */
 enum {
-    USB_CONNECTION_DISCONNECT_DELAY_MS = 200,
-    USB_CONNECTION_NOTIFICATION_MS = 2000,
+    USB_CONNECTION_DISCONNECT_DELAY_MS = 200, /**< Disconnect debounce interval in milliseconds. */
+    USB_CONNECTION_NOTIFICATION_MS = 2000, /**< Disconnect notification interval in milliseconds. */
 };
 
 /**
@@ -32,31 +33,10 @@ static bool deadline_reached(uint32_t now_ms, uint32_t deadline_ms) {
  */
 static bool deadline_passed(uint32_t now_ms, uint32_t deadline_ms) { return now_ms > deadline_ms; }
 
-/**
- * @brief Initializes USB connection monitoring.
- *
- * Clears the disconnect delay, notification deadline, and latched connection state.
- *
- * @param[out] monitor USB connection monitor to initialize.
- */
 void usb_connection_monitor_init(UsbConnectionMonitor *monitor) {
     *monitor = (UsbConnectionMonitor){0};
 }
 
-/**
- * @brief Debounces USB disconnection and schedules its display notification.
- *
- * A connected sample clears the disconnected state and starts a 200-millisecond disconnect delay.
- * A sustained disconnected sample emits one notification request, keeps the notification visible
- * for 2000 milliseconds, and finally emits one clear action. The disconnected state remains set
- * until the connection input returns.
- *
- * @param[in,out] monitor Persistent disconnect and notification state.
- * @param[in] connected True while USB VBUS is present.
- * @param[in] notification_ready True when the display can accept the disconnect notification.
- * @param[in] now_ms Current monotonic time in milliseconds.
- * @return Bitwise combination of notify, show, and clear actions for this update.
- */
 UsbConnectionAction usb_connection_monitor_update(UsbConnectionMonitor *monitor, bool connected,
                                                   bool notification_ready, uint32_t now_ms) {
     UsbConnectionAction actions = USB_CONNECTION_ACTION_NONE;

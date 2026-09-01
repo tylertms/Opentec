@@ -4,44 +4,46 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/** @brief Internal security-code timing, control, and presentation constants. */
 enum {
-    SECURITY_CODE_PROMPT_DELAY_MS = 1000,
-    SECURITY_CODE_ENTRY_DELAY_MS = 1000,
-    SECURITY_CODE_REPEAT_DELAY_MS = 500,
-    SECURITY_CODE_BLINK_DELAY_MS = 150,
-    SECURITY_CODE_ENABLE_PRIMARY_CHORD = 0xe100,
-    SECURITY_CODE_DISABLE_PRIMARY_CHORD = 0xe800,
-    SECURITY_CODE_ADAPTER_COMMON_CHORD = 0x16,
-    SECURITY_CODE_ADAPTER_ENABLE = 0x01,
-    SECURITY_CODE_ADAPTER_DISABLE = 0x08,
-    SECURITY_CODE_ADAPTER_PREVIOUS = 0x02,
-    SECURITY_CODE_ADAPTER_NEXT = 0x04,
-    SECURITY_CODE_PRIMARY_INCREMENT = 0x0100,
-    SECURITY_CODE_PRIMARY_DECREMENT = 0x0800,
-    SECURITY_CODE_PRIMARY_PREVIOUS = 0x0200,
-    SECURITY_CODE_PRIMARY_NEXT = 0x0400,
-    SECURITY_CODE_PRIMARY_SPECIAL_CANCEL = 0x1000,
-    SECURITY_CODE_SECONDARY_CONFIRM = 0x0200,
-    SECURITY_CODE_SECONDARY_CANCEL = 0x0800,
-    SECURITY_CODE_ADAPTER_CONFIRM = 0x08,
-    SECURITY_CODE_ADAPTER_CANCEL = 0x04,
-    SECURITY_CODE_ENABLE_PROMPT = 0x1e,
-    SECURITY_CODE_DISABLE_PROMPT = 0x1f,
-    SECURITY_CODE_FIRST_REPORT = 0x20,
-    SECURITY_CODE_SECOND_REPORT = 0x10,
-    SECURITY_CODE_THIRD_REPORT = 0x08,
-    SECURITY_CODE_GLYPH_L = 0x38,
-    SECURITY_CODE_GLYPH_O = 0x3f,
-    SECURITY_CODE_GLYPH_C = 0x39,
+    SECURITY_CODE_PROMPT_DELAY_MS = 1000,          /**< Delay before showing a prompt. */
+    SECURITY_CODE_ENTRY_DELAY_MS = 1000,           /**< Delay before accepting digit input. */
+    SECURITY_CODE_REPEAT_DELAY_MS = 500,           /**< Delay between repeated input actions. */
+    SECURITY_CODE_BLINK_DELAY_MS = 150,            /**< Selected-digit blink interval. */
+    SECURITY_CODE_ENABLE_PRIMARY_CHORD = 0xe100,   /**< Direct enable chord. */
+    SECURITY_CODE_DISABLE_PRIMARY_CHORD = 0xe800,  /**< Direct disable chord. */
+    SECURITY_CODE_ADAPTER_COMMON_CHORD = 0x16,     /**< Common adapter activation chord. */
+    SECURITY_CODE_ADAPTER_ENABLE = 0x01,           /**< Adapter enable bit. */
+    SECURITY_CODE_ADAPTER_DISABLE = 0x08,          /**< Adapter disable bit. */
+    SECURITY_CODE_ADAPTER_PREVIOUS = 0x02,         /**< Adapter previous bit. */
+    SECURITY_CODE_ADAPTER_NEXT = 0x04,             /**< Adapter next bit. */
+    SECURITY_CODE_PRIMARY_INCREMENT = 0x0100,      /**< Direct increment bit. */
+    SECURITY_CODE_PRIMARY_DECREMENT = 0x0800,      /**< Direct decrement bit. */
+    SECURITY_CODE_PRIMARY_PREVIOUS = 0x0200,       /**< Direct previous bit. */
+    SECURITY_CODE_PRIMARY_NEXT = 0x0400,           /**< Direct next bit. */
+    SECURITY_CODE_PRIMARY_SPECIAL_CANCEL = 0x1000, /**< Direct special-cancel bit. */
+    SECURITY_CODE_SECONDARY_CONFIRM = 0x0200,      /**< Direct confirm bit. */
+    SECURITY_CODE_SECONDARY_CANCEL = 0x0800,       /**< Direct cancel bit. */
+    SECURITY_CODE_ADAPTER_CONFIRM = 0x08,          /**< Adapter confirm bit. */
+    SECURITY_CODE_ADAPTER_CANCEL = 0x04,           /**< Adapter cancel bit. */
+    SECURITY_CODE_ENABLE_PROMPT = 0x1e,            /**< Native enable prompt command. */
+    SECURITY_CODE_DISABLE_PROMPT = 0x1f,           /**< Native disable prompt command. */
+    SECURITY_CODE_FIRST_REPORT = 0x20,             /**< First selected-digit report mask. */
+    SECURITY_CODE_SECOND_REPORT = 0x10,            /**< Second selected-digit report mask. */
+    SECURITY_CODE_THIRD_REPORT = 0x08,             /**< Third selected-digit report mask. */
+    SECURITY_CODE_GLYPH_L = 0x38,                  /**< Seven-segment L glyph. */
+    SECURITY_CODE_GLYPH_O = 0x3f,                  /**< Seven-segment O glyph. */
+    SECURITY_CODE_GLYPH_C = 0x39,                  /**< Seven-segment C glyph. */
 };
 
+/** @brief Normalized actions available during digit entry. */
 typedef struct {
-    bool increment;
-    bool decrement;
-    bool previous;
-    bool next;
-    bool confirm;
-    bool cancel;
+    bool increment; /**< True when the selected digit should increase. */
+    bool decrement; /**< True when the selected digit should decrease. */
+    bool previous;  /**< True when selection should move to the previous digit. */
+    bool next;      /**< True when selection should move to the next digit. */
+    bool confirm;   /**< True when entry should be confirmed. */
+    bool cancel;    /**< True when entry should be cancelled. */
 } SecurityCodeActionInput;
 
 /**
@@ -51,7 +53,7 @@ typedef struct {
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  * @param[in] deadline_ms Deadline to test.
- * @return True when the deadline has been reached.
+ * @return true when the deadline has been reached; false while it remains pending.
  */
 static bool deadline_reached(uint32_t now_ms, uint32_t deadline_ms) {
     return now_ms - deadline_ms < UINT32_C(0x80000000);
@@ -63,7 +65,7 @@ static bool deadline_reached(uint32_t now_ms, uint32_t deadline_ms) {
  * Selects the five direct report modes and every connected adapter path.
  *
  * @param[in] input Current attached-wheel and adapter input.
- * @return True when digit selection is carried by the auxiliary report.
+ * @return true when digit selection is carried by the auxiliary report; false otherwise.
  */
 static bool report_display_used(const SecurityCodeInput *input) {
     return input->adapter_connected || input->wheel_mode == 0x0a || input->wheel_mode == 0x0c ||
@@ -76,7 +78,7 @@ static bool report_display_used(const SecurityCodeInput *input) {
  * Accepts either the complete direct-wheel mask or the adapter's common chord with its enable bit.
  *
  * @param[in] input Current attached-wheel and adapter input.
- * @return True when the enable chord is held.
+ * @return true when the enable chord is held; false otherwise.
  */
 static bool enable_chord_held(const SecurityCodeInput *input) {
     bool direct = (input->primary_buttons & SECURITY_CODE_ENABLE_PRIMARY_CHORD) ==
@@ -94,7 +96,7 @@ static bool enable_chord_held(const SecurityCodeInput *input) {
  * Accepts either the complete direct-wheel mask or the adapter's common chord with its disable bit.
  *
  * @param[in] input Current attached-wheel and adapter input.
- * @return True when the disable chord is held.
+ * @return true when the disable chord is held; false otherwise.
  */
 static bool disable_chord_held(const SecurityCodeInput *input) {
     bool direct = (input->primary_buttons & SECURITY_CODE_DISABLE_PRIMARY_CHORD) ==
@@ -196,8 +198,10 @@ static SecurityCodeUpdate prompt_update(const SecurityCode *code, const Security
  */
 static SecurityCodePresentation digit_presentation(const SecurityCode *code,
                                                    const SecurityCodeInput *input) {
+    /** @brief Seven-segment glyphs for decimal digits. */
     static const uint8_t digit_glyphs[] = {0x3f, 0x06, 0x5b, 0x4f, 0x66,
                                            0x6d, 0x7d, 0x07, 0x7f, 0x6f};
+    /** @brief Native report masks for selected digits. */
     static const uint8_t reports[] = {SECURITY_CODE_FIRST_REPORT, SECURITY_CODE_SECOND_REPORT,
                                       SECURITY_CODE_THIRD_REPORT};
     SecurityCodePresentation presentation = {.kind = SECURITY_CODE_PRESENTATION_DIGITS};
@@ -242,32 +246,12 @@ static void apply_action(SecurityCode *code, SecurityCodeActionInput actions, ui
     code->input_deadline_ms = now_ms + SECURITY_CODE_REPEAT_DELAY_MS;
 }
 
-/**
- * @brief Initializes a security-code interaction.
- *
- * Starts inactive with zero entry digits and no pending request or timing state.
- *
- * @param[out] code Security-code interaction to initialize.
- */
 void security_code_init(SecurityCode *code) {
     if (code != NULL) {
         *code = (SecurityCode){0};
     }
 }
 
-/**
- * @brief Advances security-code entry and updates its retained setting.
- *
- * Detects enable and disable chords only from the matching activation state, presents a one-second
- * prompt and entry delay, edits three wrapping decimal digits, and confirms enable or matching
- * disable requests. A mismatched disable request restarts the prompt without changing the setting.
- *
- * @param[in,out] code Security-code interaction state.
- * @param[in,out] settings Retained activation state and code digits.
- * @param[in] input Current attached-wheel and adapter input.
- * @param[in] now_ms Current monotonic time in milliseconds.
- * @return Current gate state, presentation action, prompt command, and setting result.
- */
 SecurityCodeUpdate security_code_update(SecurityCode *code, SecurityCodeSettings *settings,
                                         const SecurityCodeInput *input, uint32_t now_ms) {
     SecurityCodeUpdate update = {0};

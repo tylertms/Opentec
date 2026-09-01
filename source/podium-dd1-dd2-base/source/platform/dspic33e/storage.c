@@ -7,15 +7,21 @@
 
 #include "settings/journal.h"
 
+/**
+ * @brief Flash geometry and nonvolatile-memory operation codes.
+ */
 enum {
-    SETTINGS_FLASH_ORIGIN = 0x00002000,
-    SETTINGS_FLASH_PAGE_ADDRESS_SIZE = 0x800,
-    NVM_WORD_PROGRAM = 0x4001,
-    NVM_ROW_PROGRAM = 0x4002,
-    NVM_PAGE_ERASE = 0x4003,
-    WRITE_LATCH_PAGE = 0xfa,
+    SETTINGS_FLASH_ORIGIN = 0x00002000,       /**< Program address of the first settings page. */
+    SETTINGS_FLASH_PAGE_ADDRESS_SIZE = 0x800, /**< Program-address span of one settings page. */
+    NVM_WORD_PROGRAM = 0x4001,                /**< Nonvolatile-memory word-program operation. */
+    NVM_ROW_PROGRAM = 0x4002,                 /**< Nonvolatile-memory row-program operation. */
+    NVM_PAGE_ERASE = 0x4003,                  /**< Nonvolatile-memory page-erase operation. */
+    WRITE_LATCH_PAGE = 0xfa, /**< Table page used for nonvolatile-memory write latches. */
 };
 
+/**
+ * @brief Hardware-backed settings journal instance.
+ */
 static SettingsJournal settings_journal;
 
 /**
@@ -172,6 +178,9 @@ static bool flash_page_erase(void *context, uint8_t page) {
     return successful;
 }
 
+/**
+ * @brief Flash operations supplied to the settings journal.
+ */
 static const SettingsJournalOperations settings_journal_operations = {
     .read = flash_instruction_read,
     .program = flash_instruction_program,
@@ -185,7 +194,7 @@ static const SettingsJournalOperations settings_journal_operations = {
  * Examines and repairs both three-page journal groups, creating empty active pages when storage is
  * erased.
  *
- * @return True when all 510 indexed values can be accessed; otherwise false.
+ * @return True when both settings journal pages are initialized; otherwise false.
  */
 bool platform_storage_initialize(void) {
     return settings_journal_initialize(&settings_journal, &settings_journal_operations, NULL);
@@ -194,7 +203,7 @@ bool platform_storage_initialize(void) {
 /**
  * @brief Reads one retained 16-bit setting.
  *
- * Returns the newest append record for the requested reference-compatible settings index.
+ * Returns the newest appended record for the requested settings index.
  *
  * @param[in] index Settings index from zero through 509.
  * @param[out] value Retained value.
@@ -207,7 +216,7 @@ bool platform_storage_value_read(uint16_t index, uint16_t *value) {
 /**
  * @brief Writes one retained 16-bit setting.
  *
- * Appends the value to the reference-compatible journal and performs page rotation when required.
+ * Appends the value to the settings journal and performs page rotation when required.
  *
  * @param[in] index Settings index from zero through 509.
  * @param[in] value Value to retain.

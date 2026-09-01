@@ -174,8 +174,8 @@ A71chExchangeResult a71ch_authentication_service_result(const A71chAuthenticatio
 /**
  * @brief Returns the completed A71CH authentication response.
  *
- * Exposes the service-owned 1,040-byte response only after every read and the finish exchange have
- * completed successfully.
+ * Exposes the service-owned 1,040-byte response only after every upload, read, and finalization
+ * exchange has completed successfully.
  *
  * @param[in] service Authentication service state and response storage.
  * @return Completed response bytes; otherwise null.

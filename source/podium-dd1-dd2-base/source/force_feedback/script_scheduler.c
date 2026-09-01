@@ -3,22 +3,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/**
- * @brief Select the next force-feedback script scheduling action.
- *
- * Position input schedules an idle tick only after the local deadline and moves that deadline to
- * the current time. Active and ready input require a nonzero host period and host deadline. A host
- * deadline at or behind the current script sample counter reports expiration; otherwise a host
- * tick is scheduled only after the local deadline and advances it by the host period. Other input
- * statuses do not schedule work.
- *
- * @param[in,out] scheduler Local millisecond deadline for the next script tick.
- * @param[in] inputs Current host input status, period, and script-sample deadline.
- * @param[in] current_sample_count Number of completed script ticks.
- * @param[in] now Current monotonic time in milliseconds.
- * @return No action, an idle tick, a host-scheduled tick, or host-input expiration.
- * @pre scheduler and inputs point to valid objects.
- */
 ForceFeedbackScriptSchedule
 force_feedback_script_scheduler_step(ForceFeedbackScriptScheduler *scheduler,
                                      const ForceFeedbackScriptInputs *inputs,

@@ -6,47 +6,29 @@
 #include "motor/command_packet.h"
 #include "motor/command_sequence.h"
 
+/**
+ * @brief Motor-command packet layout and fragment markers used by the receiver.
+ */
 enum {
-    MOTOR_COMMAND_RECEIVER_HEADER_SIZE = 3,
-    MOTOR_COMMAND_RECEIVER_FRAGMENT_OFFSET = 3,
-    MOTOR_COMMAND_RECEIVER_PAYLOAD_OFFSET = 4,
-    MOTOR_COMMAND_RECEIVER_CHECKSUM_SIZE = 2,
-    MOTOR_COMMAND_RECEIVER_FRAGMENT_MASK = 7,
-    MOTOR_COMMAND_RECEIVER_UNFRAGMENTED = 0,
-    MOTOR_COMMAND_RECEIVER_FIRST_FRAGMENT = 1,
-    MOTOR_COMMAND_RECEIVER_CONTINUATION_FRAGMENT = 2,
-    MOTOR_COMMAND_RECEIVER_FINAL_FRAGMENT = 4,
-    MOTOR_COMMAND_RECEIVER_INVALID_FRAGMENT = 7,
+    MOTOR_COMMAND_RECEIVER_HEADER_SIZE = 3,     /**< Number of bytes before the fragment marker. */
+    MOTOR_COMMAND_RECEIVER_FRAGMENT_OFFSET = 3, /**< Offset of the fragment marker in a packet. */
+    MOTOR_COMMAND_RECEIVER_PAYLOAD_OFFSET = 4,  /**< Offset of the command payload in a packet. */
+    MOTOR_COMMAND_RECEIVER_CHECKSUM_SIZE = 2,   /**< Number of trailing checksum bytes. */
+    MOTOR_COMMAND_RECEIVER_FRAGMENT_MASK = 7,   /**< Mask for the three-bit fragment marker. */
+    MOTOR_COMMAND_RECEIVER_UNFRAGMENTED = 0,    /**< Marker for an unfragmented message. */
+    MOTOR_COMMAND_RECEIVER_FIRST_FRAGMENT = 1,  /**< Marker for the first message fragment. */
+    MOTOR_COMMAND_RECEIVER_CONTINUATION_FRAGMENT = 2, /**< Marker for a continuation fragment. */
+    MOTOR_COMMAND_RECEIVER_FINAL_FRAGMENT = 4,        /**< Marker for the final message fragment. */
+    MOTOR_COMMAND_RECEIVER_INVALID_FRAGMENT =
+        7, /**< Reserved marker rejected without state change. */
 };
 
-/**
- * @brief Initializes a motor-command receiver session.
- *
- * Resets transmitted and received sequence tracking and attaches the caller-owned fragment
- * assembly buffer.
- *
- * @param[out] receiver Receiver session to initialize.
- * @param[out] assembly Caller-owned fragment assembly buffer.
- * @param[in] assembly_capacity Available assembly buffer byte count.
- */
 void motor_command_receiver_init(MotorCommandReceiver *receiver, uint8_t *assembly,
                                  uint16_t assembly_capacity) {
     motor_command_sequence_init(&receiver->sequence);
     motor_command_fragment_init(&receiver->fragment, assembly, assembly_capacity);
 }
 
-/**
- * @brief Accepts one motor-command packet.
- *
- * Validates the checksum and declared packet length, applies acknowledgement, retry, reset, and
- * resend sequence state, and assembles first, continuation, and final payload fragments. Complete
- * messages expose only their command payload after the fragment marker.
- *
- * @param[in,out] receiver Receiver session to advance.
- * @param[in] packet Received motor-command packet.
- * @param[in] length Received packet byte count.
- * @return Sequence event, fragment progress, complete message, ignored fragment, or invalid input.
- */
 MotorCommandReceiveEvent motor_command_receiver_accept(MotorCommandReceiver *receiver,
                                                        const uint8_t *packet, uint16_t length) {
     MotorCommandReceiveEvent event = {.result = MOTOR_COMMAND_RECEIVE_INVALID};

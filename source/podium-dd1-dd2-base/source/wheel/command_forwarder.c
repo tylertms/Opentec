@@ -4,14 +4,23 @@
 #include <stdint.h>
 #include <string.h>
 
+/**
+ * @brief Command-forwarder endpoint and transport layout values.
+ *
+ * The forwarder probes two endpoint targets and writes retained command batches at the shared
+ * payload offset.
+ */
 enum {
-    WHEEL_COMMAND_ENDPOINT_COUNT = 2,
-    WHEEL_COMMAND_FORWARDER_OWNER = 0x41,
-    WHEEL_COMMAND_PROBE_OFFSET = 0x0c,
-    WHEEL_COMMAND_PAYLOAD_OFFSET = 0xb0,
+    WHEEL_COMMAND_ENDPOINT_COUNT = 2, /**< Number of endpoint targets probed by the forwarder. */
+    WHEEL_COMMAND_FORWARDER_OWNER =
+        0x41,                          /**< Command-transport owner identifier for the forwarder. */
+    WHEEL_COMMAND_PROBE_OFFSET = 0x0c, /**< Endpoint offset of the probe read. */
+    WHEEL_COMMAND_PAYLOAD_OFFSET = 0xb0, /**< Endpoint offset of the forwarded command payload. */
 };
 
+/** @brief Remote target identifiers indexed by forwarder endpoint. */
 static const uint8_t endpoint_targets[WHEEL_COMMAND_ENDPOINT_COUNT] = {0x15, 0x16};
+/** @brief Probe response lengths indexed by forwarder endpoint. */
 static const uint8_t endpoint_probe_lengths[WHEEL_COMMAND_ENDPOINT_COUNT] = {1, 4};
 
 /**
@@ -186,7 +195,7 @@ void wheel_command_forwarder_init(WheelCommandForwarder *forwarder) {
  * Allows one queued batch while another copied command request is in flight.
  *
  * @param[in] forwarder Command forwarder to inspect.
- * @return True when the retained batch area is empty.
+ * @return true when forwarder is nonnull and its retained batch area is empty; false otherwise.
  */
 bool wheel_command_forwarder_accepting(const WheelCommandForwarder *forwarder) {
     return forwarder != 0 && forwarder->payload_length == 0;
@@ -200,7 +209,8 @@ bool wheel_command_forwarder_accepting(const WheelCommandForwarder *forwarder) {
  * @param[in,out] forwarder Command forwarder accepting the batch.
  * @param[in] payload Serialized complete command records.
  * @param[in] length Serialized byte count.
- * @return True when the batch was retained.
+ * @return true when the batch was retained; false for null pointers, zero or excessive length, or
+ * an already queued batch.
  */
 bool wheel_command_forwarder_queue(WheelCommandForwarder *forwarder, const uint8_t *payload,
                                    uint8_t length) {

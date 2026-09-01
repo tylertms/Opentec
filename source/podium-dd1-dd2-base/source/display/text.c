@@ -5,17 +5,33 @@
 
 #include "display/framebuffer.h"
 
+/**
+ * @brief Defines the built-in glyph dimensions and advance.
+ *
+ * Glyph bitmaps are five columns by seven rows with one blank column between adjacent glyphs.
+ */
 enum {
-    GLYPH_WIDTH = 5,
-    GLYPH_HEIGHT = 7,
-    GLYPH_ADVANCE = 6,
+    GLYPH_WIDTH = 5,   /**< Glyph bitmap width in pixels. */
+    GLYPH_HEIGHT = 7,  /**< Glyph bitmap height in pixels. */
+    GLYPH_ADVANCE = 6, /**< Horizontal advance between glyph origins in pixels. */
 };
 
+/**
+ * @brief Stores one built-in display glyph.
+ *
+ * Each row stores the five glyph pixels in the low five bits, with the leftmost pixel in the most
+ * significant bit of that range.
+ */
 typedef struct {
-    char character;
-    uint8_t rows[GLYPH_HEIGHT];
+    char character;             /**< Character represented by the glyph. */
+    uint8_t rows[GLYPH_HEIGHT]; /**< One five-bit bitmap row for each glyph row. */
 } Glyph;
 
+/**
+ * @brief Contains the built-in display alphabet.
+ *
+ * The first entry is the blank fallback used for unsupported characters.
+ */
 static const Glyph glyphs[] = {
     {' ', {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
     {'!', {0x04, 0x04, 0x04, 0x04, 0x04, 0x00, 0x04}},

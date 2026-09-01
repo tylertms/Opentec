@@ -7,38 +7,91 @@
 
 #include "platform/time.h"
 
+/**
+ * @brief States in the interrupt-driven auxiliary-bus transaction.
+ */
 typedef enum {
-    AUX_BUS_START,
-    AUX_BUS_WRITE_ADDRESS,
-    AUX_BUS_REGISTER_HIGH,
-    AUX_BUS_REGISTER_LOW,
-    AUX_BUS_WRITE_DATA,
-    AUX_BUS_RESTART,
-    AUX_BUS_READ_ADDRESS,
-    AUX_BUS_RECEIVE,
-    AUX_BUS_ACKNOWLEDGE,
-    AUX_BUS_STOP,
+    AUX_BUS_START,         /**< Issue the initial start condition. */
+    AUX_BUS_WRITE_ADDRESS, /**< Send the device write address. */
+    AUX_BUS_REGISTER_HIGH, /**< Send the high register-address byte. */
+    AUX_BUS_REGISTER_LOW,  /**< Send the low register-address byte. */
+    AUX_BUS_WRITE_DATA,    /**< Send write payload bytes. */
+    AUX_BUS_RESTART,       /**< Issue the repeated start condition. */
+    AUX_BUS_READ_ADDRESS,  /**< Send the device read address. */
+    AUX_BUS_RECEIVE,       /**< Receive one payload byte. */
+    AUX_BUS_ACKNOWLEDGE,   /**< Acknowledge or negatively acknowledge the received byte. */
+    AUX_BUS_STOP,          /**< Complete the stop condition and publish the result. */
 } AuxBusPhase;
 
+/**
+ * @brief Auxiliary-bus controller configuration values.
+ */
 enum {
-    AUX_BUS_BAUD_RATE = 0xa3,
-    AUX_BUS_INTERRUPT_PRIORITY = 7,
-    AUX_BUS_TIMEOUT_BASE_MS = 20,
-    AUX_BUS_RECOVERY_PULSES = 9,
-    AUX_BUS_RECOVERY_DELAY_CYCLES = 0x23 * 2,
+    AUX_BUS_BAUD_RATE = 0xa3,                 /**< I2C2 baud generator value. */
+    AUX_BUS_INTERRUPT_PRIORITY = 7,           /**< I2C2 interrupt priority. */
+    AUX_BUS_TIMEOUT_BASE_MS = 20,             /**< Base transaction timeout in milliseconds. */
+    AUX_BUS_RECOVERY_PULSES = 9,              /**< Maximum SCL recovery pulses. */
+    AUX_BUS_RECOVERY_DELAY_CYCLES = 0x23 * 2, /**< Delay cycles for each bus-recovery interval. */
 };
 
+/**
+ * @brief Current auxiliary-bus transaction status.
+ */
 static volatile PlatformAuxBusStatus status;
+
+/**
+ * @brief Current auxiliary-bus transaction phase.
+ */
 static volatile AuxBusPhase phase;
+
+/**
+ * @brief Status to publish after the stop condition completes.
+ */
 static volatile PlatformAuxBusStatus stop_status;
+
+/**
+ * @brief Seven-bit address of the active auxiliary-bus device.
+ */
 static uint8_t device_address;
+
+/**
+ * @brief Register address of the active auxiliary-bus transaction.
+ */
 static uint16_t memory_address;
+
+/**
+ * @brief Payload length of the active auxiliary-bus transaction.
+ */
 static uint16_t data_length;
+
+/**
+ * @brief Number of payload bytes already transferred.
+ */
 static volatile uint16_t data_index;
+
+/**
+ * @brief Source buffer for the active auxiliary-bus write.
+ */
 static const uint8_t *write_data;
+
+/**
+ * @brief Destination buffer for the active auxiliary-bus read.
+ */
 static uint8_t *read_data;
+
+/**
+ * @brief True when the active transaction is a read.
+ */
 static bool reading;
+
+/**
+ * @brief True when the active register address requires two bytes.
+ */
 static bool wide_address;
+
+/**
+ * @brief Monotonic deadline for the active transaction.
+ */
 static uint32_t deadline;
 
 /**
@@ -102,7 +155,7 @@ static void stop_transaction(PlatformAuxBusStatus result) {
 /**
  * @brief Checks the most recent auxiliary-bus transmission.
  *
- * Reads the controller acknowledgement flag after an address, register, or payload byte.
+ * Reads the slave acknowledgement flag after an address, register, or payload byte.
  *
  * @return True when the receiver did not acknowledge the byte.
  */
@@ -112,7 +165,6 @@ static bool transmission_failed(void) { return I2C2STATbits.ACKSTAT != 0; }
  * @brief Sends the low register-address byte.
  *
  * Writes the low eight address bits and advances the interrupt state machine.
- *
  */
 static void send_register_low(void) {
     I2C2TRN = (uint8_t)memory_address;
@@ -123,7 +175,6 @@ static void send_register_low(void) {
  * @brief Continues after the register address is acknowledged.
  *
  * Restarts the bus for a read, transmits the first write byte, or finishes a register-only write.
- *
  */
 static void send_data_or_stop(void) {
     if (reading) {
@@ -145,8 +196,7 @@ static void send_data_or_stop(void) {
  * @brief Releases a stalled auxiliary bus.
  *
  * Samples SDA on RF4 and, while it remains low, drives and releases SCL on RF5 up to nine times.
- * Each low interval uses one 0x23-count delay and each high interval uses two.
- *
+ * Each low interval uses one configured recovery delay and each high interval uses two.
  */
 static void recover_bus(void) {
     TRISFbits.TRISF4 = 1;
@@ -165,7 +215,6 @@ static void recover_bus(void) {
  *
  * Disables I2C2, releases a stalled bus, clears collision and overflow flags, selects SMBus input
  * thresholds, programs baud value 0xa3 and interrupt priority seven, and re-enables master events.
- *
  */
 static void reset_controller(void) {
     I2C2CONbits.I2CEN = 0;
@@ -186,7 +235,6 @@ static void reset_controller(void) {
  * @brief Initializes the auxiliary-bus service.
  *
  * Marks the shared motor and secure-element bus idle and configures its I2C2 controller.
- *
  */
 void platform_aux_bus_init(void) {
     status = PLATFORM_AUX_BUS_IDLE;
@@ -197,7 +245,6 @@ void platform_aux_bus_init(void) {
  * @brief Services auxiliary-bus transfer timeouts.
  *
  * Resets I2C2 and reports failure when a busy transfer reaches its length-adjusted deadline.
- *
  */
 void platform_aux_bus_service(void) {
     if (status != PLATFORM_AUX_BUS_BUSY || !platform_time_reached(platform_time_ms(), deadline)) {
@@ -274,7 +321,6 @@ PlatformAuxBusStatus platform_aux_bus_status(void) { return status; }
  * @brief Clears a completed auxiliary-bus transaction status.
  *
  * Returns success or failure to idle without disturbing an active transaction.
- *
  */
 void platform_aux_bus_clear(void) {
     if (status != PLATFORM_AUX_BUS_BUSY) {
@@ -288,7 +334,6 @@ void platform_aux_bus_clear(void) {
  * Clears controller faults, handles address and payload acknowledgements, emits 8- or 16-bit
  * register addresses, sequences repeated starts and reads, sends the final NACK, completes the stop
  * condition, and clears the master interrupt request.
- *
  */
 void __attribute__((interrupt, no_auto_psv)) _MI2C2Interrupt(void) {
     bool bus_error = I2C2STATbits.IWCOL != 0 || I2C2STATbits.BCL != 0 || I2C2STATbits.I2COV != 0;

@@ -3,39 +3,40 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/** @brief USB request type, request code, recipient, feature, and layout constants. */
 enum {
-    USB_DIRECTION_IN = 0x80,
-    USB_TYPE_STANDARD = 0x00,
-    USB_TYPE_CLASS = 0x20,
-    USB_TYPE_VENDOR = 0x40,
-    USB_RECIPIENT_DEVICE = 0x00,
-    USB_RECIPIENT_INTERFACE = 0x01,
-    USB_RECIPIENT_ENDPOINT = 0x02,
-    USB_REQUEST_GET_STATUS = 0,
-    USB_REQUEST_CLEAR_FEATURE = 1,
-    USB_REQUEST_SET_FEATURE = 3,
-    USB_REQUEST_SET_ADDRESS = 5,
-    USB_REQUEST_GET_DESCRIPTOR = 6,
-    USB_REQUEST_GET_CONFIGURATION = 8,
-    USB_REQUEST_SET_CONFIGURATION = 9,
-    USB_REQUEST_GET_INTERFACE = 10,
-    USB_REQUEST_SET_INTERFACE = 11,
-    USB_HID_GET_REPORT = 1,
-    USB_HID_GET_IDLE = 2,
-    USB_HID_GET_PROTOCOL = 3,
-    USB_HID_SET_REPORT = 9,
-    USB_HID_SET_IDLE = 10,
-    USB_HID_SET_PROTOCOL = 11,
-    USB_CDC_SET_LINE_CODING = 0x20,
-    USB_CDC_GET_LINE_CODING = 0x21,
-    USB_CDC_SET_CONTROL_LINE_STATE = 0x22,
-    USB_XBOX_SECURITY_REQUEST = 0x90,
-    USB_FEATURE_ENDPOINT_HALT = 0,
-    USB_FEATURE_DEVICE_REMOTE_WAKEUP = 1,
-    USB_ENDPOINT_NUMBER_MASK = 0x0f,
-    USB_ENDPOINT_ADDRESS_RESERVED_MASK = 0xff70,
-    USB_ENDPOINT_COUNT = 5,
-    USB_INTERFACE_COUNT = 2,
+    USB_DIRECTION_IN = 0x80,                     /**< Device-to-host request direction bit. */
+    USB_TYPE_STANDARD = 0x00,                    /**< Standard USB request type. */
+    USB_TYPE_CLASS = 0x20,                       /**< Class USB request type. */
+    USB_TYPE_VENDOR = 0x40,                      /**< Vendor USB request type. */
+    USB_RECIPIENT_DEVICE = 0x00,                 /**< Device request recipient. */
+    USB_RECIPIENT_INTERFACE = 0x01,              /**< Interface request recipient. */
+    USB_RECIPIENT_ENDPOINT = 0x02,               /**< Endpoint request recipient. */
+    USB_REQUEST_GET_STATUS = 0,                  /**< Standard GET_STATUS request code. */
+    USB_REQUEST_CLEAR_FEATURE = 1,               /**< Standard CLEAR_FEATURE request code. */
+    USB_REQUEST_SET_FEATURE = 3,                 /**< Standard SET_FEATURE request code. */
+    USB_REQUEST_SET_ADDRESS = 5,                 /**< Standard SET_ADDRESS request code. */
+    USB_REQUEST_GET_DESCRIPTOR = 6,              /**< Standard GET_DESCRIPTOR request code. */
+    USB_REQUEST_GET_CONFIGURATION = 8,           /**< Standard GET_CONFIGURATION request code. */
+    USB_REQUEST_SET_CONFIGURATION = 9,           /**< Standard SET_CONFIGURATION request code. */
+    USB_REQUEST_GET_INTERFACE = 10,              /**< Standard GET_INTERFACE request code. */
+    USB_REQUEST_SET_INTERFACE = 11,              /**< Standard SET_INTERFACE request code. */
+    USB_HID_GET_REPORT = 1,                      /**< HID GET_REPORT request code. */
+    USB_HID_GET_IDLE = 2,                        /**< HID GET_IDLE request code. */
+    USB_HID_GET_PROTOCOL = 3,                    /**< HID GET_PROTOCOL request code. */
+    USB_HID_SET_REPORT = 9,                      /**< HID SET_REPORT request code. */
+    USB_HID_SET_IDLE = 10,                       /**< HID SET_IDLE request code. */
+    USB_HID_SET_PROTOCOL = 11,                   /**< HID SET_PROTOCOL request code. */
+    USB_CDC_SET_LINE_CODING = 0x20,              /**< CDC SET_LINE_CODING request code. */
+    USB_CDC_GET_LINE_CODING = 0x21,              /**< CDC GET_LINE_CODING request code. */
+    USB_CDC_SET_CONTROL_LINE_STATE = 0x22,       /**< CDC control-line-state request code. */
+    USB_XBOX_SECURITY_REQUEST = 0x90,            /**< Xbox GIP security request code. */
+    USB_FEATURE_ENDPOINT_HALT = 0,               /**< Endpoint-halt feature selector. */
+    USB_FEATURE_DEVICE_REMOTE_WAKEUP = 1,        /**< Device remote-wakeup feature selector. */
+    USB_ENDPOINT_NUMBER_MASK = 0x0f,             /**< Endpoint-number bit mask. */
+    USB_ENDPOINT_ADDRESS_RESERVED_MASK = 0xff70, /**< Reserved endpoint-address bit mask. */
+    USB_ENDPOINT_COUNT = 5,                      /**< Number of supported endpoint numbers. */
+    USB_INTERFACE_COUNT = 2,                     /**< Number of supported interface numbers. */
 };
 
 /**
@@ -48,15 +49,6 @@ enum {
  */
 static uint16_t read_u16(const uint8_t *data) { return (uint16_t)data[0] | (uint16_t)data[1] << 8; }
 
-/**
- * @brief Decodes an eight-byte USB setup packet.
- *
- * Expands the request type, request, value, index, and length fields into their logical form.
- *
- * @param[in] data Eight-byte setup packet in transfer order.
- * @param[out] packet Decoded setup packet.
- * @return True when both pointers are valid; otherwise false.
- */
 bool usb_setup_packet_decode(const uint8_t data[USB_SETUP_PACKET_SIZE], UsbSetupPacket *packet) {
     if (data == 0 || packet == 0) {
         return false;
@@ -266,15 +258,6 @@ static bool classify_vendor(const UsbSetupPacket *packet, UsbControlRequest *req
            set_request(packet, request, USB_CONTROL_XBOX_SECURITY_DESCRIPTOR);
 }
 
-/**
- * @brief Classifies a decoded endpoint-zero request.
- *
- * Routes standard, class, and vendor request types through the supported wheel-base request sets.
- *
- * @param[in] packet Decoded USB setup packet.
- * @param[out] request Classified control request or the unsupported marker.
- * @return True when the request is supported; otherwise false.
- */
 bool usb_control_request_classify(const UsbSetupPacket *packet, UsbControlRequest *request) {
     if (packet == 0 || request == 0) {
         return false;

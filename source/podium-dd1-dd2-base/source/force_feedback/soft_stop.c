@@ -4,42 +4,20 @@
 #include <stdint.h>
 #include <string.h>
 
+/** @brief Constants defining soft-stop onset, force span, and ramp timing. */
 enum {
-    FORCE_SOFT_STOP_ONSET_MARGIN = 1000,
-    FORCE_SOFT_STOP_FULL_FORCE_SPAN = 0x19b1,
-    FORCE_SOFT_STOP_RAMP_INTERVAL_MS = 50,
-    FORCE_SOFT_STOP_RAMP_RESET_DISTANCE = 494,
-    FORCE_SOFT_STOP_RAMP_MAXIMUM = 100,
+    FORCE_SOFT_STOP_ONSET_MARGIN = 1000,      /**< Position margin before force addition begins. */
+    FORCE_SOFT_STOP_FULL_FORCE_SPAN = 0x19b1, /**< Position span reaching full force bias. */
+    FORCE_SOFT_STOP_RAMP_INTERVAL_MS = 50, /**< Milliseconds between ramp percentage increases. */
+    FORCE_SOFT_STOP_RAMP_RESET_DISTANCE = 494, /**< Inward boundary movement that resets ramp. */
+    FORCE_SOFT_STOP_RAMP_MAXIMUM = 100,        /**< Maximum soft-stop ramp percentage. */
 };
 
+/** @brief Full-scale force bias used at either end-stop direction. */
 static const int32_t force_soft_stop_target = INT32_C(0xffff);
 
-/**
- * @brief Reset the wheel-range end-stop runtime state.
- *
- * Clears the previous boundary, ramp deadline, and ramp percentage.
- *
- * @param[out] state End-stop runtime state to clear.
- */
 void force_soft_stop_reset(ForceSoftStopState *state) { memset(state, 0, sizeof(*state)); }
 
-/**
- * @brief Apply the wheel-range end stop to an accumulated force value.
- *
- * Starts force 1000 counts beyond the configured travel limit. It derives a gradient from the
- * accumulated force plus the boundary's signed 65535 bias and applies it across 6577 counts. The
- * addition ramps by one percent after each elapsed 50-millisecond deadline. Reducing the boundary
- * by at least 494 counts restarts that ramp. A disabled secondary output suppresses both the force
- * addition and the outside-travel state.
- *
- * @param[in,out] state End-stop ramp and previous-boundary state.
- * @param[in] config Current one-sided wheel travel limit.
- * @param[in] position Centered wheel position.
- * @param[in] accumulated_force Force accumulated before the end stop is applied.
- * @param[in] output_disabled True when the secondary force output is disabled.
- * @param[in] now_ms Current system time in milliseconds.
- * @return Updated accumulated force and the end-stop activity state.
- */
 ForceSoftStopResult force_soft_stop_update(ForceSoftStopState *state,
                                            const ForceSoftStopConfig *config, int32_t position,
                                            int32_t accumulated_force, bool output_disabled,

@@ -5,11 +5,15 @@
 
 #include "force_feedback/output_report.h"
 
+/**
+ * @brief Internal motor live-frame offsets and field masks.
+ */
 enum {
-    MOTOR_LIVE_CHECKSUM_OFFSET = 10,
-    MOTOR_LIVE_CHECKSUM_INPUT_OFFSET = 1,
-    MOTOR_LIVE_CHECKSUM_INPUT_SIZE = 9,
-    MOTOR_POSITION_AUXILIARY_DIRECTION = 0x8000,
+    MOTOR_LIVE_CHECKSUM_OFFSET = 10,      /**< Offset of the little-endian checksum. */
+    MOTOR_LIVE_CHECKSUM_INPUT_OFFSET = 1, /**< Offset of the type byte used as CRC input start. */
+    MOTOR_LIVE_CHECKSUM_INPUT_SIZE = 9, /**< Number of type and payload bytes covered by the CRC. */
+    MOTOR_POSITION_AUXILIARY_DIRECTION =
+        0x8000, /**< Auxiliary field bit marking negative direction. */
 };
 
 /**
@@ -33,7 +37,8 @@ static uint16_t crc16_shift(uint16_t crc, uint8_t byte) {
 /**
  * @brief Calculates the motor live-frame checksum.
  *
- * Applies CRC-16/CCITT with a zero seed to the nine payload bytes following the frame identifier.
+ * Applies CRC-16/CCITT with a zero seed to the type byte and eight payload bytes following the
+ * start delimiter.
  *
  * @param[in] input Nine-byte checksum input.
  * @return Calculated CRC-16 value.
@@ -83,15 +88,6 @@ static void write_u16(uint8_t *output, uint16_t value) {
     output[1] = (uint8_t)(value >> 8);
 }
 
-/**
- * @brief Encodes one framed motor-link packet and its CRC-16/CCITT checksum.
- *
- * Writes the packet boundaries, type, payload, and checksum used by each SPI exchange with the
- * motor controller.
- *
- * @param[in] frame Packet type and eight-byte payload.
- * @param[out] output Thirteen-byte framed packet.
- */
 void motor_live_frame_encode(const MotorLiveFrame *frame, uint8_t output[MOTOR_LIVE_FRAME_SIZE]) {
     output[0] = MOTOR_LIVE_FRAME_START;
     output[1] = frame->type;
@@ -103,15 +99,6 @@ void motor_live_frame_encode(const MotorLiveFrame *frame, uint8_t output[MOTOR_L
     output[12] = MOTOR_LIVE_FRAME_END;
 }
 
-/**
- * @brief Checks and decodes one complete motor-link packet.
- *
- * Validates both packet boundaries and the CRC before publishing the decoded type and payload.
- *
- * @param[in] input Thirteen-byte packet received from the motor controller.
- * @param[out] frame Decoded packet type and payload when the packet is valid.
- * @return The boundary or checksum result.
- */
 MotorLiveFrameResult motor_live_frame_decode(const uint8_t input[MOTOR_LIVE_FRAME_SIZE],
                                              MotorLiveFrame *frame) {
     if (input[0] != MOTOR_LIVE_FRAME_START || input[12] != MOTOR_LIVE_FRAME_END) {
@@ -130,16 +117,6 @@ MotorLiveFrameResult motor_live_frame_decode(const uint8_t input[MOTOR_LIVE_FRAM
     return MOTOR_LIVE_FRAME_VALID;
 }
 
-/**
- * @brief Decodes a current or replayed wheel-position packet.
- *
- * Accepts live and replay position packet types and expands their packed position, torque, and
- * auxiliary sensor fields.
- *
- * @param[in] frame Decoded motor-link packet.
- * @param[out] report Wheel position, measured torque, and auxiliary position fields.
- * @return True for position and replay packet types; otherwise false.
- */
 bool motor_position_report_decode(const MotorLiveFrame *frame, MotorPositionReport *report) {
     if ((frame->type & ~MOTOR_LIVE_REPLAY_FLAG) != MOTOR_LIVE_POSITION_TYPE) {
         return false;
@@ -154,16 +131,6 @@ bool motor_position_report_decode(const MotorLiveFrame *frame, MotorPositionRepo
     return true;
 }
 
-/**
- * @brief Builds the live force-output payload returned during the motor-link exchange.
- *
- * Combines the stored wheel center with the final primary and secondary force channels in a live
- * motor-controller packet.
- *
- * @param[in] center_position Stored wheel-center position.
- * @param[in] report Final direction and force magnitudes.
- * @param[out] frame Initialized live packet ready for framing.
- */
 void motor_live_force_frame_init(int16_t center_position, const ForceOutputReport *report,
                                  MotorLiveFrame *frame) {
     frame->type = MOTOR_LIVE_POSITION_TYPE;

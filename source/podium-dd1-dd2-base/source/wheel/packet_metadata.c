@@ -3,12 +3,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/** @brief Internal metadata-packet payload offsets. */
 enum {
-    REQUEST_PAYLOAD_OFFSET = 2,
-    PAYLOAD_AXIS_VALUES_OFFSET = 16,
-    PAYLOAD_REPORT_MODE_OFFSET = 26,
-    PAYLOAD_REPORT_CAPABILITIES_OFFSET = 28,
-    PAYLOAD_AXIS_LIMIT_OFFSET = 29,
+    REQUEST_PAYLOAD_OFFSET = 2,              /**< Request payload offset. */
+    PAYLOAD_AXIS_VALUES_OFFSET = 16,         /**< Axis-value offset within the payload. */
+    PAYLOAD_REPORT_MODE_OFFSET = 26,         /**< Report-mode offset within the payload. */
+    PAYLOAD_REPORT_CAPABILITIES_OFFSET = 28, /**< Report-capability offset. */
+    PAYLOAD_AXIS_LIMIT_OFFSET = 29,          /**< Axis-limit offset. */
 };
 
 /**

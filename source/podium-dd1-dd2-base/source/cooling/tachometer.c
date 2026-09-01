@@ -2,16 +2,23 @@
 
 #include <stdint.h>
 
+/**
+ * @brief Fan tachometer conversion constants.
+ *
+ * The timer runs at 60 MHz, and the factor of 30 converts one pulse interval from a two-pulse-per-
+ * revolution tachometer into revolutions per minute.
+ */
 enum {
-    FAN_TACHOMETER_TIMER_HZ = 60000000,
-    FAN_TACHOMETER_REVOLUTIONS_PER_CAPTURE = 30,
+    FAN_TACHOMETER_TIMER_HZ = 60000000, /**< Timer frequency used by fan captures in hertz. */
+    FAN_TACHOMETER_REVOLUTIONS_PER_CAPTURE =
+        30, /**< RPM factor for a two-pulse-per-revolution tachometer. */
 };
 
 /**
- * @brief Converts two consecutive two-pulse-per-revolution fan captures to RPM.
+ * @brief Converts a fan capture interval to RPM.
  *
- * Divides the 60 MHz timer rate by the wrapping capture interval and applies the capture-to-RPM
- * factor with the device's 16-bit truncation.
+ * Divides the 60 MHz timer rate by the wrapping capture interval and applies the configured
+ * two-pulse-per-revolution conversion factor with the device's 16-bit truncation.
  *
  * @param[in] previous_capture Earlier 32-bit capture timestamp.
  * @param[in] current_capture Later 32-bit capture timestamp.

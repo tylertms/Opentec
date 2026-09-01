@@ -3,37 +3,76 @@
 
 #include <stdint.h>
 
+/**
+ * @brief Notice kinds rendered on the local system display.
+ *
+ * The notice controller uses these values to select presentation duration and to identify the
+ * currently visible system condition.
+ */
 typedef enum {
-    SYSTEM_NOTICE_NONE,
-    SYSTEM_NOTICE_TUNING_MENU_RESET,
-    SYSTEM_NOTICE_WHEEL_CENTER_CALIBRATED,
-    SYSTEM_NOTICE_POSITION_SENSOR_TEST_SUCCEEDED,
-    SYSTEM_NOTICE_POSITION_SENSOR_TEST_STARTED,
-    SYSTEM_NOTICE_POSITION_SENSOR_TEST_FAILED,
-    SYSTEM_NOTICE_TORQUE_REDUCED,
-    SYSTEM_NOTICE_TORQUE_REDUCED_STEERING_WHEEL,
-    SYSTEM_NOTICE_MOTOR_CALIBRATION_DISCONNECT_WHEEL,
-    SYSTEM_NOTICE_MOTOR_CALIBRATION_UNSUPPORTED,
-    SYSTEM_NOTICE_MOTOR_CALIBRATION_ONGOING,
-    SYSTEM_NOTICE_MOTOR_CALIBRATION_COMPLETED,
-    SYSTEM_NOTICE_MOTOR_CALIBRATION_ERASED,
-    SYSTEM_NOTICE_STANDARD_TUNING_MODE,
-    SYSTEM_NOTICE_ADVANCED_TUNING_MODE,
-    SYSTEM_NOTICE_MAXIMUM_ROTATIONS_EXCEEDED,
-    SYSTEM_NOTICE_SHUTDOWN,
-    SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED,
-    SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED,
-    SYSTEM_NOTICE_ALTERNATIVE_SHIFTER_ENABLED,
-    SYSTEM_NOTICE_ALTERNATIVE_SHIFTER_DISABLED,
+    SYSTEM_NOTICE_NONE,                           /**< No system notice is visible. */
+    SYSTEM_NOTICE_TUNING_MENU_RESET,              /**< Tuning-menu reset notice. */
+    SYSTEM_NOTICE_WHEEL_CENTER_CALIBRATED,        /**< Wheel-center calibrated notice. */
+    SYSTEM_NOTICE_POSITION_SENSOR_TEST_SUCCEEDED, /**< Successful position-sensor test notice. */
+    SYSTEM_NOTICE_POSITION_SENSOR_TEST_STARTED,   /**< Position-sensor test started notice. */
+    SYSTEM_NOTICE_POSITION_SENSOR_TEST_FAILED,    /**< Failed position-sensor test notice. */
+    SYSTEM_NOTICE_TORQUE_REDUCED,                 /**< Reduced-torque notice. */
+    SYSTEM_NOTICE_TORQUE_REDUCED_STEERING_WHEEL,  /**< Reduced steering-wheel torque notice. */
+    SYSTEM_NOTICE_MOTOR_CALIBRATION_DISCONNECT_WHEEL, /**< Motor-calibration disconnect notice. */
+    SYSTEM_NOTICE_MOTOR_CALIBRATION_UNSUPPORTED,      /**< Unsupported motor-calibration notice. */
+    SYSTEM_NOTICE_MOTOR_CALIBRATION_ONGOING,          /**< Ongoing motor-calibration notice. */
+    SYSTEM_NOTICE_MOTOR_CALIBRATION_COMPLETED,        /**< Completed motor-calibration notice. */
+    SYSTEM_NOTICE_MOTOR_CALIBRATION_ERASED,           /**< Erased motor-calibration notice. */
+    SYSTEM_NOTICE_STANDARD_TUNING_MODE,               /**< Standard tuning-mode notice. */
+    SYSTEM_NOTICE_ADVANCED_TUNING_MODE,               /**< Advanced tuning-mode notice. */
+    SYSTEM_NOTICE_MAXIMUM_ROTATIONS_EXCEEDED,         /**< Maximum-rotation notice. */
+    SYSTEM_NOTICE_SHUTDOWN,                           /**< Shutdown notice. */
+    SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED,         /**< Unsupported inverted-wheel notice. */
+    SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED,         /**< Unsupported outlined-wheel notice. */
+    SYSTEM_NOTICE_ALTERNATIVE_SHIFTER_ENABLED,        /**< Alternative-shifter enabled notice. */
+    SYSTEM_NOTICE_ALTERNATIVE_SHIFTER_DISABLED,       /**< Alternative-shifter disabled notice. */
 } SystemNoticeKind;
 
+/**
+ * @brief Current local system-notice presentation state.
+ *
+ * A zero deadline represents a persistent notice or no notice; timed notices store their expiry
+ * time in milliseconds.
+ */
 typedef struct {
-    SystemNoticeKind kind;
-    uint32_t deadline_ms;
+    SystemNoticeKind kind; /**< Currently visible notice kind. */
+    uint32_t deadline_ms;  /**< Expiration time for a timed notice, or zero for persistence. */
 } SystemNotice;
 
+/**
+ * @brief Initializes system notice presentation state.
+ *
+ * Clears the active notice and expiration deadline.
+ *
+ * @param[out] notice System notice state to initialize.
+ */
 void system_notice_init(SystemNotice *notice);
+
+/**
+ * @brief Starts presentation of a system notice.
+ *
+ * Stores the selected notice and assigns its type-specific expiration deadline when the notice is
+ * transient.
+ *
+ * @param[in,out] notice System notice state to update.
+ * @param[in] kind Notice to present.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 void system_notice_show(SystemNotice *notice, SystemNoticeKind kind, uint32_t now_ms);
+
+/**
+ * @brief Expires a completed timed system notice.
+ *
+ * Clears the notice after its deadline while leaving persistent notices unchanged.
+ *
+ * @param[in,out] notice System notice state to service.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
 void system_notice_update(SystemNotice *notice, uint32_t now_ms);
 
 #endif

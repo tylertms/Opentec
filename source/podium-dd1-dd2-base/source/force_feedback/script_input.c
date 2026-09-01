@@ -3,17 +3,22 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/**
+ * @brief Encoded offsets and sizes for force-feedback script input packets.
+ *
+ * The constants describe the fixed vendor-HID layouts consumed by this module.
+ */
 enum {
-    SAMPLE_PACKET_OPCODE = 0x0b,
-    SAMPLE_FIRST_OFFSET = 4,
-    SAMPLE_RECORD_SIZE = 6,
-    SAMPLE_UNUSED = UINT16_MAX,
-    INPUT_PACKET_OPCODE = 0x0e,
-    INPUT_STATUS_OFFSET = 4,
-    INPUT_DEADLINE_OFFSET = 5,
-    INPUT_SAMPLE_COUNT_OFFSET = 7,
-    INPUT_FIRST_SLOT_OFFSET = 9,
-    INPUT_SLOT_SIZE = 9,
+    SAMPLE_PACKET_OPCODE = 0x0b,   /**< Sample-table packet opcode. */
+    SAMPLE_FIRST_OFFSET = 4,       /**< Offset of the first sample record. */
+    SAMPLE_RECORD_SIZE = 6,        /**< Size of one sample index/value record. */
+    SAMPLE_UNUSED = UINT16_MAX,    /**< Sample index that leaves an entry unchanged. */
+    INPUT_PACKET_OPCODE = 0x0e,    /**< Live-input packet opcode. */
+    INPUT_STATUS_OFFSET = 4,       /**< Offset of the live-input status byte. */
+    INPUT_DEADLINE_OFFSET = 5,     /**< Offset of the two-byte deadline delta. */
+    INPUT_SAMPLE_COUNT_OFFSET = 7, /**< Offset of the two-byte sample count. */
+    INPUT_FIRST_SLOT_OFFSET = 9,   /**< Offset of the first live-input slot. */
+    INPUT_SLOT_SIZE = 9,           /**< Size of one live-input slot record. */
 };
 
 /**
@@ -41,13 +46,6 @@ static uint32_t read_u32(const uint8_t *data) {
            (uint32_t)data[3] << 24;
 }
 
-/**
- * @brief Initialize the script sample table.
- *
- * Marks every one of the 512 script sample values as unused with an all-ones 32-bit value.
- *
- * @param[out] samples Script sample table to initialize.
- */
 void force_feedback_script_samples_init(ForceFeedbackScriptSamples *samples) {
     if (samples == NULL) {
         return;
@@ -57,18 +55,6 @@ void force_feedback_script_samples_init(ForceFeedbackScriptSamples *samples) {
     }
 }
 
-/**
- * @brief Apply a script sample-point packet atomically.
- *
- * Validates all ten little-endian sample indexes before writing any values. Indexes from 0 through
- * 511 select table entries, while index 65535 skips its record. Any other index rejects the entire
- * packet without changing the sample table.
- *
- * @param[in,out] samples Script sample table to update.
- * @param[in] packet Complete 64-byte vendor-HID packet beginning with opcode 0x0B.
- * @param[in] length Number of available packet bytes.
- * @return True when every sample index is valid and all selected values are written.
- */
 bool force_feedback_script_samples_apply(ForceFeedbackScriptSamples *samples, const uint8_t *packet,
                                          size_t length) {
     if (samples == NULL || packet == NULL || length != FORCE_FEEDBACK_SCRIPT_PACKET_SIZE ||
@@ -94,14 +80,6 @@ bool force_feedback_script_samples_apply(ForceFeedbackScriptSamples *samples, co
     return true;
 }
 
-/**
- * @brief Initialize the live force-feedback script inputs.
- *
- * Selects position input status, clears the deadline, sample count, shared position, values, and
- * durations, and marks each of the three input slots unused.
- *
- * @param[out] inputs Live script-input state to initialize.
- */
 void force_feedback_script_inputs_init(ForceFeedbackScriptInputs *inputs) {
     if (inputs == NULL) {
         return;
@@ -112,19 +90,6 @@ void force_feedback_script_inputs_init(ForceFeedbackScriptInputs *inputs) {
     }
 }
 
-/**
- * @brief Apply live script inputs from a vendor-HID packet.
- *
- * Always stores the packet status. Status 1 or 240 also updates the deadline, sample count, and
- * each slot whose status is not 255. A slot with status 0 additionally replaces the shared position
- * value. Other packet statuses leave all fields except the packet status unchanged.
- *
- * @param[in,out] inputs Live script-input state to update.
- * @param[in] current_sample_count Current script-engine sample counter used as the deadline base.
- * @param[in] packet Complete 64-byte vendor-HID packet beginning with opcode 0x0E.
- * @param[in] length Number of available packet bytes.
- * @return True when the packet has the live-input opcode and complete vendor-HID length.
- */
 bool force_feedback_script_inputs_apply(ForceFeedbackScriptInputs *inputs,
                                         uint32_t current_sample_count, const uint8_t *packet,
                                         size_t length) {

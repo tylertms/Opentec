@@ -4,16 +4,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/**
- * @brief Encodes a Driving Force EX input report.
- *
- * Packs a ten-bit steering value, twelve buttons, a directional hat, and three eight-bit axes
- * into the seven-byte compatibility report.
- *
- * @param[out] report Buffer that receives the encoded report.
- * @param[in] state Logical compatibility input values.
- * @return True when the report was encoded; otherwise false.
- */
 bool logitech_driving_force_ex_encode(uint8_t report[LOGITECH_DRIVING_FORCE_EX_REPORT_SIZE],
                                       const LogitechInputState *state) {
     if (report == NULL || state == NULL) {
@@ -31,16 +21,6 @@ bool logitech_driving_force_ex_encode(uint8_t report[LOGITECH_DRIVING_FORCE_EX_R
     return true;
 }
 
-/**
- * @brief Encodes a Driving Force Pro input report.
- *
- * Packs a fourteen-bit steering value, fourteen buttons, a directional hat, and three eight-bit
- * axes into the eight-byte compatibility report.
- *
- * @param[out] report Buffer that receives the encoded report.
- * @param[in] state Logical compatibility input values.
- * @return True when the report was encoded; otherwise false.
- */
 bool logitech_driving_force_pro_encode(uint8_t report[LOGITECH_DRIVING_FORCE_PRO_REPORT_SIZE],
                                        const LogitechInputState *state) {
     if (report == NULL || state == NULL) {
@@ -59,16 +39,6 @@ bool logitech_driving_force_pro_encode(uint8_t report[LOGITECH_DRIVING_FORCE_PRO
     return true;
 }
 
-/**
- * @brief Encodes a G27 input report.
- *
- * Packs a fourteen-bit steering value, twenty-three buttons, a directional hat, and three
- * eight-bit axes into the eleven-byte compatibility report.
- *
- * @param[out] report Buffer that receives the encoded report.
- * @param[in] state Logical compatibility input values.
- * @return True when the report was encoded; otherwise false.
- */
 bool logitech_g27_encode(uint8_t report[LOGITECH_G27_REPORT_SIZE],
                          const LogitechInputState *state) {
     if (report == NULL || state == NULL) {

@@ -3,43 +3,59 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/**
+ * @brief Adapter command transport layout, status bits, and scheduling values.
+ *
+ * These private constants describe the two adapter endpoints and the priority order used by the
+ * asynchronous command service.
+ */
 enum {
-    WHEEL_ADAPTER_ENDPOINT_COUNT = 2,
-    WHEEL_ADAPTER_COMMAND_OWNER = 0x42,
-    WHEEL_ADAPTER_STATUS_OFFSET = 0x00,
-    WHEEL_ADAPTER_BUTTONS_OFFSET = 0x01,
-    WHEEL_ADAPTER_AXES_OFFSET = 0x02,
-    WHEEL_ADAPTER_ROTARY_OFFSET = 0x03,
-    WHEEL_ADAPTER_GLYPHS_OFFSET = 0x06,
-    WHEEL_ADAPTER_REMOTE_TUNING_ACTIVE_OFFSET = 0x0e,
-    WHEEL_ADAPTER_REFRESH_STATE_OFFSET = 0x17,
-    WHEEL_ADAPTER_DISPLAY_STATE_OFFSET = 0x18,
-    WHEEL_ADAPTER_INTERFACE_PRESENTATION_FIRST_OFFSET = 0x20,
-    WHEEL_ADAPTER_INTERFACE_PRESENTATION_FIRST_MODE = 1,
-    WHEEL_ADAPTER_INTERFACE_PRESENTATION_LAST_MODE = 3,
-    WHEEL_ADAPTER_TEXT_LINE_OFFSET = 0x1a,
-    WHEEL_ADAPTER_REPORT_TWO_OFFSET = 0x04,
-    WHEEL_ADAPTER_REPORT_ONE_OFFSET = 0x05,
-    WHEEL_ADAPTER_REPORT_FOUR_OFFSET = 0x08,
-    WHEEL_ADAPTER_REPORT_FIVE_OFFSET = 0x09,
-    WHEEL_ADAPTER_REPORT_SIX_OFFSET = 0x19,
-    WHEEL_ADAPTER_SETUP_SELECTION_OFFSET = 0xc0,
-    WHEEL_ADAPTER_HOST_CONTROLS_OFFSET = 0xa0,
-    WHEEL_ADAPTER_PROBE_OFFSET = 0x0c,
-    WHEEL_ADAPTER_DISPLAY_OFFSET = 0x0f,
-    WHEEL_ADAPTER_BUTTONS_CHANGED = 0x01,
-    WHEEL_ADAPTER_AXES_CHANGED = 0x02,
-    WHEEL_ADAPTER_ROTARY_CHANGED = 0x04,
-    WHEEL_ADAPTER_HOST_CONTROLS_REQUESTED = 0x10,
-    WHEEL_ADAPTER_GLYPHS_REQUESTED = 0x20,
-    WHEEL_ADAPTER_INPUT_INCREMENT = 0x04,
-    WHEEL_ADAPTER_INPUT_DECREMENT = 0x08,
-    WHEEL_ADAPTER_SECURE_PROFILE = 0x80,
-    WHEEL_ADAPTER_OUTPUT_REPORT_INTERVAL = 5,
+    WHEEL_ADAPTER_ENDPOINT_COUNT = 2,   /**< Number of supported adapter endpoints. */
+    WHEEL_ADAPTER_COMMAND_OWNER = 0x42, /**< Command-transport owner identifier for this service. */
+    WHEEL_ADAPTER_STATUS_OFFSET = 0x00, /**< Endpoint offset of the two-byte status read. */
+    WHEEL_ADAPTER_BUTTONS_OFFSET = 0x01, /**< Endpoint offset of the button read. */
+    WHEEL_ADAPTER_AXES_OFFSET = 0x02,    /**< Endpoint offset of the axis read. */
+    WHEEL_ADAPTER_ROTARY_OFFSET = 0x03,  /**< Endpoint offset of the rotary read. */
+    WHEEL_ADAPTER_GLYPHS_OFFSET = 0x06,  /**< Endpoint offset of the glyph write. */
+    WHEEL_ADAPTER_REMOTE_TUNING_ACTIVE_OFFSET =
+        0x0e, /**< Endpoint offset of the remote-tuning state write. */
+    WHEEL_ADAPTER_REFRESH_STATE_OFFSET = 0x17, /**< Endpoint offset of the refresh-state write. */
+    WHEEL_ADAPTER_DISPLAY_STATE_OFFSET =
+        0x18, /**< Endpoint offset of the system display-state write. */
+    WHEEL_ADAPTER_INTERFACE_PRESENTATION_FIRST_OFFSET =
+        0x20, /**< First endpoint offset for interface presentation. */
+    WHEEL_ADAPTER_INTERFACE_PRESENTATION_FIRST_MODE =
+        1, /**< First accepted interface presentation mode. */
+    WHEEL_ADAPTER_INTERFACE_PRESENTATION_LAST_MODE =
+        3,                                   /**< Last accepted interface presentation mode. */
+    WHEEL_ADAPTER_TEXT_LINE_OFFSET = 0x1a,   /**< Endpoint offset of the text-line write. */
+    WHEEL_ADAPTER_REPORT_TWO_OFFSET = 0x04,  /**< Endpoint offset of standard report two. */
+    WHEEL_ADAPTER_REPORT_ONE_OFFSET = 0x05,  /**< Endpoint offset of standard report one. */
+    WHEEL_ADAPTER_REPORT_FOUR_OFFSET = 0x08, /**< Endpoint offset of extended report four. */
+    WHEEL_ADAPTER_REPORT_FIVE_OFFSET = 0x09, /**< Endpoint offset of extended report five. */
+    WHEEL_ADAPTER_REPORT_SIX_OFFSET = 0x19,  /**< Endpoint offset of extended report six. */
+    WHEEL_ADAPTER_SETUP_SELECTION_OFFSET =
+        0xc0,                                  /**< Endpoint offset of the setup-selection write. */
+    WHEEL_ADAPTER_HOST_CONTROLS_OFFSET = 0xa0, /**< Endpoint offset of the host-control read. */
+    WHEEL_ADAPTER_PROBE_OFFSET = 0x0c,         /**< Endpoint offset of the endpoint probe. */
+    WHEEL_ADAPTER_DISPLAY_OFFSET = 0x0f,       /**< Endpoint offset of the display write. */
+    WHEEL_ADAPTER_BUTTONS_CHANGED = 0x01,      /**< Status bit requesting a button read. */
+    WHEEL_ADAPTER_AXES_CHANGED = 0x02,         /**< Status bit requesting an axis read. */
+    WHEEL_ADAPTER_ROTARY_CHANGED = 0x04,       /**< Status bit requesting a rotary read. */
+    WHEEL_ADAPTER_HOST_CONTROLS_REQUESTED = 0x10, /**< Status bit requesting host controls. */
+    WHEEL_ADAPTER_GLYPHS_REQUESTED = 0x20,        /**< Status bit requesting a glyph write. */
+    WHEEL_ADAPTER_INPUT_INCREMENT = 0x04, /**< Input-status bit for one positive primary step. */
+    WHEEL_ADAPTER_INPUT_DECREMENT = 0x08, /**< Input-status bit for one negative primary step. */
+    WHEEL_ADAPTER_SECURE_PROFILE = 0x80, /**< Status bit suppressing ordinary component requests. */
+    WHEEL_ADAPTER_OUTPUT_REPORT_INTERVAL =
+        5, /**< Number of scheduling passes between report batches. */
 };
 
+/** @brief Remote target identifiers indexed by adapter endpoint. */
 static const uint8_t endpoint_targets[WHEEL_ADAPTER_ENDPOINT_COUNT] = {0x15, 0x16};
+/** @brief Probe response lengths indexed by adapter endpoint. */
 static const uint8_t endpoint_probe_lengths[WHEEL_ADAPTER_ENDPOINT_COUNT] = {1, 4};
+/** @brief Rotary response lengths indexed by adapter endpoint. */
 static const uint8_t endpoint_rotary_lengths[WHEEL_ADAPTER_ENDPOINT_COUNT] = {1, 2};
 
 /**
@@ -104,9 +120,9 @@ static void advance_endpoint(WheelAdapterCommandService *service, WheelAdapterIn
 /**
  * @brief Applies the latest adapter input-status response.
  *
- * Retains the profile flags, coalesces changed button, axis, rotary, and glyph work, and records
- * one signed primary motion step with increment taking priority over decrement. Secure-profile
- * status is retained without scheduling the normal component transfers.
+ * Retains the profile flags, coalesces changed button, axis, rotary, host-control, and glyph work,
+ * and records one signed primary motion step with increment taking priority over decrement.
+ * Secure-profile status is retained without scheduling the normal component transfers.
  *
  * @param[in,out] service Adapter command service containing the received status bytes.
  * @param[in,out] adapter Logical adapter state receiving flags and motion.
@@ -212,11 +228,11 @@ static bool finish_request(WheelAdapterCommandService *service, WheelAdapterInpu
 /**
  * @brief Queues the next adapter command by priority.
  *
- * Probes an undiscovered endpoint first, then reads changed buttons, axes, or selectors, writes
- * requested system display state, glyphs, or a pending standard-endpoint display report. Wheel
- * report writes for the active endpoint are released together every fifth scheduling pass. When
- * no output is due, the service requests the two-byte input status. System display state waits for
- * one successful input-status response from the standard endpoint.
+ * Probes an undiscovered endpoint first, then reads changed inputs and host controls before
+ * writing pending interface, control, display, text, and output-report payloads. Output-report
+ * writes for the active endpoint are released together every fifth scheduling pass. When no output
+ * is due, the service requests the two-byte input status. System display state waits for one
+ * successful input-status response before its standard-endpoint write.
  *
  * @param[in,out] service Adapter command service selecting work.
  * @param[in,out] adapter Logical adapter state receiving read results.
@@ -476,8 +492,8 @@ void wheel_adapter_command_service_init(WheelAdapterCommandService *service,
 /**
  * @brief Retains the newest adapter display report for transmission.
  *
- * Stores a changed nonzero report as two little-endian bytes followed by the fixed zero byte used
- * by the adapter display command. A newer report replaces an older queued value.
+ * Stores a nonzero report as two little-endian bytes followed by the fixed zero byte used by the
+ * adapter display command. A newer report replaces an older queued value.
  *
  * @param[in,out] service Adapter command service retaining the report.
  * @param[in] report Nonzero two-byte display report.
@@ -615,7 +631,8 @@ void wheel_adapter_command_service_queue_display_state(WheelAdapterCommandServic
  * @param[in] metadata Display line presentation metadata.
  * @param[in] text Text bytes to retain.
  * @param[in] length Number of text bytes.
- * @return True when a valid line was queued.
+ * @return true when service and text are nonnull, the line and length are valid, and the record was
+ * retained; false otherwise.
  */
 bool wheel_adapter_command_service_queue_text_line(WheelAdapterCommandService *service,
                                                    uint8_t line, uint8_t metadata,
@@ -763,7 +780,8 @@ void wheel_adapter_command_service_queue_report_six(WheelAdapterCommandService *
  *
  * @param[in,out] service Adapter command service retaining the completed control area.
  * @param[out] output Destination for the complete control area.
- * @return True when a completed batch was copied.
+ * @return true when a completed batch was copied; false when service, output, or the ready latch
+ * is unavailable.
  */
 bool wheel_adapter_command_service_take_host_controls(
     WheelAdapterCommandService *service, uint8_t output[WHEEL_ADAPTER_HOST_CONTROLS_SIZE]) {

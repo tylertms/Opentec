@@ -6,35 +6,67 @@
 
 #include "usb/feature_upload.h"
 
+/** @brief Report identifiers used by the motor-command upload protocol. */
 enum {
-    USB_MOTOR_COMMAND_REPORT_ID = 6,
-    USB_MOTOR_COMMAND_SEGMENT_ACKNOWLEDGEMENT_REPORT_ID = 0xfd,
-    USB_MOTOR_COMMAND_COMPACT_ACKNOWLEDGEMENT_REPORT_ID = 0xfe,
+    USB_MOTOR_COMMAND_REPORT_ID = 6, /**< Motor-command feature report identifier. */
+    USB_MOTOR_COMMAND_SEGMENT_ACKNOWLEDGEMENT_REPORT_ID =
+        0xfd, /**< Segmented-upload acknowledgement report identifier. */
+    USB_MOTOR_COMMAND_COMPACT_ACKNOWLEDGEMENT_REPORT_ID =
+        0xfe, /**< Compact-upload acknowledgement report identifier. */
 };
 
+/** @brief Result of accepting a motor-command upload packet. */
 typedef enum {
-    USB_MOTOR_COMMAND_UPLOAD_INVALID,
-    USB_MOTOR_COMMAND_UPLOAD_WAITING,
-    USB_MOTOR_COMMAND_UPLOAD_ACKNOWLEDGEMENT,
-    USB_MOTOR_COMMAND_UPLOAD_COMMAND,
-    USB_MOTOR_COMMAND_UPLOAD_RESTART,
-    USB_MOTOR_COMMAND_UPLOAD_RELEASE,
+    USB_MOTOR_COMMAND_UPLOAD_INVALID,         /**< Packet is invalid or not accepted. */
+    USB_MOTOR_COMMAND_UPLOAD_WAITING,         /**< A segmented upload packet was accepted without an
+                                                 acknowledgement. */
+    USB_MOTOR_COMMAND_UPLOAD_ACKNOWLEDGEMENT, /**< An upload acknowledgement should be sent. */
+    USB_MOTOR_COMMAND_UPLOAD_COMMAND,         /**< A complete motor command payload is available. */
+    USB_MOTOR_COMMAND_UPLOAD_RESTART,         /**< The host requested a motor-channel restart. */
+    USB_MOTOR_COMMAND_UPLOAD_RELEASE, /**< The host requested release of the motor channel. */
 } UsbMotorCommandUploadResult;
 
+/** @brief Result and derived data from one motor-command upload packet. */
 typedef struct {
-    UsbMotorCommandUploadResult result;
-    const uint8_t *payload;
-    uint16_t payload_length;
-    uint8_t sequence;
-    uint8_t acknowledgement_report_id;
+    UsbMotorCommandUploadResult result; /**< Packet-acceptance result. */
+    const uint8_t
+        *payload; /**< Command payload in packet or assembly storage when result is COMMAND. */
+    uint16_t payload_length; /**< Number of bytes in payload. */
+    uint8_t sequence; /**< Sequence value copied from a packet with a valid report ID and length. */
+    uint8_t acknowledgement_report_id; /**< Report identifier for the required acknowledgement, if
+                                          any. */
 } UsbMotorCommandUploadEvent;
 
+/** @brief State for assembling motor-command upload packets. */
 typedef struct {
-    UsbFeatureUpload feature;
+    UsbFeatureUpload feature; /**< Shared segmented feature-upload state. */
 } UsbMotorCommandUpload;
 
+/**
+ * @brief Initializes motor-command upload state.
+ *
+ * Attaches caller-owned segmented assembly storage and configures the upload to accept feature
+ * report USB_MOTOR_COMMAND_REPORT_ID.
+ *
+ * @param[out] upload Upload state to initialize.
+ * @param[out] assembly Caller-owned storage for a segmented command.
+ * @param[in] assembly_capacity Capacity of assembly in bytes.
+ * @return True when upload and assembly are non-null and the capacity is nonzero; otherwise false.
+ */
 bool usb_motor_command_upload_init(UsbMotorCommandUpload *upload, uint8_t *assembly,
                                    uint16_t assembly_capacity);
+
+/**
+ * @brief Accepts one motor-command feature packet.
+ *
+ * Decodes compact controls and commands, forwards segmented packets to the shared upload state, and
+ * reports upload progress, acknowledgement requests, or a completed command payload.
+ *
+ * @param[in,out] upload Active motor-command upload state.
+ * @param[in] packet Received packet, including its report identifier.
+ * @param[in] length Number of received packet bytes; it must equal USB_FEATURE_UPLOAD_PACKET_SIZE.
+ * @return Event describing the accepted packet, with INVALID for rejected input.
+ */
 UsbMotorCommandUploadEvent
 usb_motor_command_upload_accept(UsbMotorCommandUpload *upload,
                                 const uint8_t packet[USB_FEATURE_UPLOAD_PACKET_SIZE],

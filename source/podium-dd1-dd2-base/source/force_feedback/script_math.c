@@ -2,7 +2,10 @@
 
 #include <math.h>
 
+/** @brief Single-precision pi used by the script angle operations. */
 static const float script_pi = 3.1415927f;
+
+/** @brief Largest tangent result accepted for a writable script result. */
 static const float tangent_limit = 22875900.0f;
 
 /**
@@ -28,23 +31,6 @@ static ForceFeedbackScriptMathResult skipped_result(void) {
     return (ForceFeedbackScriptMathResult){0};
 }
 
-/**
- * @brief Evaluate a script arithmetic operation.
- *
- * Implements VM arithmetic opcodes 0x10 through 0x1A, trigonometric opcodes 0x20 through 0x22,
- * angle opcodes 0x2A through 0x2D, and vector/trigonometric opcodes 0xB0 through 0xB2. Binary
- * operations consume both operands; unary operations consume only the first. Vector magnitude
- * evaluates sqrt(first * first + second * second). The multiply-cosine and multiply-sine operations
- * treat the first operand as an amplitude and the second as an angle. Division and modulo by zero,
- * square root of a negative value, reciprocal of zero, and a tangent result outside the inclusive
- * range -22875900 through 22875900 skip the destination write. Modulo uses a floored quotient.
- * Angle conversion uses 180 and the float value of pi encoded as 0x40490FDB.
- *
- * @param[in] operation Arithmetic opcode to evaluate.
- * @param[in] first First or only operand.
- * @param[in] second Second operand for binary operations.
- * @return The computed value and whether the VM writes it to the destination.
- */
 ForceFeedbackScriptMathResult
 force_feedback_script_math_evaluate(ForceFeedbackScriptMathOperation operation, float first,
                                     float second) {

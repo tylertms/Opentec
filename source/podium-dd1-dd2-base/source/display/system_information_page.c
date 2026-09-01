@@ -6,19 +6,25 @@
 #include "display/framebuffer.h"
 #include "display/text.h"
 
+/**
+ * @brief Defines system-information colors and layout coordinates.
+ *
+ * The constants position component columns, separators, labels, and values in the display
+ * framebuffer.
+ */
 enum {
-    SYSTEM_INFORMATION_COLOR = 15,
-    SYSTEM_INFORMATION_MAIN_X = 4,
-    SYSTEM_INFORMATION_MOTOR_X = 90,
-    SYSTEM_INFORMATION_QUICK_RELEASE_X = 176,
-    SYSTEM_INFORMATION_FIRST_SEPARATOR_X = 85,
-    SYSTEM_INFORMATION_SECOND_SEPARATOR_X = 171,
-    SYSTEM_INFORMATION_HEADER_Y = 2,
-    SYSTEM_INFORMATION_FIRMWARE_Y = 14,
-    SYSTEM_INFORMATION_HARDWARE_Y = 25,
-    SYSTEM_INFORMATION_ACCESSORY_Y = 36,
-    SYSTEM_INFORMATION_RUNTIME_Y = 53,
-    SYSTEM_INFORMATION_TITLE_Y = 25,
+    SYSTEM_INFORMATION_COLOR = 15,               /**< Foreground grayscale value. */
+    SYSTEM_INFORMATION_MAIN_X = 4,               /**< Main-column left coordinate. */
+    SYSTEM_INFORMATION_MOTOR_X = 90,             /**< Motor-column left coordinate. */
+    SYSTEM_INFORMATION_QUICK_RELEASE_X = 176,    /**< Wheel quick-release column left coordinate. */
+    SYSTEM_INFORMATION_FIRST_SEPARATOR_X = 85,   /**< First column-separator coordinate. */
+    SYSTEM_INFORMATION_SECOND_SEPARATOR_X = 171, /**< Second column-separator coordinate. */
+    SYSTEM_INFORMATION_HEADER_Y = 2,             /**< Header text top coordinate. */
+    SYSTEM_INFORMATION_FIRMWARE_Y = 14,          /**< Firmware text top coordinate. */
+    SYSTEM_INFORMATION_HARDWARE_Y = 25,          /**< Hardware text top coordinate. */
+    SYSTEM_INFORMATION_ACCESSORY_Y = 36,         /**< Accessory text top coordinate. */
+    SYSTEM_INFORMATION_RUNTIME_Y = 53,           /**< Runtime text top coordinate. */
+    SYSTEM_INFORMATION_TITLE_Y = 25,             /**< Opening-title top coordinate. */
 };
 
 /**
@@ -170,6 +176,7 @@ void display_system_information_page_render_title(DisplayFramebuffer framebuffer
  */
 void display_system_information_page_render(DisplayFramebuffer framebuffer,
                                             const DisplaySystemInformation *information) {
+    /** @brief Firmware version displayed for the main board. */
     static const uint8_t main_firmware[3] = {3, 9, 1};
     char text[24];
 

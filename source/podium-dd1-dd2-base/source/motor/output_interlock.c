@@ -5,10 +5,16 @@
 
 #include "motor/identity.h"
 
+/**
+ * @brief Protocol responses that permanently inhibit motor output.
+ */
 enum {
-    MOTOR_EXTENDED_COMMAND_INHIBIT_RESPONSE = 0xbbbb,
-    MOTOR_EXTENDED_STATUS_INHIBIT_RESPONSE = 0xaa,
-    MOTOR_STANDARD_STATUS_INHIBIT_RESPONSE = 0xff,
+    MOTOR_EXTENDED_COMMAND_INHIBIT_RESPONSE =
+        0xbbbb, /**< Extended command response that inhibits output. */
+    MOTOR_EXTENDED_STATUS_INHIBIT_RESPONSE =
+        0xaa, /**< Extended status response that inhibits output. */
+    MOTOR_STANDARD_STATUS_INHIBIT_RESPONSE =
+        0xff, /**< Standard status response that inhibits output. */
 };
 
 /**

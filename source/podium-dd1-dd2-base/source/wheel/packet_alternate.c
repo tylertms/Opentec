@@ -4,12 +4,13 @@
 #include <stdint.h>
 #include <string.h>
 
+/** @brief Internal alternate-packet identifiers, interface modes, and transfer limits. */
 enum {
-    WHEEL_PACKET_ALTERNATE_MODE = 0x12,
-    WHEEL_PACKET_COMMAND_AUTHENTICATE = 0xa6,
-    INTERFACE_MODE_XBOX_GIP = 6,
-    INTERFACE_MODE_PLAYSTATION_4 = 7,
-    TRANSFER_SEQUENCE_LAST = 29,
+    WHEEL_PACKET_ALTERNATE_MODE = 0x12,       /**< Alternate packet mode. */
+    WHEEL_PACKET_COMMAND_AUTHENTICATE = 0xa6, /**< Authenticated response command. */
+    INTERFACE_MODE_XBOX_GIP = 6,              /**< Xbox GIP interface mode. */
+    INTERFACE_MODE_PLAYSTATION_4 = 7,         /**< PlayStation 4 interface mode. */
+    TRANSFER_SEQUENCE_LAST = 29,              /**< Last sequence before transfer restart. */
 };
 
 /**
@@ -52,11 +53,12 @@ void wheel_packet_alternate_filter_init(WheelPacketAlternateFilter *filter) {
 /**
  * @brief Remaps and filters one alternate-packet input sample.
  *
- * Exchanges the second button byte's first and fourth bits for every interface. Xbox GIP moves
- * the third byte's second bit into its third bit. Other interfaces move the third byte's first
- * bit into its fourth bit and clear its source, while PlayStation also mirrors that source into
- * the second bit and merges the original second bit into the first byte's fifth bit. Buttons
- * retain only bits present in all three recent samples, and control bytes two through five clear.
+ * Exchanges the second button byte's first and fourth bits for every interface. Xbox GIP copies
+ * the third byte's second bit into its third bit. PlayStation copies the third byte's first bit
+ * into its fourth and second bits and combines the original second bit with the first byte's
+ * fifth bit. Other interfaces copy the third byte's first bit into its fourth bit and clear its
+ * original position. Buttons retain only bits present in all three recent samples, and control
+ * bytes two through five clear.
  *
  * @param[in,out] filter Three-sample button history.
  * @param[in,out] input Input whose buttons and controls are normalized in place.

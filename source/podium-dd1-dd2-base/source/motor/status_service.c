@@ -8,15 +8,19 @@
 #include "platform/aux_bus.h"
 #include "platform/time.h"
 
+/**
+ * @brief Auxiliary-bus registers, timing, and command responses for motor status exchange.
+ */
 enum {
-    MOTOR_AUX_BUS_ADDRESS = 0x78,
-    MOTOR_COMMAND_REGISTER = 0x05,
-    MOTOR_STATUS_REGISTER = 0x04,
-    MOTOR_STATUS_CYCLE_INTERVAL_MS = 200,
-    MOTOR_COMMAND_IDLE = 0x0000,
-    MOTOR_COMMAND_ACCEPTED = 0xaaaa,
-    MOTOR_COMMAND_FAULT = 0xbbbb,
-    MOTOR_COMMAND_UNAVAILABLE = 0xffff,
+    MOTOR_AUX_BUS_ADDRESS = 0x78,  /**< Auxiliary-bus address of the motor controller. */
+    MOTOR_COMMAND_REGISTER = 0x05, /**< Register for the extended command handshake. */
+    MOTOR_STATUS_REGISTER = 0x04,  /**< Register for the periodic motor status byte. */
+    MOTOR_STATUS_CYCLE_INTERVAL_MS =
+        200,                         /**< Delay between successful status cycles in milliseconds. */
+    MOTOR_COMMAND_IDLE = 0x0000,     /**< Response indicating the command register is idle. */
+    MOTOR_COMMAND_ACCEPTED = 0xaaaa, /**< Response accepting the command request. */
+    MOTOR_COMMAND_FAULT = 0xbbbb,    /**< Response indicating a command fault. */
+    MOTOR_COMMAND_UNAVAILABLE = 0xffff, /**< Response indicating the command is unavailable. */
 };
 
 /**
@@ -60,7 +64,7 @@ void motor_status_service_init(MotorStatusService *service, const MotorIdentity 
 /**
  * @brief Marks the extended motor-command handshake pending.
  *
- * Causes the next idle command-register cycle to submit the fixed ABCD request word.
+ * Causes the next idle command-register cycle to submit the fixed 0xABCD request word.
  *
  * @param[in,out] service Motor status service state.
  */

@@ -10,7 +10,7 @@
  * @param[in] value Setting to constrain.
  * @param[in] minimum Lowest supported value.
  * @param[in] maximum Highest supported value.
- * @return The constrained setting.
+ * @return minimum when value is below it, maximum when value is above it, or value otherwise.
  */
 static uint8_t clamp_u8(uint8_t value, uint8_t minimum, uint8_t maximum) {
     if (value < minimum) {
@@ -25,7 +25,7 @@ static uint8_t clamp_u8(uint8_t value, uint8_t minimum, uint8_t maximum) {
  * Constrains the range to 90 through 2520 degrees and rounds down to a ten-degree step.
  *
  * @param[in] degrees Requested lock-to-lock steering range.
- * @return The normalized steering range in degrees.
+ * @return Clamped steering range rounded down to a supported ten-degree step.
  */
 static uint16_t normalize_rotation(uint16_t degrees) {
     if (degrees < TUNING_ROTATION_MIN_DEGREES) {
@@ -43,7 +43,7 @@ static uint16_t normalize_rotation(uint16_t degrees) {
  * Maps zero to disabled and every nonzero value to enabled.
  *
  * @param[in] value Setting to normalize.
- * @return Zero when disabled, or one when enabled.
+ * @return zero when value is zero; one when value is nonzero.
  */
 static uint8_t normalize_boolean(uint8_t value) { return value != 0; }
 
@@ -53,7 +53,7 @@ static uint8_t normalize_boolean(uint8_t value) { return value != 0; }
  * Preserves peak scaling and maps unsupported values to linear scaling.
  *
  * @param[in] value Scaling mode to normalize.
- * @return A supported scaling mode.
+ * @return TUNING_FORCE_SCALE_PEAK when value is peak; linear scaling otherwise.
  */
 static TuningForceScale normalize_force_scale(TuningForceScale value) {
     return value == TUNING_FORCE_SCALE_PEAK ? value : TUNING_FORCE_SCALE_LINEAR;
@@ -65,7 +65,7 @@ static TuningForceScale normalize_force_scale(TuningForceScale value) {
  * Preserves supported modes and maps unsupported values to automatic mode.
  *
  * @param[in] value Switch mode to normalize.
- * @return A supported switch mode.
+ * @return value when it is supported; automatic mode otherwise.
  */
 static TuningMultiPositionMode normalize_multi_position(TuningMultiPositionMode value) {
     return value <= TUNING_MULTI_POSITION_AUTOMATIC ? value : TUNING_MULTI_POSITION_AUTOMATIC;
@@ -77,7 +77,7 @@ static TuningMultiPositionMode normalize_multi_position(TuningMultiPositionMode 
  * Preserves supported modes and maps unsupported values to clutch-and-brake mode.
  *
  * @param[in] value Paddle mode to normalize.
- * @return A supported paddle mode.
+ * @return value when it is supported; clutch-and-brake mode otherwise.
  */
 static TuningPaddleMode normalize_paddle_mode(TuningPaddleMode value) {
     return value >= TUNING_CLUTCH_BRAKE && value <= TUNING_DUAL_ANALOG ? value
@@ -90,20 +90,12 @@ static TuningPaddleMode normalize_paddle_mode(TuningPaddleMode value) {
  * Preserves supported curves and maps unsupported values to the linear curve.
  *
  * @param[in] value Pedal curve to normalize.
- * @return A supported pedal curve.
+ * @return value when it is supported; linear curve otherwise.
  */
 static TuningPedalCurve normalize_pedal_curve(TuningPedalCurve value) {
     return value <= TUNING_PEDAL_CURVE_DEGREES ? value : TUNING_PEDAL_CURVE_LINEAR;
 }
 
-/**
- * @brief Restores a tuning profile to device defaults.
- *
- * Initializes every exposed tuning value, including automatic steering range selection and the
- * default concrete range used when automatic selection is unavailable.
- *
- * @param[out] profile Tuning profile to initialize.
- */
 void tuning_profile_defaults(TuningProfile *profile) {
     *profile = (TuningProfile){
         .rotation_degrees = 1080,
@@ -135,13 +127,6 @@ void tuning_profile_defaults(TuningProfile *profile) {
     };
 }
 
-/**
- * @brief Normalizes every value in a tuning profile.
- *
- * Applies the supported range, mode, flag, and pedal-curve constraints to a logical profile.
- *
- * @param[in,out] profile Tuning profile to normalize.
- */
 void tuning_profile_normalize(TuningProfile *profile) {
     profile->rotation_degrees = normalize_rotation(profile->rotation_degrees);
     profile->automatic_rotation = normalize_boolean(profile->automatic_rotation);

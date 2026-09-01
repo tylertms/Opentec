@@ -6,13 +6,16 @@
 #include "pedal/axis.h"
 #include "pedal/input.h"
 
+/**
+ * @brief Local analog pedal orientation, detection, and calibration constants.
+ */
 enum {
-    PEDAL_ANALOG_SAMPLE_MASK = 0x0ffe,
-    PEDAL_ANALOG_DISCOVERY_LIMIT = 0x05d0,
-    PEDAL_ANALOG_PRIMARY_RELEASE_LIMIT = 0x0fbf,
-    PEDAL_ANALOG_TERTIARY_RELEASE_LIMIT = 0x09d7,
-    PEDAL_ANALOG_LOWER_DEADZONE = 45,
-    PEDAL_ANALOG_UPPER_DEADZONE = 120,
+    PEDAL_ANALOG_SAMPLE_MASK = 0x0ffe,           /**< Mask retaining oriented twelve-bit samples. */
+    PEDAL_ANALOG_DISCOVERY_LIMIT = 0x05d0,       /**< Strict tertiary discovery threshold. */
+    PEDAL_ANALOG_PRIMARY_RELEASE_LIMIT = 0x0fbf, /**< Release limit for primary channels. */
+    PEDAL_ANALOG_TERTIARY_RELEASE_LIMIT = 0x09d7, /**< Release limit for tertiary channel. */
+    PEDAL_ANALOG_LOWER_DEADZONE = 45,             /**< Default lower endpoint deadzone in counts. */
+    PEDAL_ANALOG_UPPER_DEADZONE = 120,            /**< Default upper endpoint deadzone in counts. */
 };
 
 /**
@@ -79,11 +82,13 @@ void pedal_analog_init(PedalAnalog *analog) {
  * @brief Detects analog pedals, captures their low endpoints, and publishes calibrated axes.
  *
  * The first connected sample captures all three minima and clears published output. Later samples
- * learn maxima and scale each axis. A disconnected sample resets calibration and released output.
+ * learn maxima and scale each axis. A disconnected active source resets calibration and releases
+ * output.
  *
  * @param[in,out] analog Analog detection and calibration state.
  * @param[in] samples Three raw ADC samples in primary, secondary, and tertiary order.
- * @param[out] input Published pedal axes and auxiliary value.
+ * @param[in,out] input Published pedal axes and auxiliary value; updated when a valid sample is
+ * available or released when an active source disconnects.
  * @return True while analog pedals are present; false while waiting or after disconnection.
  */
 bool pedal_analog_update(PedalAnalog *analog, const uint16_t samples[PEDAL_INPUT_AXIS_COUNT],

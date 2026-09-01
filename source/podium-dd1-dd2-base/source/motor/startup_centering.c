@@ -6,20 +6,25 @@
 #include "platform/aux_bus.h"
 #include "platform/time.h"
 
+/**
+ * @brief Auxiliary-bus settings and timing for motor startup centering.
+ */
 enum {
-    MOTOR_AUX_BUS_ADDRESS = 0x78,
-    MOTOR_STARTUP_READINESS_REGISTER = 0x08,
-    MOTOR_STARTUP_READINESS_TIMEOUT_MS = 5000,
-    MOTOR_STARTUP_CENTERING_DURATION_MS = 4000,
-    MOTOR_STARTUP_CENTERING_STEP_MS = 400,
-    MOTOR_STARTUP_CENTERING_GAIN = 12,
+    MOTOR_AUX_BUS_ADDRESS = 0x78, /**< Auxiliary-bus address of the motor controller. */
+    MOTOR_STARTUP_READINESS_REGISTER =
+        0x08, /**< Register containing the startup-readiness value. */
+    MOTOR_STARTUP_READINESS_TIMEOUT_MS = 5000, /**< Maximum readiness wait in milliseconds. */
+    MOTOR_STARTUP_CENTERING_DURATION_MS =
+        4000,                              /**< Duration of active centering in milliseconds. */
+    MOTOR_STARTUP_CENTERING_STEP_MS = 400, /**< Time step used by the centering force envelope. */
+    MOTOR_STARTUP_CENTERING_GAIN = 12,     /**< Position-to-force gain during startup centering. */
 };
 
 /**
  * @brief Starts the motor-controller readiness and wheel-centering sequence.
  *
- * Opens the five-second motor-readiness window immediately. This matches the released firmware's
- * bounded startup path and ensures failed readiness transactions cannot prevent normal startup.
+ * Opens a five-second motor-readiness window immediately, allowing failed readiness transactions to
+ * time out without preventing normal startup.
  *
  * @param[out] centering Startup-centering state to initialize.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -59,8 +64,8 @@ static void finish_transfer(MotorStartupCentering *centering, uint32_t now_ms) {
 /**
  * @brief Advances the motor readiness wait.
  *
- * Completes a prior parameter read, ends the sequence at the five-second deadline, or starts a
- * one-byte read from motor parameter eight while the shared bus is idle.
+ * Ends the sequence at the five-second deadline or starts a one-byte read from motor parameter
+ * eight while the shared bus is idle.
  *
  * @param[in,out] centering Startup-centering state and transfer ownership.
  * @param[in] now_ms Current monotonic time in milliseconds.

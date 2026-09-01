@@ -6,18 +6,30 @@
 
 #include "force_feedback/script_range.h"
 
+/**
+ * @brief Runtime indexes and scale used by motion updates.
+ *
+ * The indexes identify script motion values, and the clock constant converts 10 kHz ticks to
+ * seconds.
+ */
 enum {
-    MOTION_SELECTOR = 0,
-    MOTION_POSITION = 4,
-    MOTION_VELOCITY = 5,
-    MOTION_ACCELERATION = 6,
-    MOTION_ANGLE = 7,
-    FORCE_FEEDBACK_TICKS_PER_SECOND = 10000,
+    MOTION_SELECTOR = 0,                     /**< Motion selector value index. */
+    MOTION_POSITION = 4,                     /**< Normalized position value index. */
+    MOTION_VELOCITY = 5,                     /**< Velocity value index. */
+    MOTION_ACCELERATION = 6,                 /**< Acceleration value index. */
+    MOTION_ANGLE = 7,                        /**< Rotation angle value index. */
+    FORCE_FEEDBACK_TICKS_PER_SECOND = 10000, /**< Motion-clock frequency in ticks per second. */
 };
 
+/**
+ * @brief Provides numeric and raw-bit views of a motion value.
+ *
+ * The motion update preserves script value bits while converting them to and from floating-point
+ * values for calculations.
+ */
 typedef union {
-    float number;
-    uint32_t bits;
+    float number;  /**< Single-precision numeric view. */
+    uint32_t bits; /**< Raw 32-bit representation. */
 } MotionValue;
 
 /**
@@ -41,7 +53,7 @@ static float read_value(uint32_t bits) { return (MotionValue){.bits = bits}.numb
 static uint32_t value_bits(float value) { return (MotionValue){.number = value}.bits; }
 
 /**
- * @brief Limits a finite normalized position.
+ * @brief Limits a normalized position.
  *
  * Values above one become one and values below negative one become negative one.
  *
@@ -58,27 +70,6 @@ static float clamp_position(float position) {
     return position;
 }
 
-/**
- * @brief Update script motion values from wheel position or live integration input.
- *
- * Uses motion value 0 as an input selector. A selector matching one of the three live-input slot
- * statuses integrates that slot's floating-point duration into the normalized position and clamps
- * it to -1 through 1. Selector zero samples wheel position when no slot matches; other unmatched
- * selectors retain the previous position. The function then derives angle, velocity, and
- * acceleration from the configured rotation range and 10 kHz motion clock and mirrors position,
- * angle, velocity, and acceleration into axes 0 through 3.
- *
- * @param[in,out] runtime Script motion values, rotation range, and axes.
- * @param[in] inputs Three live integration inputs and their selector statuses.
- * @param[in,out] state Previous position, velocity, and motion-clock snapshot.
- * @param[in] motion_ticks Current 10 kHz motion-clock count.
- * @param[in] wheel_position Signed raw wheel-position sample.
- * @param[in] half_travel Positive raw wheel travel from center to either endpoint.
- * @param[in] integrate_inputs true to apply a matching live integration slot; false to use only
- * wheel sampling or the retained position.
- * @pre runtime, inputs, and state point to valid objects.
- * @pre half_travel is nonzero when selector zero does not match a live-input slot.
- */
 void force_feedback_script_motion_update(ForceFeedbackScriptRuntime *runtime,
                                          const ForceFeedbackScriptInputs *inputs,
                                          ForceFeedbackScriptMotionState *state,

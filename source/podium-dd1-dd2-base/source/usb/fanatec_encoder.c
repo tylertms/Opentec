@@ -5,11 +5,13 @@
 
 #include "platform/time.h"
 
+/** @brief Fanatec encoder timing and report-field constants. */
 enum {
-    ENCODER_PHASE_DURATION_MS = 17,
-    ENCODER_DIRECTION_BUTTON_BANK = 3,
-    ENCODER_NEGATIVE_BUTTON = 1 << 2,
-    ENCODER_POSITIVE_BUTTON = 1 << 3,
+    ENCODER_PHASE_DURATION_MS =
+        17, /**< Duration of each direction or quiet phase in milliseconds. */
+    ENCODER_DIRECTION_BUTTON_BANK = 3, /**< Button bank containing encoder direction bits. */
+    ENCODER_NEGATIVE_BUTTON = 1 << 2,  /**< Encoder negative-direction button bit. */
+    ENCODER_POSITIVE_BUTTON = 1 << 3,  /**< Encoder positive-direction button bit. */
 };
 
 /**
@@ -31,27 +33,8 @@ static void apply_direction_buttons(fanatec_input_state *input, int8_t direction
     input->button_banks[ENCODER_DIRECTION_BUTTON_BANK] = buttons;
 }
 
-/**
- * @brief Initializes Fanatec encoder report presentation.
- *
- * Clears the persistent dial position, transition deadline, and quiet phase.
- *
- * @param[out] encoder Encoder presentation state to initialize.
- */
 void fanatec_encoder_init(FanatecEncoder *encoder) { *encoder = (FanatecEncoder){0}; }
 
-/**
- * @brief Advances the Fanatec encoder report presentation.
- *
- * Presents queued motion as alternating seventeen-millisecond direction and quiet phases. A due
- * direction phase advances the persistent signed dial position by one wrapping step.
- *
- * @param[in,out] encoder Persistent encoder presentation state.
- * @param[in] pending_direction Sign of the queued attached-wheel motion.
- * @param[in] now_ms Current monotonic time in milliseconds.
- * @param[in,out] input Fanatec input state that receives the dial position and direction buttons.
- * @return True when one queued motion step must be consumed.
- */
 bool fanatec_encoder_update(FanatecEncoder *encoder, int8_t pending_direction, uint32_t now_ms,
                             fanatec_input_state *input) {
     int8_t direction = pending_direction < 0 ? -1 : pending_direction > 0 ? 1 : 0;

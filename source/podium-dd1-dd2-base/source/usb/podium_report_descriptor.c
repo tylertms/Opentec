@@ -4,9 +4,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/** @brief Cursor and destination storage for HID descriptor encoding. */
 typedef struct {
-    uint8_t *output;
-    size_t length;
+    uint8_t *output; /**< Caller-owned descriptor destination. */
+    size_t length;   /**< Number of descriptor bytes currently written. */
 } HidDescriptor;
 
 /**
@@ -58,7 +59,8 @@ static void append_u32(HidDescriptor *descriptor, uint8_t prefix, uint32_t value
 /**
  * @brief Appends a usage-page item.
  *
- * Selects the compact eight-bit item when possible and the sixteen-bit item for vendor pages.
+ * Selects the compact eight-bit item when the page identifier fits in one byte and the sixteen-bit
+ * item otherwise.
  *
  * @param[in,out] descriptor Descriptor under construction.
  * @param[in] page HID usage-page identifier.
@@ -289,8 +291,8 @@ static void usage_maximum(HidDescriptor *descriptor, uint8_t value) {
 /**
  * @brief Encodes one or more directional hats.
  *
- * Declares four-bit hats with eight directions, a 315-degree physical maximum, angular units, and
- * the logical state restored for later button fields.
+ * Declares four-bit hats with eight directions, a 315-degree physical maximum, and angular units,
+ * then restores neutral unit and one-valued bounds for subsequent fields.
  *
  * @param[in,out] descriptor Descriptor under construction.
  * @param[in] count Number of hat fields.
@@ -355,8 +357,8 @@ static void encode_unsigned_axes(HidDescriptor *descriptor, const uint8_t *usage
 /**
  * @brief Encodes signed eight-bit axes.
  *
- * Declares the requested usages from minus 128 through 127 and optionally restores the report width
- * to eight bits before emitting the input item.
+ * Declares the requested usages from minus 128 through 127 and optionally sets the report width to
+ * eight bits before emitting the input item.
  *
  * @param[in,out] descriptor Descriptor under construction.
  * @param[in] usages Axis usage identifiers.
@@ -407,8 +409,11 @@ static void encode_vendor_io(HidDescriptor *descriptor, uint8_t input_count, uin
  * @param[in,out] descriptor Descriptor under construction.
  */
 static void encode_primary_report(HidDescriptor *descriptor) {
+    /** @brief Generic Desktop usages for primary unsigned axes. */
     static const uint8_t axes[] = {0x30, 0x32, 0x35, 0x31};
+    /** @brief Generic Desktop usages for primary signed axes. */
     static const uint8_t signed_axes[] = {0x33, 0x34};
+    /** @brief Generic Desktop usage for the primary encoder axis. */
     static const uint8_t encoder_axis[] = {0x37};
     report_id(descriptor, 1);
     encode_hat(descriptor, 1);
@@ -435,7 +440,9 @@ static void encode_primary_report(HidDescriptor *descriptor) {
  * @param[in,out] descriptor Descriptor under construction.
  */
 static void encode_extended_report(HidDescriptor *descriptor) {
+    /** @brief Generic Desktop usages for extended unsigned axes. */
     static const uint8_t axes[] = {0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x36};
+    /** @brief Generic Desktop usages for extended signed axes. */
     static const uint8_t signed_axes[] = {0x37, 0x37, 0x37, 0x37};
     usage_page(descriptor, 0x01);
     usage(descriptor, 0x04);
@@ -477,16 +484,9 @@ static void encode_transfer_report(HidDescriptor *descriptor) {
     end_collection(descriptor);
 }
 
-/**
- * @brief Encodes the complete native Podium HID report descriptor.
- *
- * Emits the primary wheel, extended wheel, and transfer collections in host-visible order.
- *
- * @param[out] output_buffer Destination for the complete descriptor.
- * @return Number of descriptor bytes written.
- */
 size_t
 usb_podium_report_descriptor_encode(uint8_t output_buffer[USB_PODIUM_REPORT_DESCRIPTOR_SIZE]) {
+    /** @brief Reusable descriptor cursor storage. */
     static HidDescriptor descriptor;
     descriptor = (HidDescriptor){.output = output_buffer, .length = 0};
     usage_page(&descriptor, 0x01);

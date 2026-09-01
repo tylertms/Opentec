@@ -13,29 +13,36 @@
 #include "platform/time.h"
 #include "transfer/session.h"
 
+/**
+ * @brief Pedal service protocol, timing, and retry constants.
+ */
 enum {
-    PEDAL_DETECT_COMMAND = 0x0a,
-    PEDAL_V3_PROTOCOL_COMMAND = 0x05,
-    PEDAL_V4_PROTOCOL_COMMAND = 0x06,
-    PEDAL_DISCOVERY_TIMEOUT_MS = 100,
-    PEDAL_V3_BAUD_SWITCH_DELAY_MS = 5,
-    PEDAL_INITIAL_SAMPLE_TIMEOUT_MS = 15000,
-    PEDAL_SAMPLE_TIMEOUT_MS = 1000,
-    PEDAL_STARTUP_FRAME_COUNT = 250,
-    PEDAL_RECONNECT_DELAY_MS = 550,
-    PEDAL_STATUS_INTERVAL_MS = 500,
-    PEDAL_INPUT_COMMAND_INTERVAL_MS = 500,
-    PEDAL_KEEPALIVE_INTERVAL_MS = 2500,
-    PEDAL_V4_STATUS_INTERVAL_MS = 15,
-    PEDAL_V4_RESPONSE_TIMEOUT_MS = 100,
-    PEDAL_V4_OPERATION_TIMEOUT_MS = 20000,
-    PEDAL_V4_KEEPALIVE_INTERVAL_MS = 100,
-    PEDAL_LEGACY_RESPONSE_TIMEOUT_MS = 18,
-    PEDAL_LEGACY_AXIS_1_RETRY_LIMIT = 5,
-    PEDAL_LEGACY_RETRY_LIMIT = 6,
-    PEDAL_PROTOCOL_PRESERVE_VALUE = 0x66,
+    PEDAL_DETECT_COMMAND = 0x0a,             /**< Legacy discovery request byte. */
+    PEDAL_V3_PROTOCOL_COMMAND = 0x05,        /**< V3 protocol query byte. */
+    PEDAL_V4_PROTOCOL_COMMAND = 0x06,        /**< V4 protocol query byte. */
+    PEDAL_DISCOVERY_TIMEOUT_MS = 100,        /**< Discovery response timeout. */
+    PEDAL_V3_BAUD_SWITCH_DELAY_MS = 5,       /**< Delay before V3 framed receive. */
+    PEDAL_INITIAL_SAMPLE_TIMEOUT_MS = 15000, /**< V3 startup sample timeout. */
+    PEDAL_SAMPLE_TIMEOUT_MS = 1000,          /**< V3 active sample timeout. */
+    PEDAL_STARTUP_FRAME_COUNT = 250, /**< Accepted reports required to leave startup timeout. */
+    PEDAL_RECONNECT_DELAY_MS = 550,  /**< Delay after an established digital-link failure. */
+    PEDAL_STATUS_INTERVAL_MS = 500,  /**< V3 status request interval. */
+    PEDAL_INPUT_COMMAND_INTERVAL_MS = 500, /**< V3 input-command interval. */
+    PEDAL_KEEPALIVE_INTERVAL_MS = 2500,    /**< V3 calibration keepalive interval. */
+    PEDAL_V4_STATUS_INTERVAL_MS = 15,      /**< V4 status request interval. */
+    PEDAL_V4_RESPONSE_TIMEOUT_MS = 100,    /**< V4 initial response timeout. */
+    PEDAL_V4_OPERATION_TIMEOUT_MS = 20000, /**< V4 asynchronous operation timeout. */
+    PEDAL_V4_KEEPALIVE_INTERVAL_MS = 100,  /**< V4 adjustment keepalive interval. */
+    PEDAL_LEGACY_RESPONSE_TIMEOUT_MS = 18, /**< Legacy channel response timeout. */
+    PEDAL_LEGACY_AXIS_1_RETRY_LIMIT = 5,   /**< Retry limit for the first legacy axis. */
+    PEDAL_LEGACY_RETRY_LIMIT = 6,          /**< Retry limit for other legacy channels. */
+    PEDAL_PROTOCOL_PRESERVE_VALUE =
+        0x66, /**< Value that preserves the retained value and second selector. */
 };
 
+/**
+ * @brief Response returned when a V4 host request is made without an active V4 session.
+ */
 static const uint8_t pedal_protocol_disabled_response[] = {
     0x0c, 0x0a, 0x02, 0x08, 0x02, 0x18, 0x08, 0xb2, 0x01, 0x03, 0xa2, 0x0b, 0x00, 0x38, 0x78,
 };
@@ -89,8 +96,8 @@ static void clear_v3_outbound(PedalService *service) {
 /**
  * @brief Releases the current pedal source and schedules digital discovery.
  *
- * Selects local analog input only when no digital traffic preceded the failure. A failed active
- * digital link observes the reconnect hold before discovery resumes.
+ * Selects local analog input only when no digital traffic preceded the failure. A link that has
+ * produced accepted digital traffic observes the reconnect hold before discovery resumes.
  *
  * @param[in,out] service Pedal source, transport, and reconnect state to reset.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -150,7 +157,7 @@ static bool send_frame(PedalService *service) {
  * @brief Initializes the complete pedal service state.
  *
  * Releases published inputs, resets every supported transport, restores protocol defaults, and
- * schedules digital discovery for the first service pass.
+ * leaves the phase ready for digital discovery on the first service pass.
  *
  * @param[out] service Pedal service state to initialize.
  */
@@ -330,6 +337,9 @@ static uint32_t read_v4_clock(void *context) {
     return service->clock_ms;
 }
 
+/**
+ * @brief Callbacks connecting the V4 transfer session to the pedal service.
+ */
 static const TransferSessionCallbacks v4_callbacks = {
     .send = send_v4_transfer,
     .ready = v4_transfer_busy,
@@ -344,7 +354,7 @@ static const TransferSessionCallbacks v4_callbacks = {
  * a valid active source returns the service to digital discovery.
  *
  * @param[in,out] service Analog samples, input state, and source selection to update.
- * @param[in] samples Three local pedal samples in throttle, brake, and clutch order.
+ * @param[in] samples Three local pedal samples in primary, secondary, and tertiary order.
  */
 void pedal_service_set_analog_samples(PedalService *service,
                                       const uint16_t samples[PEDAL_INPUT_AXIS_COUNT]) {
@@ -427,8 +437,8 @@ bool pedal_service_adjustment_available(const PedalService *service) {
 /**
  * @brief Queues a host-requested V4 pedal adjustment.
  *
- * Gives the host operation priority over a pending wheel-button operation and retains both of its
- * completed responses for USB forwarding when space is available.
+ * Gives the host operation priority over a pending wheel-button operation and leaves its first
+ * completed response in the shared response slot for USB forwarding.
  *
  * @param[in,out] service Pedal service receiving the host request.
  */
@@ -546,7 +556,7 @@ void pedal_service_set_auxiliary_override(PedalService *service, bool active, ui
  * @brief Selects automatic auxiliary endpoint calibration from pedal state.
  *
  * Enables automatic settling while legacy pedal transport or either V3 calibration path is active
- * and no primary or secondary connection flag is asserted.
+ * and no relevant V3 connection flag is asserted.
  *
  * @param[in] service Current pedal protocol, connection, and calibration state.
  * @return True when the auxiliary input uses automatic endpoint settling.
@@ -1158,7 +1168,8 @@ static void advance_legacy_channel(PedalService *service) {
 /**
  * @brief Applies a legacy response or advances its bounded retry sequence.
  *
- * Publishes valid channel data, records first-axis link activity, and advances to the next request.
+ * Publishes each received channel byte, records first-axis link activity, and advances to the
+ * next request.
  * A channel that exhausts its retry allowance is released before digital reconnection begins.
  *
  * @param[in,out] service Legacy input, retry, activity, and reconnect state to update.
@@ -1312,8 +1323,8 @@ static void service_v3_output(PedalService *service, uint32_t now_ms) {
 /**
  * @brief Receives V3 reports and services the outbound calibration sequence.
  *
- * Accepts recognized reports, publishes their pedal state, changes from the startup timeout after
- * 250 accepted frames, and reconnects when the active report deadline expires.
+ * Accepts recognized reports, publishes their pedal state, switches from the startup timeout to
+ * the active timeout after 250 accepted frames, and reconnects when the report deadline expires.
  *
  * @param[in,out] service V3 transport, input, activity, and timeout state to update.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -1460,6 +1471,8 @@ void pedal_service_run(PedalService *service, uint32_t now_ms) {
 /**
  * @brief Returns the pedal input currently published by the active source.
  *
+ * Exposes the service-owned input state without copying it.
+ *
  * @param[in] service Pedal service containing the published axes and auxiliary input.
  * @return Read-only current pedal input.
  */
@@ -1467,6 +1480,8 @@ const PedalInput *pedal_service_input(const PedalService *service) { return &ser
 
 /**
  * @brief Returns the retained V3 pedal protocol state.
+ *
+ * Exposes the service-owned V3 report state without copying it.
  *
  * @param[in] service Pedal service containing V3 calibration and connection state.
  * @return Read-only current V3 state.

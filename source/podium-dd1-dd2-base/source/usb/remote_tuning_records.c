@@ -3,14 +3,17 @@
 #include <stddef.h>
 #include <string.h>
 
+/** @brief Remote-tuning record packet and route constants. */
 enum {
-    REMOTE_TUNING_PACKET_RECORDS = 1,
-    REMOTE_TUNING_PACKET_ALTERNATE_RECORDS = 3,
-    REMOTE_TUNING_RECORD_HEADER_SIZE = 5,
-    REMOTE_TUNING_RECORD_ROUTE_TWO = 2,
-    REMOTE_TUNING_RECORD_ROUTE_THREE = 3,
-    REMOTE_TUNING_RECORD_ROUTE_FOUR = 4,
-    REMOTE_TUNING_ALTERNATE_RECORD_FLAG = 0x80,
+    REMOTE_TUNING_PACKET_RECORDS = 1, /**< Standard remote-tuning record packet type. */
+    REMOTE_TUNING_PACKET_ALTERNATE_RECORDS =
+        3,                                /**< Alternate-bank remote-tuning record packet type. */
+    REMOTE_TUNING_RECORD_HEADER_SIZE = 5, /**< Number of bytes in a serialized record header. */
+    REMOTE_TUNING_RECORD_ROUTE_TWO = 2,   /**< Local telemetry record route. */
+    REMOTE_TUNING_RECORD_ROUTE_THREE = 3, /**< Generic attached-device forwarding route. */
+    REMOTE_TUNING_RECORD_ROUTE_FOUR = 4,  /**< Attached-wheel response route. */
+    REMOTE_TUNING_ALTERNATE_RECORD_FLAG =
+        0x80, /**< Selector bit identifying an alternate record bank. */
 };
 
 /**
@@ -44,7 +47,7 @@ static void store_record(UsbRemoteTuningRecords *records, const uint8_t *input) 
  * @param[in] route Required record route.
  * @param[in] selector_mask Selector bits to compare.
  * @param[in] selector_value Required value of the selected bits.
- * @return True when the route and selected selector bits match.
+ * @return True when the route and selected selector bits match; otherwise false.
  */
 static bool record_matches(const UsbRemoteTuningRecord *record, uint8_t route,
                            uint8_t selector_mask, uint8_t selector_value) {
@@ -74,8 +77,8 @@ static void append_record(const UsbRemoteTuningRecord *record, uint8_t *output, 
 /**
  * @brief Takes one bounded batch of matching records.
  *
- * Serializes complete matching records in arrival order. The first matching record that does not
- * fit ends the batch. Consumed records are removed while every retained record keeps its order.
+ * Serializes complete matching records from newest to oldest. The first matching record that does
+ * not fit ends the batch. Consumed records are removed while every retained record keeps its order.
  *
  * @param[in,out] records Arrival-order record store.
  * @param[in] route Record route to select.
@@ -84,7 +87,7 @@ static void append_record(const UsbRemoteTuningRecord *record, uint8_t *output, 
  * @param[out] output Serialized record destination.
  * @param[in] capacity Maximum serialized byte count.
  * @param[out] length Produced serialized byte count.
- * @return True when at least one record was consumed.
+ * @return True when at least one record was consumed; otherwise false.
  */
 static bool take_matching(UsbRemoteTuningRecords *records, uint8_t route, uint8_t selector_mask,
                           uint8_t selector_value, uint8_t *output, uint8_t capacity,
@@ -126,14 +129,15 @@ static bool take_matching(UsbRemoteTuningRecords *records, uint8_t route, uint8_
 /**
  * @brief Takes one bounded response from a selected record channel.
  *
- * Serializes complete matching records in arrival order until the next record would exceed the
- * 30-byte response area. Consumed records are removed while all other records retain their order.
+ * Serializes complete matching records from newest to oldest until the next record would exceed
+ * the 30-byte response area. Consumed records are removed while all other records retain their
+ * order.
  *
  * @param[in,out] records Arrival-order record store.
  * @param[in] link Attached-wheel response link.
  * @param[in] alternate Extended selector-bank choice.
  * @param[out] response Response containing zero or more complete serialized records.
- * @return True when at least one record was consumed.
+ * @return True when at least one record was consumed; otherwise false.
  */
 static bool take_channel(UsbRemoteTuningRecords *records, RemoteTuningLink link, bool alternate,
                          RemoteTuningResponse *response) {
@@ -150,28 +154,10 @@ static bool take_channel(UsbRemoteTuningRecords *records, RemoteTuningLink link,
                          sizeof(response->record_data), &response->record_data_length);
 }
 
-/**
- * @brief Initializes the remote-tuning record store.
- *
- * Clears all 32 logical record slots.
- *
- * @param[out] records Remote-tuning record store to initialize.
- */
 void usb_remote_tuning_records_init(UsbRemoteTuningRecords *records) {
     memset(records, 0, sizeof(*records));
 }
 
-/**
- * @brief Applies a remote-tuning record packet.
- *
- * Accepts packet types one and three and reads consecutive five-byte record headers with payloads
- * up to 15 bytes. Parsing stops at a zero type-and-selector pair, an oversized payload, or an
- * incomplete record. Complete records are retained in arrival order until the store is full.
- *
- * @param[in,out] records Remote-tuning record store.
- * @param[in] command Decoded vendor command containing a remote-tuning packet.
- * @return True when the command selects either remote-tuning record packet type.
- */
 bool usb_remote_tuning_records_apply(UsbRemoteTuningRecords *records,
                                      const UsbVendorCommand *command) {
     if (records == NULL || command == NULL || command->kind != USB_VENDOR_COMMAND_REMOTE_TUNING ||
@@ -205,18 +191,6 @@ bool usb_remote_tuning_records_apply(UsbRemoteTuningRecords *records,
     return true;
 }
 
-/**
- * @brief Takes the next attached-wheel record response.
- *
- * Legacy responses combine both selector banks from route four. Extended responses select route
- * three and drain the standard selector bank before the alternate bank. Other links retain every
- * record.
- *
- * @param[in,out] records Arrival-order record store.
- * @param[in] link Attached-wheel response link.
- * @param[out] response Next bounded record response.
- * @return True when a response was produced.
- */
 bool usb_remote_tuning_records_take_response(UsbRemoteTuningRecords *records, RemoteTuningLink link,
                                              RemoteTuningResponse *response) {
     if (records == NULL || response == NULL) {
@@ -232,17 +206,6 @@ bool usb_remote_tuning_records_take_response(UsbRemoteTuningRecords *records, Re
     return false;
 }
 
-/**
- * @brief Takes the next generic attached-device command batch.
- *
- * Selects route-three records from both selector banks and serializes complete records in arrival
- * order into the 61-byte attached-device transfer area. Other routes remain retained.
- *
- * @param[in,out] records Arrival-order record store.
- * @param[out] output Serialized command records.
- * @param[out] length Produced byte count.
- * @return True when a nonempty batch was produced.
- */
 bool usb_remote_tuning_records_take_forward_batch(
     UsbRemoteTuningRecords *records, uint8_t output[USB_REMOTE_TUNING_FORWARD_BATCH_SIZE],
     uint8_t *length) {
@@ -253,22 +216,6 @@ bool usb_remote_tuning_records_take_forward_batch(
                          USB_REMOTE_TUNING_FORWARD_BATCH_SIZE, length);
 }
 
-/**
- * @brief Applies and consumes locally routed telemetry records.
- *
- * Applies route-two records from both selector banks in arrival order. The selector low nibble
- * chooses the telemetry channel and bit seven chooses primary or overlay content. Every matching
- * record is consumed after one pass, while all other routes retain their relative order. Extended
- * mode retains ignored records and requests a reset for an ignored primary record. Legacy mode
- * consumes the first ignored record and stops processing later records.
- *
- * @param[in,out] records Arrival-order remote-tuning record store.
- * @param[in,out] telemetry Selected telemetry mappings and report state.
- * @param[in] extended_mode True to retain ignored records using extended-mode recovery semantics.
- * @param[out] reset_requested Set when an ignored primary record requests extended-mode recovery;
- * null when the caller does not need this state.
- * @return Number of route-two records consumed.
- */
 uint8_t usb_remote_tuning_records_consume_telemetry(UsbRemoteTuningRecords *records,
                                                     RemoteTelemetry *telemetry, bool extended_mode,
                                                     bool *reset_requested) {

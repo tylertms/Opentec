@@ -2,7 +2,10 @@
 
 #include <stdint.h>
 
-enum { PEDAL_AXIS_SAMPLE_MAXIMUM = 0x0ffe };
+/**
+ * @brief Analog axis sample limits.
+ */
+enum { PEDAL_AXIS_SAMPLE_MAXIMUM = 0x0ffe /**< Maximum oriented twelve-bit axis sample. */ };
 
 /**
  * @brief Clamps or learns one pedal sample and scales it across the calibrated travel.

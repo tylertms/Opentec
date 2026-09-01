@@ -3,40 +3,21 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/** @brief Internal delays and capability bits used by host-capability recovery. */
 enum {
-    USB_HOST_CAPABILITY_ARM_DELAY_MS = 300,
-    USB_HOST_CAPABILITY_RETRY_DELAY_MS = 3000,
-    USB_HOST_CAPABILITY_STANDARD = 0x0100,
-    USB_HOST_CAPABILITY_UNIVERSAL = 0x0200,
-    USB_HOST_CAPABILITY_MODE_SEVEN = 0x0800,
+    USB_HOST_CAPABILITY_ARM_DELAY_MS =
+        300, /**< Delay before recovery is first due, in milliseconds. */
+    USB_HOST_CAPABILITY_RETRY_DELAY_MS =
+        3000,                               /**< Delay before retrying recovery, in milliseconds. */
+    USB_HOST_CAPABILITY_STANDARD = 0x0100,  /**< Capability bit for standard wheel modes. */
+    USB_HOST_CAPABILITY_UNIVERSAL = 0x0200, /**< Capability bit valid for every wheel mode. */
+    USB_HOST_CAPABILITY_MODE_SEVEN = 0x0800, /**< Capability bit for wheel mode seven. */
 };
 
-/**
- * @brief Initializes Xbox host-capability recovery.
- *
- * Clears the recovery deadline so the active operating mode can arm it on the first service pass.
- *
- * @param[out] recovery Recovery state to initialize.
- */
 void usb_host_capability_recovery_init(UsbHostCapabilityRecovery *recovery) {
     *recovery = (UsbHostCapabilityRecovery){0};
 }
 
-/**
- * @brief Services Xbox host-capability recovery.
- *
- * Arms a 300-millisecond deadline outside the applicable Xbox wheel configurations. Applicable
- * configurations are modes 10, 18, or 28 with capability 0x0100, every mode with capability
- * 0x0200, mode 7 with capability 0x0800, or an attached adapter request. An enabled host
- * capability suppresses recovery without moving the deadline. A disabled capability requests USB
- * resume signaling after the deadline has strictly passed and then schedules a 3000-millisecond
- * retry.
- *
- * @param[in,out] recovery Persistent recovery deadline.
- * @param[in] input Current USB mode, wheel capability, adapter, and host state.
- * @param[in] now_ms Current monotonic time in milliseconds.
- * @return Resume-signaling request when the disabled capability deadline has passed.
- */
 UsbHostCapabilityRecoveryAction
 usb_host_capability_recovery_update(UsbHostCapabilityRecovery *recovery,
                                     UsbHostCapabilityRecoveryInput input, uint32_t now_ms) {

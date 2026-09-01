@@ -7,7 +7,26 @@
 #include "display/framebuffer.h"
 #include "system/notice.h"
 
+/**
+ * @brief Renders the persistent torque-disabled notice.
+ *
+ * Clears the framebuffer and, when visible, draws the warning icon and centered power-button
+ * message.
+ *
+ * @param[in,out] framebuffer Framebuffer receiving the notice.
+ * @param[in] visible Whether the notice should be drawn after clearing the framebuffer.
+ */
 void display_notice_render_torque_disabled(DisplayFramebuffer framebuffer, bool visible);
+
+/**
+ * @brief Renders a system notice.
+ *
+ * Clears the framebuffer and draws the icon and message selected by the supplied notice kind; the
+ * none kind leaves the framebuffer clear.
+ *
+ * @param[in,out] framebuffer Framebuffer receiving the notice.
+ * @param[in] kind System notice kind to render.
+ */
 void display_notice_render_system(DisplayFramebuffer framebuffer, SystemNoticeKind kind);
 
 #endif

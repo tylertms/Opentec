@@ -18,19 +18,6 @@ static uint16_t split_force(int32_t force, bool *positive_direction) {
     return magnitude > UINT16_MAX ? UINT16_MAX : (uint16_t)magnitude;
 }
 
-/**
- * @brief Applies the live motor-output strength limits to a signed force command.
- *
- * Limits the primary magnitude by the available-output and tuning-strength percentages, then
- * scales both magnitudes by the base output-strength percentage. The secondary report field is
- * retained when secondary output is disabled. When enabled, its pre-scaling limit follows the
- * firmware rule that applies only while the primary request is below the available limit.
- *
- * @param[in] force Signed primary force command.
- * @param[in] secondary_magnitude Nonnegative secondary force magnitude.
- * @param[in] scale Available, tuning, and base strength percentages plus the secondary gate.
- * @param[in,out] report Direction and magnitudes to update.
- */
 void force_output_scale_apply(int32_t force, int32_t secondary_magnitude, ForceOutputScale scale,
                               ForceOutputReport *report) {
     uint16_t primary = split_force(force, &report->positive_direction);

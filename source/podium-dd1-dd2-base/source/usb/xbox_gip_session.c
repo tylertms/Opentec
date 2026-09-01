@@ -2,24 +2,18 @@
 
 #include <stdint.h>
 
+/** @brief Private packet and command values used by the Xbox GIP session state machine. */
 enum {
-    XBOX_GIP_SESSION_PACKET = 5,
-    XBOX_GIP_SESSION_ACTIVATE = 0,
-    XBOX_GIP_SESSION_PAUSE = 1,
-    XBOX_GIP_SESSION_TRANSFER_STATUS = 3,
-    XBOX_GIP_SESSION_SUSPEND_OUTPUT = 4,
-    XBOX_GIP_SESSION_RESET_FORCE_FEEDBACK = 5,
-    XBOX_GIP_SESSION_TRANSFER_STATUS_ALTERNATE = 6,
-    XBOX_GIP_SESSION_RESET_DEVICE = 7,
+    XBOX_GIP_SESSION_PACKET = 5,                    /**< Session packet identifier. */
+    XBOX_GIP_SESSION_ACTIVATE = 0,                  /**< Activate-session command. */
+    XBOX_GIP_SESSION_PAUSE = 1,                     /**< Pause-session command. */
+    XBOX_GIP_SESSION_TRANSFER_STATUS = 3,           /**< Transfer-status command. */
+    XBOX_GIP_SESSION_SUSPEND_OUTPUT = 4,            /**< Suspend-output command. */
+    XBOX_GIP_SESSION_RESET_FORCE_FEEDBACK = 5,      /**< Force-feedback reset command. */
+    XBOX_GIP_SESSION_TRANSFER_STATUS_ALTERNATE = 6, /**< Alternate transfer-status command. */
+    XBOX_GIP_SESSION_RESET_DEVICE = 7,              /**< Device-reset command. */
 };
 
-/**
- * @brief Initializes the Xbox GIP session.
- *
- * Starts the protocol in discovery with discovery also selected as the fallback state.
- *
- * @param[out] session Session state to initialize.
- */
 void usb_xbox_gip_session_init(UsbXboxGipSession *session) {
     *session = (UsbXboxGipSession){
         .state = USB_XBOX_GIP_SESSION_DISCOVERY,
@@ -27,38 +21,14 @@ void usb_xbox_gip_session_init(UsbXboxGipSession *session) {
     };
 }
 
-/**
- * @brief Enters the Xbox GIP metadata state.
- *
- * Selects the transient state used between discovery and the ready session.
- *
- * @param[in,out] session Session entering metadata download.
- */
 void usb_xbox_gip_session_begin_metadata(UsbXboxGipSession *session) {
     session->state = USB_XBOX_GIP_SESSION_METADATA_DOWNLOAD;
 }
 
-/**
- * @brief Finishes the Xbox GIP metadata state.
- *
- * Advances the session to ready after the metadata download has been queued.
- *
- * @param[in,out] session Session completing metadata setup.
- */
 void usb_xbox_gip_session_finish_metadata(UsbXboxGipSession *session) {
     session->state = USB_XBOX_GIP_SESSION_READY;
 }
 
-/**
- * @brief Handles an Xbox GIP session command.
- *
- * Applies activation, pause, output suspension, reset, and transfer-status commands from byte 4
- * of request packet 5 while enforcing each command's permitted session state.
- *
- * @param[in,out] session Active Xbox GIP session.
- * @param[in] request Request packet containing the packet identifier and command.
- * @return Actions required to complete the accepted command.
- */
 UsbXboxGipSessionAction usb_xbox_gip_session_handle(UsbXboxGipSession *session,
                                                     const uint8_t request[5]) {
     if (request[0] != XBOX_GIP_SESSION_PACKET) {
@@ -103,13 +73,6 @@ UsbXboxGipSessionAction usb_xbox_gip_session_handle(UsbXboxGipSession *session,
     }
 }
 
-/**
- * @brief Completes an Xbox GIP force-feedback reset.
- *
- * Restores the session state saved when the reset command was accepted.
- *
- * @param[in,out] session Session completing the force-feedback reset.
- */
 void usb_xbox_gip_session_finish_force_feedback_reset(UsbXboxGipSession *session) {
     session->state = session->resume_state;
 }

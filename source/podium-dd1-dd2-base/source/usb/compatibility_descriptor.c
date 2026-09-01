@@ -5,17 +5,6 @@
 
 #include "usb/compatibility_report_descriptor.h"
 
-/**
- * @brief Builds the USB descriptor profile for a compatibility operating mode.
- *
- * Selects the device identity and HID configuration used by Fanatec compatibility, Driving Force
- * EX, Driving Force Pro, and G27 modes.
- *
- * @param[in] mode Compatibility operating-mode selector.
- * @param[out] identity Device descriptor fields for the selected mode.
- * @param[out] configuration HID configuration descriptor fields for the selected mode.
- * @return True when the selected mode has a compatibility profile; otherwise false.
- */
 bool usb_compatibility_descriptor_profile(UsbInputReportMode mode, UsbDeviceIdentity *identity,
                                           UsbHidConfiguration *configuration) {
     if (identity == NULL || configuration == NULL) {

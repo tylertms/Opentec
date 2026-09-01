@@ -3,12 +3,18 @@
 #include <stdint.h>
 #include <xc.h>
 
+/**
+ * @brief Hardware settings for the platform millisecond timer.
+ */
 enum {
-    TIMER_PERIOD = 7500,
-    TIMER_PRIORITY = 6,
-    TIMER_PRESCALER_1_TO_8 = 1,
+    TIMER_PERIOD = 7500,        /**< Timer 1 period register value. */
+    TIMER_PRIORITY = 6,         /**< Timer 1 interrupt priority. */
+    TIMER_PRESCALER_1_TO_8 = 1, /**< Timer 1 encoding for a 1:8 prescaler. */
 };
 
+/**
+ * @brief Monotonic millisecond counter updated by the Timer 1 interrupt.
+ */
 static volatile uint32_t system_time_ms;
 
 /**

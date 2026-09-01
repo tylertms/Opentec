@@ -7,10 +7,11 @@
 #include "profile/bank.h"
 #include "usb/operating_mode_command.h"
 
+/** @brief Operating-mode identifiers for steering-limit commands. */
 enum {
-    DEVICE_CONTROL_OPCODE = 1,
-    STEERING_LIMIT_SELECTOR = 0x17,
-    STEERING_LIMIT_SET_OPERATION = 1,
+    DEVICE_CONTROL_OPCODE = 1,        /**< Device-control operating-mode opcode. */
+    STEERING_LIMIT_SELECTOR = 0x17,   /**< Steering-limit command selector. */
+    STEERING_LIMIT_SET_OPERATION = 1, /**< Steering-limit set operation. */
 };
 
 /**
@@ -90,7 +91,8 @@ WheelSteeringLimitResult wheel_steering_limits_apply(WheelSteeringLimits *limits
 /**
  * @brief Reads the steering limit for the active profile.
  *
- * Returns the selected profile percentage, or the default when the profile index is invalid.
+ * Returns the selected profile percentage, or the default when settings are unavailable or the
+ * profile index is invalid.
  *
  * @param[in] limits Per-profile steering-limit settings.
  * @param[in] active_profile Zero-based active profile index.

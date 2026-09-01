@@ -6,20 +6,33 @@
 
 #include "force_feedback/script_service.h"
 
+/**
+ * @brief Runtime indexes and scale used by script tick processing.
+ *
+ * The indexes identify timing and motion values, and the clock constant converts engine ticks to
+ * seconds.
+ */
 enum {
-    SCRIPT_TICK_DELTA = 8,
-    SCRIPT_AVERAGE_TICK = 9,
-    SCRIPT_TICK_SNAPSHOT = 11,
-    MOTION_SELECTOR = 0,
-    MOTION_FORCE = 2,
-    FORCE_FEEDBACK_TICKS_PER_SECOND = 10000,
+    SCRIPT_TICK_DELTA = 8,     /**< Variable index containing elapsed tick time. */
+    SCRIPT_AVERAGE_TICK = 9,   /**< Variable index containing average tick time. */
+    SCRIPT_TICK_SNAPSHOT = 11, /**< Variable index containing the current tick snapshot. */
+    MOTION_SELECTOR = 0,       /**< Motion selector value index. */
+    MOTION_FORCE = 2,          /**< Secondary motion force value index. */
+    FORCE_FEEDBACK_TICKS_PER_SECOND = 10000, /**< Engine-clock frequency in ticks per second. */
 };
 
+/** @brief Engine-clock value above which tick processing resets the engine counter. */
 static const uint32_t FORCE_FEEDBACK_TICK_RESET_THRESHOLD = UINT32_C(0x337f9800);
 
+/**
+ * @brief Provides numeric and raw-bit views of a script tick value.
+ *
+ * Tick processing preserves script value bits while storing calculated timing values as
+ * floating-point representations.
+ */
 typedef union {
-    float number;
-    uint32_t bits;
+    float number;  /**< Single-precision numeric view. */
+    uint32_t bits; /**< Raw 32-bit representation. */
 } TickValue;
 
 /**
@@ -67,24 +80,6 @@ static void update_engine_timing(ForceFeedbackScriptSystem *system,
         ((float)snapshot / (float)sample_count) / (float)FORCE_FEEDBACK_TICKS_PER_SECOND);
 }
 
-/**
- * @brief Service one due force-feedback script tick and select its motor-output policy.
- *
- * Evaluates the local and host deadlines, clears the per-tick script selector and accumulated
- * force, updates engine timing operands, runs every active stored script, and refreshes normalized
- * motion state. Position-only and zero-output modes request a zero motor write. Active host input
- * also requests zero output, while ready or idle input permits a motion write only when scripts
- * leave the selector at zero. Expired host input requests zero output without executing scripts.
- *
- * @param[in,out] system Complete script runtime, storage, clocks, inputs, and scheduler state.
- * @param[in] now Current monotonic time in milliseconds.
- * @param[in] wheel_position Signed raw wheel-position sample.
- * @param[in] half_travel Positive raw wheel travel from center to either endpoint.
- * @return The selected motor-output policy and whether an active slot faulted.
- * @pre system points to a valid initialized runtime.
- * @pre Every active script slot has a corresponding valid storage allocation.
- * @pre half_travel is nonzero when wheel sampling is selected.
- */
 ForceFeedbackScriptTickDecision force_feedback_script_tick(ForceFeedbackScriptSystem *system,
                                                            uint32_t now, int32_t wheel_position,
                                                            uint32_t half_travel) {
@@ -143,24 +138,6 @@ ForceFeedbackScriptTickDecision force_feedback_script_tick(ForceFeedbackScriptSy
     };
 }
 
-/**
- * @brief Service one force-script tick and conditionally update the motor output report.
- *
- * Gives a pending position request priority and converts normalized wheel position through its
- * unsmoothed output path. Otherwise it leaves the existing report untouched when no motor write is
- * selected. Expired input clears primary force immediately. Other zero-output policies pass zero
- * motion through the same smoothing, ramp, position-limit, clamp, and motor-scaling path used for
- * a script motion write.
- *
- * @param[in,out] system Complete script runtime and scheduler state.
- * @param[in,out] output_state Script smoothing and wheel-range end-stop state.
- * @param[in] now Current monotonic time in milliseconds.
- * @param[in] wheel_position Signed centered wheel-position sample.
- * @param[in] half_travel Positive wheel travel from center to either endpoint.
- * @param[in] config Current smoothing, strength, ramp, range, and output limits.
- * @param[in,out] report Motor output report to update when a write is selected.
- * @return Motor-write, travel-limit, and slot-fault results for the serviced tick.
- */
 ForceFeedbackScriptTickResult force_feedback_script_tick_output(
     ForceFeedbackScriptSystem *system, ForceFeedbackScriptOutputState *output_state, uint32_t now,
     int32_t wheel_position, uint32_t half_travel, const ForceFeedbackScriptOutputConfig *config,

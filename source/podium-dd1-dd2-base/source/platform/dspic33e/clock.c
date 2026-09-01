@@ -2,15 +2,18 @@
 
 #include <xc.h>
 
+/**
+ * @brief System and auxiliary PLL configuration values.
+ */
 enum {
-    SYSTEM_PLL_FEEDBACK = 58,
-    SYSTEM_PLL_INPUT_DIVIDER = 1,
-    SYSTEM_PLL_OUTPUT_DIVIDER = 0,
-    PRIMARY_OSCILLATOR_WITH_PLL = 3,
-    CLOCK_SWITCH_REQUEST = 1,
-    AUXILIARY_PLL_INPUT_DIVIDER = 2,
-    AUXILIARY_PLL_OUTPUT_DIVIDER = 6,
-    AUXILIARY_CLOCK_DIVIDER = 7,
+    SYSTEM_PLL_FEEDBACK = 58,         /**< Primary PLL feedback-divider value. */
+    SYSTEM_PLL_INPUT_DIVIDER = 1,     /**< Primary PLL input-divider value. */
+    SYSTEM_PLL_OUTPUT_DIVIDER = 0,    /**< Primary PLL output-divider value. */
+    PRIMARY_OSCILLATOR_WITH_PLL = 3,  /**< Oscillator source encoding for the primary PLL. */
+    CLOCK_SWITCH_REQUEST = 1,         /**< Oscillator switch request encoding. */
+    AUXILIARY_PLL_INPUT_DIVIDER = 2,  /**< Auxiliary PLL input-divider value. */
+    AUXILIARY_PLL_OUTPUT_DIVIDER = 6, /**< Auxiliary PLL output-divider value. */
+    AUXILIARY_CLOCK_DIVIDER = 7,      /**< Auxiliary clock divider value. */
 };
 
 /**

@@ -6,18 +6,27 @@
 #include "display/controller.h"
 #include "platform/time.h"
 
+/**
+ * @brief Display DMA and reset timing values.
+ */
 enum {
-    DISPLAY_DMA_REQUEST = 0x2d,
-    DISPLAY_INTERRUPT_PRIORITY = 1,
-    DISPLAY_RESET_START_DELAY_MS = 2,
-    DISPLAY_RESET_LOW_MS = 1,
-    DISPLAY_RESET_RECOVERY_MS = 1,
+    DISPLAY_DMA_REQUEST = 0x2d,       /**< DMA request number for parallel-master writes. */
+    DISPLAY_INTERRUPT_PRIORITY = 1,   /**< Display DMA and parallel-master interrupt priority. */
+    DISPLAY_RESET_START_DELAY_MS = 2, /**< Delay before asserting display reset low. */
+    DISPLAY_RESET_LOW_MS = 1,         /**< Display reset-low pulse duration. */
+    DISPLAY_RESET_RECOVERY_MS = 1,    /**< Delay after releasing display reset. */
 };
 
+/**
+ * @brief State used while writing display bus bytes.
+ */
 typedef struct {
-    DisplayBusMode mode;
+    DisplayBusMode mode; /**< D/C mode most recently driven on the display bus. */
 } DisplayBus;
 
+/**
+ * @brief Shared display bus write state.
+ */
 static DisplayBus display_bus;
 
 /**
@@ -184,6 +193,4 @@ void platform_display_write_frame(ConstDisplayFramebuffer framebuffer) {
  *
  * @return True when no framebuffer byte remains in flight; otherwise false.
  */
-bool platform_display_frame_complete(void) {
-    return IFS7bits.DMA10IF != 0 && PMMODEbits.BUSY == 0;
-}
+bool platform_display_frame_complete(void) { return IFS7bits.DMA10IF != 0 && PMMODEbits.BUSY == 0; }

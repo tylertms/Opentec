@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/** @brief Sample windows selected for valid intensities from zero through 100 by ten. */
 static const uint8_t force_filter_windows[] = {40, 35, 30, 25, 20, 15, 10, 7, 4, 2, 1};
 
 /**
@@ -21,15 +22,6 @@ static uint8_t select_window(uint8_t intensity) {
     return force_filter_windows[intensity / 10];
 }
 
-/**
- * @brief Configure the force smoothing window.
- *
- * Retains the current runtime state when the requested intensity is already active. A changed
- * intensity resets the sample cursor and clears every sample included by the new window.
- *
- * @param[in,out] filter Zero-initialized smoothing state to configure.
- * @param[in] intensity Smoothing intensity from the tuning profile.
- */
 void force_filter_configure(ForceFilter *filter, uint8_t intensity) {
     if (filter->configured && filter->previous_intensity == intensity) {
         return;
@@ -45,18 +37,6 @@ void force_filter_configure(ForceFilter *filter, uint8_t intensity) {
     filter->configured = true;
 }
 
-/**
- * @brief Update the time-gated force smoothing output.
- *
- * Holds the previous output until its deadline. At a due deadline, advances the sample cursor,
- * stores the new request, averages the configured window, and schedules the next update one
- * millisecond later.
- *
- * @param[in,out] filter Configured smoothing state to update.
- * @param[in] sample Current signed force request.
- * @param[in] now_ms Current system time in milliseconds.
- * @return Current smoothed force request.
- */
 int32_t force_filter_update(ForceFilter *filter, int32_t sample, uint32_t now_ms) {
     if (filter->deadline_ms > now_ms) {
         return filter->output;

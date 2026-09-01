@@ -3,27 +3,37 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/**
+ * @brief Attached-wheel axis, packet, and paddle-clutch protocol constants.
+ *
+ * These private values define packet field positions, unavailable-axis markers, analog thresholds,
+ * and the timing used by the calibrated paddle-clutch adjustment sequence.
+ */
 enum {
-    WHEEL_MODE_FIXED_AXES = 0x1c,
-    WHEEL_MODE_CRC_AUTHENTICATED = 0x15,
-    WHEEL_MODE_STANDARD_RANGE_END = 0x12,
-    AXIS_AVAILABLE_THRESHOLD = 0x87,
-    AXIS_UNAVAILABLE = 0xff,
-    PACKET_AXIS_X = 5,
-    PACKET_AXIS_Y = 6,
-    PACKET_AXIS_ENABLED = 7,
-    PACKET_AXIS_LIMIT_THRESHOLD = 0x17,
-    PACKET_AXIS_VALUE_LIMIT = 0x7e,
-    PADDLE_CLUTCH_PRESSED_THRESHOLD = 5,
-    PADDLE_CLUTCH_EXIT_THRESHOLD = 10,
-    PADDLE_CLUTCH_RELEASED_THRESHOLD = 0xf5,
-    PADDLE_CLUTCH_PERCENT_MAXIMUM = 100,
-    PADDLE_ADJUST_BUTTON_INCREASE = 0x01,
-    PADDLE_ADJUST_BUTTON_DECREASE = 0x08,
-    PADDLE_ADJUST_BUTTON_MASK = 0x09,
-    PADDLE_ADJUST_CONSUMED_BUTTON_MASK = 0x0f,
-    PADDLE_ADJUST_INITIAL_DELAY_MS = 1000,
-    PADDLE_ADJUST_REPEAT_DELAY_MS = 800,
+    WHEEL_MODE_FIXED_AXES = 0x1c, /**< Wheel mode with fixed converted axis output. */
+    WHEEL_MODE_CRC_AUTHENTICATED =
+        0x15, /**< Authenticated CRC mode whose axes are already normalized. */
+    WHEEL_MODE_STANDARD_RANGE_END = 0x12, /**< Last mode using the packet standard range. */
+    AXIS_AVAILABLE_THRESHOLD = 0x87,      /**< Highest value treated as an available direct axis. */
+    AXIS_UNAVAILABLE = 0xff,              /**< Marker for an unavailable axis source. */
+    PACKET_AXIS_X = 5,       /**< Packet control index for the first analog-paddle axis. */
+    PACKET_AXIS_Y = 6,       /**< Packet control index for the second analog-paddle axis. */
+    PACKET_AXIS_ENABLED = 7, /**< Packet control index for the axis-report enable flag. */
+    PACKET_AXIS_LIMIT_THRESHOLD =
+        0x17,                       /**< Axis-limit value above which packet axes use full range. */
+    PACKET_AXIS_VALUE_LIMIT = 0x7e, /**< Highest accepted half-range packet-axis value. */
+    PADDLE_CLUTCH_PRESSED_THRESHOLD = 5, /**< Maximum active-low value treated as pressed. */
+    PADDLE_CLUTCH_EXIT_THRESHOLD = 10,   /**< Value above which adjustment mode ends. */
+    PADDLE_CLUTCH_RELEASED_THRESHOLD =
+        0xf5, /**< Threshold above which a paddle is released for launch arming. */
+    PADDLE_CLUTCH_PERCENT_MAXIMUM = 100,  /**< Maximum bite-point percentage. */
+    PADDLE_ADJUST_BUTTON_INCREASE = 0x01, /**< Button bit requesting bite-point increase. */
+    PADDLE_ADJUST_BUTTON_DECREASE = 0x08, /**< Button bit requesting bite-point decrease. */
+    PADDLE_ADJUST_BUTTON_MASK = 0x09,     /**< Mask for the bite-point adjustment buttons. */
+    PADDLE_ADJUST_CONSUMED_BUTTON_MASK =
+        0x0f, /**< Button bits consumed during bite-point adjustment. */
+    PADDLE_ADJUST_INITIAL_DELAY_MS = 1000, /**< Delay before the first held adjustment step. */
+    PADDLE_ADJUST_REPEAT_DELAY_MS = 800,   /**< Delay between repeated held adjustment steps. */
 };
 
 /**
@@ -130,8 +140,8 @@ static uint8_t encode_multiplexed_y(uint8_t interface_mode, uint8_t value) {
 /**
  * @brief Advances direct-report wheel-axis multiplexing.
  *
- * Tracks axis availability, selects an available source, and emits its interface-specific value
- * on alternating protocol samples.
+ * Tracks axis availability, selects a non-sentinel source, and emits its interface-specific value
+ * on subsequent protocol samples.
  *
  * @param[in,out] processor Persistent override and multiplex state.
  * @param[in] interface_mode Current input-report interface mode.
@@ -680,7 +690,7 @@ void wheel_axis_override_process_axis_mode(WheelAxisOverrideProcessor *processor
  * @param[in,out] processor Persistent paddle-clutch state.
  * @param[in] bite_point_percent Current adjusted bite-point percentage.
  * @param[out] updated_percent Completed percentage to persist.
- * @return True when a completed adjustment was available.
+ * @return true when a completed adjustment was available and copied; false otherwise.
  */
 bool wheel_axis_override_take_bite_point(WheelAxisOverrideProcessor *processor,
                                          uint8_t bite_point_percent, uint8_t *updated_percent) {
@@ -700,7 +710,7 @@ bool wheel_axis_override_take_bite_point(WheelAxisOverrideProcessor *processor,
  * @param[in,out] processor Persistent paddle-clutch state.
  * @param[in] bite_point_percent Current adjusted bite-point percentage.
  * @param[out] updated_percent Percentage to publish in the next input report.
- * @return True when a new percentage was available.
+ * @return true when a new percentage was available and copied; false otherwise.
  */
 bool wheel_axis_override_take_bite_point_report(WheelAxisOverrideProcessor *processor,
                                                 uint8_t bite_point_percent,

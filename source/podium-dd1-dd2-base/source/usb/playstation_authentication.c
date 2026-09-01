@@ -5,18 +5,24 @@
 #include <stdint.h>
 #include <string.h>
 
+/** @brief Internal report identifiers, offsets, and transfer sizes for authentication. */
 enum {
-    PLAYSTATION_AUTHENTICATION_UPLOAD_REPORT = 0xf0,
-    PLAYSTATION_AUTHENTICATION_DOWNLOAD_REPORT = 0xf1,
-    PLAYSTATION_AUTHENTICATION_STATUS_REPORT = 0xf2,
-    PLAYSTATION_AUTHENTICATION_FORMAT_REPORT = 0xf3,
-    PLAYSTATION_AUTHENTICATION_DATA_OFFSET = 4,
-    PLAYSTATION_AUTHENTICATION_CHECKSUM_OFFSET = 60,
-    PLAYSTATION_AUTHENTICATION_CHECKSUM_INPUT_SIZE = 60,
-    PLAYSTATION_AUTHENTICATION_STATUS_CHECKSUM_OFFSET = 12,
-    PLAYSTATION_AUTHENTICATION_STATUS_CHECKSUM_INPUT_SIZE = 12,
-    PLAYSTATION_AUTHENTICATION_CHUNK_SIZE = 0x38,
-    PLAYSTATION_AUTHENTICATION_FINAL_REQUEST_INDEX = 4,
+    PLAYSTATION_AUTHENTICATION_UPLOAD_REPORT =
+        0xf0, /**< Authentication request report identifier. */
+    PLAYSTATION_AUTHENTICATION_DOWNLOAD_REPORT =
+        0xf1, /**< Authentication response report identifier. */
+    PLAYSTATION_AUTHENTICATION_STATUS_REPORT =
+        0xf2, /**< Authentication status report identifier. */
+    PLAYSTATION_AUTHENTICATION_FORMAT_REPORT =
+        0xf3,                                   /**< Authentication format report identifier. */
+    PLAYSTATION_AUTHENTICATION_DATA_OFFSET = 4, /**< Payload offset in transfer reports. */
+    PLAYSTATION_AUTHENTICATION_CHECKSUM_OFFSET = 60, /**< Checksum offset in transfer reports. */
+    PLAYSTATION_AUTHENTICATION_CHECKSUM_INPUT_SIZE = 60, /**< Bytes covered by transfer CRC. */
+    PLAYSTATION_AUTHENTICATION_STATUS_CHECKSUM_OFFSET =
+        12, /**< Checksum offset in status reports. */
+    PLAYSTATION_AUTHENTICATION_STATUS_CHECKSUM_INPUT_SIZE = 12, /**< Bytes covered by status CRC. */
+    PLAYSTATION_AUTHENTICATION_CHUNK_SIZE = 0x38, /**< Default authentication fragment size. */
+    PLAYSTATION_AUTHENTICATION_FINAL_REQUEST_INDEX = 4, /**< Final request fragment index. */
 };
 
 /**
@@ -67,13 +73,6 @@ static void write_checksum(uint8_t *data, uint32_t checksum) {
     data[3] = (uint8_t)(checksum >> 24);
 }
 
-/**
- * @brief Initializes PlayStation authentication transport state.
- *
- * Clears both transfer payloads and selects the 56-byte fragment format advertised to the host.
- *
- * @param[out] authentication Authentication transport state.
- */
 void usb_playstation_authentication_init(UsbPlaystationAuthentication *authentication) {
     if (authentication == 0) {
         return;
@@ -84,14 +83,6 @@ void usb_playstation_authentication_init(UsbPlaystationAuthentication *authentic
     };
 }
 
-/**
- * @brief Builds the PlayStation authentication transfer-format report.
- *
- * Returns report F3 with 56-byte upload and download fragments and disables optional CRC fields.
- *
- * @param[in,out] authentication Authentication transport state.
- * @param[out] report Eight-byte feature report.
- */
 void usb_playstation_authentication_format_report(
     UsbPlaystationAuthentication *authentication,
     uint8_t report[USB_PLAYSTATION_AUTHENTICATION_FORMAT_REPORT_SIZE]) {
@@ -107,16 +98,6 @@ void usb_playstation_authentication_format_report(
     authentication->checksum_enabled = (report[3] & 0x80u) != 0;
 }
 
-/**
- * @brief Accepts one PlayStation authentication request fragment.
- *
- * Stores the report sequence and indexed payload. Fragment four completes the 256-byte request,
- * resets the response cursor, and exposes the request to the secure-element service.
- *
- * @param[in,out] authentication Authentication transport state.
- * @param[in] report Sixty-four-byte F0 feature report.
- * @return True when the fragment is well formed and accepted; otherwise false.
- */
 bool usb_playstation_authentication_receive(
     UsbPlaystationAuthentication *authentication,
     const uint8_t report[USB_PLAYSTATION_AUTHENTICATION_REPORT_SIZE]) {
@@ -152,15 +133,6 @@ bool usb_playstation_authentication_receive(
     return true;
 }
 
-/**
- * @brief Takes a completed PlayStation authentication request.
- *
- * Copies the assembled 256-byte challenge once and retains the pending status while it is handled.
- *
- * @param[in,out] authentication Authentication transport state.
- * @param[out] request Completed authentication challenge.
- * @return True when a completed request was available; otherwise false.
- */
 bool usb_playstation_authentication_take_request(
     UsbPlaystationAuthentication *authentication,
     uint8_t request[USB_PLAYSTATION_AUTHENTICATION_REQUEST_SIZE]) {
@@ -172,18 +144,6 @@ bool usb_playstation_authentication_take_request(
     return true;
 }
 
-/**
- * @brief Publishes a completed PlayStation authentication response.
- *
- * Retains the exact 1,040-byte response, resets its fragment cursor, and changes the reported
- * status to idle so the host can begin retrieving report F1. The response must remain available
- * until all fragments have been read.
- *
- * @param[in,out] authentication Authentication transport state.
- * @param[in] response Complete authentication response.
- * @param[in] response_length Number of response bytes.
- * @return True when the complete response was accepted; otherwise false.
- */
 bool usb_playstation_authentication_publish_response(UsbPlaystationAuthentication *authentication,
                                                      const uint8_t *response,
                                                      uint16_t response_length) {
@@ -198,13 +158,6 @@ bool usb_playstation_authentication_publish_response(UsbPlaystationAuthenticatio
     return true;
 }
 
-/**
- * @brief Marks the PlayStation authentication response as failed.
- *
- * Discards pending request and response availability and exposes status F2 to the host.
- *
- * @param[in,out] authentication Authentication transport state.
- */
 void usb_playstation_authentication_fail(UsbPlaystationAuthentication *authentication) {
     if (authentication == 0) {
         return;
@@ -216,15 +169,6 @@ void usb_playstation_authentication_fail(UsbPlaystationAuthentication *authentic
     authentication->response_index = 0;
 }
 
-/**
- * @brief Builds the PlayStation authentication status report.
- *
- * Returns report F2 with the current sequence and authentication status. When enabled, the final
- * four bytes contain a CRC over the first twelve bytes.
- *
- * @param[in] authentication Authentication transport state.
- * @param[out] report Sixteen-byte feature report.
- */
 void usb_playstation_authentication_status_report(
     const UsbPlaystationAuthentication *authentication,
     uint8_t report[USB_PLAYSTATION_AUTHENTICATION_STATUS_REPORT_SIZE]) {
@@ -242,17 +186,6 @@ void usb_playstation_authentication_status_report(
     }
 }
 
-/**
- * @brief Builds the next PlayStation authentication response fragment.
- *
- * Returns report F1 with the current sequence and fragment index. The first eighteen fragments
- * contain 56 bytes and the final fragment contains 32 bytes. The first response read changes the
- * status from idle to active.
- *
- * @param[in,out] authentication Authentication transport state.
- * @param[out] report Sixty-four-byte feature report.
- * @return True when a response fragment was available; otherwise false.
- */
 bool usb_playstation_authentication_response_report(
     UsbPlaystationAuthentication *authentication,
     uint8_t report[USB_PLAYSTATION_AUTHENTICATION_REPORT_SIZE]) {
@@ -292,14 +225,6 @@ bool usb_playstation_authentication_response_report(
     return true;
 }
 
-/**
- * @brief Reports whether a PlayStation authentication response remains available.
- *
- * Keeps the response owner informed until the host consumes the final F1 fragment.
- *
- * @param[in] authentication Authentication transport state.
- * @return True while response fragments remain; otherwise false.
- */
 bool usb_playstation_authentication_response_active(
     const UsbPlaystationAuthentication *authentication) {
     return authentication != 0 && authentication->response_ready;

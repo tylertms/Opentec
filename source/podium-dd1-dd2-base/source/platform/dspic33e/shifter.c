@@ -5,7 +5,14 @@
 
 #include "shifter/input.h"
 
+/**
+ * @brief Currently configured primary shifter input mode.
+ */
 static ShifterInputMode primary_mode;
+
+/**
+ * @brief Currently configured secondary shifter input mode.
+ */
 static ShifterInputMode secondary_mode;
 
 /**

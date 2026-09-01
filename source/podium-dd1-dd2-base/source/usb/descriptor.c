@@ -5,16 +5,17 @@
 #include <stdint.h>
 #include <string.h>
 
+/** @brief USB descriptor and endpoint type constants used by the encoders. */
 enum {
-    USB_DESCRIPTOR_DEVICE = 1,
-    USB_DESCRIPTOR_CONFIGURATION = 2,
-    USB_DESCRIPTOR_STRING = 3,
-    USB_DESCRIPTOR_INTERFACE = 4,
-    USB_DESCRIPTOR_ENDPOINT = 5,
-    USB_DESCRIPTOR_HID = 0x21,
-    USB_DESCRIPTOR_HID_REPORT = 0x22,
-    USB_CLASS_HID = 3,
-    USB_ENDPOINT_INTERRUPT = 3,
+    USB_DESCRIPTOR_DEVICE = 1,        /**< USB device descriptor type. */
+    USB_DESCRIPTOR_CONFIGURATION = 2, /**< USB configuration descriptor type. */
+    USB_DESCRIPTOR_STRING = 3,        /**< USB string descriptor type. */
+    USB_DESCRIPTOR_INTERFACE = 4,     /**< USB interface descriptor type. */
+    USB_DESCRIPTOR_ENDPOINT = 5,      /**< USB endpoint descriptor type. */
+    USB_DESCRIPTOR_HID = 0x21,        /**< HID class descriptor type. */
+    USB_DESCRIPTOR_HID_REPORT = 0x22, /**< HID report descriptor type. */
+    USB_CLASS_HID = 3,                /**< HID interface class code. */
+    USB_ENDPOINT_INTERRUPT = 3,       /**< Interrupt endpoint transfer type. */
 };
 
 /**
@@ -30,15 +31,6 @@ static void write_u16(uint8_t *output, uint16_t value) {
     output[1] = (uint8_t)(value >> 8);
 }
 
-/**
- * @brief Encodes an eighteen-byte USB device descriptor.
- *
- * Emits the USB version, class tuple, endpoint-zero packet size, device identifiers, string
- * indices, and the single supported configuration in descriptor order.
- *
- * @param[in] identity Device identity and enumeration fields.
- * @param[out] output Complete device descriptor.
- */
 void usb_device_descriptor_encode(const UsbDeviceIdentity *identity,
                                   uint8_t output[USB_DEVICE_DESCRIPTOR_SIZE]) {
     output[0] = USB_DEVICE_DESCRIPTOR_SIZE;
@@ -137,15 +129,6 @@ static void encode_endpoint(uint8_t address, const UsbHidConfiguration *configur
     output[6] = configuration->poll_interval_ms;
 }
 
-/**
- * @brief Encodes the complete primary HID configuration descriptor.
- *
- * Concatenates the configuration, interface, HID, input-endpoint, and output-endpoint descriptors
- * in the enumerated 41-byte order.
- *
- * @param[in] configuration HID interface, endpoint, and power configuration.
- * @param[out] output Complete HID configuration descriptor.
- */
 void usb_hid_configuration_descriptor_encode(
     const UsbHidConfiguration *configuration,
     uint8_t output[USB_HID_CONFIGURATION_DESCRIPTOR_SIZE]) {
@@ -156,16 +139,6 @@ void usb_hid_configuration_descriptor_encode(
     encode_endpoint(configuration->output_endpoint, configuration, &output[34]);
 }
 
-/**
- * @brief Encodes the supported-language string descriptor.
- *
- * Emits one four-byte descriptor containing the requested USB language identifier.
- *
- * @param[in] language_id USB language identifier.
- * @param[out] output Destination byte buffer.
- * @param[in] capacity Available destination bytes.
- * @return Four on success, or zero when the destination is too small.
- */
 size_t usb_language_descriptor_encode(uint16_t language_id, uint8_t *output, size_t capacity) {
     if (capacity < 4) {
         return 0;
@@ -176,17 +149,6 @@ size_t usb_language_descriptor_encode(uint16_t language_id, uint8_t *output, siz
     return 4;
 }
 
-/**
- * @brief Encodes an ASCII USB string descriptor.
- *
- * Expands each source byte into the low byte of one UTF-16LE code unit and rejects text that
- * cannot fit the one-byte descriptor length or the supplied destination.
- *
- * @param[in] text Null-terminated ASCII text.
- * @param[out] output Destination byte buffer.
- * @param[in] capacity Available destination bytes.
- * @return Encoded descriptor length, or zero when the text or destination is unsupported.
- */
 size_t usb_string_descriptor_encode(const char *text, uint8_t *output, size_t capacity) {
     size_t text_length = strlen(text);
     size_t descriptor_length = text_length * 2 + 2;

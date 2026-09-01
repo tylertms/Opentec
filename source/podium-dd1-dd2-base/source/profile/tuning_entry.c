@@ -8,14 +8,16 @@
 #include "profile/tuning.h"
 #include "profile/tuning_interaction.h"
 
+/** @brief Internal tuning-entry encoding and hardware constants. */
 enum {
-    AUTOMATIC_SENSITIVITY = 126,
-    SENSITIVITY_ENCODING_BIAS = 127,
-    SENSITIVITY_UNIT_DEGREES = 10,
-    LEGACY_WHEEL_MODE = 0x0e,
-    XBOX_INTERFACE_MODE = 6,
+    AUTOMATIC_SENSITIVITY = 126,     /**< Encoded automatic steering selection. */
+    SENSITIVITY_ENCODING_BIAS = 127, /**< Bias between encoded sensitivity and degrees. */
+    SENSITIVITY_UNIT_DEGREES = 10,   /**< Degrees represented by one sensitivity unit. */
+    LEGACY_WHEEL_MODE = 0x0e,        /**< Legacy wheel mode identifier. */
+    XBOX_INTERFACE_MODE = 6,         /**< Xbox host interface identifier. */
 };
 
+/** @brief Local tuning entries in their display navigation order. */
 static const TuningEntry display_order[TUNING_ENTRY_COUNT] = {
     TUNING_ENTRY_SETUP,
     TUNING_ENTRY_SENSITIVITY,
@@ -45,6 +47,7 @@ static const TuningEntry display_order[TUNING_ENTRY_COUNT] = {
     TUNING_ENTRY_THROTTLE_PEDAL_CURVE,
 };
 
+/** @brief Default adjustment limits for each local tuning entry. */
 static const TuningEntryLimits base_limits[TUNING_ENTRY_COUNT] = {
     [TUNING_ENTRY_SETUP] = {1, 6, 1},
     [TUNING_ENTRY_SENSITIVITY] = {-118, 126, 1},
@@ -82,7 +85,7 @@ static const TuningEntryLimits base_limits[TUNING_ENTRY_COUNT] = {
  * @param[in] value Requested tuning value.
  * @param[in] minimum Lowest permitted value.
  * @param[in] maximum Highest permitted value.
- * @return Constrained tuning value.
+ * @return minimum when value is below it, maximum when value is above it, or value otherwise.
  */
 static int16_t clamp_value(int16_t value, int16_t minimum, int16_t maximum) {
     if (value < minimum) {
@@ -113,17 +116,6 @@ static int16_t adjustment_count(TuningNavigationEvent navigation) {
     return 0;
 }
 
-/**
- * @brief Selects the active limits for one tuning entry.
- *
- * Starts from the entry catalog and applies Standard-mode limits, the alternate brake-force
- * calibration increment, and the attached-wheel multi-position minimum.
- *
- * @param[in] entry Logical tuning entry.
- * @param[in] bank Current profile bank and tuning mode.
- * @param[in] context Runtime adjustment conditions.
- * @return Active adjustment limits, with valid clear when an input or entry is invalid.
- */
 TuningEntryLimits tuning_entry_limits(TuningEntry entry, const TuningProfileBank *bank,
                                       const TuningEntryAdjustmentContext *context) {
     if (entry >= TUNING_ENTRY_COUNT || bank == NULL || context == NULL) {
@@ -156,15 +148,6 @@ TuningEntryLimits tuning_entry_limits(TuningEntry entry, const TuningProfileBank
     return limits;
 }
 
-/**
- * @brief Reports whether an automatic setup permits a tuning entry adjustment.
- *
- * Automatic setup retains controls for vibration, braking, paddle and switch modes, illumination,
- * display rotation, and pedal curves while protecting its generated force and steering values.
- *
- * @param[in] entry Logical tuning entry.
- * @return True when the entry remains adjustable in automatic setup.
- */
 bool tuning_entry_adjustable_in_automatic_setup(TuningEntry entry) {
     switch (entry) {
     case TUNING_ENTRY_VIBRATION_STRENGTH:
@@ -194,7 +177,7 @@ bool tuning_entry_adjustable_in_automatic_setup(TuningEntry entry) {
  *
  * @param[in] entry Logical tuning entry.
  * @param[in] interface_mode Active host interface mode.
- * @return True when the entry supports the interface.
+ * @return true when the entry supports the interface; false otherwise.
  */
 static bool entry_supports_interface(TuningEntry entry, uint8_t interface_mode) {
     if (interface_mode > 8 || entry == TUNING_ENTRY_STEERING_DEADZONE ||
@@ -215,7 +198,7 @@ static bool entry_supports_interface(TuningEntry entry, uint8_t interface_mode) 
  * @param[in] entry Logical tuning entry.
  * @param[in] bank Current profile bank and tuning mode.
  * @param[in] context Current wheel and pedal capabilities.
- * @return True when attached hardware exposes the entry.
+ * @return true when attached hardware exposes the entry; false otherwise.
  */
 static bool entry_supported_by_hardware(TuningEntry entry, const TuningProfileBank *bank,
                                         const TuningEntryAvailabilityContext *context) {
@@ -265,7 +248,7 @@ static bool entry_supported_by_hardware(TuningEntry entry, const TuningProfileBa
  * switch, paddle, illumination, display, and pedal-curve controls.
  *
  * @param[in] entry Logical tuning entry.
- * @return True when the Standard setup exposes the entry.
+ * @return true when the Standard setup exposes the entry; false otherwise.
  */
 static bool entry_available_in_standard_setup(TuningEntry entry) {
     switch (entry) {
@@ -289,17 +272,6 @@ static bool entry_available_in_standard_setup(TuningEntry entry) {
     }
 }
 
-/**
- * @brief Reports whether a local tuning entry is currently visible.
- *
- * Combines the entry's host-interface support, attached hardware capabilities, and the entry set
- * retained by Standard setups one and two.
- *
- * @param[in] entry Logical tuning entry.
- * @param[in] bank Current profile bank and tuning mode.
- * @param[in] context Current wheel, pedal, and interface capabilities.
- * @return True when the entry is available for local navigation.
- */
 bool tuning_entry_available(TuningEntry entry, const TuningProfileBank *bank,
                             const TuningEntryAvailabilityContext *context) {
     if (entry >= TUNING_ENTRY_COUNT || bank == NULL || context == NULL ||
@@ -311,18 +283,6 @@ bool tuning_entry_available(TuningEntry entry, const TuningProfileBank *bank,
            entry_available_in_standard_setup(entry);
 }
 
-/**
- * @brief Finds the next available local tuning entry in display order.
- *
- * Moves forward or backward with wraparound and skips entries excluded by the current interface,
- * hardware, or Standard setup. An invalid current entry starts at the appropriate end.
- *
- * @param[in] current Current logical entry, or TUNING_ENTRY_COUNT to start navigation.
- * @param[in] direction Previous or next navigation direction.
- * @param[in] bank Current profile bank and tuning mode.
- * @param[in] context Current wheel, pedal, and interface capabilities.
- * @return Next available entry, or the current entry when direction or inputs are invalid.
- */
 TuningEntry tuning_entry_navigate(TuningEntry current, TuningNavigationMode direction,
                                   const TuningProfileBank *bank,
                                   const TuningEntryAvailabilityContext *context) {
@@ -422,7 +382,7 @@ static int16_t read_profile_value(const TuningProfile *profile, TuningEntry entr
  * @param[in,out] profile Tuning profile to update.
  * @param[in] entry Logical scalar entry.
  * @param[in] value Constrained entry value.
- * @return True when the entry maps to a scalar profile value.
+ * @return true when the entry maps to a scalar profile value; false otherwise.
  */
 static bool write_profile_value(TuningProfile *profile, TuningEntry entry, int16_t value) {
     switch (entry) {
@@ -513,7 +473,7 @@ static bool write_profile_value(TuningProfile *profile, TuningEntry entry, int16
  * @param[in,out] bank Tuning profile bank to update.
  * @param[in] count Signed adjustment count.
  * @param[in] limits Active setup limits.
- * @return True when the selected setup changed.
+ * @return true when the selected setup changed; false when it remains unchanged or invalid.
  */
 static bool adjust_setup(TuningProfileBank *bank, int16_t count, TuningEntryLimits limits) {
     uint8_t selected = (uint8_t)(bank->selected_slot + 1);
@@ -535,7 +495,7 @@ static bool adjust_setup(TuningProfileBank *bank, int16_t count, TuningEntryLimi
  * @param[in,out] profile Selected tuning profile.
  * @param[in] count Signed adjustment count.
  * @param[in] limits Active sensitivity limits.
- * @return True when automatic selection or the concrete steering range changed.
+ * @return true when automatic selection or the concrete range changed; false when neither changed.
  */
 static bool adjust_sensitivity(TuningProfile *profile, int16_t count, TuningEntryLimits limits) {
     int16_t encoded = profile->automatic_rotation != 0
@@ -560,18 +520,6 @@ static bool adjust_sensitivity(TuningProfile *profile, int16_t count, TuningEntr
     return true;
 }
 
-/**
- * @brief Applies one local tuning value adjustment.
- *
- * Enforces security and automatic-setup restrictions, resolves the entry's active interval and
- * step, adjusts the selected profile or setup, and activates setup changes immediately.
- *
- * @param[in,out] bank Tuning profile bank to update.
- * @param[in] entry Logical tuning entry.
- * @param[in] navigation Decoded increase, decrease, or analog event.
- * @param[in] context Runtime adjustment conditions.
- * @return True when the profile bank changed.
- */
 bool tuning_entry_adjust(TuningProfileBank *bank, TuningEntry entry,
                          TuningNavigationEvent navigation,
                          const TuningEntryAdjustmentContext *context) {

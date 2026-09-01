@@ -11,20 +11,29 @@
 #include "wheel/position.h"
 #include "wheel/steering_limit.h"
 
+/** @brief Complete retained base settings state. */
 typedef struct {
-    TuningProfileBank tuning_profiles;
-    WheelPositionReference wheel_position;
-    HPatternSettings h_pattern_shifter;
-    AuxiliaryAxisSettings auxiliary_axis;
-    WheelSteeringLimits steering_limits;
-    SecurityCodeSettings security_code;
-    uint16_t retained_global_values[2];
-    uint16_t retained_profile_values[TUNING_PROFILE_SLOT_COUNT];
-    uint8_t operating_mode;
-    uint8_t wheel_auxiliary_option;
-    bool operating_mode_valid;
+    TuningProfileBank tuning_profiles;     /**< Retained tuning profiles and mode. */
+    WheelPositionReference wheel_position; /**< Wheel-center reference and calibration state. */
+    HPatternSettings h_pattern_shifter;    /**< H-pattern shifter settings. */
+    AuxiliaryAxisSettings auxiliary_axis;  /**< Auxiliary-axis calibration settings. */
+    WheelSteeringLimits steering_limits;   /**< Per-profile steering limits. */
+    SecurityCodeSettings security_code;    /**< Retained security-code settings. */
+    uint16_t retained_global_values[2];    /**< Retained compatibility values. */
+    uint16_t
+        retained_profile_values[TUNING_PROFILE_SLOT_COUNT]; /**< Retained unknown profile values. */
+    uint8_t operating_mode;                                 /**< Retained operating-mode value. */
+    uint8_t wheel_auxiliary_option; /**< Retained attached-wheel auxiliary option. */
+    bool operating_mode_valid;      /**< True when operating_mode has a valid retained marker. */
 } BaseSettings;
 
+/**
+ * @brief Restores base settings to startup defaults.
+ *
+ * Initializes tuning, calibration, security, auxiliary, and compatibility state for a fresh device.
+ *
+ * @param[out] settings Base settings record to initialize.
+ */
 void base_settings_defaults(BaseSettings *settings);
 
 #endif

@@ -3,15 +3,27 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/**
+ * @brief LED pattern quantization and transition timing constants.
+ *
+ * These values define the brightness bucket width, breathing endpoints and step interval, and
+ * inhibited-output heartbeat period.
+ */
 enum {
-    LED_PATTERN_BUCKET_SHIFT = 2,
-    LED_PATTERN_BREATH_MINIMUM = 0x80,
-    LED_PATTERN_BREATH_MAXIMUM = 0xff,
-    LED_PATTERN_BREATH_STEP_INTERVAL_MS = 4,
-    LED_PATTERN_HEARTBEAT_INTERVAL_MS = 250,
+    LED_PATTERN_BUCKET_SHIFT = 2,      /**< Number of low pattern bits discarded for bucketing. */
+    LED_PATTERN_BREATH_MINIMUM = 0x80, /**< Lowest pattern used by a breathing cycle. */
+    LED_PATTERN_BREATH_MAXIMUM = 0xff, /**< Highest pattern used by a breathing cycle. */
+    LED_PATTERN_BREATH_STEP_INTERVAL_MS = 4, /**< Delay between breathing steps in milliseconds. */
+    LED_PATTERN_HEARTBEAT_INTERVAL_MS =
+        250, /**< Delay between heartbeat changes in milliseconds. */
 };
 
-/** @brief PWM duties for the 64 host-selectable brightness buckets. */
+/**
+ * @brief PWM duties for the 64 host-selectable brightness buckets.
+ *
+ * Each entry is selected by the six most-significant bits of an eight-bit LED pattern and provides
+ * the corresponding ten-bit nonlinear PWM duty.
+ */
 static const uint16_t pwm_duties[] = {
     0,   1,   1,   2,   2,   2,   2,   2,   3,   3,   3,   4,   4,   5,   5,   6,
     6,   7,   8,   9,   10,  11,  12,  13,  15,  17,  19,  21,  23,  26,  29,  32,
@@ -97,7 +109,7 @@ void led_pattern_controller_init(LedPatternController *controller) {
 /**
  * @brief Services the inhibited-output heartbeat.
  *
- * Alternates between the minimum and maximum pattern on successive 250 ms intervals. Expiring an
+ * Alternates between zero and full-scale patterns on successive 250 ms intervals. Expiring an
  * interval arms the next write, so the new pattern is returned on the following service pass.
  *
  * @param[in,out] controller Persistent heartbeat pattern, phase, and deadline.

@@ -3,17 +3,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/**
- * @brief Encodes the primary USB input report for an operating mode.
- *
- * Selects the native Fanatec report or one of the three Logitech-compatible layouts. Native and
- * Fanatec compatibility modes share the same report layout.
- *
- * @param[in] mode Active operating-mode report selector.
- * @param[out] report Buffer that receives the selected input report.
- * @param[in] state Native and compatibility input values.
- * @return Encoded report length, or zero when the mode or arguments are invalid.
- */
 uint8_t usb_input_report_encode(UsbInputReportMode mode, uint8_t report[USB_INPUT_REPORT_MAX_SIZE],
                                 const UsbInputReportState *state) {
     if (report == NULL || state == NULL) {

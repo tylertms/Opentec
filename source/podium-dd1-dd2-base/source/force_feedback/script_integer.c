@@ -3,11 +3,22 @@
 #include <math.h>
 #include <stdint.h>
 
+/**
+ * @brief Pi constant used by the script degrees-to-radians conversion.
+ *
+ * The stored single-precision value is 3.1415927f.
+ */
 static const float script_pi = 3.1415927f;
 
+/**
+ * @brief Provides both representations of one script scalar.
+ *
+ * The evaluator uses the union to reinterpret a single-precision value without changing its
+ * 32-bit payload.
+ */
 typedef union {
-    float number;
-    uint32_t bits;
+    float number;  /**< Single-precision interpretation of the payload. */
+    uint32_t bits; /**< Raw 32-bit interpretation of the payload. */
 } ScriptScalar;
 
 /**
@@ -42,24 +53,6 @@ static ForceFeedbackScriptIntegerResult value_result(uint32_t value) {
     return (ForceFeedbackScriptIntegerResult){.value = value, .writes_value = true};
 }
 
-/**
- * @brief Evaluate an integer-oriented script operation.
- *
- * Operands and results use the raw 32-bit script-slot representation. Opcodes 0xD0 and 0xD6
- * convert an unsigned integer to a float payload. Opcode 0xD1 truncates a float payload to an
- * unsigned integer when it is at most the float encoded by 0x4DCCCCCD; larger values suppress the
- * write, negative values write UINT32_MAX, and NaN writes 0x80000000. Opcode 0xD2 converts both
- * signed operands to float before subtracting. Opcode 0xD3 returns the unsigned absolute
- * difference. Opcodes 0xD4 and 0xD5 calculate first modulo second and suppress the write when the
- * divisor is zero; 0xD4 converts the remainder to a float payload. Degree conversion evaluates
- * ((float)first * pi) / 180 with pi encoded by 0x40490FDB.
- *
- * @param[in] operation Integer opcode from 0xD0 through 0xD6.
- * @param[in] first First or only raw operand.
- * @param[in] second Second raw operand for binary operations.
- * @return The raw destination payload and whether the VM writes it.
- * @pre operation is a defined ForceFeedbackScriptIntegerOperation value.
- */
 ForceFeedbackScriptIntegerResult
 force_feedback_script_integer_evaluate(ForceFeedbackScriptIntegerOperation operation,
                                        uint32_t first, uint32_t second) {

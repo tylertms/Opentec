@@ -7,11 +7,19 @@
 #include "profile/tuning.h"
 #include "usb/operating_mode_command.h"
 
+/**
+ * @brief Operating-mode values used by attached-wheel capability handling.
+ *
+ * The selector identifies the host multi-position override, while the sentinel and wheel mode
+ * select automatic behavior.
+ */
 enum {
-    DEVICE_CONTROL_OPCODE = 1,
-    MULTI_POSITION_SELECTOR = 0x16,
-    MULTI_POSITION_AUTOMATIC_OVERRIDE = UINT8_MAX,
-    MULTI_POSITION_AUTOMATIC_WHEEL_MODE = 9,
+    DEVICE_CONTROL_OPCODE = 1,      /**< Operating-mode opcode for device-control commands. */
+    MULTI_POSITION_SELECTOR = 0x16, /**< Device-control selector for multi-position reporting. */
+    MULTI_POSITION_AUTOMATIC_OVERRIDE =
+        UINT8_MAX, /**< Sentinel indicating automatic host selection. */
+    MULTI_POSITION_AUTOMATIC_WHEEL_MODE =
+        9, /**< Wheel mode whose automatic selection uses pulse mode. */
 };
 
 /**
@@ -131,7 +139,8 @@ void wheel_capability_update(WheelCapabilityState *state, uint8_t wheel_mode, ui
  *
  * @param[in] state Persistent attached-wheel capability state.
  * @param[in] wheel_mode Negotiated attached-wheel mode.
- * @return True when the current wheel mode exposes a latched input capability.
+ * @return true when state is nonnull, its input latch is set, and the mode exposes that latch;
+ * false otherwise.
  */
 bool wheel_capability_input_available(const WheelCapabilityState *state, uint8_t wheel_mode) {
     if (state == NULL || !state->input_available) {
@@ -164,7 +173,8 @@ bool wheel_capability_input_available(const WheelCapabilityState *state, uint8_t
  *
  * @param[in] state Persistent attached-wheel capability state.
  * @param[in] wheel_mode Negotiated attached-wheel mode.
- * @return True when tuning-menu operation is available.
+ * @return true for inherently supported modes, or for modes ten, nineteen, twenty, and twenty-one
+ * when state is nonnull and its flag is set; false otherwise.
  */
 bool wheel_capability_tuning_menu_available(const WheelCapabilityState *state, uint8_t wheel_mode) {
     switch (wheel_mode) {
@@ -193,7 +203,8 @@ bool wheel_capability_tuning_menu_available(const WheelCapabilityState *state, u
  *
  * @param[in,out] state Attached-wheel capability state.
  * @param[in] command Decoded F8 09 operating-mode command.
- * @return True when the command selects the multi-position override.
+ * @return true when both pointers are nonnull and the command selects the multi-position override;
+ * false otherwise.
  */
 bool wheel_capability_apply_multi_position_command(WheelCapabilityState *state,
                                                    const UsbOperatingModeCommand *command) {
@@ -220,7 +231,8 @@ bool wheel_capability_apply_multi_position_command(WheelCapabilityState *state,
  * @param[in] configured_mode Multi-position mode from the active tuning profile.
  * @param[in] wheel_mode Negotiated attached-wheel mode.
  * @param[in] input_active True when the attached-wheel input transport is active.
- * @return Effective reporting-mode byte.
+ * @return Effective reporting-mode value, or encoder mode when state is null, input is unavailable,
+ * or the configured selector is unsupported.
  */
 uint8_t wheel_capability_multi_position_mode(const WheelCapabilityState *state,
                                              TuningMultiPositionMode configured_mode,

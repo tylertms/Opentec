@@ -6,11 +6,15 @@
 #include "platform/aux_bus.h"
 #include "platform/time.h"
 
+/**
+ * @brief Auxiliary-bus settings for motor-controller discovery.
+ */
 enum {
-    MOTOR_AUX_BUS_ADDRESS = 0x78,
-    MOTOR_STATUS_REGISTER = 0,
-    MOTOR_VERSION_REGISTER = 1,
-    MOTOR_PROBE_TIMEOUT_MS = 1000,
+    MOTOR_AUX_BUS_ADDRESS = 0x78, /**< Auxiliary-bus address of the motor controller. */
+    MOTOR_STATUS_REGISTER = 0,    /**< Register containing the initial controller status byte. */
+    MOTOR_VERSION_REGISTER = 1,   /**< Register containing the four-byte controller version. */
+    MOTOR_PROBE_TIMEOUT_MS =
+        1000, /**< Maximum duration of one discovery attempt in milliseconds. */
 };
 
 /**

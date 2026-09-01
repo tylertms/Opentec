@@ -3,24 +3,25 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/** @brief Internal mode-one packet identifiers and payload offsets. */
 enum {
-    WHEEL_PACKET_COMMAND_SELECT_MODE = 0xa5,
-    WHEEL_PACKET_COMMAND_AUTHENTICATE = 0xa6,
-    WHEEL_PACKET_VENDOR_MODE = 2,
-    WHEEL_PACKET_AUTHENTICATION_MODE_FIRST = 0x13,
-    WHEEL_PACKET_AUTHENTICATION_MODE_LAST = 0x14,
-    WHEEL_PACKET_AUTHENTICATED_VENDOR_MODE = 0x16,
-    REQUEST_PAYLOAD_OFFSET = 2,
-    REQUEST_BUTTONS_OFFSET = 0,
-    REQUEST_AXIS_OUTPUTS_OFFSET = 3,
-    REQUEST_MOTION_OFFSET = 5,
-    REQUEST_CONTROLS_OFFSET = 6,
-    REQUEST_AXIS_VALUES_OFFSET = 16,
-    REQUEST_MODE_BUTTONS_OFFSET = 20,
-    REQUEST_AXIS_REPORT_ENABLED_OFFSET = 21,
-    REQUEST_REPORT_MODE_OFFSET = 26,
-    REQUEST_REPORT_CAPABILITIES_OFFSET = 28,
-    REQUEST_AXIS_LIMIT_OFFSET = 29,
+    WHEEL_PACKET_COMMAND_SELECT_MODE = 0xa5,       /**< Select-mode response command. */
+    WHEEL_PACKET_COMMAND_AUTHENTICATE = 0xa6,      /**< Authenticated response command. */
+    WHEEL_PACKET_VENDOR_MODE = 2,                  /**< Vendor mode sharing the mode-one layout. */
+    WHEEL_PACKET_AUTHENTICATION_MODE_FIRST = 0x13, /**< First authenticated mode-one value. */
+    WHEEL_PACKET_AUTHENTICATION_MODE_LAST = 0x14,  /**< Last authenticated mode-one value. */
+    WHEEL_PACKET_AUTHENTICATED_VENDOR_MODE = 0x16, /**< Authenticated vendor mode value. */
+    REQUEST_PAYLOAD_OFFSET = 2,                    /**< Request payload offset. */
+    REQUEST_BUTTONS_OFFSET = 0,                    /**< Button offset within the payload. */
+    REQUEST_AXIS_OUTPUTS_OFFSET = 3,               /**< Axis-output offset within the payload. */
+    REQUEST_MOTION_OFFSET = 5,                     /**< Motion offset within the payload. */
+    REQUEST_CONTROLS_OFFSET = 6,                   /**< Control offset within the payload. */
+    REQUEST_AXIS_VALUES_OFFSET = 16,               /**< Axis-value offset within the payload. */
+    REQUEST_MODE_BUTTONS_OFFSET = 20,              /**< Mode-button offset within the payload. */
+    REQUEST_AXIS_REPORT_ENABLED_OFFSET = 21,       /**< Axis-report flag offset. */
+    REQUEST_REPORT_MODE_OFFSET = 26,               /**< Report-mode offset. */
+    REQUEST_REPORT_CAPABILITIES_OFFSET = 28,       /**< Report-capability offset. */
+    REQUEST_AXIS_LIMIT_OFFSET = 29,                /**< Axis-limit offset. */
 };
 
 /**
@@ -194,7 +195,7 @@ static void synchronize_latched_buttons(WheelPacketModeOneInput *input) {
  * thirty-byte change-detection snapshot.
  *
  * @param[in,out] input Decoded input updated to the normalized logical values.
- * @param[in] authenticated True for operating modes 0x13 and 0x14.
+ * @param[in] authenticated True for authenticated mode-one variants 0x13, 0x14, and 0x16.
  * @param[in] button_latch_enabled True when alternate button latching is active.
  * @param[in] profile_transition_pending True while a profile transition suppresses button
  * latching.

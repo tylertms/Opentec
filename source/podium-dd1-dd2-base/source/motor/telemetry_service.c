@@ -6,13 +6,16 @@
 #include "platform/aux_bus.h"
 #include "platform/time.h"
 
+/**
+ * @brief Auxiliary-bus registers and timing for motor telemetry acquisition.
+ */
 enum {
-    MOTOR_AUX_BUS_ADDRESS = 0x78,
-    MOTOR_ACCESSORY_TYPE_REGISTER = 0x07,
-    MOTOR_RUNTIME_REGISTER = 0x11,
-    MOTOR_TEMPERATURE_REGISTER = 0x12,
-    MOTOR_DRIVER_TEMPERATURE_REGISTER = 0x13,
-    MOTOR_TELEMETRY_POLL_INTERVAL_MS = 200,
+    MOTOR_AUX_BUS_ADDRESS = 0x78,             /**< Auxiliary-bus address of the motor controller. */
+    MOTOR_ACCESSORY_TYPE_REGISTER = 0x07,     /**< Register containing the accessory type. */
+    MOTOR_RUNTIME_REGISTER = 0x11,            /**< Register containing motor runtime in seconds. */
+    MOTOR_TEMPERATURE_REGISTER = 0x12,        /**< Register containing motor temperature. */
+    MOTOR_DRIVER_TEMPERATURE_REGISTER = 0x13, /**< Register containing driver temperature. */
+    MOTOR_TELEMETRY_POLL_INTERVAL_MS = 200, /**< Delay between telemetry passes in milliseconds. */
 };
 
 /**

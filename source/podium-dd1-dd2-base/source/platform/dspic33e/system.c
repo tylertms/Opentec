@@ -5,17 +5,29 @@
 #include <stdint.h>
 #include <xc.h>
 
+/**
+ * @brief Bootloader handoff and firmware-protection configuration values.
+ */
 enum {
-    BOOTLOADER_REQUEST_ADDRESS = 0x4ffe,
-    BOOTLOADER_REQUEST_KEY = 0xaa,
-    FIRMWARE_CONFIGURATION_PAGE = 0xf8,
-    FIRMWARE_CONFIGURATION_OFFSET = 0x0004,
-    FIRMWARE_CONFIGURATION_LATCH_PAGE = 0xfa,
-    FIRMWARE_CONFIGURATION_UNPROTECTED = 0x000000cf,
-    FIRMWARE_CONFIGURATION_PROTECTED = 0x00fd,
-    NVM_CONFIGURATION_WORD_PROGRAM = 0x4000,
+    BOOTLOADER_REQUEST_ADDRESS =
+        0x4ffe,                    /**< Program address used for the bootloader request key. */
+    BOOTLOADER_REQUEST_KEY = 0xaa, /**< Value that requests bootloader entry after reset. */
+    FIRMWARE_CONFIGURATION_PAGE =
+        0xf8, /**< Table page containing the firmware configuration word. */
+    FIRMWARE_CONFIGURATION_OFFSET = 0x0004, /**< Table offset of the firmware configuration word. */
+    FIRMWARE_CONFIGURATION_LATCH_PAGE =
+        0xfa, /**< Table page used for configuration programming latches. */
+    FIRMWARE_CONFIGURATION_UNPROTECTED =
+        0x000000cf, /**< Factory-unprotected configuration value. */
+    FIRMWARE_CONFIGURATION_PROTECTED =
+        0x00fd, /**< Protected configuration value written to the low word. */
+    NVM_CONFIGURATION_WORD_PROGRAM =
+        0x4000, /**< Nonvolatile-memory configuration-word program operation. */
 };
 
+/**
+ * @brief Delay cycles that let peripherals settle before a bootloader reset.
+ */
 static const uint32_t BOOTLOADER_SETTLE_DELAY_CYCLES = 0x9000UL * 0x0c81UL * 2UL;
 
 /**
@@ -59,7 +71,7 @@ void platform_system_interrupts_set(bool enabled) { INTCON2bits.GIE = enabled; }
  *
  * Leaves every configuration other than the factory-programmable unprotected value unchanged. For
  * that startup value, blocks interrupts, programs the protected configuration, waits for the
- * controller to finish, and restores global interrupt service.
+ * controller to finish, and re-enables global interrupts.
  *
  */
 void platform_system_enable_firmware_protection(void) {

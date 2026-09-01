@@ -3,33 +3,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/**
- * @brief Initializes the motor-command startup sequence.
- *
- * Clears the active and completion flags and selects the reset phase that releases transport owner
- * 0x20 before the next startup attempt.
- *
- * @param[out] startup Startup state to initialize.
- */
 void motor_command_startup_init(MotorCommandStartup *startup) {
     startup->phase = MOTOR_COMMAND_STARTUP_RESET;
     startup->active = false;
     startup->complete = false;
 }
 
-/**
- * @brief Advances the motor-command mailbox startup sequence.
- *
- * Owns the shared transport as identifier 0x20, schedules the initial status read, then sequences
- * reset, digest, and command-5 information selectors 3 and 4. Completion releases the transport
- * after both information responses are observed. A restart input returns the sequence to its reset
- * phase immediately.
- *
- * @param[in,out] startup Startup state to advance.
- * @param[in,out] transport Shared command transport used by the sequence.
- * @param[in] input Current command, response, status-read, and restart state.
- * @return Next protocol action, or no action while an expected event is pending.
- */
 MotorCommandStartupAction motor_command_startup_run(MotorCommandStartup *startup,
                                                     CommandTransport *transport,
                                                     MotorCommandStartupInput input) {

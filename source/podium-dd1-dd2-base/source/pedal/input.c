@@ -3,16 +3,19 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/**
+ * @brief V3 report identifiers and calibration constants.
+ */
 enum {
-    PEDAL_V3_CONNECTION_REPORT = 4,
-    PEDAL_V3_CALIBRATION_REPORT = 5,
-    PEDAL_V3_SHARED_AXES_REPORT = 8,
-    PEDAL_V3_PRIMARY_CALIBRATION = 0x6205,
-    PEDAL_V3_LEGACY_CALIBRATION = 0x183b,
-    PEDAL_V3_ACTIVE_CALIBRATION = 0x6204,
-    PEDAL_V3_SECONDARY_CALIBRATION = 0x6206,
-    PEDAL_V3_NORMAL_BRAKE_STEP = 10,
-    PEDAL_V3_CALIBRATION_BRAKE_STEP = 5,
+    PEDAL_V3_CONNECTION_REPORT = 4,          /**< V3 connection-flags report type. */
+    PEDAL_V3_CALIBRATION_REPORT = 5,         /**< V3 calibration-mode report type. */
+    PEDAL_V3_SHARED_AXES_REPORT = 8,         /**< V3 shared-axis report type. */
+    PEDAL_V3_PRIMARY_CALIBRATION = 0x6205,   /**< Primary calibration mode value. */
+    PEDAL_V3_LEGACY_CALIBRATION = 0x183b,    /**< Legacy calibration mode value. */
+    PEDAL_V3_ACTIVE_CALIBRATION = 0x6204,    /**< Active primary calibration mode value. */
+    PEDAL_V3_SECONDARY_CALIBRATION = 0x6206, /**< Secondary calibration mode value. */
+    PEDAL_V3_NORMAL_BRAKE_STEP = 10,         /**< Brake-force step outside fine calibration. */
+    PEDAL_V3_CALIBRATION_BRAKE_STEP = 5,     /**< Brake-force step during fine calibration. */
 };
 
 /**
@@ -46,7 +49,7 @@ void pedal_input_release(PedalInput *input) {
  * destination unchanged.
  *
  * @param[in] frame Decoded pedal frame.
- * @param[out] input Published pedal input state.
+ * @param[in,out] input Published pedal input state; unchanged for non-axis reports.
  * @return true for an axis-sample report; otherwise false.
  */
 bool pedal_input_decode(const PedalFrame *frame, PedalInput *input) {

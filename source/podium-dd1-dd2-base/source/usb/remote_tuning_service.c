@@ -5,38 +5,43 @@
 
 #include "wheel/protocol.h"
 
+/** @brief Remote-tuning command, selection, and report constants. */
 enum {
-    REMOTE_TUNING_PACKET_ACTIVE = 2,
-    REMOTE_TUNING_PACKET_SELECTION = 4,
-    REMOTE_TUNING_PACKET_REFRESH = 5,
-    REMOTE_TUNING_COMMAND_MENU = 1,
-    REMOTE_TUNING_COMMAND_MULTI_POSITION = 2,
-    REMOTE_TUNING_COMMAND_SETUP = 3,
-    REMOTE_TUNING_COMMAND_ENCODER = 4,
-    REMOTE_TUNING_MENU_SELECTION_MAXIMUM = 6,
-    REMOTE_TUNING_MULTI_POSITION_SELECTION_MAXIMUM = 11,
-    REMOTE_TUNING_SETUP_SELECTION_MAXIMUM = 6,
-    REMOTE_TUNING_TELEMETRY_CLEAR_SELECTION = 11,
-    REMOTE_TUNING_HOST_REPORT_ID = 5,
-    REMOTE_TUNING_HOST_REPORT_TYPE = 1,
-    REMOTE_TUNING_HOST_REPORT_NATIVE_MARKER = 0xff,
-    REMOTE_TUNING_HOST_REPORT_PLAYSTATION_MARKER = 0x35,
-    REMOTE_TUNING_HOST_REPORT_XBOX_MARKER = 0x36,
-    REMOTE_TUNING_HOST_REPORT_HEADER_SIZE = 3,
-    REMOTE_TUNING_HOST_REPORT_RECORD_COUNT = 12,
-    REMOTE_TUNING_PHYSICAL_SELECTION_MAXIMUM = 10,
-    REMOTE_TUNING_STANDARD_NEXT_BUTTON = 0x04,
-    REMOTE_TUNING_STANDARD_PREVIOUS_BUTTON = 0x02,
-    REMOTE_TUNING_STANDARD_BUTTON_MASK = 0x0f,
-    REMOTE_TUNING_ENCODER_INPUT_FIRST = 1,
-    REMOTE_TUNING_ENCODER_INPUT_LAST = 12,
-    REMOTE_TUNING_ENCODER_SELECTION_FIRST = 1,
-    REMOTE_TUNING_ENCODER_SELECTION_LAST = 5,
-    REMOTE_TUNING_NAVIGATION_NEXT = 0x10,
-    REMOTE_TUNING_NAVIGATION_PREVIOUS = 0x20,
-    REMOTE_TUNING_NAVIGATION_NEUTRAL = 0x30,
-    REMOTE_TUNING_SETUP_PAGE_COUNT = 6,
-    WHEEL_MODE_STANDARD = 0x10,
+    REMOTE_TUNING_PACKET_ACTIVE = 2,          /**< Active-state packet type. */
+    REMOTE_TUNING_PACKET_SELECTION = 4,       /**< Selection packet type. */
+    REMOTE_TUNING_PACKET_REFRESH = 5,         /**< Refresh packet type. */
+    REMOTE_TUNING_COMMAND_MENU = 1,           /**< Menu selection command kind. */
+    REMOTE_TUNING_COMMAND_MULTI_POSITION = 2, /**< Multi-position selection command kind. */
+    REMOTE_TUNING_COMMAND_SETUP = 3,          /**< Setup selection command kind. */
+    REMOTE_TUNING_COMMAND_ENCODER = 4,        /**< Encoder selection command kind. */
+    REMOTE_TUNING_MENU_SELECTION_MAXIMUM = 6, /**< Largest accepted menu selection. */
+    REMOTE_TUNING_MULTI_POSITION_SELECTION_MAXIMUM =
+        11,                                    /**< Largest accepted multi-position selection. */
+    REMOTE_TUNING_SETUP_SELECTION_MAXIMUM = 6, /**< Largest accepted setup selection. */
+    REMOTE_TUNING_TELEMETRY_CLEAR_SELECTION =
+        11,                             /**< Multi-position value that clears telemetry. */
+    REMOTE_TUNING_HOST_REPORT_ID = 5,   /**< Host telemetry report identifier. */
+    REMOTE_TUNING_HOST_REPORT_TYPE = 1, /**< Host telemetry report type. */
+    REMOTE_TUNING_HOST_REPORT_NATIVE_MARKER = 0xff,      /**< Native host report marker. */
+    REMOTE_TUNING_HOST_REPORT_PLAYSTATION_MARKER = 0x35, /**< PlayStation host report marker. */
+    REMOTE_TUNING_HOST_REPORT_XBOX_MARKER = 0x36,        /**< Xbox host report marker. */
+    REMOTE_TUNING_HOST_REPORT_HEADER_SIZE = 3, /**< Bytes reserved for the host report header. */
+    REMOTE_TUNING_HOST_REPORT_RECORD_COUNT =
+        12, /**< Maximum five-byte records in one host report. */
+    REMOTE_TUNING_PHYSICAL_SELECTION_MAXIMUM =
+        10,                                    /**< Largest metric selected by physical controls. */
+    REMOTE_TUNING_STANDARD_NEXT_BUTTON = 0x04, /**< Standard-wheel next button bit. */
+    REMOTE_TUNING_STANDARD_PREVIOUS_BUTTON = 0x02, /**< Standard-wheel previous button bit. */
+    REMOTE_TUNING_STANDARD_BUTTON_MASK = 0x0f,     /**< Standard-wheel navigation button mask. */
+    REMOTE_TUNING_ENCODER_INPUT_FIRST = 1,         /**< First physical rotary position. */
+    REMOTE_TUNING_ENCODER_INPUT_LAST = 12,         /**< Last physical rotary position. */
+    REMOTE_TUNING_ENCODER_SELECTION_FIRST = 1,     /**< First legacy encoder selection. */
+    REMOTE_TUNING_ENCODER_SELECTION_LAST = 5,      /**< Last legacy encoder selection. */
+    REMOTE_TUNING_NAVIGATION_NEXT = 0x10,          /**< Setup-navigation next motion code. */
+    REMOTE_TUNING_NAVIGATION_PREVIOUS = 0x20,      /**< Setup-navigation previous motion code. */
+    REMOTE_TUNING_NAVIGATION_NEUTRAL = 0x30,       /**< Setup-navigation neutral motion code. */
+    REMOTE_TUNING_SETUP_PAGE_COUNT = 6,            /**< Number of extended setup pages. */
+    WHEEL_MODE_STANDARD = 0x10,                    /**< Standard attached-wheel mode value. */
 };
 
 /**
@@ -46,7 +51,7 @@ enum {
  *
  * @param[in] value Requested selection.
  * @param[in] maximum Largest supported selection.
- * @return True when the selection is in range.
+ * @return True when the selection is in range; otherwise false.
  */
 static bool selection_valid(uint8_t value, uint8_t maximum) {
     return value != 0 && value <= maximum;
@@ -134,8 +139,8 @@ static void queue_response(UsbRemoteTuningService *service, uint8_t wheel_mode,
 /**
  * @brief Applies a remote-tuning active-state packet.
  *
- * Sets or clears the active state, applies a retained telemetry selection when activated, clears
- * telemetry subscriptions when deactivated, and queues response 2 or 0xFF for the two
+ * Sets or clears the active state, applies a retained telemetry selection when activated, requests
+ * clearing telemetry subscriptions when deactivated, and queues response 2 or 0xFF for the two
  * remote-tuning wheel modes. Downstream active-state synchronization is latched when an adapter is
  * connected or an active session is cleared.
  *
@@ -240,8 +245,8 @@ static void apply_selection(UsbRemoteTuningService *service, uint8_t command, ui
  * @brief Applies a remote-tuning refresh packet.
  *
  * Latches an explicit value-one refresh request. Legacy and extended wheel modes force the refresh
- * latch and queue response 5. An active non-extended session clears its telemetry selection, and
- * every refresh packet schedules downstream refresh synchronization.
+ * latch and queue response 5. An active non-extended session requests clearing its telemetry
+ * selection, and every refresh packet schedules downstream refresh synchronization.
  *
  * @param[in,out] service Remote-tuning session and pending work.
  * @param[in] value Refresh request value.
@@ -263,35 +268,11 @@ static void apply_refresh(UsbRemoteTuningService *service, uint8_t value, uint8_
     service->refresh_sync_pending = true;
 }
 
-/**
- * @brief Initializes the host remote-tuning service.
- *
- * Clears session state, downstream work latches, all 32 retained control records, and telemetry
- * mappings and queues.
- *
- * @param[out] service Remote-tuning service to initialize.
- */
 void usb_remote_tuning_service_init(UsbRemoteTuningService *service) {
     memset(service, 0, sizeof(*service));
     remote_telemetry_init(&service->telemetry);
 }
 
-/**
- * @brief Updates physical remote-telemetry selection controls.
- *
- * While remote tuning and profile presentation are active, consumes tuning-input edges on modern
- * wheels or the standard wheel's next and previous buttons to cycle the telemetry metric. Leaving
- * the active presentation clears any selected metric.
- *
- * @param[in,out] service Remote-tuning selection and input-latch state.
- * @param[in] wheel_mode Current attached-wheel mode.
- * @param[in] profile_mode True while the wheel presents the profile context.
- * @param[in] tuning_display_supported True when the wheel supports tuning presentation.
- * @param[in] adapter_connected Current adapter connection state retained for interface parity.
- * @param[in] tuning_input Current signed tuning-control input.
- * @param[in] auxiliary_buttons Current standard-wheel navigation buttons.
- * @return True when the selected telemetry metric changed.
- */
 bool usb_remote_tuning_service_update_physical_selection(UsbRemoteTuningService *service,
                                                          uint8_t wheel_mode, bool profile_mode,
                                                          bool tuning_display_supported,
@@ -349,17 +330,6 @@ bool usb_remote_tuning_service_update_physical_selection(UsbRemoteTuningService 
            remote_telemetry_select(&service->telemetry, selection);
 }
 
-/**
- * @brief Updates legacy remote-tuning selection from a physical rotary encoder.
- *
- * Detects direction across normal and wraparound position changes, advances the one-based selection
- * counter with wrapping, and queues a setup response while legacy remote tuning is active.
- *
- * @param[in,out] service Remote-tuning selection and rotary history.
- * @param[in] wheel_mode Current attached-wheel mode.
- * @param[in] rotary_position Current physical rotary position.
- * @return True when a changed encoder position queued a new selection.
- */
 bool usb_remote_tuning_service_update_legacy_encoder(UsbRemoteTuningService *service,
                                                      uint8_t wheel_mode, uint8_t rotary_position) {
     if (service == NULL) {
@@ -395,19 +365,6 @@ bool usb_remote_tuning_service_update_legacy_encoder(UsbRemoteTuningService *ser
     return changed;
 }
 
-/**
- * @brief Updates extended remote-tuning setup-page navigation.
- *
- * Latches each non-neutral motion so one physical action advances at most once, wraps next and
- * previous navigation across the setup-page range, and queues the internal next-page response. The
- * wheel encoder normalizes that response to setup response code four on the wire.
- *
- * @param[in,out] service Remote-tuning setup-page and motion-latch state.
- * @param[in] wheel_mode Current attached-wheel mode.
- * @param[in] profile_mode True while the wheel presents the profile context.
- * @param[in] motion Current setup-navigation motion code.
- * @return True when the setup page changed and a response was queued.
- */
 bool usb_remote_tuning_service_update_setup_navigation(UsbRemoteTuningService *service,
                                                        uint8_t wheel_mode, bool profile_mode,
                                                        uint8_t motion) {
@@ -437,21 +394,6 @@ bool usb_remote_tuning_service_update_setup_navigation(UsbRemoteTuningService *s
     return true;
 }
 
-/**
- * @brief Applies one host remote-tuning packet.
- *
- * Extends the session deadline by 60 seconds for every opcode-five packet, retains record packets,
- * and applies active, selection, or refresh state when the required argument bytes are present.
- * Unknown packet types still extend the session deadline.
- *
- * @param[in,out] service Remote-tuning session and retained records.
- * @param[in] command Decoded vendor command.
- * @param[in] now_ms Current monotonic time in milliseconds.
- * @param[in] wheel_mode Current attached-wheel mode.
- * @param[in] setup_selection_allowed Allows an extended setup-page selection.
- * @param[in] adapter_connected True while an attached adapter is connected.
- * @return True when the command uses the remote-tuning vendor route.
- */
 bool usb_remote_tuning_service_apply(UsbRemoteTuningService *service,
                                      const UsbVendorCommand *command, uint32_t now_ms,
                                      uint8_t wheel_mode, bool setup_selection_allowed,
@@ -487,18 +429,6 @@ bool usb_remote_tuning_service_apply(UsbRemoteTuningService *service,
     return true;
 }
 
-/**
- * @brief Takes the pending attached-wheel remote-tuning response.
- *
- * Takes a pending state response first. Otherwise, builds the next bounded legacy or extended
- * record response for the current wheel mode. Session state and downstream synchronization
- * latches remain unchanged.
- *
- * @param[in,out] service Remote-tuning session that owns the pending response.
- * @param[in] wheel_mode Current attached-wheel mode.
- * @param[out] response Pending attached-wheel response.
- * @return True when a response was taken.
- */
 bool usb_remote_tuning_service_take_response(UsbRemoteTuningService *service, uint8_t wheel_mode,
                                              RemoteTuningResponse *response) {
     if (service == NULL || response == NULL) {
@@ -519,16 +449,6 @@ bool usb_remote_tuning_service_take_response(UsbRemoteTuningService *service, ui
     return usb_remote_tuning_records_take_response(&service->records, link, response);
 }
 
-/**
- * @brief Takes a remote-tuning active state destined for the adapter.
- *
- * Returns the current session state and consumes its downstream synchronization latch.
- *
- * @param[in,out] service Remote-tuning service retaining the state.
- * @param[in] synchronization_allowed True when local tuning presentation permits synchronization.
- * @param[out] active Current session state.
- * @return True when a pending state was taken.
- */
 bool usb_remote_tuning_service_take_adapter_active(UsbRemoteTuningService *service,
                                                    bool synchronization_allowed, bool *active) {
     if (service == NULL || active == NULL || !synchronization_allowed ||
@@ -540,17 +460,6 @@ bool usb_remote_tuning_service_take_adapter_active(UsbRemoteTuningService *servi
     return true;
 }
 
-/**
- * @brief Takes the refresh state destined for the adapter.
- *
- * Promotes a pending refresh request into the persistent adapter state, clears the request latch,
- * and consumes the downstream synchronization latch. Packets without a refresh request resend the
- * previously promoted state.
- *
- * @param[in,out] service Remote-tuning service retaining refresh state.
- * @param[out] active Adapter refresh state.
- * @return True when a pending state was taken.
- */
 bool usb_remote_tuning_service_take_adapter_refresh_state(UsbRemoteTuningService *service,
                                                           bool *active) {
     if (service == NULL || active == NULL || !service->refresh_sync_pending) {
@@ -565,16 +474,6 @@ bool usb_remote_tuning_service_take_adapter_refresh_state(UsbRemoteTuningService
     return true;
 }
 
-/**
- * @brief Takes a setup selection destined for the adapter.
- *
- * Returns the retained one-based setup selection and consumes the shared setup, menu, and
- * multi-position selections after the downstream adapter service accepts the handoff.
- *
- * @param[in,out] service Remote-tuning service retaining the selection.
- * @param[out] selection One-based setup selection.
- * @return True when a pending selection was taken.
- */
 bool usb_remote_tuning_service_take_adapter_setup_selection(UsbRemoteTuningService *service,
                                                             uint8_t *selection) {
     if (service == NULL || selection == NULL || !service->setup_sync_pending) {
@@ -588,17 +487,6 @@ bool usb_remote_tuning_service_take_adapter_setup_selection(UsbRemoteTuningServi
     return true;
 }
 
-/**
- * @brief Queues adapter-originated telemetry controls for the host.
- *
- * Splits the 30-byte adapter area into six five-byte records, ignores entries whose first two
- * bytes are both zero, and appends every other entry to the shared host control queue. Records
- * that exceed the queue capacity are dropped independently.
- *
- * @param[in,out] service Remote-tuning service that owns the host control queue.
- * @param[in] input Complete adapter control area.
- * @return Number of records appended to the host queue.
- */
 uint8_t
 usb_remote_tuning_service_queue_host_controls(UsbRemoteTuningService *service,
                                               const uint8_t input[REMOTE_TELEMETRY_REPORT_SIZE]) {
@@ -618,18 +506,6 @@ usb_remote_tuning_service_queue_host_controls(UsbRemoteTuningService *service,
     return queued;
 }
 
-/**
- * @brief Takes the next generic attached-device command batch.
- *
- * Routes ordinary and legacy-mode route-three records to the generic attached-device transport.
- * Extended remote-tuning mode retains route-three records for its wheel response channel.
- *
- * @param[in,out] service Remote-tuning session containing retained records.
- * @param[in] wheel_mode Current attached-wheel mode.
- * @param[out] output Serialized command records.
- * @param[out] length Produced byte count.
- * @return True when a nonempty forwarding batch was produced.
- */
 bool usb_remote_tuning_service_take_forward_batch(
     UsbRemoteTuningService *service, uint8_t wheel_mode,
     uint8_t output[USB_REMOTE_TUNING_FORWARD_BATCH_SIZE], uint8_t *length) {
@@ -639,19 +515,6 @@ bool usb_remote_tuning_service_take_forward_batch(
     return usb_remote_tuning_records_take_forward_batch(&service->records, output, length);
 }
 
-/**
- * @brief Takes one host telemetry subscription report.
- *
- * Applies a pending selection, writes the transport marker followed by report identifier five and
- * type one, and consumes up to twelve queued five-byte subscription or clear records. An empty
- * control queue leaves the output unchanged.
- *
- * @param[in,out] service Remote-tuning session and telemetry control queue.
- * @param[in] wheel_mode Current attached-wheel mode.
- * @param[in] host Host transport framing choice.
- * @param[out] output Complete 64-byte host report.
- * @return True when at least one control record was encoded.
- */
 bool usb_remote_tuning_service_take_host_report(
     UsbRemoteTuningService *service, uint8_t wheel_mode, UsbRemoteTuningHost host,
     uint8_t output[USB_REMOTE_TUNING_HOST_REPORT_SIZE]) {
@@ -681,19 +544,6 @@ bool usb_remote_tuning_service_take_host_report(
     return true;
 }
 
-/**
- * @brief Takes the next locally generated attached-wheel telemetry report.
- *
- * Applies any pending selection and consumes applicable route-two host records. Extended mode
- * retains ignored records, clears pending refresh and response state when a primary record requests
- * recovery, and does not emit local telemetry. Other modes encode the next dirty telemetry channel
- * while the remote-tuning session is active.
- *
- * @param[in,out] service Remote-tuning session, records, and telemetry state.
- * @param[in] wheel_mode Current attached-wheel mode.
- * @param[out] output Complete 30-byte attached-wheel telemetry report.
- * @return True when a dirty telemetry channel produced a report.
- */
 bool usb_remote_tuning_service_take_telemetry_report(UsbRemoteTuningService *service,
                                                      uint8_t wheel_mode,
                                                      uint8_t output[REMOTE_TELEMETRY_REPORT_SIZE]) {

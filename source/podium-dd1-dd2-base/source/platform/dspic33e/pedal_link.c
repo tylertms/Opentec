@@ -5,29 +5,95 @@
 #include <stdint.h>
 #include <xc.h>
 
+/**
+ * @brief Pedal UART and DMA configuration values.
+ */
 enum {
-    PEDAL_LEGACY_BAUD_PERIOD = 0x39,
-    PEDAL_MODERN_BAUD_PERIOD = 0x81,
-    PEDAL_RECEIVE_DMA_REQUEST = 0x1e,
-    PEDAL_TRANSMIT_DMA_REQUEST = 0x1f,
-    PEDAL_INTERRUPT_PRIORITY = 4,
+    PEDAL_LEGACY_BAUD_PERIOD = 0x39,   /**< UART2 baud-period value for discovery traffic. */
+    PEDAL_MODERN_BAUD_PERIOD = 0x81,   /**< UART2 baud-period value for modern pedal traffic. */
+    PEDAL_RECEIVE_DMA_REQUEST = 0x1e,  /**< DMA request number for UART2 reception. */
+    PEDAL_TRANSMIT_DMA_REQUEST = 0x1f, /**< DMA request number for UART2 transmission. */
+    PEDAL_INTERRUPT_PRIORITY = 4,      /**< Pedal UART and DMA interrupt priority. */
 };
 
+/**
+ * @brief Pedal receive DMA buffer.
+ */
 static volatile uint8_t received_dma[PEDAL_FRAME_SIZE];
+
+/**
+ * @brief Most recently validated fixed-size pedal frame.
+ */
 static volatile uint8_t received_frame[PEDAL_FRAME_SIZE];
+
+/**
+ * @brief Two-entry queue of complete variable-length pedal transfer frames.
+ */
 static volatile uint8_t received_transfer[2][TRANSFER_FRAME_MAX_RECEIVED_SIZE];
+
+/**
+ * @brief In-progress variable-length pedal transfer frame.
+ */
 static volatile uint8_t transfer_buffer[TRANSFER_FRAME_MAX_RECEIVED_SIZE];
+
+/**
+ * @brief Shared pedal transmit DMA buffer.
+ */
 static volatile uint8_t transmitted_dma[TRANSFER_FRAME_MAX_ENCODED_SIZE];
+
+/**
+ * @brief Most recently received byte for byte-oriented pedal modes.
+ */
 static volatile uint8_t received_byte;
+
+/**
+ * @brief Encoded length of each queued variable-length transfer frame.
+ */
 static volatile uint16_t received_transfer_length[2];
+
+/**
+ * @brief Number of bytes in the in-progress transfer frame.
+ */
 static volatile uint16_t transfer_buffer_length;
+
+/**
+ * @brief True when a byte-oriented response is ready for the foreground.
+ */
 static volatile bool byte_ready;
+
+/**
+ * @brief True when a fixed-size pedal frame is ready for the foreground.
+ */
 static volatile bool frame_ready;
+
+/**
+ * @brief Queue index of the oldest variable-length transfer frame.
+ */
 static volatile uint8_t received_transfer_head;
+
+/**
+ * @brief Number of queued variable-length transfer frames.
+ */
 static volatile uint8_t received_transfer_count;
+
+/**
+ * @brief True while a pedal DMA transmission is active.
+ */
 static volatile bool transmit_active;
+
+/**
+ * @brief True while fixed-size frame reception is seeking a closing delimiter.
+ */
 static volatile bool resynchronizing;
+
+/**
+ * @brief True while variable-length transfer reception is selected.
+ */
 static volatile bool transfer_receiving;
+
+/**
+ * @brief True when UART bytes are being assembled as transfer frames.
+ */
 static volatile bool transfer_receive_enabled;
 
 /**

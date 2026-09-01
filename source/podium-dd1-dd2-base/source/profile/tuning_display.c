@@ -10,6 +10,7 @@
 #include "profile/tuning_menu.h"
 #include "wheel/display_output.h"
 
+/** @brief Three-character labels for local tuning entries. */
 static const char entry_labels[TUNING_ENTRY_COUNT][4] = {
     [TUNING_ENTRY_SETUP] = "S_ ",
     [TUNING_ENTRY_SENSITIVITY] = "SEN",
@@ -46,11 +47,13 @@ static const char entry_labels[TUNING_ENTRY_COUNT][4] = {
  * underscore, and space characters.
  *
  * @param[in] character Character to encode.
- * @return Raw seven-segment glyph, or zero for an unsupported character.
+ * @return Mapped glyph when character is supported; zero otherwise.
  */
 static uint8_t character_glyph(char character) {
+    /** @brief Seven-segment glyphs for decimal digits. */
     static const uint8_t digit_glyphs[] = {0x3f, 0x06, 0x5b, 0x4f, 0x66,
                                            0x6d, 0x7d, 0x07, 0x7f, 0x6f};
+    /** @brief Seven-segment glyphs for uppercase letters. */
     static const uint8_t letter_glyphs[] = {
         0x77, 0x7c, 0x39, 0x5e, 0x79, 0x71, 0x7d, 0x76, 0x30, 0x00, 0x00, 0x38, 0x00,
         0x54, 0x5c, 0x73, 0x00, 0x50, 0x6d, 0x78, 0x3e, 0x1c, 0x00, 0x00, 0x7a, 0x00,
@@ -264,6 +267,7 @@ static void render_value(WheelDisplayOutput *output, TuningEntry entry,
         render_number(output, profile->multi_position_mode);
         break;
     case TUNING_ENTRY_PADDLE_MODE: {
+        /** @brief Display labels for paddle assignment modes. */
         static const char labels[][4] = {"OFF", "CBP", "C H", "B T", "ANA"};
         uint8_t mode =
             profile->paddle_mode <= TUNING_DUAL_ANALOG ? (uint8_t)profile->paddle_mode : 0;
@@ -288,6 +292,7 @@ static void render_value(WheelDisplayOutput *output, TuningEntry entry,
     case TUNING_ENTRY_BRAKE_PEDAL_CURVE:
     case TUNING_ENTRY_CLUTCH_PEDAL_CURVE:
     case TUNING_ENTRY_THROTTLE_PEDAL_CURVE: {
+        /** @brief Display labels for pedal response curves. */
         static const char labels[][4] = {"C 1", "C 2", "C 3", "LIN", "PRO", "DEG"};
         TuningPedalCurve curve =
             entry == TUNING_ENTRY_BRAKE_PEDAL_CURVE    ? profile->brake_pedal_curve
@@ -302,17 +307,6 @@ static void render_value(WheelDisplayOutput *output, TuningEntry entry,
     }
 }
 
-/**
- * @brief Renders the current local tuning presentation for an attached wheel.
- *
- * Shows the selected entry's three-character label or its formatted value while preserving the
- * caller's auxiliary output. A closed or invalid menu does not own the display.
- *
- * @param[in] menu Current local tuning selection and visible side.
- * @param[in] bank Current tuning profile bank.
- * @param[in,out] output Attached-wheel output receiving the tuning glyphs.
- * @return True when the local tuning menu owns the display.
- */
 bool tuning_display_render(const TuningMenu *menu, const TuningProfileBank *bank,
                            WheelDisplayOutput *output) {
     if (menu == NULL || bank == NULL || output == NULL ||

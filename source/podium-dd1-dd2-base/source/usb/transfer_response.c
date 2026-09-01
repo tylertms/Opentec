@@ -4,15 +4,18 @@
 #include <stdint.h>
 #include <string.h>
 
+/** @brief Transfer response wire-format constants. */
 enum {
-    TRANSFER_RESPONSE_PREFIX = 0xff,
-    TRANSFER_RESPONSE_SINGLE = 0x10,
-    TRANSFER_RESPONSE_FIRST = 0x11,
-    TRANSFER_RESPONSE_CONTINUE = 0x12,
-    TRANSFER_RESPONSE_FINAL = 0x13,
-    TRANSFER_RESPONSE_SINGLE_CAPACITY = 62,
-    TRANSFER_RESPONSE_FIRST_CAPACITY = 60,
-    TRANSFER_RESPONSE_CONTINUE_CAPACITY = 61,
+    TRANSFER_RESPONSE_PREFIX = 0xff,        /**< Prefix byte for every transfer response report. */
+    TRANSFER_RESPONSE_SINGLE = 0x10,        /**< Single-report response form. */
+    TRANSFER_RESPONSE_FIRST = 0x11,         /**< First segmented response form. */
+    TRANSFER_RESPONSE_CONTINUE = 0x12,      /**< Intermediate segmented response form. */
+    TRANSFER_RESPONSE_FINAL = 0x13,         /**< Final segmented response form. */
+    TRANSFER_RESPONSE_SINGLE_CAPACITY = 62, /**< Payload bytes available in a single report. */
+    TRANSFER_RESPONSE_FIRST_CAPACITY =
+        60, /**< Payload bytes available after a first-report header. */
+    TRANSFER_RESPONSE_CONTINUE_CAPACITY =
+        61, /**< Payload bytes available after a continuation header. */
 };
 
 /**
@@ -28,40 +31,14 @@ static uint8_t fragment_length(uint16_t remaining, uint8_t capacity) {
     return remaining < capacity ? (uint8_t)remaining : capacity;
 }
 
-/**
- * @brief Initializes a host transfer-response queue.
- *
- * Clears retained payload, cursor, fragment sequence, and prepared-report state.
- *
- * @param[out] response Transfer-response queue to initialize.
- */
 void usb_transfer_response_init(UsbTransferResponse *response) {
     *response = (UsbTransferResponse){0};
 }
 
-/**
- * @brief Reports whether a new transfer payload can be retained.
- *
- * Accepts new work only after every report for the previous payload has been committed.
- *
- * @param[in] response Transfer-response queue to inspect.
- * @return True when the queue has no retained or prepared response.
- */
 bool usb_transfer_response_accepting(const UsbTransferResponse *response) {
     return response != NULL && response->cursor == response->length && !response->prepared;
 }
 
-/**
- * @brief Queues one payload for host transfer reports.
- *
- * Retains one through 124 bytes and starts a new fragment sequence when the previous response is
- * complete.
- *
- * @param[in,out] response Transfer-response queue accepting the payload.
- * @param[in] payload Complete response payload.
- * @param[in] length Payload length in bytes.
- * @return True when the payload is retained.
- */
 bool usb_transfer_response_queue(UsbTransferResponse *response, const uint8_t *payload,
                                  uint8_t length) {
     if (!usb_transfer_response_accepting(response) || payload == NULL || length == 0 ||
@@ -75,29 +52,10 @@ bool usb_transfer_response_queue(UsbTransferResponse *response, const uint8_t *p
     return true;
 }
 
-/**
- * @brief Reports whether a transfer response has another USB report.
- *
- * Leaves response progress unchanged while checking for retained payload bytes.
- *
- * @param[in] response Transfer-response queue to inspect.
- * @return True while retained payload bytes remain.
- */
 bool usb_transfer_response_pending(const UsbTransferResponse *response) {
     return response != NULL && response->cursor < response->length;
 }
 
-/**
- * @brief Prepares the next 64-byte host transfer report.
- *
- * Uses a single report for payloads through 62 bytes. Larger payloads use a length-bearing first
- * report followed by sequence-bearing continuation and final reports. Repeated calls return the
- * same report until it is committed.
- *
- * @param[in,out] response Transfer-response queue preparing a report.
- * @param[out] output Complete padded host report.
- * @return True when a report is available.
- */
 bool usb_transfer_response_prepare(UsbTransferResponse *response,
                                    uint8_t output[USB_DEVICE_REPORT_SIZE]) {
     if (response == NULL || output == NULL || !usb_transfer_response_pending(response)) {
@@ -128,14 +86,6 @@ bool usb_transfer_response_prepare(UsbTransferResponse *response,
     return true;
 }
 
-/**
- * @brief Commits the prepared transfer report.
- *
- * Advances its payload cursor and fragment sequence after the USB endpoint accepts the report.
- * Completing the payload returns the queue to its accepting state.
- *
- * @param[in,out] response Transfer-response queue whose prepared report was accepted.
- */
 void usb_transfer_response_commit(UsbTransferResponse *response) {
     if (response == NULL || !response->prepared) {
         return;

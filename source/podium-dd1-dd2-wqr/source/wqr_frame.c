@@ -2,15 +2,16 @@
 
 #include <string.h>
 
+/** @brief Byte offsets and boundary values in a WQR frame. */
 enum {
-    FRAME_START = 0x7b,
-    FRAME_END = 0x7d,
-    FRAME_TYPE_OFFSET = 1,
-    FRAME_SEQUENCE_OFFSET = 2,
-    FRAME_LENGTH_OFFSET = 3,
-    FRAME_PAYLOAD_OFFSET = 4,
-    FRAME_CRC_OFFSET = 61,
-    FRAME_END_OFFSET = 63
+    FRAME_START = 0x7b,        /**< Frame start marker. */
+    FRAME_END = 0x7d,          /**< Frame end marker. */
+    FRAME_TYPE_OFFSET = 1,     /**< Type and fragmentation flag byte offset. */
+    FRAME_SEQUENCE_OFFSET = 2, /**< Sequence byte offset. */
+    FRAME_LENGTH_OFFSET = 3,   /**< Payload-length byte offset. */
+    FRAME_PAYLOAD_OFFSET = 4,  /**< First payload byte offset. */
+    FRAME_CRC_OFFSET = 61,     /**< Little-endian CRC field offset. */
+    FRAME_END_OFFSET = 63      /**< End marker byte offset. */
 };
 
 /**
@@ -38,16 +39,6 @@ static void write_u16(uint8_t *data, uint16_t value) {
     data[1] = (uint8_t)(value >> 8);
 }
 
-/**
- * @brief Calculates the WQR frame CRC.
- *
- * Applies the reflected CRC-16 polynomial `0x8408` with an initial value of zero across the
- * requested byte range.
- *
- * @param[in] data Bytes to include in the calculation.
- * @param[in] length Number of bytes to process.
- * @return Calculated 16-bit CRC.
- */
 uint16_t wqr_frame_crc(const uint8_t *data, size_t length) {
     uint16_t crc = 0;
 
@@ -63,19 +54,6 @@ uint16_t wqr_frame_crc(const uint8_t *data, size_t length) {
     return crc;
 }
 
-/**
- * @brief Builds one complete WQR transport frame.
- *
- * Clears the destination, writes framing metadata and payload, and appends the CRC and end marker.
- * Rejects null destinations, oversized payloads, and null nonempty payloads.
- *
- * @param[out] frame Complete 64-byte destination frame.
- * @param[in] type_flags Payload type and fragmentation flags.
- * @param[in] sequence Frame sequence value.
- * @param[in] payload Payload bytes, or null when the payload length is zero.
- * @param[in] payload_length Number of payload bytes to encode.
- * @return True when a valid frame was built.
- */
 bool wqr_frame_build(uint8_t frame[WQR_FRAME_SIZE], uint8_t type_flags, uint8_t sequence,
                      const uint8_t *payload, size_t payload_length) {
     uint16_t crc;
@@ -100,16 +78,6 @@ bool wqr_frame_build(uint8_t frame[WQR_FRAME_SIZE], uint8_t type_flags, uint8_t 
     return true;
 }
 
-/**
- * @brief Validates and decodes one complete WQR transport frame.
- *
- * Verifies boundary markers, payload length, and CRC before publishing a view into the supplied
- * frame buffer.
- *
- * @param[in] frame Complete 64-byte source frame.
- * @param[out] view Decoded metadata and payload view.
- * @return True when the frame is structurally valid and has a matching CRC.
- */
 bool wqr_frame_parse(const uint8_t frame[WQR_FRAME_SIZE], wqr_frame_view *view) {
     if (frame == NULL || view == NULL || frame[0] != FRAME_START ||
         frame[FRAME_END_OFFSET] != FRAME_END ||

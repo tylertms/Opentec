@@ -3,8 +3,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/**
+ * @brief Fan PWM timing constant.
+ *
+ * The compare value spans the board's complete 3192-count fan PWM period.
+ */
 enum {
-    FAN_PWM_PERIOD = 3192,
+    FAN_PWM_PERIOD = 3192, /**< Complete fan PWM compare range. */
 };
 
 /**

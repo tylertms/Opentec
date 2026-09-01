@@ -6,18 +6,28 @@
 #include "display/framebuffer.h"
 #include "display/text.h"
 
+/**
+ * @brief Defines temperature-analysis timing, scaling, colors, and chart geometry.
+ *
+ * These constants describe the sample cadence, 120-degree scale, chart dimensions, and display
+ * colors used by the temperature-analysis page.
+ */
 enum {
-    TEMPERATURE_ANALYSIS_SAMPLE_INTERVAL_MS = 2250,
-    TEMPERATURE_ANALYSIS_UPPER_LIMIT = 120,
-    TEMPERATURE_ANALYSIS_CHART_HEIGHT = 30,
-    TEMPERATURE_ANALYSIS_CHART_WIDTH = 40,
-    TEMPERATURE_ANALYSIS_CHART_BOTTOM = 58,
-    TEMPERATURE_ANALYSIS_COLOR = 15,
-    TEMPERATURE_ANALYSIS_SERIES_COLOR = 8,
-    TEMPERATURE_ANALYSIS_GRID_COLOR = 1,
+    TEMPERATURE_ANALYSIS_SAMPLE_INTERVAL_MS =
+        2250, /**< Temperature-chart sampling interval in milliseconds. */
+    TEMPERATURE_ANALYSIS_UPPER_LIMIT =
+        120, /**< Upper chart temperature limit in degrees Celsius. */
+    TEMPERATURE_ANALYSIS_CHART_HEIGHT = 30, /**< Chart height in pixels. */
+    TEMPERATURE_ANALYSIS_CHART_WIDTH = 40,  /**< Chart width in pixels. */
+    TEMPERATURE_ANALYSIS_CHART_BOTTOM = 58, /**< Chart bottom coordinate. */
+    TEMPERATURE_ANALYSIS_COLOR = 15,        /**< Foreground grayscale value. */
+    TEMPERATURE_ANALYSIS_SERIES_COLOR = 8,  /**< History-series grayscale value. */
+    TEMPERATURE_ANALYSIS_GRID_COLOR = 1,    /**< Chart-grid grayscale value. */
 };
 
+/** @brief Left coordinate of each temperature chart in channel order. */
 static const uint16_t chart_left[DISPLAY_TEMPERATURE_ANALYSIS_CHANNEL_COUNT] = {25, 68, 110, 152};
+/** @brief Short labels rendered above each temperature chart in channel order. */
 static const char *const temperature_labels[DISPLAY_TEMPERATURE_ANALYSIS_CHANNEL_COUNT] = {
     "Mot:", "Drv:", "Bas:", "WQR:"};
 

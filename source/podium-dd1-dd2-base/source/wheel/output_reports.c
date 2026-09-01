@@ -4,44 +4,49 @@
 #include <stdint.h>
 #include <string.h>
 
+/** @brief Internal output-report pending flags, identifiers, and scheduling values. */
 enum {
-    WHEEL_OUTPUT_REPORT_ONE_PENDING = 1u << 0,
-    WHEEL_OUTPUT_REPORT_TWO_PENDING = 1u << 1,
-    WHEEL_OUTPUT_REPORT_FOUR_PENDING = 1u << 2,
-    WHEEL_OUTPUT_REPORT_FIVE_PENDING = 1u << 3,
-    WHEEL_OUTPUT_REPORT_SEVENTEEN_PENDING = 1u << 4,
-    WHEEL_OUTPUT_REMOTE_TELEMETRY_PENDING = 1u << 5,
-    WHEEL_OUTPUT_REPORT_SIX_PENDING = 1u << 6,
-    WHEEL_OUTPUT_DISPLAY_COMMAND_PENDING = 1u << 7,
-    WHEEL_OUTPUT_REPORT_SEVENTEEN_COMMAND = 3,
-    WHEEL_OUTPUT_REPORT_SEVENTEEN_CHUNK_SIZE = 30,
-    WHEEL_OUTPUT_REPORT_SEVENTEEN_HEADER_STEP = 0x0f,
-    WHEEL_OUTPUT_REPORT_SEVENTEEN_LAST_SEQUENCE = 1,
-    WHEEL_OUTPUT_REMOTE_TELEMETRY_COMMAND = 3,
-    WHEEL_OUTPUT_REMOTE_TELEMETRY_TRANSMISSIONS = 3,
-    WHEEL_OUTPUT_DISPLAY_COMMAND_REPORT_ID = 0xa6,
-    WHEEL_OUTPUT_DISPLAY_COMMAND_PACKET_TYPE = 0x82,
-    WHEEL_OUTPUT_INTERFACE_PRESENTATION_FIRST_MODE = 1,
-    WHEEL_OUTPUT_INTERFACE_PRESENTATION_LAST_MODE = 3,
-    WHEEL_OUTPUT_INTERFACE_PRESENTATION_FIRST_COMMAND = 0x20,
-    WHEEL_OUTPUT_INTERFACE_PRESENTATION_TRANSMISSIONS = 3,
-    WHEEL_OUTPUT_INTERFACE_PRESENTATION_DISPLAY_MODE = 3,
-    WHEEL_OUTPUT_INTERFACE_PRESENTATION_DISPLAY_COMMAND = 1,
-    WHEEL_OUTPUT_BUTTON_ILLUMINATION_COMMAND = 0x16,
-    WHEEL_DISPLAY_TORQUE_KEY_PROMPT = 0x1a,
-    WHEEL_DISPLAY_TORQUE_KEY_CONFIRMED = 0x28,
-    WHEEL_DISPLAY_ENABLE_TORQUE_PROMPT = 0x29,
-    WHEEL_DISPLAY_ENABLE_TORQUE_CONFIRMED = 0x2a,
-    WHEEL_DISPLAY_TORQUE_KEY_PROMPT_PENDING = 1u << 0,
-    WHEEL_DISPLAY_TORQUE_KEY_CONFIRMED_PENDING = 1u << 1,
-    WHEEL_DISPLAY_ENABLE_TORQUE_PROMPT_PENDING = 1u << 2,
-    WHEEL_DISPLAY_ENABLE_TORQUE_CONFIRMED_PENDING = 1u << 3,
-    WHEEL_MODE_REMOTE_TUNING_LEGACY = 0x0e,
-    WHEEL_MODE_REMOTE_TUNING_EXTENDED = 0x1c,
-    WHEEL_MODE_LEGACY_ALTERNATE = 0x0f,
-    WHEEL_MODE_LEGACY_COMPATIBILITY = 0x17,
-    WHEEL_INTERFACE_MODE_BUTTON_CHORD = 0x9000,
-    WHEEL_INTERFACE_MODE_TOGGLE_DELAY_MS = 200,
+    WHEEL_OUTPUT_REPORT_ONE_PENDING = 1u << 0,        /**< Report-one pending flag. */
+    WHEEL_OUTPUT_REPORT_TWO_PENDING = 1u << 1,        /**< Report-two pending flag. */
+    WHEEL_OUTPUT_REPORT_FOUR_PENDING = 1u << 2,       /**< Report-four pending flag. */
+    WHEEL_OUTPUT_REPORT_FIVE_PENDING = 1u << 3,       /**< Report-five pending flag. */
+    WHEEL_OUTPUT_REPORT_SEVENTEEN_PENDING = 1u << 4,  /**< Report-seventeen pending flag. */
+    WHEEL_OUTPUT_REMOTE_TELEMETRY_PENDING = 1u << 5,  /**< Remote telemetry pending flag. */
+    WHEEL_OUTPUT_REPORT_SIX_PENDING = 1u << 6,        /**< Report-six pending flag. */
+    WHEEL_OUTPUT_DISPLAY_COMMAND_PENDING = 1u << 7,   /**< Display-command pending flag. */
+    WHEEL_OUTPUT_REPORT_SEVENTEEN_COMMAND = 3,        /**< Report-seventeen command number. */
+    WHEEL_OUTPUT_REPORT_SEVENTEEN_CHUNK_SIZE = 30,    /**< Report-seventeen segment size. */
+    WHEEL_OUTPUT_REPORT_SEVENTEEN_HEADER_STEP = 0x0f, /**< Report-seventeen header increment. */
+    WHEEL_OUTPUT_REPORT_SEVENTEEN_LAST_SEQUENCE = 1,  /**< Last report-seventeen segment number. */
+    WHEEL_OUTPUT_REMOTE_TELEMETRY_COMMAND = 3,        /**< Remote telemetry command number. */
+    WHEEL_OUTPUT_REMOTE_TELEMETRY_TRANSMISSIONS = 3,  /**< Remote telemetry transmission count. */
+    WHEEL_OUTPUT_DISPLAY_COMMAND_REPORT_ID = 0xa6,    /**< Display command report identifier. */
+    WHEEL_OUTPUT_DISPLAY_COMMAND_PACKET_TYPE = 0x82,  /**< Display command packet type. */
+    WHEEL_OUTPUT_INTERFACE_PRESENTATION_FIRST_MODE = 1, /**< First direct presentation mode. */
+    WHEEL_OUTPUT_INTERFACE_PRESENTATION_LAST_MODE = 3,  /**< Last direct presentation mode. */
+    WHEEL_OUTPUT_INTERFACE_PRESENTATION_FIRST_COMMAND = 0x20, /**< First presentation command. */
+    WHEEL_OUTPUT_INTERFACE_PRESENTATION_TRANSMISSIONS =
+        3, /**< Direct presentation transmissions. */
+    WHEEL_OUTPUT_INTERFACE_PRESENTATION_DISPLAY_MODE =
+        3, /**< Presentation mode that updates display. */
+    WHEEL_OUTPUT_INTERFACE_PRESENTATION_DISPLAY_COMMAND = 1, /**< Presentation display command. */
+    WHEEL_OUTPUT_BUTTON_ILLUMINATION_COMMAND = 0x16,         /**< Button-illumination command. */
+    WHEEL_DISPLAY_TORQUE_KEY_PROMPT = 0x1a,                  /**< Torque Key prompt command. */
+    WHEEL_DISPLAY_TORQUE_KEY_CONFIRMED = 0x28,         /**< Torque Key confirmation command. */
+    WHEEL_DISPLAY_ENABLE_TORQUE_PROMPT = 0x29,         /**< Force-output prompt command. */
+    WHEEL_DISPLAY_ENABLE_TORQUE_CONFIRMED = 0x2a,      /**< Force-output confirmation command. */
+    WHEEL_DISPLAY_TORQUE_KEY_PROMPT_PENDING = 1u << 0, /**< Torque Key prompt pending flag. */
+    WHEEL_DISPLAY_TORQUE_KEY_CONFIRMED_PENDING = 1u
+                                                 << 1, /**< Torque Key confirmation pending flag. */
+    WHEEL_DISPLAY_ENABLE_TORQUE_PROMPT_PENDING = 1u << 2, /**< Force-output prompt pending flag. */
+    WHEEL_DISPLAY_ENABLE_TORQUE_CONFIRMED_PENDING =
+        1u << 3,                                /**< Force-output confirmation pending flag. */
+    WHEEL_MODE_REMOTE_TUNING_LEGACY = 0x0e,     /**< Legacy remote-tuning mode. */
+    WHEEL_MODE_REMOTE_TUNING_EXTENDED = 0x1c,   /**< Extended remote-tuning mode. */
+    WHEEL_MODE_LEGACY_ALTERNATE = 0x0f,         /**< Legacy alternate mode. */
+    WHEEL_MODE_LEGACY_COMPATIBILITY = 0x17,     /**< Legacy compatibility mode. */
+    WHEEL_INTERFACE_MODE_BUTTON_CHORD = 0x9000, /**< Secondary-button gate chord. */
+    WHEEL_INTERFACE_MODE_TOGGLE_DELAY_MS = 200, /**< Interface-gate debounce delay. */
 };
 
 /**
@@ -243,8 +248,7 @@ bool wheel_output_reports_remote_telemetry_pending(const WheelOutputReports *rep
 /**
  * @brief Selects the attached-wheel button illumination state.
  *
- * Normalizes the active profile flag and retains it until a compatible wheel receives the changed
- * value through its profile-mode command.
+ * Retains the requested value for later transmission in compatible remote-tuning modes.
  *
  * @param[in,out] reports Retained report payloads and profile-mode state.
  * @param[in] enabled True to enable attached-wheel button illumination.
@@ -256,7 +260,7 @@ void wheel_output_reports_set_button_illumination(WheelOutputReports *reports, b
 /**
  * @brief Selects the legacy wheel interface-mode gate.
  *
- * Normalizes the requested state used by legacy report-two forwarding and the idle attached-wheel
+ * Stores the requested state used by legacy report-two forwarding and the idle attached-wheel
  * response flag.
  *
  * @param[in,out] reports Retained report and interface state.
@@ -316,7 +320,7 @@ bool wheel_output_reports_interface_mode_gate(const WheelOutputReports *reports)
  * call clears the pending state, restarts at sequence zero, and emits the restarted first half.
  *
  * @param[in,out] reports Retained report payload, sequence, and pending state.
- * @param[in,out] frame Attached-wheel frame receiving the command and payload segment.
+ * @param[out] frame Attached-wheel frame receiving the command and payload segment.
  */
 static void encode_report_seventeen(WheelOutputReports *reports, uint8_t *frame) {
     if (reports->report_seventeen_sequence > WHEEL_OUTPUT_REPORT_SEVENTEEN_LAST_SEQUENCE) {
@@ -414,13 +418,13 @@ void wheel_output_reports_queue_six(WheelOutputReports *reports, uint8_t first, 
  * display command, remote telemetry, and changed button illumination. Single-frame reports write
  * their report number and retained payload at frame offsets one and two, then consume their pending
  * state. Reports four and six use the same 25-byte payload. Report 17 emits its next segmented
- * transfer frame. Catalogs emit one definition or indexed-help chunk. Remote telemetry writes
+ * transfer frame. Catalogs emit one definition or indexed-help frame. Remote telemetry writes
  * command 3 and its 30-byte payload for three successive selections. Button illumination uses
  * command 0x16 only in remote-tuning wheel modes. The caller supplies the checksum.
  *
  * @param[in,out] reports Retained report payloads and pending state.
  * @param[in] wheel_mode Negotiated attached-wheel mode.
- * @param[in,out] frame Attached-wheel frame receiving the report number and payload.
+ * @param[out] frame Attached-wheel frame receiving the report number and payload.
  * @return True when a pending report was encoded.
  */
 bool wheel_output_reports_encode_next(WheelOutputReports *reports, uint8_t wheel_mode,

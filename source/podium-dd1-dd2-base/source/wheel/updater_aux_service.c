@@ -7,13 +7,15 @@
 #include "platform/aux_bus.h"
 #include "wheel/updater_bridge.h"
 
+/** @brief Auxiliary-bus addresses and registers used by updater operations. */
 enum {
-    WHEEL_UPDATER_HANDSHAKE_ADDRESS = 0x78,
-    WHEEL_UPDATER_HANDSHAKE_REGISTER = 3,
-    WHEEL_UPDATER_AUX_ADDRESS = 0x10,
-    WHEEL_UPDATER_AUX_REGISTER = 0,
+    WHEEL_UPDATER_HANDSHAKE_ADDRESS = 0x78, /**< Auxiliary shutdown-handshake device address. */
+    WHEEL_UPDATER_HANDSHAKE_REGISTER = 3,   /**< Auxiliary shutdown-handshake register. */
+    WHEEL_UPDATER_AUX_ADDRESS = 0x10,       /**< Auxiliary updater device address. */
+    WHEEL_UPDATER_AUX_REGISTER = 0,         /**< Auxiliary updater register offset. */
 };
 
+/** @brief Two-byte auxiliary shutdown-handshake token. */
 static const uint8_t handshake[] = {0xfa, 0x05};
 
 /**

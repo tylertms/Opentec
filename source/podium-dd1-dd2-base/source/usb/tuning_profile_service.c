@@ -9,16 +9,17 @@
 #include "usb/tuning_profile_report.h"
 #include "usb/vendor_command.h"
 
+/** @brief Tuning-profile command action and selector constants. */
 enum {
-    PROFILE_ACTION_APPLY = 0,
-    PROFILE_ACTION_SELECT = 1,
-    PROFILE_ACTION_REFRESH = 2,
-    PROFILE_ACTION_SAVE = 3,
-    PROFILE_ACTION_RESET_ALL = 4,
-    PROFILE_ACTION_RESET_STANDARD = 5,
-    PROFILE_ACTION_TOGGLE_MODE = 6,
-    PROFILE_SELECTOR_MINIMUM = 1,
-    PROFILE_SELECTOR_MAXIMUM = 6,
+    PROFILE_ACTION_APPLY = 0,          /**< Apply encoded values to a selected profile. */
+    PROFILE_ACTION_SELECT = 1,         /**< Select and activate a profile. */
+    PROFILE_ACTION_REFRESH = 2,        /**< Request a profile response refresh. */
+    PROFILE_ACTION_SAVE = 3,           /**< Request profile persistence. */
+    PROFILE_ACTION_RESET_ALL = 4,      /**< Restore every profile and Standard mode. */
+    PROFILE_ACTION_RESET_STANDARD = 5, /**< Restore the Standard profile. */
+    PROFILE_ACTION_TOGGLE_MODE = 6,    /**< Toggle Standard and Advanced mode. */
+    PROFILE_SELECTOR_MINIMUM = 1,      /**< Smallest accepted one-based profile selector. */
+    PROFILE_SELECTOR_MAXIMUM = 6,      /**< Largest accepted one-based profile selector. */
 };
 
 /**
@@ -28,7 +29,7 @@ enum {
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  * @param[in] deadline_ms Deadline to test.
- * @return True when the deadline has been reached.
+ * @return True when the deadline has been reached; otherwise false.
  */
 static bool deadline_reached(uint32_t now_ms, uint32_t deadline_ms) {
     return (int32_t)(now_ms - deadline_ms) >= 0;
@@ -42,7 +43,7 @@ static bool deadline_reached(uint32_t now_ms, uint32_t deadline_ms) {
  *
  * @param[in,out] bank Tuning-profile bank to update.
  * @param[in] selector One-based tuning setup selector.
- * @return True when the setup was selected and activated.
+ * @return True when the setup was selected and activated; otherwise false.
  */
 static bool select_profile(TuningProfileBank *bank, uint8_t selector) {
     if (selector < PROFILE_SELECTOR_MINIMUM || selector > PROFILE_SELECTOR_MAXIMUM ||
@@ -53,31 +54,10 @@ static bool select_profile(TuningProfileBank *bank, uint8_t selector) {
     return true;
 }
 
-/**
- * @brief Initializes tuning-profile vendor-command state.
- *
- * Allows the first reset and mode command immediately and requests an initial profile response.
- *
- * @param[out] service Tuning-profile command state to initialize.
- */
 void usb_tuning_profile_service_init(UsbTuningProfileService *service) {
     *service = (UsbTuningProfileService){.response_pending = true};
 }
 
-/**
- * @brief Applies an opcode-three tuning-profile command.
- *
- * Supports profile value updates, one-based profile selection, response refresh, explicit save,
- * all-profile reset, Standard-profile reset, and rate-limited Standard or Advanced mode changes.
- * Re-enabling Standard mode activates setup 1 and restores setup 2. Reset-all commands share a
- * ten-second guard with Standard-profile resets.
- *
- * @param[in,out] service Tuning-profile command timing and response state.
- * @param[in,out] bank Tuning profiles and Standard or Advanced mode.
- * @param[in] command Decoded vendor command.
- * @param[in] now_ms Current monotonic time in milliseconds.
- * @return Actions for the firmware integration to perform.
- */
 UsbTuningProfileAction usb_tuning_profile_service_apply(UsbTuningProfileService *service,
                                                         TuningProfileBank *bank,
                                                         const UsbVendorCommand *command,
@@ -160,25 +140,10 @@ UsbTuningProfileAction usb_tuning_profile_service_apply(UsbTuningProfileService 
     }
 }
 
-/**
- * @brief Reports whether a tuning-profile response is due.
- *
- * Returns the response latch set by initialization, refresh, or a visible profile-state change.
- *
- * @param[in] service Tuning-profile command state.
- * @return True when the active profile response must be sent.
- */
 bool usb_tuning_profile_service_response_pending(const UsbTuningProfileService *service) {
     return service != NULL && service->response_pending;
 }
 
-/**
- * @brief Completes a tuning-profile response transfer.
- *
- * Clears the response latch after the complete report has been accepted by the USB endpoint.
- *
- * @param[in,out] service Tuning-profile command state.
- */
 void usb_tuning_profile_service_response_sent(UsbTuningProfileService *service) {
     service->response_pending = false;
 }

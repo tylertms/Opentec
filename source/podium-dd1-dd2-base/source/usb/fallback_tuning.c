@@ -3,14 +3,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/**
- * @brief Reports whether fallback steering-range commands may replace the active range.
- *
- * Accepts the official manual 1300-degree sensitivity and automatic sensitivity selections.
- *
- * @param[in] profile Active runtime tuning profile.
- * @return True when a fallback range command may be applied.
- */
 bool usb_fallback_tuning_range_allowed(const TuningProfile *profile) {
     return profile != NULL &&
            (profile->automatic_rotation != 0 || profile->rotation_degrees == 1300);
@@ -29,18 +21,6 @@ static uint8_t clamp_setting(uint8_t value, uint8_t maximum) {
     return value > maximum ? maximum : value;
 }
 
-/**
- * @brief Applies one transient setup-one fallback tuning command.
- *
- * Changes only the supplied runtime profile. Values use the official command-specific limits;
- * sensitivity decodes its signed ten-degree representation and force scale accepts only its two
- * defined selectors.
- *
- * @param[in] command Decoded fallback tuning command.
- * @param[in] active_slot Zero-based active tuning setup.
- * @param[in,out] profile Runtime tuning profile to update.
- * @return True when the command changed an eligible runtime profile.
- */
 bool usb_fallback_tuning_apply(const UsbFallbackCommand *command, uint8_t active_slot,
                                TuningProfile *profile) {
     if (command == NULL || profile == NULL || active_slot != 0) {

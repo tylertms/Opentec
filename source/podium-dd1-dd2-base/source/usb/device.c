@@ -21,116 +21,187 @@
 #include "usb/xbox_gip_metadata.h"
 #include "usb/xbox_gip_service.h"
 
+/** @brief USB endpoint, descriptor, and string-layout constants. */
 enum {
-    USB_CONTROL_ENDPOINT = 0,
-    USB_PRIMARY_ENDPOINT = 1,
-    USB_UPDATER_NOTIFICATION_ENDPOINT = 2,
-    USB_UPDATER_DATA_ENDPOINT = 3,
-    USB_PLAYSTATION_OUTPUT_ENDPOINT = 3,
-    USB_PLAYSTATION_INPUT_ENDPOINT = 4,
-    USB_RECIPIENT_ENDPOINT = 2,
-    USB_ENDPOINT_DIRECTION_IN = 0x80,
-    USB_ENDPOINT_NUMBER_MASK = 0x0f,
-    USB_HID_DESCRIPTOR_OFFSET = 18,
-    USB_HID_DESCRIPTOR_SIZE = 9,
-    USB_STRING_COUNT = 10,
-    USB_MANUFACTURER_DESCRIPTOR_SIZE = 16,
-    USB_PRODUCT_DESCRIPTOR_SIZE = 60,
-    USB_PLAYSTATION_PRODUCT_DESCRIPTOR_SIZE = 96,
+    USB_CONTROL_ENDPOINT = 0,              /**< Endpoint-zero control pipe. */
+    USB_PRIMARY_ENDPOINT = 1,              /**< Primary application endpoint. */
+    USB_UPDATER_NOTIFICATION_ENDPOINT = 2, /**< Updater notification endpoint. */
+    USB_UPDATER_DATA_ENDPOINT = 3,         /**< Updater bulk data endpoint. */
+    USB_PLAYSTATION_OUTPUT_ENDPOINT = 3,   /**< PlayStation output endpoint. */
+    USB_PLAYSTATION_INPUT_ENDPOINT = 4,    /**< PlayStation input endpoint. */
+    USB_RECIPIENT_ENDPOINT = 2,            /**< Endpoint request recipient value. */
+    USB_ENDPOINT_DIRECTION_IN = 0x80,      /**< Device-to-host endpoint direction bit. */
+    USB_ENDPOINT_NUMBER_MASK = 0x0f,       /**< Endpoint-number bit mask. */
+    USB_HID_DESCRIPTOR_OFFSET = 18, /**< HID descriptor offset in the configuration descriptor. */
+    USB_HID_DESCRIPTOR_SIZE = 9,    /**< HID descriptor size in bytes. */
+    USB_STRING_COUNT = 10,          /**< Number of string descriptor slots. */
+    USB_MANUFACTURER_DESCRIPTOR_SIZE = 16,        /**< Manufacturer descriptor buffer size. */
+    USB_PRODUCT_DESCRIPTOR_SIZE = 60,             /**< Native product descriptor buffer size. */
+    USB_PLAYSTATION_PRODUCT_DESCRIPTOR_SIZE = 96, /**< PlayStation product descriptor size. */
 };
 
+/** @brief Endpoint-zero transfer stages used by the USB device service. */
 typedef enum {
-    USB_CONTROL_STAGE_IDLE,
-    USB_CONTROL_STAGE_DATA_IN,
-    USB_CONTROL_STAGE_DATA_OUT,
-    USB_CONTROL_STAGE_PLAYSTATION_AUTHENTICATION_OUT,
-    USB_CONTROL_STAGE_UPDATER_LINE_CODING_OUT,
-    USB_CONTROL_STAGE_STATUS_IN,
-    USB_CONTROL_STAGE_STATUS_OUT,
+    USB_CONTROL_STAGE_IDLE,                           /**< No endpoint-zero transfer is active. */
+    USB_CONTROL_STAGE_DATA_IN,                        /**< Device-to-host control data stage. */
+    USB_CONTROL_STAGE_DATA_OUT,                       /**< Host-to-device control data stage. */
+    USB_CONTROL_STAGE_PLAYSTATION_AUTHENTICATION_OUT, /**< PlayStation authentication data stage. */
+    USB_CONTROL_STAGE_UPDATER_LINE_CODING_OUT,        /**< Updater line-coding data stage. */
+    USB_CONTROL_STAGE_STATUS_IN,                      /**< Device-to-host control status stage. */
+    USB_CONTROL_STAGE_STATUS_OUT,                     /**< Host-to-device control status stage. */
 } UsbControlStage;
 
+/** @brief Encoded USB device descriptor storage. */
 static uint8_t device_descriptor[USB_DEVICE_DESCRIPTOR_SIZE];
+/** @brief Encoded active configuration descriptor storage. */
 static uint8_t configuration_descriptor[USB_UPDATER_CONFIGURATION_DESCRIPTOR_SIZE];
+/** @brief Encoded active HID report descriptor storage. */
 static uint8_t report_descriptor[USB_PODIUM_REPORT_DESCRIPTOR_SIZE];
+/** @brief Encoded USB language descriptor storage. */
 static uint8_t language_descriptor[4];
+/** @brief Encoded manufacturer string descriptor storage. */
 static uint8_t manufacturer_descriptor[USB_MANUFACTURER_DESCRIPTOR_SIZE];
+/** @brief Encoded native product string descriptor storage. */
 static uint8_t product_descriptor[USB_PRODUCT_DESCRIPTOR_SIZE];
+/** @brief Active USB string descriptor views. */
 static UsbDescriptorView strings[USB_STRING_COUNT];
+/** @brief Active descriptor catalog supplied to endpoint-zero handling. */
 static UsbDescriptorCatalog descriptor_catalog;
+/** @brief Active USB device identity used for enumeration. */
 static UsbDeviceIdentity descriptor_identity;
+/** @brief Active primary HID configuration used for enumeration. */
 static UsbHidConfiguration hid_configuration;
+/** @brief Endpoint-zero USB device state. */
 static UsbDeviceControl device_control;
+/** @brief Endpoint-zero input packetizer state. */
 static UsbControlPipe control_pipe;
+/** @brief Current endpoint-zero input packet. */
 static UsbControlPacket control_packet;
+/** @brief Decoded setup packet currently being handled. */
 static UsbSetupPacket setup_packet;
+/** @brief Classified control request currently being handled. */
 static UsbControlRequest control_request;
+/** @brief Transfer selected for the current control request. */
 static UsbControlTransfer control_transfer;
+/** @brief Most recently received platform USB event. */
 static PlatformUsbEvent usb_event;
+/** @brief Pending host HID output report. */
 static UsbDeviceOutputReport output_report;
+/** @brief Scalar value bytes used by endpoint-zero responses. */
 static uint8_t value_data[2];
+/** @brief Updater CDC line-coding bytes. */
 static uint8_t updater_line_coding[USB_UPDATER_LINE_CODING_SIZE];
+/** @brief Encoded Xbox GIP security descriptor. */
 static uint8_t xbox_security_descriptor[USB_XBOX_GIP_SECURITY_DESCRIPTOR_SIZE];
+/** @brief Encoded Xbox Microsoft OS string descriptor. */
 static uint8_t xbox_os_string_descriptor[USB_XBOX_GIP_OS_STRING_DESCRIPTOR_SIZE];
+/** @brief Attached-wheel digest used by Xbox identity and metadata. */
 static uint8_t xbox_digest[USB_XBOX_GIP_DIGEST_SIZE];
+/** @brief Pending Xbox GIP request packet. */
 static uint8_t xbox_request[USB_XBOX_GIP_METADATA_PACKET_SIZE];
+/** @brief Pending Xbox GIP response packet. */
 static uint8_t xbox_response[USB_XBOX_GIP_METADATA_PACKET_SIZE];
+/** @brief Encoded Xbox serial text. */
 static char xbox_serial[USB_XBOX_GIP_SERIAL_SIZE];
+/** @brief Encoded Xbox serial string descriptor. */
 static uint8_t xbox_serial_descriptor[USB_XBOX_GIP_SERIAL_TEXT_SIZE * 2 + 2];
+/** @brief Length of the pending Xbox response packet. */
 static uint8_t xbox_response_length;
+/** @brief Retained primary HID input report. */
 static uint8_t input_report[USB_DEVICE_REPORT_SIZE];
+/** @brief Retained native feature-report payloads by report slot. */
 static uint8_t feature_reports[4][USB_DEVICE_REPORT_SIZE];
+/** @brief Lengths of retained native feature reports by report slot. */
 static uint8_t feature_report_lengths[4];
+/** @brief Native feature report identifiers indexed by report slot. */
 static const uint8_t feature_report_ids[4] = {0x31, 0x32, 0x33, 0x36};
+/** @brief One-shot native feature-report request bits. */
 static uint8_t feature_report_requests;
+/** @brief Retained updater response bytes. */
 static uint8_t updater_response[USB_DEVICE_UPDATER_RESPONSE_SIZE];
+/** @brief Length of the retained primary input report. */
 static uint8_t input_report_length;
+/** @brief Length of the retained updater response. */
 static uint8_t updater_response_length;
+/** @brief Offset of the next updater response byte to send. */
 static uint8_t updater_response_offset;
+/** @brief Length of the current updater output packet. */
 static uint8_t updater_input_length;
+/** @brief HID report type for the current control output stage. */
 static uint8_t control_report_type;
+/** @brief HID report identifier for the current control output stage. */
 static uint8_t control_report_id;
+/** @brief Current endpoint-zero transfer stage. */
 static UsbControlStage control_stage;
+/** @brief True when a host output report is ready to take. */
 static bool output_ready;
+/** @brief Head index of the updater receive queue. */
 static uint8_t updater_packet_head;
+/** @brief Number of packets retained in the updater receive queue. */
 static uint8_t updater_packet_count;
+/** @brief True when an updater response is ready for transmission. */
 static bool updater_response_ready;
+/** @brief True while an updater input transfer is active. */
 static bool updater_input_busy;
+/** @brief True when an updater response requires a zero-length terminator. */
 static bool updater_zero_length_pending;
+/** @brief Data toggle for the primary input endpoint. */
 static bool input_data_one;
+/** @brief Data toggle for the primary output endpoint. */
 static bool output_data_one;
+/** @brief Data toggle for the updater input endpoint. */
 static bool updater_input_data_one;
+/** @brief Data toggle for the updater output endpoint. */
 static bool updater_output_data_one;
+/** @brief True when Xbox identity data is ready for enumeration. */
 static bool xbox_identity_ready;
+/** @brief True when an Xbox request packet is ready for application processing. */
 static bool xbox_request_ready;
+/** @brief True when an Xbox response packet is ready for transmission. */
 static bool xbox_response_ready;
+/** @brief True while an Xbox input transfer is active. */
 static bool xbox_input_busy;
+/** @brief True when a PlayStation remote-tuning report is ready. */
 static bool playstation_remote_tuning_ready;
+/** @brief Retained PlayStation remote-tuning report. */
 static uint8_t playstation_remote_tuning_report[USB_DEVICE_REPORT_SIZE];
+/** @brief Selected wheel-base hardware variant. */
 static BoardVariant board_variant;
+/** @brief Selected PlayStation wheel mode. */
 static uint8_t playstation_wheel_mode;
+/** @brief Active native or compatibility input-report mode. */
 static UsbInputReportMode input_mode;
+/** @brief Active USB operating mode. */
 static UsbOperatingMode operating_mode;
+/** @brief Motor-updater control state. */
 static UsbUpdaterControl updater_control;
+/** @brief Two-packet updater receive queue. */
 static UsbDeviceUpdaterPacket updater_packets[2];
+/** @brief Xbox GIP endpoint service state. */
 static UsbXboxGipService xbox_service;
+/** @brief Xbox GIP service identity and metadata views. */
 static UsbXboxGipServiceIdentity xbox_service_identity;
+/** @brief Pending Xbox GIP session actions. */
 static UsbXboxGipSessionAction xbox_session_actions;
 
 static void apply_configuration(void);
 
 /** @brief Storage used only by PlayStation USB mode. */
 typedef struct {
-    UsbPlaystationAuthentication authentication;
-    uint8_t feature_report[USB_PLAYSTATION_AUTHENTICATION_REPORT_SIZE];
-    uint8_t product_descriptor[USB_PLAYSTATION_PRODUCT_DESCRIPTOR_SIZE];
+    UsbPlaystationAuthentication authentication; /**< PlayStation authentication transport state. */
+    uint8_t feature_report[USB_PLAYSTATION_AUTHENTICATION_REPORT_SIZE];  /**< Authentication
+                                                                            feature-report buffer. */
+    uint8_t product_descriptor[USB_PLAYSTATION_PRODUCT_DESCRIPTOR_SIZE]; /**< PlayStation product
+                                                                            descriptor. */
 } UsbPlaystationWorkspace;
 
 /** @brief Storage shared by mutually exclusive Xbox and PlayStation USB modes. */
 typedef union {
-    uint8_t xbox_metadata[USB_XBOX_GIP_METADATA_SIZE];
-    UsbPlaystationWorkspace playstation;
+    uint8_t xbox_metadata[USB_XBOX_GIP_METADATA_SIZE]; /**< Xbox metadata descriptor storage. */
+    UsbPlaystationWorkspace playstation;               /**< PlayStation-only workspace storage. */
 } UsbConsoleWorkspace;
 
+/** @brief Shared Xbox and PlayStation console workspace storage. */
 static UsbConsoleWorkspace console_workspace;
 
 /**
@@ -359,14 +430,6 @@ static void reset_state(bool preserve_hid_state) {
     usb_xbox_gip_service_init(&xbox_service);
 }
 
-/**
- * @brief Prepares the wheel-base USB device.
- *
- * Builds the native Fanatec descriptor profile, initializes console service data, resets transfer
- * state, and prepares the USB controller without attaching it to the host.
- *
- * @param[in] variant Wheel-base hardware variant.
- */
 void usb_device_prepare(BoardVariant variant) {
     board_variant = variant;
     playstation_wheel_mode = 4;
@@ -385,27 +448,11 @@ void usb_device_prepare(BoardVariant variant) {
     platform_usb_control_ready();
 }
 
-/**
- * @brief Initializes the wheel-base USB device.
- *
- * Prepares the native Fanatec USB profile and attaches the controller to the host.
- *
- * @param[in] variant Wheel-base hardware variant.
- */
 void usb_device_init(BoardVariant variant) {
     usb_device_prepare(variant);
     platform_usb_attach();
 }
 
-/**
- * @brief Selects the primary USB input-report operating mode.
- *
- * Rebuilds the device, configuration, string, and report descriptors for modes 0 through 4,
- * clears the control and HID transfer state, and restarts the USB controller.
- *
- * @param[in] mode Primary USB operating-mode selector.
- * @return True when the mode has a complete descriptor profile; otherwise false.
- */
 bool usb_device_set_input_mode(UsbInputReportMode mode) {
     if (mode > USB_INPUT_REPORT_MODE_G27) {
         return false;
@@ -413,16 +460,6 @@ bool usb_device_set_input_mode(UsbInputReportMode mode) {
     return usb_device_set_operating_mode((UsbOperatingMode)mode);
 }
 
-/**
- * @brief Selects the active USB operating mode.
- *
- * Rebuilds and activates the descriptor and endpoint profile for primary HID modes zero through
- * four, the motor updater CDC mode five, a prepared Xbox GIP mode six identity, or the PlayStation
- * HID profile in mode seven.
- *
- * @param[in] mode USB operating-mode selector.
- * @return True when the mode has a complete transport profile; otherwise false.
- */
 bool usb_device_set_operating_mode(UsbOperatingMode mode) {
     if (mode > USB_OPERATING_MODE_PLAYSTATION ||
         (mode == USB_OPERATING_MODE_XBOX_GIP && !xbox_identity_ready)) {
@@ -439,25 +476,8 @@ bool usb_device_set_operating_mode(UsbOperatingMode mode) {
     return true;
 }
 
-/**
- * @brief Selects PlayStation USB mode.
- *
- * Selects base mode four, rebuilds the device around its PlayStation HID descriptors, resets
- * authentication transport state, and restarts enumeration.
- *
- * @return True when the PlayStation profile was activated; otherwise false.
- */
 bool usb_device_set_playstation_mode(void) { return usb_device_set_playstation_wheel_mode(4); }
 
-/**
- * @brief Selects PlayStation USB for a specific base mode.
- *
- * Accepts modes two, four, and five, retains the selected identity mode, rebuilds the PlayStation
- * descriptors, resets console transport state, and restarts enumeration.
- *
- * @param[in] wheel_mode Selected PlayStation base mode.
- * @return True when the selected PlayStation profile was activated.
- */
 bool usb_device_set_playstation_wheel_mode(uint8_t wheel_mode) {
     if (wheel_mode != 2 && wheel_mode != 4 && wheel_mode != 5) {
         return false;
@@ -466,16 +486,6 @@ bool usb_device_set_playstation_wheel_mode(uint8_t wheel_mode) {
     return usb_device_set_operating_mode(USB_OPERATING_MODE_PLAYSTATION);
 }
 
-/**
- * @brief Selects Xbox GIP mode for an attached wheel.
- *
- * Applies the wheel-specific product identifier, reverse-digest serial text, discovery digest,
- * and Xbox endpoint service before restarting USB in operating mode six.
- *
- * @param[in] wheel_mode Attached-wheel operating-mode selector.
- * @param[in] digest Eight-byte attached-wheel status digest.
- * @return True when the wheel mode has a supported Xbox identity; otherwise false.
- */
 bool usb_device_set_xbox_mode(uint8_t wheel_mode, const uint8_t digest[USB_XBOX_GIP_DIGEST_SIZE]) {
     if (digest == 0 || usb_xbox_gip_mode_code(board_variant, wheel_mode) == 0) {
         return false;
@@ -490,22 +500,8 @@ bool usb_device_set_xbox_mode(uint8_t wheel_mode, const uint8_t digest[USB_XBOX_
     return usb_device_set_operating_mode(USB_OPERATING_MODE_XBOX_GIP);
 }
 
-/**
- * @brief Returns the active primary USB input-report operating mode.
- *
- * Reports the selector used for descriptor enumeration and primary input-report encoding.
- *
- * @return Active primary USB operating-mode selector.
- */
 UsbInputReportMode usb_device_input_mode(void) { return input_mode; }
 
-/**
- * @brief Returns the active USB operating mode.
- *
- * Reports the selector used for enumeration, control requests, and endpoint routing.
- *
- * @return Active USB operating-mode selector.
- */
 UsbOperatingMode usb_device_operating_mode(void) { return operating_mode; }
 
 /**
@@ -564,12 +560,11 @@ static void begin_value_input(void) {
 }
 
 /**
- * @brief Tests whether the retained HID input report satisfies a control request.
+ * @brief Selects the retained HID report for a control request.
  *
- * Requires an input-report request and matches the numbered native report or an unnumbered
- * compatibility report as selected by the active input mode.
+ * Returns the retained input or feature report view selected by the active control request.
  *
- * @return True when the retained report satisfies the request; otherwise false.
+ * @return Retained report view, or an empty view when no report satisfies the request.
  */
 static UsbDescriptorView requested_report(void) {
     if (control_transfer.report_type == USB_DEVICE_HID_REPORT_INPUT && input_report_length != 0 &&
@@ -1250,11 +1245,6 @@ static void service_updater_input(void) {
     updater_response_ready = false;
 }
 
-/**
- * @brief Services pending USB controller and mode-specific transfers.
- *
- * Drains controller events, then advances Xbox GIP and motor-updater input exchanges.
- */
 void usb_device_service(void) {
     while (platform_usb_take_event(&usb_event)) {
         handle_event();
@@ -1263,23 +1253,8 @@ void usb_device_service(void) {
     service_updater_input();
 }
 
-/**
- * @brief Reports whether the USB device has an active configuration.
- *
- * Exposes the endpoint-zero configuration state to the application services.
- *
- * @return True when the configuration value is nonzero; otherwise false.
- */
 bool usb_device_configured(void) { return usb_device_control_configured(&device_control); }
 
-/**
- * @brief Takes one pending host output report.
- *
- * Copies the retained report to the caller and releases its single pending slot.
- *
- * @param[out] report Destination for the report classification, payload, and length.
- * @return True when a pending report was returned; otherwise false.
- */
 bool usb_device_take_output(UsbDeviceOutputReport *report) {
     if (!output_ready || report == 0) {
         return false;
@@ -1289,17 +1264,6 @@ bool usb_device_take_output(UsbDeviceOutputReport *report) {
     return true;
 }
 
-/**
- * @brief Publishes one native USB feature-report snapshot.
- *
- * Replaces the retained payload for supported report IDs 31, 32, 33, and 36. Invalid pointers,
- * empty reports, oversized reports, and unsupported IDs are rejected.
- *
- * @param[in] report_id Feature report identifier.
- * @param[in] report Encoded feature-report bytes.
- * @param[in] length Number of encoded bytes.
- * @return True when the report was retained.
- */
 bool usb_device_publish_feature_report(uint8_t report_id, const uint8_t *report, uint8_t length) {
     if (report == 0 || length == 0 || length > USB_DEVICE_REPORT_SIZE) {
         return false;
@@ -1317,15 +1281,6 @@ bool usb_device_publish_feature_report(uint8_t report_id, const uint8_t *report,
     return false;
 }
 
-/**
- * @brief Takes a completed host request for a native feature report.
- *
- * Clears the one-shot request latch for the matching supported report ID without changing its
- * retained response payload.
- *
- * @param[in] report_id Feature report identifier to inspect.
- * @return True when a matching request was pending.
- */
 bool usb_device_take_feature_report_request(uint8_t report_id) {
     for (uint8_t index = 0; index < 4; index++) {
         uint8_t mask = (uint8_t)(1u << index);
@@ -1337,16 +1292,6 @@ bool usb_device_take_feature_report_request(uint8_t report_id) {
     return false;
 }
 
-/**
- * @brief Sends a primary native or compatibility HID input report.
- *
- * Suppresses an unchanged report and submits a changed payload through endpoint one. Console modes
- * use their dedicated input services and are not accepted here.
- *
- * @param[in] report Encoded HID input report.
- * @param[in] length Number of report bytes from one through 64.
- * @return True when the report was unchanged or accepted by the active endpoint; otherwise false.
- */
 bool usb_device_send_input(const uint8_t *report, uint8_t length) {
     if (operating_mode > USB_OPERATING_MODE_G27 || !usb_device_configured() || report == 0 ||
         length == 0 || length > USB_DEVICE_REPORT_SIZE) {
@@ -1366,15 +1311,6 @@ bool usb_device_send_input(const uint8_t *report, uint8_t length) {
     return true;
 }
 
-/**
- * @brief Queues the current Xbox GIP controller state.
- *
- * Encodes one state packet with the next shared sequence value. A queued packet can wait behind an
- * active endpoint transfer, but it does not replace a pending discovery, session, or state reply.
- *
- * @param[in] snapshot Current logical Xbox controller state.
- * @return True when the state packet was queued.
- */
 bool usb_device_queue_xbox_input(const UsbXboxGipInputSnapshot *snapshot) {
     if (operating_mode != USB_OPERATING_MODE_XBOX_GIP || !usb_device_configured() ||
         xbox_service.session.state != USB_XBOX_GIP_SESSION_ACTIVE || snapshot == 0 ||
@@ -1388,14 +1324,6 @@ bool usb_device_queue_xbox_input(const UsbXboxGipInputSnapshot *snapshot) {
     return true;
 }
 
-/**
- * @brief Queues the Xbox GIP wheel capability response.
- *
- * Encodes the fixed type-21 capability packet with the next shared sequence and retains it until
- * endpoint 1 accepts the transfer. Existing endpoint responses keep priority.
- *
- * @return True when the capability response was queued.
- */
 bool usb_device_queue_xbox_capabilities(void) {
     if (operating_mode != USB_OPERATING_MODE_XBOX_GIP || !usb_device_configured() ||
         xbox_service.session.state != USB_XBOX_GIP_SESSION_ACTIVE || xbox_response_ready) {
@@ -1408,15 +1336,6 @@ bool usb_device_queue_xbox_capabilities(void) {
     return true;
 }
 
-/**
- * @brief Queues the Xbox GIP attached-device status response.
- *
- * Encodes the current logical base and attached-device state with the next shared sequence and
- * retains it until endpoint 1 accepts the transfer. Existing endpoint responses keep priority.
- *
- * @param[in] status Current logical attached-device status.
- * @return True when the extended-status response was queued.
- */
 bool usb_device_queue_xbox_extended_status(const UsbXboxGipExtendedStatus *status) {
     if (operating_mode != USB_OPERATING_MODE_XBOX_GIP || !usb_device_configured() ||
         xbox_service.session.state != USB_XBOX_GIP_SESSION_ACTIVE || status == NULL ||
@@ -1430,16 +1349,6 @@ bool usb_device_queue_xbox_extended_status(const UsbXboxGipExtendedStatus *statu
     return true;
 }
 
-/**
- * @brief Queues an Xbox GIP command transfer-status response.
- *
- * Echoes the triggering packet type and group with the current shared sequence without consuming
- * it, then retains the response until endpoint 1 accepts the transfer. Existing responses keep
- * priority.
- *
- * @param[in] request First two bytes of the triggering command packet.
- * @return True when the transfer-status response was queued.
- */
 bool usb_device_queue_xbox_transfer_status(const uint8_t request[2]) {
     if (operating_mode != USB_OPERATING_MODE_XBOX_GIP || !usb_device_configured() ||
         xbox_service.session.state != USB_XBOX_GIP_SESSION_ACTIVE || request == NULL ||
@@ -1453,17 +1362,6 @@ bool usb_device_queue_xbox_transfer_status(const uint8_t request[2]) {
     return true;
 }
 
-/**
- * @brief Queues one Xbox GIP application response.
- *
- * Copies the complete response, replaces its envelope sequence with the next shared GIP sequence,
- * and retains it until endpoint 1 accepts the transfer. Discovery, session, and input responses
- * already waiting on the endpoint keep priority.
- *
- * @param[in] report Complete application response packet.
- * @param[in] length Number of response bytes from three through 64.
- * @return True when the application response was queued.
- */
 bool usb_device_queue_xbox_response(const uint8_t *report, uint8_t length) {
     if (operating_mode != USB_OPERATING_MODE_XBOX_GIP || !usb_device_configured() ||
         xbox_service.session.state != USB_XBOX_GIP_SESSION_ACTIVE || report == NULL || length < 3 ||
@@ -1479,15 +1377,6 @@ bool usb_device_queue_xbox_response(const uint8_t *report, uint8_t length) {
     return true;
 }
 
-/**
- * @brief Queues one raw Xbox vendor report.
- *
- * Copies all 64 report bytes without changing its marker, report identifier, or type fields and
- * retains it until endpoint 1 accepts the transfer. Existing endpoint responses keep priority.
- *
- * @param[in] report Complete raw Xbox vendor report.
- * @return True when the vendor report was queued.
- */
 bool usb_device_queue_xbox_vendor_report(const uint8_t report[USB_DEVICE_REPORT_SIZE]) {
     if (operating_mode != USB_OPERATING_MODE_XBOX_GIP || !usb_device_configured() ||
         xbox_service.session.state != USB_XBOX_GIP_SESSION_ACTIVE || report == NULL ||
@@ -1502,16 +1391,6 @@ bool usb_device_queue_xbox_vendor_report(const uint8_t report[USB_DEVICE_REPORT_
     return true;
 }
 
-/**
- * @brief Sends one native vendor HID report.
- *
- * Submits the requested bytes to endpoint 1 without comparing them with prior input, so repeated
- * vendor responses remain observable by the host.
- *
- * @param[in] report Native vendor response bytes.
- * @param[in] length Number of response bytes from one through 64.
- * @return True when the configured native HID endpoint accepted the transfer.
- */
 bool usb_device_send_vendor_report(const uint8_t *report, uint8_t length) {
     if (operating_mode != USB_OPERATING_MODE_FANATEC || !usb_device_configured() || report == 0 ||
         length == 0 || length > USB_DEVICE_REPORT_SIZE ||
@@ -1522,15 +1401,6 @@ bool usb_device_send_vendor_report(const uint8_t *report, uint8_t length) {
     return true;
 }
 
-/**
- * @brief Takes one received motor-updater packet.
- *
- * Transfers ownership of the oldest payload in the two-packet endpoint 3 receive queue to the
- * caller.
- *
- * @param[out] packet Destination for the packet bytes and length.
- * @return True when a packet was available; otherwise false.
- */
 bool usb_device_take_updater_packet(UsbDeviceUpdaterPacket *packet) {
     if (updater_packet_count == 0 || packet == 0) {
         return false;
@@ -1541,27 +1411,10 @@ bool usb_device_take_updater_packet(UsbDeviceUpdaterPacket *packet) {
     return true;
 }
 
-/**
- * @brief Reports whether the motor-updater input stream can accept a response.
- *
- * Requires no retained response and no endpoint 3 input transfer awaiting completion.
- *
- * @return True when updater protocol service may process its next request; otherwise false.
- */
 bool usb_device_updater_channel_idle(void) {
     return !updater_response_ready && !updater_input_busy;
 }
 
-/**
- * @brief Queues one complete motor-updater response.
- *
- * Retains responses of up to 66 bytes while the endpoint service emits 64-byte bulk packets and
- * the required zero-length terminator for an exact 64-byte response.
- *
- * @param[in] data Complete response bytes to retain.
- * @param[in] length Number of response bytes from one through 66.
- * @return True when the idle updater input stream accepted the response; otherwise false.
- */
 bool usb_device_queue_updater_response(const uint8_t *data, uint8_t length) {
     if (operating_mode != USB_OPERATING_MODE_UPDATER || !usb_device_configured() || data == NULL ||
         length == 0 || length > USB_DEVICE_UPDATER_RESPONSE_SIZE || updater_response_ready ||
@@ -1580,28 +1433,12 @@ bool usb_device_queue_updater_response(const uint8_t *data, uint8_t length) {
     return true;
 }
 
-/**
- * @brief Takes pending Xbox GIP session actions.
- *
- * Returns every accepted session action accumulated since the previous take and clears the
- * pending action set.
- *
- * @return Pending Xbox GIP session actions.
- */
 UsbXboxGipSessionAction usb_device_take_xbox_session_actions(void) {
     UsbXboxGipSessionAction actions = xbox_session_actions;
     xbox_session_actions = USB_XBOX_GIP_SESSION_ACTION_NONE;
     return actions;
 }
 
-/**
- * @brief Takes a completed PlayStation authentication request.
- *
- * Copies the assembled 256-byte host challenge once for processing by the secure-element service.
- *
- * @param[out] request Completed authentication challenge.
- * @return True when a completed request was available; otherwise false.
- */
 bool usb_device_take_playstation_authentication_request(
     uint8_t request[USB_PLAYSTATION_AUTHENTICATION_REQUEST_SIZE]) {
     return operating_mode == USB_OPERATING_MODE_PLAYSTATION &&
@@ -1609,15 +1446,6 @@ bool usb_device_take_playstation_authentication_request(
                &console_workspace.playstation.authentication, request);
 }
 
-/**
- * @brief Publishes a PlayStation authentication response.
- *
- * Makes the exact 1,040-byte secure-element response available through feature report F1.
- *
- * @param[in] response Complete authentication response.
- * @param[in] response_length Number of response bytes.
- * @return True when the response was accepted in PlayStation mode; otherwise false.
- */
 bool usb_device_publish_playstation_authentication_response(const uint8_t *response,
                                                             uint16_t response_length) {
     return operating_mode == USB_OPERATING_MODE_PLAYSTATION &&
@@ -1625,39 +1453,18 @@ bool usb_device_publish_playstation_authentication_response(const uint8_t *respo
                &console_workspace.playstation.authentication, response, response_length);
 }
 
-/**
- * @brief Reports whether PlayStation response fragments remain available.
- *
- * Keeps the response owner active until the host consumes the final F1 feature report.
- *
- * @return True while a PlayStation response is being retrieved; otherwise false.
- */
 bool usb_device_playstation_authentication_response_active(void) {
     return operating_mode == USB_OPERATING_MODE_PLAYSTATION &&
            usb_playstation_authentication_response_active(
                &console_workspace.playstation.authentication);
 }
 
-/**
- * @brief Reports a PlayStation authentication failure.
- *
- * Changes feature report F2 to the response-error state while PlayStation mode is active.
- */
 void usb_device_fail_playstation_authentication(void) {
     if (operating_mode == USB_OPERATING_MODE_PLAYSTATION) {
         usb_playstation_authentication_fail(&console_workspace.playstation.authentication);
     }
 }
 
-/**
- * @brief Publishes one PlayStation remote-tuning feature report.
- *
- * Retains a report-35 payload only while PlayStation mode is active and the single response slot is
- * empty. The host consumes the retained bytes through the PlayStation feature-report path.
- *
- * @param[in] report Complete 64-byte report-35 payload.
- * @return True when the response slot accepted the report.
- */
 bool usb_device_publish_playstation_remote_tuning_report(
     const uint8_t report[USB_DEVICE_REPORT_SIZE]) {
     if (operating_mode != USB_OPERATING_MODE_PLAYSTATION || report == NULL || report[0] != 0x35 ||
@@ -1671,15 +1478,6 @@ bool usb_device_publish_playstation_remote_tuning_report(
     return true;
 }
 
-/**
- * @brief Encodes and sends the current PlayStation input state.
- *
- * Suppresses an unchanged 64-byte report and submits a changed report through endpoint four while
- * the PlayStation interface is configured.
- *
- * @param[in] state Current logical PlayStation controls and axes.
- * @return True when the report was unchanged or accepted by endpoint four; otherwise false.
- */
 bool usb_device_send_playstation_input(const UsbPlaystationInputState *state) {
     uint8_t *report = console_workspace.playstation.feature_report;
     if (operating_mode != USB_OPERATING_MODE_PLAYSTATION || !usb_device_configured() ||

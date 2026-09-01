@@ -152,347 +152,608 @@
 #pragma config RSTPRI = PF
 #pragma config JTAGEN = OFF
 
+/**
+ * @brief Pending force-feedback script report category.
+ *
+ * The category selects which script data response is assembled for the host.
+ */
 typedef enum {
-    FORCE_FEEDBACK_SCRIPT_REPORT_NONE,
-    FORCE_FEEDBACK_SCRIPT_REPORT_AXES,
-    FORCE_FEEDBACK_SCRIPT_REPORT_SAMPLES,
-    FORCE_FEEDBACK_SCRIPT_REPORT_SLOT,
-    FORCE_FEEDBACK_SCRIPT_REPORT_STATUS,
-    FORCE_FEEDBACK_SCRIPT_REPORT_VALUES,
+    FORCE_FEEDBACK_SCRIPT_REPORT_NONE,    /**< No script report is pending. */
+    FORCE_FEEDBACK_SCRIPT_REPORT_AXES,    /**< Pending report contains script axes. */
+    FORCE_FEEDBACK_SCRIPT_REPORT_SAMPLES, /**< Pending report contains script samples. */
+    FORCE_FEEDBACK_SCRIPT_REPORT_SLOT,    /**< Pending report contains a script slot. */
+    FORCE_FEEDBACK_SCRIPT_REPORT_STATUS,  /**< Pending report contains script status. */
+    FORCE_FEEDBACK_SCRIPT_REPORT_VALUES,  /**< Pending report contains script values. */
 } ForceFeedbackScriptReportKind;
 
-/** @brief Phase-specific sources reused while composing one PlayStation input report. */
+/**
+ * @brief Phase-specific sources reused while composing one PlayStation input report.
+ *
+ * The report builder reuses this storage for wheel, button, and clutch input data during report
+ * assembly.
+ */
 typedef union {
-    WheelInputSnapshot wheel;
-    UsbPlaystationButtonInput buttons;
-    UsbPlaystationClutchInput clutch;
+    WheelInputSnapshot wheel;          /**< Wheel input snapshot source. */
+    UsbPlaystationButtonInput buttons; /**< PlayStation button input source. */
+    UsbPlaystationClutchInput clutch;  /**< PlayStation clutch input source. */
 } UsbPlaystationInputSources;
 
-/** @brief Working state for one PlayStation input report. */
+/**
+ * @brief Working state for one PlayStation input report.
+ *
+ * Stores the report state and the source values reused during report assembly.
+ */
 typedef struct {
-    UsbPlaystationInputState state;
-    UsbPlaystationInputSources sources;
+    UsbPlaystationInputState state;     /**< Report state being assembled. */
+    UsbPlaystationInputSources sources; /**< Phase-specific report source. */
 } UsbPlaystationInputWorkspace;
 
-/** @brief Mutually exclusive input state for the active console protocol. */
+/**
+ * @brief Mutually exclusive input state for the active console protocol.
+ *
+ * The active USB operating mode selects either Xbox GIP input state or PlayStation report state.
+ */
 typedef union {
-    UsbXboxGipInputState xbox;
-    UsbPlaystationInputWorkspace playstation;
+    UsbXboxGipInputState xbox;                /**< Xbox GIP input state. */
+    UsbPlaystationInputWorkspace playstation; /**< PlayStation input workspace. */
 } UsbConsoleInputWorkspace;
 
+/** @brief Attached base board identity. */
 static BoardIdentity board_identity;
+/** @brief Motor-controller discovery and identity state. */
 static MotorProbe motor_probe;
+/** @brief Motor startup-centering state. */
 static MotorStartupCentering motor_startup_centering;
+/** @brief Whether startup direct-force mode is active. */
 static bool motor_startup_direct_force;
+/** @brief Shared remote memory command transport. */
 static CommandTransport command_transport;
+/** @brief Motor command mailbox exchange state. */
 static MotorCommandMailboxExchange motor_command_mailbox;
+/** @brief Motor command channel state. */
 static MotorCommandChannel motor_command_channel;
+/** @brief Motor command startup-service state. */
 static MotorCommandStartupService motor_command_startup_service;
+/** @brief USB motor-vendor service state. */
 static UsbMotorVendorService usb_motor_vendor_service;
+/** @brief Wheel-transfer service state. */
 static WheelTransferService wheel_transfer_service;
+/** @brief Wheel accessory service state. */
 static WheelAccessoryService wheel_accessory_service;
+/** @brief Motor status service state. */
 static MotorStatusService motor_status_service;
+/** @brief Motor telemetry service state. */
 static MotorTelemetryService motor_telemetry_service;
+/** @brief Motor tuning service state. */
 static MotorTuningService motor_tuning_service;
+/** @brief Motor calibration service state. */
 static MotorCalibrationService motor_calibration_service;
+/** @brief Motor rotation-guard state. */
 static MotorRotationGuard motor_rotation_guard;
+/** @brief Retained base settings. */
 static BaseSettings base_settings;
+/** @brief Base-settings persistence state. */
 static BaseSettingsPersistence settings_persistence;
+/** @brief Runtime copy of the selected tuning profile. */
 static TuningProfile runtime_tuning_profile;
+/** @brief Pointer to the active runtime tuning profile. */
 static const TuningProfile *tuning_profile;
+/** @brief Runtime motor tuning context. */
 static MotorTuningContext motor_tuning_context;
+/** @brief Whether motor tuning context is ready for consumers. */
 static bool motor_tuning_ready;
+/** @brief Whether a motor command request awaits service. */
 static bool motor_command_request_pending;
+/** @brief Latest motor position report. */
 static MotorPositionReport motor_position_report;
+/** @brief Whether motor_position_report contains a valid report. */
 static bool motor_position_ready;
+/** @brief Current wheel-position calibration. */
 static WheelPositionCalibration wheel_position_calibration;
+/** @brief Automatic steering travel applied after startup centering. */
 static uint32_t automatic_steering_travel;
+/** @brief Wheel velocity estimator state. */
 static WheelVelocityEstimator wheel_velocity_estimator;
+/** @brief Pending wheel-center capture command. */
 static WheelCenterCaptureCommand wheel_center_capture_command;
+/** @brief Current motor-calibration operation. */
 static MotorCalibrationOperation motor_calibration_operation;
+/** @brief Pedal service state. */
 static PedalService pedal_service;
+/** @brief Pedal brake-indicator state. */
 static PedalBrakeIndicator pedal_brake_indicator;
+/** @brief Current wheel vibration output. */
 static WheelVibrationOutput wheel_vibration_output;
+/** @brief Serial service state. */
 static SerialService serial_service;
+/** @brief Attached-wheel service state. */
 static WheelService wheel_service;
+/** @brief Attached-wheel status service state. */
 static WheelStatusService wheel_status_service;
+/** @brief Unsupported-wheel compatibility alert state. */
 static WheelCompatibilityAlert wheel_compatibility_alert;
+/** @brief Compatibility-alert wheel display output. */
 static WheelDisplayOutput wheel_compatibility_display_output;
+/** @brief Latest base analog samples. */
 static AnalogSamples analog_samples;
+/** @brief Auxiliary-axis processing state. */
 static AuxiliaryAxis auxiliary_axis;
+/** @brief H-pattern shifter state. */
 static HPatternShifter h_pattern_shifter;
+/** @brief H-pattern calibration service state. */
 static HPatternCalibrationService h_pattern_calibration_service;
+/** @brief Pending H-pattern calibration command. */
 static HPatternCalibrationCommand h_pattern_calibration_command;
+/** @brief Latest shifter input state. */
 static ShifterInputState shifter_input;
+/** @brief Shifter display state. */
 static ShifterDisplay shifter_display;
+/** @brief Attached-wheel startup display state. */
 static WheelStartupDisplay wheel_startup_display;
+/** @brief Attached-wheel startup-version page state. */
 static WheelStartupVersionPage wheel_startup_version_page;
+/** @brief USB-disconnect display state. */
 static UsbDisconnectDisplay usb_disconnect_display;
+/** @brief Native USB input-report state. */
 static UsbInputReportState usb_input_state;
+/** @brief Fanatec input encoder state. */
 static FanatecEncoder fanatec_encoder;
+/** @brief Xbox GIP input-report builder state. */
 static UsbXboxGipInputBuilder xbox_input_builder;
+/** @brief Active console input workspace. */
 static UsbConsoleInputWorkspace usb_console_input_workspace;
+/** @brief Latest Xbox GIP input snapshot. */
 static UsbXboxGipInputSnapshot xbox_input_snapshot;
+/** @brief Current Xbox GIP extended status. */
 static UsbXboxGipExtendedStatus xbox_extended_status;
+/** @brief Xbox wheel-position calibration. */
 static WheelPositionCalibration xbox_position_calibration;
+/** @brief Current Xbox steering range in degrees. */
 static uint16_t xbox_steering_range_degrees;
+/** @brief Profile-selected Xbox steering range in degrees. */
 static uint16_t xbox_profile_steering_range_degrees;
+/** @brief Current Xbox force-feedback strength in percent. */
 static uint8_t xbox_force_feedback_percent;
+/** @brief Profile-selected Xbox force-feedback strength in percent. */
 static uint8_t xbox_profile_force_feedback_percent;
+/** @brief Current multi-position wheel input. */
 static WheelMultiPositionInput wheel_multi_position_input;
+/** @brief Current Fanatec multi-position input state. */
 static fanatec_multi_position_input fanatec_multi_position_input_state;
+/** @brief Current native USB input report bytes. */
 static uint8_t usb_input_report[USB_INPUT_REPORT_MAX_SIZE];
+/** @brief Retained native USB feature reports. */
 static uint8_t usb_feature_reports[4][USB_DEVICE_REPORT_SIZE];
+/** @brief Pending motor acknowledgement report bytes. */
 static uint8_t usb_motor_acknowledgement[USB_DEVICE_REPORT_SIZE];
+/** @brief Length of the pending motor acknowledgement report. */
 static uint8_t usb_motor_acknowledgement_length;
+/** @brief Pending native USB vendor response bytes. */
 static uint8_t usb_vendor_response[USB_DEVICE_REPORT_SIZE];
+/** @brief Length of the pending native USB vendor response. */
 static uint8_t usb_vendor_response_length;
+/** @brief USB diagnostic report service state. */
 static UsbDiagnosticReportService usb_diagnostic_report_service;
+/** @brief USB tuning-status report service state. */
 static UsbTuningStatusReportService usb_tuning_status_report_service;
+/** @brief USB remote-tuning service state. */
 static UsbRemoteTuningService usb_remote_tuning_service;
+/** @brief Wheel command forwarder state. */
 static WheelCommandForwarder wheel_command_forwarder;
+/** @brief Wheel protocol bridge service state. */
 static WheelProtocolBridgeService wheel_protocol_bridge_service;
+/** @brief Wheel USB bridge gate state. */
 static WheelUsbBridgeGate wheel_usb_bridge_gate;
+/** @brief Batched wheel commands awaiting forwarding. */
 static uint8_t wheel_command_batch[USB_REMOTE_TUNING_FORWARD_BATCH_SIZE];
+/** @brief Number of valid bytes in wheel_command_batch. */
 static uint8_t wheel_command_batch_length;
+/** @brief Pending USB-owned remote-tuning response. */
 static RemoteTuningResponse usb_remote_tuning_response;
+/** @brief Pending system-owned wheel response. */
 static RemoteTuningResponse system_wheel_response;
+/** @brief Pending wheel remote-telemetry report bytes. */
 static uint8_t wheel_remote_telemetry_report[REMOTE_TELEMETRY_REPORT_SIZE];
+/** @brief Host controls forwarded to the wheel adapter. */
 static uint8_t wheel_adapter_host_controls[WHEEL_ADAPTER_HOST_CONTROLS_SIZE];
+/** @brief Whether remote tuning currently controls the wheel adapter. */
 static bool wheel_adapter_remote_tuning_active;
+/** @brief Whether adapter state needs a host refresh. */
 static bool wheel_adapter_refresh_state;
+/** @brief Selected wheel-adapter setup page. */
 static uint8_t wheel_adapter_setup_selection;
+/** @brief Current wheel-adapter display state. */
 static uint8_t wheel_adapter_display_state;
+/** @brief USB tuning-menu service state. */
 static UsbTuningMenuService usb_tuning_menu_service;
+/** @brief Pending USB transfer request. */
 static UsbTransferRequest usb_transfer_request;
+/** @brief Pending USB transfer response. */
 static UsbTransferResponse usb_transfer_response;
+/** @brief Whether the USB transfer response belongs to the pedal owner. */
 static bool usb_transfer_response_has_pedal_owner;
+/** @brief USB tuning-profile service state. */
 static UsbTuningProfileService usb_tuning_profile_service;
+/** @brief Local tuning interaction state. */
 static TuningInteraction tuning_interaction;
+/** @brief Local tuning menu state. */
 static TuningMenu tuning_menu;
+/** @brief Local tuning display output. */
 static WheelDisplayOutput tuning_display_output;
+/** @brief Current local tuning-entry availability. */
 static TuningEntryAvailabilityContext tuning_availability;
+/** @brief Current local tuning-entry adjustment limits. */
 static TuningEntryAdjustmentContext tuning_adjustment;
+/** @brief Current local tuning interaction input. */
 static TuningInteractionInput tuning_interaction_input;
+/** @brief Wheel input snapshot used by local tuning interaction. */
 static WheelInputSnapshot tuning_interaction_snapshot;
+/** @brief Security-code state. */
 static SecurityCode security_code;
+/** @brief Current security-code input. */
 static SecurityCodeInput security_code_input;
+/** @brief Security-code presentation and settings update state. */
 static SecurityCodeUpdate security_code_update_state;
+/** @brief Security-code display output. */
 static WheelDisplayOutput security_code_display_output;
+/** @brief Current USB diagnostic snapshot. */
 static UsbDiagnosticSnapshot usb_diagnostic_snapshot;
+/** @brief Current USB tuning-status snapshot. */
 static UsbTuningStatusSnapshot usb_tuning_status_snapshot;
+/** @brief Latest decoded USB output report. */
 static UsbDeviceOutputReport usb_device_output_report;
+/** @brief USB connection monitor state. */
 static UsbConnectionMonitor usb_connection_monitor;
+/** @brief Xbox host-capability recovery state. */
 static UsbHostCapabilityRecovery usb_host_capability_recovery;
+/** @brief Decoded USB output command. */
 static UsbOutputCommand usb_output_command;
+/** @brief Decoded fallback command. */
 static UsbFallbackCommand usb_fallback_command;
+/** @brief PlayStation wheel-value expiry state. */
 static UsbPlaystationWheelValue usb_playstation_wheel_value;
+/** @brief PlayStation input mapper state. */
 static UsbPlaystationInputMapper usb_playstation_input_mapper;
+/** @brief Decoded USB operating-mode command. */
 static UsbOperatingModeCommand usb_operating_mode_command;
+/** @brief Runtime bridge transition state. */
 static RuntimeBridge runtime_bridge;
+/** @brief USB updater service state. */
 static UsbUpdaterService usb_updater_service;
+/** @brief USB runtime-mode transition state. */
 static UsbRuntimeModeTransition usb_runtime_transition;
+/** @brief Runtime bridge transition inputs. */
 static RuntimeBridgeInput runtime_bridge_input;
+/** @brief USB updater service inputs. */
 static UsbUpdaterServiceInput usb_updater_input;
+/** @brief Whether host operating status is enabled. */
 static bool usb_operating_status_enabled;
+/** @brief Number of fallback interface modes observed. */
 static uint8_t fallback_interface_mode_count;
+/** @brief Pending pedal calibration command. */
 static PedalCalibrationCommand pedal_calibration_command;
+/** @brief Actions emitted by pedal calibration processing. */
 static PedalCalibrationActions pedal_calibration_actions;
+/** @brief Pending pedal protocol command. */
 static PedalProtocolCommand pedal_protocol_command;
+/** @brief Pending wheel steering-limit command. */
 static WheelSteeringLimitCommand wheel_steering_limit_command;
+/** @brief Bite-point percentage adjusted by the wheel service. */
 static uint8_t wheel_adjusted_bite_point_percent;
+/** @brief Bite-point percentage report pending for USB output. */
 static uint8_t wheel_bite_point_report_percent;
+/** @brief Decoded native USB vendor command. */
 static UsbVendorCommand usb_vendor_command;
+/** @brief Decoded Xbox GIP command. */
 static UsbXboxGipCommand usb_xbox_gip_command;
+/** @brief Decoded wheel-transfer command. */
 static UsbWheelTransferCommand usb_wheel_transfer_command;
+/** @brief Decoded force-feedback command. */
 static ForceFeedbackCommand force_feedback_command;
+/** @brief Force-feedback runtime state. */
 static ForceFeedbackState force_feedback_state;
+/** @brief Force-feedback script runtime state. */
 static ForceFeedbackScriptSystem force_feedback_script_system;
+/** @brief Force-feedback script output state. */
 static ForceFeedbackScriptOutputState force_feedback_script_output_state;
+/** @brief Force-feedback script output configuration. */
 static ForceFeedbackScriptOutputConfig force_feedback_script_output_config;
+/** @brief Sequence number for the pending script response. */
 static uint8_t force_feedback_script_response_sequence;
+/** @brief Pending force-feedback script report category. */
 static ForceFeedbackScriptReportKind force_feedback_script_report_pending;
+/** @brief Sample index for the pending script report. */
 static uint16_t force_feedback_script_sample_report_index;
+/** @brief Slot index for the pending script report. */
 static uint8_t force_feedback_script_slot_report_index;
+/** @brief Deadline for the force-feedback ramp. */
 static uint32_t force_feedback_ramp_deadline_ms;
+/** @brief Current force-output report sent to the motor. */
 static ForceOutputReport motor_output_report;
+/** @brief Latest motor live frame. */
 static MotorLiveFrame motor_live_frame;
+/** @brief Current motor output status. */
 static MotorOutputStatus motor_output_status;
+/** @brief Inputs used to build motor output status. */
 static MotorOutputStatusInput motor_output_status_input;
+/** @brief Motor output transport state. */
 static MotorOutputTransport motor_output_transport;
+/** @brief Latest received motor frame bytes. */
 static uint8_t motor_received_frame[MOTOR_LIVE_FRAME_SIZE];
+/** @brief Frame bytes queued for motor transmission. */
 static uint8_t motor_transmitted_frame[MOTOR_LIVE_FRAME_SIZE];
+/** @brief Count of motor frames with invalid boundaries observed. */
 static uint8_t motor_malformed_frame_count;
+/** @brief Base power-controller state. */
 static PowerController power_controller;
+/** @brief Shared system-control state. */
 static SystemControlState system_control_state;
+/** @brief Torque transition state. */
 static SystemTorqueTransition system_torque_transition;
+/** @brief Pending torque transition action. */
 static SystemTorqueTransitionAction system_torque_action;
+/** @brief Pending system status code. */
 static uint16_t pending_system_status_code;
+/** @brief Base system event queue. */
 static SystemEventQueue system_event_queue;
+/** @brief Base system event dispatcher. */
 static SystemEventDispatcher system_event_dispatcher;
+/** @brief Current local system notice. */
 static SystemNotice system_notice;
+/** @brief Cooling controller state. */
 static CoolingController cooling_controller;
+/** @brief Cooling force-effect limit state. */
 static CoolingEffectLimit cooling_effect_limit;
+/** @brief Current cooling effect strengths. */
 static CoolingEffectStrengths cooling_effect_strengths;
+/** @brief Cooling temperature monitor state. */
 static CoolingTemperatureMonitor cooling_temperature_monitor;
+/** @brief Fan tachometer state. */
 static PlatformFanTachometer fan_tachometer;
+/** @brief Measured primary and secondary fan speeds in RPM. */
 static uint16_t fan_speed_rpm[2];
 #if defined(__XC16__)
+/** @brief Local display framebuffer in extended data space. */
 static __eds__ uint8_t display_framebuffer[DISPLAY_FRAMEBUFFER_SIZE] __attribute__((space(eds)));
 #else
+/** @brief Local display framebuffer. */
 static uint8_t display_framebuffer[DISPLAY_FRAMEBUFFER_SIZE];
 #endif
+/** @brief Force-output prompt display state. */
 static DisplayPrompt force_output_display_prompt;
+/** @brief Torque Key prompt display state. */
 static DisplayPrompt torque_key_display_prompt;
+/** @brief Force-output readiness state. */
 static ForceOutputEnable force_output_enable;
+/** @brief Pending force-output readiness action. */
 static ForceOutputEnableAction force_output_enable_action;
+/** @brief Whether force output is currently enabled. */
 static bool force_output_enabled;
+/** @brief Whether the force-output prompt is visible. */
 static bool force_output_prompt_visible;
+/** @brief Board LED pattern controller state. */
 static LedPatternController led_pattern_controller;
+/** @brief Torque Key hardware state. */
 static TorqueKey torque_key;
+/** @brief Torque Key prompt policy state. */
 static TorqueKeyPrompt torque_key_prompt;
+/** @brief Whether Torque Key acknowledgement is available. */
 static bool torque_key_acknowledgement_available;
+/** @brief Whether the Torque Key prompt is visible. */
 static bool torque_key_prompt_visible;
+/** @brief Whether the torque-disabled notice is visible. */
 static bool torque_disabled_notice_visible;
+/** @brief Whether the USB-disconnect notice is visible. */
 static bool usb_disconnect_notice_visible;
+/** @brief Whether a motor acknowledgement report is ready. */
 static bool usb_motor_acknowledgement_ready;
+/** @brief Whether Xbox startup has been attempted. */
 static bool xbox_mode_startup_attempted;
+/** @brief Whether Xbox startup has completed. */
 static bool xbox_mode_startup_finished;
+/** @brief Wheel mode reported by the active console path. */
 static uint8_t console_wheel_mode;
+/** @brief Most recently observed wheel mode. */
 static uint8_t observed_wheel_mode;
+/** @brief Selected base operating mode. */
 static uint8_t selected_base_mode;
+/** @brief Whether a PlayStation authentication response was published. */
 static bool playstation_authentication_response_published;
+/** @brief Pending wheel-transfer response flags by request kind. */
 static bool usb_wheel_transfer_response_pending[WHEEL_TRANSFER_REQUEST_COUNT];
+/** @brief Currently selected local display page. */
 static uint8_t local_display_page;
+/** @brief Bite-point value rendered on the local display. */
 static uint8_t local_display_rendered_bite_point_percent;
+/** @brief Notice kind rendered on the local display. */
 static SystemNoticeKind local_display_rendered_notice_kind;
+/** @brief Current local tuning revision. */
 static uint8_t local_display_tuning_revision;
+/** @brief Tuning revision rendered on the local display. */
 static uint8_t local_display_rendered_tuning_revision;
+/** @brief Bite-point value pending for local display. */
 static uint8_t wheel_bite_point_display_percent;
+/** @brief Current system-information display data. */
 static DisplaySystemInformation local_display_system_information;
+/** @brief System-information data currently rendered. */
 static DisplaySystemInformation local_display_rendered_system_information;
+/** @brief System-information title deadline. */
 static uint32_t local_display_system_information_title_deadline_ms;
+/** @brief Whether system-information content is active. */
 static bool local_display_system_information_content_active;
+/** @brief Force-feedback analysis display state. */
 static DisplayForceFeedbackAnalysisPage local_display_force_feedback_analysis;
+/** @brief Force-feedback analysis title deadline. */
 static uint32_t local_display_force_feedback_analysis_title_deadline_ms;
+/** @brief Whether force-feedback analysis content is active. */
 static bool local_display_force_feedback_analysis_content_active;
+/** @brief Motor-data analysis display state. */
 static DisplayMotorDataAnalysisPage local_display_motor_data_analysis;
+/** @brief Motor-data analysis title deadline. */
 static uint32_t local_display_motor_data_analysis_title_deadline_ms;
+/** @brief Whether motor-data analysis content is active. */
 static bool local_display_motor_data_analysis_content_active;
+/** @brief Temperature analysis display state. */
 static DisplayTemperatureAnalysisPage local_display_temperature_analysis;
+/** @brief Temperature analysis title deadline. */
 static uint32_t local_display_temperature_analysis_title_deadline_ms;
+/** @brief Whether temperature analysis content is active. */
 static bool local_display_temperature_analysis_content_active;
+/** @brief Auxiliary calibration display state. */
 static DisplayAuxiliaryCalibrationPage local_display_auxiliary_calibration;
+/** @brief Auxiliary calibration title deadline. */
 static uint32_t local_display_auxiliary_calibration_title_deadline_ms;
+/** @brief Whether auxiliary calibration content is active. */
 static bool local_display_auxiliary_calibration_content_active;
 
+/**
+ * @brief Pending native USB vendor-response category.
+ *
+ * The category determines which retained payload the USB output path publishes next.
+ */
 typedef enum {
-    USB_VENDOR_RESPONSE_NONE,
-    USB_VENDOR_RESPONSE_REMOTE_TUNING,
-    USB_VENDOR_RESPONSE_WHEEL_TRANSFER,
-    USB_VENDOR_RESPONSE_SCRIPT_REPORT,
-    USB_VENDOR_RESPONSE_TUNING_PROFILE,
-    USB_VENDOR_RESPONSE_TUNING_MENU,
-    USB_VENDOR_RESPONSE_PEDAL_TRANSFER,
-    USB_VENDOR_RESPONSE_DIAGNOSTIC,
-    USB_VENDOR_RESPONSE_TUNING_STATUS,
-    USB_VENDOR_RESPONSE_MOTOR,
+    USB_VENDOR_RESPONSE_NONE,           /**< No vendor response is pending. */
+    USB_VENDOR_RESPONSE_REMOTE_TUNING,  /**< Pending response is remote-tuning data. */
+    USB_VENDOR_RESPONSE_WHEEL_TRANSFER, /**< Pending response is a wheel-transfer result. */
+    USB_VENDOR_RESPONSE_SCRIPT_REPORT,  /**< Pending response is a script report. */
+    USB_VENDOR_RESPONSE_TUNING_PROFILE, /**< Pending response is a tuning-profile report. */
+    USB_VENDOR_RESPONSE_TUNING_MENU,    /**< Pending response is a tuning-menu report. */
+    USB_VENDOR_RESPONSE_PEDAL_TRANSFER, /**< Pending response is a pedal-transfer result. */
+    USB_VENDOR_RESPONSE_DIAGNOSTIC,     /**< Pending response is a diagnostic report. */
+    USB_VENDOR_RESPONSE_TUNING_STATUS,  /**< Pending response is a tuning-status report. */
+    USB_VENDOR_RESPONSE_MOTOR,          /**< Pending response is a motor response. */
 } UsbVendorResponseKind;
 
+/**
+ * @brief Pending Xbox GIP control-response category.
+ *
+ * The category determines which control response is encoded into the next Xbox report.
+ */
 typedef enum {
-    USB_XBOX_CONTROL_RESPONSE_NONE,
-    USB_XBOX_CONTROL_RESPONSE_CAPABILITIES,
-    USB_XBOX_CONTROL_RESPONSE_SNAPSHOT,
-    USB_XBOX_CONTROL_RESPONSE_EXTENDED_STATUS,
-    USB_XBOX_CONTROL_RESPONSE_TRANSFER_STATUS,
+    USB_XBOX_CONTROL_RESPONSE_NONE,            /**< No Xbox control response is pending. */
+    USB_XBOX_CONTROL_RESPONSE_CAPABILITIES,    /**< Pending response contains capabilities. */
+    USB_XBOX_CONTROL_RESPONSE_SNAPSHOT,        /**< Pending response contains an input snapshot. */
+    USB_XBOX_CONTROL_RESPONSE_EXTENDED_STATUS, /**< Pending response contains extended status. */
+    USB_XBOX_CONTROL_RESPONSE_TRANSFER_STATUS, /**< Pending response contains transfer status. */
 } UsbXboxControlResponseKind;
 
+/** @brief Category of the pending native USB vendor response. */
 static UsbVendorResponseKind usb_vendor_response_kind;
+/** @brief Category of the pending Xbox control response. */
 static UsbXboxControlResponseKind usb_xbox_control_response_pending;
+/** @brief Pending Xbox control request bytes. */
 static uint8_t usb_xbox_control_request[2];
+/** @brief Wheel-transfer request associated with the pending vendor response. */
 static WheelTransferRequest usb_vendor_wheel_response_request;
 
+/**
+ * @brief Base-firmware protocol codes, display pages, limits, and timing values.
+ *
+ * These translation-unit constants connect local services to the attached wheel and host
+ * protocols.
+ */
 enum {
-    FAN_STARTUP_DUTY_PERCENT = 25,
-    COOLING_STARTUP_TEMPERATURE_C = 20,
-    USB_MOTOR_BUFFER_SIZE = MEMORY_TRANSFER_MAX_READ_SIZE,
-    LOCAL_DISPLAY_PAGE_TORQUE_DISABLED = 1,
-    LOCAL_DISPLAY_PAGE_FORCE_OUTPUT_PROMPT = 2,
-    LOCAL_DISPLAY_PAGE_TORQUE_KEY_PROMPT = 3,
-    LOCAL_DISPLAY_PAGE_BITE_POINT = 4,
-    LOCAL_DISPLAY_PAGE_SYSTEM_NOTICE = 5,
-    LOCAL_DISPLAY_PAGE_TUNING = 6,
-    LOCAL_DISPLAY_PAGE_IDENTITY = 7,
-    LOCAL_DISPLAY_PAGE_SYSTEM_INFORMATION = 8,
-    LOCAL_DISPLAY_PAGE_FORCE_FEEDBACK_ANALYSIS = 9,
-    LOCAL_DISPLAY_PAGE_MOTOR_DATA_ANALYSIS = 10,
-    LOCAL_DISPLAY_PAGE_TEMPERATURE_ANALYSIS = 11,
-    LOCAL_DISPLAY_PAGE_AUXILIARY_CALIBRATION = 12,
-    LOCAL_DISPLAY_DIAGNOSTIC_TITLE_MS = 1000,
-    USB_DISCONNECT_STATUS_CODE = 0x1c,
-    TUNING_MENU_RESET_EVENT_CODE = 1,
-    WHEEL_CENTER_CALIBRATED_EVENT_CODE = 2,
-    STANDARD_TUNING_MODE_EVENT_CODE = 0x12,
-    ADVANCED_TUNING_MODE_EVENT_CODE = 0x13,
-    MAXIMUM_ROTATIONS_EXCEEDED_EVENT_CODE = 0x17,
-    TORQUE_REDUCED_EVENT_CODE = 6,
-    TORQUE_REDUCED_STEERING_WHEEL_EVENT_CODE = 0x16,
-    ALTERNATIVE_SHIFTER_ENABLED_EVENT_CODE = 0x20,
-    ALTERNATIVE_SHIFTER_DISABLED_EVENT_CODE = 0x21,
-    WHEEL_CENTER_CALIBRATED_STATUS_CODE = 0x1f,
-    SHUTDOWN_EVENT_CODE = 0x0e,
-    SYSTEM_DISPLAY_DISMISS_EVENT_CODE = 0x11,
-    FORCE_OUTPUT_PROMPT_EVENT_CODE = 0x0c,
-    FORCE_OUTPUT_PROMPT_DISMISS_EVENT_CODE = 0x1a,
-    TORQUE_KEY_PROMPT_EVENT_CODE = 7,
-    TORQUE_KEY_PROMPT_DISMISS_EVENT_CODE = 0x18,
-    UNSUPPORTED_WHEEL_INVERTED_EVENT_CODE = 0x0f,
-    UNSUPPORTED_WHEEL_OUTLINED_EVENT_CODE = 0x10,
-    SHUTDOWN_STATUS_CODE = 0x2d,
-    FORCE_FEEDBACK_FULL_STRENGTH_PERCENT = 100,
-    FORCE_FEEDBACK_DD1_REDUCED_STRENGTH_PERCENT = 40,
-    FORCE_FEEDBACK_DD2_REDUCED_STRENGTH_PERCENT = 32,
-    FORCE_FEEDBACK_DD1_AUTOMATIC_STRENGTH_PERCENT = 35,
-    FORCE_FEEDBACK_DD2_AUTOMATIC_STRENGTH_PERCENT = 30,
-    FORCE_FEEDBACK_RAMP_INTERVAL_MS = 50,
-    DISPLAY_STARTUP_FRAME_SETTLE_MS = 33,
-    MOTOR_STARTUP_AUTOMATIC_STEERING_TRAVEL = 35520,
-    MOTOR_STARTUP_STATUS_SETTLE_MS = 300,
-    MOTOR_STARTUP_WHEEL_DISCOVERY_TIMEOUT_MS = 500,
-    MOTOR_STARTUP_BUTTON_SCAN_FINISH_MS = 10,
-    MOTOR_STARTUP_RETAINED_XBOX_TIMEOUT_MS = 250,
-    MOTOR_LINK_MALFORMED_FRAME_LIMIT = 100,
-    WHEEL_STARTUP_VERSION_COMMAND = 0x0a,
-    WHEEL_STARTUP_TEXT_METADATA = 0x10,
-    WHEEL_DISPLAY_TORQUE_KEY_PROMPT = 0x1a,
-    WHEEL_DISPLAY_TORQUE_KEY_CONFIRMED = 0x28,
-    WHEEL_DISPLAY_ENABLE_TORQUE_PROMPT = 0x29,
-    WHEEL_DISPLAY_ENABLE_TORQUE_CONFIRMED = 0x2a,
+    FAN_STARTUP_DUTY_PERCENT = 25,      /**< Initial fan duty cycle in percent. */
+    COOLING_STARTUP_TEMPERATURE_C = 20, /**< Startup temperature threshold in degrees Celsius. */
+    USB_MOTOR_BUFFER_SIZE = MEMORY_TRANSFER_MAX_READ_SIZE, /**< Motor USB workspace buffer size. */
+    LOCAL_DISPLAY_PAGE_TORQUE_DISABLED = 1,     /**< Local display page for disabled torque. */
+    LOCAL_DISPLAY_PAGE_FORCE_OUTPUT_PROMPT = 2, /**< Local display page for force-output prompt. */
+    LOCAL_DISPLAY_PAGE_TORQUE_KEY_PROMPT = 3,   /**< Local display page for Torque Key prompt. */
+    LOCAL_DISPLAY_PAGE_BITE_POINT = 4,          /**< Local display page for bite-point output. */
+    LOCAL_DISPLAY_PAGE_SYSTEM_NOTICE = 5,       /**< Local display page for system notices. */
+    LOCAL_DISPLAY_PAGE_TUNING = 6,              /**< Local display page for tuning controls. */
+    LOCAL_DISPLAY_PAGE_IDENTITY = 7,            /**< Local display page for identity information. */
+    LOCAL_DISPLAY_PAGE_SYSTEM_INFORMATION = 8,  /**< Local display page for system information. */
+    LOCAL_DISPLAY_PAGE_FORCE_FEEDBACK_ANALYSIS = 9, /**< Local force-feedback analysis page. */
+    LOCAL_DISPLAY_PAGE_MOTOR_DATA_ANALYSIS = 10,    /**< Local motor-data analysis page. */
+    LOCAL_DISPLAY_PAGE_TEMPERATURE_ANALYSIS = 11,   /**< Local temperature analysis page. */
+    LOCAL_DISPLAY_PAGE_AUXILIARY_CALIBRATION = 12,  /**< Local auxiliary-calibration page. */
+    LOCAL_DISPLAY_DIAGNOSTIC_TITLE_MS =
+        1000,                               /**< Diagnostic page title duration in milliseconds. */
+    USB_DISCONNECT_STATUS_CODE = 0x1c,      /**< Status code published after USB disconnect. */
+    TUNING_MENU_RESET_EVENT_CODE = 1,       /**< Tuning-menu reset event code. */
+    WHEEL_CENTER_CALIBRATED_EVENT_CODE = 2, /**< Wheel-center calibrated event code. */
+    STANDARD_TUNING_MODE_EVENT_CODE = 0x12, /**< Standard tuning-mode event code. */
+    ADVANCED_TUNING_MODE_EVENT_CODE = 0x13, /**< Advanced tuning-mode event code. */
+    MAXIMUM_ROTATIONS_EXCEEDED_EVENT_CODE = 0x17,    /**< Maximum-rotation event code. */
+    TORQUE_REDUCED_EVENT_CODE = 6,                   /**< Reduced-torque event code. */
+    TORQUE_REDUCED_STEERING_WHEEL_EVENT_CODE = 0x16, /**< Reduced steering-wheel torque code. */
+    ALTERNATIVE_SHIFTER_ENABLED_EVENT_CODE = 0x20,   /**< Alternative-shifter enabled event code. */
+    ALTERNATIVE_SHIFTER_DISABLED_EVENT_CODE = 0x21,  /**< Alternative-shifter disabled code. */
+    WHEEL_CENTER_CALIBRATED_STATUS_CODE = 0x1f,      /**< Wheel-center calibrated status code. */
+    SHUTDOWN_EVENT_CODE = 0x0e,                      /**< Shutdown event code. */
+    SYSTEM_DISPLAY_DISMISS_EVENT_CODE = 0x11,        /**< System-display dismissal event code. */
+    FORCE_OUTPUT_PROMPT_EVENT_CODE = 0x0c,           /**< Force-output prompt event code. */
+    FORCE_OUTPUT_PROMPT_DISMISS_EVENT_CODE = 0x1a,   /**< Force-output dismissal event code. */
+    TORQUE_KEY_PROMPT_EVENT_CODE = 7,                /**< Torque Key prompt event code. */
+    TORQUE_KEY_PROMPT_DISMISS_EVENT_CODE = 0x18,     /**< Torque Key dismissal event code. */
+    UNSUPPORTED_WHEEL_INVERTED_EVENT_CODE = 0x0f,    /**< Unsupported inverted-wheel event code. */
+    UNSUPPORTED_WHEEL_OUTLINED_EVENT_CODE = 0x10,    /**< Unsupported outlined-wheel event code. */
+    SHUTDOWN_STATUS_CODE = 0x2d,                     /**< Shutdown status code. */
+    FORCE_FEEDBACK_FULL_STRENGTH_PERCENT = 100, /**< Full force-feedback strength in percent. */
+    FORCE_FEEDBACK_DD1_REDUCED_STRENGTH_PERCENT = 40,   /**< DD1 reduced strength in percent. */
+    FORCE_FEEDBACK_DD2_REDUCED_STRENGTH_PERCENT = 32,   /**< DD2 reduced strength in percent. */
+    FORCE_FEEDBACK_DD1_AUTOMATIC_STRENGTH_PERCENT = 35, /**< DD1 automatic strength in percent. */
+    FORCE_FEEDBACK_DD2_AUTOMATIC_STRENGTH_PERCENT = 30, /**< DD2 automatic strength in percent. */
+    FORCE_FEEDBACK_RAMP_INTERVAL_MS = 50, /**< Force-feedback ramp interval in milliseconds. */
+    DISPLAY_STARTUP_FRAME_SETTLE_MS = 33, /**< Display frame settle interval in milliseconds. */
+    MOTOR_STARTUP_AUTOMATIC_STEERING_TRAVEL =
+        35520,                            /**< Automatic steering travel after startup centering. */
+    MOTOR_STARTUP_STATUS_SETTLE_MS = 300, /**< Motor status settle interval in milliseconds. */
+    MOTOR_STARTUP_WHEEL_DISCOVERY_TIMEOUT_MS =
+        500, /**< Attached-wheel discovery timeout during startup in milliseconds. */
+    MOTOR_STARTUP_BUTTON_SCAN_FINISH_MS =
+        10, /**< Scan-mode button finish interval in milliseconds. */
+    MOTOR_STARTUP_RETAINED_XBOX_TIMEOUT_MS =
+        250,                                /**< Retained Xbox startup timeout in milliseconds. */
+    MOTOR_LINK_MALFORMED_FRAME_LIMIT = 100, /**< Malformed motor frames before link recovery. */
+    WHEEL_STARTUP_VERSION_COMMAND = 0x0a,   /**< Wheel startup-version command code. */
+    WHEEL_STARTUP_TEXT_METADATA = 0x10,     /**< Wheel startup text-metadata command code. */
+    WHEEL_DISPLAY_TORQUE_KEY_PROMPT = 0x1a, /**< Wheel glyph code for Torque Key prompt. */
+    WHEEL_DISPLAY_TORQUE_KEY_CONFIRMED = 0x28,    /**< Wheel glyph code for confirmed Torque Key. */
+    WHEEL_DISPLAY_ENABLE_TORQUE_PROMPT = 0x29,    /**< Wheel glyph code for torque-enable prompt. */
+    WHEEL_DISPLAY_ENABLE_TORQUE_CONFIRMED = 0x2a, /**< Wheel glyph code for confirmed torque. */
 };
 
-/** @brief Storage used only by the native and Xbox motor-command transports. */
+/**
+ * @brief Storage used only by the native and Xbox motor-command transports.
+ *
+ * The workspace is active only for USB modes that exchange motor command data.
+ */
 typedef struct {
-    uint8_t upload_assembly[USB_MOTOR_BUFFER_SIZE];
-    uint8_t receive_assembly[USB_MOTOR_BUFFER_SIZE];
-    uint8_t mailbox_receive[USB_MOTOR_BUFFER_SIZE];
-    uint8_t transmit[USB_MOTOR_BUFFER_SIZE];
-    uint8_t application_data[USB_MOTOR_BUFFER_SIZE];
+    uint8_t upload_assembly[USB_MOTOR_BUFFER_SIZE];  /**< Host upload assembly buffer. */
+    uint8_t receive_assembly[USB_MOTOR_BUFFER_SIZE]; /**< Motor receive assembly buffer. */
+    uint8_t mailbox_receive[USB_MOTOR_BUFFER_SIZE];  /**< Motor mailbox receive buffer. */
+    uint8_t transmit[USB_MOTOR_BUFFER_SIZE];         /**< Motor transmit buffer. */
+    uint8_t application_data[USB_MOTOR_BUFFER_SIZE]; /**< Pending application payload buffer. */
 } UsbMotorWorkspace;
 
-/** @brief Storage used only by the PlayStation secure-element transport. */
+/**
+ * @brief Storage used only by the PlayStation secure-element transport.
+ *
+ * The workspace is active while PlayStation authentication services use the secure element.
+ */
 typedef struct {
-    A71chSessionService session;
-    A71chAuthenticationService authentication;
-    uint8_t request[USB_PLAYSTATION_AUTHENTICATION_REQUEST_SIZE];
+    A71chSessionService session;               /**< Secure-element session state. */
+    A71chAuthenticationService authentication; /**< Secure-element authentication state. */
+    uint8_t
+        request[USB_PLAYSTATION_AUTHENTICATION_REQUEST_SIZE]; /**< Authentication request bytes. */
 } PlayStationAuthenticationWorkspace;
 
-/** @brief Storage shared by mutually exclusive USB operating modes. */
+/**
+ * @brief Storage shared by mutually exclusive USB operating modes.
+ *
+ * The active USB mode selects either motor-command workspace or PlayStation authentication
+ * workspace.
+ */
 typedef union {
-    UsbMotorWorkspace motor;
-    PlayStationAuthenticationWorkspace playstation;
+    UsbMotorWorkspace motor;                        /**< Native and Xbox motor-command workspace. */
+    PlayStationAuthenticationWorkspace playstation; /**< PlayStation authentication workspace. */
 } UsbOperatingModeWorkspace;
 
+/** @brief Mutually exclusive USB operating-mode workspace. */
 static UsbOperatingModeWorkspace usb_operating_mode_workspace;
+/** @brief Motor command channel buffers backed by the USB motor workspace. */
 static const MotorCommandChannelBuffers motor_command_channel_buffers = {
     .receive_assembly = usb_operating_mode_workspace.motor.receive_assembly,
     .receive_assembly_capacity = sizeof(usb_operating_mode_workspace.motor.receive_assembly),
@@ -501,6 +762,7 @@ static const MotorCommandChannelBuffers motor_command_channel_buffers = {
     .pending_payload = usb_operating_mode_workspace.motor.application_data,
     .pending_payload_capacity = sizeof(usb_operating_mode_workspace.motor.application_data),
 };
+/** @brief USB motor-vendor buffers backed by the USB motor workspace. */
 static const UsbMotorVendorServiceBuffers usb_motor_buffers = {
     .upload_assembly = usb_operating_mode_workspace.motor.upload_assembly,
     .upload_assembly_capacity = sizeof(usb_operating_mode_workspace.motor.upload_assembly),
@@ -520,10 +782,9 @@ static void save_base_settings(void) {
 /**
  * @brief Applies a power-controller transition to base hardware and retained settings.
  *
- * Enables the external power hold at startup. Shutdown start makes retained settings immediately
- * eligible for storage, performs one persistence pass, inhibits force output, publishes shutdown
- * state, and releases the power hold. Shutdown completion publishes its terminal event and
- * disconnects USB.
+ * Enables the external power hold at startup. Shutdown start persists any dirty retained settings,
+ * inhibits force output, publishes shutdown state, detaches USB, and releases the power hold.
+ * Shutdown completion publishes its terminal dismissal event.
  *
  * @param[in] action Power transition produced by the controller.
  */
@@ -573,7 +834,7 @@ static void service_power(uint32_t now_ms) {
 /**
  * @brief Applies a pending power-button torque request.
  *
- * Waits for the single event slot, then publishes the event and applies its status, feature, and
+ * Waits for the shared event queue, then publishes the event and applies its status, feature, and
  * attached-wheel response changes as one accepted transition.
  */
 static void service_power_torque_request(void) {
@@ -662,7 +923,7 @@ static void service_system_events(uint32_t now_ms) {
 /**
  * @brief Applies a Torque Key prompt visibility action.
  *
- * Show and removal actions wait for the shared event slot and publish the corresponding display
+ * Show and removal actions wait for the shared event queue and publish the corresponding display
  * state. An accepted acknowledgement hides the prompt immediately and publishes the common
  * dismissal state.
  *
@@ -704,7 +965,7 @@ static void apply_torque_key_prompt_action(TorqueKeyPromptAction action) {
  *
  * Filters the active-low board input for 500 milliseconds, starts or cancels the safety prompt on
  * stable key transitions, accepts a released wheel input only while the prompt owns the display,
- * and advances presentation through the shared event slot. Scan-mode polling or attached-wheel
+ * and advances presentation through the shared event queue. Scan-mode polling or attached-wheel
  * calibration capability revokes acknowledgement until the condition clears. Acknowledgement
  * selects full base strength; removal or revocation restores the DD1 or DD2 reduced limit and
  * refreshes motor-side tuning.
@@ -779,7 +1040,8 @@ static void initialize_cooling(void) {
  * @brief Services fan output, force derating, and thermal effect limits.
  *
  * Uses the retained 20-degree startup temperature until motor telemetry is available, advances the
- * cooling controllers, publishes effect-strength changes, and applies both fan duties.
+ * cooling controllers, and, unless automatic control is suspended, publishes effect-strength
+ * changes and applies both fan duties.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -819,8 +1081,8 @@ static void service_cooling(uint32_t now_ms) {
 /**
  * @brief Consumes and converts one fan tachometer result.
  *
- * Publishes zero for a missing signal or converts two consecutive captures to RPM when a completed
- * result is available.
+ * Updates the stored speed to zero for a missing signal or converts two consecutive captures to
+ * RPM when a completed result is available.
  *
  * @param[in] fan Fan channel to update.
  */
@@ -855,8 +1117,8 @@ static void initialize_motor_link(void) {
  * @brief Captures and persists the current absolute wheel center.
  *
  * Ignores capture before a valid motor-position report is available. Otherwise normalizes the
- * current sample with the identified controller modulus and stores a changed reference before
- * returning.
+ * current sample with the identified controller modulus, stores the reference, and persists the
+ * settings when the reference changes.
  *
  * @return True when a valid position sample was captured.
  */
@@ -1226,22 +1488,27 @@ static void update_usb_diagnostic_snapshot(uint32_t now_ms) {
  * the status layout returned by the vendor tuning-status report.
  */
 static void update_usb_tuning_status_snapshot(void) {
+    /**
+     * @brief Encoded status values for the base, system, and pedal fields.
+     *
+     * These values match the native USB tuning-status report layout.
+     */
     enum {
-        BASE_STATUS_DD1 = 6,
-        BASE_STATUS_DD1_OPTION = 7,
-        BASE_STATUS_DD2 = 8,
-        SYSTEM_STATUS_BASELINE = 0x01,
-        SYSTEM_STATUS_VENDOR_ONE_AVAILABLE = 0x02,
-        SYSTEM_STATUS_VENDOR_FOUR_AVAILABLE = 0x10,
-        SYSTEM_STATUS_DD1_OPTION = 0x30,
-        SYSTEM_STATUS_TUNING_AVAILABLE = 0x40,
-        PEDAL_STATUS_INACTIVE = 0,
-        PEDAL_STATUS_LEGACY = 1,
-        PEDAL_STATUS_LEGACY_CALIBRATION = 2,
-        PEDAL_STATUS_ANALOG = 3,
-        PEDAL_STATUS_CALIBRATION = 4,
-        PEDAL_STATUS_SECONDARY_CALIBRATION = 5,
-        PEDAL_STATUS_TRANSFER = 6,
+        BASE_STATUS_DD1 = 6,           /**< Native status value for a DD1 base. */
+        BASE_STATUS_DD1_OPTION = 7,    /**< Native status value for an optioned DD1 base. */
+        BASE_STATUS_DD2 = 8,           /**< Native status value for a DD2 base. */
+        SYSTEM_STATUS_BASELINE = 0x01, /**< Baseline system-status flag. */
+        SYSTEM_STATUS_VENDOR_ONE_AVAILABLE = 0x02,  /**< Vendor-one availability flag. */
+        SYSTEM_STATUS_VENDOR_FOUR_AVAILABLE = 0x10, /**< Vendor-four availability flag. */
+        SYSTEM_STATUS_DD1_OPTION = 0x30,            /**< DD1 hardware-option status value. */
+        SYSTEM_STATUS_TUNING_AVAILABLE = 0x40,      /**< Tuning availability flag. */
+        PEDAL_STATUS_INACTIVE = 0,                  /**< Pedal status for an inactive link. */
+        PEDAL_STATUS_LEGACY = 1,                    /**< Pedal status for a legacy link. */
+        PEDAL_STATUS_LEGACY_CALIBRATION = 2,        /**< Pedal status for legacy calibration. */
+        PEDAL_STATUS_ANALOG = 3,                    /**< Pedal status for local analog input. */
+        PEDAL_STATUS_CALIBRATION = 4,               /**< Pedal status for calibration. */
+        PEDAL_STATUS_SECONDARY_CALIBRATION = 5,     /**< Pedal status for secondary calibration. */
+        PEDAL_STATUS_TRANSFER = 6,                  /**< Pedal status for an active transfer. */
     };
 
     const WheelStatusSnapshot *wheel_status = wheel_status_service_snapshot(&wheel_status_service);
@@ -1601,8 +1868,8 @@ static void service_playstation_authentication(uint32_t now_ms) {
 /**
  * @brief Encodes the pending force-feedback script query response.
  *
- * Uses the shared script report formats for native and Xbox transports without consuming the
- * pending query. The caller commits it only after its transport accepts the response.
+ * Uses the shared script report formats for native and Xbox transports without changing pending
+ * state. Callers decide when to clear the query after retaining the encoded bytes.
  *
  * @param[out] response Destination for the encoded response.
  * @return Encoded response length, or zero when no query is pending.
@@ -1797,9 +2064,9 @@ static void prepare_usb_xbox_script_response(void) {
 /**
  * @brief Prepares the highest-priority pending vendor response.
  *
- * Retains sequence-bearing reports for endpoint retries. Native telemetry precedes wheel transfer,
- * pedal transfer, script, profile, menu, diagnostic, and motor responses in the same order used by
- * the host command service.
+ * Retains each selected report until endpoint submission succeeds. Native remote-tuning reports
+ * precede wheel transfer, pedal transfer, script, profile, menu, diagnostic, tuning-status, and
+ * motor responses in the same order used by the host command service.
  */
 static void prepare_usb_vendor_response(void) {
     if (usb_device_operating_mode() != USB_OPERATING_MODE_FANATEC) {
@@ -2054,11 +2321,10 @@ static RuntimeBridgeTransferStatus runtime_bridge_transfer_status(UsbUpdaterProb
 /**
  * @brief Applies runtime bridge operations to clean platform services.
  *
- * Requests the auxiliary shutdown handshake, marks the status handshake, detaches USB during its
- * settling interval, selects the updater link, starts the common route probe, and activates the
- * updater descriptor and request service, or restores the prepared normal profile after a failed
- * startup recovery probe. Transfer timer actions require no separate operation because the
- * selected transport owns its timing source.
+ * Applies platform and service operations represented by bridge action flags: starts handshakes and
+ * transfers, prepares or restores USB, selects direct or protocol-routed transfer, and marks
+ * updater USB active. Transfer-timer and updater-service flags require no separate call here
+ * because their services are advanced by service_runtime_bridge().
  *
  * @param[in] actions Independent runtime bridge action flags.
  */
@@ -2257,8 +2523,7 @@ static void initialize_startup_console_usb(void) {
 
     finish_unavailable_xbox_startup();
     bool retained_xbox_mode = selected_base_mode == 6;
-    uint32_t xbox_deadline_ms =
-        platform_time_ms() + MOTOR_STARTUP_RETAINED_XBOX_TIMEOUT_MS;
+    uint32_t xbox_deadline_ms = platform_time_ms() + MOTOR_STARTUP_RETAINED_XBOX_TIMEOUT_MS;
     (void)service_xbox_mode_startup();
     while (xbox_mode_startup_attempted && !xbox_mode_startup_finished) {
         uint32_t now_ms = platform_time_ms();
@@ -2274,8 +2539,7 @@ static void initialize_startup_console_usb(void) {
         }
         service_motor_link();
         service_power(now_ms);
-        if (retained_xbox_mode &&
-            platform_time_reached(platform_time_ms(), xbox_deadline_ms)) {
+        if (retained_xbox_mode && platform_time_reached(platform_time_ms(), xbox_deadline_ms)) {
             cancel_xbox_mode_startup();
             finish_native_mode_startup();
         }
@@ -2297,8 +2561,7 @@ static void initialize_startup_console_usb(void) {
 static bool start_startup_status_bridge(void) {
     platform_display_reset();
     usb_device_prepare(board_identity.variant);
-    if (!usb_updater_service_select_mode(&usb_updater_service,
-                                         USB_RUNTIME_MODE_STATUS_BRIDGE)) {
+    if (!usb_updater_service_select_mode(&usb_updater_service, USB_RUNTIME_MODE_STATUS_BRIDGE)) {
         platform_usb_attach();
         return false;
     }
@@ -2355,8 +2618,7 @@ static void initialize_startup_usb(void) {
         run_led_pattern_startup_sequence();
         run_motor_startup_centering();
         automatic_steering_travel = MOTOR_STARTUP_AUTOMATIC_STEERING_TRAVEL;
-        uint32_t status_settle_deadline_ms =
-            platform_time_ms() + MOTOR_STARTUP_STATUS_SETTLE_MS;
+        uint32_t status_settle_deadline_ms = platform_time_ms() + MOTOR_STARTUP_STATUS_SETTLE_MS;
         while (!platform_time_reached(platform_time_ms(), status_settle_deadline_ms + 1u)) {
         }
         if (!run_wheel_startup_status_transaction()) {
@@ -2430,8 +2692,8 @@ static bool start_runtime_bridge(const UsbOperatingModeCommand *command) {
  *
  * Keeps the motor link on disabled zero-force frames, finishes any in-flight wheel exchange,
  * advances auxiliary-bus, raw-link, or command-routed updater probes, handles the protocol
- * fallback callback, services updater USB after activation, and handles a guarded updater reset
- * request by disabling interrupts and immediately restarting the processor.
+ * callback, services updater USB after activation, and handles a guarded updater reset request by
+ * disabling interrupts and immediately restarting the processor.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  * @return True while runtime bridge mode owns the main loop; otherwise false.
@@ -2518,7 +2780,7 @@ static void handle_force_feedback_timer_tick(void *context) {
  * @brief Resets force-feedback script scheduling and output state.
  *
  * Restores position-only mode, clears scripts, samples, inputs, timing, smoothing, range-limit
- * history, report selection, and response sequencing, and starts the force ramp at zero.
+ * history, report selection, response sequencing, and the force-ramp deadline.
  *
  */
 static void reset_force_feedback_script(void) {
@@ -2577,7 +2839,7 @@ static void service_usb_xbox_session_actions(void) {
 /**
  * @brief Advances script-generated live force output.
  *
- * Raises the startup ramp by one percent after each elapsed 50-millisecond deadline, keeps the
+ * Raises the startup ramp by one percent when a 50-millisecond deadline has elapsed, keeps the
  * motor's natural-friction tuning synchronized, and services due script ticks after a motor
  * position is available. A latched motor fault clears primary force and skips script evaluation.
  * Output uses the active profile, thermal limit, Torque Key strength, centered wheel travel, and
@@ -2641,8 +2903,8 @@ static void service_force_feedback_script(uint32_t now_ms) {
 /**
  * @brief Publishes one pending motor status event to the system event queue.
  *
- * Waits for the single event slot, transfers the motor event exactly once, and retains the accepted
- * code in shared control state for status consumers.
+ * Waits for the shared event queue, transfers the motor event exactly once, and retains the
+ * accepted code in shared control state for status consumers.
  */
 static void publish_motor_status_event(void) {
     if (system_event_queue.pending_code != 0) {
@@ -2658,7 +2920,7 @@ static void publish_motor_status_event(void) {
 /**
  * @brief Publishes one pending motor-calibration event to the system event queue.
  *
- * Waits for the single event slot, transfers the calibration display event exactly once, and
+ * Waits for the shared event queue, transfers the calibration display event exactly once, and
  * retains the accepted code in shared control state for status consumers.
  */
 static void publish_motor_calibration_event(void) {
@@ -2743,7 +3005,8 @@ static void service_motor(void) {
  * @brief Monitors a stalled motor counter at the minimum steering limit.
  *
  * Converts the current wheel position to its published steering axis, supplies the latest motor
- * runtime counter, and queues the persistent restart warning after an unchanged 4.5-second hold.
+ * runtime counter, and attempts to queue the persistent restart warning after an unchanged
+ * 4.5-second hold.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -3424,8 +3687,8 @@ static void apply_security_code_presentation(void) {
 /**
  * @brief Publishes a tuning interaction event to local and attached-wheel presentation.
  *
- * Queues the event for local display and makes it the active system-control event sent to the
- * attached wheel.
+ * Attempts to queue the event for local display and makes it the active system-control event sent
+ * to the attached wheel.
  *
  * @param[in] event_code Tuning reset or profile-mode event code.
  */
@@ -3740,8 +4003,8 @@ static void service_tuning_interaction(uint32_t now_ms) {
 /**
  * @brief Advances the attached wheel's alternative-shifter selection.
  *
- * Keeps profile-related selection pending through the tuning close phase, applies the selected
- * mode to the active profile, and persists a changed selection.
+ * Keeps profile-related selection pending through the tuning close phase, debounces and toggles the
+ * attached-wheel mode, and attempts to queue an event when the mode changes.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -4056,6 +4319,7 @@ static void service_usb_feature_reports(void) {
     usb_feature_report_33_encode(&report33, usb_feature_reports[2]);
     usb_feature_report_36_encode((uint8_t)usb_tuning_menu_service.active_page,
                                  usb_feature_reports[3]);
+    /** @brief Feature-report identifiers published by this service. */
     static const uint8_t report_ids[4] = {0x31, 0x32, 0x33, 0x36};
     for (uint8_t index = 0; index < 4; index++) {
         (void)usb_device_publish_feature_report(report_ids[index], usb_feature_reports[index],
@@ -4234,7 +4498,7 @@ static void service_wheel_startup_display(uint32_t now_ms) {
  * @brief Applies a force-output prompt visibility action.
  *
  * Retains the current display state when no action is requested. Show and cancellation actions use
- * the shared event slot and publish their attached-wheel display state. An accepted response hides
+ * the shared event queue and publish their attached-wheel display state. An accepted response hides
  * the prompt immediately and publishes the common dismissal state.
  *
  * @param[in] action Requested prompt visibility transition.
@@ -4332,10 +4596,14 @@ static bool system_information_equal(const DisplaySystemInformation *left,
            left->quick_release_runtime_seconds == right->quick_release_runtime_seconds;
 }
 
-/** @brief Latest accepted motor and driver temperatures. */
+/**
+ * @brief Latest accepted motor and driver temperatures.
+ *
+ * The values are read from motor telemetry and supplied to local display analysis pages.
+ */
 typedef struct {
-    int16_t motor;
-    int16_t driver;
+    int16_t motor;  /**< Motor temperature in degrees Celsius. */
+    int16_t driver; /**< Driver temperature in degrees Celsius. */
 } LocalMotorTemperatures;
 
 /**
@@ -4568,7 +4836,7 @@ static void service_local_display(void) {
  *
  * Removes enabled force output when its wheel or USB prerequisite disappears. While interlocked,
  * accepts a released wheel input only when the force-output prompt owns the display and advances
- * prompt presentation through the shared event slot.
+ * prompt presentation through the shared event queue.
  */
 static void service_force_output_enable(void) {
     bool wheel_protocol_ready = wheel_service_force_output_ready(&wheel_service);

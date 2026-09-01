@@ -3,19 +3,28 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/**
+ * @brief V4 status record and wire-format constants.
+ */
 enum {
-    PEDAL_V4_RECORD_TAG = 0x0a,
-    PEDAL_V4_SELECTOR_FIELD = 1,
-    PEDAL_V4_VALUE_FIELD = 2,
-    PEDAL_V4_WIRE_VARINT = 0,
-    PEDAL_V4_WIRE_DELIMITED = 2,
+    PEDAL_V4_RECORD_TAG = 0x0a,  /**< Length-delimited status-record tag. */
+    PEDAL_V4_SELECTOR_FIELD = 1, /**< Status-record selector field number. */
+    PEDAL_V4_VALUE_FIELD = 2,    /**< Status-record value field number. */
+    PEDAL_V4_WIRE_VARINT = 0,    /**< Variable-length integer wire type. */
+    PEDAL_V4_WIRE_DELIMITED = 2, /**< Length-delimited wire type. */
 };
 
+/**
+ * @brief Stores a parsed V4 variable-length integer and its end offset.
+ */
 typedef struct {
-    uint32_t value;
-    uint16_t offset;
+    uint32_t value;  /**< Parsed integer value. */
+    uint16_t offset; /**< Offset immediately after the encoded integer. */
 } ParsedVarint;
 
+/**
+ * @brief Fixed V4 status request payload.
+ */
 static const uint8_t status_request[PEDAL_V4_STATUS_REQUEST_SIZE] = {
     0x12, 0x0a, 0x02, 0x08, 0x02, 0x18, 0x01, 0x20, 0x08, 0xaa, 0x01,
     0x07, 0xba, 0x01, 0x04, 0x52, 0x02, 0x72, 0x00, 0xd7, 0xfb,
@@ -128,8 +137,8 @@ static void parse_record(const uint8_t *data, uint16_t start, uint16_t end,
  *
  * @param[in] data Complete V4 response payload.
  * @param[in] length Response payload length.
- * @param[in,out] axes Axis destination ordered as primary, secondary, and tertiary input; retained
- * unchanged when the response has no record payload.
+ * @param[out] axes Axis destination ordered as primary, secondary, and tertiary input; unchanged
+ * only when data is null or no bytes follow the envelope.
  */
 void pedal_v4_status_parse(const uint8_t *data, uint16_t length,
                            uint16_t axes[PEDAL_V4_STATUS_AXIS_COUNT]) {

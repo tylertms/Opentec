@@ -3,13 +3,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/** @brief Rotary position and debounce constants. */
 enum {
-    ROTARY_POSITION_FIRST = 1,
-    ROTARY_POSITION_LOW_WRAP_MAXIMUM = 3,
-    ROTARY_POSITION_HIGH_WRAP_MINIMUM = 10,
-    ROTARY_POSITION_LAST = 12,
-    ROTARY_EVENT_HOLD_MS = 80,
-    ROTARY_EVENT_RELEASE_MS = 80,
+    ROTARY_POSITION_FIRST = 1,              /**< First physical rotary position. */
+    ROTARY_POSITION_LOW_WRAP_MAXIMUM = 3,   /**< Highest position in the low wrap range. */
+    ROTARY_POSITION_HIGH_WRAP_MINIMUM = 10, /**< Lowest position in the high wrap range. */
+    ROTARY_POSITION_LAST = 12,              /**< Last physical rotary position. */
+    ROTARY_EVENT_HOLD_MS = 80,              /**< Event hold duration in milliseconds. */
+    ROTARY_EVENT_RELEASE_MS = 80,           /**< Event release duration in milliseconds. */
 };
 
 /**
@@ -101,7 +102,8 @@ void wheel_rotary_input_init(WheelRotaryInput *input) {
  * @param[in] channel Channel index from zero through three.
  * @param[in] position Latest rotary position, or zero when unavailable.
  * @param[in] now_ms Current monotonic time in milliseconds.
- * @return Current event code for the selected channel.
+ * @return Current event code for the selected channel, or WHEEL_ROTARY_EVENT_NONE when input is
+ * null or channel is out of range.
  */
 WheelRotaryEvent wheel_rotary_input_update(WheelRotaryInput *input, uint8_t channel,
                                            uint8_t position, uint32_t now_ms) {

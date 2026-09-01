@@ -7,22 +7,28 @@
 #include "display/framebuffer.h"
 #include "display/text.h"
 
+/**
+ * @brief Defines motor-analysis timing, scaling, colors, and layout.
+ *
+ * These constants describe the sampling cadence, torque ranges, chart geometry, and fixed
+ * framebuffer positions used by the motor-analysis page.
+ */
 enum {
-    MOTOR_ANALYSIS_SAMPLE_INTERVAL_MS = 41,
-    MOTOR_ANALYSIS_PEAK_INTERVAL_MS = 30,
-    MOTOR_ANALYSIS_PEAK_HOLD_MS = 10000,
-    MOTOR_ANALYSIS_DD1_LIMIT = 20000,
-    MOTOR_ANALYSIS_DD2_LIMIT = 25000,
-    MOTOR_ANALYSIS_COLOR = 15,
-    MOTOR_ANALYSIS_SERIES_COLOR = 8,
-    MOTOR_ANALYSIS_GRID_COLOR = 1,
-    MOTOR_ANALYSIS_BAR_BORDER_COLOR = 10,
-    MOTOR_ANALYSIS_BAR_FILL_COLOR = 6,
-    MOTOR_ANALYSIS_CHART_LEFT = 3,
-    MOTOR_ANALYSIS_CHART_RIGHT = 122,
-    MOTOR_ANALYSIS_CHART_TOP = 23,
-    MOTOR_ANALYSIS_CHART_BOTTOM = 62,
-    MOTOR_ANALYSIS_SEPARATOR_X = 150,
+    MOTOR_ANALYSIS_SAMPLE_INTERVAL_MS = 41, /**< Torque-chart sampling interval in milliseconds. */
+    MOTOR_ANALYSIS_PEAK_INTERVAL_MS = 30,   /**< Peak-hold evaluation interval in milliseconds. */
+    MOTOR_ANALYSIS_PEAK_HOLD_MS = 10000,    /**< Peak-hold duration in milliseconds. */
+    MOTOR_ANALYSIS_DD1_LIMIT = 20000,     /**< DD1 torque limit in thousandths of a newton-metre. */
+    MOTOR_ANALYSIS_DD2_LIMIT = 25000,     /**< DD2 torque limit in thousandths of a newton-metre. */
+    MOTOR_ANALYSIS_COLOR = 15,            /**< Foreground grayscale value. */
+    MOTOR_ANALYSIS_SERIES_COLOR = 8,      /**< History-series grayscale value. */
+    MOTOR_ANALYSIS_GRID_COLOR = 1,        /**< Chart-grid grayscale value. */
+    MOTOR_ANALYSIS_BAR_BORDER_COLOR = 10, /**< Torque-bar border grayscale value. */
+    MOTOR_ANALYSIS_BAR_FILL_COLOR = 6,    /**< Torque-bar fill grayscale value. */
+    MOTOR_ANALYSIS_CHART_LEFT = 3,        /**< Chart left coordinate. */
+    MOTOR_ANALYSIS_CHART_RIGHT = 122,     /**< Chart right coordinate. */
+    MOTOR_ANALYSIS_CHART_TOP = 23,        /**< Chart top coordinate. */
+    MOTOR_ANALYSIS_CHART_BOTTOM = 62,     /**< Chart bottom coordinate. */
+    MOTOR_ANALYSIS_SEPARATOR_X = 150,     /**< Telemetry-column separator coordinate. */
 };
 
 /**
@@ -177,8 +183,8 @@ static void draw_horizontal(DisplayFramebuffer framebuffer, uint16_t first_x, ui
 /**
  * @brief Draws the signed five-second torque chart.
  *
- * Renders five one-second divisions, six torque divisions, and retained samples in chronological
- * order with zero torque at the chart midpoint.
+ * Renders the approximately five-second chart, six torque divisions, and retained samples in
+ * chronological order with zero torque at the chart midpoint.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
  * @param[in] page Retained scaled torque samples and ring position.

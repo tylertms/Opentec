@@ -2,10 +2,15 @@
 
 #include <stdint.h>
 
+/**
+ * @brief Defines the drawable bounds and packed row size.
+ *
+ * These bounds match the coordinates accepted by the pixel helper.
+ */
 enum {
-    DISPLAY_DRAWABLE_MAX_X = 254,
-    DISPLAY_DRAWABLE_MAX_Y = 62,
-    DISPLAY_ROW_SIZE = DISPLAY_FRAMEBUFFER_WIDTH / 2,
+    DISPLAY_DRAWABLE_MAX_X = 254, /**< Greatest column accepted by the pixel helper. */
+    DISPLAY_DRAWABLE_MAX_Y = 62,  /**< Greatest row accepted by the pixel helper. */
+    DISPLAY_ROW_SIZE = DISPLAY_FRAMEBUFFER_WIDTH / 2, /**< Packed bytes in one framebuffer row. */
 };
 
 /**

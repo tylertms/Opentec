@@ -6,8 +6,28 @@
 
 #include "display/framebuffer.h"
 
+/**
+ * @brief Initializes the display bus and controller.
+ *
+ * Configures the parallel display bus, applies controller reset timing, and sends controller setup
+ * commands.
+ */
 void platform_display_init(void);
+
+/**
+ * @brief Resets the display controller.
+ *
+ * Applies the required high-low-high reset pulse timing.
+ */
 void platform_display_reset(void);
+
+/**
+ * @brief Writes one complete display framebuffer.
+ *
+ * Selects the display frame window and starts a DMA transfer from framebuffer storage.
+ *
+ * @param[in] framebuffer Packed display framebuffer to transmit.
+ */
 void platform_display_write_frame(ConstDisplayFramebuffer framebuffer);
 
 /**

@@ -19,10 +19,10 @@ void a71ch_session_service_init(A71chSessionService *service) {
 }
 
 /**
- * @brief Starts a dormant A71CH SCI2C session sequence.
+ * @brief Starts an A71CH SCI2C session sequence.
  *
- * Initializes the protocol sequence when the service is idle or complete. A sequence already in
- * progress continues without interruption.
+ * Initializes a new protocol sequence unless the service is already running, in which case the
+ * active sequence continues without interruption.
  *
  * @param[in,out] service Session service state.
  */
@@ -39,8 +39,8 @@ void a71ch_session_service_start(A71chSessionService *service) {
 /**
  * @brief Applies one completed A71CH session transaction.
  *
- * Releases the shared bus, retries failed transactions at the current command, and converts a
- * successful response into the length, control, and payload fields consumed by the session.
+ * Releases the shared bus and converts a successful response into the length, control, and payload
+ * fields consumed by the session.
  *
  * @param[in,out] service Session service state and response buffer.
  * @param[in] succeeded True when the auxiliary-bus transaction succeeded.

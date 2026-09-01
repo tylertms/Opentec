@@ -4,15 +4,37 @@
 #include <stdint.h>
 #include <xc.h>
 
+/**
+ * @brief Motor-link SPI and DMA configuration values.
+ */
 enum {
-    MOTOR_LINK_DMA_REQUEST = 10,
-    MOTOR_LINK_INTERRUPT_PRIORITY = 7,
+    MOTOR_LINK_DMA_REQUEST = 10,       /**< DMA request number for SPI1 transfers. */
+    MOTOR_LINK_INTERRUPT_PRIORITY = 7, /**< SPI1 and DMA interrupt priority. */
 };
 
+/**
+ * @brief SPI1 receive DMA buffer.
+ */
 static volatile uint8_t received_dma[PLATFORM_MOTOR_LINK_FRAME_SIZE];
+
+/**
+ * @brief SPI1 transmit DMA buffer.
+ */
 static volatile uint8_t transmitted_dma[PLATFORM_MOTOR_LINK_FRAME_SIZE];
+
+/**
+ * @brief Most recently completed motor-link receive frame.
+ */
 static volatile uint8_t received_frame[PLATFORM_MOTOR_LINK_FRAME_SIZE];
+
+/**
+ * @brief Retained copy of the latest requested motor-link transmit frame.
+ */
 static volatile uint8_t next_transmit[PLATFORM_MOTOR_LINK_FRAME_SIZE];
+
+/**
+ * @brief True when a completed motor-link frame awaits foreground retrieval.
+ */
 static volatile bool received_ready;
 
 /**
@@ -61,7 +83,7 @@ static void copy_between_volatile(volatile uint8_t *destination, const volatile 
  * @brief Configures SPI1 as the motor controller's slave transport.
  *
  * Disables the controller, clears receive overflow, and selects slave operation with active-low
- * chip select, idle-low clock, and input sampling on the falling edge.
+ * chip select and an idle-low clock.
  */
 static void configure_spi(void) {
     SPI1STATbits.SPIEN = 0;

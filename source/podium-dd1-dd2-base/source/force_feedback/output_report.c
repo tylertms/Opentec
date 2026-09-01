@@ -2,15 +2,6 @@
 
 #include <stdint.h>
 
-/**
- * @brief Encodes the final direction and two force magnitudes sent to the motor controller.
- *
- * Writes the direction byte followed by the primary and secondary 16-bit magnitudes in
- * little-endian order.
- *
- * @param[in] report Final force-output fields after limits and strength scaling are applied.
- * @param[out] output Five-byte little-endian force-output payload.
- */
 void force_output_report_encode(const ForceOutputReport *report,
                                 uint8_t output[FORCE_OUTPUT_REPORT_SIZE]) {
     output[0] = report->positive_direction;

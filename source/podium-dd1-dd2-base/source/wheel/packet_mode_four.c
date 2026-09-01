@@ -2,25 +2,26 @@
 
 #include <stdint.h>
 
+/** @brief Internal mode-four packet identifiers, offsets, and interface modes. */
 enum {
-    WHEEL_PACKET_COMMAND_SELECT_MODE = 0xa5,
-    REQUEST_PAYLOAD_OFFSET = 2,
-    REQUEST_AXIS_OUTPUTS_OFFSET = 3,
-    REQUEST_MOTION_OFFSET = 5,
-    REQUEST_CONTROLS_OFFSET = 6,
-    REQUEST_CONTROL_DATA_OFFSET = 10,
-    REQUEST_RESERVED_AXES_OFFSET = 14,
-    REQUEST_AXIS_VALUES_OFFSET = 16,
-    REQUEST_MODE_BUTTONS_OFFSET = 20,
-    REQUEST_AXIS_REPORT_ENABLED_OFFSET = 21,
-    REQUEST_AUXILIARY_DATA_OFFSET = 22,
-    REQUEST_REPORT_MODE_OFFSET = 26,
-    REQUEST_RESERVED_REPORT_OFFSET = 27,
-    REQUEST_REPORT_CAPABILITIES_OFFSET = 28,
-    REQUEST_AXIS_LIMIT_OFFSET = 29,
-    INTERFACE_MODE_XBOX_GIP = 6,
-    INTERFACE_MODE_PLAYSTATION_4 = 7,
-    INTERFACE_MODE_LOGITECH_G27 = 4,
+    WHEEL_PACKET_COMMAND_SELECT_MODE = 0xa5, /**< Select-mode response command. */
+    REQUEST_PAYLOAD_OFFSET = 2,              /**< Request payload offset. */
+    REQUEST_AXIS_OUTPUTS_OFFSET = 3,         /**< Axis-output offset within the payload. */
+    REQUEST_MOTION_OFFSET = 5,               /**< Motion offset within the payload. */
+    REQUEST_CONTROLS_OFFSET = 6,             /**< Control offset within the payload. */
+    REQUEST_CONTROL_DATA_OFFSET = 10,        /**< Control-data offset within the payload. */
+    REQUEST_RESERVED_AXES_OFFSET = 14,       /**< Reserved-axis offset within the payload. */
+    REQUEST_AXIS_VALUES_OFFSET = 16,         /**< Axis-value offset within the payload. */
+    REQUEST_MODE_BUTTONS_OFFSET = 20,        /**< Mode-button offset within the payload. */
+    REQUEST_AXIS_REPORT_ENABLED_OFFSET = 21, /**< Axis-report flag offset. */
+    REQUEST_AUXILIARY_DATA_OFFSET = 22,      /**< Auxiliary-data offset. */
+    REQUEST_REPORT_MODE_OFFSET = 26,         /**< Report-mode offset. */
+    REQUEST_RESERVED_REPORT_OFFSET = 27,     /**< Reserved-report offset. */
+    REQUEST_REPORT_CAPABILITIES_OFFSET = 28, /**< Report-capability offset. */
+    REQUEST_AXIS_LIMIT_OFFSET = 29,          /**< Axis-limit offset. */
+    INTERFACE_MODE_XBOX_GIP = 6,             /**< Xbox GIP interface mode. */
+    INTERFACE_MODE_PLAYSTATION_4 = 7,        /**< PlayStation 4 interface mode. */
+    INTERFACE_MODE_LOGITECH_G27 = 4,         /**< Logitech G27 interface mode. */
 };
 
 /**

@@ -3,8 +3,9 @@
 #include <stddef.h>
 #include <string.h>
 
+/** @brief Internal remote-tuning response report identifier. */
 enum {
-    REMOTE_TUNING_REPORT_ID = 0xa7,
+    REMOTE_TUNING_REPORT_ID = 0xa7, /**< Remote-tuning response report ID. */
 };
 
 /**

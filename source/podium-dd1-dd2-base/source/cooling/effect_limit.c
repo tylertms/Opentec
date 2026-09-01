@@ -3,8 +3,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/**
+ * @brief Thermal effect-strength ceiling.
+ *
+ * Each force-feedback effect is capped at this protocol strength while a thermal limit is active.
+ */
 enum {
-    COOLING_EFFECT_STRENGTH_LIMIT = 10,
+    COOLING_EFFECT_STRENGTH_LIMIT = 10, /**< Maximum strength permitted during thermal limiting. */
 };
 
 /**

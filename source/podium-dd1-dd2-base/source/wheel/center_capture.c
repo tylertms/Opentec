@@ -5,12 +5,20 @@
 
 #include "platform/time.h"
 
+/**
+ * @brief Host wheel-center capture command layout and timing values.
+ *
+ * The command is a seven-byte short report beginning with F9 05; capture and notification events
+ * use separate monotonic-clock intervals.
+ */
 enum {
-    WHEEL_CENTER_CAPTURE_COMMAND_SIZE = 7,
-    WHEEL_CENTER_CAPTURE_COMMAND_PREFIX = 0xf9,
-    WHEEL_CENTER_CAPTURE_COMMAND_SUBCOMMAND = 5,
-    WHEEL_CENTER_CAPTURE_INTERVAL_MS = 1000,
-    WHEEL_CENTER_CAPTURE_NOTIFICATION_INTERVAL_MS = 4000,
+    WHEEL_CENTER_CAPTURE_COMMAND_SIZE = 7, /**< Required short-report length. */
+    WHEEL_CENTER_CAPTURE_COMMAND_PREFIX =
+        0xf9, /**< First command byte identifying center capture. */
+    WHEEL_CENTER_CAPTURE_COMMAND_SUBCOMMAND =
+        5,                                   /**< Second command byte identifying center capture. */
+    WHEEL_CENTER_CAPTURE_INTERVAL_MS = 1000, /**< Minimum interval between capture requests. */
+    WHEEL_CENTER_CAPTURE_NOTIFICATION_INTERVAL_MS = 4000, /**< Interval between result notices. */
 };
 
 /**
@@ -34,7 +42,9 @@ void wheel_center_capture_command_init(WheelCenterCaptureCommand *command) {
  * @param[in,out] command Host capture command timing state.
  * @param[in] output Classified USB output report.
  * @param[in] now_ms Current monotonic time in milliseconds.
- * @return Whether the report was unrelated, rate-limited, or accepted for capture.
+ * @return WHEEL_CENTER_CAPTURE_UNHANDLED for an unrelated or malformed report,
+ * WHEEL_CENTER_CAPTURE_HANDLED for a recognized rate-limited report, or
+ * WHEEL_CENTER_CAPTURE_REQUESTED when capture should be attempted.
  */
 WheelCenterCaptureAction wheel_center_capture_command_apply(WheelCenterCaptureCommand *command,
                                                             const UsbOutputCommand *output,
@@ -60,7 +70,8 @@ WheelCenterCaptureAction wheel_center_capture_command_apply(WheelCenterCaptureCo
  *
  * @param[in,out] command Host capture command timing state.
  * @param[in] now_ms Current monotonic time in milliseconds.
- * @return True when a new result notice should be queued.
+ * @return true when now_ms is strictly after the retained deadline and the deadline was advanced;
+ * false otherwise.
  */
 bool wheel_center_capture_command_notification_due(WheelCenterCaptureCommand *command,
                                                    uint32_t now_ms) {

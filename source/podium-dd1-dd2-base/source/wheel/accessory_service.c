@@ -6,12 +6,18 @@
 #include "transfer/command.h"
 #include "wheel/accessory.h"
 
+/**
+ * @brief Command-transport owner, target, and offsets for accessory identity reads.
+ *
+ * The service reads status, version, and extended type bytes from the fixed accessory target.
+ */
 enum {
-    WHEEL_ACCESSORY_SERVICE_OWNER = 0x44,
-    WHEEL_ACCESSORY_TARGET = 0xf0,
-    WHEEL_ACCESSORY_STATUS_OFFSET = 0,
-    WHEEL_ACCESSORY_VERSION_OFFSET = 1,
-    WHEEL_ACCESSORY_TYPE_OFFSET = 7,
+    WHEEL_ACCESSORY_SERVICE_OWNER =
+        0x44,                          /**< Command-transport owner identifier for this service. */
+    WHEEL_ACCESSORY_TARGET = 0xf0,     /**< Remote target identifier for the accessory processor. */
+    WHEEL_ACCESSORY_STATUS_OFFSET = 0, /**< Target offset of the signed status byte. */
+    WHEEL_ACCESSORY_VERSION_OFFSET = 1, /**< Target offset of the four-byte version value. */
+    WHEEL_ACCESSORY_TYPE_OFFSET = 7,    /**< Target offset of the extended accessory type byte. */
 };
 
 /**
@@ -151,10 +157,11 @@ void wheel_accessory_service_run(WheelAccessoryService *service, CommandTranspor
 /**
  * @brief Returns the latest attached wheel accessory identity.
  *
- * Exposes the last accepted protocol kind, model, status, and version.
+ * Exposes the kind and model from the last supported probe together with the latest retained
+ * status, version, and extended accessory type.
  *
  * @param[in] service Accessory service to inspect.
- * @return Current accessory identity, or null when the service is unavailable.
+ * @return Pointer to the retained accessory identity, or null when service is null.
  */
 const WheelAccessory *wheel_accessory_service_identity(const WheelAccessoryService *service) {
     return service == NULL ? NULL : &service->accessory;

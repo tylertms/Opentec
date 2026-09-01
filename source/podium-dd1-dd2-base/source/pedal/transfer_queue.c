@@ -78,7 +78,7 @@ void pedal_transfer_queue_start(PedalTransferQueue *queue) {
 /**
  * @brief Completes the active front pedal request.
  *
- * Removes the request after either its forwarded response or its 100-millisecond response timeout.
+ * Removes the request after its caller has completed it or handled its response timeout.
  *
  * @param[in,out] queue Queue whose active request completed.
  */

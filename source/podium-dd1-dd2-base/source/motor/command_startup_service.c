@@ -79,31 +79,11 @@ static bool queue_action(MotorCommandStartupService *service, MotorCommandChanne
     return true;
 }
 
-/**
- * @brief Initializes the asynchronous motor-command startup service.
- *
- * Selects the reset phase and clears capacity-read, response, packet-write, and failure progress.
- *
- * @param[out] service Startup service to initialize.
- */
 void motor_command_startup_service_init(MotorCommandStartupService *service) {
     *service = (MotorCommandStartupService){0};
     motor_command_startup_init(&service->startup);
 }
 
-/**
- * @brief Advances motor-command startup through the shared mailbox.
- *
- * Claims owner 0x20, completes the initial capacity read, writes sequence reset, calibration
- * digest, and information-selector 3 and 4 requests, acknowledges every accepted response, and
- * releases the transport after both information values are stored.
- *
- * @param[in,out] service Startup service state.
- * @param[in,out] channel Motor-command protocol and application channel.
- * @param[in,out] exchange Remote mailbox exchange.
- * @param[in,out] transport Shared command transport.
- * @return Running, complete, or failed startup state.
- */
 MotorCommandStartupServiceResult
 motor_command_startup_service_run(MotorCommandStartupService *service, MotorCommandChannel *channel,
                                   MotorCommandMailboxExchange *exchange,

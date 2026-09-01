@@ -7,9 +7,10 @@
 #include "transfer/command.h"
 #include "wheel/updater_bridge.h"
 
+/** @brief Shared command-transport identifiers for updater operations. */
 enum {
-    WHEEL_UPDATER_COMMAND_OWNER = 0x43,
-    WHEEL_UPDATER_COMMAND_OFFSET = 0,
+    WHEEL_UPDATER_COMMAND_OWNER = 0x43, /**< Local command-transport owner identifier. */
+    WHEEL_UPDATER_COMMAND_OFFSET = 0,   /**< Remote updater register offset. */
 };
 
 /**

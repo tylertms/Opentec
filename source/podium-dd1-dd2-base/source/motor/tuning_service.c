@@ -4,7 +4,12 @@
 
 #include "platform/aux_bus.h"
 
-enum { MOTOR_AUX_BUS_ADDRESS = 0x78 };
+/**
+ * @brief Auxiliary-bus address used for motor tuning writes.
+ */
+enum {
+    MOTOR_AUX_BUS_ADDRESS = 0x78 /**< Auxiliary-bus address of the motor controller. */
+};
 
 /**
  * @brief Initializes the asynchronous motor tuning service.

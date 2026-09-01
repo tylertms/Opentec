@@ -7,12 +7,13 @@
 #include "serial/message.h"
 #include "serial/service.h"
 
+/** @brief Attached-wheel status message and polling constants. */
 enum {
-    WHEEL_STATUS_MESSAGE_TYPE = 5,
-    WHEEL_STATUS_RESPONSE_SIZE = 15,
-    WHEEL_STATUS_MARKER_OFFSET = 14,
-    WHEEL_STATUS_MARKER = 0xaa,
-    WHEEL_STATUS_POLL_INTERVAL_MS = 1000,
+    WHEEL_STATUS_MESSAGE_TYPE = 5,   /**< Serial message type for status polling. */
+    WHEEL_STATUS_RESPONSE_SIZE = 15, /**< Expected status response length in bytes. */
+    WHEEL_STATUS_MARKER_OFFSET = 14, /**< Offset of the marked-response byte. */
+    WHEEL_STATUS_MARKER = 0xaa,      /**< Marker requesting and identifying a marked response. */
+    WHEEL_STATUS_POLL_INTERVAL_MS = 1000, /**< Periodic poll interval in milliseconds. */
 };
 
 /**
@@ -20,7 +21,7 @@ enum {
  *
  * Combines two consecutive response bytes with the least-significant byte first.
  *
- * @param[in] data First response byte.
+ * @param[in] data Two little-endian response bytes to decode.
  * @return Decoded 16-bit value.
  */
 static uint16_t decode_u16(const uint8_t data[2]) {
@@ -32,7 +33,7 @@ static uint16_t decode_u16(const uint8_t data[2]) {
  *
  * Combines four consecutive response bytes with the least-significant byte first.
  *
- * @param[in] data First response byte.
+ * @param[in] data Four little-endian response bytes to decode.
  * @return Decoded 32-bit value.
  */
 static uint32_t decode_u32(const uint8_t data[4]) {
@@ -84,7 +85,7 @@ void wheel_status_service_init(WheelStatusService *service, SerialService *trans
  * @brief Advances attached-wheel status polling.
  *
  * Applies a completed fifteen-byte type-five response, releases failed requests, and submits the
- * next one-byte marker request no more than once per second when the scheduler grants a slot.
+ * next one-byte status request no more than once per second when the scheduler grants a slot.
  *
  * @param[in,out] service Wheel-status service to advance.
  * @param[in] now_ms Current monotonic time in milliseconds.

@@ -6,24 +6,30 @@
 #include "display/framebuffer.h"
 #include "display/text.h"
 
+/**
+ * @brief Defines force-feedback analysis timing, colors, and layout.
+ *
+ * These constants describe the sample cadence, chart and level-bar geometry, and fixed display
+ * positions used by the force-feedback analysis page.
+ */
 enum {
-    ANALYSIS_SAMPLE_INTERVAL_MS = 25,
-    ANALYSIS_COLOR = 15,
-    ANALYSIS_SERIES_COLOR = 8,
-    ANALYSIS_GRID_COLOR = 1,
-    ANALYSIS_BAR_BORDER_COLOR = 10,
-    ANALYSIS_BAR_FILL_COLOR = 6,
-    ANALYSIS_CHART_LEFT = 5,
-    ANALYSIS_CHART_RIGHT = 203,
-    ANALYSIS_CHART_TOP = 22,
-    ANALYSIS_CHART_BOTTOM = 62,
-    ANALYSIS_BAR_TOP = 22,
-    ANALYSIS_BAR_BOTTOM = 62,
-    ANALYSIS_COUNTERCLOCKWISE_BAR_LEFT = 210,
-    ANALYSIS_COUNTERCLOCKWISE_BAR_RIGHT = 223,
-    ANALYSIS_CLOCKWISE_BAR_LEFT = 226,
-    ANALYSIS_CLOCKWISE_BAR_RIGHT = 239,
-    ANALYSIS_TITLE_Y = 28,
+    ANALYSIS_SAMPLE_INTERVAL_MS = 25,          /**< Set-point sampling interval in milliseconds. */
+    ANALYSIS_COLOR = 15,                       /**< Foreground grayscale value. */
+    ANALYSIS_SERIES_COLOR = 8,                 /**< History-series grayscale value. */
+    ANALYSIS_GRID_COLOR = 1,                   /**< Chart-grid grayscale value. */
+    ANALYSIS_BAR_BORDER_COLOR = 10,            /**< Level-bar border grayscale value. */
+    ANALYSIS_BAR_FILL_COLOR = 6,               /**< Level-bar fill grayscale value. */
+    ANALYSIS_CHART_LEFT = 5,                   /**< Chart left coordinate. */
+    ANALYSIS_CHART_RIGHT = 203,                /**< Chart right coordinate. */
+    ANALYSIS_CHART_TOP = 22,                   /**< Chart top coordinate. */
+    ANALYSIS_CHART_BOTTOM = 62,                /**< Chart bottom coordinate. */
+    ANALYSIS_BAR_TOP = 22,                     /**< Level-bar top coordinate. */
+    ANALYSIS_BAR_BOTTOM = 62,                  /**< Level-bar bottom coordinate. */
+    ANALYSIS_COUNTERCLOCKWISE_BAR_LEFT = 210,  /**< Counterclockwise bar left coordinate. */
+    ANALYSIS_COUNTERCLOCKWISE_BAR_RIGHT = 223, /**< Counterclockwise bar right coordinate. */
+    ANALYSIS_CLOCKWISE_BAR_LEFT = 226,         /**< Clockwise bar left coordinate. */
+    ANALYSIS_CLOCKWISE_BAR_RIGHT = 239,        /**< Clockwise bar right coordinate. */
+    ANALYSIS_TITLE_Y = 28,                     /**< Opening-title top coordinate. */
 };
 
 /**
@@ -96,8 +102,8 @@ static void draw_horizontal(DisplayFramebuffer framebuffer, uint16_t first_x, ui
 /**
  * @brief Draws the five-second analysis grid.
  *
- * Divides the 200-sample plot into ten horizontal time divisions and five vertical percentage
- * divisions, then emphasizes the chart boundary.
+ * Draws regularly spaced time and percentage divisions across the 200-sample plot, then emphasizes
+ * the chart boundary.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
  */
@@ -187,9 +193,9 @@ void display_force_feedback_analysis_page_open(DisplayForceFeedbackAnalysisPage 
 /**
  * @brief Samples the force-feedback set point.
  *
- * Every 25 milliseconds, converts the unsigned 16-bit magnitude to a zero-through-99 percentage,
- * retains it in a 200-sample five-second history, and records zero as counterclockwise and nonzero
- * as clockwise direction.
+ * When the 25-millisecond sampling deadline is due, converts the unsigned 16-bit magnitude to a
+ * zero-through-99 percentage, retains it in a 200-sample five-second history, and records zero as
+ * counterclockwise and nonzero as clockwise direction.
  *
  * @param[in,out] page Analysis sample history and current presentation.
  * @param[in] now_ms Current monotonic time in milliseconds.

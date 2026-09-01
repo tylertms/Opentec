@@ -5,12 +5,13 @@
 
 #include "usb/device.h"
 
+/** @brief Tuning-profile report encoding constants. */
 enum {
-    AUTOMATIC_ROTATION_CODE = 126,
-    ROTATION_ENCODING_BIAS = 127,
-    ROTATION_UNIT_DEGREES = 10,
-    RESPONSE_COMMAND = 3,
-    RESPONSE_STANDARD_MODE_MASK = 0x80,
+    AUTOMATIC_ROTATION_CODE = 126, /**< Wire value selecting automatic steering range. */
+    ROTATION_ENCODING_BIAS = 127,  /**< Bias applied to signed ten-degree steering-range values. */
+    ROTATION_UNIT_DEGREES = 10,    /**< Steering-range encoding unit in degrees. */
+    RESPONSE_COMMAND = 3,          /**< Vendor command identifier for profile responses. */
+    RESPONSE_STANDARD_MODE_MASK = 0x80, /**< Response bit indicating Standard mode. */
 };
 
 /**
@@ -33,8 +34,8 @@ static uint8_t encode_rotation(const TuningProfile *profile) {
 /**
  * @brief Decodes the steering range from a tuning-profile report.
  *
- * Selects automatic range without replacing the current concrete fallback, or converts a manual
- * signed, biased value to degrees.
+ * Selects automatic range without changing the current concrete range, or converts a valid manual
+ * signed, biased value to degrees. Invalid manual values leave the profile unchanged.
  *
  * @param[in] value Encoded steering-range value.
  * @param[in,out] profile Logical tuning profile to update.
@@ -80,17 +81,6 @@ static uint8_t retain_boolean(uint8_t value, uint8_t current) {
     return value <= 1 ? value : current;
 }
 
-/**
- * @brief Decodes the device-control tuning-profile values.
- *
- * Applies the signed, biased steering-range representation and maps the remaining values to the
- * logical tuning profile. Automatic range selection keeps the profile's current concrete range
- * because that range is supplied independently at runtime. The decoded values are normalized.
- *
- * @param[in] input Twenty-five profile values following the profile selector.
- * @param[in,out] profile Logical tuning profile to update.
- * @return True when both pointers are valid.
- */
 bool usb_tuning_profile_report_decode(const uint8_t input[USB_TUNING_PROFILE_VALUE_COUNT],
                                       TuningProfile *profile) {
     if (input == NULL || profile == NULL) {
@@ -143,15 +133,6 @@ bool usb_tuning_profile_report_decode(const uint8_t input[USB_TUNING_PROFILE_VAL
     return true;
 }
 
-/**
- * @brief Encodes the device-control tuning-profile values.
- *
- * Converts the concrete steering range to the signed, biased ten-degree representation or writes
- * the automatic-range sentinel, then emits the remaining logical settings in protocol order.
- *
- * @param[in] profile Logical tuning profile.
- * @param[out] output Twenty-five encoded profile values.
- */
 void usb_tuning_profile_report_encode(const TuningProfile *profile,
                                       uint8_t output[USB_TUNING_PROFILE_VALUE_COUNT]) {
     output[0] = encode_rotation(profile);
@@ -181,15 +162,6 @@ void usb_tuning_profile_report_encode(const TuningProfile *profile,
     output[24] = (uint8_t)profile->throttle_pedal_curve;
 }
 
-/**
- * @brief Encodes a complete tuning-profile response.
- *
- * Clears the native vendor report, writes the FF 03 header, combines the one-based active profile
- * with the Standard-mode flag, and appends the active profile's twenty-five values.
- *
- * @param[in] bank Tuning profiles and active Standard or Advanced mode.
- * @param[out] output Encoded 64-byte vendor report.
- */
 void usb_tuning_profile_report_encode_response(const TuningProfileBank *bank,
                                                uint8_t output[USB_DEVICE_REPORT_SIZE]) {
     for (uint8_t index = 0; index < USB_DEVICE_REPORT_SIZE; index++) {

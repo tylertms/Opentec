@@ -50,8 +50,8 @@ bool a71ch_exchange_service_start(A71chExchangeService *service,
 /**
  * @brief Applies one completed auxiliary-bus operation to the command exchange.
  *
- * Releases the bus result, retries failed operations at the same protocol stage, evaluates status
- * responses, records a queued APDU write, or validates the final response.
+ * Releases the bus result and, on success, evaluates the status response, records a queued APDU
+ * write, or validates the final response for the current protocol stage.
  *
  * @param[in,out] service Active exchange service state and response buffers.
  * @param[in] succeeded True when the auxiliary-bus operation succeeded.

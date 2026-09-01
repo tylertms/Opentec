@@ -5,10 +5,13 @@
 
 #include "usb/operating_mode_command.h"
 
+/**
+ * @brief Operating-mode selectors for pedal protocol commands.
+ */
 enum {
-    PEDAL_DEVICE_CONTROL_OPCODE = 1,
-    PEDAL_PROTOCOL_UPDATE_SELECTOR = 4,
-    PEDAL_PROTOCOL_LEGACY_SCALE_SELECTOR = 8,
+    PEDAL_DEVICE_CONTROL_OPCODE = 1,          /**< Device-control operating-mode opcode. */
+    PEDAL_PROTOCOL_UPDATE_SELECTOR = 4,       /**< Selector for a protocol update. */
+    PEDAL_PROTOCOL_LEGACY_SCALE_SELECTOR = 8, /**< Selector for a legacy scale update. */
 };
 
 /**

@@ -3,9 +3,14 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/**
+ * @brief Torque Key debounce timing constants.
+ *
+ * The integrator traverses this duration between stable removed and inserted states.
+ */
 enum {
-    TORQUE_KEY_FILTER_MS = 500,
-    TORQUE_KEY_INITIAL_POSITION_MS = TORQUE_KEY_FILTER_MS / 2,
+    TORQUE_KEY_FILTER_MS = 500, /**< Full integrator travel in milliseconds. */
+    TORQUE_KEY_INITIAL_POSITION_MS = TORQUE_KEY_FILTER_MS / 2, /**< Neutral startup position. */
 };
 
 /**
@@ -21,14 +26,14 @@ void torque_key_init(TorqueKey *key) {
 }
 
 /**
- * @brief Filters the active-low Torque Key state into stable transitions.
+ * @brief Filters the logical Torque Key state into stable transitions.
  *
  * Integrates elapsed milliseconds toward the inserted or removed endpoint. The neutral startup
  * position requires 250 milliseconds to establish either initial state. Later state changes
  * require 500 milliseconds of net travel, with opposite samples cancelling prior travel.
  *
  * @param[in,out] key Torque Key filter state.
- * @param[in] raw_inserted True while the physical Torque Key input is active.
+ * @param[in] raw_inserted True when the logical Torque Key input reports insertion.
  * @param[in] now_ms Current monotonic time in milliseconds.
  * @return Stable insertion or removal transition, or no transition.
  */

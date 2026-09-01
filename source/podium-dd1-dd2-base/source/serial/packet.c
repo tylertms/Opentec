@@ -4,14 +4,15 @@
 #include <stdint.h>
 #include <string.h>
 
+/** @brief Internal offsets and sizes for the fixed serial packet layout. */
 enum {
-    SERIAL_PACKET_TYPE_OFFSET = 1,
-    SERIAL_PACKET_SEQUENCE_OFFSET = 2,
-    SERIAL_PACKET_LENGTH_OFFSET = 3,
-    SERIAL_PACKET_PAYLOAD_OFFSET = 4,
-    SERIAL_PACKET_CHECKSUM_LOW_OFFSET = 61,
-    SERIAL_PACKET_CHECKSUM_HIGH_OFFSET = 62,
-    SERIAL_PACKET_CHECKSUM_SIZE = 60,
+    SERIAL_PACKET_TYPE_OFFSET = 1,           /**< Offset of the type and fragment flags byte. */
+    SERIAL_PACKET_SEQUENCE_OFFSET = 2,       /**< Offset of the sequence byte. */
+    SERIAL_PACKET_LENGTH_OFFSET = 3,         /**< Offset of the payload length byte. */
+    SERIAL_PACKET_PAYLOAD_OFFSET = 4,        /**< Offset of the payload storage. */
+    SERIAL_PACKET_CHECKSUM_LOW_OFFSET = 61,  /**< Offset of the checksum low byte. */
+    SERIAL_PACKET_CHECKSUM_HIGH_OFFSET = 62, /**< Offset of the checksum high byte. */
+    SERIAL_PACKET_CHECKSUM_SIZE = 60,        /**< Number of bytes covered by the checksum. */
 };
 
 /**

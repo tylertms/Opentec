@@ -3,8 +3,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/** @brief Internal standard display-packet mode selector. */
 enum {
-    WHEEL_PACKET_DISPLAY_MODE = 0x10,
+    WHEEL_PACKET_DISPLAY_MODE = 0x10, /**< Standard display-packet mode. */
 };
 
 /**

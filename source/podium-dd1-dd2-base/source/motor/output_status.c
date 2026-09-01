@@ -31,10 +31,10 @@ void motor_output_status_init(MotorOutputStatus *status) { status->value = 0; }
 /**
  * @brief Builds the status byte for the next motor output frame.
  *
- * Direct-force selection controls the remote-effects flag. Host output gates and full-torque
- * acknowledgement remain live in every interface mode. Xbox direct-force operation retains the
- * force-enable, override, transition, and disconnect gates from the preceding non-Xbox update;
- * other modes refresh those gates from the current runtime state.
+ * Remote effects are enabled only when neither direct force nor Xbox mode is active. Primary and
+ * secondary output-disable bits and full-torque acknowledgement refresh in every interface mode.
+ * Xbox mode retains force-enable, override, transition, and disconnect bits from the preceding
+ * non-Xbox update; other modes refresh those bits from the current runtime state.
  *
  * @param[in,out] status Persistent motor output status state.
  * @param[in] input Current force-output conditions.

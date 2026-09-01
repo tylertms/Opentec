@@ -4,10 +4,11 @@
 
 #include "wheel/display_output.h"
 
+/** @brief Seven-segment glyphs used by the USB disconnect display. */
 enum {
-    GLYPH_U = 0x3e,
-    GLYPH_S = 0x6d,
-    GLYPH_B = 0x7c,
+    GLYPH_U = 0x3e, /**< Seven-segment U glyph. */
+    GLYPH_S = 0x6d, /**< Seven-segment S glyph. */
+    GLYPH_B = 0x7c, /**< Seven-segment B glyph. */
 };
 
 /**

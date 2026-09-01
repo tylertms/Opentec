@@ -4,11 +4,17 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/**
+ * @brief V4 tuning request encoding constants.
+ */
 enum {
-    PEDAL_V4_TUNING_PREFIX_SIZE = 19,
-    PEDAL_V4_TUNING_CRC_POLYNOMIAL = 0x8408,
+    PEDAL_V4_TUNING_PREFIX_SIZE = 19,        /**< Number of fixed request-prefix bytes. */
+    PEDAL_V4_TUNING_CRC_POLYNOMIAL = 0x8408, /**< Reflected CRC-16 polynomial. */
 };
 
+/**
+ * @brief Fixed V4 tuning request prefix.
+ */
 static const uint8_t tuning_prefix[PEDAL_V4_TUNING_PREFIX_SIZE] = {
     0x14, 0x0a, 0x02, 0x08, 0x02, 0x18, 0x01, 0x20, 0x08, 0xaa,
     0x01, 0x09, 0xaa, 0x01, 0x06, 0x5a, 0x04, 0x12, 0x02,

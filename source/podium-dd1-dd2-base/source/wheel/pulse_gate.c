@@ -3,12 +3,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/** @brief Internal pulse-gated interface modes and hold intervals. */
 enum {
-    INTERFACE_MODE_XBOX_GIP = 6,
-    INTERFACE_MODE_PLAYSTATION_4 = 7,
-    INTERFACE_MODE_AUXILIARY_PULSE = 10,
-    XBOX_PULSE_HOLD_MS = 90,
-    PLAYSTATION_PULSE_HOLD_MS = 15,
+    INTERFACE_MODE_XBOX_GIP = 6,         /**< Xbox GIP interface mode. */
+    INTERFACE_MODE_PLAYSTATION_4 = 7,    /**< PlayStation 4 interface mode. */
+    INTERFACE_MODE_AUXILIARY_PULSE = 10, /**< Auxiliary pulse interface mode. */
+    XBOX_PULSE_HOLD_MS = 90,             /**< Xbox pulse hold interval in milliseconds. */
+    PLAYSTATION_PULSE_HOLD_MS = 15, /**< PlayStation and auxiliary hold interval in milliseconds. */
 };
 
 /**

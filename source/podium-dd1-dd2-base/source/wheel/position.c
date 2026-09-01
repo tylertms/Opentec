@@ -31,9 +31,10 @@ static int32_t clamp_position(int32_t position) {
  * @return True when the value has either invalid sentinel representation.
  */
 static bool filter_value_is_invalid(float value) {
+    /** @brief Bit-preserving view of a filter value. */
     union {
-        float value;
-        uint32_t bits;
+        float value;   /**< Floating-point value under inspection. */
+        uint32_t bits; /**< Raw IEEE-754 representation. */
     } representation = {.value = value};
     return representation.bits == UINT32_C(0x7fffffff) || representation.bits == UINT32_MAX;
 }

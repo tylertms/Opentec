@@ -5,32 +5,37 @@
 #include <stdint.h>
 #include <string.h>
 
+/** @brief Internal dimensions, packet identifiers, and mode selectors for catalog transfers. */
 enum {
-    INTERFACE_CATALOG_RECORD_COUNT = 26,
-    INTERFACE_CATALOG_RECORD_SIZE = 21,
-    INTERFACE_CATALOG_PAGE_COUNT = 26,
-    INTERFACE_CATALOG_SECTION_COUNT = 7,
-    INTERFACE_CATALOG_CHUNK_SIZE = 27,
-    INTERFACE_CATALOG_REMOTE_PACKET_TYPE = 0x80,
-    INTERFACE_CATALOG_CONFIGURATION_REPORT_ID = 0xa6,
-    INTERFACE_CATALOG_CONFIGURATION_PACKET_TYPE = 0x81,
-    INTERFACE_CATALOG_EXTENDED_WHEEL_MODE = 0x1c,
+    INTERFACE_CATALOG_RECORD_COUNT = 26,              /**< Number of binary catalog records. */
+    INTERFACE_CATALOG_RECORD_SIZE = 21,               /**< Size of one binary catalog record. */
+    INTERFACE_CATALOG_PAGE_COUNT = 26,                /**< Number of indexed-help pages. */
+    INTERFACE_CATALOG_SECTION_COUNT = 7,              /**< Number of sections per help page. */
+    INTERFACE_CATALOG_CHUNK_SIZE = 27,                /**< Maximum text bytes per response chunk. */
+    INTERFACE_CATALOG_REMOTE_PACKET_TYPE = 0x80,      /**< Binary catalog packet type. */
+    INTERFACE_CATALOG_CONFIGURATION_REPORT_ID = 0xa6, /**< Indexed-help report identifier. */
+    INTERFACE_CATALOG_CONFIGURATION_PACKET_TYPE = 0x81, /**< Indexed-help packet type. */
+    INTERFACE_CATALOG_EXTENDED_WHEEL_MODE = 0x1c,       /**< Extended remote-tuning wheel mode. */
 };
 
 /** @brief One binary-backed tuning-help text field. */
 typedef struct {
-    const char *text;
-    uint8_t length;
+    const char *text; /**< Text bytes, without a terminator in the transfer. */
+    uint8_t length;   /**< Number of text bytes. */
 } InterfaceCatalogText;
 
 /** @brief Ordered help-text sections for one tuning page. */
 typedef struct {
-    InterfaceCatalogText sections[INTERFACE_CATALOG_SECTION_COUNT];
+    InterfaceCatalogText sections[INTERFACE_CATALOG_SECTION_COUNT]; /**< Ordered page sections. */
 } InterfaceCatalogPage;
 
+/** @brief Initializes a help-text macro with its byte length. */
 #define HELP(value) {(value), (uint8_t)(sizeof(value) - 1u)}
+
+/** @brief Initializes an empty help-text section. */
 #define HELP_EMPTY {NULL, 0}
 
+/** @brief Standard binary tuning catalog records. */
 static const uint8_t normal_records[INTERFACE_CATALOG_RECORD_COUNT][INTERFACE_CATALOG_RECORD_SIZE] =
     {
         {0x01, 0x00, 0x09, 0x6c, 0x09, 0xfc, 0x09, 0xfc, 0xff, 0x10, 0x75,
@@ -87,6 +92,7 @@ static const uint8_t normal_records[INTERFACE_CATALOG_RECORD_COUNT][INTERFACE_CA
          0x00, 0x00, 0x00, 0x00, 0x00, 0x3f, 0xff, 0xff, 0x00, 0x00},
 };
 
+/** @brief Legacy binary tuning catalog records. */
 static const uint8_t legacy_records[INTERFACE_CATALOG_RECORD_COUNT][INTERFACE_CATALOG_RECORD_SIZE] =
     {
         {0x01, 0x00, 0x09, 0x6c, 0x09, 0xfc, 0x09, 0xfc, 0xff, 0x10, 0x00,
@@ -143,8 +149,10 @@ static const uint8_t legacy_records[INTERFACE_CATALOG_RECORD_COUNT][INTERFACE_CA
          0x74, 0x65, 0x64, 0x20, 0x54, 0x75, 0x6e, 0x69, 0x6e, 0x67},
 };
 
+/** @brief Protocol section code for each indexed-help section. */
 static const uint8_t section_codes[INTERFACE_CATALOG_SECTION_COUNT] = {3, 0, 4, 11, 12, 13, 14};
 
+/** @brief Indexed tuning-help pages in protocol order. */
 static const InterfaceCatalogPage help_pages[INTERFACE_CATALOG_PAGE_COUNT] = {
     {.sections = {HELP("SETUP"), HELP("Selected Tuning Menu Setup"), HELP(" "), HELP(" "),
                   HELP(" "), HELP(" "), HELP(" ")}},
@@ -234,7 +242,7 @@ static const InterfaceCatalogPage help_pages[INTERFACE_CATALOG_PAGE_COUNT] = {
 /**
  * @brief Initializes host-interface catalog transfer state.
  *
- * Clears both pending streams and resets their entry, section, and chunk positions.
+ * Clears both pending streams and resets their record, page, section, and chunk positions.
  *
  * @param[out] catalog Catalog transfer state to initialize.
  */
@@ -320,13 +328,13 @@ static void advance_configuration_section(WheelInterfaceCatalog *catalog) {
 }
 
 /**
- * @brief Encodes the next nonempty indexed tuning-help text chunk.
+ * @brief Encodes the next indexed tuning-help text frame.
  *
- * Skips absent sections and advances to the following page without emitting empty packets.
+ * Skips absent sections and advances each section as its chunks are emitted.
  *
  * @param[in,out] catalog Catalog transfer state.
  * @param[out] frame Thirty-three-byte attached-wheel response frame.
- * @return True when a nonempty text chunk was encoded.
+ * @return True when a configuration frame was encoded.
  */
 static bool encode_configuration(WheelInterfaceCatalog *catalog, uint8_t frame[33]) {
     const InterfaceCatalogText *text;
