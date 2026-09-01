@@ -1,0 +1,145 @@
+diff --git a/include/dspic33.h b/include/dspic33.h
+index bde1864..eeebec7 100644
+--- a/include/dspic33.h
++++ b/include/dspic33.h
+@@ -205,8 +205,12 @@ typedef struct {
+     uint16_t mode;
+     uint16_t value;
+     uint8_t width;
++    uint8_t metadata;
+ } Dspic33PmpTransfer;
+
++typedef uint8_t (*Dspic33PmpTransferHook)(Dspic33* cpu, const Dspic33PmpTransfer* transfer,
++                                          void* context);
++
+ typedef struct {
+     Dspic33PmpTransfer transfers[DSPIC33_PMP_QUEUE_SIZE];
+     uint16_t head;
+@@ -237,6 +241,7 @@ typedef struct {
+     uint16_t pmd_generation;
+     uint16_t value;
+     uint8_t width;
++    uint8_t metadata;
+     uint8_t slave_read_index;
+     uint8_t slave_write_index;
+     bool active;
+@@ -245,6 +250,8 @@ typedef struct {
+     bool completing_reading;
+     bool last_read_valid;
+     bool pmd_disabled;
++    Dspic33PmpTransferHook transfer_hook;
++    void* transfer_hook_context;
+ } Dspic33Pmp;
+
+ typedef struct {
+@@ -946,6 +953,7 @@ bool dspic33_dma_request(Dspic33* cpu, uint8_t request_source, uint16_t peripher
+ bool dspic33_cpu_rmw_matches(const Dspic33* cpu, uint32_t address, uint8_t width);
+ bool dspic33_pmp_respond(Dspic33* cpu, uint16_t response_value, uint64_t event_delay);
+ bool dspic33_pmp_transmit(Dspic33* cpu, Dspic33PmpTransfer* transfer);
++void dspic33_pmp_set_transfer_hook(Dspic33* cpu, Dspic33PmpTransferHook hook, void* context);
+ bool dspic33_pmp_slave_read(Dspic33* cpu, uint8_t slave_address, uint64_t event_delay);
+ bool dspic33_pmp_slave_write(Dspic33* cpu, uint8_t slave_address, uint8_t write_value,
+                              uint64_t event_delay);
+diff --git a/src/device/dspic33ep_mu/communication/pmp.c b/src/device/dspic33ep_mu/communication/pmp.c
+index 9fb14f6..4846fe0 100644
+--- a/src/device/dspic33ep_mu/communication/pmp.c
++++ b/src/device/dspic33ep_mu/communication/pmp.c
+@@ -167,6 +167,7 @@ static void pmp_abort(Dspic33* cpu) {
+     cpu->io.pmp.completing_active = false;
+     cpu->io.pmp.reading = false;
+     cpu->io.pmp.completing_reading = false;
++    cpu->io.pmp.metadata = 0u;
+     dspic33_device_internal_raw_write_word(
+         cpu, PMP_MODE, (uint16_t)(dspic33_device_internal_raw_word(cpu, PMP_MODE) & ~PMP_BUSY));
+ }
+@@ -329,6 +330,7 @@ void dspic33_device_internal_pmp_slave_read_event(Dspic33* cpu, uint8_t address)
+     transfer.mode = dspic33_device_internal_raw_word(cpu, PMP_MODE);
+     transfer.value = cpu->data[PMP_ADDRESS + buffer_index];
+     transfer.width = 1u;
++    transfer.metadata = 0u;
+     if (!pmp_output_push(&cpu->io.pmp.output, &transfer)) {
+         cpu->stop_reason = DSPIC33_EVENT_QUEUE_ERROR;
+         return;
+@@ -418,6 +420,8 @@ void dspic33_device_internal_update_pmp_pmd(Dspic33* cpu, uint16_t previous_valu
+ }
+
+ static void pmp_start_transfer(Dspic33* cpu, bool is_read) {
++    Dspic33PmpTransfer transfer;
++
+     cpu->io.pmp.generation++;
+     cpu->io.pmp.address = dspic33_device_internal_raw_word(cpu, PMP_ADDRESS);
+     cpu->io.pmp.control = dspic33_device_internal_raw_word(cpu, PMP_CONTROL);
+@@ -426,6 +430,17 @@ static void pmp_start_transfer(Dspic33* cpu, bool is_read) {
+     cpu->io.pmp.value = is_read ? 0u
+                                 : (uint16_t)(dspic33_device_internal_raw_word(cpu, PMP_DATA) &
+                                              (cpu->io.pmp.width == 2u ? 0xffffu : 0x00ffu));
++    transfer.cycle = cpu->device_cycles;
++    transfer.address = cpu->io.pmp.address;
++    transfer.control = cpu->io.pmp.control;
++    transfer.mode = cpu->io.pmp.mode;
++    transfer.value = cpu->io.pmp.value;
++    transfer.width = cpu->io.pmp.width;
++    transfer.metadata = 0u;
++    cpu->io.pmp.metadata = cpu->io.pmp.transfer_hook == NULL
++                              ? 0u
++                              : cpu->io.pmp.transfer_hook(cpu, &transfer,
++                                                          cpu->io.pmp.transfer_hook_context);
+     cpu->io.pmp.reading = is_read;
+     cpu->io.pmp.active = true;
+     uint64_t transfer_delay = pmp_transfer_cycles(cpu->io.pmp.control, cpu->io.pmp.mode);
+@@ -452,6 +467,7 @@ void dspic33_device_internal_pmp_clear_busy(Dspic33* cpu, uint16_t event_generat
+     cpu->io.pmp.completing.mode = cpu->io.pmp.mode;
+     cpu->io.pmp.completing.value = cpu->io.pmp.value;
+     cpu->io.pmp.completing.width = cpu->io.pmp.width;
++    cpu->io.pmp.completing.metadata = cpu->io.pmp.metadata;
+     cpu->io.pmp.completing_generation = event_generation;
+     cpu->io.pmp.completing_reading = cpu->io.pmp.reading;
+     cpu->io.pmp.completing_active = true;
+@@ -478,6 +494,7 @@ void dspic33_device_internal_run_pmp(Dspic33* cpu, uint16_t event_generation) {
+         transfer.mode = cpu->io.pmp.mode;
+         transfer.value = cpu->io.pmp.value;
+         transfer.width = cpu->io.pmp.width;
++        transfer.metadata = cpu->io.pmp.metadata;
+         is_read = cpu->io.pmp.reading;
+         cpu->io.pmp.active = false;
+         cpu->io.pmp.reading = false;
+diff --git a/src/device/dspic33ep_mu/communication/serial/dma.c b/src/device/dspic33ep_mu/communication/serial/dma.c
+index 911df40..cc26ee7 100644
+--- a/src/device/dspic33ep_mu/communication/serial/dma.c
++++ b/src/device/dspic33ep_mu/communication/serial/dma.c
+@@ -388,6 +388,13 @@ bool dspic33_pmp_transmit(Dspic33* cpu, Dspic33PmpTransfer* transfer) {
+            dspic33_device_internal_pmp_output_pop(&cpu->io.pmp.output, transfer);
+ }
+
++void dspic33_pmp_set_transfer_hook(Dspic33* cpu, Dspic33PmpTransferHook hook, void* context) {
++    if (cpu != NULL) {
++        cpu->io.pmp.transfer_hook = hook;
++        cpu->io.pmp.transfer_hook_context = context;
++    }
++}
++
+ bool dspic33_pmp_respond(Dspic33* cpu, uint16_t response_value, uint64_t event_delay) {
+     Dspic33PmpResponse response;
+
+diff --git a/src/device/dspic33ep_mu/platform/gpio/runtime.c b/src/device/dspic33ep_mu/platform/gpio/runtime.c
+index 73d2cf5..3097b6f 100644
+--- a/src/device/dspic33ep_mu/platform/gpio/runtime.c
++++ b/src/device/dspic33ep_mu/platform/gpio/runtime.c
+@@ -141,6 +141,8 @@ void dspic33_gpio_input(Dspic33* cpu, uint8_t port, uint16_t value) {
+ void dspic33_device_reset(Dspic33* cpu) {
+     uint16_t gpio[DSPIC33_GPIO_PORT_COUNT];
+     uint16_t gpio_driven[DSPIC33_GPIO_PORT_COUNT];
++    Dspic33PmpTransferHook transfer_hook = cpu->io.pmp.transfer_hook;
++    void* transfer_hook_context = cpu->io.pmp.transfer_hook_context;
+     size_t index;
+     memcpy(gpio, cpu->io.gpio, sizeof(gpio));
+     memcpy(gpio_driven, cpu->io.gpio_driven, sizeof(gpio_driven));
+@@ -155,6 +157,8 @@ void dspic33_device_reset(Dspic33* cpu) {
+     cpu->io.comparator.reference[DSPIC33_COMPARATOR_REFERENCE_VREF_POSITIVE] = 3300u;
+     memcpy(cpu->io.gpio, gpio, sizeof(gpio));
+     memcpy(cpu->io.gpio_driven, gpio_driven, sizeof(gpio_driven));
++    cpu->io.pmp.transfer_hook = transfer_hook;
++    cpu->io.pmp.transfer_hook_context = transfer_hook_context;
+     memcpy(cpu->io.qei.filtered_inputs, cpu->qei_inputs, sizeof(cpu->qei_inputs));
+     memcpy(cpu->io.qei.logical_inputs, cpu->qei_inputs, sizeof(cpu->qei_inputs));
+     cpu->io.uart_cts = (uint8_t)((1u << DSPIC33_UART_COUNT) - 1u);

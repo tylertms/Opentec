@@ -19,6 +19,7 @@ void dd1_sim_wheel_set_buttons(Dd1SimWheel *wheel, uint32_t buttons);
 void dd1_sim_wheel_response(const Dd1SimWheel *wheel, uint8_t response[DD1_SIM_WHEEL_PACKET_SIZE]);
 void dd1_sim_wheel_accept_output(Dd1SimWheel *wheel,
                                  const uint8_t output[DD1_SIM_WHEEL_OUTPUT_SIZE]);
+uint16_t dd1_sim_wheel_alternate_response(const Dd1SimWheel *wheel, uint16_t output_word);
 uint8_t dd1_sim_wheel_checksum(const uint8_t packet[DD1_SIM_WHEEL_PACKET_SIZE]);
 
 #endif

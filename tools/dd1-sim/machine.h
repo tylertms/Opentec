@@ -23,6 +23,9 @@ typedef struct {
     uint32_t base_program_counter;
     uint32_t wqr_program_counter;
     uint32_t motor_program_counter;
+    uint32_t base_clock_hz;
+    uint32_t wqr_clock_hz;
+    uint32_t motor_clock_hz;
     uint64_t display_bytes;
     uint64_t base_uart_bytes;
     uint64_t wqr_uart_bytes;
@@ -42,6 +45,7 @@ Dd1SimMachine *dd1_sim_machine_create(const char *base_path, const char *wqr_pat
                                       const char *motor_path, char *error, size_t error_size);
 void dd1_sim_machine_destroy(Dd1SimMachine *machine);
 bool dd1_sim_machine_run(Dd1SimMachine *machine, uint32_t instruction_rounds);
+void dd1_sim_machine_set_parallel(Dd1SimMachine *machine, bool parallel);
 void dd1_sim_machine_set_inputs(Dd1SimMachine *machine, int16_t angle_tenths, uint32_t buttons);
 void dd1_sim_machine_snapshot(const Dd1SimMachine *machine, Dd1SimSnapshot *snapshot);
 

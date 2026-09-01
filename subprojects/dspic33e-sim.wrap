@@ -2,3 +2,4 @@
 url = https://github.com/tylertms/dspic33e-sim
 revision = 20367c00a647d481f1b651c29730c24729373d1a
 depth = 1
+diff_files = dspic33e-sim-display-metadata.patch
