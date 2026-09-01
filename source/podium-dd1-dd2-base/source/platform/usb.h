@@ -173,7 +173,8 @@ bool platform_usb_endpoint_halted(uint8_t endpoint_address);
 /**
  * @brief Changes the halt state of a non-control USB endpoint direction.
  *
- * Sets or clears the selected endpoint direction's stall state and preserves the other direction.
+ * Sets or clears both ping-pong banks for the selected endpoint direction and preserves the other
+ * direction.
  *
  * @param[in] endpoint_address Endpoint number with bit seven set for device-to-host direction.
  * @param[in] halted True to set the halt; false to clear it.

@@ -191,8 +191,8 @@ static void configure_interrupts(void) {
 /**
  * @brief Initializes the pedal communication port.
  *
- * Clears all published transport state, configures UART2 and both DMA channels, enables their
- * interrupt routes, and drains stale receive data.
+ * Clears all published transport state, configures UART2 and both DMA channels, drains stale
+ * receive data, and then enables their interrupt routes.
  */
 void platform_pedal_link_init(void) {
     byte_ready = false;
@@ -206,8 +206,8 @@ void platform_pedal_link_init(void) {
     configure_uart();
     configure_receive_dma();
     configure_transmit_dma();
-    configure_interrupts();
     clear_receive_fifo();
+    configure_interrupts();
 }
 
 /**
@@ -218,6 +218,7 @@ void platform_pedal_link_init(void) {
  */
 void platform_pedal_link_begin_discovery(void) {
     IEC0bits.DMA1IE = 0;
+    IEC1bits.U2RXIE = 0;
     DMA1CONbits.CHEN = 0;
     ANSELBbits.ANSB13 = 0;
     ANSELBbits.ANSB14 = 0;
@@ -291,6 +292,7 @@ void platform_pedal_link_begin_framed_receive(void) {
  */
 void platform_pedal_link_begin_transfer_receive(void) {
     IEC0bits.DMA1IE = 0;
+    IEC1bits.U2RXIE = 0;
     DMA1CONbits.CHEN = 0;
     U2BRG = PEDAL_MODERN_BAUD_PERIOD;
     clear_receive_fifo();

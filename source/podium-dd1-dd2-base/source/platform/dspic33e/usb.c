@@ -21,6 +21,7 @@ enum {
     USB_PACKET_ID_SETUP = 0x0d,           /**< USB packet identifier for a setup transaction. */
     USB_TRANSACTION_ODD_BANK = 0x04,      /**< U1STAT mask for the odd ping-pong bank. */
     USB_TRANSACTION_INPUT = 0x08,         /**< U1STAT mask for a device-to-host transaction. */
+    USB_INTERRUPT_TRANSACTION = 0x08,     /**< U1IR transaction-complete flag. */
     USB_TRANSACTION_ENDPOINT_MASK = 0xf0, /**< U1STAT mask for the endpoint number. */
     USB_ENDPOINT_STALL = 0x02,            /**< Endpoint-control stall bit. */
     USB_ENDPOINT_HANDSHAKE = 0x01,        /**< Endpoint-control handshake-enable bit. */
@@ -175,11 +176,16 @@ static void push_event(PlatformUsbEventType type, uint8_t endpoint, const volati
 /**
  * @brief Restores the USB controller to its default device state.
  *
- * Resets ping-pong selection, address zero, endpoint controls, queued events, descriptors, and
- * both endpoint-zero setup banks before allowing token processing.
+ * Clears pending controller events, resets ping-pong selection, address zero, endpoint controls,
+ * queued events, descriptors, and both endpoint-zero setup banks before allowing token processing.
  *
  */
 static void reset_controller(void) {
+    U1EIR = 0xff;
+    U1IR = 0xff;
+    while (U1IRbits.TRNIF != 0) {
+        U1IR = USB_INTERRUPT_TRANSACTION;
+    }
     U1CONbits.PPBRST = 1;
     U1ADDR = 0;
     for (uint8_t endpoint = 0; endpoint < USB_ENDPOINT_COUNT; endpoint++) {
@@ -550,7 +556,7 @@ bool platform_usb_endpoint_halted(uint8_t endpoint_address) {
 /**
  * @brief Changes the halt state of one non-control USB endpoint direction.
  *
- * A set operation presents a stall on the selected bank. A clear operation releases both banks,
+ * A set operation presents a stall on both banks. A clear operation releases both banks,
  * restores DATA0/DATA1 ordering, and clears the endpoint stall latch while preserving the other
  * direction's configuration.
  *
@@ -572,6 +578,7 @@ void platform_usb_set_endpoint_halt(uint8_t endpoint_address, bool halted) {
     volatile UsbBufferDescriptor *selected = descriptor(endpoint, input, odd_bank);
     if (halted) {
         usb_buffer_descriptor_set_halt(selected);
+        usb_buffer_descriptor_set_halt(descriptor(endpoint, input, !odd_bank));
     } else {
         usb_buffer_descriptor_clear_halt(selected, descriptor(endpoint, input, !odd_bank));
         volatile uint16_t *endpoint_control = &U1EP0 + endpoint;

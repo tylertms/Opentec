@@ -3,6 +3,8 @@
 
 #include "platform/usb.h"
 
+void _USB1Interrupt(void);
+
 static void test_attach_is_complete_and_idempotent(void) {
     platform_usb_init();
 
@@ -43,8 +45,22 @@ static void test_detach_allows_reattachment(void) {
     assert(IEC5bits.USB1IE == 1);
 }
 
+static void test_halts_both_ping_pong_banks(void) {
+    platform_usb_init();
+    platform_usb_configure_endpoint(1, true, false);
+    platform_usb_set_endpoint_halt(0x81, true);
+    assert(platform_usb_endpoint_halted(0x81));
+
+    U1STAT = 0x18;
+    U1IRbits.TRNIF = 1;
+    _USB1Interrupt();
+
+    assert(platform_usb_endpoint_halted(0x81));
+}
+
 int main(void) {
     test_attach_is_complete_and_idempotent();
     test_detach_allows_reattachment();
+    test_halts_both_ping_pong_banks();
     return 0;
 }

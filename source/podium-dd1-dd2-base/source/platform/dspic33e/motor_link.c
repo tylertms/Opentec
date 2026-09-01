@@ -199,13 +199,15 @@ void platform_motor_link_confirm_synchronized(void) {
  * @brief Queues the next motor-link transmit frame.
  *
  * Replaces both pending and active thirteen-byte frame storage, then restarts DMA8 immediately
- * while excluding the DMA9 completion handler.
+ * while excluding the DMA9 completion handler and discarding any completion request raised while
+ * it was masked.
  *
  * @param[in] frame Frame to transmit after the current exchange.
  */
 void platform_motor_link_set_transmit(const uint8_t frame[PLATFORM_MOTOR_LINK_FRAME_SIZE]) {
     IEC7bits.DMA9IE = 0;
     copy_to_volatile(next_transmit, frame);
+    IFS7bits.DMA9IF = 0;
     DMA8CONbits.CHEN = 0;
     copy_to_volatile(transmitted_dma, frame);
     DMA8CONbits.CHEN = 1;
