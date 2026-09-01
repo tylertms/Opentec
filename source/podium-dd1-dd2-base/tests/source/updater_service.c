@@ -210,6 +210,22 @@ static void test_routes_startup_recovery_without_handshake(void) {
     assert(memcmp(aux_data, expected_probe, sizeof(expected_probe)) == 0);
 }
 
+static void test_fails_startup_recovery_probe_after_bus_error(void) {
+    UsbUpdaterService service;
+    reset_fakes();
+    usb_updater_service_init(&service, NULL);
+    assert(usb_updater_service_select_startup_recovery(&service));
+    assert(usb_updater_service_start_probe(&service));
+
+    UsbUpdaterServiceInput input = input_at(0);
+    usb_updater_service_run(&service, &input);
+    aux_bus_status = PLATFORM_AUX_BUS_FAILED;
+    input.now_ms = 1;
+    usb_updater_service_run(&service, &input);
+
+    assert(usb_updater_service_probe_status(&service) == USB_UPDATER_PROBE_FAILED);
+}
+
 static void test_latches_guarded_reset(void) {
     static const uint8_t request[] = {0xf8, 0x09, 0x01, 0xfe};
     UsbUpdaterService service;
@@ -306,6 +322,7 @@ int main(void) {
     test_services_device_information_on_strict_cadence();
     test_routes_auxiliary_handshake_and_probe();
     test_routes_startup_recovery_without_handshake();
+    test_fails_startup_recovery_probe_after_bus_error();
     test_latches_guarded_reset();
     test_probes_direct_route_and_selects_identity();
     test_forwards_host_bridge_response();
