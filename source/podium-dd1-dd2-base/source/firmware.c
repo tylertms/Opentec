@@ -2592,23 +2592,14 @@ static void run_led_pattern_startup_sequence(void) {
 /**
  * @brief Selects the startup USB path after motor-controller discovery.
  *
- * Presents the identity page and waits for its transfer and 33-millisecond controller interval,
- * then services the shared auxiliary bus through motor discovery. A recognized controller centers
- * the motor, waits through the status-link settling interval, validates wheel status, discovers the
+ * Services the shared auxiliary bus through motor discovery. A recognized controller centers the
+ * motor, waits through the status-link settling interval, validates wheel status, discovers the
  * wheel, resolves the retained console mode, and only then exposes the selected USB identity.
  * Status failure selects direct updater recovery. A missing controller leaves normal USB detached
  * while runtime mode two probes the auxiliary updater endpoint; rejected recovery falls back to the
  * prepared normal profile.
  */
 static void initialize_startup_usb(void) {
-    display_identity_page_render(display_framebuffer, board_identity);
-    platform_display_write_frame(display_framebuffer);
-    local_display_page = LOCAL_DISPLAY_PAGE_IDENTITY;
-    uint32_t display_deadline_ms = platform_time_ms() + DISPLAY_STARTUP_FRAME_SETTLE_MS;
-    while (!platform_display_frame_complete() ||
-           !platform_time_reached(platform_time_ms(), display_deadline_ms + 1u)) {
-    }
-
     motor_probe_start(&motor_probe, platform_time_ms());
     while (motor_probe.phase != MOTOR_PROBE_COMPLETE && motor_probe.phase != MOTOR_PROBE_FAILED) {
         platform_aux_bus_service();
@@ -2641,6 +2632,22 @@ static void initialize_startup_usb(void) {
     }
     apply_runtime_bridge_actions(
         runtime_bridge_start_auxiliary_recovery(&runtime_bridge, platform_time_ms()));
+}
+
+/**
+ * @brief Initializes the local display with the startup identity frame.
+ *
+ * Resets and configures the controller, transfers the first complete framebuffer immediately, and
+ * waits through the official 33-millisecond refresh interval before other startup work begins.
+ */
+static void initialize_startup_display(void) {
+    platform_display_init();
+    display_identity_page_render(display_framebuffer, board_identity);
+    platform_display_write_frame(display_framebuffer);
+    local_display_page = LOCAL_DISPLAY_PAGE_IDENTITY;
+    uint32_t deadline_ms = platform_time_ms() + DISPLAY_STARTUP_FRAME_SETTLE_MS;
+    while (!platform_time_reached(platform_time_ms(), deadline_ms + 1u)) {
+    }
 }
 
 /**
@@ -4985,7 +4992,7 @@ int main(void) {
     platform_time_init();
     initialize_cooling();
     led_pattern_controller_init(&led_pattern_controller);
-    platform_display_init();
+    initialize_startup_display();
     platform_adc_init();
     platform_shifter_init();
     platform_shifter_read(&shifter_input);

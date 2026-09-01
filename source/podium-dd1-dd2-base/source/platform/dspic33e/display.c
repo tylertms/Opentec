@@ -185,12 +185,3 @@ void platform_display_write_frame(ConstDisplayFramebuffer framebuffer) {
     display_bus.mode = DISPLAY_BUS_DATA;
     start_dma(framebuffer);
 }
-
-/**
- * @brief Reports completion of the current framebuffer transfer.
- *
- * Requires both the DMA block and the final parallel-master byte transfer to finish.
- *
- * @return True when no framebuffer byte remains in flight; otherwise false.
- */
-bool platform_display_frame_complete(void) { return IFS7bits.DMA10IF != 0 && PMMODEbits.BUSY == 0; }
