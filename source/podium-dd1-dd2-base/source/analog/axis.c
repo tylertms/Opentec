@@ -25,8 +25,9 @@ static uint16_t clamp_sample(uint16_t sample, uint16_t minimum, uint16_t maximum
 /**
  * @brief Applies deadband-gated five-sample moving-average filtering.
  *
- * Retains the previous value while the new sample remains inside the inclusive deadband. Accepted
- * samples replace the oldest ring entry and are averaged over the populated sample count.
+ * Publishes the raw value while the new sample remains inside the inclusive deadband without
+ * changing the moving-average state. Samples outside the deadband replace the oldest ring entry
+ * and are averaged over the populated sample count.
  *
  * @param[in,out] filter Moving-average state to update.
  * @param[in] sample New sample.
@@ -36,7 +37,7 @@ static uint16_t clamp_sample(uint16_t sample, uint16_t minimum, uint16_t maximum
 uint16_t analog_axis_filter(AnalogAxisFilter *filter, uint16_t sample, uint16_t deadband) {
     uint16_t difference = sample > filter->value ? sample - filter->value : filter->value - sample;
     if (difference <= deadband) {
-        return filter->value;
+        return sample;
     }
 
     filter->total -= filter->samples[filter->next_sample];

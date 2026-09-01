@@ -86,7 +86,7 @@ static void test_routes_the_reserved_auxiliary_input_payload(void) {
 
     command.input[2] = 7;
     actions = pedal_calibration_command_route(&command, true, true);
-    assert(actions.auxiliary_action == PEDAL_AUXILIARY_CALIBRATION_MAXIMUM);
+    assert(actions.auxiliary_action == PEDAL_AUXILIARY_CALIBRATION_NONE);
     assert(!actions.pedal_input_pending);
 }
 

@@ -21,7 +21,9 @@ enum {
  * @return Eight-bit brake-axis threshold.
  */
 static uint8_t activation_threshold(uint8_t level) {
-    return (uint8_t)((uint16_t)level * UINT8_MAX / PEDAL_BRAKE_INDICATOR_LEVEL_MAX);
+    uint16_t scaled = (uint16_t)((uint16_t)level * UINT8_MAX) >> 2;
+    uint32_t product = (uint32_t)scaled * 0x147bu;
+    return (uint8_t)((product >> 16) >> 1);
 }
 
 /**

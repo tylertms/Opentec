@@ -150,6 +150,7 @@ typedef struct {
     bool input_command_pending;     /**< True when a V3 input command awaits transmission. */
     bool configuration_pending; /**< True when V3 brake-force configuration awaits transmission. */
     bool configuration_reset_pending; /**< True when V3 configuration reset must be sent. */
+    bool startup_handshake_active;    /**< True while the initial V3 handshake is active. */
     bool recovery_handshake;   /**< True when the next V3 handshake is a recovery handshake. */
     bool status_transmitted;   /**< True after the current V3 status has been sent. */
     bool v4_request_active;    /**< True while a V4 request awaits completion. */
@@ -279,6 +280,14 @@ void pedal_service_set_brake_indicator_selector(PedalService *service, uint8_t s
  * @return True during a legacy request or response phase.
  */
 bool pedal_service_legacy_transport_active(const PedalService *service);
+
+/**
+ * @brief Reports whether legacy pedal compatibility mode is active.
+ *
+ * @param[in] service Pedal service state to inspect.
+ * @return True for retained legacy V3 operation; otherwise false.
+ */
+bool pedal_service_legacy_mode(const PedalService *service);
 
 /**
  * @brief Reports whether V3 startup handshake is active.

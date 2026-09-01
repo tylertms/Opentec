@@ -8,9 +8,9 @@ static void test_filter_deadband(void) {
     AnalogAxisFilter filter = {0};
 
     assert(analog_axis_filter(&filter, 100, 10) == 100);
-    assert(analog_axis_filter(&filter, 105, 10) == 100);
+    assert(analog_axis_filter(&filter, 105, 10) == 105);
     assert(analog_axis_filter(&filter, 120, 10) == 110);
-    assert(analog_axis_filter(&filter, 119, 10) == 110);
+    assert(analog_axis_filter(&filter, 119, 10) == 119);
     assert(filter.count == 2);
 }
 

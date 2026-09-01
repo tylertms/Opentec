@@ -191,6 +191,7 @@ static void apply_manual_adjustments(AuxiliaryAxis *axis, uint16_t sample) {
 static void settle_maximum(AuxiliaryAxis *axis, uint16_t sample, uint32_t now_ms) {
     if (axis->learning_minimum || sample <= axis->settle_threshold) {
         axis->settling = false;
+        axis->settle_deadline_ms = 0;
         return;
     }
     if (!axis->settling) {

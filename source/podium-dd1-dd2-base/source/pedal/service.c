@@ -17,10 +17,11 @@
  * @brief Pedal service protocol, timing, and retry constants.
  */
 enum {
-    PEDAL_DETECT_COMMAND = 0x0a,             /**< Legacy discovery request byte. */
-    PEDAL_V3_PROTOCOL_COMMAND = 0x05,        /**< V3 protocol query byte. */
-    PEDAL_V4_PROTOCOL_COMMAND = 0x06,        /**< V4 protocol query byte. */
-    PEDAL_DISCOVERY_TIMEOUT_MS = 100,        /**< Discovery response timeout. */
+    PEDAL_DETECT_COMMAND = 0x0a,      /**< Legacy discovery request byte. */
+    PEDAL_V3_PROTOCOL_COMMAND = 0x05, /**< V3 protocol query byte. */
+    PEDAL_V4_PROTOCOL_COMMAND = 0x06, /**< V4 protocol query byte. */
+    PEDAL_DISCOVERY_TIMEOUT_MS = 100, /**< Discovery response timeout. */
+    PEDAL_PROTOCOL_TIMEOUT_MS = 101,
     PEDAL_V3_BAUD_SWITCH_DELAY_MS = 5,       /**< Delay before V3 framed receive. */
     PEDAL_INITIAL_SAMPLE_TIMEOUT_MS = 15000, /**< V3 startup sample timeout. */
     PEDAL_SAMPLE_TIMEOUT_MS = 1000,          /**< V3 active sample timeout. */
@@ -89,6 +90,7 @@ static void clear_v3_outbound(PedalService *service) {
     service->input_command_pending = false;
     service->configuration_pending = false;
     service->configuration_reset_pending = false;
+    service->startup_handshake_active = false;
     service->next_input_command_ms = 0;
     service->next_keepalive_ms = 0;
 }
@@ -104,12 +106,16 @@ static void clear_v3_outbound(PedalService *service) {
  */
 static void reconnect(PedalService *service, uint32_t now_ms) {
     bool backoff = service->digital_activity;
+    bool configuration_pending = service->configuration_pending;
+    bool configuration_reset_pending = service->configuration_reset_pending;
     pedal_input_release(&service->input);
     service->remote_auxiliary = 0;
     publish_auxiliary(service);
     pedal_v3_state_init(&service->v3);
     service->v4.active = false;
     clear_v3_outbound(service);
+    service->configuration_pending = configuration_pending;
+    service->configuration_reset_pending = configuration_reset_pending;
     service->connected = false;
     service->digital_activity = false;
     service->v4_phase = PEDAL_V4_PHASE_STATUS;
@@ -225,7 +231,32 @@ void pedal_service_request_startup(PedalService *service) {
         return;
     }
     pedal_input_release(&service->input);
+    pedal_v3_state_init(&service->v3);
     service->v4.active = false;
+    service->v4 = (TransferSession){0};
+    pedal_transfer_queue_init(&service->host_transfer_queue);
+    service->transfer_response = (PedalTransferResponse){0};
+    clear_v3_outbound(service);
+    service->v4_tuning_pending = 0;
+    service->v4_sent_value = 0;
+    service->v4_phase = PEDAL_V4_PHASE_STATUS;
+    service->v4_request_active = false;
+    service->v4_response_received = false;
+    service->v4_response_deadline_ms = 0;
+    service->v4_operation_deadline_ms = 0;
+    service->next_v4_keepalive_ms = 0;
+    service->host_adjustment_pending = false;
+    service->button_adjustment_pending = false;
+    service->adjustment_source = PEDAL_ADJUSTMENT_SOURCE_NONE;
+    service->adjustment_display_pending = false;
+    service->adjustment_display = PEDAL_ADJUSTMENT_DISPLAY_NONE;
+    service->alternate_brake_force_received = false;
+    service->startup_frame_count = 0;
+    service->startup_handshake_active = false;
+    service->recovery_handshake = false;
+    service->status_transmitted = false;
+    service->remote_auxiliary = 0;
+    publish_auxiliary(service);
     service->device = PEDAL_DEVICE_NONE;
     service->connected = false;
     service->digital_activity = false;
@@ -387,7 +418,8 @@ void pedal_service_set_brake_force(PedalService *service, uint8_t force_percent)
 /**
  * @brief Records one changed V4 tuning value for transmission.
  *
- * Preserves an unchanged value and raises the setting's pending bit only when its value changes.
+ * Stores the requested value and raises the setting's pending bit, including for zero and
+ * unchanged values.
  *
  * @param[in,out] current Retained value for the setting.
  * @param[in] value Requested value for the setting.
@@ -396,17 +428,15 @@ void pedal_service_set_brake_force(PedalService *service, uint8_t force_percent)
  */
 static void update_v4_tuning_value(uint8_t *current, uint8_t value, uint8_t setting,
                                    uint8_t *pending) {
-    if (*current != value) {
-        *current = value;
-        *pending |= (uint8_t)(1u << (setting - 1));
-    }
+    *current = value;
+    *pending |= (uint8_t)(1u << (setting - 1));
 }
 
 /**
  * @brief Applies the current V4 pedal tuning values.
  *
- * Compares brake force and each pedal curve independently so the V4 service sends only settings
- * that changed, in its protocol-defined priority order.
+ * Queues brake force and every pedal curve in the protocol-defined priority order, including
+ * values that match the retained configuration.
  *
  * @param[in,out] service V4 tuning values and pending-setting mask to update.
  * @param[in] tuning Requested brake-force and pedal-curve values.
@@ -555,8 +585,8 @@ void pedal_service_set_auxiliary_override(PedalService *service, bool active, ui
 /**
  * @brief Selects automatic auxiliary endpoint calibration from pedal state.
  *
- * Enables automatic settling while legacy pedal transport or either V3 calibration path is active
- * and no relevant V3 connection flag is asserted.
+ * Enables automatic settling while the legacy-calibration flag or either V3 calibration path is
+ * active and no relevant V3 connection flag is asserted.
  *
  * @param[in] service Current pedal protocol, connection, and calibration state.
  * @return True when the auxiliary input uses automatic endpoint settling.
@@ -615,6 +645,17 @@ bool pedal_service_legacy_transport_active(const PedalService *service) {
 }
 
 /**
+ * @brief Reports retained legacy pedal compatibility mode.
+ *
+ * @param[in] service Pedal service to inspect.
+ * @return True while legacy pedal compatibility is active; otherwise false.
+ */
+bool pedal_service_legacy_mode(const PedalService *service) {
+    return service != NULL &&
+           (service->phase == PEDAL_SERVICE_V3_START || service->phase == PEDAL_SERVICE_V3_STREAM);
+}
+
+/**
  * @brief Reports whether the modern pedal startup handshake is active.
  *
  * Includes the switch delay, stream-start phase, and the initial V3 frames that complete startup.
@@ -623,10 +664,10 @@ bool pedal_service_legacy_transport_active(const PedalService *service) {
  * @return True while the V3 startup handshake is in progress.
  */
 bool pedal_service_handshake_active(const PedalService *service) {
-    return service != NULL && (service->phase == PEDAL_SERVICE_V3_SWITCH_WAIT ||
-                               service->phase == PEDAL_SERVICE_V3_START ||
-                               (service->phase == PEDAL_SERVICE_V3_STREAM &&
-                                service->startup_frame_count < PEDAL_STARTUP_FRAME_COUNT));
+    return service != NULL &&
+           (service->phase == PEDAL_SERVICE_V3_SWITCH_WAIT ||
+            service->phase == PEDAL_SERVICE_V3_START ||
+            (service->phase == PEDAL_SERVICE_V3_STREAM && service->startup_handshake_active));
 }
 
 /**
@@ -634,7 +675,7 @@ bool pedal_service_handshake_active(const PedalService *service) {
  *
  * Protocol updates always replace the first selector. Value 0x66 preserves the current value and
  * second selector; other values replace both. Legacy-scale updates are accepted only while the
- * byte-oriented legacy transport is active.
+ * legacy-calibration flag is active.
  *
  * @param[in,out] service Pedal transport and protocol status to update.
  * @param[in] command Decoded protocol tuple or legacy-scale command.
@@ -650,9 +691,7 @@ void pedal_service_apply_protocol_command(PedalService *service,
         return;
     }
 
-    bool legacy = service->phase == PEDAL_SERVICE_LEGACY_REQUEST ||
-                  service->phase == PEDAL_SERVICE_LEGACY_RESPONSE;
-    if (legacy) {
+    if (service->v3.legacy_calibration) {
         service->protocol_status.scale = command->value;
     }
 }
@@ -660,15 +699,14 @@ void pedal_service_apply_protocol_command(PedalService *service,
 /**
  * @brief Reports whether the attached pedal path accepts calibration commands.
  *
- * Accepts commands during legacy transport or either active V3 calibration mode.
+ * Accepts commands while the legacy-calibration flag or either V3 calibration mode is active.
  *
  * @param[in] service Current pedal transport and calibration state.
  * @return True when pedal calibration commands may be queued.
  */
 bool pedal_service_calibration_active(const PedalService *service) {
-    bool legacy = service->phase == PEDAL_SERVICE_LEGACY_REQUEST ||
-                  service->phase == PEDAL_SERVICE_LEGACY_RESPONSE;
-    return legacy || service->v3.primary_calibration || service->v3.secondary_calibration;
+    return service->v3.legacy_calibration || service->v3.primary_calibration ||
+           service->v3.secondary_calibration;
 }
 
 /**
@@ -894,7 +932,7 @@ static PedalV4Phase next_v4_phase(PedalV4Phase phase) {
     case PEDAL_V4_PHASE_BRAKE_CURVE:
         return PEDAL_V4_PHASE_THROTTLE_CURVE;
     case PEDAL_V4_PHASE_THROTTLE_CURVE:
-        return PEDAL_V4_PHASE_STATUS;
+        return PEDAL_V4_PHASE_SELECT;
     case PEDAL_V4_PHASE_STATUS:
         return PEDAL_V4_PHASE_SELECT;
     case PEDAL_V4_PHASE_SELECT:
@@ -934,13 +972,19 @@ static void begin_adjustment_wait(PedalService *service, uint32_t now_ms) {
  * @param[in,out] service Pedal adjustment and phase state to finish.
  */
 static void finish_adjustment(PedalService *service) {
+    PedalAdjustmentSource source = service->adjustment_source;
     if (service->adjustment_source == PEDAL_ADJUSTMENT_SOURCE_HOST) {
         service->host_adjustment_pending = false;
     } else if (service->adjustment_source == PEDAL_ADJUSTMENT_SOURCE_BUTTON) {
         service->button_adjustment_pending = false;
     }
     service->adjustment_source = PEDAL_ADJUSTMENT_SOURCE_NONE;
-    service->v4_phase = PEDAL_V4_PHASE_SELECT;
+    if (source == PEDAL_ADJUSTMENT_SOURCE_HOST && service->button_adjustment_pending) {
+        service->adjustment_source = PEDAL_ADJUSTMENT_SOURCE_BUTTON;
+        service->v4_phase = PEDAL_V4_PHASE_ADJUSTMENT_START;
+    } else {
+        service->v4_phase = PEDAL_V4_PHASE_HOST_TRANSFER;
+    }
     service->v4_request_active = false;
     service->v4_response_received = false;
     service->v4_response_deadline_ms = 0;
@@ -965,6 +1009,19 @@ static void finish_host_transfer(PedalService *service, bool timed_out) {
     service->v4_request_active = false;
     service->v4_response_received = false;
     service->v4_response_deadline_ms = 0;
+}
+
+static void select_post_tuning_phase(PedalService *service) {
+    if (service->host_adjustment_pending) {
+        service->adjustment_source = PEDAL_ADJUSTMENT_SOURCE_HOST;
+        service->v4_phase = PEDAL_V4_PHASE_ADJUSTMENT_START;
+    } else if (service->button_adjustment_pending) {
+        service->adjustment_source = PEDAL_ADJUSTMENT_SOURCE_BUTTON;
+        service->v4_phase = PEDAL_V4_PHASE_ADJUSTMENT_START;
+    } else {
+        service->adjustment_source = PEDAL_ADJUSTMENT_SOURCE_NONE;
+        service->v4_phase = PEDAL_V4_PHASE_HOST_TRANSFER;
+    }
 }
 
 /**
@@ -994,7 +1051,11 @@ static void complete_v4_response(PedalService *service, uint32_t now_ms) {
         uint8_t mask = v4_setting_mask(setting);
         service->v4_tuning_pending = (uint8_t)(service->v4_tuning_pending & (uint8_t)~mask);
     }
-    service->v4_phase = next_v4_phase(service->v4_phase);
+    if (service->v4_phase == PEDAL_V4_PHASE_THROTTLE_CURVE) {
+        select_post_tuning_phase(service);
+    } else {
+        service->v4_phase = next_v4_phase(service->v4_phase);
+    }
     service->v4_response_received = false;
     service->v4_request_active = false;
 }
@@ -1002,7 +1063,7 @@ static void complete_v4_response(PedalService *service, uint32_t now_ms) {
 /**
  * @brief Selects the highest-priority pending V4 pedal operation.
  *
- * Applies tuning in brake-force, clutch, throttle, and brake order, then selects host and
+ * Applies tuning in brake-force, clutch, brake, and throttle order, then selects host and
  * wheel-button adjustments and queued host transfers before the periodic status request.
  *
  * @param[in,out] service Pending V4 work and selected phase.
@@ -1013,10 +1074,10 @@ static void select_v4_phase(PedalService *service) {
         service->v4_phase = PEDAL_V4_PHASE_BRAKE_FORCE;
     } else if ((pending & v4_setting_mask(PEDAL_V4_TUNING_CLUTCH_CURVE)) != 0) {
         service->v4_phase = PEDAL_V4_PHASE_CLUTCH_CURVE;
-    } else if ((pending & v4_setting_mask(PEDAL_V4_TUNING_THROTTLE_CURVE)) != 0) {
-        service->v4_phase = PEDAL_V4_PHASE_THROTTLE_CURVE;
     } else if ((pending & v4_setting_mask(PEDAL_V4_TUNING_BRAKE_CURVE)) != 0) {
         service->v4_phase = PEDAL_V4_PHASE_BRAKE_CURVE;
+    } else if ((pending & v4_setting_mask(PEDAL_V4_TUNING_THROTTLE_CURVE)) != 0) {
+        service->v4_phase = PEDAL_V4_PHASE_THROTTLE_CURVE;
     } else if (service->host_adjustment_pending) {
         service->adjustment_source = PEDAL_ADJUSTMENT_SOURCE_HOST;
         service->v4_phase = PEDAL_V4_PHASE_ADJUSTMENT_START;
@@ -1085,7 +1146,11 @@ static void send_v4_request(PedalService *service, uint32_t now_ms) {
     }
     uint8_t mask = v4_setting_mask(setting);
     if ((service->v4_tuning_pending & mask) == 0) {
-        service->v4_phase = next_v4_phase(service->v4_phase);
+        if (service->v4_phase == PEDAL_V4_PHASE_THROTTLE_CURVE) {
+            select_post_tuning_phase(service);
+        } else {
+            service->v4_phase = next_v4_phase(service->v4_phase);
+        }
         return;
     }
 
@@ -1258,6 +1323,9 @@ static void service_v3_output(PedalService *service, uint32_t now_ms) {
     }
 
     if (service->pending_control != 0) {
+        if ((service->pending_control & 0x1fu) == 0) {
+            return;
+        }
         uint8_t remaining_control =
             pedal_v3_build_control(service->pending_control, &service->transmit_frame);
         uint8_t sent_control = service->pending_control ^ remaining_control;
@@ -1332,6 +1400,9 @@ static void service_v3_output(PedalService *service, uint32_t now_ms) {
 static void service_v3_stream(PedalService *service, uint32_t now_ms) {
     if (platform_pedal_link_take_frame(service->frame_buffer) &&
         pedal_frame_decode(service->frame_buffer, &service->receive_frame) == PEDAL_FRAME_VALID) {
+        bool startup_timeout = service->startup_frame_count < PEDAL_STARTUP_FRAME_COUNT;
+        service->deadline_ms =
+            now_ms + (startup_timeout ? PEDAL_INITIAL_SAMPLE_TIMEOUT_MS : PEDAL_SAMPLE_TIMEOUT_MS);
         if (pedal_v3_apply_report(&service->receive_frame, false, &service->v3, &service->input)) {
             if (service->receive_frame.type == PEDAL_V3_BRAKE_FORCE_REPORT) {
                 service->alternate_brake_force_received = true;
@@ -1340,12 +1411,11 @@ static void service_v3_stream(PedalService *service, uint32_t now_ms) {
                 service->remote_auxiliary = service->input.auxiliary;
                 publish_auxiliary(service);
             }
-            uint32_t timeout_ms = PEDAL_SAMPLE_TIMEOUT_MS;
             if (service->startup_frame_count < PEDAL_STARTUP_FRAME_COUNT) {
                 service->startup_frame_count++;
-                timeout_ms = PEDAL_INITIAL_SAMPLE_TIMEOUT_MS;
+            } else {
+                service->startup_handshake_active = false;
             }
-            service->deadline_ms = now_ms + timeout_ms;
             service->input.axes[1] =
                 service->v3.primary_calibration || service->v3.secondary_calibration
                     ? service->v3.raw_brake
@@ -1400,7 +1470,7 @@ void pedal_service_run(PedalService *service, uint32_t now_ms) {
                                                              : PEDAL_V3_PROTOCOL_COMMAND;
         if (platform_pedal_link_send_byte(command)) {
             service->phase = PEDAL_SERVICE_PROTOCOL_RESPONSE;
-            service->deadline_ms = now_ms + PEDAL_DISCOVERY_TIMEOUT_MS;
+            service->deadline_ms = now_ms + PEDAL_PROTOCOL_TIMEOUT_MS;
         }
         break;
     }
@@ -1431,6 +1501,7 @@ void pedal_service_run(PedalService *service, uint32_t now_ms) {
         pedal_v3_build_handshake(service->recovery_handshake, &service->transmit_frame);
         if (send_frame(service)) {
             service->startup_frame_count = 0;
+            service->startup_handshake_active = true;
             service->phase = PEDAL_SERVICE_V3_STREAM;
             service->deadline_ms = now_ms + PEDAL_INITIAL_SAMPLE_TIMEOUT_MS;
             service->recovery_handshake = false;

@@ -51,7 +51,7 @@ const uint8_t *pedal_v4_status_request(void) { return status_request; }
  */
 static ParsedVarint parse_varint(const uint8_t *data, uint16_t end, uint16_t offset) {
     ParsedVarint result = {.value = 0, .offset = offset};
-    uint8_t shift = 0;
+    uint16_t shift = 0;
 
     while (result.offset < end) {
         uint8_t byte = data[result.offset++];
@@ -164,7 +164,7 @@ void pedal_v4_status_parse(const uint8_t *data, uint16_t length,
         offset = record_end;
     }
 
-    axes[0] = (uint16_t)values[1];
-    axes[1] = (uint16_t)values[0];
-    axes[2] = (uint16_t)values[2];
+    axes[0] = (uint16_t)values[1] == UINT16_C(0xff00) ? UINT16_MAX : (uint16_t)values[1];
+    axes[1] = (uint16_t)values[0] == UINT16_C(0xff00) ? UINT16_MAX : (uint16_t)values[0];
+    axes[2] = (uint16_t)values[2] == UINT16_C(0xff00) ? UINT16_MAX : (uint16_t)values[2];
 }

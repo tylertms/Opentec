@@ -78,6 +78,7 @@ void platform_adc_init(void) {
 
     IEC0bits.AD1IE = 0;
     IFS0bits.AD1IF = 0;
+    IPC3bits.AD1IP = ADC_DMA_PRIORITY;
 
     DMA0CON = 0;
     DMA0CONbits.AMODE = 0;

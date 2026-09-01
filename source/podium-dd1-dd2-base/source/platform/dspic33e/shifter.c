@@ -112,8 +112,9 @@ void platform_shifter_read(ShifterInputState *state) {
 
     state->primary_mode = primary_mode;
     state->secondary_mode = secondary_mode;
-    state->primary_transition =
-        primary_mode == SHIFTER_INPUT_SEQUENTIAL && (PORTBbits.RB9 == 0 || PORTBbits.RB10 == 0);
+    state->primary_transition = (primary_mode == SHIFTER_INPUT_SEQUENTIAL && PORTBbits.RB9 == 0) ||
+                                (secondary_mode == SHIFTER_INPUT_SEQUENTIAL && PORTBbits.RB11 == 0);
     state->secondary_transition =
-        secondary_mode == SHIFTER_INPUT_SEQUENTIAL && (PORTBbits.RB11 == 0 || PORTBbits.RB12 == 0);
+        (primary_mode == SHIFTER_INPUT_SEQUENTIAL && PORTBbits.RB10 == 0) ||
+        (secondary_mode == SHIFTER_INPUT_SEQUENTIAL && PORTBbits.RB12 == 0);
 }

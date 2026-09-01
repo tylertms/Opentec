@@ -137,7 +137,9 @@ static HPatternCalibrationResult capture_position(HPatternCalibrationSession *se
         break;
     case H_PATTERN_CALIBRATION_SEVENTH:
         session->samples.seventh_lateral = lateral_position;
+        uint16_t retained_boundary = settings->calibration.retained_boundary;
         settings->calibration = h_pattern_calibration_build(&session->samples);
+        settings->calibration.retained_boundary = retained_boundary;
         settings->calibrated = true;
         session->next_position = H_PATTERN_CALIBRATION_COMPLETE;
         return H_PATTERN_CALIBRATION_COMPLETED;

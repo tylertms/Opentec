@@ -38,7 +38,7 @@ static void test_filters_and_scales_the_normalized_sample(void) {
 
     AuxiliaryAxisReading inside_deadband =
         auxiliary_axis_update(&axis, 604, AUXILIARY_AXIS_MANUAL_CALIBRATION, 1);
-    assert(inside_deadband.value == 127);
+    assert(inside_deadband.value == 129);
 
     AuxiliaryAxisReading averaged =
         auxiliary_axis_update(&axis, 620, AUXILIARY_AXIS_MANUAL_CALIBRATION, 2);

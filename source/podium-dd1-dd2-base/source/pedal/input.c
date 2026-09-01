@@ -28,6 +28,10 @@ enum {
  */
 static uint16_t read_u16(const uint8_t *data) { return (uint16_t)data[0] | (uint16_t)data[1] << 8; }
 
+static uint16_t normalize_axis(uint16_t value) {
+    return value == UINT16_C(0xff00) ? UINT16_MAX : value;
+}
+
 /**
  * @brief Releases every published pedal input.
  *
@@ -57,9 +61,9 @@ bool pedal_input_decode(const PedalFrame *frame, PedalInput *input) {
         return false;
     }
 
-    input->axes[0] = read_u16(frame->payload);
-    input->axes[1] = read_u16(frame->payload + 2);
-    input->axes[2] = read_u16(frame->payload + 4);
+    input->axes[0] = normalize_axis(read_u16(frame->payload));
+    input->axes[1] = normalize_axis(read_u16(frame->payload + 2));
+    input->axes[2] = normalize_axis(read_u16(frame->payload + 4));
     input->auxiliary = frame->payload[7];
     return true;
 }
@@ -89,10 +93,10 @@ bool pedal_v3_apply_report(const PedalFrame *frame, bool auxiliary_locked, Pedal
                            PedalInput *input) {
     switch (frame->type) {
     case PEDAL_FRAME_AXIS_SAMPLE:
-        input->axes[0] = read_u16(frame->payload);
-        state->raw_brake = read_u16(frame->payload + 2);
+        input->axes[0] = normalize_axis(read_u16(frame->payload));
+        state->raw_brake = normalize_axis(read_u16(frame->payload + 2));
         input->axes[1] = state->raw_brake;
-        input->axes[2] = read_u16(frame->payload + 4);
+        input->axes[2] = normalize_axis(read_u16(frame->payload + 4));
         if (!auxiliary_locked) {
             input->auxiliary = frame->payload[7];
         }

@@ -122,8 +122,11 @@ PedalCalibrationActions pedal_calibration_command_route(const PedalCalibrationCo
     case PEDAL_CALIBRATION_COMMAND_INPUT:
         if (auxiliary_active && command->input[0] == PEDAL_AUXILIARY_INPUT_GROUP &&
             command->input[1] == PEDAL_AUXILIARY_INPUT_CHANNEL) {
-            actions.auxiliary_action = command->input[2] == 0 ? PEDAL_AUXILIARY_CALIBRATION_MINIMUM
-                                                              : PEDAL_AUXILIARY_CALIBRATION_MAXIMUM;
+            if (command->input[2] == 0) {
+                actions.auxiliary_action = PEDAL_AUXILIARY_CALIBRATION_MINIMUM;
+            } else if (command->input[2] == 1) {
+                actions.auxiliary_action = PEDAL_AUXILIARY_CALIBRATION_MAXIMUM;
+            }
         } else if (pedal_calibration_active) {
             for (uint8_t axis = 0; axis < PEDAL_INPUT_AXIS_COUNT; axis++) {
                 actions.pedal_input[axis] = command->input[axis];

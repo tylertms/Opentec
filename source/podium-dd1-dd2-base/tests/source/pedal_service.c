@@ -285,6 +285,8 @@ static void test_ignores_unknown_v3_reports_for_timeout(void) {
     pedal_service_run(&service, 11);
     assert(!service.connected);
     pedal_service_run(&service, 15010);
+    assert(service.phase == PEDAL_SERVICE_V3_STREAM);
+    pedal_service_run(&service, 15012);
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
     assert(pedal_frame_decode(sent_frame, &handshake) == PEDAL_FRAME_VALID);
     assert(handshake.type == 2);
@@ -292,19 +294,19 @@ static void test_ignores_unknown_v3_reports_for_timeout(void) {
     assert(handshake.payload[1] == UINT8_MAX);
     assert(!service.recovery_handshake);
     assert(discovery_count == 0);
-    pedal_service_run(&service, 15011);
+    pedal_service_run(&service, 15013);
     assert(service.phase == PEDAL_SERVICE_DETECT_REQUEST);
     assert(discovery_count == 1);
 
-    pedal_service_run(&service, 15012);
-    receive_byte(PEDAL_DEVICE_V3);
-    pedal_service_run(&service, 15013);
     pedal_service_run(&service, 15014);
-    receive_byte(0x15);
+    receive_byte(PEDAL_DEVICE_V3);
     pedal_service_run(&service, 15015);
     pedal_service_run(&service, 15016);
-    pedal_service_run(&service, 15021);
-    pedal_service_run(&service, 15022);
+    receive_byte(0x15);
+    pedal_service_run(&service, 15017);
+    pedal_service_run(&service, 15018);
+    pedal_service_run(&service, 15023);
+    pedal_service_run(&service, 15024);
     assert(pedal_frame_decode(sent_frame, &handshake) == PEDAL_FRAME_VALID);
     assert(handshake.type == 2);
     assert(handshake.payload[0] == UINT8_MAX);
@@ -651,12 +653,13 @@ static void test_sends_v4_tuning_in_protocol_order(void) {
     pedal_service_run(&service, 19);
     assert_v4_tuning_request(8, 5);
     complete_v4_request(&service, 20, 21);
+    pedal_service_run(&service, 22);
 
     assert(service.v4_tuning_pending == 0);
     assert(service.v4_phase == PEDAL_V4_PHASE_STATUS);
 }
 
-static void test_prioritizes_throttle_before_brake_at_v4_selection(void) {
+static void test_queues_zero_v4_tuning_values_in_protocol_order(void) {
     PedalService service;
     const PedalV4Tuning tuning = {
         .brake_curve = 2,
@@ -672,6 +675,15 @@ static void test_prioritizes_throttle_before_brake_at_v4_selection(void) {
     pedal_service_run(&service, 9);
     pedal_service_run(&service, 10);
 
+    assert_v4_tuning_request(32, 0);
+    complete_v4_request(&service, 11, 12);
+    pedal_service_run(&service, 13);
+    assert_v4_tuning_request(24, 0);
+    complete_v4_request(&service, 14, 15);
+    pedal_service_run(&service, 16);
+    assert_v4_tuning_request(16, 2);
+    complete_v4_request(&service, 17, 18);
+    pedal_service_run(&service, 19);
     assert_v4_tuning_request(8, 5);
 }
 
@@ -715,7 +727,7 @@ static void test_queries_and_publishes_v4_pedal_adjustment(void) {
     pedal_service_run(&service, 114);
 
     assert(!service.button_adjustment_pending);
-    assert(service.v4_phase == PEDAL_V4_PHASE_SELECT);
+    assert(service.v4_phase == PEDAL_V4_PHASE_HOST_TRANSFER);
     display = pedal_service_take_adjustment_display(&service);
     assert(display == PEDAL_ADJUSTMENT_DISPLAY_CLUTCH);
     assert(pedal_service_take_adjustment_display(&service) == PEDAL_ADJUSTMENT_DISPLAY_IDLE);
@@ -780,7 +792,7 @@ static void test_expires_v4_adjustment_operation(void) {
     pedal_service_run(&service, 20012);
 
     assert(!service.button_adjustment_pending);
-    assert(service.v4_phase == PEDAL_V4_PHASE_SELECT);
+    assert(service.v4_phase == PEDAL_V4_PHASE_HOST_TRANSFER);
 }
 
 static void test_forwards_generic_v4_host_request(void) {
@@ -1066,10 +1078,11 @@ static void test_selects_auxiliary_automatic_calibration_from_pedal_state(void) 
     assert(!pedal_service_calibration_active(&service));
     assert(!pedal_service_auxiliary_automatic_calibration(&service));
 
-    service.phase = PEDAL_SERVICE_LEGACY_REQUEST;
+    service.v3.legacy_calibration = true;
     assert(pedal_service_calibration_active(&service));
     assert(pedal_service_auxiliary_automatic_calibration(&service));
 
+    service.v3.legacy_calibration = false;
     service.phase = PEDAL_SERVICE_V3_STREAM;
     service.v3.primary_calibration = true;
     assert(pedal_service_calibration_active(&service));
@@ -1115,7 +1128,7 @@ static void test_applies_pedal_protocol_commands(void) {
     command.value = 0x88;
     pedal_service_apply_protocol_command(&service, &command);
     assert(service.protocol_status.scale == 0x40);
-    service.phase = PEDAL_SERVICE_LEGACY_REQUEST;
+    service.v3.legacy_calibration = true;
     pedal_service_apply_protocol_command(&service, &command);
     assert(service.protocol_status.scale == 0x88);
 
@@ -1160,9 +1173,9 @@ static void test_reports_v3_handshake_activity(void) {
     service.phase = PEDAL_SERVICE_V3_SWITCH_WAIT;
     assert(pedal_service_handshake_active(&service));
     service.phase = PEDAL_SERVICE_V3_STREAM;
-    service.startup_frame_count = 249;
+    service.startup_handshake_active = true;
     assert(pedal_service_handshake_active(&service));
-    service.startup_frame_count = 250;
+    service.startup_handshake_active = false;
     assert(!pedal_service_handshake_active(&service));
 }
 
@@ -1237,7 +1250,7 @@ int main(void) {
     test_polls_and_publishes_v4_input();
     test_waits_for_complete_v4_status_response();
     test_sends_v4_tuning_in_protocol_order();
-    test_prioritizes_throttle_before_brake_at_v4_selection();
+    test_queues_zero_v4_tuning_values_in_protocol_order();
     test_queries_and_publishes_v4_pedal_adjustment();
     test_forwards_both_host_adjustment_responses();
     test_expires_v4_adjustment_operation();

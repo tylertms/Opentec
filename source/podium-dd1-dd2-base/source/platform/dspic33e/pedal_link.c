@@ -195,6 +195,7 @@ static void configure_interrupts(void) {
  * receive data, and then enables their interrupt routes.
  */
 void platform_pedal_link_init(void) {
+    IEC1bits.U2TXIE = 0;
     byte_ready = false;
     frame_ready = false;
     clear_transfer_queue();
@@ -549,6 +550,7 @@ void __attribute__((interrupt, no_auto_psv)) _U2RXInterrupt(void) {
  * boundary switches reception to UART delimiter recovery before the next DMA frame is accepted.
  */
 void __attribute__((interrupt, no_auto_psv)) _DMA1Interrupt(void) {
+    DMA1CNT = PEDAL_FRAME_SIZE - 1;
     if (received_dma[0] == PEDAL_FRAME_START &&
         received_dma[PEDAL_FRAME_SIZE - 1] == PEDAL_FRAME_END) {
         for (uint8_t index = 0; index < PEDAL_FRAME_SIZE; index++) {
