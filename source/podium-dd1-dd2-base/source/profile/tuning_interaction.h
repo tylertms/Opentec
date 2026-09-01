@@ -86,17 +86,24 @@ typedef struct {
 
 /** @brief Logical tuning-menu phase needed to distinguish profile and entry shortcuts. */
 typedef struct {
-    uint32_t profile_hold_started_ms;     /**< Start time of the current profile hold. */
-    uint32_t result_deadline_ms;          /**< Deadline for a result phase. */
-    uint32_t reconnect_started_ms;        /**< Start time of reconnect grace. */
-    TuningInteractionPhase phase;         /**< Current interaction phase. */
-    TuningNavigationMode last_navigation; /**< Previous sampled navigation mode. */
-    TuningNavigationEvent navigation;     /**< Navigation event pending for menu consumption. */
-    bool closing;                         /**< True when release should close the menu. */
-    bool profile_hold_active;             /**< True while profile hold timing is active. */
-    bool profile_mode_toggled;            /**< True after the profile mode action was emitted. */
-    bool pedal_adjustment_requested;      /**< True after pedal adjustment was requested. */
-    bool pedal_operation_sent;            /**< True after a pedal operation action was emitted. */
+    uint32_t profile_hold_started_ms;    /**< Start time of the current profile hold. */
+    uint32_t result_deadline_ms;         /**< Deadline for a result phase. */
+    uint32_t reconnect_started_ms;       /**< Start time of reconnect grace. */
+    uint32_t navigation_now_ms;          /**< Time of the current navigation sample. */
+    uint32_t increase_repeat_tick_ms;    /**< Deadline for the next increase repeat. */
+    uint32_t increase_repeat_started_ms; /**< Time the increase input was first held. */
+    uint32_t decrease_repeat_tick_ms;    /**< Deadline for the next decrease repeat. */
+    uint32_t decrease_repeat_started_ms; /**< Time the decrease input was first held. */
+    TuningInteractionPhase phase;        /**< Current interaction phase. */
+    uint16_t last_navigation_key;        /**< Previous normalized navigation key. */
+    uint8_t increase_repeat_phase;       /**< Current increase-repeat phase. */
+    uint8_t decrease_repeat_phase;       /**< Current decrease-repeat phase. */
+    TuningNavigationEvent navigation;    /**< Navigation event pending for menu consumption. */
+    bool closing;                        /**< True when release should close the menu. */
+    bool profile_hold_active;            /**< True while profile hold timing is active. */
+    bool profile_mode_toggled;           /**< True after the profile mode action was emitted. */
+    bool pedal_adjustment_requested;     /**< True after pedal adjustment was requested. */
+    bool pedal_operation_sent;           /**< True after a pedal operation action was emitted. */
     bool reconnect_active; /**< True while extended-wheel reconnect grace is active. */
 } TuningInteraction;
 

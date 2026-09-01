@@ -264,7 +264,7 @@ TransferSessionResult transfer_session_receive(TransferSession *session, const u
             result = receive_data(session, &session->receive_frame);
         } else if (type == TRANSFER_COMMAND_STATUS) {
             result = receive_status(session, session->receive_frame.command);
-        } else if (type == TRANSFER_COMMAND_EMPTY && session->receive_frame.payload_length == 0) {
+        } else if (session->receive_frame.payload_length == 0) {
             result = TRANSFER_SESSION_OK;
         } else {
             session->callbacks.data(session->callback_context, session->receive_frame.payload,

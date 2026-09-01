@@ -46,8 +46,8 @@ static void test_encodes_maximum_read_request(void) {
 
     assert(memory_transfer_encode_read(0x20, 0x80, MEMORY_TRANSFER_MAX_READ_SIZE, request) ==
            sizeof(request));
-    assert(request[3] == 0);
-    assert(request[4] == 2);
+    assert(request[3] == 0xf1);
+    assert(request[4] == 3);
 }
 
 static void test_decodes_responses(void) {

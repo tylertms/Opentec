@@ -15,6 +15,7 @@ enum {
     DISPLAY_RESET_START_DELAY_MS = 2, /**< Delay before asserting display reset low. */
     DISPLAY_RESET_LOW_MS = 1,         /**< Display reset-low pulse duration. */
     DISPLAY_RESET_RECOVERY_MS = 1,    /**< Delay after releasing display reset. */
+    DISPLAY_FRAME_INTERVAL_MS = 33,
 };
 
 /**
@@ -28,6 +29,7 @@ typedef struct {
  * @brief Shared display bus write state.
  */
 static DisplayBus display_bus;
+static uint32_t next_frame_ms;
 
 /**
  * @brief Waits until a millisecond interval is strictly past.
@@ -162,6 +164,7 @@ void platform_display_init(void) {
     LATGbits.LATG14 = 1;
     LATDbits.LATD3 = 1;
     display_bus.mode = DISPLAY_BUS_DATA;
+    next_frame_ms = 0;
     configure_parallel_port();
     platform_display_reset();
     display_controller_initialize(write_byte, &display_bus);
@@ -179,9 +182,18 @@ void platform_display_init(void) {
  * @param[in] framebuffer Complete packed four-bit grayscale framebuffer in DMA-accessible storage.
  */
 void platform_display_write_frame(ConstDisplayFramebuffer framebuffer) {
+    uint32_t now_ms = platform_time_ms();
+    if (!platform_time_reached(now_ms, next_frame_ms)) {
+        return;
+    }
+    next_frame_ms = now_ms + DISPLAY_FRAME_INTERVAL_MS;
     display_controller_begin_frame(write_byte, &display_bus);
     LATDbits.LATD3 = 1;
     __builtin_nop();
     display_bus.mode = DISPLAY_BUS_DATA;
     start_dma(framebuffer);
 }
+
+void __attribute__((interrupt, no_auto_psv)) _PMPInterrupt(void) { IFS2bits.PMPIF = 0; }
+
+void __attribute__((interrupt, no_auto_psv)) _DMA10Interrupt(void) { IFS7bits.DMA10IF = 0; }

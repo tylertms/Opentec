@@ -13,8 +13,8 @@ enum {
     MEMORY_TRANSFER_COMMAND = 4,           /**< Transfer group used for memory commands. */
     MEMORY_TRANSFER_HEADER_SIZE = 3,       /**< Number of bytes in a memory request header. */
     MEMORY_TRANSFER_READ_REQUEST_SIZE = 5, /**< Encoded size of a memory read request. */
-    MEMORY_TRANSFER_MAX_READ_SIZE = 512,   /**< Maximum number of bytes in a read request. */
-    MEMORY_TRANSFER_MAX_WRITE_SIZE = 512,  /**< Maximum number of bytes in a write request. */
+    MEMORY_TRANSFER_MAX_READ_SIZE = 1009,  /**< Maximum memory-read payload in bytes. */
+    MEMORY_TRANSFER_MAX_WRITE_SIZE = 1009, /**< Maximum memory-write payload in bytes. */
     MEMORY_TRANSFER_MAX_REQUEST_SIZE =
         MEMORY_TRANSFER_HEADER_SIZE +
         MEMORY_TRANSFER_MAX_WRITE_SIZE, /**< Maximum encoded memory request size. */

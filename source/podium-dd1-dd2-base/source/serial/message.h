@@ -8,9 +8,9 @@
 
 /** @brief Logical serial message limits and type range. */
 enum {
-    SERIAL_MESSAGE_MAX_SIZE = 515, /**< Maximum logical message size in bytes. */
-    SERIAL_MESSAGE_FIRST_TYPE = 2, /**< First logical message type accepted by the transport. */
-    SERIAL_MESSAGE_LAST_TYPE = 5,  /**< Last logical message type accepted by the transport. */
+    SERIAL_MESSAGE_MAX_SIZE = 1012, /**< Maximum logical message size in bytes. */
+    SERIAL_MESSAGE_FIRST_TYPE = 2,  /**< First logical message type accepted by the transport. */
+    SERIAL_MESSAGE_LAST_TYPE = 5,   /**< Last logical message type accepted by the transport. */
 };
 
 /** @brief Result of adding one packet to a logical message assembly. */

@@ -14,8 +14,8 @@ enum {
     TRANSFER_FRAME_END = 0x3e,                  /**< End marker for an encoded transfer frame. */
     TRANSFER_FRAME_MAX_PAYLOAD_SIZE = 125,      /**< Maximum decoded payload capacity. */
     TRANSFER_FRAME_MAX_SEND_PAYLOAD_SIZE = 124, /**< Maximum payload accepted by the encoder. */
-    TRANSFER_FRAME_MAX_RECEIVED_SIZE = 256, /**< Maximum encoded frame accepted by the decoder. */
-    TRANSFER_FRAME_MAX_ENCODED_SIZE = 256,  /**< Capacity required for an encoded frame buffer. */
+    TRANSFER_FRAME_MAX_RECEIVED_SIZE = 135,     /**< Maximum decoded transfer-frame size. */
+    TRANSFER_FRAME_MAX_ENCODED_SIZE = 256, /**< Capacity required for an encoded frame buffer. */
 };
 
 /**

@@ -90,6 +90,16 @@ static void render_text(WheelDisplayOutput *output, const char text[4]) {
 }
 
 /**
+ * @brief Renders four text characters into wheel display glyphs.
+ *
+ * @param[in,out] output Wheel display output receiving glyphs.
+ * @param[in] text Four characters to render.
+ */
+void tuning_display_render_text(WheelDisplayOutput *output, const char text[4]) {
+    render_text(output, text);
+}
+
+/**
  * @brief Renders a nonnegative tuning number on three positions.
  *
  * Right-aligns one- and two-digit values and uses all positions for values from one hundred through

@@ -221,7 +221,8 @@ a71ch_authentication_response_parse(const A71chAuthenticationFrame *frame, const
         return A71CH_MALFORMED_RESPONSE;
     }
     *parsed_response = (A71chAuthenticationResponse){0};
-    if (frame == NULL || response == NULL || response_length != frame->response_length ||
+    if (frame == NULL || response == NULL || response_length < 2 ||
+        response_length != frame->response_length ||
         (uint16_t)frame->response_payload_offset + frame->response_payload_length >
             response_length ||
         (uint16_t)frame->response_integrity_offset + frame->response_integrity_length >
@@ -229,6 +230,10 @@ a71ch_authentication_response_parse(const A71chAuthenticationFrame *frame, const
         return A71CH_MALFORMED_RESPONSE;
     }
 
+    uint8_t metadata_offset = (uint8_t)(response_length - 2u);
+    if (response[metadata_offset] != 0 || response[metadata_offset + 1u] != 0) {
+        return A71CH_MALFORMED_RESPONSE;
+    }
     if (frame->response_integrity_length != 0 &&
         a71ch_lrc(response + frame->response_integrity_offset, frame->response_integrity_length) !=
             0) {
@@ -451,7 +456,7 @@ bool a71ch_session_current(A71chSession *session, uint32_t now_ms, A71chCommand 
         return false;
     }
     if (session->waiting) {
-        if ((int32_t)(now_ms - session->retry_after_ms) <= 0) {
+        if ((int32_t)(now_ms - session->retry_after_ms) < 0) {
             return false;
         }
         session->waiting = false;
@@ -497,6 +502,8 @@ bool a71ch_session_accept(A71chSession *session, A71chCommand command,
         if (response->declared_length == 1 && response->status == 0) {
             session->command = A71CH_READ_ANSWER_TO_RESET;
             session->completed_attempts = 0;
+            session->waiting = true;
+            session->retry_after_ms = now_ms + A71CH_SESSION_RETRY_DELAY_MS;
         } else {
             session->waiting = true;
             session->retry_after_ms = now_ms + A71CH_SESSION_RETRY_DELAY_MS;

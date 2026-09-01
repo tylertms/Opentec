@@ -47,7 +47,7 @@ static void test_calculates_xor_checksum(void) {
 }
 
 static void test_parses_unchecked_read_response(void) {
-    static const uint8_t response[] = {0x84, 0x91, 0x12, 0x34, 0xa5, 0x5a};
+    static const uint8_t response[] = {0x84, 0x91, 0x12, 0x34, 0, 0};
     A71chAuthenticationInput input = {.chunk_length = 2};
     A71chAuthenticationFrame frame;
     A71chAuthenticationResponse parsed;
@@ -60,7 +60,7 @@ static void test_parses_unchecked_read_response(void) {
 }
 
 static void test_validates_checked_read_response_xor(void) {
-    uint8_t response[] = {0x84, 0x91, 0x12, 0x34, 0x56, 0x70, 0xa5, 0xa5};
+    uint8_t response[] = {0x84, 0x91, 0x12, 0x34, 0x56, 0x70, 0, 0};
     A71chAuthenticationInput input = {.chunk_length = 4};
     A71chAuthenticationFrame frame;
     A71chAuthenticationResponse parsed;
@@ -383,12 +383,15 @@ static const uint8_t startup_signature[] = {
 };
 
 static void advance_startup_to_signature(A71chSession *startup) {
+    A71chCommand command;
     A71chSessionResponse status = {.declared_length = 1};
 
     a71ch_session_init(startup);
     assert(a71ch_session_accept(startup, A71CH_WAKE_UP, NULL, 0));
     assert(a71ch_session_accept(startup, A71CH_SOFT_RESET, &status, 0));
-    assert(startup->command == A71CH_READ_ANSWER_TO_RESET);
+    assert(!a71ch_session_current(startup, 4, &command));
+    assert(a71ch_session_current(startup, 5, &command));
+    assert(command == A71CH_READ_ANSWER_TO_RESET);
 }
 
 static void test_completes_a71ch_session(void) {
@@ -406,7 +409,8 @@ static void test_completes_a71ch_session(void) {
     response.declared_length = 1;
     assert(a71ch_session_accept(&startup, command, &response, 0));
 
-    assert(a71ch_session_current(&startup, 0, &command));
+    assert(!a71ch_session_current(&startup, 4, &command));
+    assert(a71ch_session_current(&startup, 5, &command));
     assert(command == A71CH_READ_ANSWER_TO_RESET);
     response.payload = startup_signature;
     response.payload_length = sizeof(startup_signature);
@@ -436,8 +440,8 @@ static void test_delays_and_limits_startup_status_retries(void) {
     assert(a71ch_session_accept(&startup, A71CH_WAKE_UP, NULL, now_ms));
     for (uint8_t attempt = 0; attempt < 3; ++attempt) {
         assert(a71ch_session_accept(&startup, A71CH_SOFT_RESET, &response, now_ms));
-        assert(!a71ch_session_current(&startup, now_ms + 5, &command));
-        now_ms += 6;
+        assert(!a71ch_session_current(&startup, now_ms + 4, &command));
+        now_ms += 5;
         assert(a71ch_session_current(&startup, now_ms, &command));
         assert(command == A71CH_SOFT_RESET);
     }

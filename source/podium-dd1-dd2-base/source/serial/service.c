@@ -31,7 +31,6 @@ static bool start_next_packet(SerialService *service, uint32_t now_ms) {
         return false;
     }
     service->deadline_ms = now_ms + SERIAL_SERVICE_TIMEOUT_MS;
-    service->attempts = 1;
     service->packet_pending = true;
     return true;
 }
@@ -65,13 +64,15 @@ void serial_service_init(SerialService *service) {
  * @param[in] now_ms Current monotonic time in milliseconds.
  * @return True when the request and first packet exchange start.
  */
-bool serial_service_start(SerialService *service, uint8_t type, const uint8_t *message,
-                          uint16_t length, uint32_t now_ms) {
+static bool start_request(SerialService *service, uint8_t type, const uint8_t *message,
+                          uint16_t length, uint32_t now_ms, bool bounded_attempts) {
     if (service == 0 || service->status != SERIAL_SERVICE_IDLE ||
         !serial_session_queue(&service->session, type, message, length)) {
         return false;
     }
     service->request_type = type;
+    service->attempts = 0;
+    service->bounded_attempts = bounded_attempts;
     service->status = SERIAL_SERVICE_PENDING;
     if (start_next_packet(service, now_ms)) {
         return true;
@@ -79,6 +80,26 @@ bool serial_service_start(SerialService *service, uint8_t type, const uint8_t *m
     serial_session_finish_transmit(&service->session);
     service->status = SERIAL_SERVICE_FAILED;
     return false;
+}
+
+bool serial_service_start(SerialService *service, uint8_t type, const uint8_t *message,
+                          uint16_t length, uint32_t now_ms) {
+    return start_request(service, type, message, length, now_ms, false);
+}
+
+/**
+ * @brief Starts a serial request without a bounded retry count.
+ *
+ * @param[in,out] service Idle serial service.
+ * @param[in] type Logical request type.
+ * @param[in] message Request bytes.
+ * @param[in] length Request length in bytes.
+ * @param[in] now_ms Current monotonic time.
+ * @return True when the request starts; otherwise false.
+ */
+bool serial_service_start_wait(SerialService *service, uint8_t type, const uint8_t *message,
+                               uint16_t length, uint32_t now_ms) {
+    return start_request(service, type, message, length, now_ms, true);
 }
 
 /**
@@ -101,12 +122,21 @@ void serial_service_run(SerialService *service, uint32_t now_ms) {
         SerialSessionResult result = serial_session_accept(&service->session, service->packet);
         if (result == SERIAL_SESSION_INVALID_PACKET || result == SERIAL_SESSION_MESSAGE_OVERFLOW) {
             service->error_count++;
+            service->attempts++;
+            if (service->bounded_attempts && service->attempts >= SERIAL_SERVICE_MAX_ATTEMPTS) {
+                service->status = SERIAL_SERVICE_FAILED;
+                return;
+            }
         }
         if (result == SERIAL_SESSION_MESSAGE_COMPLETE) {
             const SerialMessageAssembly *message = serial_session_message(&service->session);
-            service->status = message != 0 && message->type == service->request_type
-                                  ? SERIAL_SERVICE_SUCCEEDED
-                                  : SERIAL_SERVICE_FAILED;
+            bool matches = message != 0 && message->type == service->request_type;
+            if (matches) {
+                service->response = *message;
+            }
+            serial_session_consume_message(&service->session);
+            serial_session_finish_transmit(&service->session);
+            service->status = matches ? SERIAL_SERVICE_SUCCEEDED : SERIAL_SERVICE_FAILED;
             return;
         }
         if (!start_next_packet(service, now_ms)) {
@@ -116,12 +146,11 @@ void serial_service_run(SerialService *service, uint32_t now_ms) {
     }
     if (service->packet_pending && platform_time_reached(now_ms, service->deadline_ms + 1u)) {
         service->error_count++;
-        platform_serial_link_reset();
-        if (service->attempts < SERIAL_SERVICE_MAX_ATTEMPTS &&
+        service->attempts++;
+        if ((!service->bounded_attempts || service->attempts < SERIAL_SERVICE_MAX_ATTEMPTS) &&
             platform_serial_link_start(service->packet)) {
-            service->attempts++;
             service->deadline_ms = now_ms + SERIAL_SERVICE_TIMEOUT_MS;
-        } else {
+        } else if (service->bounded_attempts && service->attempts >= SERIAL_SERVICE_MAX_ATTEMPTS) {
             service->packet_pending = false;
             service->status = SERIAL_SERVICE_FAILED;
         }
@@ -137,9 +166,7 @@ void serial_service_run(SerialService *service, uint32_t now_ms) {
  * @return Completed response, or null while no matching response is available.
  */
 const SerialMessageAssembly *serial_service_response(const SerialService *service) {
-    return service != 0 && service->status == SERIAL_SERVICE_SUCCEEDED
-               ? serial_session_message(&service->session)
-               : 0;
+    return service != 0 && service->status == SERIAL_SERVICE_SUCCEEDED ? &service->response : 0;
 }
 
 /**
@@ -175,6 +202,7 @@ void serial_service_cancel(SerialService *service) {
     service->request_type = 0;
     service->attempts = 0;
     service->packet_pending = false;
+    service->response = (SerialMessageAssembly){0};
     service->status = SERIAL_SERVICE_IDLE;
 }
 
@@ -194,5 +222,6 @@ void serial_service_release(SerialService *service) {
     serial_session_finish_transmit(&service->session);
     service->request_type = 0;
     service->attempts = 0;
+    service->response = (SerialMessageAssembly){0};
     service->status = SERIAL_SERVICE_IDLE;
 }

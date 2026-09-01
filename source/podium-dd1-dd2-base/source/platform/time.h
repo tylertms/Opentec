@@ -5,11 +5,27 @@
 #include <stdint.h>
 
 /**
+ * @brief Callback invoked from each platform millisecond tick.
+ *
+ * @param[in,out] context Caller-provided callback context.
+ * @param[in] now_ms Updated monotonic time in milliseconds.
+ */
+typedef void (*PlatformTimeTickHandler)(void *context, uint32_t now_ms);
+
+/**
  * @brief Initializes the platform millisecond timebase.
  *
  * Configures and starts the hardware timer used to maintain monotonic system time.
  */
 void platform_time_init(void);
+
+/**
+ * @brief Installs the callback invoked after each millisecond tick.
+ *
+ * @param[in] handler Callback to invoke, or null to disable callbacks.
+ * @param[in,out] context Context passed to the callback.
+ */
+void platform_time_set_tick_handler(PlatformTimeTickHandler handler, void *context);
 
 /**
  * @brief Reads the current platform time.

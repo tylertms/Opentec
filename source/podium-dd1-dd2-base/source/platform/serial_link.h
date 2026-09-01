@@ -73,4 +73,11 @@ bool platform_serial_link_direct_write(const uint8_t *data, uint8_t length);
  */
 bool platform_serial_link_direct_read(uint8_t *data, uint8_t length);
 
+/**
+ * @brief Clears retained direct-mode serial response bytes.
+ *
+ * Leaves direct mode active while discarding the current response assembly.
+ */
+void platform_serial_link_direct_clear(void);
+
 #endif

@@ -31,9 +31,8 @@ enum {
 void display_identity_page_render(DisplayFramebuffer framebuffer, BoardIdentity identity) {
     const char *model;
     uint16_t model_x;
-    if (identity.hardware_option != 0) {
-        model = identity.variant == BOARD_VARIANT_DD1 ? "Podium Wheel Base DD1 PS4"
-                                                      : "Podium Wheel Base DD2 PS4";
+    if (identity.variant == BOARD_VARIANT_DD1 && identity.hardware_option != 0) {
+        model = "Podium Wheel Base DD1 PS4";
         model_x = IDENTITY_PLAYSTATION_MODEL_X;
     } else {
         model = identity.variant == BOARD_VARIANT_DD1 ? "Podium Wheel Base DD1"

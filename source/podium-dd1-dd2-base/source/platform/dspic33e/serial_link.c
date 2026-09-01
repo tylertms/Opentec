@@ -358,6 +358,18 @@ void platform_serial_link_reset(void) {
     IEC5bits.U3RXIE = 0;
     DMA5CONbits.CHEN = 0;
     DMA6CONbits.CHEN = 0;
+    DMA5CON = 0;
+    DMA5REQ = 0;
+    DMA5PAD = 0;
+    DMA5STAL = 0;
+    DMA5STAH = 0;
+    DMA5CNT = 0;
+    DMA6CON = 0;
+    DMA6REQ = 0;
+    DMA6PAD = 0;
+    DMA6STAL = 0;
+    DMA6STAH = 0;
+    DMA6CNT = 0;
     stop_timer();
     clear_uart();
     transfer_active = false;
@@ -533,6 +545,17 @@ bool platform_serial_link_direct_read(uint8_t *data, uint8_t length) {
         IEC5bits.U3RXIE = 1;
     }
     return true;
+}
+
+/**
+ * @brief Clears retained direct-mode response bytes.
+ */
+void platform_serial_link_direct_clear(void) {
+    IEC5bits.U3RXIE = 0;
+    direct_receive_length = 0;
+    if (direct_phase == SERIAL_LINK_DIRECT_IDLE) {
+        IEC5bits.U3RXIE = 1;
+    }
 }
 
 /**

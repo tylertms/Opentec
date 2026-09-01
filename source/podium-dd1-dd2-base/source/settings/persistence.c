@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "platform/storage.h"
+#include "profile/tuning.h"
 #include "settings/state.h"
 #include "usb/tuning_profile_report.h"
 #include "wheel/position.h"
@@ -133,6 +134,7 @@ static void tuning_profiles_load(BaseSettings *settings) {
         value_read(first + USB_TUNING_PROFILE_VALUE_COUNT,
                    &settings->retained_profile_values[profile]);
     }
+    tuning_profile_defaults(&settings->tuning_profiles.slots[0]);
 }
 
 /**
@@ -386,9 +388,8 @@ BaseSettingsPersistenceResult base_settings_persistence_save(BaseSettingsPersist
         platform_storage_value_write(SELECTED_PROFILE_INDEX,
                                      settings->tuning_profiles.selected_slot + 1) &&
         h_pattern_save(settings) && security_code_save(settings) &&
-        (!settings->operating_mode_valid ||
-         platform_storage_value_write(OPERATING_MODE_INDEX,
-                                      OPERATING_MODE_PREFIX | settings->operating_mode)) &&
+        platform_storage_value_write(OPERATING_MODE_INDEX,
+                                     OPERATING_MODE_PREFIX | settings->operating_mode) &&
         steering_limits_save(settings) && tuning_profiles_save(settings) &&
         platform_storage_value_write(AUXILIARY_MINIMUM_INDEX, settings->auxiliary_axis.minimum) &&
         platform_storage_value_write(AUXILIARY_MAXIMUM_INDEX, settings->auxiliary_axis.maximum) &&

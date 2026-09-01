@@ -66,7 +66,7 @@ static void test_erased_storage_loads_defaults_and_saves_reference_format(void) 
     assert(storage[28] == 0x00c8);
     assert(storage[29] == 1);
     assert(storage[26] == 0xaa00);
-    assert(!present[19]);
+    assert(present[19]);
     for (uint8_t profile = 0; profile < TUNING_PROFILE_SLOT_COUNT; profile++) {
         assert(storage[20 + profile] == 0xaa64);
         assert(present[30 + profile * 26]);

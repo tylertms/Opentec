@@ -68,6 +68,7 @@ typedef struct {
     uint8_t interface_mode;                  /**< Active host interface mode. */
     uint8_t wheel_mode;                      /**< Attached-wheel mode identifier. */
     WheelAccessoryKind wheel_accessory_kind; /**< Attached-wheel accessory kind. */
+    uint8_t wheel_auxiliary_state;           /**< Attached-wheel auxiliary state byte. */
     TuningPedalConnection pedal_connection;  /**< Attached pedal connection type. */
     bool legacy_pedal_mode;                  /**< True when legacy pedal compatibility is active. */
     bool motor_calibration_active;           /**< True while motor calibration is active. */

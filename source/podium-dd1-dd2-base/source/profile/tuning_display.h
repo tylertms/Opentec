@@ -21,4 +21,12 @@
 bool tuning_display_render(const TuningMenu *menu, const TuningProfileBank *bank,
                            WheelDisplayOutput *output);
 
+/**
+ * @brief Copies four tuning-display characters into wheel glyph output.
+ *
+ * @param[in,out] output Wheel display output receiving the glyphs.
+ * @param[in] text Four display characters in transmission order.
+ */
+void tuning_display_render_text(WheelDisplayOutput *output, const char text[4]);
+
 #endif

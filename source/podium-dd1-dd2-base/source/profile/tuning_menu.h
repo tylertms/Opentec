@@ -21,8 +21,10 @@ typedef struct {
 
 /** @brief Changes produced by one local tuning-menu update. */
 typedef struct {
-    bool entry_changed; /**< True when the selected entry changed. */
-    bool value_changed; /**< True when the selected value changed. */
+    bool entry_changed;         /**< True when the selected entry changed. */
+    bool value_changed;         /**< True when the selected value changed. */
+    bool adjustment_requested;  /**< True when a value adjustment must be applied downstream. */
+    TuningEntry adjusted_entry; /**< Entry selected for the requested adjustment. */
 } TuningMenuUpdate;
 
 /**

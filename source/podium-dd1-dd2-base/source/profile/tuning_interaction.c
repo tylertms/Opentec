@@ -1,5 +1,6 @@
 #include "profile/tuning_interaction.h"
 
+#include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -33,7 +34,41 @@ enum {
     TUNING_ADAPTER_EXTENDED_CENTER_PRIMARY = 0x10,   /**< Extended adapter center primary bit. */
     TUNING_ADAPTER_EXTENDED_CENTER_SECONDARY = 0x04, /**< Extended adapter center secondary bit. */
     TUNING_ADAPTER_STANDARD_CENTER = 0x0c,           /**< Standard adapter center chord. */
+    TUNING_REPEAT_INITIAL_INTERVAL_MS = 2000,
+    TUNING_REPEAT_MINIMUM_INTERVAL_MS = 10,
 };
+
+static bool repeat_key_active(bool pressed, bool menu_active, uint32_t now_ms, uint8_t *phase,
+                              uint32_t *tick_ms, uint32_t *started_ms) {
+    if (!pressed || !menu_active) {
+        *phase = 0;
+        return pressed;
+    }
+    if (*phase == 0) {
+        *started_ms = now_ms;
+        *tick_ms = now_ms;
+        *phase = 1;
+        return true;
+    }
+    if (*phase == 1) {
+        uint32_t elapsed = now_ms - *tick_ms;
+        uint32_t held = now_ms - *started_ms;
+        int32_t interval =
+            (int32_t)(expf(-(float)held / 1000.0f) * TUNING_REPEAT_INITIAL_INTERVAL_MS);
+        if (elapsed > TUNING_REPEAT_MINIMUM_INTERVAL_MS && elapsed > (uint32_t)interval) {
+            *tick_ms = now_ms;
+            *phase = 2;
+            return false;
+        }
+        return true;
+    }
+    if (now_ms - *tick_ms <= TUNING_REPEAT_MINIMUM_INTERVAL_MS) {
+        return false;
+    }
+    *tick_ms = now_ms;
+    *phase = 1;
+    return true;
+}
 
 /**
  * @brief Reports whether a button mask is completely asserted.
@@ -121,9 +156,12 @@ static TuningInteractionAction start_center_capture(TuningInteraction *interacti
                   input->wheel_mode == WHEEL_MODE_LEGACY_ALTERNATE ||
                   input->wheel_mode == WHEEL_MODE_LEGACY_COMPATIBILITY;
     bool requested;
+    bool legacy_requested = false;
     if (legacy) {
-        requested = buttons_include(input->secondary_buttons, TUNING_SECONDARY_LEGACY_CENTER) &&
-                    buttons_include(input->primary_buttons, TUNING_PRIMARY_LEGACY_CENTER);
+        legacy_requested =
+            buttons_include(input->secondary_buttons, TUNING_SECONDARY_LEGACY_CENTER) &&
+            buttons_include(input->primary_buttons, TUNING_PRIMARY_LEGACY_CENTER);
+        requested = legacy_requested;
     } else if (input->wheel_mode == WHEEL_MODE_EXTENDED) {
         requested = buttons_include(input->secondary_buttons, TUNING_SECONDARY_TOGGLE_VIEW) &&
                     input->auxiliary_report[2] == 2;
@@ -138,7 +176,8 @@ static TuningInteractionAction start_center_capture(TuningInteraction *interacti
     }
     interaction->phase = TUNING_INTERACTION_CENTER_CAPTURE;
     interaction->navigation = (TuningNavigationEvent){0};
-    return legacy ? TUNING_INTERACTION_ACTION_SHOW_CENTER_CAPTURE : TUNING_INTERACTION_ACTION_NONE;
+    return legacy_requested ? TUNING_INTERACTION_ACTION_SHOW_CENTER_CAPTURE
+                            : TUNING_INTERACTION_ACTION_NONE;
 }
 
 void tuning_interaction_init(TuningInteraction *interaction) {
@@ -161,15 +200,30 @@ TuningNavigationEvent tuning_interaction_read_navigation(TuningInteraction *inte
     TuningNavigationEvent event = {0};
     if (interaction == NULL || input == NULL || !input->available) {
         if (interaction != NULL) {
-            interaction->last_navigation = TUNING_NAVIGATION_NONE;
+            interaction->last_navigation_key = 0;
         }
         return event;
     }
 
-    if ((input->primary_buttons & TUNING_PRIMARY_INCREASE) != 0) {
+    uint16_t primary_buttons = input->primary_buttons;
+    bool menu_active = interaction->phase == TUNING_INTERACTION_ENTRY_OPEN;
+    if (!repeat_key_active((primary_buttons & TUNING_PRIMARY_INCREASE) != 0, menu_active,
+                           interaction->navigation_now_ms, &interaction->increase_repeat_phase,
+                           &interaction->increase_repeat_tick_ms,
+                           &interaction->increase_repeat_started_ms)) {
+        primary_buttons &= (uint16_t)~TUNING_PRIMARY_INCREASE;
+    }
+    if (!repeat_key_active((primary_buttons & TUNING_PRIMARY_DECREASE) != 0, menu_active,
+                           interaction->navigation_now_ms, &interaction->decrease_repeat_phase,
+                           &interaction->decrease_repeat_tick_ms,
+                           &interaction->decrease_repeat_started_ms)) {
+        primary_buttons &= (uint16_t)~TUNING_PRIMARY_DECREASE;
+    }
+
+    if ((primary_buttons & TUNING_PRIMARY_INCREASE) != 0) {
         event.mode = TUNING_NAVIGATION_INCREASE;
     }
-    if ((input->primary_buttons & TUNING_PRIMARY_DECREASE) != 0) {
+    if ((primary_buttons & TUNING_PRIMARY_DECREASE) != 0) {
         event.mode = TUNING_NAVIGATION_DECREASE;
     }
     if ((input->primary_buttons & TUNING_PRIMARY_PREVIOUS) != 0) {
@@ -190,11 +244,11 @@ TuningNavigationEvent tuning_interaction_read_navigation(TuningInteraction *inte
         event.scale = 0;
     }
 
-    TuningNavigationMode sampled_mode = event.mode;
-    if (sampled_mode == interaction->last_navigation && event.mode != TUNING_NAVIGATION_MENU) {
+    uint16_t sampled_key = (uint16_t)event.mode | (uint16_t)(uint8_t)event.scale << 8;
+    if (sampled_key == interaction->last_navigation_key && event.mode != TUNING_NAVIGATION_MENU) {
         event = (TuningNavigationEvent){0};
     }
-    interaction->last_navigation = sampled_mode;
+    interaction->last_navigation_key = sampled_key;
     return event;
 }
 
@@ -451,7 +505,7 @@ TuningInteractionAction tuning_interaction_update(TuningInteraction *interaction
                 interaction->reconnect_started_ms = now_ms;
             }
             if (now_ms - interaction->reconnect_started_ms < TUNING_RECONNECT_GRACE_MS) {
-                interaction->last_navigation = TUNING_NAVIGATION_NONE;
+                interaction->last_navigation_key = 0;
                 interaction->navigation = (TuningNavigationEvent){0};
                 return TUNING_INTERACTION_ACTION_NONE;
             }
@@ -484,6 +538,7 @@ TuningInteractionAction tuning_interaction_update(TuningInteraction *interaction
         return TUNING_INTERACTION_ACTION_NONE;
     }
 
+    interaction->navigation_now_ms = now_ms;
     TuningNavigationEvent navigation = tuning_interaction_read_navigation(interaction, input);
     interaction->navigation = navigation;
     bool menu_held = navigation.mode == TUNING_NAVIGATION_MENU;

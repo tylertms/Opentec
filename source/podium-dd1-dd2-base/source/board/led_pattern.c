@@ -202,6 +202,9 @@ static uint16_t update_breathing(LedPatternController *controller, LedPatternCon
  */
 uint16_t led_pattern_controller_update(LedPatternController *controller,
                                        LedPatternControllerInput input, uint32_t now_ms) {
+    if (input.profile_save_complete) {
+        return 0;
+    }
     if (input.output_inhibited) {
         return update_heartbeat(controller, now_ms);
     }

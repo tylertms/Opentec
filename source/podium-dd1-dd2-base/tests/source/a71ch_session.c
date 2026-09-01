@@ -99,9 +99,9 @@ static void test_honors_startup_status_retry_delay(void) {
     started_response[1] = 7;
     finish_transfer(&service, PLATFORM_AUX_BUS_SUCCEEDED, 100);
 
-    a71ch_session_service_run(&service, 105);
+    a71ch_session_service_run(&service, 104);
     assert(start_count == 2);
-    a71ch_session_service_run(&service, 106);
+    a71ch_session_service_run(&service, 105);
     assert(start_count == 3);
     assert(started_command == A71CH_SOFT_RESET);
 }
@@ -126,7 +126,7 @@ static void test_completes_startup_from_bus_responses(void) {
     started_response[1] = 0;
     finish_transfer(&service, PLATFORM_AUX_BUS_SUCCEEDED, 0);
 
-    a71ch_session_service_run(&service, 0);
+    a71ch_session_service_run(&service, 5);
     assert(started_command == A71CH_READ_ANSWER_TO_RESET);
     started_response[0] = sizeof(signature) + 1;
     started_response[1] = 0;

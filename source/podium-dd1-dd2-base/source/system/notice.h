@@ -40,8 +40,11 @@ typedef enum {
  * time in milliseconds.
  */
 typedef struct {
-    SystemNoticeKind kind; /**< Currently visible notice kind. */
-    uint32_t deadline_ms;  /**< Expiration time for a timed notice, or zero for persistence. */
+    SystemNoticeKind kind;     /**< Currently visible notice kind. */
+    uint32_t deadline_ms;      /**< Expiration time for a timed notice, or zero for persistence. */
+    SystemNoticeKind stack[5]; /**< Interrupted notices retained in presentation order. */
+    uint32_t stack_deadlines[5]; /**< Expiry times paired with retained notices. */
+    uint8_t stack_count;         /**< Number of retained interrupted notices. */
 } SystemNotice;
 
 /**

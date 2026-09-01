@@ -63,10 +63,11 @@ static void test_tuning_notices_expire_after_two_seconds(void) {
         system_notice_init(&notice);
         system_notice_show(&notice, kinds[index], 100);
 
-        assert(notice.deadline_ms == 2100);
-        system_notice_update(&notice, 2100);
+        uint32_t duration = kinds[index] == SYSTEM_NOTICE_TUNING_MENU_RESET ? 4000 : 2000;
+        assert(notice.deadline_ms == 100 + duration);
+        system_notice_update(&notice, 100 + duration);
         assert(notice.kind == kinds[index]);
-        system_notice_update(&notice, 2101);
+        system_notice_update(&notice, 101 + duration);
         assert(notice.kind == SYSTEM_NOTICE_NONE);
     }
 }

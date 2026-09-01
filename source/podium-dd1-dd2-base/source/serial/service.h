@@ -17,6 +17,7 @@ typedef enum {
 /** @brief State and storage for one serial request exchange. */
 typedef struct {
     SerialSession session;              /**< Shared packet session state. */
+    SerialMessageAssembly response;     /**< Dedicated response-message assembly state. */
     uint8_t packet[SERIAL_PACKET_SIZE]; /**< Service-owned packet transfer buffer. */
     uint32_t deadline_ms;               /**< Deadline for the active packet response. */
     uint32_t error_count;               /**< Cumulative packet and timeout errors. */
@@ -24,6 +25,7 @@ typedef struct {
     uint8_t attempts;                   /**< Number of attempts made for the active packet. */
     SerialServiceStatus status;         /**< Current service lifecycle status. */
     bool packet_pending;                /**< Whether packet is active on the physical link. */
+    bool bounded_attempts;              /**< True when the active request uses retry limits. */
 } SerialService;
 
 /**
@@ -50,6 +52,21 @@ void serial_service_init(SerialService *service);
  */
 bool serial_service_start(SerialService *service, uint8_t type, const uint8_t *message,
                           uint16_t length, uint32_t now_ms);
+
+/**
+ * @brief Starts a serial request that waits indefinitely for transport availability.
+ *
+ * The request retries timeouts without the bounded-attempt failure used by ordinary requests.
+ *
+ * @param[in,out] service Idle service state accepting the request.
+ * @param[in] type Logical request type.
+ * @param[in] message Complete request message bytes.
+ * @param[in] length Request length in bytes.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @return True when the request starts; otherwise false.
+ */
+bool serial_service_start_wait(SerialService *service, uint8_t type, const uint8_t *message,
+                               uint16_t length, uint32_t now_ms);
 
 /**
  * @brief Advances the active serial request.

@@ -122,6 +122,13 @@ bool platform_usb_receive(uint8_t endpoint, uint8_t length, bool data_one);
 void platform_usb_control_ready(void);
 
 /**
+ * @brief Resets endpoint-zero ping-pong state for a new setup transaction.
+ *
+ * Clears endpoint-zero stalls and rearms both setup banks before releasing token processing.
+ */
+void platform_usb_control_reset(void);
+
+/**
  * @brief Sets the USB device address.
  *
  * Stores the low seven bits of the host-assigned address in the controller.

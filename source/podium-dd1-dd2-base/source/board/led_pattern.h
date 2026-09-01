@@ -41,6 +41,7 @@ typedef struct {
     bool pedal_handshake_active;   /**< True while the pedal handshake requests breathing. */
     bool alternate_runtime_active; /**< True while alternate runtime requests breathing. */
     bool force_override_requested; /**< True to start breathing for a force override request. */
+    bool profile_save_complete;    /**< True after the current profile save completes. */
 } LedPatternControllerInput;
 
 /**

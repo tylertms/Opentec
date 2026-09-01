@@ -122,7 +122,7 @@ static void test_retries_four_times_after_initial_send(void) {
     reset_link();
     serial_service_init(&service);
     const uint8_t data = 1;
-    assert(serial_service_start(&service, 3, &data, 1, 100));
+    assert(serial_service_start_wait(&service, 3, &data, 1, 100));
 
     serial_service_run(&service, 109);
     assert(service.status == SERIAL_SERVICE_PENDING);
@@ -131,7 +131,7 @@ static void test_retries_four_times_after_initial_send(void) {
     assert(reset_count == 0);
     serial_service_run(&service, 111);
     assert(service.status == SERIAL_SERVICE_PENDING);
-    assert(reset_count == 1);
+    assert(reset_count == 0);
     assert(start_count == 2);
     serial_service_run(&service, 122);
     assert(service.status == SERIAL_SERVICE_PENDING);
@@ -141,7 +141,7 @@ static void test_retries_four_times_after_initial_send(void) {
     assert(service.status == SERIAL_SERVICE_PENDING);
     serial_service_run(&service, 155);
     assert(service.status == SERIAL_SERVICE_FAILED);
-    assert(reset_count == 5);
+    assert(reset_count == 0);
     assert(start_count == 5);
     assert(serial_service_error_count(&service) == 5);
 }

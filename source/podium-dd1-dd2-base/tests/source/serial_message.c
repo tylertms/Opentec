@@ -77,7 +77,7 @@ static void test_encodes_and_assembles_maximum_message(void) {
         packet_count++;
         if (next_offset == sizeof(message)) {
             assert(packet.type_flags == (4 | SERIAL_PACKET_FINAL_FRAGMENT));
-            assert(packet.payload_length == 2);
+            assert(packet.payload_length == 43);
             assert(result == SERIAL_MESSAGE_COMPLETE);
             assert(!acknowledgement_required);
         } else {
@@ -89,7 +89,7 @@ static void test_encodes_and_assembles_maximum_message(void) {
         offset = next_offset;
     }
 
-    assert(packet_count == 10);
+    assert(packet_count == 18);
     assert(assembly.type == 4);
     assert(assembly.length == sizeof(message));
     assert(memcmp(assembly.data, message, sizeof(message)) == 0);

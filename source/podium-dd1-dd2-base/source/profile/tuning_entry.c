@@ -129,9 +129,6 @@ TuningEntryLimits tuning_entry_limits(TuningEntry entry, const TuningProfileBank
     if (entry == TUNING_ENTRY_MULTI_POSITION_MODE && !context->multi_position_automatic_available) {
         limits.minimum = 1;
     }
-    if (entry == TUNING_ENTRY_FORCE_FEEDBACK_STRENGTH && context->xbox_mode) {
-        limits.maximum = 101;
-    }
     if (!bank->standard_mode_enabled) {
         return limits;
     }
@@ -206,7 +203,7 @@ static bool entry_supported_by_hardware(TuningEntry entry, const TuningProfileBa
     case TUNING_ENTRY_FORCE_SCALE:
         return !context->motor_calibration_active;
     case TUNING_ENTRY_NATURAL_DAMPER:
-        return context->wheel_accessory_kind != WHEEL_ACCESSORY_DISCONNECTED;
+        return context->wheel_auxiliary_state != 0;
     case TUNING_ENTRY_FULL_FORCE:
         return false;
     case TUNING_ENTRY_BUTTON_ILLUMINATION:
@@ -215,7 +212,7 @@ static bool entry_supported_by_hardware(TuningEntry entry, const TuningProfileBa
     case TUNING_ENTRY_NATURAL_FRICTION:
     case TUNING_ENTRY_NATURAL_INERTIA:
     case TUNING_ENTRY_INTERPOLATION_FILTER:
-        return context->wheel_accessory_kind == WHEEL_ACCESSORY_EXTENDED;
+        return context->wheel_auxiliary_state == 3;
     case TUNING_ENTRY_BRAKE_FORCE:
         return context->pedal_connection == TUNING_PEDALS_TRANSFER ||
                context->pedal_connection == TUNING_PEDALS_LEGACY;

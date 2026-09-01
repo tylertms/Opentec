@@ -60,6 +60,8 @@ TuningMenuUpdate tuning_menu_update(TuningMenu *menu, TuningInteractionPhase pha
                navigation.mode == TUNING_NAVIGATION_DECREASE ||
                navigation.mode == TUNING_NAVIGATION_ANALOG) {
         menu->view = TUNING_MENU_VIEW_VALUE;
+        update.adjustment_requested = true;
+        update.adjusted_entry = menu->selected_entry;
         update.value_changed =
             tuning_entry_adjust(bank, menu->selected_entry, navigation, adjustment);
     } else if (navigation.mode == TUNING_NAVIGATION_TOGGLE_VIEW &&

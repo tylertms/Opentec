@@ -16,6 +16,21 @@ enum {
  * @brief Monotonic millisecond counter updated by the Timer 1 interrupt.
  */
 static volatile uint32_t system_time_ms;
+/** @brief Callback invoked after each millisecond timer tick. */
+static PlatformTimeTickHandler tick_handler;
+/** @brief Caller context passed to the millisecond tick callback. */
+static void *tick_context;
+
+/**
+ * @brief Installs the platform millisecond tick callback.
+ *
+ * @param[in] handler Callback to invoke, or null to disable callbacks.
+ * @param[in,out] context Caller context passed to the callback.
+ */
+void platform_time_set_tick_handler(PlatformTimeTickHandler handler, void *context) {
+    tick_handler = handler;
+    tick_context = context;
+}
 
 /**
  * @brief Starts the millisecond system timebase.
@@ -56,5 +71,8 @@ uint32_t platform_time_ms(void) {
  */
 void __attribute__((interrupt, no_auto_psv)) _T1Interrupt(void) {
     system_time_ms++;
+    if (tick_handler != 0) {
+        tick_handler(tick_context, system_time_ms);
+    }
     IFS0bits.T1IF = 0;
 }

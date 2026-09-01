@@ -129,10 +129,14 @@ SECTIONS
         *(.user_init);
         KEEP (*(.handle));
         KEEP (*(.isr*));
-        *(.libc) *(.libm) *(.libdsp);  /* keep together in this order */
-        *(.lib*);
   } >startup
 #endif
+
+  libraries :
+  {
+        *(.libc) *(.libm) *(.libdsp);
+        *(.lib*);
+  } >program
 
   .const :
   {

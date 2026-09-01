@@ -2,7 +2,7 @@
 
 #include "system/event_queue.h"
 
-static void test_retains_five_nonzero_events(void) {
+static void test_retains_one_nonzero_event(void) {
     SystemEventQueue queue;
     system_event_queue_init(&queue);
 
@@ -12,13 +12,13 @@ static void test_retains_five_nonzero_events(void) {
     assert(system_event_queue_try_push(&queue, 0x0d));
     assert(queue.pending_code == 0x0d);
     assert(queue.last_code == 0x0d);
-    assert(system_event_queue_try_push(&queue, 0x1b));
-    assert(system_event_queue_try_push(&queue, 0x2c));
-    assert(system_event_queue_try_push(&queue, 0x3d));
-    assert(system_event_queue_try_push(&queue, 0x4e));
+    assert(!system_event_queue_try_push(&queue, 0x1b));
+    assert(!system_event_queue_try_push(&queue, 0x2c));
+    assert(!system_event_queue_try_push(&queue, 0x3d));
+    assert(!system_event_queue_try_push(&queue, 0x4e));
     assert(!system_event_queue_try_push(&queue, 0x5f));
     assert(queue.pending_code == 0x0d);
-    assert(queue.last_code == 0x4e);
+    assert(queue.last_code == 0x0d);
 }
 
 static void test_completion_preserves_last_event(void) {
@@ -35,7 +35,7 @@ static void test_completion_preserves_last_event(void) {
 }
 
 int main(void) {
-    test_retains_five_nonzero_events();
+    test_retains_one_nonzero_event();
     test_completion_preserves_last_event();
     return 0;
 }

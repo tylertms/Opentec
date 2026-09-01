@@ -16,7 +16,7 @@ enum {
     USB_DIRECTION_COUNT = 2, /**< Number of endpoint directions. */
     USB_DESCRIPTOR_COUNT =
         USB_ENDPOINT_COUNT * USB_BANK_COUNT * USB_DIRECTION_COUNT, /**< Total descriptor entries. */
-    USB_EVENT_CAPACITY = 12,              /**< Number of event-ring storage entries. */
+    USB_EVENT_CAPACITY = 24,
     USB_INTERRUPT_PRIORITY = 4,           /**< USB interrupt priority. */
     USB_PACKET_ID_SETUP = 0x0d,           /**< USB packet identifier for a setup transaction. */
     USB_TRANSACTION_ODD_BANK = 0x04,      /**< U1STAT mask for the odd ping-pong bank. */
@@ -64,7 +64,14 @@ static volatile uint8_t buffers[USB_ENDPOINT_COUNT][USB_DIRECTION_COUNT][USB_BAN
 /**
  * @brief Interrupt-to-foreground USB event ring.
  */
-static volatile PlatformUsbEvent events[USB_EVENT_CAPACITY];
+typedef struct {
+    PlatformUsbEventType type;
+    uint8_t endpoint;
+    uint8_t length;
+    bool odd_bank;
+} PlatformUsbQueuedEvent;
+
+static volatile PlatformUsbQueuedEvent events[USB_EVENT_CAPACITY];
 
 /**
  * @brief Next event-ring insertion index.
@@ -153,8 +160,7 @@ static void arm_setup_bank(bool odd_bank) {
  * @param[in] data Completed packet bytes, or null for events without a payload.
  * @param[in] length Number of packet bytes to copy.
  */
-static void push_event(PlatformUsbEventType type, uint8_t endpoint, const volatile uint8_t *data,
-                       uint8_t length) {
+static void push_event(PlatformUsbEventType type, uint8_t endpoint, bool odd_bank, uint8_t length) {
     uint8_t next = event_head + 1;
     if (next == USB_EVENT_CAPACITY) {
         next = 0;
@@ -163,13 +169,11 @@ static void push_event(PlatformUsbEventType type, uint8_t endpoint, const volati
         return;
     }
 
-    volatile PlatformUsbEvent *event = &events[event_head];
+    volatile PlatformUsbQueuedEvent *event = &events[event_head];
     event->type = type;
     event->endpoint = endpoint;
     event->length = length;
-    for (uint8_t index = 0; index < length; index++) {
-        event->data[index] = data[index];
-    }
+    event->odd_bank = odd_bank;
     event_head = next;
 }
 
@@ -332,12 +336,16 @@ bool platform_usb_take_event(PlatformUsbEvent *event) {
     IEC5bits.USB1IE = 0;
     bool available = event_tail != event_head;
     if (available) {
-        const volatile PlatformUsbEvent *source = &events[event_tail];
+        const volatile PlatformUsbQueuedEvent *source = &events[event_tail];
         event->type = source->type;
         event->endpoint = source->endpoint;
         event->length = source->length;
-        for (uint8_t index = 0; index < source->length; index++) {
-            event->data[index] = source->data[index];
+        if (source->type == PLATFORM_USB_EVENT_SETUP || source->type == PLATFORM_USB_EVENT_OUT) {
+            const volatile uint8_t *data =
+                &buffers[source->endpoint][0][source->odd_bank ? 1 : 0][0];
+            for (uint8_t index = 0; index < source->length; index++) {
+                event->data[index] = data[index];
+            }
         }
         event_tail++;
         if (event_tail == USB_EVENT_CAPACITY) {
@@ -449,6 +457,22 @@ void platform_usb_control_ready(void) {
     }
     U1EP0bits.EPSTALL = 0;
     U1CONbits.PKTDIS = 0;
+    IEC5bits.USB1IE = interrupt_enabled;
+}
+
+/**
+ * @brief Resets endpoint-zero state for a new setup transaction.
+ */
+void platform_usb_control_reset(void) {
+    bool interrupt_enabled = IEC5bits.USB1IE != 0;
+    IEC5bits.USB1IE = 0;
+    for (uint8_t direction = 0; direction < USB_DIRECTION_COUNT; direction++) {
+        for (uint8_t bank = 0; bank < USB_BANK_COUNT; bank++) {
+            usb_buffer_descriptor_clear(descriptor(0, direction != 0, bank != 0));
+        }
+        next_bank[0][direction] = 0;
+    }
+    U1EP0bits.EPSTALL = 0;
     IEC5bits.USB1IE = interrupt_enabled;
 }
 
@@ -612,15 +636,14 @@ static void handle_transaction(void) {
     uint8_t length = (uint8_t)usb_buffer_descriptor_count(completed);
 
     if (input) {
-        push_event(PLATFORM_USB_EVENT_IN_COMPLETE, endpoint, 0, 0);
+        push_event(PLATFORM_USB_EVENT_IN_COMPLETE, endpoint, odd_bank, 0);
         return;
     }
 
-    const volatile uint8_t *data = &buffers[endpoint][0][odd_bank ? 1 : 0][0];
     PlatformUsbEventType type = usb_buffer_descriptor_packet_id(completed) == USB_PACKET_ID_SETUP
                                     ? PLATFORM_USB_EVENT_SETUP
                                     : PLATFORM_USB_EVENT_OUT;
-    push_event(type, endpoint, data, length);
+    push_event(type, endpoint, odd_bank, length);
     if (type == PLATFORM_USB_EVENT_SETUP) {
         U1EP0bits.EPSTALL = 0;
     }
@@ -645,11 +668,11 @@ void __attribute__((interrupt, no_auto_psv)) _USB1Interrupt(void) {
     }
     if (U1IRbits.URSTIF != 0) {
         reset_controller();
-        push_event(PLATFORM_USB_EVENT_RESET, 0, 0, 0);
+        push_event(PLATFORM_USB_EVENT_RESET, 0, false, 0);
         U1IR = 0x01;
     }
     if (U1IRbits.IDLEIF != 0) {
-        push_event(PLATFORM_USB_EVENT_SUSPEND, 0, 0, 0);
+        push_event(PLATFORM_USB_EVENT_SUSPEND, 0, false, 0);
         U1IR = 0x10;
         U1OTGIRbits.ACTVIF = 1;
         U1OTGIEbits.ACTVIE = 1;

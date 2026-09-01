@@ -17,6 +17,7 @@ static const TuningEntryAvailabilityContext available_context = {
     .interface_mode = 0,
     .wheel_mode = 0x0e,
     .wheel_accessory_kind = WHEEL_ACCESSORY_EXTENDED,
+    .wheel_auxiliary_state = 3,
     .pedal_connection = TUNING_PEDALS_TRANSFER,
     .primary_pedal_calibration_active = true,
     .multi_position_supported = true,
@@ -50,7 +51,7 @@ static void test_reports_catalog_and_runtime_limits(void) {
     assert(limits.minimum == 1);
     context.xbox_mode = true;
     limits = tuning_entry_limits(TUNING_ENTRY_FORCE_FEEDBACK_STRENGTH, &bank, &context);
-    assert(limits.maximum == 101);
+    assert(limits.maximum == 100);
 
     bank.standard_mode_enabled = true;
     limits = tuning_entry_limits(TUNING_ENTRY_SETUP, &bank, &context);
@@ -79,9 +80,9 @@ static void test_adjusts_and_clamps_scalar_entries(void) {
                                 navigation(TUNING_NAVIGATION_INCREASE, 0), &default_context));
     TuningEntryAdjustmentContext xbox_context = default_context;
     xbox_context.xbox_mode = true;
-    assert(tuning_entry_adjust(&bank, TUNING_ENTRY_FORCE_FEEDBACK_STRENGTH,
-                               navigation(TUNING_NAVIGATION_INCREASE, 0), &xbox_context));
-    assert(bank.slots[0].force_feedback_strength == 101);
+    assert(!tuning_entry_adjust(&bank, TUNING_ENTRY_FORCE_FEEDBACK_STRENGTH,
+                                navigation(TUNING_NAVIGATION_INCREASE, 0), &xbox_context));
+    assert(bank.slots[0].force_feedback_strength == 100);
     assert(tuning_entry_adjust(&bank, TUNING_ENTRY_FORCE_EFFECT_INTENSITY,
                                navigation(TUNING_NAVIGATION_DECREASE, 0), &default_context));
     assert(bank.slots[0].force_effect_intensity == 90);
@@ -213,6 +214,7 @@ static void test_applies_interface_and_hardware_availability(void) {
     context.motor_calibration_active = true;
     assert(!tuning_entry_available(TUNING_ENTRY_FORCE_SCALE, &bank, &context));
     context.wheel_accessory_kind = WHEEL_ACCESSORY_DISCONNECTED;
+    context.wheel_auxiliary_state = 0;
     assert(!tuning_entry_available(TUNING_ENTRY_NATURAL_DAMPER, &bank, &context));
     assert(!tuning_entry_available(TUNING_ENTRY_NATURAL_FRICTION, &bank, &context));
     context = available_context;
