@@ -5,7 +5,9 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "motor/probe.h"
 #include "platform/aux_bus.h"
+#include "system/runtime_bridge.h"
 #include "transfer/command.h"
 #include "usb/device.h"
 #include "usb/operating_mode_command.h"
@@ -24,6 +26,7 @@ static PlatformAuxBusStatus aux_bus_status;
 static uint8_t aux_address;
 static uint16_t aux_register;
 static uint8_t aux_data[WHEEL_UPDATER_BRIDGE_MAX_REQUEST_SIZE];
+static uint8_t *aux_read_destination;
 static uint16_t aux_length;
 
 bool platform_aux_bus_start_write(uint8_t address, uint16_t register_address, const uint8_t *data,
@@ -38,10 +41,10 @@ bool platform_aux_bus_start_write(uint8_t address, uint16_t register_address, co
 
 bool platform_aux_bus_start_read(uint8_t address, uint16_t register_address, uint8_t *data,
                                  uint16_t length) {
-    (void)address;
-    (void)register_address;
-    (void)data;
-    (void)length;
+    aux_address = address;
+    aux_register = register_address;
+    aux_read_destination = data;
+    aux_length = length;
     aux_bus_status = PLATFORM_AUX_BUS_BUSY;
     return true;
 }
@@ -89,6 +92,11 @@ bool platform_serial_link_direct_read(uint8_t *data, uint8_t length) {
     return true;
 }
 
+void platform_serial_link_direct_clear(void) {
+    direct_response = NULL;
+    direct_response_length = 0;
+}
+
 static void reset_fakes(void) {
     host_packet = (UsbDeviceUpdaterPacket){0};
     host_packet_ready = false;
@@ -100,6 +108,7 @@ static void reset_fakes(void) {
     aux_bus_status = PLATFORM_AUX_BUS_IDLE;
     aux_address = 0;
     aux_register = 0;
+    aux_read_destination = NULL;
     aux_length = 0;
 }
 
@@ -226,6 +235,111 @@ static void test_fails_startup_recovery_probe_after_bus_error(void) {
     assert(usb_updater_service_probe_status(&service) == USB_UPDATER_PROBE_FAILED);
 }
 
+static void test_restores_normal_usb_when_motor_and_updater_are_absent(void) {
+    MotorProbe motor_probe;
+    UsbUpdaterService updater;
+    RuntimeBridge runtime_bridge;
+    reset_fakes();
+
+    motor_probe_init(&motor_probe);
+    motor_probe_start(&motor_probe, 0);
+    motor_probe_run(&motor_probe, 0);
+    aux_bus_status = PLATFORM_AUX_BUS_FAILED;
+    motor_probe_run(&motor_probe, 1000);
+    assert(motor_probe.phase == MOTOR_PROBE_FAILED);
+
+    usb_updater_service_init(&updater, NULL);
+    assert(usb_updater_service_select_startup_recovery(&updater));
+    runtime_bridge_init(&runtime_bridge);
+    assert(runtime_bridge_start_auxiliary_recovery(&runtime_bridge, 0) ==
+           (RUNTIME_BRIDGE_ACTION_PREPARE_USB | RUNTIME_BRIDGE_ACTION_ENABLE_TRANSFER_TIMER));
+
+    RuntimeBridgeInput bridge_input = {.now_ms = 11};
+    assert(runtime_bridge_step(&runtime_bridge, &bridge_input) ==
+           RUNTIME_BRIDGE_ACTION_START_TRANSFER);
+    assert(usb_updater_service_start_probe(&updater));
+
+    UsbUpdaterServiceInput updater_input = input_at(11);
+    usb_updater_service_run(&updater, &updater_input);
+    aux_bus_status = PLATFORM_AUX_BUS_FAILED;
+    updater_input.now_ms = 12;
+    usb_updater_service_run(&updater, &updater_input);
+    assert(usb_updater_service_probe_status(&updater) == USB_UPDATER_PROBE_FAILED);
+
+    bridge_input.now_ms = 12;
+    bridge_input.transfer_status = RUNTIME_BRIDGE_TRANSFER_FAILED;
+    assert(
+        runtime_bridge_step(&runtime_bridge, &bridge_input) ==
+        (RUNTIME_BRIDGE_ACTION_DISABLE_TRANSFER_TIMER | RUNTIME_BRIDGE_ACTION_RESTORE_NORMAL_USB));
+    assert(runtime_bridge.phase == RUNTIME_BRIDGE_IDLE);
+    assert(runtime_bridge.mode == USB_RUNTIME_MODE_NORMAL);
+}
+
+static void advance_startup_probe_to_header_read(UsbUpdaterService *service) {
+    UsbUpdaterServiceInput input = input_at(0);
+    usb_updater_service_run(service, &input);
+    aux_bus_status = PLATFORM_AUX_BUS_SUCCEEDED;
+    input.now_ms = 1;
+    usb_updater_service_run(service, &input);
+    input.now_ms = 2;
+    usb_updater_service_run(service, &input);
+    input.now_ms = 3;
+    usb_updater_service_run(service, &input);
+    assert(aux_bus_status == PLATFORM_AUX_BUS_BUSY);
+    assert(aux_read_destination != NULL);
+    assert(aux_length == 1);
+}
+
+static void test_fails_startup_recovery_probe_after_read_error(void) {
+    UsbUpdaterService service;
+    reset_fakes();
+    usb_updater_service_init(&service, NULL);
+    assert(usb_updater_service_select_startup_recovery(&service));
+    assert(usb_updater_service_start_probe(&service));
+    advance_startup_probe_to_header_read(&service);
+
+    aux_bus_status = PLATFORM_AUX_BUS_FAILED;
+    UsbUpdaterServiceInput input = input_at(4);
+    usb_updater_service_run(&service, &input);
+    assert(usb_updater_service_probe_status(&service) == USB_UPDATER_PROBE_FAILED);
+}
+
+static void test_fails_startup_recovery_probe_on_zero_header(void) {
+    UsbUpdaterService service;
+    reset_fakes();
+    usb_updater_service_init(&service, NULL);
+    assert(usb_updater_service_select_startup_recovery(&service));
+    assert(usb_updater_service_start_probe(&service));
+    advance_startup_probe_to_header_read(&service);
+
+    *aux_read_destination = 0;
+    aux_bus_status = PLATFORM_AUX_BUS_SUCCEEDED;
+    UsbUpdaterServiceInput input = input_at(4);
+    usb_updater_service_run(&service, &input);
+    assert(usb_updater_service_probe_status(&service) == USB_UPDATER_PROBE_FAILED);
+}
+
+static void test_fails_startup_recovery_probe_on_non_a7_response(void) {
+    UsbUpdaterService service;
+    reset_fakes();
+    usb_updater_service_init(&service, NULL);
+    assert(usb_updater_service_select_startup_recovery(&service));
+    assert(usb_updater_service_start_probe(&service));
+    advance_startup_probe_to_header_read(&service);
+
+    *aux_read_destination = 0x5a;
+    aux_bus_status = PLATFORM_AUX_BUS_SUCCEEDED;
+    UsbUpdaterServiceInput input = input_at(4);
+    usb_updater_service_run(&service, &input);
+    assert(aux_read_destination != NULL);
+    assert(aux_length == 1);
+    *aux_read_destination = 0xa2;
+    aux_bus_status = PLATFORM_AUX_BUS_SUCCEEDED;
+    input.now_ms = 5;
+    usb_updater_service_run(&service, &input);
+    assert(usb_updater_service_probe_status(&service) == USB_UPDATER_PROBE_FAILED);
+}
+
 static void test_latches_guarded_reset(void) {
     static const uint8_t request[] = {0xf8, 0x09, 0x01, 0xfe};
     UsbUpdaterService service;
@@ -323,6 +437,10 @@ int main(void) {
     test_routes_auxiliary_handshake_and_probe();
     test_routes_startup_recovery_without_handshake();
     test_fails_startup_recovery_probe_after_bus_error();
+    test_restores_normal_usb_when_motor_and_updater_are_absent();
+    test_fails_startup_recovery_probe_after_read_error();
+    test_fails_startup_recovery_probe_on_zero_header();
+    test_fails_startup_recovery_probe_on_non_a7_response();
     test_latches_guarded_reset();
     test_probes_direct_route_and_selects_identity();
     test_forwards_host_bridge_response();

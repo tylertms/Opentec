@@ -49,6 +49,7 @@ void motor_probe_start(MotorProbe *probe, uint32_t now_ms) {
         return;
     }
 
+    platform_aux_bus_clear();
     probe->phase = MOTOR_PROBE_STATUS;
     probe->deadline_ms = now_ms + MOTOR_PROBE_TIMEOUT_MS;
 }

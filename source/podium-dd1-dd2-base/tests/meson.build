@@ -252,6 +252,9 @@ base_tests = {
     'wheel/updater_command_service.c',
     'wheel/updater_direct_service.c',
     'wheel/updater_bridge.c',
+    'motor/probe.c',
+    'motor/identity.c',
+    'system/runtime_bridge.c',
     'transfer/command.c',
     'transfer/memory.c',
     'platform/time.c',
@@ -855,6 +858,11 @@ base_tests = {
 
 if base_is_dspic
   base_tests += {
+    'platform-aux-bus': [
+      'source/platform_aux_bus.c',
+      'platform/dspic33e/aux_bus.c',
+      'platform/time.c',
+    ],
     'platform-power': ['source/platform_power.c', 'platform/dspic33e/power.c'],
     'platform-usb': [
       'source/platform_usb.c',

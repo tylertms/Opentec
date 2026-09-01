@@ -12,12 +12,13 @@ enum {
     WHEEL_UPDATER_RETRY_OPCODE = 0xa1,           /**< Retry-response opcode. */
     WHEEL_UPDATER_ACKNOWLEDGEMENT_OPCODE = 0xa2, /**< Acknowledgement-response opcode. */
     WHEEL_UPDATER_VARIABLE_OPCODE = 0xa4,        /**< Variable-payload response opcode. */
-    WHEEL_UPDATER_FIXED_OPCODE = 0xa7,           /**< Fixed-payload response opcode. */
-    WHEEL_UPDATER_FIXED_PAYLOAD_SIZE = 8,        /**< Fixed response payload length. */
-    WHEEL_UPDATER_LENGTH_SIZE = 2,               /**< Variable-payload length field size. */
-    WHEEL_UPDATER_METADATA_SIZE = 2,             /**< Variable-payload metadata size. */
-    WHEEL_UPDATER_READ_DELAY_MS = 2,       /**< Delay after a request write in milliseconds. */
-    WHEEL_UPDATER_RETRY_TIMEOUT_MS = 2000, /**< Retry-response timeout in milliseconds. */
+    WHEEL_UPDATER_PROBE_OPCODE = 0xa6,
+    WHEEL_UPDATER_FIXED_OPCODE = 0xa7,     /**< Fixed-payload response opcode. */
+    WHEEL_UPDATER_FIXED_PAYLOAD_SIZE = 8,  /**< Fixed response payload length. */
+    WHEEL_UPDATER_LENGTH_SIZE = 2,         /**< Variable-payload length field size. */
+    WHEEL_UPDATER_METADATA_SIZE = 2,       /**< Variable-payload metadata size. */
+    WHEEL_UPDATER_READ_DELAY_MS = 2,       /**< Delay after a request write. */
+    WHEEL_UPDATER_RETRY_TIMEOUT_MS = 2000, /**< Retry-response timeout. */
 };
 
 /**
@@ -124,6 +125,7 @@ bool wheel_updater_bridge_start(WheelUpdaterBridge *bridge, const uint8_t *reque
     bridge->response_length = 0;
     bridge->variable_payload_length = 0;
     bridge->retry_response = false;
+    bridge->response_probe = length == 2 && request[1] == WHEEL_UPDATER_PROBE_OPCODE;
     bridge->phase = WHEEL_UPDATER_BRIDGE_WRITE_REQUEST;
     return true;
 }
@@ -133,7 +135,8 @@ bool wheel_updater_bridge_start(WheelUpdaterBridge *bridge, const uint8_t *reque
  *
  * Aborts after a failed wheel transfer, waits two milliseconds after the request write, recognizes
  * response opcodes 0xA1, 0xA2, 0xA4, and 0xA7, assembles their fixed or variable fragments, and
- * ends an 0xA1 retry response on a zero marker or after 2000 milliseconds.
+ * ends an 0xA1 retry response on a zero marker or after 2000 milliseconds. A route probe also
+ * aborts on a zero marker or any response opcode other than 0xA7.
  *
  * @param[in,out] bridge Active updater bridge to advance.
  * @param[in] io Current time and completion state of the preceding wheel operation.
@@ -186,6 +189,10 @@ WheelUpdaterOperation wheel_updater_bridge_step(WheelUpdaterBridge *bridge, Whee
             return current_operation(bridge);
         }
         if (io.data[0] == 0) {
+            if (bridge->response_probe) {
+                bridge->phase = WHEEL_UPDATER_BRIDGE_IDLE;
+                return (WheelUpdaterOperation){0};
+            }
             return bridge->retry_response ? finish_response(bridge) : current_operation(bridge);
         }
         if (io.data[0] != WHEEL_UPDATER_FRAME_MARKER) {
@@ -207,6 +214,10 @@ WheelUpdaterOperation wheel_updater_bridge_step(WheelUpdaterBridge *bridge, Whee
             return current_operation(bridge);
         }
         uint8_t opcode = io.data[0];
+        if (bridge->response_probe && opcode != WHEEL_UPDATER_FIXED_OPCODE) {
+            bridge->phase = WHEEL_UPDATER_BRIDGE_IDLE;
+            return (WheelUpdaterOperation){0};
+        }
         bridge->response[bridge->response_length + 1] = opcode;
         if (opcode == WHEEL_UPDATER_RETRY_OPCODE) {
             bridge->response_length += 2;

@@ -125,16 +125,17 @@ static void test_exchanges_acknowledgement_response(void) {
     wheel_updater_command_service_run(&service, 100);
     wheel_updater_command_service_run(&service, 101);
     wheel_updater_command_service_run(&service, 102);
+    wheel_updater_command_service_run(&service, 103);
     const uint8_t expected_read[] = {2, 0x25, 0, 1, 0};
     submit(&transport, expected_read, sizeof(expected_read));
 
     const uint8_t marker[] = {0x5a};
     complete_read(&transport, marker, sizeof(marker));
-    wheel_updater_command_service_run(&service, 102);
+    wheel_updater_command_service_run(&service, 103);
     submit(&transport, expected_read, sizeof(expected_read));
     const uint8_t opcode[] = {0xa2};
     complete_read(&transport, opcode, sizeof(opcode));
-    wheel_updater_command_service_run(&service, 102);
+    wheel_updater_command_service_run(&service, 103);
 
     const uint8_t *response = NULL;
     uint8_t response_length = 0;

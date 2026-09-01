@@ -66,6 +66,7 @@ typedef struct {
     uint8_t response_length;          /**< Number of valid bytes in response. */
     WheelUpdaterBridgePhase phase;    /**< Current updater exchange phase. */
     bool retry_response; /**< True when the current response uses retry-response handling. */
+    bool response_probe; /**< True when a zero marker or non-0xA7 response must abort discovery. */
 } WheelUpdaterBridge;
 
 /**

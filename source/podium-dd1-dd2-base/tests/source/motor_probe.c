@@ -99,6 +99,20 @@ static void test_retries_until_deadline(void) {
     assert(motor_probe_identity(&probe) == 0);
 }
 
+static void test_clears_terminal_bus_status_before_first_read(void) {
+    MotorProbe probe;
+    reset_bus();
+    bus_status = PLATFORM_AUX_BUS_FAILED;
+    motor_probe_init(&probe);
+    motor_probe_start(&probe, 100);
+
+    assert(bus_status == PLATFORM_AUX_BUS_IDLE);
+    motor_probe_run(&probe, 100);
+    assert(start_count == 1);
+    assert(requested_address == 0x78);
+    assert(requested_register == 0);
+}
+
 static void test_rejects_invalid_protocol(void) {
     MotorProbe probe;
     reset_bus();
@@ -134,6 +148,7 @@ static void test_busy_transfer_expires_at_deadline(void) {
 int main(void) {
     test_discovers_motor();
     test_retries_until_deadline();
+    test_clears_terminal_bus_status_before_first_read();
     test_rejects_invalid_protocol();
     test_busy_transfer_expires_at_deadline();
     return 0;

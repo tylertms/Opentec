@@ -47,8 +47,8 @@ void motor_probe_init(MotorProbe *probe);
 /**
  * @brief Starts a motor-controller identification attempt.
  *
- * Begins the status-register phase and sets its shared one-second deadline when no transfer is
- * already active.
+ * Clears a terminal auxiliary-bus result, begins the status-register phase, and sets its shared
+ * one-second deadline when no transfer is already active. An active bus transfer is undisturbed.
  *
  * @param[in,out] probe Motor-controller discovery state.
  * @param[in] now_ms Current monotonic time in milliseconds.

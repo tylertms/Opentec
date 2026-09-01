@@ -17,7 +17,8 @@ typedef enum {
 /**
  * @brief Initializes the auxiliary bus controller.
  *
- * Releases a stalled bus when needed and enables the I2C controller and interrupt service.
+ * Releases a stalled bus when needed, enables the I2C controller and interrupt service, and
+ * consumes the controller-reset stop without starting a transaction.
  */
 void platform_aux_bus_init(void);
 

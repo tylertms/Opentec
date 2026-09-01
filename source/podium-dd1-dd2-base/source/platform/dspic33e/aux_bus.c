@@ -21,15 +21,16 @@ typedef enum {
     AUX_BUS_RECEIVE,       /**< Receive one payload byte. */
     AUX_BUS_ACKNOWLEDGE,   /**< Acknowledge or negatively acknowledge the received byte. */
     AUX_BUS_STOP,          /**< Complete the stop condition and publish the result. */
+    AUX_BUS_RESET_FINISH,  /**< Consume the controller-reset stop without publishing a result. */
 } AuxBusPhase;
 
 /**
  * @brief Auxiliary-bus controller configuration values.
  */
 enum {
-    AUX_BUS_BAUD_RATE = 0xa3,                 /**< I2C2 baud generator value. */
-    AUX_BUS_INTERRUPT_PRIORITY = 7,           /**< I2C2 interrupt priority. */
-    AUX_BUS_TIMEOUT_BASE_MS = 20,             /**< Base transaction timeout in milliseconds. */
+    AUX_BUS_BAUD_RATE = 0xa3,       /**< I2C2 baud generator value. */
+    AUX_BUS_INTERRUPT_PRIORITY = 7, /**< I2C2 interrupt priority. */
+    AUX_BUS_PROGRESS_TIMEOUT_MS = 2,
     AUX_BUS_RECOVERY_PULSES = 9,              /**< Maximum SCL recovery pulses. */
     AUX_BUS_RECOVERY_DELAY_CYCLES = 0x23 * 2, /**< Delay cycles for each bus-recovery interval. */
 };
@@ -118,7 +119,7 @@ static bool start_transaction(uint8_t address, uint16_t register_address, uint16
     stop_status = PLATFORM_AUX_BUS_SUCCEEDED;
     phase = AUX_BUS_START;
     status = PLATFORM_AUX_BUS_BUSY;
-    deadline = platform_time_ms() + AUX_BUS_TIMEOUT_BASE_MS + length / 16;
+    deadline = platform_time_ms() + AUX_BUS_PROGRESS_TIMEOUT_MS;
     I2C2CONbits.SEN = 1;
     return true;
 }
@@ -214,7 +215,8 @@ static void recover_bus(void) {
  * @brief Resets the auxiliary-bus controller.
  *
  * Disables I2C2, releases a stalled bus, clears collision and overflow flags, selects SMBus input
- * thresholds, programs baud value 0xa3 and interrupt priority seven, and re-enables master events.
+ * thresholds, programs baud value 0xa3 and interrupt priority seven, and issues a stop in a
+ * dedicated finish phase so its completion interrupt cannot start a transaction.
  */
 static void reset_controller(void) {
     I2C2CONbits.I2CEN = 0;
@@ -229,12 +231,15 @@ static void reset_controller(void) {
     IFS3bits.MI2C2IF = 0;
     IEC3bits.MI2C2IE = 1;
     I2C2CONbits.I2CEN = 1;
+    phase = AUX_BUS_RESET_FINISH;
+    I2C2CONbits.PEN = 1;
 }
 
 /**
  * @brief Initializes the auxiliary-bus service.
  *
- * Marks the shared motor and secure-element bus idle and configures its I2C2 controller.
+ * Marks the shared motor and secure-element bus idle, configures I2C2, and consumes the initial
+ * stop completion without changing the published idle state.
  */
 void platform_aux_bus_init(void) {
     status = PLATFORM_AUX_BUS_IDLE;
@@ -328,6 +333,10 @@ void platform_aux_bus_clear(void) {
     }
 }
 
+#ifdef OPENTEC_SIMULATOR_TEST
+bool platform_aux_bus_reset_finish_active(void) { return phase == AUX_BUS_RESET_FINISH; }
+#endif
+
 /**
  * @brief Advances the auxiliary-bus transaction state machine.
  *
@@ -336,16 +345,20 @@ void platform_aux_bus_clear(void) {
  * condition, and clears the master interrupt request.
  */
 void __attribute__((interrupt, no_auto_psv)) _MI2C2Interrupt(void) {
+    while (I2C2CONbits.ACKEN != 0) {
+    }
     bool bus_error = I2C2STATbits.IWCOL != 0 || I2C2STATbits.BCL != 0 || I2C2STATbits.I2COV != 0;
     I2C2STATbits.IWCOL = 0;
     I2C2STATbits.BCL = 0;
     I2C2STATbits.I2COV = 0;
 
-    if (bus_error && phase != AUX_BUS_STOP) {
+    if (bus_error && phase != AUX_BUS_STOP && phase != AUX_BUS_RESET_FINISH) {
         stop_transaction(PLATFORM_AUX_BUS_FAILED);
         IFS3bits.MI2C2IF = 0;
         return;
     }
+
+    deadline = platform_time_ms() + AUX_BUS_PROGRESS_TIMEOUT_MS;
 
     switch (phase) {
     case AUX_BUS_START:
@@ -413,6 +426,8 @@ void __attribute__((interrupt, no_auto_psv)) _MI2C2Interrupt(void) {
         break;
     case AUX_BUS_STOP:
         status = stop_status;
+        break;
+    case AUX_BUS_RESET_FINISH:
         break;
     }
 

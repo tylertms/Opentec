@@ -122,11 +122,11 @@ static void test_exchanges_acknowledgement_response(void) {
 
     const uint8_t marker[] = {0x5a};
     finish_read(marker);
-    wheel_updater_aux_service_run(&service, 102);
+    wheel_updater_aux_service_run(&service, 103);
     assert(requested_length == 1);
     const uint8_t opcode[] = {0xa2};
     finish_read(opcode);
-    wheel_updater_aux_service_run(&service, 102);
+    wheel_updater_aux_service_run(&service, 103);
 
     const uint8_t *response = NULL;
     uint8_t response_length = 0;
