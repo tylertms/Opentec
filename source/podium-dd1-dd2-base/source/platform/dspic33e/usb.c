@@ -351,9 +351,10 @@ bool platform_usb_take_event(PlatformUsbEvent *event) {
 /**
  * @brief Arms one USB endpoint transfer.
  *
- * Selects the next available ping-pong bank, copies device-to-host bytes, publishes the descriptor
- * to the controller, advances bank selection, and releases endpoint-zero token processing only
- * after the requested control stage is ready.
+ * Selects the next available ping-pong bank, reclaims a prearmed endpoint-zero setup bank when
+ * token processing is gated, copies device-to-host bytes, publishes the descriptor to the
+ * controller, advances bank selection, and releases endpoint-zero token processing only after the
+ * requested control stage is ready.
  *
  * @param[in] endpoint Endpoint number from zero through four.
  * @param[in] input True for a device-to-host transfer.
@@ -377,8 +378,11 @@ static bool arm(uint8_t endpoint, bool input, const uint8_t *data, uint8_t lengt
         uint8_t bank = (preferred + offset) & 1;
         volatile UsbBufferDescriptor *target = descriptor(endpoint, input, bank != 0);
         bool replace_setup = endpoint == 0 && !input && offset == 0;
-        if (usb_buffer_descriptor_owned(target) && !replace_setup) {
-            continue;
+        if (usb_buffer_descriptor_owned(target)) {
+            if (!replace_setup) {
+                continue;
+            }
+            target->status &= (uint16_t)~USB_BUFFER_OWNED_BY_USB;
         }
         if (input) {
             volatile uint8_t *destination = &buffers[endpoint][1][bank][0];
