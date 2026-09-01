@@ -342,4 +342,15 @@ if motor_is_target
     ],
     build_subdir: 'package.p',
   )
+  firmware_packages += [
+    {
+      'target': motor_name,
+      'input': motor_hex,
+      'output': motor_name + '.hex',
+      'python': motor_python,
+      'encrypt_args': ['--legacy-wide-secret', '--preserve-newlines'],
+      'dependencies': motor_package_dependencies,
+      'always_stale': true,
+    },
+  ]
 endif

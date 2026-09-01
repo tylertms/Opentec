@@ -308,6 +308,19 @@ if base_is_dspic
     build_subdir: 'package.p',
   )
   base_package_header = '0x0706_V3_9_1_1_release_rev2668f65a'
+  firmware_packages += [
+    {
+      'target': 'podium-dd1-dd2-base-hex',
+      'input': base_hex,
+      'output': 'podium-dd1-dd2-base.hex',
+      'python': base_python,
+      'encrypt_args': ['--header', base_package_header],
+      'verify_args': ['--header', base_package_header],
+      'dependencies': files('../../tools/crypto.py'),
+      'test': 'base-encryption',
+      'suite': ['base', 'package'],
+    },
+  ]
 
   simulator = subproject('dspic33e-sim', native: true)
   base_simulator_runner = simulator.get_variable('dspic33ep_mu_firmware_runner')

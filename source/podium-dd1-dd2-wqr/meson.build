@@ -126,6 +126,20 @@ if wqr_is_target
     ],
     build_subdir: 'package.p',
   )
+  firmware_packages += [
+    {
+      'target': wqr_name,
+      'input': hex,
+      'output': wqr_name + '.hex',
+      'python': python,
+      'encrypt_args': ['--legacy-wide-secret', '--preserve-newlines'],
+      'verify_args': ['--legacy-wide-secret'],
+      'dependencies': wqr_package_dependencies,
+      'always_stale': true,
+      'test': 'wqr-encrypted-package',
+      'suite': ['wqr', 'package'],
+    },
+  ]
 endif
 
 if not meson.is_cross_build() or wqr_is_target
