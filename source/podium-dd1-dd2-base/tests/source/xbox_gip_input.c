@@ -71,7 +71,7 @@ static void test_maps_axes_profile_and_selectors(void) {
         .encoder_direction = -1,
         .axis_mode = 1,
         .led_state = 4,
-        .steering_range_degrees = 1080,
+        .steering_range_units = 108,
         .force_feedback_percent = 40,
         .pedal_active = {true, false, true},
         .auxiliary_pedal_active = true,
@@ -83,8 +83,8 @@ static void test_maps_axes_profile_and_selectors(void) {
     assert(snapshot.pedals[0] == 0x2345 && snapshot.pedals[1] == 0x3456 &&
            snapshot.pedals[2] == 0x4567);
     assert(snapshot.auxiliary_pedal == 0x78);
-    assert(snapshot.axis_mode == 1 && snapshot.led_state == 4);
-    assert(snapshot.steering_range_degrees == 1080);
+    assert(snapshot.axis_mode == 1 && snapshot.led_state == 2);
+    assert(snapshot.steering_range_units == 108);
     assert(snapshot.force_feedback_level == 102);
     assert(snapshot.pedal_active[0] && !snapshot.pedal_active[1] && snapshot.pedal_active[2]);
     assert(snapshot.auxiliary_pedal_active);

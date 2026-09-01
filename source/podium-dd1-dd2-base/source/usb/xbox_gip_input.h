@@ -23,19 +23,22 @@ typedef struct {
     uint16_t pedals[USB_XBOX_GIP_INPUT_PEDAL_COUNT];    /**< Current pedal axis values. */
     uint8_t auxiliary_pedal;                            /**< Current auxiliary-pedal value. */
     uint8_t clutch_paddles[2];                          /**< Current clutch-paddle values. */
-    int8_t encoder_direction;        /**< Signed rotary encoder direction event. */
-    uint8_t wheel_mode;              /**< Attached-wheel protocol mode. */
-    uint8_t axis_mode;               /**< Current axis mode. */
-    uint8_t led_state;               /**< Current wheel LED state. */
-    uint16_t steering_range_degrees; /**< Current lock-to-lock steering range in degrees. */
-    uint8_t force_feedback_percent;  /**< Current force-feedback strength percentage. */
+    int8_t encoder_direction;       /**< Signed rotary encoder direction event. */
+    uint8_t wheel_mode;             /**< Attached-wheel protocol mode. */
+    uint8_t axis_mode;              /**< Current axis mode. */
+    uint8_t led_state;              /**< Current wheel LED state. */
+    uint16_t steering_range_units;  /**< Current steering range in protocol units. */
+    uint8_t force_feedback_percent; /**< Current force-feedback strength percentage. */
     bool pedal_active[USB_XBOX_GIP_INPUT_PEDAL_COUNT]; /**< Whether each pedal axis is active. */
     bool auxiliary_pedal_active; /**< Whether the auxiliary pedal axis is active. */
+    bool shifter_transitions[2]; /**< Rising transition state for two shifter controls. */
 } UsbXboxGipInputState;
 
 /** @brief Stateful input snapshot builder. */
 typedef struct {
     bool alternate_packet_bit; /**< Alternating packet bit used in primary button output. */
+    uint8_t led_input;         /**< Most recently sampled LED input. */
+    uint8_t led_encoded;       /**< Retained LED value encoded into snapshots. */
 } UsbXboxGipInputBuilder;
 
 /**

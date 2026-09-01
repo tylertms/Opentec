@@ -89,4 +89,11 @@ bool usb_tuning_profile_service_response_pending(const UsbTuningProfileService *
  */
 void usb_tuning_profile_service_response_sent(UsbTuningProfileService *service);
 
+/**
+ * @brief Requests publication of the active tuning-profile response.
+ *
+ * @param[in,out] service Tuning-profile service whose response latch is set.
+ */
+void usb_tuning_profile_service_request_response(UsbTuningProfileService *service);
+
 #endif

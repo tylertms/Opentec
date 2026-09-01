@@ -12,7 +12,7 @@
 enum {
     FANATEC_INPUT_REPORT_ID = 1,                  /**< Native Fanatec input report identifier. */
     FANATEC_INPUT_REPORT_SIZE = 34,               /**< Native Fanatec input report size in bytes. */
-    FANATEC_INPUT_COMPATIBILITY_REPORT_SIZE = 33, /**< Compatibility payload size in bytes. */
+    FANATEC_INPUT_COMPATIBILITY_REPORT_SIZE = 34, /**< Compatibility payload size in bytes. */
     FANATEC_INPUT_BUTTON_BANKS = 5,               /**< Number of encoded button banks. */
     FANATEC_INPUT_ROTARY_BYTES = 5,               /**< Number of encoded rotary bytes. */
     FANATEC_INPUT_MULTI_POSITION_CHANNELS = 3,    /**< Number of multi-position channels. */

@@ -5,31 +5,33 @@
 
 /** @brief USB request type, request code, recipient, feature, and layout constants. */
 enum {
-    USB_DIRECTION_IN = 0x80,                     /**< Device-to-host request direction bit. */
-    USB_TYPE_STANDARD = 0x00,                    /**< Standard USB request type. */
-    USB_TYPE_CLASS = 0x20,                       /**< Class USB request type. */
-    USB_TYPE_VENDOR = 0x40,                      /**< Vendor USB request type. */
-    USB_RECIPIENT_DEVICE = 0x00,                 /**< Device request recipient. */
-    USB_RECIPIENT_INTERFACE = 0x01,              /**< Interface request recipient. */
-    USB_RECIPIENT_ENDPOINT = 0x02,               /**< Endpoint request recipient. */
-    USB_REQUEST_GET_STATUS = 0,                  /**< Standard GET_STATUS request code. */
-    USB_REQUEST_CLEAR_FEATURE = 1,               /**< Standard CLEAR_FEATURE request code. */
-    USB_REQUEST_SET_FEATURE = 3,                 /**< Standard SET_FEATURE request code. */
-    USB_REQUEST_SET_ADDRESS = 5,                 /**< Standard SET_ADDRESS request code. */
-    USB_REQUEST_GET_DESCRIPTOR = 6,              /**< Standard GET_DESCRIPTOR request code. */
-    USB_REQUEST_GET_CONFIGURATION = 8,           /**< Standard GET_CONFIGURATION request code. */
-    USB_REQUEST_SET_CONFIGURATION = 9,           /**< Standard SET_CONFIGURATION request code. */
-    USB_REQUEST_GET_INTERFACE = 10,              /**< Standard GET_INTERFACE request code. */
-    USB_REQUEST_SET_INTERFACE = 11,              /**< Standard SET_INTERFACE request code. */
-    USB_HID_GET_REPORT = 1,                      /**< HID GET_REPORT request code. */
-    USB_HID_GET_IDLE = 2,                        /**< HID GET_IDLE request code. */
-    USB_HID_GET_PROTOCOL = 3,                    /**< HID GET_PROTOCOL request code. */
-    USB_HID_SET_REPORT = 9,                      /**< HID SET_REPORT request code. */
-    USB_HID_SET_IDLE = 10,                       /**< HID SET_IDLE request code. */
-    USB_HID_SET_PROTOCOL = 11,                   /**< HID SET_PROTOCOL request code. */
-    USB_CDC_SET_LINE_CODING = 0x20,              /**< CDC SET_LINE_CODING request code. */
-    USB_CDC_GET_LINE_CODING = 0x21,              /**< CDC GET_LINE_CODING request code. */
-    USB_CDC_SET_CONTROL_LINE_STATE = 0x22,       /**< CDC control-line-state request code. */
+    USB_DIRECTION_IN = 0x80,               /**< Device-to-host request direction bit. */
+    USB_TYPE_STANDARD = 0x00,              /**< Standard USB request type. */
+    USB_TYPE_CLASS = 0x20,                 /**< Class USB request type. */
+    USB_TYPE_VENDOR = 0x40,                /**< Vendor USB request type. */
+    USB_RECIPIENT_DEVICE = 0x00,           /**< Device request recipient. */
+    USB_RECIPIENT_INTERFACE = 0x01,        /**< Interface request recipient. */
+    USB_RECIPIENT_ENDPOINT = 0x02,         /**< Endpoint request recipient. */
+    USB_REQUEST_GET_STATUS = 0,            /**< Standard GET_STATUS request code. */
+    USB_REQUEST_CLEAR_FEATURE = 1,         /**< Standard CLEAR_FEATURE request code. */
+    USB_REQUEST_SET_FEATURE = 3,           /**< Standard SET_FEATURE request code. */
+    USB_REQUEST_SET_ADDRESS = 5,           /**< Standard SET_ADDRESS request code. */
+    USB_REQUEST_GET_DESCRIPTOR = 6,        /**< Standard GET_DESCRIPTOR request code. */
+    USB_REQUEST_GET_CONFIGURATION = 8,     /**< Standard GET_CONFIGURATION request code. */
+    USB_REQUEST_SET_CONFIGURATION = 9,     /**< Standard SET_CONFIGURATION request code. */
+    USB_REQUEST_GET_INTERFACE = 10,        /**< Standard GET_INTERFACE request code. */
+    USB_REQUEST_SET_INTERFACE = 11,        /**< Standard SET_INTERFACE request code. */
+    USB_HID_GET_REPORT = 1,                /**< HID GET_REPORT request code. */
+    USB_HID_GET_IDLE = 2,                  /**< HID GET_IDLE request code. */
+    USB_HID_GET_PROTOCOL = 3,              /**< HID GET_PROTOCOL request code. */
+    USB_HID_SET_REPORT = 9,                /**< HID SET_REPORT request code. */
+    USB_HID_SET_IDLE = 10,                 /**< HID SET_IDLE request code. */
+    USB_HID_SET_PROTOCOL = 11,             /**< HID SET_PROTOCOL request code. */
+    USB_CDC_SET_LINE_CODING = 0x20,        /**< CDC SET_LINE_CODING request code. */
+    USB_CDC_GET_LINE_CODING = 0x21,        /**< CDC GET_LINE_CODING request code. */
+    USB_CDC_SET_CONTROL_LINE_STATE = 0x22, /**< CDC control-line-state request code. */
+    USB_CDC_SEND_ENCAPSULATED_COMMAND = 0x00,
+    USB_CDC_GET_ENCAPSULATED_RESPONSE = 0x01,
     USB_XBOX_SECURITY_REQUEST = 0x90,            /**< Xbox GIP security request code. */
     USB_FEATURE_ENDPOINT_HALT = 0,               /**< Endpoint-halt feature selector. */
     USB_FEATURE_DEVICE_REMOTE_WAKEUP = 1,        /**< Device remote-wakeup feature selector. */
@@ -222,12 +224,17 @@ static bool classify_hid(const UsbSetupPacket *packet, UsbControlRequest *reques
  * @return True when the packet is a supported updater CDC request; otherwise false.
  */
 static bool classify_cdc(const UsbSetupPacket *packet, UsbControlRequest *request) {
-    if ((packet->request_type & 0x1f) != USB_RECIPIENT_INTERFACE || packet->index != 0 ||
+    if ((packet->request_type & 0x1f) != USB_RECIPIENT_INTERFACE || packet->index > 1 ||
         (packet->value != 0 && packet->request != USB_CDC_SET_CONTROL_LINE_STATE)) {
         return false;
     }
     bool input = (packet->request_type & USB_DIRECTION_IN) != 0;
     switch (packet->request) {
+    case USB_CDC_SEND_ENCAPSULATED_COMMAND:
+        return !input && packet->length <= 64 &&
+               set_request(packet, request, USB_CONTROL_CDC_SEND_ENCAPSULATED_COMMAND);
+    case USB_CDC_GET_ENCAPSULATED_RESPONSE:
+        return input && set_request(packet, request, USB_CONTROL_CDC_GET_ENCAPSULATED_RESPONSE);
     case USB_CDC_SET_LINE_CODING:
         return !input && packet->length == 7 &&
                set_request(packet, request, USB_CONTROL_CDC_SET_LINE_CODING);

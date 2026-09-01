@@ -9,7 +9,7 @@
 
 /** @brief Tuning-menu command and response constants. */
 enum {
-    TUNING_MENU_ACTION_SELECT_PAGE = 2,    /**< Select-page command action. */
+    TUNING_MENU_ACTION_SELECT_PROFILE = 2,
     TUNING_MENU_ACTION_REFRESH_STATUS = 3, /**< Refresh-status command action. */
     TUNING_MENU_STATUS_COMMAND = 2,        /**< Status-response command identifier. */
 };
@@ -28,17 +28,33 @@ bool usb_tuning_menu_service_apply(UsbTuningMenuService *service, const UsbVendo
         service->response_pending = true;
         return true;
     }
-    if (command->arguments[0] != TUNING_MENU_ACTION_SELECT_PAGE || command->length < 2) {
+    if (command->arguments[0] != TUNING_MENU_ACTION_SELECT_PROFILE || command->length < 2) {
         return false;
     }
 
-    uint8_t page = command->arguments[1];
-    if (page >= USB_TUNING_MENU_PAGE_ROOT && page <= USB_TUNING_MENU_PAGE_AUXILIARY_CALIBRATION) {
-        service->active_page = (UsbTuningMenuPage)page;
-    }
-    if (page != 0) {
+    uint8_t selection = command->arguments[1];
+    if (selection >= 1 && selection <= 6) {
+        service->selected_profile = selection;
+        service->profile_selection_pending = true;
         service->response_pending = true;
     }
+    return true;
+}
+
+/**
+ * @brief Takes a pending tuning-profile selection.
+ *
+ * @param[in,out] service Tuning-menu service retaining the selection.
+ * @param[out] selection Destination for the one-based profile selection.
+ * @return True when a selection was returned; otherwise false.
+ */
+bool usb_tuning_menu_service_take_profile_selection(UsbTuningMenuService *service,
+                                                    uint8_t *selection) {
+    if (service == NULL || selection == NULL || !service->profile_selection_pending) {
+        return false;
+    }
+    *selection = service->selected_profile;
+    service->profile_selection_pending = false;
     return true;
 }
 
@@ -53,7 +69,7 @@ void usb_tuning_menu_service_encode_response(const UsbTuningMenuService *service
     }
     output[0] = UINT8_MAX;
     output[1] = TUNING_MENU_STATUS_COMMAND;
-    output[2] = (uint8_t)service->active_page;
+    output[2] = service->selected_profile;
 }
 
 void usb_tuning_menu_service_response_sent(UsbTuningMenuService *service) {

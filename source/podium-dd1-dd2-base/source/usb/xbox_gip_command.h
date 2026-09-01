@@ -10,7 +10,7 @@ typedef enum {
     USB_XBOX_GIP_COMMAND_CAPABILITIES,            /**< Request wheel capability information. */
     USB_XBOX_GIP_COMMAND_STEERING_RANGE,          /**< Request or set the steering range. */
     USB_XBOX_GIP_COMMAND_FORCE_FEEDBACK_STRENGTH, /**< Request or set force-feedback strength. */
-    USB_XBOX_GIP_COMMAND_HOST_CAPABILITY,         /**< Report host capability information. */
+    USB_XBOX_GIP_COMMAND_REPORT_STATE,            /**< Update Xbox report-streaming state. */
     USB_XBOX_GIP_COMMAND_TRANSFER_STATUS,         /**< Request transfer status. */
     USB_XBOX_GIP_COMMAND_SCRIPT_SAMPLES,          /**< Request script sample data. */
     USB_XBOX_GIP_COMMAND_SCRIPT_SLOT,             /**< Request script slot data. */

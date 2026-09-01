@@ -189,7 +189,7 @@ void usb_xbox_gip_input_response_encode(uint8_t sequence, const UsbXboxGipInputS
     output[14] = snapshot->auxiliary_pedal;
     output[15] = snapshot->axis_mode == 1 ? XBOX_GIP_INPUT_AXIS_MODE : 0;
     output[16] = snapshot->led_state;
-    uint16_t steering_range_tenths = snapshot->steering_range_degrees * 10u;
+    uint16_t steering_range_tenths = snapshot->steering_range_units * 10u;
     output[17] = (uint8_t)steering_range_tenths;
     output[18] = (uint8_t)(steering_range_tenths >> 8);
     output[19] = snapshot->force_feedback_level;

@@ -227,7 +227,7 @@ static void test_encodes_complete_input_layout(void) {
     assert(usb_playstation_input_encode(report, &state));
     assert(report[0] == 1);
     assert(memcmp(report + 1, (uint8_t[]){0x80, 0x80, 0x7f, 0x80}, 4) == 0);
-    assert(memcmp(report + 5, (uint8_t[]){0x58, 0x55, 0xab}, 3) == 0);
+    assert(memcmp(report + 5, (uint8_t[]){0x58, 0x55, 0x01}, 3) == 0);
     assert(memcmp(report + 8, (uint8_t[0x23]){0}, 0x23) == 0);
     assert(memcmp(report + 0x2b,
                   (uint8_t[]){0x34, 0x12, 0x78, 0x56, 0xbc, 0x9a, 0xf0, 0xde, 0xc0, 0x57, 0x13},

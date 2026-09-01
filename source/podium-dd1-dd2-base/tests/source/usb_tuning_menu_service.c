@@ -43,7 +43,7 @@ static void test_refreshes_without_changing_page(void) {
 
     assert(usb_tuning_menu_service_apply(&service, &refresh));
     usb_tuning_menu_service_encode_response(&service, output);
-    assert(output[2] == USB_TUNING_MENU_PAGE_ROOT);
+    assert(output[2] == 0);
 }
 
 static void test_preserves_page_for_unsupported_selectors(void) {
@@ -51,14 +51,8 @@ static void test_preserves_page_for_unsupported_selectors(void) {
     usb_tuning_menu_service_init(&service);
     uint8_t arguments[2] = {2, 7};
     UsbVendorCommand select = command(arguments, sizeof(arguments));
-    uint8_t output[USB_DEVICE_REPORT_SIZE];
-
     assert(usb_tuning_menu_service_apply(&service, &select));
-    assert(usb_tuning_menu_service_response_pending(&service));
-    usb_tuning_menu_service_encode_response(&service, output);
-    assert(output[2] == USB_TUNING_MENU_PAGE_ROOT);
-
-    usb_tuning_menu_service_response_sent(&service);
+    assert(!usb_tuning_menu_service_response_pending(&service));
     arguments[1] = 0;
     assert(usb_tuning_menu_service_apply(&service, &select));
     assert(!usb_tuning_menu_service_response_pending(&service));

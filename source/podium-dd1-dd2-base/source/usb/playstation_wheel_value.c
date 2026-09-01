@@ -75,6 +75,56 @@ bool usb_playstation_wheel_value_copy_axes(UsbPlaystationWheelValue *value, cons
     return true;
 }
 
+/**
+ * @brief Refreshes the retained wheel value from live brake and clutch inputs.
+ *
+ * @param[in,out] value Retained wheel value.
+ * @param[in] brake_position Current brake position.
+ * @param[in] brake_active True when brake input is available.
+ * @param[in] vibration_strength Profile vibration strength.
+ * @param[in] wheel_mode Attached-wheel mode.
+ * @param[in] clutch_axes Current clutch-paddle axes.
+ * @return True when the retained value changed; otherwise false.
+ */
+bool usb_playstation_wheel_value_refresh(UsbPlaystationWheelValue *value, uint16_t brake_position,
+                                         bool brake_active, uint8_t vibration_strength,
+                                         uint8_t wheel_mode, const uint8_t clutch_axes[2]) {
+    if (value == NULL || clutch_axes == NULL) {
+        return false;
+    }
+
+    uint8_t low = 0;
+    uint8_t high = 0;
+    if (brake_active) {
+        low = (uint8_t)(brake_position >> 8);
+        high = low;
+    }
+    if (value->axis_copy_enabled) {
+        low = clutch_axes[0];
+        high = clutch_axes[1];
+    }
+
+    if (vibration_strength == 0 || vibration_strength > 10) {
+        low = 0;
+        high = 0;
+    } else {
+        uint8_t limit = wheel_mode == 0x0a || wheel_mode == 0x1c
+                            ? (uint8_t)(5u + 10u * vibration_strength)
+                            : (uint8_t)(55u + 20u * vibration_strength);
+        if (low > limit) {
+            low = limit;
+        }
+        if (high > limit) {
+            high = limit;
+        }
+    }
+
+    bool changed = value->legacy_axes[0] != high || value->legacy_axes[1] != low;
+    value->legacy_axes[0] = high;
+    value->legacy_axes[1] = low;
+    return changed;
+}
+
 bool usb_playstation_wheel_value_expire(UsbPlaystationWheelValue *value, uint32_t now_ms) {
     if (value == NULL || now_ms <= value->deadline_ms ||
         (value->legacy_axes[0] == 0 && value->legacy_axes[1] == 0)) {

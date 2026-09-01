@@ -26,7 +26,7 @@ static void test_decodes_control_commands(void) {
         packet[5] = value;
         packet[6] = 0xff;
         assert(usb_xbox_gip_command_decode(packet, sizeof(packet), &command));
-        assert(command.kind == USB_XBOX_GIP_COMMAND_HOST_CAPABILITY);
+        assert(command.kind == USB_XBOX_GIP_COMMAND_REPORT_STATE);
         assert(command.parameter == value);
     }
 
@@ -38,12 +38,13 @@ static void test_decodes_control_commands(void) {
 }
 
 static void test_normalizes_control_values(void) {
-    assert(usb_xbox_gip_steering_range_normalize(0) == 90);
-    assert(usb_xbox_gip_steering_range_normalize(899) == 90);
+    assert(usb_xbox_gip_steering_range_normalize(0) == 9);
+    assert(usb_xbox_gip_steering_range_normalize(89) == 9);
+    assert(usb_xbox_gip_steering_range_normalize(899) == 89);
     assert(usb_xbox_gip_steering_range_normalize(900) == 90);
-    assert(usb_xbox_gip_steering_range_normalize(1099) == 100);
-    assert(usb_xbox_gip_steering_range_normalize(10800) == 1080);
-    assert(usb_xbox_gip_steering_range_normalize(UINT16_MAX) == 1080);
+    assert(usb_xbox_gip_steering_range_normalize(1079) == 107);
+    assert(usb_xbox_gip_steering_range_normalize(1080) == 108);
+    assert(usb_xbox_gip_steering_range_normalize(UINT16_MAX) == 108);
 
     assert(usb_xbox_gip_force_feedback_strength_normalize(0) == 0);
     assert(usb_xbox_gip_force_feedback_strength_normalize(1) == 0);

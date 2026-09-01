@@ -19,6 +19,33 @@ typedef struct {
     uint8_t axes[3];   /**< Three source eight-bit axis values. */
 } LogitechInputState;
 
+/** @brief Logitech compatibility layouts supported by the input mapper. */
+typedef enum {
+    LOGITECH_INPUT_MODEL_DRIVING_FORCE_EX,  /**< Driving Force EX layout. */
+    LOGITECH_INPUT_MODEL_DRIVING_FORCE_PRO, /**< Driving Force Pro layout. */
+    LOGITECH_INPUT_MODEL_G27,               /**< G27 layout. */
+} LogitechInputModel;
+
+/** @brief Native wheel controls converted into a Logitech compatibility report. */
+typedef struct {
+    uint16_t steering;          /**< Native steering-axis value. */
+    uint16_t pedals[3];         /**< Native throttle, brake, and clutch axes. */
+    uint8_t buttons[3];         /**< Native wheel button bytes. */
+    uint8_t gear;               /**< Current H-pattern gear value. */
+    uint8_t sequential_buttons; /**< Sequential-shifter button bits. */
+    bool sequential;            /**< True when sequential shifter mode is active. */
+} LogitechInputSource;
+
+/**
+ * @brief Maps native wheel controls into a selected Logitech logical layout.
+ *
+ * @param[out] state Logitech logical state receiving mapped controls.
+ * @param[in] model Compatibility layout to apply.
+ * @param[in] source Native wheel control source.
+ */
+void logitech_input_map(LogitechInputState *state, LogitechInputModel model,
+                        const LogitechInputSource *source);
+
 /**
  * @brief Encodes a Logitech Driving Force EX input report.
  *

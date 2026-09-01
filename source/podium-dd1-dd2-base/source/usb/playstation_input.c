@@ -471,7 +471,7 @@ bool usb_playstation_input_encode(uint8_t report[USB_PLAYSTATION_INPUT_REPORT_SI
         ((uint32_t)(state->vendor_buttons & PLAYSTATION_INPUT_VENDOR_BUTTON_MASK) << 18);
     report[PLAYSTATION_INPUT_CONTROLS_OFFSET] = (uint8_t)controls;
     report[PLAYSTATION_INPUT_CONTROLS_OFFSET + 1] = (uint8_t)(controls >> 8);
-    report[PLAYSTATION_INPUT_CONTROLS_OFFSET + 2] = (uint8_t)(controls >> 16);
+    report[PLAYSTATION_INPUT_CONTROLS_OFFSET + 2] = (uint8_t)(controls >> 16) & 1u;
 
     write_axis(report + PLAYSTATION_INPUT_STEERING_OFFSET, state->steering);
     for (uint8_t axis = 0; axis < USB_PLAYSTATION_INPUT_PEDAL_COUNT; axis++) {

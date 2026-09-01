@@ -90,6 +90,14 @@ bool usb_vendor_command_script_slot_index(const UsbVendorCommand *command, uint8
 bool usb_vendor_command_requests_motor_command(const UsbVendorCommand *command);
 
 /**
+ * @brief Tests whether an extended vendor command selects the auxiliary menu route.
+ *
+ * @param[in] command Decoded vendor command.
+ * @return True for the official auxiliary-menu command signature; otherwise false.
+ */
+bool usb_vendor_command_requests_auxiliary_menu(const UsbVendorCommand *command);
+
+/**
  * @brief Decodes an extended wheel-transfer vendor command.
  *
  * Accepts the E0 route followed by little-endian command 0x0402 or 0x0502 and action one or two.

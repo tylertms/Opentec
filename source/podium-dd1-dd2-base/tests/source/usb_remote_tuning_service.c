@@ -243,12 +243,10 @@ static void routes_generic_records_outside_extended_mode(void) {
     usb_remote_tuning_service_init(&service);
     assert(usb_remote_tuning_service_apply(&service, &command, 100,
                                            WHEEL_MODE_REMOTE_TUNING_EXTENDED, true, false));
-    assert(!usb_remote_tuning_service_take_forward_batch(
-        &service, WHEEL_MODE_REMOTE_TUNING_EXTENDED, output, &length));
-    RemoteTuningResponse response;
-    assert(usb_remote_tuning_service_take_response(&service, WHEEL_MODE_REMOTE_TUNING_EXTENDED,
-                                                   &response));
-    assert(response.record_data_length == 6);
+    assert(usb_remote_tuning_service_take_forward_batch(&service, WHEEL_MODE_REMOTE_TUNING_EXTENDED,
+                                                        output, &length));
+    assert(length == 6);
+    assert(memcmp(output, arguments + 1, length) == 0);
 }
 
 static void claims_unknown_remote_packets(void) {

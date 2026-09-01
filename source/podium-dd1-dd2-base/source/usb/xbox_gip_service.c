@@ -76,7 +76,10 @@ static uint8_t service_metadata(UsbXboxGipService *service,
         service->metadata_pending = false;
     }
     if (service->metadata_download.awaiting_acknowledgement) {
-        usb_xbox_gip_metadata_download_acknowledge(&service->metadata_download, request);
+        if (!usb_xbox_gip_metadata_download_acknowledge(&service->metadata_download, request)) {
+            service->metadata_download.awaiting_acknowledgement = false;
+            service->metadata_active = false;
+        }
         return 0;
     }
 

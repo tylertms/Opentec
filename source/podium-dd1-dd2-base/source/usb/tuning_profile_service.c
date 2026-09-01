@@ -147,3 +147,14 @@ bool usb_tuning_profile_service_response_pending(const UsbTuningProfileService *
 void usb_tuning_profile_service_response_sent(UsbTuningProfileService *service) {
     service->response_pending = false;
 }
+
+/**
+ * @brief Requests publication of the active tuning profile.
+ *
+ * @param[in,out] service Tuning-profile service to update.
+ */
+void usb_tuning_profile_service_request_response(UsbTuningProfileService *service) {
+    if (service != NULL) {
+        service->response_pending = true;
+    }
+}

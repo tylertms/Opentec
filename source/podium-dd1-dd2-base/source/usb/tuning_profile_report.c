@@ -68,6 +68,11 @@ static uint8_t retain_range(uint8_t value, uint8_t current, uint8_t minimum, uin
     return value >= minimum && value <= maximum ? value : current;
 }
 
+static uint8_t retain_step(uint8_t value, uint8_t current, uint8_t minimum, uint8_t maximum,
+                           uint8_t step) {
+    return value >= minimum && value <= maximum && value % step == 0 ? value : current;
+}
+
 /**
  * @brief Retains an encoded Boolean tuning value.
  *
@@ -89,8 +94,8 @@ bool usb_tuning_profile_report_decode(const uint8_t input[USB_TUNING_PROFILE_VAL
 
     decode_rotation(input[0], profile);
     profile->force_feedback_strength =
-        input[1] <= 101 ? input[1] : profile->force_feedback_strength;
-    profile->vibration_strength = retain_range(input[2], profile->vibration_strength, 0, 10);
+        input[1] <= 100 ? input[1] : profile->force_feedback_strength;
+    profile->vibration_strength = retain_step(input[2], profile->vibration_strength, 0, 10, 10);
     profile->brake_indicator_level = retain_range(input[3], profile->brake_indicator_level, 1, 101);
     profile->force_scale =
         (TuningForceScale)retain_range(input[4], (uint8_t)profile->force_scale,
@@ -106,9 +111,9 @@ bool usb_tuning_profile_report_decode(const uint8_t input[USB_TUNING_PROFILE_VAL
     profile->natural_friction = retain_range(input[11], profile->natural_friction, 0, 100);
     profile->brake_force = retain_range(input[12], profile->brake_force, 0, 100);
     profile->alternate_brake_force =
-        retain_range(input[13], profile->alternate_brake_force, 0, 100);
+        retain_step(input[13], profile->alternate_brake_force, 0, 100, 5);
     profile->force_effect_intensity =
-        retain_range(input[14], profile->force_effect_intensity, 0, 100);
+        retain_step(input[14], profile->force_effect_intensity, 0, 100, 10);
     profile->multi_position_mode = (TuningMultiPositionMode)retain_range(
         input[15], (uint8_t)profile->multi_position_mode, TUNING_MULTI_POSITION_ENCODER,
         TUNING_MULTI_POSITION_AUTOMATIC);

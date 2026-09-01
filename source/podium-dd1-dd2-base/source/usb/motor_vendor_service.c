@@ -96,19 +96,19 @@ UsbMotorVendorServiceResult usb_motor_vendor_service_accept_usb(
         return result;
     }
 
+    if (!motor_command_channel_queue_payload(service->channel, event.payload,
+                                             event.payload_length)) {
+        return result;
+    }
     if (event.acknowledgement_report_id == USB_MOTOR_COMMAND_COMPACT_ACKNOWLEDGEMENT_REPORT_ID &&
         usb_packet != 0 &&
         usb_feature_upload_acknowledgement_compact_encode(event.sequence, request, usb_packet)) {
         result.actions = (UsbMotorVendorAction)(result.actions | USB_MOTOR_VENDOR_ACTION_WRITE_USB);
         result.usb_packet_length = USB_FEATURE_UPLOAD_ACKNOWLEDGEMENT_SIZE;
     }
-    if (motor_command_channel_queue_payload(service->channel, event.payload,
-                                            event.payload_length)) {
-        result.actions =
-            (UsbMotorVendorAction)(result.actions | USB_MOTOR_VENDOR_ACTION_WRITE_MOTOR);
-        result.motor_packet = service->channel->buffers.transmit;
-        result.motor_packet_length = service->channel->transmit_length;
-    }
+    result.actions = (UsbMotorVendorAction)(result.actions | USB_MOTOR_VENDOR_ACTION_WRITE_MOTOR);
+    result.motor_packet = service->channel->buffers.transmit;
+    result.motor_packet_length = service->channel->transmit_length;
     return result;
 }
 
@@ -116,20 +116,26 @@ UsbMotorVendorServiceResult usb_motor_vendor_service_accept_usb_mailbox(
     UsbMotorVendorService *service, MotorCommandMailboxExchange *exchange,
     CommandTransport *transport, const uint8_t request[USB_FEATURE_UPLOAD_PACKET_SIZE],
     uint8_t length, uint8_t usb_packet[USB_FEATURE_UPLOAD_PACKET_SIZE]) {
-    UsbMotorVendorServiceResult result =
-        usb_motor_vendor_service_accept_usb(service, request, length, usb_packet);
+    UsbMotorVendorServiceResult result = {0};
     if (exchange == 0 || transport == 0) {
         result.mailbox_event = MOTOR_COMMAND_MAILBOX_EXCHANGE_FAILED;
         return result;
     }
-    if ((result.actions & USB_MOTOR_VENDOR_ACTION_CLAIM) != 0) {
+    if (service != 0 && request != 0 && length == USB_FEATURE_UPLOAD_PACKET_SIZE &&
+        request[0] == USB_MOTOR_COMMAND_REPORT_ID) {
         command_transport_claim(transport, MOTOR_COMMAND_MAILBOX_OWNER);
+        if (!command_transport_is_owner(transport, MOTOR_COMMAND_MAILBOX_OWNER)) {
+            result.mailbox_event = MOTOR_COMMAND_MAILBOX_EXCHANGE_FAILED;
+            return result;
+        }
     }
+    result = usb_motor_vendor_service_accept_usb(service, request, length, usb_packet);
     if ((result.actions & USB_MOTOR_VENDOR_ACTION_RESTART) != 0) {
         motor_command_mailbox_exchange_reset(exchange);
     }
     if ((result.actions & USB_MOTOR_VENDOR_ACTION_RELEASE) != 0) {
         motor_command_mailbox_exchange_reset(exchange);
+        motor_command_channel_reset(service->channel);
         command_transport_release(transport, MOTOR_COMMAND_MAILBOX_OWNER);
         return result;
     }
@@ -137,6 +143,8 @@ UsbMotorVendorServiceResult usb_motor_vendor_service_accept_usb_mailbox(
         !motor_command_mailbox_exchange_queue(exchange, result.motor_packet,
                                               result.motor_packet_length)) {
         result.mailbox_event = MOTOR_COMMAND_MAILBOX_EXCHANGE_FAILED;
+        result.actions =
+            (UsbMotorVendorAction)(result.actions & (uint8_t)~USB_MOTOR_VENDOR_ACTION_WRITE_USB);
     }
     return result;
 }

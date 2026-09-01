@@ -49,18 +49,19 @@ static void test_rotary_and_fourth_pulse_report(void) {
         .positions = {1, 12, 5},
         .events = {1, -1, 1},
         .pulse_directions = {1, -1, 1, -1},
-        .extended_buttons = 0xa5,
-        .auxiliary_buttons = {1, 2, 3},
+        .secondary_buttons = 0x4800,
+        .control_extended = {2, 0},
+        .auxiliary_report = {0x70, 0, 0x0c},
+        .wheel_mode = 0x1c,
         .rotary_mode = 2,
-        .tertiary_active = true,
     };
     usb_feature_report_33_encode(&state, output);
     assert(output[0] == 0x33);
     assert(output[1] == 1 && output[2] == 0 && output[3] == 0x80);
     assert(output[5] == 0x66);
     assert(output[6] == 0x10 && output[7] == 0);
-    assert(output[12] == 0xa5);
-    assert(memcmp(output + 13, (uint8_t[]){1, 2, 3}, 3) == 0);
+    assert(output[12] == 0x25);
+    assert(output[13] == 0xa0 && output[14] == 0x43 && output[15] == 0);
 }
 
 static void test_page_report(void) {

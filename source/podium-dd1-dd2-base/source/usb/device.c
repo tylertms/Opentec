@@ -37,6 +37,7 @@ enum {
     USB_STRING_COUNT = 10,          /**< Number of string descriptor slots. */
     USB_MANUFACTURER_DESCRIPTOR_SIZE = 16,        /**< Manufacturer descriptor buffer size. */
     USB_PRODUCT_DESCRIPTOR_SIZE = 60,             /**< Native product descriptor buffer size. */
+    USB_G27_HARDWARE_DESCRIPTOR_SIZE = 96,        /**< G27 hardware string buffer size. */
     USB_PLAYSTATION_PRODUCT_DESCRIPTOR_SIZE = 96, /**< PlayStation product descriptor size. */
 };
 
@@ -47,8 +48,9 @@ typedef enum {
     USB_CONTROL_STAGE_DATA_OUT,                       /**< Host-to-device control data stage. */
     USB_CONTROL_STAGE_PLAYSTATION_AUTHENTICATION_OUT, /**< PlayStation authentication data stage. */
     USB_CONTROL_STAGE_UPDATER_LINE_CODING_OUT,        /**< Updater line-coding data stage. */
-    USB_CONTROL_STAGE_STATUS_IN,                      /**< Device-to-host control status stage. */
-    USB_CONTROL_STAGE_STATUS_OUT,                     /**< Host-to-device control status stage. */
+    USB_CONTROL_STAGE_UPDATER_ENCAPSULATED_OUT,
+    USB_CONTROL_STAGE_STATUS_IN,  /**< Device-to-host control status stage. */
+    USB_CONTROL_STAGE_STATUS_OUT, /**< Host-to-device control status stage. */
 } UsbControlStage;
 
 /** @brief Encoded USB device descriptor storage. */
@@ -63,6 +65,10 @@ static uint8_t language_descriptor[4];
 static uint8_t manufacturer_descriptor[USB_MANUFACTURER_DESCRIPTOR_SIZE];
 /** @brief Encoded native product string descriptor storage. */
 static uint8_t product_descriptor[USB_PRODUCT_DESCRIPTOR_SIZE];
+/** @brief Encoded G27 hardware identity string descriptor storage. */
+static uint8_t g27_hardware_descriptor[USB_G27_HARDWARE_DESCRIPTOR_SIZE];
+/** @brief Encoded compatibility-mode PlayStation product descriptor storage. */
+static uint8_t compatibility_playstation_descriptor[USB_PLAYSTATION_PRODUCT_DESCRIPTOR_SIZE];
 /** @brief Active USB string descriptor views. */
 static UsbDescriptorView strings[USB_STRING_COUNT];
 /** @brief Active descriptor catalog supplied to endpoint-zero handling. */
@@ -110,11 +116,11 @@ static uint8_t xbox_response_length;
 /** @brief Retained primary HID input report. */
 static uint8_t input_report[USB_DEVICE_REPORT_SIZE];
 /** @brief Retained native feature-report payloads by report slot. */
-static uint8_t feature_reports[4][USB_DEVICE_REPORT_SIZE];
+static uint8_t feature_reports[5][USB_DEVICE_REPORT_SIZE];
 /** @brief Lengths of retained native feature reports by report slot. */
-static uint8_t feature_report_lengths[4];
+static uint8_t feature_report_lengths[5];
 /** @brief Native feature report identifiers indexed by report slot. */
-static const uint8_t feature_report_ids[4] = {0x31, 0x32, 0x33, 0x36};
+static const uint8_t feature_report_ids[5] = {0x31, 0x32, 0x33, 0x35, 0x36};
 /** @brief One-shot native feature-report request bits. */
 static uint8_t feature_report_requests;
 /** @brief Retained updater response bytes. */
@@ -131,6 +137,10 @@ static uint8_t updater_input_length;
 static uint8_t control_report_type;
 /** @brief HID report identifier for the current control output stage. */
 static uint8_t control_report_id;
+static uint8_t control_output[USB_DEVICE_REPORT_SIZE];
+static uint8_t control_output_expected;
+static uint8_t control_output_received;
+static bool control_output_data_one;
 /** @brief Current endpoint-zero transfer stage. */
 static UsbControlStage control_stage;
 /** @brief True when a host output report is ready to take. */
@@ -229,8 +239,10 @@ static bool input_report_matches(const uint8_t *report, uint8_t length) {
  * @brief Builds the descriptor catalog for one USB operating mode.
  *
  * Selects the device identity, configuration, report, and string descriptors used during the next
- * enumeration. PlayStation mode uses the dedicated HID profile, product string index nine, and the
- * product identity selected by retained base mode two, four, or five.
+ * enumeration. G27 mode publishes its product at index two, hardware identity at index four, and
+ * aliases index FE to the hardware identity. PlayStation mode uses the dedicated HID profile,
+ * product string index nine, and the product identity selected by retained base mode two, four, or
+ * five.
  *
  * @param[in] variant Wheel-base hardware variant.
  * @param[in] mode USB operating mode to build.
@@ -293,7 +305,7 @@ static bool build_descriptors(BoardVariant variant, UsbOperatingMode mode) {
     } else if (mode == USB_OPERATING_MODE_UPDATER) {
         descriptor_identity = usb_updater_device_identity();
         product = usb_updater_product_name();
-        product_index = descriptor_identity.product_string;
+        product_index = 3;
         usb_updater_configuration_descriptor_encode(configuration_descriptor);
         usb_updater_control_init(&updater_control);
         configuration_length = USB_UPDATER_CONFIGURATION_DESCRIPTOR_SIZE;
@@ -347,8 +359,23 @@ static bool build_descriptors(BoardVariant variant, UsbOperatingMode mode) {
     }
     strings[product_index] =
         (UsbDescriptorView){.data = product_descriptor_data, .length = (uint16_t)product_length};
+    if (mode == USB_OPERATING_MODE_G27) {
+        size_t hardware_length =
+            usb_string_descriptor_encode("NV=046D,NP=C29B,ND=1238,HV=046D,HP=FE01,HD=0005",
+                                         g27_hardware_descriptor, sizeof(g27_hardware_descriptor));
+        strings[4] = (UsbDescriptorView){
+            .data = g27_hardware_descriptor,
+            .length = (uint16_t)hardware_length,
+        };
+    }
     if (mode == USB_OPERATING_MODE_FANATEC_COMPATIBILITY) {
-        strings[9] = strings[product_index];
+        size_t playstation_length = usb_string_descriptor_encode(
+            usb_playstation_product_name(variant), compatibility_playstation_descriptor,
+            sizeof(compatibility_playstation_descriptor));
+        strings[9] = (UsbDescriptorView){
+            .data = compatibility_playstation_descriptor,
+            .length = (uint16_t)playstation_length,
+        };
     }
     if (mode == USB_OPERATING_MODE_XBOX_GIP) {
         size_t serial_length = usb_string_descriptor_encode(xbox_serial, xbox_serial_descriptor,
@@ -357,6 +384,27 @@ static bool build_descriptors(BoardVariant variant, UsbOperatingMode mode) {
             .data = xbox_serial_descriptor,
             .length = (uint16_t)serial_length,
         };
+    }
+    uint16_t string_mask = UINT16_MAX;
+    if (mode == USB_OPERATING_MODE_FANATEC) {
+        string_mask = (1u << 0) | (1u << 1) | (1u << 3);
+    } else if (mode == USB_OPERATING_MODE_FANATEC_COMPATIBILITY) {
+        string_mask = (1u << 0) | (1u << 1) | (1u << 8) | (1u << 9);
+    } else if (mode >= USB_OPERATING_MODE_DRIVING_FORCE_EX && mode < USB_OPERATING_MODE_G27) {
+        string_mask = 1u << 2;
+    } else if (mode == USB_OPERATING_MODE_G27) {
+        string_mask = (1u << 2) | (1u << 4);
+    } else if (mode == USB_OPERATING_MODE_UPDATER) {
+        string_mask = (1u << 1) | (1u << 3);
+    } else if (mode == USB_OPERATING_MODE_XBOX_GIP) {
+        string_mask = (1u << 0) | (1u << 1) | (1u << 2) | (1u << 3);
+    } else if (mode == USB_OPERATING_MODE_PLAYSTATION) {
+        string_mask = (1u << 0) | (1u << 1) | (1u << 9);
+    }
+    for (uint8_t index = 0; index < USB_STRING_COUNT; index++) {
+        if ((string_mask & (1u << index)) == 0) {
+            strings[index] = (UsbDescriptorView){0};
+        }
     }
     descriptor_catalog = (UsbDescriptorCatalog){
         .device = {.data = device_descriptor, .length = sizeof(device_descriptor)},
@@ -375,10 +423,9 @@ static bool build_descriptors(BoardVariant variant, UsbOperatingMode mode) {
                    .length = (uint16_t)report_length},
         .strings = strings,
         .string_count = USB_STRING_COUNT,
-        .string_alias =
-            mode == USB_OPERATING_MODE_DRIVING_FORCE_PRO || mode == USB_OPERATING_MODE_G27 ? 0xfe
-                                                                                           : 0xff,
-        .string_alias_target = product_index,
+        .string_alias_valid = mode == USB_OPERATING_MODE_G27,
+        .string_alias = 0xfe,
+        .string_alias_target = 4,
     };
     operating_mode = mode;
     if (mode <= USB_OPERATING_MODE_G27) {
@@ -399,12 +446,14 @@ static bool build_descriptors(BoardVariant variant, UsbOperatingMode mode) {
 static void reset_state(bool preserve_hid_state) {
     uint8_t hid_idle_rate = device_control.hid_idle_rate;
     uint8_t hid_protocol = device_control.hid_protocol;
-    usb_device_control_init(&device_control, true, operating_mode == USB_OPERATING_MODE_XBOX_GIP);
+    usb_device_control_init(&device_control, true, false);
     if (preserve_hid_state) {
         device_control.hid_idle_rate = hid_idle_rate;
         device_control.hid_protocol = hid_protocol;
     }
     control_stage = USB_CONTROL_STAGE_IDLE;
+    control_output_expected = 0;
+    control_output_received = 0;
     input_report_length = 0;
     output_ready = false;
     updater_packet_head = 0;
@@ -594,7 +643,7 @@ static UsbDescriptorView requested_report(void) {
         return (UsbDescriptorView){.data = input_report, .length = input_report_length};
     }
     if (control_transfer.report_type == USB_DEVICE_HID_REPORT_FEATURE) {
-        for (uint8_t index = 0; index < 4; index++) {
+        for (uint8_t index = 0; index < 5; index++) {
             if (feature_report_ids[index] == control_transfer.report_id &&
                 feature_report_lengths[index] != 0) {
                 feature_report_requests |= (uint8_t)(1u << index);
@@ -604,6 +653,17 @@ static UsbDescriptorView requested_report(void) {
         }
     }
     return (UsbDescriptorView){0};
+}
+
+static bool begin_control_output(UsbControlStage stage, uint8_t length) {
+    control_output_expected = length;
+    control_output_received = 0;
+    control_output_data_one = true;
+    if (!platform_usb_receive(USB_CONTROL_ENDPOINT, length, control_output_data_one)) {
+        return false;
+    }
+    control_stage = stage;
+    return true;
 }
 
 /**
@@ -682,10 +742,8 @@ static bool handle_playstation_authentication_setup(void) {
     if (control_request.kind == USB_CONTROL_HID_SET_REPORT &&
         (uint8_t)control_request.value == 0xf0 &&
         control_request.length == USB_PLAYSTATION_AUTHENTICATION_REPORT_SIZE) {
-        if (platform_usb_receive(USB_CONTROL_ENDPOINT, USB_PLAYSTATION_AUTHENTICATION_REPORT_SIZE,
-                                 true)) {
-            control_stage = USB_CONTROL_STAGE_PLAYSTATION_AUTHENTICATION_OUT;
-        } else {
+        if (!begin_control_output(USB_CONTROL_STAGE_PLAYSTATION_AUTHENTICATION_OUT,
+                                  USB_PLAYSTATION_AUTHENTICATION_REPORT_SIZE)) {
             stall_control();
         }
         return true;
@@ -781,10 +839,9 @@ static void handle_control_transfer(void) {
         break;
     case USB_CONTROL_TRANSFER_REPORT_OUT:
         if (control_transfer.length <= USB_DEVICE_REPORT_SIZE &&
-            platform_usb_receive(USB_CONTROL_ENDPOINT, (uint8_t)control_transfer.length, true)) {
+            begin_control_output(USB_CONTROL_STAGE_DATA_OUT, (uint8_t)control_transfer.length)) {
             control_report_type = control_transfer.report_type;
             control_report_id = control_transfer.report_id;
-            control_stage = USB_CONTROL_STAGE_DATA_OUT;
         } else {
             stall_control();
         }
@@ -806,6 +863,7 @@ static void handle_setup(void) {
         stall_control();
         return;
     }
+    platform_usb_control_reset();
     usb_device_control_cancel(&device_control);
     if (usb_event.length != USB_SETUP_PACKET_SIZE ||
         !usb_setup_packet_decode(usb_event.data, &setup_packet) ||
@@ -838,9 +896,27 @@ static void handle_setup(void) {
                                 control_request.length);
             return;
         }
+        if (control_request.kind == USB_CONTROL_CDC_GET_ENCAPSULATED_RESPONSE) {
+            begin_control_input((UsbDescriptorView){.data = value_data, .length = 0},
+                                control_request.length);
+            return;
+        }
+        if (control_request.kind == USB_CONTROL_CDC_SEND_ENCAPSULATED_COMMAND) {
+            if (control_request.length == 0) {
+                if (platform_usb_send(USB_CONTROL_ENDPOINT, 0, 0, true)) {
+                    control_stage = USB_CONTROL_STAGE_STATUS_IN;
+                } else {
+                    stall_control();
+                }
+            } else if (!begin_control_output(USB_CONTROL_STAGE_UPDATER_ENCAPSULATED_OUT,
+                                             (uint8_t)control_request.length)) {
+                stall_control();
+            }
+            return;
+        }
         if (control_request.kind == USB_CONTROL_CDC_SET_LINE_CODING) {
-            if (platform_usb_receive(USB_CONTROL_ENDPOINT, USB_UPDATER_LINE_CODING_SIZE, true)) {
-                control_stage = USB_CONTROL_STAGE_UPDATER_LINE_CODING_OUT;
+            if (begin_control_output(USB_CONTROL_STAGE_UPDATER_LINE_CODING_OUT,
+                                     USB_UPDATER_LINE_CODING_SIZE)) {
                 return;
             }
             stall_control();
@@ -858,6 +934,10 @@ static void handle_setup(void) {
     }
     bool endpoint_halted = control_request.recipient == USB_RECIPIENT_ENDPOINT &&
                            platform_usb_endpoint_halted((uint8_t)control_request.index);
+    device_control.remote_wakeup_forced =
+        operating_mode == USB_OPERATING_MODE_XBOX_GIP &&
+        (xbox_service_identity.wheel_mode == 6 ||
+         xbox_service.session.state == USB_XBOX_GIP_SESSION_ACTIVE);
     control_transfer = usb_device_control_handle(&device_control, &control_request,
                                                  &descriptor_catalog, endpoint_halted);
     if (control_transfer.kind == USB_CONTROL_TRANSFER_ACKNOWLEDGE &&
@@ -932,22 +1012,14 @@ static void configure_updater_endpoints(void) {
  * when configuration zero is selected.
  */
 static void apply_configuration(void) {
+    for (uint8_t endpoint = 1; endpoint <= USB_PLAYSTATION_INPUT_ENDPOINT; endpoint++) {
+        platform_usb_unconfigure_endpoint(endpoint);
+    }
     if (usb_device_control_configured(&device_control)) {
         if (operating_mode == USB_OPERATING_MODE_UPDATER) {
             configure_updater_endpoints();
         } else {
             configure_application_endpoints();
-        }
-    } else {
-        if (operating_mode == USB_OPERATING_MODE_UPDATER) {
-            platform_usb_unconfigure_endpoint(USB_UPDATER_NOTIFICATION_ENDPOINT);
-            platform_usb_unconfigure_endpoint(USB_UPDATER_DATA_ENDPOINT);
-        } else {
-            platform_usb_unconfigure_endpoint(USB_PRIMARY_ENDPOINT);
-            if (operating_mode == USB_OPERATING_MODE_PLAYSTATION) {
-                platform_usb_unconfigure_endpoint(USB_PLAYSTATION_OUTPUT_ENDPOINT);
-                platform_usb_unconfigure_endpoint(USB_PLAYSTATION_INPUT_ENDPOINT);
-            }
         }
     }
 }
@@ -1024,11 +1096,42 @@ static void handle_control_output(void) {
         platform_usb_control_ready();
         return;
     }
-    if (control_stage == USB_CONTROL_STAGE_UPDATER_LINE_CODING_OUT) {
-        if (!usb_updater_line_coding_decode(&updater_control, usb_event.data, usb_event.length)) {
+    if (control_stage == USB_CONTROL_STAGE_DATA_OUT ||
+        control_stage == USB_CONTROL_STAGE_PLAYSTATION_AUTHENTICATION_OUT ||
+        control_stage == USB_CONTROL_STAGE_UPDATER_LINE_CODING_OUT ||
+        control_stage == USB_CONTROL_STAGE_UPDATER_ENCAPSULATED_OUT) {
+        uint8_t remaining = control_output_expected - control_output_received;
+        if (usb_event.length > remaining) {
             stall_control();
             return;
         }
+        for (uint8_t index = 0; index < usb_event.length; index++) {
+            control_output[control_output_received + index] = usb_event.data[index];
+        }
+        control_output_received += usb_event.length;
+        if (control_output_received < control_output_expected) {
+            control_output_data_one = !control_output_data_one;
+            remaining = control_output_expected - control_output_received;
+            if (!platform_usb_receive(USB_CONTROL_ENDPOINT, remaining, control_output_data_one)) {
+                stall_control();
+            }
+            return;
+        }
+    }
+    if (control_stage == USB_CONTROL_STAGE_UPDATER_LINE_CODING_OUT) {
+        if (!usb_updater_line_coding_decode(&updater_control, control_output,
+                                            control_output_received)) {
+            stall_control();
+            return;
+        }
+        if (platform_usb_send(USB_CONTROL_ENDPOINT, 0, 0, true)) {
+            control_stage = USB_CONTROL_STAGE_STATUS_IN;
+        } else {
+            stall_control();
+        }
+        return;
+    }
+    if (control_stage == USB_CONTROL_STAGE_UPDATER_ENCAPSULATED_OUT) {
         if (platform_usb_send(USB_CONTROL_ENDPOINT, 0, 0, true)) {
             control_stage = USB_CONTROL_STAGE_STATUS_IN;
         } else {
@@ -1037,12 +1140,12 @@ static void handle_control_output(void) {
         return;
     }
     if (control_stage == USB_CONTROL_STAGE_PLAYSTATION_AUTHENTICATION_OUT) {
-        if (usb_event.length != USB_PLAYSTATION_AUTHENTICATION_REPORT_SIZE) {
+        if (control_output_received != USB_PLAYSTATION_AUTHENTICATION_REPORT_SIZE) {
             stall_control();
             return;
         }
         (void)usb_playstation_authentication_receive(&console_workspace.playstation.authentication,
-                                                     usb_event.data);
+                                                     control_output);
         if (platform_usb_send(USB_CONTROL_ENDPOINT, 0, 0, true)) {
             control_stage = USB_CONTROL_STAGE_STATUS_IN;
         } else {
@@ -1051,8 +1154,8 @@ static void handle_control_output(void) {
         return;
     }
     if (control_stage == USB_CONTROL_STAGE_DATA_OUT) {
-        store_output_report(control_report_type, control_report_id, usb_event.data,
-                            usb_event.length);
+        store_output_report(control_report_type, control_report_id, control_output,
+                            control_output_received);
         if (platform_usb_send(USB_CONTROL_ENDPOINT, 0, 0, true)) {
             control_stage = USB_CONTROL_STAGE_STATUS_IN;
         } else {
@@ -1289,7 +1392,7 @@ bool usb_device_publish_feature_report(uint8_t report_id, const uint8_t *report,
     if (report == 0 || length == 0 || length > USB_DEVICE_REPORT_SIZE) {
         return false;
     }
-    for (uint8_t index = 0; index < 4; index++) {
+    for (uint8_t index = 0; index < 5; index++) {
         if (feature_report_ids[index] != report_id) {
             continue;
         }
@@ -1303,7 +1406,7 @@ bool usb_device_publish_feature_report(uint8_t report_id, const uint8_t *report,
 }
 
 bool usb_device_take_feature_report_request(uint8_t report_id) {
-    for (uint8_t index = 0; index < 4; index++) {
+    for (uint8_t index = 0; index < 5; index++) {
         uint8_t mask = (uint8_t)(1u << index);
         if (feature_report_ids[index] == report_id && (feature_report_requests & mask) != 0) {
             feature_report_requests &= (uint8_t)~mask;

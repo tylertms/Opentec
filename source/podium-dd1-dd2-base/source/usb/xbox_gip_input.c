@@ -47,6 +47,8 @@ static void map_primary_buttons(UsbXboxGipInputBuilder *builder, const UsbXboxGi
     snapshot->buttons[1] = (uint8_t)(read_bit(primary, 0) | read_bit(primary, 3) << 1 |
                                      read_bit(primary, 1) << 2 | read_bit(primary, 2) << 3 |
                                      read_bit(primary, 11) << 4 | read_bit(primary, 8) << 5);
+    snapshot->buttons[1] |= (uint8_t)(state->shifter_transitions[1] ? 0x10u : 0u);
+    snapshot->buttons[1] |= (uint8_t)(state->shifter_transitions[0] ? 0x20u : 0u);
     if (state->wheel_mode != WHEEL_MODE_EXTENDED_BUTTON) {
         snapshot->buttons[0] |= (uint8_t)(read_bit(extended, 10) << 4);
     }
@@ -97,6 +99,30 @@ void usb_xbox_gip_input_builder_init(UsbXboxGipInputBuilder *builder) {
     *builder = (UsbXboxGipInputBuilder){0};
 }
 
+static uint8_t encode_led(UsbXboxGipInputBuilder *builder, uint8_t value, uint8_t axis_mode) {
+    if (axis_mode != 1) {
+        builder->led_encoded = 0;
+        return 0;
+    }
+    if (builder->led_input == value) {
+        return builder->led_encoded;
+    }
+    builder->led_input = value;
+    if (value == 0) {
+        builder->led_encoded = 0;
+    } else if (value == 1) {
+        builder->led_encoded = UINT8_MAX;
+    } else if ((value & (uint8_t)(value - 1u)) == 0) {
+        uint8_t encoded = 0;
+        while (value > 1) {
+            value >>= 1;
+            encoded++;
+        }
+        builder->led_encoded = encoded;
+    }
+    return builder->led_encoded;
+}
+
 void usb_xbox_gip_input_build(UsbXboxGipInputBuilder *builder, const UsbXboxGipInputState *state,
                               UsbXboxGipInputSnapshot *snapshot) {
     *snapshot = (UsbXboxGipInputSnapshot){0};
@@ -106,8 +132,8 @@ void usb_xbox_gip_input_build(UsbXboxGipInputBuilder *builder, const UsbXboxGipI
     memcpy(snapshot->pedals, state->pedals, sizeof(snapshot->pedals));
     snapshot->auxiliary_pedal = state->auxiliary_pedal;
     snapshot->axis_mode = state->axis_mode;
-    snapshot->led_state = state->led_state;
-    snapshot->steering_range_degrees = state->steering_range_degrees;
+    snapshot->led_state = encode_led(builder, state->led_state, state->axis_mode);
+    snapshot->steering_range_units = state->steering_range_units;
     snapshot->force_feedback_level =
         (uint8_t)((uint16_t)state->force_feedback_percent * UINT8_MAX / 100u);
     memcpy(snapshot->pedal_active, state->pedal_active, sizeof(snapshot->pedal_active));

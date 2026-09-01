@@ -121,6 +121,7 @@ bool platform_usb_receive(uint8_t endpoint, uint8_t length, bool data_one) {
 }
 
 void platform_usb_control_ready(void) { control_ready_count++; }
+void platform_usb_control_reset(void) {}
 void platform_usb_set_address(uint8_t value) { address = value; }
 void platform_usb_configure_endpoint(uint8_t endpoint, bool input, bool output) {
     endpoint_input[endpoint] = input;
@@ -448,17 +449,17 @@ static void test_reenumerates_compatibility_modes(void) {
         if (mode == USB_INPUT_REPORT_MODE_DRIVING_FORCE_PRO) {
             assert(sent.data[8] == 0x28);
         }
-        if (mode == USB_INPUT_REPORT_MODE_DRIVING_FORCE_PRO || mode == USB_INPUT_REPORT_MODE_G27) {
+        if (mode == USB_INPUT_REPORT_MODE_G27) {
             assert(sent.data[16] == 0 && sent.data[17] == 0xfe);
         }
         complete_control_input();
 
         assert_string_descriptor(product_indices[index], products[index]);
         if (mode == USB_INPUT_REPORT_MODE_FANATEC_COMPATIBILITY) {
-            assert_string_descriptor(9, products[index]);
+            assert_string_descriptor(9, "FANATEC Podium Wheel Base DD1 PlayStation 4");
         }
-        if (mode == USB_INPUT_REPORT_MODE_DRIVING_FORCE_PRO || mode == USB_INPUT_REPORT_MODE_G27) {
-            assert_string_descriptor(0xfe, products[index]);
+        if (mode == USB_INPUT_REPORT_MODE_G27) {
+            assert_string_descriptor(0xfe, "NV=046D,NP=C29B,ND=1238,HV=046D,HP=FE01,HD=0005");
         }
     }
     assert(!usb_device_set_input_mode((UsbInputReportMode)5));
@@ -507,7 +508,7 @@ static void test_exchanges_updater_packets(void) {
     assert(sent.data[0] == 9 && sent.data[1] == 2 && sent.data[2] == 67);
     assert(sent.data[4] == 2);
     complete_control_input();
-    assert_string_descriptor(7, "FANATEC EBLDC Updater");
+    assert_string_descriptor(3, "FANATEC EBLDC Updater");
 
     push_setup(get_line_coding);
     usb_device_service();
@@ -674,7 +675,7 @@ static void test_exchanges_xbox_gip_discovery(void) {
         .steering = 0x5678,
         .pedals = {0x1234, 0x2345, 0x3456},
         .auxiliary_pedal = 0x45,
-        .steering_range_degrees = 1080,
+        .steering_range_units = 108,
     };
     assert(usb_device_queue_xbox_input(&snapshot));
     assert(!usb_device_queue_xbox_input(&snapshot));
@@ -684,7 +685,7 @@ static void test_exchanges_xbox_gip_discovery(void) {
     assert(sent.data[0] == 0x20 && sent.data[2] == 3 && sent.data[3] == 0x32);
     assert(sent.data[4] == 0x12 && sent.data[5] == 0x34);
     assert(sent.data[6] == 0x78 && sent.data[7] == 0x56);
-    assert(sent.data[17] == 0x30 && sent.data[18] == 0x2a);
+    assert(sent.data[17] == 0x38 && sent.data[18] == 0x04);
 
     uint8_t application_response[22] = {0x25, 0, 0xa5, 0x12, 6};
     assert(usb_device_queue_xbox_response(application_response, sizeof(application_response)));

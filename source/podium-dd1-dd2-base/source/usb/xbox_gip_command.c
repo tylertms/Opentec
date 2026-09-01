@@ -26,10 +26,11 @@ enum {
     XBOX_GIP_COMMAND_EXTENDED_STATUS = 9,         /**< Extended-status selector. */
     XBOX_GIP_COMMAND_LAST_SAMPLE = 501,           /**< Largest accepted script sample index. */
     XBOX_GIP_COMMAND_EMPTY_SLOT = 15,             /**< Largest accepted script slot index. */
-    XBOX_GIP_STEERING_RANGE_MINIMUM_DEGREES = 90, /**< Minimum normalized steering range. */
-    XBOX_GIP_STEERING_RANGE_MAXIMUM_DEGREES = 1080, /**< Maximum normalized steering range. */
-    XBOX_GIP_STEERING_RANGE_STEP_DEGREES = 10,      /**< Normalized steering-range step. */
-    XBOX_GIP_FORCE_FEEDBACK_LEVEL_MAXIMUM = 255,    /**< Maximum host force-feedback level. */
+    XBOX_GIP_STEERING_RANGE_MINIMUM = 9,
+    XBOX_GIP_STEERING_RANGE_MAXIMUM = 108,
+    XBOX_GIP_STEERING_RANGE_WIRE_MINIMUM = 90,
+    XBOX_GIP_STEERING_RANGE_WIRE_MAXIMUM = 1080,
+    XBOX_GIP_FORCE_FEEDBACK_LEVEL_MAXIMUM = 255,   /**< Maximum host force-feedback level. */
     XBOX_GIP_FORCE_FEEDBACK_PERCENT_MAXIMUM = 100, /**< Maximum stored force-feedback percentage. */
 };
 
@@ -54,7 +55,7 @@ bool usb_xbox_gip_command_decode(const uint8_t *packet, size_t length, UsbXboxGi
     uint16_t parameter = read_u16(packet + XBOX_GIP_COMMAND_PARAMETER_OFFSET);
     if (packet[1] == XBOX_GIP_COMMAND_GROUP_CONTROL) {
         if (packet[XBOX_GIP_COMMAND_SELECTOR_OFFSET] == XBOX_GIP_COMMAND_CONTROL_HOST_CAPABILITY) {
-            command->kind = USB_XBOX_GIP_COMMAND_HOST_CAPABILITY;
+            command->kind = USB_XBOX_GIP_COMMAND_REPORT_STATE;
             command->parameter = packet[XBOX_GIP_COMMAND_PARAMETER_OFFSET];
             return true;
         }
@@ -115,15 +116,13 @@ bool usb_xbox_gip_command_decode(const uint8_t *packet, size_t length, UsbXboxGi
 }
 
 uint16_t usb_xbox_gip_steering_range_normalize(uint16_t requested_degrees) {
-    requested_degrees /= 10u;
-    if (requested_degrees < XBOX_GIP_STEERING_RANGE_MINIMUM_DEGREES) {
-        return XBOX_GIP_STEERING_RANGE_MINIMUM_DEGREES;
+    if (requested_degrees < XBOX_GIP_STEERING_RANGE_WIRE_MINIMUM) {
+        return XBOX_GIP_STEERING_RANGE_MINIMUM;
     }
-    if (requested_degrees > XBOX_GIP_STEERING_RANGE_MAXIMUM_DEGREES) {
-        return XBOX_GIP_STEERING_RANGE_MAXIMUM_DEGREES;
+    if (requested_degrees > XBOX_GIP_STEERING_RANGE_WIRE_MAXIMUM) {
+        return XBOX_GIP_STEERING_RANGE_MAXIMUM;
     }
-    return requested_degrees / XBOX_GIP_STEERING_RANGE_STEP_DEGREES *
-           XBOX_GIP_STEERING_RANGE_STEP_DEGREES;
+    return requested_degrees / 10u;
 }
 
 uint8_t usb_xbox_gip_force_feedback_strength_normalize(uint8_t requested_level) {

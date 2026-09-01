@@ -23,6 +23,7 @@ typedef struct {
     UsbDescriptorView report;         /**< HID report descriptor. */
     const UsbDescriptorView *strings; /**< String descriptor table. */
     uint8_t string_count;             /**< Number of entries in the string table. */
+    bool string_alias_valid;          /**< True when the configured string alias is active. */
     uint8_t string_alias;             /**< Descriptor index that aliases another string. */
     uint8_t string_alias_target;      /**< Target index for the string alias. */
 } UsbDescriptorCatalog;

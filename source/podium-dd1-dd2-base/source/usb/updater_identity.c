@@ -185,6 +185,17 @@ void usb_updater_identity_select(const UsbUpdaterIdentityInput *input,
         }
         return;
     }
+    if (input->response_selector != USB_UPDATER_IDENTITY_AUTOMATIC) {
+        if (input->wheel_mode == USB_UPDATER_PULSE_WHEEL_MODE) {
+            select_entry(high_identities,
+                         (uint8_t)(sizeof(high_identities) / sizeof(*high_identities)),
+                         input->response_selector & USB_UPDATER_SELECTOR_INDEX, identity);
+        } else {
+            select_response(input->response_selector, false, USB_UPDATER_USB_FALLBACK_INDEX,
+                            identity);
+        }
+        return;
+    }
     if (input->wheel_mode == 4 || input->wheel_mode == 6) {
         select_entry(low_identities, (uint8_t)(sizeof(low_identities) / sizeof(*low_identities)),
                      input->adapter_connected ? USB_UPDATER_USB_ADAPTER_INDEX

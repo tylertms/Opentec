@@ -65,9 +65,6 @@ static void test_runs_discovery_and_metadata_download(void) {
     while (fixture.service.metadata_active) {
         result = poll_service(&fixture, 102);
         if (result.response_length == 0) {
-            if (fixture.service.metadata_download.awaiting_acknowledgement) {
-                acknowledge_metadata(&fixture);
-            }
             continue;
         }
 
@@ -79,6 +76,9 @@ static void test_runs_discovery_and_metadata_download(void) {
         }
         assert(memcmp(&fixture.response[6], &fixture.metadata[reconstructed], payload_length) == 0);
         reconstructed += payload_length;
+        if (fixture.service.metadata_download.awaiting_acknowledgement) {
+            acknowledge_metadata(&fixture);
+        }
     }
 
     assert(reconstructed == USB_XBOX_GIP_METADATA_SIZE);

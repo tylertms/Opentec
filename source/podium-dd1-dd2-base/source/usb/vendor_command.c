@@ -124,6 +124,18 @@ bool usb_vendor_command_requests_motor_command(const UsbVendorCommand *command) 
            command->arguments[1] == 1 && command->arguments[2] == 1;
 }
 
+/**
+ * @brief Tests for the official extended auxiliary-menu command signature.
+ *
+ * @param[in] command Decoded vendor command.
+ * @return True for the auxiliary-menu signature; otherwise false.
+ */
+bool usb_vendor_command_requests_auxiliary_menu(const UsbVendorCommand *command) {
+    return command != NULL && command->kind == USB_VENDOR_COMMAND_EXTENDED &&
+           command->arguments != NULL && command->length >= 3 && command->arguments[0] == 0 &&
+           command->arguments[1] == 0 && command->arguments[2] == 1;
+}
+
 bool usb_vendor_command_decode_wheel_transfer(const UsbVendorCommand *command,
                                               UsbWheelTransferCommand *transfer) {
     if (command == NULL || transfer == NULL || command->kind != USB_VENDOR_COMMAND_EXTENDED ||

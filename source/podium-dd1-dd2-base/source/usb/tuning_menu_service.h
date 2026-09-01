@@ -27,8 +27,10 @@ typedef enum {
  * Tracks the page encoded in the next status response and whether that response is due.
  */
 typedef struct {
-    UsbTuningMenuPage active_page; /**< Currently selected one-based page. */
-    bool response_pending;         /**< True when a page-status response must be encoded. */
+    UsbTuningMenuPage active_page;  /**< Currently selected one-based page. */
+    uint8_t selected_profile;       /**< One-based profile selected by the latest command. */
+    bool profile_selection_pending; /**< True while the profile selection awaits consumption. */
+    bool response_pending;          /**< True when a page-status response must be encoded. */
 } UsbTuningMenuService;
 
 /**
@@ -51,6 +53,16 @@ void usb_tuning_menu_service_init(UsbTuningMenuService *service);
  * @return True when the command has a recognized action and required arguments; otherwise false.
  */
 bool usb_tuning_menu_service_apply(UsbTuningMenuService *service, const UsbVendorCommand *command);
+
+/**
+ * @brief Takes a pending one-based tuning-profile selection.
+ *
+ * @param[in,out] service Tuning-menu state retaining the selection.
+ * @param[out] selection Destination for the selected one-based profile.
+ * @return True when a pending selection was returned; otherwise false.
+ */
+bool usb_tuning_menu_service_take_profile_selection(UsbTuningMenuService *service,
+                                                    uint8_t *selection);
 
 /**
  * @brief Reports whether a tuning-menu status response is pending.

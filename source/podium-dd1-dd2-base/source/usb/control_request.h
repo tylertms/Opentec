@@ -18,26 +18,28 @@ typedef struct {
 
 /** @brief Supported endpoint-zero request classifications. */
 typedef enum {
-    USB_CONTROL_UNSUPPORTED,                /**< Setup packet is not supported. */
-    USB_CONTROL_GET_STATUS,                 /**< Standard GET_STATUS request. */
-    USB_CONTROL_CLEAR_FEATURE,              /**< Standard CLEAR_FEATURE request. */
-    USB_CONTROL_SET_FEATURE,                /**< Standard SET_FEATURE request. */
-    USB_CONTROL_SET_ADDRESS,                /**< Standard SET_ADDRESS request. */
-    USB_CONTROL_GET_DESCRIPTOR,             /**< Standard GET_DESCRIPTOR request. */
-    USB_CONTROL_GET_CONFIGURATION,          /**< Standard GET_CONFIGURATION request. */
-    USB_CONTROL_SET_CONFIGURATION,          /**< Standard SET_CONFIGURATION request. */
-    USB_CONTROL_GET_INTERFACE,              /**< Standard GET_INTERFACE request. */
-    USB_CONTROL_SET_INTERFACE,              /**< Standard SET_INTERFACE request. */
-    USB_CONTROL_HID_GET_REPORT,             /**< HID GET_REPORT request. */
-    USB_CONTROL_HID_SET_REPORT,             /**< HID SET_REPORT request. */
-    USB_CONTROL_HID_GET_IDLE,               /**< HID GET_IDLE request. */
-    USB_CONTROL_HID_SET_IDLE,               /**< HID SET_IDLE request. */
-    USB_CONTROL_HID_GET_PROTOCOL,           /**< HID GET_PROTOCOL request. */
-    USB_CONTROL_HID_SET_PROTOCOL,           /**< HID SET_PROTOCOL request. */
-    USB_CONTROL_CDC_SET_LINE_CODING,        /**< CDC SET_LINE_CODING request. */
-    USB_CONTROL_CDC_GET_LINE_CODING,        /**< CDC GET_LINE_CODING request. */
-    USB_CONTROL_CDC_SET_CONTROL_LINE_STATE, /**< CDC control-line-state request. */
-    USB_CONTROL_XBOX_SECURITY_DESCRIPTOR,   /**< Xbox GIP security-descriptor request. */
+    USB_CONTROL_UNSUPPORTED,                   /**< Setup packet is not supported. */
+    USB_CONTROL_GET_STATUS,                    /**< Standard GET_STATUS request. */
+    USB_CONTROL_CLEAR_FEATURE,                 /**< Standard CLEAR_FEATURE request. */
+    USB_CONTROL_SET_FEATURE,                   /**< Standard SET_FEATURE request. */
+    USB_CONTROL_SET_ADDRESS,                   /**< Standard SET_ADDRESS request. */
+    USB_CONTROL_GET_DESCRIPTOR,                /**< Standard GET_DESCRIPTOR request. */
+    USB_CONTROL_GET_CONFIGURATION,             /**< Standard GET_CONFIGURATION request. */
+    USB_CONTROL_SET_CONFIGURATION,             /**< Standard SET_CONFIGURATION request. */
+    USB_CONTROL_GET_INTERFACE,                 /**< Standard GET_INTERFACE request. */
+    USB_CONTROL_SET_INTERFACE,                 /**< Standard SET_INTERFACE request. */
+    USB_CONTROL_HID_GET_REPORT,                /**< HID GET_REPORT request. */
+    USB_CONTROL_HID_SET_REPORT,                /**< HID SET_REPORT request. */
+    USB_CONTROL_HID_GET_IDLE,                  /**< HID GET_IDLE request. */
+    USB_CONTROL_HID_SET_IDLE,                  /**< HID SET_IDLE request. */
+    USB_CONTROL_HID_GET_PROTOCOL,              /**< HID GET_PROTOCOL request. */
+    USB_CONTROL_HID_SET_PROTOCOL,              /**< HID SET_PROTOCOL request. */
+    USB_CONTROL_CDC_SET_LINE_CODING,           /**< CDC SET_LINE_CODING request. */
+    USB_CONTROL_CDC_GET_LINE_CODING,           /**< CDC GET_LINE_CODING request. */
+    USB_CONTROL_CDC_SET_CONTROL_LINE_STATE,    /**< CDC control-line-state request. */
+    USB_CONTROL_CDC_SEND_ENCAPSULATED_COMMAND, /**< CDC SEND_ENCAPSULATED_COMMAND request. */
+    USB_CONTROL_CDC_GET_ENCAPSULATED_RESPONSE, /**< CDC GET_ENCAPSULATED_RESPONSE request. */
+    USB_CONTROL_XBOX_SECURITY_DESCRIPTOR,      /**< Xbox GIP security-descriptor request. */
 } UsbControlRequestKind;
 
 /** @brief Classified endpoint-zero request fields used by the USB control service. */

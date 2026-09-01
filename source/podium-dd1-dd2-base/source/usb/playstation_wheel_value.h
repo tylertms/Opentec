@@ -87,6 +87,23 @@ void usb_playstation_wheel_value_set_axis_copy(UsbPlaystationWheelValue *value, 
 bool usb_playstation_wheel_value_copy_axes(UsbPlaystationWheelValue *value, const uint8_t axes[2]);
 
 /**
+ * @brief Refreshes the retained PlayStation wheel value from live brake and clutch input.
+ *
+ * Applies the official wheel-mode gate, brake threshold, vibration scaling, and clutch-axis copy.
+ *
+ * @param[in,out] value Retained PlayStation wheel value.
+ * @param[in] brake_position Current brake axis position.
+ * @param[in] brake_active True when the brake source is available.
+ * @param[in] vibration_strength Profile vibration strength.
+ * @param[in] wheel_mode Current attached-wheel mode.
+ * @param[in] clutch_axes Current clutch-paddle axes.
+ * @return True when the retained value changed; otherwise false.
+ */
+bool usb_playstation_wheel_value_refresh(UsbPlaystationWheelValue *value, uint16_t brake_position,
+                                         bool brake_active, uint8_t vibration_strength,
+                                         uint8_t wheel_mode, const uint8_t clutch_axes[2]);
+
+/**
  * @brief Returns the retained legacy wheel axes.
  *
  * Returns the state-owned two-byte array in high-byte-first report order without changing state.

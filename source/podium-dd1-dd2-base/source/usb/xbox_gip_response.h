@@ -30,7 +30,7 @@ typedef struct {
     uint8_t auxiliary_pedal;                         /**< Current auxiliary-pedal value. */
     uint8_t axis_mode;                               /**< Current axis mode. */
     uint8_t led_state;                               /**< Current wheel LED state. */
-    uint16_t steering_range_degrees;                 /**< Lock-to-lock steering range in degrees. */
+    uint16_t steering_range_units;                   /**< Steering range in protocol units. */
     uint8_t force_feedback_level; /**< Force-feedback level in the protocol's 0-to-255 scale. */
     bool pedal_active[USB_XBOX_GIP_INPUT_PEDAL_COUNT]; /**< Whether each pedal axis is active. */
     bool auxiliary_pedal_active; /**< Whether the auxiliary pedal axis is active. */

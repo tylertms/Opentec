@@ -44,6 +44,314 @@ enum {
     WHEEL_MODE_STANDARD = 0x10,                    /**< Standard attached-wheel mode value. */
 };
 
+typedef struct {
+    uint16_t key;
+    uint8_t format;
+    bool secondary;
+} UsbRemoteTuningItmField;
+
+typedef struct {
+    UsbRemoteTuningItmField fields[USB_REMOTE_TUNING_ITM_FIELD_COUNT];
+    uint8_t count;
+} UsbRemoteTuningItmDefinition;
+
+static const UsbRemoteTuningItmDefinition itm_definitions[5] = {
+    {{{0x001, 0x34, false},
+      {0x004, 0x12, false},
+      {0x1f9, 0x32, true},
+      {0x1f5, 0x32, true},
+      {0x1fd, 0x2a, false},
+      {0x1fe, 0x0a, false}},
+     6},
+    {{{0x001, 0x34, false},
+      {0x004, 0x12, false},
+      {0x005, 0x18, true},
+      {0x009, 0x39, false},
+      {0x00e, 0x12, false},
+      {0x00f, 0x12, false},
+      {0x204, 0x1a, false}},
+     7},
+    {{{0x001, 0x34, false},
+      {0x004, 0x12, false},
+      {0x014, 0x22, false},
+      {0x012, 0x22, false},
+      {0x01a, 0x61, false},
+      {0x021, 0x32, true},
+      {0x019, 0x49, false}},
+     7},
+    {{{0x001, 0x34, false},
+      {0x004, 0x12, false},
+      {0x1fe, 0x0a, false},
+      {0x1ff, 0x0a, false},
+      {0x207, 0x1a, false},
+      {0x208, 0x1a, false}},
+     6},
+    {{{0x001, 0x34, false},
+      {0x004, 0x12, false},
+      {0x02a, 0x32, true},
+      {0x030, 0x32, true},
+      {0x02d, 0x32, true},
+      {0x033, 0x32, true}},
+     6},
+};
+
+static uint8_t format_unsigned(char *output, uint32_t value) {
+    char reversed[10];
+    uint8_t count = 0;
+    do {
+        reversed[count++] = (char)('0' + value % 10u);
+        value /= 10u;
+    } while (value != 0);
+    for (uint8_t index = 0; index < count; index++) {
+        output[index] = reversed[count - index - 1u];
+    }
+    return count;
+}
+
+static uint8_t format_signed(char *output, int32_t value) {
+    uint8_t offset = 0;
+    uint32_t magnitude = (uint32_t)value;
+    if (value < 0) {
+        output[offset++] = '-';
+        magnitude = (uint32_t)(-(value + 1)) + 1u;
+    }
+    return (uint8_t)(offset + format_unsigned(output + offset, magnitude));
+}
+
+static uint8_t format_padded(char *output, int32_t value, uint8_t width) {
+    bool negative = value < 0;
+    uint32_t magnitude = negative ? (uint32_t)(-(value + 1)) + 1u : (uint32_t)value;
+    char reversed[10];
+    uint8_t digits = 0;
+    while (magnitude != 0) {
+        reversed[digits++] = (char)('0' + magnitude % 10u);
+        magnitude /= 10u;
+    }
+    while ((uint8_t)(digits + (negative ? 1u : 0u)) < width) {
+        reversed[digits++] = '0';
+    }
+    uint8_t written = 0;
+    if (negative) {
+        output[written++] = '-';
+    }
+    while (digits != 0) {
+        output[written++] = reversed[--digits];
+    }
+    return written;
+}
+
+static uint8_t format_integer(char *output, int32_t value, uint8_t width) {
+    return width == 0 ? format_signed(output, value) : format_padded(output, value, width);
+}
+
+static uint8_t format_fixed(char *output, float value, uint8_t precision) {
+    if (value < 0.0f) {
+        value = -value;
+    }
+    uint32_t scale = 1;
+    for (uint8_t index = 0; index < precision; index++) {
+        scale *= 10u;
+    }
+    uint32_t scaled = (uint32_t)(value * (float)(scale * 10u));
+    scaled = scaled / 10u + (scaled % 10u > 4u ? 1u : 0u);
+    uint8_t written = format_unsigned(output, scaled / scale);
+    if (precision == 0) {
+        return written;
+    }
+    output[written++] = '.';
+    written += format_padded(output + written, (int32_t)(scaled % scale), precision);
+    return written;
+}
+
+static uint8_t format_time(char *output, float value, uint8_t precision) {
+    if (precision == 1) {
+        output[0] = value > 0.0f ? '+' : '-';
+        uint8_t written = (uint8_t)(1u + format_fixed(output + 1, value, 2));
+        output[written++] = 's';
+        while (written < 8) {
+            output[written++] = ' ';
+        }
+        return written;
+    }
+    if (precision != 0 && precision != 2) {
+        return 0;
+    }
+    uint32_t seconds = (uint32_t)value;
+    uint8_t written = 0;
+    if (seconds > 3599u) {
+        written += format_padded(output + written, (int32_t)(seconds / 3600u), 3);
+        output[written++] = ':';
+    }
+    written += format_padded(output + written, (int32_t)(seconds / 60u % 60u), 2);
+    output[written++] = ':';
+    written += format_padded(output + written, (int32_t)(seconds % 60u), 2);
+    if (seconds <= 3599u) {
+        output[written++] = '.';
+        uint32_t fraction =
+            precision == 0 ? (uint32_t)(value * 1000.0f) % 1000u : (uint32_t)(value * 10.0f) % 10u;
+        written += format_padded(output + written, (int32_t)fraction, precision == 0 ? 3 : 1);
+    }
+    return written;
+}
+
+static void format_gear(char output[USB_REMOTE_TUNING_ITM_TEXT_SIZE], uint8_t value) {
+    output[0] = value >= 1 && value <= 9 ? (char)('0' + value)
+                : value == 0             ? 'n'
+                : value == UINT8_MAX     ? 'r'
+                                         : 0;
+    output[1] = 0;
+}
+
+static void format_itm_value(char output[USB_REMOTE_TUNING_ITM_TEXT_SIZE], uint8_t format,
+                             const uint8_t *payload, uint8_t length) {
+    memset(output, 0, USB_REMOTE_TUNING_ITM_TEXT_SIZE);
+    uint8_t kind = format & 0x0fu;
+    uint8_t width = format >> 4u;
+    uint8_t written = 0;
+    if (kind == 1) {
+        written = length < USB_REMOTE_TUNING_ITM_TEXT_SIZE - 1u
+                      ? length
+                      : USB_REMOTE_TUNING_ITM_TEXT_SIZE - 1u;
+        memcpy(output, payload, written);
+    } else if (kind == 2 && length >= 1) {
+        written = format_integer(output, payload[0], width);
+    } else if (kind == 3 && length >= 1) {
+        written = format_integer(output, (int8_t)payload[0], width);
+    } else if ((kind == 4 || kind == 9) && length >= 2) {
+        uint16_t value = payload[0] | (uint16_t)payload[1] << 8;
+        if (kind == 9 && width == 4) {
+            if (value > 999) {
+                value = 999;
+            }
+            written = format_padded(output, value / 10u, 2);
+            output[written++] = '.';
+            written += format_padded(output + written, value % 10u, 1);
+        } else if (kind == 4 && width == 0x0f) {
+            output[written++] = '/';
+            written += format_padded(output + written, value, 3);
+        } else {
+            written = format_integer(output, value, width);
+        }
+    } else if (kind == 5 && length >= 2) {
+        written = format_integer(output, (int16_t)(payload[0] | (uint16_t)payload[1] << 8), width);
+    } else if (kind == 6 && length >= 4) {
+        written = format_integer(output,
+                                 (int32_t)((uint32_t)payload[0] | (uint32_t)payload[1] << 8 |
+                                           (uint32_t)payload[2] << 16 | (uint32_t)payload[3] << 24),
+                                 width);
+    } else if (kind == 7 && length >= 4) {
+        written = format_integer(output,
+                                 (int32_t)((uint32_t)payload[0] | (uint32_t)payload[1] << 8 |
+                                           (uint32_t)payload[2] << 16 | (uint32_t)payload[3] << 24),
+                                 width);
+    } else if (kind == 8 && length >= 4) {
+        float value;
+        memcpy(&value, payload, sizeof(value));
+        written = format_fixed(output, value, width);
+        while (written <= 4) {
+            output[written++] = ' ';
+        }
+    } else if (kind == 10 && length >= 4) {
+        float value;
+        memcpy(&value, payload, sizeof(value));
+        written = format_time(output, value, width);
+    }
+    if (kind == 9 && written < USB_REMOTE_TUNING_ITM_TEXT_SIZE - 1u) {
+        output[written++] = '%';
+    }
+    output[written] = 0;
+}
+
+static void initialize_itm_page(UsbRemoteTuningItmPage *page) {
+    static const char *const initial[5][USB_REMOTE_TUNING_ITM_FIELD_COUNT] = {
+        {"---", "", "---", "-- ", "--:--.-", "--:--.---", ""},
+        {"---", "", "-.-  ", "--- ", "", "", "---    "},
+        {"---", "", "- ", "- ", "-     ", "---", "--.-%"},
+        {"---", "", "--:--.---", "--:--.---", "-.--    ", "-.--    ", ""},
+        {"---", "", "---", "---", "---", "---", ""},
+    };
+    static const char *const secondary[5][USB_REMOTE_TUNING_ITM_FIELD_COUNT] = {
+        {"", "", "/ ---", "/ --", "", "", ""}, {"", "", "--- ", "", "", "", ""},
+        {"", "", "", "", "", "C", ""},         {"", "", "", "", "", "", ""},
+        {"", "", "C", "C", "C", "C", ""},
+    };
+    for (uint8_t index = 0; index < USB_REMOTE_TUNING_ITM_FIELD_COUNT; index++) {
+        memcpy(page->values[index], initial[page->page - 1u][index],
+               strlen(initial[page->page - 1u][index]) + 1u);
+        memcpy(page->secondary_values[index], secondary[page->page - 1u][index],
+               strlen(secondary[page->page - 1u][index]) + 1u);
+    }
+}
+
+static void select_itm_page(UsbRemoteTuningService *service, uint8_t page) {
+    if (page < 1 || page > 5 || service->itm_page.page == page) {
+        return;
+    }
+    memset(&service->itm_page, 0, sizeof(service->itm_page));
+    service->itm_page.page = page;
+    initialize_itm_page(&service->itm_page);
+    const UsbRemoteTuningItmDefinition *definition = &itm_definitions[page - 1u];
+    service->itm_page.field_count = definition->count;
+    for (uint8_t index = 0; index < definition->count; index++) {
+        uint8_t record[REMOTE_TELEMETRY_SUBSCRIPTION_SIZE] = {
+            1,
+            (uint8_t)(index | (definition->fields[index].secondary ? 0x80u : 0u)),
+            (uint8_t)definition->fields[index].key,
+            (uint8_t)(definition->fields[index].key >> 8),
+            definition->fields[index].format,
+        };
+        (void)remote_telemetry_queue_control_record(&service->telemetry, record);
+    }
+    service->itm_page.revision++;
+}
+
+static void consume_itm_records(UsbRemoteTuningService *service) {
+    bool consumed[USB_REMOTE_TUNING_RECORD_COUNT] = {false};
+    const UsbRemoteTuningItmDefinition *definition =
+        service->itm_page.page >= 1 && service->itm_page.page <= 5
+            ? &itm_definitions[service->itm_page.page - 1u]
+            : NULL;
+    for (uint8_t index = 0; index < service->records.count; index++) {
+        UsbRemoteTuningRecord *record = &service->records.records[index];
+        if (record->type != 1) {
+            continue;
+        }
+        consumed[index] = true;
+        uint8_t slot = record->selector & 0x0fu;
+        if (definition == NULL || slot >= definition->count ||
+            record->value != definition->fields[slot].key) {
+            continue;
+        }
+        if ((record->selector & 0x80u) != 0) {
+            if (!definition->fields[slot].secondary) {
+                continue;
+            }
+            uint8_t length = record->payload_length < USB_REMOTE_TUNING_ITM_TEXT_SIZE - 1u
+                                 ? record->payload_length
+                                 : USB_REMOTE_TUNING_ITM_TEXT_SIZE - 1u;
+            memset(service->itm_page.secondary_values[slot], 0,
+                   sizeof(service->itm_page.secondary_values[slot]));
+            memcpy(service->itm_page.secondary_values[slot], record->payload, length);
+        } else if (service->itm_page.page == 2 && (slot == 4 || slot == 5)) {
+            service->itm_page.markers[slot] =
+                record->payload_length != 0 && record->payload[0] != 0;
+        } else if (slot == 1 && record->payload_length != 0) {
+            format_gear(service->itm_page.values[slot], record->payload[0]);
+        } else {
+            format_itm_value(service->itm_page.values[slot], definition->fields[slot].format,
+                             record->payload, record->payload_length);
+        }
+        service->itm_page.revision++;
+    }
+    uint8_t retained = 0;
+    for (uint8_t index = 0; index < service->records.count; index++) {
+        if (!consumed[index]) {
+            service->records.records[retained++] = service->records.records[index];
+        }
+    }
+    service->records.count = retained;
+}
+
 /**
  * @brief Tests a one-based remote-tuning selection.
  *
@@ -159,6 +467,7 @@ static void apply_active(UsbRemoteTuningService *service, bool active, uint8_t w
         apply_telemetry_selection(service, wheel_mode);
     } else {
         (void)remote_telemetry_select(&service->telemetry, REMOTE_TELEMETRY_NONE);
+        service->itm_page = (UsbRemoteTuningItmPage){0};
     }
     queue_response(service, wheel_mode,
                    active ? REMOTE_TUNING_RESPONSE_ACTIVE : REMOTE_TUNING_RESPONSE_INACTIVE,
@@ -191,6 +500,9 @@ static void apply_selection(UsbRemoteTuningService *service, uint8_t command, ui
     case REMOTE_TUNING_COMMAND_MENU:
         if (selection_valid(value, REMOTE_TUNING_MENU_SELECTION_MAXIMUM)) {
             service->menu_selection = value;
+            if (service->active && value <= 5) {
+                select_itm_page(service, value);
+            }
         }
         break;
     case REMOTE_TUNING_COMMAND_MULTI_POSITION:
@@ -509,7 +821,8 @@ usb_remote_tuning_service_queue_host_controls(UsbRemoteTuningService *service,
 bool usb_remote_tuning_service_take_forward_batch(
     UsbRemoteTuningService *service, uint8_t wheel_mode,
     uint8_t output[USB_REMOTE_TUNING_FORWARD_BATCH_SIZE], uint8_t *length) {
-    if (service == NULL || wheel_mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED) {
+    (void)wheel_mode;
+    if (service == NULL) {
         return false;
     }
     return usb_remote_tuning_records_take_forward_batch(&service->records, output, length);
@@ -551,6 +864,7 @@ bool usb_remote_tuning_service_take_telemetry_report(UsbRemoteTuningService *ser
         return false;
     }
     apply_telemetry_selection(service, wheel_mode);
+    consume_itm_records(service);
     bool reset_requested = false;
     bool extended_mode = wheel_mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED;
     (void)usb_remote_tuning_records_consume_telemetry(&service->records, &service->telemetry,
@@ -563,4 +877,16 @@ bool usb_remote_tuning_service_take_telemetry_report(UsbRemoteTuningService *ser
         return false;
     }
     return service->active && remote_telemetry_take_report(&service->telemetry, output);
+}
+
+/**
+ * @brief Returns the active retained intelligent-telemetry-mode page.
+ *
+ * @param[in] service Remote-tuning service to inspect.
+ * @return Active page, or null when the session or page is inactive.
+ */
+const UsbRemoteTuningItmPage *
+usb_remote_tuning_service_itm_page(const UsbRemoteTuningService *service) {
+    return service == NULL || !service->active || service->itm_page.page == 0 ? NULL
+                                                                              : &service->itm_page;
 }

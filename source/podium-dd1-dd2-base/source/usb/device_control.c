@@ -120,7 +120,7 @@ static UsbControlTransfer get_descriptor(const UsbControlRequest *request,
         if (request->recipient != USB_RECIPIENT_DEVICE) {
             return stall();
         }
-        if (request->descriptor_index == catalog->string_alias &&
+        if (catalog->string_alias_valid && request->descriptor_index == catalog->string_alias &&
             catalog->string_alias_target < catalog->string_count) {
             return data(catalog->strings[catalog->string_alias_target], request->length);
         }
@@ -129,16 +129,17 @@ static UsbControlTransfer get_descriptor(const UsbControlRequest *request,
                    : stall();
     case USB_DESCRIPTOR_HID:
         return configured && request->recipient == USB_RECIPIENT_INTERFACE &&
-                       request->descriptor_index == 0
+                       request->descriptor_index == 0 && request->index == 0
                    ? data(catalog->hid, request->length)
                    : stall();
     case USB_DESCRIPTOR_HID_REPORT:
         return configured && request->recipient == USB_RECIPIENT_INTERFACE &&
-                       request->descriptor_index == 0
+                       request->descriptor_index == 0 && request->index == 0
                    ? data(catalog->report, request->length)
                    : stall();
     case USB_DESCRIPTOR_HID_PHYSICAL:
-        return request->recipient == USB_RECIPIENT_INTERFACE && request->descriptor_index == 0
+        return request->recipient == USB_RECIPIENT_INTERFACE && request->descriptor_index == 0 &&
+                       request->index == 0
                    ? value(0, 0)
                    : stall();
     default:

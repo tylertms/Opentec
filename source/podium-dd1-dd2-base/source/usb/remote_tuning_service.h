@@ -27,6 +27,24 @@ typedef enum {
     USB_REMOTE_TUNING_HOST_XBOX,        /**< Xbox USB transport framing. */
 } UsbRemoteTuningHost;
 
+/** @brief Intelligent-telemetry-mode page dimensions. */
+enum {
+    USB_REMOTE_TUNING_ITM_FIELD_COUNT = 7, /**< Maximum fields retained for one page. */
+    USB_REMOTE_TUNING_ITM_TEXT_SIZE = 16,  /**< Storage bytes for each field value. */
+};
+
+/** @brief Retained intelligent-telemetry-mode page supplied by remote tuning. */
+typedef struct {
+    char values[USB_REMOTE_TUNING_ITM_FIELD_COUNT]
+               [USB_REMOTE_TUNING_ITM_TEXT_SIZE]; /**< Primary field text. */
+    char secondary_values[USB_REMOTE_TUNING_ITM_FIELD_COUNT]
+                         [USB_REMOTE_TUNING_ITM_TEXT_SIZE]; /**< Secondary field text. */
+    bool markers[USB_REMOTE_TUNING_ITM_FIELD_COUNT];        /**< Per-field marker state. */
+    uint8_t page;                                           /**< Selected telemetry page. */
+    uint8_t field_count;                                    /**< Number of valid retained fields. */
+    uint8_t revision; /**< Revision incremented by accepted page updates. */
+} UsbRemoteTuningItmPage;
+
 /**
  * @brief Host remote-tuning session and retained downstream work.
  *
@@ -63,6 +81,7 @@ typedef struct {
     bool physical_input_released; /**< True when a standard-wheel button edge can be consumed. */
     bool
         physical_rotary_initialized; /**< True after a physical rotary position has been sampled. */
+    UsbRemoteTuningItmPage itm_page; /**< Retained intelligent-telemetry-mode page. */
 } UsbRemoteTuningService;
 
 /**
@@ -108,6 +127,15 @@ bool usb_remote_tuning_service_apply(UsbRemoteTuningService *service,
  */
 bool usb_remote_tuning_service_take_response(UsbRemoteTuningService *service, uint8_t wheel_mode,
                                              RemoteTuningResponse *response);
+
+/**
+ * @brief Returns the retained intelligent-telemetry-mode page.
+ *
+ * @param[in] service Remote-tuning service to inspect.
+ * @return Retained page, or null when service is null.
+ */
+const UsbRemoteTuningItmPage *
+usb_remote_tuning_service_itm_page(const UsbRemoteTuningService *service);
 
 /**
  * @brief Takes pending active state for adapter synchronization.

@@ -297,5 +297,6 @@ bool fanatec_input_compatibility_encode(uint8_t report[FANATEC_INPUT_COMPATIBILI
     }
 
     encode_payload(report, state);
+    report[FANATEC_INPUT_COMPATIBILITY_REPORT_SIZE - 1] = 0;
     return true;
 }

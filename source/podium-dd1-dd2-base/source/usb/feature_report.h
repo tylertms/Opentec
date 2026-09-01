@@ -28,14 +28,19 @@ typedef struct {
 
 /** @brief Rotary, pulse, and button values encoded in native feature report 33. */
 typedef struct {
-    uint8_t positions[3];         /**< One-based positions for the rotary channels. */
-    int8_t events[3];             /**< Pending rotary events for the channels. */
-    int8_t pulse_directions[4];   /**< Pending signed pulse directions. */
-    uint8_t extended_buttons;     /**< Extended button bits. */
-    uint8_t auxiliary_buttons[3]; /**< Auxiliary button bytes. */
-    uint8_t rotary_mode;          /**< Multi-position rotary reporting mode. */
-    bool tertiary_active;         /**< True when the third rotary channel is active. */
-    bool remap_selectors;         /**< True when the alternate selector mapping is active. */
+    uint8_t positions[3];                /**< One-based positions for the rotary channels. */
+    int8_t events[3];                    /**< Pending rotary events for the channels. */
+    int8_t pulse_directions[4];          /**< Pending signed pulse directions. */
+    int8_t pulse_input_direction;        /**< Pending primary pulse-input direction. */
+    uint16_t secondary_buttons;          /**< Secondary wheel button bits. */
+    uint8_t control_extended[2];         /**< Extended wheel control bytes. */
+    uint8_t auxiliary_report[3];         /**< Normalized auxiliary report bytes. */
+    uint8_t adapter_buttons[3];          /**< Attached-adapter button bytes. */
+    uint8_t wheel_mode;                  /**< Current attached-wheel mode. */
+    uint8_t rotary_mode;                 /**< Multi-position rotary reporting mode. */
+    bool adapter_connected;              /**< True when a wheel adapter is connected. */
+    bool profile_state_suppresses_pulse; /**< True when profile state masks pulse output. */
+    bool remap_selectors;                /**< True when the alternate selector mapping is active. */
 } UsbFeatureReport33State;
 
 /**
@@ -61,6 +66,14 @@ void usb_feature_report_31_encode(const UsbFeatureReport31State *state,
  */
 void usb_feature_report_32_encode(const TuningProfileBank *bank, bool dirty,
                                   uint8_t output[USB_DEVICE_REPORT_SIZE]);
+
+/**
+ * @brief Reports whether a wheel mode exposes rotary data in feature report 0x33.
+ *
+ * @param[in] wheel_mode Current attached-wheel mode.
+ * @return True when the mode publishes rotary data; otherwise false.
+ */
+bool usb_feature_report_33_supports_rotary(uint8_t wheel_mode);
 
 /**
  * @brief Encodes native feature report 33.
