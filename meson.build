@@ -34,7 +34,6 @@ if wqr_is_target
     depend_files: wqr_package_dependencies,
     build_by_default: true,
     build_always_stale: true,
-    build_subdir: 'firmware',
   )
 
   test(
@@ -68,7 +67,6 @@ if base_is_dspic
       base_package_header,
     ],
     build_by_default: true,
-    build_subdir: 'firmware',
   )
 
   test(
@@ -105,7 +103,6 @@ if motor_is_target
     depend_files: motor_package_dependencies,
     build_by_default: true,
     build_always_stale: true,
-    build_subdir: 'firmware',
   )
 endif
 
@@ -127,6 +124,5 @@ if motor_is_target
     depend_files: motor_package_dependencies,
     build_by_default: true,
     build_always_stale: true,
-    build_subdir: 'firmware',
   )
 endif
