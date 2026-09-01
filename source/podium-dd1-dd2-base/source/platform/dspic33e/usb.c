@@ -233,8 +233,7 @@ bool platform_usb_connected(void) { return PORTBbits.RB1 != 0; }
  * @brief Attaches the USB device controller to the bus.
  *
  * Clears pending controller and CPU interrupt flags, enables the supported device events and the
- * priority-four interrupt, then asserts the USB transceiver until the controller reports it
- * enabled.
+ * priority-four interrupt, and enables the USB transceiver.
  *
  */
 void platform_usb_attach(void) {
@@ -242,9 +241,7 @@ void platform_usb_attach(void) {
     U1IE = 0x9f;
     IFS5bits.USB1IF = 0;
     IEC5bits.USB1IE = 1;
-    while (U1CONbits.USBEN == 0) {
-        U1CONbits.USBEN = 1;
-    }
+    U1CONbits.USBEN = 1;
 }
 
 /**
