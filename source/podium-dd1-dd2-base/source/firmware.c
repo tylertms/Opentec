@@ -708,6 +708,8 @@ enum {
         0xfb, /**< Temporary signed drift-mode byte used by the startup override. */
     MOTOR_STARTUP_NATURAL_DAMPER_PERCENT =
         100, /**< Temporary natural-damper percentage used by the startup override. */
+    MOTOR_STARTUP_WHEEL_STATUS_SETTLE_MS =
+        300, /**< Wheel transport settle interval before the startup status request. */
     MOTOR_STARTUP_WHEEL_DISCOVERY_TIMEOUT_MS =
         500, /**< Attached-wheel discovery timeout during startup in milliseconds. */
     MOTOR_STARTUP_BUTTON_SCAN_FINISH_MS =
@@ -2659,11 +2661,11 @@ static void restore_motor_startup_output_override(const MotorStartupOutputOverri
  * @brief Selects the startup USB path after motor-controller discovery.
  *
  * Services the shared auxiliary bus through motor discovery. A recognized controller centers the
- * motor with the required output override, validates wheel status, discovers the wheel, resolves
- * the retained console mode, and only then exposes the selected USB identity. Status failure
- * selects direct updater recovery. A missing controller leaves normal USB detached while runtime
- * mode two probes the auxiliary updater endpoint; rejected recovery falls back to the prepared
- * normal profile.
+ * motor with the required output override, waits 300 milliseconds after initializing the wheel
+ * transport, validates wheel status, discovers the wheel, resolves the retained console mode, and
+ * only then exposes the selected USB identity. Status failure selects direct updater recovery. A
+ * missing controller leaves normal USB detached while runtime mode two probes the auxiliary
+ * updater endpoint; rejected recovery falls back to the prepared normal profile.
  */
 static void initialize_startup_usb(void) {
     motor_probe_start(&motor_probe, platform_time_ms());
@@ -2682,6 +2684,10 @@ static void initialize_startup_usb(void) {
         platform_serial_link_init();
         serial_service_init(&serial_service);
         wheel_status_service_init(&wheel_status_service, &serial_service);
+        uint32_t wheel_status_deadline_ms =
+            platform_time_ms() + MOTOR_STARTUP_WHEEL_STATUS_SETTLE_MS;
+        while (!platform_time_reached(platform_time_ms(), wheel_status_deadline_ms + 1u)) {
+        }
         if (!run_wheel_startup_status_transaction()) {
             (void)start_startup_status_bridge();
             return;
