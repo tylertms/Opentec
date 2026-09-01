@@ -19,9 +19,9 @@ if wqr_is_target
   objcopy = find_program('objcopy')
   python = import('python').find_installation()
   fs = import('fs')
-  package_dependencies = files('../../tools/crypto.py')
+  wqr_package_dependencies = files('../../tools/crypto.py')
   if fs.exists(meson.project_source_root() / '.env')
-    package_dependencies += files('../../.env')
+    wqr_package_dependencies += files('../../.env')
   endif
 
   sdk_sources = sdk_device['clock']
@@ -86,6 +86,7 @@ if wqr_is_target
     link_depends: linker_script,
     link_with: sdk_library,
     name_suffix: 'elf',
+    build_subdir: 'package.p',
   )
 
   binary = custom_target(
@@ -124,23 +125,6 @@ if wqr_is_target
       '@OUTPUT@',
     ],
     build_subdir: 'package.p',
-  )
-  package = custom_target(
-    wqr_name,
-    input: hex,
-    output: wqr_name + '.hex',
-    command: [
-      python,
-      meson.project_source_root() / 'tools/crypto.py',
-      'encrypt',
-      '@INPUT@',
-      '@OUTPUT@',
-      '--legacy-wide-secret',
-      '--preserve-newlines',
-    ],
-    depend_files: package_dependencies,
-    build_by_default: true,
-    build_always_stale: true,
   )
 endif
 

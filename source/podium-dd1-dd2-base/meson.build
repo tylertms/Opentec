@@ -282,7 +282,7 @@ if base_is_dspic
   ]
   firmware_linker_script = files('source/platform/dspic33e/p33EP512MU810.gld')[0]
   firmware = executable(
-    'podium-dd1-dd2-base-raw',
+    'firmware',
     base_sources,
     build_by_default: false,
     c_args: firmware_c_args,
@@ -293,7 +293,9 @@ if base_is_dspic
       '-Wl,--script=' + firmware_linker_script.full_path(),
     ],
     link_depends: firmware_linker_script,
+    name_suffix: 'elf',
     override_options: ['warning_level=0', 'werror=false'],
+    build_subdir: 'package.p',
   )
 
   base_python = import('python').find_installation()
@@ -301,40 +303,11 @@ if base_is_dspic
   base_hex = custom_target(
     'podium-dd1-dd2-base-intel-hex',
     input: firmware,
-    output: 'podium-dd1-dd2-base-raw.hex',
+    output: 'firmware.hex',
     command: [bin2hex, '@INPUT@'],
+    build_subdir: 'package.p',
   )
   base_package_header = '0x0706_V3_9_1_1_release_rev2668f65a'
-  base_package = custom_target(
-    'podium-dd1-dd2-base-hex',
-    input: base_hex,
-    output: 'podium-dd1-dd2-base.hex',
-    command: [
-      base_python,
-      meson.project_source_root() / 'tools/crypto.py',
-      'encrypt',
-      '@INPUT@',
-      '@OUTPUT@',
-      '--header',
-      base_package_header,
-    ],
-    build_by_default: true,
-  )
-
-  test(
-    'base-encryption',
-    base_python,
-    args: [
-      meson.project_source_root() / 'tools/crypto.py',
-      'verify',
-      base_hex.full_path(),
-      base_package.full_path(),
-      '--header',
-      base_package_header,
-    ],
-    depends: base_package,
-    suite: ['base', 'package'],
-  )
 
   simulator = subproject('dspic33e-sim', native: true)
   base_simulator_runner = simulator.get_variable('dspic33ep_mu_firmware_runner')

@@ -58,11 +58,11 @@ if motor_is_target
   rtcesl_dependency = rtcesl.get_variable('rtcesl_dependency')
   linker_script = files('source/firmware.ld')[0]
   objcopy = find_program('objcopy')
-  python = import('python').find_installation()
+  motor_python = import('python').find_installation()
   fs = import('fs')
-  package_dependencies = files('../../tools/crypto.py')
+  motor_package_dependencies = files('../../tools/crypto.py')
   if fs.exists(meson.project_source_root() / '.env')
-    package_dependencies += files('../../.env')
+    motor_package_dependencies += files('../../.env')
   endif
 
   sdk_sources = sdk_device['clock']
@@ -143,6 +143,7 @@ if motor_is_target
     link_depends: linker_script,
     link_with: [sdk_library, freemaster_library],
     name_suffix: 'elf',
+    build_subdir: 'package.p',
   )
 
   motor_target_test_sources = files(
@@ -315,7 +316,7 @@ if motor_is_target
     input: binary,
     output: motor_product + '-firmware.checksummed.bin',
     command: [
-      python,
+      motor_python,
       meson.current_source_dir() / 'tools/checksum.py',
       motor_product,
       '@INPUT@',
@@ -324,7 +325,7 @@ if motor_is_target
     depend_files: files('tools/checksum.py'),
     build_subdir: 'package.p',
   )
-  hex = custom_target(
+  motor_hex = custom_target(
     motor_name + '-intel-hex',
     input: checksummed_binary,
     output: motor_product + '-firmware.hex',
@@ -340,22 +341,5 @@ if motor_is_target
       '@OUTPUT@',
     ],
     build_subdir: 'package.p',
-  )
-  custom_target(
-    motor_name,
-    input: hex,
-    output: motor_name + '.hex',
-    command: [
-      python,
-      meson.project_source_root() / 'tools/crypto.py',
-      'encrypt',
-      '@INPUT@',
-      '@OUTPUT@',
-      '--legacy-wide-secret',
-      '--preserve-newlines',
-    ],
-    depend_files: package_dependencies,
-    build_by_default: true,
-    build_always_stale: true,
   )
 endif
