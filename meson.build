@@ -22,6 +22,10 @@ subdir('source/podium-dd1-dd2-base')
 subdir('source/podium-dd1-motor')
 subdir('source/podium-dd2-motor')
 
+if not meson.is_cross_build() and host_machine.system() == 'windows'
+  subdir('tools/dd1-sim')
+endif
+
 crypto = meson.project_source_root() / 'tools/crypto.py'
 foreach firmware_package : firmware_packages
   package = custom_target(
