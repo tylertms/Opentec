@@ -856,6 +856,11 @@ base_tests = {
 if base_is_dspic
   base_tests += {
     'platform-power': ['source/platform_power.c', 'platform/dspic33e/power.c'],
+    'platform-usb': [
+      'source/platform_usb.c',
+      'platform/dspic33e/usb.c',
+      'usb/buffer_descriptor.c',
+    ],
   }
 endif
 

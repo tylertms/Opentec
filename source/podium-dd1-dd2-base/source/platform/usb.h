@@ -51,14 +51,16 @@ bool platform_usb_connected(void);
 /**
  * @brief Attaches the USB device to the bus.
  *
- * Enables the USB transceiver and device-controller interrupt sources.
+ * Leaves an active attachment unchanged. From the detached state, restores controller event and
+ * interrupt configuration, enables the USB transceiver, and records the attached state.
  */
 void platform_usb_attach(void);
 
 /**
  * @brief Detaches the USB device from the bus.
  *
- * Disables the USB transceiver and device-controller interrupt sources.
+ * Disables the USB transceiver and device-controller interrupt sources and records the detached
+ * state.
  */
 void platform_usb_detach(void);
 

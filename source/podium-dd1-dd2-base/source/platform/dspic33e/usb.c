@@ -80,6 +80,15 @@ static volatile uint8_t event_tail;
  */
 static volatile uint8_t next_bank[USB_ENDPOINT_COUNT][USB_DIRECTION_COUNT];
 
+/** @brief USB device-controller attachment states. */
+typedef enum {
+    USB_CONTROLLER_DETACHED, /**< Controller is detached from the bus. */
+    USB_CONTROLLER_ATTACHED, /**< Controller is attached to the bus. */
+} UsbControllerAttachmentState;
+
+/** @brief Current USB device-controller attachment state. */
+static UsbControllerAttachmentState controller_attachment_state;
+
 /**
  * @brief Selects one USB buffer descriptor.
  *
@@ -195,11 +204,12 @@ static void reset_controller(void) {
  *
  * Configures the active-high RB1 connection input, enables and powers the controller, selects all
  * supported device interrupt sources, installs the aligned descriptor table, resets endpoint
- * state, and selects interrupt priority four.
+ * state, and records the detached state.
  *
  */
 void platform_usb_init(void) {
     IEC5bits.USB1IE = 0;
+    controller_attachment_state = USB_CONTROLLER_DETACHED;
     ANSELBbits.ANSB1 = 0;
     TRISBbits.TRISB1 = 1;
     PMD4bits.USB1MD = 0;
@@ -213,10 +223,10 @@ void platform_usb_init(void) {
     }
     U1CNFG1 = 0;
     U1EIE = 0x9f;
+    U1IE = 0x9f;
     U1PWRCbits.USBPWR = 1;
     U1BDTP1 = (uint16_t)((uint16_t)&descriptors[0] >> 8);
     reset_controller();
-    IPC21bits.USB1IP = USB_INTERRUPT_PRIORITY;
     IFS5bits.USB1IF = 0;
 }
 
@@ -232,16 +242,26 @@ bool platform_usb_connected(void) { return PORTBbits.RB1 != 0; }
 /**
  * @brief Attaches the USB device controller to the bus.
  *
- * Clears pending controller and CPU interrupt flags, enables the supported device events and the
- * priority-four interrupt, and enables the USB transceiver.
+ * Leaves an active attachment unchanged. From the detached state, resets controller and event
+ * configuration, enables the supported device events and the priority-four interrupt, asserts the
+ * USB transceiver until the controller reports it enabled, and records the attached state.
  *
  */
 void platform_usb_attach(void) {
-    U1IR = 0xff;
+    if (controller_attachment_state != USB_CONTROLLER_DETACHED) {
+        return;
+    }
+    U1CON = 0;
+    U1IE = 0;
+    U1CNFG1 = 0;
+    U1EIE = 0x9f;
     U1IE = 0x9f;
-    IFS5bits.USB1IF = 0;
     IEC5bits.USB1IE = 1;
-    U1CONbits.USBEN = 1;
+    IPC21bits.USB1IP = USB_INTERRUPT_PRIORITY;
+    while (U1CONbits.USBEN == 0) {
+        U1CONbits.USBEN = 1;
+    }
+    controller_attachment_state = USB_CONTROLLER_ATTACHED;
 }
 
 /**
@@ -252,8 +272,9 @@ void platform_usb_attach(void) {
  */
 void platform_usb_detach(void) {
     IEC5bits.USB1IE = 0;
-    U1CONbits.USBEN = 0;
+    U1CON = 0;
     U1IE = 0;
+    controller_attachment_state = USB_CONTROLLER_DETACHED;
 }
 
 /**
