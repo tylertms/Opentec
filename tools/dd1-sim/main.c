@@ -2,6 +2,10 @@
 #define COBJMACROS
 #define D2D_USE_C_DEFINITIONS
 #define INITGUID
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
 #include <commdlg.h>
 #include <d2d1.h>
 #include <dwrite.h>
@@ -15,7 +19,6 @@
 #include <string.h>
 #include <wchar.h>
 #include <wincodec.h>
-#include <windows.h>
 #include <windowsx.h>
 
 #include "firmware.h"
