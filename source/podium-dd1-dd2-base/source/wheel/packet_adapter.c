@@ -5,6 +5,7 @@
 
 /** @brief Internal adapter-response command and display cadence. */
 enum {
+    WHEEL_PACKET_COMMAND_SELECT_MODE = 0xa5,
     WHEEL_PACKET_COMMAND_AUTHENTICATE = 0xa6, /**< Authenticated response command. */
     DISPLAY_REFRESH_MS = 50, /**< Minimum display refresh interval in milliseconds. */
 };
@@ -74,10 +75,10 @@ void wheel_packet_adapter_merge(WheelPacketAdapterInput *input, WheelAdapterInpu
     adapter->buttons_active =
         adapter->buttons[0] != 0 || adapter->buttons[1] != 0 || adapter->buttons[2] != 0;
     if (adapter->primary_delta > 0) {
-        input->motion = 1;
+        input->motion = 0x10;
         adapter->primary_delta--;
     } else if (adapter->primary_delta < 0) {
-        input->motion = -1;
+        input->motion = 0x20;
         adapter->primary_delta++;
     } else {
         input->motion = 0;
@@ -100,7 +101,8 @@ void wheel_packet_adapter_merge(WheelPacketAdapterInput *input, WheelAdapterInpu
 void wheel_packet_adapter_encode(WheelPacketAdapterOutput *output, const WheelAdapterInput *adapter,
                                  uint32_t now_ms,
                                  uint8_t response[WHEEL_PACKET_ADAPTER_RESPONSE_SIZE]) {
-    response[0] = WHEEL_PACKET_COMMAND_AUTHENTICATE;
+    response[0] = WHEEL_PACKET_COMMAND_SELECT_MODE;
+    response[1] = WHEEL_PACKET_COMMAND_AUTHENTICATE;
     if (now_ms > output->refresh_after_ms && adapter != 0 && adapter->connected &&
         (adapter->profile_flags & 0x80u) == 0) {
         for (uint8_t index = 0; index < WHEEL_DISPLAY_GLYPH_COUNT; index++) {

@@ -625,6 +625,7 @@ static void test_captures_remapped_packets(void) {
 
 static void test_accumulates_motion_from_packet_modes(void) {
     static const uint8_t modes[] = {1, 4, 6, WHEEL_MODE_LEGACY_ALTERNATE};
+    static const int8_t expected_motion[] = {1, 1, 1, 0};
     for (uint8_t index = 0; index < sizeof(modes); index++) {
         WheelProtocol protocol;
         uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -639,7 +640,7 @@ static void test_accumulates_motion_from_packet_modes(void) {
 
         accept_active_request(&protocol, request);
 
-        assert(wheel_protocol_take_motion(&protocol) == 1);
+        assert(wheel_protocol_take_motion(&protocol) == expected_motion[index]);
         assert(wheel_protocol_take_motion(&protocol) == 0);
     }
 }
@@ -687,7 +688,7 @@ static void test_captures_packed_family_requests(void) {
     assert(input->buttons[2] == 0x40);
     assert(input->axis_outputs[0] == 0x21);
     assert(input->axis_outputs[1] == 0x43);
-    assert(input->controls[6] == 0x34);
+    assert(input->controls[6] == 0xcb);
     assert(input->controls[7] == 0xab);
     assert(input->axis_values[0] == 0x1234);
     assert(input->axis_values[1] == 0x5678);
@@ -812,7 +813,7 @@ static void test_builds_mode_four_active_response(void) {
 
     const uint8_t *response = wheel_protocol_response(&protocol);
     const uint8_t expected[WHEEL_PACKET_MODE_FOUR_RESPONSE_SIZE] = {
-        0xa5, 0x00, 0x11, 0x22, 0xb3, 0x44, 0x55, 0x66, 0x77,
+        0xa5, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
     };
     assert(memcmp(response, expected, sizeof(expected)) == 0);
     assert(wheel_protocol_message_valid(response));
@@ -864,7 +865,7 @@ static void test_builds_mode_one_active_response(void) {
 
     const uint8_t *response = wheel_protocol_response(&protocol);
     const uint8_t expected[WHEEL_PACKET_MODE_ONE_RESPONSE_SIZE] = {
-        0xa5, 0x00, 0x11, 0x22, 0xb3, 0x44, 0x55, 0x66, 0x77,
+        0xa5, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
     };
     assert(memcmp(response, expected, sizeof(expected)) == 0);
     assert(wheel_protocol_message_valid(response));
@@ -889,7 +890,7 @@ static void test_builds_packed_family_active_response(void) {
     accept_active_request(&protocol, request);
 
     const uint8_t expected[WHEEL_PACKET_PACKED_RESPONSE_SIZE] = {
-        0xa6, 0x00, 0x11, 0x22, 0xb3, 0x44, 0x55, 0x66, 0x77,
+        0xa6, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
     };
     assert(memcmp(wheel_protocol_response(&protocol), expected, sizeof(expected)) == 0);
     assert(wheel_protocol_message_valid(wheel_protocol_response(&protocol)));
@@ -944,14 +945,14 @@ static void test_builds_crc_family_active_response(void) {
     wheel_protocol_accept(&protocol, request);
 
     const uint8_t *response = wheel_protocol_response(&protocol);
-    const uint8_t expected[] = {0xa5, 0, 0x11, 0x22, 0xb3, 0x22, 0x33, 0xff, 0xff, 0x66, 0xff};
+    const uint8_t expected[] = {0xa5, 0, 0x11, 0x22, 0x33, 0x22, 0x33, 0xff, 0xff, 0x66, 0xff};
     assert(memcmp(response, expected, sizeof(expected)) == 0);
     assert((response[WHEEL_PROTOCOL_FLAGS_OFFSET] & WHEEL_PROTOCOL_HOST_CAPABILITY) != 0);
     assert(wheel_protocol_message_valid(response));
 
     wheel_protocol_accept(&protocol, request);
-    assert(wheel_protocol_response(&protocol)[8] == 0);
-    assert(wheel_protocol_response(&protocol)[10] == 0);
+    assert(wheel_protocol_response(&protocol)[8] == UINT8_MAX);
+    assert(wheel_protocol_response(&protocol)[10] == UINT8_MAX);
 
     wheel_protocol_set_host_capability(&protocol, false);
     wheel_protocol_accept(&protocol, request);
@@ -960,7 +961,7 @@ static void test_builds_crc_family_active_response(void) {
             WHEEL_PROTOCOL_HOST_CAPABILITY) == 0);
 }
 
-static void test_builds_remote_tuning_responses(void) {
+static void test_builds_remote_tuning_responses_without_generic_output_overlay(void) {
     static const struct {
         uint8_t mode;
         RemoteTuningLink link;
@@ -1001,9 +1002,10 @@ static void test_builds_remote_tuning_responses(void) {
         wheel_protocol_accept(&protocol, request);
         response = wheel_protocol_response(&protocol);
         assert(response[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
-        assert(response[1] == 1);
-        assert(response[2] == 0x55);
+        assert(response[1] == 0);
+        assert(response[2] == 0);
         assert(wheel_protocol_message_valid(response));
+        assert(protocol.output_reports.pending != 0);
 
         wheel_protocol_accept(&protocol, request);
         response = wheel_protocol_response(&protocol);
@@ -1130,7 +1132,7 @@ static void test_system_setup_response_precedes_host_response_and_schedules_stat
     assert(wheel_protocol_message_valid(packet));
 }
 
-static void test_forwards_remote_telemetry_in_legacy_mode(void) {
+static void test_does_not_overlay_remote_telemetry_in_legacy_mode(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
     uint8_t telemetry[WHEEL_OUTPUT_REMOTE_TELEMETRY_SIZE];
@@ -1149,11 +1151,10 @@ static void test_forwards_remote_telemetry_in_legacy_mode(void) {
         wheel_protocol_accept(&protocol, request);
         const uint8_t *response = wheel_protocol_response(&protocol);
         assert(response[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
-        assert(response[1] == 3);
-        assert(memcmp(response + 2, telemetry, sizeof(telemetry)) == 0);
+        assert(response[1] == 0);
         assert(wheel_protocol_message_valid(response));
     }
-    assert(!wheel_output_reports_remote_telemetry_pending(&protocol.output_reports));
+    assert(wheel_output_reports_remote_telemetry_pending(&protocol.output_reports));
 
     wheel_protocol_accept(&protocol, request);
     assert(wheel_protocol_response(&protocol)[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
@@ -1210,7 +1211,7 @@ static void test_forwards_one_pending_host_report(void) {
     uint8_t arguments[26] = {1};
     wheel_protocol_init(&protocol);
     synchronize(&protocol, request);
-    select_mode(&protocol, request, 1);
+    select_mode(&protocol, request, 0x09);
 
     for (uint8_t index = 0; index < WHEEL_OUTPUT_REPORT_ONE_SIZE; index++) {
         arguments[index + 1] = (uint8_t)(0x70 + index);
@@ -1396,8 +1397,8 @@ static void test_applies_crc_family_axis_controls(void) {
     wheel_protocol_accept(&protocol, request);
 
     const WheelPacketCrcInput *input = wheel_protocol_crc_input(&protocol);
-    assert(input->controls[5] == 0x2a);
-    assert(input->controls[6] == 0x2a);
+    assert(input->controls[5] == 0x80);
+    assert(input->controls[6] == 0x80);
     const WheelAxisOverrideProcessor *axes = wheel_protocol_axis_overrides(&protocol);
     assert(axes->overrides.axis_7.enabled);
     assert(axes->overrides.axis_7.value == 0xbf);
@@ -1460,7 +1461,7 @@ static void test_captures_axis_mode_packets(void) {
     assert(protocol.motion.primary == 3);
     assert(wheel_protocol_acknowledgement_input_active(&protocol));
     assert(wheel_protocol_capabilities(&protocol)->capability_flags == 0x3f34);
-    assert(wheel_protocol_response(&protocol)[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
+    assert(wheel_protocol_response(&protocol)[0] == WHEEL_PROTOCOL_COMMAND_SELECT_MODE);
     assert(wheel_protocol_message_valid(wheel_protocol_response(&protocol)));
 }
 
@@ -1654,15 +1655,15 @@ static void test_captures_adapter_packets(void) {
     assert(input->buttons[2] == 0x27);
     assert(input->axis_outputs[0] == 0x34);
     assert(input->axis_outputs[1] == 0xed);
-    assert(input->motion == 1);
-    assert(input->controls[4] == 30);
+    assert(input->motion == 0x10);
+    assert(input->controls[4] == 0xe1);
     assert(input->controls[5] == 0xc3);
-    assert(input->controls[6] == 0xb9);
+    assert(input->controls[6] == 0x46);
     assert(input->axis_values[0] == 0x1234);
     assert(input->axis_values[1] == 0x5678);
     assert(protocol.adapter.primary_delta == 0);
     assert(protocol.adapter.buttons_active);
-    assert(protocol.motion.primary == 3);
+    assert(protocol.motion.primary == 0);
     assert(wheel_protocol_axis_limit(&protocol) == 0x62);
     assert(wheel_protocol_mode_buttons(&protocol) == 0x61);
     assert(wheel_protocol_axis_report_enabled(&protocol));
@@ -1679,7 +1680,8 @@ static void test_captures_adapter_packets(void) {
     assert(wheel_protocol_capabilities(&protocol)->input_available);
     assert(wheel_protocol_capabilities(&protocol)->capability_flags == 0x3f45);
     const uint8_t *response = wheel_protocol_response(&protocol);
-    assert(response[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
+    assert(response[0] == WHEEL_PROTOCOL_COMMAND_SELECT_MODE);
+    assert(response[1] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
     assert(response[2] == 1);
     assert(response[3] == 2);
     assert(response[4] == 3);
@@ -1706,8 +1708,8 @@ static void test_accumulates_adapter_interface_pulses(void) {
     accept_active_request(&protocol, request);
     wheel_protocol_set_axis_processing(&protocol, 10, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50, 17);
     accept_active_request(&protocol, request);
-    assert(protocol.motion.primary == 3);
-    assert(protocol.motion.axes[0] == 2);
+    assert(protocol.motion.primary == 0);
+    assert(protocol.motion.axes[0] == 0);
 
     wheel_protocol_init(&protocol);
     protocol.mode = WHEEL_PACKET_ADAPTER_MODE;
@@ -1716,7 +1718,7 @@ static void test_accumulates_adapter_interface_pulses(void) {
     protocol.adapter.primary_delta = -1;
     wheel_protocol_set_axis_processing(&protocol, 7, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50, 1);
     accept_active_request(&protocol, request);
-    assert(protocol.motion.primary == UINT8_MAX);
+    assert(protocol.motion.primary == 0);
     assert(protocol.motion.axes[0] == UINT8_MAX);
     assert(protocol.motion.axes[1] == 0);
     assert(protocol.motion.axes[2] == 0);
@@ -1728,10 +1730,10 @@ static void test_accumulates_adapter_interface_pulses(void) {
     protocol.adapter.primary_delta = -1;
     wheel_protocol_set_axis_processing(&protocol, 6, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50, 1);
     accept_active_request(&protocol, request);
-    assert(protocol.motion.primary == UINT8_MAX);
+    assert(protocol.motion.primary == 0);
     assert(protocol.motion.axes[0] == UINT8_MAX);
-    assert(protocol.motion.axes[1] == UINT8_MAX);
-    assert(protocol.motion.axes[2] == UINT8_MAX);
+    assert(protocol.motion.axes[1] == 0);
+    assert(protocol.motion.axes[2] == 0);
 }
 
 static void test_accumulates_extended_interface_pulses(void) {
@@ -1891,11 +1893,11 @@ int main(void) {
     test_builds_packed_family_active_response();
     test_reports_legacy_interface_gate_on_idle_responses();
     test_builds_crc_family_active_response();
-    test_builds_remote_tuning_responses();
+    test_builds_remote_tuning_responses_without_generic_output_overlay();
     test_system_status_preempts_one_remote_tuning_response();
     test_system_operating_responses_use_remote_tuning_control_encoding();
     test_system_setup_response_precedes_host_response_and_schedules_status();
-    test_forwards_remote_telemetry_in_legacy_mode();
+    test_does_not_overlay_remote_telemetry_in_legacy_mode();
     test_encodes_legacy_display_rotation_status();
     test_rejects_remote_tuning_link_mismatch();
     test_forwards_one_pending_host_report();

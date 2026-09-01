@@ -117,11 +117,16 @@ typedef struct {
     bool display_character_mode;           /**< Whether mode-nine glyphs become characters. */
     bool display_rotation_enabled;         /**< Whether display rotation is enabled. */
     bool host_capability_enabled;          /**< Whether host capability is advertised. */
-    bool profile_transition_pending;   /**< Whether a profile transition is suppressing latches. */
-    bool system_status_pending;        /**< Whether a system status code awaits publication. */
-    bool request_ready;                /**< Whether the current request passed ready handling. */
-    bool request_changed;              /**< Whether the normalized request changed. */
-    bool acknowledgement_input_active; /**< Whether input can acknowledge a display overlay. */
+    bool profile_transition_pending; /**< Whether a profile transition is suppressing latches. */
+    bool system_status_pending;      /**< Whether a system status code awaits publication. */
+    bool request_ready;              /**< Whether the current request passed ready handling. */
+    bool request_changed;            /**< Whether the normalized request changed. */
+    bool command_invalid; /**< True when the current request has an invalid command shape. */
+    bool axis_report_enabled_latched; /**< Retained axis-report gate from accepted packets. */
+    bool extended_primary_released;   /**< True after primary extended motion returns to neutral. */
+    bool extended_secondary_released; /**< True after secondary extended motion returns to neutral.
+                                       */
+    bool acknowledgement_input_active;   /**< Whether input can acknowledge a display overlay. */
     bool remote_tuning_controls_pending; /**< Whether control payload is ready to take. */
 } WheelProtocol;
 

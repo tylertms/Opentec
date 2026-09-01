@@ -102,10 +102,14 @@ int16_t wheel_position_axis(int32_t sample, const WheelPositionCalibration *cali
         travel = WHEEL_POSITION_SAMPLE_LIMIT;
     }
 
-    uint32_t magnitude = position < 0 ? (uint32_t)-position : (uint32_t)position;
-    uint32_t axis_limit = position < 0 ? 32768u : 32767u;
-    uint32_t scaled = magnitude >= travel ? axis_limit : magnitude * axis_limit / travel;
-    return position < 0 ? (int16_t)-(int32_t)scaled : (int16_t)scaled;
+    float limit = position < 0 ? 32768.0f : 32767.0f;
+    float scaled = limit / (float)travel * (float)position;
+    if (scaled > 32767.0f) {
+        scaled = 32767.0f;
+    } else if (scaled < -32768.0f) {
+        scaled = -32768.0f;
+    }
+    return (int16_t)(int32_t)scaled;
 }
 
 /**
@@ -139,15 +143,20 @@ int16_t wheel_position_display_rotation(int32_t sample,
     uint32_t travel = calibration->travel > WHEEL_POSITION_SAMPLE_LIMIT
                           ? WHEEL_POSITION_SAMPLE_LIMIT
                           : calibration->travel;
-    int32_t angle =
-        (int32_t)((int64_t)axis * travel * 72000 / (WHEEL_POSITION_COUNTS_PER_REVOLUTION * 65535));
-    while (angle > 18000) {
-        angle -= 36000;
+    float angle = (float)((int32_t)travel * 100);
+    angle /= 32.888889f;
+    angle = (float)axis * angle;
+    angle /= 65535.0f;
+
+    int32_t scaled = (int32_t)angle;
+    int16_t quotient = (int16_t)(scaled / 18000);
+    if (scaled > 18000) {
+        return (int16_t)((quotient & 1) != 0 ? scaled % 18000 - 18000 : scaled % 18000);
     }
-    while (angle < -18000) {
-        angle += 36000;
+    if (scaled < -18000) {
+        return (int16_t)((quotient & 1) != 0 ? scaled % 18000 + 18000 : scaled % 18000);
     }
-    return (int16_t)angle;
+    return (int16_t)scaled;
 }
 
 /**

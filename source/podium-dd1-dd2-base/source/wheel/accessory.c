@@ -68,6 +68,8 @@ bool wheel_accessory_apply_probe(WheelAccessory *accessory, int8_t status, uint3
                protocol == ACCESSORY_PROTOCOL_POSITION_B) {
         accessory->kind = WHEEL_ACCESSORY_EXTENDED;
     } else {
+        accessory->kind = WHEEL_ACCESSORY_DISCONNECTED;
+        accessory->model = 0;
         return false;
     }
     accessory->model = (packet & ACCESSORY_MODEL_MASK) >> ACCESSORY_MODEL_SHIFT;

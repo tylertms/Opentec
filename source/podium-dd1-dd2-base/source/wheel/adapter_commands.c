@@ -49,6 +49,7 @@ enum {
     WHEEL_ADAPTER_SECURE_PROFILE = 0x80, /**< Status bit suppressing ordinary component requests. */
     WHEEL_ADAPTER_OUTPUT_REPORT_INTERVAL =
         5, /**< Number of scheduling passes between report batches. */
+    WHEEL_ADAPTER_COMMAND_WAIT_LIMIT = 500,
 };
 
 /** @brief Remote target identifiers indexed by adapter endpoint. */
@@ -83,6 +84,9 @@ static uint8_t endpoint_target(const WheelAdapterCommandService *service) {
  */
 static void advance_endpoint(WheelAdapterCommandService *service, WheelAdapterInput *adapter,
                              CommandTransport *transport) {
+    if (service->phase == WHEEL_ADAPTER_COMMAND_DISPLAY_STATE_PENDING) {
+        service->display_state_pending = true;
+    }
     command_transport_release(transport, WHEEL_ADAPTER_COMMAND_OWNER);
     service->endpoint_index =
         (uint8_t)((service->endpoint_index + 1u) % WHEEL_ADAPTER_ENDPOINT_COUNT);
@@ -104,10 +108,21 @@ static void advance_endpoint(WheelAdapterCommandService *service, WheelAdapterIn
     service->report_five_pending = false;
     service->report_six_pending = false;
     service->output_report_cadence = 0;
+    service->wait_calls = 0;
     service->output_reports_due = false;
     service->phase = WHEEL_ADAPTER_COMMAND_DISCOVERING;
     adapter->mode = service->endpoint_index;
     adapter->profile_flags = 0;
+    for (uint8_t index = 0; index < sizeof(adapter->buttons); index++) {
+        adapter->buttons[index] = 0;
+    }
+    adapter->axes[0] = 0x7f;
+    adapter->axes[1] = 0x80;
+    for (uint8_t index = 0; index < sizeof(adapter->rotary_positions); index++) {
+        adapter->rotary_positions[index] = 0;
+    }
+    adapter->primary_delta = 0;
+    adapter->buttons_active = false;
     for (uint8_t index = 0; index < sizeof(adapter->firmware_version); index++) {
         adapter->firmware_version[index] = 0;
     }
@@ -160,12 +175,16 @@ static bool finish_request(WheelAdapterCommandService *service, WheelAdapterInpu
                            CommandTransport *transport) {
     CommandTransportResult result = command_transport_poll(transport, WHEEL_ADAPTER_COMMAND_OWNER);
     if (result == COMMAND_TRANSPORT_BUSY) {
+        service->wait_calls++;
+        if (service->wait_calls > WHEEL_ADAPTER_COMMAND_WAIT_LIMIT) {
+            command_transport_fail(transport);
+            advance_endpoint(service, adapter, transport);
+            return true;
+        }
         return false;
     }
+    service->wait_calls = 0;
     if (result != COMMAND_TRANSPORT_COMPLETE) {
-        if (service->phase == WHEEL_ADAPTER_COMMAND_DISPLAY_STATE_PENDING) {
-            service->display_state_pending = true;
-        }
         advance_endpoint(service, adapter, transport);
         return true;
     }
@@ -830,6 +849,9 @@ void wheel_adapter_command_service_run(WheelAdapterCommandService *service,
         return;
     }
     result = queue_request(service, adapter, transport);
+    if (result == COMMAND_TRANSPORT_COMPLETE) {
+        service->wait_calls = 0;
+    }
     if (result != COMMAND_TRANSPORT_COMPLETE && result != COMMAND_TRANSPORT_BUSY) {
         advance_endpoint(service, adapter, transport);
     }

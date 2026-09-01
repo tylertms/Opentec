@@ -109,10 +109,10 @@ static bool interface_multiplexes_axes(uint8_t interface_mode) {
 static uint8_t encode_multiplexed_x(uint8_t interface_mode, uint8_t value) {
     value >>= 1;
     if (interface_mode == 6) {
-        return (uint8_t)(value - 0x80u);
+        return (uint8_t)(0x80u - value);
     }
     if (interface_mode == 7) {
-        return (uint8_t)(value - 0x7fu);
+        return (uint8_t)(0x7fu - value);
     }
     return value;
 }

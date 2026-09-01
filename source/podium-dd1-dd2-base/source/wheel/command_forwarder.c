@@ -110,6 +110,13 @@ static void finish_probe(WheelCommandForwarder *forwarder, CommandTransport *tra
         return;
     }
 
+    uint8_t status =
+        forwarder->endpoint_index == 0 ? forwarder->probe[0] : (forwarder->probe[0] & 0x3fu);
+    if (status == 0) {
+        advance_endpoint(forwarder, transport);
+        return;
+    }
+
     command_transport_release(transport, WHEEL_COMMAND_FORWARDER_OWNER);
     forwarder->phase = WHEEL_COMMAND_FORWARDER_READY;
 }

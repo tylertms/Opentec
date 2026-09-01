@@ -46,11 +46,11 @@ static uint16_t read_little_endian_u16(const uint8_t *data) {
  * @param[in] source Byte containing the source bit.
  * @param[in] source_bit Source bit position from zero through seven.
  */
-static void assign_bit(uint8_t *destination, uint8_t destination_bit, uint8_t source,
-                       uint8_t source_bit) {
-    uint8_t mask = (uint8_t)(1u << destination_bit);
-    *destination = (uint8_t)((*destination & (uint8_t)~mask) |
-                             (((source >> source_bit) & 1u) << destination_bit));
+static void merge_bit(uint8_t *destination, uint8_t destination_bit, uint8_t source,
+                      uint8_t source_bit) {
+    if (((source >> source_bit) & 1u) != 0) {
+        *destination |= (uint8_t)(1u << destination_bit);
+    }
 }
 
 /**
@@ -65,8 +65,8 @@ static void map_legacy_controls(WheelPacketModeFourInput *input) {
     static const uint8_t first_destinations[8] = {3, 0, 4, 1, 5, 2, 6, 7};
     static const uint8_t second_destinations[8] = {5, 7, 6, 0, 3, 1, 2, 4};
     for (uint8_t bit = 0; bit < 8; bit++) {
-        assign_bit(&input->buttons[1], first_destinations[bit], input->controls[2], bit);
-        assign_bit(&input->buttons[0], second_destinations[bit], input->controls[3], bit);
+        merge_bit(&input->buttons[1], first_destinations[bit], input->controls[2], bit);
+        merge_bit(&input->buttons[0], second_destinations[bit], input->controls[3], bit);
     }
 }
 
@@ -111,9 +111,9 @@ static void write_snapshot(const WheelPacketModeFourInput *input,
 }
 
 /**
- * @brief Clears the mode-4 input histories.
+ * @brief Clears the mode-4 button history.
  *
- * Zeros the three button samples and four control samples and resets both insertion positions.
+ * Zeros the three button samples and resets their insertion position.
  *
  * @param[out] filter Mode-4 filter state to initialize.
  */
@@ -123,13 +123,7 @@ void wheel_packet_mode_four_filter_init(WheelPacketModeFourFilter *filter) {
             filter->button_samples[sample][button] = 0;
         }
     }
-    for (uint8_t sample = 0; sample < WHEEL_PACKET_MODE_FOUR_CONTROL_HISTORY_DEPTH; sample++) {
-        for (uint8_t control = 0; control < WHEEL_PACKET_MODE_FOUR_CONTROL_COUNT; control++) {
-            filter->control_samples[sample][control] = 0;
-        }
-    }
     filter->next_button_sample = 0;
-    filter->next_control_sample = 0;
 }
 
 /**
@@ -174,12 +168,11 @@ void wheel_packet_mode_four_decode(const uint8_t request[WHEEL_PACKET_MODE_FOUR_
 }
 
 /**
- * @brief Filters mode-4 buttons and auxiliary controls.
+ * @brief Filters mode-4 buttons.
  *
- * Keeps button bits present in all three recent button samples and control bits present in all
- * four recent control samples, then advances the independent circular histories.
+ * Keeps button bits present in all three recent button samples and advances the circular history.
  *
- * @param[in,out] filter Button and control histories with their insertion positions.
+ * @param[in,out] filter Button history with its insertion position.
  * @param[in,out] input Input added to the histories and filtered in place.
  */
 void wheel_packet_mode_four_filter(WheelPacketModeFourFilter *filter,
@@ -193,17 +186,6 @@ void wheel_packet_mode_four_filter(WheelPacketModeFourFilter *filter,
     filter->next_button_sample++;
     if (filter->next_button_sample == WHEEL_PACKET_MODE_FOUR_BUTTON_HISTORY_DEPTH) {
         filter->next_button_sample = 0;
-    }
-
-    for (uint8_t control = 0; control < WHEEL_PACKET_MODE_FOUR_CONTROL_COUNT; control++) {
-        filter->control_samples[filter->next_control_sample][control] = input->controls[control];
-        input->controls[control] =
-            filter->control_samples[0][control] & filter->control_samples[1][control] &
-            filter->control_samples[2][control] & filter->control_samples[3][control];
-    }
-    filter->next_control_sample++;
-    if (filter->next_control_sample == WHEEL_PACKET_MODE_FOUR_CONTROL_HISTORY_DEPTH) {
-        filter->next_control_sample = 0;
     }
 }
 
@@ -225,8 +207,8 @@ void wheel_packet_mode_four_normalize(WheelPacketModeFourInput *input, uint8_t i
         map_legacy_controls(input);
     }
     if (interface_mode == INTERFACE_MODE_PLAYSTATION_4) {
-        assign_bit(&input->buttons[1], 3, input->mode_buttons, 1);
-        assign_bit(&input->buttons[1], 0, input->mode_buttons, 3);
+        merge_bit(&input->buttons[1], 3, input->mode_buttons, 1);
+        merge_bit(&input->buttons[1], 0, input->mode_buttons, 3);
     }
     if (interface_mode == INTERFACE_MODE_XBOX_GIP ||
         interface_mode == INTERFACE_MODE_PLAYSTATION_4) {

@@ -24,6 +24,11 @@ static void complete_read(CommandTransport *transport, const uint8_t *data, uint
     command_transport_receive(transport, response, (uint16_t)length + 2);
 }
 
+static void complete_write(CommandTransport *transport) {
+    static const uint8_t accepted[] = {1};
+    command_transport_receive(transport, accepted, sizeof(accepted));
+}
+
 static void polls_status_then_version_and_applies_identity(void) {
     WheelAccessoryService service;
     CommandTransport transport;
@@ -54,6 +59,8 @@ static void polls_status_then_version_and_applies_identity(void) {
     assert(identity->version == 0x78561234);
     assert(!service.version_stage);
     assert(service.accessory_type_stage);
+    assert(service.dirty_parameters == 0x1fff);
+    service.dirty_parameters = 0;
     assert(!service.request_pending);
     assert(transport.owner == 0);
 
@@ -106,6 +113,59 @@ static void waits_for_another_transport_owner(void) {
     assert(transport.phase == COMMAND_TRANSPORT_IDLE);
 }
 
+static void synchronizes_all_parameters_and_reads_output_status(void) {
+    static const uint8_t offsets[] = {0x04, 0x03, 0x20, 0x21, 0x22, 0x23, 0x24,
+                                      0x25, 0x26, 0x27, 0x28, 0x29, 0x2a};
+    static const uint8_t lengths[] = {1, 2, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1};
+    static const uint8_t data[] = {0x00, 0xfa, 0x05, 0x11, 0x22, 0x33, 0x44, 0x66,
+                                   0x55, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc};
+    static const uint8_t data_offsets[] = {0, 1, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14};
+    WheelAccessoryService service;
+    CommandTransport transport;
+    const WheelAccessorySyncParameters parameters = {
+        .sensitivity = 0x11,
+        .force_feedback_strength = 0x22,
+        .force_feedback_scale = 0x33,
+        .natural_damper = 0x44,
+        .natural_friction = 0x5566,
+        .natural_inertia = 0x77,
+        .interpolation_filter = 0x88,
+        .force_effect_intensity = 0x99,
+        .force_effect_strength = 0xaa,
+        .spring_effect_strength = 0xbb,
+        .damper_effect_strength = 0xcc,
+    };
+    wheel_accessory_service_init(&service);
+    command_transport_init(&transport);
+    assert(wheel_accessory_apply_probe(&service.accessory, signed_status(0x81), 0x44332211));
+    service.sync_initialized = true;
+    service.dirty_parameters = 0x1fff;
+    wheel_accessory_service_configure(&service, &parameters);
+
+    for (uint8_t index = 0; index < sizeof(offsets); index++) {
+        wheel_accessory_service_run(&service, &transport);
+        uint8_t expected[5] = {2, 0xe0, offsets[index], 0, 0};
+        memcpy(expected + 3, data + data_offsets[index], lengths[index]);
+        submit_request(&transport, expected, (uint16_t)lengths[index] + 3);
+        complete_write(&transport);
+        wheel_accessory_service_run(&service, &transport);
+        assert((service.dirty_parameters & (1u << index)) == 0);
+
+        if (index == 0) {
+            wheel_accessory_service_run(&service, &transport);
+            static const uint8_t expected_status[] = {2, 0xe1, 4, 1, 0};
+            submit_request(&transport, expected_status, sizeof(expected_status));
+            static const uint8_t status[] = {0xaa};
+            complete_read(&transport, status, sizeof(status));
+            wheel_accessory_service_run(&service, &transport);
+            assert(wheel_accessory_service_output_inhibited(&service));
+        }
+    }
+
+    assert(service.dirty_parameters == 0);
+    assert(memcmp(service.mirrored_parameters, data, sizeof(data)) == 0);
+}
+
 static void handles_unavailable_services(void) {
     WheelAccessoryService service;
     CommandTransport transport;
@@ -121,6 +181,7 @@ int main(void) {
     polls_status_then_version_and_applies_identity();
     retries_a_failed_stage_without_erasing_identity();
     waits_for_another_transport_owner();
+    synchronizes_all_parameters_and_reads_output_status();
     handles_unavailable_services();
     return 0;
 }

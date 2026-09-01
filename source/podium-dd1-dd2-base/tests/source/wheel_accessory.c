@@ -55,12 +55,12 @@ static void test_rejects_reserved_protocol_without_replacing_identity(void) {
     assert(wheel_accessory_apply_probe(&accessory, signed_status(0x95), 1));
 
     assert(!wheel_accessory_apply_probe(&accessory, signed_status(0x97), UINT32_C(0xabcdef12)));
-    assert(accessory.kind == WHEEL_ACCESSORY_EXTENDED);
-    assert(accessory.model == 5);
+    assert(accessory.kind == WHEEL_ACCESSORY_DISCONNECTED);
+    assert(accessory.model == 0);
     assert(accessory.initial_status == signed_status(0x97));
     assert(accessory.version == UINT32_C(0xabcdef12));
     assert(wheel_accessory_mode_code(&accessory) == 4);
-    assert(wheel_accessory_mode_flags(&accessory) == 0x8b);
+    assert(wheel_accessory_mode_flags(&accessory) == 0x81);
 }
 
 static void test_preserves_model_when_legacy_status_follows_extended(void) {

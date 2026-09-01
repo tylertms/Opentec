@@ -7,7 +7,8 @@
 static void test_selects_extended_packet_family(void) {
     for (uint16_t mode = 0; mode <= UINT8_MAX; mode++) {
         bool expected = mode == WHEEL_PACKET_EXTENDED_MODE_STANDARD ||
-                        mode == WHEEL_PACKET_EXTENDED_MODE_STATUS;
+                        mode == WHEEL_PACKET_EXTENDED_MODE_STATUS ||
+                        mode == WHEEL_PACKET_EXTENDED_MODE_REMOTE;
         assert(wheel_packet_extended_applies((uint8_t)mode) == expected);
     }
 }

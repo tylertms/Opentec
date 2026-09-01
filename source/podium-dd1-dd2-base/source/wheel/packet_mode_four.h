@@ -7,17 +7,16 @@
 
 /** @brief Mode-four packet dimensions and field counts. */
 enum {
-    WHEEL_PACKET_MODE_FOUR_RESPONSE_SIZE = 9,         /**< Response size in bytes. */
-    WHEEL_PACKET_MODE_FOUR_REQUEST_SIZE = 32,         /**< Request size in bytes. */
-    WHEEL_PACKET_MODE_FOUR_SNAPSHOT_SIZE = 30,        /**< Snapshot size in bytes. */
-    WHEEL_PACKET_MODE_FOUR_BUTTON_COUNT = 3,          /**< Number of button bytes. */
-    WHEEL_PACKET_MODE_FOUR_BUTTON_HISTORY_DEPTH = 3,  /**< Button-history sample count. */
-    WHEEL_PACKET_MODE_FOUR_CONTROL_COUNT = 4,         /**< Number of control bytes. */
-    WHEEL_PACKET_MODE_FOUR_CONTROL_HISTORY_DEPTH = 4, /**< Control-history sample count. */
-    WHEEL_PACKET_MODE_FOUR_AXIS_OUTPUT_COUNT = 2,     /**< Number of axis-output bytes. */
-    WHEEL_PACKET_MODE_FOUR_AXIS_VALUE_COUNT = 2,      /**< Number of 16-bit axis values. */
-    WHEEL_PACKET_MODE_FOUR_CONTROL_DATA_COUNT = 4,    /**< Number of control-data bytes. */
-    WHEEL_PACKET_MODE_FOUR_AUXILIARY_DATA_COUNT = 4,  /**< Number of auxiliary-data bytes. */
+    WHEEL_PACKET_MODE_FOUR_RESPONSE_SIZE = 9,        /**< Response size in bytes. */
+    WHEEL_PACKET_MODE_FOUR_REQUEST_SIZE = 32,        /**< Request size in bytes. */
+    WHEEL_PACKET_MODE_FOUR_SNAPSHOT_SIZE = 30,       /**< Snapshot size in bytes. */
+    WHEEL_PACKET_MODE_FOUR_BUTTON_COUNT = 3,         /**< Number of button bytes. */
+    WHEEL_PACKET_MODE_FOUR_BUTTON_HISTORY_DEPTH = 3, /**< Button-history sample count. */
+    WHEEL_PACKET_MODE_FOUR_CONTROL_COUNT = 4,        /**< Number of control bytes. */
+    WHEEL_PACKET_MODE_FOUR_AXIS_OUTPUT_COUNT = 2,    /**< Number of axis-output bytes. */
+    WHEEL_PACKET_MODE_FOUR_AXIS_VALUE_COUNT = 2,     /**< Number of 16-bit axis values. */
+    WHEEL_PACKET_MODE_FOUR_CONTROL_DATA_COUNT = 4,   /**< Number of control-data bytes. */
+    WHEEL_PACKET_MODE_FOUR_AUXILIARY_DATA_COUNT = 4, /**< Number of auxiliary-data bytes. */
 };
 
 /** @brief Logical input fields decoded from a mode-four request. */
@@ -42,10 +41,7 @@ typedef struct {
 typedef struct {
     uint8_t button_samples[WHEEL_PACKET_MODE_FOUR_BUTTON_HISTORY_DEPTH]
                           [WHEEL_PACKET_MODE_FOUR_BUTTON_COUNT]; /**< Recent button samples. */
-    uint8_t control_samples[WHEEL_PACKET_MODE_FOUR_CONTROL_HISTORY_DEPTH]
-                           [WHEEL_PACKET_MODE_FOUR_CONTROL_COUNT]; /**< Recent control samples. */
-    uint8_t next_button_sample;  /**< Index receiving the next button sample. */
-    uint8_t next_control_sample; /**< Index receiving the next control sample. */
+    uint8_t next_button_sample; /**< History index receiving the next button sample. */
 } WheelPacketModeFourFilter;
 
 /** @brief Retained mode-four extension and axis-report latches. */

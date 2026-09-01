@@ -24,8 +24,9 @@ typedef WheelPacketCommonInput WheelPacketPackedInput;
 /** @brief Three-sample button history for the packed packet family. */
 typedef struct {
     uint8_t samples[WHEEL_PACKET_PACKED_HISTORY_DEPTH]
-                   [WHEEL_PACKET_PACKED_BUTTON_COUNT]; /**< Recent button samples. */
-    uint8_t next_sample;                               /**< Index receiving the next sample. */
+                   [WHEEL_PACKET_PACKED_BUTTON_COUNT];          /**< Recent button samples. */
+    uint8_t axis_samples[WHEEL_PACKET_PACKED_HISTORY_DEPTH][2]; /**< Recent packed axis samples. */
+    uint8_t next_sample; /**< Index receiving the next sample. */
 } WheelPacketPackedFilter;
 
 /**

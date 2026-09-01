@@ -32,6 +32,11 @@ bool platform_serial_link_direct_read(uint8_t *data, uint8_t length) {
     return true;
 }
 
+void platform_serial_link_direct_clear(void) {
+    received = NULL;
+    received_length = 0;
+}
+
 static void reset_transport(void) {
     transmitted_length = 0;
     write_allowed = true;

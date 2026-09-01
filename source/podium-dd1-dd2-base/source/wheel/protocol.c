@@ -64,6 +64,33 @@ static void clear(uint8_t *data, uint8_t length) {
     }
 }
 
+static bool report_mode_marker(uint8_t report_mode) { return report_mode >= 2 && report_mode <= 4; }
+
+static uint8_t active_report_mode(const WheelProtocol *protocol) {
+    if (wheel_packet_mode_one_applies(protocol->mode)) {
+        return protocol->mode_one_report_state.report_mode;
+    }
+    if (protocol->mode == 4) {
+        return protocol->mode_four_input.report_mode;
+    }
+    if (wheel_packet_display_applies(protocol->mode)) {
+        return protocol->display_input.report_mode;
+    }
+    if (wheel_packet_remapped_applies(protocol->mode)) {
+        return protocol->remapped_input.report_mode;
+    }
+    if (wheel_packet_alternate_applies(protocol->mode)) {
+        return protocol->alternate_input.report_mode;
+    }
+    if (wheel_packet_packed_applies(protocol->mode)) {
+        return protocol->packed_input.report_mode;
+    }
+    if (wheel_packet_crc_applies(protocol->mode)) {
+        return protocol->crc_input.report_mode;
+    }
+    return protocol->common_input.report_mode;
+}
+
 /**
  * @brief Adds the legacy wheel-status fields used for display rotation.
  *
@@ -141,6 +168,7 @@ static void build_active_response(WheelProtocol *protocol) {
     bool remote_tuning_response =
         !system_status_response && !system_control_response && remote_tuning_mode &&
         wheel_packet_remote_tuning_pending(&protocol->remote_tuning_output);
+    bool third_glyph_marker = report_mode_marker(active_report_mode(protocol));
     uint8_t flags = protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET];
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
     if (system_control_response) {
@@ -157,13 +185,18 @@ static void build_active_response(WheelProtocol *protocol) {
         (void)wheel_packet_remote_tuning_encode(&protocol->remote_tuning_output,
                                                 protocol->response);
     } else if (wheel_packet_adapter_applies(protocol->mode)) {
+        protocol->adapter_output.display.third_glyph_marker = third_glyph_marker;
         wheel_packet_adapter_encode(&protocol->adapter_output, &protocol->adapter, protocol->now_ms,
                                     protocol->response);
     } else if (wheel_packet_crc_applies(protocol->mode)) {
-        wheel_packet_crc_encode(protocol->mode, protocol->host_capability_enabled,
-                                &protocol->crc_output, protocol->response);
+        WheelPacketCrcOutput output = protocol->crc_output;
+        output.display.third_glyph_marker = third_glyph_marker;
+        wheel_packet_crc_encode(protocol->mode, protocol->host_capability_enabled, &output,
+                                protocol->response);
     } else if (protocol->mode == 4) {
-        wheel_packet_mode_four_encode(&protocol->mode_four_output, protocol->response);
+        WheelPacketModeFourOutput output = protocol->mode_four_output;
+        output.display.third_glyph_marker = third_glyph_marker;
+        wheel_packet_mode_four_encode(&output, protocol->response);
     } else if (wheel_packet_alternate_applies(protocol->mode)) {
         wheel_packet_alternate_encode(&protocol->alternate_output, protocol->response);
     } else if (wheel_packet_display_applies(protocol->mode) ||
@@ -172,6 +205,7 @@ static void build_active_response(WheelProtocol *protocol) {
                wheel_packet_extended_applies(protocol->mode) ||
                wheel_packet_metadata_applies(protocol->mode)) {
         WheelDisplayOutput display = protocol->mode_one_output.display;
+        display.third_glyph_marker = third_glyph_marker;
         if (protocol->display_character_mode && protocol->mode == 0x09) {
             for (uint8_t index = 0; index < WHEEL_DISPLAY_GLYPH_COUNT; index++) {
                 display.glyphs[index] = wheel_display_output_character(display.glyphs[index]);
@@ -180,21 +214,32 @@ static void build_active_response(WheelProtocol *protocol) {
         wheel_packet_common_response_encode(&display, protocol->mode_one_output.vibration,
                                             protocol->mode_one_output.legacy_axes,
                                             protocol->response);
+        if (protocol->mode == 0x09) {
+            protocol->response[0] = WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
+        }
     } else if (wheel_packet_packed_applies(protocol->mode)) {
-        wheel_packet_packed_encode(&protocol->mode_one_output.display,
-                                   protocol->mode_one_output.vibration,
+        WheelDisplayOutput display = protocol->mode_one_output.display;
+        display.third_glyph_marker = third_glyph_marker;
+        wheel_packet_packed_encode(&display, protocol->mode_one_output.vibration,
                                    protocol->mode_one_output.legacy_axes, protocol->response);
     } else if (!remote_tuning_mode) {
-        wheel_packet_mode_one_encode(protocol->mode, &protocol->mode_one_output,
-                                     protocol->response);
+        WheelPacketModeOneOutput output = protocol->mode_one_output;
+        output.display.third_glyph_marker = third_glyph_marker;
+        wheel_packet_mode_one_encode(protocol->mode, &output, protocol->response);
     } else {
         protocol->response[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
     }
     if (!system_control_response && !remote_tuning_response) {
         encode_legacy_status(protocol, protocol->response);
         if (!system_status_response) {
-            bool report_encoded = wheel_output_reports_encode_next(
-                &protocol->output_reports, protocol->mode, protocol->response);
+            bool generic_output_supported =
+                protocol->mode == 0x09 || protocol->mode == 0x0a || protocol->mode == 0x0b ||
+                protocol->mode == 0x0f || protocol->mode == 0x10 || protocol->mode == 0x11 ||
+                protocol->mode == 0x17 || protocol->mode == 0x1b || protocol->mode == 0x1d;
+            bool report_encoded =
+                generic_output_supported &&
+                wheel_output_reports_encode_next(&protocol->output_reports, protocol->mode,
+                                                 protocol->response);
             if (!report_encoded && (protocol->mode == WHEEL_MODE_LEGACY_ALTERNATE ||
                                     protocol->mode == WHEEL_MODE_LEGACY_COMPATIBILITY)) {
                 bool interface_mode_gate =
@@ -412,9 +457,8 @@ static void accumulate_axis_mode_motion(WheelProtocol *protocol) {
 /**
  * @brief Accumulates adapter-oriented rotary and interface pulse input.
  *
- * Queues the adapter's consumed signed motion on the primary counter. Xbox reports interpret the
- * signed byte as three pulse pairs after the 90 ms gate. PlayStation and auxiliary-pulse reports
- * convert the sign to the primary pair after the shared 15 ms gate.
+ * Converts adapter motion flags into the interface pulse counters after the Xbox or PlayStation
+ * pulse gate. Other interfaces consume adapter motion without generating report pulses.
  *
  * @param[in,out] protocol Protocol state containing adapter input, pulse timing, and counters.
  */
@@ -423,15 +467,8 @@ static void accumulate_adapter_motion(WheelProtocol *protocol) {
         return;
     }
 
-    int8_t motion = protocol->common_input.motion;
-    wheel_motion_accumulate_primary(&protocol->motion, motion);
-
-    uint8_t flags;
-    if (protocol->interface_mode == 7 || protocol->interface_mode == 10) {
-        flags = motion < 0 ? 0x20 : motion > 0 ? 0x10 : 0;
-    } else if (protocol->interface_mode == 6) {
-        flags = (uint8_t)motion;
-    } else {
+    uint8_t flags = (uint8_t)protocol->common_input.motion;
+    if (protocol->interface_mode != 6 && protocol->interface_mode != 7) {
         return;
     }
     if (!wheel_pulse_gate_ready(&protocol->pulse_gate, protocol->interface_mode, protocol->now_ms,
@@ -439,11 +476,10 @@ static void accumulate_adapter_motion(WheelProtocol *protocol) {
         return;
     }
 
+    protocol->common_input.motion = pulse_delta(flags, 0x20, 0x10);
     wheel_motion_accumulate_axis(&protocol->motion, 0, pulse_delta(flags, 0x20, 0x10));
-    if (protocol->interface_mode == 6) {
-        wheel_motion_accumulate_axis(&protocol->motion, 1, pulse_delta(flags, 0x08, 0x04));
-        wheel_motion_accumulate_axis(&protocol->motion, 2, pulse_delta(flags, 0x02, 0x01));
-    }
+    wheel_motion_accumulate_axis(&protocol->motion, 1, pulse_delta(flags, 0x08, 0x04));
+    wheel_motion_accumulate_axis(&protocol->motion, 2, pulse_delta(flags, 0x02, 0x01));
 }
 
 /**
@@ -459,13 +495,33 @@ static void accumulate_adapter_motion(WheelProtocol *protocol) {
  */
 static void accumulate_extended_motion(WheelProtocol *protocol) {
     uint8_t flags = (uint8_t)protocol->common_input.motion;
-    wheel_motion_accumulate_primary(&protocol->motion,
-                                    wheel_packet_extended_primary_delta(&protocol->common_input));
+    if (protocol->mode == WHEEL_PACKET_EXTENDED_MODE_REMOTE) {
+        int8_t primary = (flags & 0x10u) != 0 ? 1 : (flags & 0x20u) != 0 ? -1 : 0;
+        if (primary == 0) {
+            protocol->extended_primary_released = true;
+        } else if (protocol->extended_primary_released) {
+            protocol->extended_primary_released = false;
+            wheel_motion_accumulate_primary(&protocol->motion, primary);
+        }
+        int8_t secondary = (flags & 0x40u) != 0 ? 1 : (flags & 0x80u) != 0 ? -1 : 0;
+        if (secondary == 0) {
+            protocol->extended_secondary_released = true;
+        } else if (protocol->extended_secondary_released) {
+            protocol->extended_secondary_released = false;
+            wheel_motion_accumulate_axis(&protocol->motion, 1, secondary);
+        }
+    } else {
+        wheel_motion_accumulate_primary(
+            &protocol->motion, wheel_packet_extended_primary_delta(&protocol->common_input));
+    }
 
     if (protocol->interface_mode != 6 && protocol->interface_mode != 7) {
-        flags = wheel_packet_extended_hold_direct_pulses(&protocol->extended_pulse_state,
-                                                         protocol->mode, protocol->now_ms, flags);
-        protocol->common_input.motion = pulse_delta(flags, 0x20, 0x10);
+        uint8_t active_flags = wheel_packet_extended_hold_direct_pulses(
+            &protocol->extended_pulse_state, protocol->mode, protocol->now_ms, flags);
+        protocol->common_input.motion = flags == 0                    ? 0
+                                        : (active_flags & 0x10u) != 0 ? 1
+                                        : (active_flags & 0x20u) != 0 ? -1
+                                                                      : 0;
         return;
     }
 
@@ -479,6 +535,32 @@ static void accumulate_extended_motion(WheelProtocol *protocol) {
     wheel_motion_accumulate_axis(&protocol->motion, 1, pulse_delta(flags, 0x08, 0x04));
     wheel_motion_accumulate_axis(&protocol->motion, 2, pulse_delta(flags, 0x02, 0x01));
     if (protocol->mode == WHEEL_PACKET_EXTENDED_MODE_STATUS) {
+        wheel_motion_accumulate_axis(&protocol->motion, 3, pulse_delta(flags, 0x80, 0x40));
+    }
+}
+
+static void accumulate_common_pulses(WheelProtocol *protocol, WheelPacketCommonInput *input,
+                                     bool fourth_axis) {
+    uint8_t flags = (uint8_t)input->motion;
+    if (protocol->interface_mode != 6 && protocol->interface_mode != 7) {
+        uint8_t active_flags = wheel_packet_extended_hold_direct_pulses(
+            &protocol->extended_pulse_state, protocol->mode, protocol->now_ms, flags);
+        input->motion = flags == 0                    ? 0
+                        : (active_flags & 0x10u) != 0 ? 1
+                        : (active_flags & 0x20u) != 0 ? -1
+                                                      : 0;
+        return;
+    }
+    if (!wheel_pulse_gate_ready(&protocol->pulse_gate, protocol->interface_mode, protocol->now_ms,
+                                flags)) {
+        input->motion = 0;
+        return;
+    }
+    input->motion = pulse_delta(flags, 0x20, 0x10);
+    wheel_motion_accumulate_axis(&protocol->motion, 0, pulse_delta(flags, 0x20, 0x10));
+    wheel_motion_accumulate_axis(&protocol->motion, 1, pulse_delta(flags, 0x08, 0x04));
+    wheel_motion_accumulate_axis(&protocol->motion, 2, pulse_delta(flags, 0x02, 0x01));
+    if (fourth_axis) {
         wheel_motion_accumulate_axis(&protocol->motion, 3, pulse_delta(flags, 0x80, 0x40));
     }
 }
@@ -577,12 +659,19 @@ static void capture_request(WheelProtocol *protocol,
         wheel_packet_adapter_merge(&protocol->common_input, &protocol->adapter);
         protocol->capabilities.input_available |= protocol->adapter.buttons_active;
         accumulate_adapter_motion(protocol);
+        uint8_t adapter_controls[8] = {0};
+        adapter_controls[5] = protocol->common_input.controls[4];
+        adapter_controls[6] = protocol->common_input.controls[5];
+        adapter_controls[7] = protocol->common_input.controls[2];
         wheel_axis_override_process_packet(
             &protocol->axis_override_processor, protocol->configured_axis_override_mode,
             protocol->mode, protocol->interface_mode, protocol->common_input.axis_limit,
             protocol->now_ms, &protocol->paddle_bite_point_percent,
-            &protocol->common_input.buttons[0], &protocol->common_input.motion,
-            protocol->common_input.controls, protocol->common_input.axis_outputs);
+            &protocol->common_input.buttons[0], &protocol->common_input.motion, adapter_controls,
+            protocol->common_input.axis_outputs);
+        protocol->common_input.controls[4] = adapter_controls[5];
+        protocol->common_input.controls[5] = adapter_controls[6];
+        protocol->common_input.controls[2] = adapter_controls[7];
         wheel_packet_common_snapshot(&protocol->common_input, snapshot);
         protocol->acknowledgement_input_active =
             common_buttons_acknowledgement_input_active(&protocol->common_input);
@@ -605,6 +694,21 @@ static void capture_request(WheelProtocol *protocol,
             protocol->mode_four_input.mode_buttons != 0 ||
             protocol->mode_four_input.axis_report_enabled != 0;
         wheel_packet_mode_four_filter(&protocol->mode_four_filter, &protocol->mode_four_input);
+        uint8_t mode_four_controls[8];
+        for (uint8_t index = 0; index < 4; index++) {
+            mode_four_controls[index] = protocol->mode_four_input.controls[index];
+            mode_four_controls[index + 4] = protocol->mode_four_input.control_data[index];
+        }
+        wheel_axis_override_process_packet(
+            &protocol->axis_override_processor, mode_four_controls[6], protocol->mode,
+            protocol->interface_mode, protocol->mode_four_input.axis_limit, protocol->now_ms,
+            &protocol->paddle_bite_point_percent, &protocol->mode_four_input.buttons[0],
+            &protocol->mode_four_input.motion, mode_four_controls,
+            protocol->mode_four_input.axis_outputs);
+        for (uint8_t index = 0; index < 4; index++) {
+            protocol->mode_four_input.controls[index] = mode_four_controls[index];
+            protocol->mode_four_input.control_data[index] = mode_four_controls[index + 4];
+        }
         wheel_packet_mode_four_normalize(&protocol->mode_four_input, protocol->interface_mode,
                                          &protocol->mode_four_runtime, snapshot);
         protocol->acknowledgement_input_active =
@@ -622,6 +726,16 @@ static void capture_request(WheelProtocol *protocol,
                                 protocol->display_input.report_mode,
                                 protocol->display_input.report_capabilities);
         wheel_packet_display_filter(&protocol->display_filter, &protocol->display_input);
+        accumulate_common_pulses(protocol, &protocol->display_input, false);
+        uint8_t report_enabled = protocol->display_input.controls[7];
+        protocol->display_input.controls[7] = 1;
+        wheel_axis_override_process_packet(
+            &protocol->axis_override_processor, protocol->configured_axis_override_mode,
+            protocol->mode, protocol->interface_mode, protocol->display_input.axis_limit,
+            protocol->now_ms, &protocol->paddle_bite_point_percent,
+            &protocol->display_input.buttons[0], &protocol->display_input.motion,
+            protocol->display_input.controls, protocol->display_input.axis_outputs);
+        protocol->display_input.controls[7] = report_enabled;
         wheel_packet_common_snapshot(&protocol->display_input, snapshot);
         protocol->acknowledgement_input_active =
             common_buttons_acknowledgement_input_active(&protocol->display_input);
@@ -641,6 +755,7 @@ static void capture_request(WheelProtocol *protocol,
         wheel_motion_accumulate_primary(&protocol->motion, motion_delta);
         wheel_packet_remapped_filter(&protocol->remapped_filter, &protocol->remapped_input,
                                      protocol->interface_mode);
+        accumulate_common_pulses(protocol, &protocol->remapped_input, false);
         wheel_packet_common_snapshot(&protocol->remapped_input, snapshot);
         protocol->acknowledgement_input_active =
             common_buttons_acknowledgement_input_active(&protocol->remapped_input);
@@ -677,7 +792,13 @@ static void capture_request(WheelProtocol *protocol,
             protocol->packed_input.controls[2] != 0 || protocol->packed_input.controls[3] != 0;
         wheel_packet_packed_filter_buttons(&protocol->packed_filter, &protocol->packed_input);
         wheel_packet_packed_normalize(&protocol->packed_input);
-        wheel_motion_accumulate_primary(&protocol->motion, protocol->packed_input.motion);
+        accumulate_common_pulses(protocol, &protocol->packed_input, false);
+        wheel_axis_override_process_packet(
+            &protocol->axis_override_processor, protocol->configured_axis_override_mode,
+            protocol->mode, protocol->interface_mode, protocol->packed_input.axis_limit,
+            protocol->now_ms, &protocol->paddle_bite_point_percent,
+            &protocol->packed_input.buttons[0], &protocol->packed_input.motion,
+            protocol->packed_input.controls, protocol->packed_input.axis_outputs);
         wheel_packet_packed_snapshot(&protocol->packed_input, snapshot);
         protocol->acknowledgement_input_active =
             packed_acknowledgement_input_active(&protocol->packed_input);
@@ -774,7 +895,6 @@ static void capture_request(WheelProtocol *protocol,
             protocol->crc_input.axis_outputs);
         if (protocol->mode != WHEEL_MODE_FILTERED_PULSE) {
             wheel_motion_accumulate_primary(&protocol->motion, protocol->crc_input.motion);
-            wheel_packet_crc_smooth_axes(&protocol->crc_filter, &protocol->crc_input);
         }
         wheel_packet_crc_snapshot(&protocol->crc_input, snapshot);
         protocol->acknowledgement_input_active =
@@ -786,6 +906,16 @@ static void capture_request(WheelProtocol *protocol,
         }
         protocol->request_changed |= changed;
     }
+    protocol->axis_report_enabled_latched |=
+        protocol->mode_four_runtime.axis_report_enabled != 0 ||
+        protocol->mode_one_input.axis_report_enabled != 0 ||
+        protocol->display_input.axis_report_enabled != 0 ||
+        protocol->remapped_input.axis_report_enabled != 0 ||
+        protocol->alternate_input.axis_report_enabled != 0 ||
+        protocol->packed_input.axis_report_enabled != 0 ||
+        protocol->common_input.axis_report_enabled != 0 ||
+        protocol->crc_input.axis_report_enabled != 0 ||
+        protocol->axis_override_processor.packet_axis_report_enabled;
     protocol->request_ready = true;
 }
 
@@ -946,6 +1076,10 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     protocol->system_status_pending = false;
     protocol->request_ready = false;
     protocol->request_changed = false;
+    protocol->command_invalid = false;
+    protocol->axis_report_enabled_latched = false;
+    protocol->extended_primary_released = true;
+    protocol->extended_secondary_released = true;
     protocol->acknowledgement_input_active = false;
     protocol->remote_tuning_controls_pending = false;
 }
@@ -1223,6 +1357,8 @@ void wheel_protocol_accept(WheelProtocol *protocol,
         protocol->phase = WHEEL_PROTOCOL_ACKNOWLEDGING;
         return;
     case WHEEL_PROTOCOL_ACKNOWLEDGING:
+        protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] &=
+            (uint8_t)~WHEEL_PROTOCOL_RESPONSE_ACKNOWLEDGED;
         protocol->phase = ready ? WHEEL_PROTOCOL_SELECTING : WHEEL_PROTOCOL_WAITING;
         return;
     case WHEEL_PROTOCOL_SELECTING:
@@ -1247,12 +1383,16 @@ void wheel_protocol_accept(WheelProtocol *protocol,
         if (!ready) {
             return;
         }
-        if (wheel_protocol_message_valid(request)) {
+        protocol->command_invalid = !wheel_protocol_message_valid(request);
+        if (!protocol->command_invalid) {
             if (active_command_valid(protocol, request[0])) {
                 capture_request(protocol, request);
             } else if (wheel_authentication_required(protocol->mode)) {
+                protocol->command_invalid = true;
                 wheel_authentication_init(&protocol->authentication, protocol->mode);
                 protocol->phase = WHEEL_PROTOCOL_AUTHENTICATING;
+            } else {
+                protocol->command_invalid = true;
             }
         }
         build_active_response(protocol);
@@ -1645,6 +1785,9 @@ const uint8_t *wheel_protocol_axis_outputs(const WheelProtocol *protocol) {
  * @return True while the current input packet enables its axis report.
  */
 bool wheel_protocol_axis_report_enabled(const WheelProtocol *protocol) {
+    if (protocol != NULL && protocol->axis_report_enabled_latched) {
+        return true;
+    }
     const WheelPacketModeOneInput *mode_one = wheel_protocol_mode_one_input(protocol);
     if (mode_one != 0) {
         return mode_one->axis_report_enabled != 0;

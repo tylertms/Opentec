@@ -43,15 +43,16 @@ static void resolve_pair(uint8_t *active_flags, uint8_t current_flags, uint8_t p
 /**
  * @brief Reports whether a wheel mode uses the extended packet policy.
  *
- * Selects the authenticated mode 0x0A and status mode 0x1B variants that share the common payload
- * and input processing behavior.
+ * Selects authenticated mode 0x0A, status mode 0x1B, and remote mode 0x1C, which share the common
+ * payload and input processing behavior.
  *
  * @param[in] wheel_mode Selected attached-wheel mode.
- * @return True for mode 0x0A or mode 0x1B.
+ * @return True for modes 0x0A, 0x1B, and 0x1C.
  */
 bool wheel_packet_extended_applies(uint8_t wheel_mode) {
     return wheel_mode == WHEEL_PACKET_EXTENDED_MODE_STANDARD ||
-           wheel_mode == WHEEL_PACKET_EXTENDED_MODE_STATUS;
+           wheel_mode == WHEEL_PACKET_EXTENDED_MODE_STATUS ||
+           wheel_mode == WHEEL_PACKET_EXTENDED_MODE_REMOTE;
 }
 
 /**
@@ -116,7 +117,10 @@ void wheel_packet_extended_pulse_init(WheelPacketExtendedPulseState *state) {
 uint8_t wheel_packet_extended_hold_direct_pulses(WheelPacketExtendedPulseState *state,
                                                  uint8_t wheel_mode, uint32_t now_ms,
                                                  uint8_t flags) {
-    uint8_t pair_count = wheel_mode == WHEEL_PACKET_EXTENDED_MODE_STATUS ? 4 : 3;
+    uint8_t pair_count = wheel_mode == WHEEL_PACKET_EXTENDED_MODE_STATUS ||
+                                 wheel_mode == WHEEL_PACKET_EXTENDED_MODE_REMOTE
+                             ? 4
+                             : 3;
     uint8_t tracked_mask = pair_count == 4 ? UINT8_MAX : 0x3fu;
     state->active_flags = (state->active_flags | flags) & tracked_mask;
 

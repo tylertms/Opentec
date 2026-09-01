@@ -87,6 +87,7 @@ typedef struct {
     uint8_t endpoint_index; /**< Selected endpoint index, zero for standard or one for extended. */
     uint8_t pending_inputs; /**< Changed input components awaiting reads. */
     uint8_t output_report_cadence;  /**< Number of scheduling passes since the last output batch. */
+    uint16_t wait_calls;            /**< Remaining service calls before retry or continuation. */
     WheelAdapterCommandPhase phase; /**< Current command-processing phase. */
     bool glyphs_pending;            /**< True when retained glyphs await a write. */
     bool display_pending;           /**< True when the retained display payload awaits a write. */

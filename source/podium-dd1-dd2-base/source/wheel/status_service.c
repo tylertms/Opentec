@@ -114,8 +114,8 @@ void wheel_status_service_run(WheelStatusService *service, uint32_t now_ms, bool
         (service->poll_deadline_active && !platform_time_reached(now_ms, service->next_poll_ms))) {
         return;
     }
-    if (serial_service_start(service->transport, WHEEL_STATUS_MESSAGE_TYPE,
-                             &service->request_marker, 1, now_ms)) {
+    if (serial_service_start_wait(service->transport, WHEEL_STATUS_MESSAGE_TYPE,
+                                  &service->request_marker, 1, now_ms)) {
         service->request_marker = 0;
         service->next_poll_ms = now_ms + WHEEL_STATUS_POLL_INTERVAL_MS;
         service->poll_deadline_active = true;

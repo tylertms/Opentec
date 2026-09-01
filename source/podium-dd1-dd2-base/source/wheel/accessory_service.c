@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "transfer/command.h"
 #include "wheel/accessory.h"
@@ -18,6 +19,19 @@ enum {
     WHEEL_ACCESSORY_STATUS_OFFSET = 0, /**< Target offset of the signed status byte. */
     WHEEL_ACCESSORY_VERSION_OFFSET = 1, /**< Target offset of the four-byte version value. */
     WHEEL_ACCESSORY_TYPE_OFFSET = 7,    /**< Target offset of the extended accessory type byte. */
+    WHEEL_ACCESSORY_SYNC_PARAMETER_COUNT = 13,
+};
+
+typedef struct {
+    uint8_t offset;
+    uint8_t data_offset;
+    uint8_t length;
+} WheelAccessorySyncParameter;
+
+static const WheelAccessorySyncParameter sync_parameters[WHEEL_ACCESSORY_SYNC_PARAMETER_COUNT] = {
+    {0x04, 0, 1},  {0x03, 1, 2},  {0x20, 3, 1},  {0x21, 4, 1},  {0x22, 5, 1},
+    {0x23, 6, 1},  {0x24, 7, 2},  {0x25, 9, 1},  {0x26, 10, 1}, {0x27, 11, 1},
+    {0x28, 12, 1}, {0x29, 13, 1}, {0x2a, 14, 1},
 };
 
 /**
@@ -47,6 +61,9 @@ void wheel_accessory_service_init(WheelAccessoryService *service) {
     }
     *service = (WheelAccessoryService){0};
     wheel_accessory_init(&service->accessory);
+    memset(service->mirrored_parameters, UINT8_MAX, sizeof(service->mirrored_parameters));
+    service->desired_parameters[1] = 0xfa;
+    service->desired_parameters[2] = 0x05;
 }
 
 /**
@@ -71,12 +88,32 @@ static void finish_request(WheelAccessoryService *service, CommandTransport *tra
     if (result != COMMAND_TRANSPORT_COMPLETE) {
         return;
     }
-    if (service->accessory_type_stage) {
+    if (service->status_read_request) {
+        service->status_read_request = false;
+        service->status_read_pending = false;
+        service->output_inhibited = service->accessory.kind == WHEEL_ACCESSORY_EXTENDED
+                                        ? service->status_response == 0xaa
+                                        : service->status_response == UINT8_MAX;
+    } else if (service->sync_request) {
+        const WheelAccessorySyncParameter *parameter = &sync_parameters[service->sync_index];
+        memcpy(service->mirrored_parameters + parameter->data_offset,
+               service->desired_parameters + parameter->data_offset, parameter->length);
+        service->dirty_parameters &= (uint16_t)~(1u << service->sync_index);
+        service->sync_request = false;
+        if (service->sync_index == 0) {
+            service->status_read_pending = true;
+        }
+    } else if (service->accessory_type_stage) {
         service->accessory.accessory_type = service->accessory_type_byte;
         service->accessory_type_stage = false;
     } else if (service->version_stage) {
         wheel_accessory_apply_probe(&service->accessory, (int8_t)service->status_byte,
                                     decode_version(service->version_bytes));
+        if (service->accessory.kind != WHEEL_ACCESSORY_DISCONNECTED && !service->sync_initialized) {
+            memset(service->mirrored_parameters, UINT8_MAX, sizeof(service->mirrored_parameters));
+            service->dirty_parameters = (1u << WHEEL_ACCESSORY_SYNC_PARAMETER_COUNT) - 1u;
+            service->sync_initialized = true;
+        }
         service->version_stage = false;
         if (service->accessory.kind == WHEEL_ACCESSORY_EXTENDED) {
             service->accessory_type_stage = true;
@@ -113,7 +150,27 @@ static void start_request(WheelAccessoryService *service, CommandTransport *tran
         return;
     }
 
-    if (service->accessory_type_stage) {
+    if (service->status_read_pending) {
+        result = command_transport_queue_read_from(
+            transport, WHEEL_ACCESSORY_SERVICE_OWNER, WHEEL_ACCESSORY_TARGET, 4,
+            &service->status_response, sizeof(service->status_response));
+        if (result == COMMAND_TRANSPORT_COMPLETE) {
+            service->status_read_request = true;
+        }
+    } else if (service->accessory.kind != WHEEL_ACCESSORY_DISCONNECTED &&
+               service->dirty_parameters != 0) {
+        while ((service->dirty_parameters & (1u << service->sync_index)) == 0) {
+            service->sync_index =
+                (uint8_t)((service->sync_index + 1u) % WHEEL_ACCESSORY_SYNC_PARAMETER_COUNT);
+        }
+        const WheelAccessorySyncParameter *parameter = &sync_parameters[service->sync_index];
+        result = command_transport_queue_write_to(
+            transport, WHEEL_ACCESSORY_SERVICE_OWNER, WHEEL_ACCESSORY_TARGET, parameter->offset,
+            service->desired_parameters + parameter->data_offset, parameter->length);
+        if (result == COMMAND_TRANSPORT_COMPLETE) {
+            service->sync_request = true;
+        }
+    } else if (service->accessory_type_stage) {
         result = command_transport_queue_read_from(
             transport, WHEEL_ACCESSORY_SERVICE_OWNER, WHEEL_ACCESSORY_TARGET,
             WHEEL_ACCESSORY_TYPE_OFFSET, &service->accessory_type_byte,
@@ -152,6 +209,54 @@ void wheel_accessory_service_run(WheelAccessoryService *service, CommandTranspor
     } else {
         start_request(service, transport);
     }
+}
+
+/**
+ * @brief Updates accessory tuning values and schedules changed parameters.
+ *
+ * Preserves the fixed initialization parameters and compares each configurable value with its
+ * last successful mirror before setting the corresponding synchronization bit.
+ *
+ * @param[in,out] service Accessory service retaining desired and mirrored values.
+ * @param[in] parameters Current tuning values to mirror to the accessory.
+ */
+void wheel_accessory_service_configure(WheelAccessoryService *service,
+                                       const WheelAccessorySyncParameters *parameters) {
+    if (service == NULL || parameters == NULL) {
+        return;
+    }
+    uint8_t desired[12] = {
+        parameters->sensitivity,
+        parameters->force_feedback_strength,
+        parameters->force_feedback_scale,
+        parameters->natural_damper,
+        (uint8_t)parameters->natural_friction,
+        (uint8_t)(parameters->natural_friction >> 8),
+        parameters->natural_inertia,
+        parameters->interpolation_filter,
+        parameters->force_effect_intensity,
+        parameters->force_effect_strength,
+        parameters->spring_effect_strength,
+        parameters->damper_effect_strength,
+    };
+    memcpy(service->desired_parameters + 3, desired, sizeof(desired));
+    for (uint8_t index = 2; index < WHEEL_ACCESSORY_SYNC_PARAMETER_COUNT; index++) {
+        const WheelAccessorySyncParameter *parameter = &sync_parameters[index];
+        if (memcmp(service->desired_parameters + parameter->data_offset,
+                   service->mirrored_parameters + parameter->data_offset, parameter->length) != 0) {
+            service->dirty_parameters |= 1u << index;
+        }
+    }
+}
+
+/**
+ * @brief Reports the force-output inhibition state from the latest accessory status read.
+ *
+ * @param[in] service Accessory service to inspect.
+ * @return True when the accessory requests output inhibition.
+ */
+bool wheel_accessory_service_output_inhibited(const WheelAccessoryService *service) {
+    return service != NULL && service->output_inhibited;
 }
 
 /**

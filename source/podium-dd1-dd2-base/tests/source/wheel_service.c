@@ -118,12 +118,14 @@ static uint32_t begin_scan_mode(WheelService *service, uint8_t command) {
     initialize_service(service);
     run_service(service, 0);
     assert(request().type_flags == 2);
-    for (uint32_t now_ms = 1; now_ms <= 3; now_ms++) {
+    for (uint32_t now_ms = 1; now_ms <= 2; now_ms++) {
         respond_protocol(0, 0);
         run_service(service, now_ms);
     }
     SerialPacket frame = request();
     assert(frame.payload[WHEEL_PROTOCOL_FLAGS_OFFSET] == WHEEL_PROTOCOL_RESPONSE_ACKNOWLEDGED);
+    respond_protocol(0, 0);
+    run_service(service, 3);
     respond_protocol(command, 0);
     run_service(service, 4);
     return 5;
@@ -375,6 +377,48 @@ static void test_keeps_protocol_transport_for_packet_modes(void) {
     assert(wheel_protocol_message_valid(frame.payload));
 }
 
+static void test_gates_selected_modes_on_status_memory_startup(void) {
+    static const uint8_t modes[] = {0x0a, 0x1c};
+    for (uint8_t index = 0; index < sizeof(modes); index++) {
+        WheelService service;
+        received_ready = false;
+        initialize_service(&service);
+        run_service(&service, 0);
+        for (uint32_t now_ms = 1; now_ms <= 3; now_ms++) {
+            respond_protocol(0, 0);
+            run_service(&service, now_ms);
+        }
+        respond_protocol(WHEEL_PROTOCOL_COMMAND_SELECT_MODE, modes[index]);
+        run_service(&service, 4);
+
+        assert(wheel_service_mode(&service) == modes[index]);
+        assert(wheel_service_status_memory_startup_pending(&service));
+        WheelProtocolPhase selected_phase = wheel_service_protocol_phase(&service);
+        respond_active(0);
+        run_service(&service, 2005);
+        assert(wheel_service_protocol_phase(&service) == selected_phase);
+
+        bool available = index != 0;
+        wheel_service_finish_status_memory_startup(&service, available);
+        assert(!wheel_service_status_memory_startup_pending(&service));
+        assert(wheel_service_tuning_menu_available(&service) == available);
+    }
+
+    WheelService service;
+    received_ready = false;
+    initialize_service(&service);
+    run_service(&service, 0);
+    for (uint32_t now_ms = 1; now_ms <= 3; now_ms++) {
+        respond_protocol(0, 0);
+        run_service(&service, now_ms);
+    }
+    respond_protocol(WHEEL_PROTOCOL_COMMAND_SELECT_MODE, 0x0b);
+    run_service(&service, 4);
+    assert(!wheel_service_status_memory_startup_pending(&service));
+    wheel_service_finish_status_memory_startup(&service, false);
+    assert(service.tuning_menu_override_enabled == false);
+}
+
 static void test_publishes_packet_mode_buttons(void) {
     WheelService service;
     received_ready = false;
@@ -450,84 +494,15 @@ static void test_ready_packet_refreshes_activity_at_deadline(void) {
     assert(wheel_service_protocol_phase(&service) == WHEEL_PROTOCOL_WAITING);
 }
 
-static void test_restarts_discovery_after_scan_timeout(void) {
+static void test_keeps_scan_mode_active_without_protocol_timeout(void) {
     WheelService service;
     received_ready = false;
     uint32_t now_ms = begin_scan(&service);
-    service.protocol.mode_one_button_filter.samples[1][2] = 0x5a;
-    service.protocol.mode_one_button_filter.next_sample = 2;
-    service.protocol.mode_one_control_axis_filter.samples[2][1] = 0x6b;
-    service.protocol.mode_one_control_axis_filter.next_sample = 1;
-    service.protocol.display_filter.samples[1][4] = 0x6c;
-    service.protocol.display_filter.next_sample = 2;
-    service.protocol.remapped_filter.samples[2][1] = 0x6d;
-    service.protocol.remapped_filter.next_sample = 1;
-    service.protocol.alternate_filter.samples[1][2] = 0x6e;
-    service.protocol.alternate_filter.next_sample = 2;
-    service.protocol.alternate_output.payload[4] = 0x6f;
-    service.protocol.alternate_output.payload_pending = true;
-    service.protocol.packed_filter.samples[2][0] = 0x7c;
-    service.protocol.packed_filter.next_sample = 1;
-    wheel_service_configure_axis_processing(&service, 7, WHEEL_AXIS_OVERRIDE_MODE_PRIMARY, 60, 123);
-    service.protocol.axis_override_processor.multiplex_phase = WHEEL_AXIS_MULTIPLEX_Y;
-    service.protocol.axis_override_processor.paddle_clutch_phase = WHEEL_PADDLE_CLUTCH_ACTIVE;
-    service.protocol.axis_override_processor.paddle_adjustment_deadline_ms = 456;
-    service.protocol.axis_override_processor.paddle_bite_point_report_pending = true;
-    service.protocol.axis_override_processor.paddle_bite_point_commit_pending = true;
-    service.protocol.axis_override_processor.x_available = true;
-    service.protocol.axis_override_processor.y_available = true;
-    service.protocol.axis_override_processor.overrides.axis_5.enabled = true;
-    service.protocol.axis_override_processor.overrides.axis_5.value = 0x7d;
-    service.protocol.capabilities.input_available = true;
-    wheel_protocol_set_button_latch(&service.protocol, true, true);
-    wheel_service_set_host_capability(&service, true);
-    for (uint32_t elapsed_ms = 10; elapsed_ms <= 100; elapsed_ms += 10) {
-        run_service(&service, now_ms + elapsed_ms);
-    }
+    assert(service.protocol_deadline_active);
+    run_service(&service, now_ms + 2001);
 
-    const uint8_t *buttons = wheel_service_buttons(&service);
-    assert(buttons[0] == 0);
-    assert(buttons[1] == 0);
-    assert(buttons[2] == 0);
-    assert(wheel_service_protocol_phase(&service) == WHEEL_PROTOCOL_WAITING);
-    assert(service.protocol.mode_one_button_filter.samples[1][2] == 0x5a);
-    assert(service.protocol.mode_one_button_filter.next_sample == 2);
-    assert(service.protocol.mode_one_control_axis_filter.samples[2][1] == 0x6b);
-    assert(service.protocol.mode_one_control_axis_filter.next_sample == 1);
-    assert(service.protocol.display_filter.samples[1][4] == 0x6c);
-    assert(service.protocol.display_filter.next_sample == 2);
-    assert(service.protocol.remapped_filter.samples[2][1] == 0x6d);
-    assert(service.protocol.remapped_filter.next_sample == 1);
-    assert(service.protocol.alternate_filter.samples[1][2] == 0x6e);
-    assert(service.protocol.alternate_filter.next_sample == 2);
-    assert(service.protocol.alternate_output.payload[4] == 0x6f);
-    assert(service.protocol.alternate_output.payload_pending);
-    assert(service.protocol.packed_filter.samples[2][0] == 0x7c);
-    assert(service.protocol.packed_filter.next_sample == 1);
-    assert(service.protocol.interface_mode == 7);
-    assert(service.protocol.configured_axis_override_mode == WHEEL_AXIS_OVERRIDE_MODE_PRIMARY);
-    assert(service.protocol.paddle_bite_point_percent == 60);
-    assert(service.protocol.now_ms == 123);
-    assert(service.protocol.axis_override_processor.multiplex_phase == WHEEL_AXIS_MULTIPLEX_Y);
-    assert(service.protocol.axis_override_processor.paddle_clutch_phase ==
-           WHEEL_PADDLE_CLUTCH_ACTIVE);
-    assert(service.protocol.axis_override_processor.paddle_adjustment_deadline_ms == 456);
-    uint8_t adjusted_bite_point_percent = 0;
-    assert(wheel_service_take_bite_point_report(&service, &adjusted_bite_point_percent));
-    assert(adjusted_bite_point_percent == 60);
-    assert(wheel_service_take_bite_point(&service, &adjusted_bite_point_percent));
-    assert(adjusted_bite_point_percent == 60);
-    assert(service.protocol.axis_override_processor.x_available);
-    assert(service.protocol.axis_override_processor.y_available);
-    assert(!service.protocol.axis_override_processor.overrides.axis_5.enabled);
-    assert(service.protocol.axis_override_processor.overrides.axis_5.value == 0);
-    assert(!service.protocol.capabilities.input_available);
-    assert(service.protocol.button_latch_enabled);
-    assert(service.protocol.profile_transition_pending);
-    assert(service.protocol.host_capability_enabled);
-    assert((wheel_protocol_response(&service.protocol)[WHEEL_PROTOCOL_FLAGS_OFFSET] &
-            WHEEL_PROTOCOL_HOST_CAPABILITY) != 0);
-    assert(request().type_flags == 2);
+    assert(wheel_service_protocol_phase(&service) == WHEEL_PROTOCOL_SCANNING_PRIMARY);
+    assert(request().type_flags == 3);
 }
 
 static void test_defers_next_request_for_shared_serial_work(void) {
@@ -589,9 +564,9 @@ static void test_routes_multi_position_mode(void) {
     assert(wheel_service_multi_position_mode(&service, TUNING_MULTI_POSITION_CONSTANT) ==
            TUNING_MULTI_POSITION_ENCODER);
     service.protocol.request_ready = true;
-    assert(wheel_service_multi_position_supported(&service));
+    assert(!wheel_service_multi_position_supported(&service));
     assert(wheel_service_multi_position_mode(&service, TUNING_MULTI_POSITION_CONSTANT) ==
-           TUNING_MULTI_POSITION_CONSTANT);
+           TUNING_MULTI_POSITION_ENCODER);
     assert(wheel_service_multi_position_mode(NULL, TUNING_MULTI_POSITION_CONSTANT) ==
            TUNING_MULTI_POSITION_ENCODER);
     assert(!wheel_service_multi_position_supported(NULL));
@@ -1040,6 +1015,7 @@ static void test_selects_calibration_advance_button_by_wheel_mode(void) {
     assert(!wheel_service_calibration_advance_input_active(&service));
 
     service.protocol.adapter.connected = true;
+    service.protocol.adapter.mode = 1;
     service.protocol.adapter.buttons[1] = 0x01;
     assert(wheel_service_calibration_advance_input_active(&service));
     service.protocol.adapter.buttons[1] = 0;
@@ -1262,11 +1238,11 @@ static void test_reports_host_capability_recovery_inputs(void) {
     wheel_service_set_host_capability(&service, true);
     assert(wheel_service_host_capability_enabled(&service));
 
-    service.protocol.adapter.buttons[1] = 0x80;
+    service.protocol.adapter.buttons[0] = 0x80;
     assert(!wheel_service_adapter_requests_host_capability(&service));
     service.protocol.adapter.connected = true;
     assert(wheel_service_adapter_requests_host_capability(&service));
-    service.protocol.adapter.buttons[1] = 0x7f;
+    service.protocol.adapter.buttons[0] = 0x7f;
     assert(!wheel_service_adapter_requests_host_capability(&service));
 }
 
@@ -1276,10 +1252,16 @@ static void test_reports_force_output_readiness(void) {
 
     service.protocol.phase = WHEEL_PROTOCOL_WAITING;
     assert(!wheel_service_force_output_ready(&service));
-    assert(!wheel_service_force_output_transition_active(&service));
+    assert(wheel_service_force_output_transition_active(&service));
+    service.protocol.phase = WHEEL_PROTOCOL_SYNCHRONIZING;
+    assert(!wheel_service_force_output_ready(&service));
+    assert(wheel_service_force_output_transition_active(&service));
+    service.protocol.phase = WHEEL_PROTOCOL_ACKNOWLEDGING;
+    assert(!wheel_service_force_output_ready(&service));
+    assert(wheel_service_force_output_transition_active(&service));
     service.protocol.phase = WHEEL_PROTOCOL_SELECTING;
     assert(!wheel_service_force_output_ready(&service));
-    assert(!wheel_service_force_output_transition_active(&service));
+    assert(wheel_service_force_output_transition_active(&service));
     service.protocol.phase = WHEEL_PROTOCOL_UNSUPPORTED;
     assert(!wheel_service_force_output_ready(&service));
     assert(wheel_service_force_output_transition_active(&service));
@@ -1289,6 +1271,9 @@ static void test_reports_force_output_readiness(void) {
     service.protocol.phase = WHEEL_PROTOCOL_ACTIVE;
     assert(wheel_service_force_output_ready(&service));
     assert(!wheel_service_force_output_transition_active(&service));
+    service.protocol.command_invalid = true;
+    assert(wheel_service_force_output_transition_active(&service));
+    service.protocol.command_invalid = false;
     service.protocol.phase = WHEEL_PROTOCOL_SCANNING_PRIMARY;
     assert(wheel_service_force_output_ready(&service));
     assert(!wheel_service_force_output_transition_active(&service));
@@ -1328,7 +1313,7 @@ static void test_exposes_playstation_wheel_inputs(void) {
     assert(snapshot.clutch_paddles[0] == 0x67);
     assert(snapshot.clutch_paddles[1] == 0x89);
     assert(snapshot.tuning_input == -12);
-    assert(snapshot.auxiliary_report[0] == 0);
+    assert(snapshot.auxiliary_report[0] == 0xab);
     assert(snapshot.auxiliary_report[1] == 0xcd);
     assert(snapshot.auxiliary_report[2] == 0xef);
     assert(snapshot.axis_report_enabled);
@@ -1491,10 +1476,11 @@ int main(void) {
     test_ready_clear_response_restarts_scan_state();
     test_sends_display_output_with_each_scan_phase();
     test_keeps_protocol_transport_for_packet_modes();
+    test_gates_selected_modes_on_status_memory_startup();
     test_publishes_packet_mode_buttons();
     test_restarts_inactive_packet_mode_at_deadline();
     test_ready_packet_refreshes_activity_at_deadline();
-    test_restarts_discovery_after_scan_timeout();
+    test_keeps_scan_mode_active_without_protocol_timeout();
     test_defers_next_request_for_shared_serial_work();
     test_forces_and_reports_protocol_exchange();
     test_initializes_rotary_input();

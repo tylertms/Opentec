@@ -265,7 +265,7 @@ static void test_multiplexes_x_and_y_across_samples(void) {
     assert(processor.multiplex_phase == WHEEL_AXIS_MULTIPLEX_X);
     assert(axes[0] == 0x31);
     process(&processor, &value, axes);
-    assert(axes[0] == 0x8a);
+    assert(axes[0] == 0x76);
 
     value.x = UINT8_MAX;
     process(&processor, &value, axes);
@@ -292,7 +292,7 @@ static void test_applies_interface_specific_multiplex_encoding(void) {
     process(&processor, &value, axes);
     assert(axes[1] == 0);
     process(&processor, &value, axes);
-    assert(axes[0] == 0x8b);
+    assert(axes[0] == 0x75);
     assert(axes[1] == 0);
 
     wheel_axis_override_processor_init(&processor);

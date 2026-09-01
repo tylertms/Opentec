@@ -63,15 +63,15 @@ static void test_filters_controls_across_four_samples(void) {
         wheel_packet_mode_four_filter(&filter, &input);
     }
 
-    assert(input.controls[0] == 0x7f);
+    assert(input.controls[0] == 0xff);
     assert(input.controls[1] == 0xf3);
     assert(input.controls[2] == 0x5a);
-    assert(input.controls[3] == 0x7f);
+    assert(input.controls[3] == 0xff);
 }
 
 static void test_maps_legacy_controls_and_builds_snapshot(void) {
     WheelPacketModeFourInput input = {
-        .buttons = {0xff, 0xff, 0x33},
+        .buttons = {0, 0, 0x33},
         .axis_outputs = {0x44, 0x55},
         .motion = -2,
         .controls = {0xff, 0xff, 0x01, 0x01},

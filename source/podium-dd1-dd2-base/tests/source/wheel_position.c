@@ -106,7 +106,7 @@ static void test_display_rotation(void) {
     assert(wheel_position_display_rotation(1000, &calibration) == 0);
     assert(wheel_position_display_rotation(1000 + 5920, &calibration) == 8999);
     assert(wheel_position_display_rotation(1000 + 35520, &calibration) == 17999);
-    assert(wheel_position_display_rotation(1000 - 35520, &calibration) == -18000);
+    assert(wheel_position_display_rotation(1000 - 35520, &calibration) == 18000);
 
     WheelPositionCalibration deadband = calibration;
     deadband.deadband = 10;

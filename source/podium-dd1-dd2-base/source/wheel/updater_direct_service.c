@@ -87,7 +87,8 @@ void wheel_updater_direct_service_init(WheelUpdaterDirectService *service) {
  */
 bool wheel_updater_direct_service_start(WheelUpdaterDirectService *service, const uint8_t *request,
                                         uint8_t length) {
-    return service != NULL && wheel_updater_bridge_start(&service->bridge, request, length);
+    return service != NULL && !service->operation_pending &&
+           wheel_updater_bridge_start(&service->bridge, request, length);
 }
 
 /**
@@ -122,8 +123,15 @@ void wheel_updater_direct_service_run(WheelUpdaterDirectService *service, uint32
  */
 bool wheel_updater_direct_service_take_response(WheelUpdaterDirectService *service,
                                                 const uint8_t **response, uint8_t *length) {
-    return service != NULL &&
-           wheel_updater_bridge_take_response(&service->bridge, response, length);
+    if (service == NULL ||
+        !wheel_updater_bridge_take_response(&service->bridge, response, length)) {
+        return false;
+    }
+    service->operation_pending = false;
+    service->pending_operation = WHEEL_UPDATER_OPERATION_NONE;
+    service->pending_length = 0;
+    platform_serial_link_direct_clear();
+    return true;
 }
 
 /**
@@ -135,5 +143,6 @@ bool wheel_updater_direct_service_take_response(WheelUpdaterDirectService *servi
  * @return true while an updater exchange is active; otherwise false.
  */
 bool wheel_updater_direct_service_active(const WheelUpdaterDirectService *service) {
-    return service != NULL && wheel_updater_bridge_active(&service->bridge);
+    return service != NULL &&
+           (service->operation_pending || wheel_updater_bridge_active(&service->bridge));
 }

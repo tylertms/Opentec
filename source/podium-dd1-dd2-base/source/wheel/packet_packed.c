@@ -61,6 +61,8 @@ void wheel_packet_packed_filter_init(WheelPacketPackedFilter *filter) {
         for (uint8_t button = 0; button < WHEEL_PACKET_PACKED_BUTTON_COUNT; button++) {
             filter->samples[sample][button] = 0;
         }
+        filter->axis_samples[sample][0] = 0;
+        filter->axis_samples[sample][1] = 0;
     }
     filter->next_sample = 0;
 }
@@ -79,6 +81,12 @@ void wheel_packet_packed_filter_buttons(WheelPacketPackedFilter *filter,
         filter->samples[filter->next_sample][button] = input->buttons[button];
         input->buttons[button] =
             filter->samples[0][button] & filter->samples[1][button] & filter->samples[2][button];
+    }
+    for (uint8_t axis = 0; axis < 2; axis++) {
+        filter->axis_samples[filter->next_sample][axis] = input->controls[4 + axis];
+        uint16_t total = filter->axis_samples[0][axis] + filter->axis_samples[1][axis] +
+                         filter->axis_samples[2][axis];
+        input->controls[4 + axis] = (uint8_t)(total / WHEEL_PACKET_PACKED_HISTORY_DEPTH);
     }
     filter->next_sample++;
     if (filter->next_sample == WHEEL_PACKET_PACKED_HISTORY_DEPTH) {

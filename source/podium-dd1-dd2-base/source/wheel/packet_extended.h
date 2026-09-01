@@ -10,6 +10,7 @@
 enum {
     WHEEL_PACKET_EXTENDED_MODE_STANDARD = 0x0a, /**< Standard extended-packet mode. */
     WHEEL_PACKET_EXTENDED_MODE_STATUS = 0x1b,   /**< Extended status-packet mode. */
+    WHEEL_PACKET_EXTENDED_MODE_REMOTE = 0x1c,   /**< Remote-capable extended-packet mode. */
     WHEEL_PACKET_EXTENDED_PULSE_PAIR_COUNT = 4, /**< Number of retained pulse pairs. */
 };
 
@@ -26,10 +27,10 @@ typedef struct {
 /**
  * @brief Reports whether a wheel mode uses extended packets.
  *
- * Selects standard extended mode 0x0A and status mode 0x1B.
+ * Selects modes 0x0a, 0x1b, and 0x1c.
  *
  * @param[in] wheel_mode Negotiated attached-wheel mode.
- * @return True for the two extended modes; otherwise false.
+ * @return True for an extended-packet mode; otherwise false.
  */
 bool wheel_packet_extended_applies(uint8_t wheel_mode);
 
