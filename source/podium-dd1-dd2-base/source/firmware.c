@@ -184,8 +184,6 @@ static BoardIdentity board_identity;
 static MotorProbe motor_probe;
 static MotorStartupCentering motor_startup_centering;
 static bool motor_startup_direct_force;
-static bool motor_startup_wheel_discovery_started;
-static uint32_t motor_startup_direct_force_deadline_ms;
 static CommandTransport command_transport;
 static MotorCommandMailboxExchange motor_command_mailbox;
 static MotorCommandChannel motor_command_channel;
@@ -208,6 +206,7 @@ static bool motor_command_request_pending;
 static MotorPositionReport motor_position_report;
 static bool motor_position_ready;
 static WheelPositionCalibration wheel_position_calibration;
+static uint32_t automatic_steering_travel;
 static WheelVelocityEstimator wheel_velocity_estimator;
 static WheelCenterCaptureCommand wheel_center_capture_command;
 static MotorCalibrationOperation motor_calibration_operation;
@@ -456,7 +455,12 @@ enum {
     FORCE_FEEDBACK_DD1_AUTOMATIC_STRENGTH_PERCENT = 35,
     FORCE_FEEDBACK_DD2_AUTOMATIC_STRENGTH_PERCENT = 30,
     FORCE_FEEDBACK_RAMP_INTERVAL_MS = 50,
+    DISPLAY_STARTUP_FRAME_SETTLE_MS = 33,
+    MOTOR_STARTUP_AUTOMATIC_STEERING_TRAVEL = 35520,
+    MOTOR_STARTUP_STATUS_SETTLE_MS = 300,
     MOTOR_STARTUP_WHEEL_DISCOVERY_TIMEOUT_MS = 500,
+    MOTOR_STARTUP_BUTTON_SCAN_FINISH_MS = 10,
+    MOTOR_STARTUP_RETAINED_XBOX_TIMEOUT_MS = 250,
     MOTOR_LINK_MALFORMED_FRAME_LIMIT = 100,
     WHEEL_STARTUP_VERSION_COMMAND = 0x0a,
     WHEEL_STARTUP_TEXT_METADATA = 0x10,
@@ -1053,8 +1057,8 @@ static void initialize_base_settings(void) {
  * @brief Initializes motor force, tuning, calibration, and discovery state.
  *
  * Starts force output with a zero-percent ramp and the board variant's reduced Torque Key limit,
- * clears calibration and maximum-rotation monitoring, applies the active profile, and begins
- * asynchronous motor discovery.
+ * clears calibration and maximum-rotation monitoring, applies the active profile, and resets
+ * motor discovery state. Startup begins the probe after the identity frame is visible.
  */
 static void initialize_motor(void) {
     force_feedback_state_init(&force_feedback_state);
@@ -1068,12 +1072,10 @@ static void initialize_motor(void) {
     };
     motor_tuning_ready = false;
     motor_startup_direct_force = true;
-    motor_startup_wheel_discovery_started = false;
     motor_calibration_service_init(&motor_calibration_service);
     motor_rotation_guard_init(&motor_rotation_guard);
     apply_active_tuning_profile();
     motor_probe_init(&motor_probe);
-    motor_probe_start(&motor_probe, platform_time_ms());
 }
 
 /**
@@ -1371,6 +1373,20 @@ static bool accept_usb_motor_report(const UsbDeviceOutputReport *report) {
 }
 
 /**
+ * @brief Finishes startup with the native wheel-base identity.
+ *
+ * Selects and persists base mode zero and marks the current Xbox startup attempt finished.
+ */
+static void finish_native_mode_startup(void) {
+    selected_base_mode = 0;
+    base_settings.operating_mode = 0;
+    base_settings.operating_mode_valid = true;
+    base_settings_persistence_mark_dirty(&settings_persistence);
+    save_base_settings();
+    xbox_mode_startup_finished = true;
+}
+
+/**
  * @brief Starts the selected Xbox interface for a capable attached wheel.
  *
  * Runs only when retained base mode six is selected or no mode has been retained. It waits for a
@@ -1397,14 +1413,7 @@ static bool service_xbox_mode_startup(void) {
         }
         if (!wheel_service_tuning_menu_available(&wheel_service) ||
             usb_xbox_gip_mode_code(board_identity.variant, wheel_mode) == 0) {
-            if (selected_base_mode == UINT8_MAX || selected_base_mode == 6) {
-                selected_base_mode = 0;
-                base_settings.operating_mode = 0;
-                base_settings.operating_mode_valid = true;
-                base_settings_persistence_mark_dirty(&settings_persistence);
-                save_base_settings();
-                xbox_mode_startup_finished = true;
-            }
+            finish_native_mode_startup();
             return false;
         }
         motor_command_application_init(&motor_command_channel.application);
@@ -1420,7 +1429,6 @@ static bool service_xbox_mode_startup(void) {
     if (result == MOTOR_COMMAND_STARTUP_SERVICE_RUNNING) {
         return true;
     }
-    xbox_mode_startup_finished = true;
     if (result == MOTOR_COMMAND_STARTUP_SERVICE_COMPLETE) {
         const MotorCommandApplication *application =
             motor_command_channel_application(&motor_command_channel);
@@ -1432,8 +1440,11 @@ static bool service_xbox_mode_startup(void) {
             base_settings.operating_mode_valid = true;
             base_settings_persistence_mark_dirty(&settings_persistence);
             save_base_settings();
+            xbox_mode_startup_finished = true;
+            return false;
         }
     }
+    finish_native_mode_startup();
     return false;
 }
 
@@ -1515,8 +1526,8 @@ static bool service_console_mode_transition(void) {
  * @brief Initializes PlayStation authentication and input services.
  *
  * Starts the A71CH SCI2C session sequence, clears authentication request and response state,
- * centers host-controlled wheel values, and resets retained input-button timing before the USB
- * interface can accept PlayStation traffic.
+ * centers host-controlled wheel values, and resets retained input-button timing immediately after
+ * the PlayStation interface is selected and before the main USB service loop starts.
  */
 static void initialize_playstation_services(void) {
     a71ch_session_service_init(&usb_operating_mode_workspace.playstation.session);
@@ -2127,27 +2138,239 @@ static void run_motor_startup_centering(void) {
 }
 
 /**
+ * @brief Runs the official pre-USB wheel-status transaction.
+ *
+ * Starts one type-five request, services the serial exchange through its bounded retry sequence,
+ * and releases the completed request after recording whether the transport succeeded.
+ *
+ * @return True when the wheel-status transaction completed successfully; otherwise false.
+ */
+static bool run_wheel_startup_status_transaction(void) {
+    wheel_status_service_run(&wheel_status_service, platform_time_ms(), true);
+    while (serial_service.status == SERIAL_SERVICE_PENDING) {
+        uint32_t now_ms = platform_time_ms();
+        serial_service_run(&serial_service, now_ms);
+        service_motor_link();
+        service_power(now_ms);
+    }
+    bool succeeded = serial_service.status == SERIAL_SERVICE_SUCCEEDED;
+    wheel_status_service_run(&wheel_status_service, platform_time_ms(), false);
+    return succeeded;
+}
+
+/**
+ * @brief Discovers the attached wheel before normal USB enumeration.
+ *
+ * Services wheel protocol and button traffic for up to 500 milliseconds until the protocol is
+ * active or selects a scan mode. A selected command-three scan then receives the official
+ * ten-millisecond finish interval before console identity selection begins.
+ */
+static void run_wheel_startup_discovery(void) {
+    uint32_t deadline_ms = platform_time_ms() + MOTOR_STARTUP_WHEEL_DISCOVERY_TIMEOUT_MS;
+    WheelProtocolPhase phase = wheel_service_protocol_phase(&wheel_service);
+    while (phase != WHEEL_PROTOCOL_ACTIVE && phase != WHEEL_PROTOCOL_SCANNING_PRIMARY &&
+           phase != WHEEL_PROTOCOL_SCANNING_SECONDARY &&
+           !platform_time_reached(platform_time_ms(), deadline_ms + 1u)) {
+        uint32_t now_ms = platform_time_ms();
+        serial_service_run(&serial_service, now_ms);
+        wheel_service_run(&wheel_service, now_ms, true);
+        service_motor_link();
+        service_power(now_ms);
+        phase = wheel_service_protocol_phase(&wheel_service);
+    }
+
+    if (phase == WHEEL_PROTOCOL_SCANNING_PRIMARY || phase == WHEEL_PROTOCOL_SCANNING_SECONDARY) {
+        deadline_ms = platform_time_ms() + MOTOR_STARTUP_BUTTON_SCAN_FINISH_MS;
+        while (!platform_time_reached(platform_time_ms(), deadline_ms)) {
+            uint32_t now_ms = platform_time_ms();
+            serial_service_run(&serial_service, now_ms);
+            wheel_service_run(&wheel_service, now_ms, true);
+            service_motor_link();
+            service_power(now_ms);
+        }
+    }
+}
+
+/**
+ * @brief Refreshes wheel calibration from the active steering-range selection.
+ *
+ * Uses the released saved travel for automatic non-Xbox operation, the host-selected Xbox range
+ * for automatic Xbox operation, and the active profile's concrete degrees in manual mode.
+ */
+static void refresh_wheel_position_calibration(void) {
+    bool automatic = tuning_profile->automatic_rotation != 0;
+    bool xbox = usb_device_operating_mode() == USB_OPERATING_MODE_XBOX_GIP;
+    uint16_t rotation_degrees =
+        automatic && xbox ? xbox_steering_range_degrees : tuning_profile->rotation_degrees;
+    wheel_position_calibration = wheel_position_calibration_build(
+        &base_settings.wheel_position, rotation_degrees, tuning_profile->steering_deadzone);
+    if (automatic && !xbox && base_settings.wheel_position.calibrated) {
+        wheel_position_calibration.travel = automatic_steering_travel;
+    }
+}
+
+/**
+ * @brief Cancels an expired retained-Xbox identity exchange.
+ *
+ * Stops its type-four serial request without resetting the shared packet sequence, clears mailbox
+ * progress, and releases all owner-0x20 command state before native USB startup continues.
+ */
+static void cancel_xbox_mode_startup(void) {
+    serial_service_cancel(&serial_service);
+    motor_command_mailbox_exchange_reset(&motor_command_mailbox);
+    motor_command_startup_service_init(&motor_command_startup_service);
+    motor_command_channel_reset(&motor_command_channel);
+    command_transport_release(&command_transport, MOTOR_COMMAND_STARTUP_OWNER);
+    command_transport_init(&command_transport);
+    xbox_mode_startup_attempted = false;
+}
+
+/**
+ * @brief Finishes a retained Xbox selection that startup discovery cannot support.
+ *
+ * Matches the reference fallback by retaining native mode zero when a blank or Xbox selection has
+ * no active supported wheel at the end of the pre-USB discovery window.
+ */
+static void finish_unavailable_xbox_startup(void) {
+    if ((selected_base_mode == UINT8_MAX || selected_base_mode == 6) &&
+        wheel_service_protocol_phase(&wheel_service) != WHEEL_PROTOCOL_ACTIVE) {
+        finish_native_mode_startup();
+    }
+}
+
+/**
+ * @brief Selects the retained USB identity before the first host attachment.
+ *
+ * Prepares native USB state, applies a retained PlayStation identity immediately, or completes the
+ * supported Xbox motor-command startup exchange. Native USB is attached only when neither console
+ * identity became active.
+ */
+static void initialize_startup_console_usb(void) {
+    usb_device_prepare(board_identity.variant);
+    if (selected_base_mode == 2 || selected_base_mode == 4 || selected_base_mode == 5) {
+        motor_startup_direct_force = false;
+    }
+    if (service_playstation_mode_startup()) {
+        initialize_playstation_services();
+        return;
+    }
+
+    finish_unavailable_xbox_startup();
+    bool retained_xbox_mode = selected_base_mode == 6;
+    uint32_t xbox_deadline_ms =
+        platform_time_ms() + MOTOR_STARTUP_RETAINED_XBOX_TIMEOUT_MS;
+    (void)service_xbox_mode_startup();
+    while (xbox_mode_startup_attempted && !xbox_mode_startup_finished) {
+        uint32_t now_ms = platform_time_ms();
+        serial_service_run(&serial_service, now_ms);
+        wheel_service_run(&wheel_service, now_ms, false);
+        (void)motor_command_serial_receive(&command_transport, &serial_service);
+        (void)service_xbox_mode_startup();
+        if (xbox_mode_startup_finished) {
+            motor_startup_direct_force = false;
+        }
+        if (serial_service.status == SERIAL_SERVICE_IDLE) {
+            (void)motor_command_serial_submit(&command_transport, &serial_service, now_ms);
+        }
+        service_motor_link();
+        service_power(now_ms);
+        if (retained_xbox_mode &&
+            platform_time_reached(platform_time_ms(), xbox_deadline_ms)) {
+            cancel_xbox_mode_startup();
+            finish_native_mode_startup();
+        }
+    }
+    motor_startup_direct_force = false;
+    if (usb_device_operating_mode() == USB_OPERATING_MODE_FANATEC) {
+        platform_usb_attach();
+    }
+}
+
+/**
+ * @brief Starts the official startup status-bridge fallback.
+ *
+ * Resets the display, prepares detached USB state, selects the direct updater route, disables force
+ * and cooling output, and activates updater USB without waiting for a second status request.
+ *
+ * @return True when the direct updater route was activated; otherwise false.
+ */
+static bool start_startup_status_bridge(void) {
+    platform_display_reset();
+    usb_device_prepare(board_identity.variant);
+    if (!usb_updater_service_select_mode(&usb_updater_service,
+                                         USB_RUNTIME_MODE_STATUS_BRIDGE)) {
+        platform_usb_attach();
+        return false;
+    }
+    motor_startup_direct_force = false;
+    force_output_enabled = false;
+    motor_output_report = (ForceOutputReport){0};
+    platform_cooling_set_duty(0, 0, true);
+    apply_runtime_bridge_actions(runtime_bridge_start_status_recovery(&runtime_bridge));
+    return runtime_bridge_active(&runtime_bridge);
+}
+
+/**
+ * @brief Runs the board LED startup brightness sweep.
+ *
+ * Writes the first pattern of buckets zero through 62 in ascending order and retains each pattern
+ * through its strict 50-millisecond deadline. The first autonomous normal update selects the
+ * remaining full-scale bucket.
+ */
+static void run_led_pattern_startup_sequence(void) {
+    for (uint8_t step = 0; step < LED_PATTERN_STARTUP_STEP_COUNT; ++step) {
+        platform_led_pattern_set_duty(led_pattern_pwm_duty(led_pattern_startup_pattern(step)));
+        uint32_t deadline_ms = platform_time_ms() + 50;
+        while (!platform_time_reached(platform_time_ms(), deadline_ms + 1)) {
+        }
+    }
+}
+
+/**
  * @brief Selects the startup USB path after motor-controller discovery.
  *
- * Services the shared auxiliary bus through the one-second discovery window. A recognized
- * controller starts the normal USB profile immediately. A missing controller leaves that profile
- * detached while runtime mode two probes the auxiliary updater endpoint; a rejected recovery setup
- * falls back to the prepared normal profile.
+ * Presents the identity page and waits for its transfer and 33-millisecond controller interval,
+ * then services the shared auxiliary bus through motor discovery. A recognized controller centers
+ * the motor, waits through the status-link settling interval, validates wheel status, discovers the
+ * wheel, resolves the retained console mode, and only then exposes the selected USB identity.
+ * Status failure selects direct updater recovery. A missing controller leaves normal USB detached
+ * while runtime mode two probes the auxiliary updater endpoint; rejected recovery falls back to the
+ * prepared normal profile.
  */
 static void initialize_startup_usb(void) {
+    display_identity_page_render(display_framebuffer, board_identity);
+    platform_display_write_frame(display_framebuffer);
+    local_display_page = LOCAL_DISPLAY_PAGE_IDENTITY;
+    uint32_t display_deadline_ms = platform_time_ms() + DISPLAY_STARTUP_FRAME_SETTLE_MS;
+    while (!platform_display_frame_complete() ||
+           !platform_time_reached(platform_time_ms(), display_deadline_ms + 1u)) {
+    }
+
+    motor_probe_start(&motor_probe, platform_time_ms());
     while (motor_probe.phase != MOTOR_PROBE_COMPLETE && motor_probe.phase != MOTOR_PROBE_FAILED) {
         platform_aux_bus_service();
         motor_probe_run(&motor_probe, platform_time_ms());
     }
     if (motor_probe_identity(&motor_probe) != NULL) {
+        run_led_pattern_startup_sequence();
         run_motor_startup_centering();
-        usb_device_init(board_identity.variant);
-        motor_startup_direct_force_deadline_ms =
-            platform_time_ms() + MOTOR_STARTUP_WHEEL_DISCOVERY_TIMEOUT_MS;
-        motor_startup_wheel_discovery_started = true;
+        automatic_steering_travel = MOTOR_STARTUP_AUTOMATIC_STEERING_TRAVEL;
+        uint32_t status_settle_deadline_ms =
+            platform_time_ms() + MOTOR_STARTUP_STATUS_SETTLE_MS;
+        while (!platform_time_reached(platform_time_ms(), status_settle_deadline_ms + 1u)) {
+        }
+        if (!run_wheel_startup_status_transaction()) {
+            (void)start_startup_status_bridge();
+            return;
+        }
+        run_wheel_startup_discovery();
+        initialize_startup_console_usb();
+        refresh_wheel_position_calibration();
         return;
     }
 
+    motor_startup_direct_force = false;
+    platform_cooling_set_duty(0, 0, true);
     platform_aux_bus_clear();
     usb_device_prepare(board_identity.variant);
     if (!usb_updater_service_select_startup_recovery(&usb_updater_service)) {
@@ -4374,25 +4597,6 @@ static void service_force_output_enable(void) {
 }
 
 /**
- * @brief Finishes direct-force interpretation after attached-wheel startup.
- *
- * Keeps the motor in direct-force mode through wheel discovery. Normal motor-side effect handling
- * resumes when wheel protocol selection completes or the 500-millisecond discovery window expires.
- *
- * @param[in] now_ms Current monotonic time in milliseconds.
- */
-static void service_motor_startup_force_mode(uint32_t now_ms) {
-    if (!motor_startup_direct_force || !motor_startup_wheel_discovery_started) {
-        return;
-    }
-    if (wheel_service_force_output_ready(&wheel_service) ||
-        platform_time_reached(now_ms, motor_startup_direct_force_deadline_ms)) {
-        motor_startup_direct_force = false;
-        motor_startup_wheel_discovery_started = false;
-    }
-}
-
-/**
  * @brief Services the unsupported-wheel compatibility alert.
  *
  * Suppresses force output while the attached wheel remains in the unsupported protocol phase,
@@ -4461,22 +4665,6 @@ static void service_usb_host_capability_recovery(uint32_t now_ms) {
 }
 
 /**
- * @brief Runs the board LED startup brightness sweep.
- *
- * Writes the first pattern of buckets zero through 62 in ascending order and retains each pattern
- * through its strict 50-millisecond deadline. The first autonomous normal update selects the
- * remaining full-scale bucket.
- */
-static void run_led_pattern_startup_sequence(void) {
-    for (uint8_t step = 0; step < LED_PATTERN_STARTUP_STEP_COUNT; ++step) {
-        platform_led_pattern_set_duty(led_pattern_pwm_duty(led_pattern_startup_pattern(step)));
-        uint32_t deadline_ms = platform_time_ms() + 50;
-        while (!platform_time_reached(platform_time_ms(), deadline_ms + 1)) {
-        }
-    }
-}
-
-/**
  * @brief Services autonomous board LED output.
  *
  * Selects the inhibited-output heartbeat from motor status, clears the LED after shutdown starts,
@@ -4529,9 +4717,7 @@ int main(void) {
     platform_time_init();
     initialize_cooling();
     led_pattern_controller_init(&led_pattern_controller);
-    run_led_pattern_startup_sequence();
     platform_display_init();
-    platform_display_write_frame(display_framebuffer);
     platform_adc_init();
     platform_shifter_init();
     platform_shifter_read(&shifter_input);
@@ -4627,9 +4813,7 @@ int main(void) {
             wheel_service_set_legacy_axes(
                 &wheel_service, usb_playstation_wheel_value_axes(&usb_playstation_wheel_value));
         }
-        wheel_position_calibration = wheel_position_calibration_build(
-            &base_settings.wheel_position, tuning_profile->rotation_degrees,
-            tuning_profile->steering_deadzone);
+        refresh_wheel_position_calibration();
         service_motor_rotation_guard(now_ms);
         wheel_service_set_display_rotation(
             &wheel_service, tuning_profile->display_rotation_enabled != 0,
@@ -4645,7 +4829,6 @@ int main(void) {
         }
         wheel_service_run(&wheel_service, now_ms, !serial_command_waiting());
         wheel_service_update_interface_mode_gate(&wheel_service, now_ms);
-        service_motor_startup_force_mode(now_ms);
         service_tuning_interaction(now_ms);
         service_alternative_shifter(now_ms);
         if (wheel_service_take_bite_point(&wheel_service, &wheel_adjusted_bite_point_percent)) {

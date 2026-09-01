@@ -75,6 +75,19 @@ static void test_runs_startup_auxiliary_recovery(void) {
     assert(bridge.phase == RUNTIME_BRIDGE_IDLE);
 }
 
+static void test_runs_startup_status_recovery(void) {
+    RuntimeBridge bridge;
+    runtime_bridge_init(&bridge);
+
+    assert(runtime_bridge_start_status_recovery(NULL) == 0);
+    assert(runtime_bridge_start_status_recovery(&bridge) ==
+           (RUNTIME_BRIDGE_ACTION_INITIALIZE_DIRECT_TRANSFER |
+            RUNTIME_BRIDGE_ACTION_ACTIVATE_UPDATER_USB));
+    assert(runtime_bridge_active(&bridge));
+    assert(bridge.mode == USB_RUNTIME_MODE_STATUS_BRIDGE);
+    assert(runtime_bridge_start_status_recovery(&bridge) == 0);
+}
+
 static void test_runs_status_transition(void) {
     RuntimeBridge bridge;
     RuntimeBridgeInput input = input_at(20);
@@ -199,6 +212,7 @@ int main(void) {
     test_rejects_invalid_and_overlapping_transitions();
     test_runs_auxiliary_transition();
     test_runs_startup_auxiliary_recovery();
+    test_runs_startup_status_recovery();
     test_runs_status_transition();
     test_retries_usb_transition_after_300_milliseconds();
     test_runs_protocol_fast_path();

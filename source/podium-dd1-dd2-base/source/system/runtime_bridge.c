@@ -122,6 +122,26 @@ uint16_t runtime_bridge_start_auxiliary_recovery(RuntimeBridge *bridge, uint32_t
 }
 
 /**
+ * @brief Starts the startup wheel-status recovery bridge.
+ *
+ * Enters active status-bridge mode immediately because the failed startup status transaction has
+ * already satisfied the route-selection prerequisite.
+ *
+ * @param[in,out] bridge Idle runtime bridge accepting the recovery path.
+ * @return Direct-transfer initialization and updater-USB activation actions, or no actions when
+ * the bridge is unavailable.
+ */
+uint16_t runtime_bridge_start_status_recovery(RuntimeBridge *bridge) {
+    if (bridge == NULL || bridge->phase != RUNTIME_BRIDGE_IDLE) {
+        return RUNTIME_BRIDGE_ACTION_NONE;
+    }
+    bridge->mode = USB_RUNTIME_MODE_STATUS_BRIDGE;
+    bridge->phase = RUNTIME_BRIDGE_ACTIVE;
+    return RUNTIME_BRIDGE_ACTION_INITIALIZE_DIRECT_TRANSFER |
+           RUNTIME_BRIDGE_ACTION_ACTIVATE_UPDATER_USB;
+}
+
+/**
  * @brief Advances a runtime bridge transition.
  *
  * Resolves the selected prerequisite, enforces the 10, 100, 300, 500, and 1000 millisecond

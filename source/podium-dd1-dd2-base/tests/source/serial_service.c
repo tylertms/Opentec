@@ -146,11 +146,28 @@ static void test_retries_four_times_after_initial_send(void) {
     assert(serial_service_error_count(&service) == 5);
 }
 
+static void test_cancels_pending_transaction_without_resetting_sequence(void) {
+    SerialService service;
+    reset_link();
+    serial_service_init(&service);
+    const uint8_t data = 1;
+    assert(serial_service_start(&service, 4, &data, 1, 0));
+    uint8_t sequence = service.session.sequence;
+
+    serial_service_cancel(&service);
+    assert(service.status == SERIAL_SERVICE_IDLE);
+    assert(service.request_type == 0);
+    assert(reset_count == 1);
+    assert(serial_service_start(&service, 2, &data, 1, 1));
+    assert(transmitted_packet().sequence == sequence);
+}
+
 int main(void) {
     test_completes_matching_transaction();
     test_rejects_overlapping_transaction();
     test_fails_mismatched_response();
     test_counts_invalid_packets();
     test_retries_four_times_after_initial_send();
+    test_cancels_pending_transaction_without_resetting_sequence();
     return 0;
 }

@@ -154,6 +154,29 @@ uint32_t serial_service_error_count(const SerialService *service) {
 }
 
 /**
+ * @brief Cancels the current attached-device request.
+ *
+ * Stops a pending physical transfer, clears logical transmit and receive state, and returns the
+ * service to idle while preserving the shared packet sequence and cumulative error count.
+ *
+ * @param[in,out] service Serial service to cancel.
+ */
+void serial_service_cancel(SerialService *service) {
+    if (service == 0 || service->status == SERIAL_SERVICE_IDLE) {
+        return;
+    }
+    if (service->status == SERIAL_SERVICE_PENDING) {
+        platform_serial_link_reset();
+    }
+    serial_session_consume_message(&service->session);
+    serial_session_finish_transmit(&service->session);
+    service->request_type = 0;
+    service->attempts = 0;
+    service->packet_pending = false;
+    service->status = SERIAL_SERVICE_IDLE;
+}
+
+/**
  * @brief Releases a completed attached-device request.
  *
  * Consumes any assembled response and clears the outgoing message while preserving the shared

@@ -30,6 +30,16 @@ bool serial_service_start(SerialService *service, uint8_t type, const uint8_t *m
 void serial_service_run(SerialService *service, uint32_t now_ms);
 const SerialMessageAssembly *serial_service_response(const SerialService *service);
 uint32_t serial_service_error_count(const SerialService *service);
+
+/**
+ * @brief Cancels the current attached-device request.
+ *
+ * Stops a pending physical transfer, clears logical transmit and receive state, and returns the
+ * service to idle while preserving the shared packet sequence and cumulative error count.
+ *
+ * @param[in,out] service Serial service to cancel.
+ */
+void serial_service_cancel(SerialService *service);
 void serial_service_release(SerialService *service);
 
 #endif

@@ -66,6 +66,18 @@ typedef struct {
 void runtime_bridge_init(RuntimeBridge *bridge);
 uint16_t runtime_bridge_start(RuntimeBridge *bridge, UsbRuntimeMode mode);
 uint16_t runtime_bridge_start_auxiliary_recovery(RuntimeBridge *bridge, uint32_t now_ms);
+
+/**
+ * @brief Starts the startup wheel-status recovery bridge.
+ *
+ * Enters active status-bridge mode immediately because the failed startup status transaction has
+ * already satisfied the route-selection prerequisite.
+ *
+ * @param[in,out] bridge Idle runtime bridge accepting the recovery path.
+ * @return Direct-transfer initialization and updater-USB activation actions, or no actions when
+ * the bridge is unavailable.
+ */
+uint16_t runtime_bridge_start_status_recovery(RuntimeBridge *bridge);
 uint16_t runtime_bridge_step(RuntimeBridge *bridge, const RuntimeBridgeInput *input);
 bool runtime_bridge_active(const RuntimeBridge *bridge);
 
