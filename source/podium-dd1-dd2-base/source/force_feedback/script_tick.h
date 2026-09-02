@@ -37,7 +37,7 @@ enum {
  */
 typedef struct {
     ForceFeedbackScriptOutputPolicy output_policy; /**< Selected motor-output policy. */
-    bool slot_faulted;   /**< Whether an active script slot faulted during the tick. */
+    bool slot_faulted;   /**< Whether a slot fault reached the standard report path. */
     bool immediate_zero; /**< Whether zero output bypasses normal output processing. */
 } ForceFeedbackScriptTickDecision;
 
@@ -50,7 +50,7 @@ typedef struct {
     bool wrote_output;   /**< Whether the motor report was written. */
     bool outside_travel; /**< Whether enabled travel-limit processing reported an outside position.
                           */
-    bool slot_faulted;   /**< Whether an active script slot faulted during the tick. */
+    bool slot_faulted;   /**< Whether a slot fault reached the standard report path. */
 } ForceFeedbackScriptTickResult;
 
 /**

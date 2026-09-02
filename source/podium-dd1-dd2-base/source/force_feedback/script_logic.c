@@ -5,19 +5,17 @@
 #include <string.h>
 
 /**
- * @brief Tests a script value for ordered nonzero truth.
+ * @brief Tests a script value for nonzero truth.
  *
- * Positive and negative ordered values, including infinities, are true. Both zeros and NaN are
- * false.
+ * Any nonzero bit pattern, including infinities and NaN, is true. Both signed zeros are false.
  *
  * @param[in] value Floating-point script value.
- * @return true when the value is ordered and nonzero; otherwise false.
+ * @return true when the value is nonzero; otherwise false.
  */
-static bool ordered_nonzero(float value) {
+static bool nonzero(float value) {
     uint32_t representation;
     memcpy(&representation, &value, sizeof(representation));
-    uint32_t magnitude = representation & UINT32_C(0x7fffffff);
-    return magnitude != 0 && magnitude <= UINT32_C(0x7f800000);
+    return (representation & UINT32_C(0x7fffffff)) != 0;
 }
 
 /**
@@ -32,8 +30,8 @@ static float logical_value(bool value) { return value ? 1.0f : 0.0f; }
 
 float force_feedback_script_logic_evaluate(ForceFeedbackScriptLogicOperation operation, float first,
                                            float second) {
-    bool first_value = ordered_nonzero(first);
-    bool second_value = ordered_nonzero(second);
+    bool first_value = nonzero(first);
+    bool second_value = nonzero(second);
 
     switch (operation) {
     case FORCE_FEEDBACK_SCRIPT_LOGICAL_AND:

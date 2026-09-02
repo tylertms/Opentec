@@ -83,11 +83,11 @@ static void test_applies_optional_report_checksums(void) {
     authentication.status = USB_PLAYSTATION_AUTHENTICATION_PENDING;
 
     usb_playstation_authentication_status_report(&authentication, status);
-    assert(memcmp(status + 12, (uint8_t[]){0xac, 0xb2, 0xdc, 0x6e}, 4) == 0);
+    assert(memcmp(status + 12, (uint8_t[]){0x3a, 0x55, 0x14, 0xe4}, 4) == 0);
 
     upload[0] = 0xf0;
     upload[1] = 0x5a;
-    memcpy(upload + 60, (uint8_t[]){0x98, 0x51, 0x5d, 0x19}, 4);
+    memcpy(upload + 60, (uint8_t[]){0x1c, 0x46, 0x15, 0xc1}, 4);
     assert(usb_playstation_authentication_receive(&authentication, upload));
     upload[60] ^= 1;
     assert(!usb_playstation_authentication_receive(&authentication, upload));
@@ -96,7 +96,7 @@ static void test_applies_optional_report_checksums(void) {
     assert(usb_playstation_authentication_publish_response(&authentication, response,
                                                            sizeof(response)));
     assert(usb_playstation_authentication_response_report(&authentication, download));
-    assert(memcmp(download + 60, (uint8_t[]){0x17, 0xdf, 0x8e, 0xd3}, 4) == 0);
+    assert(memcmp(download + 60, (uint8_t[]){0x55, 0x9a, 0x49, 0xb4}, 4) == 0);
 }
 
 static void test_streams_complete_response(void) {

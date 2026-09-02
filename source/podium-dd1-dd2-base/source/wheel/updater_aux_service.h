@@ -70,6 +70,19 @@ bool wheel_updater_aux_service_start(WheelUpdaterAuxService *service, const uint
                                      uint8_t length);
 
 /**
+ * @brief Starts a route-discovery probe on the auxiliary endpoint.
+ *
+ * Requires the shutdown handshake and applies the probe-only terminal response rules.
+ *
+ * @param[in,out] service Idle auxiliary updater service to start.
+ * @param[in] request Marker-prefixed route-probe request bytes.
+ * @param[in] length Probe request length in bytes.
+ * @return True when the probe was accepted; otherwise false.
+ */
+bool wheel_updater_aux_service_start_probe(WheelUpdaterAuxService *service, const uint8_t *request,
+                                           uint8_t length);
+
+/**
  * @brief Advances auxiliary handshake or updater work.
  *
  * Polls the auxiliary bus, completes the shutdown handshake when requested, and advances the

@@ -7,11 +7,16 @@
 static void test_encodes_read_request(void) {
     uint8_t request[MEMORY_TRANSFER_READ_REQUEST_SIZE];
 
+    assert(MEMORY_TRANSFER_MAX_WIRE_SIZE == 512);
+    assert(MEMORY_TRANSFER_MAX_READ_SIZE == 510);
+    assert(MEMORY_TRANSFER_MAX_WRITE_SIZE == 509);
+    assert(MEMORY_TRANSFER_MAX_REQUEST_SIZE == MEMORY_TRANSFER_MAX_WIRE_SIZE);
     assert(memory_transfer_encode_read(0x20, 0x80, 16, request) == sizeof(request));
     static const uint8_t expected[] = {2, 0x41, 0x80, 0x10, 0x00};
     assert(memcmp(request, expected, sizeof(expected)) == 0);
     assert(memory_transfer_encode_read(0x20, 0x80, MEMORY_TRANSFER_MAX_READ_SIZE + 1, request) ==
            0);
+    assert(memory_transfer_encode_read(0x20, 0x80, MEMORY_TRANSFER_MAX_WIRE_SIZE, request) == 0);
 }
 
 static void test_encodes_write_request(void) {
@@ -39,6 +44,8 @@ static void test_encodes_maximum_write_request(void) {
     assert(request[2] == 0x80);
     assert(memcmp(request + MEMORY_TRANSFER_HEADER_SIZE, data, sizeof(data)) == 0);
     assert(memory_transfer_encode_write(0x20, 0x80, data, sizeof(data) + 1, request) == 0);
+    assert(memory_transfer_encode_write(0x20, 0x80, data, MEMORY_TRANSFER_MAX_WIRE_SIZE, request) ==
+           0);
 }
 
 static void test_encodes_maximum_read_request(void) {
@@ -46,8 +53,8 @@ static void test_encodes_maximum_read_request(void) {
 
     assert(memory_transfer_encode_read(0x20, 0x80, MEMORY_TRANSFER_MAX_READ_SIZE, request) ==
            sizeof(request));
-    assert(request[3] == 0xf1);
-    assert(request[4] == 3);
+    assert(request[3] == 0xfe);
+    assert(request[4] == 1);
 }
 
 static void test_decodes_responses(void) {

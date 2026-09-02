@@ -24,6 +24,11 @@ static uint8_t primary_buttons(uint8_t buttons) {
                      ((buttons & 0x20u) << 2));
 }
 
+static uint8_t driving_force_pro_primary_buttons(uint8_t first, uint8_t second) {
+    return (uint8_t)(((first & 0xc0u) >> 6) | ((second & 0x01u) << 2) | (second & 0x08u) |
+                     ((second & 0x02u) << 3) | ((second & 0x10u) << 1) | (second & 0xc0u));
+}
+
 /**
  * @brief Maps native controls to the selected Logitech logical layout.
  *
@@ -57,8 +62,9 @@ void logitech_input_map(LogitechInputState *state, LogitechInputModel model,
         if (source->sequential) {
             secondary |= (uint8_t)((source->sequential_buttons & 0x03u) << 2);
         }
-        state->buttons =
-            steering_buttons | (uint32_t)primary_buttons(second) << 2 | (uint32_t)secondary << 10;
+        state->buttons = steering_buttons |
+                         (uint32_t)driving_force_pro_primary_buttons(first, second) << 2 |
+                         (uint32_t)secondary << 10;
         state->axes[0] = combined_axis(source);
         state->axes[1] = (uint8_t)(source->pedals[1] >> 8);
         state->axes[2] = (uint8_t)(source->pedals[2] >> 8);

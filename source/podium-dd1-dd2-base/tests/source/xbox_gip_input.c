@@ -72,7 +72,7 @@ static void test_maps_axes_profile_and_selectors(void) {
         .axis_mode = 1,
         .led_state = 4,
         .steering_range_units = 108,
-        .force_feedback_percent = 40,
+        .force_feedback_level = 0x80,
         .pedal_active = {true, false, true},
         .auxiliary_pedal_active = true,
     };
@@ -85,7 +85,7 @@ static void test_maps_axes_profile_and_selectors(void) {
     assert(snapshot.auxiliary_pedal == 0x78);
     assert(snapshot.axis_mode == 1 && snapshot.led_state == 2);
     assert(snapshot.steering_range_units == 108);
-    assert(snapshot.force_feedback_level == 102);
+    assert(snapshot.force_feedback_level == 0x80);
     assert(snapshot.pedal_active[0] && !snapshot.pedal_active[1] && snapshot.pedal_active[2]);
     assert(snapshot.auxiliary_pedal_active);
     assert(snapshot.clutch_paddles[0] == 0x89 && snapshot.clutch_paddles[1] == 0x9a);
@@ -93,9 +93,83 @@ static void test_maps_axes_profile_and_selectors(void) {
            snapshot.selectors[3] == 1 && snapshot.selectors[4] == 4 && snapshot.selectors[5] == 5);
 }
 
+static void test_merges_mode_zero_adapter_buttons(void) {
+    UsbXboxGipInputSnapshot snapshot = {0};
+    const WheelAdapterInput adapter = {
+        .buttons = {0x7f, 0x3f, 0},
+        .mode = 0,
+        .connected = true,
+    };
+
+    usb_xbox_gip_input_merge_adapter_buttons(&snapshot, 4, &adapter, false);
+    assert(snapshot.buttons[0] == 0xfc);
+    assert(snapshot.buttons[1] == 0x3f);
+
+    snapshot = (UsbXboxGipInputSnapshot){.buttons = {0x10, 0xff}};
+    usb_xbox_gip_input_merge_adapter_buttons(&snapshot, 6, &adapter, true);
+    assert(snapshot.buttons[0] == 0xec);
+    assert(snapshot.buttons[1] == 0xf0);
+}
+
+static void test_merges_mode_one_adapter_buttons(void) {
+    UsbXboxGipInputSnapshot snapshot = {.buttons = {0, 0xc0}};
+    const WheelAdapterInput adapter = {
+        .buttons = {0xff, 0x07, 0x0c},
+        .mode = 1,
+        .connected = true,
+    };
+
+    usb_xbox_gip_input_merge_adapter_buttons(&snapshot, 0x15, &adapter, false);
+    assert(snapshot.buttons[0] == 0xfc);
+    assert(snapshot.buttons[1] == 0xcf);
+
+    snapshot = (UsbXboxGipInputSnapshot){.buttons = {0x10, 0xff}};
+    usb_xbox_gip_input_merge_adapter_buttons(&snapshot, 0x0c, &adapter, true);
+    assert(snapshot.buttons[0] == 0xec);
+    assert(snapshot.buttons[1] == 0xf0);
+}
+
+static void test_merges_fallback_adapter_buttons(void) {
+    UsbXboxGipInputSnapshot snapshot = {
+        .buttons = {0x10, 0x30},
+        .packed_buttons = 3,
+    };
+    const WheelAdapterInput adapter = {
+        .buttons = {0x3f, 0x3f, 0x0c},
+        .mode = 2,
+        .connected = true,
+    };
+
+    usb_xbox_gip_input_merge_adapter_buttons(&snapshot, 4, &adapter, false);
+    assert(snapshot.buttons[0] == 0xfc);
+    assert(snapshot.buttons[1] == 0x0f);
+    assert(snapshot.packed_buttons == 0x33);
+
+    snapshot = (UsbXboxGipInputSnapshot){.buttons = {0x10, 0xff}};
+    usb_xbox_gip_input_merge_adapter_buttons(&snapshot, 9, &adapter, false);
+    assert(snapshot.buttons[0] == 0x10);
+    assert(snapshot.buttons[1] == 0xff);
+    assert(snapshot.packed_buttons == 0);
+}
+
+static void test_ignores_unavailable_adapter_mapping(void) {
+    UsbXboxGipInputSnapshot snapshot = {.buttons = {0x12, 0x34}};
+    WheelAdapterInput adapter = {.buttons = {0xff, 0xff, 0xff}, .connected = true};
+
+    usb_xbox_gip_input_merge_adapter_buttons(&snapshot, 9, &adapter, false);
+    assert(snapshot.buttons[0] == 0x12 && snapshot.buttons[1] == 0x34);
+    adapter.connected = false;
+    usb_xbox_gip_input_merge_adapter_buttons(&snapshot, 4, &adapter, false);
+    assert(snapshot.buttons[0] == 0x12 && snapshot.buttons[1] == 0x34);
+}
+
 int main(void) {
     test_maps_primary_buttons_and_alternates_packets();
     test_maps_mode_specific_extensions();
     test_maps_axes_profile_and_selectors();
+    test_merges_mode_zero_adapter_buttons();
+    test_merges_mode_one_adapter_buttons();
+    test_merges_fallback_adapter_buttons();
+    test_ignores_unavailable_adapter_mapping();
     return 0;
 }

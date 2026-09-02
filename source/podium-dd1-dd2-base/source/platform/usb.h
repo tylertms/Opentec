@@ -92,7 +92,8 @@ bool platform_usb_take_event(PlatformUsbEvent *event);
 /**
  * @brief Queues a device-to-host USB transfer.
  *
- * Copies the packet into an available endpoint bank and applies the requested data toggle.
+ * Copies the packet into the selected endpoint bank and applies the requested data toggle. The
+ * endpoint-zero bank remains selected until its completion event advances the control topology.
  *
  * @param[in] endpoint Endpoint number from zero through four.
  * @param[in] data Packet source, or null when length is zero.
@@ -105,7 +106,8 @@ bool platform_usb_send(uint8_t endpoint, const uint8_t *data, uint8_t length, bo
 /**
  * @brief Queues a host-to-device USB transfer.
  *
- * Arms an available endpoint bank to receive up to the requested packet length.
+ * Arms the selected endpoint bank to receive up to the requested packet length. The endpoint-zero
+ * bank remains selected until its completion event advances the control topology.
  *
  * @param[in] endpoint Endpoint number from zero through four.
  * @param[in] length Maximum packet length, up to PLATFORM_USB_PACKET_SIZE.
@@ -124,9 +126,32 @@ void platform_usb_control_ready(void);
 /**
  * @brief Resets endpoint-zero ping-pong state for a new setup transaction.
  *
- * Clears endpoint-zero stalls and rearms both setup banks before releasing token processing.
+ * Releases endpoint-zero ownership for the aborted transfer while preserving the controller's
+ * current bank and data-toggle topology. The next control-stage arm publishes the descriptors
+ * required for that stage.
  */
 void platform_usb_control_reset(void);
+
+/**
+ * @brief Arms one endpoint-zero control status stage.
+ *
+ * Arms a DATA1 zero-length input status packet when input is true. When input is false, arms the
+ * endpoint-zero output status bank and its setup-bank guard while preserving the current
+ * ping-pong selection.
+ *
+ * @param[in] input True for a device-to-host status stage; false for a host-to-device status
+ * stage.
+ * @return True when the status stage was armed; otherwise false.
+ */
+bool platform_usb_control_arm_status(bool input);
+
+/**
+ * @brief Resets non-control endpoint state after a configuration change.
+ *
+ * Disables non-control endpoints, clears every descriptor, resets the controller ping-pong state,
+ * and leaves endpoint zero ready for the next control status completion.
+ */
+void platform_usb_reset_endpoint_state(void);
 
 /**
  * @brief Sets the USB device address.
@@ -187,5 +212,59 @@ bool platform_usb_endpoint_halted(uint8_t endpoint_address);
  * @param[in] halted True to set the halt; false to clear it.
  */
 void platform_usb_set_endpoint_halt(uint8_t endpoint_address, bool halted);
+
+#ifdef OPENTEC_SIMULATOR_TEST
+/**
+ * @brief Reads one simulator-visible USB descriptor status field.
+ *
+ * Exposes descriptor ownership and transfer-mode state to platform regression tests without adding
+ * a production API.
+ *
+ * @param[in] endpoint Endpoint number from zero through four.
+ * @param[in] input True for a device-to-host descriptor.
+ * @param[in] odd_bank True for the odd ping-pong bank.
+ * @return Descriptor status field.
+ */
+uint16_t platform_usb_test_descriptor_status(uint8_t endpoint, bool input, bool odd_bank);
+
+/**
+ * @brief Reads one simulator-visible USB descriptor count field.
+ *
+ * @param[in] endpoint Endpoint number from zero through four.
+ * @param[in] input True for a device-to-host descriptor.
+ * @param[in] odd_bank True for the odd ping-pong bank.
+ * @return Descriptor count field.
+ */
+uint16_t platform_usb_test_descriptor_count(uint8_t endpoint, bool input, bool odd_bank);
+
+/**
+ * @brief Sets simulator-visible USB descriptor status and count fields.
+ *
+ * @param[in] endpoint Endpoint number from zero through four.
+ * @param[in] input True for a device-to-host descriptor.
+ * @param[in] odd_bank True for the odd ping-pong bank.
+ * @param[in] status Descriptor status field.
+ * @param[in] count Descriptor count field.
+ */
+void platform_usb_test_set_descriptor(uint8_t endpoint, bool input, bool odd_bank, uint16_t status,
+                                      uint16_t count);
+
+/**
+ * @brief Services a synthetic transaction-complete source for platform tests.
+ *
+ * Injects a decoded U1STAT value while retaining the production U1IE transaction-source gate.
+ *
+ * @param[in] status Synthetic U1STAT endpoint, direction, and bank value.
+ */
+void platform_usb_test_service_transaction(uint8_t status);
+
+/**
+ * @brief Services a synthetic start-of-frame source for platform tests.
+ *
+ * Retains the production U1IE start-of-frame-source gate.
+ */
+void platform_usb_test_service_sof(void);
+
+#endif
 
 #endif

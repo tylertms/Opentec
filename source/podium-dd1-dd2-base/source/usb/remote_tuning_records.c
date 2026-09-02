@@ -9,7 +9,8 @@ enum {
     REMOTE_TUNING_PACKET_ALTERNATE_RECORDS =
         3,                                /**< Alternate-bank remote-tuning record packet type. */
     REMOTE_TUNING_RECORD_HEADER_SIZE = 5, /**< Number of bytes in a serialized record header. */
-    REMOTE_TUNING_RECORD_ROUTE_TWO = 2,   /**< Local telemetry record route. */
+    REMOTE_TUNING_RECORD_ROUTE_ONE = 1,   /**< Force-feedback record route. */
+    REMOTE_TUNING_RECORD_ROUTE_TWO = 2,   /**< Intelligent-telemetry record route. */
     REMOTE_TUNING_RECORD_ROUTE_THREE = 3, /**< Generic attached-device forwarding route. */
     REMOTE_TUNING_RECORD_ROUTE_FOUR = 4,  /**< Attached-wheel response route. */
     REMOTE_TUNING_ALTERNATE_RECORD_FLAG =
@@ -19,7 +20,7 @@ enum {
 /**
  * @brief Retains one remote-tuning record.
  *
- * Appends the record to the 32-entry arrival-order store. A full store drops the record.
+ * Stores the record in the highest available sparse slot. A full store drops the record.
  *
  * @param[in,out] records Remote-tuning record store.
  * @param[in] input Complete record header followed by its payload.
@@ -29,7 +30,20 @@ static void store_record(UsbRemoteTuningRecords *records, const uint8_t *input) 
         return;
     }
 
-    UsbRemoteTuningRecord *record = &records->records[records->count++];
+    uint8_t slot = USB_REMOTE_TUNING_RECORD_COUNT;
+    for (uint8_t index = USB_REMOTE_TUNING_RECORD_COUNT; index != 0; index--) {
+        uint8_t candidate = (uint8_t)(index - 1u);
+        if (records->records[candidate].type == 0 && records->records[candidate].selector == 0) {
+            slot = candidate;
+            break;
+        }
+    }
+    if (slot == USB_REMOTE_TUNING_RECORD_COUNT) {
+        return;
+    }
+
+    UsbRemoteTuningRecord *record = &records->records[slot];
+    records->count++;
     record->type = input[0];
     record->selector = input[1];
     record->value = (uint16_t)input[2] | (uint16_t)input[3] << 8;
@@ -78,9 +92,10 @@ static void append_record(const UsbRemoteTuningRecord *record, uint8_t *output, 
  * @brief Takes one bounded batch of matching records.
  *
  * Serializes complete matching records from newest to oldest. The first matching record that does
- * not fit ends the batch. Consumed records are removed while every retained record keeps its order.
+ * not fit ends the batch. Consumed records are removed while every retained record keeps its
+ * sparse slot.
  *
- * @param[in,out] records Arrival-order record store.
+ * @param[in,out] records Sparse record store.
  * @param[in] route Record route to select.
  * @param[in] selector_mask Selector bits used to choose a bank.
  * @param[in] selector_value Required value of the selected bits.
@@ -96,9 +111,11 @@ static bool take_matching(UsbRemoteTuningRecords *records, uint8_t route, uint8_
     bool consumed[USB_REMOTE_TUNING_RECORD_COUNT] = {false};
     bool full = false;
 
-    for (uint8_t cursor = records->count; cursor > 0; cursor--) {
-        uint8_t index = cursor - 1;
+    for (uint8_t index = 0; index < USB_REMOTE_TUNING_RECORD_COUNT; index++) {
         UsbRemoteTuningRecord *record = &records->records[index];
+        if (record->type == 0 && record->selector == 0) {
+            continue;
+        }
         uint8_t record_size = REMOTE_TUNING_RECORD_HEADER_SIZE + record->payload_length;
         bool consume = !full && record_matches(record, route, selector_mask, selector_value);
         if (consume && record_size <= capacity - *length) {
@@ -114,15 +131,12 @@ static bool take_matching(UsbRemoteTuningRecords *records, uint8_t route, uint8_
     if (*length == 0) {
         return false;
     }
-    uint8_t retained = 0;
-    for (uint8_t index = 0; index < records->count; index++) {
-        if (!consumed[index]) {
-            records->records[retained++] = records->records[index];
+    for (uint8_t index = 0; index < USB_REMOTE_TUNING_RECORD_COUNT; index++) {
+        if (consumed[index]) {
+            memset(&records->records[index], 0, sizeof(records->records[index]));
+            records->count--;
         }
     }
-    memset(records->records + retained, 0,
-           (records->count - retained) * sizeof(records->records[0]));
-    records->count = retained;
     return true;
 }
 
@@ -131,9 +145,9 @@ static bool take_matching(UsbRemoteTuningRecords *records, uint8_t route, uint8_
  *
  * Serializes complete matching records from newest to oldest until the next record would exceed
  * the 30-byte response area. Consumed records are removed while all other records retain their
- * order.
+ * sparse slots.
  *
- * @param[in,out] records Arrival-order record store.
+ * @param[in,out] records Sparse record store.
  * @param[in] link Attached-wheel response link.
  * @param[in] alternate Extended selector-bank choice.
  * @param[out] response Response containing zero or more complete serialized records.
@@ -223,13 +237,11 @@ uint8_t usb_remote_tuning_records_consume_telemetry(UsbRemoteTuningRecords *reco
         return 0;
     }
 
-    bool consumed_records[USB_REMOTE_TUNING_RECORD_COUNT] = {false};
     uint8_t consumed = 0;
     if (reset_requested != NULL) {
         *reset_requested = false;
     }
-    for (uint8_t cursor = records->count; cursor > 0; cursor--) {
-        uint8_t index = cursor - 1;
+    for (uint8_t index = 0; index < USB_REMOTE_TUNING_RECORD_COUNT; index++) {
         UsbRemoteTuningRecord *record = &records->records[index];
         if (record->type != REMOTE_TUNING_RECORD_ROUTE_TWO) {
             continue;
@@ -245,7 +257,8 @@ uint8_t usb_remote_tuning_records_consume_telemetry(UsbRemoteTuningRecords *reco
                                                     record->payload, record->payload_length);
         }
         if (result != REMOTE_TELEMETRY_RECORD_IGNORED) {
-            consumed_records[index] = true;
+            memset(record, 0, sizeof(*record));
+            records->count--;
             consumed++;
             continue;
         }
@@ -256,19 +269,10 @@ uint8_t usb_remote_tuning_records_consume_telemetry(UsbRemoteTuningRecords *reco
             }
             continue;
         }
-        consumed_records[index] = true;
+        memset(record, 0, sizeof(*record));
+        records->count--;
         consumed++;
         break;
     }
-
-    uint8_t retained = 0;
-    for (uint8_t index = 0; index < records->count; index++) {
-        if (!consumed_records[index]) {
-            records->records[retained++] = records->records[index];
-        }
-    }
-    memset(records->records + retained, 0,
-           (records->count - retained) * sizeof(records->records[0]));
-    records->count = retained;
     return consumed;
 }

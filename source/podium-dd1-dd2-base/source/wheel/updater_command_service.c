@@ -106,43 +106,59 @@ void wheel_updater_command_service_init(WheelUpdaterCommandService *service,
 }
 
 /**
- * @brief Starts an updater exchange on one remote command channel.
+ * @brief Starts one normal or route-probe exchange on a remote command channel.
  *
- * Accepts USB target 0x11 or protocol target 0x12 and delegates request validation and retention
- * to the updater protocol.
+ * Accepts USB target 0x11 or protocol target 0x12, rejects an outstanding command operation, and
+ * delegates request validation and retention to the updater protocol.
  *
  * @param[in,out] service Idle updater command service accepting the request.
  * @param[in] target Remote updater command channel.
  * @param[in] request Marker-prefixed updater request.
  * @param[in] length Request byte count.
+ * @param[in] response_probe True when probe-only terminal response rules apply.
  * @return True when the target and request were accepted; otherwise false.
  */
-bool wheel_updater_command_service_start(WheelUpdaterCommandService *service,
-                                         WheelUpdaterTarget target, const uint8_t *request,
-                                         uint8_t length) {
-    if (service == NULL || service->transport == NULL ||
+static bool start_exchange(WheelUpdaterCommandService *service, WheelUpdaterTarget target,
+                           const uint8_t *request, uint8_t length, bool response_probe) {
+    if (service == NULL || service->transport == NULL || service->operation_pending ||
         (target != WHEEL_UPDATER_TARGET_USB && target != WHEEL_UPDATER_TARGET_PROTOCOL)) {
         return false;
     }
-    if (!wheel_updater_bridge_start(&service->bridge, request, length)) {
+    bool started = response_probe
+                       ? wheel_updater_bridge_start_probe(&service->bridge, request, length)
+                       : wheel_updater_bridge_start(&service->bridge, request, length);
+    if (!started) {
         return false;
     }
     service->target = target;
     return true;
 }
 
+bool wheel_updater_command_service_start(WheelUpdaterCommandService *service,
+                                         WheelUpdaterTarget target, const uint8_t *request,
+                                         uint8_t length) {
+    return start_exchange(service, target, request, length, false);
+}
+
+bool wheel_updater_command_service_start_probe(WheelUpdaterCommandService *service,
+                                               WheelUpdaterTarget target, const uint8_t *request,
+                                               uint8_t length) {
+    return start_exchange(service, target, request, length, true);
+}
+
 /**
  * @brief Advances updater protocol operations over the shared command transport.
  *
  * Polls a pending type-four operation, advances the transport-independent response parser, and
- * queues its next offset-zero read or write while respecting other command owners.
+ * queues its next offset-zero read or write while respecting other command owners. A timed-out
+ * response does not cancel a still-pending shared command operation.
  *
  * @param[in,out] service Active updater command service to advance.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 void wheel_updater_command_service_run(WheelUpdaterCommandService *service, uint32_t now_ms) {
     if (service == NULL || service->transport == NULL ||
-        !wheel_updater_bridge_active(&service->bridge)) {
+        (!wheel_updater_bridge_active(&service->bridge) && !service->operation_pending)) {
         return;
     }
 
@@ -178,5 +194,6 @@ bool wheel_updater_command_service_take_response(WheelUpdaterCommandService *ser
  * @return True while an updater exchange is active; otherwise false.
  */
 bool wheel_updater_command_service_active(const WheelUpdaterCommandService *service) {
-    return service != NULL && wheel_updater_bridge_active(&service->bridge);
+    return service != NULL &&
+           (service->operation_pending || wheel_updater_bridge_active(&service->bridge));
 }

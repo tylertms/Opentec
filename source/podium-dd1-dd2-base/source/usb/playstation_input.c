@@ -12,7 +12,7 @@ enum {
     PLAYSTATION_INPUT_CONTROLS_OFFSET = 5,          /**< Hat and button field offset. */
     PLAYSTATION_INPUT_STEERING_OFFSET = 0x2b,       /**< Steering field offset. */
     PLAYSTATION_INPUT_PEDALS_OFFSET = 0x2d,         /**< Pedal field offset. */
-    PLAYSTATION_INPUT_WHEEL_HAT_OFFSET = 0x33,      /**< Attached-wheel hat field offset. */
+    PLAYSTATION_INPUT_WHEEL_HAT_OFFSET = 0x33,      /**< Local H-pattern hat field offset. */
     PLAYSTATION_INPUT_AUXILIARY_AXIS_OFFSET = 0x34, /**< Auxiliary-axis field offset. */
     PLAYSTATION_INPUT_BUTTON_MASK = 0x3fff,         /**< Encoded PlayStation button mask. */
     PLAYSTATION_INPUT_VENDOR_BUTTON_MASK = 0x3f,    /**< Encoded vendor-button mask. */
@@ -252,6 +252,9 @@ static void map_auxiliary_buttons(UsbPlaystationInputMapper *mapper,
     }
 
     assign_button(buttons, 12, button_bit(secondary, 9));
+    if (input->system_button_suppressed || (secondary & 0x2000u) != 0) {
+        assign_button(buttons, 12, false);
+    }
     if (mode == PLAYSTATION_WHEEL_MODE_0A || mode == PLAYSTATION_WHEEL_MODE_10 ||
         mode == PLAYSTATION_WHEEL_MODE_0E) {
         assign_button(buttons, 12, button_bit(secondary, 8));
@@ -296,9 +299,6 @@ static void map_auxiliary_buttons(UsbPlaystationInputMapper *mapper,
         mode != PLAYSTATION_WHEEL_MODE_1C && mode != PLAYSTATION_WHEEL_MODE_0C &&
         !adapter_owns_button) {
         merge_button(buttons, 1, button_bit(secondary, 10));
-    }
-    if (input->system_button_suppressed || (secondary & 0x2000u) != 0) {
-        assign_button(buttons, 12, false);
     }
 }
 
@@ -418,14 +418,19 @@ bool usb_playstation_input_map_buttons(UsbPlaystationInputMapper *mapper,
         return false;
     }
 
-    state->hat = input->hat_suppressed || (input->secondary_buttons & 0x2000u) != 0
-                     ? PLAYSTATION_INPUT_HAT_NEUTRAL
-                     : usb_playstation_input_map_hat(input->directional_buttons);
+    bool hat_suppressed = input->hat_suppressed || (input->secondary_buttons & 0x2000u) != 0;
+    UsbPlaystationButtonInput mapped_input = *input;
+    if (hat_suppressed) {
+        mapped_input.secondary_buttons &= (uint16_t)~0x0200u;
+    }
+
+    state->hat = hat_suppressed ? PLAYSTATION_INPUT_HAT_NEUTRAL
+                                : usb_playstation_input_map_hat(input->directional_buttons);
     state->buttons = 0;
     state->vendor_buttons = 0;
-    map_wheel_buttons(input, &state->buttons);
-    map_adapter_buttons(input, &state->buttons);
-    map_auxiliary_buttons(mapper, input, now_ms, &state->buttons);
+    map_wheel_buttons(&mapped_input, &state->buttons);
+    map_adapter_buttons(&mapped_input, &state->buttons);
+    map_auxiliary_buttons(mapper, &mapped_input, now_ms, &state->buttons);
     state->buttons &= (uint16_t)((1u << PLAYSTATION_REPORT_BUTTON_COUNT) - 1u);
     return true;
 }
@@ -444,11 +449,11 @@ static void write_axis(uint8_t *destination, uint16_t value) {
 }
 
 /**
- * @brief Rotates the attached-wheel hat into its vendor-field orientation.
+ * @brief Rotates the local H-pattern hat into its vendor-field orientation.
  *
  * Moves bit zero to bit seven and shifts the remaining bits down by one position.
  *
- * @param[in] value Attached-wheel hat byte.
+ * @param[in] value Local H-pattern hat byte.
  * @return Rotated vendor-field value.
  */
 static uint8_t rotate_wheel_hat(uint8_t value) { return (uint8_t)((value << 7) | (value >> 1)); }

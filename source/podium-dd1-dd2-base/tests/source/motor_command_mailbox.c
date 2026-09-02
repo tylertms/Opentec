@@ -252,7 +252,8 @@ static void test_handles_busy_failed_and_unexpected_exchange_states(void) {
     transport.phase = COMMAND_TRANSPORT_IDLE;
     transport.completion = COMMAND_TRANSPORT_READ_REJECTED;
     assert(motor_command_mailbox_exchange_run(&exchange, &transport).event ==
-           MOTOR_COMMAND_MAILBOX_EXCHANGE_FAILED);
+           MOTOR_COMMAND_MAILBOX_EXCHANGE_TRANSFER_FAILED);
+    assert(exchange.phase == MOTOR_COMMAND_MAILBOX_EXCHANGE_CONTROL_QUEUE);
 
     exchange.phase = (MotorCommandMailboxExchangePhase)UINT8_MAX;
     assert(motor_command_mailbox_exchange_run(&exchange, &transport).event ==

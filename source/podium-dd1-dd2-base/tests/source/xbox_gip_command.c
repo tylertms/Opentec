@@ -75,6 +75,12 @@ static void test_decodes_script_queries(void) {
         assert(command.parameter == (selector == 5 ? 15 : 0x1234));
     }
 
+    packet[4] = 5;
+    packet[5] = 3;
+    packet[6] = 1;
+    assert(usb_xbox_gip_command_decode(packet, sizeof(packet), &command));
+    assert(command.kind == USB_XBOX_GIP_COMMAND_SCRIPT_SLOT && command.parameter == 3);
+
     packet[4] = 9;
     assert(usb_xbox_gip_command_decode(packet, sizeof(packet), &command));
     assert(command.kind == USB_XBOX_GIP_COMMAND_EXTENDED_STATUS);

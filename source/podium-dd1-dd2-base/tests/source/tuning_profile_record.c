@@ -13,6 +13,7 @@ static void test_round_trip(void) {
     source.selected_slot = 3;
     source.active_slot = 2;
     source.standard_mode_enabled = false;
+    source.automatic_apply_pending = true;
     source.slots[0].rotation_degrees = 900;
     source.slots[1].force_feedback_strength = 80;
     source.slots[2].force_scale = TUNING_FORCE_SCALE_LINEAR;
@@ -25,6 +26,7 @@ static void test_round_trip(void) {
     assert(decoded.selected_slot == 3);
     assert(decoded.active_slot == 2);
     assert(!decoded.standard_mode_enabled);
+    assert(!decoded.automatic_apply_pending);
     assert(decoded.slots[0].rotation_degrees == 900);
     assert(decoded.slots[1].force_feedback_strength == 80);
     assert(decoded.slots[2].force_scale == TUNING_FORCE_SCALE_LINEAR);

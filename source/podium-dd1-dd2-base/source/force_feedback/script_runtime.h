@@ -29,7 +29,7 @@ typedef struct {
 } ForceFeedbackScriptSystem;
 
 /**
- * @brief Initialize the complete force-feedback script runtime.
+ * @brief Initialize the complete force-feedback script runtime for cold startup.
  *
  * Initializes runtime values, marks every sample entry unused, and resets storage, input, timing,
  * motion, and scheduler state, then selects position-only mode and requests an initial position
@@ -38,6 +38,18 @@ typedef struct {
  * @param[out] system Script system to initialize.
  */
 void force_feedback_script_runtime_init(ForceFeedbackScriptSystem *system);
+
+/**
+ * @brief Reset the force-feedback script session state.
+ *
+ * Matches the official session reset by clearing input state, sample values, uploaded script
+ * storage, slot state and metrics, engine ticks, active-slot selection, and the pending position
+ * request. Script-visible variables, slot values, motion values, motion history, snapshots,
+ * deadlines, and motion ticks are retained. A null system pointer is ignored.
+ *
+ * @param[in,out] system Script system whose session-owned state is reset.
+ */
+void force_feedback_script_runtime_reset(ForceFeedbackScriptSystem *system);
 
 /**
  * @brief Apply one host packet to the force-feedback script system.

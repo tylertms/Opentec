@@ -252,6 +252,10 @@ void security_code_init(SecurityCode *code) {
     }
 }
 
+bool security_code_interaction_active(const SecurityCode *code) {
+    return code != NULL && code->phase != SECURITY_CODE_INACTIVE;
+}
+
 SecurityCodeUpdate security_code_update(SecurityCode *code, SecurityCodeSettings *settings,
                                         const SecurityCodeInput *input, uint32_t now_ms) {
     SecurityCodeUpdate update = {0};

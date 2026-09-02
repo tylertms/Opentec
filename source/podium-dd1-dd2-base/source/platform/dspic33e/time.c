@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <xc.h>
 
+#include "platform/aux_bus.h"
+
 /**
  * @brief Hardware settings for the platform millisecond timer.
  */
@@ -65,12 +67,14 @@ uint32_t platform_time_ms(void) {
 }
 
 /**
- * @brief Advances the system timebase.
+ * @brief Advances the system timebase and auxiliary-bus watchdog.
  *
- * Increments the millisecond counter and clears the Timer 1 interrupt request.
+ * Increments the millisecond counter, advances the auxiliary-bus watchdog, invokes the installed
+ * tick callback, and clears the Timer 1 interrupt request.
  */
 void __attribute__((interrupt, no_auto_psv)) _T1Interrupt(void) {
     system_time_ms++;
+    platform_aux_bus_timer_tick();
     if (tick_handler != 0) {
         tick_handler(tick_context, system_time_ms);
     }

@@ -16,7 +16,7 @@
  * @param[in,out] runtime Script values, samples, outputs, axes, and slot state to update.
  * @param[in] store Uploaded script byte sequences and allocation records.
  * @param[in,out] clock Timing counters and active-execution markers to update.
- * @return true when an active slot faults during execution; otherwise false.
+ * @return true when an active slot fault reaches the standard status-report path; otherwise false.
  * @pre Every active runtime slot has a corresponding valid allocation in store.
  */
 bool force_feedback_script_service_run(ForceFeedbackScriptRuntime *runtime,

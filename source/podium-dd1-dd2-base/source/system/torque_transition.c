@@ -21,9 +21,9 @@ void system_torque_transition_init(SystemTorqueTransition *transition) {
     *transition = (SystemTorqueTransition){0};
 }
 
-bool system_torque_transition_update(SystemTorqueTransition *transition, bool disable_requested,
-                                     bool event_slot_available, uint8_t wheel_mode,
-                                     uint8_t operating_status,
+bool system_torque_transition_update(const SystemTorqueTransition *transition,
+                                     bool disable_requested, bool event_slot_available,
+                                     uint8_t wheel_mode, uint8_t operating_status,
                                      SystemTorqueTransitionAction *action) {
     *action = (SystemTorqueTransitionAction){0};
     if (disable_requested == transition->applied_disabled || !event_slot_available) {
@@ -49,6 +49,9 @@ bool system_torque_transition_update(SystemTorqueTransition *transition, bool di
         }
     }
 
-    transition->applied_disabled = disable_requested;
     return true;
+}
+
+void system_torque_transition_accept(SystemTorqueTransition *transition, bool disable_requested) {
+    transition->applied_disabled = disable_requested;
 }

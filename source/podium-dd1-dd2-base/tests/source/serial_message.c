@@ -61,6 +61,7 @@ static void test_encodes_first_and_final_fragments(void) {
 }
 
 static void test_encodes_and_assembles_maximum_message(void) {
+    assert(SERIAL_MESSAGE_MAX_SIZE == 512);
     uint8_t message[SERIAL_MESSAGE_MAX_SIZE];
     SerialMessageAssembly assembly;
     uint16_t offset = 0;
@@ -77,7 +78,7 @@ static void test_encodes_and_assembles_maximum_message(void) {
         packet_count++;
         if (next_offset == sizeof(message)) {
             assert(packet.type_flags == (4 | SERIAL_PACKET_FINAL_FRAGMENT));
-            assert(packet.payload_length == 43);
+            assert(packet.payload_length == 56);
             assert(result == SERIAL_MESSAGE_COMPLETE);
             assert(!acknowledgement_required);
         } else {
@@ -89,7 +90,7 @@ static void test_encodes_and_assembles_maximum_message(void) {
         offset = next_offset;
     }
 
-    assert(packet_count == 18);
+    assert(packet_count == 9);
     assert(assembly.type == 4);
     assert(assembly.length == sizeof(message));
     assert(memcmp(assembly.data, message, sizeof(message)) == 0);

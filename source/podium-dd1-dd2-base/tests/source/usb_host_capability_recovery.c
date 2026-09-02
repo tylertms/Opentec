@@ -79,18 +79,26 @@ static void test_requires_deadline_to_be_strictly_passed(void) {
            USB_HOST_CAPABILITY_RECOVERY_SIGNAL_RESUME);
 }
 
-static void test_enabled_capability_preserves_deadline(void) {
+static void test_enabled_capability_rearms_deadline(void) {
     UsbHostCapabilityRecovery recovery = {.deadline_ms = 400};
     UsbHostCapabilityRecoveryInput state = input(10, 0x0100);
     state.host_capability_enabled = true;
 
     assert(usb_host_capability_recovery_update(&recovery, state, 500) ==
            USB_HOST_CAPABILITY_RECOVERY_NONE);
-    assert(recovery.deadline_ms == 400);
+    assert(recovery.deadline_ms == 800);
 
     state.host_capability_enabled = false;
-    assert(usb_host_capability_recovery_update(&recovery, state, 501) ==
+    assert(usb_host_capability_recovery_update(&recovery, state, 800) ==
+           USB_HOST_CAPABILITY_RECOVERY_NONE);
+    assert(usb_host_capability_recovery_update(&recovery, state, 801) ==
            USB_HOST_CAPABILITY_RECOVERY_SIGNAL_RESUME);
+    assert(recovery.deadline_ms == 3801);
+
+    state.host_capability_enabled = true;
+    assert(usb_host_capability_recovery_update(&recovery, state, 900) ==
+           USB_HOST_CAPABILITY_RECOVERY_NONE);
+    assert(recovery.deadline_ms == 1200);
 }
 
 static void test_deadline_survives_counter_wrap(void) {
@@ -109,7 +117,7 @@ int main(void) {
     test_selects_every_applicable_wheel_configuration();
     test_rejects_nearby_wheel_configurations();
     test_requires_deadline_to_be_strictly_passed();
-    test_enabled_capability_preserves_deadline();
+    test_enabled_capability_rearms_deadline();
     test_deadline_survives_counter_wrap();
     return 0;
 }

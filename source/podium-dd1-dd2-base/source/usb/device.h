@@ -9,13 +9,14 @@
 #include "usb/input_report.h"
 #include "usb/playstation_authentication.h"
 #include "usb/playstation_input.h"
+#include "usb/remote_hid_queue.h"
 #include "usb/xbox_gip_response.h"
 #include "usb/xbox_gip_session.h"
 
 /** @brief USB device report sizes and HID report type identifiers. */
 enum {
     USB_DEVICE_REPORT_SIZE = 64,           /**< Maximum native HID report size in bytes. */
-    USB_DEVICE_UPDATER_RESPONSE_SIZE = 66, /**< Maximum updater response size in bytes. */
+    USB_DEVICE_UPDATER_RESPONSE_SIZE = 64, /**< Maximum updater response size in bytes. */
     USB_DEVICE_HID_REPORT_INPUT = 1,       /**< HID input report type. */
     USB_DEVICE_HID_REPORT_OUTPUT = 2,      /**< HID output report type. */
     USB_DEVICE_HID_REPORT_FEATURE = 3,     /**< HID feature report type. */
@@ -56,6 +57,14 @@ typedef struct {
  * @param[in] variant Wheel-base hardware variant.
  */
 void usb_device_init(BoardVariant variant);
+
+/**
+ * @brief Disables the USB device and clears its software transfer state.
+ *
+ * Detaches the controller before clearing endpoint-zero, host-transfer, and console-session state
+ * so a physical shutdown cannot retain a configured software device.
+ */
+void usb_device_shutdown(void);
 
 /**
  * @brief Prepares the wheel-base USB device.
@@ -121,6 +130,20 @@ bool usb_device_set_operating_mode(UsbOperatingMode mode);
 bool usb_device_set_xbox_mode(uint8_t wheel_mode, const uint8_t digest[USB_XBOX_GIP_DIGEST_SIZE]);
 
 /**
+ * @brief Prepares Xbox GIP mode without exposing it to the host.
+ *
+ * Stores the wheel digest, resolves the Xbox product identity, and prepares the Xbox descriptor
+ * profile while leaving the USB controller detached. The caller can attach the prepared identity
+ * after completing other startup work.
+ *
+ * @param[in] wheel_mode Attached-wheel operating-mode selector.
+ * @param[in] digest Eight-byte attached-wheel status digest.
+ * @return True when the wheel mode has a supported Xbox identity; otherwise false.
+ */
+bool usb_device_prepare_xbox_mode(uint8_t wheel_mode,
+                                  const uint8_t digest[USB_XBOX_GIP_DIGEST_SIZE]);
+
+/**
  * @brief Selects the default PlayStation USB mode.
  *
  * Activates PlayStation mode using the default wheel mode.
@@ -138,6 +161,18 @@ bool usb_device_set_playstation_mode(void);
  * @return True when the selected PlayStation profile was activated; otherwise false.
  */
 bool usb_device_set_playstation_wheel_mode(uint8_t wheel_mode);
+
+/**
+ * @brief Prepares PlayStation USB mode without exposing it to the host.
+ *
+ * Stores the selected wheel mode and prepares the corresponding PlayStation descriptor profile
+ * while leaving the USB controller detached. The caller can attach the prepared identity after
+ * completing other startup work.
+ *
+ * @param[in] wheel_mode Selected PlayStation base mode.
+ * @return True when the selected PlayStation profile was prepared; otherwise false.
+ */
+bool usb_device_prepare_playstation_wheel_mode(uint8_t wheel_mode);
 
 /**
  * @brief Returns the active USB operating mode.
@@ -195,6 +230,24 @@ bool usb_device_publish_feature_report(uint8_t report_id, const uint8_t *report,
  * @return True when a matching request was pending; otherwise false.
  */
 bool usb_device_take_feature_report_request(uint8_t report_id);
+
+/**
+ * @brief Enqueues one native remote-HID record.
+ *
+ * Retains the packed record until the active native, PlayStation, or Xbox host transport requests
+ * feature report 0x35 or its equivalent remote-HID response.
+ *
+ * @param[in] record Five-byte record to retain.
+ * @return True when the record was accepted; otherwise false.
+ */
+bool usb_device_enqueue_remote_hid_record(const UsbRemoteHidQueueRecord *record);
+
+/**
+ * @brief Reports whether a native remote-HID record is queued.
+ *
+ * @return True while at least one remote-HID record awaits transport; otherwise false.
+ */
+bool usb_device_remote_hid_pending(void);
 
 /**
  * @brief Sends a primary native or compatibility HID input report.
@@ -303,7 +356,7 @@ bool usb_device_updater_channel_idle(void);
  * Retains the response while the endpoint service emits bulk packets and any required terminator.
  *
  * @param[in] data Complete response bytes to retain.
- * @param[in] length Number of response bytes from one through 66.
+ * @param[in] length Number of response bytes from one through 64.
  * @return True when the idle updater stream accepted the response; otherwise false.
  */
 bool usb_device_queue_updater_response(const uint8_t *data, uint8_t length);

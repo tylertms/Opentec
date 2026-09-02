@@ -17,7 +17,10 @@ static void test_initializes_display_rotation_state(void) {
     wheel_protocol_init(&protocol);
 
     assert(protocol.display_rotation_angle == 0);
+    assert(!protocol.display_character_mode);
     assert(!protocol.display_rotation_enabled);
+    assert(!protocol.mode_input_invalid);
+    assert(!protocol.selection_recovery_pending);
 }
 
 static void test_selects_response_acknowledgement(void) {
@@ -47,6 +50,8 @@ static void synchronize(WheelProtocol *protocol, uint8_t request[WHEEL_PROTOCOL_
 
     wheel_protocol_accept(protocol, request);
     assert(protocol->phase == WHEEL_PROTOCOL_SELECTING);
+    assert(wheel_protocol_response(protocol)[WHEEL_PROTOCOL_FLAGS_OFFSET] ==
+           WHEEL_PROTOCOL_RESPONSE_ACKNOWLEDGED);
 }
 
 static void select_mode(WheelProtocol *protocol, uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE],
@@ -119,6 +124,21 @@ static void test_selects_scan_variants(void) {
     wheel_protocol_accept(&protocol, request);
     assert(protocol.phase == WHEEL_PROTOCOL_SCANNING_SECONDARY);
     assert(protocol.mode == WHEEL_MODE_SCAN_SECONDARY);
+}
+
+static void test_derives_report_mode_marker(void) {
+    WheelProtocol protocol;
+    wheel_protocol_init(&protocol);
+
+    assert(!wheel_protocol_report_mode_marker(NULL));
+    assert(!wheel_protocol_report_mode_marker(&protocol));
+
+    protocol.common_input.report_mode = 2;
+    assert(wheel_protocol_report_mode_marker(&protocol));
+    protocol.common_input.report_mode = 4;
+    assert(wheel_protocol_report_mode_marker(&protocol));
+    protocol.common_input.report_mode = 5;
+    assert(!wheel_protocol_report_mode_marker(&protocol));
 }
 
 static void test_reports_axis_capability_for_active_packet_family(void) {
@@ -250,7 +270,8 @@ static void test_retries_invalid_authentication_challenge(void) {
 
     assert(protocol.phase == WHEEL_PROTOCOL_AUTHENTICATING);
     assert(protocol.authentication.stage == WHEEL_AUTHENTICATION_AWAITING_CHALLENGE);
-    assert(protocol.authentication.retry_counter[7] == 1);
+    assert(protocol.authentication.retry_counter[7] == 0);
+    assert(protocol.authentication.receive_counter[7] == 1);
     assert(wheel_protocol_response(&protocol)[0] == WHEEL_PROTOCOL_COMMAND_SELECT_MODE);
     assert(wheel_protocol_response(&protocol)[1] == 0);
     assert(wheel_protocol_response(&protocol)[WHEEL_PROTOCOL_CHECKSUM_OFFSET] == 0x9a);
@@ -274,7 +295,7 @@ static void test_retries_invalid_encrypted_proof(void) {
 
     assert(protocol.phase == WHEEL_PROTOCOL_AUTHENTICATING);
     assert(protocol.authentication.stage == WHEEL_AUTHENTICATION_AWAITING_PROOF);
-    assert(protocol.authentication.retry_counter[7] == 1);
+    assert(protocol.authentication.retry_counter[7] == 0);
     assert(protocol.authentication.receive_counter[7] == 0x81);
     assert(memcmp(wheel_protocol_response(&protocol), expected_response,
                   sizeof(expected_response)) == 0);
@@ -368,6 +389,22 @@ static void test_restarts_synchronization_when_ready_drops(void) {
 
     assert(protocol.phase == WHEEL_PROTOCOL_WAITING);
     assert(protocol.mode == WHEEL_MODE_UNKNOWN);
+    assert(wheel_protocol_response(&protocol)[WHEEL_PROTOCOL_FLAGS_OFFSET] == 0);
+}
+
+static void test_retains_selection_acknowledgement_until_ready_drops(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    synchronize(&protocol, request);
+
+    assert(protocol.phase == WHEEL_PROTOCOL_SELECTING);
+    assert(wheel_protocol_response(&protocol)[WHEEL_PROTOCOL_FLAGS_OFFSET] ==
+           WHEEL_PROTOCOL_RESPONSE_ACKNOWLEDGED);
+    memset(request, 0, sizeof(request));
+    wheel_protocol_accept(&protocol, request);
+
+    assert(protocol.phase == WHEEL_PROTOCOL_WAITING);
     assert(wheel_protocol_response(&protocol)[WHEEL_PROTOCOL_FLAGS_OFFSET] == 0);
 }
 
@@ -688,7 +725,7 @@ static void test_captures_packed_family_requests(void) {
     assert(input->buttons[2] == 0x40);
     assert(input->axis_outputs[0] == 0x21);
     assert(input->axis_outputs[1] == 0x43);
-    assert(input->controls[6] == 0xcb);
+    assert(input->controls[6] == 0x34);
     assert(input->controls[7] == 0xab);
     assert(input->axis_values[0] == 0x1234);
     assert(input->axis_values[1] == 0x5678);
@@ -951,8 +988,8 @@ static void test_builds_crc_family_active_response(void) {
     assert(wheel_protocol_message_valid(response));
 
     wheel_protocol_accept(&protocol, request);
-    assert(wheel_protocol_response(&protocol)[8] == UINT8_MAX);
-    assert(wheel_protocol_response(&protocol)[10] == UINT8_MAX);
+    assert(wheel_protocol_response(&protocol)[8] == 0);
+    assert(wheel_protocol_response(&protocol)[10] == 0);
 
     wheel_protocol_set_host_capability(&protocol, false);
     wheel_protocol_accept(&protocol, request);
@@ -1801,31 +1838,27 @@ static void test_accumulates_axis_mode_interface_pulses(void) {
     assert(protocol.motion.axes[2] == 0);
 }
 
-static void test_rejects_unsupported_modes(void) {
+static void test_accepts_complete_a5_mode_range(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
-    wheel_protocol_init(&protocol);
-    synchronize(&protocol, request);
-    select_mode(&protocol, request, WHEEL_MODE_UNKNOWN);
+    for (uint16_t value = 0; value <= WHEEL_MODE_MAXIMUM; value++) {
+        wheel_protocol_init(&protocol);
+        memset(request, 0, sizeof(request));
+        synchronize(&protocol, request);
+        select_mode(&protocol, request, (uint8_t)value);
+        assert(protocol.phase != WHEEL_PROTOCOL_UNSUPPORTED);
+        assert(protocol.mode == (uint8_t)value);
+        assert(wheel_protocol_response(&protocol)[0] == WHEEL_PROTOCOL_COMMAND_SELECT_MODE);
+    }
 
-    assert(protocol.phase == WHEEL_PROTOCOL_UNSUPPORTED);
-    assert(protocol.mode == WHEEL_MODE_UNKNOWN);
-
     wheel_protocol_init(&protocol);
+    memset(request, 0, sizeof(request));
     synchronize(&protocol, request);
     select_mode(&protocol, request, WHEEL_MODE_MAXIMUM + 1);
-
-    assert(protocol.phase == WHEEL_PROTOCOL_UNSUPPORTED);
+    assert(protocol.phase == WHEEL_PROTOCOL_ACTIVE);
     assert(protocol.mode == WHEEL_MODE_UNKNOWN);
-
-    static const uint8_t invalid_modes[] = {0x05, 0x07, 0x08, 0x0d, 0x18, 0x19, 0x1a};
-    for (uint8_t index = 0; index < sizeof(invalid_modes); index++) {
-        wheel_protocol_init(&protocol);
-        synchronize(&protocol, request);
-        select_mode(&protocol, request, invalid_modes[index]);
-        assert(protocol.phase == WHEEL_PROTOCOL_UNSUPPORTED);
-        assert(protocol.mode == WHEEL_MODE_UNKNOWN);
-    }
+    assert(protocol.command_invalid);
+    assert(wheel_protocol_response(&protocol)[0] == WHEEL_PROTOCOL_COMMAND_SELECT_MODE);
 }
 
 static void test_captures_extended_remote_tuning_controls(void) {
@@ -1866,6 +1899,7 @@ int main(void) {
     test_selects_response_acknowledgement();
     test_synchronizes_and_selects_mode();
     test_selects_scan_variants();
+    test_derives_report_mode_marker();
     test_reports_axis_capability_for_active_packet_family();
     test_selects_authentication_from_wheel_mode();
     test_authentication_mode_set();
@@ -1914,7 +1948,8 @@ int main(void) {
     test_accumulates_extended_interface_pulses();
     test_accumulates_axis_mode_interface_pulses();
     test_captures_extended_remote_tuning_controls();
-    test_rejects_unsupported_modes();
+    test_retains_selection_acknowledgement_until_ready_drops();
+    test_accepts_complete_a5_mode_range();
     test_crc8_vectors();
     return 0;
 }

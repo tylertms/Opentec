@@ -162,7 +162,7 @@ static void h_pattern_load(BaseSettings *settings) {
  * @brief Restores the three-digit security code.
  *
  * Recognizes the A marker nibble and extracts the three decimal digits from consecutive nibbles.
- * Invalid or absent encodings leave the existing security state unchanged.
+ * Invalid or absent marker values are replaced with the disabled value in persistent storage.
  *
  * @param[in,out] settings Base settings receiving security-code state.
  */
@@ -170,6 +170,7 @@ static void security_code_load(BaseSettings *settings) {
     uint16_t encoded;
     if (!value_read(SECURITY_CODE_INDEX, &encoded) ||
         (encoded & UINT16_C(0xf000)) != UINT16_C(0xa000)) {
+        (void)platform_storage_value_write(SECURITY_CODE_INDEX, 0);
         return;
     }
     for (uint8_t digit = 0; digit < SECURITY_CODE_DIGIT_COUNT; digit++) {

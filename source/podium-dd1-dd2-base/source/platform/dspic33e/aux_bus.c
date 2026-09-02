@@ -5,8 +5,6 @@
 #include <stdint.h>
 #include <xc.h>
 
-#include "platform/time.h"
-
 /**
  * @brief States in the interrupt-driven auxiliary-bus transaction.
  */
@@ -31,6 +29,7 @@ enum {
     AUX_BUS_BAUD_RATE = 0xa3,       /**< I2C2 baud generator value. */
     AUX_BUS_INTERRUPT_PRIORITY = 7, /**< I2C2 interrupt priority. */
     AUX_BUS_PROGRESS_TIMEOUT_MS = 2,
+    AUX_BUS_MAX_RETRIES = 4,                  /**< Maximum NACK retries for one transaction. */
     AUX_BUS_RECOVERY_PULSES = 9,              /**< Maximum SCL recovery pulses. */
     AUX_BUS_RECOVERY_DELAY_CYCLES = 0x23 * 2, /**< Delay cycles for each bus-recovery interval. */
 };
@@ -91,15 +90,20 @@ static bool reading;
 static bool wide_address;
 
 /**
- * @brief Monotonic deadline for the active transaction.
+ * @brief Milliseconds remaining before the active transaction times out.
  */
-static uint32_t deadline;
+static volatile uint8_t timeout_ticks;
+
+/**
+ * @brief Number of NACK retries used by the active transaction.
+ */
+static volatile uint8_t retry_count;
 
 /**
  * @brief Starts one interrupt-driven auxiliary-bus transaction.
  *
  * Captures the 7-bit device address, register address, and transfer length, then issues a start
- * condition. A zero transfer length is valid for a register-only write.
+ * condition. A zero transfer length is valid for register-only writes and reads.
  *
  * @param[in] address Seven-bit device address.
  * @param[in] register_address Eight- or sixteen-bit register address.
@@ -119,7 +123,8 @@ static bool start_transaction(uint8_t address, uint16_t register_address, uint16
     stop_status = PLATFORM_AUX_BUS_SUCCEEDED;
     phase = AUX_BUS_START;
     status = PLATFORM_AUX_BUS_BUSY;
-    deadline = platform_time_ms() + AUX_BUS_PROGRESS_TIMEOUT_MS;
+    retry_count = 0;
+    timeout_ticks = AUX_BUS_PROGRESS_TIMEOUT_MS;
     I2C2CONbits.SEN = 1;
     return true;
 }
@@ -232,6 +237,7 @@ static void reset_controller(void) {
     IEC3bits.MI2C2IE = 1;
     I2C2CONbits.I2CEN = 1;
     phase = AUX_BUS_RESET_FINISH;
+    timeout_ticks = 0;
     I2C2CONbits.PEN = 1;
 }
 
@@ -247,18 +253,33 @@ void platform_aux_bus_init(void) {
 }
 
 /**
- * @brief Services auxiliary-bus transfer timeouts.
+ * @brief Retains the auxiliary-bus service entry point.
  *
- * Resets I2C2 and reports failure when a busy transfer reaches its length-adjusted deadline.
+ * Transfer timeouts are serviced by the Timer 1 interrupt through
+ * platform_aux_bus_timer_tick(). Foreground callers may continue invoking this function while
+ * polling the transfer without changing the timer-owned timeout state.
  */
-void platform_aux_bus_service(void) {
-    if (status != PLATFORM_AUX_BUS_BUSY || !platform_time_reached(platform_time_ms(), deadline)) {
+void platform_aux_bus_service(void) {}
+
+/**
+ * @brief Advances the auxiliary-bus timeout from the millisecond timer interrupt.
+ *
+ * Decrements the two-millisecond progress watchdog and resets the controller with a failed status
+ * when no I2C event completes before it expires.
+ */
+void platform_aux_bus_timer_tick(void) {
+    if (status != PLATFORM_AUX_BUS_BUSY) {
         return;
     }
 
-    IEC3bits.MI2C2IE = 0;
-    reset_controller();
-    status = PLATFORM_AUX_BUS_FAILED;
+    if (timeout_ticks != 0) {
+        --timeout_ticks;
+    }
+    if (timeout_ticks == 0) {
+        IEC3bits.MI2C2IE = 0;
+        reset_controller();
+        status = PLATFORM_AUX_BUS_FAILED;
+    }
 }
 
 /**
@@ -292,8 +313,8 @@ bool platform_aux_bus_start_write(uint8_t address, uint16_t register_address, co
 /**
  * @brief Starts a register-addressed auxiliary-bus read.
  *
- * Validates a nonempty destination, retains the read request, and starts the write-address phase
- * that precedes the repeated start.
+ * Validates a destination, retains the read request, and starts the write-address phase that
+ * precedes the repeated start. A zero-length read still completes the register transaction.
  *
  * @param[in] address Seven-bit device address.
  * @param[in] register_address Eight- or sixteen-bit register address.
@@ -303,7 +324,7 @@ bool platform_aux_bus_start_write(uint8_t address, uint16_t register_address, co
  */
 bool platform_aux_bus_start_read(uint8_t address, uint16_t register_address, uint8_t *data,
                                  uint16_t length) {
-    if (!transaction_valid(address, data, length)) {
+    if (status == PLATFORM_AUX_BUS_BUSY || address >= 0x80 || data == NULL) {
         return false;
     }
 
@@ -334,31 +355,31 @@ void platform_aux_bus_clear(void) {
 }
 
 #ifdef OPENTEC_SIMULATOR_TEST
+/**
+ * @brief Reads the retry count after a simulated auxiliary-bus transaction.
+ *
+ * @return Number of NACK retries used by the active or most recent transaction.
+ */
+uint8_t platform_aux_bus_retry_count(void) { return retry_count; }
+
 bool platform_aux_bus_reset_finish_active(void) { return phase == AUX_BUS_RESET_FINISH; }
 #endif
 
 /**
  * @brief Advances the auxiliary-bus transaction state machine.
  *
- * Clears controller faults, handles address and payload acknowledgements, emits 8- or 16-bit
- * register addresses, sequences repeated starts and reads, sends the final NACK, completes the stop
- * condition, and clears the master interrupt request.
+ * Clears controller faults before waiting for ACKEN, handles address and payload acknowledgements,
+ * retries NACKed transactions up to four times, emits 8- or 16-bit register addresses, sequences
+ * repeated starts and reads, sends the final NACK, completes the stop condition, and clears the
+ * master interrupt request.
  */
 void __attribute__((interrupt, no_auto_psv)) _MI2C2Interrupt(void) {
-    while (I2C2CONbits.ACKEN != 0) {
-    }
-    bool bus_error = I2C2STATbits.IWCOL != 0 || I2C2STATbits.BCL != 0 || I2C2STATbits.I2COV != 0;
     I2C2STATbits.IWCOL = 0;
     I2C2STATbits.BCL = 0;
     I2C2STATbits.I2COV = 0;
-
-    if (bus_error && phase != AUX_BUS_STOP && phase != AUX_BUS_RESET_FINISH) {
-        stop_transaction(PLATFORM_AUX_BUS_FAILED);
-        IFS3bits.MI2C2IF = 0;
-        return;
+    while (I2C2CONbits.ACKEN != 0) {
     }
-
-    deadline = platform_time_ms() + AUX_BUS_PROGRESS_TIMEOUT_MS;
+    timeout_ticks = AUX_BUS_PROGRESS_TIMEOUT_MS;
 
     switch (phase) {
     case AUX_BUS_START:
@@ -405,6 +426,8 @@ void __attribute__((interrupt, no_auto_psv)) _MI2C2Interrupt(void) {
     case AUX_BUS_READ_ADDRESS:
         if (transmission_failed()) {
             stop_transaction(PLATFORM_AUX_BUS_FAILED);
+        } else if (data_length == 0) {
+            stop_transaction(PLATFORM_AUX_BUS_SUCCEEDED);
         } else {
             I2C2CONbits.RCEN = 1;
             phase = AUX_BUS_RECEIVE;
@@ -425,7 +448,15 @@ void __attribute__((interrupt, no_auto_psv)) _MI2C2Interrupt(void) {
         }
         break;
     case AUX_BUS_STOP:
-        status = stop_status;
+        if (stop_status == PLATFORM_AUX_BUS_FAILED && retry_count < AUX_BUS_MAX_RETRIES) {
+            ++retry_count;
+            data_index = 0;
+            phase = AUX_BUS_START;
+            timeout_ticks = AUX_BUS_PROGRESS_TIMEOUT_MS;
+            I2C2CONbits.SEN = 1;
+        } else {
+            status = stop_status;
+        }
         break;
     case AUX_BUS_RESET_FINISH:
         break;

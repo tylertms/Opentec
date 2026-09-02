@@ -337,7 +337,7 @@ force_feedback_script_operand_write(ForceFeedbackScriptRuntime *runtime, const u
         runtime->variables[opcode - OPERAND_VARIABLE_FIRST] = value;
     } else if (opcode >= OPERAND_VARIABLE_SAMPLE_FIRST && opcode <= OPERAND_VARIABLE_SAMPLE_LAST) {
         size_t variable = opcode - OPERAND_VARIABLE_SAMPLE_FIRST;
-        size_t index = runtime->variables[variable];
+        uint16_t index = (uint16_t)runtime->variables[variable];
         if (index < FORCE_FEEDBACK_SCRIPT_SAMPLE_COUNT) {
             runtime->samples.values[index] = value;
         } else {

@@ -30,6 +30,7 @@ enum {
     WHEEL_OUTPUT_INTERFACE_PRESENTATION_DISPLAY_MODE =
         3, /**< Presentation mode that updates display. */
     WHEEL_OUTPUT_INTERFACE_PRESENTATION_DISPLAY_COMMAND = 1, /**< Presentation display command. */
+    WHEEL_OUTPUT_SHIFTER_STATE_COMMAND = 0x16,               /**< Shifter-state report command. */
     WHEEL_OUTPUT_BUTTON_ILLUMINATION_COMMAND = 0x16,         /**< Button-illumination command. */
     WHEEL_DISPLAY_TORQUE_KEY_PROMPT = 0x1a,                  /**< Torque Key prompt command. */
     WHEEL_DISPLAY_TORQUE_KEY_CONFIRMED = 0x28,         /**< Torque Key confirmation command. */
@@ -411,10 +412,39 @@ void wheel_output_reports_queue_six(WheelOutputReports *reports, uint8_t first, 
 }
 
 /**
+ * @brief Queues an H-pattern shifter-state report.
+ *
+ * Retains the three-byte payload used by the pending wheel-protocol type-0x16 transfer.
+ *
+ * @param[in,out] reports Retained output state.
+ * @param[in] state Three-byte shifter-state payload.
+ */
+void wheel_output_reports_queue_shifter_state(WheelOutputReports *reports, const uint8_t state[3]) {
+    if (reports == NULL || state == NULL) {
+        return;
+    }
+    memcpy(reports->shifter_state, state, sizeof(reports->shifter_state));
+    reports->shifter_state_pending = true;
+}
+
+/**
+ * @brief Reports whether an H-pattern shifter-state report is pending.
+ *
+ * Tests the retained type-0x16 transfer state without consuming it.
+ *
+ * @param[in] reports Retained output state.
+ * @return True while a shifter-state payload awaits transmission.
+ */
+bool wheel_output_reports_shifter_state_pending(const WheelOutputReports *reports) {
+    return reports != NULL && reports->shifter_state_pending;
+}
+
+/**
  * @brief Encodes the next pending attached-wheel output report.
  *
  * In remote-tuning wheel modes, selects prompt and confirmation notifications before all other
- * work. It then selects reports in the order 1, 2, 4, 5, 6, 17, host-interface catalogs, native
+ * work. It then selects reports in the order shifter state, 1, 2, 4, 5, 6, 17, host-interface
+ * catalogs, native
  * display command, remote telemetry, and changed button illumination. Single-frame reports write
  * their report number and retained payload at frame offsets one and two, then consume their pending
  * state. Reports four and six use the same 25-byte payload. Report 17 emits its next segmented
@@ -460,6 +490,12 @@ bool wheel_output_reports_encode_next(WheelOutputReports *reports, uint8_t wheel
         frame[0] = WHEEL_OUTPUT_DISPLAY_COMMAND_REPORT_ID;
         frame[1] = WHEEL_OUTPUT_DISPLAY_COMMAND_PACKET_TYPE;
         frame[2] = command;
+        return true;
+    }
+    if (reports->shifter_state_pending) {
+        frame[1] = WHEEL_OUTPUT_SHIFTER_STATE_COMMAND;
+        memcpy(frame + 2, reports->shifter_state, sizeof(reports->shifter_state));
+        reports->shifter_state_pending = false;
         return true;
     }
     if ((reports->pending & WHEEL_OUTPUT_REPORT_ONE_PENDING) != 0) {

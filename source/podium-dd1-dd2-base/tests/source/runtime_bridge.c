@@ -184,9 +184,12 @@ static void test_runs_protocol_fallback_on_acknowledgement(void) {
     input.now_ms += 1;
     assert(runtime_bridge_step(&bridge, &input) == 0);
     input.now_ms += 1;
-    assert(runtime_bridge_step(&bridge, &input) == RUNTIME_BRIDGE_ACTION_START_TRANSFER);
+    assert(runtime_bridge_step(&bridge, &input) ==
+           (RUNTIME_BRIDGE_ACTION_SELECT_PROTOCOL_RECOVERY | RUNTIME_BRIDGE_ACTION_START_TRANSFER));
+    assert(bridge.mode == USB_RUNTIME_MODE_PROTOCOL_RECOVERY);
     input.transfer_status = RUNTIME_BRIDGE_TRANSFER_COMPLETE;
-    assert(runtime_bridge_step(&bridge, &input) == 0);
+    assert(runtime_bridge_step(&bridge, &input) == RUNTIME_BRIDGE_ACTION_SELECT_USB_BRIDGE);
+    assert(bridge.mode == USB_RUNTIME_MODE_USB_BRIDGE);
     assert(runtime_bridge_step(&bridge, &input) == RUNTIME_BRIDGE_ACTION_ACTIVATE_UPDATER_USB);
 }
 
@@ -206,6 +209,41 @@ static void test_runs_protocol_fallback_after_timeout(void) {
     input.now_ms = 1201;
     assert(runtime_bridge_step(&bridge, &input) ==
            (RUNTIME_BRIDGE_ACTION_PREPARE_USB | RUNTIME_BRIDGE_ACTION_ENABLE_TRANSFER_TIMER));
+    input.now_ms = 1701;
+    assert(runtime_bridge_step(&bridge, &input) == 0);
+    input.now_ms = 1702;
+    assert(runtime_bridge_step(&bridge, &input) ==
+           (RUNTIME_BRIDGE_ACTION_SELECT_PROTOCOL_RECOVERY | RUNTIME_BRIDGE_ACTION_START_TRANSFER));
+    assert(bridge.mode == USB_RUNTIME_MODE_PROTOCOL_RECOVERY);
+}
+
+static void test_returns_to_normal_after_protocol_recovery_failure(void) {
+    RuntimeBridge bridge;
+    RuntimeBridgeInput input = input_at(200);
+    runtime_bridge_init(&bridge);
+
+    runtime_bridge_start(&bridge, USB_RUNTIME_MODE_PROTOCOL_BRIDGE);
+    input.transfer_status = RUNTIME_BRIDGE_TRANSFER_FAILED;
+    assert(runtime_bridge_step(&bridge, &input) ==
+           (RUNTIME_BRIDGE_ACTION_DISABLE_TRANSFER_TIMER |
+            RUNTIME_BRIDGE_ACTION_REQUEST_PROTOCOL_COMMAND));
+
+    input.transfer_status = RUNTIME_BRIDGE_TRANSFER_IDLE;
+    input.protocol_command_acknowledged = true;
+    assert(runtime_bridge_step(&bridge, &input) ==
+           (RUNTIME_BRIDGE_ACTION_PREPARE_USB | RUNTIME_BRIDGE_ACTION_ENABLE_TRANSFER_TIMER));
+    input.protocol_command_acknowledged = false;
+    input.now_ms = 700;
+    assert(runtime_bridge_step(&bridge, &input) == 0);
+    input.now_ms = 701;
+    assert(runtime_bridge_step(&bridge, &input) ==
+           (RUNTIME_BRIDGE_ACTION_SELECT_PROTOCOL_RECOVERY | RUNTIME_BRIDGE_ACTION_START_TRANSFER));
+
+    input.transfer_status = RUNTIME_BRIDGE_TRANSFER_FAILED;
+    assert(runtime_bridge_step(&bridge, &input) == (RUNTIME_BRIDGE_ACTION_DISABLE_TRANSFER_TIMER |
+                                                    RUNTIME_BRIDGE_ACTION_RESTORE_NORMAL_USB));
+    assert(bridge.mode == USB_RUNTIME_MODE_NORMAL);
+    assert(bridge.phase == RUNTIME_BRIDGE_IDLE);
 }
 
 int main(void) {
@@ -218,5 +256,6 @@ int main(void) {
     test_runs_protocol_fast_path();
     test_runs_protocol_fallback_on_acknowledgement();
     test_runs_protocol_fallback_after_timeout();
+    test_returns_to_normal_after_protocol_recovery_failure();
     return 0;
 }

@@ -198,6 +198,7 @@ static void test_extended_completion_waits_for_release_and_deadline(void) {
         .wheel_mode = 0x1c,
         .active = true,
         .advance_input_active = true,
+        .completion_input_active = true,
     };
     HPatternSettings settings = {0};
 
@@ -211,9 +212,76 @@ static void test_extended_completion_waits_for_release_and_deadline(void) {
     assert(h_pattern_calibration_service_capture(&service, 6001, 0, 0, &settings) ==
            H_PATTERN_CALIBRATION_NO_CAPTURE);
     assert(service.active);
+    h_pattern_calibration_service_set_completion_input(&service, false);
     assert(h_pattern_calibration_service_capture(&service, 6002, 0, 0, &settings) ==
            H_PATTERN_CALIBRATION_NO_CAPTURE);
     assert(!service.active);
+}
+
+static void test_completion_ignores_adapter_advance_input(void) {
+    HPatternCalibrationService service = {
+        .session = {.next_position = H_PATTERN_CALIBRATION_COMPLETE},
+        .active = true,
+        .advance_input_active = true,
+        .completion_input_active = false,
+    };
+    HPatternSettings settings = {0};
+
+    assert(h_pattern_calibration_service_capture(&service, 5000, 0, 0, &settings) ==
+           H_PATTERN_CALIBRATION_NO_CAPTURE);
+    assert(!service.active);
+}
+
+static void test_cancel_clears_only_transient_state(void) {
+    HPatternCalibrationService service = {
+        .session = {.next_position = H_PATTERN_CALIBRATION_FOURTH},
+        .started_ms = 100,
+        .finish_deadline_ms = 500,
+        .wheel_mode = 0x1c,
+        .active = true,
+        .advance_pending = true,
+        .advance_input_active = true,
+        .completion_input_active = true,
+        .release_required = true,
+    };
+
+    h_pattern_calibration_service_cancel(&service);
+    assert(!service.active);
+    assert(service.session.next_position == H_PATTERN_CALIBRATION_NEUTRAL);
+    assert(service.started_ms == 0);
+    assert(service.finish_deadline_ms == 0);
+    assert(service.wheel_mode == 0);
+    assert(!service.advance_pending);
+    assert(!service.advance_input_active);
+    assert(!service.completion_input_active);
+    assert(!service.release_required);
+}
+
+static void test_reports_stage_changes_and_connected_cadence(void) {
+    HPatternCalibrationService service = {0};
+    uint8_t report[3] = {0};
+
+    h_pattern_calibration_service_request(&service, H_PATTERN_CALIBRATION_COMMAND_START, 0, 100);
+    assert(h_pattern_calibration_service_take_report(&service, 100, false, report));
+    assert(report[0] == 0);
+    assert(report[1] == H_PATTERN_CALIBRATION_STAGE_SHOW_READY);
+    assert(report[2] == 0);
+    assert(!h_pattern_calibration_service_take_report(&service, 2100, false, report));
+    assert(h_pattern_calibration_service_take_report(&service, 2201, false, report));
+    assert(report[1] == H_PATTERN_CALIBRATION_STAGE_SHOW_START);
+    assert(h_pattern_calibration_service_take_report(&service, 4201, false, report));
+    assert(report[1] == H_PATTERN_CALIBRATION_STAGE_WAIT_START);
+
+    h_pattern_calibration_service_request(&service, H_PATTERN_CALIBRATION_COMMAND_ADVANCE, 0, 4201);
+    assert(h_pattern_calibration_service_take_report(&service, 4201, false, report));
+    assert(report[1] == H_PATTERN_CALIBRATION_STAGE_CAPTURE_NEUTRAL);
+    assert(!h_pattern_calibration_service_take_report(&service, 6200, true, report));
+    assert(h_pattern_calibration_service_take_report(&service, 6201, true, report));
+    assert(report[1] == H_PATTERN_CALIBRATION_STAGE_CAPTURE_NEUTRAL);
+
+    h_pattern_calibration_service_cancel(&service);
+    assert(h_pattern_calibration_service_take_report(&service, 6202, false, report));
+    assert(report[1] == H_PATTERN_CALIBRATION_STAGE_DETECT_INPUT);
 }
 
 int main(void) {
@@ -225,5 +293,8 @@ int main(void) {
     test_requires_release_between_physical_captures();
     test_calibration_capture_sequence();
     test_extended_completion_waits_for_release_and_deadline();
+    test_completion_ignores_adapter_advance_input();
+    test_cancel_clears_only_transient_state();
+    test_reports_stage_changes_and_connected_cadence();
     return 0;
 }

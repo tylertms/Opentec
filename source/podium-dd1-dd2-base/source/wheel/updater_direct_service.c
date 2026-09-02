@@ -76,32 +76,49 @@ void wheel_updater_direct_service_init(WheelUpdaterDirectService *service) {
 }
 
 /**
- * @brief Starts a status-bridge updater exchange.
+ * @brief Starts one normal or route-probe exchange on the status bridge.
  *
- * Delegates marker, length, and ownership validation to the common updater protocol.
+ * Rejects an outstanding direct-UART operation and delegates marker, length, and ownership
+ * validation to the common updater protocol.
  *
  * @param[in,out] service Idle direct updater service accepting the request.
  * @param[in] request Marker-prefixed updater request.
  * @param[in] length Request byte count.
+ * @param[in] response_probe True when probe-only terminal response rules apply.
  * @return true when the request was accepted; otherwise false.
  */
+static bool start_exchange(WheelUpdaterDirectService *service, const uint8_t *request,
+                           uint8_t length, bool response_probe) {
+    if (service == NULL || service->operation_pending) {
+        return false;
+    }
+    return response_probe ? wheel_updater_bridge_start_probe(&service->bridge, request, length)
+                          : wheel_updater_bridge_start(&service->bridge, request, length);
+}
+
 bool wheel_updater_direct_service_start(WheelUpdaterDirectService *service, const uint8_t *request,
                                         uint8_t length) {
-    return service != NULL && !service->operation_pending &&
-           wheel_updater_bridge_start(&service->bridge, request, length);
+    return start_exchange(service, request, length, false);
+}
+
+bool wheel_updater_direct_service_start_probe(WheelUpdaterDirectService *service,
+                                              const uint8_t *request, uint8_t length) {
+    return start_exchange(service, request, length, true);
 }
 
 /**
  * @brief Advances updater protocol operations over the raw UART link.
  *
  * Polls a pending byte operation, advances the common response parser, and starts its next raw read
- * or write without exposing peripheral state to the protocol layer.
+ * or write without exposing peripheral state to the protocol layer. A timed-out response does not
+ * cancel a still-pending direct read.
  *
  * @param[in,out] service Active direct updater service to advance.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 void wheel_updater_direct_service_run(WheelUpdaterDirectService *service, uint32_t now_ms) {
-    if (service == NULL || !wheel_updater_bridge_active(&service->bridge)) {
+    if (service == NULL ||
+        (!wheel_updater_bridge_active(&service->bridge) && !service->operation_pending)) {
         return;
     }
     WheelUpdaterIo io = poll_operation(service, now_ms);
@@ -127,10 +144,11 @@ bool wheel_updater_direct_service_take_response(WheelUpdaterDirectService *servi
         !wheel_updater_bridge_take_response(&service->bridge, response, length)) {
         return false;
     }
-    service->operation_pending = false;
-    service->pending_operation = WHEEL_UPDATER_OPERATION_NONE;
-    service->pending_length = 0;
-    platform_serial_link_direct_clear();
+    if (!service->operation_pending) {
+        service->pending_operation = WHEEL_UPDATER_OPERATION_NONE;
+        service->pending_length = 0;
+        platform_serial_link_direct_clear();
+    }
     return true;
 }
 

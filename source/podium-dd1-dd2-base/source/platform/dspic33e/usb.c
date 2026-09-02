@@ -21,7 +21,13 @@ enum {
     USB_PACKET_ID_SETUP = 0x0d,           /**< USB packet identifier for a setup transaction. */
     USB_TRANSACTION_ODD_BANK = 0x04,      /**< U1STAT mask for the odd ping-pong bank. */
     USB_TRANSACTION_INPUT = 0x08,         /**< U1STAT mask for a device-to-host transaction. */
-    USB_INTERRUPT_TRANSACTION = 0x08,     /**< U1IR transaction-complete flag. */
+    USB_INTERRUPT_RESET = 0x01,           /**< U1IR and U1IE bus-reset flag. */
+    USB_INTERRUPT_ERROR = 0x02,           /**< U1IR and U1IE transaction-error flag. */
+    USB_INTERRUPT_SOF = 0x04,             /**< U1IR and U1IE start-of-frame flag. */
+    USB_INTERRUPT_TRANSACTION = 0x08,     /**< U1IR and U1IE transaction-complete flag. */
+    USB_INTERRUPT_IDLE = 0x10,            /**< U1IR and U1IE idle flag. */
+    USB_INTERRUPT_STALL = 0x80,           /**< U1IR and U1IE stall flag. */
+    USB_SOF_RECOVERY_FRAME_COUNT = 0x2d,  /**< SOF frames allowed before descriptor recovery. */
     USB_TRANSACTION_ENDPOINT_MASK = 0xf0, /**< U1STAT mask for the endpoint number. */
     USB_ENDPOINT_STALL = 0x02,            /**< Endpoint-control stall bit. */
     USB_ENDPOINT_HANDSHAKE = 0x01,        /**< Endpoint-control handshake-enable bit. */
@@ -85,8 +91,36 @@ static volatile uint8_t event_tail;
 
 /**
  * @brief Next ping-pong bank to try for each endpoint direction.
+ *
+ * Endpoint zero keeps its selected bank until the controller reports completion so an aborted
+ * control transfer can reclaim that bank without changing the hardware topology.
  */
 static volatile uint8_t next_bank[USB_ENDPOINT_COUNT][USB_DIRECTION_COUNT];
+
+/**
+ * @brief Last completed endpoint-zero output bank.
+ */
+static volatile uint8_t control_out_current_bank;
+
+/**
+ * @brief SOF frames remaining before refreshing the last transaction's descriptor pair.
+ */
+static volatile uint8_t sof_recovery_frames;
+
+/**
+ * @brief Endpoint selected by the SOF descriptor-recovery watchdog.
+ */
+static volatile uint8_t sof_recovery_endpoint;
+
+/**
+ * @brief Direction selected by the SOF descriptor-recovery watchdog.
+ */
+static volatile bool sof_recovery_input;
+
+/**
+ * @brief Whether an endpoint-zero transaction has started the SOF descriptor-recovery watchdog.
+ */
+static volatile bool sof_recovery_pending;
 
 /** @brief USB device-controller attachment states. */
 typedef enum {
@@ -150,6 +184,70 @@ static void arm_setup_bank(bool odd_bank) {
 }
 
 /**
+ * @brief Refreshes one still-owned descriptor after the SOF watchdog expires.
+ *
+ * Rewrites transfer fields before ownership, preserving a setup stall guard and restoring a data
+ * descriptor to DATA1 while clearing completed-packet bits that the controller may have left in
+ * the status word.
+ *
+ * @param[in,out] target Descriptor to refresh.
+ */
+static void refresh_owned_descriptor(volatile UsbBufferDescriptor *target) {
+    if (!usb_buffer_descriptor_owned(target)) {
+        return;
+    }
+    uint16_t status = target->status;
+    uint16_t count = target->count & USB_BUFFER_COUNT_MASK;
+    uint16_t address = target->address;
+    uint16_t address_high = target->address_high;
+    target->address = address;
+    target->address_high = address_high;
+    target->count = count;
+    uint16_t mode = status & USB_BUFFER_DATA_TOGGLE_ENABLED;
+    uint16_t stall = mode == 0 ? status & USB_BUFFER_STALL : 0;
+    target->status =
+        mode | (mode != 0 ? USB_BUFFER_DATA_TOGGLE : 0) | stall | USB_BUFFER_OWNED_BY_USB;
+}
+
+/**
+ * @brief Cancels the SOF descriptor-recovery watchdog.
+ */
+static void clear_sof_recovery(void) {
+    sof_recovery_frames = 0;
+    sof_recovery_endpoint = 0;
+    sof_recovery_input = false;
+    sof_recovery_pending = false;
+}
+
+/**
+ * @brief Refreshes the descriptor pair associated with the last endpoint-zero transaction.
+ *
+ * The controller's official recovery path rewrites the active endpoint-direction pair after 45
+ * SOF frames without releasing ownership, allowing a stalled hardware descriptor to be retried.
+ */
+static void recover_stuck_descriptors(void) {
+    if (!sof_recovery_pending) {
+        return;
+    }
+    refresh_owned_descriptor(descriptor(sof_recovery_endpoint, sof_recovery_input, false));
+    refresh_owned_descriptor(descriptor(sof_recovery_endpoint, sof_recovery_input, true));
+}
+
+/**
+ * @brief Services one start-of-frame watchdog tick.
+ */
+static void handle_start_of_frame(void) {
+    if (sof_recovery_pending && sof_recovery_frames != 0) {
+        sof_recovery_frames--;
+    }
+    if (sof_recovery_pending && sof_recovery_frames == 0) {
+        recover_stuck_descriptors();
+        sof_recovery_frames = 0;
+        sof_recovery_pending = false;
+    }
+}
+
+/**
  * @brief Queues one USB controller event.
  *
  * Copies the completed packet into the interrupt-to-main event ring and drops the event when the
@@ -203,6 +301,8 @@ static void reset_controller(void) {
         next_bank[endpoint][0] = 0;
         next_bank[endpoint][1] = 0;
     }
+    control_out_current_bank = 0;
+    clear_sof_recovery();
     arm_setup_bank(false);
     arm_setup_bank(true);
     U1CONbits.PKTDIS = 0;
@@ -284,6 +384,7 @@ void platform_usb_detach(void) {
     IEC5bits.USB1IE = 0;
     U1CON = 0;
     U1IE = 0;
+    clear_sof_recovery();
     controller_attachment_state = USB_CONTROLLER_DETACHED;
 }
 
@@ -361,8 +462,9 @@ bool platform_usb_take_event(PlatformUsbEvent *event) {
  *
  * Selects the next available ping-pong bank, reclaims a prearmed endpoint-zero setup bank when
  * token processing is gated, copies device-to-host bytes, publishes the descriptor to the
- * controller, advances bank selection, and releases endpoint-zero token processing only after the
- * requested control stage is ready.
+ * controller, advances non-control bank selection, and releases endpoint-zero token processing
+ * only after the requested control stage is ready. Endpoint-zero selection advances when the
+ * controller reports the completed bank.
  *
  * @param[in] endpoint Endpoint number from zero through four.
  * @param[in] input True for a device-to-host transfer.
@@ -400,7 +502,9 @@ static bool arm(uint8_t endpoint, bool input, const uint8_t *data, uint8_t lengt
         }
         usb_buffer_descriptor_arm(target, buffer_address(endpoint, input, bank != 0), length,
                                   data_one, false);
-        next_bank[endpoint][direction] = bank ^ 1;
+        if (endpoint != 0) {
+            next_bank[endpoint][direction] = bank ^ 1;
+        }
         if (endpoint == 0) {
             U1CONbits.PKTDIS = 0;
         }
@@ -448,6 +552,7 @@ bool platform_usb_receive(uint8_t endpoint, uint8_t length, bool data_one) {
 void platform_usb_control_ready(void) {
     bool interrupt_enabled = IEC5bits.USB1IE != 0;
     IEC5bits.USB1IE = 0;
+    clear_sof_recovery();
     for (uint8_t bank = 0; bank < USB_BANK_COUNT; bank++) {
         volatile UsbBufferDescriptor *target = descriptor(0, false, bank != 0);
         if (!usb_buffer_descriptor_owned(target)) {
@@ -462,17 +567,84 @@ void platform_usb_control_ready(void) {
 
 /**
  * @brief Resets endpoint-zero state for a new setup transaction.
+ *
+ * Releases the input banks and the controller's next output bank without changing either ping-pong
+ * selector. The following control-stage arm can therefore reuse the bank topology left by the
+ * completed setup transaction.
  */
 void platform_usb_control_reset(void) {
     bool interrupt_enabled = IEC5bits.USB1IE != 0;
     IEC5bits.USB1IE = 0;
-    for (uint8_t direction = 0; direction < USB_DIRECTION_COUNT; direction++) {
-        for (uint8_t bank = 0; bank < USB_BANK_COUNT; bank++) {
-            usb_buffer_descriptor_clear(descriptor(0, direction != 0, bank != 0));
-        }
-        next_bank[0][direction] = 0;
+    clear_sof_recovery();
+    for (uint8_t bank = 0; bank < USB_BANK_COUNT; bank++) {
+        volatile UsbBufferDescriptor *target = descriptor(0, true, bank != 0);
+        target->status &= (uint16_t)~USB_BUFFER_OWNED_BY_USB;
     }
+    volatile UsbBufferDescriptor *target = descriptor(0, false, next_bank[0][0] != 0);
+    target->status &= (uint16_t)~USB_BUFFER_OWNED_BY_USB;
     U1EP0bits.EPSTALL = 0;
+    IEC5bits.USB1IE = interrupt_enabled;
+}
+
+/**
+ * @brief Arms the official endpoint-zero status descriptors.
+ *
+ * Input status uses a DATA1 zero-length packet. Output status uses the bank following the last
+ * completed output bank and keeps the completed bank as a stalled setup guard.
+ */
+bool platform_usb_control_arm_status(bool input) {
+    bool interrupt_enabled = IEC5bits.USB1IE != 0;
+    IEC5bits.USB1IE = 0;
+    if (input) {
+        uint8_t bank = next_bank[0][1];
+        volatile UsbBufferDescriptor *target = descriptor(0, true, bank != 0);
+        if (usb_buffer_descriptor_owned(target)) {
+            IEC5bits.USB1IE = interrupt_enabled;
+            return false;
+        }
+        usb_buffer_descriptor_arm(target, buffer_address(0, true, bank != 0), 0, true, false);
+    } else {
+        uint8_t status_bank = next_bank[0][0];
+        uint8_t guard_bank = control_out_current_bank;
+        volatile UsbBufferDescriptor *guard = descriptor(0, false, guard_bank != 0);
+        volatile UsbBufferDescriptor *status = descriptor(0, false, status_bank != 0);
+        if (usb_buffer_descriptor_owned(guard) || usb_buffer_descriptor_owned(status)) {
+            IEC5bits.USB1IE = interrupt_enabled;
+            return false;
+        }
+        arm_setup_bank(guard_bank != 0);
+        status->address = buffer_address(0, false, status_bank != 0);
+        status->address_high = 0;
+        status->count = PLATFORM_USB_PACKET_SIZE;
+        status->status = USB_BUFFER_OWNED_BY_USB;
+    }
+    U1CONbits.PKTDIS = 0;
+    IEC5bits.USB1IE = interrupt_enabled;
+    return true;
+}
+
+/**
+ * @brief Resets endpoint ping-pong state after a configuration change.
+ *
+ * Disables non-control endpoints, clears all descriptors, and pulses PPBRST so the controller and
+ * software use bank zero for the next transfer in every direction.
+ */
+void platform_usb_reset_endpoint_state(void) {
+    bool interrupt_enabled = IEC5bits.USB1IE != 0;
+    IEC5bits.USB1IE = 0;
+    for (uint8_t endpoint = 1; endpoint < USB_ENDPOINT_COUNT; endpoint++) {
+        volatile uint16_t *endpoint_control = &U1EP0 + endpoint;
+        *endpoint_control = 0;
+    }
+    clear_descriptors();
+    U1CONbits.PPBRST = 1;
+    for (uint8_t endpoint = 0; endpoint < USB_ENDPOINT_COUNT; endpoint++) {
+        next_bank[endpoint][0] = 0;
+        next_bank[endpoint][1] = 0;
+    }
+    control_out_current_bank = 0;
+    clear_sof_recovery();
+    U1CONbits.PPBRST = 0;
     IEC5bits.USB1IE = interrupt_enabled;
 }
 
@@ -544,19 +716,25 @@ void platform_usb_unconfigure_endpoint(uint8_t endpoint) {
  */
 void platform_usb_stall(uint8_t endpoint) {
     if (endpoint < USB_ENDPOINT_COUNT) {
+        bool interrupt_enabled = IEC5bits.USB1IE != 0;
+        IEC5bits.USB1IE = 0;
         if (endpoint == 0) {
-            for (uint8_t bank = 0; bank < USB_BANK_COUNT; bank++) {
-                volatile UsbBufferDescriptor *target = descriptor(0, false, bank != 0);
-                if (!usb_buffer_descriptor_owned(target)) {
-                    arm_setup_bank(bank != 0);
-                }
-            }
+            clear_sof_recovery();
+            uint8_t output_bank = next_bank[0][0];
+            volatile UsbBufferDescriptor *output = descriptor(0, false, output_bank != 0);
+            usb_buffer_descriptor_arm(output, buffer_address(0, false, output_bank != 0),
+                                      PLATFORM_USB_PACKET_SIZE, false, true);
+            output->status =
+                USB_BUFFER_STALL | USB_BUFFER_DATA_TOGGLE_ENABLED | USB_BUFFER_OWNED_BY_USB;
+            volatile UsbBufferDescriptor *input = descriptor(0, true, next_bank[0][1] != 0);
+            input->status = USB_BUFFER_STALL | USB_BUFFER_OWNED_BY_USB;
         }
         volatile uint16_t *endpoint_control = &U1EP0 + endpoint;
         *endpoint_control |= USB_ENDPOINT_STALL;
         if (endpoint == 0) {
             U1CONbits.PKTDIS = 0;
         }
+        IEC5bits.USB1IE = interrupt_enabled;
     }
 }
 
@@ -615,6 +793,25 @@ void platform_usb_set_endpoint_halt(uint8_t endpoint_address, bool halted) {
     IEC5bits.USB1IE = interrupt_enabled;
 }
 
+#ifdef OPENTEC_SIMULATOR_TEST
+uint16_t platform_usb_test_descriptor_status(uint8_t endpoint, bool input, bool odd_bank) {
+    return endpoint < USB_ENDPOINT_COUNT ? descriptor(endpoint, input, odd_bank)->status : 0;
+}
+
+uint16_t platform_usb_test_descriptor_count(uint8_t endpoint, bool input, bool odd_bank) {
+    return endpoint < USB_ENDPOINT_COUNT ? descriptor(endpoint, input, odd_bank)->count : 0;
+}
+
+void platform_usb_test_set_descriptor(uint8_t endpoint, bool input, bool odd_bank, uint16_t status,
+                                      uint16_t count) {
+    if (endpoint < USB_ENDPOINT_COUNT) {
+        volatile UsbBufferDescriptor *target = descriptor(endpoint, input, odd_bank);
+        target->status = status;
+        target->count = count;
+    }
+}
+#endif
+
 /**
  * @brief Captures one completed USB transaction.
  *
@@ -623,8 +820,7 @@ void platform_usb_set_endpoint_halt(uint8_t endpoint_address, bool halted) {
  * a prior control stall but remains token-gated until its next stage is armed.
  *
  */
-static void handle_transaction(void) {
-    uint8_t status = U1STAT;
+static void handle_transaction(uint8_t status) {
     uint8_t endpoint = (status & USB_TRANSACTION_ENDPOINT_MASK) >> 4;
     bool input = (status & USB_TRANSACTION_INPUT) != 0;
     bool odd_bank = (status & USB_TRANSACTION_ODD_BANK) != 0;
@@ -632,6 +828,12 @@ static void handle_transaction(void) {
         return;
     }
     next_bank[endpoint][input ? 1 : 0] = odd_bank ? 0 : 1;
+    if (endpoint == 0) {
+        sof_recovery_endpoint = endpoint;
+        sof_recovery_input = input;
+        sof_recovery_frames = USB_SOF_RECOVERY_FRAME_COUNT;
+        sof_recovery_pending = true;
+    }
     volatile UsbBufferDescriptor *completed = descriptor(endpoint, input, odd_bank);
     uint8_t length = (uint8_t)usb_buffer_descriptor_count(completed);
 
@@ -640,6 +842,9 @@ static void handle_transaction(void) {
         return;
     }
 
+    if (endpoint == 0) {
+        control_out_current_bank = odd_bank;
+    }
     PlatformUsbEventType type = usb_buffer_descriptor_packet_id(completed) == USB_PACKET_ID_SETUP
                                     ? PLATFORM_USB_EVENT_SETUP
                                     : PLATFORM_USB_EVENT_OUT;
@@ -666,32 +871,74 @@ void __attribute__((interrupt, no_auto_psv)) _USB1Interrupt(void) {
         IFS5bits.USB1IF = 0;
         return;
     }
-    if (U1IRbits.URSTIF != 0) {
+    if (U1IRbits.URSTIF != 0 && (U1IE & USB_INTERRUPT_RESET) != 0) {
         reset_controller();
         push_event(PLATFORM_USB_EVENT_RESET, 0, false, 0);
-        U1IR = 0x01;
+        U1IR = USB_INTERRUPT_RESET;
     }
-    if (U1IRbits.IDLEIF != 0) {
+    if (U1IRbits.IDLEIF != 0 && (U1IE & USB_INTERRUPT_IDLE) != 0) {
         push_event(PLATFORM_USB_EVENT_SUSPEND, 0, false, 0);
-        U1IR = 0x10;
+        U1IR = USB_INTERRUPT_IDLE;
         U1OTGIRbits.ACTVIF = 1;
         U1OTGIEbits.ACTVIE = 1;
         U1PWRCbits.USUSPEND = 1;
     }
-    if (U1IRbits.UERRIF != 0) {
+    if (U1IRbits.UERRIF != 0 && (U1IE & USB_INTERRUPT_ERROR) != 0) {
         U1EIR = 0xff;
-        U1IR = 0x02;
+        U1IR = USB_INTERRUPT_ERROR;
     }
-    if (U1IRbits.SOFIF != 0) {
-        U1IR = 0x04;
+    if (U1IRbits.SOFIF != 0 && (U1IE & USB_INTERRUPT_SOF) != 0) {
+        U1IR = USB_INTERRUPT_SOF;
+        handle_start_of_frame();
     }
-    if (U1IRbits.STALLIF != 0) {
-        U1EP0bits.EPSTALL = 0;
-        U1IR = 0x80;
+    if (U1IRbits.STALLIF != 0 && (U1IE & USB_INTERRUPT_STALL) != 0) {
+        if (U1EP0bits.EPSTALL != 0) {
+            volatile UsbBufferDescriptor *output =
+                descriptor(0, false, control_out_current_bank != 0);
+            volatile UsbBufferDescriptor *input = descriptor(0, true, next_bank[0][1] != 0);
+            if (output->status == USB_BUFFER_OWNED_BY_USB &&
+                input->status == (USB_BUFFER_STALL | USB_BUFFER_OWNED_BY_USB)) {
+                output->status =
+                    USB_BUFFER_STALL | USB_BUFFER_DATA_TOGGLE_ENABLED | USB_BUFFER_OWNED_BY_USB;
+                output->count = (uint16_t)(output->count & 0x00ff);
+            }
+            U1EP0bits.EPSTALL = 0;
+        }
+        U1IR = USB_INTERRUPT_STALL;
     }
-    for (uint8_t transaction = 0; transaction < 4 && U1IRbits.TRNIF != 0; transaction++) {
-        handle_transaction();
-        U1IR = 0x08;
+    for (uint8_t transaction = 0;
+         transaction < 4 && U1IRbits.TRNIF != 0 && (U1IE & USB_INTERRUPT_TRANSACTION) != 0;
+         transaction++) {
+        handle_transaction(U1STAT);
+        U1IR = USB_INTERRUPT_TRANSACTION;
     }
     IFS5bits.USB1IF = 0;
 }
+
+#ifdef OPENTEC_SIMULATOR_TEST
+/**
+ * @brief Services a synthetic transaction-complete source for platform tests.
+ *
+ * The simulator models U1STAT and U1IR as hardware-owned registers, so tests inject their decoded
+ * values through this production-path helper while retaining the real U1IE gate.
+ *
+ * @param[in] status Synthetic U1STAT endpoint, direction, and bank value.
+ */
+void platform_usb_test_service_transaction(uint8_t status) {
+    if ((U1IE & USB_INTERRUPT_TRANSACTION) != 0) {
+        handle_transaction(status);
+    }
+}
+
+/**
+ * @brief Services a synthetic start-of-frame source for platform tests.
+ *
+ * @return None.
+ */
+void platform_usb_test_service_sof(void) {
+    if ((U1IE & USB_INTERRUPT_SOF) != 0) {
+        handle_start_of_frame();
+    }
+}
+
+#endif

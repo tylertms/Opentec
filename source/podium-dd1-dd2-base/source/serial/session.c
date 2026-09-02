@@ -23,13 +23,13 @@ void serial_session_init(SerialSession *session) {
 /**
  * @brief Queues one logical attached-device serial message.
  *
- * Copies a message of type two through five and up to 515 bytes into the session, then schedules
- * its first data packet.
+ * Copies a message of type two through five and up to SERIAL_MESSAGE_MAX_SIZE bytes into the
+ * session, then schedules its first data packet.
  *
  * @param[in,out] session Session accepting the message.
  * @param[in] type Message type from two through five.
  * @param[in] message Complete logical message payload.
- * @param[in] length Logical message length from one through 515 bytes.
+ * @param[in] length Logical message length from one through SERIAL_MESSAGE_MAX_SIZE bytes.
  * @return True when the idle transmitter accepts the message.
  */
 bool serial_session_queue(SerialSession *session, uint8_t type, const uint8_t *message,
@@ -107,9 +107,10 @@ SerialSessionResult serial_session_accept(SerialSession *session,
 
     uint8_t type = session->receive_packet.type_flags & SERIAL_PACKET_TYPE_MASK;
     if (type == 0) {
-        uint8_t sequence_delta = session->receive_packet.sequence - session->sequence;
-        session->pending_transmit = sequence_delta != 0 && sequence_delta < 0x80
-                                        ? SERIAL_TRANSMIT_RESYNCHRONIZATION
+        bool remote_node_ahead = session->sequence == UINT8_MAX
+                                     ? session->receive_packet.sequence < UINT8_MAX
+                                     : session->receive_packet.sequence > session->sequence;
+        session->pending_transmit = remote_node_ahead          ? SERIAL_TRANSMIT_RESYNCHRONIZATION
                                     : session->transmit_active ? SERIAL_TRANSMIT_DATA
                                                                : SERIAL_TRANSMIT_NONE;
         return SERIAL_SESSION_ACCEPTED;

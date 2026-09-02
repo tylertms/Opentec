@@ -51,6 +51,30 @@ void force_feedback_script_runtime_init(ForceFeedbackScriptSystem *system) {
     system->store.position_request_pending = true;
 }
 
+void force_feedback_script_runtime_reset(ForceFeedbackScriptSystem *system) {
+    if (system == NULL) {
+        return;
+    }
+
+    force_feedback_script_inputs_init(&system->inputs);
+    force_feedback_script_samples_init(&system->values.samples);
+    force_feedback_script_store_init(&system->store);
+    for (uint8_t index = 0; index < FORCE_FEEDBACK_SCRIPT_SLOT_COUNT; index++) {
+        system->values.slots[index].state = FORCE_FEEDBACK_SCRIPT_SLOT_EMPTY;
+        system->values.slots[index].average_rate = 0;
+        system->values.slots[index].delta_rate = 0;
+        system->values.slots[index].execution_count = 0;
+        system->values.slots[index].tick_snapshot = 0;
+        system->clock.slot_ticks[index] = 0;
+    }
+    system->clock.ticks = 0;
+    system->clock.active_slot = 0;
+    system->clock.script_executing = false;
+    system->values.active_slot = 0;
+    system->mode = FORCE_FEEDBACK_RUNTIME_POSITION_ONLY;
+    system->store.position_request_pending = true;
+}
+
 bool force_feedback_script_runtime_apply_packet(ForceFeedbackScriptSystem *system,
                                                 const uint8_t *packet, size_t length) {
     if (system == NULL || packet == NULL || length == 0) {

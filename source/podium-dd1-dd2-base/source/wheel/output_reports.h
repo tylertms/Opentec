@@ -38,6 +38,7 @@ typedef struct {
     uint32_t interface_mode_toggle_deadline_ms;   /**< Next interface-gate toggle deadline. */
     uint8_t report_seventeen_sequence;            /**< Next report-17 segment number. */
     uint8_t remote_telemetry_transmissions;       /**< Remaining telemetry transmissions. */
+    uint8_t shifter_state[3];                     /**< Pending type-0x16 shifter-state payload. */
     uint8_t display_command;                      /**< Pending native display command. */
     uint8_t display_notifications_pending;        /**< Pending prompt and confirmation flags. */
     uint8_t interface_presentation_command;       /**< Pending interface-presentation command. */
@@ -47,6 +48,7 @@ typedef struct {
     bool interface_mode_button_latched; /**< Whether the gate chord has been consumed. */
     bool button_illumination;           /**< Requested button-illumination state. */
     bool sent_button_illumination;      /**< Last button-illumination state sent. */
+    bool shifter_state_pending;         /**< Whether a type-0x16 shifter-state report is pending. */
 } WheelOutputReports;
 
 /**
@@ -132,6 +134,26 @@ bool wheel_output_reports_interface_mode_gate(const WheelOutputReports *reports)
  * @param[in] second Second shared payload byte.
  */
 void wheel_output_reports_queue_six(WheelOutputReports *reports, uint8_t first, uint8_t second);
+
+/**
+ * @brief Queues an H-pattern shifter-state report.
+ *
+ * Retains byte zero and the little-endian calibration stage for the next type-0x16 transfer.
+ *
+ * @param[in,out] reports Output-report state to update.
+ * @param[in] state Three-byte shifter-state payload.
+ */
+void wheel_output_reports_queue_shifter_state(WheelOutputReports *reports, const uint8_t state[3]);
+
+/**
+ * @brief Reports whether an H-pattern shifter-state report is pending.
+ *
+ * Reads the pending state without consuming the transfer.
+ *
+ * @param[in] reports Output-report state to inspect.
+ * @return True when a type-0x16 shifter-state report awaits transmission.
+ */
+bool wheel_output_reports_shifter_state_pending(const WheelOutputReports *reports);
 
 /**
  * @brief Queues a segmented attached-wheel report-seventeen payload.

@@ -43,7 +43,7 @@ static void resolve_pair(uint8_t *active_flags, uint8_t current_flags, uint8_t p
 /**
  * @brief Reports whether a wheel mode uses the extended packet policy.
  *
- * Selects authenticated mode 0x0A, status mode 0x1B, and remote mode 0x1C, which share the common
+ * Selects standard mode 0x0A, status mode 0x1B, and remote mode 0x1C, which share the common
  * payload and input processing behavior.
  *
  * @param[in] wheel_mode Selected attached-wheel mode.

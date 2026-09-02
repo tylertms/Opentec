@@ -29,7 +29,6 @@ void usb_playstation_wheel_value_set(UsbPlaystationWheelValue *value, uint8_t lo
     value->legacy_axes[0] = high;
     value->legacy_axes[1] = low;
     value->deadline_ms = now_ms + PLAYSTATION_WHEEL_VALUE_TIMEOUT_MS;
-    value->release_pending = true;
 }
 
 bool usb_playstation_wheel_value_apply(UsbPlaystationWheelValue *value,

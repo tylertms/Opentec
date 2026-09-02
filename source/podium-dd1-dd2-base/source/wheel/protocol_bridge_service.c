@@ -8,22 +8,29 @@
 
 /** @brief Internal callback endpoint, owner, and payload selectors. */
 enum {
-    WHEEL_PROTOCOL_BRIDGE_ENDPOINT_COUNT = 2,     /**< Number of callback endpoints to try. */
     WHEEL_PROTOCOL_BRIDGE_OWNER = 0x42,           /**< Command-transport owner identifier. */
     WHEEL_PROTOCOL_BRIDGE_CALLBACK_OFFSET = 0x0d, /**< Callback write offset. */
 };
-
-/** @brief Supported attached-wheel callback endpoints in retry order. */
-static const uint8_t endpoints[WHEEL_PROTOCOL_BRIDGE_ENDPOINT_COUNT] = {0x15, 0x16};
 
 /** @brief Callback token written to the selected endpoint. */
 static const uint8_t callback[] = {0xfa, 0x05};
 
 /**
+ * @brief Tests whether a report identifier was selected by startup negotiation.
+ *
+ * @param[in] report_id Candidate callback report identifier.
+ * @return True for the standard or extended negotiated identifier.
+ */
+static bool valid_report_id(uint8_t report_id) {
+    return report_id == WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD ||
+           report_id == WHEEL_PROTOCOL_BRIDGE_REPORT_ID_EXTENDED;
+}
+
+/**
  * @brief Initializes the attached-wheel protocol callback service.
  *
  * Attaches the shared command transport and leaves the callback request idle with no retained
- * acknowledgement.
+ * report identifier or acknowledgement.
  *
  * @param[out] service Protocol callback service to initialize.
  * @param[in] transport Shared attached-wheel command transport to attach.
@@ -38,18 +45,19 @@ void wheel_protocol_bridge_service_init(WheelProtocolBridgeService *service,
 /**
  * @brief Requests the attached-wheel protocol bridge callback.
  *
- * Starts with command endpoint 0x15 and retains one request while the service tries the supported
- * attached-wheel endpoints.
+ * Starts one request through the negotiated report identifier. Invalid identifiers and requests
+ * made while another callback is active are rejected.
  *
  * @param[in,out] service Idle protocol callback service accepting the request.
+ * @param[in] report_id Negotiated callback report identifier, either 0x15 or 0x16.
  * @return True when a new callback request started; otherwise false.
  */
-bool wheel_protocol_bridge_service_request(WheelProtocolBridgeService *service) {
+bool wheel_protocol_bridge_service_request(WheelProtocolBridgeService *service, uint8_t report_id) {
     if (service == NULL || service->transport == NULL ||
-        service->phase != WHEEL_PROTOCOL_BRIDGE_IDLE) {
+        service->phase != WHEEL_PROTOCOL_BRIDGE_IDLE || !valid_report_id(report_id)) {
         return false;
     }
-    service->endpoint_index = 0;
+    service->report_id = report_id;
     service->acknowledged = false;
     service->phase = WHEEL_PROTOCOL_BRIDGE_WRITE_READY;
     return true;
@@ -58,8 +66,9 @@ bool wheel_protocol_bridge_service_request(WheelProtocolBridgeService *service) 
 /**
  * @brief Advances the attached-wheel protocol bridge callback.
  *
- * Writes callback token 0x05FA at offset 0x0D through endpoint 0x15, retries endpoint 0x16 after a
- * rejected transfer, and latches successful completion for the runtime transition.
+ * Writes callback token 0x05FA at offset 0x0D through the retained negotiated report identifier and
+ * latches successful completion for the runtime transition. A rejected transfer ends the request
+ * without retrying another identifier.
  *
  * @param[in,out] service Active protocol callback service.
  */
@@ -81,10 +90,7 @@ void wheel_protocol_bridge_service_run(WheelProtocolBridgeService *service) {
             service->phase = WHEEL_PROTOCOL_BRIDGE_IDLE;
             return;
         }
-        service->endpoint_index++;
-        service->phase = service->endpoint_index < WHEEL_PROTOCOL_BRIDGE_ENDPOINT_COUNT
-                             ? WHEEL_PROTOCOL_BRIDGE_WRITE_READY
-                             : WHEEL_PROTOCOL_BRIDGE_IDLE;
+        service->phase = WHEEL_PROTOCOL_BRIDGE_IDLE;
         return;
     }
 
@@ -95,8 +101,8 @@ void wheel_protocol_bridge_service_run(WheelProtocolBridgeService *service) {
         return;
     }
     if (command_transport_queue_write_to(service->transport, WHEEL_PROTOCOL_BRIDGE_OWNER,
-                                         endpoints[service->endpoint_index],
-                                         WHEEL_PROTOCOL_BRIDGE_CALLBACK_OFFSET, callback,
+                                         service->report_id, WHEEL_PROTOCOL_BRIDGE_CALLBACK_OFFSET,
+                                         callback,
                                          sizeof(callback)) == COMMAND_TRANSPORT_COMPLETE) {
         service->phase = WHEEL_PROTOCOL_BRIDGE_WRITE_PENDING;
     }

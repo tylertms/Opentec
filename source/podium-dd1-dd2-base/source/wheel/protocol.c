@@ -92,6 +92,19 @@ static uint8_t active_report_mode(const WheelProtocol *protocol) {
 }
 
 /**
+ * @brief Reports whether the active wheel report mode marks the third display glyph.
+ *
+ * Modes two through four carry the marker in their third display glyph during both command-two
+ * response encoding and command-three scan output.
+ *
+ * @param[in] protocol Protocol state whose active report mode is inspected.
+ * @return True when the marker is required.
+ */
+bool wheel_protocol_report_mode_marker(const WheelProtocol *protocol) {
+    return protocol != NULL && report_mode_marker(active_report_mode(protocol));
+}
+
+/**
  * @brief Adds the legacy wheel-status fields used for display rotation.
  *
  * Mode 0x0E receives the signed angle in bytes 9 and 10 when profile rotation is enabled, followed
@@ -112,6 +125,15 @@ static void encode_legacy_status(const WheelProtocol *protocol, uint8_t *respons
     response[13] = 0;
     response[14] = protocol->legacy_pedal_status[0];
     response[15] = protocol->legacy_pedal_status[1];
+}
+
+static bool mode_has_input_decoder(uint8_t mode) {
+    return wheel_packet_mode_one_applies(mode) || mode == 4 || wheel_packet_adapter_applies(mode) ||
+           wheel_packet_display_applies(mode) || wheel_packet_remapped_applies(mode) ||
+           wheel_packet_alternate_applies(mode) || wheel_packet_packed_applies(mode) ||
+           wheel_packet_axis_mode_applies(mode) || wheel_packet_extended_applies(mode) ||
+           wheel_packet_metadata_applies(mode) || wheel_packet_crc_applies(mode) ||
+           mode == WHEEL_MODE_REMOTE_TUNING_LEGACY || mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED;
 }
 
 /**
@@ -143,6 +165,9 @@ static void build_selection_response(WheelProtocol *protocol) {
  * @param[in,out] protocol Active protocol state and response storage.
  */
 static void build_active_response(WheelProtocol *protocol) {
+    if (protocol->mode_input_invalid || !mode_has_input_decoder(protocol->mode)) {
+        return;
+    }
     bool remote_tuning_mode = protocol->mode == WHEEL_MODE_REMOTE_TUNING_LEGACY ||
                               protocol->mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED;
     if (!wheel_packet_mode_one_applies(protocol->mode) && protocol->mode != 4 &&
@@ -168,7 +193,7 @@ static void build_active_response(WheelProtocol *protocol) {
     bool remote_tuning_response =
         !system_status_response && !system_control_response && remote_tuning_mode &&
         wheel_packet_remote_tuning_pending(&protocol->remote_tuning_output);
-    bool third_glyph_marker = report_mode_marker(active_report_mode(protocol));
+    bool third_glyph_marker = wheel_protocol_report_mode_marker(protocol);
     uint8_t flags = protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET];
     clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
     if (system_control_response) {
@@ -189,10 +214,11 @@ static void build_active_response(WheelProtocol *protocol) {
         wheel_packet_adapter_encode(&protocol->adapter_output, &protocol->adapter, protocol->now_ms,
                                     protocol->response);
     } else if (wheel_packet_crc_applies(protocol->mode)) {
-        WheelPacketCrcOutput output = protocol->crc_output;
-        output.display.third_glyph_marker = third_glyph_marker;
-        wheel_packet_crc_encode(protocol->mode, protocol->host_capability_enabled, &output,
-                                protocol->response);
+        bool marker = protocol->crc_output.display.third_glyph_marker;
+        protocol->crc_output.display.third_glyph_marker = third_glyph_marker;
+        wheel_packet_crc_encode(protocol->mode, protocol->host_capability_enabled,
+                                &protocol->crc_output, protocol->response);
+        protocol->crc_output.display.third_glyph_marker = marker;
     } else if (protocol->mode == 4) {
         WheelPacketModeFourOutput output = protocol->mode_four_output;
         output.display.third_glyph_marker = third_glyph_marker;
@@ -235,7 +261,9 @@ static void build_active_response(WheelProtocol *protocol) {
             bool generic_output_supported =
                 protocol->mode == 0x09 || protocol->mode == 0x0a || protocol->mode == 0x0b ||
                 protocol->mode == 0x0f || protocol->mode == 0x10 || protocol->mode == 0x11 ||
-                protocol->mode == 0x17 || protocol->mode == 0x1b || protocol->mode == 0x1d;
+                protocol->mode == 0x16 || protocol->mode == 0x17 || protocol->mode == 0x1b ||
+                protocol->mode == 0x1d ||
+                wheel_output_reports_shifter_state_pending(&protocol->output_reports);
             bool report_encoded =
                 generic_output_supported &&
                 wheel_output_reports_encode_next(&protocol->output_reports, protocol->mode,
@@ -602,6 +630,11 @@ static bool common_buttons_acknowledgement_input_active(const WheelPacketCommonI
  */
 static void capture_request(WheelProtocol *protocol,
                             const uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE]) {
+    if (protocol->mode_input_invalid || !mode_has_input_decoder(protocol->mode)) {
+        protocol->request_ready = false;
+        protocol->acknowledgement_input_active = false;
+        return;
+    }
     if (protocol->mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED &&
         request[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE_REPLY) {
         for (uint8_t index = 0; index < sizeof(protocol->remote_tuning_controls); index++) {
@@ -815,7 +848,7 @@ static void capture_request(WheelProtocol *protocol,
                                 protocol->common_input.report_mode,
                                 protocol->common_input.report_capabilities);
         accumulate_axis_mode_motion(protocol);
-        wheel_packet_common_filter(&protocol->common_filter, &protocol->common_input);
+        wheel_packet_common_filter(&protocol->axis_mode_filter, &protocol->common_input);
         wheel_packet_common_expand_packed_controls(&protocol->common_input);
         wheel_axis_override_process_axis_mode(
             &protocol->axis_override_processor, protocol->common_input.controls[6],
@@ -840,8 +873,10 @@ static void capture_request(WheelProtocol *protocol,
         protocol->capabilities.input_available |=
             protocol->common_input.controls[2] != 0 || protocol->common_input.controls[3] != 0;
         accumulate_extended_motion(protocol);
-        wheel_packet_common_filter(&protocol->common_filter, &protocol->common_input);
-        wheel_packet_extended_swap_buttons(&protocol->common_input);
+        wheel_packet_common_filter(&protocol->extended_filter, &protocol->common_input);
+        if (protocol->mode != WHEEL_PACKET_EXTENDED_MODE_REMOTE) {
+            wheel_packet_extended_swap_buttons(&protocol->common_input);
+        }
         wheel_packet_common_expand_packed_controls(&protocol->common_input);
         wheel_packet_common_latch_buttons(&protocol->common_input, protocol->button_latch_enabled,
                                           protocol->profile_transition_pending);
@@ -920,35 +955,12 @@ static void capture_request(WheelProtocol *protocol,
 }
 
 /**
- * @brief Reports whether an attached-wheel mode is supported.
- *
- * Rejects unknown or out-of-range modes and the seven reference mode values that intentionally
- * enter the unsupported protocol phase.
- *
- * @param[in] mode Requested attached-wheel mode.
- * @return True when the mode can enter authentication or active traffic.
- */
-static bool mode_supported(uint8_t mode) {
-    switch (mode) {
-    case 0x05:
-    case 0x07:
-    case 0x08:
-    case 0x0d:
-    case 0x18:
-    case 0x19:
-    case 0x1a:
-        return false;
-    default:
-        return mode != WHEEL_MODE_UNKNOWN && mode <= WHEEL_MODE_MAXIMUM;
-    }
-}
-
-/**
  * @brief Selects the attached-wheel packet mode.
  *
- * Recognizes the two scan commands and command A5. Supported A5 modes enter authentication or
- * active traffic, unsupported mode values enter the unsupported phase, and recognized selections
- * produce an acknowledgement response.
+ * Recognizes the two scan commands and command A5. Every A5 mode through the official maximum
+ * enters authentication or active traffic; modes without an input decoder use a blank active
+ * response. Out-of-range A5 values remain active with an invalid-command latch. Recognized
+ * selections produce an acknowledgement response.
  *
  * @param[in,out] protocol Wheel protocol state to update.
  * @param[in] request Complete attached-wheel selection request.
@@ -958,18 +970,30 @@ static void select_mode(WheelProtocol *protocol,
     switch (request[0]) {
     case WHEEL_PROTOCOL_COMMAND_SCAN_PRIMARY:
         protocol->mode = WHEEL_MODE_SCAN_PRIMARY;
+        protocol->mode_input_invalid = false;
+        protocol->command_invalid = false;
+        protocol->selection_recovery_pending = false;
         protocol->phase = WHEEL_PROTOCOL_SCANNING_PRIMARY;
         break;
     case WHEEL_PROTOCOL_COMMAND_SCAN_SECONDARY:
         protocol->mode = WHEEL_MODE_SCAN_SECONDARY;
+        protocol->mode_input_invalid = false;
+        protocol->command_invalid = false;
+        protocol->selection_recovery_pending = false;
         protocol->phase = WHEEL_PROTOCOL_SCANNING_SECONDARY;
         break;
     case WHEEL_PROTOCOL_COMMAND_SELECT_MODE:
-        if (!mode_supported(request[1])) {
-            protocol->phase = WHEEL_PROTOCOL_UNSUPPORTED;
+        if (request[1] > WHEEL_MODE_MAXIMUM) {
+            protocol->mode_input_invalid = true;
+            protocol->command_invalid = true;
+            protocol->selection_recovery_pending = false;
+            protocol->phase = WHEEL_PROTOCOL_ACTIVE;
             break;
         }
         protocol->mode = request[1];
+        protocol->mode_input_invalid = !mode_has_input_decoder(protocol->mode);
+        protocol->command_invalid = protocol->mode_input_invalid;
+        protocol->selection_recovery_pending = false;
         if (wheel_authentication_required(protocol->mode)) {
             wheel_authentication_init(&protocol->authentication, protocol->mode);
             protocol->phase = WHEEL_PROTOCOL_AUTHENTICATING;
@@ -978,6 +1002,7 @@ static void select_mode(WheelProtocol *protocol,
         }
         break;
     default:
+        protocol->selection_recovery_pending = true;
         return;
     }
     build_selection_response(protocol);
@@ -1048,6 +1073,8 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     wheel_packet_packed_filter_init(&protocol->packed_filter);
     protocol->packed_input = empty_packed_input;
     wheel_packet_common_filter_init(&protocol->common_filter);
+    wheel_packet_common_filter_init(&protocol->axis_mode_filter);
+    wheel_packet_common_filter_init(&protocol->extended_filter);
     protocol->common_input = empty_common_input;
     wheel_packet_extended_pulse_init(&protocol->extended_pulse_state);
     wheel_packet_crc_filter_init(&protocol->crc_filter);
@@ -1068,8 +1095,11 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     protocol->configured_axis_override_mode = WHEEL_AXIS_OVERRIDE_MODE_NONE;
     protocol->paddle_bite_point_percent = 100;
     protocol->system_status_code = 0;
+    clear(protocol->legacy_pedal_status, sizeof(protocol->legacy_pedal_status));
+    clear(protocol->remote_tuning_controls, sizeof(protocol->remote_tuning_controls));
     protocol->display_rotation_angle = 0;
     protocol->button_latch_enabled = false;
+    protocol->display_character_mode = false;
     protocol->display_rotation_enabled = false;
     protocol->host_capability_enabled = false;
     protocol->profile_transition_pending = false;
@@ -1077,6 +1107,8 @@ void wheel_protocol_init(WheelProtocol *protocol) {
     protocol->request_ready = false;
     protocol->request_changed = false;
     protocol->command_invalid = false;
+    protocol->mode_input_invalid = false;
+    protocol->selection_recovery_pending = false;
     protocol->axis_report_enabled_latched = false;
     protocol->extended_primary_released = true;
     protocol->extended_secondary_released = true;
@@ -1332,8 +1364,11 @@ void wheel_protocol_set_display_character_mode(WheelProtocol *protocol, bool ena
  * @brief Applies one attached-wheel protocol request.
  *
  * Advances the ready-and-acknowledge handshake, selects or authenticates the requested packet
- * family, captures valid active input, and builds the corresponding response. Scan modes remain
- * under the separate scan service.
+ * family, captures valid active input, and builds the corresponding response. Every in-range A5
+ * mode byte is accepted; a mode without a decoder remains active with a blank response. An
+ * out-of-range A5 value remains active with the invalid-command latch, while an unrecognized
+ * selection is retained for the service deadline recovery path. Scan modes remain under the
+ * separate scan service.
  *
  * @param[in,out] protocol Wheel protocol state and response storage.
  * @param[in] request Complete 57-byte attached-wheel request.
@@ -1357,12 +1392,19 @@ void wheel_protocol_accept(WheelProtocol *protocol,
         protocol->phase = WHEEL_PROTOCOL_ACKNOWLEDGING;
         return;
     case WHEEL_PROTOCOL_ACKNOWLEDGING:
-        protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] &=
-            (uint8_t)~WHEEL_PROTOCOL_RESPONSE_ACKNOWLEDGED;
-        protocol->phase = ready ? WHEEL_PROTOCOL_SELECTING : WHEEL_PROTOCOL_WAITING;
+        if (!ready) {
+            protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] &=
+                (uint8_t)~WHEEL_PROTOCOL_RESPONSE_ACKNOWLEDGED;
+            protocol->phase = WHEEL_PROTOCOL_WAITING;
+        } else {
+            protocol->phase = WHEEL_PROTOCOL_SELECTING;
+        }
         return;
     case WHEEL_PROTOCOL_SELECTING:
         if (!ready) {
+            protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] &=
+                (uint8_t)~WHEEL_PROTOCOL_RESPONSE_ACKNOWLEDGED;
+            protocol->selection_recovery_pending = false;
             protocol->phase = WHEEL_PROTOCOL_WAITING;
             return;
         }
@@ -1383,7 +1425,8 @@ void wheel_protocol_accept(WheelProtocol *protocol,
         if (!ready) {
             return;
         }
-        protocol->command_invalid = !wheel_protocol_message_valid(request);
+        protocol->command_invalid =
+            protocol->mode_input_invalid || !wheel_protocol_message_valid(request);
         if (!protocol->command_invalid) {
             if (active_command_valid(protocol, request[0])) {
                 capture_request(protocol, request);

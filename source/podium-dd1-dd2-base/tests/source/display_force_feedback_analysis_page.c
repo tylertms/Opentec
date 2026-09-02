@@ -51,7 +51,7 @@ static void retains_the_latest_two_hundred_samples(void) {
 
     assert(page.sample_count == DISPLAY_FORCE_FEEDBACK_ANALYSIS_SAMPLE_COUNT);
     assert(page.next_sample == 1);
-    assert(page.samples[0] == 99);
+    assert(page.samples[0] == 38);
     display_force_feedback_analysis_page_open(&page, 6000);
     assert(page.sample_count == DISPLAY_FORCE_FEEDBACK_ANALYSIS_SAMPLE_COUNT);
     assert(page.next_sample == 1);
@@ -63,20 +63,27 @@ static void renders_the_title_and_analysis_content(void) {
     display_force_feedback_analysis_page_open(&page, 0);
 
     display_force_feedback_analysis_page_render_title(framebuffer);
-    assert(has_lit_pixel(framebuffer, 0, DISPLAY_FRAMEBUFFER_WIDTH - 1, 28, 34));
-    assert(pixel(framebuffer, 4, 62) == 0);
+    assert(has_lit_pixel(framebuffer, 0, DISPLAY_FRAMEBUFFER_WIDTH - 1, 12, 18));
+    assert(pixel(framebuffer, 0, 12) != 0);
+    assert(pixel(framebuffer, 0, 22) == 0);
 
     assert(display_force_feedback_analysis_page_update(&page, 25, 0, 0x8000));
     display_force_feedback_analysis_page_render(framebuffer, &page);
-    assert(has_lit_pixel(framebuffer, 4, 168, 2, 8));
+    assert(has_lit_pixel(framebuffer, 4, 168, 12, 21));
+    assert(pixel(framebuffer, 204, 62) == 15);
+    assert(pixel(framebuffer, 205, 62) == 0);
     assert(pixel(framebuffer, 5, 62) == 15);
-    assert(pixel(framebuffer, 215, 61) == 6);
+    assert(pixel(framebuffer, 5, 61) == 15);
+    assert(pixel(framebuffer, 210, 22) == 10);
+    assert(pixel(framebuffer, 215, 42) == 6);
+    assert(pixel(framebuffer, 225, 22) == 10);
+    assert(pixel(framebuffer, 225, 61) == 10);
     assert(pixel(framebuffer, 230, 61) == 0);
 
     assert(display_force_feedback_analysis_page_update(&page, 50, 1, 0x8000));
     display_force_feedback_analysis_page_render(framebuffer, &page);
-    assert(pixel(framebuffer, 215, 61) == 0);
-    assert(pixel(framebuffer, 230, 61) == 6);
+    assert(pixel(framebuffer, 215, 42) == 0);
+    assert(pixel(framebuffer, 230, 42) == 6);
 }
 
 int main(void) {

@@ -54,13 +54,13 @@ void serial_service_init(SerialService *service) {
 /**
  * @brief Starts one logical attached-device request.
  *
- * Queues a type-two through type-five message of up to 515 bytes on the shared session and
- * immediately starts its first fixed packet exchange.
+ * Queues a type-two through type-five message of up to SERIAL_MESSAGE_MAX_SIZE bytes on the
+ * shared session and immediately starts its first fixed packet exchange.
  *
  * @param[in,out] service Idle serial service accepting the request.
  * @param[in] type Logical message type from two through five.
  * @param[in] message Complete request message.
- * @param[in] length Request length from one through 515 bytes.
+ * @param[in] length Request length from one through SERIAL_MESSAGE_MAX_SIZE bytes.
  * @param[in] now_ms Current monotonic time in milliseconds.
  * @return True when the request and first packet exchange start.
  */

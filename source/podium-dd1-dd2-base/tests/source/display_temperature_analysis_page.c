@@ -61,14 +61,21 @@ static void renders_title_charts_fan_and_power(void) {
     display_temperature_analysis_page_open(&page, 0);
 
     display_temperature_analysis_page_render_title(framebuffer);
-    assert(has_lit_pixel(framebuffer, 0, DISPLAY_FRAMEBUFFER_WIDTH - 1, 28, 34));
+    assert(has_lit_pixel(framebuffer, 0, DISPLAY_FRAMEBUFFER_WIDTH - 1, 12, 18));
+    assert(pixel(framebuffer, 0, 12) != 0);
+    assert(pixel(framebuffer, 0, 22) == 0);
 
     assert(display_temperature_analysis_page_update(&page, 2250, temperatures, 1234, 75));
     display_temperature_analysis_page_render(framebuffer, &page);
     assert(pixel(framebuffer, 25, 58) == 15);
+    assert(pixel(framebuffer, 65, 58) == 0);
     assert(pixel(framebuffer, 199, 13) == 15);
-    assert(pixel(framebuffer, 199, 61) == 15);
-    assert(pixel(framebuffer, 64, 28) == 8);
+    assert(pixel(framebuffer, 199, 40) == 15);
+    assert(pixel(framebuffer, 199, 41) == 0);
+    assert(pixel(framebuffer, 199, 60) == 15);
+    assert(pixel(framebuffer, 199, 61) == 0);
+    assert(pixel(framebuffer, 26, 57) == 8);
+    assert(pixel(framebuffer, 64, 28) == 0);
     assert(has_lit_pixel(framebuffer, 2, 190, 13, 21));
     assert(has_lit_pixel(framebuffer, 200, 250, 13, 60));
 }

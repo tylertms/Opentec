@@ -37,11 +37,11 @@ void usb_transfer_request_init(UsbTransferRequest *request) { *request = (UsbTra
 bool usb_transfer_request_apply(UsbTransferRequest *request, const UsbVendorCommand *command) {
     if (request == NULL || command == NULL || command->arguments == NULL || command->length == 0 ||
         (command->kind != USB_VENDOR_COMMAND_TUNING_MENU &&
-         command->kind != USB_VENDOR_COMMAND_TRANSFER_REQUEST)) {
+         command->kind != USB_VENDOR_COMMAND_WHEEL_TRANSFER_PAYLOAD)) {
         return false;
     }
 
-    bool direct = command->kind == USB_VENDOR_COMMAND_TRANSFER_REQUEST;
+    bool direct = command->kind == USB_VENDOR_COMMAND_WHEEL_TRANSFER_PAYLOAD;
     uint8_t type = direct ? command->opcode : command->arguments[0];
     if (type != TRANSFER_REQUEST_SINGLE && type != TRANSFER_REQUEST_FIRST &&
         type != TRANSFER_REQUEST_FINAL) {

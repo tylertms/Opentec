@@ -8,60 +8,73 @@
 
 /** @brief Defines the remote mailbox owner, record sizes, and control flags. */
 enum {
-    MOTOR_COMMAND_MAILBOX_OWNER = 0x20, /**< Owner identifier used for mailbox transport requests. */
+    MOTOR_COMMAND_MAILBOX_OWNER =
+        0x20, /**< Owner identifier used for mailbox transport requests. */
     MOTOR_COMMAND_MAILBOX_CONTROL_SIZE = 4, /**< Size of the remote mailbox control record. */
-    MOTOR_COMMAND_MAILBOX_LENGTH_SIZE = 2, /**< Size of the remote mailbox length record. */
-    MOTOR_COMMAND_MAILBOX_STATUS_SIZE = 4, /**< Size of the remote mailbox status record. */
-    MOTOR_COMMAND_MAILBOX_CONTROL_PAYLOAD_AVAILABLE = 0x40, /**< Control flag indicating a packet is available to read. */
-    MOTOR_COMMAND_MAILBOX_CONTROL_STATUS_MASK = 0xc0, /**< Mask selecting the control status bits. */
-    MOTOR_COMMAND_MAILBOX_CONTROL_STATUS_RETRY = 0x80, /**< Control status requesting retry handling. */
+    MOTOR_COMMAND_MAILBOX_LENGTH_SIZE = 2,  /**< Size of the remote mailbox length record. */
+    MOTOR_COMMAND_MAILBOX_STATUS_SIZE = 4,  /**< Size of the remote mailbox status record. */
+    MOTOR_COMMAND_MAILBOX_CONTROL_PAYLOAD_AVAILABLE =
+        0x40, /**< Control flag indicating a packet is available to read. */
+    MOTOR_COMMAND_MAILBOX_CONTROL_STATUS_MASK =
+        0xc0, /**< Mask selecting the control status bits. */
+    MOTOR_COMMAND_MAILBOX_CONTROL_STATUS_RETRY =
+        0x80, /**< Control status requesting retry handling. */
 };
 
 /** @brief Decoded fields from the remote mailbox control record. */
 typedef struct {
     uint16_t payload_length; /**< Big-endian packet length reported by the mailbox. */
-    uint8_t flags; /**< Availability and status flags reported by the mailbox. */
-    uint8_t reserved; /**< Reserved control-record byte. */
+    uint8_t flags;           /**< Availability and status flags reported by the mailbox. */
+    uint8_t reserved;        /**< Reserved control-record byte. */
 } MotorCommandMailboxControl;
 
 /** @brief Identifies the current phase of a remote mailbox exchange. */
 typedef enum {
     MOTOR_COMMAND_MAILBOX_EXCHANGE_CONTROL_QUEUE, /**< A control-record read must be queued. */
-    MOTOR_COMMAND_MAILBOX_EXCHANGE_CONTROL_WAIT, /**< A queued control-record read is in flight. */
-    MOTOR_COMMAND_MAILBOX_EXCHANGE_PAYLOAD_READ_WAIT, /**< A mailbox payload read is in flight. */
+    MOTOR_COMMAND_MAILBOX_EXCHANGE_CONTROL_WAIT,  /**< A queued control-record read is in flight. */
+    MOTOR_COMMAND_MAILBOX_EXCHANGE_PAYLOAD_READ_WAIT,  /**< A mailbox payload read is in flight. */
     MOTOR_COMMAND_MAILBOX_EXCHANGE_PAYLOAD_WRITE_WAIT, /**< A mailbox payload write is in flight. */
-    MOTOR_COMMAND_MAILBOX_EXCHANGE_STATUS_WAIT, /**< A mailbox status read is in flight. */
+    MOTOR_COMMAND_MAILBOX_EXCHANGE_STATUS_WAIT,        /**< A mailbox status read is in flight. */
 } MotorCommandMailboxExchangePhase;
 
-/** @brief Reports progress or failure from a remote mailbox exchange. */
+/** @brief Reports progress, recoverable refusal, or failure from a remote mailbox exchange. */
 typedef enum {
-    MOTOR_COMMAND_MAILBOX_EXCHANGE_NONE, /**< No exchange event was produced. */
-    MOTOR_COMMAND_MAILBOX_EXCHANGE_PACKET_READ, /**< A packet was read from the mailbox. */
-    MOTOR_COMMAND_MAILBOX_EXCHANGE_PACKET_WRITTEN, /**< A queued packet was written to the mailbox. */
+    MOTOR_COMMAND_MAILBOX_EXCHANGE_NONE,           /**< No exchange event was produced. */
+    MOTOR_COMMAND_MAILBOX_EXCHANGE_PACKET_READ,    /**< A packet was read from the mailbox. */
+    MOTOR_COMMAND_MAILBOX_EXCHANGE_PACKET_WRITTEN, /**< A queued packet was written to the mailbox.
+                                                    */
     MOTOR_COMMAND_MAILBOX_EXCHANGE_STATUS_READ, /**< A status record was read from the mailbox. */
-    MOTOR_COMMAND_MAILBOX_EXCHANGE_FAILED, /**< The exchange failed to advance or queue a transfer. */
+    MOTOR_COMMAND_MAILBOX_EXCHANGE_TRANSFER_FAILED, /**< A lower-layer transfer was refused. */
+    MOTOR_COMMAND_MAILBOX_EXCHANGE_RECOVERED,       /**< Sentinel recovery reset exchange state. */
+    MOTOR_COMMAND_MAILBOX_EXCHANGE_FAILED, /**< The exchange failed to advance or queue a transfer.
+                                            */
 } MotorCommandMailboxExchangeEvent;
 
 /** @brief Reports one result produced by a mailbox exchange step. */
 typedef struct {
     MotorCommandMailboxExchangeEvent event; /**< Exchange event produced by the step. */
-    const uint8_t *packet; /**< Packet storage when event is PACKET_READ. */
-    uint16_t packet_length; /**< Number of bytes available at packet. */
+    const uint8_t *packet;                  /**< Packet storage when event is PACKET_READ. */
+    uint16_t packet_length;                 /**< Number of bytes available at packet. */
     uint32_t status; /**< Big-endian mailbox status when event is STATUS_READ. */
+    MotorCommandMailboxExchangePhase failed_phase; /**< Phase active when a transfer was refused. */
+    CommandTransportResult transport_result; /**< Lower transport result for a refused transfer. */
 } MotorCommandMailboxExchangeResult;
 
 /** @brief Maintains state for exchanging packets through the remote motor mailbox. */
 typedef struct {
-    uint8_t control_record[MOTOR_COMMAND_MAILBOX_CONTROL_SIZE]; /**< Raw control record read from the mailbox. */
-    uint8_t status_record[MOTOR_COMMAND_MAILBOX_STATUS_SIZE]; /**< Raw status record read from the mailbox. */
-    MotorCommandMailboxControl control; /**< Decoded control record. */
-    uint8_t *read_buffer; /**< Caller-owned destination for mailbox packets. */
+    uint8_t control_record[MOTOR_COMMAND_MAILBOX_CONTROL_SIZE]; /**< Raw control record read from
+                                                                   the mailbox. */
+    uint8_t status_record[MOTOR_COMMAND_MAILBOX_STATUS_SIZE];   /**< Raw status record read from the
+                                                                   mailbox. */
+    MotorCommandMailboxControl control;                         /**< Decoded control record. */
+    uint8_t *read_buffer;        /**< Caller-owned destination for mailbox packets. */
     const uint8_t *write_packet; /**< Caller-owned packet retained for mailbox writing. */
-    uint16_t read_capacity; /**< Capacity of read_buffer in bytes. */
-    uint16_t read_length; /**< Length of the packet currently being read. */
-    uint16_t write_length; /**< Length of write_packet in bytes. */
+    uint16_t read_capacity;      /**< Capacity of read_buffer in bytes. */
+    uint16_t read_length;        /**< Length of the packet currently being read. */
+    uint16_t write_length;       /**< Length of write_packet in bytes. */
     MotorCommandMailboxExchangePhase phase; /**< Current mailbox exchange phase. */
-    uint8_t status_retry_count; /**< Consecutive retry-status count. */
+    uint8_t status_retry_count;             /**< Consecutive retry-status count. */
+    uint8_t control_retry_count;            /**< Consecutive reserved-control sentinel count. */
 } MotorCommandMailboxExchange;
 
 /**
@@ -183,7 +196,9 @@ bool motor_command_mailbox_exchange_queue(MotorCommandMailboxExchange *exchange,
  * @brief Advances a motor-command mailbox exchange.
  *
  * Polls the control record, prioritizes available packets, reads status after consecutive retry
- * indications, and writes a queued packet when the mailbox is available.
+ * indications, retries transient lower-layer refusals, recognizes the reserved sentinel recovery
+ * threshold, and writes a queued packet when the mailbox is available. A TOO_LONG refusal remains
+ * terminal because the request cannot be represented by the physical transport.
  *
  * @param[in,out] exchange Exchange state to advance.
  * @param[in,out] transport Shared owner-0x20 command transport.

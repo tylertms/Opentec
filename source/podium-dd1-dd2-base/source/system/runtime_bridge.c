@@ -71,7 +71,8 @@ void runtime_bridge_init(RuntimeBridge *bridge) {
  * @brief Starts a requested runtime bridge transition.
  *
  * Selects the prerequisite path for auxiliary, status, USB, or protocol bridge modes and emits
- * the initial operation flags when the bridge is idle.
+ * the initial operation flags when the bridge is idle. Protocol bridge failure arms the internal
+ * mode-six recovery probe after the protocol command callback completes or times out.
  *
  * @param[in,out] bridge Idle runtime bridge accepting the transition.
  * @param[in] mode Requested runtime service mode.
@@ -84,6 +85,7 @@ uint16_t runtime_bridge_start(RuntimeBridge *bridge, UsbRuntimeMode mode) {
 
     bridge->mode = mode;
     bridge->startup_recovery = false;
+    bridge->protocol_recovery_pending = false;
     if (mode == USB_RUNTIME_MODE_AUXILIARY || mode == USB_RUNTIME_MODE_AUXILIARY_RECOVERY) {
         bridge->phase = RUNTIME_BRIDGE_WAIT_AUXILIARY;
         return RUNTIME_BRIDGE_ACTION_REQUEST_AUXILIARY_HANDSHAKE;
@@ -120,6 +122,7 @@ uint16_t runtime_bridge_start_auxiliary_recovery(RuntimeBridge *bridge, uint32_t
     }
     bridge->mode = USB_RUNTIME_MODE_AUXILIARY_RECOVERY;
     bridge->startup_recovery = true;
+    bridge->protocol_recovery_pending = false;
     return prepare_transfer(bridge, now_ms, RUNTIME_BRIDGE_USB_START_DELAY_MS,
                             RUNTIME_BRIDGE_STANDARD_SETTLE_MS);
 }
@@ -140,6 +143,7 @@ uint16_t runtime_bridge_start_status_recovery(RuntimeBridge *bridge) {
     }
     bridge->mode = USB_RUNTIME_MODE_STATUS_BRIDGE;
     bridge->phase = RUNTIME_BRIDGE_ACTIVE;
+    bridge->protocol_recovery_pending = false;
     return RUNTIME_BRIDGE_ACTION_INITIALIZE_DIRECT_TRANSFER |
            RUNTIME_BRIDGE_ACTION_ACTIVATE_UPDATER_USB;
 }
@@ -148,8 +152,9 @@ uint16_t runtime_bridge_start_status_recovery(RuntimeBridge *bridge) {
  * @brief Advances a runtime bridge transition.
  *
  * Resolves the selected prerequisite, enforces the 10, 100, 300, 500, and 1000 millisecond
- * transition deadlines, handles the protocol fallback and USB retry paths, and emits updater
- * activation or service actions when due.
+ * transition deadlines, handles the protocol fallback and USB retry paths, switches the delayed
+ * protocol recovery probe through internal mode six, and emits updater activation or service
+ * actions when due.
  *
  * @param[in,out] bridge Runtime bridge state to advance.
  * @param[in] input Current time and prerequisite completion signals.
@@ -193,6 +198,7 @@ uint16_t runtime_bridge_step(RuntimeBridge *bridge, const RuntimeBridgeInput *in
         if (input->transfer_status == RUNTIME_BRIDGE_TRANSFER_FAILED) {
             bridge->settle_deadline_ms = input->now_ms + RUNTIME_BRIDGE_PROTOCOL_WAIT_MS;
             bridge->phase = RUNTIME_BRIDGE_WAIT_PROTOCOL_COMMAND;
+            bridge->protocol_recovery_pending = true;
             return RUNTIME_BRIDGE_ACTION_DISABLE_TRANSFER_TIMER |
                    RUNTIME_BRIDGE_ACTION_REQUEST_PROTOCOL_COMMAND;
         }
@@ -211,6 +217,12 @@ uint16_t runtime_bridge_step(RuntimeBridge *bridge, const RuntimeBridgeInput *in
             return RUNTIME_BRIDGE_ACTION_NONE;
         }
         bridge->phase = RUNTIME_BRIDGE_WAIT_TRANSFER;
+        if (bridge->protocol_recovery_pending) {
+            bridge->protocol_recovery_pending = false;
+            bridge->mode = USB_RUNTIME_MODE_PROTOCOL_RECOVERY;
+            return RUNTIME_BRIDGE_ACTION_SELECT_PROTOCOL_RECOVERY |
+                   RUNTIME_BRIDGE_ACTION_START_TRANSFER;
+        }
         return RUNTIME_BRIDGE_ACTION_START_TRANSFER |
                (bridge->mode == USB_RUNTIME_MODE_STATUS_BRIDGE
                     ? RUNTIME_BRIDGE_ACTION_ENABLE_TRANSFER_TIMER
@@ -219,11 +231,17 @@ uint16_t runtime_bridge_step(RuntimeBridge *bridge, const RuntimeBridgeInput *in
     if (bridge->phase == RUNTIME_BRIDGE_WAIT_TRANSFER) {
         if (input->transfer_status == RUNTIME_BRIDGE_TRANSFER_COMPLETE) {
             bridge->phase = RUNTIME_BRIDGE_WAIT_SETTLE;
+            if (bridge->mode == USB_RUNTIME_MODE_PROTOCOL_RECOVERY) {
+                bridge->mode = USB_RUNTIME_MODE_USB_BRIDGE;
+                return RUNTIME_BRIDGE_ACTION_SELECT_USB_BRIDGE;
+            }
         } else if (input->transfer_status == RUNTIME_BRIDGE_TRANSFER_FAILED &&
-                   bridge->startup_recovery) {
+                   (bridge->startup_recovery ||
+                    bridge->mode == USB_RUNTIME_MODE_PROTOCOL_RECOVERY)) {
             bridge->mode = USB_RUNTIME_MODE_NORMAL;
             bridge->phase = RUNTIME_BRIDGE_IDLE;
             bridge->startup_recovery = false;
+            bridge->protocol_recovery_pending = false;
             return RUNTIME_BRIDGE_ACTION_DISABLE_TRANSFER_TIMER |
                    RUNTIME_BRIDGE_ACTION_RESTORE_NORMAL_USB;
         } else if (bridge->mode == USB_RUNTIME_MODE_USB_BRIDGE &&

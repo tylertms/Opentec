@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 
+#include "display/bitmap.h"
 #include "display/framebuffer.h"
 
 /**
@@ -10,15 +11,15 @@
  * The packed bitmap stores two four-bit grayscale pixels per byte for each icon row.
  */
 enum {
-    HIGH_TORQUE_ICON_WIDTH = 11,    /**< Icon width in pixels. */
-    HIGH_TORQUE_ICON_HEIGHT = 10,   /**< Icon height in pixels. */
-    HIGH_TORQUE_ICON_ROW_BYTES = 6, /**< Packed bytes in one icon row. */
+    HIGH_TORQUE_ICON_WIDTH = 11,  /**< Icon width in pixels. */
+    HIGH_TORQUE_ICON_HEIGHT = 10, /**< Icon height in pixels. */
 };
 
 /**
  * @brief Stores the packed high-torque icon bitmap.
  *
- * Pixels are arranged in row-major order with the high nibble preceding the low nibble.
+ * Pixels are arranged in row-major order with the high nibble preceding the low nibble, matching
+ * the official bitmap at binary address 0xa930.
  */
 static const uint8_t high_torque_icon[] = {
     0x00, 0x00, 0x3f, 0x30, 0x00, 0x00, 0x00, 0x01, 0xef, 0xe1, 0x00, 0x00, 0x00, 0x0c, 0xff,
@@ -35,14 +36,10 @@ static const uint8_t high_torque_icon[] = {
  * @param[in,out] framebuffer Complete local-display framebuffer.
  * @param[in] x Left icon coordinate.
  * @param[in] y Top icon coordinate.
+ * @param[in] inverted Whether to invert each icon pixel.
  */
-void display_high_torque_icon_draw(DisplayFramebuffer framebuffer, uint16_t x, uint16_t y) {
-    for (uint16_t row = 0; row < HIGH_TORQUE_ICON_HEIGHT; row++) {
-        for (uint16_t column = 0; column < HIGH_TORQUE_ICON_WIDTH; column++) {
-            uint8_t packed = high_torque_icon[row * HIGH_TORQUE_ICON_ROW_BYTES + column / 2];
-            uint8_t color = (column & 1u) == 0 ? packed >> 4 : packed & 0x0fu;
-            display_framebuffer_set_pixel(framebuffer, (uint16_t)(x + column), (uint16_t)(y + row),
-                                          color);
-        }
-    }
+void display_high_torque_icon_draw(DisplayFramebuffer framebuffer, uint16_t x, uint16_t y,
+                                   bool inverted) {
+    display_bitmap_draw(framebuffer, high_torque_icon, x, y, HIGH_TORQUE_ICON_WIDTH,
+                        HIGH_TORQUE_ICON_HEIGHT, inverted, 0x0f);
 }

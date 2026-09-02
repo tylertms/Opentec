@@ -30,7 +30,8 @@ typedef struct {
  * @brief Decodes an Xbox GIP application command.
  *
  * Accepts command packet 0x0A with supported control, script, and extended-status selectors and
- * the supported group-0x20 host-capability and transfer-status selectors.
+ * the supported group-0x20 report-state and transfer-status selectors. Script sample selectors use
+ * the complete little-endian parameter; the script-slot selector uses only its low parameter byte.
  *
  * @param[in] packet Received Xbox GIP endpoint packet.
  * @param[in] length Number of bytes available in @p packet.

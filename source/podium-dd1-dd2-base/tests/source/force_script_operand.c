@@ -137,7 +137,7 @@ static void write_operand(ForceFeedbackScriptRuntime *runtime, const uint8_t *sc
 
 static void test_writes_runtime_banks(void) {
     ForceFeedbackScriptRuntime runtime = prepare_runtime();
-    runtime.variables[1] = 90;
+    runtime.variables[1] = UINT32_C(0xabcd0100);
     runtime.slots[3].values[2] = 91;
 
     const uint8_t direct_low[] = {0x14, 7};
@@ -164,7 +164,7 @@ static void test_writes_runtime_banks(void) {
     assert(runtime.samples.values[7] == 1);
     assert(runtime.samples.values[264] == 2);
     assert(runtime.variables[7] == 3);
-    assert(runtime.samples.values[90] == 4);
+    assert(runtime.samples.values[256] == 4);
     assert(runtime.slots[3].values[1] == 5);
     assert(runtime.slots[3].values[2] == 91);
     assert(runtime.samples.values[91] == 6);
@@ -234,6 +234,16 @@ static void test_rejects_invalid_or_incomplete_operands(void) {
     const uint8_t slot[] = {0x40};
     read = force_feedback_script_operand_read(&runtime, slot, sizeof(slot), cursor);
     assert(!read.valid);
+
+    runtime.active_slot = 0;
+    runtime.variables[0] = UINT32_C(0x12340200);
+    const uint8_t invalid_variable_sample[] = {0x30};
+    ForceFeedbackScriptRuntime before = runtime;
+    write = force_feedback_script_operand_write(&runtime, invalid_variable_sample,
+                                                sizeof(invalid_variable_sample), 0, 1, true);
+    assert(!write.valid);
+    assert(write.cursor == sizeof(invalid_variable_sample));
+    assert(memcmp(&runtime, &before, sizeof(runtime)) == 0);
 }
 
 int main(void) {

@@ -54,6 +54,23 @@ static void select_entry(const uint8_t table[][USB_UPDATER_DEVICE_IDENTITY_SIZE 
 }
 
 /**
+ * @brief Applies the hardware-specific DD updater identity digit.
+ *
+ * Mirrors the official startup rewrite of low-table entry two so every later response path sees
+ * the selected DD1 or DD2 identity, including explicit selectors.
+ *
+ * @param[in] index Selected low-table entry.
+ * @param[in] board_variant Base hardware variant.
+ * @param[in,out] identity Selected four-character identity.
+ */
+static void apply_board_variant(uint8_t index, BoardVariant board_variant,
+                                uint8_t identity[USB_UPDATER_DEVICE_IDENTITY_SIZE]) {
+    if (index == 2 && board_variant == BOARD_VARIANT_DD2) {
+        identity[USB_UPDATER_DD_VARIANT_CHARACTER] = '2';
+    }
+}
+
+/**
  * @brief Selects an explicit updater response identity.
  *
  * Routes selectors with bit seven set to the high identity family and all other selectors to the
@@ -62,9 +79,11 @@ static void select_entry(const uint8_t table[][USB_UPDATER_DEVICE_IDENTITY_SIZE 
  * @param[in] selector Explicit response selector or 0xFF for automatic selection.
  * @param[in] automatic_high True when automatic selection uses the high identity family.
  * @param[in] automatic_index Default table index for automatic selection.
+ * @param[in] board_variant Base hardware variant.
  * @param[out] identity Selected four-character identity.
  */
 static void select_response(uint8_t selector, bool automatic_high, uint8_t automatic_index,
+                            BoardVariant board_variant,
                             uint8_t identity[USB_UPDATER_DEVICE_IDENTITY_SIZE]) {
     bool high = selector == USB_UPDATER_IDENTITY_AUTOMATIC
                     ? automatic_high
@@ -78,6 +97,7 @@ static void select_response(uint8_t selector, bool automatic_high, uint8_t autom
     } else {
         select_entry(low_identities, (uint8_t)(sizeof(low_identities) / sizeof(*low_identities)),
                      index, identity);
+        apply_board_variant(index, board_variant, identity);
     }
 }
 
@@ -173,16 +193,14 @@ void usb_updater_identity_select(const UsbUpdaterIdentityInput *input,
         return;
     }
     if (input->runtime_mode == USB_RUNTIME_MODE_PROTOCOL_BRIDGE) {
-        select_response(input->response_selector, true, USB_UPDATER_HIGH_DEFAULT_INDEX, identity);
+        select_response(input->response_selector, true, USB_UPDATER_HIGH_DEFAULT_INDEX,
+                        input->board_variant, identity);
         return;
     }
     if (input->runtime_mode != USB_RUNTIME_MODE_USB_BRIDGE) {
         select_entry(low_identities, (uint8_t)(sizeof(low_identities) / sizeof(*low_identities)),
                      (uint8_t)input->runtime_mode, identity);
-        if (input->runtime_mode == USB_RUNTIME_MODE_AUXILIARY_RECOVERY &&
-            input->board_variant == BOARD_VARIANT_DD2) {
-            identity[USB_UPDATER_DD_VARIANT_CHARACTER] = '2';
-        }
+        apply_board_variant((uint8_t)input->runtime_mode, input->board_variant, identity);
         return;
     }
     if (input->response_selector != USB_UPDATER_IDENTITY_AUTOMATIC) {
@@ -192,7 +210,7 @@ void usb_updater_identity_select(const UsbUpdaterIdentityInput *input,
                          input->response_selector & USB_UPDATER_SELECTOR_INDEX, identity);
         } else {
             select_response(input->response_selector, false, USB_UPDATER_USB_FALLBACK_INDEX,
-                            identity);
+                            input->board_variant, identity);
         }
         return;
     }
@@ -201,16 +219,22 @@ void usb_updater_identity_select(const UsbUpdaterIdentityInput *input,
                      input->adapter_connected ? USB_UPDATER_USB_ADAPTER_INDEX
                                               : USB_UPDATER_USB_DIRECT_INDEX,
                      identity);
+        apply_board_variant(input->adapter_connected ? USB_UPDATER_USB_ADAPTER_INDEX
+                                                     : USB_UPDATER_USB_DIRECT_INDEX,
+                            input->board_variant, identity);
         return;
     }
     if (direct_wheel_identity(input->wheel_mode)) {
         select_entry(low_identities, (uint8_t)(sizeof(low_identities) / sizeof(*low_identities)),
                      input->wheel_mode - 5, identity);
+        apply_board_variant((uint8_t)(input->wheel_mode - 5), input->board_variant, identity);
         return;
     }
     if (input->wheel_mode == USB_UPDATER_PULSE_WHEEL_MODE) {
-        select_response(input->response_selector, true, USB_UPDATER_HIGH_DEFAULT_INDEX, identity);
+        select_response(input->response_selector, true, USB_UPDATER_HIGH_DEFAULT_INDEX,
+                        input->board_variant, identity);
         return;
     }
-    select_response(input->response_selector, false, USB_UPDATER_USB_FALLBACK_INDEX, identity);
+    select_response(input->response_selector, false, USB_UPDATER_USB_FALLBACK_INDEX,
+                    input->board_variant, identity);
 }

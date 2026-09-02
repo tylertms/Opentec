@@ -14,6 +14,11 @@ void command_transport_claim(CommandTransport *transport, uint8_t owner) {
 void command_transport_release(CommandTransport *transport, uint8_t owner) {
     if (transport->owner == owner) {
         transport->owner = 0;
+        transport->phase = COMMAND_TRANSPORT_IDLE;
+        transport->request_length = 0;
+        transport->read_output = 0;
+        transport->read_length = 0;
+        transport->completion = COMMAND_TRANSPORT_COMPLETE;
     }
 }
 
@@ -126,7 +131,7 @@ void command_transport_receive(CommandTransport *transport, const uint8_t *respo
         result = memory_transfer_decode_write(response, length);
         if (result == MEMORY_TRANSFER_ACCEPTED) {
             transport->phase = COMMAND_TRANSPORT_IDLE;
-        } else {
+        } else if (result == MEMORY_TRANSFER_REJECTED) {
             transport->completion = COMMAND_TRANSPORT_WRITE_REJECTED;
             transport->phase = COMMAND_TRANSPORT_IDLE;
         }
@@ -137,7 +142,7 @@ void command_transport_receive(CommandTransport *transport, const uint8_t *respo
                                              transport->read_length);
         if (result == MEMORY_TRANSFER_ACCEPTED) {
             transport->phase = COMMAND_TRANSPORT_IDLE;
-        } else {
+        } else if (result == MEMORY_TRANSFER_REJECTED) {
             transport->completion = COMMAND_TRANSPORT_READ_REJECTED;
             transport->phase = COMMAND_TRANSPORT_IDLE;
         }

@@ -53,6 +53,19 @@ static void test_runs_inhibited_heartbeat(void) {
     assert(led_pattern_controller_update(&controller, input, 604) == 0x00);
 }
 
+static void test_inhibited_heartbeat_precedes_profile_save(void) {
+    LedPatternController controller;
+    led_pattern_controller_init(&controller);
+    LedPatternControllerInput input = controller_input();
+    input.output_inhibited = true;
+    input.profile_save_complete = true;
+
+    assert(led_pattern_controller_update(&controller, input, 100) == 0x00);
+    assert(led_pattern_controller_update(&controller, input, 350) == LED_PATTERN_NO_UPDATE);
+    assert(led_pattern_controller_update(&controller, input, 351) == LED_PATTERN_NO_UPDATE);
+    assert(led_pattern_controller_update(&controller, input, 352) == 0xff);
+}
+
 static void test_heartbeat_resumes_after_normal_output(void) {
     LedPatternController controller;
     led_pattern_controller_init(&controller);
@@ -152,6 +165,7 @@ int main(void) {
     test_builds_startup_sweep();
     test_starts_normal_output_at_full_brightness();
     test_runs_inhibited_heartbeat();
+    test_inhibited_heartbeat_precedes_profile_save();
     test_heartbeat_resumes_after_normal_output();
     test_shutdown_forces_output_off();
     test_breathes_while_pedal_handshake_is_active();

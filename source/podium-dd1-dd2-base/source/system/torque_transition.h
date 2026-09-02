@@ -26,7 +26,7 @@ typedef struct {
  * The transition controller compares each request with this state before producing a new action.
  */
 typedef struct {
-    bool applied_disabled; /**< Whether torque is currently applied as disabled. */
+    bool applied_disabled; /**< Whether the last accepted transition disabled torque. */
 } SystemTorqueTransition;
 
 /**
@@ -42,19 +42,31 @@ void system_torque_transition_init(SystemTorqueTransition *transition);
  * @brief Builds a queued system transition for a torque disable-state change.
  *
  * Produces event, status, feature, and setup-response effects only when the requested state differs
- * from the applied state and the event path can accept a new event.
+ * from the last accepted state and the event path can accept a new event. The state remains
+ * unchanged until system_torque_transition_accept() confirms that the event was queued.
  *
- * @param[in,out] transition Last torque disable state accepted by the system event path.
+ * @param[in] transition Last torque disable state accepted by the system event path.
  * @param[in] disable_requested Requested torque disable state.
  * @param[in] event_slot_available True when the event path can accept a code.
  * @param[in] wheel_mode Current attached-wheel mode.
  * @param[in] operating_status Current operating-mode status byte.
  * @param[out] action Transition codes and optional mode-specific updates.
- * @return True when a new transition was accepted and action was populated.
+ * @return True when a new transition action was populated.
  */
-bool system_torque_transition_update(SystemTorqueTransition *transition, bool disable_requested,
-                                     bool event_slot_available, uint8_t wheel_mode,
-                                     uint8_t operating_status,
+bool system_torque_transition_update(const SystemTorqueTransition *transition,
+                                     bool disable_requested, bool event_slot_available,
+                                     uint8_t wheel_mode, uint8_t operating_status,
                                      SystemTorqueTransitionAction *action);
+
+/**
+ * @brief Commits a torque transition after its event was queued.
+ *
+ * Records the requested torque state only after the owning event path accepts the generated event,
+ * allowing a failed queue attempt to be retried without losing the override request.
+ *
+ * @param[in,out] transition Torque transition state to update.
+ * @param[in] disable_requested Torque disable state accepted by the event path.
+ */
+void system_torque_transition_accept(SystemTorqueTransition *transition, bool disable_requested);
 
 #endif

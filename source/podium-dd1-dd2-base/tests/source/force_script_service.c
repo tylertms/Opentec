@@ -105,6 +105,16 @@ static void test_reports_slot_faults(void) {
     assert(runtime.slots[0].state == FORCE_FEEDBACK_SCRIPT_SLOT_FAULT);
     assert(runtime.slots[0].execution_count == 1);
 
+    runtime.slots[0].state = FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE;
+    store.data[0] = 0x01;
+    store.data[1] = 0x10;
+    store.data[2] = 2;
+    store.data[3] = 0x0a;
+    store.slots[0].size = 4;
+    assert(force_feedback_script_service_run(&runtime, &store, &clock));
+    assert(runtime.slots[0].state == FORCE_FEEDBACK_SCRIPT_SLOT_FAULT);
+    assert(runtime.slots[0].execution_count == 2);
+
     assert(!force_feedback_script_service_run(&runtime, &store, &clock));
     assert(!force_feedback_script_service_run(NULL, &store, &clock));
     assert(!force_feedback_script_service_run(&runtime, NULL, &clock));

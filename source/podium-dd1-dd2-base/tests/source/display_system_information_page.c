@@ -26,6 +26,18 @@ static void assert_text(const uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], con
     }
 }
 
+static void assert_inverted_text(const uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE],
+                                 const char *text, uint16_t x, uint16_t y) {
+    uint8_t expected[DISPLAY_FRAMEBUFFER_SIZE] = {0};
+    display_text_draw_with_font(expected, &display_font_10_00c988, text, x, y, true);
+    uint16_t width = display_text_width_for_font(&display_font_10_00c988, text);
+    for (uint16_t row = y; row < y + 8u; row++) {
+        for (uint16_t column = x; column <= x + width; column++) {
+            assert(pixel(framebuffer, column, row) == pixel(expected, column, row));
+        }
+    }
+}
+
 static DisplaySystemInformation sample_information(void) {
     return (DisplaySystemInformation){
         .main_hardware = 31,
@@ -47,10 +59,9 @@ static void renders_the_opening_title(void) {
 
     display_system_information_page_render_title(framebuffer);
 
-    uint16_t x = (DISPLAY_FRAMEBUFFER_WIDTH - display_text_width("System Info Screen", 2)) / 2;
-    assert_text(framebuffer, "System Info Screen", x, 25, 2);
+    assert_inverted_text(framebuffer, "System Info Screen", 0, 12);
     assert(pixel(framebuffer, 0, 0) == 0);
-    assert(pixel(framebuffer, 85, 0) == 0);
+    assert(pixel(framebuffer, 0, 22) == 0);
 }
 
 static void renders_all_component_values(void) {
@@ -59,23 +70,28 @@ static void renders_all_component_values(void) {
 
     display_system_information_page_render(framebuffer, &information);
 
-    assert_text(framebuffer, "Main:", 4, 2, 1);
-    assert_text(framebuffer, "FW: v3.9.1", 4, 14, 1);
-    assert_text(framebuffer, "HW: v31", 4, 25, 1);
+    assert_inverted_text(framebuffer, "Main:", 2, 13);
+    assert_text(framebuffer, "FW: v3.9.1", 4, 23, 1);
+    assert_text(framebuffer, "HW: v31", 4, 33, 1);
     assert_text(framebuffer, "1h 1m 1s", 4, 53, 1);
-    assert_text(framebuffer, "Motor:", 90, 2, 1);
-    assert_text(framebuffer, "FW: v3.9.10", 90, 14, 1);
-    assert_text(framebuffer, "HW: v2", 90, 25, 1);
-    assert_text(framebuffer, "ACV: v5", 90, 36, 1);
-    assert_text(framebuffer, "2h 0m 2s", 90, 53, 1);
-    assert_text(framebuffer, "WQR:", 176, 2, 1);
-    assert_text(framebuffer, "FW: v7", 176, 14, 1);
-    assert_text(framebuffer, "HW: v6", 176, 25, 1);
-    assert_text(framebuffer, "0h 0m 59s", 176, 53, 1);
-    for (uint16_t y = 0; y < DISPLAY_FRAMEBUFFER_HEIGHT - 1; y++) {
-        assert(pixel(framebuffer, 85, y) == 15);
-        assert(pixel(framebuffer, 171, y) == 15);
+    assert_inverted_text(framebuffer, "Motor:", 72, 13);
+    assert_text(framebuffer, "FW: v3.9.10", 74, 23, 1);
+    assert_text(framebuffer, "HW: v2", 74, 33, 1);
+    assert_text(framebuffer, "ACV: v5", 74, 43, 1);
+    assert_text(framebuffer, "2h 0m 2s", 74, 53, 1);
+    assert_inverted_text(framebuffer, "WQR:", 142, 13);
+    assert_text(framebuffer, "FW: v7", 144, 23, 1);
+    assert_text(framebuffer, "HW: v6", 144, 33, 1);
+    assert_text(framebuffer, "0h 0m 59s", 144, 53, 1);
+    for (uint16_t y = 13; y < DISPLAY_FRAMEBUFFER_HEIGHT - 1; y++) {
+        assert(pixel(framebuffer, 1, y) == 15);
+        assert(pixel(framebuffer, 71, y) == 15);
+        assert(pixel(framebuffer, 141, y) == 15);
     }
+    assert(pixel(framebuffer, 1, 62) == 15);
+    assert(pixel(framebuffer, 1, 63) == 0);
+    assert(pixel(framebuffer, 71, 63) == 0);
+    assert(pixel(framebuffer, 141, 63) == 0);
 }
 
 static void renders_each_accessory_type_form(void) {
@@ -84,16 +100,16 @@ static void renders_each_accessory_type_form(void) {
 
     information.motor_accessory_type_available = false;
     display_system_information_page_render(framebuffer, &information);
-    assert_text(framebuffer, "ACV: Not sup.", 90, 36, 1);
+    assert_text(framebuffer, "ACV: Not sup.", 74, 43, 1);
 
     information.motor_accessory_type_available = true;
     information.motor_accessory_type = 0;
     display_system_information_page_render(framebuffer, &information);
-    assert_text(framebuffer, "ACV: -", 90, 36, 1);
+    assert_text(framebuffer, "ACV: -", 74, 43, 1);
 
     information.motor_accessory_type = 12;
     display_system_information_page_render(framebuffer, &information);
-    assert_text(framebuffer, "ACV: v12", 90, 36, 1);
+    assert_text(framebuffer, "ACV: v12", 74, 43, 1);
 }
 
 int main(void) {

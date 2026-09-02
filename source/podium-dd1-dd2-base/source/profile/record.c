@@ -210,6 +210,7 @@ bool tuning_profile_record_decode(const uint8_t input[TUNING_PROFILE_RECORD_SIZE
     decoded.active_slot = input[6];
     decoded.standard_mode_enabled =
         input[4] == RECORD_LEGACY_VERSION || (input[7] & RECORD_STANDARD_MODE_MASK) != 0;
+    decoded.automatic_apply_pending = false;
     uint16_t cursor = TUNING_PROFILE_RECORD_HEADER_SIZE;
     for (uint8_t slot = 0; slot < TUNING_PROFILE_SLOT_COUNT; slot++) {
         cursor = read_profile(input, cursor, &decoded.slots[slot]);

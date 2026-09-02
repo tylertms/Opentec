@@ -53,6 +53,22 @@ bool wheel_updater_command_service_start(WheelUpdaterCommandService *service,
                                          uint8_t length);
 
 /**
+ * @brief Starts a route-discovery probe on a remote command channel.
+ *
+ * Uses the same target and transport validation as #wheel_updater_command_service_start while
+ * preserving the probe-only terminal response rules.
+ *
+ * @param[in,out] service Idle updater command service to start.
+ * @param[in] target Remote updater command channel.
+ * @param[in] request Marker-prefixed route-probe request bytes.
+ * @param[in] length Probe request length in bytes.
+ * @return True when the probe was accepted; otherwise false.
+ */
+bool wheel_updater_command_service_start_probe(WheelUpdaterCommandService *service,
+                                               WheelUpdaterTarget target, const uint8_t *request,
+                                               uint8_t length);
+
+/**
  * @brief Advances shared-command updater work.
  *
  * Polls the current command operation, advances the updater bridge, and queues its next remote

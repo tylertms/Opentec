@@ -74,7 +74,8 @@ void usb_updater_service_init(UsbUpdaterService *service, CommandTransport *tran
  * @brief Selects and initializes an updater transport route.
  *
  * Accepts runtime modes one through six while idle, clears prior probe and pending-response state,
- * and initializes the auxiliary bus, raw UART, or matching shared command adapter.
+ * and initializes the auxiliary bus, raw UART, or matching shared command adapter. Internal
+ * protocol-recovery mode six uses the USB updater command target.
  *
  * @param[in,out] service Idle updater service selecting a route.
  * @param[in] mode Requested updater runtime mode.

@@ -55,7 +55,7 @@ uint8_t usb_xbox_gip_metadata_download_next(UsbXboxGipMetadataDownload *download
  * @param[in,out] download Metadata download waiting for acknowledgement.
  * @param[in] acknowledgement Thirteen-byte acknowledgement packet.
  * @return `true` when every acknowledgement field matches current metadata progress; otherwise
- * `false`.
+ * `false`. A rejected acknowledgement leaves the download waiting for the same acknowledgement.
  */
 bool usb_xbox_gip_metadata_download_acknowledge(
     UsbXboxGipMetadataDownload *download,

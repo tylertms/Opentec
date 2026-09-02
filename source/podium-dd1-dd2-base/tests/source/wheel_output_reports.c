@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "shifter/calibration.h"
 #include "wheel/output_reports.h"
 
 static void fill_arguments(uint8_t arguments[26], uint8_t action, uint8_t first) {
@@ -175,6 +176,23 @@ static void test_queues_report_six_from_shared_report_four_payload(void) {
         assert(frame[index + 2] == (uint8_t)(0x40 + index));
     }
     assert(!wheel_output_reports_encode_next(&reports, 0, frame));
+}
+
+static void test_sends_shifter_calibration_state_as_type_16(void) {
+    WheelOutputReports reports;
+    uint8_t frame[33] = {0};
+    const uint8_t state[3] = {0, H_PATTERN_CALIBRATION_STAGE_CAPTURE_REVERSE, 0};
+
+    wheel_output_reports_init(&reports);
+    wheel_output_reports_queue_shifter_state(&reports, state);
+    assert(wheel_output_reports_shifter_state_pending(&reports));
+    assert(wheel_output_reports_encode_next(&reports, 0x16, frame));
+    assert(frame[1] == 0x16);
+    assert(frame[2] == 0);
+    assert(frame[3] == H_PATTERN_CALIBRATION_STAGE_CAPTURE_REVERSE);
+    assert(frame[4] == 0);
+    assert(!wheel_output_reports_shifter_state_pending(&reports));
+    assert(!wheel_output_reports_encode_next(&reports, 0x16, frame));
 }
 
 static void test_streams_report_seventeen_after_direct_reports(void) {
@@ -412,6 +430,7 @@ int main(void) {
     test_gates_extended_reports();
     test_ignores_unknown_actions();
     test_queues_report_six_from_shared_report_four_payload();
+    test_sends_shifter_calibration_state_as_type_16();
     test_streams_report_seventeen_after_direct_reports();
     test_sends_native_display_command_after_report_seventeen();
     test_prioritizes_native_display_notification();

@@ -77,6 +77,17 @@ typedef struct {
 void security_code_init(SecurityCode *code);
 
 /**
+ * @brief Reports whether security-code interaction owns local controls.
+ *
+ * Treats every non-inactive phase as active, independent of whether the retained security code is
+ * currently enabled.
+ *
+ * @param[in] code Interaction state to inspect.
+ * @return True while an interaction phase is active; false for inactive or null state.
+ */
+bool security_code_interaction_active(const SecurityCode *code);
+
+/**
  * @brief Advances security-code interaction.
  *
  * Detects activation chords, edits decimal digits, confirms enable or disable requests, and

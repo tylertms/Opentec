@@ -40,6 +40,20 @@ bool wheel_updater_direct_service_start(WheelUpdaterDirectService *service, cons
                                         uint8_t length);
 
 /**
+ * @brief Starts a route-discovery probe on the raw attached-wheel link.
+ *
+ * Applies the same ownership checks as #wheel_updater_direct_service_start while preserving the
+ * probe-only terminal response rules.
+ *
+ * @param[in,out] service Idle direct updater service to start.
+ * @param[in] request Marker-prefixed route-probe request bytes.
+ * @param[in] length Probe request length in bytes.
+ * @return True when the probe was accepted; otherwise false.
+ */
+bool wheel_updater_direct_service_start_probe(WheelUpdaterDirectService *service,
+                                              const uint8_t *request, uint8_t length);
+
+/**
  * @brief Advances direct-UART updater work.
  *
  * Polls the pending UART operation, advances the updater bridge, and starts its next raw read or

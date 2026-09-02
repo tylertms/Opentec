@@ -21,6 +21,11 @@ enum {
     FANATEC_INPUT_DIRECT_DRIVE_MODE = 0xfe        /**< Wheel-mode code for direct-drive hardware. */
 };
 
+/** @brief Three-sample history used by the official native Fanatec input path. */
+enum {
+    FANATEC_INPUT_HISTORY_DEPTH = 3, /**< Number of source reports retained per field. */
+};
+
 /** @brief Logical button, rotary, accessory, axis, and status fields in a Fanatec input report. */
 typedef struct {
     uint8_t button_banks[FANATEC_INPUT_BUTTON_BANKS]; /**< Encoded button banks. */
@@ -28,16 +33,103 @@ typedef struct {
     uint8_t accessory[FANATEC_INPUT_ACCESSORY_BYTES]; /**< Encoded accessory fields. */
     uint16_t steering;                                /**< Steering axis value. */
     uint16_t pedals[FANATEC_INPUT_PEDAL_AXES];        /**< Pedal axis values. */
-    uint8_t clutch_paddles[2];                        /**< Clutch-paddle axis values. */
-    uint8_t auxiliary_pedal;                          /**< Auxiliary pedal axis value. */
-    int8_t encoder_position;                          /**< Signed rotary encoder position. */
-    uint8_t transfer_code;                            /**< Attached-wheel transfer code. */
+    uint8_t clutch_paddles[2];  /**< Clutch-paddle values; unavailable is encoded as 0xff, 0x00. */
+    uint8_t auxiliary_pedal;    /**< Auxiliary pedal axis value. */
+    int8_t encoder_position;    /**< Signed rotary encoder position. */
+    uint8_t transfer_code;      /**< Attached-wheel transfer code. */
     uint8_t status_flags;       /**< Wheel, shifter, pedal, and thermal status bits. */
     uint8_t wheel_mode;         /**< Attached-wheel operating mode. */
     uint8_t axis_limit;         /**< Steering axis limit. */
     uint8_t bite_point_percent; /**< Pending bite-point percentage. */
     bool bite_point_update; /**< True when the next native report carries a bite-point update. */
 } fanatec_input_state;
+
+/**
+ * @brief Normalized source packet consumed by the native Fanatec mapper.
+ *
+ * The first three button bytes, hat, controls, and auxiliary bytes use the same offsets as the
+ * official 36-byte source packet. The remaining fields carry the already calibrated values that
+ * the native mapper copies into its 34-byte output.
+ */
+typedef struct {
+    uint8_t buttons[3];          /**< Primary source button bytes at offsets zero through two. */
+    uint8_t hat;                 /**< H-pattern or sequential hat value at source offset three. */
+    uint8_t rotary_positions[2]; /**< Primary rotary positions at offsets four and five. */
+    uint8_t extended_buttons[4]; /**< Extended source bytes at offsets six through nine. */
+    uint8_t auxiliary_flags;     /**< Auxiliary flags at source offset eleven. */
+    uint8_t secondary_buttons;   /**< Secondary source byte at source offset twelve. */
+    uint8_t packed_rotary_positions;  /**< Packed rotary byte at source offset thirteen. */
+    uint8_t accessory;                /**< Accessory source byte at source offset fourteen. */
+    uint8_t transfer_code;            /**< Transfer-code source byte at source offset fifteen. */
+    uint16_t steering;                /**< Calibrated steering axis. */
+    uint16_t pedals[3];               /**< Calibrated pedal axes. */
+    uint8_t auxiliary_pedal;          /**< Calibrated auxiliary pedal axis. */
+    int8_t tuning_input;              /**< Signed tuning input. */
+    uint8_t clutch_paddles[2];        /**< Clutch-paddle axis values. */
+    uint8_t status_flags;             /**< Source status flags before native remapping. */
+    uint8_t mode;                     /**< Attached-wheel mode. */
+    uint8_t axis_limit;               /**< Steering-axis limit. */
+    uint8_t pulse_flags[4];           /**< Debounced pulse groups used by mode-specific mappings. */
+    uint8_t adapter_buttons[3];       /**< Attached-adapter button bytes. */
+    uint8_t adapter_rotary;           /**< Packed primary and secondary adapter positions. */
+    uint8_t adapter_auxiliary_rotary; /**< Packed tertiary adapter positions. */
+    uint8_t adapter_mode;             /**< Adapter endpoint mode. */
+    bool protocol_active;             /**< True after wheel mode selection is complete. */
+    bool neutral_shifter_axes;        /**< True when both shifter inputs are sequential. */
+    bool calibration_available;       /**< True when wheel calibration is available. */
+    bool axis_report_enabled;         /**< True when wheel axis output is enabled. */
+    bool adapter_connected;           /**< True when an adapter endpoint is connected. */
+} fanatec_input_source;
+
+/** @brief Retained source/history state for the official native Fanatec pipeline. */
+typedef struct {
+    uint8_t primary_history[FANATEC_INPUT_HISTORY_DEPTH][3];   /**< Primary source history. */
+    uint8_t secondary_history[FANATEC_INPUT_HISTORY_DEPTH][3]; /**< Secondary source history. */
+    uint8_t history_index;                                     /**< Next circular history slot. */
+} fanatec_input_pipeline_state;
+
+/**
+ * @brief Initializes native Fanatec source/history state.
+ *
+ * Clears both three-report histories and starts insertion at the first slot.
+ *
+ * @param[out] pipeline Pipeline state to initialize.
+ */
+void fanatec_input_pipeline_init(fanatec_input_pipeline_state *pipeline);
+
+/**
+ * @brief Applies the official three-report source filters.
+ *
+ * Filters all three primary source bytes on every mode. In standard mode 0x10, also filters the
+ * source bytes at offsets twelve through fourteen. Other mode-specific source bytes remain intact.
+ *
+ * @param[in,out] pipeline Source/history state.
+ * @param[in,out] source Source packet to filter in place.
+ */
+void fanatec_input_pipeline_filter(fanatec_input_pipeline_state *pipeline,
+                                   fanatec_input_source *source);
+
+/**
+ * @brief Maps one filtered source packet to native Fanatec output fields.
+ *
+ * Reconstructs the official first-five-byte mapping, source arbitration, mode extensions, axis
+ * status, clutch availability, and adapter button merge. The existing encoder then serializes the
+ * resulting logical state without changing report length or usage identifiers.
+ *
+ * @param[out] state Native Fanatec output state.
+ * @param[in] source Filtered source packet.
+ */
+void fanatec_input_pipeline_map(fanatec_input_state *state, const fanatec_input_source *source);
+
+/**
+ * @brief Filters and maps one source packet through the native Fanatec pipeline.
+ *
+ * @param[in,out] pipeline Source/history state.
+ * @param[out] state Native Fanatec output state.
+ * @param[in] source Source packet copied before filtering.
+ */
+void fanatec_input_pipeline_apply(fanatec_input_pipeline_state *pipeline,
+                                  fanatec_input_state *state, const fanatec_input_source *source);
 
 /** @brief One logical multi-position rotary channel and its pending event. */
 typedef struct {
@@ -89,6 +181,18 @@ bool fanatec_input_compatibility_encode(uint8_t report[FANATEC_INPUT_COMPATIBILI
  */
 void fanatec_input_apply_wheel_controls(fanatec_input_state *state, const uint8_t controls[8],
                                         bool include_extended);
+
+/**
+ * @brief Applies the fourth direct-wheel rotary event.
+ *
+ * Stores the debounced quaternary event in the first accessory byte used by the native legacy
+ * report. The first three rotary channels remain encoded by
+ * fanatec_input_apply_multi_position_rotaries().
+ *
+ * @param[in,out] state Input report state to update.
+ * @param[in] event Debounced rotary event value.
+ */
+void fanatec_input_apply_quaternary_rotary_event(fanatec_input_state *state, uint8_t event);
 
 /**
  * @brief Applies attached-wheel accessory flags to the Fanatec input state.

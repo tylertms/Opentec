@@ -105,6 +105,14 @@ static void test_compacts_cleared_scripts(void) {
     slots[1].state = FORCE_FEEDBACK_SCRIPT_SLOT_INACTIVE;
     slots[5].state = FORCE_FEEDBACK_SCRIPT_SLOT_EMPTY;
     slots[9].state = FORCE_FEEDBACK_SCRIPT_SLOT_INACTIVE;
+    slots[5].values[0] = 51;
+    slots[5].values[1] = 52;
+    slots[5].values[2] = 53;
+    slots[5].values[3] = 54;
+    slots[5].average_rate = 55;
+    slots[5].delta_rate = 56;
+    slots[5].execution_count = 57;
+    slots[5].tick_snapshot = 58;
 
     force_feedback_script_store_compact(&store, slots);
     assert(store.used == 4);
@@ -114,6 +122,13 @@ static void test_compacts_cleared_scripts(void) {
     assert(store.data[0] == 0x10 && store.data[1] == 0x11);
     assert(store.data[2] == 0x90 && store.data[3] == 0x91);
     assert(store.data[4] == 0 && store.data[6] == 0);
+    assert(slots[5].state == FORCE_FEEDBACK_SCRIPT_SLOT_EMPTY);
+    assert(slots[5].values[0] == 51 && slots[5].values[1] == 52);
+    assert(slots[5].values[2] == 53 && slots[5].values[3] == 54);
+    assert(slots[5].average_rate == 0);
+    assert(slots[5].delta_rate == 0);
+    assert(slots[5].execution_count == 0);
+    assert(slots[5].tick_snapshot == 0);
 }
 
 static void test_rejects_invalid_uploads(void) {

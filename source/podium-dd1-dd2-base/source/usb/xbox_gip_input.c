@@ -6,7 +6,9 @@
 
 /** @brief Wheel modes with mode-specific Xbox GIP input mappings. */
 enum {
+    WHEEL_MODE_VENDOR_FOUR = 4,        /**< Wheel mode four. */
     WHEEL_MODE_CRC = 6,                /**< CRC wheel mode. */
+    WHEEL_MODE_VENDOR_C = 12,          /**< Wheel mode twelve. */
     WHEEL_MODE_NINE = 9,               /**< Wheel mode 9. */
     WHEEL_MODE_TEN = 10,               /**< Wheel mode 10. */
     WHEEL_MODE_ELEVEN = 11,            /**< Wheel mode 11. */
@@ -24,6 +26,125 @@ enum {
  * @return Extracted bit value.
  */
 static uint8_t read_bit(uint16_t value, uint8_t bit) { return (uint8_t)((value >> bit) & 1u); }
+
+/**
+ * @brief Merges one adapter bit into a GIP button byte.
+ *
+ * Adapter button mappings are OR-merged by the official vendor status builder.
+ *
+ * @param[in,out] target GIP button byte receiving the bit.
+ * @param[in] bit Destination bit index.
+ * @param[in] value Source bit value.
+ */
+static void merge_adapter_bit(uint8_t *target, uint8_t bit, uint8_t value) {
+    *target |= (uint8_t)((value & 1u) << bit);
+}
+
+/**
+ * @brief Merges adapter face buttons into the GIP secondary button byte.
+ *
+ * Maps adapter byte zero's four face-button bits into the low nibble used by the Xbox report.
+ *
+ * @param[in,out] snapshot GIP snapshot receiving button bits.
+ * @param[in] adapter Attached adapter input.
+ */
+static void merge_adapter_face_buttons(UsbXboxGipInputSnapshot *snapshot,
+                                       const WheelAdapterInput *adapter) {
+    merge_adapter_bit(&snapshot->buttons[1], 0, read_bit(adapter->buttons[0], 0));
+    merge_adapter_bit(&snapshot->buttons[1], 1, read_bit(adapter->buttons[0], 3));
+    merge_adapter_bit(&snapshot->buttons[1], 2, read_bit(adapter->buttons[0], 1));
+    merge_adapter_bit(&snapshot->buttons[1], 3, read_bit(adapter->buttons[0], 2));
+}
+
+/**
+ * @brief Merges adapter buttons for adapter mode zero.
+ *
+ * Applies the standard endpoint mapping and clears suppressed face-button fields.
+ *
+ * @param[in,out] snapshot GIP snapshot receiving button bits.
+ * @param[in] adapter Attached adapter input.
+ * @param[in] suppress_base_buttons True while tuning interaction suppresses face-button output.
+ */
+static void merge_adapter_mode_zero(UsbXboxGipInputSnapshot *snapshot,
+                                    const WheelAdapterInput *adapter, bool suppress_base_buttons) {
+    merge_adapter_bit(&snapshot->buttons[1], 4,
+                      read_bit(adapter->buttons[0], 6) | read_bit(adapter->buttons[0], 5));
+    merge_adapter_bit(&snapshot->buttons[1], 5, read_bit(adapter->buttons[0], 4));
+    merge_adapter_bit(&snapshot->buttons[0], 3, read_bit(adapter->buttons[1], 0));
+    merge_adapter_bit(&snapshot->buttons[0], 5, read_bit(adapter->buttons[1], 2));
+    merge_adapter_bit(&snapshot->buttons[0], 7, read_bit(adapter->buttons[1], 1));
+    merge_adapter_bit(&snapshot->buttons[0], 6, read_bit(adapter->buttons[1], 4));
+    merge_adapter_bit(&snapshot->buttons[0], 2, read_bit(adapter->buttons[1], 5));
+    if (suppress_base_buttons) {
+        snapshot->buttons[1] &= 0xf0u;
+        snapshot->buttons[0] &= (uint8_t)~0x10u;
+        return;
+    }
+    merge_adapter_face_buttons(snapshot, adapter);
+    merge_adapter_bit(&snapshot->buttons[0], 4, read_bit(adapter->buttons[1], 3));
+}
+
+/**
+ * @brief Merges adapter buttons for adapter mode one.
+ *
+ * Applies the extended endpoint mapping and clears suppressed face-button fields.
+ *
+ * @param[in,out] snapshot GIP snapshot receiving button bits.
+ * @param[in] adapter Attached adapter input.
+ * @param[in] suppress_base_buttons True while tuning interaction suppresses face-button output.
+ */
+static void merge_adapter_mode_one(UsbXboxGipInputSnapshot *snapshot,
+                                   const WheelAdapterInput *adapter, bool suppress_base_buttons) {
+    merge_adapter_bit(&snapshot->buttons[0], 3, read_bit(adapter->buttons[0], 7));
+    merge_adapter_bit(&snapshot->buttons[0], 5, read_bit(adapter->buttons[1], 2));
+    merge_adapter_bit(&snapshot->buttons[0], 7, read_bit(adapter->buttons[0], 4));
+    merge_adapter_bit(&snapshot->buttons[0], 6, read_bit(adapter->buttons[0], 6));
+    merge_adapter_bit(&snapshot->buttons[0], 4,
+                      read_bit(adapter->buttons[2], 3) | read_bit(adapter->buttons[2], 2) |
+                          read_bit(adapter->buttons[1], 1));
+    merge_adapter_bit(&snapshot->buttons[0], 2, read_bit(adapter->buttons[1], 0));
+    if (suppress_base_buttons) {
+        snapshot->buttons[1] &= 0xf0u;
+        snapshot->buttons[0] &= (uint8_t)~0x10u;
+        return;
+    }
+    merge_adapter_face_buttons(snapshot, adapter);
+}
+
+/**
+ * @brief Merges adapter buttons for an unknown adapter mode.
+ *
+ * Applies the fallback mapping and places adapter mode bits in the packed-button field used by
+ * the official report builder.
+ *
+ * @param[in,out] snapshot GIP snapshot receiving button bits.
+ * @param[in] adapter Attached adapter input.
+ * @param[in] suppress_base_buttons True while tuning interaction suppresses face-button output.
+ */
+static void merge_adapter_fallback(UsbXboxGipInputSnapshot *snapshot,
+                                   const WheelAdapterInput *adapter, bool suppress_base_buttons) {
+    if (read_bit(adapter->buttons[0], 5) != 0) {
+        snapshot->packed_buttons |= 0x10u;
+        snapshot->buttons[1] &= (uint8_t)~0x10u;
+    }
+    if (read_bit(adapter->buttons[0], 4) != 0) {
+        snapshot->packed_buttons |= 0x20u;
+        snapshot->buttons[1] &= (uint8_t)~0x20u;
+    }
+    merge_adapter_bit(&snapshot->buttons[0], 3, read_bit(adapter->buttons[1], 0));
+    merge_adapter_bit(&snapshot->buttons[0], 5, read_bit(adapter->buttons[1], 2));
+    merge_adapter_bit(&snapshot->buttons[0], 7, read_bit(adapter->buttons[1], 1));
+    merge_adapter_bit(&snapshot->buttons[0], 6, read_bit(adapter->buttons[1], 4));
+    merge_adapter_bit(&snapshot->buttons[0], 2, read_bit(adapter->buttons[1], 5));
+    if (suppress_base_buttons) {
+        snapshot->buttons[1] &= 0xf0u;
+        return;
+    }
+    merge_adapter_bit(&snapshot->buttons[0], 4,
+                      read_bit(adapter->buttons[2], 2) | read_bit(adapter->buttons[2], 3) |
+                          read_bit(adapter->buttons[1], 3));
+    merge_adapter_face_buttons(snapshot, adapter);
+}
 
 /**
  * @brief Maps normalized wheel buttons into the two primary GIP bytes.
@@ -134,8 +255,7 @@ void usb_xbox_gip_input_build(UsbXboxGipInputBuilder *builder, const UsbXboxGipI
     snapshot->axis_mode = state->axis_mode;
     snapshot->led_state = encode_led(builder, state->led_state, state->axis_mode);
     snapshot->steering_range_units = state->steering_range_units;
-    snapshot->force_feedback_level =
-        (uint8_t)((uint16_t)state->force_feedback_percent * UINT8_MAX / 100u);
+    snapshot->force_feedback_level = state->force_feedback_level;
     memcpy(snapshot->pedal_active, state->pedal_active, sizeof(snapshot->pedal_active));
     snapshot->auxiliary_pedal_active = state->auxiliary_pedal_active;
     memcpy(snapshot->clutch_paddles, state->clutch_paddles, sizeof(snapshot->clutch_paddles));
@@ -145,4 +265,21 @@ void usb_xbox_gip_input_build(UsbXboxGipInputBuilder *builder, const UsbXboxGipI
     snapshot->selectors[3] = state->encoder_direction > 0 ? 2 : state->encoder_direction < 0;
     snapshot->selectors[4] = state->rotary[3];
     snapshot->selectors[5] = state->rotary[4];
+}
+
+void usb_xbox_gip_input_merge_adapter_buttons(UsbXboxGipInputSnapshot *snapshot, uint8_t wheel_mode,
+                                              const WheelAdapterInput *adapter,
+                                              bool suppress_base_buttons) {
+    if (snapshot == 0 || adapter == 0 || !adapter->connected ||
+        (wheel_mode != WHEEL_MODE_VENDOR_FOUR && wheel_mode != WHEEL_MODE_CRC &&
+         wheel_mode != WHEEL_MODE_VENDOR_C && wheel_mode != WHEEL_MODE_CRC_AUTHENTICATED)) {
+        return;
+    }
+    if (adapter->mode == 0) {
+        merge_adapter_mode_zero(snapshot, adapter, suppress_base_buttons);
+    } else if (adapter->mode == 1) {
+        merge_adapter_mode_one(snapshot, adapter, suppress_base_buttons);
+    } else {
+        merge_adapter_fallback(snapshot, adapter, suppress_base_buttons);
+    }
 }

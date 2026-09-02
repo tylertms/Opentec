@@ -204,7 +204,8 @@ force_feedback_script_execute(ForceFeedbackScriptRuntime *runtime, const uint8_t
         }
         if (!force_feedback_script_operation_supported(command)) {
             fault(runtime);
-            return FORCE_FEEDBACK_SCRIPT_EXECUTION_SILENT_FAULT;
+            return state.remaining > 1 ? FORCE_FEEDBACK_SCRIPT_EXECUTION_FAULT
+                                       : FORCE_FEEDBACK_SCRIPT_EXECUTION_SILENT_FAULT;
         }
         ForceFeedbackScriptDestinationResult operation = force_feedback_script_operation_execute(
             runtime, command, script, length, state.cursor, commit);

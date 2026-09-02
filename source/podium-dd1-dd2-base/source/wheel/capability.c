@@ -108,6 +108,21 @@ void wheel_capability_update_report(WheelCapabilityState *state, uint8_t report_
 }
 
 /**
+ * @brief Updates the scan capability marker.
+ *
+ * Retains the report-capability high byte and writes the command-three response marker into the
+ * low capability byte. Scan responses do not carry the report-mode byte or report-capability flags
+ * used by command-two packets.
+ *
+ * @param[in,out] state Persistent attached-wheel capability state.
+ * @param[in] scan_response Encoded command-three response sample and marker.
+ */
+void wheel_capability_update_scan(WheelCapabilityState *state, uint8_t scan_response) {
+    state->capability_flags =
+        (uint16_t)((state->capability_flags & 0xff00u) | ((uint16_t)scan_response >> 5));
+}
+
+/**
  * @brief Updates shared attached-wheel capability state.
  *
  * Caches the report mode and capability byte, maps capability bits 2 through 5 into report flag

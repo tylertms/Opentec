@@ -63,13 +63,12 @@ static void test_strict_shutdown_boundaries(void) {
 
     assert(update(&controller, true, true, 1010) == POWER_ACTION_NONE);
     assert(update(&controller, true, true, 1011) == POWER_ACTION_BEGIN_SHUTDOWN);
-    assert(controller.phase == POWER_PHASE_SHUTDOWN_DELAY);
+    assert(controller.phase == POWER_PHASE_COMPLETE);
     assert(!controller.torque_disabled);
+    assert(controller.completion_deadline_ms == 2011);
 
-    assert(update(&controller, true, true, 2011) == POWER_ACTION_NONE);
-    assert(update(&controller, true, true, 2012) == POWER_ACTION_FINISH_SHUTDOWN);
-    assert(controller.phase == POWER_PHASE_OFF);
-    assert(update(&controller, false, true, 3000) == POWER_ACTION_NONE);
+    assert(update(&controller, true, true, 1012) == POWER_ACTION_FINISH_SHUTDOWN);
+    assert(controller.phase == POWER_PHASE_COMPLETE);
 }
 
 static void test_deadlines_survive_counter_wrap(void) {
@@ -79,7 +78,7 @@ static void test_deadlines_survive_counter_wrap(void) {
 
     assert(update(&controller, true, true, 499) == POWER_ACTION_NONE);
     assert(update(&controller, true, true, 500) == POWER_ACTION_BEGIN_SHUTDOWN);
-    assert(update(&controller, true, true, 1500) == POWER_ACTION_NONE);
+    assert(update(&controller, true, true, 501) == POWER_ACTION_FINISH_SHUTDOWN);
     assert(update(&controller, true, true, 1501) == POWER_ACTION_FINISH_SHUTDOWN);
 }
 

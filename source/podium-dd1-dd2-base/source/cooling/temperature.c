@@ -102,6 +102,14 @@ int16_t cooling_temperature_from_adc_total(uint32_t adc_total) {
     return (int16_t)(int32_t)cooling_temperature_from_resistance(resistance_ohms);
 }
 
+uint16_t cooling_resistance_value_from_adc_total(uint32_t adc_total) {
+    float average_adc = (float)adc_total / 1000.0f;
+    float measured_voltage = average_adc * 3.3f * (1.0f / 4096.0f);
+    float divider_ratio = 3.3f / measured_voltage - 1.0f;
+    float resistance_ohms = 10000.0f / divider_ratio;
+    return (uint16_t)(int32_t)cooling_temperature_from_resistance(resistance_ohms);
+}
+
 /**
  * @brief Initializes a thermistor sampling window.
  *
@@ -136,6 +144,8 @@ bool cooling_temperature_monitor_add(CoolingTemperatureMonitor *monitor, uint16_
     for (uint8_t channel = 0; channel < COOLING_TEMPERATURE_CHANNEL_COUNT; channel++) {
         monitor->temperatures_c[channel] =
             cooling_temperature_from_adc_total(monitor->adc_totals[channel]);
+        monitor->resistance_values[channel] =
+            cooling_resistance_value_from_adc_total(monitor->adc_totals[channel]);
         monitor->adc_totals[channel] = 0;
     }
     monitor->sample_count = 0;

@@ -132,6 +132,8 @@ UsbMotorVendorServiceResult usb_motor_vendor_service_accept_usb_mailbox(
     result = usb_motor_vendor_service_accept_usb(service, request, length, usb_packet);
     if ((result.actions & USB_MOTOR_VENDOR_ACTION_RESTART) != 0) {
         motor_command_mailbox_exchange_reset(exchange);
+        command_transport_release(transport, MOTOR_COMMAND_MAILBOX_OWNER);
+        command_transport_claim(transport, MOTOR_COMMAND_MAILBOX_OWNER);
     }
     if ((result.actions & USB_MOTOR_VENDOR_ACTION_RELEASE) != 0) {
         motor_command_mailbox_exchange_reset(exchange);

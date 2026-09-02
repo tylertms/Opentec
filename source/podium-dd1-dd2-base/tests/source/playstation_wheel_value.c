@@ -56,7 +56,11 @@ static void test_sets_protocol_value_directly(void) {
     assert(value.legacy_axes[0] == 0x12);
     assert(value.legacy_axes[1] == 0x34);
     assert(value.deadline_ms == 3500);
-    assert(value.release_pending);
+    assert(!value.release_pending);
+    UsbDeviceOutputReport report = make_report(0, 0x78, 0x56);
+    assert(usb_playstation_wheel_value_apply(&value, &report, 600));
+    assert(value.legacy_axes[0] == 0x12);
+    assert(value.legacy_axes[1] == 0x34);
     usb_playstation_wheel_value_set(NULL, 0, 0, 0);
 }
 

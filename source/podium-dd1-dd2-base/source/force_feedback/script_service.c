@@ -61,7 +61,7 @@ static void update_metrics(ForceFeedbackScriptSlot *slot, uint32_t current_ticks
  * @param[in] store Script storage containing the selected program.
  * @param[in,out] clock Script clock to advance.
  * @param[in] track_execution True to update execution metrics and state.
- * @return True while script execution remains active; otherwise false.
+ * @return True when execution reaches the standard fault-report path; otherwise false.
  */
 bool force_feedback_script_service_run_tracked(ForceFeedbackScriptRuntime *runtime,
                                                const ForceFeedbackScriptStore *store,

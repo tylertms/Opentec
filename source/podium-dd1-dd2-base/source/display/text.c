@@ -5,194 +5,106 @@
 
 #include "display/framebuffer.h"
 
-/**
- * @brief Defines the built-in glyph dimensions and advance.
- *
- * Glyph bitmaps are five columns by seven rows with one blank column between adjacent glyphs.
- */
-enum {
-    GLYPH_WIDTH = 5,   /**< Glyph bitmap width in pixels. */
-    GLYPH_HEIGHT = 7,  /**< Glyph bitmap height in pixels. */
-    GLYPH_ADVANCE = 6, /**< Horizontal advance between glyph origins in pixels. */
-};
-
-/**
- * @brief Stores one built-in display glyph.
- *
- * Each row stores the five glyph pixels in the low five bits, with the leftmost pixel in the most
- * significant bit of that range.
- */
-typedef struct {
-    char character;             /**< Character represented by the glyph. */
-    uint8_t rows[GLYPH_HEIGHT]; /**< One five-bit bitmap row for each glyph row. */
-} Glyph;
-
-/**
- * @brief Contains the built-in display alphabet.
- *
- * The first entry is the blank fallback used for unsupported characters.
- */
-static const Glyph glyphs[] = {
-    {' ', {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
-    {'!', {0x04, 0x04, 0x04, 0x04, 0x04, 0x00, 0x04}},
-    {'%', {0x19, 0x1a, 0x02, 0x04, 0x08, 0x0b, 0x13}},
-    {'+', {0x00, 0x04, 0x04, 0x1f, 0x04, 0x04, 0x00}},
-    {'-', {0x00, 0x00, 0x00, 0x1f, 0x00, 0x00, 0x00}},
-    {'.', {0x00, 0x00, 0x00, 0x00, 0x00, 0x0c, 0x0c}},
-    {'/', {0x01, 0x02, 0x02, 0x04, 0x08, 0x08, 0x10}},
-    {':', {0x00, 0x0c, 0x0c, 0x00, 0x0c, 0x0c, 0x00}},
-    {'?', {0x0e, 0x11, 0x01, 0x02, 0x04, 0x00, 0x04}},
-    {'`', {0x06, 0x09, 0x09, 0x06, 0x00, 0x00, 0x00}},
-    {'_', {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1f}},
-    {'A', {0x0e, 0x11, 0x11, 0x1f, 0x11, 0x11, 0x11}},
-    {'B', {0x1e, 0x11, 0x11, 0x1e, 0x11, 0x11, 0x1e}},
-    {'C', {0x0f, 0x10, 0x10, 0x10, 0x10, 0x10, 0x0f}},
-    {'D', {0x1e, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1e}},
-    {'E', {0x1f, 0x10, 0x10, 0x1e, 0x10, 0x10, 0x1f}},
-    {'F', {0x1f, 0x10, 0x10, 0x1e, 0x10, 0x10, 0x10}},
-    {'G', {0x0f, 0x10, 0x10, 0x17, 0x11, 0x11, 0x0f}},
-    {'H', {0x11, 0x11, 0x11, 0x1f, 0x11, 0x11, 0x11}},
-    {'I', {0x1f, 0x04, 0x04, 0x04, 0x04, 0x04, 0x1f}},
-    {'J', {0x07, 0x02, 0x02, 0x02, 0x12, 0x12, 0x0c}},
-    {'K', {0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11}},
-    {'L', {0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1f}},
-    {'M', {0x11, 0x1b, 0x15, 0x15, 0x11, 0x11, 0x11}},
-    {'N', {0x11, 0x19, 0x19, 0x15, 0x13, 0x13, 0x11}},
-    {'O', {0x0e, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0e}},
-    {'P', {0x1e, 0x11, 0x11, 0x1e, 0x10, 0x10, 0x10}},
-    {'Q', {0x0e, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0d}},
-    {'R', {0x1e, 0x11, 0x11, 0x1e, 0x14, 0x12, 0x11}},
-    {'S', {0x0f, 0x10, 0x10, 0x0e, 0x01, 0x01, 0x1e}},
-    {'T', {0x1f, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04}},
-    {'U', {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0e}},
-    {'V', {0x11, 0x11, 0x11, 0x11, 0x11, 0x0a, 0x04}},
-    {'W', {0x11, 0x11, 0x11, 0x15, 0x15, 0x15, 0x0a}},
-    {'X', {0x11, 0x11, 0x0a, 0x04, 0x0a, 0x11, 0x11}},
-    {'Y', {0x11, 0x11, 0x0a, 0x04, 0x04, 0x04, 0x04}},
-    {'Z', {0x1f, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1f}},
-    {'a', {0x00, 0x00, 0x0e, 0x01, 0x0f, 0x11, 0x0f}},
-    {'b', {0x10, 0x10, 0x16, 0x19, 0x11, 0x11, 0x1e}},
-    {'c', {0x00, 0x00, 0x0f, 0x10, 0x10, 0x10, 0x0f}},
-    {'d', {0x01, 0x01, 0x0d, 0x13, 0x11, 0x11, 0x0f}},
-    {'e', {0x00, 0x00, 0x0e, 0x11, 0x1f, 0x10, 0x0e}},
-    {'f', {0x06, 0x08, 0x08, 0x1e, 0x08, 0x08, 0x08}},
-    {'g', {0x00, 0x00, 0x0f, 0x11, 0x0f, 0x01, 0x0e}},
-    {'h', {0x10, 0x10, 0x16, 0x19, 0x11, 0x11, 0x11}},
-    {'i', {0x04, 0x00, 0x0c, 0x04, 0x04, 0x04, 0x0e}},
-    {'j', {0x02, 0x00, 0x06, 0x02, 0x12, 0x12, 0x0c}},
-    {'k', {0x10, 0x10, 0x12, 0x14, 0x18, 0x14, 0x12}},
-    {'l', {0x0c, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0e}},
-    {'m', {0x00, 0x00, 0x1a, 0x15, 0x15, 0x15, 0x15}},
-    {'n', {0x00, 0x00, 0x16, 0x19, 0x11, 0x11, 0x11}},
-    {'o', {0x00, 0x00, 0x0e, 0x11, 0x11, 0x11, 0x0e}},
-    {'p', {0x00, 0x00, 0x1e, 0x11, 0x1e, 0x10, 0x10}},
-    {'q', {0x00, 0x00, 0x0d, 0x13, 0x11, 0x0f, 0x01}},
-    {'r', {0x00, 0x00, 0x16, 0x19, 0x10, 0x10, 0x10}},
-    {'s', {0x00, 0x00, 0x0f, 0x10, 0x0e, 0x01, 0x1e}},
-    {'t', {0x08, 0x08, 0x1e, 0x08, 0x08, 0x09, 0x06}},
-    {'u', {0x00, 0x00, 0x11, 0x11, 0x11, 0x13, 0x0d}},
-    {'v', {0x00, 0x00, 0x11, 0x11, 0x11, 0x0a, 0x04}},
-    {'w', {0x00, 0x00, 0x11, 0x11, 0x15, 0x15, 0x0a}},
-    {'x', {0x00, 0x00, 0x11, 0x0a, 0x04, 0x0a, 0x11}},
-    {'y', {0x00, 0x00, 0x11, 0x11, 0x0f, 0x01, 0x0e}},
-    {'z', {0x00, 0x00, 0x1f, 0x02, 0x04, 0x08, 0x1f}},
-    {'0', {0x0e, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0e}},
-    {'1', {0x04, 0x0c, 0x04, 0x04, 0x04, 0x04, 0x0e}},
-    {'2', {0x0e, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1f}},
-    {'3', {0x1e, 0x01, 0x01, 0x0e, 0x01, 0x01, 0x1e}},
-    {'4', {0x02, 0x06, 0x0a, 0x12, 0x1f, 0x02, 0x02}},
-    {'5', {0x1f, 0x10, 0x10, 0x1e, 0x01, 0x01, 0x1e}},
-    {'6', {0x0e, 0x10, 0x10, 0x1e, 0x11, 0x11, 0x0e}},
-    {'7', {0x1f, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08}},
-    {'8', {0x0e, 0x11, 0x11, 0x0e, 0x11, 0x11, 0x0e}},
-    {'9', {0x0e, 0x11, 0x11, 0x0f, 0x01, 0x01, 0x0e}},
-};
-
-/**
- * @brief Finds the bitmap for one supported display character.
- *
- * Searches the compact built-in display alphabet and substitutes a blank for unsupported input.
- *
- * @param[in] character Character to locate.
- * @return Matching glyph, or the blank glyph when the character is unavailable.
- */
-static const Glyph *find_glyph(char character) {
-    for (size_t index = 0; index < sizeof(glyphs) / sizeof(glyphs[0]); index++) {
-        if (glyphs[index].character == character) {
-            return &glyphs[index];
-        }
+static const DisplayFont *font_for_scale(uint8_t scale) {
+    if (scale == DISPLAY_TEXT_FONT_10) {
+        return &display_font_10_00c988;
     }
-    return &glyphs[0];
+    if (scale == DISPLAY_TEXT_FONT_21) {
+        return &display_font_21_00aba6;
+    }
+    return NULL;
 }
 
-/**
- * @brief Measures display text rendered at a fixed scale.
- *
- * Includes the inter-character advance while excluding trailing spacing after the final glyph.
- *
- * @param[in] text Null-terminated text to measure.
- * @param[in] scale Integer pixel scale.
- * @return Rendered width in pixels, or zero for empty text or a zero scale.
- */
-uint16_t display_text_width(const char *text, uint8_t scale) {
-    uint16_t length = 0;
-    while (text[length] != '\0') {
-        length++;
+static const DisplayGlyph *find_glyph(const DisplayFont *font, uint8_t value) {
+    uint16_t index = 0;
+    if (font == NULL || font->characters == NULL || font->count == 0) {
+        return NULL;
     }
-    if (length == 0 || scale == 0) {
+    index = value > 0x1fu ? value - 0x20u : value;
+    if (index >= font->count) {
+        return NULL;
+    }
+    return font->characters[index].glyph;
+}
+
+static bool glyph_is_drawable(const DisplayGlyph *glyph) {
+    return glyph != NULL && glyph->bitmap != NULL && glyph->width != 0 && glyph->height != 0 &&
+           glyph->width <= DISPLAY_FRAMEBUFFER_WIDTH && glyph->height <= DISPLAY_FRAMEBUFFER_HEIGHT;
+}
+
+uint16_t display_text_width_for_font(const DisplayFont *font, const char *text) {
+    uint16_t width = 0;
+    if (font == NULL || text == NULL) {
         return 0;
     }
-    return (uint16_t)((length * GLYPH_ADVANCE - 1) * scale);
+    for (size_t index = 0; text[index] != '\0'; index++) {
+        const DisplayGlyph *glyph = find_glyph(font, (uint8_t)text[index]);
+        if (glyph_is_drawable(glyph)) {
+            width = (uint16_t)(width + glyph->width);
+        }
+    }
+    return width;
 }
 
-/**
- * @brief Draws display text into the grayscale framebuffer.
- *
- * Expands each lit glyph cell by the requested integer scale and leaves unlit pixels unchanged.
- *
- * @param[in,out] framebuffer Complete local-display framebuffer.
- * @param[in] text Null-terminated text to draw.
- * @param[in] x Left pixel coordinate.
- * @param[in] y Top pixel coordinate.
- * @param[in] scale Integer pixel scale.
- * @param[in] color Four-bit grayscale value.
- */
-void display_text_draw(DisplayFramebuffer framebuffer, const char *text, uint16_t x, uint16_t y,
-                       uint8_t scale, uint8_t color) {
-    for (uint16_t index = 0; text[index] != '\0'; index++) {
-        const Glyph *glyph = find_glyph(text[index]);
-        for (uint16_t row = 0; row < GLYPH_HEIGHT; row++) {
-            for (uint16_t column = 0; column < GLYPH_WIDTH; column++) {
-                if ((glyph->rows[row] & (uint8_t)(1u << (GLYPH_WIDTH - column - 1))) == 0) {
-                    continue;
+static void set_text_pixel(DisplayFramebuffer framebuffer, uint16_t x, uint16_t y, uint8_t value) {
+    display_framebuffer_set_pixel(framebuffer, x, y, value);
+}
+
+static void draw_text(DisplayFramebuffer framebuffer, const DisplayFont *font, const char *text,
+                      uint16_t x, uint16_t y, bool invert, uint8_t foreground) {
+    uint16_t cursor = (uint16_t)(x + 1u);
+    uint8_t background = invert ? 0x0f : 0;
+    if (font == NULL || text == NULL) {
+        return;
+    }
+    for (size_t index = 0; text[index] != '\0'; index++) {
+        const DisplayGlyph *glyph = find_glyph(font, (uint8_t)text[index]);
+        if (!glyph_is_drawable(glyph)) {
+            continue;
+        }
+        for (uint16_t row = 0; row < glyph->height; row++) {
+            set_text_pixel(framebuffer, x, (uint16_t)(y + row), background);
+            for (uint16_t column = 0; column < glyph->width; column++) {
+                uint16_t bitmap_index =
+                    (uint16_t)(((glyph->width + 7u) >> 3u) * row + (column >> 3u));
+                bool lit = (glyph->bitmap[bitmap_index] & (uint8_t)(0x80u >> (column & 7u))) != 0;
+                uint8_t pixel = lit ? foreground : 0;
+                if (invert) {
+                    pixel = (uint8_t)~pixel;
                 }
-                for (uint8_t scale_y = 0; scale_y < scale; scale_y++) {
-                    for (uint8_t scale_x = 0; scale_x < scale; scale_x++) {
-                        display_framebuffer_set_pixel(framebuffer,
-                                                      (uint16_t)(x + index * GLYPH_ADVANCE * scale +
-                                                                 column * scale + scale_x),
-                                                      (uint16_t)(y + row * scale + scale_y), color);
-                    }
-                }
+                set_text_pixel(framebuffer, (uint16_t)(cursor + column), (uint16_t)(y + row),
+                               pixel);
             }
         }
+        cursor += glyph->width;
     }
 }
 
-/**
- * @brief Draws horizontally centered display text.
- *
- * Measures the selected text and clamps oversized content to the left display edge.
- *
- * @param[in,out] framebuffer Complete local-display framebuffer.
- * @param[in] text Null-terminated text to draw.
- * @param[in] y Top pixel coordinate.
- * @param[in] scale Integer pixel scale.
- * @param[in] color Four-bit grayscale value.
- */
+void display_text_draw_with_font(DisplayFramebuffer framebuffer, const DisplayFont *font,
+                                 const char *text, uint16_t x, uint16_t y, bool invert) {
+    draw_text(framebuffer, font, text, x, y, invert, 0x0f);
+}
+
+void display_text_draw_centered_with_font(DisplayFramebuffer framebuffer, const DisplayFont *font,
+                                          const char *text, uint16_t y, bool invert) {
+    uint16_t width = display_text_width_for_font(font, text);
+    uint16_t x = width < DISPLAY_FRAMEBUFFER_WIDTH ? (DISPLAY_FRAMEBUFFER_WIDTH - width) / 2u : 0;
+    display_text_draw_with_font(framebuffer, font, text, x, y, invert);
+}
+
+uint16_t display_text_width(const char *text, uint8_t scale) {
+    return display_text_width_for_font(font_for_scale(scale), text);
+}
+
+void display_text_draw(DisplayFramebuffer framebuffer, const char *text, uint16_t x, uint16_t y,
+                       uint8_t scale, uint8_t color) {
+    draw_text(framebuffer, font_for_scale(scale), text, x, y, false, color & 0x0f);
+}
+
 void display_text_draw_centered(DisplayFramebuffer framebuffer, const char *text, uint16_t y,
                                 uint8_t scale, uint8_t color) {
-    uint16_t width = display_text_width(text, scale);
-    uint16_t x = width < DISPLAY_FRAMEBUFFER_WIDTH ? (DISPLAY_FRAMEBUFFER_WIDTH - width) / 2 : 0;
-    display_text_draw(framebuffer, text, x, y, scale, color);
+    const DisplayFont *font = font_for_scale(scale);
+    uint16_t width = display_text_width_for_font(font, text);
+    uint16_t x = width < DISPLAY_FRAMEBUFFER_WIDTH ? (DISPLAY_FRAMEBUFFER_WIDTH - width) / 2u : 0;
+    draw_text(framebuffer, font, text, x, y, false, color & 0x0f);
 }

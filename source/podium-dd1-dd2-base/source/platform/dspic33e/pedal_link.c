@@ -27,9 +27,12 @@ static volatile uint8_t received_dma[PEDAL_FRAME_SIZE];
 static volatile uint8_t received_frame[PEDAL_FRAME_SIZE];
 
 /**
- * @brief Two-entry queue of complete variable-length pedal transfer frames.
+ * @brief Retained byte ring for variable-length pedal transfer reception.
+ *
+ * The ring matches the official 256-byte continuous DMA receive window and keeps bytes until the
+ * foreground transfer consumer advances its parser.
  */
-static volatile uint8_t received_transfer[2][TRANSFER_FRAME_MAX_RECEIVED_SIZE];
+static volatile uint8_t transfer_receive_ring[TRANSFER_FRAME_MAX_ENCODED_SIZE];
 
 /**
  * @brief In-progress variable-length pedal transfer frame.
@@ -47,11 +50,6 @@ static volatile uint8_t transmitted_dma[TRANSFER_FRAME_MAX_ENCODED_SIZE];
 static volatile uint8_t received_byte;
 
 /**
- * @brief Encoded length of each queued variable-length transfer frame.
- */
-static volatile uint16_t received_transfer_length[2];
-
-/**
  * @brief Number of bytes in the in-progress transfer frame.
  */
 static volatile uint16_t transfer_buffer_length;
@@ -67,19 +65,32 @@ static volatile bool byte_ready;
 static volatile bool frame_ready;
 
 /**
- * @brief Queue index of the oldest variable-length transfer frame.
+ * @brief Index of the oldest byte in the retained transfer receive ring.
  */
-static volatile uint8_t received_transfer_head;
+static volatile uint8_t transfer_receive_ring_head;
 
 /**
- * @brief Number of queued variable-length transfer frames.
+ * @brief Number of retained bytes in the transfer receive ring.
  */
-static volatile uint8_t received_transfer_count;
+static volatile uint16_t transfer_receive_ring_count;
 
 /**
  * @brief True while a pedal DMA transmission is active.
  */
 static volatile bool transmit_active;
+
+/**
+ * @brief True while UART2 receive servicing is selected for the current pedal mode.
+ *
+ * Transmit completion uses this gate so a late DMA2 interrupt cannot re-enable reception during the
+ * official reconnect hold or analog-input mode.
+ */
+static volatile bool receive_enabled;
+
+/**
+ * @brief True while fixed-size receive DMA is selected for the current pedal mode.
+ */
+static volatile bool receive_dma_enabled;
 
 /**
  * @brief True while fixed-size frame reception is seeking a closing delimiter.
@@ -92,18 +103,37 @@ static volatile bool resynchronizing;
 static volatile bool transfer_receiving;
 
 /**
+ * @brief True when the parser has retained one complete transfer frame for the foreground.
+ */
+static volatile bool transfer_frame_ready;
+
+/**
  * @brief True when UART bytes are being assembled as transfer frames.
  */
 static volatile bool transfer_receive_enabled;
 
 /**
- * @brief Clears all completed V4 pedal receive frames.
+ * @brief True after a pedal receive byte reported a UART framing or overrun error.
  *
- * Resets the double-buffer queue head and count without changing the in-progress receive buffer.
+ * The flag remains set until the current fixed-size DMA frame is rejected or delimiter recovery
+ * accepts a clean closing marker.
  */
-static void clear_transfer_queue(void) {
-    received_transfer_head = 0;
-    received_transfer_count = 0;
+static volatile bool receive_error_pending;
+
+static void receive_transfer_byte(uint8_t value);
+
+/**
+ * @brief Clears all retained V4 pedal receive state.
+ *
+ * Resets the byte ring and parser so bytes from an earlier protocol generation cannot complete a
+ * frame after a reconnect or before a new V4 transmit.
+ */
+static void clear_transfer_receive_state(void) {
+    transfer_receive_ring_head = 0;
+    transfer_receive_ring_count = 0;
+    transfer_buffer_length = 0;
+    transfer_receiving = false;
+    transfer_frame_ready = false;
 }
 
 /**
@@ -198,11 +228,14 @@ void platform_pedal_link_init(void) {
     IEC1bits.U2TXIE = 0;
     byte_ready = false;
     frame_ready = false;
-    clear_transfer_queue();
+    clear_transfer_receive_state();
     transmit_active = false;
+    receive_enabled = true;
+    receive_dma_enabled = false;
     resynchronizing = false;
     transfer_receiving = false;
     transfer_receive_enabled = false;
+    receive_error_pending = false;
     transfer_buffer_length = 0;
     configure_uart();
     configure_receive_dma();
@@ -229,10 +262,13 @@ void platform_pedal_link_begin_discovery(void) {
     clear_receive_fifo();
     byte_ready = false;
     frame_ready = false;
-    clear_transfer_queue();
+    clear_transfer_receive_state();
     resynchronizing = false;
     transfer_receiving = false;
     transfer_receive_enabled = false;
+    receive_error_pending = false;
+    receive_enabled = true;
+    receive_dma_enabled = false;
     IFS1bits.U2RXIF = 0;
     IEC1bits.U2RXIE = 1;
 }
@@ -255,10 +291,37 @@ void platform_pedal_link_begin_analog(void) {
     TRISFbits.TRISF1 = 1;
     byte_ready = false;
     frame_ready = false;
-    clear_transfer_queue();
+    clear_transfer_receive_state();
     resynchronizing = false;
     transfer_receiving = false;
     transfer_receive_enabled = false;
+    receive_error_pending = false;
+    receive_enabled = false;
+    receive_dma_enabled = false;
+}
+
+/**
+ * @brief Stops pedal UART and DMA reception.
+ *
+ * Disables receive interrupts and DMA, turns off UART2, drains stale input, and clears all
+ * published receive state for the official reconnect hold.
+ */
+void platform_pedal_link_stop_receive(void) {
+    IEC0bits.DMA1IE = 0;
+    IEC1bits.U2RXIE = 0;
+    DMA1CONbits.CHEN = 0;
+    U2MODEbits.UARTEN = 0;
+    clear_receive_fifo();
+    byte_ready = false;
+    frame_ready = false;
+    clear_transfer_receive_state();
+    resynchronizing = false;
+    transfer_receive_enabled = false;
+    receive_error_pending = false;
+    receive_enabled = false;
+    receive_dma_enabled = false;
+    IFS0bits.DMA1IF = 0;
+    IFS1bits.U2RXIF = 0;
 }
 
 /**
@@ -274,10 +337,13 @@ void platform_pedal_link_begin_framed_receive(void) {
     clear_receive_fifo();
     byte_ready = false;
     frame_ready = false;
-    clear_transfer_queue();
+    clear_transfer_receive_state();
     resynchronizing = false;
     transfer_receiving = false;
     transfer_receive_enabled = false;
+    receive_error_pending = false;
+    receive_enabled = true;
+    receive_dma_enabled = true;
     DMA1CNT = PEDAL_FRAME_SIZE - 1;
     IFS0bits.DMA1IF = 0;
     IEC0bits.DMA1IE = 1;
@@ -289,7 +355,7 @@ void platform_pedal_link_begin_framed_receive(void) {
  * @brief Selects variable-length V4 transfer reception.
  *
  * Stops fixed-size DMA reception, selects the modern baud period, clears prior results, and
- * enables byte-oriented collection of escaped transfer frames.
+ * enables byte-oriented collection of escaped transfer bytes in the retained receive ring.
  */
 void platform_pedal_link_begin_transfer_receive(void) {
     IEC0bits.DMA1IE = 0;
@@ -299,10 +365,13 @@ void platform_pedal_link_begin_transfer_receive(void) {
     clear_receive_fifo();
     byte_ready = false;
     frame_ready = false;
-    clear_transfer_queue();
+    clear_transfer_receive_state();
     resynchronizing = false;
     transfer_receiving = false;
     transfer_receive_enabled = true;
+    receive_error_pending = false;
+    receive_enabled = true;
+    receive_dma_enabled = false;
     transfer_buffer_length = 0;
     IFS1bits.U2RXIF = 0;
     IEC1bits.U2RXIE = 1;
@@ -312,7 +381,8 @@ void platform_pedal_link_begin_transfer_receive(void) {
  * @brief Starts one pedal DMA transmission.
  *
  * Claims the transmitter while its completion interrupt is masked, configures the requested byte
- * count, starts the channel, and forces its first UART2 request.
+ * count, starts the channel, and forces its first UART2 request. Transfer-mode UART reception stays
+ * enabled so overlapping V4 response bytes remain in the receive ring.
  *
  * @param[in] length Number of bytes already prepared in the transmit buffer.
  * @return True when the transmission started; false when another transmission owns the channel.
@@ -324,7 +394,9 @@ static bool begin_send(uint16_t length) {
         return false;
     }
     DMA2CONbits.CHEN = 0;
-    IEC1bits.U2RXIE = 0;
+    if (!transfer_receive_enabled) {
+        IEC1bits.U2RXIE = 0;
+    }
     DMA2CNT = length - 1;
     IFS1bits.DMA2IF = 0;
     transmit_active = true;
@@ -332,6 +404,24 @@ static bool begin_send(uint16_t length) {
     DMA2REQbits.FORCE = 1;
     IEC1bits.DMA2IE = 1;
     return true;
+}
+
+/**
+ * @brief Starts a new V4 receive generation before transmission.
+ *
+ * Matches the official receiver reset before each V4 transfer: stop receive DMA and interrupts,
+ * discard stale UART bytes, clear the retained byte ring and parser, then leave the selected UART
+ * receive route ready for the response generation.
+ */
+static void reset_transfer_receive_generation(void) {
+    IEC1bits.U2RXIE = 0;
+    DMA1CONbits.CHEN = 0;
+    clear_receive_fifo();
+    IFS0bits.DMA1IF = 0;
+    DMA1CNT = TRANSFER_FRAME_MAX_ENCODED_SIZE - 1;
+    clear_transfer_receive_state();
+    receive_error_pending = false;
+    IEC1bits.U2RXIE = receive_enabled;
 }
 
 /**
@@ -385,6 +475,9 @@ bool platform_pedal_link_send_transfer(const uint8_t *data, uint16_t length) {
         transmit_active) {
         return false;
     }
+    if (transfer_receive_enabled) {
+        reset_transfer_receive_generation();
+    }
     for (uint16_t index = 0; index < length; index++) {
         transmitted_dma[index] = data[index];
     }
@@ -415,7 +508,7 @@ bool platform_pedal_link_take_byte(uint8_t *value) {
         *value = received_byte;
         byte_ready = false;
     }
-    IEC1bits.U2RXIE = 1;
+    IEC1bits.U2RXIE = receive_enabled;
     return ready;
 }
 
@@ -436,15 +529,16 @@ bool platform_pedal_link_take_frame(uint8_t frame[PEDAL_FRAME_SIZE]) {
         }
         frame_ready = false;
     }
-    IEC0bits.DMA1IE = 1;
+    IEC0bits.DMA1IE = receive_dma_enabled;
     return ready;
 }
 
 /**
  * @brief Takes one complete encoded V4 transfer frame.
  *
- * Masks UART2 receive events while copying and consuming a frame that fits the caller's capacity.
- * An undersized destination leaves the pending frame available for a later call.
+ * Masks UART2 receive events while draining retained bytes, parsing one complete frame, and
+ * copying it when it fits the caller's capacity. An undersized destination leaves the pending
+ * frame available for a later call.
  *
  * @param[out] data Destination for the encoded frame.
  * @param[in] capacity Available destination bytes.
@@ -452,30 +546,38 @@ bool platform_pedal_link_take_frame(uint8_t frame[PEDAL_FRAME_SIZE]) {
  */
 uint16_t platform_pedal_link_take_transfer(uint8_t *data, uint16_t capacity) {
     IEC1bits.U2RXIE = 0;
-    uint16_t pending_length =
-        received_transfer_count != 0 ? received_transfer_length[received_transfer_head] : 0;
-    uint16_t length = pending_length <= capacity ? pending_length : 0;
+    while (transfer_receive_ring_count != 0 && !transfer_frame_ready) {
+        uint8_t value = transfer_receive_ring[transfer_receive_ring_head];
+        transfer_receive_ring_head++;
+        transfer_receive_ring_count--;
+        receive_transfer_byte(value);
+    }
+    uint16_t pending_length = transfer_frame_ready ? transfer_buffer_length : 0;
+    uint16_t length = data != NULL && pending_length <= capacity ? pending_length : 0;
     if (length != 0) {
         for (uint16_t index = 0; index < length; index++) {
-            data[index] = received_transfer[received_transfer_head][index];
+            data[index] = transfer_buffer[index];
         }
-        received_transfer_head ^= 1u;
-        received_transfer_count--;
+        transfer_frame_ready = false;
+        transfer_buffer_length = 0;
     }
-    IEC1bits.U2RXIE = 1;
+    IEC1bits.U2RXIE = receive_enabled;
     return length;
 }
 
 /**
  * @brief Accumulates one encoded V4 transfer byte.
  *
- * Starts or restarts collection at the opening marker, abandons oversized partial frames, and
- * appends a complete frame to the two-entry receive queue at the closing marker. A completed frame
- * is dropped when both queue entries remain unread.
+ * Retains bytes in the official-size receive ring until the foreground parser consumes them. Starts
+ * or restarts collection at the opening marker, abandons oversized partial frames, and retains one
+ * complete frame until the caller accepts it.
  *
  * @param[in] value Received encoded byte.
  */
 static void receive_transfer_byte(uint8_t value) {
+    if (transfer_frame_ready) {
+        return;
+    }
     if (value == TRANSFER_FRAME_START) {
         transfer_buffer[0] = value;
         transfer_buffer_length = 1;
@@ -496,48 +598,77 @@ static void receive_transfer_byte(uint8_t value) {
         return;
     }
 
-    if (received_transfer_count < 2) {
-        uint8_t slot = (uint8_t)((received_transfer_head + received_transfer_count) & 1u);
-        for (uint16_t index = 0; index < transfer_buffer_length; index++) {
-            received_transfer[slot][index] = transfer_buffer[index];
-        }
-        received_transfer_length[slot] = transfer_buffer_length;
-        received_transfer_count++;
-    }
-    transfer_buffer_length = 0;
+    transfer_frame_ready = true;
     transfer_receiving = false;
+}
+
+/**
+ * @brief Retains one clean V4 receive byte.
+ *
+ * Advances the oldest byte when the official-size ring is full, preserving the newest serial
+ * generation for the foreground parser.
+ *
+ * @param[in] value Clean encoded transfer byte to retain.
+ */
+static void retain_transfer_receive_byte(uint8_t value) {
+    if (transfer_receive_ring_count == sizeof(transfer_receive_ring)) {
+        transfer_receive_ring_head++;
+        transfer_receive_ring_count--;
+    }
+    uint8_t slot = (uint8_t)(transfer_receive_ring_head + transfer_receive_ring_count);
+    transfer_receive_ring[slot] = value;
+    transfer_receive_ring_count++;
+}
+
+/**
+ * @brief Processes one UART2 receive value.
+ *
+ * Drops bytes reported with framing or overrun errors, assembles transfer bytes, publishes clean
+ * byte-oriented responses, and accepts only a clean closing marker during DMA recovery.
+ *
+ * @param[in] value Received UART2 value.
+ * @param[in] error True when UART2 reported a framing or overrun error for the value.
+ */
+static void process_received_byte(uint8_t value, bool error) {
+    if (error) {
+        receive_error_pending = true;
+        return;
+    }
+    if (transfer_receive_enabled) {
+        retain_transfer_receive_byte(value);
+        return;
+    }
+    if (resynchronizing) {
+        if (value == PEDAL_FRAME_END) {
+            resynchronizing = false;
+            receive_error_pending = false;
+            DMA1CONbits.CHEN = 1;
+        }
+        return;
+    }
+    received_byte = value;
+    byte_ready = true;
 }
 
 /**
  * @brief Services UART2 pedal receive events.
  *
- * Drains all available bytes, assembles V4 transfer frames, publishes the newest discovery byte,
- * or rearms V3 DMA after a closing delimiter. UART overruns are cleared before return.
+ * Drains all available bytes, rejects values with framing or overrun errors, assembles V4 transfer
+ * frames, publishes clean discovery bytes, or rearms V3 DMA after a clean closing delimiter.
+ * UART overruns are cleared before return.
  */
 void __attribute__((interrupt, no_auto_psv)) _U2RXInterrupt(void) {
-    uint8_t last = 0;
-    bool received = false;
+    if (!receive_enabled) {
+        clear_receive_fifo();
+        IFS1bits.U2RXIF = 0;
+        return;
+    }
     while (U2STAbits.URXDA != 0) {
         bool error = U2STAbits.FERR != 0 || U2STAbits.OERR != 0;
-        last = (uint8_t)U2RXREG;
-        if (error) {
-            continue;
-        }
-        received = true;
-        if (transfer_receive_enabled) {
-            receive_transfer_byte(last);
-        }
-    }
-    if (!transfer_receive_enabled && resynchronizing) {
-        if (received && last == PEDAL_FRAME_END) {
-            resynchronizing = false;
-            DMA1CONbits.CHEN = 1;
-        }
-    } else if (!transfer_receive_enabled && received) {
-        received_byte = last;
-        byte_ready = true;
+        process_received_byte((uint8_t)U2RXREG, error);
     }
     if (U2STAbits.OERR) {
+        receive_error_pending = true;
         U2STAbits.OERR = 0;
     }
     IFS1bits.U2RXIF = 0;
@@ -546,12 +677,19 @@ void __attribute__((interrupt, no_auto_psv)) _U2RXInterrupt(void) {
 /**
  * @brief Services fixed-size pedal receive completion.
  *
- * Publishes a twelve-byte frame with valid boundary markers and immediately rearms DMA. A malformed
- * boundary switches reception to UART delimiter recovery before the next DMA frame is accepted.
+ * Publishes a twelve-byte frame with valid boundary markers and no pending UART receive error, then
+ * immediately rearms DMA. A malformed or errored frame switches reception to UART delimiter
+ * recovery before the next DMA frame is accepted.
  */
 void __attribute__((interrupt, no_auto_psv)) _DMA1Interrupt(void) {
+    if (!receive_dma_enabled) {
+        IFS0bits.DMA1IF = 0;
+        return;
+    }
+    bool receive_error = receive_error_pending || U2STAbits.FERR != 0 || U2STAbits.OERR != 0;
+    receive_error_pending = false;
     DMA1CNT = PEDAL_FRAME_SIZE - 1;
-    if (received_dma[0] == PEDAL_FRAME_START &&
+    if (!receive_error && received_dma[0] == PEDAL_FRAME_START &&
         received_dma[PEDAL_FRAME_SIZE - 1] == PEDAL_FRAME_END) {
         for (uint8_t index = 0; index < PEDAL_FRAME_SIZE; index++) {
             received_frame[index] = received_dma[index];
@@ -565,6 +703,34 @@ void __attribute__((interrupt, no_auto_psv)) _DMA1Interrupt(void) {
     IFS0bits.DMA1IF = 0;
 }
 
+#ifdef OPENTEC_SIMULATOR_TEST
+/**
+ * @brief Loads a receive-DMA frame for platform tests.
+ *
+ * @param[in] frame Twelve bytes to expose through the simulated receive DMA buffer.
+ * @param[in] uart_error True when the frame includes a UART framing or overrun error.
+ */
+void platform_pedal_link_test_set_receive_dma(const uint8_t frame[PEDAL_FRAME_SIZE],
+                                              bool uart_error) {
+    for (uint8_t index = 0; index < PEDAL_FRAME_SIZE; index++) {
+        received_dma[index] = frame[index];
+    }
+    receive_error_pending = uart_error;
+}
+
+/**
+ * @brief Feeds one UART2 value through the receive-error and recovery logic.
+ *
+ * @param[in] value Value to process.
+ * @param[in] uart_error True when UART2 reported a framing or overrun error.
+ */
+void platform_pedal_link_test_receive_byte(uint8_t value, bool uart_error) {
+    if (receive_enabled) {
+        process_received_byte(value, uart_error);
+    }
+}
+#endif
+
 /**
  * @brief Services pedal transmit completion.
  *
@@ -573,5 +739,5 @@ void __attribute__((interrupt, no_auto_psv)) _DMA1Interrupt(void) {
 void __attribute__((interrupt, no_auto_psv)) _DMA2Interrupt(void) {
     transmit_active = false;
     IFS1bits.DMA2IF = 0;
-    IEC1bits.U2RXIE = 1;
+    IEC1bits.U2RXIE = receive_enabled;
 }

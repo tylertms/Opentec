@@ -14,6 +14,8 @@ static void test_scales_normal_and_automatic_strength(void) {
     assert(force_feedback_script_output_request(float_bits(1.0f), 100, 0) == 65535);
     assert(force_feedback_script_output_request(float_bits(1.0f), 50, 0) == 32767);
     assert(force_feedback_script_output_request(float_bits(-1.0f), 100, 0) == -65535);
+    assert(force_feedback_script_output_request(float_bits(1.0f), 101, 35) == 22937);
+    assert(force_feedback_script_output_request(float_bits(1.0f), 101, 30) == 19660);
     assert(force_feedback_script_output_request(float_bits(1.0f), 101, 80) == 52428);
 }
 

@@ -23,11 +23,20 @@ typedef enum {
 void platform_aux_bus_init(void);
 
 /**
- * @brief Services auxiliary-bus transaction timeouts.
+ * @brief Services the foreground auxiliary-bus polling hook.
  *
- * Resets the controller and publishes failure when an active transaction exceeds its deadline.
+ * Timer 1 owns the active transfer timeout. This hook remains safe to call from polling loops and
+ * does not consume timeout ticks.
  */
 void platform_aux_bus_service(void);
+
+/**
+ * @brief Advances the auxiliary-bus timeout from a one-millisecond timer interrupt.
+ *
+ * Resets the controller and publishes failure when an active transfer misses two consecutive
+ * Timer 1 ticks without an I2C event.
+ */
+void platform_aux_bus_timer_tick(void);
 
 /**
  * @brief Starts a register-addressed auxiliary-bus write.
@@ -46,7 +55,8 @@ bool platform_aux_bus_start_write(uint8_t address, uint16_t register_address, co
 /**
  * @brief Starts a register-addressed auxiliary-bus read.
  *
- * Queues a nonempty read into the supplied destination buffer.
+ * Queues a read into the supplied destination buffer. A zero-length read still performs the
+ * register-addressed remote transaction.
  *
  * @param[in] address Seven-bit device address.
  * @param[in] register_address Eight- or sixteen-bit register address.
@@ -72,5 +82,16 @@ PlatformAuxBusStatus platform_aux_bus_status(void);
  * Returns a completed status to idle without changing an active transaction.
  */
 void platform_aux_bus_clear(void);
+
+#ifdef OPENTEC_SIMULATOR_TEST
+/**
+ * @brief Reads the retry count after a simulated auxiliary-bus transaction.
+ *
+ * Exposes the bounded-retry state to simulator regression tests without adding a production API.
+ *
+ * @return Number of NACK retries used by the active or most recent transaction.
+ */
+uint8_t platform_aux_bus_retry_count(void);
+#endif
 
 #endif

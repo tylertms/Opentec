@@ -21,6 +21,28 @@ typedef enum {
 } ShifterDisplayPhase;
 
 /**
+ * @brief Identifies the presentation owned by the local OLED shifter page.
+ */
+typedef enum {
+    SHIFTER_LOCAL_DISPLAY_NONE,        /**< The local shifter page is clear. */
+    SHIFTER_LOCAL_DISPLAY_GEAR,        /**< A temporary ordinary-gear glyph is visible. */
+    SHIFTER_LOCAL_DISPLAY_CALIBRATION, /**< Calibration instructions or position are visible. */
+} ShifterLocalDisplayKind;
+
+/**
+ * @brief Stores the local OLED shifter presentation.
+ *
+ * Gear presentations use glyph. Calibration presentations use calibration_prompt and
+ * calibration_position to select the official local prompt or diagnostic content.
+ */
+typedef struct {
+    ShifterLocalDisplayKind kind; /**< Current local presentation kind. */
+    uint8_t glyph;                /**< Raw seven-segment glyph for an ordinary gear presentation. */
+    HPatternCalibrationPrompt calibration_prompt;     /**< Current calibration prompt. */
+    HPatternCalibrationPosition calibration_position; /**< Position requested by calibration. */
+} ShifterLocalDisplay;
+
+/**
  * @brief Retains H-pattern display presentation state.
  *
  * Calibration presentation and ordinary gear presentation share this state machine.
@@ -32,6 +54,8 @@ typedef struct {
     bool calibration_visible;  /**< True while calibration owns the display glyphs. */
     bool refresh_requested; /**< True when the next available display update must refresh the gear.
                              */
+    bool refresh_side_effect_pending; /**< True while the mode-specific refresh side effect awaits
+                                         service. */
 } ShifterDisplay;
 
 /**
@@ -51,6 +75,39 @@ void shifter_display_init(ShifterDisplay *display);
  * @param[in,out] display Display state receiving the refresh request.
  */
 void shifter_display_request_refresh(ShifterDisplay *display);
+
+/**
+ * @brief Takes the mode-specific refresh side effect.
+ *
+ * Returns and clears the one-shot side effect created by a refresh request while leaving
+ * refresh_requested available to the calibration start gate.
+ *
+ * @param[in,out] display Display state receiving the side-effect request.
+ * @return True when a pending side effect was consumed.
+ */
+bool shifter_display_take_refresh_side_effect(ShifterDisplay *display);
+
+/**
+ * @brief Advances the local OLED shifter presentation.
+ *
+ * Tracks the official wait-for-connection, one-second gear presentation, and calibration prompt
+ * states without touching attached-wheel display output.
+ *
+ * @param[in,out] display Persistent shifter display state.
+ * @param[in] gear Current H-pattern gear.
+ * @param[in] wheel_active True while the attached-wheel protocol is active.
+ * @param[in] h_pattern_available True while at least one H-pattern input is present.
+ * @param[in] calibration_prompt Current calibration presentation phase.
+ * @param[in] calibration_position Next calibration position, or complete.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[out] output Local OLED presentation to update.
+ * @return True when the local presentation changed.
+ */
+bool shifter_display_update_local(ShifterDisplay *display, ShifterGear gear, bool wheel_active,
+                                  bool h_pattern_available,
+                                  HPatternCalibrationPrompt calibration_prompt,
+                                  HPatternCalibrationPosition calibration_position, uint32_t now_ms,
+                                  ShifterLocalDisplay *output);
 
 /**
  * @brief Advances H-pattern gear and calibration presentation.

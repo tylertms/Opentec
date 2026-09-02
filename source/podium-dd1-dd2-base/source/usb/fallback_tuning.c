@@ -3,9 +3,47 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "wheel/position.h"
+
+/** @brief Native physical steering-range conversion constants. */
+enum {
+    FALLBACK_LOW_ROTATION_DEGREES = 200,
+    FALLBACK_STEERING_LIMIT_MINIMUM_INPUT = 89,
+    FALLBACK_STEERING_LIMIT_MAXIMUM_UNITS =
+        TUNING_ROTATION_MAX_DEGREES / TUNING_ROTATION_STEP_DEGREES,
+};
+
 bool usb_fallback_tuning_range_allowed(const TuningProfile *profile) {
     return profile != NULL &&
            (profile->automatic_rotation != 0 || profile->rotation_degrees == 1300);
+}
+
+bool usb_fallback_tuning_steering_travel(const UsbFallbackCommand *command, uint32_t *travel) {
+    if (command == NULL || travel == NULL) {
+        return false;
+    }
+
+    switch (command->kind) {
+    case USB_FALLBACK_STEERING_RANGE_LOW:
+        *travel = wheel_position_travel_from_degrees(FALLBACK_LOW_ROTATION_DEGREES);
+        return true;
+    case USB_FALLBACK_STEERING_RANGE_HIGH:
+        *travel = WHEEL_POSITION_SAMPLE_LIMIT;
+        return true;
+    case USB_FALLBACK_STEERING_LIMIT: {
+        if (command->value <= FALLBACK_STEERING_LIMIT_MINIMUM_INPUT) {
+            *travel = wheel_position_travel_from_degrees(TUNING_ROTATION_MIN_DEGREES);
+            return true;
+        }
+        uint32_t travel_limit = (uint32_t)(command->value / TUNING_ROTATION_STEP_DEGREES) *
+                                WHEEL_POSITION_SAMPLE_LIMIT / FALLBACK_STEERING_LIMIT_MAXIMUM_UNITS;
+        *travel =
+            travel_limit > WHEEL_POSITION_SAMPLE_LIMIT ? WHEEL_POSITION_SAMPLE_LIMIT : travel_limit;
+        return true;
+    }
+    default:
+        return false;
+    }
 }
 
 /**

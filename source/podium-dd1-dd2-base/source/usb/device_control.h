@@ -25,7 +25,7 @@ typedef struct {
     uint8_t string_count;             /**< Number of entries in the string table. */
     bool string_alias_valid;          /**< True when the configured string alias is active. */
     uint8_t string_alias;             /**< Descriptor index that aliases another string. */
-    uint8_t string_alias_target;      /**< Target index for the string alias. */
+    uint8_t string_alias_target;      /**< Backing string index exposed only through the alias. */
 } UsbDescriptorCatalog;
 
 /** @brief Transfer kinds returned by endpoint-zero request handling. */
@@ -65,7 +65,7 @@ typedef struct {
     UsbDevicePendingChange pending_change; /**< Deferred state change kind. */
     bool self_powered;         /**< True when the active configuration is self-powered. */
     bool remote_wakeup;        /**< True when the host enabled remote wakeup. */
-    bool remote_wakeup_forced; /**< True when remote wakeup is always advertised. */
+    bool remote_wakeup_forced; /**< True when hardware requires remote wakeup status. */
 } UsbDeviceControl;
 
 /**
@@ -76,7 +76,8 @@ typedef struct {
  *
  * @param[out] device Endpoint-zero state to initialize.
  * @param[in] self_powered True when the active configuration is self-powered.
- * @param[in] remote_wakeup_forced True when status must always advertise remote wakeup.
+ * @param[in] remote_wakeup_forced True when status must advertise remote wakeup independently of
+ * the host feature state.
  */
 void usb_device_control_init(UsbDeviceControl *device, bool self_powered,
                              bool remote_wakeup_forced);

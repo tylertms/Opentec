@@ -18,6 +18,8 @@ static bool received_ready;
 enum {
     WHEEL_BUTTON_PRIMARY_RESPONSE = 0xe0,
     WHEEL_BUTTON_SECONDARY_RESPONSE = 0xc0,
+    WHEEL_PROTOCOL_ACTIVITY_TIMEOUT_MS = 2000,
+    WHEEL_PROTOCOL_SELECTION_TIMEOUT_MS = 10000,
 };
 
 void platform_serial_link_init(void) {}
@@ -53,6 +55,17 @@ static void respond_frame(const SerialPacket *packet) {
 static void initialize_service(WheelService *service) {
     serial_service_init(&transport);
     wheel_service_init(service, &transport);
+}
+
+static void test_exposes_protocol_bridge_report_id(void) {
+    WheelService service;
+    initialize_service(&service);
+    assert(wheel_service_protocol_bridge_report_id(&service) == 0x15);
+    service.adapter_commands.endpoint_index = 1;
+    assert(wheel_service_protocol_bridge_report_id(&service) == 0x16);
+    service.adapter_commands.endpoint_index = 2;
+    assert(wheel_service_protocol_bridge_report_id(&service) == 0);
+    assert(wheel_service_protocol_bridge_report_id(NULL) == 0);
 }
 
 static void run_service(WheelService *service, uint32_t now_ms) {
@@ -114,21 +127,111 @@ static void respond_active_buttons(uint8_t first, uint8_t second, uint8_t third)
     respond_frame(&frame);
 }
 
-static uint32_t begin_scan_mode(WheelService *service, uint8_t command) {
+static uint32_t begin_protocol_mode(WheelService *service, uint8_t command, uint8_t mode) {
+    received_ready = false;
     initialize_service(service);
     run_service(service, 0);
     assert(request().type_flags == 2);
-    for (uint32_t now_ms = 1; now_ms <= 2; now_ms++) {
-        respond_protocol(0, 0);
-        run_service(service, now_ms);
-    }
-    SerialPacket frame = request();
-    assert(frame.payload[WHEEL_PROTOCOL_FLAGS_OFFSET] == WHEEL_PROTOCOL_RESPONSE_ACKNOWLEDGED);
+
     respond_protocol(0, 0);
-    run_service(service, 3);
-    respond_protocol(command, 0);
-    run_service(service, 4);
-    return 5;
+    run_service(service, 2);
+    respond_protocol(0, 0);
+    run_service(service, 13);
+    respond_protocol(0, 0);
+    run_service(service, 2014);
+    assert(request().payload[WHEEL_PROTOCOL_FLAGS_OFFSET] == WHEEL_PROTOCOL_RESPONSE_ACKNOWLEDGED);
+    respond_protocol(command, mode);
+    run_service(service, 2016);
+    return 2017;
+}
+
+static uint32_t begin_scan_mode(WheelService *service, uint8_t command) {
+    return begin_protocol_mode(service, command, 0);
+}
+
+static void test_paces_logical_protocol_requests(void) {
+    WheelService service;
+    initialize_service(&service);
+
+    wheel_service_run(&service, 0, true);
+    assert(transport.status == SERIAL_SERVICE_PENDING);
+    assert(service.protocol_transport_interval_ms == 1);
+    assert(service.protocol_transport_deadline_ms == 1);
+
+    respond_protocol(0, 0);
+    run_service(&service, 2);
+    assert(service.protocol_transport_interval_ms == 10);
+    assert(service.protocol_transport_deadline_ms == 12);
+
+    serial_service_cancel(&transport);
+    wheel_service_run(&service, 12, true);
+    assert(transport.status == SERIAL_SERVICE_IDLE);
+    wheel_service_run(&service, 13, true);
+    assert(transport.status == SERIAL_SERVICE_PENDING);
+
+    serial_service_cancel(&transport);
+    service.protocol.phase = WHEEL_PROTOCOL_ACKNOWLEDGING;
+    service.protocol_transport_deadline_active = false;
+    wheel_service_run(&service, 20, true);
+    assert(service.protocol_transport_interval_ms == 2000);
+    assert(service.protocol_transport_deadline_ms == 2020);
+}
+
+static void test_recovers_malformed_protocol_response_and_clears_completion(void) {
+    WheelService service;
+    initialize_service(&service);
+    service.protocol.display_character_mode = true;
+    service.protocol_exchange_completed = true;
+    service.auxiliary_output.exclusive_mode = true;
+    service.auxiliary_output.latched_bands = 0x07;
+    wheel_service_run(&service, 0, true);
+
+    SerialPacket malformed = {
+        .type_flags = 2,
+        .payload_length = 1,
+    };
+    malformed.payload[0] = WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
+    respond_frame(&malformed);
+    serial_service_run(&transport, 2);
+    wheel_service_run(&service, 2, false);
+
+    assert(service.protocol.phase == WHEEL_PROTOCOL_WAITING);
+    assert(service.protocol.display_character_mode);
+    assert(!service.protocol_exchange_completed);
+    assert(!service.auxiliary_output.exclusive_mode);
+    assert(service.auxiliary_output.latched_bands == 0);
+    assert(service.request_kind == WHEEL_SERVICE_REQUEST_NONE);
+    assert(service.protocol_transport_interval_ms == 1);
+    assert(!service.protocol_transport_deadline_active);
+    assert(memcmp(service.request, (uint8_t[sizeof(service.request)]){0},
+                  sizeof(service.request)) == 0);
+    assert(transport.status == SERIAL_SERVICE_IDLE);
+
+    wheel_service_run(&service, 2, true);
+    assert(transport.status == SERIAL_SERVICE_PENDING);
+    assert(request().type_flags == 2);
+}
+
+static void test_recovers_unknown_selection_after_deadline(void) {
+    WheelService service;
+    uint32_t now_ms = begin_protocol_mode(&service, 0x55, 0);
+    assert(service.protocol.phase == WHEEL_PROTOCOL_SELECTING);
+    assert(!service.bridge_recovery_pending);
+
+    const uint32_t deadline_ms = 2014 + WHEEL_PROTOCOL_SELECTION_TIMEOUT_MS;
+    for (now_ms += 1; now_ms < deadline_ms; now_ms += 2) {
+        respond_protocol(0x55, 0);
+        run_service(&service, now_ms);
+    }
+    respond_protocol(0x55, 0);
+    run_service(&service, deadline_ms);
+
+    assert(service.protocol.phase == WHEEL_PROTOCOL_SELECTING);
+    assert(service.protocol_deadline_active == false);
+    assert(wheel_service_bridge_recovery_pending(&service));
+    assert(wheel_service_take_bridge_recovery(&service));
+    assert(!wheel_service_bridge_recovery_pending(&service));
+    assert(!wheel_service_take_bridge_recovery(&service));
 }
 
 static uint32_t begin_scan(WheelService *service) {
@@ -216,6 +319,62 @@ static void test_maps_secondary_scan_bit(void) {
     assert(buttons[2] == 0x08);
 }
 
+static void test_separates_scan_histories_and_updates_capability_marker(void) {
+    WheelService primary;
+    received_ready = false;
+    uint32_t now_ms = begin_scan(&primary);
+    primary.protocol.capabilities.capability_flags = 0x1234;
+    primary.protocol.capabilities.report_flags = 0x5aa5;
+
+    respond_scan(WHEEL_BUTTON_SECONDARY_RESPONSE | 0x01);
+    run_service(&primary, now_ms++);
+    assert(primary.primary_scan_sample_index == 0);
+    assert(primary.secondary_scan_sample_index == 0);
+    assert(primary.protocol.capabilities.capability_flags == 0x1206);
+    assert(primary.protocol.capabilities.report_flags == 0x5aa5);
+
+    respond_scan(WHEEL_BUTTON_PRIMARY_RESPONSE | 0x01);
+    run_service(&primary, now_ms);
+    assert(primary.primary_scan_sample_index == 1);
+    assert(primary.secondary_scan_sample_index == 0);
+
+    WheelService secondary;
+    now_ms = begin_scan_mode(&secondary, WHEEL_PROTOCOL_COMMAND_SCAN_SECONDARY);
+    respond_scan(WHEEL_BUTTON_SECONDARY_RESPONSE | 0x01);
+    run_service(&secondary, now_ms);
+    assert(secondary.primary_scan_sample_index == 0);
+    assert(secondary.secondary_scan_sample_index == 1);
+    assert((wheel_service_capability_flags(&secondary) & 0xffu) == 6);
+}
+
+static void test_falls_back_to_scan_snapshot_and_mode_bits(void) {
+    WheelService service;
+    initialize_service(&service);
+    service.protocol.phase = WHEEL_PROTOCOL_SCANNING_PRIMARY;
+    service.button_banks[0] = 0x12;
+    service.button_banks[1] = 0x34;
+    service.button_banks[2] = 0x56;
+
+    WheelInputSnapshot snapshot;
+    assert(wheel_service_input_snapshot(&service, &snapshot));
+    assert(snapshot.directional_buttons == 0x12);
+    assert(snapshot.secondary_buttons == 0x5634);
+    assert(snapshot.clutch_paddles[0] == 0);
+    assert(snapshot.tuning_input == 0);
+    assert(snapshot.packed_rotary_positions == 0);
+    assert(snapshot.auxiliary_report[0] == 0);
+    assert(!snapshot.axis_report_enabled);
+    assert(wheel_service_mode_buttons(&service) == 7);
+
+    service.protocol.phase = WHEEL_PROTOCOL_SCANNING_SECONDARY;
+    assert(wheel_service_mode_buttons(&service) == 6);
+
+    service.protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    assert(!wheel_service_input_snapshot(&service, &snapshot));
+    assert(snapshot.directional_buttons == 0);
+    assert(snapshot.secondary_buttons == 0);
+}
+
 static void test_negotiates_before_scanning_and_maps_buttons(void) {
     WheelService service;
     received_ready = false;
@@ -295,8 +454,9 @@ static void test_sends_display_output_with_each_scan_phase(void) {
     uint32_t now_ms = begin_scan(&service);
     const WheelDisplayOutput output = {
         .glyphs = {0xa5, 0x5a, 0x40},
-        .third_glyph_marker = true,
+        .third_glyph_marker = false,
     };
+    service.protocol.common_input.report_mode = 2;
     wheel_service_set_display_output(&service, &output);
     const WheelVibrationOutput vibration = {.channels = {0x01, 0x01}};
     wheel_service_set_vibration_output(&service, &vibration);
@@ -334,13 +494,7 @@ static void test_keeps_protocol_transport_for_packet_modes(void) {
     assert(!wheel_service_axis_values(&service, wheel_axes));
     assert(wheel_axes[0] == 0);
     assert(wheel_axes[1] == 0);
-    run_service(&service, 0);
-    for (uint32_t now_ms = 1; now_ms <= 3; now_ms++) {
-        respond_protocol(0, 0);
-        run_service(&service, now_ms);
-    }
-    respond_protocol(WHEEL_PROTOCOL_COMMAND_SELECT_MODE, 1);
-    run_service(&service, 4);
+    uint32_t now_ms = begin_protocol_mode(&service, WHEEL_PROTOCOL_COMMAND_SELECT_MODE, 1);
     SerialPacket active = {
         .type_flags = 2,
         .payload_length = WHEEL_PROTOCOL_PACKET_SIZE,
@@ -357,7 +511,7 @@ static void test_keeps_protocol_transport_for_packet_modes(void) {
     active.payload[WHEEL_PROTOCOL_CHECKSUM_OFFSET] =
         wheel_protocol_message_checksum(active.payload);
     respond_frame(&active);
-    run_service(&service, 5);
+    run_service(&service, now_ms++);
 
     assert(wheel_service_protocol_phase(&service) == WHEEL_PROTOCOL_ACTIVE);
     assert(wheel_service_mode(&service) == 1);
@@ -377,25 +531,42 @@ static void test_keeps_protocol_transport_for_packet_modes(void) {
     assert(wheel_protocol_message_valid(frame.payload));
 }
 
+static void test_matches_official_clutch_paddle_availability(void) {
+    static const uint8_t available_modes[] = {0x01, 0x02, 0x03, 0x0a, 0x13, 0x14, 0x16};
+    static const uint8_t gated_modes[] = {0x00, 0x04, 0x0f, 0x10, 0x15, 0x17, 0x18, 0x1c};
+    WheelService service;
+    initialize_service(&service);
+
+    for (size_t index = 0; index < sizeof(available_modes); index++) {
+        service.protocol.mode = available_modes[index];
+        assert(wheel_service_clutch_paddles_available(&service));
+    }
+
+    for (size_t index = 0; index < sizeof(gated_modes); index++) {
+        service.protocol.mode = gated_modes[index];
+        assert(!wheel_service_clutch_paddles_available(&service));
+    }
+
+    service.protocol.configured_axis_override_mode = WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED;
+    assert(wheel_service_clutch_paddles_available(&service));
+    service.protocol.configured_axis_override_mode = WHEEL_AXIS_OVERRIDE_MODE_NONE;
+    service.protocol.adapter.connected = true;
+    assert(wheel_service_clutch_paddles_available(&service));
+    assert(!wheel_service_clutch_paddles_available(NULL));
+}
+
 static void test_gates_selected_modes_on_status_memory_startup(void) {
     static const uint8_t modes[] = {0x0a, 0x1c};
     for (uint8_t index = 0; index < sizeof(modes); index++) {
         WheelService service;
-        received_ready = false;
-        initialize_service(&service);
-        run_service(&service, 0);
-        for (uint32_t now_ms = 1; now_ms <= 3; now_ms++) {
-            respond_protocol(0, 0);
-            run_service(&service, now_ms);
-        }
-        respond_protocol(WHEEL_PROTOCOL_COMMAND_SELECT_MODE, modes[index]);
-        run_service(&service, 4);
+        uint32_t now_ms =
+            begin_protocol_mode(&service, WHEEL_PROTOCOL_COMMAND_SELECT_MODE, modes[index]);
 
         assert(wheel_service_mode(&service) == modes[index]);
         assert(wheel_service_status_memory_startup_pending(&service));
         WheelProtocolPhase selected_phase = wheel_service_protocol_phase(&service);
         respond_active(0);
-        run_service(&service, 2005);
+        run_service(&service, now_ms++);
         assert(wheel_service_protocol_phase(&service) == selected_phase);
 
         bool available = index != 0;
@@ -405,15 +576,7 @@ static void test_gates_selected_modes_on_status_memory_startup(void) {
     }
 
     WheelService service;
-    received_ready = false;
-    initialize_service(&service);
-    run_service(&service, 0);
-    for (uint32_t now_ms = 1; now_ms <= 3; now_ms++) {
-        respond_protocol(0, 0);
-        run_service(&service, now_ms);
-    }
-    respond_protocol(WHEEL_PROTOCOL_COMMAND_SELECT_MODE, 0x0b);
-    run_service(&service, 4);
+    (void)begin_protocol_mode(&service, WHEEL_PROTOCOL_COMMAND_SELECT_MODE, 0x0b);
     assert(!wheel_service_status_memory_startup_pending(&service));
     wheel_service_finish_status_memory_startup(&service, false);
     assert(service.tuning_menu_override_enabled == false);
@@ -421,18 +584,11 @@ static void test_gates_selected_modes_on_status_memory_startup(void) {
 
 static void test_publishes_packet_mode_buttons(void) {
     WheelService service;
-    received_ready = false;
-    initialize_service(&service);
-    run_service(&service, 0);
-    for (uint32_t now_ms = 1; now_ms <= 3; now_ms++) {
-        respond_protocol(0, 0);
-        run_service(&service, now_ms);
-    }
-    respond_protocol(WHEEL_PROTOCOL_COMMAND_SELECT_MODE, 1);
-    run_service(&service, 4);
+    uint32_t now_ms = begin_protocol_mode(&service, WHEEL_PROTOCOL_COMMAND_SELECT_MODE, 1);
 
-    for (uint32_t now_ms = 5; now_ms <= 7; now_ms++) {
+    for (uint8_t sample = 0; sample < WHEEL_SCAN_SAMPLE_DEPTH; sample++) {
         respond_active_buttons(0x20, 0x04, 0x02);
+        now_ms += 2;
         run_service(&service, now_ms);
     }
 
@@ -445,52 +601,38 @@ static void test_publishes_packet_mode_buttons(void) {
 
 static void test_restarts_inactive_packet_mode_at_deadline(void) {
     WheelService service;
-    received_ready = false;
-    initialize_service(&service);
-    run_service(&service, 0);
-    for (uint32_t now_ms = 1; now_ms <= 3; now_ms++) {
-        respond_protocol(0, 0);
-        run_service(&service, now_ms);
-    }
-    respond_protocol(WHEEL_PROTOCOL_COMMAND_SELECT_MODE, 1);
-    run_service(&service, 4);
+    uint32_t now_ms = begin_protocol_mode(&service, WHEEL_PROTOCOL_COMMAND_SELECT_MODE, 1);
     respond_active(WHEEL_PROTOCOL_REQUEST_READY);
-    run_service(&service, 5);
+    run_service(&service, now_ms);
 
     respond_active(0);
-    run_service(&service, 2004);
+    run_service(&service, now_ms + WHEEL_PROTOCOL_ACTIVITY_TIMEOUT_MS - 1);
     assert(wheel_service_protocol_phase(&service) == WHEEL_PROTOCOL_ACTIVE);
 
     respond_active(0);
-    run_service(&service, 2005);
+    run_service(&service, now_ms + WHEEL_PROTOCOL_ACTIVITY_TIMEOUT_MS);
     assert(wheel_service_protocol_phase(&service) == WHEEL_PROTOCOL_WAITING);
     assert(request().type_flags == 2);
 }
 
 static void test_ready_packet_refreshes_activity_at_deadline(void) {
     WheelService service;
-    received_ready = false;
-    initialize_service(&service);
-    run_service(&service, 0);
-    for (uint32_t now_ms = 1; now_ms <= 3; now_ms++) {
-        respond_protocol(0, 0);
-        run_service(&service, now_ms);
-    }
-    respond_protocol(WHEEL_PROTOCOL_COMMAND_SELECT_MODE, 1);
-    run_service(&service, 4);
+    uint32_t now_ms = begin_protocol_mode(&service, WHEEL_PROTOCOL_COMMAND_SELECT_MODE, 1);
     respond_active(WHEEL_PROTOCOL_REQUEST_READY);
-    run_service(&service, 5);
+    now_ms++;
+    run_service(&service, now_ms);
 
     respond_active(WHEEL_PROTOCOL_REQUEST_READY);
-    run_service(&service, 2005);
+    now_ms += WHEEL_PROTOCOL_ACTIVITY_TIMEOUT_MS + 1;
+    run_service(&service, now_ms);
     assert(wheel_service_protocol_phase(&service) == WHEEL_PROTOCOL_ACTIVE);
 
     respond_active(0);
-    run_service(&service, 4004);
+    run_service(&service, now_ms + WHEEL_PROTOCOL_ACTIVITY_TIMEOUT_MS - 1);
     assert(wheel_service_protocol_phase(&service) == WHEEL_PROTOCOL_ACTIVE);
 
     respond_active(0);
-    run_service(&service, 4005);
+    run_service(&service, now_ms + WHEEL_PROTOCOL_ACTIVITY_TIMEOUT_MS);
     assert(wheel_service_protocol_phase(&service) == WHEEL_PROTOCOL_WAITING);
 }
 
@@ -579,7 +721,8 @@ static void test_builds_direct_multi_position_input(void) {
     service.protocol.mode = 0x0f;
     service.protocol.request[6] = 3;
     service.protocol.request[7] = 10;
-    service.protocol.request[14] = 0xac;
+    service.protocol.request[13] = 0xac;
+    service.protocol.request[14] = 0x01;
     WheelMultiPositionInput input;
 
     assert(wheel_service_multi_position_input(&service, 0, &input));
@@ -589,17 +732,20 @@ static void test_builds_direct_multi_position_input(void) {
     assert(input.channels[0].event == WHEEL_ROTARY_EVENT_NONE);
     assert(input.channels[1].event == WHEEL_ROTARY_EVENT_NONE);
     assert(input.channels[2].event == WHEEL_ROTARY_EVENT_NONE);
+    assert(wheel_service_rotary_event(&service, 3) == WHEEL_ROTARY_EVENT_NONE);
     assert(input.channels[0].active);
     assert(input.channels[1].active);
     assert(input.channels[2].active);
 
     service.protocol.request[6] = 4;
     service.protocol.request[7] = 9;
-    service.protocol.request[14] = 1;
+    service.protocol.request[13] = 0x21;
+    service.protocol.request[14] = 0;
     assert(wheel_service_multi_position_input(&service, 1, &input));
     assert(input.channels[0].event == WHEEL_ROTARY_EVENT_FORWARD);
     assert(input.channels[1].event == WHEEL_ROTARY_EVENT_BACKWARD);
     assert(input.channels[2].event == WHEEL_ROTARY_EVENT_FORWARD);
+    assert(wheel_service_rotary_event(&service, 3) == WHEEL_ROTARY_EVENT_FORWARD);
 }
 
 static void test_builds_adapter_multi_position_input(void) {
@@ -753,8 +899,8 @@ static void test_routes_auxiliary_output_commands(void) {
     };
 
     assert(wheel_service_apply_auxiliary_output_command(&service, &command));
-    assert(service.auxiliary_output.option == 2);
-    assert(!service.protocol.alternate_output.suppress_auxiliary_display);
+    assert(service.auxiliary_output.option == 1);
+    assert(service.protocol.alternate_output.suppress_auxiliary_display);
 
     command.parameters[0] = 1;
     assert(wheel_service_apply_auxiliary_output_command(&service, &command));
@@ -765,6 +911,11 @@ static void test_routes_auxiliary_output_commands(void) {
     assert(wheel_service_apply_auxiliary_output_command(&service, &command));
     assert(service.auxiliary_output.option == 0);
     assert(!service.protocol.alternate_output.suppress_auxiliary_display);
+
+    command.parameters[0] = UINT8_MAX;
+    assert(wheel_service_apply_auxiliary_output_command(&service, &command));
+    assert(service.auxiliary_output.option == 1);
+    assert(service.protocol.alternate_output.suppress_auxiliary_display);
 
     command.opcode = WHEEL_AUXILIARY_CODE_MODE_OPCODE;
     command.parameters[0] = UINT8_MAX;
@@ -843,6 +994,9 @@ static void test_rejects_unavailable_multi_position_input(void) {
     WheelMultiPositionInput input;
 
     assert(!wheel_service_multi_position_input(&service, 0, &input));
+    assert(wheel_service_rotary_event(&service, WHEEL_ROTARY_INPUT_CHANNEL_COUNT) ==
+           WHEEL_ROTARY_EVENT_NONE);
+    assert(wheel_service_rotary_event(NULL, 0) == WHEEL_ROTARY_EVENT_NONE);
     assert(!wheel_service_multi_position_input(NULL, 0, &input));
     assert(!wheel_service_multi_position_input(&service, 0, NULL));
 }
@@ -934,6 +1088,16 @@ static void test_routes_tuning_display_output_by_connection(void) {
     assert(frame[1] == 0x82);
     assert(frame[2] == 0x0a);
 
+    assert(wheel_service_queue_tuning_display_command(&service, 0x07));
+    assert(wheel_output_reports_encode_next(&service.protocol.output_reports, 16, frame));
+    assert(frame[1] == 0x82);
+    assert(frame[2] == 0x07);
+
+    assert(wheel_service_queue_tuning_display_command(&service, 0x11));
+    assert(wheel_output_reports_encode_next(&service.protocol.output_reports, 16, frame));
+    assert(frame[1] == 0x82);
+    assert(frame[2] == 0x11);
+
     service.protocol.mode = 4;
     service.protocol.adapter.connected = true;
     service.protocol.adapter.mode = 1;
@@ -942,6 +1106,60 @@ static void test_routes_tuning_display_output_by_connection(void) {
     assert(service.adapter_commands.text_lines_pending == 1);
     assert(wheel_service_queue_adapter_text_close(&service));
     assert(service.adapter_commands.text_close_pending);
+}
+
+static void test_queues_selected_tuning_configuration_commands(void) {
+    WheelService service = {0};
+    TuningProfileBank bank = {0};
+    uint8_t frame[33] = {0};
+
+    service.protocol.mode = 16;
+    bank.selected_slot = 0;
+    bank.active_slot = 0;
+    assert(wheel_service_queue_selected_tuning_configuration(&service, TUNING_ENTRY_SENSITIVITY,
+                                                             &bank, false));
+    assert(wheel_output_reports_encode_next(&service.protocol.output_reports, 16, frame));
+    assert(frame[0] == 0xa6);
+    assert(frame[1] == 0x82);
+    assert(frame[2] == TUNING_ENTRY_SENSITIVITY);
+
+    assert(wheel_service_queue_selected_tuning_configuration(
+        &service, TUNING_ENTRY_FORCE_FEEDBACK_STRENGTH, &bank, false));
+    assert(wheel_output_reports_encode_next(&service.protocol.output_reports, 16, frame));
+    assert(frame[2] == TUNING_ENTRY_FORCE_FEEDBACK_STRENGTH);
+
+    bank.selected_slot = 1;
+    bank.active_slot = 1;
+    assert(wheel_service_queue_selected_tuning_configuration(&service, TUNING_ENTRY_SETUP, &bank,
+                                                             false));
+    assert(wheel_output_reports_encode_next(&service.protocol.output_reports, 16, frame));
+    assert(frame[2] == 26);
+
+    bank.selected_slot = 2;
+    bank.active_slot = 2;
+    assert(wheel_service_queue_selected_tuning_configuration(&service, TUNING_ENTRY_SETUP, &bank,
+                                                             false));
+    assert(wheel_output_reports_encode_next(&service.protocol.output_reports, 16, frame));
+    assert(frame[2] == 27);
+
+    bank.selected_slot = 0;
+    bank.active_slot = 0;
+    assert(wheel_service_queue_selected_tuning_configuration(&service, TUNING_ENTRY_SETUP, &bank,
+                                                             true));
+    assert(wheel_output_reports_encode_next(&service.protocol.output_reports, 16, frame));
+    assert(frame[2] == 0);
+
+    bank.selected_slot = 1;
+    bank.active_slot = 1;
+    assert(wheel_service_queue_selected_tuning_configuration(&service, TUNING_ENTRY_SETUP, &bank,
+                                                             true));
+    assert(wheel_output_reports_encode_next(&service.protocol.output_reports, 16, frame));
+    assert(frame[2] == TUNING_ENTRY_COUNT);
+
+    assert(!wheel_service_queue_selected_tuning_configuration(&service, TUNING_ENTRY_SETUP, NULL,
+                                                              false));
+    assert(!wheel_service_queue_selected_tuning_configuration(&service, TUNING_ENTRY_COUNT, &bank,
+                                                              false));
 }
 
 static void test_activates_interface_presentation_by_connection(void) {
@@ -1096,6 +1314,20 @@ static void test_applies_legacy_axes_to_every_packet_family(void) {
     assert(service.protocol.mode_four_output.legacy_axes[1] == 0x56);
     assert(service.protocol.crc_output.legacy_axes[0] == 0x34);
     assert(service.protocol.crc_output.legacy_axes[1] == 0x56);
+}
+
+static void test_synchronizes_exclusive_auxiliary_mode(void) {
+    WheelService service;
+    initialize_service(&service);
+
+    service.auxiliary_output.latched_bands = 0x07;
+    wheel_service_set_auxiliary_exclusive_mode(&service, true);
+    assert(service.auxiliary_output.exclusive_mode);
+    assert(service.auxiliary_output.latched_bands == 0x07);
+
+    wheel_service_set_auxiliary_exclusive_mode(&service, false);
+    assert(!service.auxiliary_output.exclusive_mode);
+    assert(service.auxiliary_output.latched_bands == 0);
 }
 
 static void test_resets_host_protocol_outputs(void) {
@@ -1294,6 +1526,7 @@ static void test_exposes_playstation_wheel_inputs(void) {
     service.protocol.request[3] = 0x67;
     service.protocol.request[4] = 0x89;
     service.protocol.request[5] = 0xf4;
+    service.protocol.request[13] = 0xa5;
     service.protocol.request[22] = 0xab;
     service.protocol.request[23] = 0xcd;
     service.protocol.request[24] = 0xef;
@@ -1313,6 +1546,7 @@ static void test_exposes_playstation_wheel_inputs(void) {
     assert(snapshot.clutch_paddles[0] == 0x67);
     assert(snapshot.clutch_paddles[1] == 0x89);
     assert(snapshot.tuning_input == -12);
+    assert(snapshot.packed_rotary_positions == 0xa5);
     assert(snapshot.auxiliary_report[0] == 0xab);
     assert(snapshot.auxiliary_report[1] == 0xcd);
     assert(snapshot.auxiliary_report[2] == 0xef);
@@ -1405,6 +1639,7 @@ static void test_rejects_invalid_service_requests(void) {
     assert(!wheel_service_start_protocol_exchange(&service, 0));
     assert(!wheel_service_take_protocol_exchange_completed(NULL));
     assert(!wheel_service_take_protocol_exchange_completed(&service));
+    assert(!wheel_service_input_snapshot(NULL, &snapshot));
     assert(!wheel_service_input_snapshot(&service, NULL));
     assert(!wheel_service_input_snapshot(&service, &snapshot));
 }
@@ -1469,13 +1704,20 @@ static void test_legacy_alternative_shifter_ignores_latch_flags(void) {
 }
 
 int main(void) {
+    test_exposes_protocol_bridge_report_id();
+    test_paces_logical_protocol_requests();
+    test_recovers_malformed_protocol_response_and_clears_completion();
+    test_recovers_unknown_selection_after_deadline();
     test_maps_primary_scan_bits();
     test_maps_secondary_scan_bit();
+    test_separates_scan_histories_and_updates_capability_marker();
+    test_falls_back_to_scan_snapshot_and_mode_bits();
     test_negotiates_before_scanning_and_maps_buttons();
     test_releases_scan_button_on_first_zero();
     test_ready_clear_response_restarts_scan_state();
     test_sends_display_output_with_each_scan_phase();
     test_keeps_protocol_transport_for_packet_modes();
+    test_matches_official_clutch_paddle_availability();
     test_gates_selected_modes_on_status_memory_startup();
     test_publishes_packet_mode_buttons();
     test_restarts_inactive_packet_mode_at_deadline();
@@ -1502,6 +1744,7 @@ int main(void) {
     test_gates_torque_key_acknowledgement();
     test_reports_tuning_display_support();
     test_routes_tuning_display_output_by_connection();
+    test_queues_selected_tuning_configuration_commands();
     test_activates_interface_presentation_by_connection();
     test_selects_calibration_advance_button_by_wheel_mode();
     test_reports_mode_gated_input_capability();
@@ -1509,6 +1752,7 @@ int main(void) {
     test_reports_bite_point_adjustment();
     test_applies_vibration_to_every_packet_family();
     test_applies_legacy_axes_to_every_packet_family();
+    test_synchronizes_exclusive_auxiliary_mode();
     test_resets_host_protocol_outputs();
     test_preserves_default_display_behind_temporary_overlay();
     test_prioritizes_interaction_display_override();

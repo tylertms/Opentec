@@ -91,3 +91,7 @@ void cooling_effect_limit_update(CoolingEffectLimit *limit, CoolingEffectStrengt
         break;
     }
 }
+
+bool cooling_effect_limit_resistance_profile_active(const CoolingEffectLimit *limit) {
+    return limit != 0 && limit->active;
+}

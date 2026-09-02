@@ -12,10 +12,10 @@
  */
 typedef enum {
     POWER_PHASE_WAITING_FOR_START, /**< Waiting for the first pressed-button sample. */
-    POWER_PHASE_READY,             /**< Ready to accept a short press or begin a hold. */
+    POWER_PHASE_READY,             /**< Waiting for an unlocked pressed-button sample. */
     POWER_PHASE_BUTTON_HELD,       /**< A qualifying button hold is in progress. */
-    POWER_PHASE_SHUTDOWN_DELAY,    /**< Shutdown started and its final delay is running. */
-    POWER_PHASE_OFF,               /**< Shutdown completed; no further actions are produced. */
+    POWER_PHASE_COMPLETE,          /**< Shutdown side effects completed; finalization is active. */
+    POWER_PHASE_OFF,               /**< Retained terminal state for callers that need one. */
 } PowerPhase;
 
 /**
@@ -39,9 +39,10 @@ typedef enum {
  * used across periodic updates.
  */
 typedef struct {
-    PowerPhase phase;     /**< Current power-controller phase. */
-    uint32_t deadline_ms; /**< Active hold or shutdown deadline in milliseconds. */
-    bool torque_disabled; /**< True when a short press requested torque disable. */
+    PowerPhase phase;                /**< Current power-controller phase. */
+    uint32_t deadline_ms;            /**< Active hold deadline in milliseconds. */
+    uint32_t completion_deadline_ms; /**< Display-finalization deadline in milliseconds. */
+    bool torque_disabled;            /**< True when a short press requested torque disable. */
 } PowerController;
 
 /**
@@ -58,7 +59,8 @@ void power_controller_init(PowerController *controller);
  * @brief Advances power-button and shutdown behavior.
  *
  * Enables the power latch on the first pressed-button sample, toggles torque disable on qualifying
- * short releases, and emits shutdown actions only after the strict hold and delay deadlines pass.
+ * short releases, and emits shutdown actions only after the strict hold deadline passes. Shutdown
+ * completion is emitted on the next service sample without an additional delay.
  *
  * @param[in,out] controller Persistent power phase, deadline, and torque-disable state.
  * @param[in] button_pressed True while the active-high power button input is asserted.

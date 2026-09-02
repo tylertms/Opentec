@@ -21,6 +21,21 @@ static uint8_t next_index(uint8_t index) {
 }
 
 /**
+ * @brief Identifies queued records that belong to host-controlled effect slots.
+ *
+ * Configuration and clear records for slots zero through fifteen are invalidated by a host-effect
+ * barrier; built-in position-effect records remain pending.
+ *
+ * @param[in] command Fixed-width motor output command.
+ * @return True when the record addresses a host-controlled effect slot.
+ */
+static bool is_host_effect_command(const uint8_t command[MOTOR_OUTPUT_COMMAND_SIZE]) {
+    uint8_t slot = command[0] >> 4;
+    uint8_t opcode = command[0] & 0x0f;
+    return slot < FORCE_FEEDBACK_EFFECT_SLOT_COUNT && (opcode == 1 || opcode == 3);
+}
+
+/**
  * @brief Initializes the force-feedback command transport.
  *
  * Clears the 100-record command queue and the status value used to decide whether the next motor
@@ -82,22 +97,38 @@ bool motor_output_transport_enqueue_opcode(MotorOutputTransport *transport, uint
 /**
  * @brief Queues the host-effect clear sequence for the motor controller.
  *
- * Queues slot-clear opcodes 0x03 through 0xF3 in ascending slot order. Stops when all 16 host
- * slots are represented or the command queue is full.
+ * Discards stale host-effect commands pending before the barrier, preserves built-in position
+ * commands, and arms slot-clear opcodes 0x03 through 0xF3 in ascending slot order. The clear
+ * records are emitted ahead of the queue, so the barrier always covers all 16 host slots even when
+ * the queue is full.
  *
  * @param[in,out] transport Command transport receiving the clear sequence.
- * @return Number of slot-clear commands queued.
+ * @return Number of slot-clear commands scheduled.
  */
 uint8_t motor_output_transport_enqueue_host_effect_clears(MotorOutputTransport *transport) {
-    uint8_t queued = 0;
-    for (uint8_t slot = 0; slot < FORCE_FEEDBACK_EFFECT_SLOT_COUNT; slot++) {
-        uint8_t opcode = (uint8_t)(slot << 4) | 3u;
-        if (!motor_output_transport_enqueue_opcode(transport, opcode)) {
-            break;
-        }
-        queued++;
+    if (transport == NULL) {
+        return 0;
     }
-    return queued;
+
+    uint8_t source_index = transport->read_index;
+    uint8_t destination_index = source_index;
+    uint8_t pending_count = transport->count;
+    uint8_t retained = 0;
+    for (uint8_t offset = 0; offset < pending_count; offset++) {
+        if (!is_host_effect_command(transport->commands[source_index])) {
+            if (destination_index != source_index) {
+                memcpy(transport->commands[destination_index], transport->commands[source_index],
+                       MOTOR_OUTPUT_COMMAND_SIZE);
+            }
+            destination_index = next_index(destination_index);
+            retained++;
+        }
+        source_index = next_index(source_index);
+    }
+    transport->write_index = destination_index;
+    transport->count = retained;
+    transport->host_effect_clear_count = FORCE_FEEDBACK_EFFECT_SLOT_COUNT;
+    return FORCE_FEEDBACK_EFFECT_SLOT_COUNT;
 }
 
 /**
@@ -144,8 +175,9 @@ bool motor_output_transport_replay_frame(const MotorOutputTransport *transport,
  * @brief Builds the next payload sent to the motor controller.
  *
  * Sends the oldest queued command first, then a status-only packet when the status byte changes,
- * and otherwise sends the current center position and live force output. Command and status
- * packets use motor-link type 2; live force packets use type 1.
+ * and otherwise sends the current center position and live force output. During a host-effect
+ * clear barrier, the enabled-force status bit remains clear until all barrier commands are sent.
+ * Command and status packets use motor-link type 2; live force packets use type 1.
  *
  * @param[in,out] transport Command queue and previous status value.
  * @param[in] status Current force-feedback status bits.
@@ -156,6 +188,23 @@ bool motor_output_transport_replay_frame(const MotorOutputTransport *transport,
 void motor_output_transport_build_frame(MotorOutputTransport *transport, uint8_t status,
                                         int16_t center_position, const ForceOutputReport *report,
                                         MotorLiveFrame *frame) {
+    uint8_t effective_status = status;
+    if (transport->host_effect_clear_count != 0) {
+        effective_status = (uint8_t)(effective_status & (uint8_t)~MOTOR_OUTPUT_STATUS_ENABLED);
+    }
+
+    if (transport->host_effect_clear_count != 0) {
+        uint8_t slot =
+            (uint8_t)(FORCE_FEEDBACK_EFFECT_SLOT_COUNT - transport->host_effect_clear_count);
+        frame->type = MOTOR_LIVE_STATUS_TYPE;
+        frame->payload[0] = effective_status;
+        memset(frame->payload + 1, 0, MOTOR_OUTPUT_COMMAND_SIZE);
+        frame->payload[1] = (uint8_t)(slot << 4) | 3u;
+        transport->host_effect_clear_count--;
+        transport->previous_status = effective_status;
+        return;
+    }
+
     if (transport->count != 0) {
         uint8_t expected_read_index =
             transport->write_index >= transport->count
@@ -164,21 +213,21 @@ void motor_output_transport_build_frame(MotorOutputTransport *transport, uint8_t
                             transport->count);
         transport->read_index = expected_read_index;
         frame->type = MOTOR_LIVE_STATUS_TYPE;
-        frame->payload[0] = status;
+        frame->payload[0] = effective_status;
         memcpy(frame->payload + 1, transport->commands[transport->read_index],
                MOTOR_OUTPUT_COMMAND_SIZE);
         memset(transport->commands[transport->read_index], 0, MOTOR_OUTPUT_COMMAND_SIZE);
         transport->read_index = next_index(transport->read_index);
         transport->count--;
-        transport->previous_status = status;
+        transport->previous_status = effective_status;
         return;
     }
 
-    if (status != transport->previous_status) {
+    if (effective_status != transport->previous_status) {
         frame->type = MOTOR_LIVE_STATUS_TYPE;
-        frame->payload[0] = status;
+        frame->payload[0] = effective_status;
         memset(frame->payload + 1, 0, MOTOR_OUTPUT_COMMAND_SIZE);
-        transport->previous_status = status;
+        transport->previous_status = effective_status;
         return;
     }
 

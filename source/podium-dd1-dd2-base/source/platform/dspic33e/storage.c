@@ -5,18 +5,17 @@
 #include <stdint.h>
 #include <xc.h>
 
+#include "platform/dspic33e/storage_layout.h"
 #include "settings/journal.h"
 
 /**
- * @brief Flash geometry and nonvolatile-memory operation codes.
+ * @brief Nonvolatile-memory operation codes.
  */
 enum {
-    SETTINGS_FLASH_ORIGIN = 0x00002000,       /**< Program address of the first settings page. */
-    SETTINGS_FLASH_PAGE_ADDRESS_SIZE = 0x800, /**< Program-address span of one settings page. */
-    NVM_WORD_PROGRAM = 0x4001,                /**< Nonvolatile-memory word-program operation. */
-    NVM_ROW_PROGRAM = 0x4002,                 /**< Nonvolatile-memory row-program operation. */
-    NVM_PAGE_ERASE = 0x4003,                  /**< Nonvolatile-memory page-erase operation. */
-    WRITE_LATCH_PAGE = 0xfa, /**< Table page used for nonvolatile-memory write latches. */
+    NVM_WORD_PROGRAM = 0x4001, /**< Nonvolatile-memory word-program operation. */
+    NVM_ROW_PROGRAM = 0x4002,  /**< Nonvolatile-memory row-program operation. */
+    NVM_PAGE_ERASE = 0x4003,   /**< Nonvolatile-memory page-erase operation. */
+    WRITE_LATCH_PAGE = 0xfa,   /**< Table page used for nonvolatile-memory write latches. */
 };
 
 /**
@@ -27,16 +26,15 @@ static SettingsJournal settings_journal;
 /**
  * @brief Resolves a physical journal page and instruction to a program address.
  *
- * Places six consecutive 0x800-address-unit pages in reserved program addresses 0x2000 through
- * 0x4fff.
+ * Places six consecutive 0x800-address-unit pages in reserved extended program addresses
+ * 0x01002000 through 0x01004fff.
  *
  * @param[in] page Physical settings page from zero through five.
  * @param[in] instruction Instruction offset within the page.
  * @return Extended program address of the instruction.
  */
 static uint32_t instruction_address(uint8_t page, uint16_t instruction) {
-    return SETTINGS_FLASH_ORIGIN + (uint32_t)page * SETTINGS_FLASH_PAGE_ADDRESS_SIZE +
-           (uint32_t)instruction * 2;
+    return dspic33e_settings_flash_instruction_address(page, instruction);
 }
 
 /**

@@ -25,8 +25,9 @@ enum {
     FORCE_FEEDBACK_SCRIPT_MATH_SQUARE = 0x15, /**< Squares the first operand. */
     FORCE_FEEDBACK_SCRIPT_MATH_CUBE = 0x16,   /**< Cubes the first operand. */
     FORCE_FEEDBACK_SCRIPT_MATH_SQUARE_ROOT =
-        0x17,                               /**< Computes the square root of the first operand. */
-    FORCE_FEEDBACK_SCRIPT_MATH_SIGN = 0x18, /**< Returns the sign of the first operand. */
+        0x17, /**< Computes the square root of the first operand. */
+    FORCE_FEEDBACK_SCRIPT_MATH_SIGN =
+        0x18, /**< Returns 1 for positive, 0 for zero, and -1 otherwise. */
     FORCE_FEEDBACK_SCRIPT_MATH_ABSOLUTE =
         0x19, /**< Computes the absolute value of the first operand. */
     FORCE_FEEDBACK_SCRIPT_MATH_RECIPROCAL =
@@ -67,7 +68,8 @@ typedef struct {
  * both operands and unary operations use first. Vector magnitude computes the Euclidean magnitude,
  * while multiply-cosine and multiply-sine treat first as an amplitude and second as an angle.
  * Modulo uses a floored quotient. Division or modulo by zero, square root of a negative value,
- * reciprocal of zero, and an out-of-range tangent suppress the destination write.
+ * reciprocal of zero, and a finite tangent outside the accepted range suppress the destination
+ * write. Tangent writes NaN results, and sign maps unordered values to -1.
  *
  * @param[in] operation Arithmetic opcode to evaluate.
  * @param[in] first First or only operand.

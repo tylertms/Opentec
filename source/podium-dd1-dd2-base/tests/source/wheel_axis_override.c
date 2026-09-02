@@ -475,7 +475,7 @@ static void test_multiplexes_axis_mode_packet_axes(void) {
     assert(processor.multiplex_phase == WHEEL_AXIS_MULTIPLEX_X);
     assert(axes[0] == 0x80);
     process_axis_mode(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 6, controls, axes);
-    assert(axes[0] == 0x76);
+    assert(axes[0] == 0x0a);
     processor.multiplex_phase = WHEEL_AXIS_MULTIPLEX_Y;
     process_axis_mode(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 6, controls, axes);
     assert(axes[0] == 0xeb);

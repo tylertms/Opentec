@@ -15,7 +15,7 @@ enum {
  * @brief Stores one complete logical request received through USB transfer reports.
  *
  * Holds the logical payload copied from accepted transfer forms and records its valid length for
- * forwarding to the pedal controller.
+ * forwarding to the attached-wheel transfer service.
  */
 typedef struct {
     uint8_t data[USB_TRANSFER_REQUEST_PAYLOAD_CAPACITY]; /**< Reassembled logical request bytes. */
@@ -26,7 +26,9 @@ typedef struct {
  * @brief Reassembles tuning-menu transfer request reports.
  *
  * Supports single, first, and continuation/final command forms while retaining an incomplete
- * request across reports and exposing it only after the declared logical length is complete.
+ * request across reports and exposing it only after the declared logical length is complete. A
+ * first fragment contributes at most 60 payload bytes and each continuation or final fragment
+ * contributes at most 61 payload bytes.
  */
 typedef struct {
     UsbTransferRequestPayload payload; /**< Reassembled payload and its valid length. */

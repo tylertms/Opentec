@@ -2,6 +2,7 @@
 #define OPENTEC_BASE_SHIFTER_INPUT_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 /**
  * @brief Selects the shifter input protocol.
@@ -26,5 +27,26 @@ typedef struct {
     bool secondary_transition; /**< True when the secondary mode changed during the current update.
                                 */
 } ShifterInputState;
+
+/**
+ * @brief Identifies the first active contact in one sequential shifter pair.
+ */
+typedef enum {
+    SHIFTER_SEQUENTIAL_NONE = 0,   /**< Neither contact is active. */
+    SHIFTER_SEQUENTIAL_FIRST = 1,  /**< The first contact has priority. */
+    SHIFTER_SEQUENTIAL_SECOND = 2, /**< The second contact is active. */
+} ShifterSequentialPairState;
+
+/**
+ * @brief Applies official first-contact priority to a sequential pair.
+ *
+ * The firmware samples the first contact before the second and reports only the first active
+ * contact when both active-low switches are asserted in one pair.
+ *
+ * @param[in] first_active True when the first contact is active.
+ * @param[in] second_active True when the second contact is active.
+ * @return Selected contact state.
+ */
+ShifterSequentialPairState shifter_sequential_pair_state(bool first_active, bool second_active);
 
 #endif

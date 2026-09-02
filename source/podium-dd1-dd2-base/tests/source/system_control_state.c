@@ -118,12 +118,14 @@ static void test_applies_extended_torque_transitions(void) {
     system_torque_transition_init(&transition);
 
     assert(system_torque_transition_update(&transition, true, true, 0x1c, 7, &action));
+    system_torque_transition_accept(&transition, true);
     system_control_state_apply_torque_transition(&state, 0x1c, 4, &action);
     assert(state.active_event_code == 0x0d);
     assert(state.status_code == 0x2b);
     assert(state.operating_feature_enabled);
 
     assert(system_torque_transition_update(&transition, false, true, 0x1c, 1, &action));
+    system_torque_transition_accept(&transition, false);
     system_control_state_apply_torque_transition(&state, 0x1c, 4, &action);
     assert(state.active_event_code == 0x11);
     assert(!state.operating_feature_enabled);

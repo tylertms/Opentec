@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "force_feedback/command.h"
 #include "motor/output_transport.h"
 
 static const ForceOutputReport live_report = {
@@ -92,6 +93,41 @@ static void test_host_effect_clear_sequence(void) {
     assert(transport.count == 0);
 }
 
+static void test_host_effect_clear_barrier_discards_stale_commands(void) {
+    uint8_t stale_command[MOTOR_OUTPUT_COMMAND_SIZE] = {0x21, 8, 1, 2, 3, 4, 5};
+    const uint8_t position_command[MOTOR_OUTPUT_COMMAND_SIZE] = {0x14, 0, 0, 0, 0, 0, 0};
+    const uint8_t new_command[MOTOR_OUTPUT_COMMAND_SIZE] = {0x41, 8, 6, 7, 8, 9, 10};
+    MotorOutputTransport transport;
+    MotorLiveFrame frame;
+
+    motor_output_transport_init(&transport);
+    assert(motor_output_transport_enqueue_command(&transport, position_command));
+    for (uint8_t index = 0; index < MOTOR_OUTPUT_QUEUE_CAPACITY - 1; index++) {
+        stale_command[0] = (uint8_t)(0x01u | ((index & 0x0fu) << 4));
+        assert(motor_output_transport_enqueue_command(&transport, stale_command));
+    }
+    assert(motor_output_transport_enqueue_host_effect_clears(&transport) == 16);
+    assert(transport.count == 1);
+    assert(motor_output_transport_enqueue_command(&transport, new_command));
+
+    for (uint8_t slot = 0; slot < FORCE_FEEDBACK_EFFECT_SLOT_COUNT; slot++) {
+        motor_output_transport_build_frame(&transport, MOTOR_OUTPUT_STATUS_ENABLED, 0, &live_report,
+                                           &frame);
+        assert(frame.payload[0] == 0);
+        assert(frame.payload[1] == ((uint8_t)(slot << 4) | 3u));
+    }
+
+    motor_output_transport_build_frame(&transport, MOTOR_OUTPUT_STATUS_ENABLED, 0, &live_report,
+                                       &frame);
+    assert(memcmp(frame.payload + 1, position_command, sizeof(position_command)) == 0);
+    motor_output_transport_build_frame(&transport, MOTOR_OUTPUT_STATUS_ENABLED, 0, &live_report,
+                                       &frame);
+    assert(frame.payload[0] == MOTOR_OUTPUT_STATUS_ENABLED);
+    assert(memcmp(frame.payload + 1, new_command, sizeof(new_command)) == 0);
+    assert(transport.host_effect_clear_count == 0);
+    assert(transport.count == 0);
+}
+
 static void test_queue_capacity_and_wrap(void) {
     MotorOutputTransport transport;
     MotorLiveFrame frame;
@@ -157,6 +193,7 @@ int main(void) {
     test_commands_precede_status_changes();
     test_opcode_records_are_zero_filled();
     test_host_effect_clear_sequence();
+    test_host_effect_clear_barrier_discards_stale_commands();
     test_queue_capacity_and_wrap();
     test_replays_the_older_retained_frame();
     test_replay_does_not_consume_commands();

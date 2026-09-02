@@ -42,6 +42,79 @@ static void test_initializes_complete_runtime(void) {
     assert(system.idle_tick_snapshot == 0);
 }
 
+static void test_resets_only_session_owned_runtime_state(void) {
+    ForceFeedbackScriptSystem system;
+    force_feedback_script_runtime_init(&system);
+
+    system.values.variables[0] = 1;
+    system.values.motion[0] = 2;
+    system.values.axes[0] = 3;
+    system.values.extended_rotation_range = 4;
+    system.values.rotation_range_code = 5;
+    system.values.slots[0] = (ForceFeedbackScriptSlot){
+        .state = FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE,
+        .values = {6, 7, 8, 9},
+        .average_rate = 10,
+        .delta_rate = 11,
+        .execution_count = 12,
+        .tick_snapshot = 13,
+    };
+    system.values.slots[1].state = FORCE_FEEDBACK_SCRIPT_SLOT_INACTIVE;
+    system.values.slots[1].values[0] = 14;
+    system.values.samples.values[15] = 16;
+    system.store.data[0] = 17;
+    system.store.slots[0] =
+        (ForceFeedbackScriptStorageSlot){.offset = 0, .size = 1, .allocated = true};
+    system.store.used = 1;
+    system.inputs.status = FORCE_FEEDBACK_SCRIPT_INPUT_ACTIVE;
+    system.clock.ticks = 18;
+    system.clock.slot_ticks[0] = 19;
+    system.clock.motion_ticks = 20;
+    system.clock.active_slot = 1;
+    system.clock.script_executing = true;
+    system.motion.tick_snapshot = 21;
+    system.motion.previous_position = 22.0f;
+    system.motion.previous_velocity = 23.0f;
+    system.scheduler.deadline = 24;
+    system.host_tick_snapshot = 25;
+    system.idle_tick_snapshot = 26;
+    system.mode = FORCE_FEEDBACK_RUNTIME_ACTIVE;
+
+    force_feedback_script_runtime_reset(&system);
+
+    assert(system.values.variables[0] == 1);
+    assert(system.values.motion[0] == 2);
+    assert(system.values.axes[0] == 3);
+    assert(system.values.extended_rotation_range == 4);
+    assert(system.values.rotation_range_code == 5);
+    assert(system.values.slots[0].state == FORCE_FEEDBACK_SCRIPT_SLOT_EMPTY);
+    assert(system.values.slots[0].values[0] == 6);
+    assert(system.values.slots[0].values[3] == 9);
+    assert(system.values.slots[0].average_rate == 0);
+    assert(system.values.slots[0].delta_rate == 0);
+    assert(system.values.slots[0].execution_count == 0);
+    assert(system.values.slots[0].tick_snapshot == 0);
+    assert(system.values.slots[1].state == FORCE_FEEDBACK_SCRIPT_SLOT_EMPTY);
+    assert(system.values.slots[1].values[0] == 14);
+    assert(system.values.samples.values[15] == UINT32_MAX);
+    assert(system.store.used == 0);
+    assert(!system.store.slots[0].allocated);
+    assert(system.store.position_request_pending);
+    assert(system.inputs.status == FORCE_FEEDBACK_SCRIPT_INPUT_POSITION);
+    assert(system.clock.ticks == 0);
+    assert(system.clock.slot_ticks[0] == 0);
+    assert(system.clock.motion_ticks == 20);
+    assert(system.clock.active_slot == 0);
+    assert(!system.clock.script_executing);
+    assert(system.motion.tick_snapshot == 21);
+    assert(system.motion.previous_position == 22.0f);
+    assert(system.motion.previous_velocity == 23.0f);
+    assert(system.scheduler.deadline == 24);
+    assert(system.host_tick_snapshot == 25);
+    assert(system.idle_tick_snapshot == 26);
+    assert(system.mode == FORCE_FEEDBACK_RUNTIME_POSITION_ONLY);
+}
+
 static void test_applies_controls_and_compacts_storage(void) {
     ForceFeedbackScriptSystem system;
     force_feedback_script_runtime_init(&system);
@@ -166,6 +239,7 @@ static void test_rejects_unknown_or_incomplete_script_packets(void) {
 
 int main(void) {
     test_initializes_complete_runtime();
+    test_resets_only_session_owned_runtime_state();
     test_applies_controls_and_compacts_storage();
     test_rejects_invalid_control_without_changes();
     test_routes_complete_script_packets();

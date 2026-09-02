@@ -58,6 +58,15 @@ static void renders_standard_and_advanced_setups(void) {
     assert_glyphs(&output, 0x6d, 0x08, 0x6d);
 }
 
+static void renders_pending_automatic_setup_markers(void) {
+    TuningProfileBank bank;
+    tuning_profile_bank_defaults(&bank);
+    bank.automatic_apply_pending = true;
+
+    WheelDisplayOutput output = render(&bank, TUNING_ENTRY_SETUP, TUNING_MENU_VIEW_VALUE);
+    assert_glyphs(&output, 0xf7, 0x88, 0xed);
+}
+
 static void renders_automatic_and_concrete_sensitivity(void) {
     TuningProfileBank bank;
     tuning_profile_bank_defaults(&bank);
@@ -150,6 +159,7 @@ static void rejects_a_closed_or_invalid_presentation(void) {
 int main(void) {
     renders_entry_labels_from_the_local_catalog();
     renders_standard_and_advanced_setups();
+    renders_pending_automatic_setup_markers();
     renders_automatic_and_concrete_sensitivity();
     renders_disabled_scaled_and_limit_values();
     renders_modes_flags_and_curves();

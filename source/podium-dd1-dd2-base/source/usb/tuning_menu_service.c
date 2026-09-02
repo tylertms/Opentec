@@ -9,13 +9,16 @@
 
 /** @brief Tuning-menu command and response constants. */
 enum {
-    TUNING_MENU_ACTION_SELECT_PROFILE = 2,
-    TUNING_MENU_ACTION_REFRESH_STATUS = 3, /**< Refresh-status command action. */
-    TUNING_MENU_STATUS_COMMAND = 2,        /**< Status-response command identifier. */
+    TUNING_MENU_ACTION_NAVIGATE = 2,     /**< Menu-navigation command action. */
+    TUNING_MENU_ACTION_SERVICE = 3,      /**< Native service-response command action. */
+    TUNING_MENU_STATUS_COMMAND = 2,      /**< Status-response command identifier. */
+    TUNING_MENU_SERVICE_CODE_REPEAT = 7, /**< Service code exempt from duplicate suppression. */
 };
 
 void usb_tuning_menu_service_init(UsbTuningMenuService *service) {
-    *service = (UsbTuningMenuService){.active_page = USB_TUNING_MENU_PAGE_ROOT};
+    if (service != NULL) {
+        *service = (UsbTuningMenuService){.active_page = USB_TUNING_MENU_PAGE_ROOT};
+    }
 }
 
 bool usb_tuning_menu_service_apply(UsbTuningMenuService *service, const UsbVendorCommand *command) {
@@ -24,42 +27,41 @@ bool usb_tuning_menu_service_apply(UsbTuningMenuService *service, const UsbVendo
         return false;
     }
 
-    if (command->arguments[0] == TUNING_MENU_ACTION_REFRESH_STATUS) {
-        service->response_pending = true;
-        return true;
+    if (command->arguments[0] == TUNING_MENU_ACTION_SERVICE) {
+        return usb_tuning_menu_service_request_native_service_response(service);
     }
-    if (command->arguments[0] != TUNING_MENU_ACTION_SELECT_PROFILE || command->length < 2) {
+    if (command->arguments[0] != TUNING_MENU_ACTION_NAVIGATE || command->length < 2) {
         return false;
     }
 
     uint8_t selection = command->arguments[1];
     if (selection >= 1 && selection <= 6) {
-        service->selected_profile = selection;
-        service->profile_selection_pending = true;
-        service->response_pending = true;
+        if (service->active_page != (UsbTuningMenuPage)selection) {
+            service->active_page = (UsbTuningMenuPage)selection;
+            service->response_pending = true;
+        }
     }
     return true;
 }
 
-/**
- * @brief Takes a pending tuning-profile selection.
- *
- * @param[in,out] service Tuning-menu service retaining the selection.
- * @param[out] selection Destination for the one-based profile selection.
- * @return True when a selection was returned; otherwise false.
- */
-bool usb_tuning_menu_service_take_profile_selection(UsbTuningMenuService *service,
-                                                    uint8_t *selection) {
-    if (service == NULL || selection == NULL || !service->profile_selection_pending) {
+bool usb_tuning_menu_service_request_native_service_response(UsbTuningMenuService *service) {
+    if (service == NULL) {
         return false;
     }
-    *selection = service->selected_profile;
-    service->profile_selection_pending = false;
+
+    uint8_t service_code = (uint8_t)service->active_page;
+    if (service_code == service->last_service_code &&
+        service_code != TUNING_MENU_SERVICE_CODE_REPEAT) {
+        return false;
+    }
+    service->service_code = service_code;
+    service->last_service_code = service_code;
+    service->service_response_pending = true;
     return true;
 }
 
 bool usb_tuning_menu_service_response_pending(const UsbTuningMenuService *service) {
-    return service != NULL && service->response_pending;
+    return service != NULL && (service->response_pending || service->service_response_pending);
 }
 
 void usb_tuning_menu_service_encode_response(const UsbTuningMenuService *service,
@@ -69,9 +71,13 @@ void usb_tuning_menu_service_encode_response(const UsbTuningMenuService *service
     }
     output[0] = UINT8_MAX;
     output[1] = TUNING_MENU_STATUS_COMMAND;
-    output[2] = service->selected_profile;
+    output[2] =
+        service->service_response_pending ? service->service_code : (uint8_t)service->active_page;
 }
 
 void usb_tuning_menu_service_response_sent(UsbTuningMenuService *service) {
-    service->response_pending = false;
+    if (service != NULL) {
+        service->response_pending = false;
+        service->service_response_pending = false;
+    }
 }

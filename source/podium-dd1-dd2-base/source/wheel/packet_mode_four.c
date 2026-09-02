@@ -37,9 +37,10 @@ static uint16_t read_little_endian_u16(const uint8_t *data) {
 }
 
 /**
- * @brief Assigns one source bit to one destination bit.
+ * @brief Merges one source bit into one destination bit.
  *
- * Replaces the selected destination bit while preserving every other bit in the byte.
+ * Sets the selected destination bit when the source bit is active and leaves it unchanged when
+ * the source bit is clear.
  *
  * @param[in,out] destination Byte containing the destination bit.
  * @param[in] destination_bit Destination bit position from zero through seven.
@@ -111,9 +112,9 @@ static void write_snapshot(const WheelPacketModeFourInput *input,
 }
 
 /**
- * @brief Clears the mode-4 button history.
+ * @brief Clears the mode-4 button and control histories.
  *
- * Zeros the three button samples and resets their insertion position.
+ * Zeros the three button samples, the four control samples, and both insertion positions.
  *
  * @param[out] filter Mode-4 filter state to initialize.
  */
@@ -123,7 +124,13 @@ void wheel_packet_mode_four_filter_init(WheelPacketModeFourFilter *filter) {
             filter->button_samples[sample][button] = 0;
         }
     }
+    for (uint8_t sample = 0; sample < WHEEL_PACKET_MODE_FOUR_CONTROL_HISTORY_DEPTH; sample++) {
+        for (uint8_t control = 0; control < WHEEL_PACKET_MODE_FOUR_CONTROL_COUNT; control++) {
+            filter->control_samples[sample][control] = 0;
+        }
+    }
     filter->next_button_sample = 0;
+    filter->next_control_sample = 0;
 }
 
 /**
@@ -168,9 +175,10 @@ void wheel_packet_mode_four_decode(const uint8_t request[WHEEL_PACKET_MODE_FOUR_
 }
 
 /**
- * @brief Filters mode-4 buttons.
+ * @brief Filters mode-4 buttons and controls.
  *
- * Keeps button bits present in all three recent button samples and advances the circular history.
+ * Keeps button bits present in all three recent button samples and control bits present in the
+ * first three retained control samples, then advances both circular histories.
  *
  * @param[in,out] filter Button history with its insertion position.
  * @param[in,out] input Input added to the histories and filtered in place.
@@ -186,6 +194,18 @@ void wheel_packet_mode_four_filter(WheelPacketModeFourFilter *filter,
     filter->next_button_sample++;
     if (filter->next_button_sample == WHEEL_PACKET_MODE_FOUR_BUTTON_HISTORY_DEPTH) {
         filter->next_button_sample = 0;
+    }
+
+    uint8_t control_sample = filter->next_control_sample;
+    for (uint8_t control = 0; control < WHEEL_PACKET_MODE_FOUR_CONTROL_COUNT; control++) {
+        filter->control_samples[control_sample][control] = input->controls[control];
+        input->controls[control] = filter->control_samples[0][control] &
+                                   filter->control_samples[1][control] &
+                                   filter->control_samples[2][control];
+    }
+    filter->next_control_sample++;
+    if (filter->next_control_sample == WHEEL_PACKET_MODE_FOUR_CONTROL_HISTORY_DEPTH) {
+        filter->next_control_sample = 0;
     }
 }
 

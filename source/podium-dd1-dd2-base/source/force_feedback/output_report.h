@@ -22,6 +22,16 @@ typedef struct {
 } ForceOutputReport;
 
 /**
+ * @brief Inhibits the primary force component of a report.
+ *
+ * Clears only the primary magnitude while preserving direction and secondary output for paths
+ * that must continue to report their other motor state during an output interlock.
+ *
+ * @param[in,out] report Force-output report whose primary component must be inhibited.
+ */
+void force_output_report_inhibit_primary(ForceOutputReport *report);
+
+/**
  * @brief Encodes a force-output report into its five-byte wire payload.
  *
  * Writes the direction byte followed by the primary and secondary magnitudes in little-endian

@@ -44,9 +44,24 @@ static void test_zero_output_preserves_direction(void) {
     assert(memcmp(output, expected, sizeof(output)) == 0);
 }
 
+static void test_shutdown_primary_clear_preserves_direction_and_secondary(void) {
+    ForceOutputReport report = {
+        .positive_direction = false,
+        .primary_magnitude = 0x1234,
+        .secondary_magnitude = 0x5678,
+    };
+
+    force_output_report_inhibit_primary(&report);
+
+    assert(!report.positive_direction);
+    assert(report.primary_magnitude == 0);
+    assert(report.secondary_magnitude == 0x5678);
+}
+
 int main(void) {
     test_positive_output();
     test_negative_output();
     test_zero_output_preserves_direction();
+    test_shutdown_primary_clear_preserves_direction_and_secondary();
     return 0;
 }

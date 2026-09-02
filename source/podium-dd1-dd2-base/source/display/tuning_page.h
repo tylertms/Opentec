@@ -33,7 +33,8 @@ typedef struct {
  * Validates the selected menu entry and profile, then fills the label, title, description, and
  * formatted value for the selected tuning setting.
  *
- * @param[in] menu Current local tuning selection and view.
+ * @param[in] menu Current local tuning selection and view. The base OLED record uses Font10 at
+ * (13,13) for the abbreviation and Font21 at (30,30) for the primary field.
  * @param[in] bank Current tuning profile bank.
  * @param[out] content Page content receiving the selected text.
  * @return True when valid page content was built.
@@ -44,8 +45,8 @@ bool display_tuning_page_present(const TuningMenu *menu, const TuningProfileBank
 /**
  * @brief Renders the selected local tuning page.
  *
- * Builds the selected page content, clears the framebuffer, and draws its label, primary value or
- * title, and description.
+ * Builds the selected page content, clears the framebuffer, and draws the official navigation,
+ * abbreviation, primary field, optional progress, and help records.
  *
  * @param[in,out] framebuffer Framebuffer receiving the tuning page.
  * @param[in] menu Current local tuning selection and view.
@@ -58,8 +59,8 @@ bool display_tuning_page_render(DisplayFramebuffer framebuffer, const TuningMenu
 /**
  * @brief Renders a completed pedal operation result.
  *
- * Clears the framebuffer and draws the centered result for a pedal-up, pedal-down, or automatic
- * interaction phase.
+ * Clears the framebuffer and draws the result in the official Font21 primary record for a
+ * pedal-up, pedal-down, or automatic interaction phase.
  *
  * @param[in,out] framebuffer Framebuffer receiving the operation result.
  * @param[in] phase Pedal interaction phase to render.

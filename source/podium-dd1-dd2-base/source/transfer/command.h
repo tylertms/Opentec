@@ -82,7 +82,8 @@ void command_transport_claim(CommandTransport *transport, uint8_t owner);
 /**
  * @brief Releases a command transport held by the supplied owner.
  *
- * Clears ownership only when owner matches the current transport owner.
+ * Clears ownership and aborts any queued or pending request only when owner matches the current
+ * transport owner.
  *
  * @param[in,out] transport Command transport to release.
  * @param[in] owner Owner identifier requesting release.
@@ -217,9 +218,9 @@ void command_transport_fail(CommandTransport *transport);
 /**
  * @brief Applies a remote response to the active command request.
  *
- * Completes accepted writes, copies accepted read data, and latches rejection results; malformed
- * responses leave an active request pending for a valid response, while a transport with no
- * response-pending phase records a write rejection.
+ * Completes accepted writes, copies accepted read data, and latches remote rejection results.
+ * Malformed responses leave an active request pending for a valid response, while a transport with
+ * no response-pending phase records a write rejection.
  *
  * @param[in,out] transport Command transport awaiting the response.
  * @param[in] response Received group-4 payload.

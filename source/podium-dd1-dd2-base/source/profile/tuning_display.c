@@ -155,6 +155,11 @@ static void render_effect_level(WheelDisplayOutput *output, uint8_t value, uint8
 static void render_setup(WheelDisplayOutput *output, const TuningProfileBank *bank) {
     if (bank->selected_slot == 0) {
         render_text(output, "A_S");
+        if (bank->automatic_apply_pending) {
+            for (uint8_t index = 0; index < WHEEL_DISPLAY_GLYPH_COUNT; index++) {
+                output->glyphs[index] |= 0x80u;
+            }
+        }
         return;
     }
     if (bank->standard_mode_enabled && bank->selected_slot == 1) {

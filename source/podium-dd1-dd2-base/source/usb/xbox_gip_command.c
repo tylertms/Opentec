@@ -91,9 +91,10 @@ bool usb_xbox_gip_command_decode(const uint8_t *packet, size_t length, UsbXboxGi
         command->kind = USB_XBOX_GIP_COMMAND_SCRIPT_SAMPLES;
         break;
     case XBOX_GIP_COMMAND_SCRIPT_SLOT:
-        if (parameter > XBOX_GIP_COMMAND_EMPTY_SLOT) {
+        if (packet[XBOX_GIP_COMMAND_PARAMETER_OFFSET] > XBOX_GIP_COMMAND_EMPTY_SLOT) {
             return false;
         }
+        parameter = packet[XBOX_GIP_COMMAND_PARAMETER_OFFSET];
         command->kind = USB_XBOX_GIP_COMMAND_SCRIPT_SLOT;
         break;
     case XBOX_GIP_COMMAND_SCRIPT_STATUS:

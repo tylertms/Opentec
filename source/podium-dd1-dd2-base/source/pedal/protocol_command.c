@@ -18,7 +18,7 @@ enum {
  * @brief Decodes pedal protocol updates from the operating-mode envelope.
  *
  * Accepts device-control selector four as a three-byte protocol update and selector eight as a
- * one-byte legacy scale update.
+ * one-byte legacy-calibration scale update.
  *
  * @param[in] source Decoded F8 09 operating-mode command.
  * @param[out] command Pedal protocol operation and values.

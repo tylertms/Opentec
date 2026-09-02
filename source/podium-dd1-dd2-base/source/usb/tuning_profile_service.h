@@ -56,7 +56,9 @@ void usb_tuning_profile_service_init(UsbTuningProfileService *service);
  * @brief Applies one device-control tuning-profile command.
  *
  * Handles profile updates, selection, refresh, save, guarded resets, and Standard or Advanced mode
- * toggles, returning bit flags for the effects that the firmware must service.
+ * toggles, returning bit flags for the effects that the firmware must service. Full-bank reset
+ * retains the transient Auto apply-pending marker used by the attached-wheel interface, while
+ * active-profile reset clears that marker.
  *
  * @param[in,out] service Command timing and response state to update.
  * @param[in,out] bank Profile bank to update.

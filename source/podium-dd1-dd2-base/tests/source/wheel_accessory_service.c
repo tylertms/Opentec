@@ -6,8 +6,6 @@
 #include "wheel/accessory.h"
 #include "wheel/accessory_service.h"
 
-static int8_t signed_status(uint8_t value) { return (int8_t)value; }
-
 static void submit_request(CommandTransport *transport, const uint8_t *expected,
                            uint16_t expected_length) {
     const uint8_t *request;
@@ -29,101 +27,33 @@ static void complete_write(CommandTransport *transport) {
     command_transport_receive(transport, accepted, sizeof(accepted));
 }
 
-static void polls_status_then_version_and_applies_identity(void) {
-    WheelAccessoryService service;
-    CommandTransport transport;
-    wheel_accessory_service_init(&service);
-    command_transport_init(&transport);
-
-    wheel_accessory_service_run(&service, &transport);
-    const uint8_t expected_status[] = {2, 0xe1, 0, 1, 0};
-    submit_request(&transport, expected_status, sizeof(expected_status));
-    const uint8_t status[] = {0x8a};
-    complete_read(&transport, status, sizeof(status));
-    wheel_accessory_service_run(&service, &transport);
-    assert(service.version_stage);
-    assert(!service.request_pending);
-    assert(transport.owner == 0);
-
-    wheel_accessory_service_run(&service, &transport);
-    const uint8_t expected_version[] = {2, 0xe1, 1, 4, 0};
-    submit_request(&transport, expected_version, sizeof(expected_version));
-    const uint8_t version[] = {0x34, 0x12, 0x56, 0x78};
-    complete_read(&transport, version, sizeof(version));
-    wheel_accessory_service_run(&service, &transport);
-
-    const WheelAccessory *identity = wheel_accessory_service_identity(&service);
-    assert(identity->kind == WHEEL_ACCESSORY_EXTENDED);
-    assert(identity->initial_status == signed_status(0x8a));
-    assert(identity->model == 2);
-    assert(identity->version == 0x78561234);
-    assert(!service.version_stage);
-    assert(service.accessory_type_stage);
-    assert(service.dirty_parameters == 0x1fff);
-    service.dirty_parameters = 0;
-    assert(!service.request_pending);
-    assert(transport.owner == 0);
-
-    wheel_accessory_service_run(&service, &transport);
-    const uint8_t expected_type[] = {2, 0xe1, 7, 1, 0};
-    submit_request(&transport, expected_type, sizeof(expected_type));
-    const uint8_t accessory_type[] = {0x23};
-    complete_read(&transport, accessory_type, sizeof(accessory_type));
-    wheel_accessory_service_run(&service, &transport);
-    assert(identity->accessory_type == 0x23);
-    assert(!service.accessory_type_stage);
+static void run_read(WheelAccessoryService *service, CommandTransport *transport,
+                     const uint8_t *request, uint8_t request_length, const uint8_t *response,
+                     uint8_t response_length, uint32_t now_ms) {
+    wheel_accessory_service_run_at(service, transport, now_ms);
+    submit_request(transport, request, request_length);
+    complete_read(transport, response, response_length);
+    wheel_accessory_service_run_at(service, transport, now_ms);
 }
 
-static void retries_a_failed_stage_without_erasing_identity(void) {
-    WheelAccessoryService service;
-    CommandTransport transport;
-    wheel_accessory_service_init(&service);
-    command_transport_init(&transport);
-    assert(wheel_accessory_apply_probe(&service.accessory, signed_status(0x81), 0x44332211));
-
-    wheel_accessory_service_run(&service, &transport);
-    assert(command_transport_request_sent(&transport));
-    command_transport_fail(&transport);
-    wheel_accessory_service_run(&service, &transport);
-    assert(!service.version_stage);
-    assert(!service.request_pending);
-    assert(service.accessory.kind == WHEEL_ACCESSORY_EXTENDED);
-    assert(service.accessory.version == 0x44332211);
-
-    wheel_accessory_service_run(&service, &transport);
-    const uint8_t expected_status[] = {2, 0xe1, 0, 1, 0};
-    const uint8_t *request;
-    uint16_t length;
-    assert(command_transport_request(&transport, &request, &length));
-    assert(length == sizeof(expected_status));
-    assert(memcmp(request, expected_status, length) == 0);
+static void run_write(WheelAccessoryService *service, CommandTransport *transport,
+                      const uint8_t *request, uint8_t request_length, uint32_t now_ms) {
+    wheel_accessory_service_run_at(service, transport, now_ms);
+    submit_request(transport, request, request_length);
+    complete_write(transport);
+    wheel_accessory_service_run_at(service, transport, now_ms);
 }
 
-static void waits_for_another_transport_owner(void) {
-    WheelAccessoryService service;
-    CommandTransport transport;
-    wheel_accessory_service_init(&service);
-    command_transport_init(&transport);
-    command_transport_claim(&transport, 0x22);
-
-    wheel_accessory_service_run(&service, &transport);
-    assert(!service.version_stage);
-    assert(!service.request_pending);
-    assert(transport.owner == 0x22);
-    assert(transport.phase == COMMAND_TRANSPORT_IDLE);
+static void run_prepare(WheelAccessoryService *service, CommandTransport *transport,
+                        uint32_t now_ms) {
+    wheel_accessory_service_run_at(service, transport, now_ms);
+    assert(transport->owner == 0);
+    assert(!service->request_pending);
 }
 
-static void synchronizes_all_parameters_and_reads_output_status(void) {
-    static const uint8_t offsets[] = {0x04, 0x03, 0x20, 0x21, 0x22, 0x23, 0x24,
-                                      0x25, 0x26, 0x27, 0x28, 0x29, 0x2a};
-    static const uint8_t lengths[] = {1, 2, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1};
-    static const uint8_t data[] = {0x00, 0xfa, 0x05, 0x11, 0x22, 0x33, 0x44, 0x66,
-                                   0x55, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc};
-    static const uint8_t data_offsets[] = {0, 1, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14};
-    WheelAccessoryService service;
-    CommandTransport transport;
-    const WheelAccessorySyncParameters parameters = {
-        .sensitivity = 0x11,
+static void configure_service(WheelAccessoryService *service) {
+    static const WheelAccessorySyncParameters parameters = {
+        .sensitivity = 0x7e,
         .force_feedback_strength = 0x22,
         .force_feedback_scale = 0x33,
         .natural_damper = 0x44,
@@ -135,35 +65,245 @@ static void synchronizes_all_parameters_and_reads_output_status(void) {
         .spring_effect_strength = 0xbb,
         .damper_effect_strength = 0xcc,
     };
+    wheel_accessory_service_set_wheel_travel(service, 35520);
+    wheel_accessory_service_configure(service, &parameters);
+    assert(service->desired_parameters[3] == 0xed);
+}
+
+static void initializes_official_parameter_mirror_defaults(void) {
+    WheelAccessoryService service;
+    wheel_accessory_service_init(&service);
+    for (uint8_t index = 0; index < 12; index++) {
+        assert(service.mirrored_parameters[index] == 0);
+    }
+    assert(service.mirrored_parameters[12] == UINT8_MAX);
+    assert(service.mirrored_parameters[13] == UINT8_MAX);
+    assert(service.mirrored_parameters[14] == UINT8_MAX);
+}
+
+static void polls_identity_and_official_composite_order(void) {
+    WheelAccessoryService service;
+    CommandTransport transport;
     wheel_accessory_service_init(&service);
     command_transport_init(&transport);
-    assert(wheel_accessory_apply_probe(&service.accessory, signed_status(0x81), 0x44332211));
-    service.sync_initialized = true;
-    service.dirty_parameters = 0x1fff;
-    wheel_accessory_service_configure(&service, &parameters);
+    configure_service(&service);
 
-    for (uint8_t index = 0; index < sizeof(offsets); index++) {
-        wheel_accessory_service_run(&service, &transport);
-        uint8_t expected[5] = {2, 0xe0, offsets[index], 0, 0};
-        memcpy(expected + 3, data + data_offsets[index], lengths[index]);
-        submit_request(&transport, expected, (uint16_t)lengths[index] + 3);
-        complete_write(&transport);
-        wheel_accessory_service_run(&service, &transport);
-        assert((service.dirty_parameters & (1u << index)) == 0);
+    const uint8_t status_request[] = {2, 0xe1, 0, 1, 0};
+    const uint8_t status[] = {0x8a};
+    run_read(&service, &transport, status_request, sizeof(status_request), status, sizeof(status),
+             0);
+    assert(service.version_stage);
 
-        if (index == 0) {
-            wheel_accessory_service_run(&service, &transport);
-            static const uint8_t expected_status[] = {2, 0xe1, 4, 1, 0};
-            submit_request(&transport, expected_status, sizeof(expected_status));
-            static const uint8_t status[] = {0xaa};
-            complete_read(&transport, status, sizeof(status));
-            wheel_accessory_service_run(&service, &transport);
-            assert(wheel_accessory_service_output_inhibited(&service));
-        }
-    }
+    const uint8_t version_request[] = {2, 0xe1, 1, 4, 0};
+    const uint8_t version[] = {0x34, 0x12, 0x56, 0x78};
+    run_read(&service, &transport, version_request, sizeof(version_request), version,
+             sizeof(version), 0);
+    const WheelAccessory *identity = wheel_accessory_service_identity(&service);
+    assert(identity->kind == WHEEL_ACCESSORY_EXTENDED);
+    assert(identity->model == 2);
+    assert(identity->version == UINT32_C(0x78561234));
+    assert(wheel_accessory_service_position_modulus(&service) == UINT32_C(0x5d2b));
 
+    const uint8_t natural_damper_request[] = {2, 0xe1, 0x23, 1, 0};
+    const uint8_t natural_damper[] = {0x80};
+    run_read(&service, &transport, natural_damper_request, sizeof(natural_damper_request),
+             natural_damper, sizeof(natural_damper), 0);
+    const uint8_t motor_temperature_request[] = {2, 0xe1, 0x12, 2, 0};
+    const uint8_t motor_temperature[] = {0x9c, 0xff};
+    run_read(&service, &transport, motor_temperature_request, sizeof(motor_temperature_request),
+             motor_temperature, sizeof(motor_temperature), 0);
+    const uint8_t driver_temperature_request[] = {2, 0xe1, 0x13, 2, 0};
+    const uint8_t driver_temperature[] = {25, 0};
+    run_read(&service, &transport, driver_temperature_request, sizeof(driver_temperature_request),
+             driver_temperature, sizeof(driver_temperature), 0);
+    const uint8_t runtime_request[] = {2, 0xe1, 0x11, 4, 0};
+    const uint8_t runtime_response[] = {0x78, 0x56, 0x34, 0x12};
+    run_read(&service, &transport, runtime_request, sizeof(runtime_request), runtime_response,
+             sizeof(runtime_response), 0);
+    const uint8_t type_request[] = {2, 0xe1, 7, 1, 0};
+    const uint8_t type[] = {0x23};
+    run_read(&service, &transport, type_request, sizeof(type_request), type, sizeof(type), 0);
+
+    run_prepare(&service, &transport, 0);
+    const uint8_t friction_write[] = {2, 0xe0, 0x24, 0x66, 0x55};
+    run_write(&service, &transport, friction_write, sizeof(friction_write), 0);
+    run_prepare(&service, &transport, 0);
+    const uint8_t interpolation_write[] = {2, 0xe0, 0x26, 0x88};
+    run_write(&service, &transport, interpolation_write, sizeof(interpolation_write), 0);
+    const uint8_t motor_command_request[] = {2, 0xe1, 5, 2, 0};
+    const uint8_t motor_command[] = {0xff, 0xff};
+    run_read(&service, &transport, motor_command_request, sizeof(motor_command_request),
+             motor_command, sizeof(motor_command), 0);
+    run_prepare(&service, &transport, 0);
+    const uint8_t natural_damper_write[] = {2, 0xe0, 0x23, 0x44};
+    run_write(&service, &transport, natural_damper_write, sizeof(natural_damper_write), 0);
+    run_prepare(&service, &transport, 0);
+    const uint8_t inertia_write[] = {2, 0xe0, 0x25, 0x77};
+    run_write(&service, &transport, inertia_write, sizeof(inertia_write), 0);
+    run_prepare(&service, &transport, 0);
+    const uint8_t scale_write[] = {2, 0xe0, 0x22, 0x33};
+    run_write(&service, &transport, scale_write, sizeof(scale_write), 0);
+
+    run_prepare(&service, &transport, 0);
+    const uint8_t status_write[] = {2, 0xe0, 4, 0};
+    run_write(&service, &transport, status_write, sizeof(status_write), 0);
+    const uint8_t synchronized_status_request[] = {2, 0xe1, 4, 1, 0};
+    const uint8_t synchronized_status[] = {0xaa};
+    run_read(&service, &transport, synchronized_status_request, sizeof(synchronized_status_request),
+             synchronized_status, sizeof(synchronized_status), 0);
+    run_prepare(&service, &transport, 0);
+    assert(wheel_accessory_service_output_inhibited(&service));
+    run_prepare(&service, &transport, 0);
+    run_prepare(&service, &transport, 0);
+    const uint8_t sensitivity_write[] = {2, 0xe0, 0x20, 0xed};
+    run_write(&service, &transport, sensitivity_write, sizeof(sensitivity_write), 0);
+    run_prepare(&service, &transport, 0);
+    const uint8_t strength_write[] = {2, 0xe0, 0x21, 0x22};
+    run_write(&service, &transport, strength_write, sizeof(strength_write), 0);
+    run_prepare(&service, &transport, 0);
+    const uint8_t intensity_write[] = {2, 0xe0, 0x27, 0x99};
+    run_write(&service, &transport, intensity_write, sizeof(intensity_write), 0);
+    run_prepare(&service, &transport, 0);
+    const uint8_t effect_strength_write[] = {2, 0xe0, 0x28, 0xaa};
+    run_write(&service, &transport, effect_strength_write, sizeof(effect_strength_write), 0);
+    run_prepare(&service, &transport, 0);
+    const uint8_t spring_write[] = {2, 0xe0, 0x29, 0xbb};
+    run_write(&service, &transport, spring_write, sizeof(spring_write), 0);
+    run_prepare(&service, &transport, 0);
+    const uint8_t damper_effect_write[] = {2, 0xe0, 0x2a, 0xcc};
+    run_write(&service, &transport, damper_effect_write, sizeof(damper_effect_write), 0);
+    assert(service.sync_state == WHEEL_ACCESSORY_SYNC_WAIT_CYCLE);
     assert(service.dirty_parameters == 0);
-    assert(memcmp(service.mirrored_parameters, data, sizeof(data)) == 0);
+    int16_t temperature;
+    assert(wheel_accessory_service_motor_temperature(&service, &temperature));
+    assert(temperature == -100);
+    assert(wheel_accessory_service_driver_temperature(&service, &temperature));
+    assert(temperature == 25);
+    uint32_t runtime_seconds;
+    assert(wheel_accessory_service_runtime(&service, &runtime_seconds));
+    assert(runtime_seconds == UINT32_C(0x12345678));
+
+    run_prepare(&service, &transport, 199);
+    wheel_accessory_service_run_at(&service, &transport, 200);
+    const uint8_t *request;
+    uint16_t request_length;
+    assert(command_transport_request(&transport, &request, &request_length));
+    assert(request_length == sizeof(natural_damper_request));
+    assert(memcmp(request, natural_damper_request, request_length) == 0);
+}
+
+static void retries_calibration_and_override_without_losing_state(void) {
+    WheelAccessoryService service;
+    CommandTransport transport;
+    wheel_accessory_service_init(&service);
+    command_transport_init(&transport);
+    assert(wheel_accessory_apply_probe(&service.accessory, (int8_t)0x81, 1));
+    service.sync_initialized = true;
+    service.probe_requested = false;
+    service.sync_state = WHEEL_ACCESSORY_SYNC_READ_NATURAL_DAMPER;
+
+    wheel_accessory_service_run(&service, &transport);
+    assert(command_transport_request_sent(&transport));
+    command_transport_fail(&transport);
+    wheel_accessory_service_run(&service, &transport);
+    assert(service.sync_state == WHEEL_ACCESSORY_SYNC_READ_NATURAL_DAMPER);
+    wheel_accessory_service_run(&service, &transport);
+    const uint8_t *request;
+    uint16_t request_length;
+    assert(command_transport_request(&transport, &request, &request_length));
+    assert(request_length == 5);
+    assert(request[2] == 0x23);
+    const uint8_t natural_damper[] = {0x44};
+    complete_read(&transport, natural_damper, sizeof(natural_damper));
+    wheel_accessory_service_run(&service, &transport);
+
+    wheel_accessory_service_set_wheel_mode(&service, 0);
+    wheel_accessory_service_request_calibration(&service, MOTOR_CALIBRATION_OPERATION_CALIBRATE);
+    wheel_accessory_service_request_calibration(&service, MOTOR_CALIBRATION_OPERATION_ERASE);
+    service.accessory.accessory_type = 1;
+    service.sync_state = WHEEL_ACCESSORY_SYNC_READ_CALIBRATION_COMMAND;
+    wheel_accessory_service_run(&service, &transport);
+    const uint8_t calibration_read[] = {2, 0xe1, 6, 2, 0};
+    submit_request(&transport, calibration_read, sizeof(calibration_read));
+    const uint8_t idle[] = {0, 0};
+    complete_read(&transport, idle, sizeof(idle));
+    wheel_accessory_service_run(&service, &transport);
+    wheel_accessory_service_run(&service, &transport);
+    const uint8_t calibration_write[] = {2, 0xe0, 6, 0xaa, 0xaa};
+    submit_request(&transport, calibration_write, sizeof(calibration_write));
+    complete_write(&transport);
+    wheel_accessory_service_run(&service, &transport);
+    assert(wheel_accessory_service_take_calibration_event(&service) ==
+           MOTOR_CALIBRATION_EVENT_STARTED);
+    service.sync_state = WHEEL_ACCESSORY_SYNC_READ_CALIBRATION_COMMAND;
+    wheel_accessory_service_run(&service, &transport);
+    submit_request(&transport, calibration_read, sizeof(calibration_read));
+    complete_read(&transport, idle, sizeof(idle));
+    wheel_accessory_service_run(&service, &transport);
+    assert(wheel_accessory_service_take_calibration_event(&service) ==
+           MOTOR_CALIBRATION_EVENT_COMPLETED);
+    assert(service.calibration_requests == 0);
+
+    wheel_accessory_service_configure(
+        &service, &(WheelAccessorySyncParameters){.natural_damper = 0x44, .sensitivity = 0});
+    service.sync_initialized = false;
+    wheel_accessory_service_set_output_override(&service, true);
+    wheel_accessory_service_run(&service, &transport);
+    const uint8_t override_write[] = {2, 0xe0, 0x23, 0xff};
+    submit_request(&transport, override_write, sizeof(override_write));
+    complete_write(&transport);
+    wheel_accessory_service_run(&service, &transport);
+    assert(wheel_accessory_service_output_override_active(&service));
+    assert(wheel_accessory_service_output_override_complete(&service));
+    wheel_accessory_service_set_output_override(&service, false);
+    wheel_accessory_service_run(&service, &transport);
+    const uint8_t restore_write[] = {2, 0xe0, 0x23, 0x44};
+    submit_request(&transport, restore_write, sizeof(restore_write));
+    complete_write(&transport);
+    wheel_accessory_service_run(&service, &transport);
+    assert(!wheel_accessory_service_output_override_active(&service));
+}
+
+static void starts_motor_only_after_an_idle_command(void) {
+    WheelAccessoryService service;
+    CommandTransport transport;
+    wheel_accessory_service_init(&service);
+    command_transport_init(&transport);
+    assert(wheel_accessory_apply_probe(&service.accessory, (int8_t)0x81, 1));
+    service.sync_initialized = true;
+    service.probe_requested = false;
+    service.sync_state = WHEEL_ACCESSORY_SYNC_READ_MOTOR_COMMAND;
+    wheel_accessory_service_request_motor_start(&service);
+
+    const uint8_t motor_command_request[] = {2, 0xe1, 5, 2, 0};
+    const uint8_t idle[] = {0, 0};
+    run_read(&service, &transport, motor_command_request, sizeof(motor_command_request), idle,
+             sizeof(idle), 0);
+    assert(service.sync_state == WHEEL_ACCESSORY_SYNC_WRITE_MOTOR_START);
+    assert(wheel_accessory_service_take_motor_event(&service) ==
+           MOTOR_STATUS_EVENT_POSITION_SENSOR_TEST_STARTED);
+
+    const uint8_t motor_start_write[] = {2, 0xe0, 5, 0xab, 0xcd};
+    run_write(&service, &transport, motor_start_write, sizeof(motor_start_write), 0);
+    assert(service.motor_command_sent);
+    assert(service.motor_start_pending);
+    assert(service.sync_state == WHEEL_ACCESSORY_SYNC_PREPARE_NATURAL_DAMPER);
+
+    service.sync_state = WHEEL_ACCESSORY_SYNC_READ_MOTOR_COMMAND;
+    run_read(&service, &transport, motor_command_request, sizeof(motor_command_request), idle,
+             sizeof(idle), 0);
+    assert(!service.motor_command_sent);
+    assert(!service.motor_start_pending);
+    assert(wheel_accessory_service_take_motor_event(&service) ==
+           MOTOR_STATUS_EVENT_POSITION_SENSOR_TEST_SUCCEEDED);
+
+    service.sync_state = WHEEL_ACCESSORY_SYNC_READ_MOTOR_COMMAND;
+    const uint8_t failed[] = {0xbb, 0xbb};
+    run_read(&service, &transport, motor_command_request, sizeof(motor_command_request), failed,
+             sizeof(failed), 0);
+    assert(wheel_accessory_service_output_inhibited(&service));
+    assert(wheel_accessory_service_take_motor_event(&service) ==
+           MOTOR_STATUS_EVENT_POSITION_SENSOR_TEST_FAILED);
 }
 
 static void handles_unavailable_services(void) {
@@ -171,17 +311,18 @@ static void handles_unavailable_services(void) {
     CommandTransport transport;
     wheel_accessory_service_init(&service);
     command_transport_init(&transport);
-
-    wheel_accessory_service_run(0, &transport);
-    wheel_accessory_service_run(&service, 0);
-    assert(wheel_accessory_service_identity(0) == 0);
+    wheel_accessory_service_run(NULL, &transport);
+    wheel_accessory_service_run(&service, NULL);
+    assert(wheel_accessory_service_identity(NULL) == NULL);
+    assert(!wheel_accessory_service_motor_temperature(NULL, NULL));
+    assert(!wheel_accessory_service_output_override_active(NULL));
 }
 
 int main(void) {
-    polls_status_then_version_and_applies_identity();
-    retries_a_failed_stage_without_erasing_identity();
-    waits_for_another_transport_owner();
-    synchronizes_all_parameters_and_reads_output_status();
+    initializes_official_parameter_mirror_defaults();
+    polls_identity_and_official_composite_order();
+    retries_calibration_and_override_without_losing_state();
+    starts_motor_only_after_an_idle_command();
     handles_unavailable_services();
     return 0;
 }

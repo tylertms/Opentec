@@ -112,6 +112,64 @@ static void test_applies_v3_report_set(void) {
     assert(!pedal_v3_apply_report(&unknown, false, &state, &input));
 }
 
+static void test_applies_v3_calibration_scaling_matrix(void) {
+    PedalV3State state;
+    PedalInput input = {0};
+    const PedalFrame primary = {
+        .type = 5,
+        .payload = {0x05, 0x62},
+    };
+    const PedalFrame legacy = {
+        .type = 5,
+        .payload = {0x3b, 0x18},
+    };
+    const PedalFrame active_primary = {
+        .type = 5,
+        .payload = {0x04, 0x62},
+    };
+    const PedalFrame secondary = {
+        .type = 5,
+        .payload = {0x06, 0x62},
+    };
+    const PedalFrame brake_force = {
+        .type = 7,
+        .payload = {3},
+    };
+    const PedalFrame unknown_mode = {
+        .type = 5,
+        .payload = {0, 0},
+    };
+
+    pedal_v3_state_init(&state);
+    assert(pedal_v3_apply_report(&primary, false, &state, &input));
+    assert(state.primary_calibration);
+    assert(!state.legacy_calibration);
+    assert(!state.secondary_calibration);
+    assert(pedal_v3_apply_report(&brake_force, false, &state, &input));
+    assert(state.alternate_brake_force == 10);
+
+    assert(pedal_v3_apply_report(&legacy, false, &state, &input));
+    assert(state.primary_calibration);
+    assert(state.legacy_calibration);
+    assert(pedal_v3_apply_report(&brake_force, false, &state, &input));
+    assert(state.alternate_brake_force == 20);
+
+    assert(pedal_v3_apply_report(&active_primary, false, &state, &input));
+    assert(state.primary_calibration);
+    assert(state.legacy_calibration);
+    assert(pedal_v3_apply_report(&secondary, false, &state, &input));
+    assert(state.primary_calibration);
+    assert(!state.legacy_calibration);
+    assert(state.secondary_calibration);
+    assert(pedal_v3_apply_report(&brake_force, false, &state, &input));
+    assert(state.alternate_brake_force == 10);
+
+    assert(pedal_v3_apply_report(&unknown_mode, false, &state, &input));
+    assert(state.primary_calibration);
+    assert(!state.legacy_calibration);
+    assert(state.secondary_calibration);
+}
+
 static void test_scales_brake_force(void) {
     assert(pedal_input_scale_brake(1000, 100) == 1000);
     assert(pedal_input_scale_brake(1000, 50) == 3000);
@@ -143,6 +201,7 @@ int main(void) {
     test_decodes_axis_sample();
     test_ignores_other_frames();
     test_applies_v3_report_set();
+    test_applies_v3_calibration_scaling_matrix();
     test_scales_brake_force();
     test_released_hid_axes_are_high();
     return 0;

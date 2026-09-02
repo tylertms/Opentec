@@ -40,8 +40,9 @@ uint8_t usb_updater_identity_selector(UsbRuntimeMode runtime_mode, uint8_t comma
  * @brief Selects the updater device identity for the active bridge path.
  *
  * Maps auxiliary and status runtimes directly, derives USB bridge identities from attached-wheel
- * mode and adapter state, and uses the high protocol default for protocol bridge mode. Explicit
- * response selectors override the automatic wheel-derived choice where supported.
+ * mode and adapter state, and uses the high protocol default for protocol bridge mode. Applies the
+ * official board-wide DD1/DD2 rewrite to low-table entry two before every applicable response.
+ * Explicit response selectors override the automatic wheel-derived choice where supported.
  *
  * @param[in] input Current runtime, wheel mode, selector, and adapter state.
  * @param[out] identity Selected four-character updater identity.

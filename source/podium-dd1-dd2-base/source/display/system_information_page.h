@@ -28,7 +28,7 @@ typedef struct {
 /**
  * @brief Renders the system-information title.
  *
- * Clears the framebuffer and centers the title shown before component information appears.
+ * Clears the framebuffer and draws the inverted title at the reference record coordinates.
  *
  * @param[in,out] framebuffer Framebuffer receiving the title pixels.
  */

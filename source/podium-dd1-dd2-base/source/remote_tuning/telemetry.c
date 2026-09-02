@@ -360,7 +360,8 @@ static bool apply_primary_content(RemoteTelemetrySource *source,
  * @brief Recomputes a shared RPM or fuel scale.
  *
  * Uses the primary channel value and secondary range limit to update the selected source's scale
- * byte. RPM uses a 127-step scale and fuel uses a percentage scale.
+ * byte, including an explicit zero primary value when the range denominator is valid. RPM uses a
+ * 127-step scale and fuel uses a percentage scale.
  *
  * @param[in,out] telemetry Selected telemetry state.
  * @param[in] channel_index Channel whose cached value changed.
@@ -374,12 +375,12 @@ static void update_range_scale(RemoteTelemetry *telemetry, uint8_t channel_index
     if (format == REMOTE_TELEMETRY_FORMAT_UINT32) {
         source->scale_limit = 127;
         uint32_t step = limit->cached_integer / 127u;
-        if (primary->cached_integer != 0 && step != 0) {
+        if (step != 0) {
             source->scale_value = (uint8_t)(primary->cached_integer / step);
         }
     } else if (format == REMOTE_TELEMETRY_FORMAT_FLOAT) {
         source->scale_limit = 100;
-        if (primary->cached_float != 0.0f && limit->cached_float != 0.0f) {
+        if (limit->cached_float != 0.0f) {
             source->scale_value = (uint8_t)((primary->cached_float / limit->cached_float) * 100.0f);
         }
     }

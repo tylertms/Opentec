@@ -26,7 +26,14 @@ typedef enum {
     LOGITECH_INPUT_MODEL_G27,               /**< G27 layout. */
 } LogitechInputModel;
 
-/** @brief Native wheel controls converted into a Logitech compatibility report. */
+/**
+ * @brief Native wheel controls converted into a Logitech-compatible report.
+ *
+ * Buttons in the first byte provide steering-wheel and hat sources. The second byte provides
+ * model-specific primary and secondary sources, while the third byte provides shifter sources.
+ * Driving Force Pro maps first-byte bits six and seven plus selected second-byte bits into its
+ * primary lanes, with second-byte bits two and five feeding its secondary lanes.
+ */
 typedef struct {
     uint16_t steering;          /**< Native steering-axis value. */
     uint16_t pedals[3];         /**< Native throttle, brake, and clutch axes. */
@@ -38,6 +45,8 @@ typedef struct {
 
 /**
  * @brief Maps native wheel controls into a selected Logitech logical layout.
+ *
+ * Applies the source-bit lanes required by the selected native report layout.
  *
  * @param[out] state Logitech logical state receiving mapped controls.
  * @param[in] model Compatibility layout to apply.

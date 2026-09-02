@@ -57,16 +57,16 @@ static void test_filters_controls_across_four_samples(void) {
     const uint8_t samples[4][4] = {{0xff, 0xf3, 0x5a, 0xff},
                                    {0x7f, 0xf7, 0x7a, 0x7f},
                                    {0xff, 0xfb, 0x5e, 0xff},
-                                   {0xff, 0xf3, 0x5a, 0xff}};
+                                   {0x00, 0x00, 0x00, 0x00}};
     for (uint8_t sample = 0; sample < 4; sample++) {
         memcpy(input.controls, samples[sample], sizeof(input.controls));
         wheel_packet_mode_four_filter(&filter, &input);
     }
 
-    assert(input.controls[0] == 0xff);
+    assert(input.controls[0] == 0x7f);
     assert(input.controls[1] == 0xf3);
     assert(input.controls[2] == 0x5a);
-    assert(input.controls[3] == 0xff);
+    assert(input.controls[3] == 0x7f);
 }
 
 static void test_maps_legacy_controls_and_builds_snapshot(void) {

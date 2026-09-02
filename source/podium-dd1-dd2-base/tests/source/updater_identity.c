@@ -53,8 +53,10 @@ static void test_selects_protocol_and_explicit_identity(void) {
                     USB_UPDATER_IDENTITY_AUTOMATIC, false, "zpbr");
     assert_identity(USB_RUNTIME_MODE_PROTOCOL_BRIDGE, BOARD_VARIANT_DD1, 0, 0x85, false, "zfor");
     assert_identity(USB_RUNTIME_MODE_PROTOCOL_BRIDGE, BOARD_VARIANT_DD1, 0, 4, false, "r650");
+    assert_identity(USB_RUNTIME_MODE_PROTOCOL_BRIDGE, BOARD_VARIANT_DD2, 0, 2, false, "dd20");
     assert_identity(USB_RUNTIME_MODE_USB_BRIDGE, BOARD_VARIANT_DD1, 0x1b, 0x86, false, "zmcl");
     assert_identity(USB_RUNTIME_MODE_USB_BRIDGE, BOARD_VARIANT_DD1, 0, 7, false, "phub");
+    assert_identity(USB_RUNTIME_MODE_USB_BRIDGE, BOARD_VARIANT_DD2, 0, 2, false, "dd20");
     assert_identity(USB_RUNTIME_MODE_USB_BRIDGE, BOARD_VARIANT_DD1, 0, 0xfe, false, "FFFF");
 }
 

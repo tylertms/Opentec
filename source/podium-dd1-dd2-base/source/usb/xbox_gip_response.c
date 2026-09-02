@@ -30,12 +30,12 @@ enum {
     XBOX_GIP_EXTENDED_STATUS_LEGACY_PEDALS = 1 << 1, /**< Legacy-pedal status bit. */
     XBOX_GIP_EXTENDED_STATUS_AUXILIARY_CALIBRATION = 1
                                                      << 2, /**< Auxiliary-calibration status bit. */
-    XBOX_GIP_EXTENDED_STATUS_PEDAL_RECOVERY = 1 << 3,      /**< Pedal-recovery status bit. */
-    XBOX_GIP_EXTENDED_STATUS_THERMAL_LIMIT = 1 << 4,       /**< Thermal-limit status bit. */
+    XBOX_GIP_EXTENDED_STATUS_PEDAL_HANDSHAKE = 1 << 3,     /**< Pedal-handshake status bit. */
+    XBOX_GIP_EXTENDED_STATUS_RESISTANCE_PROFILE = 1 << 4,  /**< Resistance-profile status bit. */
     XBOX_GIP_EXTENDED_STATUS_PEDAL_CALIBRATION = 1
                                                  << 5, /**< Primary pedal-calibration status bit. */
     XBOX_GIP_EXTENDED_STATUS_WHEEL_CALIBRATION = 1 << 6, /**< Wheel-calibration status bit. */
-    XBOX_GIP_EXTENDED_STATUS_WHEEL_INPUT = 1 << 7,       /**< Wheel-input status bit. */
+    XBOX_GIP_EXTENDED_STATUS_WHEEL_AXIS_REPORT = 1 << 7, /**< Wheel-axis-report status bit. */
     XBOX_GIP_EXTENDED_STATUS_SECONDARY_PEDAL_CALIBRATION =
         1 << 4, /**< Protocol value for secondary pedal calibration. */
     XBOX_GIP_EXTENDED_STATUS_PROFILE_VERSION = 3,  /**< Extended-status profile version. */
@@ -145,11 +145,11 @@ void usb_xbox_gip_extended_status_response_encode(
                  (status->pedal_connection_flags & 0xaau) == 0
              ? XBOX_GIP_EXTENDED_STATUS_AUXILIARY_CALIBRATION
              : 0) |
-        (status->pedal_recovery_handshake ? XBOX_GIP_EXTENDED_STATUS_PEDAL_RECOVERY : 0) |
-        (status->thermal_effect_limit ? XBOX_GIP_EXTENDED_STATUS_THERMAL_LIMIT : 0) |
+        (status->pedal_handshake_active ? XBOX_GIP_EXTENDED_STATUS_PEDAL_HANDSHAKE : 0) |
+        (status->resistance_profile_active ? XBOX_GIP_EXTENDED_STATUS_RESISTANCE_PROFILE : 0) |
         (status->primary_pedal_calibration ? XBOX_GIP_EXTENDED_STATUS_PEDAL_CALIBRATION : 0) |
         (status->wheel_calibration_available ? XBOX_GIP_EXTENDED_STATUS_WHEEL_CALIBRATION : 0) |
-        (status->wheel_input_capability_available ? XBOX_GIP_EXTENDED_STATUS_WHEEL_INPUT : 0);
+        (status->wheel_axis_report_enabled ? XBOX_GIP_EXTENDED_STATUS_WHEEL_AXIS_REPORT : 0);
     output[5] = status->wheel_mode;
     output[6] =
         status->secondary_pedal_calibration

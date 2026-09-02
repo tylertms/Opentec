@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "profile/tuning_entry.h"
 #include "serial/service.h"
 #include "wheel/adapter_commands.h"
 #include "wheel/auxiliary_output.h"
@@ -78,18 +79,28 @@ typedef struct {
     uint8_t adapter_display_state;              /**< Last nonzero adapter system-display state. */
     uint8_t request[SERIAL_PACKET_MAX_PAYLOAD_SIZE]; /**< Current serial request payload. */
     uint8_t button_banks[WHEEL_BUTTON_BANK_COUNT];   /**< Filtered button banks for scan mode. */
-    uint8_t scan_samples[WHEEL_SCAN_SAMPLE_DEPTH]
-                        [WHEEL_BUTTON_BANK_COUNT]; /**< Scan-filter history. */
-    uint32_t protocol_deadline_ms;                 /**< Monotonic deadline for protocol activity. */
-    uint32_t alternative_shifter_deadline_ms;      /**< Monotonic debounce deadline for alternative
-                                                      shifter. */
-    uint8_t scan_phase;                            /**< Current command-three scan phase. */
-    uint8_t scan_sample_index;                     /**< Next scan-filter history slot. */
-    WheelServiceRequest request_kind; /**< Kind of request currently held in request. */
-    bool protocol_deadline_active;    /**< Whether protocol_deadline_ms is active. */
+    uint8_t primary_scan_samples[WHEEL_SCAN_SAMPLE_DEPTH]
+                                [WHEEL_BUTTON_BANK_COUNT]; /**< Primary scan-filter history. */
+    uint8_t secondary_scan_samples[WHEEL_SCAN_SAMPLE_DEPTH]
+                                  [WHEEL_BUTTON_BANK_COUNT]; /**< Secondary scan-filter history. */
+    uint32_t protocol_deadline_ms;           /**< Monotonic deadline for protocol activity. */
+    uint32_t protocol_transport_deadline_ms; /**< Earliest next logical protocol request time. */
+    uint16_t
+        protocol_transport_interval_ms; /**< Interval assigned by the current protocol phase. */
+    uint32_t alternative_shifter_deadline_ms; /**< Monotonic debounce deadline for alternative
+                                                 shifter. */
+    uint8_t scan_phase;                       /**< Current command-three scan phase. */
+    uint8_t primary_scan_sample_index;        /**< Next primary scan-filter history slot. */
+    uint8_t secondary_scan_sample_index;      /**< Next secondary scan-filter history slot. */
+    WheelServiceRequest request_kind;         /**< Kind of request currently held in request. */
+    bool protocol_deadline_active;            /**< Whether protocol_deadline_ms is active. */
+    bool protocol_transport_deadline_active;  /**< Whether the logical transport deadline is active.
+                                               */
     bool protocol_exchange_completed; /**< Whether a completed command-two exchange is latched. */
-    bool display_override_active;     /**< Whether display_override_output owns the visible page. */
-    bool alternative_shifter_enabled; /**< Whether alternative shifter mode is enabled. */
+    bool bridge_recovery_pending; /**< Whether unknown selection timed out into USB bridge recovery.
+                                   */
+    bool display_override_active; /**< Whether display_override_output owns the visible page. */
+    bool alternative_shifter_enabled;   /**< Whether alternative shifter mode is enabled. */
     bool alternative_shifter_debounced; /**< Whether the current activation chord was debounced. */
     bool status_memory_startup_pending; /**< Whether mode 0x0A or 0x1C awaits status memory. */
     bool tuning_menu_override_enabled;  /**< Whether startup status overrides capability data. */
@@ -148,6 +159,27 @@ bool wheel_service_start_protocol_exchange(WheelService *service, uint32_t now_m
  * @return True when a completion notification was pending; otherwise false.
  */
 bool wheel_service_take_protocol_exchange_completed(WheelService *service);
+
+/**
+ * @brief Takes an unknown-selection bridge recovery notification.
+ *
+ * Consumes the one-shot notification raised after the official command deadline expires while the
+ * wheel remains in mode-selection state.
+ *
+ * @param[in,out] service Wheel service holding the recovery notification.
+ * @return True when bridge recovery was pending; otherwise false.
+ */
+bool wheel_service_take_bridge_recovery(WheelService *service);
+
+/**
+ * @brief Reports whether unknown-selection bridge recovery is pending.
+ *
+ * Checks the one-shot recovery notification without consuming it.
+ *
+ * @param[in] service Wheel service to inspect.
+ * @return True while bridge recovery awaits the runtime owner; otherwise false.
+ */
+bool wheel_service_bridge_recovery_pending(const WheelService *service);
 
 /**
  * @brief Reports whether selected-wheel startup is waiting for status memory.
@@ -243,6 +275,23 @@ void wheel_service_queue_adapter_display_state(WheelService *service, uint8_t st
  * @return True when the command was queued; otherwise false.
  */
 bool wheel_service_queue_tuning_display_command(WheelService *service, uint8_t command);
+
+/**
+ * @brief Queues the native command for the selected tuning entry.
+ *
+ * Uses the selected entry command directly except for setup. Setup uses the profile-mode command
+ * when profile mode owns slot two, the selected profile command for another manual slot, and zero
+ * for the automatic slot.
+ *
+ * @param[in,out] service Wheel service receiving the command.
+ * @param[in] entry Selected local tuning entry.
+ * @param[in] bank Current tuning profile bank.
+ * @param[in] profile_mode_enabled Whether Advanced profile mode is enabled.
+ * @return True when the command was queued; otherwise false.
+ */
+bool wheel_service_queue_selected_tuning_configuration(WheelService *service, TuningEntry entry,
+                                                       const TuningProfileBank *bank,
+                                                       bool profile_mode_enabled);
 
 /**
  * @brief Queues a native tuning-display notification.
@@ -385,12 +434,24 @@ void wheel_service_set_auxiliary_report(WheelService *service, uint16_t report);
 /**
  * @brief Sets the attached-wheel auxiliary output option.
  *
- * Retains the option and updates suppression of auxiliary display output for the alternate packet.
+ * Normalizes the option to Boolean state and updates suppression of auxiliary display output for
+ * the alternate packet.
  *
  * @param[in,out] service Wheel service receiving the option.
- * @param[in] option Raw auxiliary output option.
+ * @param[in] option Auxiliary output option; zero enables output and any nonzero value disables it.
  */
 void wheel_service_set_auxiliary_output_option(WheelService *service, uint8_t option);
+
+/**
+ * @brief Sets exclusive auxiliary output ownership.
+ *
+ * Enables the local tuning presentation's highest-priority auxiliary-band encoding. Disabling
+ * ownership also clears transient auxiliary-band latches.
+ *
+ * @param[in,out] service Wheel service receiving the ownership state.
+ * @param[in] enabled True while local tuning owns auxiliary output.
+ */
+void wheel_service_set_auxiliary_exclusive_mode(WheelService *service, bool enabled);
 
 /**
  * @brief Sets the legacy axis bytes.
@@ -628,7 +689,8 @@ bool wheel_service_multi_position_supported(const WheelService *service);
  * @brief Builds the current multi-position rotary input.
  *
  * Selects direct wheel positions or adapter selectors, advances rotary debounce state, and marks
- * the extended selector layout when required.
+ * the extended selector layout when required. Direct packed input also advances the fourth rotary
+ * channel, which is exposed separately for native legacy accessory reporting.
  *
  * @param[in,out] service Wheel service and rotary state to update.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -637,6 +699,19 @@ bool wheel_service_multi_position_supported(const WheelService *service);
  */
 bool wheel_service_multi_position_input(WheelService *service, uint32_t now_ms,
                                         WheelMultiPositionInput *input);
+
+/**
+ * @brief Returns one debounced direct-wheel rotary event.
+ *
+ * Reads the latest event from the requested rotary channel without consuming it. The fourth
+ * channel is populated from the high nibble of the packed direct-wheel rotary byte and is not part
+ * of the three selector channels in WheelMultiPositionInput.
+ *
+ * @param[in] service Wheel service and rotary state to inspect.
+ * @param[in] channel Zero-based rotary channel index.
+ * @return Current event, or WHEEL_ROTARY_EVENT_NONE for an invalid service or channel.
+ */
+WheelRotaryEvent wheel_service_rotary_event(const WheelService *service, uint8_t channel);
 
 /**
  * @brief Applies a host-provided wheel output report.
@@ -658,6 +733,17 @@ void wheel_service_apply_output_report(WheelService *service, const uint8_t *arg
  */
 void wheel_service_queue_report_seventeen(
     WheelService *service, const uint8_t payload[WHEEL_OUTPUT_REPORT_SEVENTEEN_SIZE]);
+
+/**
+ * @brief Queues an H-pattern calibration state for the attached wheel.
+ *
+ * Retains the official three-byte type-0x16 shifter-state payload until the next active protocol
+ * response.
+ *
+ * @param[in,out] service Wheel service owning protocol output.
+ * @param[in] state Three-byte shifter-state payload.
+ */
+void wheel_service_queue_shifter_calibration_state(WheelService *service, const uint8_t state[3]);
 
 /**
  * @brief Queues a remote telemetry report.
@@ -737,7 +823,9 @@ const uint8_t *wheel_service_buttons(const WheelService *service);
  * @brief Copies normalized attached-wheel input.
  *
  * Reads directional, secondary-button, clutch, tuning, motion, rotary, auxiliary, and axis-report
- * fields from the current supported request view.
+ * fields from the current supported request view. During command-three scanning, returns a
+ * button-only fallback snapshot assembled from the filtered scan banks so console and tuning
+ * consumers retain current button input while no thirty-byte protocol request exists.
  *
  * @param[in] service Wheel service to inspect.
  * @param[out] snapshot Normalized input destination.
@@ -783,7 +871,9 @@ uint8_t wheel_service_axis_limit(const WheelService *service);
 /**
  * @brief Returns the attached-wheel mode-button byte.
  *
- * Reads the mode-button field retained from the current supported input report.
+ * Reads the mode-button field retained from the current supported input report. During
+ * command-three scanning, returns the three marker bits from the active primary or secondary scan
+ * request.
  *
  * @param[in] service Wheel service to inspect.
  * @return Current mode-button byte, or zero when unavailable.
@@ -794,11 +884,24 @@ uint8_t wheel_service_mode_buttons(const WheelService *service);
  * @brief Returns attached-wheel clutch-paddle bytes.
  *
  * Exposes the axis-output bytes that feed the two clutch-paddle report fields.
+ * Use wheel_service_clutch_paddles_available() when assembling the native Fanatec report.
  *
  * @param[in] service Wheel service to inspect.
- * @return Pointer to two clutch-paddle bytes, or null when no supported input is available.
+ * @return Pointer to two clutch-paddle bytes, or null when no active input packet is available.
  */
 const uint8_t *wheel_service_clutch_paddles(const WheelService *service);
+
+/**
+ * @brief Reports whether native clutch-paddle fields are available.
+ *
+ * Matches the official native report gate: modes 0x01, 0x02, 0x03, 0x0A, 0x13, 0x14, and 0x16
+ * always expose the fields; other modes expose them only for dual analog paddles or an attached
+ * adapter.
+ *
+ * @param[in] service Wheel service to inspect.
+ * @return True when native clutch-paddle values should be copied; otherwise false.
+ */
+bool wheel_service_clutch_paddles_available(const WheelService *service);
 
 /**
  * @brief Reports whether the attached wheel enables axis reporting.
@@ -820,6 +923,17 @@ bool wheel_service_axis_report_enabled(const WheelService *service);
  * @return Pointer to retained adapter input.
  */
 const WheelAdapterInput *wheel_service_adapter(const WheelService *service);
+
+/**
+ * @brief Returns the retained protocol callback report identifier.
+ *
+ * Maps the startup-selected adapter endpoint to report identifier 0x15 or 0x16. Returns zero only
+ * when the wheel service is unavailable or its endpoint selection is invalid.
+ *
+ * @param[in] service Wheel service containing startup endpoint state.
+ * @return Retained protocol callback report identifier, or zero when unavailable.
+ */
+uint8_t wheel_service_protocol_bridge_report_id(const WheelService *service);
 
 /**
  * @brief Copies attached-wheel axis values.
@@ -956,6 +1070,17 @@ bool wheel_service_acknowledgement_input_active(const WheelService *service);
 bool wheel_service_calibration_advance_input_active(const WheelService *service);
 
 /**
+ * @brief Reports the protocol button used to complete H-pattern calibration.
+ *
+ * Selects the protocol-only button mapping for local modes 0x0E, 0x0F, and 0x17 versus every
+ * other mode. Adapter advance buttons are intentionally excluded from this completion input.
+ *
+ * @param[in] service Wheel service to inspect.
+ * @return True while the protocol completion button is active; otherwise false.
+ */
+bool wheel_service_calibration_completion_input_active(const WheelService *service);
+
+/**
  * @brief Reports whether an attached adapter is connected.
  *
  * Reads the adapter connection state retained by the wheel protocol.
@@ -1059,10 +1184,10 @@ bool wheel_service_force_output_ready(const WheelService *service);
 /**
  * @brief Reports whether the force-output transition interlock is active.
  *
- * Reads whether mode selection placed the wheel in its unsupported phase.
+ * Reads whether the wheel remains in negotiation or has an invalid active command.
  *
  * @param[in] service Wheel service and protocol phase to inspect.
- * @return True only while the wheel is unsupported; otherwise false.
+ * @return True while negotiation or an invalid active command requires the transition interlock.
  */
 bool wheel_service_force_output_transition_active(const WheelService *service);
 

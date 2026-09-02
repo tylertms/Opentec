@@ -39,9 +39,16 @@ void platform_pedal_link_begin_framed_receive(void);
 /**
  * @brief Selects variable-length pedal transfer reception.
  *
- * Configures byte-oriented collection of escaped transfer frames.
+ * Configures byte-oriented collection of escaped transfer bytes in the retained receive ring.
  */
 void platform_pedal_link_begin_transfer_receive(void);
+
+/**
+ * @brief Stops pedal UART and DMA reception.
+ *
+ * Disables serial reception and clears stale data while the service waits to restart discovery.
+ */
+void platform_pedal_link_stop_receive(void);
 
 /**
  * @brief Sends one pedal command byte.
@@ -106,12 +113,31 @@ bool platform_pedal_link_take_frame(uint8_t frame[PEDAL_FRAME_SIZE]);
 /**
  * @brief Takes one complete variable-length pedal transfer.
  *
- * Copies and consumes the oldest queued transfer when it fits the destination capacity.
+ * Parses and consumes the oldest retained transfer when it fits the destination capacity.
  *
  * @param[out] data Destination for the encoded transfer frame.
  * @param[in] capacity Number of bytes available in data.
  * @return Encoded frame length, or zero when no complete frame fits.
  */
 uint16_t platform_pedal_link_take_transfer(uint8_t *data, uint16_t capacity);
+
+#ifdef OPENTEC_SIMULATOR_TEST
+/**
+ * @brief Loads a simulated fixed-size pedal receive-DMA frame.
+ *
+ * @param[in] frame Twelve bytes to expose to the receive-DMA interrupt.
+ * @param[in] uart_error True when UART2 reported a framing or overrun error.
+ */
+void platform_pedal_link_test_set_receive_dma(const uint8_t frame[PEDAL_FRAME_SIZE],
+                                              bool uart_error);
+
+/**
+ * @brief Feeds one simulated UART2 value through receive-error recovery.
+ *
+ * @param[in] value Value to process.
+ * @param[in] uart_error True when UART2 reported a framing or overrun error.
+ */
+void platform_pedal_link_test_receive_byte(uint8_t value, bool uart_error);
+#endif
 
 #endif

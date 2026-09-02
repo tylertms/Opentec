@@ -14,8 +14,9 @@ enum {
     H_PATTERN_EXTENDED_WHEEL_MODE = 0x1c, /**< Wheel mode with extended calibration presentation. */
     H_PATTERN_LEGACY_SHIFTER_PROMPT_MS = 2000, /**< Legacy shifter-label presentation duration. */
     H_PATTERN_LEGACY_CALIBRATION_PROMPT_MS = 4000, /**< Legacy calibration-label deadline. */
-    H_PATTERN_EXTENDED_ENTRY_DELAY_MS = 5000,      /**< Extended-mode entry delay. */
-    H_PATTERN_EXTENDED_COMPLETION_MS = 1000,       /**< Extended-mode completion hold duration. */
+    H_PATTERN_EXTENDED_READY_PROMPT_MS = 1000, /**< Extended ready-label presentation duration. */
+    H_PATTERN_EXTENDED_ENTRY_DELAY_MS = 5000,  /**< Extended-mode entry delay. */
+    H_PATTERN_EXTENDED_COMPLETION_MS = 1000,   /**< Extended-mode completion hold duration. */
     SEVENTH_BOUNDARY_MINIMUM_SPAN = 5, /**< Maximum fifth-to-seventh span for fallback boundary. */
     SEVENTH_BOUNDARY_FALLBACK_OFFSET = 20, /**< Offset below fifth gear for fallback boundary. */
 };
@@ -258,6 +259,126 @@ void h_pattern_calibration_service_set_advance_input(HPatternCalibrationService 
 }
 
 /**
+ * @brief Updates the protocol completion-button input level.
+ *
+ * Retains the protocol-only button state used to release a completed calibration session.
+ *
+ * @param[in,out] service Calibration lifecycle state.
+ * @param[in] active True while the protocol completion button is active.
+ */
+void h_pattern_calibration_service_set_completion_input(HPatternCalibrationService *service,
+                                                        bool active) {
+    if (service != NULL) {
+        service->completion_input_active = active;
+    }
+}
+
+/**
+ * @brief Cancels the current calibration session.
+ *
+ * Retains the caller's persisted settings while clearing the in-progress session and every
+ * transient input or timing latch.
+ *
+ * @param[in,out] service Calibration lifecycle state to cancel.
+ */
+void h_pattern_calibration_service_cancel(HPatternCalibrationService *service) {
+    if (service == NULL) {
+        return;
+    }
+    service->session = (HPatternCalibrationSession){0};
+    service->started_ms = 0;
+    service->finish_deadline_ms = 0;
+    service->wheel_mode = 0;
+    service->active = false;
+    service->advance_pending = false;
+    service->advance_input_active = false;
+    service->completion_input_active = false;
+    service->release_required = false;
+}
+
+/**
+ * @brief Maps H-pattern lifecycle state to the official wheel-report stage.
+ *
+ * Entry presentation reports the ready, start, and wait stages before capture. Each capture and
+ * required release uses the corresponding official pair, and completed ownership reports stage 23.
+ *
+ * @param[in] service Calibration lifecycle state.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @return Current official calibration stage.
+ */
+HPatternCalibrationStage
+h_pattern_calibration_service_stage(const HPatternCalibrationService *service, uint32_t now_ms) {
+    if (service == NULL || !service->active) {
+        return H_PATTERN_CALIBRATION_STAGE_DETECT_INPUT;
+    }
+    if (service->session.next_position == H_PATTERN_CALIBRATION_COMPLETE) {
+        return H_PATTERN_CALIBRATION_STAGE_COMPLETE;
+    }
+
+    if (service->session.next_position == H_PATTERN_CALIBRATION_NEUTRAL) {
+        uint32_t elapsed_ms = now_ms - service->started_ms;
+        uint32_t ready_deadline_ms = service->wheel_mode == H_PATTERN_EXTENDED_WHEEL_MODE
+                                         ? H_PATTERN_EXTENDED_READY_PROMPT_MS
+                                         : H_PATTERN_LEGACY_SHIFTER_PROMPT_MS;
+        uint32_t start_deadline_ms = service->wheel_mode == H_PATTERN_EXTENDED_WHEEL_MODE
+                                         ? H_PATTERN_EXTENDED_ENTRY_DELAY_MS
+                                         : H_PATTERN_LEGACY_CALIBRATION_PROMPT_MS;
+        if (elapsed_ms <= ready_deadline_ms) {
+            return H_PATTERN_CALIBRATION_STAGE_SHOW_READY;
+        }
+        if (service->wheel_mode != H_PATTERN_EXTENDED_WHEEL_MODE &&
+            elapsed_ms <= start_deadline_ms) {
+            return H_PATTERN_CALIBRATION_STAGE_SHOW_START;
+        }
+        if (!service->advance_pending && !service->advance_input_active) {
+            return H_PATTERN_CALIBRATION_STAGE_WAIT_START;
+        }
+    }
+
+    uint16_t stage = (uint16_t)H_PATTERN_CALIBRATION_STAGE_CAPTURE_NEUTRAL +
+                     (uint16_t)service->session.next_position * 2u;
+    if (service->release_required) {
+        stage++;
+    }
+    return (HPatternCalibrationStage)stage;
+}
+
+/**
+ * @brief Publishes a changed or due H-pattern stage through type 0x16.
+ *
+ * State changes are queued immediately. Once capture starts, an attached wheel receives the
+ * unchanged state again every two seconds, matching the official ready-report cadence.
+ *
+ * @param[in,out] service Calibration lifecycle and report cadence state.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[in] adapter_connected True when the attached-wheel link is connected.
+ * @param[out] report Three-byte type-0x16 payload destination.
+ * @return True when a report should be queued; otherwise false.
+ */
+bool h_pattern_calibration_service_take_report(HPatternCalibrationService *service, uint32_t now_ms,
+                                               bool adapter_connected, uint8_t report[3]) {
+    if (service == NULL || report == NULL) {
+        return false;
+    }
+
+    HPatternCalibrationStage stage = h_pattern_calibration_service_stage(service, now_ms);
+    service->report_state = stage;
+    bool changed = stage != service->reported_state;
+    bool repeated = stage > H_PATTERN_CALIBRATION_STAGE_SHOW_READY && adapter_connected &&
+                    (int32_t)(now_ms - service->report_deadline_ms) >= 0;
+    if (!changed && !repeated) {
+        return false;
+    }
+
+    report[0] = 0;
+    report[1] = (uint8_t)stage;
+    report[2] = (uint8_t)((uint16_t)stage >> 8);
+    service->reported_state = stage;
+    service->report_deadline_ms = now_ms + 2000;
+    return true;
+}
+
+/**
  * @brief Captures a queued H-pattern calibration position.
  *
  * Ignores samples until the entry presentation completes and either the attached-wheel input or a
@@ -284,7 +405,7 @@ HPatternCalibrationResult h_pattern_calibration_service_capture(HPatternCalibrat
     if (service->active && service->session.next_position == H_PATTERN_CALIBRATION_COMPLETE) {
         bool completion_elapsed = service->wheel_mode != H_PATTERN_EXTENDED_WHEEL_MODE ||
                                   (int32_t)(now_ms - service->finish_deadline_ms) > 0;
-        if (!service->advance_input_active && completion_elapsed) {
+        if (!service->completion_input_active && completion_elapsed) {
             service->active = false;
         }
         return H_PATTERN_CALIBRATION_NO_CAPTURE;

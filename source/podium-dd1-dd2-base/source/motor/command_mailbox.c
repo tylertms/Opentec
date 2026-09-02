@@ -130,6 +130,17 @@ bool motor_command_mailbox_exchange_queue(MotorCommandMailboxExchange *exchange,
     return true;
 }
 
+static MotorCommandMailboxExchangeResult transfer_failure(MotorCommandMailboxExchange *exchange,
+                                                          CommandTransportResult result) {
+    MotorCommandMailboxExchangeResult output = {
+        .event = MOTOR_COMMAND_MAILBOX_EXCHANGE_TRANSFER_FAILED,
+        .failed_phase = exchange->phase,
+        .transport_result = result,
+    };
+    exchange->phase = MOTOR_COMMAND_MAILBOX_EXCHANGE_CONTROL_QUEUE;
+    return output;
+}
+
 MotorCommandMailboxExchangeResult
 motor_command_mailbox_exchange_run(MotorCommandMailboxExchange *exchange,
                                    CommandTransport *transport) {
@@ -154,9 +165,7 @@ motor_command_mailbox_exchange_run(MotorCommandMailboxExchange *exchange,
         return output;
     }
     if (completion != COMMAND_TRANSPORT_COMPLETE) {
-        exchange->phase = MOTOR_COMMAND_MAILBOX_EXCHANGE_CONTROL_QUEUE;
-        output.event = MOTOR_COMMAND_MAILBOX_EXCHANGE_FAILED;
-        return output;
+        return transfer_failure(exchange, completion);
     }
 
     if (exchange->phase == MOTOR_COMMAND_MAILBOX_EXCHANGE_PAYLOAD_READ_WAIT) {
@@ -184,11 +193,26 @@ motor_command_mailbox_exchange_run(MotorCommandMailboxExchange *exchange,
         return output;
     }
 
+    if (exchange->phase != MOTOR_COMMAND_MAILBOX_EXCHANGE_CONTROL_WAIT) {
+        exchange->phase = MOTOR_COMMAND_MAILBOX_EXCHANGE_CONTROL_QUEUE;
+        return output;
+    }
     if (!motor_command_mailbox_control_decode(exchange->control_record, &exchange->control)) {
         exchange->phase = MOTOR_COMMAND_MAILBOX_EXCHANGE_CONTROL_QUEUE;
         output.event = MOTOR_COMMAND_MAILBOX_EXCHANGE_FAILED;
         return output;
     }
+    if (exchange->control.reserved == UINT8_MAX && exchange->control.payload_length == UINT16_MAX) {
+        exchange->control_retry_count++;
+        exchange->phase = MOTOR_COMMAND_MAILBOX_EXCHANGE_CONTROL_QUEUE;
+        if (exchange->control_retry_count <= 9u) {
+            return output;
+        }
+        exchange->control_retry_count = 0;
+        output.event = MOTOR_COMMAND_MAILBOX_EXCHANGE_RECOVERED;
+        return output;
+    }
+    exchange->control_retry_count = 0;
     if ((exchange->control.flags & MOTOR_COMMAND_MAILBOX_CONTROL_STATUS_MASK) ==
         MOTOR_COMMAND_MAILBOX_CONTROL_STATUS_RETRY) {
         exchange->status_retry_count++;
@@ -205,12 +229,18 @@ motor_command_mailbox_exchange_run(MotorCommandMailboxExchange *exchange,
     exchange->status_retry_count = 0;
 
     if ((exchange->control.flags & MOTOR_COMMAND_MAILBOX_CONTROL_PAYLOAD_AVAILABLE) != 0) {
-        if (exchange->control.payload_length > exchange->read_capacity ||
-            motor_command_mailbox_queue_payload_read(transport, exchange->read_buffer,
-                                                     exchange->control.payload_length) !=
-                COMMAND_TRANSPORT_COMPLETE) {
+        CommandTransportResult result =
+            exchange->control.payload_length > exchange->read_capacity
+                ? COMMAND_TRANSPORT_TOO_LONG
+                : motor_command_mailbox_queue_payload_read(transport, exchange->read_buffer,
+                                                           exchange->control.payload_length);
+        if (result == COMMAND_TRANSPORT_TOO_LONG) {
             exchange->phase = MOTOR_COMMAND_MAILBOX_EXCHANGE_CONTROL_QUEUE;
             output.event = MOTOR_COMMAND_MAILBOX_EXCHANGE_FAILED;
+            return output;
+        }
+        if (result != COMMAND_TRANSPORT_COMPLETE) {
+            exchange->phase = MOTOR_COMMAND_MAILBOX_EXCHANGE_CONTROL_QUEUE;
             return output;
         }
         exchange->read_length = exchange->control.payload_length;
@@ -219,11 +249,15 @@ motor_command_mailbox_exchange_run(MotorCommandMailboxExchange *exchange,
     }
 
     if (exchange->write_packet != 0) {
-        if (motor_command_mailbox_queue_payload_write(transport, exchange->write_packet,
-                                                      exchange->write_length) !=
-            COMMAND_TRANSPORT_COMPLETE) {
+        CommandTransportResult result = motor_command_mailbox_queue_payload_write(
+            transport, exchange->write_packet, exchange->write_length);
+        if (result == COMMAND_TRANSPORT_TOO_LONG) {
             exchange->phase = MOTOR_COMMAND_MAILBOX_EXCHANGE_CONTROL_QUEUE;
             output.event = MOTOR_COMMAND_MAILBOX_EXCHANGE_FAILED;
+            return output;
+        }
+        if (result != COMMAND_TRANSPORT_COMPLETE) {
+            exchange->phase = MOTOR_COMMAND_MAILBOX_EXCHANGE_CONTROL_QUEUE;
             return output;
         }
         exchange->phase = MOTOR_COMMAND_MAILBOX_EXCHANGE_PAYLOAD_WRITE_WAIT;

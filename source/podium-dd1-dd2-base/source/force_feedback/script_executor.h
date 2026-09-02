@@ -22,7 +22,7 @@ enum {
     FORCE_FEEDBACK_SCRIPT_EXECUTION_STOPPED = 1,   /**< Script executed a stop command. */
     FORCE_FEEDBACK_SCRIPT_EXECUTION_COMPLETED = 2, /**< Script executed a completion command. */
     FORCE_FEEDBACK_SCRIPT_EXECUTION_SILENT_FAULT =
-        0xfe, /**< Script faulted without publishing the standard fault report. */
+        0xfe, /**< Unsupported command fault without an official status-report request. */
     FORCE_FEEDBACK_SCRIPT_EXECUTION_FAULT = UINT8_MAX, /**< Script input or state was rejected. */
 };
 
@@ -30,8 +30,10 @@ enum {
  * @brief Execute one encoded force-feedback script.
  *
  * Processes records in order, resolves operation operands, applies advance-based suppression, and
- * honors stop and completion commands. Suppressed operation records are consumed and evaluated with
- * writes disabled. Invalid commands, operands, or operation domains return a fault status; errors
+ * honors cursor, rewind, reserve, and completion commands. Suppressed operation records are
+ * consumed and evaluated with writes disabled. Invalid operands or operation domains return a fault
+ * status; an unsupported command returns a silent fault unless more than one suppression count
+ * remains, in which case it returns the status that propagates the standard fault report. Errors
  * for an in-range active slot mark that slot faulted. An out-of-range active-slot index and an end
  * of input with more than one suppression count pending also return a fault status.
  *

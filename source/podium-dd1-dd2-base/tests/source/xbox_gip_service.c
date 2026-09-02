@@ -46,6 +46,16 @@ static void acknowledge_metadata(Fixture *fixture) {
     fixture->request[12] = (uint8_t)((USB_XBOX_GIP_METADATA_SIZE - transferred) >> 8);
 }
 
+static void start_metadata_packet(Fixture *fixture) {
+    poll_service(fixture, 100);
+    fixture->request[0] = 4;
+    assert(poll_service(fixture, 101).response_length == 0);
+    UsbXboxGipServiceResult result = poll_service(fixture, 102);
+    assert(result.response_length == USB_XBOX_GIP_METADATA_PACKET_SIZE);
+    assert(fixture->service.metadata_active);
+    assert(fixture->service.metadata_download.awaiting_acknowledgement);
+}
+
 static void test_runs_discovery_and_metadata_download(void) {
     Fixture fixture;
     fixture_init(&fixture);
@@ -128,9 +138,93 @@ static void test_classifies_force_feedback_application_packets(void) {
     assert(poll_service(&fixture, 0).application_output);
 }
 
+static void test_preserves_metadata_for_idle_and_malformed_acknowledgements(void) {
+    Fixture fixture;
+    fixture_init(&fixture);
+    start_metadata_packet(&fixture);
+    uint16_t offset = fixture.service.metadata_download.offset;
+
+    UsbXboxGipServiceResult result = poll_service(&fixture, 103);
+    assert(result.response_length == 0);
+    assert(fixture.service.metadata_active);
+    assert(fixture.service.metadata_download.awaiting_acknowledgement);
+    assert(fixture.service.metadata_download.offset == offset);
+
+    for (uint8_t field = 0; field < 5; field++) {
+        acknowledge_metadata(&fixture);
+        switch (field) {
+        case 0:
+            fixture.request[0] = 2;
+            break;
+        case 1:
+            fixture.request[4] = 1;
+            break;
+        case 2:
+            fixture.request[5] = USB_XBOX_GIP_METADATA_REPORT_ID + 1;
+            break;
+        case 3:
+            fixture.request[7]++;
+            break;
+        case 4:
+            fixture.request[11]++;
+            break;
+        }
+
+        result = poll_service(&fixture, 104 + field);
+        assert(result.response_length == 0);
+        assert(fixture.service.metadata_active);
+        assert(fixture.service.metadata_download.awaiting_acknowledgement);
+        assert(fixture.service.metadata_download.offset == offset);
+    }
+
+    acknowledge_metadata(&fixture);
+    assert(poll_service(&fixture, 110).response_length == 0);
+    assert(fixture.service.metadata_active);
+    assert(!fixture.service.metadata_download.awaiting_acknowledgement);
+    result = poll_service(&fixture, 111);
+    assert(result.response_length != 0);
+    assert(fixture.service.metadata_download.offset > offset);
+}
+
+static void test_routes_session_commands_during_metadata(void) {
+    Fixture fixture;
+    fixture_init(&fixture);
+    start_metadata_packet(&fixture);
+
+    fixture.request[0] = 5;
+    fixture.request[1] = 0x77;
+    fixture.request[4] = 3;
+    UsbXboxGipServiceResult result = poll_service(&fixture, 120);
+    assert(result.session_actions == USB_XBOX_GIP_SESSION_ACTION_SEND_TRANSFER_STATUS);
+    assert(result.response_length == USB_XBOX_GIP_TRANSFER_STATUS_RESPONSE_SIZE);
+    assert(fixture.service.metadata_active);
+    assert(fixture.service.metadata_download.awaiting_acknowledgement);
+
+    fixture.request[0] = 5;
+    fixture.request[1] = 0x78;
+    fixture.request[4] = 6;
+    result = poll_service(&fixture, 121);
+    assert(result.session_actions == USB_XBOX_GIP_SESSION_ACTION_SEND_TRANSFER_STATUS);
+    assert(result.response_length == USB_XBOX_GIP_TRANSFER_STATUS_RESPONSE_SIZE);
+    assert(fixture.service.metadata_active);
+    assert(fixture.service.metadata_download.awaiting_acknowledgement);
+
+    fixture_init(&fixture);
+    start_metadata_packet(&fixture);
+    fixture.request[0] = 5;
+    fixture.request[4] = 7;
+    result = poll_service(&fixture, 122);
+    assert(result.session_actions ==
+           (USB_XBOX_GIP_SESSION_ACTION_SEND_READY | USB_XBOX_GIP_SESSION_ACTION_RESET_DEVICE));
+    assert(result.response_length == USB_XBOX_GIP_READY_RESPONSE_SIZE);
+    assert(fixture.service.session.state == USB_XBOX_GIP_SESSION_RESET_DEVICE);
+}
+
 int main(void) {
     test_runs_discovery_and_metadata_download();
     test_responds_to_session_commands();
     test_classifies_force_feedback_application_packets();
+    test_preserves_metadata_for_idle_and_malformed_acknowledgements();
+    test_routes_session_commands_during_metadata();
     return 0;
 }

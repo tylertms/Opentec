@@ -151,10 +151,12 @@ typedef struct {
     bool configuration_pending; /**< True when V3 brake-force configuration awaits transmission. */
     bool configuration_reset_pending; /**< True when V3 configuration reset must be sent. */
     bool startup_handshake_active;    /**< True while the initial V3 handshake is active. */
-    bool recovery_handshake;   /**< True when the next V3 handshake is a recovery handshake. */
-    bool status_transmitted;   /**< True after the current V3 status has been sent. */
-    bool v4_request_active;    /**< True while a V4 request awaits completion. */
-    bool v4_response_received; /**< True after a complete V4 response was accepted. */
+    bool status_handshake_active; /**< True while the official extended-status handshake latch is
+                                     set. */
+    bool recovery_handshake;      /**< True when the next V3 handshake is a recovery handshake. */
+    bool status_transmitted;      /**< True after the current V3 status has been sent. */
+    bool v4_request_active;       /**< True while a V4 request awaits completion. */
+    bool v4_response_received;    /**< True after a complete V4 response was accepted. */
     bool alternate_brake_force_received; /**< True while a new V3 brake-force report awaits
                                             consumption. */
     bool host_adjustment_pending;        /**< True while a host adjustment awaits selection. */
@@ -225,7 +227,7 @@ void pedal_service_set_auxiliary_override(PedalService *service, bool active, ui
 /**
  * @brief Reports whether pedal calibration commands are accepted.
  *
- * Returns true during legacy transport or active V3 calibration.
+ * Returns true while the legacy-calibration flag or either V3 calibration path is active.
  *
  * @param[in] service Pedal service state to inspect.
  * @return True when pedal calibration is active.
@@ -300,9 +302,20 @@ bool pedal_service_legacy_mode(const PedalService *service);
 bool pedal_service_handshake_active(const PedalService *service);
 
 /**
+ * @brief Reports the pedal handshake latch exported by Xbox extended status.
+ *
+ * The latch is set by V3 startup and accepted calibration traffic, remains set through the
+ * official startup sample window, and clears after the window or when the pedal link reconnects.
+ *
+ * @param[in] service Pedal service state to inspect.
+ * @return True while the extended-status handshake latch is set.
+ */
+bool pedal_service_extended_status_handshake_active(const PedalService *service);
+
+/**
  * @brief Applies a decoded pedal protocol command.
  *
- * Updates protocol selectors or applies a legacy scale when legacy transport is active.
+ * Updates protocol selectors or applies a legacy scale when the legacy-calibration flag is active.
  *
  * @param[in,out] service Pedal service state to update.
  * @param[in] command Decoded protocol command to apply.
@@ -351,6 +364,18 @@ void pedal_service_request_input_command(PedalService *service,
  * @param[in] reset True to request a controller reset marker.
  */
 void pedal_service_request_configuration(PedalService *service, uint8_t brake_force, bool reset);
+
+/**
+ * @brief Flushes one pending V3 pedal configuration report.
+ *
+ * Sends the retained configuration immediately while a V3 exchange is active. The pending request
+ * remains queued when the transport cannot accept the frame.
+ *
+ * @param[in,out] service Pedal service and pending configuration state to update.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @return True when the configuration frame was sent; otherwise false.
+ */
+bool pedal_service_flush_configuration(PedalService *service, uint32_t now_ms);
 
 /**
  * @brief Reports whether V4 adjustment requests can be accepted.

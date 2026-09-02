@@ -11,7 +11,7 @@
  */
 typedef enum {
     PEDAL_PROTOCOL_COMMAND_UPDATE,       /**< Update protocol value and selectors. */
-    PEDAL_PROTOCOL_COMMAND_LEGACY_SCALE, /**< Update the legacy scale value. */
+    PEDAL_PROTOCOL_COMMAND_LEGACY_SCALE, /**< Update the legacy-calibration scale. */
 } PedalProtocolCommandKind;
 
 /**
@@ -19,7 +19,7 @@ typedef enum {
  */
 typedef struct {
     PedalProtocolCommandKind kind; /**< Decoded command kind. */
-    uint8_t value;                 /**< Protocol value or legacy scale. */
+    uint8_t value;                 /**< Protocol value or legacy-calibration scale. */
     uint8_t first;                 /**< First protocol selector. */
     uint8_t second;                /**< Second protocol selector. */
 } PedalProtocolCommand;
@@ -27,7 +27,7 @@ typedef struct {
 /**
  * @brief Decodes a pedal protocol command from an operating-mode command.
  *
- * Recognizes protocol-selector updates and legacy-scale updates.
+ * Recognizes protocol-selector updates and legacy-calibration scale updates.
  *
  * @param[in] source Decoded operating-mode command.
  * @param[out] command Destination for the decoded protocol command.

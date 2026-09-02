@@ -10,7 +10,8 @@
 enum {
     MOTOR_COMMAND_SCHEDULER_INTERVAL_TICKS =
         100, /**< Ticks between transmission timeout actions. */
-    MOTOR_COMMAND_SCHEDULER_SEQUENCE_RESET = 0xfe, /**< Command used to reset a stalled sequence. */
+    MOTOR_COMMAND_SCHEDULER_SEQUENCE_RESET =
+        0xfe, /**< Application command used to recover a stalled sequence. */
 };
 
 /**
@@ -65,9 +66,9 @@ void motor_command_scheduler_init(MotorCommandScheduler *scheduler);
  * @brief Advances motor-command scheduling by one tick.
  *
  * Reloads idle state, counts down a pending transmission, and selects the pending command for the
- * first two expirations before selecting the sequence-reset command. Status writes take priority
- * over command writes; a selected command write extends the watchdog by one interval. The
- * scheduler and input pointers must be non-null.
+ * first two expirations before selecting the recovery command. Status writes take priority over
+ * command writes; a selected command write extends the watchdog by one interval. The scheduler and
+ * input pointers must be non-null.
  *
  * @param[in,out] scheduler Scheduler timing state to update.
  * @param[in] input Current transmission, write, command, and link state.

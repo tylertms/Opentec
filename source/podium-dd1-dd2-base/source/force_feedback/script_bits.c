@@ -45,7 +45,11 @@ force_feedback_script_bits_evaluate(ForceFeedbackScriptBitOperation operation, u
         return value_result(~(first ^ second));
     case FORCE_FEEDBACK_SCRIPT_TEST_BIT:
         if (second < 32) {
-            return value_result(first & (UINT32_C(1) << second) ? UINT32_C(0x3f800000) : 0);
+            uint32_t mask = second < 16 ? UINT32_C(1) << second : 0;
+            if (second == 15) {
+                mask = UINT32_C(0xffff8000);
+            }
+            return value_result(first & mask ? UINT32_C(0x3f800000) : 0);
         }
         return skipped_result();
     case FORCE_FEEDBACK_SCRIPT_SET_BIT:

@@ -33,7 +33,7 @@ bool display_auxiliary_calibration_page_update(DisplayAuxiliaryCalibrationPage *
 /**
  * @brief Renders the legacy-display page title.
  *
- * Clears the framebuffer and centers the title shown while the legacy-display page opens.
+ * Clears the framebuffer and draws the inverted title at the reference record coordinates.
  *
  * @param[in,out] framebuffer Framebuffer receiving the title pixels.
  */

@@ -60,8 +60,8 @@ static void encode_report(const UsbDiagnosticSnapshot *snapshot,
     output[1] = DIAGNOSTIC_REPORT_ROUTE;
     encode_u16(output + 2, DIAGNOSTIC_REPORT_IDENTIFIER);
     output[4] = snapshot->base_mode;
-    encode_u16(output + 5, (uint16_t)snapshot->base_temperatures_c[0]);
-    encode_u16(output + 7, (uint16_t)snapshot->base_temperatures_c[1]);
+    encode_u16(output + 5, snapshot->resistance_values[0]);
+    encode_u16(output + 7, snapshot->resistance_values[1]);
     encode_u32(output + 9, snapshot->system_seconds);
     encode_u32(output + 13, snapshot->transport_error_count);
     output[17] = snapshot->motor.version;

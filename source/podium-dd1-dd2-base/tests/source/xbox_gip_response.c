@@ -89,10 +89,10 @@ static void test_encodes_extended_status_response(void) {
         .legacy_pedal_mode = true,
         .primary_pedal_calibration = true,
         .secondary_pedal_calibration = true,
-        .pedal_recovery_handshake = true,
-        .thermal_effect_limit = true,
+        .pedal_handshake_active = true,
+        .resistance_profile_active = true,
         .wheel_calibration_available = true,
-        .wheel_input_capability_available = true,
+        .wheel_axis_report_enabled = true,
         .multi_position_supported = true,
         .adapter_connected = true,
     };

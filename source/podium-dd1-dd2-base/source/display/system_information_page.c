@@ -13,18 +13,22 @@
  * framebuffer.
  */
 enum {
-    SYSTEM_INFORMATION_COLOR = 15,               /**< Foreground grayscale value. */
-    SYSTEM_INFORMATION_MAIN_X = 4,               /**< Main-column left coordinate. */
-    SYSTEM_INFORMATION_MOTOR_X = 90,             /**< Motor-column left coordinate. */
-    SYSTEM_INFORMATION_QUICK_RELEASE_X = 176,    /**< Wheel quick-release column left coordinate. */
-    SYSTEM_INFORMATION_FIRST_SEPARATOR_X = 85,   /**< First column-separator coordinate. */
-    SYSTEM_INFORMATION_SECOND_SEPARATOR_X = 171, /**< Second column-separator coordinate. */
-    SYSTEM_INFORMATION_HEADER_Y = 2,             /**< Header text top coordinate. */
-    SYSTEM_INFORMATION_FIRMWARE_Y = 14,          /**< Firmware text top coordinate. */
-    SYSTEM_INFORMATION_HARDWARE_Y = 25,          /**< Hardware text top coordinate. */
-    SYSTEM_INFORMATION_ACCESSORY_Y = 36,         /**< Accessory text top coordinate. */
-    SYSTEM_INFORMATION_RUNTIME_Y = 53,           /**< Runtime text top coordinate. */
-    SYSTEM_INFORMATION_TITLE_Y = 25,             /**< Opening-title top coordinate. */
+    SYSTEM_INFORMATION_COLOR = 15,              /**< Foreground grayscale value. */
+    SYSTEM_INFORMATION_MAIN_X = 2,              /**< Main-column left coordinate. */
+    SYSTEM_INFORMATION_MOTOR_X = 72,            /**< Motor-column left coordinate. */
+    SYSTEM_INFORMATION_QUICK_RELEASE_X = 142,   /**< Wheel quick-release column left coordinate. */
+    SYSTEM_INFORMATION_FIRST_SEPARATOR_X = 1,   /**< Main-column separator coordinate. */
+    SYSTEM_INFORMATION_SECOND_SEPARATOR_X = 71, /**< Motor-column separator coordinate. */
+    SYSTEM_INFORMATION_THIRD_SEPARATOR_X = 141, /**< Wheel-column separator coordinate. */
+    SYSTEM_INFORMATION_HEADER_Y = 13,           /**< Header text top coordinate. */
+    SYSTEM_INFORMATION_MAIN_VALUE_X = 4,        /**< Main-column value coordinate. */
+    SYSTEM_INFORMATION_MOTOR_VALUE_X = 74,      /**< Motor-column value coordinate. */
+    SYSTEM_INFORMATION_QUICK_RELEASE_VALUE_X = 144, /**< Wheel-column value coordinate. */
+    SYSTEM_INFORMATION_FIRMWARE_Y = 23,             /**< Firmware text top coordinate. */
+    SYSTEM_INFORMATION_HARDWARE_Y = 33,             /**< Hardware text top coordinate. */
+    SYSTEM_INFORMATION_ACCESSORY_Y = 43,            /**< Accessory text top coordinate. */
+    SYSTEM_INFORMATION_RUNTIME_Y = 53,              /**< Runtime text top coordinate. */
+    SYSTEM_INFORMATION_TITLE_Y = 12,                /**< Opening-title top coordinate. */
 };
 
 /**
@@ -141,13 +145,13 @@ static void format_accessory_type(char output[16], bool available, uint8_t type)
 /**
  * @brief Draws a vertical diagnostic-column separator.
  *
- * Fills one complete display column with the system-information foreground color.
+ * Fills the official diagnostic-column separator span with the system-information foreground color.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
  * @param[in] x Horizontal separator position.
  */
 static void draw_separator(DisplayFramebuffer framebuffer, uint16_t x) {
-    for (uint16_t y = 0; y < DISPLAY_FRAMEBUFFER_HEIGHT; y++) {
+    for (uint16_t y = SYSTEM_INFORMATION_HEADER_Y; y < DISPLAY_FRAMEBUFFER_HEIGHT - 1; y++) {
         display_framebuffer_set_pixel(framebuffer, x, y, SYSTEM_INFORMATION_COLOR);
     }
 }
@@ -155,20 +159,20 @@ static void draw_separator(DisplayFramebuffer framebuffer, uint16_t x) {
 /**
  * @brief Renders the system-information opening title.
  *
- * Clears the previous page and centers the title presented before diagnostic content appears.
+ * Clears the previous page and draws the inverted title at the official record coordinates.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
  */
 void display_system_information_page_render_title(DisplayFramebuffer framebuffer) {
     display_framebuffer_clear(framebuffer);
-    display_text_draw_centered(framebuffer, "System Info Screen", SYSTEM_INFORMATION_TITLE_Y, 2,
-                               SYSTEM_INFORMATION_COLOR);
+    display_text_draw_with_font(framebuffer, &display_font_10_00c988, "System Info Screen", 0,
+                                SYSTEM_INFORMATION_TITLE_Y, true);
 }
 
 /**
  * @brief Renders base, motor, and wheel quick-release information.
  *
- * Presents firmware, hardware, accessory type, and elapsed operating times in three independent
+ * Presents firmware, hardware, accessory type, and elapsed operating times in the official three
  * columns after the opening title interval.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
@@ -183,36 +187,40 @@ void display_system_information_page_render(DisplayFramebuffer framebuffer,
     display_framebuffer_clear(framebuffer);
     draw_separator(framebuffer, SYSTEM_INFORMATION_FIRST_SEPARATOR_X);
     draw_separator(framebuffer, SYSTEM_INFORMATION_SECOND_SEPARATOR_X);
-    display_text_draw(framebuffer, "Main:", SYSTEM_INFORMATION_MAIN_X, SYSTEM_INFORMATION_HEADER_Y,
-                      1, SYSTEM_INFORMATION_COLOR);
-    display_text_draw(framebuffer, "Motor:", SYSTEM_INFORMATION_MOTOR_X,
-                      SYSTEM_INFORMATION_HEADER_Y, 1, SYSTEM_INFORMATION_COLOR);
-    display_text_draw(framebuffer, "WQR:", SYSTEM_INFORMATION_QUICK_RELEASE_X,
-                      SYSTEM_INFORMATION_HEADER_Y, 1, SYSTEM_INFORMATION_COLOR);
+    draw_separator(framebuffer, SYSTEM_INFORMATION_THIRD_SEPARATOR_X);
+    display_text_draw_with_font(framebuffer, &display_font_10_00c988,
+                                "Main:", SYSTEM_INFORMATION_MAIN_X, SYSTEM_INFORMATION_HEADER_Y,
+                                true);
+    display_text_draw_with_font(framebuffer, &display_font_10_00c988,
+                                "Motor:", SYSTEM_INFORMATION_MOTOR_X, SYSTEM_INFORMATION_HEADER_Y,
+                                true);
+    display_text_draw_with_font(framebuffer, &display_font_10_00c988,
+                                "WQR:", SYSTEM_INFORMATION_QUICK_RELEASE_X,
+                                SYSTEM_INFORMATION_HEADER_Y, true);
 
     format_firmware(text, main_firmware);
-    display_text_draw(framebuffer, text, SYSTEM_INFORMATION_MAIN_X, SYSTEM_INFORMATION_FIRMWARE_Y,
-                      1, SYSTEM_INFORMATION_COLOR);
+    display_text_draw(framebuffer, text, SYSTEM_INFORMATION_MAIN_VALUE_X,
+                      SYSTEM_INFORMATION_FIRMWARE_Y, 1, SYSTEM_INFORMATION_COLOR);
     format_hardware(text, information->main_hardware);
-    display_text_draw(framebuffer, text, SYSTEM_INFORMATION_MAIN_X, SYSTEM_INFORMATION_HARDWARE_Y,
-                      1, SYSTEM_INFORMATION_COLOR);
+    display_text_draw(framebuffer, text, SYSTEM_INFORMATION_MAIN_VALUE_X,
+                      SYSTEM_INFORMATION_HARDWARE_Y, 1, SYSTEM_INFORMATION_COLOR);
     format_runtime(text, information->main_runtime_seconds);
-    display_text_draw(framebuffer, text, SYSTEM_INFORMATION_MAIN_X, SYSTEM_INFORMATION_RUNTIME_Y, 1,
-                      SYSTEM_INFORMATION_COLOR);
+    display_text_draw(framebuffer, text, SYSTEM_INFORMATION_MAIN_VALUE_X,
+                      SYSTEM_INFORMATION_RUNTIME_Y, 1, SYSTEM_INFORMATION_COLOR);
 
     format_firmware(text, information->motor_firmware);
-    display_text_draw(framebuffer, text, SYSTEM_INFORMATION_MOTOR_X, SYSTEM_INFORMATION_FIRMWARE_Y,
-                      1, SYSTEM_INFORMATION_COLOR);
+    display_text_draw(framebuffer, text, SYSTEM_INFORMATION_MOTOR_VALUE_X,
+                      SYSTEM_INFORMATION_FIRMWARE_Y, 1, SYSTEM_INFORMATION_COLOR);
     format_hardware(text, information->motor_hardware);
-    display_text_draw(framebuffer, text, SYSTEM_INFORMATION_MOTOR_X, SYSTEM_INFORMATION_HARDWARE_Y,
-                      1, SYSTEM_INFORMATION_COLOR);
+    display_text_draw(framebuffer, text, SYSTEM_INFORMATION_MOTOR_VALUE_X,
+                      SYSTEM_INFORMATION_HARDWARE_Y, 1, SYSTEM_INFORMATION_COLOR);
     format_accessory_type(text, information->motor_accessory_type_available,
                           information->motor_accessory_type);
-    display_text_draw(framebuffer, text, SYSTEM_INFORMATION_MOTOR_X, SYSTEM_INFORMATION_ACCESSORY_Y,
-                      1, SYSTEM_INFORMATION_COLOR);
+    display_text_draw(framebuffer, text, SYSTEM_INFORMATION_MOTOR_VALUE_X,
+                      SYSTEM_INFORMATION_ACCESSORY_Y, 1, SYSTEM_INFORMATION_COLOR);
     format_runtime(text, information->motor_runtime_seconds);
-    display_text_draw(framebuffer, text, SYSTEM_INFORMATION_MOTOR_X, SYSTEM_INFORMATION_RUNTIME_Y,
-                      1, SYSTEM_INFORMATION_COLOR);
+    display_text_draw(framebuffer, text, SYSTEM_INFORMATION_MOTOR_VALUE_X,
+                      SYSTEM_INFORMATION_RUNTIME_Y, 1, SYSTEM_INFORMATION_COLOR);
 
     text[0] = 'F';
     text[1] = 'W';
@@ -221,12 +229,12 @@ void display_system_information_page_render(DisplayFramebuffer framebuffer,
     text[4] = 'v';
     char *cursor = append_decimal(text + 5, information->quick_release_firmware);
     *cursor = '\0';
-    display_text_draw(framebuffer, text, SYSTEM_INFORMATION_QUICK_RELEASE_X,
+    display_text_draw(framebuffer, text, SYSTEM_INFORMATION_QUICK_RELEASE_VALUE_X,
                       SYSTEM_INFORMATION_FIRMWARE_Y, 1, SYSTEM_INFORMATION_COLOR);
     format_hardware(text, information->quick_release_hardware);
-    display_text_draw(framebuffer, text, SYSTEM_INFORMATION_QUICK_RELEASE_X,
+    display_text_draw(framebuffer, text, SYSTEM_INFORMATION_QUICK_RELEASE_VALUE_X,
                       SYSTEM_INFORMATION_HARDWARE_Y, 1, SYSTEM_INFORMATION_COLOR);
     format_runtime(text, information->quick_release_runtime_seconds);
-    display_text_draw(framebuffer, text, SYSTEM_INFORMATION_QUICK_RELEASE_X,
+    display_text_draw(framebuffer, text, SYSTEM_INFORMATION_QUICK_RELEASE_VALUE_X,
                       SYSTEM_INFORMATION_RUNTIME_Y, 1, SYSTEM_INFORMATION_COLOR);
 }

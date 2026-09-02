@@ -87,6 +87,17 @@ MotorLiveFrameResult motor_live_frame_decode(const uint8_t input[MOTOR_LIVE_FRAM
 bool motor_position_report_decode(const MotorLiveFrame *frame, MotorPositionReport *report);
 
 /**
+ * @brief Inhibits the primary force component in a live position frame.
+ *
+ * Clears the two primary-magnitude payload bytes in position frames, including replay frames,
+ * while leaving position, direction, and secondary force bytes unchanged. Other frame types are
+ * left untouched.
+ *
+ * @param[in,out] frame Live frame whose primary force component must be inhibited.
+ */
+void motor_live_frame_inhibit_primary(MotorLiveFrame *frame);
+
+/**
  * @brief Initializes a live force-output frame.
  *
  * Stores the wheel center and encoded force-output report in a position-type frame, clears the

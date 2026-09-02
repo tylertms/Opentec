@@ -20,7 +20,10 @@ static void test_lookup_interpolation(void) {
     assert_near(cooling_temperature_from_resistance(midpoint), 27.5f);
 }
 
-static void test_adc_conversion(void) { assert(cooling_temperature_from_adc_total(2048000) == 64); }
+static void test_adc_conversion(void) {
+    assert(cooling_temperature_from_adc_total(2048000) == 64);
+    assert(cooling_resistance_value_from_adc_total(2048000) == 64);
+}
 
 static void test_sample_window(void) {
     CoolingTemperatureMonitor monitor;
@@ -32,6 +35,8 @@ static void test_sample_window(void) {
     assert(cooling_temperature_monitor_add(&monitor, 2048, 2048));
     assert(monitor.temperatures_c[0] == 64);
     assert(monitor.temperatures_c[1] == 64);
+    assert(monitor.resistance_values[0] == 64);
+    assert(monitor.resistance_values[1] == 64);
     assert(monitor.adc_totals[0] == 0);
     assert(monitor.adc_totals[1] == 0);
     assert(monitor.sample_count == 0);

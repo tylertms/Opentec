@@ -59,7 +59,8 @@ static uint8_t emit_session_response(UsbXboxGipService *service, const uint8_t r
  * @brief Services an active Xbox GIP metadata download.
  *
  * Checks acknowledgement packets against the current transfer progress and emits the next packet
- * when its acknowledgement boundary permits progress.
+ * when its acknowledgement boundary permits progress. A missing or rejected acknowledgement
+ * leaves the transfer waiting for the same packet.
  *
  * @param[in,out] service Active GIP service.
  * @param[in] identity Identity data containing the metadata document.
@@ -76,10 +77,7 @@ static uint8_t service_metadata(UsbXboxGipService *service,
         service->metadata_pending = false;
     }
     if (service->metadata_download.awaiting_acknowledgement) {
-        if (!usb_xbox_gip_metadata_download_acknowledge(&service->metadata_download, request)) {
-            service->metadata_download.awaiting_acknowledgement = false;
-            service->metadata_active = false;
-        }
+        (void)usb_xbox_gip_metadata_download_acknowledge(&service->metadata_download, request);
         return 0;
     }
 
@@ -108,6 +106,15 @@ usb_xbox_gip_service_poll(UsbXboxGipService *service, const UsbXboxGipServiceIde
         .application_output = is_force_feedback_application_packet(request),
     };
     if (service->metadata_active) {
+        result.session_actions = usb_xbox_gip_session_handle(&service->session, request);
+        result.response_length =
+            emit_session_response(service, request, result.session_actions, response);
+        if ((result.session_actions & USB_XBOX_GIP_SESSION_ACTION_RESET_FORCE_FEEDBACK) != 0) {
+            usb_xbox_gip_session_finish_force_feedback_reset(&service->session);
+        }
+        if (result.session_actions != USB_XBOX_GIP_SESSION_ACTION_NONE) {
+            return result;
+        }
         result.response_length = service_metadata(service, identity, request, response);
         return result;
     }

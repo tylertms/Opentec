@@ -13,7 +13,8 @@ enum {
     MEMORY_TRANSFER_READ_FLAG = 1,         /**< Direction bit selecting a read request. */
     MEMORY_TRANSFER_RESPONSE_REJECTED = 0, /**< Response status for a rejected request. */
     MEMORY_TRANSFER_RESPONSE_ACCEPTED = 1, /**< Response status for an accepted request. */
-    MEMORY_TRANSFER_READ_DATA_OFFSET = 2,  /**< Offset of read data after response status bytes. */
+    MEMORY_TRANSFER_READ_DATA_OFFSET = MEMORY_TRANSFER_READ_RESPONSE_PREFIX_SIZE,
+    /**< Offset of read data after response status bytes. */
 };
 
 /**

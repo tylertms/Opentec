@@ -70,26 +70,37 @@ static void renders_title_chart_telemetry_and_directional_bars(void) {
     display_motor_data_analysis_page_open(&page, 0, BOARD_VARIANT_DD1);
 
     display_motor_data_analysis_page_render_title(framebuffer);
-    assert(has_lit_pixel(framebuffer, 0, DISPLAY_FRAMEBUFFER_WIDTH - 1, 28, 34));
+    assert(has_lit_pixel(framebuffer, 0, DISPLAY_FRAMEBUFFER_WIDTH - 1, 12, 18));
+    assert(pixel(framebuffer, 0, 12) != 0);
+    assert(pixel(framebuffer, 0, 22) == 0);
 
     assert(display_motor_data_analysis_page_update(&page, 41, 20000, 42, -5, 1234));
     display_motor_data_analysis_page_render(framebuffer, &page);
     assert(has_lit_pixel(framebuffer, 1, 120, 2, 18));
-    assert(pixel(framebuffer, 3, 62) == 15);
-    assert(pixel(framebuffer, 150, 20) == 15);
-    assert(has_lit_pixel(framebuffer, 155, 250, 1, 62));
-    assert(pixel(framebuffer, 140, 24) == 6);
-    assert(pixel(framebuffer, 140, 60) == 0);
+    assert(pixel(framebuffer, 3, 63) == 15);
+    assert(pixel(framebuffer, 123, 63) == 0);
+    assert(pixel(framebuffer, 150, 62) == 15);
+    assert(pixel(framebuffer, 150, 63) == 0);
+    assert(has_lit_pixel(framebuffer, 153, 250, 13, 62));
+    assert(pixel(framebuffer, 140, 24) == 10);
+    assert(pixel(framebuffer, 140, 25) == 6);
+    assert(pixel(framebuffer, 140, 42) == 6);
+    assert(pixel(framebuffer, 140, 43) == 10);
 
     assert(display_motor_data_analysis_page_update(&page, 82, -20000, 42, -5, 1234));
     display_motor_data_analysis_page_render(framebuffer, &page);
-    assert(pixel(framebuffer, 140, 24) == 0);
+    assert(pixel(framebuffer, 140, 24) == 10);
+    assert(pixel(framebuffer, 140, 25) == 0);
+    assert(pixel(framebuffer, 140, 43) == 10);
+    assert(pixel(framebuffer, 140, 44) == 6);
     assert(pixel(framebuffer, 140, 60) == 6);
+    assert(pixel(framebuffer, 140, 61) == 2);
+    assert(pixel(framebuffer, 140, 62) == 10);
 
     assert(display_motor_data_analysis_page_update(&page, 123, 0, 42, -5, 1234));
     display_motor_data_analysis_page_render(framebuffer, &page);
-    assert(pixel(framebuffer, 140, 41) == 0);
-    assert(pixel(framebuffer, 140, 43) == 0);
+    assert(pixel(framebuffer, 140, 43) == 10);
+    assert(pixel(framebuffer, 140, 44) == 0);
 }
 
 int main(void) {

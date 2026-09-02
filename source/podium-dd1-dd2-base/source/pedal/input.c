@@ -81,7 +81,8 @@ void pedal_v3_state_init(PedalV3State *state) { *state = (PedalV3State){0}; }
  * @brief Applies a recognized V3 input report to the pedal state.
  *
  * Decodes axis, connection, calibration, brake-force, and shared-axis reports while preserving an
- * auxiliary input owned by another source.
+ * auxiliary input owned by another source. Unknown report types remain structurally valid to the
+ * V3 stream watchdog but do not change this state.
  *
  * @param[in] frame Decoded V3 frame to process.
  * @param[in] auxiliary_locked True when another input source owns the auxiliary axis.

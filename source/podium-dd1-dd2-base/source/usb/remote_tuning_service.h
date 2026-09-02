@@ -29,6 +29,7 @@ typedef enum {
 
 /** @brief Intelligent-telemetry-mode page dimensions. */
 enum {
+    USB_REMOTE_TUNING_ITM_SET_COUNT = 10,  /**< Number of official ITM selection sets. */
     USB_REMOTE_TUNING_ITM_FIELD_COUNT = 7, /**< Maximum fields retained for one page. */
     USB_REMOTE_TUNING_ITM_TEXT_SIZE = 16,  /**< Storage bytes for each field value. */
 };
@@ -40,7 +41,7 @@ typedef struct {
     char secondary_values[USB_REMOTE_TUNING_ITM_FIELD_COUNT]
                          [USB_REMOTE_TUNING_ITM_TEXT_SIZE]; /**< Secondary field text. */
     bool markers[USB_REMOTE_TUNING_ITM_FIELD_COUNT];        /**< Per-field marker state. */
-    uint8_t page;                                           /**< Selected telemetry page. */
+    uint8_t page;                                           /**< Selected one-based ITM set. */
     uint8_t field_count;                                    /**< Number of valid retained fields. */
     uint8_t revision; /**< Revision incremented by accepted page updates. */
 } UsbRemoteTuningItmPage;

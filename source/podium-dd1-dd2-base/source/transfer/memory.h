@@ -6,15 +6,21 @@
 /**
  * @brief Remote memory-transfer command and buffer limits.
  *
- * These constants describe the group-4 memory request layout and the maximum read and write
- * payloads accepted by the encoder.
+ * These constants describe the group-4 memory request layout and keep every encoded request and
+ * accepted read response within the 512-byte serial logical-message buffer. Read and write
+ * payload limits reserve space for their response prefix and request header.
  */
 enum {
-    MEMORY_TRANSFER_COMMAND = 4,           /**< Transfer group used for memory commands. */
-    MEMORY_TRANSFER_HEADER_SIZE = 3,       /**< Number of bytes in a memory request header. */
-    MEMORY_TRANSFER_READ_REQUEST_SIZE = 5, /**< Encoded size of a memory read request. */
-    MEMORY_TRANSFER_MAX_READ_SIZE = 1009,  /**< Maximum memory-read payload in bytes. */
-    MEMORY_TRANSFER_MAX_WRITE_SIZE = 1009, /**< Maximum memory-write payload in bytes. */
+    MEMORY_TRANSFER_COMMAND = 4,         /**< Transfer group used for memory commands. */
+    MEMORY_TRANSFER_MAX_WIRE_SIZE = 512, /**< Maximum serial logical-message size in bytes. */
+    MEMORY_TRANSFER_HEADER_SIZE = 3,     /**< Number of bytes in a memory request header. */
+    MEMORY_TRANSFER_READ_RESPONSE_PREFIX_SIZE = 2, /**< Number of status bytes before read data. */
+    MEMORY_TRANSFER_READ_REQUEST_SIZE = 5,         /**< Encoded size of a memory read request. */
+    MEMORY_TRANSFER_MAX_READ_SIZE =
+        MEMORY_TRANSFER_MAX_WIRE_SIZE - MEMORY_TRANSFER_READ_RESPONSE_PREFIX_SIZE,
+    /**< Maximum read data that fits with the response prefix. */
+    MEMORY_TRANSFER_MAX_WRITE_SIZE = MEMORY_TRANSFER_MAX_WIRE_SIZE - MEMORY_TRANSFER_HEADER_SIZE,
+    /**< Maximum write data that fits with the request header. */
     MEMORY_TRANSFER_MAX_REQUEST_SIZE =
         MEMORY_TRANSFER_HEADER_SIZE +
         MEMORY_TRANSFER_MAX_WRITE_SIZE, /**< Maximum encoded memory request size. */
@@ -38,7 +44,8 @@ typedef enum {
  *
  * @param[in] owner Transfer owner identifier.
  * @param[in] offset Remote memory offset.
- * @param[in] length Requested byte count, up to MEMORY_TRANSFER_MAX_READ_SIZE.
+ * @param[in] length Requested byte count, up to MEMORY_TRANSFER_MAX_READ_SIZE, so the two-byte
+ * response prefix remains within MEMORY_TRANSFER_MAX_WIRE_SIZE.
  * @param[out] output Five-byte request payload.
  * @return MEMORY_TRANSFER_READ_REQUEST_SIZE when supported; otherwise zero.
  */
@@ -53,7 +60,8 @@ uint8_t memory_transfer_encode_read(uint8_t owner, uint8_t offset, uint16_t leng
  * @param[in] owner Transfer owner identifier.
  * @param[in] offset Remote memory offset.
  * @param[in] data Bytes to write, or null when length is zero.
- * @param[in] length Byte count to write, up to MEMORY_TRANSFER_MAX_WRITE_SIZE.
+ * @param[in] length Byte count to write, up to MEMORY_TRANSFER_MAX_WRITE_SIZE, so the three-byte
+ * request header remains within MEMORY_TRANSFER_MAX_WIRE_SIZE.
  * @param[out] output Encoded request payload.
  * @return Encoded byte count, or zero when the payload is invalid or too long.
  */

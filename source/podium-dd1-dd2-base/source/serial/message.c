@@ -24,12 +24,13 @@ void serial_message_assembly_reset(SerialMessageAssembly *assembly) {
  *
  * Emits an unmarked packet for messages through fifty-seven bytes. Longer messages use a
  * fifty-seven-byte first fragment, zero or more fifty-seven-byte continuation fragments, and a
- * final fragment containing the remainder. The logical message can contain up to 515 bytes.
+ * final fragment containing the remainder. The logical message can contain up to
+ * SERIAL_MESSAGE_MAX_SIZE bytes.
  *
  * @param[in] type Message type from two through five.
  * @param[in] sequence Transport sequence byte.
  * @param[in] message Complete logical message payload.
- * @param[in] message_length Logical message length from one through 515 bytes.
+ * @param[in] message_length Logical message length from one through SERIAL_MESSAGE_MAX_SIZE bytes.
  * @param[in] offset Byte offset of the fragment to encode.
  * @param[out] output Encoded sixty-four-byte packet.
  * @param[out] next_offset Offset immediately after the encoded fragment, or null when unused.
@@ -79,9 +80,9 @@ bool serial_message_fragment_encode(uint8_t type, uint8_t sequence, const uint8_
 /**
  * @brief Accumulates one decoded attached-device serial message packet.
  *
- * Appends packets of types two through five to the current 515-byte message. First and
- * continuation fragments request an acknowledgement; an unmarked or final fragment completes the
- * message.
+ * Appends packets of types two through five to the current SERIAL_MESSAGE_MAX_SIZE-byte message.
+ * First and continuation fragments request an acknowledgement; an unmarked or final fragment
+ * completes the message.
  *
  * @param[in,out] assembly Message payload and type accumulated across packets.
  * @param[in] packet Decoded attached-device serial packet.

@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "platform/time.h"
 #include "platform/usb.h"
@@ -123,6 +124,8 @@ static uint8_t feature_report_lengths[5];
 static const uint8_t feature_report_ids[5] = {0x31, 0x32, 0x33, 0x35, 0x36};
 /** @brief One-shot native feature-report request bits. */
 static uint8_t feature_report_requests;
+/** @brief Official sparse queue backing native remote-HID report 0x35. */
+static UsbRemoteHidQueue remote_hid_queue;
 /** @brief Retained updater response bytes. */
 static uint8_t updater_response[USB_DEVICE_UPDATER_RESPONSE_SIZE];
 /** @brief Length of the retained primary input report. */
@@ -141,6 +144,8 @@ static uint8_t control_output[USB_DEVICE_REPORT_SIZE];
 static uint8_t control_output_expected;
 static uint8_t control_output_received;
 static bool control_output_data_one;
+/** @brief True while the endpoint-zero DATA1 input status packet is prearmed. */
+static bool control_status_in_armed;
 /** @brief Current endpoint-zero transfer stage. */
 static UsbControlStage control_stage;
 /** @brief True when a host output report is ready to take. */
@@ -239,10 +244,9 @@ static bool input_report_matches(const uint8_t *report, uint8_t length) {
  * @brief Builds the descriptor catalog for one USB operating mode.
  *
  * Selects the device identity, configuration, report, and string descriptors used during the next
- * enumeration. G27 mode publishes its product at index two, hardware identity at index four, and
- * aliases index FE to the hardware identity. PlayStation mode uses the dedicated HID profile,
- * product string index nine, and the product identity selected by retained base mode two, four, or
- * five.
+ * enumeration. G27 mode publishes its product at index two and exposes its hardware identity only
+ * through the index FE alias. PlayStation mode uses the dedicated HID profile, product string
+ * index nine, and the product identity selected by retained base mode two, four, or five.
  *
  * @param[in] variant Wheel-base hardware variant.
  * @param[in] mode USB operating mode to build.
@@ -454,6 +458,7 @@ static void reset_state(bool preserve_hid_state) {
     control_stage = USB_CONTROL_STAGE_IDLE;
     control_output_expected = 0;
     control_output_received = 0;
+    control_status_in_armed = false;
     input_report_length = 0;
     output_ready = false;
     updater_packet_head = 0;
@@ -472,6 +477,7 @@ static void reset_state(bool preserve_hid_state) {
     xbox_response_ready = false;
     xbox_input_busy = false;
     playstation_remote_tuning_ready = false;
+    usb_remote_hid_queue_init(&remote_hid_queue);
     xbox_session_actions = USB_XBOX_GIP_SESSION_ACTION_NONE;
     for (uint8_t index = 0; index < USB_XBOX_GIP_METADATA_PACKET_SIZE; index++) {
         xbox_request[index] = 0;
@@ -523,6 +529,11 @@ void usb_device_init(BoardVariant variant) {
     platform_usb_attach();
 }
 
+void usb_device_shutdown(void) {
+    platform_usb_detach();
+    reset_state(false);
+}
+
 bool usb_device_set_input_mode(UsbInputReportMode mode) {
     if (mode > USB_INPUT_REPORT_MODE_G27) {
         return false;
@@ -530,20 +541,28 @@ bool usb_device_set_input_mode(UsbInputReportMode mode) {
     return usb_device_set_operating_mode((UsbOperatingMode)mode);
 }
 
-bool usb_device_set_operating_mode(UsbOperatingMode mode) {
+static bool apply_operating_mode(UsbOperatingMode mode, bool restart) {
     if (mode > USB_OPERATING_MODE_PLAYSTATION ||
         (mode == USB_OPERATING_MODE_XBOX_GIP && !xbox_identity_ready)) {
         return false;
     }
     platform_usb_detach();
     if (!build_descriptors(board_variant, mode)) {
-        platform_usb_attach();
+        if (restart) {
+            platform_usb_attach();
+        }
         return false;
     }
     reset_state(true);
     platform_usb_control_ready();
-    platform_usb_restart();
+    if (restart) {
+        platform_usb_restart();
+    }
     return true;
+}
+
+bool usb_device_set_operating_mode(UsbOperatingMode mode) {
+    return apply_operating_mode(mode, true);
 }
 
 bool usb_device_set_playstation_mode(void) { return usb_device_set_playstation_wheel_mode(4); }
@@ -553,10 +572,19 @@ bool usb_device_set_playstation_wheel_mode(uint8_t wheel_mode) {
         return false;
     }
     playstation_wheel_mode = wheel_mode;
-    return usb_device_set_operating_mode(USB_OPERATING_MODE_PLAYSTATION);
+    return apply_operating_mode(USB_OPERATING_MODE_PLAYSTATION, true);
 }
 
-bool usb_device_set_xbox_mode(uint8_t wheel_mode, const uint8_t digest[USB_XBOX_GIP_DIGEST_SIZE]) {
+bool usb_device_prepare_playstation_wheel_mode(uint8_t wheel_mode) {
+    if (wheel_mode != 2 && wheel_mode != 4 && wheel_mode != 5) {
+        return false;
+    }
+    playstation_wheel_mode = wheel_mode;
+    return apply_operating_mode(USB_OPERATING_MODE_PLAYSTATION, false);
+}
+
+static bool apply_xbox_mode(uint8_t wheel_mode, const uint8_t digest[USB_XBOX_GIP_DIGEST_SIZE],
+                            bool restart) {
     if (digest == 0 || usb_xbox_gip_mode_code(board_variant, wheel_mode) == 0) {
         return false;
     }
@@ -567,7 +595,16 @@ bool usb_device_set_xbox_mode(uint8_t wheel_mode, const uint8_t digest[USB_XBOX_
     usb_xbox_gip_serial_encode(xbox_digest, xbox_serial);
     usb_xbox_gip_metadata_encode(console_workspace.xbox_metadata);
     xbox_identity_ready = true;
-    return usb_device_set_operating_mode(USB_OPERATING_MODE_XBOX_GIP);
+    return apply_operating_mode(USB_OPERATING_MODE_XBOX_GIP, restart);
+}
+
+bool usb_device_set_xbox_mode(uint8_t wheel_mode, const uint8_t digest[USB_XBOX_GIP_DIGEST_SIZE]) {
+    return apply_xbox_mode(wheel_mode, digest, true);
+}
+
+bool usb_device_prepare_xbox_mode(uint8_t wheel_mode,
+                                  const uint8_t digest[USB_XBOX_GIP_DIGEST_SIZE]) {
+    return apply_xbox_mode(wheel_mode, digest, false);
 }
 
 UsbInputReportMode usb_device_input_mode(void) { return input_mode; }
@@ -577,11 +614,32 @@ UsbOperatingMode usb_device_operating_mode(void) { return operating_mode; }
 /**
  * @brief Stalls the active endpoint-zero transfer.
  *
- * Returns the control state to idle and arms both endpoint-zero directions as stalled.
+ * Returns the control state to idle and publishes the endpoint-zero input and output stall
+ * descriptors.
  */
 static void stall_control(void) {
     control_stage = USB_CONTROL_STAGE_IDLE;
+    control_status_in_armed = false;
     platform_usb_stall(USB_CONTROL_ENDPOINT);
+}
+
+/**
+ * @brief Prearms the endpoint-zero DATA1 input status packet.
+ *
+ * Keeps one status descriptor reserved throughout a host-to-device data stage and avoids
+ * reprogramming the descriptor after the final output packet.
+ *
+ * @return True when the status packet is already or newly armed; otherwise false.
+ */
+static bool arm_control_status_in(void) {
+    if (control_status_in_armed) {
+        return true;
+    }
+    if (!platform_usb_control_arm_status(true)) {
+        return false;
+    }
+    control_status_in_armed = true;
+    return true;
 }
 
 /**
@@ -602,13 +660,17 @@ static bool send_next_control_packet(void) {
 /**
  * @brief Starts an endpoint-zero input data stage.
  *
- * Limits the source to the host-requested length, sends its first packet, and enters the input
- * stage or stalls when the packet cannot be submitted.
+ * Reserves the output status stage, limits the source to the host-requested length, sends its first
+ * packet, and enters the input stage or stalls when either descriptor cannot be submitted.
  *
  * @param[in] data Response bytes and available length.
  * @param[in] requested_length Maximum response length requested by the host.
  */
 static void begin_control_input(UsbDescriptorView data, uint16_t requested_length) {
+    if (!platform_usb_control_arm_status(false)) {
+        stall_control();
+        return;
+    }
     usb_control_pipe_begin(&control_pipe, data, requested_length);
     if (!send_next_control_packet()) {
         stall_control();
@@ -643,6 +705,15 @@ static UsbDescriptorView requested_report(void) {
         return (UsbDescriptorView){.data = input_report, .length = input_report_length};
     }
     if (control_transfer.report_type == USB_DEVICE_HID_REPORT_FEATURE) {
+        if (operating_mode == USB_OPERATING_MODE_FANATEC &&
+            control_transfer.report_id == USB_REMOTE_HID_MARKER_PLAYSTATION) {
+            uint8_t *report = feature_reports[3];
+            (void)usb_remote_hid_queue_encode(&remote_hid_queue, USB_REMOTE_HID_HOST_NATIVE,
+                                              report);
+            feature_report_lengths[3] = USB_DEVICE_REPORT_SIZE;
+            feature_report_requests |= 1u << 3;
+            return (UsbDescriptorView){.data = report, .length = USB_DEVICE_REPORT_SIZE};
+        }
         for (uint8_t index = 0; index < 5; index++) {
             if (feature_report_ids[index] == control_transfer.report_id &&
                 feature_report_lengths[index] != 0) {
@@ -655,11 +726,24 @@ static UsbDescriptorView requested_report(void) {
     return (UsbDescriptorView){0};
 }
 
+/**
+ * @brief Starts an endpoint-zero output data stage.
+ *
+ * Arms the requested output packet and reserves its DATA1 input status packet before accepting
+ * host data.
+ *
+ * @param[in] stage Control stage to enter after arming.
+ * @param[in] length Maximum packet length.
+ * @return True when both data and status stages were armed; otherwise false.
+ */
 static bool begin_control_output(UsbControlStage stage, uint8_t length) {
     control_output_expected = length;
     control_output_received = 0;
     control_output_data_one = true;
     if (!platform_usb_receive(USB_CONTROL_ENDPOINT, length, control_output_data_one)) {
+        return false;
+    }
+    if (!arm_control_status_in()) {
         return false;
     }
     control_stage = stage;
@@ -701,15 +785,20 @@ static bool handle_playstation_authentication_setup(void) {
             report[26] = 9;
             report_length = 48;
         } else if (report_id == 0x35) {
-            if (!playstation_remote_tuning_ready) {
-                stall_control();
-                return true;
+            uint8_t *report = console_workspace.playstation.feature_report;
+            bool queued = usb_remote_hid_queue_encode(&remote_hid_queue,
+                                                      USB_REMOTE_HID_HOST_PLAYSTATION, report);
+            if (!queued) {
+                memset(report, 0, USB_DEVICE_REPORT_SIZE);
             }
-            for (uint8_t index = 0; index < USB_DEVICE_REPORT_SIZE; index++) {
-                console_workspace.playstation.feature_report[index] =
-                    playstation_remote_tuning_report[index];
+            if (playstation_remote_tuning_ready && !queued) {
+                for (uint8_t index = 0; index < USB_DEVICE_REPORT_SIZE; index++) {
+                    report[index] = playstation_remote_tuning_report[index];
+                }
             }
-            playstation_remote_tuning_ready = false;
+            if (playstation_remote_tuning_ready) {
+                playstation_remote_tuning_ready = false;
+            }
             report_length = USB_DEVICE_REPORT_SIZE;
         } else if (report_id == 0xf1) {
             if (!usb_playstation_authentication_response_report(
@@ -817,7 +906,7 @@ static void restart_endpoint_after_halt(uint8_t endpoint_address) {
 static void handle_control_transfer(void) {
     switch (control_transfer.kind) {
     case USB_CONTROL_TRANSFER_ACKNOWLEDGE:
-        if (platform_usb_send(USB_CONTROL_ENDPOINT, 0, 0, true)) {
+        if (arm_control_status_in()) {
             control_stage = USB_CONTROL_STAGE_STATUS_IN;
         } else {
             stall_control();
@@ -863,6 +952,7 @@ static void handle_setup(void) {
         stall_control();
         return;
     }
+    control_status_in_armed = false;
     platform_usb_control_reset();
     usb_device_control_cancel(&device_control);
     if (usb_event.length != USB_SETUP_PACKET_SIZE ||
@@ -903,7 +993,7 @@ static void handle_setup(void) {
         }
         if (control_request.kind == USB_CONTROL_CDC_SEND_ENCAPSULATED_COMMAND) {
             if (control_request.length == 0) {
-                if (platform_usb_send(USB_CONTROL_ENDPOINT, 0, 0, true)) {
+                if (arm_control_status_in()) {
                     control_stage = USB_CONTROL_STAGE_STATUS_IN;
                 } else {
                     stall_control();
@@ -924,7 +1014,7 @@ static void handle_setup(void) {
         }
         if (control_request.kind == USB_CONTROL_CDC_SET_CONTROL_LINE_STATE) {
             usb_updater_control_set_lines(&updater_control, (uint8_t)control_request.value);
-            if (platform_usb_send(USB_CONTROL_ENDPOINT, 0, 0, true)) {
+            if (arm_control_status_in()) {
                 control_stage = USB_CONTROL_STAGE_STATUS_IN;
             } else {
                 stall_control();
@@ -935,9 +1025,7 @@ static void handle_setup(void) {
     bool endpoint_halted = control_request.recipient == USB_RECIPIENT_ENDPOINT &&
                            platform_usb_endpoint_halted((uint8_t)control_request.index);
     device_control.remote_wakeup_forced =
-        operating_mode == USB_OPERATING_MODE_XBOX_GIP &&
-        (xbox_service_identity.wheel_mode == 6 ||
-         xbox_service.session.state == USB_XBOX_GIP_SESSION_ACTIVE);
+        operating_mode == USB_OPERATING_MODE_XBOX_GIP && xbox_service_identity.wheel_mode == 6;
     control_transfer = usb_device_control_handle(&device_control, &control_request,
                                                  &descriptor_catalog, endpoint_halted);
     if (control_transfer.kind == USB_CONTROL_TRANSFER_ACKNOWLEDGE &&
@@ -1008,13 +1096,11 @@ static void configure_updater_endpoints(void) {
 /**
  * @brief Applies the active USB configuration to endpoints.
  *
- * Configures the endpoint set for any nonzero selection and removes the active mode's endpoints
- * when configuration zero is selected.
+ * Resets endpoint ping-pong state, configures the endpoint set for any nonzero selection, and
+ * removes the active mode's endpoints when configuration zero is selected.
  */
 static void apply_configuration(void) {
-    for (uint8_t endpoint = 1; endpoint <= USB_PLAYSTATION_INPUT_ENDPOINT; endpoint++) {
-        platform_usb_unconfigure_endpoint(endpoint);
-    }
+    platform_usb_reset_endpoint_state();
     if (usb_device_control_configured(&device_control)) {
         if (operating_mode == USB_OPERATING_MODE_UPDATER) {
             configure_updater_endpoints();
@@ -1040,23 +1126,20 @@ static void complete_control_change(void) {
 /**
  * @brief Advances a completed endpoint-zero input transaction.
  *
- * Sends the next data packet, arms the zero-length output status stage after the last packet, or
- * commits an acknowledged state change and rearms setup reception.
+ * Sends the next data packet, enters the prearmed zero-length output status stage after the last
+ * packet, or commits an acknowledged state change and rearms setup reception.
  */
 static void handle_control_input_complete(void) {
     if (control_stage == USB_CONTROL_STAGE_DATA_IN) {
         if (send_next_control_packet()) {
             return;
         }
-        if (platform_usb_receive(USB_CONTROL_ENDPOINT, 0, true)) {
-            control_stage = USB_CONTROL_STAGE_STATUS_OUT;
-        } else {
-            stall_control();
-        }
+        control_stage = USB_CONTROL_STAGE_STATUS_OUT;
         return;
     }
     if (control_stage == USB_CONTROL_STAGE_STATUS_IN) {
         complete_control_change();
+        control_status_in_armed = false;
         control_stage = USB_CONTROL_STAGE_IDLE;
         platform_usb_control_ready();
     }
@@ -1124,7 +1207,7 @@ static void handle_control_output(void) {
             stall_control();
             return;
         }
-        if (platform_usb_send(USB_CONTROL_ENDPOINT, 0, 0, true)) {
+        if (arm_control_status_in()) {
             control_stage = USB_CONTROL_STAGE_STATUS_IN;
         } else {
             stall_control();
@@ -1132,7 +1215,7 @@ static void handle_control_output(void) {
         return;
     }
     if (control_stage == USB_CONTROL_STAGE_UPDATER_ENCAPSULATED_OUT) {
-        if (platform_usb_send(USB_CONTROL_ENDPOINT, 0, 0, true)) {
+        if (arm_control_status_in()) {
             control_stage = USB_CONTROL_STAGE_STATUS_IN;
         } else {
             stall_control();
@@ -1146,7 +1229,7 @@ static void handle_control_output(void) {
         }
         (void)usb_playstation_authentication_receive(&console_workspace.playstation.authentication,
                                                      control_output);
-        if (platform_usb_send(USB_CONTROL_ENDPOINT, 0, 0, true)) {
+        if (arm_control_status_in()) {
             control_stage = USB_CONTROL_STAGE_STATUS_IN;
         } else {
             stall_control();
@@ -1156,7 +1239,7 @@ static void handle_control_output(void) {
     if (control_stage == USB_CONTROL_STAGE_DATA_OUT) {
         store_output_report(control_report_type, control_report_id, control_output,
                             control_output_received);
-        if (platform_usb_send(USB_CONTROL_ENDPOINT, 0, 0, true)) {
+        if (arm_control_status_in()) {
             control_stage = USB_CONTROL_STAGE_STATUS_IN;
         } else {
             stall_control();
@@ -1298,8 +1381,9 @@ static void handle_event(void) {
  * @brief Services the Xbox GIP endpoint exchange.
  *
  * Preserves one response until endpoint 1 can accept it, captures force-feedback application
- * packets for the main device service, and passes all requests through the discovery and session
- * service. A received request can be processed while a prior input transfer is still completing.
+ * packets for the main device service, and passes requests and idle polls through the discovery
+ * and session service. A received request can be processed while a prior input transfer is still
+ * completing.
  *
  */
 static void service_xbox_gip(void) {
@@ -1415,6 +1499,17 @@ bool usb_device_take_feature_report_request(uint8_t report_id) {
     }
     return false;
 }
+
+bool usb_device_enqueue_remote_hid_record(const UsbRemoteHidQueueRecord *record) {
+    if (operating_mode != USB_OPERATING_MODE_FANATEC &&
+        operating_mode != USB_OPERATING_MODE_XBOX_GIP &&
+        operating_mode != USB_OPERATING_MODE_PLAYSTATION) {
+        return false;
+    }
+    return usb_remote_hid_queue_enqueue(&remote_hid_queue, record);
+}
+
+bool usb_device_remote_hid_pending(void) { return usb_remote_hid_queue_pending(&remote_hid_queue); }
 
 bool usb_device_send_input(const uint8_t *report, uint8_t length) {
     if (operating_mode > USB_OPERATING_MODE_G27 || !usb_device_configured() || report == 0 ||

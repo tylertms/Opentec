@@ -27,10 +27,10 @@ typedef struct {
 /**
  * @brief Reports whether a wheel mode uses extended packets.
  *
- * Selects modes 0x0a, 0x1b, and 0x1c.
+ * Selects modes 0x0A, 0x1B, and 0x1C.
  *
  * @param[in] wheel_mode Negotiated attached-wheel mode.
- * @return True for an extended-packet mode; otherwise false.
+ * @return True for modes 0x0A, 0x1B, and 0x1C; otherwise false.
  */
 bool wheel_packet_extended_applies(uint8_t wheel_mode);
 

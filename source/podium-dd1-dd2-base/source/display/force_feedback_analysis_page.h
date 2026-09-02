@@ -62,7 +62,7 @@ bool display_force_feedback_analysis_page_update(DisplayForceFeedbackAnalysisPag
 /**
  * @brief Renders the force-feedback analysis title.
  *
- * Clears the framebuffer and centers the title shown while the analysis page opens.
+ * Clears the framebuffer and draws the inverted title at the reference record coordinates.
  *
  * @param[in,out] framebuffer Framebuffer receiving the title pixels.
  */

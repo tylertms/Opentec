@@ -52,7 +52,7 @@ static void presents_the_complete_direct_catalog(void) {
     TuningPageContent content = present(&bank, TUNING_ENTRY_FORCE_SCALE, TUNING_MENU_VIEW_LABEL);
     assert(strcmp(content.label, "FFS") == 0);
     assert(strcmp(content.title, "FF Scale") == 0);
-    assert(strcmp(content.description, "Force feedback scaling mode") == 0);
+    assert(strcmp(content.description, "Force Feedback scaling mode") == 0);
 
     content = present(&bank, TUNING_ENTRY_THROTTLE_PEDAL_CURVE, TUNING_MENU_VIEW_LABEL);
     assert(strcmp(content.label, "TPC") == 0);
@@ -91,7 +91,7 @@ static void presents_numeric_limits_modes_and_curves(void) {
     profile->automatic_rotation = 0;
     profile->rotation_degrees = 1080;
     TuningPageContent content = present(&bank, TUNING_ENTRY_SENSITIVITY, TUNING_MENU_VIEW_VALUE);
-    assert(strcmp(content.value, "1080 deg") == 0);
+    assert(strcmp(content.value, "1080") == 0);
 
     profile->force_effect_strength = 12;
     content = present(&bank, TUNING_ENTRY_FORCE_EFFECT_STRENGTH, TUNING_MENU_VIEW_VALUE);
@@ -106,7 +106,7 @@ static void presents_numeric_limits_modes_and_curves(void) {
 
     profile->multi_position_mode = TUNING_MULTI_POSITION_AUTOMATIC;
     content = present(&bank, TUNING_ENTRY_MULTI_POSITION_MODE, TUNING_MENU_VIEW_VALUE);
-    assert(strcmp(content.value, "Auto") == 0);
+    assert(strcmp(content.value, "AUTO") == 0);
 
     profile->paddle_mode = TUNING_CLUTCH_HANDBRAKE;
     content = present(&bank, TUNING_ENTRY_PADDLE_MODE, TUNING_MENU_VIEW_VALUE);
@@ -114,10 +114,10 @@ static void presents_numeric_limits_modes_and_curves(void) {
 
     profile->brake_pedal_curve = TUNING_PEDAL_CURVE_DEGREES;
     content = present(&bank, TUNING_ENTRY_BRAKE_PEDAL_CURVE, TUNING_MENU_VIEW_VALUE);
-    assert(strcmp(content.value, "Degressive") == 0);
+    assert(strcmp(content.value, "Degressive ") == 0);
 }
 
-static void renders_label_value_and_wrapped_description_rows(void) {
+static void renders_official_records_and_progress_rows(void) {
     uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE] = {0};
     TuningProfileBank bank;
     tuning_profile_bank_defaults(&bank);
@@ -127,14 +127,23 @@ static void renders_label_value_and_wrapped_description_rows(void) {
     };
 
     assert(display_tuning_page_render(framebuffer, &menu, &bank));
-    assert(has_lit_pixel(framebuffer, 0, 6));
-    assert(has_lit_pixel(framebuffer, 15, 28));
-    assert(has_lit_pixel(framebuffer, 43, 49));
-    assert(has_lit_pixel(framebuffer, 54, 60));
+    assert(pixel(framebuffer, 29, 30) == 8);
+    assert(pixel(framebuffer, 29, 62) == 8);
+    assert(pixel(framebuffer, 29, 19) == 8);
+    assert(pixel(framebuffer, 30, 19) == 0);
+    assert(pixel(framebuffer, 224, 62) == 8);
+    assert(has_lit_pixel(framebuffer, 13, 22));
+    assert(has_lit_pixel(framebuffer, 30, 50));
+    assert(has_lit_pixel(framebuffer, 48, 57));
+    assert(pixel(framebuffer, 30, 47) == 0);
 
     menu.view = TUNING_MENU_VIEW_VALUE;
+    bank.slots[bank.selected_slot].brake_indicator_level = 50;
     assert(display_tuning_page_render(framebuffer, &menu, &bank));
-    assert(has_lit_pixel(framebuffer, 15, 28));
+    assert(has_lit_pixel(framebuffer, 30, 50));
+    assert(pixel(framebuffer, 30, 47) == 2);
+    assert(pixel(framebuffer, 124, 47) == 2);
+    assert(pixel(framebuffer, 125, 47) == 0);
 }
 
 static void supports_every_character_used_by_tuning_pages(void) {
@@ -145,7 +154,7 @@ static void supports_every_character_used_by_tuning_pages(void) {
         display_framebuffer_clear(framebuffer);
         char text[] = {characters[index], '\0'};
         display_text_draw(framebuffer, text, 0, 0, 1, 15);
-        assert(has_lit_pixel(framebuffer, 0, 6));
+        assert(has_lit_pixel(framebuffer, 0, 9));
     }
 }
 
@@ -166,7 +175,7 @@ static void rejects_closed_or_incomplete_pages(void) {
 static void renders_pedal_operation_results(void) {
     uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE] = {0};
     assert(display_tuning_operation_render(framebuffer, TUNING_INTERACTION_PEDAL_UP));
-    assert(has_lit_pixel(framebuffer, 15, 36));
+    assert(has_lit_pixel(framebuffer, 30, 50));
     assert(display_tuning_operation_render(framebuffer, TUNING_INTERACTION_PEDAL_DOWN));
     assert(display_tuning_operation_render(framebuffer, TUNING_INTERACTION_PEDAL_AUTOMATIC));
     assert(!display_tuning_operation_render(framebuffer, TUNING_INTERACTION_ENTRY_OPEN));
@@ -176,7 +185,7 @@ int main(void) {
     presents_the_complete_direct_catalog();
     presents_automatic_standard_and_advanced_setups();
     presents_numeric_limits_modes_and_curves();
-    renders_label_value_and_wrapped_description_rows();
+    renders_official_records_and_progress_rows();
     supports_every_character_used_by_tuning_pages();
     rejects_closed_or_incomplete_pages();
     renders_pedal_operation_results();

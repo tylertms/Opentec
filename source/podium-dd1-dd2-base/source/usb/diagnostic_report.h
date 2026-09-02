@@ -50,7 +50,7 @@ typedef struct {
 /** @brief Logical values assembled into one diagnostic vendor report. */
 typedef struct {
     uint8_t base_mode;                 /**< Active base operating mode. */
-    int16_t base_temperatures_c[2];    /**< Base temperature values in degrees Celsius. */
+    uint16_t resistance_values[2];     /**< Native primary and secondary resistance values. */
     uint32_t system_seconds;           /**< System uptime in seconds. */
     uint32_t transport_error_count;    /**< Count of transport errors. */
     UsbDiagnosticMotorState motor;     /**< Motor diagnostic values. */

@@ -22,18 +22,30 @@ static void assert_operation(WheelUpdaterOperation operation, WheelUpdaterOperat
     assert(operation.length == length);
 }
 
-static void begin_response(WheelUpdaterBridge *bridge, const uint8_t *request, uint8_t length,
-                           uint32_t now_ms) {
-    assert(wheel_updater_bridge_start(bridge, request, length));
+static void begin_exchange(WheelUpdaterBridge *bridge, const uint8_t *request, uint8_t length,
+                           uint32_t now_ms, bool response_probe) {
+    bool started = response_probe ? wheel_updater_bridge_start_probe(bridge, request, length)
+                                  : wheel_updater_bridge_start(bridge, request, length);
+    assert(started);
     WheelUpdaterOperation operation = step(bridge, WHEEL_UPDATER_IO_IDLE, now_ms, NULL, 0);
     assert_operation(operation, WHEEL_UPDATER_OPERATION_WRITE, length);
     assert(memcmp(operation.data, request, length) == 0);
     operation = step(bridge, WHEEL_UPDATER_IO_COMPLETE, now_ms, NULL, 0);
     assert_operation(operation, WHEEL_UPDATER_OPERATION_NONE, 0);
-    operation = step(bridge, WHEEL_UPDATER_IO_IDLE, now_ms + 1, NULL, 0);
+    operation = step(bridge, WHEEL_UPDATER_IO_IDLE, now_ms, NULL, 0);
     assert_operation(operation, WHEEL_UPDATER_OPERATION_NONE, 0);
-    operation = step(bridge, WHEEL_UPDATER_IO_IDLE, now_ms + 2, NULL, 0);
+    operation = step(bridge, WHEEL_UPDATER_IO_IDLE, now_ms, NULL, 0);
     assert_operation(operation, WHEEL_UPDATER_OPERATION_READ, 1);
+}
+
+static void begin_response(WheelUpdaterBridge *bridge, const uint8_t *request, uint8_t length,
+                           uint32_t now_ms) {
+    begin_exchange(bridge, request, length, now_ms, false);
+}
+
+static void begin_probe_response(WheelUpdaterBridge *bridge, const uint8_t *request, uint8_t length,
+                                 uint32_t now_ms) {
+    begin_exchange(bridge, request, length, now_ms, true);
 }
 
 static WheelUpdaterOperation supply_header(WheelUpdaterBridge *bridge, uint32_t now_ms,
@@ -90,22 +102,31 @@ static void test_accepts_maximum_request(void) {
     assert(memcmp(operation.data, request, sizeof(request)) == 0);
 }
 
-static void test_aborts_after_failed_operation(void) {
+static void test_retries_after_failed_operation(void) {
     WheelUpdaterBridge bridge;
-    const uint8_t request[] = {0x5a, 0xa1, 0x33};
+    const uint8_t request[] = {0x5a, 0xb0, 0x33};
     wheel_updater_bridge_init(&bridge);
 
     assert(wheel_updater_bridge_start(&bridge, request, sizeof(request)));
     assert_operation(step(&bridge, WHEEL_UPDATER_IO_FAILED, 10, NULL, 0),
+                     WHEEL_UPDATER_OPERATION_WRITE, sizeof(request));
+    assert(wheel_updater_bridge_active(&bridge));
+
+    assert_operation(step(&bridge, WHEEL_UPDATER_IO_COMPLETE, 10, NULL, 0),
                      WHEEL_UPDATER_OPERATION_NONE, 0);
-    assert(!wheel_updater_bridge_active(&bridge));
+    assert_operation(step(&bridge, WHEEL_UPDATER_IO_IDLE, 10, NULL, 0),
+                     WHEEL_UPDATER_OPERATION_NONE, 0);
+    assert_operation(step(&bridge, WHEEL_UPDATER_IO_IDLE, 10, NULL, 0),
+                     WHEEL_UPDATER_OPERATION_READ, 1);
+    assert_operation(step(&bridge, WHEEL_UPDATER_IO_FAILED, 10, NULL, 0),
+                     WHEEL_UPDATER_OPERATION_READ, 1);
 }
 
 static void test_probe_aborts_after_read_failure(void) {
     WheelUpdaterBridge bridge;
     const uint8_t request[] = {0x5a, 0xa6};
     wheel_updater_bridge_init(&bridge);
-    begin_response(&bridge, request, sizeof(request), 10);
+    begin_probe_response(&bridge, request, sizeof(request), 10);
 
     assert_operation(step(&bridge, WHEEL_UPDATER_IO_FAILED, 12, NULL, 0),
                      WHEEL_UPDATER_OPERATION_NONE, 0);
@@ -117,7 +138,7 @@ static void test_probe_aborts_on_zero_header(void) {
     const uint8_t request[] = {0x5a, 0xa6};
     const uint8_t zero[] = {0};
     wheel_updater_bridge_init(&bridge);
-    begin_response(&bridge, request, sizeof(request), 20);
+    begin_probe_response(&bridge, request, sizeof(request), 20);
 
     assert_operation(step(&bridge, WHEEL_UPDATER_IO_COMPLETE, 22, zero, sizeof(zero)),
                      WHEEL_UPDATER_OPERATION_NONE, 0);
@@ -128,10 +149,61 @@ static void test_probe_aborts_on_non_a7_response(void) {
     WheelUpdaterBridge bridge;
     const uint8_t request[] = {0x5a, 0xa6};
     wheel_updater_bridge_init(&bridge);
-    begin_response(&bridge, request, sizeof(request), 30);
+    begin_probe_response(&bridge, request, sizeof(request), 30);
 
     assert_operation(supply_header(&bridge, 32, 0xa2), WHEEL_UPDATER_OPERATION_NONE, 0);
     assert(!wheel_updater_bridge_active(&bridge));
+}
+
+static void test_probe_ignores_stray_preamble(void) {
+    WheelUpdaterBridge bridge;
+    const uint8_t request[] = {0x5a, 0xa6};
+    const uint8_t stray[] = {0x44};
+    const uint8_t payload[] = {0, 1, 2, 3, 4, 5, 6, 7};
+    const uint8_t expected[] = {0x5a, 0xa7, 0, 1, 2, 3, 4, 5, 6, 7};
+    wheel_updater_bridge_init(&bridge);
+    begin_probe_response(&bridge, request, sizeof(request), 40);
+
+    assert_operation(step(&bridge, WHEEL_UPDATER_IO_COMPLETE, 40, stray, sizeof(stray)),
+                     WHEEL_UPDATER_OPERATION_READ, 1);
+    supply_header(&bridge, 40, 0xa7);
+    assert_operation(step(&bridge, WHEEL_UPDATER_IO_COMPLETE, 40, payload, sizeof(payload)),
+                     WHEEL_UPDATER_OPERATION_NONE, 0);
+    assert_response(&bridge, expected, sizeof(expected));
+}
+
+static void test_a6_host_request_uses_normal_response_rules(void) {
+    WheelUpdaterBridge bridge;
+    const uint8_t request[] = {0x5a, 0xa6};
+    const uint8_t expected[] = {0x5a, 0xa2};
+    wheel_updater_bridge_init(&bridge);
+    begin_response(&bridge, request, sizeof(request), 50);
+
+    supply_header(&bridge, 50, 0xa2);
+    assert_response(&bridge, expected, sizeof(expected));
+}
+
+static void test_preserves_a1_fragments_after_stray_preamble(void) {
+    WheelUpdaterBridge bridge;
+    const uint8_t request[] = {0x5a, 0xb0};
+    const uint8_t stray[] = {0x44};
+    const uint8_t expected[] = {0x5a, 0xa1, 0x5a, 0xa2};
+    wheel_updater_bridge_init(&bridge);
+    begin_response(&bridge, request, sizeof(request), 60);
+    assert_operation(supply_header(&bridge, 60, 0xa1), WHEEL_UPDATER_OPERATION_READ, 1);
+    assert(bridge.response_length == 2);
+
+    assert_operation(step(&bridge, WHEEL_UPDATER_IO_COMPLETE, 60, stray, sizeof(stray)),
+                     WHEEL_UPDATER_OPERATION_WRITE, sizeof(request));
+    assert(bridge.response_length == 2);
+    assert_operation(step(&bridge, WHEEL_UPDATER_IO_COMPLETE, 60, NULL, 0),
+                     WHEEL_UPDATER_OPERATION_NONE, 0);
+    assert_operation(step(&bridge, WHEEL_UPDATER_IO_IDLE, 60, NULL, 0),
+                     WHEEL_UPDATER_OPERATION_NONE, 0);
+    assert_operation(step(&bridge, WHEEL_UPDATER_IO_IDLE, 60, NULL, 0),
+                     WHEEL_UPDATER_OPERATION_READ, 1);
+    supply_header(&bridge, 60, 0xa2);
+    assert_response(&bridge, expected, sizeof(expected));
 }
 
 static void test_retries_preamble_and_assembles_acknowledgement(void) {
@@ -175,8 +247,8 @@ static void test_assembles_variable_response_and_caps_payload(void) {
     const uint8_t request[] = {0x5a, 0xb0};
     const uint8_t length[] = {0xff, 0xff};
     const uint8_t metadata[] = {0x34, 0x12};
-    uint8_t payload[60];
-    uint8_t expected[66] = {0x5a, 0xa4, 0xff, 0xff, 0x34, 0x12};
+    uint8_t payload[58];
+    uint8_t expected[64] = {0x5a, 0xa4, 0xff, 0xff, 0x34, 0x12};
     for (uint8_t index = 0; index < sizeof(payload); index++) {
         payload[index] = (uint8_t)(index + 1);
         expected[index + 6] = payload[index];
@@ -207,6 +279,9 @@ static void test_assembles_empty_variable_response(void) {
     assert_operation(step(&bridge, WHEEL_UPDATER_IO_COMPLETE, 2, length, sizeof(length)),
                      WHEEL_UPDATER_OPERATION_READ, sizeof(metadata));
     assert_operation(step(&bridge, WHEEL_UPDATER_IO_COMPLETE, 2, metadata, sizeof(metadata)),
+                     WHEEL_UPDATER_OPERATION_READ, 0);
+    const uint8_t empty = 0;
+    assert_operation(step(&bridge, WHEEL_UPDATER_IO_COMPLETE, 2, &empty, 0),
                      WHEEL_UPDATER_OPERATION_NONE, 0);
     assert_response(&bridge, expected, sizeof(expected));
 }
@@ -253,10 +328,12 @@ static void test_finishes_retry_sequence_after_timeout(void) {
     begin_response(&bridge, request, sizeof(request), UINT32_MAX - 1000);
     supply_header(&bridge, UINT32_MAX - 998, 0xa1);
 
+    for (uint16_t tick = 0; tick <= 0x7d0; tick++) {
+        assert_operation(step(&bridge, WHEEL_UPDATER_IO_PENDING, 1000, NULL, 0),
+                         WHEEL_UPDATER_OPERATION_NONE, 0);
+        assert(wheel_updater_bridge_active(&bridge));
+    }
     assert_operation(step(&bridge, WHEEL_UPDATER_IO_PENDING, 1000, NULL, 0),
-                     WHEEL_UPDATER_OPERATION_NONE, 0);
-    assert(wheel_updater_bridge_active(&bridge));
-    assert_operation(step(&bridge, WHEEL_UPDATER_IO_IDLE, 1001, NULL, 0),
                      WHEEL_UPDATER_OPERATION_NONE, 0);
     assert_response(&bridge, expected, sizeof(expected));
 }
@@ -264,10 +341,13 @@ static void test_finishes_retry_sequence_after_timeout(void) {
 int main(void) {
     test_rejects_invalid_requests_and_busy_start();
     test_accepts_maximum_request();
-    test_aborts_after_failed_operation();
+    test_retries_after_failed_operation();
     test_probe_aborts_after_read_failure();
     test_probe_aborts_on_zero_header();
     test_probe_aborts_on_non_a7_response();
+    test_probe_ignores_stray_preamble();
+    test_a6_host_request_uses_normal_response_rules();
+    test_preserves_a1_fragments_after_stray_preamble();
     test_retries_preamble_and_assembles_acknowledgement();
     test_assembles_fixed_response();
     test_assembles_variable_response_and_caps_payload();

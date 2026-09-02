@@ -8,29 +8,36 @@
 #include "usb/vendor_command.h"
 
 /**
- * @brief Stable one-based page identifiers used by the tuning-menu protocol.
+ * @brief Stable one-based page identifiers used by the native tuning-menu protocol.
  *
- * Values are sent in the page-status response.
+ * Values are sent in the page-status response and select the same six entries used by the
+ * Fanatec menu controller.
  */
 typedef enum {
-    USB_TUNING_MENU_PAGE_ROOT = 1,                    /**< Root tuning page. */
-    USB_TUNING_MENU_PAGE_SYSTEM_INFORMATION = 2,      /**< System-information page. */
-    USB_TUNING_MENU_PAGE_FORCE_FEEDBACK_ANALYSIS = 3, /**< Force-feedback analysis page. */
-    USB_TUNING_MENU_PAGE_MOTOR_DATA_ANALYSIS = 4,     /**< Motor-data analysis page. */
-    USB_TUNING_MENU_PAGE_THERMAL_POWER = 5,           /**< Thermal and power page. */
-    USB_TUNING_MENU_PAGE_AUXILIARY_CALIBRATION = 6,   /**< Auxiliary-calibration page. */
+    USB_TUNING_MENU_PAGE_ROOT = 1,                  /**< Root menu entry. */
+    USB_TUNING_MENU_PAGE_WHEEL_INPUT = 2,           /**< Wheel-input menu entry. */
+    USB_TUNING_MENU_PAGE_AUXILIARY_POSITION = 3,    /**< Auxiliary-position menu entry. */
+    USB_TUNING_MENU_PAGE_FORCE_FEEDBACK = 4,        /**< Force-feedback menu entry. */
+    USB_TUNING_MENU_PAGE_WHEEL_ACCESSORY = 5,       /**< Wheel-accessory menu entry. */
+    USB_TUNING_MENU_PAGE_AUXILIARY_CALIBRATION = 6, /**< Auxiliary-calibration menu entry. */
+    USB_TUNING_MENU_PAGE_SYSTEM_INFORMATION = USB_TUNING_MENU_PAGE_WHEEL_INPUT,
+    USB_TUNING_MENU_PAGE_FORCE_FEEDBACK_ANALYSIS = USB_TUNING_MENU_PAGE_FORCE_FEEDBACK,
+    USB_TUNING_MENU_PAGE_MOTOR_DATA_ANALYSIS = USB_TUNING_MENU_PAGE_WHEEL_ACCESSORY,
+    USB_TUNING_MENU_PAGE_THERMAL_POWER = USB_TUNING_MENU_PAGE_AUXILIARY_POSITION,
 } UsbTuningMenuPage;
 
 /**
  * @brief Active tuning-menu page and pending USB status state.
  *
- * Tracks the page encoded in the next status response and whether that response is due.
+ * Tracks the page encoded in the next status response and the native service-response duplicate
+ * suppression state.
  */
 typedef struct {
-    UsbTuningMenuPage active_page;  /**< Currently selected one-based page. */
-    uint8_t selected_profile;       /**< One-based profile selected by the latest command. */
-    bool profile_selection_pending; /**< True while the profile selection awaits consumption. */
-    bool response_pending;          /**< True when a page-status response must be encoded. */
+    UsbTuningMenuPage active_page; /**< Currently selected one-based menu entry. */
+    uint8_t service_code;          /**< Service code encoded by the next native response. */
+    uint8_t last_service_code;     /**< Last service code sent for duplicate suppression. */
+    bool response_pending;         /**< True when a menu response must be encoded. */
+    bool service_response_pending; /**< True when a native service response is pending. */
 } UsbTuningMenuService;
 
 /**
@@ -45,8 +52,8 @@ void usb_tuning_menu_service_init(UsbTuningMenuService *service);
 /**
  * @brief Applies one tuning-menu command.
  *
- * Handles page selection and explicit status refresh actions while retaining the current page for
- * unsupported page selectors.
+ * Handles action two menu navigation and action three native service responses. Unsupported page
+ * selectors are ignored without changing the selected entry.
  *
  * @param[in,out] service Tuning-menu state to update.
  * @param[in] command Decoded tuning-menu vendor command.
@@ -55,19 +62,20 @@ void usb_tuning_menu_service_init(UsbTuningMenuService *service);
 bool usb_tuning_menu_service_apply(UsbTuningMenuService *service, const UsbVendorCommand *command);
 
 /**
- * @brief Takes a pending one-based tuning-profile selection.
+ * @brief Requests the native service response for the active menu entry.
  *
- * @param[in,out] service Tuning-menu state retaining the selection.
- * @param[out] selection Destination for the selected one-based profile.
- * @return True when a pending selection was returned; otherwise false.
+ * Applies the official duplicate suppression rule. Service code seven is always allowed to
+ * repeat; other codes are suppressed until the active entry changes.
+ *
+ * @param[in,out] service Tuning-menu state retaining the active entry.
+ * @return True when a response was armed; otherwise false for a duplicate request or null state.
  */
-bool usb_tuning_menu_service_take_profile_selection(UsbTuningMenuService *service,
-                                                    uint8_t *selection);
+bool usb_tuning_menu_service_request_native_service_response(UsbTuningMenuService *service);
 
 /**
  * @brief Reports whether a tuning-menu status response is pending.
  *
- * Reads the response latch without changing the selected page or pending state.
+ * Reads either response latch without changing the selected page or pending state.
  *
  * @param[in] service Tuning-menu state to inspect.
  * @return True when a status response is pending; otherwise false.
@@ -77,8 +85,8 @@ bool usb_tuning_menu_service_response_pending(const UsbTuningMenuService *servic
 /**
  * @brief Encodes the pending tuning-menu status response.
  *
- * Clears the output and writes the fixed vendor header followed by the active one-based page
- * identifier.
+ * Clears the output and writes the fixed vendor header followed by the pending native service code
+ * or active one-based menu identifier.
  *
  * @param[in] service Tuning-menu state providing the active page.
  * @param[out] output Destination for the complete USB report.

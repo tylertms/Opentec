@@ -91,6 +91,17 @@ static void test_rejects_overlapping_transaction(void) {
     assert(start_count == 1);
 }
 
+static void test_enforces_logical_message_limit(void) {
+    SerialService service;
+    static uint8_t message[SERIAL_MESSAGE_MAX_SIZE + 1];
+    reset_link();
+    serial_service_init(&service);
+
+    assert(serial_service_start(&service, 3, message, SERIAL_MESSAGE_MAX_SIZE, 0));
+    serial_service_cancel(&service);
+    assert(!serial_service_start(&service, 3, message, sizeof(message), 1));
+}
+
 static void test_fails_mismatched_response(void) {
     SerialService service;
     reset_link();
@@ -165,6 +176,7 @@ static void test_cancels_pending_transaction_without_resetting_sequence(void) {
 int main(void) {
     test_completes_matching_transaction();
     test_rejects_overlapping_transaction();
+    test_enforces_logical_message_limit();
     test_fails_mismatched_response();
     test_counts_invalid_packets();
     test_retries_four_times_after_initial_send();

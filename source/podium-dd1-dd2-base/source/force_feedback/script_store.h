@@ -81,10 +81,11 @@ bool force_feedback_script_store_upload(ForceFeedbackScriptStore *store,
  * while preserving the remaining script bytes.
  *
  * @param[in,out] store Shared script storage to compact.
- * @param[in] runtime_slots Runtime state used to identify empty slots.
+ * @param[in,out] runtime_slots Runtime state used to identify empty slots and cleared for released
+ * slots. Retained slot values are preserved while state and execution metrics are reset.
  */
 void force_feedback_script_store_compact(ForceFeedbackScriptStore *store,
-                                         const ForceFeedbackScriptSlot *runtime_slots);
+                                         ForceFeedbackScriptSlot *runtime_slots);
 
 /**
  * @brief Get a stored script's bytes and declared size.

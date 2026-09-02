@@ -51,6 +51,353 @@ static void write_u16(uint8_t *destination, uint16_t value) {
     destination[1] = (uint8_t)(value >> 8);
 }
 
+static uint8_t fanatec_map_bit(uint8_t destination, uint8_t destination_bit, uint8_t source,
+                               uint8_t source_bit) {
+    uint8_t mask = (uint8_t)(1u << destination_bit);
+    uint8_t value = (uint8_t)((source >> source_bit) & 1u);
+    return (uint8_t)((destination & (uint8_t)~mask) | (uint8_t)(value << destination_bit));
+}
+
+static uint8_t fanatec_merge_bit(uint8_t destination, uint8_t destination_bit, uint8_t source,
+                                 uint8_t source_bit) {
+    return (uint8_t)(destination | (uint8_t)(((source >> source_bit) & 1u) << destination_bit));
+}
+
+static uint8_t fanatec_remap_button_nibble(uint8_t value) {
+    static const uint8_t map[16] = {8, 2, 6, 8, 4, 3, 5, 0, 0, 1, 7, 0, 8, 0, 2, 5};
+    uint8_t index =
+        (uint8_t)(((value & 1u) << 3) | ((value >> 1) & 4u) | (value & 2u) | ((value >> 2) & 1u));
+    return map[index];
+}
+
+static uint16_t fanatec_remap_axis_bits(uint16_t value) {
+    uint16_t upper = (uint16_t)((value >> 2) & 0x0010u);
+    upper |= (uint16_t)((value >> 2) & 0x0100u);
+    upper |= (uint16_t)((value >> 2) & 0x0001u);
+    upper |= (uint16_t)(((value >> 14) & 1u) << 12);
+    upper |= value & 0x2222u;
+
+    uint16_t middle = (uint16_t)((value >> 1) & 0x0040u);
+    middle |= (uint16_t)((value >> 1) & 0x0004u);
+    middle |= (uint16_t)(((value >> 11) & 1u) << 10);
+    middle |= (uint16_t)((value >> 15) << 14);
+
+    uint16_t lower = (uint16_t)((value << 3) & 0x0080u);
+    lower |= (uint16_t)((value & 1u) << 3);
+    lower |= (uint16_t)(((value >> 8) & 1u) << 11);
+    lower |= (uint16_t)((value >> 12) << 15);
+    return (uint16_t)(upper | middle | lower);
+}
+
+static uint16_t fanatec_remap_reduced_axis_bits(uint16_t value) {
+    return (uint16_t)(((value >> 2) & 0x100u) | (((value >> 14) & 1u) << 12) | ((value >> 2) & 1u) |
+                      (value & 0x2202u) | ((value >> 1) & 0x40u) | ((value >> 1) & 4u) |
+                      (((value >> 11) & 1u) << 10) | (((value >> 15) & 1u) << 14) |
+                      ((value << 3) & 0x80u) | ((value & 1u) << 3) | (((value >> 8) & 1u) << 11) |
+                      ((value >> 12) << 15));
+}
+
+static void fanatec_filter_bytes(uint8_t history[FANATEC_INPUT_HISTORY_DEPTH][3], uint8_t index,
+                                 uint8_t value[3]) {
+    for (uint8_t byte = 0; byte < 3; byte++) {
+        history[index][byte] = value[byte];
+        value[byte] = (uint8_t)(history[0][byte] & history[1][byte] & history[2][byte]);
+    }
+}
+
+void fanatec_input_pipeline_init(fanatec_input_pipeline_state *pipeline) {
+    if (pipeline != NULL) {
+        memset(pipeline, 0, sizeof(*pipeline));
+    }
+}
+
+void fanatec_input_pipeline_filter(fanatec_input_pipeline_state *pipeline,
+                                   fanatec_input_source *source) {
+    if (pipeline == NULL || source == NULL) {
+        return;
+    }
+
+    uint8_t index = pipeline->history_index;
+    fanatec_filter_bytes(pipeline->primary_history, index, source->buttons);
+    uint8_t secondary[3] = {source->secondary_buttons, source->packed_rotary_positions,
+                            source->accessory};
+    if (source->mode == 0x10) {
+        fanatec_filter_bytes(pipeline->secondary_history, index, secondary);
+        source->secondary_buttons = secondary[0];
+        source->packed_rotary_positions = secondary[1];
+        source->accessory = secondary[2];
+    }
+    pipeline->history_index = (uint8_t)((index + 1u) % FANATEC_INPUT_HISTORY_DEPTH);
+}
+
+static void fanatec_map_primary_buttons(fanatec_input_state *state,
+                                        const fanatec_input_source *source) {
+    uint8_t *hat = &state->button_banks[0];
+    uint8_t *first = &state->button_banks[1];
+    uint8_t *second = &state->button_banks[2];
+    uint8_t *fourth = &state->button_banks[4];
+    uint8_t mode = source->mode;
+
+    memset(state->button_banks, 0, sizeof(state->button_banks));
+    *hat = fanatec_remap_button_nibble(source->buttons[0]);
+    *first = fanatec_map_bit(*first, 1, source->buttons[1], 3);
+    *first = fanatec_map_bit(*first, 3, source->buttons[1], 4);
+    *first = fanatec_map_bit(*first, 0, source->buttons[1], 0);
+
+    if (mode != 0x0e) {
+        *hat = fanatec_map_bit(*hat, 4, source->buttons[0], 5);
+        *hat = fanatec_map_bit(*hat, 5, source->buttons[0], 4);
+        *hat = fanatec_map_bit(*hat, 7, source->buttons[0], 7);
+        *hat = fanatec_map_bit(*hat, 6, source->buttons[0], 6);
+        *first = fanatec_map_bit(*first, 7, source->buttons[1], 5);
+        *first = fanatec_map_bit(*first, 2, source->buttons[1], 1);
+        *first = fanatec_map_bit(*first, 6, source->buttons[1], 2);
+        *first = fanatec_map_bit(*first, 4, source->buttons[1], 6);
+        *first = fanatec_map_bit(*first, 5, source->buttons[1], 7);
+    }
+
+    switch (mode) {
+    case 0x0a:
+    case 0x1b:
+    case 0x1c:
+    case 0x0f:
+    case 0x17:
+        *first = fanatec_map_bit(*first, 0, source->buttons[1], 0);
+        *first = fanatec_map_bit(*first, 1, source->buttons[1], 3);
+        if (mode == 0x1b) {
+            *second = fanatec_map_bit(*second, 1, source->buttons[2], 1);
+        } else {
+            *second = fanatec_map_bit(*second, 1, source->buttons[2], 0);
+            *second = fanatec_map_bit(*second, 4, source->buttons[2], 1);
+        }
+        *second = fanatec_map_bit(*second, 0, source->pulse_flags[0], 0);
+        *second = fanatec_map_bit(*second, 5, source->buttons[2], 2);
+        *second = fanatec_map_bit(*second, 7, source->buttons[2], 5);
+        *second = fanatec_map_bit(*second, 6, source->pulse_flags[0], 1);
+        break;
+    case 0x10:
+        *second = fanatec_map_bit(*second, 1, source->buttons[2], 0);
+        *second = fanatec_map_bit(*second, 4, source->buttons[2], 1);
+        break;
+    case 0x11:
+        *hat = fanatec_map_bit(*hat, 5, source->buttons[2], 1);
+        *first = fanatec_map_bit(*first, 0, source->buttons[1], 3);
+        *first = fanatec_map_bit(*first, 1, source->buttons[1], 0);
+        *second = fanatec_map_bit(*second, 1, source->buttons[2], 0);
+        break;
+    case 0x13:
+    case 0x14:
+        *second = fanatec_map_bit(*second, 4, source->buttons[2], 1);
+        *second = fanatec_map_bit(*second, 5, source->buttons[2], 2);
+        *second = fanatec_map_bit(*second, 1, source->buttons[2], 0);
+        *second = fanatec_map_bit(*second, 6, source->buttons[2], 4);
+        break;
+    case 0x15:
+        *second = fanatec_map_bit(*second, 4, source->buttons[2], 1);
+        *second = fanatec_map_bit(*second, 1, source->buttons[2], 3);
+        *second = fanatec_map_bit(*second, 5, source->buttons[2], 2);
+        break;
+    case 0x16:
+        *second = fanatec_map_bit(*second, 4, source->buttons[2], 1);
+        *second = fanatec_map_bit(*second, 5, source->buttons[2], 2);
+        *second = fanatec_map_bit(*second, 1, source->buttons[2], 0);
+        break;
+    case 0x05:
+    case 0x07:
+    case 0x08:
+        *second = fanatec_map_bit(*second, 0, source->buttons[2], 0);
+        *second = fanatec_map_bit(*second, 1, source->buttons[2], 1);
+        *second = fanatec_map_bit(*second, 6, source->buttons[2], 3);
+        *second = fanatec_map_bit(*second, 4, source->buttons[2], 2);
+        break;
+    case 0x0e:
+        *second = fanatec_map_bit(*second, 5, source->buttons[2], 0);
+        *second = fanatec_map_bit(*second, 4, source->buttons[2], 1);
+        *hat = fanatec_map_bit(*hat, 5, source->buttons[0], 5);
+        *hat = fanatec_map_bit(*hat, 6, source->buttons[0], 7);
+        *first = fanatec_map_bit(*first, 2, source->buttons[0], 6);
+        *hat = fanatec_map_bit(*hat, 7, source->buttons[1], 5);
+        *hat = fanatec_map_bit(*hat, 4, source->buttons[1], 1);
+        *first = fanatec_map_bit(*first, 6, source->buttons[1], 2);
+        *first = fanatec_map_bit(*first, 4, source->buttons[1], 6);
+        *first = fanatec_map_bit(*first, 5, source->buttons[1], 7);
+        *second = fanatec_map_bit(*second, 7, source->buttons[2], 5);
+        *second = fanatec_map_bit(*second, 0, source->pulse_flags[0], 0);
+        *second = fanatec_map_bit(*second, 6, source->pulse_flags[0], 1);
+        break;
+    default:
+        *second = fanatec_map_bit(*second, 0, source->buttons[2], 0);
+        *second = fanatec_map_bit(*second, 4, source->buttons[2], 1);
+        *second = fanatec_map_bit(*second, 5, source->buttons[2], 2);
+        *second = fanatec_map_bit(*second, 1, source->buttons[2], 3);
+        *second = fanatec_map_bit(*second, 6, source->buttons[2], 4);
+        break;
+    }
+
+    *second = fanatec_map_bit(*second, 7, source->buttons[2], 5);
+    if (mode == 0x09 || mode == 0x0b || mode == 0x1d ||
+        (mode == 0x0c && !source->adapter_connected)) {
+        *fourth = fanatec_map_bit(*fourth, 2, source->buttons[2], 6);
+        *fourth = fanatec_map_bit(*fourth, 3, source->buttons[2], 7);
+        *fourth = fanatec_map_bit(*fourth, 4, source->buttons[1], 1);
+        *fourth = fanatec_map_bit(*fourth, 5, source->buttons[1], 4);
+        *first &= 0xf3u;
+    } else if (mode == 0x0a || mode == 0x1c || mode == 0x1b || mode == 0x0f || mode == 0x17 ||
+               mode == 0x0e) {
+        *fourth = fanatec_map_bit(*fourth, 2, source->buttons[2], 6);
+        *fourth = fanatec_map_bit(*fourth, 3, source->buttons[2], 7);
+        *fourth = fanatec_map_bit(*fourth, 4, source->buttons[2], 3);
+        *fourth = fanatec_map_bit(*fourth, 5, source->buttons[2], 4);
+        *fourth = fanatec_map_bit(*fourth, 6, source->pulse_flags[0], 2);
+        *fourth = fanatec_map_bit(*fourth, 7, source->pulse_flags[0], 3);
+    } else if (mode == 0x11) {
+        *fourth = fanatec_map_bit(*fourth, 2, source->buttons[2], 6);
+        *fourth = fanatec_map_bit(*fourth, 3, source->buttons[2], 7);
+        *fourth = fanatec_map_bit(*fourth, 4, source->buttons[2], 3);
+        *fourth = fanatec_map_bit(*fourth, 5, source->buttons[2], 4);
+        *first = fanatec_map_bit(*first, 2, source->buttons[1], 2);
+        *first = fanatec_map_bit(*first, 6, source->buttons[1], 1);
+    } else if (mode == 0x10) {
+        *fourth &= 0x03u;
+    } else {
+        *fourth = fanatec_map_bit(*fourth, 2, source->secondary_buttons, 0);
+        *fourth = fanatec_map_bit(*fourth, 3, source->secondary_buttons, 1);
+        *fourth &= 0x0fu;
+    }
+}
+
+static void fanatec_map_adapter_buttons(fanatec_input_state *state,
+                                        const fanatec_input_source *source) {
+    if (!source->adapter_connected || (source->adapter_mode != 0 && source->adapter_mode != 1)) {
+        return;
+    }
+    uint8_t *hat = &state->button_banks[0];
+    uint8_t *first = &state->button_banks[1];
+    uint8_t *second = &state->button_banks[2];
+    uint8_t *fourth = &state->button_banks[4];
+    const uint8_t *adapter = source->adapter_buttons;
+    if (source->adapter_mode == 0) {
+        *first = fanatec_merge_bit(*first, 3, adapter[0], 4);
+        *first = fanatec_merge_bit(*first, 7, adapter[0], 5);
+        *first = fanatec_merge_bit(*first, 2, adapter[0], 6);
+        *first = fanatec_merge_bit(*first, 6, adapter[0], 7);
+        *first = fanatec_merge_bit(*first, 4, adapter[1], 0);
+        *hat = fanatec_merge_bit(*hat, 6, adapter[1], 1);
+        *hat = fanatec_merge_bit(*hat, 7, adapter[1], 2);
+        *hat = fanatec_merge_bit(*hat, 4, adapter[1], 3);
+        *hat = fanatec_merge_bit(*hat, 5, adapter[1], 4);
+        *first = fanatec_merge_bit(*first, 5, adapter[1], 5);
+        *second = fanatec_merge_bit(*second, 4, adapter[2], 3);
+        *fourth = fanatec_map_bit(*fourth, 5, adapter[1], 6);
+        *fourth = fanatec_map_bit(*fourth, 3, adapter[1], 7);
+        *fourth = fanatec_map_bit(*fourth, 4, adapter[2], 0);
+        *fourth = fanatec_map_bit(*fourth, 2, adapter[2], 1);
+        *second = fanatec_merge_bit(*second, 5, adapter[2], 2);
+        *second = fanatec_map_bit(*second, 7, adapter[2], 4);
+    } else {
+        *hat = fanatec_merge_bit(*hat, 7, adapter[0], 4);
+        *first = fanatec_merge_bit(*first, 3, adapter[0], 5);
+        *hat = fanatec_merge_bit(*hat, 4, adapter[0], 6);
+        *first = fanatec_merge_bit(*first, 4, adapter[0], 7);
+        *first = fanatec_merge_bit(*first, 5, adapter[1], 0);
+        *hat = fanatec_merge_bit(*hat, 5, adapter[1], 1);
+        *hat = fanatec_merge_bit(*hat, 6, adapter[1], 2);
+        *first = fanatec_merge_bit(*first, 2, adapter[1], 3);
+        *second = fanatec_merge_bit(*second, 1, adapter[1], 4);
+        *second = fanatec_merge_bit(*second, 4, adapter[2], 3);
+        *first = fanatec_merge_bit(*first, 7, adapter[2], 1);
+        *first = fanatec_merge_bit(*first, 6, adapter[1], 6);
+        *second = fanatec_merge_bit(*second, 5, adapter[2], 2);
+    }
+}
+
+void fanatec_input_pipeline_map(fanatec_input_state *state, const fanatec_input_source *source) {
+    if (state == NULL || source == NULL) {
+        return;
+    }
+
+    fanatec_map_primary_buttons(state, source);
+    if (source->neutral_shifter_axes) {
+        state->button_banks[2] = 0;
+        state->button_banks[4] = fanatec_map_bit(state->button_banks[4], 0, source->hat, 0);
+        state->button_banks[4] = fanatec_map_bit(state->button_banks[4], 1, source->hat, 1);
+    } else {
+        state->button_banks[2] = source->hat;
+        state->button_banks[4] &= 0xfcu;
+    }
+
+    if (source->protocol_active) {
+        state->rotary[0] = source->rotary_positions[0];
+        state->rotary[1] = source->rotary_positions[1];
+        state->rotary[3] |= source->extended_buttons[1];
+    } else {
+        state->rotary[2] = source->extended_buttons[0];
+        state->rotary[3] = source->extended_buttons[1];
+        state->rotary[4] = source->extended_buttons[2];
+        state->accessory[0] = source->extended_buttons[3];
+    }
+    state->accessory[4] = (uint8_t)((state->accessory[4] & 0xf0u) | (source->accessory & 0x0fu));
+    fanatec_map_adapter_buttons(state, source);
+
+    state->steering = source->steering;
+    memcpy(state->pedals, source->pedals, sizeof(state->pedals));
+    state->auxiliary_pedal = source->auxiliary_pedal;
+    memcpy(state->clutch_paddles, source->clutch_paddles, sizeof(state->clutch_paddles));
+    state->status_flags =
+        (uint8_t)((source->status_flags & 0xfeu) | (source->neutral_shifter_axes ? 1u : 0u));
+    state->status_flags = fanatec_map_bit(state->status_flags, 6, source->calibration_available, 0);
+    state->status_flags = fanatec_map_bit(state->status_flags, 7, source->axis_report_enabled, 0);
+    state->transfer_code = source->transfer_code;
+    state->wheel_mode = source->mode;
+    state->axis_limit = source->axis_limit;
+
+    if (source->mode == 0x10) {
+        uint16_t remapped = fanatec_remap_axis_bits(
+            (uint16_t)source->secondary_buttons | ((uint16_t)source->packed_rotary_positions << 8));
+        state->accessory[2] = (uint8_t)remapped;
+        state->accessory[3] = (uint8_t)(remapped >> 8);
+        state->accessory[1] =
+            (uint8_t)((state->accessory[1] & 0x0fu) | (source->auxiliary_flags & 0xf0u));
+    } else if (source->mode == 0x0e) {
+        state->button_banks[1] =
+            fanatec_map_bit(state->button_banks[1], 6, source->secondary_buttons, 6);
+        state->button_banks[1] =
+            fanatec_map_bit(state->button_banks[1], 7, source->secondary_buttons, 5);
+        uint16_t remapped = fanatec_remap_reduced_axis_bits(
+            (uint16_t)source->secondary_buttons | ((uint16_t)source->packed_rotary_positions << 8));
+        state->accessory[2] = (uint8_t)remapped;
+        state->accessory[3] = (uint8_t)(remapped >> 8);
+    }
+
+    if (source->mode == 0x1b) {
+        state->accessory[2] |= (uint8_t)((source->pulse_flags[0] >> 3) & 0x08u);
+        state->accessory[2] |= (uint8_t)((source->pulse_flags[0] >> 5) & 0x04u);
+        state->accessory[3] = (uint8_t)((state->accessory[3] & 0x0fu) |
+                                        (uint8_t)((source->pulse_flags[1] & 0x03u) << 6));
+    }
+    if (source->mode == 0x1c) {
+        state->accessory[1] = fanatec_merge_bit(state->accessory[1], 5, source->auxiliary_flags, 2);
+        state->accessory[1] = fanatec_merge_bit(state->accessory[1], 6, source->auxiliary_flags, 3);
+        state->button_banks[3] =
+            fanatec_map_bit(state->button_banks[3], 5, source->auxiliary_flags, 1);
+        uint16_t remapped = fanatec_remap_axis_bits(source->secondary_buttons);
+        state->accessory[2] =
+            (uint8_t)((state->accessory[2] & 0x0fu) | ((uint8_t)remapped & 0xf0u));
+        state->rotary[3] |= (uint8_t)((source->pulse_flags[0] >> 3) & 0x08u);
+        state->rotary[3] |= (uint8_t)((source->pulse_flags[0] >> 5) & 0x04u);
+    }
+}
+
+void fanatec_input_pipeline_apply(fanatec_input_pipeline_state *pipeline,
+                                  fanatec_input_state *state, const fanatec_input_source *source) {
+    if (pipeline == NULL || state == NULL || source == NULL) {
+        return;
+    }
+    fanatec_input_source filtered = *source;
+    fanatec_input_pipeline_filter(pipeline, &filtered);
+    fanatec_input_pipeline_map(state, &filtered);
+}
+
 void fanatec_input_apply_wheel_controls(fanatec_input_state *state, const uint8_t controls[8],
                                         bool include_extended) {
     state->rotary[0] = controls[0];
@@ -62,6 +409,10 @@ void fanatec_input_apply_wheel_controls(fanatec_input_state *state, const uint8_
     state->rotary[3] = controls[3];
     state->rotary[4] = controls[4];
     state->accessory[0] = controls[5];
+}
+
+void fanatec_input_apply_quaternary_rotary_event(fanatec_input_state *state, uint8_t event) {
+    state->accessory[0] = event;
 }
 
 void fanatec_input_apply_wheel_accessory(fanatec_input_state *state, uint8_t flags) {

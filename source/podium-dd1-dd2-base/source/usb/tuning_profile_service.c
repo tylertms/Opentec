@@ -99,7 +99,9 @@ UsbTuningProfileAction usb_tuning_profile_service_apply(UsbTuningProfileService 
     case PROFILE_ACTION_RESET_ALL:
         if (deadline_reached(now_ms, service->reset_after_ms)) {
             bool mode_changed = !bank->standard_mode_enabled;
+            bool automatic_apply_pending = bank->automatic_apply_pending;
             tuning_profile_bank_defaults(bank);
+            bank->automatic_apply_pending = automatic_apply_pending;
             service->reset_after_ms = now_ms + USB_TUNING_PROFILE_RESET_DELAY_MS;
             service->response_pending = true;
             result |= USB_TUNING_PROFILE_ACTION_PROFILE_CHANGED |
@@ -113,6 +115,7 @@ UsbTuningProfileAction usb_tuning_profile_service_apply(UsbTuningProfileService 
     case PROFILE_ACTION_RESET_STANDARD:
         if (deadline_reached(now_ms, service->reset_after_ms)) {
             tuning_profile_defaults(&bank->slots[0]);
+            bank->automatic_apply_pending = false;
             service->response_pending = true;
             result |= USB_TUNING_PROFILE_ACTION_SETTINGS_CHANGED;
             if (bank->active_slot == 0) {

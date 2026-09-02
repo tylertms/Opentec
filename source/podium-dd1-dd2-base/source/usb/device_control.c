@@ -99,6 +99,7 @@ void usb_device_control_cancel(UsbDeviceControl *device) {
  *
  * Serves device, configuration, and string descriptors by index, gates HID and report descriptors
  * on an active configuration, and completes physical-descriptor requests with an empty data stage.
+ * An active string alias hides its target from ordinary descriptor-index requests.
  *
  * @param[in] request Classified descriptor request.
  * @param[in] catalog Active descriptor catalog.
@@ -123,6 +124,10 @@ static UsbControlTransfer get_descriptor(const UsbControlRequest *request,
         if (catalog->string_alias_valid && request->descriptor_index == catalog->string_alias &&
             catalog->string_alias_target < catalog->string_count) {
             return data(catalog->strings[catalog->string_alias_target], request->length);
+        }
+        if (catalog->string_alias_valid &&
+            request->descriptor_index == catalog->string_alias_target) {
+            return stall();
         }
         return request->descriptor_index < catalog->string_count
                    ? data(catalog->strings[request->descriptor_index], request->length)

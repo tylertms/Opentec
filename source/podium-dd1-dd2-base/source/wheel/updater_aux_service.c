@@ -124,18 +124,32 @@ bool wheel_updater_aux_service_handshake_complete(const WheelUpdaterAuxService *
 /**
  * @brief Starts one updater exchange on the auxiliary endpoint.
  *
- * Requires the shutdown handshake, then delegates request validation and retention to the shared
- * updater protocol.
+ * Requires the shutdown handshake and no outstanding bus transfer, then delegates request
+ * validation and retention to the shared updater protocol.
  *
  * @param[in,out] service Idle auxiliary updater service accepting the request.
  * @param[in] request Marker-prefixed updater request.
  * @param[in] length Request byte count.
+ * @param[in] response_probe True when probe-only terminal response rules apply.
  * @return True when the request was accepted; otherwise false.
  */
+static bool start_exchange(WheelUpdaterAuxService *service, const uint8_t *request, uint8_t length,
+                           bool response_probe) {
+    if (service == NULL || !service->handshake_complete || service->transfer_active) {
+        return false;
+    }
+    return response_probe ? wheel_updater_bridge_start_probe(&service->bridge, request, length)
+                          : wheel_updater_bridge_start(&service->bridge, request, length);
+}
+
 bool wheel_updater_aux_service_start(WheelUpdaterAuxService *service, const uint8_t *request,
                                      uint8_t length) {
-    return service != NULL && service->handshake_complete &&
-           wheel_updater_bridge_start(&service->bridge, request, length);
+    return start_exchange(service, request, length, false);
+}
+
+bool wheel_updater_aux_service_start_probe(WheelUpdaterAuxService *service, const uint8_t *request,
+                                           uint8_t length) {
+    return start_exchange(service, request, length, true);
 }
 
 /**
@@ -143,13 +157,15 @@ bool wheel_updater_aux_service_start(WheelUpdaterAuxService *service, const uint
  *
  * Retries the parameter-three handshake after failed transfers. Once the handshake succeeds, it
  * converts offset-zero auxiliary-bus completions into input for the transport-independent updater
- * protocol and starts the next requested operation.
+ * protocol and starts the next requested operation. A timed-out response does not cancel a
+ * still-pending bus transfer.
  *
  * @param[in,out] service Auxiliary updater service to advance.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 void wheel_updater_aux_service_run(WheelUpdaterAuxService *service, uint32_t now_ms) {
-    if (service == NULL) {
+    if (service == NULL || (!wheel_updater_bridge_active(&service->bridge) &&
+                            !service->transfer_active && !service->handshake_requested)) {
         return;
     }
 
@@ -157,27 +173,28 @@ void wheel_updater_aux_service_run(WheelUpdaterAuxService *service, uint32_t now
     if (service->transfer_active) {
         PlatformAuxBusStatus status = platform_aux_bus_status();
         if (status == PLATFORM_AUX_BUS_BUSY) {
-            return;
-        }
-        platform_aux_bus_clear();
-        service->transfer_active = false;
-        if (service->pending_operation == WHEEL_UPDATER_OPERATION_NONE) {
-            if (status == PLATFORM_AUX_BUS_SUCCEEDED) {
-                service->handshake_requested = false;
-                service->handshake_complete = true;
+            io.status = WHEEL_UPDATER_IO_PENDING;
+        } else {
+            platform_aux_bus_clear();
+            service->transfer_active = false;
+            if (service->pending_operation == WHEEL_UPDATER_OPERATION_NONE) {
+                if (status == PLATFORM_AUX_BUS_SUCCEEDED) {
+                    service->handshake_requested = false;
+                    service->handshake_complete = true;
+                }
+                return;
             }
-            return;
-        }
 
-        io.status = status == PLATFORM_AUX_BUS_SUCCEEDED ? WHEEL_UPDATER_IO_COMPLETE
-                                                         : WHEEL_UPDATER_IO_FAILED;
-        if (io.status == WHEEL_UPDATER_IO_COMPLETE &&
-            service->pending_operation == WHEEL_UPDATER_OPERATION_READ) {
-            io.data = service->read_buffer;
-            io.length = service->pending_length;
+            io.status = status == PLATFORM_AUX_BUS_SUCCEEDED ? WHEEL_UPDATER_IO_COMPLETE
+                                                             : WHEEL_UPDATER_IO_FAILED;
+            if (io.status == WHEEL_UPDATER_IO_COMPLETE &&
+                service->pending_operation == WHEEL_UPDATER_OPERATION_READ) {
+                io.data = service->read_buffer;
+                io.length = service->pending_length;
+            }
+            service->pending_operation = WHEEL_UPDATER_OPERATION_NONE;
+            service->pending_length = 0;
         }
-        service->pending_operation = WHEEL_UPDATER_OPERATION_NONE;
-        service->pending_length = 0;
     }
 
     if (service->handshake_requested) {

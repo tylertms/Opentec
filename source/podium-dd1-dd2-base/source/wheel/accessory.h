@@ -87,4 +87,15 @@ uint8_t wheel_accessory_mode_code(const WheelAccessory *accessory);
  */
 uint8_t wheel_accessory_mode_flags(const WheelAccessory *accessory);
 
+/**
+ * @brief Returns the position modulus selected by the reported accessory model.
+ *
+ * Position protocols use one of two controller-specific absolute-position moduli. The model bit
+ * reported in the signed identity status selects the modulus; other protocols return zero.
+ *
+ * @param[in] accessory Current accessory identity.
+ * @return Model-dependent position modulus, or zero when no position protocol is active.
+ */
+uint32_t wheel_accessory_position_modulus(const WheelAccessory *accessory);
+
 #endif

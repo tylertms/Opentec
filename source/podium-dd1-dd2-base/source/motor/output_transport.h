@@ -26,8 +26,8 @@ enum {
 /**
  * @brief Queued motor output commands and replay history.
  *
- * Owns the command ring, the last status byte used for status-only frames, and the retained live
- * frames used to answer replay requests.
+ * Owns the command ring, the active host-effect clear barrier, the last status byte used for
+ * status-only frames, and the retained live frames used to answer replay requests.
  */
 typedef struct {
     uint8_t commands[MOTOR_OUTPUT_QUEUE_CAPACITY]
@@ -35,7 +35,8 @@ typedef struct {
     uint8_t read_index;                          /**< Index of the oldest queued command. */
     uint8_t write_index;                         /**< Index where the next command is queued. */
     uint8_t count;                               /**< Number of queued command records. */
-    uint8_t previous_status; /**< Status byte sent by the most recent status frame. */
+    uint8_t host_effect_clear_count; /**< Remaining clear records in the active barrier. */
+    uint8_t previous_status;         /**< Status byte sent by the most recent status frame. */
     MotorLiveFrame replay_frames[MOTOR_OUTPUT_REPLAY_CAPACITY]; /**< Retained frames for replay. */
     uint8_t replay_write_index; /**< Index where the next replay frame is retained. */
     uint8_t replay_count;       /**< Number of retained replay frames. */
@@ -78,10 +79,13 @@ bool motor_output_transport_enqueue_opcode(MotorOutputTransport *transport, uint
 /**
  * @brief Queues clear commands for all host force-effect slots.
  *
- * Adds one slot-clear opcode per host effect slot until all slots are covered or the queue fills.
+ * Discards stale host-effect commands, preserves built-in position commands, and starts a barrier
+ * that emits one clear record for every host effect slot ahead of the queue. The enabled-force
+ * status bit remains masked until all clear records are sent. New commands remain queued behind
+ * the barrier.
  *
  * @param[in,out] transport Output transport state receiving the clear commands.
- * @return Number of slot-clear commands queued.
+ * @return Number of slot-clear commands scheduled, or zero when transport is null.
  */
 uint8_t motor_output_transport_enqueue_host_effect_clears(MotorOutputTransport *transport);
 
@@ -112,7 +116,8 @@ bool motor_output_transport_replay_frame(const MotorOutputTransport *transport,
  * @brief Builds the next motor live frame.
  *
  * Selects the oldest queued command, a changed-status frame, or the current live force frame in
- * the transport priority order.
+ * the transport priority order. An active host-effect clear barrier masks enabled force output
+ * until all retained clear commands have been transmitted.
  *
  * @param[in,out] transport Output transport queue and status history.
  * @param[in] status Current motor output status byte.

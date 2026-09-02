@@ -68,8 +68,6 @@ bool wheel_accessory_apply_probe(WheelAccessory *accessory, int8_t status, uint3
                protocol == ACCESSORY_PROTOCOL_POSITION_B) {
         accessory->kind = WHEEL_ACCESSORY_EXTENDED;
     } else {
-        accessory->kind = WHEEL_ACCESSORY_DISCONNECTED;
-        accessory->model = 0;
         return false;
     }
     accessory->model = (packet & ACCESSORY_MODEL_MASK) >> ACCESSORY_MODEL_SHIFT;
@@ -123,4 +121,11 @@ uint8_t wheel_accessory_mode_flags(const WheelAccessory *accessory) {
         flags |= 1;
     }
     return (uint8_t)(flags | accessory->model << 1);
+}
+
+uint32_t wheel_accessory_position_modulus(const WheelAccessory *accessory) {
+    if (accessory == NULL || accessory->kind != WHEEL_ACCESSORY_EXTENDED) {
+        return 0;
+    }
+    return (accessory->model & 0x02u) == 0 ? 0x5c7fu : 0x5d2bu;
 }

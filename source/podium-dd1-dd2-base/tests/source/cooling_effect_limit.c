@@ -22,9 +22,11 @@ static void test_standard_limit(void) {
     cooling_effect_limit_update(&limit, &strengths, &controller, 116.0f, false, 0);
     assert(limit.phase == COOLING_EFFECT_LIMIT_STANDARD);
     assert(!limit.active);
+    assert(!cooling_effect_limit_resistance_profile_active(&limit));
     assert(strengths.force == 12);
     cooling_effect_limit_update(&limit, &strengths, &controller, 116.0f, false, 0);
     assert(limit.active);
+    assert(cooling_effect_limit_resistance_profile_active(&limit));
     assert(strengths.force == 10);
     assert(strengths.spring == 10);
     assert(strengths.damper == 10);
@@ -34,11 +36,13 @@ static void test_standard_limit(void) {
     cooling_effect_limit_update(&limit, &strengths, &controller, 99.0f, false, 0);
     assert(limit.phase == COOLING_EFFECT_LIMIT_INACTIVE);
     assert(limit.active);
+    assert(cooling_effect_limit_resistance_profile_active(&limit));
     assert(strengths.force == 12);
     assert(strengths.spring == 11);
     assert(strengths.damper == 12);
     cooling_effect_limit_update(&limit, &strengths, &controller, 99.0f, false, 0);
     assert(!limit.active);
+    assert(!cooling_effect_limit_resistance_profile_active(&limit));
 }
 
 static void test_managed_limit(void) {
@@ -57,6 +61,7 @@ static void test_managed_limit(void) {
     assert(limit.phase == COOLING_EFFECT_LIMIT_MANAGED);
     cooling_effect_limit_update(&limit, &strengths, &controller, 130.0f, true, 2002);
     assert(limit.active);
+    assert(cooling_effect_limit_resistance_profile_active(&limit));
     assert(strengths.force == 10);
 
     cooling_controller_set_low_threshold_offset(&controller, -5);
@@ -64,7 +69,10 @@ static void test_managed_limit(void) {
     assert(limit.phase == COOLING_EFFECT_LIMIT_MANAGED);
     cooling_effect_limit_update(&limit, &strengths, &controller, 109.0f, true, 2004);
     assert(limit.phase == COOLING_EFFECT_LIMIT_INACTIVE);
+    assert(cooling_effect_limit_resistance_profile_active(&limit));
     assert(strengths.force == 12);
+    cooling_effect_limit_update(&limit, &strengths, &controller, 109.0f, true, 2005);
+    assert(!cooling_effect_limit_resistance_profile_active(&limit));
 }
 
 static void test_values_at_or_below_limit(void) {

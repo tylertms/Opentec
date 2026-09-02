@@ -21,6 +21,7 @@ enum {
     AUXILIARY_CALIBRATION_SEGMENT_UPPER_LEFT = 1 << 5,  /**< Upper-left segment bit. */
     AUXILIARY_CALIBRATION_SEGMENT_MIDDLE = 1 << 6,      /**< Middle segment bit. */
     AUXILIARY_CALIBRATION_DECIMAL_POINT = 1 << 7,       /**< Decimal-point bit. */
+    AUXILIARY_CALIBRATION_GLYPH_Y = 18,                 /**< Glyph top coordinate. */
 };
 
 /**
@@ -55,33 +56,43 @@ static void draw_rectangle(DisplayFramebuffer framebuffer, uint16_t left, uint16
  */
 static void draw_glyph(DisplayFramebuffer framebuffer, uint16_t x, uint8_t glyph) {
     if ((glyph & AUXILIARY_CALIBRATION_SEGMENT_TOP) != 0) {
-        draw_rectangle(framebuffer, (uint16_t)(x + 3), 18, (uint16_t)(x + 17), 20,
+        draw_rectangle(framebuffer, (uint16_t)(x + 3), AUXILIARY_CALIBRATION_GLYPH_Y,
+                       (uint16_t)(x + 18), AUXILIARY_CALIBRATION_GLYPH_Y + 2,
                        AUXILIARY_CALIBRATION_COLOR);
     }
     if ((glyph & AUXILIARY_CALIBRATION_SEGMENT_UPPER_RIGHT) != 0) {
-        draw_rectangle(framebuffer, (uint16_t)(x + 18), 21, (uint16_t)(x + 20), 35,
+        draw_rectangle(framebuffer, (uint16_t)(x + 16), AUXILIARY_CALIBRATION_GLYPH_Y + 3,
+                       (uint16_t)(x + 19), AUXILIARY_CALIBRATION_GLYPH_Y + 16,
                        AUXILIARY_CALIBRATION_COLOR);
     }
     if ((glyph & AUXILIARY_CALIBRATION_SEGMENT_LOWER_RIGHT) != 0) {
-        draw_rectangle(framebuffer, (uint16_t)(x + 18), 39, (uint16_t)(x + 20), 54,
+        draw_rectangle(framebuffer, (uint16_t)(x + 16), AUXILIARY_CALIBRATION_GLYPH_Y + 20,
+                       (uint16_t)(x + 19), AUXILIARY_CALIBRATION_GLYPH_Y + 33,
                        AUXILIARY_CALIBRATION_COLOR);
     }
     if ((glyph & AUXILIARY_CALIBRATION_SEGMENT_BOTTOM) != 0) {
-        draw_rectangle(framebuffer, (uint16_t)(x + 3), 55, (uint16_t)(x + 17), 57,
+        draw_rectangle(framebuffer, (uint16_t)(x + 3), AUXILIARY_CALIBRATION_GLYPH_Y + 34,
+                       (uint16_t)(x + 18), AUXILIARY_CALIBRATION_GLYPH_Y + 36,
                        AUXILIARY_CALIBRATION_COLOR);
     }
     if ((glyph & AUXILIARY_CALIBRATION_SEGMENT_LOWER_LEFT) != 0) {
-        draw_rectangle(framebuffer, x, 39, (uint16_t)(x + 2), 54, AUXILIARY_CALIBRATION_COLOR);
+        draw_rectangle(framebuffer, (uint16_t)(x + 1), AUXILIARY_CALIBRATION_GLYPH_Y + 20,
+                       (uint16_t)(x + 4), AUXILIARY_CALIBRATION_GLYPH_Y + 33,
+                       AUXILIARY_CALIBRATION_COLOR);
     }
     if ((glyph & AUXILIARY_CALIBRATION_SEGMENT_UPPER_LEFT) != 0) {
-        draw_rectangle(framebuffer, x, 21, (uint16_t)(x + 2), 35, AUXILIARY_CALIBRATION_COLOR);
+        draw_rectangle(framebuffer, (uint16_t)(x + 1), AUXILIARY_CALIBRATION_GLYPH_Y + 3,
+                       (uint16_t)(x + 4), AUXILIARY_CALIBRATION_GLYPH_Y + 16,
+                       AUXILIARY_CALIBRATION_COLOR);
     }
     if ((glyph & AUXILIARY_CALIBRATION_SEGMENT_MIDDLE) != 0) {
-        draw_rectangle(framebuffer, (uint16_t)(x + 3), 36, (uint16_t)(x + 17), 38,
+        draw_rectangle(framebuffer, (uint16_t)(x + 3), AUXILIARY_CALIBRATION_GLYPH_Y + 17,
+                       (uint16_t)(x + 18), AUXILIARY_CALIBRATION_GLYPH_Y + 19,
                        AUXILIARY_CALIBRATION_COLOR);
     }
     if ((glyph & AUXILIARY_CALIBRATION_DECIMAL_POINT) != 0) {
-        draw_rectangle(framebuffer, (uint16_t)(x + 22), 54, (uint16_t)(x + 25), 57,
+        draw_rectangle(framebuffer, (uint16_t)(x + 21), AUXILIARY_CALIBRATION_GLYPH_Y + 33,
+                       (uint16_t)(x + 24), AUXILIARY_CALIBRATION_GLYPH_Y + 36,
                        AUXILIARY_CALIBRATION_COLOR);
     }
 }
@@ -110,13 +121,13 @@ bool display_auxiliary_calibration_page_update(DisplayAuxiliaryCalibrationPage *
 /**
  * @brief Renders the legacy-monitor opening title.
  *
- * Clears the previous page and centers the title presented for the first second.
+ * Clears the previous page and draws the inverted title at the official record coordinates.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
  */
 void display_auxiliary_calibration_page_render_title(DisplayFramebuffer framebuffer) {
     display_framebuffer_clear(framebuffer);
-    display_text_draw_centered(framebuffer, "Legacy", 28, 1, AUXILIARY_CALIBRATION_COLOR);
+    display_text_draw_with_font(framebuffer, &display_font_10_00c988, "Legacy", 0, 12, true);
 }
 
 /**

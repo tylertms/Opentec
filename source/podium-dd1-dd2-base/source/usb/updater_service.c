@@ -84,22 +84,36 @@ static bool exchange_active(const UsbUpdaterService *service) {
 /**
  * @brief Starts one request on the selected updater route.
  *
- * Dispatches to the auxiliary bus, raw UART, or mode-specific shared command target.
+ * Dispatches to the auxiliary bus, raw UART, or mode-specific shared command target. Probe
+ * exchanges use their route's terminal-failure rules; host requests use normal retry behavior.
  *
  * @param[in,out] service Idle updater session accepting the request.
  * @param[in] request Marker-prefixed updater request.
  * @param[in] length Request byte count.
+ * @param[in] response_probe True when the request is a route-discovery probe.
  * @return True when the selected route accepted the request; otherwise false.
  */
-static bool start_exchange(UsbUpdaterService *service, const uint8_t *request, uint8_t length) {
+static bool start_exchange(UsbUpdaterService *service, const uint8_t *request, uint8_t length,
+                           bool response_probe) {
     if (auxiliary_route(service->runtime_mode)) {
-        return wheel_updater_aux_service_start(&service->route.auxiliary, request, length);
+        return response_probe
+                   ? wheel_updater_aux_service_start_probe(&service->route.auxiliary, request,
+                                                           length)
+                   : wheel_updater_aux_service_start(&service->route.auxiliary, request, length);
     }
     if (direct_route(service->runtime_mode)) {
-        return wheel_updater_direct_service_start(&service->route.direct, request, length);
+        return response_probe
+                   ? wheel_updater_direct_service_start_probe(&service->route.direct, request,
+                                                              length)
+                   : wheel_updater_direct_service_start(&service->route.direct, request, length);
     }
-    return wheel_updater_command_service_start(
-        &service->route.command, command_target(service->runtime_mode), request, length);
+    return response_probe
+               ? wheel_updater_command_service_start_probe(&service->route.command,
+                                                           command_target(service->runtime_mode),
+                                                           request, length)
+               : wheel_updater_command_service_start(&service->route.command,
+                                                     command_target(service->runtime_mode), request,
+                                                     length);
 }
 
 /**
@@ -152,8 +166,8 @@ static bool take_exchange_response(UsbUpdaterService *service, const uint8_t **r
  * @param[in] length Complete response length.
  */
 static void finish_exchange(UsbUpdaterService *service, const uint8_t *response, uint8_t length) {
-    bool valid_probe = length == USB_UPDATER_PROBE_RESPONSE_SIZE && response[0] == probe[0] &&
-                       response[1] == USB_UPDATER_PROBE_RESPONSE_OPCODE;
+    bool valid_probe = service->exchange_is_probe && length == USB_UPDATER_PROBE_RESPONSE_SIZE &&
+                       response[0] == probe[0] && response[1] == USB_UPDATER_PROBE_RESPONSE_OPCODE;
     if (valid_probe) {
         service->response_selector = usb_updater_identity_selector(
             service->runtime_mode, response[USB_UPDATER_PROBE_COMMAND_OFFSET]);
@@ -217,7 +231,7 @@ static void handle_request(UsbUpdaterService *service, const UsbUpdaterServiceIn
                            const UsbUpdaterRequest *request) {
     if (request->kind == USB_UPDATER_REQUEST_BRIDGE) {
         service->exchange_is_probe = false;
-        (void)start_exchange(service, request->data, request->length);
+        (void)start_exchange(service, request->data, request->length, false);
         return;
     }
     if (request->kind == USB_UPDATER_REQUEST_RESET) {
@@ -291,7 +305,7 @@ bool usb_updater_service_auxiliary_handshake_complete(const UsbUpdaterService *s
 
 bool usb_updater_service_start_probe(UsbUpdaterService *service) {
     if (service == NULL || service->probe_status == USB_UPDATER_PROBE_PENDING ||
-        exchange_active(service) || !start_exchange(service, probe, sizeof(probe))) {
+        exchange_active(service) || !start_exchange(service, probe, sizeof(probe), true)) {
         return false;
     }
     service->exchange_is_probe = true;

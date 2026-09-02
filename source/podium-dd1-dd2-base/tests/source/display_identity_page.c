@@ -45,7 +45,7 @@ static void renders_the_root_identity_layout(void) {
         framebuffer, (BoardIdentity){.variant = BOARD_VARIANT_DD1, .hardware_option = 1});
 
     assert(!has_lit_pixel(framebuffer, 0, 18));
-    assert(hash_rows(framebuffer, 19, 44) == 0x64d446b6u);
+    assert(hash_rows(framebuffer, 19, 44) == 0x21bfcf1fu);
     assert(!has_lit_pixel(framebuffer, 45, 49));
     assert(has_lit_pixel(framebuffer, 50, 56));
 }

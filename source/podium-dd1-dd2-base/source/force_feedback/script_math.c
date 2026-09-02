@@ -5,7 +5,7 @@
 /** @brief Single-precision pi used by the script angle operations. */
 static const float script_pi = 3.1415927f;
 
-/** @brief Largest tangent result accepted for a writable script result. */
+/** @brief Largest finite tangent result accepted for a writable script result. */
 static const float tangent_limit = 22875900.0f;
 
 /**
@@ -53,7 +53,7 @@ force_feedback_script_math_evaluate(ForceFeedbackScriptMathOperation operation, 
     case FORCE_FEEDBACK_SCRIPT_MATH_SQUARE_ROOT:
         return first < 0.0f ? skipped_result() : value_result(sqrtf(first));
     case FORCE_FEEDBACK_SCRIPT_MATH_SIGN:
-        return value_result(first > 0.0f ? 1.0f : first < 0.0f ? -1.0f : 0.0f);
+        return value_result(first > 0.0f ? 1.0f : first == 0.0f ? 0.0f : -1.0f);
     case FORCE_FEEDBACK_SCRIPT_MATH_ABSOLUTE:
         return value_result(fabsf(first));
     case FORCE_FEEDBACK_SCRIPT_MATH_RECIPROCAL:
@@ -64,8 +64,8 @@ force_feedback_script_math_evaluate(ForceFeedbackScriptMathOperation operation, 
         return value_result(cosf(first));
     case FORCE_FEEDBACK_SCRIPT_MATH_TANGENT: {
         float value = tanf(first);
-        return value >= -tangent_limit && value <= tangent_limit ? value_result(value)
-                                                                 : skipped_result();
+        return value > tangent_limit || value < -tangent_limit ? skipped_result()
+                                                               : value_result(value);
     }
     case FORCE_FEEDBACK_SCRIPT_MATH_MULTIPLY_PI:
         return value_result(first * script_pi);

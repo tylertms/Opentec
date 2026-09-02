@@ -7,7 +7,7 @@
 /** @brief Capacity limits for retained updater frames. */
 enum {
     WHEEL_UPDATER_BRIDGE_MAX_REQUEST_SIZE = 63,  /**< Maximum retained updater request length. */
-    WHEEL_UPDATER_BRIDGE_MAX_RESPONSE_SIZE = 66, /**< Maximum retained updater response length. */
+    WHEEL_UPDATER_BRIDGE_MAX_RESPONSE_SIZE = 64, /**< Maximum retained updater response length. */
 };
 
 /** @brief Completion state of the current updater transport operation. */
@@ -60,13 +60,13 @@ typedef enum {
 typedef struct {
     uint8_t request[WHEEL_UPDATER_BRIDGE_MAX_REQUEST_SIZE];   /**< Retained request bytes. */
     uint8_t response[WHEEL_UPDATER_BRIDGE_MAX_RESPONSE_SIZE]; /**< Assembled response bytes. */
-    uint32_t deadline_ms;             /**< Deadline for delayed or retry-response reads. */
+    uint16_t service_ticks;           /**< Official bridge service ticks for delay and retry. */
     uint16_t variable_payload_length; /**< Expected variable response payload length. */
     uint8_t request_length;           /**< Number of valid bytes in request. */
     uint8_t response_length;          /**< Number of valid bytes in response. */
     WheelUpdaterBridgePhase phase;    /**< Current updater exchange phase. */
     bool retry_response; /**< True when the current response uses retry-response handling. */
-    bool response_probe; /**< True when a zero marker or non-0xA7 response must abort discovery. */
+    bool response_probe; /**< True when this exchange is the terminal route-discovery probe. */
 } WheelUpdaterBridge;
 
 /**
@@ -90,6 +90,20 @@ void wheel_updater_bridge_init(WheelUpdaterBridge *bridge);
  * @return True when the request is valid and accepted; otherwise false.
  */
 bool wheel_updater_bridge_start(WheelUpdaterBridge *bridge, const uint8_t *request, uint8_t length);
+
+/**
+ * @brief Starts a route-discovery probe exchange.
+ *
+ * Accepts the same marker-prefixed request as #wheel_updater_bridge_start while retaining the
+ * probe-only terminal failure rules for zero markers, read failures, and non-0xA7 opcodes.
+ *
+ * @param[in,out] bridge Idle updater bridge to start; null is rejected.
+ * @param[in] request Marker-prefixed route-probe request bytes.
+ * @param[in] length Probe request length in bytes.
+ * @return True when the probe was accepted; otherwise false.
+ */
+bool wheel_updater_bridge_start_probe(WheelUpdaterBridge *bridge, const uint8_t *request,
+                                      uint8_t length);
 
 /**
  * @brief Advances one updater request and response exchange.

@@ -91,7 +91,9 @@ typedef struct {
     WheelPacketAlternateOutput alternate_output;         /**< Alternate response output. */
     WheelPacketPackedFilter packed_filter;               /**< Packed-packet filter. */
     WheelPacketPackedInput packed_input;                 /**< Current packed input. */
-    WheelPacketCommonFilter common_filter;               /**< Common-packet filter. */
+    WheelPacketCommonFilter common_filter;               /**< Adapter-family packet filter. */
+    WheelPacketCommonFilter axis_mode_filter;            /**< Axis-mode packet filter. */
+    WheelPacketCommonFilter extended_filter;             /**< Extended-family packet filter. */
     WheelPacketCommonInput common_input;                 /**< Current common input. */
     WheelPacketExtendedPulseState extended_pulse_state;  /**< Extended pulse state. */
     WheelPacketAdapterOutput adapter_output;             /**< Adapter response output. */
@@ -121,7 +123,9 @@ typedef struct {
     bool system_status_pending;      /**< Whether a system status code awaits publication. */
     bool request_ready;              /**< Whether the current request passed ready handling. */
     bool request_changed;            /**< Whether the normalized request changed. */
-    bool command_invalid; /**< True when the current request has an invalid command shape. */
+    bool command_invalid;    /**< True when the current request has an invalid command shape. */
+    bool mode_input_invalid; /**< Whether the selected mode has no input report decoder. */
+    bool selection_recovery_pending;  /**< Whether an unknown selection awaits bridge recovery. */
     bool axis_report_enabled_latched; /**< Retained axis-report gate from accepted packets. */
     bool extended_primary_released;   /**< True after primary extended motion returns to neutral. */
     bool extended_secondary_released; /**< True after secondary extended motion returns to neutral.
@@ -371,6 +375,17 @@ void wheel_protocol_accept(WheelProtocol *protocol,
  * @return Pointer to the current fifty-seven-byte response packet.
  */
 const uint8_t *wheel_protocol_response(const WheelProtocol *protocol);
+
+/**
+ * @brief Reports whether the active wheel report mode marks the third display glyph.
+ *
+ * Derives the marker from the active packet-family report mode. Modes two through four use the
+ * marker; all other report modes leave the third glyph unchanged.
+ *
+ * @param[in] protocol Protocol state whose active report mode is inspected.
+ * @return True when the third display glyph carries the report-mode marker.
+ */
+bool wheel_protocol_report_mode_marker(const WheelProtocol *protocol);
 
 /**
  * @brief Returns the normalized attached-wheel request snapshot.

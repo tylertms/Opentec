@@ -159,8 +159,8 @@ static void arm_secondary_capture(void) {
 /**
  * @brief Configures both fan PWM outputs and their paired tachometer capture inputs.
  *
- * Resets the two capture states, selects the PWM polarity, and schedules the first primary fan
- * capture after 50 milliseconds.
+ * Resets the two capture states, selects the PWM polarity, and starts the first primary fan
+ * capture at the current Timer 1 time. Later windows are advanced by the Timer 1 tick callback.
  *
  * @param[in] inverted_pwm True when increasing duty requires a decreasing compare value.
  */
@@ -169,10 +169,12 @@ void platform_cooling_init(bool inverted_pwm) {
     captures[PLATFORM_FAN_SECONDARY] = (FanCaptureState){0};
     pwm_inverted = inverted_pwm;
     next_fan = PLATFORM_FAN_PRIMARY;
-    next_capture_ms = platform_time_ms() + FAN_CAPTURE_INTERVAL_MS;
+    uint32_t now_ms = platform_time_ms();
+    next_capture_ms = now_ms;
     configure_pwm();
     configure_primary_capture();
     configure_secondary_capture();
+    platform_cooling_service(now_ms);
 }
 
 /**
@@ -195,7 +197,8 @@ void platform_cooling_set_duty(uint16_t primary_percent, uint16_t secondary_perc
  * @brief Alternately checks and rearms one fan tachometer capture every 50 milliseconds.
  *
  * Publishes a missing result when the preceding capture window produced no pair, then starts the
- * next window. Each fan is therefore sampled once every 100 milliseconds.
+ * next window. The firmware calls this from the Timer 1 tick callback, so each fan is sampled once
+ * every 100 milliseconds independent of foreground-loop latency.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */

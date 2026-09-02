@@ -18,7 +18,7 @@ typedef struct {
     uint8_t vendor_buttons; /**< Vendor button bit field. */
     uint16_t steering;      /**< Sixteen-bit steering-axis value. */
     uint16_t pedals[USB_PLAYSTATION_INPUT_PEDAL_COUNT]; /**< Sixteen-bit pedal-axis values. */
-    uint8_t wheel_hat;       /**< Attached-wheel hat value before report rotation. */
+    uint8_t wheel_hat;       /**< Local H-pattern hat value before report rotation. */
     uint16_t auxiliary_axis; /**< Sixteen-bit auxiliary-axis value. */
 } UsbPlaystationInputState;
 
@@ -89,7 +89,9 @@ void usb_playstation_input_map_clutch(uint8_t axes[2], const UsbPlaystationClutc
  * @brief Maps attached-wheel controls to PlayStation buttons.
  *
  * Rebuilds the hat, button, and vendor-button fields from wheel, adapter, auxiliary, suppression,
- * and held system-button inputs while retaining mapper timing state.
+ * and held system-button inputs while retaining mapper timing state. Hat suppression clears
+ * secondary bit nine before button mapping, and system-button suppression is applied before
+ * mode-specific mappings can reassert a mode-owned system source.
  *
  * @param[in,out] mapper Retained system-button hold state.
  * @param[in] input Wheel, adapter, and auxiliary button sources.
@@ -105,7 +107,7 @@ bool usb_playstation_input_map_buttons(UsbPlaystationInputMapper *mapper,
  * @brief Encodes a PlayStation input report.
  *
  * Writes report identifier one, clutch axes, packed hat and button fields, and the steering, pedal,
- * wheel-hat, and auxiliary axis fields into a zero-filled 64-byte report.
+ * local H-pattern hat, and auxiliary axis fields into a zero-filled 64-byte report.
  *
  * @param[out] report Buffer with room for USB_PLAYSTATION_INPUT_REPORT_SIZE bytes.
  * @param[in] state Logical PlayStation input values.

@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -106,6 +107,36 @@ static void test_resynchronizes_or_retries_from_type_zero(void) {
     assert(retry.payload[0] == message[0]);
 }
 
+static SerialTransmitKind type_zero_result(uint8_t local_sequence, uint8_t remote_sequence,
+                                           bool transmit_active) {
+    SerialSession session;
+    uint8_t encoded[SERIAL_PACKET_SIZE];
+    static const uint8_t message = 0xaa;
+    serial_session_init(&session);
+    session.sequence = local_sequence;
+    if (transmit_active) {
+        assert(serial_session_queue(&session, 4, &message, 1));
+    }
+    encode(0, remote_sequence, &message, 1, encoded);
+    assert(serial_session_accept(&session, encoded) == SERIAL_SESSION_ACCEPTED);
+    return session.pending_transmit;
+}
+
+static void test_matches_official_type_zero_ordering(void) {
+    assert(type_zero_result(0, 0, true) == SERIAL_TRANSMIT_DATA);
+    assert(type_zero_result(0, 1, true) == SERIAL_TRANSMIT_RESYNCHRONIZATION);
+    assert(type_zero_result(0, 127, true) == SERIAL_TRANSMIT_RESYNCHRONIZATION);
+    assert(type_zero_result(0, 128, true) == SERIAL_TRANSMIT_RESYNCHRONIZATION);
+    assert(type_zero_result(0, UINT8_MAX, true) == SERIAL_TRANSMIT_RESYNCHRONIZATION);
+    assert(type_zero_result(200, 0, true) == SERIAL_TRANSMIT_DATA);
+    assert(type_zero_result(254, 0, true) == SERIAL_TRANSMIT_DATA);
+    assert(type_zero_result(UINT8_MAX, 0, true) == SERIAL_TRANSMIT_RESYNCHRONIZATION);
+    assert(type_zero_result(UINT8_MAX, 128, true) == SERIAL_TRANSMIT_RESYNCHRONIZATION);
+    assert(type_zero_result(UINT8_MAX, 254, true) == SERIAL_TRANSMIT_RESYNCHRONIZATION);
+    assert(type_zero_result(UINT8_MAX, UINT8_MAX, true) == SERIAL_TRANSMIT_DATA);
+    assert(type_zero_result(200, 0, false) == SERIAL_TRANSMIT_NONE);
+}
+
 static void test_requests_resynchronization_for_invalid_packet(void) {
     SerialSession session;
     uint8_t encoded[SERIAL_PACKET_SIZE];
@@ -125,6 +156,7 @@ int main(void) {
     test_transmits_fragmented_message();
     test_receives_fragmented_message();
     test_resynchronizes_or_retries_from_type_zero();
+    test_matches_official_type_zero_ordering();
     test_requests_resynchronization_for_invalid_packet();
     return 0;
 }

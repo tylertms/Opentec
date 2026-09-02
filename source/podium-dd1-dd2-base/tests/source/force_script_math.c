@@ -11,6 +11,12 @@ static uint32_t float_bits(float value) {
     return bits;
 }
 
+static float bits_float(uint32_t bits) {
+    float value;
+    memcpy(&value, &bits, sizeof(value));
+    return value;
+}
+
 static void assert_value(ForceFeedbackScriptMathOperation operation, float first, float second,
                          float expected) {
     ForceFeedbackScriptMathResult result =
@@ -35,6 +41,8 @@ static void test_unary_operations(void) {
     assert_value(FORCE_FEEDBACK_SCRIPT_MATH_SIGN, 4.0f, 99.0f, 1.0f);
     assert_value(FORCE_FEEDBACK_SCRIPT_MATH_SIGN, 0.0f, 99.0f, 0.0f);
     assert_value(FORCE_FEEDBACK_SCRIPT_MATH_SIGN, -4.0f, 99.0f, -1.0f);
+    assert_value(FORCE_FEEDBACK_SCRIPT_MATH_SIGN, bits_float(UINT32_C(0x7fc00001)), 99.0f, -1.0f);
+    assert_value(FORCE_FEEDBACK_SCRIPT_MATH_SIGN, bits_float(UINT32_C(0x7fa00001)), 99.0f, -1.0f);
     assert_value(FORCE_FEEDBACK_SCRIPT_MATH_RECIPROCAL, 4.0f, 99.0f, 0.25f);
 
     ForceFeedbackScriptMathResult absolute =
@@ -72,8 +80,14 @@ static void test_skipped_writes(void) {
                 .writes_value);
     assert(!force_feedback_script_math_evaluate(FORCE_FEEDBACK_SCRIPT_MATH_RECIPROCAL, -0.0f, 0.0f)
                 .writes_value);
-    assert(!force_feedback_script_math_evaluate(FORCE_FEEDBACK_SCRIPT_MATH_TANGENT, NAN, 0.0f)
-                .writes_value);
+    ForceFeedbackScriptMathResult quiet_nan_tangent = force_feedback_script_math_evaluate(
+        FORCE_FEEDBACK_SCRIPT_MATH_TANGENT, bits_float(UINT32_C(0x7fc00001)), 0.0f);
+    assert(quiet_nan_tangent.writes_value);
+    assert(isnan(quiet_nan_tangent.value));
+    ForceFeedbackScriptMathResult signaling_nan_tangent = force_feedback_script_math_evaluate(
+        FORCE_FEEDBACK_SCRIPT_MATH_TANGENT, bits_float(UINT32_C(0x7fa00001)), 0.0f);
+    assert(signaling_nan_tangent.writes_value);
+    assert(isnan(signaling_nan_tangent.value));
     assert(!force_feedback_script_math_evaluate(0xff, 1.0f, 2.0f).writes_value);
 }
 

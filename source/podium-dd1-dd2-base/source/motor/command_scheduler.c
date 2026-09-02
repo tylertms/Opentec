@@ -7,7 +7,7 @@
  * @brief Internal retry policy for pending motor-command transmissions.
  */
 enum {
-    MOTOR_COMMAND_SCHEDULER_RETRY_LIMIT = 2, /**< Number of retries before sequence reset. */
+    MOTOR_COMMAND_SCHEDULER_RETRY_LIMIT = 2, /**< Number of retries before recovery command. */
 };
 
 void motor_command_scheduler_init(MotorCommandScheduler *scheduler) {

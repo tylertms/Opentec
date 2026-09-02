@@ -69,8 +69,10 @@ typedef struct {
  *
  * Resolves built-in constants, big-endian immediates, scaled percentage and per-mille literals,
  * samples, variables, active-slot values and metrics, motion values, and axes without changing
- * runtime state. The returned cursor follows a complete operand and reaches the available length
- * for an incomplete operand.
+ * runtime state. Direct sample operands consume an unsigned byte, with the high-bank form adding
+ * 256. Variable-indexed and active-slot sample reads use the low byte of their sample-index
+ * values. The returned cursor follows a complete operand and reaches the available length for an
+ * incomplete operand.
  *
  * @param[in] runtime Runtime state referenced by indirect operands.
  * @param[in] script Encoded script bytes.
@@ -87,7 +89,11 @@ force_feedback_script_operand_read(const ForceFeedbackScriptRuntime *runtime, co
  * @brief Consume one encoded script destination and optionally write a raw value.
  *
  * Directly writes supported sample, variable, slot, motion, or axis destinations when commit is
- * true. When commit is false, consumes the destination encoding without changing runtime state.
+ * true. Direct sample destinations consume an unsigned byte, with the high-bank form adding 256;
+ * variable-indexed sample destinations use the low 16 bits of their variable index and reject
+ * indexes outside the sample table; active-slot sample destinations use the low byte of their
+ * sample-index values. When commit is false, consumes the destination encoding without changing
+ * runtime state.
  *
  * @param[in,out] runtime Runtime state selected by the destination.
  * @param[in] script Encoded script bytes.

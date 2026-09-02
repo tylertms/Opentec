@@ -12,23 +12,30 @@
 #include "wheel/display_overlay.h"
 #include "wheel/output_reports.h"
 #include "wheel/protocol.h"
+#include "wheel/protocol_bridge_service.h"
 
 /** @brief Attached-wheel protocol, packet-layout, and timing constants. */
 enum {
-    WHEEL_PROTOCOL_TRANSPORT_COMMAND = 2,      /**< Serial message type for command-two traffic. */
-    WHEEL_BUTTON_COMMAND = 3,                  /**< Serial message type for command-three scans. */
-    WHEEL_BUTTON_REQUEST_READY = 1,            /**< Ready flag in a command-three request. */
-    WHEEL_BUTTON_RESPONSE_READY = 2,           /**< Ready flag in a command-three response. */
-    WHEEL_BUTTON_PRIMARY_RESPONSE = 0xe0,      /**< Primary command-three response marker. */
-    WHEEL_BUTTON_SECONDARY_RESPONSE = 0xc0,    /**< Secondary command-three response marker. */
-    WHEEL_BUTTON_RESPONSE_MASK = 0xe0,         /**< Mask for a command-three response marker. */
-    WHEEL_BUTTON_VALUE_MASK = 0x1f,            /**< Mask for a command-three sample value. */
-    WHEEL_PROTOCOL_ACTIVITY_TIMEOUT_MS = 2000, /**< Normal protocol activity timeout. */
+    WHEEL_PROTOCOL_TRANSPORT_COMMAND = 2,   /**< Serial message type for command-two traffic. */
+    WHEEL_BUTTON_COMMAND = 3,               /**< Serial message type for command-three scans. */
+    WHEEL_BUTTON_REQUEST_READY = 1,         /**< Ready flag in a command-three request. */
+    WHEEL_BUTTON_RESPONSE_READY = 2,        /**< Ready flag in a command-three response. */
+    WHEEL_BUTTON_PRIMARY_RESPONSE = 0xe0,   /**< Primary command-three response marker. */
+    WHEEL_BUTTON_SECONDARY_RESPONSE = 0xc0, /**< Secondary command-three response marker. */
+    WHEEL_BUTTON_RESPONSE_MASK = 0xe0,      /**< Mask for a command-three response marker. */
+    WHEEL_BUTTON_VALUE_MASK = 0x1f,         /**< Mask for a command-three sample value. */
+    WHEEL_PROTOCOL_WAITING_INTERVAL_MS = 1, /**< Initial and reset transport interval. */
+    WHEEL_PROTOCOL_SYNCHRONIZING_INTERVAL_MS = 10,   /**< Handshake acknowledgement interval. */
+    WHEEL_PROTOCOL_ACKNOWLEDGING_INTERVAL_MS = 2000, /**< Ready-mode interval. */
+    WHEEL_PROTOCOL_SELECTING_INTERVAL_MS = 1,        /**< Mode-selection transport interval. */
+    WHEEL_PROTOCOL_AUTHENTICATING_INTERVAL_MS = 4,   /**< Authentication transport interval. */
+    WHEEL_PROTOCOL_ACTIVE_INTERVAL_MS = 1,           /**< Active protocol transport interval. */
+    WHEEL_PROTOCOL_ACTIVITY_TIMEOUT_MS = 2000,       /**< Normal protocol activity timeout. */
     WHEEL_PROTOCOL_PROOF_TIMEOUT_MS = 2000,
     WHEEL_PROTOCOL_SELECTION_TIMEOUT_MS = 10000,
     WHEEL_MULTI_POSITION_PRIMARY_OFFSET = 6,   /**< Primary rotary position offset. */
     WHEEL_MULTI_POSITION_SECONDARY_OFFSET = 7, /**< Secondary rotary position offset. */
-    WHEEL_MULTI_POSITION_PACKED_OFFSET = 14,   /**< Packed rotary position offset. */
+    WHEEL_MULTI_POSITION_PACKED_OFFSET = 13,   /**< Packed rotary position offset. */
     WHEEL_ACCESSORY_FLAGS_OFFSET = 15,         /**< Accessory flags offset. */
     WHEEL_INPUT_DIRECTIONAL_OFFSET = 0,        /**< Directional button offset. */
     WHEEL_INPUT_SECONDARY_OFFSET = 1,          /**< Secondary-button offset. */
@@ -135,15 +142,15 @@ static void apply_third(uint8_t banks[WHEEL_BUTTON_BANK_COUNT], uint8_t sample) 
  *
  * @param[in,out] service Wheel service that owns the sample history and output banks.
  */
-static void publish_scan_samples(WheelService *service) {
+static void publish_scan_samples(WheelService *service,
+                                 uint8_t samples[WHEEL_SCAN_SAMPLE_DEPTH][WHEEL_BUTTON_BANK_COUNT],
+                                 uint8_t *sample_index) {
     for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {
-        service->button_banks[bank] = service->scan_samples[0][bank] &
-                                      service->scan_samples[1][bank] &
-                                      service->scan_samples[2][bank];
+        service->button_banks[bank] = samples[0][bank] & samples[1][bank] & samples[2][bank];
     }
-    service->scan_sample_index++;
-    if (service->scan_sample_index == WHEEL_SCAN_SAMPLE_DEPTH) {
-        service->scan_sample_index = 0;
+    (*sample_index)++;
+    if (*sample_index == WHEEL_SCAN_SAMPLE_DEPTH) {
+        *sample_index = 0;
     }
 }
 
@@ -165,6 +172,51 @@ static void clear_scan_filter(WheelService *service);
 static void reset_connection(WheelService *service);
 
 /**
+ * @brief Selects the official logical protocol transport interval.
+ *
+ * Maps each handshake phase to the delay used before its next command-two request. The deadline
+ * is armed when a request is queued and remains unchanged when a response advances the phase.
+ *
+ * @param[in] service Wheel service with the current protocol phase.
+ * @return Logical transport interval in milliseconds.
+ */
+static uint16_t protocol_transport_interval(const WheelService *service) {
+    switch (service->protocol.phase) {
+    case WHEEL_PROTOCOL_SYNCHRONIZING:
+        return WHEEL_PROTOCOL_SYNCHRONIZING_INTERVAL_MS;
+    case WHEEL_PROTOCOL_ACKNOWLEDGING:
+        return WHEEL_PROTOCOL_ACKNOWLEDGING_INTERVAL_MS;
+    case WHEEL_PROTOCOL_SELECTING:
+        return WHEEL_PROTOCOL_SELECTING_INTERVAL_MS;
+    case WHEEL_PROTOCOL_AUTHENTICATING:
+        return WHEEL_PROTOCOL_AUTHENTICATING_INTERVAL_MS;
+    case WHEEL_PROTOCOL_ACTIVE:
+        return WHEEL_PROTOCOL_ACTIVE_INTERVAL_MS;
+    case WHEEL_PROTOCOL_WAITING:
+    case WHEEL_PROTOCOL_UNSUPPORTED:
+    case WHEEL_PROTOCOL_SCANNING_PRIMARY:
+    case WHEEL_PROTOCOL_SCANNING_SECONDARY:
+    default:
+        return WHEEL_PROTOCOL_WAITING_INTERVAL_MS;
+    }
+}
+
+/**
+ * @brief Tests whether the next logical protocol request may start.
+ *
+ * Uses the strict greater-than comparison of the reference transport poller and keeps the first
+ * request immediately available after initialization or connection reset.
+ *
+ * @param[in] service Wheel service with its transport schedule.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @return True when a command-two request may be queued.
+ */
+static bool protocol_transport_due(const WheelService *service, uint32_t now_ms) {
+    return !service->protocol_transport_deadline_active ||
+           (int32_t)(now_ms - service->protocol_transport_deadline_ms) > 0;
+}
+
+/**
  * @brief Accepts a command-3 button response.
  *
  * Validates the response marker and ready bit, maps its five input bits for the active scan phase,
@@ -184,12 +236,19 @@ static void apply_scan_response(WheelService *service, const SerialMessageAssemb
         return;
     }
     uint8_t encoded = response->data[1];
+    wheel_capability_update_scan(&service->protocol.capabilities, encoded);
     uint8_t response_type = encoded & WHEEL_BUTTON_RESPONSE_MASK;
     if (response_type != expected_scan_response(service)) {
         return;
     }
     uint8_t sample = encoded & WHEEL_BUTTON_VALUE_MASK;
-    uint8_t *banks = service->scan_samples[service->scan_sample_index];
+    uint8_t *sample_index = response_type == WHEEL_BUTTON_SECONDARY_RESPONSE
+                                ? &service->secondary_scan_sample_index
+                                : &service->primary_scan_sample_index;
+    uint8_t (*samples)[WHEEL_BUTTON_BANK_COUNT] = response_type == WHEEL_BUTTON_SECONDARY_RESPONSE
+                                                      ? service->secondary_scan_samples
+                                                      : service->primary_scan_samples;
+    uint8_t *banks = samples[*sample_index];
     switch (service->scan_phase) {
     case WHEEL_SCAN_PHASE_FIRST:
         apply_first(banks, sample, response_type == WHEEL_BUTTON_SECONDARY_RESPONSE,
@@ -205,14 +264,14 @@ static void apply_scan_response(WheelService *service, const SerialMessageAssemb
         apply_auxiliary(banks, sample, service->protocol.interface_mode);
         break;
     }
-    publish_scan_samples(service);
+    publish_scan_samples(service, samples, sample_index);
 }
 
 /**
  * @brief Clears scan-mode button filtering.
  *
- * Zeros all three published button banks and their three-sample histories, then resets the sample
- * insertion position.
+ * Zeros all three published button banks and both three-sample histories, then resets both sample
+ * insertion positions.
  *
  * @param[in,out] service Attached-wheel service whose scan filter is cleared.
  */
@@ -220,10 +279,12 @@ static void clear_scan_filter(WheelService *service) {
     for (uint8_t bank = 0; bank < WHEEL_BUTTON_BANK_COUNT; bank++) {
         service->button_banks[bank] = 0;
         for (uint8_t sample = 0; sample < WHEEL_SCAN_SAMPLE_DEPTH; sample++) {
-            service->scan_samples[sample][bank] = 0;
+            service->primary_scan_samples[sample][bank] = 0;
+            service->secondary_scan_samples[sample][bank] = 0;
         }
     }
-    service->scan_sample_index = 0;
+    service->primary_scan_sample_index = 0;
+    service->secondary_scan_sample_index = 0;
 }
 
 /**
@@ -279,6 +340,7 @@ static void reset_connection(WheelService *service) {
         service->protocol.axis_override_processor.paddle_bite_point_commit_pending;
     bool button_latch_enabled = service->protocol.button_latch_enabled;
     bool display_rotation_enabled = service->protocol.display_rotation_enabled;
+    bool display_character_mode = service->protocol.display_character_mode;
     bool host_capability_enabled = service->protocol.host_capability_enabled;
     bool profile_transition_pending = service->protocol.profile_transition_pending;
     bool system_status_pending = service->protocol.system_status_pending;
@@ -319,14 +381,25 @@ static void reset_connection(WheelService *service) {
                                     profile_transition_pending);
     wheel_protocol_set_display_rotation(&service->protocol, display_rotation_enabled,
                                         display_rotation_angle);
+    wheel_protocol_set_display_character_mode(&service->protocol, display_character_mode);
     wheel_protocol_set_host_capability(&service->protocol, host_capability_enabled);
     if (system_status_pending) {
         wheel_protocol_queue_system_status(&service->protocol, system_status_code);
     }
     clear_scan_filter(service);
+    wheel_service_set_auxiliary_exclusive_mode(service, false);
     service->protocol_deadline_ms = 0;
+    service->protocol_transport_deadline_ms = 0;
+    service->protocol_transport_interval_ms = WHEEL_PROTOCOL_WAITING_INTERVAL_MS;
     service->protocol_deadline_active = false;
+    service->protocol_transport_deadline_active = false;
+    service->protocol_exchange_completed = false;
+    service->bridge_recovery_pending = false;
     service->scan_phase = 0;
+    service->request_kind = WHEEL_SERVICE_REQUEST_NONE;
+    for (uint16_t index = 0; index < sizeof(service->request); index++) {
+        service->request[index] = 0;
+    }
     service->status_memory_startup_pending = false;
     service->tuning_menu_override_enabled = false;
     service->tuning_menu_override_value = false;
@@ -412,8 +485,8 @@ static bool protocol_exchange_active(const WheelService *service) {
 /**
  * @brief Extends the active command-2 exchange deadline.
  *
- * Starts a two-second activity window after a packet-ready event, or a three-second window while
- * the authentication proof is pending.
+ * Starts a two-second activity window after a packet-ready event, or while the authentication
+ * proof is pending.
  *
  * @param[in,out] service Wheel service that owns the command-2 exchange.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -447,10 +520,12 @@ static void start_scan(WheelService *service, uint32_t now_ms) {
         service->request[index] = 0;
     }
     service->request[0] = service->scan_phase;
-    uint8_t encoded =
-        service->scan_phase == WHEEL_SCAN_PHASE_AUXILIARY
-            ? wheel_auxiliary_output_encode(&service->auxiliary_output)
-            : wheel_display_output_encode(&service->display_output, service->scan_phase);
+    WheelDisplayOutput display_output = service->display_output;
+    display_output.third_glyph_marker = service->scan_phase == WHEEL_SCAN_PHASE_THIRD &&
+                                        wheel_protocol_report_mode_marker(&service->protocol);
+    uint8_t encoded = service->scan_phase == WHEEL_SCAN_PHASE_AUXILIARY
+                          ? wheel_auxiliary_output_encode(&service->auxiliary_output)
+                          : wheel_display_output_encode(&display_output, service->scan_phase);
     service->request[1] = (uint8_t)~encoded;
     service->request[SERIAL_PACKET_MAX_PAYLOAD_SIZE - 1] = WHEEL_BUTTON_REQUEST_READY;
     service->request_kind = WHEEL_SERVICE_REQUEST_BUTTONS;
@@ -469,14 +544,18 @@ static void start_scan(WheelService *service, uint32_t now_ms) {
  * @param[in] now_ms Current monotonic time in milliseconds.
  * @return True when the command-two request entered the serial scheduler; otherwise false.
  */
-static bool start_protocol(WheelService *service, uint32_t now_ms) {
-    if (service->status_memory_startup_pending) {
+static bool start_protocol(WheelService *service, uint32_t now_ms, bool bypass_interval) {
+    if (service->status_memory_startup_pending ||
+        (!bypass_interval && !protocol_transport_due(service, now_ms))) {
         return false;
     }
     service->request_kind = WHEEL_SERVICE_REQUEST_PROTOCOL;
     if (serial_service_start(service->transport, WHEEL_PROTOCOL_TRANSPORT_COMMAND,
                              wheel_protocol_response(&service->protocol),
                              WHEEL_PROTOCOL_PACKET_SIZE, now_ms)) {
+        service->protocol_transport_interval_ms = protocol_transport_interval(service);
+        service->protocol_transport_deadline_ms = now_ms + service->protocol_transport_interval_ms;
+        service->protocol_transport_deadline_active = true;
         return true;
     }
     reset_connection(service);
@@ -517,12 +596,19 @@ void wheel_service_init(WheelService *service, SerialService *transport) {
     service->display_override_output = (WheelDisplayOutput){0};
     wheel_display_overlay_init(&service->display_overlay);
     service->auxiliary_output = (WheelAuxiliaryOutput){0};
+    for (uint16_t index = 0; index < sizeof(service->request); index++) {
+        service->request[index] = 0;
+    }
     service->protocol_deadline_ms = 0;
+    service->protocol_transport_deadline_ms = 0;
+    service->protocol_transport_interval_ms = WHEEL_PROTOCOL_WAITING_INTERVAL_MS;
     service->alternative_shifter_deadline_ms = 0;
     service->scan_phase = 0;
     service->request_kind = WHEEL_SERVICE_REQUEST_NONE;
     service->protocol_deadline_active = false;
+    service->protocol_transport_deadline_active = false;
     service->protocol_exchange_completed = false;
+    service->bridge_recovery_pending = false;
     service->display_override_active = false;
     service->alternative_shifter_enabled = false;
     service->alternative_shifter_debounced = false;
@@ -705,6 +791,41 @@ bool wheel_service_queue_tuning_display_command(WheelService *service, uint8_t c
     }
     wheel_output_reports_queue_display_command(&service->protocol.output_reports, command);
     return true;
+}
+
+enum {
+    WHEEL_SERVICE_CONFIGURATION_AUTOMATIC_SLOT = 0,
+    WHEEL_SERVICE_CONFIGURATION_PROFILE_MODE_SLOT = 1,
+    WHEEL_SERVICE_CONFIGURATION_PROFILE_COMMAND_FIRST = 25,
+};
+
+static uint8_t selected_tuning_configuration_command(TuningEntry entry,
+                                                     const TuningProfileBank *bank,
+                                                     bool profile_mode_enabled) {
+    uint8_t command = (uint8_t)entry;
+    if (entry != TUNING_ENTRY_SETUP) {
+        return command;
+    }
+    if (profile_mode_enabled &&
+        bank->active_slot == WHEEL_SERVICE_CONFIGURATION_PROFILE_MODE_SLOT) {
+        return TUNING_ENTRY_COUNT;
+    }
+    if (bank->active_slot != WHEEL_SERVICE_CONFIGURATION_AUTOMATIC_SLOT) {
+        return (uint8_t)(bank->selected_slot + WHEEL_SERVICE_CONFIGURATION_PROFILE_COMMAND_FIRST);
+    }
+    return command;
+}
+
+bool wheel_service_queue_selected_tuning_configuration(WheelService *service, TuningEntry entry,
+                                                       const TuningProfileBank *bank,
+                                                       bool profile_mode_enabled) {
+    if (service == 0 || bank == 0 || entry >= TUNING_ENTRY_COUNT ||
+        bank->selected_slot >= TUNING_PROFILE_SLOT_COUNT ||
+        bank->active_slot >= TUNING_PROFILE_SLOT_COUNT) {
+        return false;
+    }
+    return wheel_service_queue_tuning_display_command(
+        service, selected_tuning_configuration_command(entry, bank, profile_mode_enabled));
 }
 
 /**
@@ -978,17 +1099,39 @@ void wheel_service_set_vibration_output(WheelService *service, const WheelVibrat
 /**
  * @brief Applies the attached-wheel auxiliary output option.
  *
- * Retains the raw host value and suppresses scan and alternate-packet output only for option one.
+ * Normalizes the host value to Boolean state and suppresses scan and alternate-packet output when
+ * the normalized option is enabled.
  *
  * @param[in,out] service Attached-wheel service to update.
- * @param[in] option Raw attached-wheel auxiliary option.
+ * @param[in] option Attached-wheel auxiliary option; zero enables output and any nonzero value
+ * disables it.
  */
 void wheel_service_set_auxiliary_output_option(WheelService *service, uint8_t option) {
     if (service == NULL) {
         return;
     }
-    service->auxiliary_output.option = option;
-    service->protocol.alternate_output.suppress_auxiliary_display = option == 1;
+    uint8_t normalized = option != 0;
+    service->auxiliary_output.option = normalized;
+    service->protocol.alternate_output.suppress_auxiliary_display = normalized != 0;
+}
+
+/**
+ * @brief Sets exclusive auxiliary output ownership.
+ *
+ * Retains exclusive selection while local tuning owns the attached-wheel presentation and clears
+ * transient auxiliary-band latches whenever ownership ends.
+ *
+ * @param[in,out] service Wheel service receiving the ownership state.
+ * @param[in] enabled True while local tuning owns auxiliary output.
+ */
+void wheel_service_set_auxiliary_exclusive_mode(WheelService *service, bool enabled) {
+    if (service == NULL) {
+        return;
+    }
+    service->auxiliary_output.exclusive_mode = enabled;
+    if (!enabled) {
+        service->auxiliary_output.latched_bands = 0;
+    }
 }
 
 /**
@@ -1028,9 +1171,9 @@ void wheel_service_set_legacy_pedal_status(WheelService *service, uint8_t first,
  *
  * Clears both legacy axes and the shared auxiliary report, then attempts to queue zero-valued
  * compact reports two and one in protocol order; report two remains suppressed while its legacy
- * interface gate is closed. Accepted reports are mirrored to the active adapter transport.
- * Wheels without a tuning display receive a cleared default three-glyph page when no higher-
- * priority display page is active.
+ * interface gate is closed. Accepted reports are mirrored to the active adapter transport. Wheels
+ * without a tuning display receive a cleared default three-glyph page when no higher- priority
+ * display page is active.
  *
  * @param[in,out] service Attached-wheel service and retained protocol outputs.
  */
@@ -1131,7 +1274,7 @@ bool wheel_service_remote_tuning_response_pending(const WheelService *service) {
 /**
  * @brief Applies an auxiliary-output operating-mode command.
  *
- * Opcode 0x06 retains the raw auxiliary option, opcode 0x07 normalizes code mode, and opcode 0x08
+ * Opcode 0x06 normalizes the auxiliary option, opcode 0x07 normalizes code mode, and opcode 0x08
  * updates the shared report from its high-byte and low-byte parameters.
  *
  * @param[in,out] service Attached-wheel service and output state.
@@ -1351,12 +1494,13 @@ static bool third_multi_position_channel_active(const WheelService *service, boo
 /**
  * @brief Builds the current multi-position rotary input.
  *
- * Selects direct protocol positions or adapter selectors, advances the three rotary transition
- * channels, and marks the alternate selector layout used by extended remote-tuning wheels.
+ * Selects direct protocol positions or adapter selectors, advances the three selector transition
+ * channels, advances the fourth direct rotary channel from the packed high nibble, and marks the
+ * alternate selector layout used by extended remote-tuning wheels.
  *
  * @param[in,out] service Attached-wheel service and rotary transition state.
  * @param[in] now_ms Current monotonic time in milliseconds.
- * @param[out] input Three logical rotary channels and selector-layout state.
+ * @param[out] input Three logical selector channels and selector-layout state.
  * @return True when a supported attached-wheel request is available.
  */
 bool wheel_service_multi_position_input(WheelService *service, uint32_t now_ms,
@@ -1390,6 +1534,12 @@ bool wheel_service_multi_position_input(WheelService *service, uint32_t now_ms,
             input->channels[channel].event = wheel_rotary_input_update(
                 &service->rotary_input, channel, input->channels[channel].position, now_ms);
         }
+    }
+    if (!adapter_source) {
+        uint8_t quaternary_position = request[WHEEL_MULTI_POSITION_PACKED_OFFSET] >> 4;
+        (void)wheel_rotary_input_update(&service->rotary_input,
+                                        WHEEL_ROTARY_INPUT_CHANNEL_COUNT - 1, quaternary_position,
+                                        now_ms);
     }
     return true;
 }
@@ -1432,6 +1582,20 @@ void wheel_service_apply_output_report(WheelService *service, const uint8_t *arg
 void wheel_service_queue_report_seventeen(
     WheelService *service, const uint8_t payload[WHEEL_OUTPUT_REPORT_SEVENTEEN_SIZE]) {
     wheel_output_reports_queue_seventeen(&service->protocol.output_reports, payload);
+}
+
+/**
+ * @brief Queues an H-pattern calibration state for the attached wheel.
+ *
+ * Retains the official type-0x16 shifter-state payload in the protocol output scheduler.
+ *
+ * @param[in,out] service Wheel service owning protocol output.
+ * @param[in] state Three-byte shifter-state payload.
+ */
+void wheel_service_queue_shifter_calibration_state(WheelService *service, const uint8_t state[3]) {
+    if (service != NULL) {
+        wheel_output_reports_queue_shifter_state(&service->protocol.output_reports, state);
+    }
 }
 
 /**
@@ -1552,6 +1716,9 @@ void wheel_service_run(WheelService *service, uint32_t now_ms, bool start_allowe
     if (service->transport == 0 || service->transport->status == SERIAL_SERVICE_PENDING) {
         return;
     }
+    if (service->bridge_recovery_pending) {
+        return;
+    }
     if (service->transport->status != SERIAL_SERVICE_IDLE &&
         service->transport->request_type != WHEEL_PROTOCOL_TRANSPORT_COMMAND &&
         service->transport->request_type != WHEEL_BUTTON_COMMAND) {
@@ -1559,25 +1726,38 @@ void wheel_service_run(WheelService *service, uint32_t now_ms, bool start_allowe
     }
     if (service->transport->status == SERIAL_SERVICE_SUCCEEDED) {
         const SerialMessageAssembly *response = serial_service_response(service->transport);
-        if (service->request_kind == WHEEL_SERVICE_REQUEST_PROTOCOL && response != 0 &&
-            response->length == WHEEL_PROTOCOL_PACKET_SIZE) {
-            bool selecting = service->protocol.phase == WHEEL_PROTOCOL_SELECTING;
-            wheel_protocol_accept(&service->protocol, response->data);
-            if (selecting && response->data[0] == WHEEL_PROTOCOL_COMMAND_SELECT_MODE) {
-                uint8_t mode = wheel_service_mode(service);
-                service->status_memory_startup_pending = mode == 0x0au || mode == 0x1cu;
-                service->tuning_menu_override_enabled = false;
-                service->tuning_menu_override_value = false;
-            }
-            service->protocol_exchange_completed = true;
-            if ((response->data[WHEEL_PROTOCOL_FLAGS_OFFSET] & WHEEL_PROTOCOL_REQUEST_READY) != 0 &&
-                protocol_exchange_active(service)) {
-                refresh_protocol_deadline(service, now_ms);
+        if (service->request_kind == WHEEL_SERVICE_REQUEST_PROTOCOL) {
+            if (response == 0 || response->length != WHEEL_PROTOCOL_PACKET_SIZE) {
+                serial_service_release(service->transport);
+                reset_connection(service);
+            } else {
+                bool selecting = service->protocol.phase == WHEEL_PROTOCOL_SELECTING;
+                wheel_protocol_accept(&service->protocol, response->data);
+                service->protocol_transport_interval_ms = protocol_transport_interval(service);
+                if (service->protocol.phase == WHEEL_PROTOCOL_WAITING) {
+                    service->protocol_deadline_active = false;
+                }
+                if (selecting && response->data[0] == WHEEL_PROTOCOL_COMMAND_SELECT_MODE) {
+                    uint8_t mode = wheel_service_mode(service);
+                    service->status_memory_startup_pending = mode == 0x0au || mode == 0x1cu;
+                    service->tuning_menu_override_enabled = false;
+                    service->tuning_menu_override_value = false;
+                }
+                service->protocol_exchange_completed = true;
+                if ((response->data[WHEEL_PROTOCOL_FLAGS_OFFSET] & WHEEL_PROTOCOL_REQUEST_READY) !=
+                        0 &&
+                    protocol_exchange_active(service) &&
+                    !(selecting && service->protocol.phase == WHEEL_PROTOCOL_SELECTING)) {
+                    refresh_protocol_deadline(service, now_ms);
+                }
+                serial_service_release(service->transport);
             }
         } else if (service->request_kind == WHEEL_SERVICE_REQUEST_BUTTONS) {
             apply_scan_response(service, response);
+            serial_service_release(service->transport);
+        } else {
+            serial_service_release(service->transport);
         }
-        serial_service_release(service->transport);
     } else if (service->transport->status == SERIAL_SERVICE_FAILED) {
         serial_service_release(service->transport);
         reset_connection(service);
@@ -1586,6 +1766,13 @@ void wheel_service_run(WheelService *service, uint32_t now_ms, bool start_allowe
     if (service->protocol_deadline_active && protocol_exchange_active(service) &&
         !service->status_memory_startup_pending &&
         platform_time_reached(now_ms, service->protocol_deadline_ms)) {
+        if (service->protocol.phase == WHEEL_PROTOCOL_SELECTING &&
+            service->protocol.selection_recovery_pending) {
+            service->protocol.selection_recovery_pending = false;
+            service->protocol_deadline_active = false;
+            service->bridge_recovery_pending = true;
+            return;
+        }
         reset_connection(service);
     }
     if (!start_allowed) {
@@ -1595,7 +1782,7 @@ void wheel_service_run(WheelService *service, uint32_t now_ms, bool start_allowe
     if (scan_active(service)) {
         start_scan(service, now_ms);
     } else {
-        (void)start_protocol(service, now_ms);
+        (void)start_protocol(service, now_ms, false);
     }
 }
 
@@ -1611,7 +1798,8 @@ void wheel_service_run(WheelService *service, uint32_t now_ms, bool start_allowe
  */
 bool wheel_service_start_protocol_exchange(WheelService *service, uint32_t now_ms) {
     return service != NULL && service->transport != NULL &&
-           service->transport->status == SERIAL_SERVICE_IDLE && start_protocol(service, now_ms);
+           service->transport->status == SERIAL_SERVICE_IDLE &&
+           start_protocol(service, now_ms, true);
 }
 
 /**
@@ -1628,6 +1816,35 @@ bool wheel_service_take_protocol_exchange_completed(WheelService *service) {
     }
     service->protocol_exchange_completed = false;
     return true;
+}
+
+/**
+ * @brief Takes the unknown-selection bridge recovery event.
+ *
+ * Reports and clears the recovery event after the command deadline expires without a recognized
+ * selection command.
+ *
+ * @param[in,out] service Wheel service holding the recovery event.
+ * @return True once for each timed-out unknown selection; otherwise false.
+ */
+bool wheel_service_take_bridge_recovery(WheelService *service) {
+    if (service == NULL || !service->bridge_recovery_pending) {
+        return false;
+    }
+    service->bridge_recovery_pending = false;
+    return true;
+}
+
+/**
+ * @brief Reports whether unknown-selection bridge recovery is pending.
+ *
+ * Checks the one-shot recovery notification without consuming it.
+ *
+ * @param[in] service Wheel service to inspect.
+ * @return True while bridge recovery awaits the runtime owner; otherwise false.
+ */
+bool wheel_service_bridge_recovery_pending(const WheelService *service) {
+    return service != NULL && service->bridge_recovery_pending;
 }
 
 /**
@@ -1709,10 +1926,16 @@ const uint8_t *wheel_service_buttons(const WheelService *service) {
  * @return True when a supported attached-wheel request is available.
  */
 bool wheel_service_input_snapshot(const WheelService *service, WheelInputSnapshot *snapshot) {
-    if (snapshot == 0) {
+    if (service == 0 || snapshot == 0) {
         return false;
     }
     *snapshot = (WheelInputSnapshot){0};
+    if (scan_active(service)) {
+        snapshot->directional_buttons = service->button_banks[0];
+        snapshot->secondary_buttons =
+            (uint16_t)service->button_banks[1] | (uint16_t)service->button_banks[2] << 8;
+        return true;
+    }
     const uint8_t *request = wheel_protocol_request(&service->protocol);
     if (request == 0) {
         return false;
@@ -1725,7 +1948,7 @@ bool wheel_service_input_snapshot(const WheelService *service, WheelInputSnapsho
     snapshot->clutch_paddles[1] = request[WHEEL_INPUT_CLUTCH_OFFSET + 1];
     snapshot->tuning_input = (int8_t)request[WHEEL_INPUT_TUNING_OFFSET];
     snapshot->motion = request[WHEEL_INPUT_TUNING_OFFSET];
-    snapshot->packed_rotary_positions = request[13];
+    snapshot->packed_rotary_positions = request[WHEEL_MULTI_POSITION_PACKED_OFFSET];
     snapshot->auxiliary_report[0] = request[WHEEL_INPUT_AUXILIARY_OFFSET];
     snapshot->auxiliary_report[1] = request[WHEEL_INPUT_AUXILIARY_OFFSET + 1];
     snapshot->auxiliary_report[2] = request[WHEEL_INPUT_AUXILIARY_OFFSET + 2];
@@ -1819,7 +2042,30 @@ uint8_t wheel_service_axis_limit(const WheelService *service) {
  * @return Current secondary button byte, or zero when unavailable.
  */
 uint8_t wheel_service_mode_buttons(const WheelService *service) {
+    if (service == 0) {
+        return 0;
+    }
+    if (scan_active(service)) {
+        return (uint8_t)(expected_scan_response(service) >> 5);
+    }
     return wheel_protocol_mode_buttons(&service->protocol);
+}
+
+/**
+ * @brief Returns one debounced direct-wheel rotary event.
+ *
+ * Reads the latest event without consuming it. The fourth direct channel is updated from the
+ * packed rotary byte's high nibble by wheel_service_multi_position_input().
+ *
+ * @param[in] service Wheel service and rotary state to inspect.
+ * @param[in] channel Zero-based rotary channel index.
+ * @return Current event, or WHEEL_ROTARY_EVENT_NONE for an invalid service or channel.
+ */
+WheelRotaryEvent wheel_service_rotary_event(const WheelService *service, uint8_t channel) {
+    if (service == 0 || channel >= WHEEL_ROTARY_INPUT_CHANNEL_COUNT) {
+        return WHEEL_ROTARY_EVENT_NONE;
+    }
+    return service->rotary_input.channels[channel].event;
 }
 
 /**
@@ -1832,6 +2078,35 @@ uint8_t wheel_service_mode_buttons(const WheelService *service) {
  */
 const uint8_t *wheel_service_clutch_paddles(const WheelService *service) {
     return wheel_protocol_axis_outputs(&service->protocol);
+}
+
+/**
+ * @brief Reports whether native clutch-paddle fields are available.
+ *
+ * Applies the official mode, dual-analog-paddle, and adapter-connected availability gate.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return True when native clutch-paddle values should be copied; otherwise false.
+ */
+bool wheel_service_clutch_paddles_available(const WheelService *service) {
+    if (service == NULL) {
+        return false;
+    }
+
+    switch (service->protocol.mode) {
+    case 0x01:
+    case 0x02:
+    case 0x03:
+    case 0x0a:
+    case 0x13:
+    case 0x14:
+    case 0x16:
+        return true;
+    default:
+        return service->protocol.configured_axis_override_mode ==
+                   WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED ||
+               service->protocol.adapter.connected;
+    }
 }
 
 /**
@@ -1857,6 +2132,23 @@ bool wheel_service_axis_report_enabled(const WheelService *service) {
  */
 const WheelAdapterInput *wheel_service_adapter(const WheelService *service) {
     return &service->protocol.adapter;
+}
+
+/**
+ * @brief Returns the retained protocol callback report identifier.
+ *
+ * Maps the startup-selected adapter endpoint to the report identifier used by the protocol
+ * callback transfer.
+ *
+ * @param[in] service Wheel service containing startup endpoint state.
+ * @return Retained protocol callback report identifier, or zero when unavailable.
+ */
+uint8_t wheel_service_protocol_bridge_report_id(const WheelService *service) {
+    if (service == NULL || service->adapter_commands.endpoint_index > 1) {
+        return 0;
+    }
+    return service->adapter_commands.endpoint_index == 0 ? WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD
+                                                         : WHEEL_PROTOCOL_BRIDGE_REPORT_ID_EXTENDED;
 }
 
 /**
@@ -2060,6 +2352,28 @@ bool wheel_service_calibration_advance_input_active(const WheelService *service)
 }
 
 /**
+ * @brief Reports the protocol-only H-pattern calibration completion input.
+ *
+ * Local shifter modes use button-bank three bit zero and all other modes use button-bank two bit
+ * seven. The adapter-specific advance path is not part of completion semantics.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return True while the protocol completion button is active.
+ */
+bool wheel_service_calibration_completion_input_active(const WheelService *service) {
+    if (service == NULL) {
+        return false;
+    }
+    const uint8_t *buttons = wheel_service_buttons(service);
+    uint8_t mode = service->protocol.mode;
+    if (mode == WHEEL_MODE_REMOTE_TUNING_LEGACY || mode == WHEEL_MODE_LEGACY_ALTERNATE ||
+        mode == WHEEL_MODE_LEGACY_COMPATIBILITY) {
+        return (buttons[2] & 0x01u) != 0;
+    }
+    return (buttons[1] & 0x80u) != 0;
+}
+
+/**
  * @brief Reports whether an attached adapter is connected.
  *
  * Returns the connection state retained from the attached adapter report.
@@ -2167,8 +2481,8 @@ bool wheel_service_input_capability_available(const WheelService *service) {
 /**
  * @brief Reports whether attached-wheel force-output mode selection is complete.
  *
- * Accepts authenticated packet traffic and either command-three scan mode. Connection handshake,
- * mode selection, and unsupported-wheel phases remain interlocked.
+ * Accepts authenticated packet traffic and either command-three scan mode. Connection handshake
+ * and mode selection remain interlocked.
  *
  * @param[in] service Attached-wheel service and protocol phase.
  * @return True when the selected wheel protocol can proceed to force-output confirmation.
@@ -2183,7 +2497,7 @@ bool wheel_service_force_output_ready(const WheelService *service) {
  * @brief Reports whether the selected wheel requires the motor transition interlock.
  *
  * Raises the interlock throughout discovery, synchronization, acknowledgement, and mode selection,
- * for an unsupported identifier, or after an invalid active command.
+ * or after an invalid active command.
  *
  * @param[in] service Attached-wheel service and protocol phase.
  * @return True while negotiation, rejection, or an invalid command requires the interlock.

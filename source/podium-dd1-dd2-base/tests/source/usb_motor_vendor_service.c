@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "motor/command_channel_mailbox.h"
 #include "motor/command_packet.h"
 #include "usb/feature_upload_acknowledgement.h"
 #include "usb/motor_vendor_service.h"
@@ -70,7 +71,7 @@ static void test_bridges_compact_command_and_response(void) {
     assert(fixture.usb_packet[2] == 0x2a && fixture.usb_packet[6] == 0x30);
     assert(fixture.usb_packet[7] == 12 && fixture.usb_packet[11] == 12);
     assert(result.motor_packet == fixture.motor_transmit && result.motor_packet_length == 9);
-    assert(fixture.motor_transmit[0] == 3);
+    assert(fixture.motor_transmit[0] == 7);
     assert(memcmp(fixture.motor_transmit + 4, request + 5, 3) == 0);
     assert(motor_command_packet_checksum_valid(fixture.motor_transmit, result.motor_packet_length));
     motor_command_channel_mark_written(&fixture.channel, result.motor_packet);
@@ -225,6 +226,117 @@ static void test_applies_mailbox_restart_and_release(void) {
     assert(!command_transport_is_owner(&fixture.transport, MOTOR_COMMAND_MAILBOX_OWNER));
 }
 
+static void test_retries_after_lower_layer_write_refusal(void) {
+    Fixture fixture;
+    fixture_init(&fixture);
+    uint8_t request[USB_FEATURE_UPLOAD_PACKET_SIZE] = {6, 0x30, 0x2a, 12, 0, 0xc1, 0x12, 0x34};
+
+    UsbMotorVendorServiceResult result = usb_motor_vendor_service_accept_usb_mailbox(
+        &fixture.service, &fixture.exchange, &fixture.transport, request, sizeof(request),
+        fixture.usb_packet);
+    assert((result.actions & USB_MOTOR_VENDOR_ACTION_WRITE_MOTOR) != 0);
+    (void)usb_motor_vendor_service_run_mailbox(&fixture.service, &fixture.exchange,
+                                               &fixture.transport);
+    static const uint8_t idle_control[MOTOR_COMMAND_MAILBOX_CONTROL_SIZE] = {0};
+    complete_mailbox_read(&fixture, idle_control, sizeof(idle_control));
+    (void)usb_motor_vendor_service_run_mailbox(&fixture.service, &fixture.exchange,
+                                               &fixture.transport);
+    assert(fixture.exchange.phase == MOTOR_COMMAND_MAILBOX_EXCHANGE_PAYLOAD_WRITE_WAIT);
+    assert(command_transport_request_sent(&fixture.transport));
+    static const uint8_t rejected[] = {0};
+    command_transport_receive(&fixture.transport, rejected, sizeof(rejected));
+    result = usb_motor_vendor_service_run_mailbox(&fixture.service, &fixture.exchange,
+                                                  &fixture.transport);
+    assert(result.mailbox_event == MOTOR_COMMAND_MAILBOX_EXCHANGE_TRANSFER_FAILED);
+    assert(fixture.channel.command_pending);
+    assert(!fixture.channel.command_sent);
+    assert(fixture.exchange.write_packet == fixture.channel.buffers.transmit);
+}
+
+static void test_requests_retry_after_lower_layer_read_refusal(void) {
+    Fixture fixture;
+    fixture_init(&fixture);
+    static const uint8_t control[] = {MOTOR_COMMAND_MAILBOX_CONTROL_PAYLOAD_AVAILABLE, 0, 0, 3};
+    static const uint8_t outgoing[] = {0xc1, 0x12};
+
+    command_transport_claim(&fixture.transport, MOTOR_COMMAND_MAILBOX_OWNER);
+    assert(motor_command_channel_queue_payload(&fixture.channel, outgoing, sizeof(outgoing)));
+    (void)usb_motor_vendor_service_run_mailbox(&fixture.service, &fixture.exchange,
+                                               &fixture.transport);
+    complete_mailbox_read(&fixture, control, sizeof(control));
+    (void)usb_motor_vendor_service_run_mailbox(&fixture.service, &fixture.exchange,
+                                               &fixture.transport);
+    assert(fixture.exchange.phase == MOTOR_COMMAND_MAILBOX_EXCHANGE_PAYLOAD_READ_WAIT);
+    assert(command_transport_request_sent(&fixture.transport));
+    static const uint8_t rejected[] = {0};
+    command_transport_receive(&fixture.transport, rejected, sizeof(rejected));
+    UsbMotorVendorServiceResult result = usb_motor_vendor_service_run_mailbox(
+        &fixture.service, &fixture.exchange, &fixture.transport);
+    assert(result.mailbox_event == MOTOR_COMMAND_MAILBOX_EXCHANGE_TRANSFER_FAILED);
+    assert(result.actions & USB_MOTOR_VENDOR_ACTION_WRITE_MOTOR);
+    assert(fixture.exchange.write_packet == fixture.channel.control_packet);
+    assert(fixture.channel.control_packet[0] == 0xa0);
+}
+
+static void test_recovers_after_ten_control_sentinels(void) {
+    Fixture fixture;
+    fixture_init(&fixture);
+    static const uint8_t sentinel[MOTOR_COMMAND_MAILBOX_CONTROL_SIZE] = {0, 0xff, 0xff, 0xff};
+    UsbMotorVendorServiceResult result = {0};
+
+    command_transport_claim(&fixture.transport, MOTOR_COMMAND_MAILBOX_OWNER);
+    for (uint8_t count = 0; count < 10; count++) {
+        result = usb_motor_vendor_service_run_mailbox(&fixture.service, &fixture.exchange,
+                                                      &fixture.transport);
+        assert(result.mailbox_event == MOTOR_COMMAND_MAILBOX_EXCHANGE_NONE);
+        complete_mailbox_read(&fixture, sentinel, sizeof(sentinel));
+        result = usb_motor_vendor_service_run_mailbox(&fixture.service, &fixture.exchange,
+                                                      &fixture.transport);
+        if (count < 9) {
+            assert(result.mailbox_event == MOTOR_COMMAND_MAILBOX_EXCHANGE_NONE);
+            assert(fixture.exchange.control_retry_count == count + 1);
+        }
+    }
+    assert(result.mailbox_event == MOTOR_COMMAND_MAILBOX_EXCHANGE_RECOVERED);
+    assert(fixture.exchange.phase == MOTOR_COMMAND_MAILBOX_EXCHANGE_CONTROL_QUEUE);
+    assert(!fixture.channel.command_pending);
+    assert(!command_transport_is_owner(&fixture.transport, MOTOR_COMMAND_MAILBOX_OWNER));
+}
+
+static void test_scheduler_requeues_and_then_recovers_live_command(void) {
+    Fixture fixture;
+    fixture_init(&fixture);
+    static const uint8_t payload[] = {0xc1, 0x12};
+
+    command_transport_claim(&fixture.transport, MOTOR_COMMAND_MAILBOX_OWNER);
+    assert(motor_command_channel_queue_payload(&fixture.channel, payload, sizeof(payload)));
+    motor_command_channel_mark_written(&fixture.channel, fixture.motor_transmit);
+    fixture.channel.scheduler.timeout_ticks = 0;
+    MotorCommandChannelMailboxEvent event =
+        motor_command_channel_mailbox_run(&fixture.channel, &fixture.exchange, &fixture.transport);
+    assert(event.mailbox_event == MOTOR_COMMAND_MAILBOX_EXCHANGE_NONE);
+    assert(fixture.channel.command_pending);
+    assert(!fixture.channel.command_sent);
+    assert(fixture.exchange.write_packet == fixture.channel.buffers.transmit);
+
+    fixture.channel.command_sent = true;
+    fixture.channel.scheduler.timeout_ticks = 0;
+    fixture.channel.scheduler.retry_count = 2;
+    fixture.exchange.phase = MOTOR_COMMAND_MAILBOX_EXCHANGE_CONTROL_QUEUE;
+    fixture.exchange.write_packet = 0;
+    fixture.transport.phase = COMMAND_TRANSPORT_IDLE;
+    event =
+        motor_command_channel_mailbox_run(&fixture.channel, &fixture.exchange, &fixture.transport);
+    assert(event.mailbox_event == MOTOR_COMMAND_MAILBOX_EXCHANGE_NONE);
+    assert(fixture.channel.command_pending);
+    assert(!fixture.channel.command_sent);
+    assert(fixture.channel.pending_payload_length == 1);
+    assert(fixture.channel.buffers.pending_payload[0] == 0xfe);
+    assert(fixture.channel.buffers.transmit[4] == 0xfe);
+    assert(!fixture.channel.reset_pending);
+    assert(fixture.exchange.write_packet == fixture.channel.buffers.transmit);
+}
+
 static void test_motor_channel_rejects_invalid_storage_and_requests(void) {
     Fixture fixture;
     fixture_init(&fixture);
@@ -270,6 +382,7 @@ static void test_motor_channel_rejects_invalid_storage_and_requests(void) {
     assert(!motor_command_channel_queue_sequence_reset(&fixture.channel));
     fixture.channel.buffers.transmit_capacity = sizeof(fixture.motor_transmit);
     assert(motor_command_channel_queue_sequence_reset(&fixture.channel));
+    motor_command_channel_mark_written(&fixture.channel, fixture.channel.buffers.transmit);
     assert(!motor_command_channel_queue_information_request(&fixture.channel, 2));
     assert(!motor_command_channel_queue_information_request(&fixture.channel, 5));
     assert(motor_command_channel_queue_information_request(&fixture.channel, 3));
@@ -285,6 +398,10 @@ int main(void) {
     test_maps_restart_release_and_retry();
     test_runs_usb_channel_through_mailbox();
     test_applies_mailbox_restart_and_release();
+    test_retries_after_lower_layer_write_refusal();
+    test_requests_retry_after_lower_layer_read_refusal();
+    test_recovers_after_ten_control_sentinels();
+    test_scheduler_requeues_and_then_recovers_live_command();
     test_motor_channel_rejects_invalid_storage_and_requests();
     return 0;
 }

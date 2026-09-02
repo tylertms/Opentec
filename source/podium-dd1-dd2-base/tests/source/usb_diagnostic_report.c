@@ -18,7 +18,7 @@ static UsbVendorCommand command(uint8_t action, uint8_t value, uint8_t arguments
 static UsbDiagnosticSnapshot populated_snapshot(void) {
     return (UsbDiagnosticSnapshot){
         .base_mode = 0x12,
-        .base_temperatures_c = {0x2313, 0x4524},
+        .resistance_values = {0x2313, 0x4524},
         .system_seconds = UINT32_C(0x56453423),
         .transport_error_count = UINT32_C(0x78675645),
         .motor =

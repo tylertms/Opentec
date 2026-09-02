@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "display/bitmap.h"
 #include "display/framebuffer.h"
 #include "display/high_torque_icon.h"
 #include "display/text.h"
@@ -18,8 +19,13 @@ enum {
     NOTICE_COLOR = 15,          /**< Foreground grayscale value for notice content. */
     WARNING_ICON_X = 123,       /**< Warning-icon left coordinate. */
     WARNING_ICON_Y = 17,        /**< Warning-icon top coordinate. */
+    HIGH_TORQUE_ICON_Y = 16,    /**< High-torque icon top coordinate. */
     WARNING_ICON_WIDTH = 11,    /**< Warning-icon width in pixels. */
     WARNING_ICON_HEIGHT = 10,   /**< Warning-icon height in pixels. */
+    OVERLAY_LEFT = 2,           /**< Filled overlay left coordinate. */
+    OVERLAY_TOP = 16,           /**< Filled overlay top coordinate. */
+    OVERLAY_RIGHT = 253,        /**< Exclusive filled-overlay right endpoint. */
+    OVERLAY_BOTTOM = 63,        /**< Exclusive filled-overlay bottom endpoint. */
     NOTICE_TEXT_Y = 37,         /**< Vertical coordinate for one-line notice text. */
     NOTICE_PRIMARY_TEXT_Y = 30, /**< Vertical coordinate for the first line of a two-line notice. */
     NOTICE_SECONDARY_TEXT_Y =
@@ -78,74 +84,76 @@ static const char alternative_shifter_enabled_text[] = "Alternative Shifter Mode
 /** @brief Text displayed when alternative shifter mode is disabled. */
 static const char alternative_shifter_disabled_text[] = "Alternative Shifter Mode Disabled";
 
+/** @brief Official warning bitmap at binary address 0xa9a8. */
+static const uint8_t warning_icon[] = {
+    0x00, 0x04, 0xbf, 0xb4, 0x00, 0x00, 0x00, 0x8f, 0x00, 0x0f, 0x80, 0x00, 0x04, 0xf0, 0x0f,
+    0x00, 0xf4, 0x00, 0x0b, 0x00, 0x00, 0x00, 0x0b, 0x00, 0x0f, 0x00, 0x0f, 0x00, 0x0f, 0x00,
+    0x0b, 0x00, 0x0f, 0x00, 0x0b, 0x00, 0x04, 0xf0, 0x0f, 0x00, 0xf4, 0x00, 0x00, 0x8f, 0x00,
+    0x0f, 0x80, 0x00, 0x00, 0x04, 0xbf, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
+/** @brief Official error bitmap at binary address 0xa96c. */
+static const uint8_t error_icon[] = {
+    0x00, 0x04, 0xbf, 0xb4, 0x00, 0x00, 0x00, 0x8f, 0xff, 0xff, 0x80, 0x00, 0x04, 0xf0, 0xff,
+    0xf0, 0xf4, 0x00, 0x0b, 0xff, 0x0f, 0x0f, 0xfb, 0x00, 0x0f, 0xff, 0xf0, 0xff, 0xff, 0x00,
+    0x0b, 0xff, 0x0f, 0x0f, 0xfb, 0x00, 0x04, 0xf0, 0xff, 0xf0, 0xf4, 0x00, 0x00, 0x8f, 0xff,
+    0xff, 0x80, 0x00, 0x00, 0x04, 0xbf, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
+static void draw_filled_overlay(DisplayFramebuffer framebuffer) {
+    for (uint16_t row = OVERLAY_TOP; row < OVERLAY_BOTTOM; row++) {
+        for (uint16_t column = OVERLAY_LEFT; column < OVERLAY_RIGHT; column++) {
+            display_framebuffer_set_pixel(framebuffer, column, row, NOTICE_COLOR);
+        }
+    }
+}
+
+static void draw_notice_text(DisplayFramebuffer framebuffer, const char *text, uint16_t y,
+                             bool primary, bool inverted) {
+    const DisplayFont *font = &display_font_10_00c988;
+    uint16_t width = display_text_width_for_font(font, text);
+    if (width > DISPLAY_FRAMEBUFFER_WIDTH - 2u) {
+        return;
+    }
+    uint16_t x = primary ? DISPLAY_FRAMEBUFFER_WIDTH / 2u - width / 2u
+                         : (DISPLAY_FRAMEBUFFER_WIDTH - width) / 2u;
+    display_text_draw_with_font(framebuffer, font, text, x, y, inverted);
+}
+
+static bool notice_is_outlined(SystemNoticeKind kind) {
+    return kind == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED;
+}
+
 /**
  * @brief Draws the warning icon used by operator notices.
  *
- * Renders an eleven-by-ten triangular warning mark at the notice icon position.
+ * Renders the official eleven-by-ten warning bitmap at the notice icon position.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
  * @param[in] inverted True to draw a light field with a dark warning mark.
  */
 static void draw_warning_icon(DisplayFramebuffer framebuffer, bool inverted) {
-    uint16_t center = WARNING_ICON_X + WARNING_ICON_WIDTH / 2;
-    uint8_t color = inverted ? 0 : NOTICE_COLOR;
-    if (inverted) {
-        for (uint16_t row = 0; row < WARNING_ICON_HEIGHT; row++) {
-            for (uint16_t column = 0; column < WARNING_ICON_WIDTH; column++) {
-                display_framebuffer_set_pixel(framebuffer, (uint16_t)(WARNING_ICON_X + column),
-                                              (uint16_t)(WARNING_ICON_Y + row), NOTICE_COLOR);
-            }
-        }
-    }
-    for (uint16_t row = 0; row < WARNING_ICON_HEIGHT - 1; row++) {
-        uint16_t half_width = (row + 1) / 2;
-        display_framebuffer_set_pixel(framebuffer, (uint16_t)(center - half_width),
-                                      (uint16_t)(WARNING_ICON_Y + row), color);
-        display_framebuffer_set_pixel(framebuffer, (uint16_t)(center + half_width),
-                                      (uint16_t)(WARNING_ICON_Y + row), color);
-    }
-    for (uint16_t column = 0; column < WARNING_ICON_WIDTH; column++) {
-        display_framebuffer_set_pixel(framebuffer, (uint16_t)(WARNING_ICON_X + column),
-                                      WARNING_ICON_Y + WARNING_ICON_HEIGHT - 1, color);
-    }
-    for (uint16_t row = 3; row < 7; row++) {
-        display_framebuffer_set_pixel(framebuffer, center, (uint16_t)(WARNING_ICON_Y + row), color);
-    }
-    display_framebuffer_set_pixel(framebuffer, center, WARNING_ICON_Y + 8, color);
+    display_bitmap_draw(framebuffer, warning_icon, WARNING_ICON_X, WARNING_ICON_Y,
+                        WARNING_ICON_WIDTH, WARNING_ICON_HEIGHT, inverted, NOTICE_COLOR);
 }
 
 /**
  * @brief Draws the error icon used by rejection and failure notices.
  *
- * Renders an eleven-by-ten outlined mark with crossing diagonals at the shared notice position.
+ * Renders the official eleven-by-ten error bitmap at the shared notice position.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
  */
 static void draw_error_icon(DisplayFramebuffer framebuffer) {
-    for (uint16_t column = 0; column < WARNING_ICON_WIDTH; column++) {
-        display_framebuffer_set_pixel(framebuffer, (uint16_t)(WARNING_ICON_X + column),
-                                      WARNING_ICON_Y, NOTICE_COLOR);
-        display_framebuffer_set_pixel(framebuffer, (uint16_t)(WARNING_ICON_X + column),
-                                      WARNING_ICON_Y + WARNING_ICON_HEIGHT - 1, NOTICE_COLOR);
-    }
-    for (uint16_t row = 0; row < WARNING_ICON_HEIGHT; row++) {
-        display_framebuffer_set_pixel(framebuffer, WARNING_ICON_X, (uint16_t)(WARNING_ICON_Y + row),
-                                      NOTICE_COLOR);
-        display_framebuffer_set_pixel(framebuffer, WARNING_ICON_X + WARNING_ICON_WIDTH - 1,
-                                      (uint16_t)(WARNING_ICON_Y + row), NOTICE_COLOR);
-        display_framebuffer_set_pixel(framebuffer, (uint16_t)(WARNING_ICON_X + row + 1),
-                                      (uint16_t)(WARNING_ICON_Y + row), NOTICE_COLOR);
-        display_framebuffer_set_pixel(framebuffer,
-                                      (uint16_t)(WARNING_ICON_X + WARNING_ICON_WIDTH - row - 2),
-                                      (uint16_t)(WARNING_ICON_Y + row), NOTICE_COLOR);
-    }
+    display_bitmap_draw(framebuffer, error_icon, WARNING_ICON_X, WARNING_ICON_Y, WARNING_ICON_WIDTH,
+                        WARNING_ICON_HEIGHT, true, NOTICE_COLOR);
 }
 
 /**
  * @brief Renders the persistent power-button torque-disabled notice.
  *
- * Clears the display, then shows the centered warning icon and exact torque-disabled message while
- * the notice is visible.
+ * Clears the display, then shows the official filled white panel, inverted warning bitmap, and
+ * centered Font10 torque-disabled message while the notice is visible.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
  * @param[in] visible True while the torque-disabled notice owns the display.
@@ -155,15 +163,16 @@ void display_notice_render_torque_disabled(DisplayFramebuffer framebuffer, bool 
     if (!visible) {
         return;
     }
-    draw_warning_icon(framebuffer, false);
-    display_text_draw_centered(framebuffer, torque_disabled_text, NOTICE_TEXT_Y, 1, NOTICE_COLOR);
+    draw_filled_overlay(framebuffer);
+    draw_warning_icon(framebuffer, true);
+    draw_notice_text(framebuffer, torque_disabled_text, NOTICE_TEXT_Y, true, true);
 }
 
 /**
  * @brief Renders a tuning, wheel-position, or motor-originated system notice.
  *
- * Clears the display, selects the warning or error icon, and lays out the exact one-line or
- * two-line operator message associated with the notice.
+ * Clears the display, selects the official filled or outlined overlay and icon, and lays out the
+ * exact inverted or normal Font10 one-line or two-line operator message associated with the notice.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
  * @param[in] kind Active system notice kind.
@@ -174,81 +183,81 @@ void display_notice_render_system(DisplayFramebuffer framebuffer, SystemNoticeKi
         return;
     }
 
+    bool outlined = notice_is_outlined(kind);
+    bool inverted = !outlined;
+    if (inverted) {
+        draw_filled_overlay(framebuffer);
+    }
+
     if (kind == SYSTEM_NOTICE_POSITION_SENSOR_TEST_FAILED ||
         kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_DISCONNECT_WHEEL ||
         kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_UNSUPPORTED) {
         draw_error_icon(framebuffer);
     } else if (kind == SYSTEM_NOTICE_MAXIMUM_ROTATIONS_EXCEEDED) {
-        display_high_torque_icon_draw(framebuffer, WARNING_ICON_X, WARNING_ICON_Y);
+        display_high_torque_icon_draw(framebuffer, WARNING_ICON_X, HIGH_TORQUE_ICON_Y, true);
     } else {
-        draw_warning_icon(framebuffer, kind == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED);
+        draw_warning_icon(framebuffer, inverted);
     }
 
     if (kind == SYSTEM_NOTICE_TUNING_MENU_RESET) {
-        display_text_draw_centered(framebuffer, tuning_menu_reset_text, NOTICE_TEXT_Y, 1,
-                                   NOTICE_COLOR);
+        draw_notice_text(framebuffer, tuning_menu_reset_text, NOTICE_TEXT_Y, true, inverted);
     } else if (kind == SYSTEM_NOTICE_WHEEL_CENTER_CALIBRATED) {
-        display_text_draw_centered(framebuffer, wheel_center_calibrated_text, NOTICE_TEXT_Y, 1,
-                                   NOTICE_COLOR);
+        draw_notice_text(framebuffer, wheel_center_calibrated_text, NOTICE_TEXT_Y, true, inverted);
     } else if (kind == SYSTEM_NOTICE_POSITION_SENSOR_TEST_SUCCEEDED) {
-        display_text_draw_centered(framebuffer, position_sensor_succeeded_text, NOTICE_TEXT_Y, 1,
-                                   NOTICE_COLOR);
+        draw_notice_text(framebuffer, position_sensor_succeeded_text, NOTICE_TEXT_Y, true,
+                         inverted);
     } else if (kind == SYSTEM_NOTICE_POSITION_SENSOR_TEST_STARTED) {
-        display_text_draw_centered(framebuffer, position_sensor_started_text, NOTICE_TEXT_Y, 1,
-                                   NOTICE_COLOR);
+        draw_notice_text(framebuffer, position_sensor_started_text, NOTICE_TEXT_Y, true, inverted);
     } else if (kind == SYSTEM_NOTICE_POSITION_SENSOR_TEST_FAILED) {
-        display_text_draw_centered(framebuffer, position_sensor_failed_text, NOTICE_TEXT_Y, 1,
-                                   NOTICE_COLOR);
+        draw_notice_text(framebuffer, position_sensor_failed_text, NOTICE_TEXT_Y, true, inverted);
     } else if (kind == SYSTEM_NOTICE_TORQUE_REDUCED ||
                kind == SYSTEM_NOTICE_TORQUE_REDUCED_STEERING_WHEEL) {
-        display_text_draw_centered(framebuffer, torque_reduced_primary_text, NOTICE_PRIMARY_TEXT_Y,
-                                   1, NOTICE_COLOR);
-        display_text_draw_centered(framebuffer,
-                                   kind == SYSTEM_NOTICE_TORQUE_REDUCED
-                                       ? torque_reduced_secondary_text
-                                       : torque_reduced_steering_wheel_text,
-                                   NOTICE_SECONDARY_TEXT_Y, 1, NOTICE_COLOR);
+        draw_notice_text(framebuffer, torque_reduced_primary_text, NOTICE_PRIMARY_TEXT_Y, true,
+                         inverted);
+        draw_notice_text(framebuffer,
+                         kind == SYSTEM_NOTICE_TORQUE_REDUCED ? torque_reduced_secondary_text
+                                                              : torque_reduced_steering_wheel_text,
+                         NOTICE_SECONDARY_TEXT_Y, false, inverted);
     } else if (kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_DISCONNECT_WHEEL) {
-        display_text_draw_centered(framebuffer, motor_calibration_disconnect_text, NOTICE_TEXT_Y, 1,
-                                   NOTICE_COLOR);
+        draw_notice_text(framebuffer, motor_calibration_disconnect_text, NOTICE_TEXT_Y, true,
+                         inverted);
     } else if (kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_UNSUPPORTED) {
-        display_text_draw_centered(framebuffer, motor_calibration_unsupported_text, NOTICE_TEXT_Y,
-                                   1, NOTICE_COLOR);
+        draw_notice_text(framebuffer, motor_calibration_unsupported_text, NOTICE_TEXT_Y, true,
+                         inverted);
     } else if (kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_ONGOING) {
-        display_text_draw_centered(framebuffer, motor_calibration_ongoing_text, NOTICE_TEXT_Y, 1,
-                                   NOTICE_COLOR);
+        draw_notice_text(framebuffer, motor_calibration_ongoing_text, NOTICE_TEXT_Y, true,
+                         inverted);
     } else if (kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_COMPLETED) {
-        display_text_draw_centered(framebuffer, motor_calibration_completed_text, NOTICE_TEXT_Y, 1,
-                                   NOTICE_COLOR);
+        draw_notice_text(framebuffer, motor_calibration_completed_text, NOTICE_TEXT_Y, true,
+                         inverted);
     } else if (kind == SYSTEM_NOTICE_MOTOR_CALIBRATION_ERASED) {
-        display_text_draw_centered(framebuffer, motor_calibration_erased_text, NOTICE_TEXT_Y, 1,
-                                   NOTICE_COLOR);
+        draw_notice_text(framebuffer, motor_calibration_erased_text, NOTICE_TEXT_Y, true, inverted);
     } else if (kind == SYSTEM_NOTICE_MAXIMUM_ROTATIONS_EXCEEDED) {
-        display_text_draw_centered(framebuffer, maximum_rotations_exceeded_text,
-                                   NOTICE_PRIMARY_TEXT_Y, 1, NOTICE_COLOR);
-        display_text_draw_centered(framebuffer, restart_wheel_base_text, NOTICE_SECONDARY_TEXT_Y, 1,
-                                   NOTICE_COLOR);
+        draw_notice_text(framebuffer, maximum_rotations_exceeded_text, NOTICE_PRIMARY_TEXT_Y, true,
+                         inverted);
+        draw_notice_text(framebuffer, restart_wheel_base_text, NOTICE_SECONDARY_TEXT_Y, false,
+                         inverted);
     } else if (kind == SYSTEM_NOTICE_STANDARD_TUNING_MODE ||
                kind == SYSTEM_NOTICE_ADVANCED_TUNING_MODE) {
         const char *mode_text = kind == SYSTEM_NOTICE_STANDARD_TUNING_MODE
                                     ? standard_tuning_mode_text
                                     : advanced_tuning_mode_text;
-        display_text_draw_centered(framebuffer, mode_text, NOTICE_PRIMARY_TEXT_Y, 1, NOTICE_COLOR);
-        display_text_draw_centered(framebuffer, tuning_mode_activated_text, NOTICE_SECONDARY_TEXT_Y,
-                                   1, NOTICE_COLOR);
+        draw_notice_text(framebuffer, mode_text, NOTICE_PRIMARY_TEXT_Y, true, inverted);
+        draw_notice_text(framebuffer, tuning_mode_activated_text, NOTICE_SECONDARY_TEXT_Y, false,
+                         inverted);
     } else if (kind == SYSTEM_NOTICE_SHUTDOWN) {
-        display_text_draw_centered(framebuffer, shutdown_text, NOTICE_TEXT_Y, 1, NOTICE_COLOR);
+        draw_notice_text(framebuffer, shutdown_text, NOTICE_TEXT_Y, true, inverted);
     } else if (kind == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED ||
                kind == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED) {
-        display_text_draw_centered(framebuffer, unsupported_wheel_primary_text,
-                                   NOTICE_PRIMARY_TEXT_Y, 1, NOTICE_COLOR);
-        display_text_draw_centered(framebuffer, unsupported_wheel_secondary_text,
-                                   NOTICE_SECONDARY_TEXT_Y, 1, NOTICE_COLOR);
+        draw_notice_text(framebuffer, unsupported_wheel_primary_text, NOTICE_PRIMARY_TEXT_Y, true,
+                         inverted);
+        draw_notice_text(framebuffer, unsupported_wheel_secondary_text, NOTICE_SECONDARY_TEXT_Y,
+                         false, inverted);
     } else if (kind == SYSTEM_NOTICE_ALTERNATIVE_SHIFTER_ENABLED ||
                kind == SYSTEM_NOTICE_ALTERNATIVE_SHIFTER_DISABLED) {
         const char *text = kind == SYSTEM_NOTICE_ALTERNATIVE_SHIFTER_ENABLED
                                ? alternative_shifter_enabled_text
                                : alternative_shifter_disabled_text;
-        display_text_draw_centered(framebuffer, text, NOTICE_TEXT_Y, 1, NOTICE_COLOR);
+        draw_notice_text(framebuffer, text, NOTICE_TEXT_Y, true, inverted);
     }
 }

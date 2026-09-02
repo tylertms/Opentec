@@ -113,7 +113,8 @@ static void test_rejects_invalid_requests_and_responses(void) {
     assert(command_transport_request_sent(&transport));
     const uint8_t malformed[] = {1, 0};
     command_transport_receive(&transport, malformed, sizeof(malformed));
-    assert(command_transport_poll(&transport, 1) == COMMAND_TRANSPORT_READ_REJECTED);
+    assert(command_transport_poll(&transport, 1) == COMMAND_TRANSPORT_BUSY);
+    command_transport_release(&transport, 1);
 
     command_transport_init(&transport);
     command_transport_receive(&transport, malformed, sizeof(malformed));

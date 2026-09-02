@@ -13,17 +13,42 @@
  * The constants position prompt content in the local display framebuffer.
  */
 enum {
-    GLYPH_HEIGHT = 7,        /**< Built-in glyph height in pixels. */
-    GLYPH_SCALE = 2,         /**< Scale used by the large force-output prompt text. */
-    PROMPT_COLOR = 15,       /**< Foreground grayscale value for prompt content. */
+    BITE_POINT_FONT_HEIGHT = 21,                     /**< Font21 glyph height in pixels. */
+    BITE_POINT_FONT_SELECTOR = DISPLAY_TEXT_FONT_21, /**< Compatibility selector for Font21. */
+    PROMPT_COLOR = 15,                               /**< Foreground grayscale value. */
+    OVERLAY_LEFT = 2,                                /**< Filled overlay left coordinate. */
+    OVERLAY_TOP = 16,                                /**< Filled overlay top coordinate. */
+    OVERLAY_RIGHT = 253,     /**< Exclusive filled-overlay right endpoint. */
+    OVERLAY_BOTTOM = 63,     /**< Exclusive filled-overlay bottom endpoint. */
     TORQUE_KEY_ICON_X = 123, /**< Torque Key icon left coordinate. */
     TORQUE_KEY_ICON_Y = 16,  /**< Torque Key icon top coordinate. */
 };
 
+static void draw_filled_overlay(DisplayFramebuffer framebuffer) {
+    for (uint16_t row = OVERLAY_TOP; row < OVERLAY_BOTTOM; row++) {
+        for (uint16_t column = OVERLAY_LEFT; column < OVERLAY_RIGHT; column++) {
+            display_framebuffer_set_pixel(framebuffer, column, row, 0x0f);
+        }
+    }
+}
+
+static void draw_overlay_text(DisplayFramebuffer framebuffer, const char *text, uint16_t y,
+                              bool primary) {
+    const DisplayFont *font = &display_font_10_00c988;
+    uint16_t width = display_text_width_for_font(font, text);
+    if (width > DISPLAY_FRAMEBUFFER_WIDTH - 2u) {
+        return;
+    }
+    uint16_t x = primary ? DISPLAY_FRAMEBUFFER_WIDTH / 2u - width / 2u
+                         : (DISPLAY_FRAMEBUFFER_WIDTH - width) / 2u;
+    display_text_draw_with_font(framebuffer, font, text, x, y, true);
+}
+
 /**
  * @brief Renders the force-output acknowledgement prompt.
  *
- * Clears the display and, while visible, draws both centered prompt lines at their selected rows.
+ * Clears the display and, while visible, draws the official white panel, high-torque icon, and
+ * single-line Font10 acknowledgement text.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
  * @param[in] visible True while the acknowledgement prompt owns the display.
@@ -33,15 +58,16 @@ void display_prompt_render(DisplayFramebuffer framebuffer, bool visible) {
     if (!visible) {
         return;
     }
-    display_text_draw_centered(framebuffer, "ATTENTION", 10, GLYPH_SCALE, PROMPT_COLOR);
-    display_text_draw_centered(framebuffer, "ENABLE TORQUE?", 38, GLYPH_SCALE, PROMPT_COLOR);
+    draw_filled_overlay(framebuffer);
+    display_high_torque_icon_draw(framebuffer, TORQUE_KEY_ICON_X, TORQUE_KEY_ICON_Y, true);
+    draw_overlay_text(framebuffer, "ATTENTION Enable torque?", 37, true);
 }
 
 /**
  * @brief Renders the Torque Key safety acknowledgement prompt.
  *
- * Clears the display and, while visible, draws the 11-by-10 high-torque icon, both 41-character
- * safety lines, and the acknowledgement label at their selected rows.
+ * Clears the display and, while visible, draws the official white panel, inverted high-torque icon,
+ * two inverted Font10 safety lines, and the non-inverted acknowledgement label.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
  * @param[in] visible True while the Torque Key acknowledgement prompt owns the display.
@@ -52,12 +78,11 @@ void display_prompt_render_torque_key(DisplayFramebuffer framebuffer, bool visib
         return;
     }
 
-    display_high_torque_icon_draw(framebuffer, TORQUE_KEY_ICON_X, TORQUE_KEY_ICON_Y);
-    display_text_draw_centered(framebuffer, "CAUTION! Torque Key Inserted! Please read", 30, 1,
-                               PROMPT_COLOR);
-    display_text_draw_centered(framebuffer, "the manuals safety guidelines before use.", 40, 1,
-                               PROMPT_COLOR);
-    display_text_draw(framebuffer, "OK", 120, 52, 1, PROMPT_COLOR);
+    draw_filled_overlay(framebuffer);
+    display_high_torque_icon_draw(framebuffer, TORQUE_KEY_ICON_X, TORQUE_KEY_ICON_Y, true);
+    draw_overlay_text(framebuffer, "CAUTION! Torque Key Inserted! Please read", 30, true);
+    draw_overlay_text(framebuffer, "the manuals safety guidelines before use.", 40, false);
+    display_text_draw_with_font(framebuffer, &display_font_10_00c988, "OK", 120, 52, false);
 }
 
 /**
@@ -89,8 +114,8 @@ void display_prompt_render_bite_point(DisplayFramebuffer framebuffer, bool visib
         text[2] = (char)('0' + percent);
     }
     display_text_draw_centered(framebuffer, text,
-                               (DISPLAY_FRAMEBUFFER_HEIGHT - GLYPH_HEIGHT * GLYPH_SCALE) / 2,
-                               GLYPH_SCALE, PROMPT_COLOR);
+                               (DISPLAY_FRAMEBUFFER_HEIGHT - BITE_POINT_FONT_HEIGHT) / 2,
+                               BITE_POINT_FONT_SELECTOR, PROMPT_COLOR);
 }
 
 /**

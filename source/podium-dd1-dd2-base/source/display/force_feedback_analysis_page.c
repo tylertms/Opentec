@@ -13,23 +13,26 @@
  * positions used by the force-feedback analysis page.
  */
 enum {
-    ANALYSIS_SAMPLE_INTERVAL_MS = 25,          /**< Set-point sampling interval in milliseconds. */
-    ANALYSIS_COLOR = 15,                       /**< Foreground grayscale value. */
-    ANALYSIS_SERIES_COLOR = 8,                 /**< History-series grayscale value. */
-    ANALYSIS_GRID_COLOR = 1,                   /**< Chart-grid grayscale value. */
-    ANALYSIS_BAR_BORDER_COLOR = 10,            /**< Level-bar border grayscale value. */
-    ANALYSIS_BAR_FILL_COLOR = 6,               /**< Level-bar fill grayscale value. */
-    ANALYSIS_CHART_LEFT = 5,                   /**< Chart left coordinate. */
-    ANALYSIS_CHART_RIGHT = 203,                /**< Chart right coordinate. */
+    ANALYSIS_SAMPLE_INTERVAL_MS = 25, /**< Set-point sampling interval in milliseconds. */
+    ANALYSIS_COLOR = 15,              /**< Foreground grayscale value. */
+    ANALYSIS_SERIES_COLOR = 8,        /**< History-series grayscale value. */
+    ANALYSIS_GRID_COLOR = 1,          /**< Chart-grid grayscale value. */
+    ANALYSIS_BAR_BORDER_COLOR = 10,   /**< Level-bar border grayscale value. */
+    ANALYSIS_BAR_FILL_COLOR = 6,      /**< Level-bar fill grayscale value. */
+    ANALYSIS_CHART_LEFT = 5,          /**< Chart left coordinate. */
+    ANALYSIS_CHART_WIDTH = 200,       /**< Chart width in pixels. */
+    ANALYSIS_CHART_RIGHT = ANALYSIS_CHART_LEFT + ANALYSIS_CHART_WIDTH,
+    /**< Chart right coordinate. */
+    ANALYSIS_CHART_HEIGHT = 40,                /**< Chart height in pixels. */
     ANALYSIS_CHART_TOP = 22,                   /**< Chart top coordinate. */
     ANALYSIS_CHART_BOTTOM = 62,                /**< Chart bottom coordinate. */
     ANALYSIS_BAR_TOP = 22,                     /**< Level-bar top coordinate. */
     ANALYSIS_BAR_BOTTOM = 62,                  /**< Level-bar bottom coordinate. */
     ANALYSIS_COUNTERCLOCKWISE_BAR_LEFT = 210,  /**< Counterclockwise bar left coordinate. */
-    ANALYSIS_COUNTERCLOCKWISE_BAR_RIGHT = 223, /**< Counterclockwise bar right coordinate. */
-    ANALYSIS_CLOCKWISE_BAR_LEFT = 226,         /**< Clockwise bar left coordinate. */
-    ANALYSIS_CLOCKWISE_BAR_RIGHT = 239,        /**< Clockwise bar right coordinate. */
-    ANALYSIS_TITLE_Y = 28,                     /**< Opening-title top coordinate. */
+    ANALYSIS_COUNTERCLOCKWISE_BAR_RIGHT = 225, /**< Counterclockwise bar right coordinate. */
+    ANALYSIS_CLOCKWISE_BAR_LEFT = 225,         /**< Clockwise bar left coordinate. */
+    ANALYSIS_CLOCKWISE_BAR_RIGHT = 240,        /**< Clockwise bar right coordinate. */
+    ANALYSIS_TITLE_Y = 12,                     /**< Opening-title top coordinate. */
 };
 
 /**
@@ -64,62 +67,99 @@ static void format_percentage(char output[5], uint8_t percentage) {
 }
 
 /**
- * @brief Draws one vertical line.
- *
- * Fills every drawable pixel between the two inclusive vertical coordinates.
+ * @brief Draws an exclusive-end horizontal display span.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
- * @param[in] x Horizontal line position.
- * @param[in] first_y First vertical coordinate.
- * @param[in] last_y Last vertical coordinate.
+ * @param[in] first_x First column.
+ * @param[in] end_x Exclusive end column.
+ * @param[in] y Row.
  * @param[in] color Four-bit grayscale value.
  */
-static void draw_vertical(DisplayFramebuffer framebuffer, uint16_t x, uint16_t first_y,
-                          uint16_t last_y, uint8_t color) {
-    for (uint16_t y = first_y; y <= last_y; y++) {
+static void draw_horizontal_span(DisplayFramebuffer framebuffer, uint16_t first_x, uint16_t end_x,
+                                 uint16_t y, uint8_t color) {
+    for (uint16_t x = first_x; x < end_x; x++) {
         display_framebuffer_set_pixel(framebuffer, x, y, color);
     }
 }
 
 /**
- * @brief Draws one horizontal line.
- *
- * Fills every drawable pixel between the two inclusive horizontal coordinates.
+ * @brief Draws an exclusive-end vertical display span.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
- * @param[in] first_x First horizontal coordinate.
- * @param[in] last_x Last horizontal coordinate.
- * @param[in] y Vertical line position.
+ * @param[in] x Column.
+ * @param[in] first_y First row.
+ * @param[in] end_y Exclusive end row.
  * @param[in] color Four-bit grayscale value.
  */
-static void draw_horizontal(DisplayFramebuffer framebuffer, uint16_t first_x, uint16_t last_x,
-                            uint16_t y, uint8_t color) {
-    for (uint16_t x = first_x; x <= last_x; x++) {
+static void draw_vertical_span(DisplayFramebuffer framebuffer, uint16_t x, uint16_t first_y,
+                               uint16_t end_y, uint8_t color) {
+    for (uint16_t y = first_y; y < end_y; y++) {
         display_framebuffer_set_pixel(framebuffer, x, y, color);
+    }
+}
+
+/**
+ * @brief Draws one line between two display pixels.
+ *
+ * @param[in,out] framebuffer Complete local-display framebuffer.
+ * @param[in] start_x Starting column.
+ * @param[in] start_y Starting row.
+ * @param[in] end_x Ending column.
+ * @param[in] end_y Ending row.
+ * @param[in] color Four-bit grayscale value.
+ */
+static void draw_line(DisplayFramebuffer framebuffer, uint16_t start_x, uint16_t start_y,
+                      uint16_t end_x, uint16_t end_y, uint8_t color) {
+    int32_t x = start_x;
+    int32_t y = start_y;
+    int32_t delta_x = end_x - start_x;
+    int32_t delta_y = end_y - start_y;
+    int32_t step_x = delta_x < 0 ? -1 : 1;
+    int32_t step_y = delta_y < 0 ? -1 : 1;
+    if (delta_x < 0) {
+        delta_x = -delta_x;
+    }
+    if (delta_y < 0) {
+        delta_y = -delta_y;
+    }
+    int32_t error = delta_x > delta_y ? delta_x / 2 : -delta_y / 2;
+    for (;;) {
+        display_framebuffer_set_pixel(framebuffer, (uint16_t)x, (uint16_t)y, color);
+        if (x == end_x && y == end_y) {
+            return;
+        }
+        int32_t previous_error = error;
+        if (previous_error > -delta_x) {
+            error -= delta_y;
+            x += step_x;
+        }
+        if (previous_error < delta_y) {
+            error += delta_x;
+            y += step_y;
+        }
     }
 }
 
 /**
  * @brief Draws the five-second analysis grid.
  *
- * Draws regularly spaced time and percentage divisions across the 200-sample plot, then emphasizes
- * the chart boundary.
+ * Draws regularly spaced time and percentage divisions across the 200-sample plot.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
  */
 static void draw_chart_grid(DisplayFramebuffer framebuffer) {
-    for (uint16_t x = ANALYSIS_CHART_LEFT; x <= ANALYSIS_CHART_RIGHT; x += 20) {
-        draw_vertical(framebuffer, x, ANALYSIS_CHART_TOP, ANALYSIS_CHART_BOTTOM,
-                      ANALYSIS_GRID_COLOR);
+    for (uint8_t index = 1; index < 5; index++) {
+        uint16_t y = (uint16_t)(ANALYSIS_CHART_BOTTOM -
+                                (uint16_t)((uint32_t)index * ANALYSIS_CHART_HEIGHT / 5u));
+        draw_horizontal_span(framebuffer, ANALYSIS_CHART_LEFT + 1, ANALYSIS_CHART_RIGHT - 1, y,
+                             ANALYSIS_GRID_COLOR);
     }
-    for (uint16_t y = ANALYSIS_CHART_TOP; y <= ANALYSIS_CHART_BOTTOM; y += 8) {
-        draw_horizontal(framebuffer, ANALYSIS_CHART_LEFT, ANALYSIS_CHART_RIGHT, y,
-                        ANALYSIS_GRID_COLOR);
+    for (uint8_t index = 1; index < 10; index++) {
+        uint16_t x = (uint16_t)(ANALYSIS_CHART_LEFT +
+                                (uint16_t)((uint32_t)index * ANALYSIS_CHART_WIDTH / 10u));
+        draw_vertical_span(framebuffer, x, ANALYSIS_CHART_TOP, ANALYSIS_CHART_BOTTOM,
+                           ANALYSIS_GRID_COLOR);
     }
-    draw_vertical(framebuffer, ANALYSIS_CHART_LEFT, ANALYSIS_CHART_TOP, ANALYSIS_CHART_BOTTOM,
-                  ANALYSIS_COLOR);
-    draw_horizontal(framebuffer, ANALYSIS_CHART_LEFT, ANALYSIS_CHART_RIGHT, ANALYSIS_CHART_BOTTOM,
-                    ANALYSIS_COLOR);
 }
 
 /**
@@ -132,48 +172,91 @@ static void draw_chart_grid(DisplayFramebuffer framebuffer) {
  */
 static void draw_samples(DisplayFramebuffer framebuffer,
                          const DisplayForceFeedbackAnalysisPage *page) {
-    uint16_t oldest =
-        page->sample_count < DISPLAY_FORCE_FEEDBACK_ANALYSIS_SAMPLE_COUNT ? 0 : page->next_sample;
-    uint16_t first_x = (uint16_t)(ANALYSIS_CHART_RIGHT - page->sample_count + 1u);
-    uint16_t previous_y = ANALYSIS_CHART_BOTTOM;
-    for (uint16_t offset = 0; offset < page->sample_count; offset++) {
-        uint16_t index =
-            (uint16_t)((oldest + offset) % DISPLAY_FORCE_FEEDBACK_ANALYSIS_SAMPLE_COUNT);
-        uint16_t y =
-            (uint16_t)(ANALYSIS_CHART_BOTTOM -
-                       page->samples[index] * (ANALYSIS_CHART_BOTTOM - ANALYSIS_CHART_TOP) / 100u);
-        uint16_t first_y = offset == 0 || y < previous_y ? y : previous_y;
-        uint16_t last_y = offset == 0 || y > previous_y ? y : previous_y;
-        draw_vertical(framebuffer, (uint16_t)(first_x + offset), first_y, last_y,
-                      ANALYSIS_SERIES_COLOR);
-        previous_y = y;
+    for (uint16_t index = 0; index < ANALYSIS_CHART_WIDTH - 2; index++) {
+        uint16_t sample_index =
+            (uint16_t)((page->next_sample + index) % (ANALYSIS_CHART_WIDTH - 1));
+        uint16_t start_y = (uint16_t)(ANALYSIS_CHART_BOTTOM - page->samples[sample_index] - 1u);
+        uint16_t end_y = (uint16_t)(ANALYSIS_CHART_BOTTOM - page->samples[sample_index + 1u] - 1u);
+        draw_line(framebuffer, (uint16_t)(ANALYSIS_CHART_LEFT + index + 1u), start_y,
+                  (uint16_t)(ANALYSIS_CHART_LEFT + index + 2u), end_y, ANALYSIS_SERIES_COLOR);
     }
 }
 
 /**
- * @brief Draws one direction level bar.
+ * @brief Draws a reference progress record.
  *
- * Draws the diagnostic border and fills the selected percentage upward from the bottom edge.
+ * Supports the vertical modes used by the direction bars and the reference split-color overlay.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
- * @param[in] left Left border coordinate.
- * @param[in] right Right border coordinate.
- * @param[in] percentage Filled percentage from zero through 99.
+ * @param[in] left Left record coordinate.
+ * @param[in] top Top record coordinate.
+ * @param[in] right Exclusive right record coordinate.
+ * @param[in] bottom Bottom record coordinate.
+ * @param[in] border_width Border thickness.
+ * @param[in] border_color Border grayscale value.
+ * @param[in] value_color Fill grayscale value.
+ * @param[in] mode Reference fill mode.
+ * @param[in] value Fill percentage.
  */
-static void draw_level_bar(DisplayFramebuffer framebuffer, uint16_t left, uint16_t right,
-                           uint8_t percentage) {
-    draw_horizontal(framebuffer, left, right, ANALYSIS_BAR_TOP, ANALYSIS_BAR_BORDER_COLOR);
-    draw_horizontal(framebuffer, left, right, ANALYSIS_BAR_BOTTOM, ANALYSIS_BAR_BORDER_COLOR);
-    draw_vertical(framebuffer, left, ANALYSIS_BAR_TOP, ANALYSIS_BAR_BOTTOM,
-                  ANALYSIS_BAR_BORDER_COLOR);
-    draw_vertical(framebuffer, right, ANALYSIS_BAR_TOP, ANALYSIS_BAR_BOTTOM,
-                  ANALYSIS_BAR_BORDER_COLOR);
-    uint16_t fill_height =
-        (uint16_t)((ANALYSIS_BAR_BOTTOM - ANALYSIS_BAR_TOP - 1u) * percentage / 100u);
-    for (uint16_t x = left + 1u; x < right; x++) {
-        draw_vertical(framebuffer, x, (uint16_t)(ANALYSIS_BAR_BOTTOM - fill_height),
-                      ANALYSIS_BAR_BOTTOM - 1u, ANALYSIS_BAR_FILL_COLOR);
+static void draw_progress(DisplayFramebuffer framebuffer, uint16_t left, uint16_t top,
+                          uint16_t right, uint16_t bottom, uint8_t border_width,
+                          uint8_t border_color, uint8_t value_color, uint8_t mode, uint8_t value) {
+    if (border_width != 0) {
+        for (uint8_t offset = 0; offset < border_width; offset++) {
+            draw_horizontal_span(framebuffer, left, right, (uint16_t)(top + offset), border_color);
+            draw_horizontal_span(framebuffer, left, right, (uint16_t)(bottom + offset),
+                                 border_color);
+            draw_vertical_span(framebuffer, (uint16_t)(left + offset), top, bottom, border_color);
+            draw_vertical_span(framebuffer, (uint16_t)(right + offset), top,
+                               (uint16_t)(bottom + border_width), border_color);
+        }
     }
+    if (value > 99) {
+        value = 100;
+    }
+    if (mode == 2 || mode == 3) {
+        uint16_t filled = (uint16_t)((bottom - top) * value / 100u);
+        if (filled == 0) {
+            return;
+        }
+        uint16_t first_x = left + border_width;
+        uint16_t last_x = right - border_width;
+        for (uint16_t x = first_x; x < last_x; x++) {
+            uint16_t first_y;
+            uint16_t last_y;
+            if (mode == 2) {
+                first_y = (uint16_t)(bottom - filled);
+                last_y = bottom;
+            } else {
+                first_y = (uint16_t)(top + border_width);
+                last_y = (uint16_t)(first_y + filled);
+            }
+            draw_vertical_span(framebuffer, x, first_y, last_y, value_color);
+        }
+    }
+}
+
+/**
+ * @brief Draws a split-color reference progress record.
+ *
+ * @param[in,out] framebuffer Complete local-display framebuffer.
+ * @param[in] left Left record coordinate.
+ * @param[in] top Top record coordinate.
+ * @param[in] right Exclusive right record coordinate.
+ * @param[in] bottom Bottom record coordinate.
+ * @param[in] mode Reference fill mode.
+ * @param[in] percentage Fill percentage.
+ */
+static void draw_split_progress(DisplayFramebuffer framebuffer, uint16_t left, uint16_t top,
+                                uint16_t right, uint16_t bottom, uint8_t mode, uint8_t percentage) {
+    draw_progress(framebuffer, left, top, right, bottom, 1, ANALYSIS_BAR_BORDER_COLOR,
+                  ANALYSIS_BAR_FILL_COLOR - 4u, mode, percentage);
+    uint16_t primary_top = top;
+    if (mode == 1 || mode == 3) {
+        primary_top++;
+    }
+    draw_progress(framebuffer, left + 1u, primary_top, right, bottom, 0, 0, ANALYSIS_BAR_FILL_COLOR,
+                  mode, percentage);
 }
 
 /**
@@ -194,8 +277,8 @@ void display_force_feedback_analysis_page_open(DisplayForceFeedbackAnalysisPage 
  * @brief Samples the force-feedback set point.
  *
  * When the 25-millisecond sampling deadline is due, converts the unsigned 16-bit magnitude to a
- * zero-through-99 percentage, retains it in a 200-sample five-second history, and records zero as
- * counterclockwise and nonzero as clockwise direction.
+ * zero-through-99 percentage and a 0-through-39 chart sample, retains it in a 200-sample
+ * five-second history, and records zero as counterclockwise and nonzero as clockwise direction.
  *
  * @param[in,out] page Analysis sample history and current presentation.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -211,7 +294,8 @@ bool display_force_feedback_analysis_page_update(DisplayForceFeedbackAnalysisPag
     }
     page->percentage = (uint8_t)(((uint32_t)position * 100u) >> 16);
     page->direction = direction;
-    page->samples[page->next_sample] = page->percentage;
+    page->samples[page->next_sample] =
+        (uint8_t)((uint32_t)(ANALYSIS_CHART_HEIGHT - 1u) * position / UINT16_MAX);
     page->next_sample =
         (uint16_t)((page->next_sample + 1u) % DISPLAY_FORCE_FEEDBACK_ANALYSIS_SAMPLE_COUNT);
     if (page->sample_count < DISPLAY_FORCE_FEEDBACK_ANALYSIS_SAMPLE_COUNT) {
@@ -224,14 +308,14 @@ bool display_force_feedback_analysis_page_update(DisplayForceFeedbackAnalysisPag
 /**
  * @brief Renders the force-feedback analysis opening title.
  *
- * Clears the previous page and centers the title presented for the first second.
+ * Clears the previous page and draws the inverted title at the official record coordinates.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
  */
 void display_force_feedback_analysis_page_render_title(DisplayFramebuffer framebuffer) {
     display_framebuffer_clear(framebuffer);
-    display_text_draw_centered(framebuffer, "Force Feedback Analysis Screen", ANALYSIS_TITLE_Y, 1,
-                               ANALYSIS_COLOR);
+    display_text_draw_with_font(framebuffer, &display_font_10_00c988,
+                                "Force Feedback Analysis Screen", 0, ANALYSIS_TITLE_Y, true);
 }
 
 /**
@@ -248,14 +332,19 @@ void display_force_feedback_analysis_page_render(DisplayFramebuffer framebuffer,
     char percentage[5];
     format_percentage(percentage, page->percentage);
     display_framebuffer_clear(framebuffer);
-    display_text_draw(framebuffer, "FFB Set Point:", 4, 2, 1, ANALYSIS_COLOR);
-    display_text_draw(framebuffer, percentage, 90, 2, 1, ANALYSIS_COLOR);
-    display_text_draw(framebuffer, page->direction == 0 ? "CCW" : "CW", 150, 2, 1, ANALYSIS_COLOR);
+    display_text_draw(framebuffer, "FFB Set Point: ", 5, 12, 1, ANALYSIS_COLOR);
+    display_text_draw(framebuffer, percentage, 75, 12, 1, ANALYSIS_COLOR);
+    display_text_draw(framebuffer, page->direction == 0 ? "CCW" : "CW", 150, 12, 1, ANALYSIS_COLOR);
     draw_chart_grid(framebuffer);
     draw_samples(framebuffer, page);
-    draw_level_bar(framebuffer, ANALYSIS_COUNTERCLOCKWISE_BAR_LEFT,
-                   ANALYSIS_COUNTERCLOCKWISE_BAR_RIGHT,
-                   page->direction == 0 ? page->percentage : 0);
-    draw_level_bar(framebuffer, ANALYSIS_CLOCKWISE_BAR_LEFT, ANALYSIS_CLOCKWISE_BAR_RIGHT,
-                   page->direction == 0 ? 0 : page->percentage);
+    draw_horizontal_span(framebuffer, ANALYSIS_CHART_LEFT, ANALYSIS_CHART_RIGHT,
+                         ANALYSIS_CHART_BOTTOM, ANALYSIS_COLOR);
+    draw_vertical_span(framebuffer, ANALYSIS_CHART_LEFT, ANALYSIS_CHART_TOP, ANALYSIS_CHART_BOTTOM,
+                       ANALYSIS_COLOR);
+    draw_split_progress(framebuffer, ANALYSIS_COUNTERCLOCKWISE_BAR_LEFT, ANALYSIS_BAR_TOP,
+                        ANALYSIS_COUNTERCLOCKWISE_BAR_RIGHT, ANALYSIS_BAR_BOTTOM, 2,
+                        page->direction == 0 ? page->percentage : 0);
+    draw_split_progress(framebuffer, ANALYSIS_CLOCKWISE_BAR_LEFT, ANALYSIS_BAR_TOP,
+                        ANALYSIS_CLOCKWISE_BAR_RIGHT, ANALYSIS_BAR_BOTTOM, 2,
+                        page->direction == 0 ? 0 : page->percentage);
 }

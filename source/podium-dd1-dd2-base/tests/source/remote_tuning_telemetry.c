@@ -128,6 +128,12 @@ static void test_scales_rpm_and_services_both_channels(void) {
     assert(remote_telemetry_take_report(&telemetry, report));
     assert(report[28] == 127 && report[29] == 96);
     assert(!remote_telemetry_take_report(&telemetry, report));
+
+    uint8_t zero[4] = {0};
+    assert(remote_telemetry_apply_primary(&telemetry, 0, 2, zero, sizeof(zero)) ==
+           REMOTE_TELEMETRY_RECORD_APPLIED);
+    assert(remote_telemetry_take_report(&telemetry, report));
+    assert(report[28] == 127 && report[29] == 0);
 }
 
 static void test_formats_specialized_metrics(void) {
@@ -181,6 +187,12 @@ static void test_scales_fuel_and_classifies_stale_records(void) {
     assert(remote_telemetry_take_report(&telemetry, report));
     assert(report[1] == 6 && memcmp(report + 2, "25.5 L", 6) == 0);
     assert(report[28] == 100 && report[29] == 51);
+
+    const uint8_t zero[] = {0, 0, 0, 0};
+    assert(remote_telemetry_apply_primary(&telemetry, 0, 5, zero, sizeof(zero)) ==
+           REMOTE_TELEMETRY_RECORD_APPLIED);
+    assert(remote_telemetry_take_report(&telemetry, report));
+    assert(report[28] == 100 && report[29] == 0);
 
     drain_control_records(&telemetry);
     assert(remote_telemetry_apply_primary(&telemetry, 0, 14, fuel, sizeof(fuel)) ==

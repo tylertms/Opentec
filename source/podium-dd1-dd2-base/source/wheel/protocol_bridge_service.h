@@ -13,11 +13,17 @@ typedef enum {
     WHEEL_PROTOCOL_BRIDGE_WRITE_PENDING, /**< A callback write is awaiting completion. */
 } WheelProtocolBridgePhase;
 
+/** @brief Report identifiers selected by attached-wheel startup negotiation. */
+enum {
+    WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD = 0x15,
+    WHEEL_PROTOCOL_BRIDGE_REPORT_ID_EXTENDED = 0x16,
+};
+
 /** @brief Attached-wheel protocol callback state and shared transport. */
 typedef struct {
     CommandTransport *transport;    /**< Shared command transport. */
     WheelProtocolBridgePhase phase; /**< Current callback transfer phase. */
-    uint8_t endpoint_index;         /**< Endpoint currently being attempted. */
+    uint8_t report_id;              /**< Negotiated callback report identifier. */
     bool acknowledged;              /**< One-shot successful-write latch. */
 } WheelProtocolBridgeService;
 
@@ -35,19 +41,20 @@ void wheel_protocol_bridge_service_init(WheelProtocolBridgeService *service,
 /**
  * @brief Requests an attached-wheel protocol bridge callback.
  *
- * Starts an endpoint write attempt when the service is idle and retains the completion state until
- * it is taken.
+ * Starts one callback write through the report identifier selected during startup negotiation and
+ * retains the completion state until it is taken.
  *
  * @param[in,out] service Callback service to start.
+ * @param[in] report_id Negotiated callback report identifier, either 0x15 or 0x16.
  * @return True when a new callback request started; otherwise false.
  */
-bool wheel_protocol_bridge_service_request(WheelProtocolBridgeService *service);
+bool wheel_protocol_bridge_service_request(WheelProtocolBridgeService *service, uint8_t report_id);
 
 /**
  * @brief Advances an attached-wheel protocol bridge callback.
  *
- * Queues the callback write, polls its completion, and retries the alternate endpoint after a
- * rejected transfer.
+ * Queues the callback write through the retained negotiated report identifier and polls its
+ * completion. A rejected transfer ends the request without trying another report identifier.
  *
  * @param[in,out] service Active callback service to advance.
  */

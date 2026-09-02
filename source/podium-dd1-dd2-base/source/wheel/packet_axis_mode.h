@@ -18,7 +18,8 @@ typedef WheelPacketCommonInput WheelPacketAxisModeInput;
 /**
  * @brief Reports whether a wheel mode uses the shared axis-mode packet policy.
  *
- * Selects the standard, authenticated, and extended modes that share common payload processing.
+ * Selects the standard, authenticated, and extended modes that share common payload
+ * processing.
  *
  * @param[in] wheel_mode Negotiated attached-wheel mode.
  * @return True for modes 0x09, 0x0B, and 0x1D; otherwise false.

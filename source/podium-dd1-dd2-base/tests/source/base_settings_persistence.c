@@ -229,6 +229,21 @@ static void test_partial_and_invalid_reference_fields_keep_defaults(void) {
     assert(settings.auxiliary_axis.minimum == 0x0f38);
     assert(settings.auxiliary_axis.reset_on_start);
     assert(settings.wheel_auxiliary_option == 2);
+    assert(storage[18] == 0);
+    assert(present[18]);
+}
+
+static void test_absent_security_value_is_repaired(void) {
+    BaseSettingsPersistence persistence;
+    BaseSettings settings;
+    storage_reset();
+    storage[0] = 0x0300;
+    present[0] = true;
+
+    assert(base_settings_persistence_load(&persistence, &settings));
+    assert(!settings.security_code.enabled);
+    assert(storage[18] == 0);
+    assert(present[18]);
 }
 
 static void test_save_validation_and_each_write_boundary(void) {
@@ -292,6 +307,7 @@ int main(void) {
     test_all_supported_settings_round_trip();
     test_unformatted_and_invalid_values_keep_defaults();
     test_partial_and_invalid_reference_fields_keep_defaults();
+    test_absent_security_value_is_repaired();
     test_save_validation_and_each_write_boundary();
     test_dirty_and_failure_behavior();
     return 0;

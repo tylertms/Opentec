@@ -43,13 +43,16 @@ static void renders_title_segments_decimal_point_and_itm_label(void) {
     display_auxiliary_calibration_page_update(&page, glyphs, true);
 
     display_auxiliary_calibration_page_render_title(framebuffer);
-    assert(has_lit_pixel(framebuffer, 0, DISPLAY_FRAMEBUFFER_WIDTH - 1, 28, 34));
+    assert(has_lit_pixel(framebuffer, 0, DISPLAY_FRAMEBUFFER_WIDTH - 1, 12, 18));
+    assert(pixel(framebuffer, 0, 12) != 0);
+    assert(pixel(framebuffer, 0, 22) == 0);
 
     display_auxiliary_calibration_page_render(framebuffer, &page);
     assert(pixel(framebuffer, 98, 18) == 15);
-    assert(pixel(framebuffer, 95, 21) == 15);
-    assert(pixel(framebuffer, 142, 55) == 15);
-    assert(pixel(framebuffer, 148, 55) == 15);
+    assert(pixel(framebuffer, 96, 21) == 15);
+    assert(pixel(framebuffer, 141, 51) == 15);
+    assert(pixel(framebuffer, 144, 54) == 15);
+    assert(pixel(framebuffer, 145, 55) == 0);
     assert(has_lit_pixel(framebuffer, 235, 252, 50, 56));
 
     assert(display_auxiliary_calibration_page_update(&page, glyphs, false));

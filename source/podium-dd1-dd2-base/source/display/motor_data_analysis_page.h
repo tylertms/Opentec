@@ -19,7 +19,7 @@ enum { DISPLAY_MOTOR_DATA_ANALYSIS_SAMPLE_COUNT = 120 /**< Number of retained to
  * @brief Stores motor-analysis history and live telemetry.
  *
  * The state includes scaled chart samples, a ten-second peak hold, current torque, temperatures,
- * primary fan speed, and the variant-specific torque limit.
+ * display fan tachometer speed, and the variant-specific torque limit.
  */
 typedef struct {
     uint8_t samples[DISPLAY_MOTOR_DATA_ANALYSIS_SAMPLE_COUNT]; /**< Scaled signed torque samples for
@@ -34,9 +34,9 @@ typedef struct {
     uint16_t peak_magnitude;    /**< Absolute magnitude of the held peak torque. */
     int16_t motor_temperature;  /**< Current motor temperature in degrees Celsius. */
     int16_t driver_temperature; /**< Current driver temperature in degrees Celsius. */
-    uint16_t fan_speed_rpm;     /**< Current primary fan speed in revolutions per minute. */
-    uint16_t torque_limit;      /**< Variant-specific display torque limit in thousandths of a
-                                   newton-metre. */
+    uint16_t fan_speed_rpm; /**< Current display fan tachometer speed in revolutions per minute. */
+    uint16_t torque_limit;  /**< Variant-specific display torque limit in thousandths of a
+                               newton-metre. */
 } DisplayMotorDataAnalysisPage;
 
 /**
@@ -56,14 +56,14 @@ void display_motor_data_analysis_page_open(DisplayMotorDataAnalysisPage *page, u
  * @brief Updates motor-analysis history and telemetry.
  *
  * Samples the torque chart and evaluates the ten-second peak hold on their respective schedules,
- * while updating temperatures and primary fan speed whenever they change.
+ * while updating temperatures and the display fan tachometer whenever they change.
  *
  * @param[in,out] page Motor-analysis state to update.
  * @param[in] now_ms Current monotonic time in milliseconds.
  * @param[in] torque Signed torque in thousandths of a newton-metre.
  * @param[in] motor_temperature Motor temperature in degrees Celsius.
  * @param[in] driver_temperature Driver temperature in degrees Celsius.
- * @param[in] fan_speed_rpm Primary fan speed in revolutions per minute.
+ * @param[in] fan_speed_rpm Display fan tachometer speed in revolutions per minute.
  * @return True when displayed motor-analysis data changed.
  */
 bool display_motor_data_analysis_page_update(DisplayMotorDataAnalysisPage *page, uint32_t now_ms,
@@ -73,7 +73,7 @@ bool display_motor_data_analysis_page_update(DisplayMotorDataAnalysisPage *page,
 /**
  * @brief Renders the motor-analysis title.
  *
- * Clears the framebuffer and centers the title shown while the motor-analysis page opens.
+ * Clears the framebuffer and draws the inverted title at the reference record coordinates.
  *
  * @param[in,out] framebuffer Framebuffer receiving the title pixels.
  */
@@ -83,7 +83,7 @@ void display_motor_data_analysis_page_render_title(DisplayFramebuffer framebuffe
  * @brief Renders motor torque history and telemetry.
  *
  * Clears the framebuffer and draws current and peak torque, the signed history chart, directional
- * torque bars, temperatures, and primary fan speed.
+ * torque bars, temperatures, and the display fan tachometer.
  *
  * @param[in,out] framebuffer Framebuffer receiving the rendered page.
  * @param[in] page Motor-analysis state to render.

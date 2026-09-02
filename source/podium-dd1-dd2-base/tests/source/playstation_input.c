@@ -105,6 +105,52 @@ static void test_suppresses_hat_and_system_button(void) {
     assert((state.buttons & BUTTON(12)) == 0);
 }
 
+static void test_clears_secondary_hat_source_before_mapping(void) {
+    UsbPlaystationInputMapper mapper;
+    UsbPlaystationInputState state = {0};
+    usb_playstation_input_mapper_init(&mapper);
+
+    UsbPlaystationButtonInput input = {
+        .wheel_mode = 0x0a,
+        .secondary_buttons = 0x2300,
+        .hat_suppressed = true,
+        .system_button_suppressed = true,
+    };
+    assert(usb_playstation_input_map_buttons(&mapper, &input, 0, &state));
+    assert(state.hat == 8);
+    assert((state.buttons & BUTTON(1)) == 0);
+    assert((state.buttons & BUTTON(12)) != 0);
+
+    input.hat_suppressed = false;
+    input.system_button_suppressed = false;
+    assert(usb_playstation_input_map_buttons(&mapper, &input, 0, &state));
+    assert(state.hat == 8);
+    assert((state.buttons & BUTTON(1)) == 0);
+    assert((state.buttons & BUTTON(12)) != 0);
+}
+
+static void test_preserves_mode_system_reassertion_after_preclear(void) {
+    UsbPlaystationInputMapper mapper;
+    UsbPlaystationInputState state = {0};
+    usb_playstation_input_mapper_init(&mapper);
+
+    UsbPlaystationButtonInput input = {
+        .wheel_mode = 0x0a,
+        .secondary_buttons = 0x0300,
+        .hat_suppressed = true,
+        .system_button_suppressed = true,
+    };
+    assert(usb_playstation_input_map_buttons(&mapper, &input, 0, &state));
+    assert((state.buttons & BUTTON(1)) == 0);
+    assert((state.buttons & BUTTON(12)) != 0);
+
+    input.wheel_mode = 1;
+    input.secondary_buttons = 0x0a00;
+    assert(usb_playstation_input_map_buttons(&mapper, &input, 0, &state));
+    assert((state.buttons & BUTTON(1)) == 0);
+    assert((state.buttons & BUTTON(12)) != 0);
+}
+
 static void test_holds_mode_twelve_system_button(void) {
     UsbPlaystationInputMapper mapper;
     UsbPlaystationInputState state = {0};
@@ -235,6 +281,14 @@ static void test_encodes_complete_input_layout(void) {
     assert(memcmp(report + 0x36, (uint8_t[10]){0}, 10) == 0);
 }
 
+static void test_encodes_local_h_pattern_hat(void) {
+    UsbPlaystationInputState state = {.hat = 8, .wheel_hat = 0x10};
+    uint8_t report[USB_PLAYSTATION_INPUT_REPORT_SIZE];
+
+    assert(usb_playstation_input_encode(report, &state));
+    assert(report[0x33] == 0x08);
+}
+
 static void test_rejects_invalid_arguments(void) {
     UsbPlaystationInputState state = {.hat = 9};
     uint8_t report[USB_PLAYSTATION_INPUT_REPORT_SIZE];
@@ -249,6 +303,8 @@ int main(void) {
     test_maps_alternate_button_modes();
     test_maps_both_adapter_button_layouts();
     test_suppresses_hat_and_system_button();
+    test_clears_secondary_hat_source_before_mapping();
+    test_preserves_mode_system_reassertion_after_preclear();
     test_holds_mode_twelve_system_button();
     test_rejects_invalid_button_mapping_arguments();
     test_maps_directional_buttons_to_hat();
@@ -256,6 +312,7 @@ int main(void) {
     test_maps_adapter_clutch_axes();
     test_maps_dual_and_unsupported_clutch_axes();
     test_encodes_complete_input_layout();
+    test_encodes_local_h_pattern_hat();
     test_rejects_invalid_arguments();
     return 0;
 }

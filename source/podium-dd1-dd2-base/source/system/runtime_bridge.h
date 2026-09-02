@@ -33,10 +33,12 @@ typedef enum {
     RUNTIME_BRIDGE_ACTION_DISABLE_TRANSFER_TIMER = 1u << 4, /**< Disable transfer timing. */
     RUNTIME_BRIDGE_ACTION_START_TRANSFER = 1u << 5, /**< Start the wheel-transfer handshake. */
     RUNTIME_BRIDGE_ACTION_INITIALIZE_DIRECT_TRANSFER = 1u << 6, /**< Initialize direct transfer. */
-    RUNTIME_BRIDGE_ACTION_REQUEST_PROTOCOL_COMMAND = 1u << 7, /**< Request the protocol command. */
-    RUNTIME_BRIDGE_ACTION_ACTIVATE_UPDATER_USB = 1u << 8,     /**< Activate updater USB mode. */
-    RUNTIME_BRIDGE_ACTION_SERVICE_UPDATER = 1u << 9,          /**< Service the active updater. */
-    RUNTIME_BRIDGE_ACTION_RESTORE_NORMAL_USB = 1u << 10,      /**< Restore normal USB mode. */
+    RUNTIME_BRIDGE_ACTION_REQUEST_PROTOCOL_COMMAND = 1u << 7,  /**< Request the protocol command. */
+    RUNTIME_BRIDGE_ACTION_ACTIVATE_UPDATER_USB = 1u << 8,      /**< Activate updater USB mode. */
+    RUNTIME_BRIDGE_ACTION_SERVICE_UPDATER = 1u << 9,           /**< Service the active updater. */
+    RUNTIME_BRIDGE_ACTION_RESTORE_NORMAL_USB = 1u << 10,       /**< Restore normal USB mode. */
+    RUNTIME_BRIDGE_ACTION_SELECT_PROTOCOL_RECOVERY = 1u << 11, /**< Select internal mode six. */
+    RUNTIME_BRIDGE_ACTION_SELECT_USB_BRIDGE = 1u << 12,        /**< Select USB bridge mode four. */
 } RuntimeBridgeAction;
 
 /**
@@ -77,14 +79,16 @@ typedef enum {
  * @brief Runtime bridge mode, phase, deadlines, and startup fallback state.
  *
  * This state is shared by all runtime transition entry paths and is advanced by
- * runtime_bridge_step().
+ * runtime_bridge_step(). A failed protocol-bridge probe retains the requested mode five while the
+ * callback window is open, then advances through the internal mode-six recovery probe.
  */
 typedef struct {
-    UsbRuntimeMode mode;         /**< Requested USB runtime mode. */
-    RuntimeBridgePhase phase;    /**< Current transition phase. */
-    uint32_t start_deadline_ms;  /**< Earliest time to start the transfer. */
-    uint32_t settle_deadline_ms; /**< Earliest time to activate updater USB mode. */
-    bool startup_recovery;       /**< Whether failure returns directly to normal USB mode. */
+    UsbRuntimeMode mode;            /**< Requested USB runtime mode. */
+    RuntimeBridgePhase phase;       /**< Current transition phase. */
+    uint32_t start_deadline_ms;     /**< Earliest time to start the transfer. */
+    uint32_t settle_deadline_ms;    /**< Earliest time to activate updater USB mode. */
+    bool startup_recovery;          /**< Whether failure returns directly to normal USB mode. */
+    bool protocol_recovery_pending; /**< Whether the delayed protocol mode-six probe is next. */
 } RuntimeBridge;
 
 /**

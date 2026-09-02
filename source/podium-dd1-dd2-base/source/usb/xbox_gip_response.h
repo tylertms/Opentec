@@ -44,23 +44,23 @@ typedef struct {
 
 /** @brief Logical attached-device state encoded into an Xbox GIP extended-status response. */
 typedef struct {
-    BoardVariant board_variant;            /**< Base hardware variant. */
-    uint8_t wheel_mode;                    /**< Attached-wheel protocol mode. */
-    uint8_t pedal_connection_flags;        /**< Encoded pedal connection flags. */
-    uint8_t auxiliary_axis_active;         /**< Auxiliary-axis activity value. */
-    uint8_t axis_mode;                     /**< Current axis mode. */
-    uint8_t transfer_code;                 /**< Current transfer status code. */
-    uint8_t multi_position_mode;           /**< Current multi-position mode. */
-    bool hardware_option;                  /**< Whether the hardware option is present. */
-    bool h_pattern_available;              /**< Whether an H-pattern shifter is available. */
-    bool legacy_pedal_mode;                /**< Whether legacy pedal mode is active. */
-    bool primary_pedal_calibration;        /**< Whether primary pedal calibration is available. */
-    bool secondary_pedal_calibration;      /**< Whether secondary pedal calibration is available. */
-    bool pedal_recovery_handshake;         /**< Whether pedal recovery handshake is complete. */
-    bool thermal_effect_limit;             /**< Whether the thermal effect limit is active. */
-    bool wheel_calibration_available;      /**< Whether wheel calibration is available. */
-    bool wheel_input_capability_available; /**< Whether wheel input capability is available. */
-    bool multi_position_supported;         /**< Whether multi-position mode is supported. */
+    BoardVariant board_variant;       /**< Base hardware variant. */
+    uint8_t wheel_mode;               /**< Attached-wheel protocol mode. */
+    uint8_t pedal_connection_flags;   /**< Encoded pedal connection flags. */
+    uint8_t auxiliary_axis_active;    /**< Auxiliary-axis activity value. */
+    uint8_t axis_mode;                /**< Current axis mode. */
+    uint8_t transfer_code;            /**< Current transfer status code. */
+    uint8_t multi_position_mode;      /**< Current multi-position mode. */
+    bool hardware_option;             /**< Whether the hardware option is present. */
+    bool h_pattern_available;         /**< Whether an H-pattern shifter is available. */
+    bool legacy_pedal_mode;           /**< Whether legacy pedal mode is active. */
+    bool primary_pedal_calibration;   /**< Whether primary pedal calibration is available. */
+    bool secondary_pedal_calibration; /**< Whether secondary pedal calibration is available. */
+    bool pedal_handshake_active;      /**< Whether the official pedal handshake latch is set. */
+    bool resistance_profile_active;   /**< Whether the resistance-profile effect limit is active. */
+    bool wheel_calibration_available; /**< Whether wheel calibration is available. */
+    bool wheel_axis_report_enabled;   /**< Whether the wheel axis report is enabled. */
+    bool multi_position_supported;    /**< Whether multi-position mode is supported. */
     bool adapter_connected; /**< Whether the attached wheel is connected through an adapter. */
 } UsbXboxGipExtendedStatus;
 
@@ -132,8 +132,8 @@ void usb_xbox_gip_capability_response_encode(uint8_t sequence,
 /**
  * @brief Encodes the Xbox GIP attached-device status response.
  *
- * Emits the wheel, pedal, shifter, thermal-limit, motor-controller, multi-position, adapter, and
- * base-identity state in the 13-byte type-11 payload. Reserved bytes are cleared.
+ * Emits the wheel, pedal, shifter, resistance-profile, axis-report, accessory, multi-position,
+ * adapter, and base-identity state in the 13-byte type-11 payload. Reserved bytes are cleared.
  *
  * @param[in] sequence Response sequence value.
  * @param[in] status Current logical attached-device status.

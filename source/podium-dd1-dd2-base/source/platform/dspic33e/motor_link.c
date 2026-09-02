@@ -10,6 +10,8 @@
 enum {
     MOTOR_LINK_DMA_REQUEST = 10,       /**< DMA request number for SPI1 transfers. */
     MOTOR_LINK_INTERRUPT_PRIORITY = 7, /**< SPI1 and DMA interrupt priority. */
+    MOTOR_LINK_RECEIVE_QUEUE_SIZE =
+        2, /**< Number of completed frames retained for the foreground. */
 };
 
 /**
@@ -23,9 +25,10 @@ static volatile uint8_t received_dma[PLATFORM_MOTOR_LINK_FRAME_SIZE];
 static volatile uint8_t transmitted_dma[PLATFORM_MOTOR_LINK_FRAME_SIZE];
 
 /**
- * @brief Most recently completed motor-link receive frame.
+ * @brief Completed motor-link receive frames awaiting foreground retrieval.
  */
-static volatile uint8_t received_frame[PLATFORM_MOTOR_LINK_FRAME_SIZE];
+static volatile uint8_t received_frames[MOTOR_LINK_RECEIVE_QUEUE_SIZE]
+                                       [PLATFORM_MOTOR_LINK_FRAME_SIZE];
 
 /**
  * @brief Retained copy of the latest requested motor-link transmit frame.
@@ -33,9 +36,14 @@ static volatile uint8_t received_frame[PLATFORM_MOTOR_LINK_FRAME_SIZE];
 static volatile uint8_t next_transmit[PLATFORM_MOTOR_LINK_FRAME_SIZE];
 
 /**
- * @brief True when a completed motor-link frame awaits foreground retrieval.
+ * @brief Queue index of the oldest completed motor-link frame.
  */
-static volatile bool received_ready;
+static volatile uint8_t received_head;
+
+/**
+ * @brief Number of completed motor-link frames awaiting foreground retrieval.
+ */
+static volatile uint8_t received_count;
 
 /**
  * @brief Copies one motor-link frame into volatile storage.
@@ -159,12 +167,15 @@ static void configure_interrupts(void) {
  * @param[in] initial_frame First thirteen-byte frame presented to the motor controller.
  */
 void platform_motor_link_init(const uint8_t initial_frame[PLATFORM_MOTOR_LINK_FRAME_SIZE]) {
-    received_ready = false;
+    received_head = 0;
+    received_count = 0;
     copy_to_volatile(transmitted_dma, initial_frame);
     copy_to_volatile(next_transmit, initial_frame);
     for (uint8_t index = 0; index < PLATFORM_MOTOR_LINK_FRAME_SIZE; index++) {
         received_dma[index] = 0;
-        received_frame[index] = 0;
+        for (uint8_t slot = 0; slot < MOTOR_LINK_RECEIVE_QUEUE_SIZE; slot++) {
+            received_frames[slot][index] = 0;
+        }
     }
 
     TRISGbits.TRISG6 = 1;
@@ -198,38 +209,34 @@ void platform_motor_link_confirm_synchronized(void) {
 /**
  * @brief Queues the next motor-link transmit frame.
  *
- * Replaces both pending and active thirteen-byte frame storage, then restarts DMA8 immediately
- * while excluding the DMA9 completion handler and discarding any completion request raised while
- * it was masked.
+ * Replaces the pending thirteen-byte frame consumed by the next DMA9 completion. The completion
+ * handler owns the active DMA8 buffer and performs the transmit turnaround in interrupt context.
  *
  * @param[in] frame Frame to transmit after the current exchange.
  */
 void platform_motor_link_set_transmit(const uint8_t frame[PLATFORM_MOTOR_LINK_FRAME_SIZE]) {
     IEC7bits.DMA9IE = 0;
     copy_to_volatile(next_transmit, frame);
-    IFS7bits.DMA9IF = 0;
-    DMA8CONbits.CHEN = 0;
-    copy_to_volatile(transmitted_dma, frame);
-    DMA8CONbits.CHEN = 1;
-    DMA8REQbits.FORCE = 1;
     IEC7bits.DMA9IE = 1;
 }
 
 /**
- * @brief Retrieves the most recently completed motor-link receive frame.
+ * @brief Retrieves the oldest completed motor-link receive frame.
  *
- * Copies and consumes the completed thirteen-byte frame while excluding the DMA9 completion
- * handler. Returns immediately when no frame is pending.
+ * Copies and consumes one completed thirteen-byte frame while excluding the DMA9 completion
+ * handler. Returns immediately when no frame is pending. When both queue entries are occupied, the
+ * oldest frame is discarded so the receive interrupt can continue servicing the motor link.
  *
  * @param[out] frame Destination for the received frame.
  * @return True when a completed frame was copied; otherwise false.
  */
 bool platform_motor_link_take_received(uint8_t frame[PLATFORM_MOTOR_LINK_FRAME_SIZE]) {
     IEC7bits.DMA9IE = 0;
-    bool ready = received_ready;
+    bool ready = received_count != 0;
     if (ready) {
-        copy_from_volatile(frame, received_frame);
-        received_ready = false;
+        copy_from_volatile(frame, received_frames[received_head]);
+        received_head ^= 1u;
+        received_count--;
     }
     IEC7bits.DMA9IE = 1;
     return ready;
@@ -264,14 +271,37 @@ void __attribute__((interrupt, no_auto_psv)) _SPI1ErrInterrupt(void) {
 void __attribute__((interrupt, no_auto_psv)) _DMA8Interrupt(void) { IFS7bits.DMA8IF = 0; }
 
 /**
- * @brief Publishes a received motor frame and stops the completed exchange.
+ * @brief Publishes a received motor frame and completes the next exchange.
  *
- * Snapshots the completed receive frame, marks it available to the main loop, disables DMA8, and
- * acknowledges the DMA9 completion request. The next transmit setter restarts the exchange.
+ * Snapshots the completed receive frame into the two-entry foreground queue, rearms DMA9, loads
+ * the pending transmit frame, restarts DMA8, forces its first request, and acknowledges DMA9.
  */
 void __attribute__((interrupt, no_auto_psv)) _DMA9Interrupt(void) {
-    copy_between_volatile(received_frame, received_dma);
-    received_ready = true;
+    uint8_t slot;
+    if (received_count == MOTOR_LINK_RECEIVE_QUEUE_SIZE) {
+        slot = received_head;
+        received_head ^= 1u;
+    } else {
+        slot = (uint8_t)((received_head + received_count) & 1u);
+        received_count++;
+    }
+    copy_between_volatile(received_frames[slot], received_dma);
+    DMA9CONbits.CHEN = 0;
+    DMA9CONbits.CHEN = 1;
     DMA8CONbits.CHEN = 0;
+    copy_between_volatile(transmitted_dma, next_transmit);
+    DMA8CONbits.CHEN = 1;
+    DMA8REQbits.FORCE = 1;
     IFS7bits.DMA9IF = 0;
 }
+
+#ifdef OPENTEC_SIMULATOR_TEST
+/**
+ * @brief Loads a simulated motor-link receive-DMA frame.
+ *
+ * @param[in] frame Thirteen bytes to expose through the DMA9 completion interrupt.
+ */
+void platform_motor_link_test_set_receive_dma(const uint8_t frame[PLATFORM_MOTOR_LINK_FRAME_SIZE]) {
+    copy_to_volatile(received_dma, frame);
+}
+#endif

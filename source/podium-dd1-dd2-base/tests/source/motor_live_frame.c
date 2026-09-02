@@ -71,6 +71,31 @@ static void test_encode_force(void) {
     assert(memcmp(&decoded, &frame, sizeof(frame)) == 0);
 }
 
+static void test_inhibit_primary_preserves_replay_frame_state(void) {
+    MotorLiveFrame frame = {
+        .type = MOTOR_LIVE_POSITION_TYPE | MOTOR_LIVE_REPLAY_FLAG,
+        .payload = {0x11, 0x22, 1, 0x34, 0x12, 0x78, 0x56, 0x99},
+    };
+
+    motor_live_frame_inhibit_primary(&frame);
+
+    assert(frame.payload[0] == 0x11);
+    assert(frame.payload[1] == 0x22);
+    assert(frame.payload[2] == 1);
+    assert(frame.payload[3] == 0);
+    assert(frame.payload[4] == 0);
+    assert(frame.payload[5] == 0x78);
+    assert(frame.payload[6] == 0x56);
+    assert(frame.payload[7] == 0x99);
+
+    frame.type = MOTOR_LIVE_STATUS_TYPE;
+    frame.payload[3] = 0x34;
+    frame.payload[4] = 0x12;
+    motor_live_frame_inhibit_primary(&frame);
+    assert(frame.payload[3] == 0x34);
+    assert(frame.payload[4] == 0x12);
+}
+
 static void test_rejects_invalid_frames(void) {
     uint8_t input[MOTOR_LIVE_FRAME_SIZE];
     MotorLiveFrame frame = {0};
@@ -96,6 +121,7 @@ int main(void) {
     test_decode_position();
     test_decode_replay();
     test_encode_force();
+    test_inhibit_primary_preserves_replay_frame_state();
     test_rejects_invalid_frames();
     return 0;
 }

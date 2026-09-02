@@ -23,6 +23,7 @@ static uint8_t analog_count;
 static uint8_t framed_receive_count;
 static uint8_t transfer_receive_count;
 static uint8_t transfer_send_count;
+static uint8_t stop_receive_count;
 static bool byte_ready;
 static bool frame_ready;
 static bool transfer_busy;
@@ -36,6 +37,8 @@ void platform_pedal_link_begin_discovery(void) { discovery_count++; }
 void platform_pedal_link_begin_framed_receive(void) { framed_receive_count++; }
 
 void platform_pedal_link_begin_transfer_receive(void) { transfer_receive_count++; }
+
+void platform_pedal_link_stop_receive(void) { stop_receive_count++; }
 
 bool platform_pedal_link_send_byte(uint8_t value) {
     sent_byte = value;
@@ -104,6 +107,7 @@ static void reset_link(void) {
     analog_count = 0;
     framed_receive_count = 0;
     transfer_receive_count = 0;
+    stop_receive_count = 0;
     transfer_send_count = 0;
     byte_ready = false;
     frame_ready = false;
@@ -187,6 +191,7 @@ static void test_connects_and_publishes_v3_input(void) {
     reset_link();
     pedal_service_init(&service);
     connect_v3(&service);
+    assert(pedal_service_extended_status_handshake_active(&service));
 
     assert(frame_send_count == 1);
     assert(pedal_frame_decode(sent_frame, &handshake) == PEDAL_FRAME_VALID);
@@ -207,6 +212,27 @@ static void test_connects_and_publishes_v3_input(void) {
     assert(input->axes[1] == 0x5678);
     assert(input->axes[2] == 0x9abc);
     assert(input->auxiliary == 0xde);
+    assert(pedal_service_extended_status_handshake_active(&service));
+}
+
+static void test_preserves_auxiliary_override_during_v3_stream(void) {
+    PedalService service;
+    const PedalFrame sample = {
+        .type = PEDAL_FRAME_AXIS_SAMPLE,
+        .payload = {0x34, 0x12, 0x78, 0x56, 0xbc, 0x9a, 0, 0xde},
+    };
+    reset_link();
+    pedal_service_init(&service);
+    connect_v3(&service);
+
+    pedal_service_set_auxiliary_override(&service, true, 0x78);
+    receive_frame(&sample);
+    pedal_service_run(&service, 11);
+
+    assert(service.input.auxiliary == 0x78);
+    assert(service.remote_auxiliary == 0xde);
+    pedal_service_set_auxiliary_override(&service, false, 0);
+    assert(service.input.auxiliary == 0xde);
 }
 
 static void test_applies_active_brake_force(void) {
@@ -271,7 +297,7 @@ static void test_uses_raw_brake_during_v3_calibration(void) {
     assert(pedal_service_v3_state(&service)->primary_calibration);
 }
 
-static void test_ignores_unknown_v3_reports_for_timeout(void) {
+static void test_refreshes_timeout_for_unknown_structurally_valid_v3_reports(void) {
     PedalService service;
     PedalFrame handshake;
     const PedalFrame unknown = {
@@ -284,6 +310,7 @@ static void test_ignores_unknown_v3_reports_for_timeout(void) {
     receive_frame(&unknown);
     pedal_service_run(&service, 11);
     assert(!service.connected);
+    assert(service.deadline_ms == 15011);
     pedal_service_run(&service, 15010);
     assert(service.phase == PEDAL_SERVICE_V3_STREAM);
     pedal_service_run(&service, 15012);
@@ -363,6 +390,64 @@ static void test_sends_v3_status_on_change_and_interval(void) {
     assert(frame.type == 0);
 }
 
+static void test_applies_v3_status_calibration_matrix(void) {
+    PedalService service;
+    PedalFrame frame;
+    const PedalProtocolStatus status = {
+        .value = 0x11,
+        .first = 0x22,
+        .second = 0x33,
+        .scale = 0x44,
+    };
+    reset_link();
+    pedal_service_init(&service);
+    pedal_service_set_protocol_status(&service, &status);
+    connect_v3(&service);
+    pedal_service_run(&service, 11);
+
+    service.next_input_command_ms = UINT32_MAX;
+    service.next_keepalive_ms = UINT32_MAX;
+
+    service.status_transmitted = false;
+    service.v3.legacy_calibration = true;
+    uint8_t sends_before = frame_send_count;
+    pedal_service_run(&service, 512);
+    assert(frame_send_count == sends_before + 1);
+    assert(pedal_frame_decode(sent_frame, &frame) == PEDAL_FRAME_VALID);
+    assert(frame.type == 0);
+
+    service.v3.legacy_calibration = false;
+    service.status_transmitted = false;
+    service.v3.primary_calibration = true;
+    sends_before = frame_send_count;
+    pedal_service_run(&service, 513);
+    assert(frame_send_count == sends_before + 1);
+
+    service.v3.primary_calibration = false;
+    service.v3.secondary_calibration = true;
+    service.status_transmitted = false;
+    pedal_service_run(&service, 514);
+    assert(frame_send_count == sends_before + 2);
+
+    service.v3.primary_calibration = true;
+    service.status_transmitted = false;
+    sends_before = frame_send_count;
+    pedal_service_run(&service, 515);
+    assert(frame_send_count == sends_before);
+
+    service.v3.primary_calibration = false;
+    service.v3.secondary_calibration = false;
+    service.status_transmitted = false;
+    pedal_service_run(&service, 516);
+    assert(frame_send_count == sends_before + 1);
+    assert(pedal_frame_decode(sent_frame, &frame) == PEDAL_FRAME_VALID);
+    assert(frame.type == 0);
+    assert(frame.payload[0] == status.value);
+    assert(frame.payload[1] == status.first);
+    assert(frame.payload[2] == status.second);
+    assert(frame.payload[3] == status.scale);
+}
+
 static void test_schedules_v3_commands_and_calibration_frames(void) {
     PedalService service;
     PedalFrame frame;
@@ -433,6 +518,26 @@ static void test_schedules_v3_commands_and_calibration_frames(void) {
     assert(pedal_frame_decode(sent_frame, &frame) == PEDAL_FRAME_VALID);
     assert(frame.type == 0x10);
     assert(service.next_keepalive_ms == 2518);
+}
+
+static void test_flushes_pending_v3_configuration_for_shutdown(void) {
+    PedalService service;
+    PedalFrame frame;
+    reset_link();
+    pedal_service_init(&service);
+    connect_v3(&service);
+
+    pedal_service_request_configuration(&service, 79, true);
+    uint8_t sends_before = frame_send_count;
+    assert(pedal_service_flush_configuration(&service, 17));
+    assert(frame_send_count == sends_before + 1);
+    assert(pedal_frame_decode(sent_frame, &frame) == PEDAL_FRAME_VALID);
+    assert(frame.type == 6);
+    assert(frame.payload[0] == 8);
+    assert(frame.payload[1] == UINT8_MAX);
+    assert(!service.configuration_pending);
+    assert(!service.configuration_reset_pending);
+    assert(service.deadline_ms == 15017);
 }
 
 static void test_uses_long_timeout_during_stream_startup(void) {
@@ -659,6 +764,28 @@ static void test_sends_v4_tuning_in_protocol_order(void) {
     assert(service.v4_phase == PEDAL_V4_PHASE_STATUS);
 }
 
+static void test_selects_v4_throttle_before_brake_curve(void) {
+    PedalService service;
+    const PedalV4Tuning tuning = {
+        .brake_curve = 2,
+        .throttle_curve = 5,
+    };
+    reset_link();
+    pedal_service_init(&service);
+    pedal_service_set_v4_tuning(&service, tuning);
+    service.v4_tuning_pending = (uint8_t)((1u << (PEDAL_V4_TUNING_BRAKE_CURVE - 1u)) |
+                                          (1u << (PEDAL_V4_TUNING_THROTTLE_CURVE - 1u)));
+    connect_v4(&service);
+
+    pedal_service_run(&service, 6);
+    complete_v4_request(&service, 7, 8);
+    pedal_service_run(&service, 9);
+    pedal_service_run(&service, 10);
+
+    assert_v4_tuning_request(8, 5);
+    assert(service.v4_phase == PEDAL_V4_PHASE_THROTTLE_CURVE);
+}
+
 static void test_queues_zero_v4_tuning_values_in_protocol_order(void) {
     PedalService service;
     const PedalV4Tuning tuning = {
@@ -685,6 +812,28 @@ static void test_queues_zero_v4_tuning_values_in_protocol_order(void) {
     complete_v4_request(&service, 17, 18);
     pedal_service_run(&service, 19);
     assert_v4_tuning_request(8, 5);
+}
+
+static void test_v4_tuning_does_not_enter_v3_lifecycle(void) {
+    PedalService service;
+    const PedalV4Tuning tuning = {
+        .brake_force = 42,
+        .clutch_curve = 3,
+        .brake_curve = 4,
+        .throttle_curve = 5,
+    };
+    reset_link();
+    pedal_service_init(&service);
+    service.phase = PEDAL_SERVICE_V4_STREAM;
+    service.v3.legacy_calibration = true;
+    service.pending_control = 0;
+
+    pedal_service_set_v4_tuning(&service, tuning);
+
+    assert(service.phase == PEDAL_SERVICE_V4_STREAM);
+    assert(!pedal_service_legacy_mode(&service));
+    assert(service.pending_control == 0);
+    assert(service.v4_tuning_pending == 0x0f);
 }
 
 static void test_queries_and_publishes_v4_pedal_adjustment(void) {
@@ -909,6 +1058,7 @@ static void test_reconnects_after_v4_transfer_timeout(void) {
     pedal_service_run(&service, 756);
     assert(service.phase == PEDAL_SERVICE_DETECT_REQUEST);
     assert(discovery_count == 1);
+    assert(stop_receive_count == 3);
 }
 
 static void test_polls_legacy_pedal_channels(void) {
@@ -973,6 +1123,7 @@ static void test_delays_legacy_reconnect_after_primary_response(void) {
     pedal_service_run(&service, 552);
     assert(service.phase == PEDAL_SERVICE_DETECT_REQUEST);
     assert(discovery_count == 1);
+    assert(stop_receive_count == 3);
 }
 
 static void test_waits_full_legacy_response_window(void) {
@@ -1126,8 +1277,11 @@ static void test_applies_pedal_protocol_commands(void) {
 
     command.kind = PEDAL_PROTOCOL_COMMAND_LEGACY_SCALE;
     command.value = 0x88;
+    service.phase = PEDAL_SERVICE_V3_STREAM;
+    service.v3.primary_calibration = true;
     pedal_service_apply_protocol_command(&service, &command);
     assert(service.protocol_status.scale == 0x40);
+    service.v3.primary_calibration = false;
     service.v3.legacy_calibration = true;
     pedal_service_apply_protocol_command(&service, &command);
     assert(service.protocol_status.scale == 0x88);
@@ -1170,13 +1324,18 @@ static void test_reports_v3_handshake_activity(void) {
     pedal_service_init(&service);
 
     assert(!pedal_service_handshake_active(&service));
+    assert(!pedal_service_extended_status_handshake_active(&service));
     service.phase = PEDAL_SERVICE_V3_SWITCH_WAIT;
     assert(pedal_service_handshake_active(&service));
     service.phase = PEDAL_SERVICE_V3_STREAM;
     service.startup_handshake_active = true;
+    service.status_handshake_active = true;
     assert(pedal_service_handshake_active(&service));
+    assert(pedal_service_extended_status_handshake_active(&service));
     service.startup_handshake_active = false;
+    service.status_handshake_active = false;
     assert(!pedal_service_handshake_active(&service));
+    assert(!pedal_service_extended_status_handshake_active(&service));
 }
 
 static void test_publishes_each_v3_alternate_brake_force_report_once(void) {
@@ -1233,24 +1392,30 @@ static void test_restarts_pedal_discovery(void) {
     assert(service.input.axes[2] == 0);
     assert(service.input.auxiliary == 0);
     assert(discovery_count == 1);
+    assert(stop_receive_count == 1);
     pedal_service_request_startup(NULL);
 }
 
 int main(void) {
     test_connects_and_publishes_v3_input();
+    test_preserves_auxiliary_override_during_v3_stream();
     test_applies_active_brake_force();
     test_preserves_signed_brake_force_setting();
     test_uses_raw_brake_during_v3_calibration();
-    test_ignores_unknown_v3_reports_for_timeout();
+    test_refreshes_timeout_for_unknown_structurally_valid_v3_reports();
     test_sends_v3_status_on_change_and_interval();
+    test_applies_v3_status_calibration_matrix();
     test_schedules_v3_commands_and_calibration_frames();
+    test_flushes_pending_v3_configuration_for_shutdown();
     test_uses_long_timeout_during_stream_startup();
     test_tightens_timeout_after_stream_startup();
     test_runs_at_most_once_per_millisecond();
     test_polls_and_publishes_v4_input();
     test_waits_for_complete_v4_status_response();
     test_sends_v4_tuning_in_protocol_order();
+    test_selects_v4_throttle_before_brake_curve();
     test_queues_zero_v4_tuning_values_in_protocol_order();
+    test_v4_tuning_does_not_enter_v3_lifecycle();
     test_queries_and_publishes_v4_pedal_adjustment();
     test_forwards_both_host_adjustment_responses();
     test_expires_v4_adjustment_operation();

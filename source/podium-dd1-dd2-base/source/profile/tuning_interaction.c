@@ -277,18 +277,13 @@ static void clear_profile_hold(TuningInteraction *interaction) {
 /**
  * @brief Reports whether another profile-selection input owns the menu hold.
  *
- * Excludes navigation, analog selection, profile selectors, and earlier wheel or adapter
- * shortcuts from the timed profile-mode and reset actions.
+ * Excludes earlier wheel or adapter shortcuts from the timed profile-mode and reset actions.
  *
  * @param[in] input Current attached-wheel and adapter inputs.
  * @return true when a higher-priority profile interaction is active; false otherwise.
  */
 static bool profile_hold_blocked(const TuningInteractionInput *input) {
-    bool profile_selector_active =
-        (input->wheel_mode == WHEEL_MODE_STANDARD || input->wheel_mode == WHEEL_MODE_EXTENDED) &&
-        input->profile_selector_active;
-    return (input->primary_buttons & 0x0f00u) != 0 || input->analog_scale != 0 ||
-           profile_selector_active || profile_shortcut_precedes_adjustment(input);
+    return profile_shortcut_precedes_adjustment(input);
 }
 
 /**
@@ -335,7 +330,8 @@ static TuningInteractionAction profile_shortcut_action(TuningInteraction *intera
  * @brief Advances the timed profile-mode and reset hold.
  *
  * Emits the mode action once after two seconds and enters the two-second reset-result phase at ten
- * seconds. Higher-priority profile inputs restart the timer.
+ * seconds. Wheel and adapter shortcuts restart the timer; ordinary navigation, analog input, and
+ * profile selectors do not.
  *
  * @param[in,out] interaction Active menu-hold state.
  * @param[in] input Current attached-wheel and adapter inputs.

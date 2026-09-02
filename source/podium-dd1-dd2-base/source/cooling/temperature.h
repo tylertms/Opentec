@@ -8,7 +8,7 @@
  * @brief Thermistor monitor dimensions.
  *
  * The monitor accumulates one primary and one secondary thermistor channel over a fixed sample
- * window before publishing converted temperatures.
+ * window before publishing converted temperatures and the native resistance-report values.
  */
 enum {
     COOLING_TEMPERATURE_CHANNEL_COUNT = 2,   /**< Number of thermistor channels. */
@@ -26,8 +26,10 @@ typedef struct {
         adc_totals[COOLING_TEMPERATURE_CHANNEL_COUNT]; /**< ADC totals in the current window. */
     uint16_t sample_count; /**< Samples accumulated in the current window. */
     int16_t
-        temperatures_c[COOLING_TEMPERATURE_CHANNEL_COUNT]; /**< Latest converted channel
-                                                              temperatures in degrees Celsius. */
+        temperatures_c[COOLING_TEMPERATURE_CHANNEL_COUNT];         /**< Latest converted channel
+                                                                      temperatures in degrees Celsius. */
+    uint16_t resistance_values[COOLING_TEMPERATURE_CHANNEL_COUNT]; /**< Latest native diagnostic
+                                                                       resistance values. */
 } CoolingTemperatureMonitor;
 
 /**
@@ -74,5 +76,16 @@ float cooling_temperature_from_resistance(float resistance_ohms);
  * @return Truncated calibrated temperature in degrees Celsius.
  */
 int16_t cooling_temperature_from_adc_total(uint32_t adc_total);
+
+/**
+ * @brief Converts a 1,000-sample thermistor ADC total to a native resistance-report value.
+ *
+ * Applies the Fanatec voltage-divider equation and truncates the calibrated lookup result using
+ * the unsigned representation used by native diagnostic bytes five through eight.
+ *
+ * @param[in] adc_total Sum of 1,000 12-bit thermistor ADC samples.
+ * @return Native diagnostic resistance value.
+ */
+uint16_t cooling_resistance_value_from_adc_total(uint32_t adc_total);
 
 #endif

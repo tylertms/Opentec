@@ -132,7 +132,7 @@ bool force_feedback_script_store_upload(ForceFeedbackScriptStore *store,
 }
 
 void force_feedback_script_store_compact(ForceFeedbackScriptStore *store,
-                                         const ForceFeedbackScriptSlot *runtime_slots) {
+                                         ForceFeedbackScriptSlot *runtime_slots) {
     if (store == NULL || runtime_slots == NULL) {
         return;
     }
@@ -155,6 +155,11 @@ void force_feedback_script_store_compact(ForceFeedbackScriptStore *store,
             }
         }
         store->slots[slot_index] = (ForceFeedbackScriptStorageSlot){0};
+        runtime_slots[slot_index].state = FORCE_FEEDBACK_SCRIPT_SLOT_EMPTY;
+        runtime_slots[slot_index].average_rate = 0;
+        runtime_slots[slot_index].delta_rate = 0;
+        runtime_slots[slot_index].execution_count = 0;
+        runtime_slots[slot_index].tick_snapshot = 0;
     }
 }
 

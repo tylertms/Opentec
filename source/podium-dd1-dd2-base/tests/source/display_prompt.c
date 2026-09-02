@@ -41,22 +41,62 @@ static uint8_t pixel(const uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], uint16
     return (x & 1u) == 0 ? packed >> 4 : packed & 0x0fu;
 }
 
+static bool has_dark_pixel(const uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE], uint16_t x,
+                           uint16_t y, uint16_t width, uint16_t height) {
+    for (uint16_t row = y; row < y + height; row++) {
+        for (uint16_t column = x; column < x + width; column++) {
+            if (pixel(framebuffer, column, row) < 15) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static void assert_filled_overlay(const uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE]) {
+    assert(pixel(framebuffer, 2, 16) == 15);
+    assert(pixel(framebuffer, 252, 62) == 15);
+    assert(pixel(framebuffer, 253, 62) == 0);
+    assert(pixel(framebuffer, 1, 16) == 0);
+    assert(pixel(framebuffer, 254, 16) == 0);
+    assert(pixel(framebuffer, 2, 15) == 0);
+}
+
+static void test_render_enable_torque_prompt(void) {
+    uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE] = {0};
+
+    display_prompt_render(framebuffer, true);
+
+    assert_filled_overlay(framebuffer);
+    assert(pixel(framebuffer, 127, 16) == 12);
+    assert(pixel(framebuffer, 128, 16) == 0);
+    assert(pixel(framebuffer, 129, 16) == 12);
+    assert(has_dark_pixel(framebuffer, 2, 37, 251, 10));
+}
+
 static void test_render_torque_key_prompt(void) {
     uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE] = {0};
 
     display_prompt_render_torque_key(framebuffer, true);
-    assert(pixel(framebuffer, 127, 16) == 3);
-    assert(pixel(framebuffer, 128, 16) == 15);
-    assert(pixel(framebuffer, 129, 16) == 3);
+    assert_filled_overlay(framebuffer);
+    assert(pixel(framebuffer, 127, 16) == 12);
+    assert(pixel(framebuffer, 128, 16) == 0);
+    assert(pixel(framebuffer, 129, 16) == 12);
 
     bool primary_text_present = false;
     bool secondary_text_present = false;
     bool acknowledgement_present = false;
-    for (uint16_t x = 0; x < DISPLAY_FRAMEBUFFER_WIDTH; x++) {
-        primary_text_present |= pixel(framebuffer, x, 30) != 0;
-        secondary_text_present |= pixel(framebuffer, x, 40) != 0;
-        acknowledgement_present |= pixel(framebuffer, x, 52) != 0;
+    for (uint16_t y = 30; y < 40; y++) {
+        for (uint16_t x = 2; x < 253; x++) {
+            primary_text_present |= pixel(framebuffer, x, y) < 15;
+        }
     }
+    for (uint16_t y = 40; y < 50; y++) {
+        for (uint16_t x = 2; x < 253; x++) {
+            secondary_text_present |= pixel(framebuffer, x, y) < 15;
+        }
+    }
+    acknowledgement_present = pixel(framebuffer, 120, 52) == 0;
     assert(primary_text_present);
     assert(secondary_text_present);
     assert(acknowledgement_present);
@@ -90,6 +130,7 @@ static void test_hide_clears_input(void) {
 
 int main(void) {
     test_render_and_clear();
+    test_render_enable_torque_prompt();
     test_render_torque_key_prompt();
     test_render_bite_point();
     test_acknowledge_on_release();

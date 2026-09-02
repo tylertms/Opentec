@@ -18,6 +18,18 @@
 bool usb_fallback_tuning_range_allowed(const TuningProfile *profile);
 
 /**
+ * @brief Converts one direct fallback steering command to a physical travel limit.
+ *
+ * Uses the native low and high limits and the raw steering-limit formula without changing the
+ * active tuning profile. The returned value is the one-sided wheel-position travel in counts.
+ *
+ * @param[in] command Decoded fallback steering command.
+ * @param[out] travel Destination for the physical travel limit.
+ * @return True for a supported steering-range command; otherwise false.
+ */
+bool usb_fallback_tuning_steering_travel(const UsbFallbackCommand *command, uint32_t *travel);
+
+/**
  * @brief Applies one transient setup-one fallback tuning command.
  *
  * Changes only the supplied runtime profile and applies the official command-specific limits.

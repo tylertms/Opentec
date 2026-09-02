@@ -14,7 +14,7 @@ static UsbVendorCommand command_for(uint8_t *arguments, uint8_t length) {
     };
 }
 
-static void stores_records_in_arrival_order(void) {
+static void stores_records_in_sparse_slots(void) {
     UsbRemoteTuningRecords records;
     usb_remote_tuning_records_init(&records);
     uint8_t arguments[] = {
@@ -24,8 +24,8 @@ static void stores_records_in_arrival_order(void) {
 
     assert(usb_remote_tuning_records_apply(&records, &command));
     assert(records.count == 2);
-    const UsbRemoteTuningRecord *first = &records.records[0];
-    const UsbRemoteTuningRecord *second = &records.records[1];
+    const UsbRemoteTuningRecord *first = &records.records[USB_REMOTE_TUNING_RECORD_COUNT - 1];
+    const UsbRemoteTuningRecord *second = &records.records[USB_REMOTE_TUNING_RECORD_COUNT - 2];
     assert(first->type == 0x12);
     assert(first->selector == 0x34);
     assert(first->value == 0x5678);
@@ -46,10 +46,10 @@ static void accepts_alternate_record_packets(void) {
 
     assert(usb_remote_tuning_records_apply(&records, &command));
     assert(records.count == 1);
-    assert(records.records[0].type == 2);
-    assert(records.records[0].selector == 0x80);
-    assert(records.records[0].value == 1);
-    assert(records.records[0].payload_length == 0);
+    assert(records.records[USB_REMOTE_TUNING_RECORD_COUNT - 1].type == 2);
+    assert(records.records[USB_REMOTE_TUNING_RECORD_COUNT - 1].selector == 0x80);
+    assert(records.records[USB_REMOTE_TUNING_RECORD_COUNT - 1].value == 1);
+    assert(records.records[USB_REMOTE_TUNING_RECORD_COUNT - 1].payload_length == 0);
 }
 
 static void stops_at_invalid_or_incomplete_records(void) {
@@ -92,8 +92,8 @@ static void drops_records_after_the_store_is_full(void) {
     assert(usb_remote_tuning_records_apply(&records, &command));
 
     assert(records.count == USB_REMOTE_TUNING_RECORD_COUNT);
-    assert(records.records[0].value == 0);
-    assert(records.records[31].value == USB_REMOTE_TUNING_RECORD_COUNT - 1);
+    assert(records.records[USB_REMOTE_TUNING_RECORD_COUNT - 1].value == 0);
+    assert(records.records[0].value == USB_REMOTE_TUNING_RECORD_COUNT - 1);
 }
 
 static void routes_records_by_link_and_selector_bank(void) {
@@ -126,7 +126,7 @@ static void routes_records_by_link_and_selector_bank(void) {
     assert(response.record_data_length == 6);
     assert(memcmp(response.record_data, arguments + 13, 6) == 0);
     assert(records.count == 1);
-    assert(records.records[0].type == 2);
+    assert(records.records[USB_REMOTE_TUNING_RECORD_COUNT - 4].type == 2);
 }
 
 static void keeps_complete_records_within_each_response(void) {
@@ -170,8 +170,8 @@ static void forwards_route_three_records_from_both_selector_banks(void) {
     assert(memcmp(output, arguments + 13, 6) == 0);
     assert(memcmp(output + 6, arguments + 1, 7) == 0);
     assert(records.count == 2);
-    assert(records.records[0].type == 4);
-    assert(records.records[1].type == 2);
+    assert(records.records[USB_REMOTE_TUNING_RECORD_COUNT - 2].type == 4);
+    assert(records.records[USB_REMOTE_TUNING_RECORD_COUNT - 4].type == 2);
 }
 
 static void keeps_forwarded_records_within_the_transfer_area(void) {
@@ -196,7 +196,7 @@ static void keeps_forwarded_records_within_the_transfer_area(void) {
     assert(output[21] == 3);
     assert(output[41] == 2);
     assert(records.count == 1);
-    assert(records.records[0].selector == 1);
+    assert(records.records[USB_REMOTE_TUNING_RECORD_COUNT - 1].selector == 1);
 
     assert(usb_remote_tuning_records_take_forward_batch(&records, output, &length));
     assert(length == 20);
@@ -221,8 +221,8 @@ static void consumes_both_local_telemetry_banks(void) {
                                                        &reset_requested) == 2);
     assert(!reset_requested);
     assert(records.count == 1);
-    assert(records.records[0].type == 3);
-    assert(records.records[0].selector == 1);
+    assert(records.records[USB_REMOTE_TUNING_RECORD_COUNT - 2].type == 3);
+    assert(records.records[USB_REMOTE_TUNING_RECORD_COUNT - 2].selector == 1);
 
     uint8_t report[REMOTE_TELEMETRY_REPORT_SIZE];
     assert(remote_telemetry_take_report(&telemetry, report));
@@ -232,7 +232,7 @@ static void consumes_both_local_telemetry_banks(void) {
 }
 
 int main(void) {
-    stores_records_in_arrival_order();
+    stores_records_in_sparse_slots();
     accepts_alternate_record_packets();
     stops_at_invalid_or_incomplete_records();
     ignores_non_record_packets();

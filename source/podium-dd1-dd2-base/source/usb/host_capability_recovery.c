@@ -33,7 +33,11 @@ usb_host_capability_recovery_update(UsbHostCapabilityRecovery *recovery,
         recovery->deadline_ms = now_ms + USB_HOST_CAPABILITY_ARM_DELAY_MS;
         return USB_HOST_CAPABILITY_RECOVERY_NONE;
     }
-    if (input.host_capability_enabled || (int32_t)(now_ms - recovery->deadline_ms) <= 0) {
+    if (input.host_capability_enabled) {
+        recovery->deadline_ms = now_ms + USB_HOST_CAPABILITY_ARM_DELAY_MS;
+        return USB_HOST_CAPABILITY_RECOVERY_NONE;
+    }
+    if ((int32_t)(now_ms - recovery->deadline_ms) <= 0) {
         return USB_HOST_CAPABILITY_RECOVERY_NONE;
     }
 

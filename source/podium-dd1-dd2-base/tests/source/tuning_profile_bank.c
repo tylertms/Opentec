@@ -10,6 +10,7 @@ static void test_defaults(void) {
     assert(bank.selected_slot == 0);
     assert(bank.active_slot == 0);
     assert(bank.standard_mode_enabled);
+    assert(!bank.automatic_apply_pending);
     for (uint8_t slot = 0; slot < TUNING_PROFILE_SLOT_COUNT; slot++) {
         assert(bank.slots[slot].rotation_degrees == 1080);
         assert(bank.slots[slot].force_feedback_strength == 35);

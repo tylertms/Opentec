@@ -431,6 +431,26 @@ static void test_routes_probe_to_protocol_target(void) {
     assert(request[2] == 0 && request[3] == 0x5a && request[4] == 0xa6);
 }
 
+static void test_routes_probe_to_protocol_recovery_target(void) {
+    UsbUpdaterService service;
+    CommandTransport transport;
+    reset_fakes();
+    command_transport_init(&transport);
+    usb_updater_service_init(&service, &transport);
+    assert(usb_updater_service_select_mode(&service, USB_RUNTIME_MODE_PROTOCOL_RECOVERY));
+    assert(usb_updater_service_start_probe(&service));
+
+    UsbUpdaterServiceInput input = input_at(0);
+    usb_updater_service_run(&service, &input);
+    const uint8_t *request;
+    uint16_t length;
+    assert(command_transport_request(&transport, &request, &length));
+    assert(length == 5);
+    assert(request[0] == 2);
+    assert(request[1] == (WHEEL_UPDATER_TARGET_USB << 1));
+    assert(request[2] == 0 && request[3] == 0x5a && request[4] == 0xa6);
+}
+
 int main(void) {
     test_selects_supported_routes();
     test_services_device_information_on_strict_cadence();
@@ -445,5 +465,6 @@ int main(void) {
     test_probes_direct_route_and_selects_identity();
     test_forwards_host_bridge_response();
     test_routes_probe_to_protocol_target();
+    test_routes_probe_to_protocol_recovery_target();
     return 0;
 }

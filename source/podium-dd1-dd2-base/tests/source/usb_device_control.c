@@ -176,13 +176,16 @@ static void test_tracks_both_alternate_interfaces(void) {
 static void test_device_status(void) {
     UsbDeviceControl device;
     usb_device_control_init(&device, true, false);
-    device.remote_wakeup = true;
     UsbControlRequest control = request(USB_CONTROL_GET_STATUS);
     control.recipient = 0;
 
     UsbControlTransfer transfer = usb_device_control_handle(&device, &control, &catalog, false);
 
     assert(transfer.kind == USB_CONTROL_TRANSFER_VALUE);
+    assert(transfer.value == 1 && transfer.length == 2);
+
+    device.remote_wakeup = true;
+    transfer = usb_device_control_handle(&device, &control, &catalog, false);
     assert(transfer.value == 3 && transfer.length == 2);
 
     control.recipient = 1;

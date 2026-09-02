@@ -49,6 +49,22 @@ static void test_direct_chords_follow_activation_state(void) {
     assert(!code.enable_requested);
 }
 
+static void test_interaction_activity_is_independent_of_configuration(void) {
+    SecurityCode code;
+    SecurityCodeSettings settings = {.enabled = true};
+    SecurityCodeInput input = {.primary_buttons = 0xe800};
+    security_code_init(&code);
+
+    assert(!security_code_interaction_active(&code));
+    assert(!security_code_update(&code, &settings, &input, 0).active);
+    assert(security_code_interaction_active(&code));
+    assert(code.phase == SECURITY_CODE_PREPARE);
+
+    code.phase = SECURITY_CODE_INACTIVE;
+    assert(!security_code_interaction_active(&code));
+    assert(!security_code_interaction_active(NULL));
+}
+
 static void test_adapter_chords_start_requests(void) {
     SecurityCode code;
     SecurityCodeSettings settings = {0};
@@ -260,6 +276,7 @@ static void test_deadlines_wrap_safely(void) {
 
 int main(void) {
     test_direct_chords_follow_activation_state();
+    test_interaction_activity_is_independent_of_configuration();
     test_adapter_chords_start_requests();
     test_prompt_and_entry_delays();
     test_digit_actions_wrap_and_follow_priority();

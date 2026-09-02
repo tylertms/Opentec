@@ -223,6 +223,35 @@ static void test_profile_hold_timing(void) {
     assert(interaction.phase == TUNING_INTERACTION_CLOSED);
 }
 
+static void test_profile_hold_survives_nonexclusive_input(void) {
+    static const struct {
+        uint16_t primary_buttons;
+        int8_t analog_scale;
+        bool profile_selector_active;
+    } cases[] = {
+        {0x0400, 0, false},
+        {0, -12, false},
+        {0, 0, true},
+    };
+
+    for (unsigned int index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {
+        TuningInteraction interaction;
+        tuning_interaction_init(&interaction);
+        TuningInteractionInput held = input(0x10, cases[index].primary_buttons, 0x2000);
+        held.analog_scale = cases[index].analog_scale;
+        held.profile_selector_active = cases[index].profile_selector_active;
+        assert(tuning_interaction_update(&interaction, &held, 100) ==
+               TUNING_INTERACTION_ACTION_NONE);
+        assert(tuning_interaction_update(&interaction, &held, 100) ==
+               TUNING_INTERACTION_ACTION_NONE);
+        assert(tuning_interaction_update(&interaction, &held, 2099) ==
+               TUNING_INTERACTION_ACTION_NONE);
+        assert(tuning_interaction_update(&interaction, &held, 2100) ==
+               TUNING_INTERACTION_ACTION_TOGGLE_PROFILE_MODE);
+        assert(interaction.profile_hold_active);
+    }
+}
+
 static void test_extended_reconnect_grace(void) {
     TuningInteraction interaction;
     tuning_interaction_init(&interaction);
@@ -304,6 +333,7 @@ int main(void) {
     test_v3_pedal_gates();
     test_host_and_adapter_suppression_predicates();
     test_profile_hold_timing();
+    test_profile_hold_survives_nonexclusive_input();
     test_extended_reconnect_grace();
     test_navigation();
     test_invalid_inputs();

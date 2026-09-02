@@ -43,9 +43,11 @@ typedef struct {
 /**
  * @brief Evaluate one force-feedback script bit operation.
  *
- * Binary operations use both raw operands, bitwise NOT uses only first, and test, set, and clear
- * use second as an unsigned bit index. Test-bit returns the raw float representation of zero or
- * one. An index outside bits 0 through 31 and an unknown opcode suppress the destination write.
+ * Binary operations use both raw operands, bitwise NOT uses only first, and set and clear use
+ * second as an unsigned bit index across all 32 bits. Test-bit derives a sign-extended 16-bit mask:
+ * indexes 0 through 14 test the corresponding bit, index 15 tests bit 15 and all high bits, and
+ * indexes 16 through 31 test zero. Test-bit returns the raw float representation of zero or one.
+ * An index outside bits 0 through 31 and an unknown opcode suppress the destination write.
  *
  * @param[in] operation Bit-operation opcode to evaluate.
  * @param[in] first First raw operand or value to inspect or modify.

@@ -7,8 +7,10 @@
 enum {
     VENDOR_COMMAND_SIZE = 63,                   /**< Maximum vendor command payload size. */
     VENDOR_COMMAND_ARGUMENT_SIZE = 62,          /**< Maximum argument size after the opcode. */
-    VENDOR_COMMAND_SCRIPT = 0x0a,               /**< Script command opcode. */
-    VENDOR_COMMAND_SCRIPT_GROUP = 0,            /**< Supported script command group. */
+    VENDOR_COMMAND_NATIVE_RESET = 0x0a,         /**< Native reset command opcode. */
+    VENDOR_COMMAND_NATIVE_RESET_SELECTOR = 1,   /**< Native reset selector. */
+    VENDOR_COMMAND_NATIVE_RESET_VALUE = 0x1a,   /**< Native reset confirmation value. */
+    VENDOR_COMMAND_REMOTE_SELECTION_PACKET = 2, /**< Remote-tuning selection packet type. */
     VENDOR_COMMAND_SCRIPT_SAMPLES_SELECTOR = 4, /**< Script samples selector. */
     VENDOR_COMMAND_SCRIPT_SAMPLES_LAST_FIRST = 0x01f5, /**< Largest accepted first sample index. */
     VENDOR_COMMAND_SCRIPT_SLOT_SELECTOR = 5,           /**< Script slot selector. */
@@ -25,8 +27,9 @@ enum {
 /**
  * @brief Selects the route for a vendor command opcode.
  *
- * Maps each supported top-level opcode to its command category and rejects opcode 0x0A
- * unless its group and selector match a supported script query.
+ * Maps each supported top-level opcode to its command category. The native reset is accepted only
+ * for the exact selector/value pair used by the Fanatec dispatcher, while opcode five keeps the
+ * Xbox remote-selection packet distinct from the native pending-service request.
  *
  * @param[in] opcode Top-level vendor command opcode.
  * @param[in] payload Vendor command payload beginning with its opcode.
@@ -44,35 +47,21 @@ static int8_t command_kind(uint8_t opcode, const uint8_t *payload, uint8_t lengt
     case 4:
         return USB_VENDOR_COMMAND_DIAGNOSTIC_SNAPSHOT;
     case 5:
-        return USB_VENDOR_COMMAND_REMOTE_TUNING;
+        return length >= 2 && payload[1] == VENDOR_COMMAND_REMOTE_SELECTION_PACKET
+                   ? USB_VENDOR_COMMAND_REMOTE_TUNING
+                   : USB_VENDOR_COMMAND_NATIVE_TUNING_SERVICE;
     case 8:
         return USB_VENDOR_COMMAND_TUNING_STATUS;
-    case VENDOR_COMMAND_SCRIPT:
-        if (length >= 7 && payload[1] == VENDOR_COMMAND_SCRIPT_GROUP) {
-            if (payload[4] == VENDOR_COMMAND_SCRIPT_SAMPLES_SELECTOR &&
-                ((uint16_t)payload[5] | (uint16_t)((uint16_t)payload[6] << 8)) <=
-                    VENDOR_COMMAND_SCRIPT_SAMPLES_LAST_FIRST) {
-                return USB_VENDOR_COMMAND_SCRIPT_SAMPLES;
-            }
-            if (payload[4] == VENDOR_COMMAND_SCRIPT_SLOT_SELECTOR &&
-                payload[5] <= VENDOR_COMMAND_SCRIPT_SLOT_LAST) {
-                return USB_VENDOR_COMMAND_SCRIPT_SLOT;
-            }
-            if (payload[4] == VENDOR_COMMAND_SCRIPT_STATUS_SELECTOR) {
-                return USB_VENDOR_COMMAND_SCRIPT_STATUS;
-            }
-            if (payload[4] == VENDOR_COMMAND_SCRIPT_VALUES_SELECTOR) {
-                return USB_VENDOR_COMMAND_SCRIPT_VALUES;
-            }
-            if (payload[4] == VENDOR_COMMAND_SCRIPT_AXES_SELECTOR) {
-                return USB_VENDOR_COMMAND_SCRIPT_AXES;
-            }
+    case VENDOR_COMMAND_NATIVE_RESET:
+        if (length >= 3 && payload[1] == VENDOR_COMMAND_NATIVE_RESET_SELECTOR &&
+            payload[2] == VENDOR_COMMAND_NATIVE_RESET_VALUE) {
+            return USB_VENDOR_COMMAND_NATIVE_RESET;
         }
         return -1;
     case 0x10:
     case 0x11:
     case 0x13:
-        return USB_VENDOR_COMMAND_TRANSFER_REQUEST;
+        return USB_VENDOR_COMMAND_WHEEL_TRANSFER_PAYLOAD;
     case 0xff:
         return USB_VENDOR_COMMAND_EXTENDED;
     default:

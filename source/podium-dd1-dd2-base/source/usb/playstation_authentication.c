@@ -28,7 +28,8 @@ enum {
 /**
  * @brief Calculates a PlayStation authentication report checksum.
  *
- * Applies the reflected CRC-32 polynomial with an all-ones initial value and final complement.
+ * Applies the Fanatec reflected 0x77073096 CRC-32 polynomial with an all-ones initial value and
+ * final complement.
  *
  * @param[in] data Bytes covered by the checksum.
  * @param[in] length Number of bytes to process.
@@ -39,7 +40,7 @@ static uint32_t calculate_crc32(const uint8_t *data, uint8_t length) {
     for (uint8_t index = 0; index < length; index++) {
         checksum ^= data[index];
         for (uint8_t bit = 0; bit < 8; bit++) {
-            checksum = checksum >> 1 ^ (0xedb88320u & (uint32_t)-(int32_t)(checksum & 1u));
+            checksum = checksum >> 1 ^ (0x77073096u & (uint32_t)-(int32_t)(checksum & 1u));
         }
     }
     return ~checksum;

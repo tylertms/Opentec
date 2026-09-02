@@ -84,6 +84,20 @@ static void test_faults_invalid_scripts(void) {
     assert(runtime.slots[1].state == FORCE_FEEDBACK_SCRIPT_SLOT_FAULT);
 
     runtime.slots[1].state = FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE;
+    const uint8_t one_suppression_invalid_command[] = {0x01, 0x10, 1, 0x0a};
+    assert(force_feedback_script_execute(&runtime, one_suppression_invalid_command,
+                                         sizeof(one_suppression_invalid_command)) ==
+           FORCE_FEEDBACK_SCRIPT_EXECUTION_SILENT_FAULT);
+    assert(runtime.slots[1].state == FORCE_FEEDBACK_SCRIPT_SLOT_FAULT);
+
+    runtime.slots[1].state = FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE;
+    const uint8_t suppressed_invalid_command[] = {0x01, 0x10, 2, 0x0a};
+    assert(force_feedback_script_execute(&runtime, suppressed_invalid_command,
+                                         sizeof(suppressed_invalid_command)) ==
+           FORCE_FEEDBACK_SCRIPT_EXECUTION_FAULT);
+    assert(runtime.slots[1].state == FORCE_FEEDBACK_SCRIPT_SLOT_FAULT);
+
+    runtime.slots[1].state = FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE;
     const uint8_t invalid_operation[] = {0x13, 0x02, 0x00, 0x20};
     assert(force_feedback_script_execute(&runtime, invalid_operation, sizeof(invalid_operation)) ==
            FORCE_FEEDBACK_SCRIPT_EXECUTION_FAULT);

@@ -1,6 +1,7 @@
 #include "motor/live_frame.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "force_feedback/output_report.h"
@@ -129,6 +130,15 @@ bool motor_position_report_decode(const MotorLiveFrame *frame, MotorPositionRepo
     report->auxiliary_negative = (auxiliary & MOTOR_POSITION_AUXILIARY_DIRECTION) != 0;
     report->auxiliary_position = (uint16_t)(auxiliary << 1);
     return true;
+}
+
+void motor_live_frame_inhibit_primary(MotorLiveFrame *frame) {
+    if (frame == NULL ||
+        (frame->type & (uint8_t)~MOTOR_LIVE_REPLAY_FLAG) != MOTOR_LIVE_POSITION_TYPE) {
+        return;
+    }
+    frame->payload[3] = 0;
+    frame->payload[4] = 0;
 }
 
 void motor_live_force_frame_init(int16_t center_position, const ForceOutputReport *report,

@@ -65,7 +65,7 @@ bool platform_serial_link_direct_write(const uint8_t *data, uint8_t length);
  * @brief Reads raw direct-mode serial bytes.
  *
  * Copies and consumes a complete requested fragment in direct mode when enough response bytes are
- * buffered.
+ * buffered. A zero-length fragment completes immediately.
  *
  * @param[out] data Destination for the response fragment.
  * @param[in] length Number of response bytes to read.

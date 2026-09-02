@@ -10,8 +10,8 @@
 /**
  * @brief Renders the persistent torque-disabled notice.
  *
- * Clears the framebuffer and, when visible, draws the warning icon and centered power-button
- * message.
+ * Clears the framebuffer and, when visible, draws the official filled white panel, inverted
+ * warning bitmap, and centered Font10 power-button message.
  *
  * @param[in,out] framebuffer Framebuffer receiving the notice.
  * @param[in] visible Whether the notice should be drawn after clearing the framebuffer.
@@ -21,8 +21,8 @@ void display_notice_render_torque_disabled(DisplayFramebuffer framebuffer, bool 
 /**
  * @brief Renders a system notice.
  *
- * Clears the framebuffer and draws the icon and message selected by the supplied notice kind; the
- * none kind leaves the framebuffer clear.
+ * Clears the framebuffer and draws the official filled or outlined overlay, icon, and Font10
+ * message selected by the supplied notice kind; the none kind leaves the framebuffer clear.
  *
  * @param[in,out] framebuffer Framebuffer receiving the notice.
  * @param[in] kind System notice kind to render.

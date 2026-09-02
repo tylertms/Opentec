@@ -22,9 +22,9 @@ static void retains_records_and_extends_the_session(void) {
     UsbVendorCommand command = command_for(arguments, sizeof(arguments));
     assert(usb_remote_tuning_service_apply(&service, &command, 100, 1, true, false));
     assert(service.session_deadline_ms == 60100);
-    assert(service.records.records[0].type == 0x12);
-    assert(service.records.records[0].selector == 0x34);
-    assert(service.records.records[0].value == 0x5678);
+    assert(service.records.records[USB_REMOTE_TUNING_RECORD_COUNT - 1].type == 0x12);
+    assert(service.records.records[USB_REMOTE_TUNING_RECORD_COUNT - 1].selector == 0x34);
+    assert(service.records.records[USB_REMOTE_TUNING_RECORD_COUNT - 1].value == 0x5678);
 }
 
 static void applies_active_state_and_routes_responses(void) {
@@ -319,6 +319,70 @@ static void clears_selected_telemetry(void) {
     assert(memcmp(report + 3, clear, sizeof(clear)) == 0);
 }
 
+static void selects_all_itm_sets_on_route_two(void) {
+    static const uint16_t keys[][2] = {
+        {1, 0}, {2, 3}, {4, 0}, {501, 0}, {505, 0}, {5, 6}, {14, 15}, {18, 20}, {9, 0}, {516, 0},
+    };
+    static const uint8_t counts[] = {1, 2, 1, 1, 1, 2, 2, 2, 1, 1};
+    UsbRemoteTuningService service;
+    usb_remote_tuning_service_init(&service);
+    uint8_t active_arguments[] = {2, 1};
+    UsbVendorCommand active_command = command_for(active_arguments, sizeof(active_arguments));
+    assert(usb_remote_tuning_service_apply(&service, &active_command, 100, 1, true, false));
+
+    for (uint8_t set = 1; set <= USB_REMOTE_TUNING_ITM_SET_COUNT; set++) {
+        uint8_t selection_arguments[] = {4, 2, set};
+        UsbVendorCommand selection_command =
+            command_for(selection_arguments, sizeof(selection_arguments));
+        assert(usb_remote_tuning_service_apply(&service, &selection_command, 100, 1, true, false));
+        assert(service.telemetry.metric == (RemoteTelemetryMetric)set);
+        assert(service.itm_page.page == set);
+        assert(service.itm_page.field_count == counts[set - 1]);
+
+        uint8_t report[USB_REMOTE_TUNING_HOST_REPORT_SIZE];
+        assert(usb_remote_tuning_service_take_host_report(&service, 1,
+                                                          USB_REMOTE_TUNING_HOST_NATIVE, report));
+        uint8_t expected_records = counts[set - 1] + (set == 1 ? 0 : counts[set - 2]);
+        uint8_t offset = 3;
+        for (uint8_t record = 0; record < expected_records; record++) {
+            assert(report[offset] == 2);
+            offset += REMOTE_TELEMETRY_SUBSCRIPTION_SIZE;
+        }
+        offset = 3;
+        if (set != 1) {
+            offset += counts[set - 2] * REMOTE_TELEMETRY_SUBSCRIPTION_SIZE;
+        }
+        assert(report[offset] == 2);
+        assert(report[offset + 2] == (uint8_t)keys[set - 1][0]);
+        assert(report[offset + 3] == (uint8_t)(keys[set - 1][0] >> 8));
+        assert(report[offset + 4] != 0);
+    }
+}
+
+static void retains_ffb_route_records_until_active_itm_drain(void) {
+    UsbRemoteTuningService service;
+    usb_remote_tuning_service_init(&service);
+    uint8_t arguments[] = {
+        1, 1, 0, 0x34, 0x12, 0, 2, 0, 1, 0, 0, 2, 123, 0,
+    };
+    UsbVendorCommand command = command_for(arguments, sizeof(arguments));
+    assert(usb_remote_tuning_service_apply(&service, &command, 100, 1, true, false));
+    uint8_t report[REMOTE_TELEMETRY_REPORT_SIZE];
+    assert(!usb_remote_tuning_service_take_telemetry_report(&service, 1, report));
+    assert(service.records.count == 2);
+
+    uint8_t active_arguments[] = {2, 1};
+    UsbVendorCommand active_command = command_for(active_arguments, sizeof(active_arguments));
+    assert(usb_remote_tuning_service_apply(&service, &active_command, 100, 1, true, false));
+    uint8_t selection_arguments[] = {4, 2, 1};
+    UsbVendorCommand selection_command =
+        command_for(selection_arguments, sizeof(selection_arguments));
+    assert(usb_remote_tuning_service_apply(&service, &selection_command, 100, 1, true, false));
+    assert(!usb_remote_tuning_service_take_telemetry_report(&service, 1, report));
+    assert(service.records.count == 1);
+    assert(service.records.records[USB_REMOTE_TUNING_RECORD_COUNT - 1].type == 1);
+}
+
 static void converts_local_records_to_wheel_telemetry(void) {
     UsbRemoteTuningService service;
     usb_remote_tuning_service_init(&service);
@@ -351,6 +415,10 @@ static void converts_local_records_to_wheel_telemetry(void) {
 static void processes_valid_local_records_in_extended_mode(void) {
     UsbRemoteTuningService service;
     usb_remote_tuning_service_init(&service);
+    service.active = true;
+    assert(remote_telemetry_select(&service.telemetry, REMOTE_TELEMETRY_SPEED));
+    service.itm_page.page = REMOTE_TELEMETRY_SPEED;
+    service.itm_page.field_count = 1;
     uint8_t arguments[] = {1, 2, 0, 1, 0, 2, 123, 0};
     UsbVendorCommand command = command_for(arguments, sizeof(arguments));
     assert(usb_remote_tuning_service_apply(&service, &command, 100,
@@ -365,6 +433,10 @@ static void processes_valid_local_records_in_extended_mode(void) {
 static void retains_invalid_local_records_in_extended_mode(void) {
     UsbRemoteTuningService service;
     usb_remote_tuning_service_init(&service);
+    service.active = true;
+    assert(remote_telemetry_select(&service.telemetry, REMOTE_TELEMETRY_SPEED));
+    service.itm_page.page = REMOTE_TELEMETRY_SPEED;
+    service.itm_page.field_count = 1;
     service.refresh_requested = true;
     uint8_t arguments[] = {1, 2, 0, 0, 0, 0};
     UsbVendorCommand command = command_for(arguments, sizeof(arguments));
@@ -485,6 +557,8 @@ int main(void) {
     claims_unknown_remote_packets();
     selects_telemetry_and_frames_host_records();
     clears_selected_telemetry();
+    selects_all_itm_sets_on_route_two();
+    retains_ffb_route_records_until_active_itm_drain();
     converts_local_records_to_wheel_telemetry();
     processes_valid_local_records_in_extended_mode();
     retains_invalid_local_records_in_extended_mode();

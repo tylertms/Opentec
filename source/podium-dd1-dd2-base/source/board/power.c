@@ -6,12 +6,10 @@
 /**
  * @brief Power-button timing constants.
  *
- * These intervals define the strict hold threshold and the delay between shutdown actions.
+ * This interval defines the strict hold threshold used by the physical power-button service.
  */
 enum {
     POWER_BUTTON_HOLD_MS = 1000, /**< Strict hold deadline interval in milliseconds. */
-    POWER_SHUTDOWN_DELAY_MS =
-        1000, /**< Strict shutdown-completion deadline interval in milliseconds. */
 };
 
 /**
@@ -44,7 +42,7 @@ void power_controller_init(PowerController *controller) { *controller = (PowerCo
  * Enables the power hold on the first active sample. When button control is enabled, a press while
  * ready starts the hold deadline; release is handled before checking that strict deadline and
  * toggles the torque-disable request, while a continuously active input starts shutdown after the
- * deadline and finishes after a second strict interval.
+ * deadline and emits completion on the following sample.
  *
  * @param[in,out] controller Persistent power phase, deadline, and torque disable request.
  * @param[in] button_pressed True while the active-high power button input is asserted.
@@ -76,17 +74,13 @@ PowerAction power_controller_update(PowerController *controller, bool button_pre
         }
         if (deadline_passed(now_ms, controller->deadline_ms)) {
             controller->torque_disabled = false;
-            controller->deadline_ms = now_ms + POWER_SHUTDOWN_DELAY_MS;
-            controller->phase = POWER_PHASE_SHUTDOWN_DELAY;
+            controller->completion_deadline_ms = now_ms + POWER_BUTTON_HOLD_MS;
+            controller->phase = POWER_PHASE_COMPLETE;
             return POWER_ACTION_BEGIN_SHUTDOWN;
         }
         break;
-    case POWER_PHASE_SHUTDOWN_DELAY:
-        if (deadline_passed(now_ms, controller->deadline_ms)) {
-            controller->phase = POWER_PHASE_OFF;
-            return POWER_ACTION_FINISH_SHUTDOWN;
-        }
-        break;
+    case POWER_PHASE_COMPLETE:
+        return POWER_ACTION_FINISH_SHUTDOWN;
     case POWER_PHASE_OFF:
         break;
     }

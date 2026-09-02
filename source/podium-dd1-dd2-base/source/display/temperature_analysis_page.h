@@ -32,8 +32,8 @@ enum {
 /**
  * @brief Stores temperature histories and live cooling values.
  *
- * Each channel has a ring buffer of scaled chart samples while the latest temperatures, fan speed,
- * and thermally available output power remain available for the summary fields.
+ * Each channel has a ring buffer of scaled chart samples while the latest temperatures, display fan
+ * tachometer speed, and thermally available output power remain available for the summary fields.
  */
 typedef struct {
     uint8_t samples[DISPLAY_TEMPERATURE_ANALYSIS_CHANNEL_COUNT]
@@ -43,7 +43,7 @@ typedef struct {
         temperatures[DISPLAY_TEMPERATURE_ANALYSIS_CHANNEL_COUNT]; /**< Latest channel temperatures
                                                                      in degrees Celsius. */
     uint32_t next_sample_ms; /**< Next timestamp at which channel samples may be stored. */
-    uint16_t fan_speed_rpm;  /**< Current primary fan speed in revolutions per minute. */
+    uint16_t fan_speed_rpm;  /**< Current display fan tachometer speed in revolutions per minute. */
     uint8_t next_sample;     /**< Ring-buffer index where the next channel samples are stored. */
     uint8_t sample_count;    /**< Number of valid samples currently retained per channel. */
     uint8_t power_percent;   /**< Current thermally available output power in percent. */
@@ -63,14 +63,14 @@ void display_temperature_analysis_page_open(DisplayTemperatureAnalysisPage *page
 /**
  * @brief Updates temperature histories and cooling values.
  *
- * Samples all channels when the chart deadline is due and updates fan speed and available output
- * power whenever either live value changes.
+ * Samples all channels when the chart deadline is due and updates fan tachometer speed and
+ * available output power whenever either live value changes.
  *
  * @param[in,out] page Temperature-analysis state to update.
  * @param[in] now_ms Current monotonic time in milliseconds.
  * @param[in] temperatures Motor, driver, base, and wheel quick-release temperatures in degrees
  * Celsius.
- * @param[in] fan_speed_rpm Primary fan speed in revolutions per minute.
+ * @param[in] fan_speed_rpm Display fan tachometer speed in revolutions per minute.
  * @param[in] power_percent Thermally available output power in percent.
  * @return True when displayed analysis data changed.
  */
@@ -82,7 +82,7 @@ bool display_temperature_analysis_page_update(
 /**
  * @brief Renders the temperature-analysis title.
  *
- * Clears the framebuffer and centers the title shown while the analysis page opens.
+ * Clears the framebuffer and draws the inverted title at the official record coordinates.
  *
  * @param[in,out] framebuffer Framebuffer receiving the title pixels.
  */
@@ -91,8 +91,8 @@ void display_temperature_analysis_page_render_title(DisplayFramebuffer framebuff
 /**
  * @brief Renders temperature histories and cooling telemetry.
  *
- * Clears the framebuffer and draws four temperature charts with current values, primary fan speed,
- * and thermally available output power.
+ * Clears the framebuffer and draws four temperature charts with current values, display fan
+ * tachometer speed, and thermally available output power.
  *
  * @param[in,out] framebuffer Framebuffer receiving the rendered page.
  * @param[in] page Temperature-analysis state to render.

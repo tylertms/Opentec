@@ -9,18 +9,20 @@
 /** @brief Number of tuning setups retained in one profile bank. */
 enum { TUNING_PROFILE_SLOT_COUNT = 6 /**< Number of stored tuning setups. */ };
 
-/** @brief Retained tuning setups and their selected and active slots. */
+/** @brief Tuning setups, selection state, mode, and transient Auto status. */
 typedef struct {
     TuningProfile slots[TUNING_PROFILE_SLOT_COUNT]; /**< Stored tuning setups. */
     uint8_t selected_slot;                          /**< Zero-based setup selected for editing. */
     uint8_t active_slot;                            /**< Zero-based setup active at runtime. */
     bool standard_mode_enabled;                     /**< True when Standard mode is selected. */
+    bool automatic_apply_pending;                   /**< True when Auto values await application. */
 } TuningProfileBank;
 
 /**
  * @brief Restores a profile bank to its device defaults.
  *
- * Initializes every stored setup, selects and activates setup zero, and enables Standard mode.
+ * Initializes every stored setup, selects and activates setup zero, enables Standard mode, and
+ * clears the transient Auto apply-pending marker.
  *
  * @param[out] bank Profile bank to initialize.
  */

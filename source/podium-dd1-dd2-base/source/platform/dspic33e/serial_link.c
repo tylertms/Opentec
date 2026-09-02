@@ -25,7 +25,7 @@ enum {
     SERIAL_LINK_RECEIVE_TIMEOUT_PERIOD =
         10000, /**< Timer period for an incomplete framed response. */
     SERIAL_LINK_DIRECT_TRANSMIT_CAPACITY = 63, /**< Maximum queued direct-mode request bytes. */
-    SERIAL_LINK_DIRECT_RECEIVE_CAPACITY = 66,  /**< Maximum retained direct-mode response bytes. */
+    SERIAL_LINK_DIRECT_RECEIVE_CAPACITY = 64,  /**< Maximum retained direct-mode response bytes. */
     SERIAL_LINK_DIRECT_BAUD_PERIOD = 0xc2, /**< UART3 baud-period register value for direct mode. */
     SERIAL_LINK_DIRECT_SERVICE_PERIOD = 600, /**< Direct-mode service timer period. */
     SERIAL_LINK_DIRECT_TURNAROUND_TICKS = 2, /**< Direct-mode receive-turnaround service ticks. */
@@ -383,8 +383,9 @@ void platform_serial_link_reset(void) {
 /**
  * @brief Starts one attached-device request and response exchange.
  *
- * Places the 64-byte transport frame between four leading and trailing padding bytes, then starts
- * the transmit DMA. Framed mode accepts only one exchange at a time.
+ * Rebuilds both DMA descriptors, places the 64-byte transport frame between four leading and
+ * trailing padding bytes, then starts the transmit DMA. Framed mode accepts only one exchange at a
+ * time.
  *
  * @param[in] packet Transport packet to transmit.
  * @return true when the exchange starts; false when another exchange is active.
@@ -403,6 +404,7 @@ bool platform_serial_link_start(const uint8_t packet[SERIAL_PACKET_SIZE]) {
     }
     DMA5CONbits.CHEN = 0;
     DMA6CONbits.CHEN = 0;
+    configure_dma();
     IEC5bits.U3RXIE = 0;
     stop_timer();
     clear_uart();
@@ -517,14 +519,14 @@ bool platform_serial_link_direct_write(const uint8_t *data, uint8_t length) {
  * @brief Takes a requested number of raw updater response bytes.
  *
  * Copies and consumes the oldest received bytes only in direct mode and when the complete requested
- * fragment is available. Up to 66 valid response bytes are retained.
+ * fragment is available. Up to 64 updater response bytes are retained and consumed.
  *
  * @param[out] data Storage that receives the requested response fragment.
  * @param[in] length Requested response byte count.
  * @return true when the complete fragment was copied; false when insufficient data is available.
  */
 bool platform_serial_link_direct_read(uint8_t *data, uint8_t length) {
-    if (!direct_mode || data == NULL || length == 0) {
+    if (!direct_mode || data == NULL) {
         return false;
     }
     IEC5bits.U3RXIE = 0;

@@ -38,8 +38,9 @@ void usb_host_capability_recovery_init(UsbHostCapabilityRecovery *recovery);
  * @brief Updates Xbox host-capability recovery state.
  *
  * Arms the recovery delay outside Xbox mode or when no applicable wheel or adapter capability is
- * requested. In an applicable Xbox configuration, returns a resume action only after the deadline
- * has passed and the host capability is still disabled, then schedules the retry delay.
+ * requested. In an applicable Xbox configuration, re-arms the short deadline while the host
+ * capability is enabled. It returns a resume action only after that deadline has passed while the
+ * host capability is disabled, then schedules the retry delay.
  *
  * @param[in,out] recovery Persistent recovery deadline.
  * @param[in] input Current USB mode and host-capability inputs.

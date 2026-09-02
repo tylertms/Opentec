@@ -75,6 +75,93 @@ static void test_validation(void) {
     assert(!fanatec_input_compatibility_encode(compatibility_report, NULL));
 }
 
+static void test_official_source_history(void) {
+    fanatec_input_pipeline_state pipeline;
+    fanatec_input_source source;
+
+    fanatec_input_pipeline_init(&pipeline);
+    for (uint8_t sample = 0; sample < FANATEC_INPUT_HISTORY_DEPTH; sample++) {
+        source = (fanatec_input_source){
+            .buttons = {0xff, 0xff, 0xff},
+            .secondary_buttons = 0xff,
+            .packed_rotary_positions = 0xff,
+            .accessory = 0xff,
+            .mode = 0x10,
+        };
+        fanatec_input_pipeline_filter(&pipeline, &source);
+        if (sample + 1 < FANATEC_INPUT_HISTORY_DEPTH) {
+            assert(memcmp(source.buttons, (uint8_t[3]){0, 0, 0}, 3) == 0);
+            assert(source.secondary_buttons == 0);
+            assert(source.packed_rotary_positions == 0);
+            assert(source.accessory == 0);
+        } else {
+            assert(memcmp(source.buttons, (uint8_t[3]){0xff, 0xff, 0xff}, 3) == 0);
+            assert(source.secondary_buttons == 0xff);
+            assert(source.packed_rotary_positions == 0xff);
+            assert(source.accessory == 0xff);
+        }
+    }
+
+    source = (fanatec_input_source){
+        .buttons = {0xff, 0xff, 0xff},
+        .secondary_buttons = 0xa5,
+        .packed_rotary_positions = 0x5a,
+        .accessory = 0x3c,
+        .mode = 0x0e,
+    };
+    fanatec_input_pipeline_filter(&pipeline, &source);
+    assert(source.secondary_buttons == 0xa5);
+    assert(source.packed_rotary_positions == 0x5a);
+    assert(source.accessory == 0x3c);
+}
+
+static void test_official_first_five_mapping_and_axes(void) {
+    const fanatec_input_source source = {
+        .buttons = {0x80, 0x01, 0x00},
+        .hat = 0x05,
+        .secondary_buttons = 0x01,
+        .mode = 0x10,
+        .auxiliary_flags = 0xa0,
+        .protocol_active = true,
+        .calibration_available = true,
+        .axis_report_enabled = true,
+    };
+    fanatec_input_state state = {0};
+
+    fanatec_input_pipeline_map(&state, &source);
+
+    assert(memcmp(state.button_banks, (uint8_t[5]){0x88, 0x01, 0x05, 0x00, 0x00}, 5) == 0);
+    assert(state.accessory[1] == 0xa0);
+    assert(state.accessory[2] == 0x08);
+    assert(state.accessory[3] == 0x00);
+    assert(state.status_flags == 0xc0);
+    assert(state.wheel_mode == 0x10);
+}
+
+static void test_production_pipeline_first_five_report(void) {
+    fanatec_input_pipeline_state pipeline;
+    fanatec_input_state state = {0};
+    const fanatec_input_source source = {
+        .buttons = {0x80, 0x01, 0x00},
+        .hat = 0x05,
+        .secondary_buttons = 0x01,
+        .mode = 0x10,
+        .auxiliary_flags = 0xa0,
+        .protocol_active = true,
+        .calibration_available = true,
+        .axis_report_enabled = true,
+    };
+    uint8_t report[FANATEC_INPUT_REPORT_SIZE];
+
+    fanatec_input_pipeline_init(&pipeline);
+    for (uint8_t sample = 0; sample < FANATEC_INPUT_HISTORY_DEPTH; sample++) {
+        fanatec_input_pipeline_apply(&pipeline, &state, &source);
+    }
+
+    assert(fanatec_input_encode(report, &state));
+    assert(memcmp(report + 1, (uint8_t[5]){0x88, 0x01, 0x05, 0x00, 0x00}, 5) == 0);
+}
+
 static void test_compatibility_encode(void) {
     const fanatec_input_state state = {
         .button_banks = {0x10, 0x21, 0x32, 0x43, 0x54},
@@ -134,6 +221,14 @@ static void test_restricted_wheel_control_mapping(void) {
     assert(state.accessory[0] == 6);
     assert(state.accessory[4] == 10);
     assert(state.transfer_code == 0x91);
+}
+
+static void test_quaternary_rotary_event_mapping(void) {
+    fanatec_input_state state = {.accessory = {0xa5, 0, 0, 0, 0}};
+
+    fanatec_input_apply_quaternary_rotary_event(&state, 2);
+
+    assert(state.accessory[0] == 2);
 }
 
 static void test_wheel_accessory_mapping(void) {
@@ -348,9 +443,13 @@ int main(void) {
     test_zero_state();
     test_bite_point_update();
     test_validation();
+    test_official_source_history();
+    test_official_first_five_mapping_and_axes();
+    test_production_pipeline_first_five_report();
     test_compatibility_encode();
     test_wheel_control_mapping();
     test_restricted_wheel_control_mapping();
+    test_quaternary_rotary_event_mapping();
     test_wheel_accessory_mapping();
     test_alternative_shifter_mapping();
     test_multi_position_mode_mapping();

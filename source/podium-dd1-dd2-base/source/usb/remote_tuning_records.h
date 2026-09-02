@@ -11,7 +11,7 @@
 /** @brief Limits for retained remote-tuning records and forwarded batches. */
 enum {
     USB_REMOTE_TUNING_RECORD_COUNT =
-        32, /**< Maximum number of records retained in arrival order. */
+        32, /**< Number of sparse slots retained for remote-tuning records. */
     USB_REMOTE_TUNING_RECORD_PAYLOAD_SIZE =
         15, /**< Maximum payload bytes retained in one logical record. */
     USB_REMOTE_TUNING_FORWARD_BATCH_SIZE =
@@ -35,13 +35,14 @@ typedef struct {
 /**
  * @brief Retained remote-tuning control records.
  *
- * Records are retained in arrival order until they are routed to a consumer or the fixed store is
- * full.
+ * Records occupy sparse protocol slots until they are routed to a consumer or the fixed store is
+ * full. New records are assigned from the highest empty slot so that later records are serviced
+ * first without moving records left behind by another route.
  */
 typedef struct {
     UsbRemoteTuningRecord
-        records[USB_REMOTE_TUNING_RECORD_COUNT]; /**< Retained records in arrival order. */
-    uint8_t count;                               /**< Number of valid entries in @ref records. */
+        records[USB_REMOTE_TUNING_RECORD_COUNT]; /**< Retained records in sparse protocol slots. */
+    uint8_t count;                               /**< Number of occupied slots in @ref records. */
 } UsbRemoteTuningRecords;
 
 /**
@@ -56,9 +57,9 @@ void usb_remote_tuning_records_init(UsbRemoteTuningRecords *records);
 /**
  * @brief Applies one remote-tuning record packet.
  *
- * Parses packet types one and three, retaining each complete record in arrival order until the
- * fixed store is full. Malformed or incomplete trailing records stop parsing without rejecting the
- * packet type.
+ * Parses packet types one and three, retaining each complete record in the first available sparse
+ * slot until the fixed store is full. Malformed or incomplete trailing records stop parsing without
+ * rejecting the packet type.
  *
  * @param[in,out] records Record store receiving decoded records.
  * @param[in] command Decoded vendor command containing the record packet.
@@ -86,7 +87,7 @@ bool usb_remote_tuning_records_take_response(UsbRemoteTuningRecords *records, Re
  * @brief Takes the next generic attached-device command batch.
  *
  * Serializes route-three records from both selector banks into the fixed 61-byte forwarding area,
- * taking matching records from newest to oldest while retaining the order of records left behind.
+ * taking matching records from newest to oldest while preserving the sparse slots left behind.
  *
  * @param[in,out] records Record store containing retained records.
  * @param[out] output Destination for serialized records.
@@ -100,8 +101,9 @@ bool usb_remote_tuning_records_take_forward_batch(
 /**
  * @brief Applies and consumes locally routed telemetry records.
  *
- * Applies route-two records to the selected telemetry state. Extended mode retains ignored records
- * and reports ignored primary records through @p reset_requested; legacy mode consumes the first
+ * Applies route-two ITM records to the selected telemetry state. Route-one force-feedback records
+ * and all other routes remain in their sparse slots. Extended mode retains ignored records and
+ * reports ignored primary records through @p reset_requested; legacy mode consumes the first
  * ignored record and stops the pass.
  *
  * @param[in,out] records Record store containing retained records.

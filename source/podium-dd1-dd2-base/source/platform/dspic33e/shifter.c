@@ -95,8 +95,8 @@ void platform_shifter_init(void) {
 /**
  * @brief Reads the connected shifter modes and sequential transition inputs.
  *
- * Reconfigures a port when its identification input changes. In sequential mode, either active-low
- * switch on that port produces its transition signal.
+ * Reconfigures a port when its identification input changes. In sequential mode, the first active
+ * low switch on each port has priority when both contacts are asserted.
  *
  * @param[out] state Destination for both port modes and transition signals.
  */
@@ -112,9 +112,14 @@ void platform_shifter_read(ShifterInputState *state) {
 
     state->primary_mode = primary_mode;
     state->secondary_mode = secondary_mode;
-    state->primary_transition = (primary_mode == SHIFTER_INPUT_SEQUENTIAL && PORTBbits.RB9 == 0) ||
-                                (secondary_mode == SHIFTER_INPUT_SEQUENTIAL && PORTBbits.RB11 == 0);
+    ShifterSequentialPairState primary_pair = shifter_sequential_pair_state(
+        primary_mode == SHIFTER_INPUT_SEQUENTIAL && PORTBbits.RB9 == 0,
+        primary_mode == SHIFTER_INPUT_SEQUENTIAL && PORTBbits.RB10 == 0);
+    ShifterSequentialPairState secondary_pair = shifter_sequential_pair_state(
+        secondary_mode == SHIFTER_INPUT_SEQUENTIAL && PORTBbits.RB11 == 0,
+        secondary_mode == SHIFTER_INPUT_SEQUENTIAL && PORTBbits.RB12 == 0);
+    state->primary_transition =
+        primary_pair == SHIFTER_SEQUENTIAL_FIRST || secondary_pair == SHIFTER_SEQUENTIAL_FIRST;
     state->secondary_transition =
-        (primary_mode == SHIFTER_INPUT_SEQUENTIAL && PORTBbits.RB10 == 0) ||
-        (secondary_mode == SHIFTER_INPUT_SEQUENTIAL && PORTBbits.RB12 == 0);
+        primary_pair == SHIFTER_SEQUENTIAL_SECOND || secondary_pair == SHIFTER_SEQUENTIAL_SECOND;
 }

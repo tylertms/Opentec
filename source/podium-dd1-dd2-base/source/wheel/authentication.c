@@ -372,8 +372,8 @@ static bool initialize_ciphers(WheelAuthentication *authentication,
  * @brief Processes an authentication challenge.
  *
  * A valid A6 challenge initializes both cipher directions, prepares an encrypted response with
- * marker 0xAA, and advances to the proof stage. A checksum failure advances the retry sequence and
- * clears the response tail.
+ * marker 0xAA, and advances to the proof stage. A checksum failure advances the receive AES
+ * counter and clears the response tail.
  *
  * @param[in,out] authentication Authentication exchange state.
  * @param[in] request Challenge content.
@@ -386,7 +386,7 @@ static bool accept_challenge(WheelAuthentication *authentication,
                              bool checksum_valid,
                              uint8_t response[WHEEL_AUTHENTICATION_CONTENT_SIZE]) {
     if (!checksum_valid) {
-        increment_counter(authentication->retry_counter);
+        increment_counter(authentication->receive_counter);
         memset(&response[AUTHENTICATION_NONCE_OFFSET], 0,
                WHEEL_AUTHENTICATION_CONTENT_SIZE - AUTHENTICATION_NONCE_OFFSET);
         return false;
@@ -412,7 +412,7 @@ static bool accept_challenge(WheelAuthentication *authentication,
  *
  * Decrypts a valid request and completes authentication for command A7. Other decrypted commands
  * receive an encrypted A5 response containing their eight-byte token. A checksum failure advances
- * the retry sequence and encrypts the retained response prefix with a cleared tail.
+ * the receive AES counter and encrypts the retained response prefix with a cleared tail.
  *
  * @param[in,out] authentication Authentication exchange state.
  * @param[in] request Encrypted proof content.
@@ -425,7 +425,6 @@ static bool accept_proof(WheelAuthentication *authentication,
                          const uint8_t request[WHEEL_AUTHENTICATION_CONTENT_SIZE],
                          bool checksum_valid, uint8_t response[WHEEL_AUTHENTICATION_CONTENT_SIZE]) {
     if (!checksum_valid) {
-        increment_counter(authentication->retry_counter);
         increment_counter(authentication->receive_counter);
         memset(&response[AUTHENTICATION_REPLY_PREFIX_SIZE], 0,
                WHEEL_AUTHENTICATION_CONTENT_SIZE - AUTHENTICATION_REPLY_PREFIX_SIZE);

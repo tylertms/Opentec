@@ -43,10 +43,11 @@ void platform_cooling_set_duty(uint16_t primary_percent, uint16_t secondary_perc
                                bool outputs_disabled);
 
 /**
- * @brief Services alternating fan tachometer capture windows.
+ * @brief Services alternating fan tachometer capture windows from Timer 1.
  *
- * Publishes missing results and starts the next primary or secondary capture when its deadline is
- * reached.
+ * Publishes missing results and starts the next primary or secondary capture when its
+ * 50-millisecond deadline is reached. The firmware invokes this from the Timer 1 millisecond
+ * callback.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */

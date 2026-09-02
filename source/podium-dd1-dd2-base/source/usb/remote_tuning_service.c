@@ -14,12 +14,13 @@ enum {
     REMOTE_TUNING_COMMAND_MULTI_POSITION = 2, /**< Multi-position selection command kind. */
     REMOTE_TUNING_COMMAND_SETUP = 3,          /**< Setup selection command kind. */
     REMOTE_TUNING_COMMAND_ENCODER = 4,        /**< Encoder selection command kind. */
+    REMOTE_TUNING_ITM_RECORD_ROUTE = 2,       /**< Route owned by the ITM consumer. */
     REMOTE_TUNING_MENU_SELECTION_MAXIMUM = 6, /**< Largest accepted menu selection. */
     REMOTE_TUNING_MULTI_POSITION_SELECTION_MAXIMUM =
         11,                                    /**< Largest accepted multi-position selection. */
     REMOTE_TUNING_SETUP_SELECTION_MAXIMUM = 6, /**< Largest accepted setup selection. */
     REMOTE_TUNING_TELEMETRY_CLEAR_SELECTION =
-        11,                             /**< Multi-position value that clears telemetry. */
+        11,                             /**< Multi-position value that clears the ITM set. */
     REMOTE_TUNING_HOST_REPORT_ID = 5,   /**< Host telemetry report identifier. */
     REMOTE_TUNING_HOST_REPORT_TYPE = 1, /**< Host telemetry report type. */
     REMOTE_TUNING_HOST_REPORT_NATIVE_MARKER = 0xff,      /**< Native host report marker. */
@@ -29,8 +30,8 @@ enum {
     REMOTE_TUNING_HOST_REPORT_RECORD_COUNT =
         12, /**< Maximum five-byte records in one host report. */
     REMOTE_TUNING_PHYSICAL_SELECTION_MAXIMUM =
-        10,                                    /**< Largest metric selected by physical controls. */
-    REMOTE_TUNING_STANDARD_NEXT_BUTTON = 0x04, /**< Standard-wheel next button bit. */
+        USB_REMOTE_TUNING_ITM_SET_COUNT, /**< Largest ITM set selected by physical controls. */
+    REMOTE_TUNING_STANDARD_NEXT_BUTTON = 0x04,     /**< Standard-wheel next button bit. */
     REMOTE_TUNING_STANDARD_PREVIOUS_BUTTON = 0x02, /**< Standard-wheel previous button bit. */
     REMOTE_TUNING_STANDARD_BUTTON_MASK = 0x0f,     /**< Standard-wheel navigation button mask. */
     REMOTE_TUNING_ENCODER_INPUT_FIRST = 1,         /**< First physical rotary position. */
@@ -55,44 +56,17 @@ typedef struct {
     uint8_t count;
 } UsbRemoteTuningItmDefinition;
 
-static const UsbRemoteTuningItmDefinition itm_definitions[5] = {
-    {{{0x001, 0x34, false},
-      {0x004, 0x12, false},
-      {0x1f9, 0x32, true},
-      {0x1f5, 0x32, true},
-      {0x1fd, 0x2a, false},
-      {0x1fe, 0x0a, false}},
-     6},
-    {{{0x001, 0x34, false},
-      {0x004, 0x12, false},
-      {0x005, 0x18, true},
-      {0x009, 0x39, false},
-      {0x00e, 0x12, false},
-      {0x00f, 0x12, false},
-      {0x204, 0x1a, false}},
-     7},
-    {{{0x001, 0x34, false},
-      {0x004, 0x12, false},
-      {0x014, 0x22, false},
-      {0x012, 0x22, false},
-      {0x01a, 0x61, false},
-      {0x021, 0x32, true},
-      {0x019, 0x49, false}},
-     7},
-    {{{0x001, 0x34, false},
-      {0x004, 0x12, false},
-      {0x1fe, 0x0a, false},
-      {0x1ff, 0x0a, false},
-      {0x207, 0x1a, false},
-      {0x208, 0x1a, false}},
-     6},
-    {{{0x001, 0x34, false},
-      {0x004, 0x12, false},
-      {0x02a, 0x32, true},
-      {0x030, 0x32, true},
-      {0x02d, 0x32, true},
-      {0x033, 0x32, true}},
-     6},
+static const UsbRemoteTuningItmDefinition itm_definitions[USB_REMOTE_TUNING_ITM_SET_COUNT] = {
+    [REMOTE_TELEMETRY_SPEED - 1] = {{{1, 0x34, true}}, 1},
+    [REMOTE_TELEMETRY_RPM - 1] = {{{2, 0x06, false}, {3, 0x06, false}}, 2},
+    [REMOTE_TELEMETRY_GEAR - 1] = {{{4, 0xa2, false}}, 1},
+    [REMOTE_TELEMETRY_POSITION - 1] = {{{501, 0x24, true}}, 1},
+    [REMOTE_TELEMETRY_LAP - 1] = {{{505, 0x24, true}}, 1},
+    [REMOTE_TELEMETRY_FUEL - 1] = {{{5, 0x18, true}, {6, 0x18, true}}, 2},
+    [REMOTE_TELEMETRY_DRS - 1] = {{{14, 0x41, false}, {15, 0x12, false}}, 2},
+    [REMOTE_TELEMETRY_DRIVER_AIDS - 1] = {{{18, 0x22, false}, {20, 0x22, false}}, 2},
+    [REMOTE_TELEMETRY_ERS - 1] = {{{9, 0x09, false}}, 1},
+    [REMOTE_TELEMETRY_DELTA - 1] = {{{516, 0x1a, false}}, 1},
 };
 
 static uint8_t format_unsigned(char *output, uint32_t value) {
@@ -263,18 +237,27 @@ static void format_itm_value(char output[USB_REMOTE_TUNING_ITM_TEXT_SIZE], uint8
 }
 
 static void initialize_itm_page(UsbRemoteTuningItmPage *page) {
-    static const char *const initial[5][USB_REMOTE_TUNING_ITM_FIELD_COUNT] = {
-        {"---", "", "---", "-- ", "--:--.-", "--:--.---", ""},
-        {"---", "", "-.-  ", "--- ", "", "", "---    "},
-        {"---", "", "- ", "- ", "-     ", "---", "--.-%"},
-        {"---", "", "--:--.---", "--:--.---", "-.--    ", "-.--    ", ""},
-        {"---", "", "---", "---", "---", "---", ""},
-    };
-    static const char *const secondary[5][USB_REMOTE_TUNING_ITM_FIELD_COUNT] = {
-        {"", "", "/ ---", "/ --", "", "", ""}, {"", "", "--- ", "", "", "", ""},
-        {"", "", "", "", "", "C", ""},         {"", "", "", "", "", "", ""},
-        {"", "", "C", "C", "C", "C", ""},
-    };
+    static const char *const
+        initial[USB_REMOTE_TUNING_ITM_SET_COUNT][USB_REMOTE_TUNING_ITM_FIELD_COUNT] = {
+            {"---", "", "---", "-- ", "--:--.-", "--:--.---", ""},
+            {"---", "", "-.-  ", "--- ", "", "", "---    "},
+            {"---", "", "- ", "- ", "-     ", "---", "--.-%"},
+            {"---", "", "--:--.---", "--:--.---", "-.--    ", "-.--    ", ""},
+            {"---", "", "---", "---", "---", "---", ""},
+            {"---", "", "---", "---", "", "", ""},
+            {"---", "", "---", "---", "", "", ""},
+            {"---", "", "---", "---", "", "", ""},
+            {"---", "", "---", "", "", "", ""},
+            {"---", "", "---", "", "", "", ""},
+        };
+    static const char *const
+        secondary[USB_REMOTE_TUNING_ITM_SET_COUNT][USB_REMOTE_TUNING_ITM_FIELD_COUNT] = {
+            {"", "", "/ ---", "/ --", "", "", ""}, {"", "", "--- ", "", "", "", ""},
+            {"", "", "", "", "", "C", ""},         {"", "", "", "", "", "", ""},
+            {"", "", "C", "C", "C", "C", ""},      {"", "", "", "", "", "", ""},
+            {"", "", "", "", "", "", ""},          {"", "", "", "", "", "", ""},
+            {"", "", "", "", "", "", ""},          {"", "", "", "", "", "", ""},
+        };
     for (uint8_t index = 0; index < USB_REMOTE_TUNING_ITM_FIELD_COUNT; index++) {
         memcpy(page->values[index], initial[page->page - 1u][index],
                strlen(initial[page->page - 1u][index]) + 1u);
@@ -283,73 +266,88 @@ static void initialize_itm_page(UsbRemoteTuningItmPage *page) {
     }
 }
 
-static void select_itm_page(UsbRemoteTuningService *service, uint8_t page) {
-    if (page < 1 || page > 5 || service->itm_page.page == page) {
-        return;
+static bool select_itm_set(UsbRemoteTuningService *service, uint8_t set) {
+    if (set < 1 || set > USB_REMOTE_TUNING_ITM_SET_COUNT) {
+        return false;
     }
+    if (service->itm_page.page == set && service->telemetry.metric == (RemoteTelemetryMetric)set) {
+        return true;
+    }
+    if (!remote_telemetry_select(&service->telemetry, (RemoteTelemetryMetric)set)) {
+        return false;
+    }
+
     memset(&service->itm_page, 0, sizeof(service->itm_page));
-    service->itm_page.page = page;
+    service->itm_page.page = set;
     initialize_itm_page(&service->itm_page);
-    const UsbRemoteTuningItmDefinition *definition = &itm_definitions[page - 1u];
-    service->itm_page.field_count = definition->count;
-    for (uint8_t index = 0; index < definition->count; index++) {
-        uint8_t record[REMOTE_TELEMETRY_SUBSCRIPTION_SIZE] = {
-            1,
-            (uint8_t)(index | (definition->fields[index].secondary ? 0x80u : 0u)),
-            (uint8_t)definition->fields[index].key,
-            (uint8_t)(definition->fields[index].key >> 8),
-            definition->fields[index].format,
-        };
-        (void)remote_telemetry_queue_control_record(&service->telemetry, record);
-    }
+    service->itm_page.field_count = itm_definitions[set - 1u].count;
     service->itm_page.revision++;
+    return true;
 }
 
-static void consume_itm_records(UsbRemoteTuningService *service) {
-    bool consumed[USB_REMOTE_TUNING_RECORD_COUNT] = {false};
+static void consume_itm_records(UsbRemoteTuningService *service, bool extended_mode,
+                                bool *reset_requested) {
     const UsbRemoteTuningItmDefinition *definition =
-        service->itm_page.page >= 1 && service->itm_page.page <= 5
+        service->itm_page.page >= 1 && service->itm_page.page <= USB_REMOTE_TUNING_ITM_SET_COUNT
             ? &itm_definitions[service->itm_page.page - 1u]
             : NULL;
-    for (uint8_t index = 0; index < service->records.count; index++) {
+    if (reset_requested != NULL) {
+        *reset_requested = false;
+    }
+    for (uint8_t index = 0; index < USB_REMOTE_TUNING_RECORD_COUNT; index++) {
         UsbRemoteTuningRecord *record = &service->records.records[index];
-        if (record->type != 1) {
+        if (record->type != REMOTE_TUNING_ITM_RECORD_ROUTE) {
             continue;
         }
-        consumed[index] = true;
-        uint8_t slot = record->selector & 0x0fu;
-        if (definition == NULL || slot >= definition->count ||
-            record->value != definition->fields[slot].key) {
-            continue;
-        }
-        if ((record->selector & 0x80u) != 0) {
-            if (!definition->fields[slot].secondary) {
-                continue;
+        uint8_t channel = record->selector & 0x0fu;
+        bool overlay = (record->selector & 0x80u) != 0;
+        RemoteTelemetryRecordResult result =
+            overlay ? remote_telemetry_apply_overlay(&service->telemetry, channel, record->value,
+                                                     record->payload, record->payload_length)
+                    : remote_telemetry_apply_primary(&service->telemetry, channel, record->value,
+                                                     record->payload, record->payload_length);
+        bool page_applied = false;
+        if (result != REMOTE_TELEMETRY_RECORD_IGNORED && definition != NULL &&
+            channel < definition->count && record->value == definition->fields[channel].key) {
+            const UsbRemoteTuningItmField *field = &definition->fields[channel];
+            if (overlay) {
+                if (field->secondary) {
+                    uint8_t length = record->payload_length < USB_REMOTE_TUNING_ITM_TEXT_SIZE - 1u
+                                         ? record->payload_length
+                                         : USB_REMOTE_TUNING_ITM_TEXT_SIZE - 1u;
+                    memset(service->itm_page.secondary_values[channel], 0,
+                           sizeof(service->itm_page.secondary_values[channel]));
+                    memcpy(service->itm_page.secondary_values[channel], record->payload, length);
+                    page_applied = true;
+                }
+            } else if (service->itm_page.page == REMOTE_TELEMETRY_GEAR && channel == 0 &&
+                       record->payload_length != 0) {
+                format_gear(service->itm_page.values[channel], record->payload[0]);
+                page_applied = true;
+            } else {
+                format_itm_value(service->itm_page.values[channel], field->format, record->payload,
+                                 record->payload_length);
+                page_applied = true;
             }
-            uint8_t length = record->payload_length < USB_REMOTE_TUNING_ITM_TEXT_SIZE - 1u
-                                 ? record->payload_length
-                                 : USB_REMOTE_TUNING_ITM_TEXT_SIZE - 1u;
-            memset(service->itm_page.secondary_values[slot], 0,
-                   sizeof(service->itm_page.secondary_values[slot]));
-            memcpy(service->itm_page.secondary_values[slot], record->payload, length);
-        } else if (service->itm_page.page == 2 && (slot == 4 || slot == 5)) {
-            service->itm_page.markers[slot] =
-                record->payload_length != 0 && record->payload[0] != 0;
-        } else if (slot == 1 && record->payload_length != 0) {
-            format_gear(service->itm_page.values[slot], record->payload[0]);
-        } else {
-            format_itm_value(service->itm_page.values[slot], definition->fields[slot].format,
-                             record->payload, record->payload_length);
         }
-        service->itm_page.revision++;
-    }
-    uint8_t retained = 0;
-    for (uint8_t index = 0; index < service->records.count; index++) {
-        if (!consumed[index]) {
-            service->records.records[retained++] = service->records.records[index];
+        if (page_applied) {
+            service->itm_page.revision++;
         }
+        if (result != REMOTE_TELEMETRY_RECORD_IGNORED || page_applied) {
+            memset(record, 0, sizeof(*record));
+            service->records.count--;
+            continue;
+        }
+        if (extended_mode) {
+            if (!overlay && reset_requested != NULL) {
+                *reset_requested = true;
+            }
+            continue;
+        }
+        memset(record, 0, sizeof(*record));
+        service->records.count--;
+        break;
     }
-    service->records.count = retained;
 }
 
 /**
@@ -369,8 +367,8 @@ static bool selection_valid(uint8_t value, uint8_t maximum) {
  * @brief Applies a pending host telemetry selection.
  *
  * While the remote session is active outside extended wheel mode, values one through ten select
- * the corresponding telemetry metric and value eleven clears the selection. A successful change
- * consumes the shared remote selection fields.
+ * the corresponding ITM set and value eleven clears the set. A successful change consumes the
+ * shared remote selection fields and queues route-two controls for the host.
  *
  * @param[in,out] service Remote-tuning session and telemetry state.
  * @param[in] wheel_mode Current attached-wheel mode.
@@ -383,11 +381,14 @@ static void apply_telemetry_selection(UsbRemoteTuningService *service, uint8_t w
     }
 
     uint8_t selection = service->multi_position_selection;
-    RemoteTelemetryMetric metric = selection == REMOTE_TUNING_TELEMETRY_CLEAR_SELECTION
-                                       ? REMOTE_TELEMETRY_NONE
-                                       : (RemoteTelemetryMetric)selection;
-    if (!remote_telemetry_select(&service->telemetry, metric)) {
+    bool selected = selection == REMOTE_TUNING_TELEMETRY_CLEAR_SELECTION
+                        ? remote_telemetry_select(&service->telemetry, REMOTE_TELEMETRY_NONE)
+                        : select_itm_set(service, selection);
+    if (!selected) {
         return;
+    }
+    if (selection == REMOTE_TUNING_TELEMETRY_CLEAR_SELECTION) {
+        service->itm_page = (UsbRemoteTuningItmPage){0};
     }
     service->setup_selection = 0;
     service->menu_selection = 0;
@@ -481,7 +482,7 @@ static void apply_active(UsbRemoteTuningService *service, bool active, uint8_t w
  * @brief Applies a remote-tuning selection packet.
  *
  * Retains menu selections 1 through 6 and multi-position selections 1 through 11. An active
- * non-extended session consumes multi-position values as telemetry metric choices. Setup
+ * non-extended session consumes multi-position values as ITM set choices. Setup
  * selections use values 1 through 6, with extended mode routing them only while local setup
  * selection is allowed. Extended values 1 through 5 replace the reported setup page, while value
  * 6 preserves the prior page. Encoder selection is retained without range conversion in legacy
@@ -500,9 +501,6 @@ static void apply_selection(UsbRemoteTuningService *service, uint8_t command, ui
     case REMOTE_TUNING_COMMAND_MENU:
         if (selection_valid(value, REMOTE_TUNING_MENU_SELECTION_MAXIMUM)) {
             service->menu_selection = value;
-            if (service->active && value <= 5) {
-                select_itm_page(service, value);
-            }
         }
         break;
     case REMOTE_TUNING_COMMAND_MULTI_POSITION:
@@ -576,6 +574,7 @@ static void apply_refresh(UsbRemoteTuningService *service, uint8_t value, uint8_
     }
     if (service->active && wheel_mode != WHEEL_MODE_REMOTE_TUNING_EXTENDED) {
         (void)remote_telemetry_select(&service->telemetry, REMOTE_TELEMETRY_NONE);
+        service->itm_page = (UsbRemoteTuningItmPage){0};
     }
     service->refresh_sync_pending = true;
 }
@@ -638,8 +637,20 @@ bool usb_remote_tuning_service_update_physical_selection(UsbRemoteTuningService 
         selection = REMOTE_TELEMETRY_NONE;
     }
 
-    return selection != service->telemetry.metric &&
-           remote_telemetry_select(&service->telemetry, selection);
+    if (selection == service->telemetry.metric) {
+        return false;
+    }
+    bool selected = remote_telemetry_select(&service->telemetry, selection);
+    if (selected && selection != REMOTE_TELEMETRY_NONE) {
+        memset(&service->itm_page, 0, sizeof(service->itm_page));
+        service->itm_page.page = (uint8_t)selection;
+        initialize_itm_page(&service->itm_page);
+        service->itm_page.field_count = itm_definitions[selection - 1u].count;
+        service->itm_page.revision++;
+    } else if (selected) {
+        service->itm_page = (UsbRemoteTuningItmPage){0};
+    }
+    return selected;
 }
 
 bool usb_remote_tuning_service_update_legacy_encoder(UsbRemoteTuningService *service,
@@ -863,12 +874,13 @@ bool usb_remote_tuning_service_take_telemetry_report(UsbRemoteTuningService *ser
     if (service == NULL || output == NULL) {
         return false;
     }
+    if (!service->active) {
+        return false;
+    }
     apply_telemetry_selection(service, wheel_mode);
-    consume_itm_records(service);
     bool reset_requested = false;
     bool extended_mode = wheel_mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED;
-    (void)usb_remote_tuning_records_consume_telemetry(&service->records, &service->telemetry,
-                                                      extended_mode, &reset_requested);
+    consume_itm_records(service, extended_mode, &reset_requested);
     if (reset_requested) {
         service->refresh_requested = false;
         service->pending_response = (RemoteTuningResponse){0};

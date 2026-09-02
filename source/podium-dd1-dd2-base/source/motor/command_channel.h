@@ -7,6 +7,7 @@
 #include "motor/command_application.h"
 #include "motor/command_message.h"
 #include "motor/command_receiver.h"
+#include "motor/command_scheduler.h"
 
 /** @brief Actions requested by a motor-command channel event. */
 typedef enum {
@@ -43,12 +44,14 @@ typedef struct {
     MotorCommandApplication application; /**< Accumulated decoded application state. */
     MotorCommandMessage message;         /**< View of the most recently decoded complete message. */
     MotorCommandChannelBuffers buffers;  /**< Caller-owned buffers attached to this channel. */
+    MotorCommandScheduler scheduler;     /**< Timeout state for the active outbound command. */
     uint16_t transmit_length; /**< Length of the encoded packet currently in buffers.transmit. */
     uint16_t pending_payload_length; /**< Length of the retained application payload. */
     uint8_t control_packet[5];       /**< Retained control packet awaiting transmission. */
-    uint8_t retry_count;             /**< Number of transmissions of the active command. */
+    uint8_t retry_count;             /**< Number of peer reset requests for the active command. */
     bool command_pending; /**< Whether a queued application payload awaits acknowledgement. */
     bool command_sent;    /**< True after the active command has reached the physical link. */
+    bool reset_pending;   /**< True while the sequence-reset packet awaits transmission. */
 } MotorCommandChannel;
 
 /**
@@ -98,6 +101,39 @@ bool motor_command_channel_queue_payload(MotorCommandChannel *channel, const uin
  * @return true when the reset packet was queued; otherwise false.
  */
 bool motor_command_channel_queue_sequence_reset(MotorCommandChannel *channel);
+
+/**
+ * @brief Builds a retry control event for the current receive sequence.
+ *
+ * The event is independent of the retained outbound command, so a lower-layer payload-read
+ * refusal can request the same peer packet again without consuming the command retry budget.
+ *
+ * @param[in,out] channel Channel whose control storage receives the retry packet.
+ * @return Retry write event, or an empty event when channel is null.
+ */
+MotorCommandChannelEvent motor_command_channel_queue_retry(MotorCommandChannel *channel);
+
+/**
+ * @brief Requeues the retained application command.
+ *
+ * Marks the retained command unsent and rebuilds it with its already reserved transmit sequence.
+ *
+ * @param[in,out] channel Channel retaining the command.
+ * @return true when the retained command was rebuilt; otherwise false.
+ */
+bool motor_command_channel_requeue_pending(MotorCommandChannel *channel);
+
+/**
+ * @brief Replaces the retained command with the protocol recovery command.
+ *
+ * Keeps the reserved transmit sequence and active-command ownership while changing the retained
+ * application payload to the one-byte recovery command used after the official second retry and
+ * timeout paths.
+ *
+ * @param[in,out] channel Channel retaining the stalled command.
+ * @return true when the recovery frame was rebuilt; otherwise false.
+ */
+bool motor_command_channel_queue_recovery_command(MotorCommandChannel *channel);
 
 /**
  * @brief Records that a channel packet was written to the physical transport.

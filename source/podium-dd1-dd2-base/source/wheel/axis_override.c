@@ -13,12 +13,14 @@ enum {
     WHEEL_MODE_FIXED_AXES = 0x1c, /**< Wheel mode with fixed converted axis output. */
     WHEEL_MODE_CRC_AUTHENTICATED =
         0x15, /**< Authenticated CRC mode whose axes are already normalized. */
-    WHEEL_MODE_STANDARD_RANGE_END = 0x12, /**< Last mode using the packet standard range. */
-    AXIS_AVAILABLE_THRESHOLD = 0x87,      /**< Highest value treated as an available direct axis. */
-    AXIS_UNAVAILABLE = 0xff,              /**< Marker for an unavailable axis source. */
-    PACKET_AXIS_X = 5,       /**< Packet control index for the first analog-paddle axis. */
-    PACKET_AXIS_Y = 6,       /**< Packet control index for the second analog-paddle axis. */
-    PACKET_AXIS_ENABLED = 7, /**< Packet control index for the axis-report enable flag. */
+    WHEEL_MODE_PACKED_ALTERNATE = 0x0f,     /**< Packed legacy-alternate mode. */
+    WHEEL_MODE_PACKED_COMPATIBILITY = 0x17, /**< Packed legacy-compatibility mode. */
+    WHEEL_MODE_STANDARD_RANGE_END = 0x12,   /**< Last mode using the packet standard range. */
+    AXIS_AVAILABLE_THRESHOLD = 0x87, /**< Highest value treated as an available direct axis. */
+    AXIS_UNAVAILABLE = 0xff,         /**< Marker for an unavailable axis source. */
+    PACKET_AXIS_X = 5,               /**< Packet control index for the first analog-paddle axis. */
+    PACKET_AXIS_Y = 6,               /**< Packet control index for the second analog-paddle axis. */
+    PACKET_AXIS_ENABLED = 7,         /**< Packet control index for the axis-report enable flag. */
     PACKET_AXIS_LIMIT_THRESHOLD =
         0x17,                       /**< Axis-limit value above which packet axes use full range. */
     PACKET_AXIS_VALUE_LIMIT = 0x7e, /**< Highest accepted half-range packet-axis value. */
@@ -305,27 +307,30 @@ static uint8_t normalize_packet_axis(uint8_t value, bool full_range) {
 }
 
 /**
- * @brief Normalizes both CRC-family analog-paddle controls.
+ * @brief Normalizes both packet-family analog-paddle controls.
  *
  * Preserves authenticated mode 0x15 values and selects full- or half-range conversion for other
  * packet modes from their axis limit and wheel mode.
  *
  * @param[in] wheel_mode Selected attached-wheel mode.
  * @param[in] axis_limit Attached-wheel axis-limit capability value.
- * @param[in,out] controls Eight CRC-family control bytes.
+ * @param[in] x_index Control index for the first analog-paddle axis.
+ * @param[in] y_index Control index for the second analog-paddle axis.
+ * @param[in,out] controls Eight packet-family control bytes.
  */
-static void normalize_packet_axes(uint8_t wheel_mode, uint8_t axis_limit, uint8_t controls[8]) {
+static void normalize_packet_axes(uint8_t wheel_mode, uint8_t axis_limit, uint8_t x_index,
+                                  uint8_t y_index, uint8_t controls[8]) {
     if (wheel_mode == WHEEL_MODE_CRC_AUTHENTICATED) {
         return;
     }
     bool full_range =
         axis_limit > PACKET_AXIS_LIMIT_THRESHOLD || wheel_mode > WHEEL_MODE_STANDARD_RANGE_END;
-    controls[PACKET_AXIS_X] = normalize_packet_axis(controls[PACKET_AXIS_X], full_range);
-    controls[PACKET_AXIS_Y] = normalize_packet_axis(controls[PACKET_AXIS_Y], full_range);
+    controls[x_index] = normalize_packet_axis(controls[x_index], full_range);
+    controls[y_index] = normalize_packet_axis(controls[y_index], full_range);
 }
 
 /**
- * @brief Publishes pedal overrides from CRC-family analog-paddle controls.
+ * @brief Publishes pedal overrides from packet-family analog-paddle controls.
  *
  * Maps the selected paddle mode to its pedal destinations and centers the consumed packet axes.
  *
@@ -335,13 +340,16 @@ static void normalize_packet_axes(uint8_t wheel_mode, uint8_t axis_limit, uint8_
  * @param[in,out] bite_point_percent Active profile bite-point percentage.
  * @param[in,out] buttons Primary attached-wheel button bank.
  * @param[in,out] motion Primary attached-wheel rotary motion.
- * @param[in,out] controls Eight CRC-family control bytes.
+ * @param[in] x_index Control index for the first analog-paddle axis.
+ * @param[in] y_index Control index for the second analog-paddle axis.
+ * @param[in,out] controls Eight packet-family control bytes.
  */
 static void publish_packet_overrides(WheelAxisOverrideProcessor *processor, uint8_t mode,
                                      uint32_t now_ms, uint8_t *bite_point_percent, uint8_t *buttons,
-                                     int8_t *motion, uint8_t controls[8]) {
-    uint8_t x = controls[PACKET_AXIS_X];
-    uint8_t y = controls[PACKET_AXIS_Y];
+                                     int8_t *motion, uint8_t x_index, uint8_t y_index,
+                                     uint8_t controls[8]) {
+    uint8_t x = controls[x_index];
+    uint8_t y = controls[y_index];
     clear_overrides(&processor->overrides);
     switch (mode) {
     case WHEEL_AXIS_OVERRIDE_MODE_CALIBRATED:
@@ -362,32 +370,34 @@ static void publish_packet_overrides(WheelAxisOverrideProcessor *processor, uint
         processor->overrides.axis_5.value = y;
         break;
     }
-    controls[PACKET_AXIS_X] = 0x80;
-    controls[PACKET_AXIS_Y] = 0x80;
+    controls[x_index] = 0x80;
+    controls[y_index] = 0x80;
 }
 
 /**
- * @brief Advances CRC-family wheel-axis multiplexing.
+ * @brief Advances packet-family wheel-axis multiplexing.
  *
  * Selects an available packet axis, emits its interface-specific value, and centers the consumed
  * control fields for nonmultiplexed interfaces.
  *
  * @param[in,out] processor Persistent override and multiplex state.
  * @param[in] interface_mode Current input-report interface mode.
- * @param[in,out] controls Eight CRC-family control bytes.
+ * @param[in] x_index Control index for the first analog-paddle axis.
+ * @param[in] y_index Control index for the second analog-paddle axis.
+ * @param[in,out] controls Eight packet-family control bytes.
  * @param[in,out] axes Two packet output axes updated in place.
  */
 static void process_packet_multiplexed_axes(WheelAxisOverrideProcessor *processor,
-                                            uint8_t interface_mode, uint8_t controls[8],
-                                            uint8_t axes[2]) {
-    uint8_t x = controls[PACKET_AXIS_X];
-    uint8_t y = controls[PACKET_AXIS_Y];
+                                            uint8_t interface_mode, uint8_t x_index,
+                                            uint8_t y_index, uint8_t controls[8], uint8_t axes[2]) {
+    uint8_t x = controls[x_index];
+    uint8_t y = controls[y_index];
     clear_overrides(&processor->overrides);
     if (!interface_multiplexes_axes(interface_mode)) {
         axes[0] = (uint8_t)(x + 0x80u);
         axes[1] = (uint8_t)(y + 0x80u);
-        controls[PACKET_AXIS_X] = axes[0];
-        controls[PACKET_AXIS_Y] = axes[1];
+        controls[x_index] = axes[0];
+        controls[y_index] = axes[1];
         return;
     }
 
@@ -485,7 +495,7 @@ static void process_axis_mode_multiplexed_axes(WheelAxisOverrideProcessor *proce
         if (x == AXIS_UNAVAILABLE) {
             processor->multiplex_phase = WHEEL_AXIS_MULTIPLEX_SELECT;
         } else if (interface_mode == 6) {
-            axes[0] = (uint8_t)(0x80u - ((uint16_t)x >> 1));
+            axes[0] = x >> 1;
         } else if (interface_mode == 7) {
             axes[0] = (uint8_t)(0x7fu - ((uint16_t)x >> 1));
         } else {
@@ -611,7 +621,11 @@ void wheel_axis_override_process_packet(WheelAxisOverrideProcessor *processor, u
                                         uint8_t axis_limit, uint32_t now_ms,
                                         uint8_t *bite_point_percent, uint8_t *buttons,
                                         int8_t *motion, uint8_t controls[8], uint8_t axes[2]) {
-    normalize_packet_axes(wheel_mode, axis_limit, controls);
+    bool packed_mode =
+        wheel_mode == WHEEL_MODE_PACKED_ALTERNATE || wheel_mode == WHEEL_MODE_PACKED_COMPATIBILITY;
+    uint8_t x_index = packed_mode ? 4 : PACKET_AXIS_X;
+    uint8_t y_index = packed_mode ? 5 : PACKET_AXIS_Y;
+    normalize_packet_axes(wheel_mode, axis_limit, x_index, y_index, controls);
     if (wheel_mode == WHEEL_MODE_CRC_AUTHENTICATED && controls[PACKET_AXIS_ENABLED] != 1) {
         processor->packet_axis_report_enabled = false;
     }
@@ -621,9 +635,10 @@ void wheel_axis_override_process_packet(WheelAxisOverrideProcessor *processor, u
 
     if (mode >= WHEEL_AXIS_OVERRIDE_MODE_CALIBRATED && mode <= WHEEL_AXIS_OVERRIDE_MODE_PRIMARY) {
         publish_packet_overrides(processor, mode, now_ms, bite_point_percent, buttons, motion,
-                                 controls);
+                                 x_index, y_index, controls);
     } else if (mode == WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED) {
-        process_packet_multiplexed_axes(processor, interface_mode, controls, axes);
+        process_packet_multiplexed_axes(processor, interface_mode, x_index, y_index, controls,
+                                        axes);
     }
 }
 

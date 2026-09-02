@@ -45,6 +45,17 @@ void wheel_capability_update_report(WheelCapabilityState *state, uint8_t report_
                                     uint8_t report_capabilities);
 
 /**
+ * @brief Updates the scan capability marker.
+ *
+ * Replaces only the low capability byte with the three-bit marker carried in a command-three scan
+ * response and preserves the report-capability high byte and every report-derived flag.
+ *
+ * @param[in,out] state Persistent attached-wheel capability state.
+ * @param[in] scan_response Encoded command-three response sample and marker.
+ */
+void wheel_capability_update_scan(WheelCapabilityState *state, uint8_t scan_response);
+
+/**
  * @brief Updates shared attached-wheel capability state.
  *
  * Refreshes report capability data and applies wheel-mode defaults for calibration and tuning

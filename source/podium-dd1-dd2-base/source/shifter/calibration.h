@@ -77,6 +77,39 @@ typedef enum {
 } HPatternCalibrationPrompt;
 
 /**
+ * @brief Identifies the official H-pattern calibration report stages.
+ *
+ * Values match the two-byte state carried by the attached-wheel type-0x16 report.
+ */
+typedef enum {
+    H_PATTERN_CALIBRATION_STAGE_DETECT_INPUT = 0,
+    H_PATTERN_CALIBRATION_STAGE_MONITOR_INPUT = 1,
+    H_PATTERN_CALIBRATION_STAGE_WAIT_REQUEST = 2,
+    H_PATTERN_CALIBRATION_STAGE_SHOW_READY = 3,
+    H_PATTERN_CALIBRATION_STAGE_SHOW_START = 4,
+    H_PATTERN_CALIBRATION_STAGE_WAIT_START = 5,
+    H_PATTERN_CALIBRATION_STAGE_CAPTURE_NEUTRAL = 6,
+    H_PATTERN_CALIBRATION_STAGE_RELEASE_NEUTRAL = 7,
+    H_PATTERN_CALIBRATION_STAGE_CAPTURE_REVERSE = 8,
+    H_PATTERN_CALIBRATION_STAGE_RELEASE_REVERSE = 9,
+    H_PATTERN_CALIBRATION_STAGE_CAPTURE_FIRST = 10,
+    H_PATTERN_CALIBRATION_STAGE_RELEASE_FIRST = 11,
+    H_PATTERN_CALIBRATION_STAGE_CAPTURE_SECOND = 12,
+    H_PATTERN_CALIBRATION_STAGE_RELEASE_SECOND = 13,
+    H_PATTERN_CALIBRATION_STAGE_CAPTURE_THIRD = 14,
+    H_PATTERN_CALIBRATION_STAGE_RELEASE_THIRD = 15,
+    H_PATTERN_CALIBRATION_STAGE_CAPTURE_FOURTH = 16,
+    H_PATTERN_CALIBRATION_STAGE_RELEASE_FOURTH = 17,
+    H_PATTERN_CALIBRATION_STAGE_CAPTURE_FIFTH = 18,
+    H_PATTERN_CALIBRATION_STAGE_RELEASE_FIFTH = 19,
+    H_PATTERN_CALIBRATION_STAGE_CAPTURE_SIXTH = 20,
+    H_PATTERN_CALIBRATION_STAGE_RELEASE_SIXTH = 21,
+    H_PATTERN_CALIBRATION_STAGE_CAPTURE_SEVENTH = 22,
+    H_PATTERN_CALIBRATION_STAGE_COMPLETE = 23,
+    H_PATTERN_CALIBRATION_STAGE_FINISHED = 24,
+} HPatternCalibrationStage;
+
+/**
  * @brief Retains one H-pattern calibration capture session.
  */
 typedef struct {
@@ -98,7 +131,11 @@ typedef struct {
     bool active;               /**< True while a calibration session owns the input and display. */
     bool advance_pending;      /**< True when a host advance request awaits capture. */
     bool advance_input_active; /**< Current physical calibration-advance input level. */
-    bool release_required;     /**< True until the advance input is released after a capture. */
+    bool completion_input_active; /**< Current protocol completion-button input level. */
+    bool release_required;        /**< True until the advance input is released after a capture. */
+    HPatternCalibrationStage report_state;   /**< Current state published to the wheel protocol. */
+    HPatternCalibrationStage reported_state; /**< Last state queued for wheel transmission. */
+    uint32_t report_deadline_ms; /**< Next repeated report deadline after the ready stages. */
 } HPatternCalibrationService;
 
 /**
@@ -163,6 +200,58 @@ bool h_pattern_calibration_service_start_if_required(HPatternCalibrationService 
  */
 void h_pattern_calibration_service_set_advance_input(HPatternCalibrationService *service,
                                                      bool active);
+
+/**
+ * @brief Updates the protocol completion-button input level.
+ *
+ * Completion uses the mode-specific protocol button, including after the final position has been
+ * captured. It is intentionally separate from the capture input so adapter-only advance inputs
+ * cannot hold a completed session open.
+ *
+ * @param[in,out] service Calibration lifecycle state to update.
+ * @param[in] active True while the protocol completion button is active.
+ */
+void h_pattern_calibration_service_set_completion_input(HPatternCalibrationService *service,
+                                                        bool active);
+
+/**
+ * @brief Cancels the current H-pattern calibration session.
+ *
+ * Clears transient capture, presentation, and input-gating state without changing persisted
+ * calibration settings.
+ *
+ * @param[in,out] service Calibration lifecycle state to cancel; null is ignored.
+ */
+void h_pattern_calibration_service_cancel(HPatternCalibrationService *service);
+
+/**
+ * @brief Returns the current official H-pattern calibration report stage.
+ *
+ * Maps entry timing, capture position, release gating, and completion ownership to the state
+ * values used by the Fanatec type-0x16 shifter-state report.
+ *
+ * @param[in] service Calibration lifecycle state.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @return Current official calibration stage.
+ */
+HPatternCalibrationStage
+h_pattern_calibration_service_stage(const HPatternCalibrationService *service, uint32_t now_ms);
+
+/**
+ * @brief Takes a pending type-0x16 shifter-state report.
+ *
+ * Publishes state changes immediately and repeats stages after SHOW_READY at the official
+ * two-second cadence when an attached wheel is connected. The output is byte zero followed by the
+ * little-endian stage value.
+ *
+ * @param[in,out] service Calibration lifecycle and report cadence state.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[in] adapter_connected True when the attached-wheel link is connected.
+ * @param[out] report Three-byte type-0x16 payload destination.
+ * @return True when a report should be queued; otherwise false.
+ */
+bool h_pattern_calibration_service_take_report(HPatternCalibrationService *service, uint32_t now_ms,
+                                               bool adapter_connected, uint8_t report[3]);
 
 /**
  * @brief Captures the next H-pattern calibration position when permitted.

@@ -26,8 +26,8 @@ void usb_playstation_wheel_value_init(UsbPlaystationWheelValue *value);
 /**
  * @brief Sets a PlayStation attached-wheel value.
  *
- * Stores high before low in legacy report order, arms one release update, and sets the value expiry
- * deadline three seconds after now_ms.
+ * Stores high before low in legacy report order and sets the value expiry deadline three seconds
+ * after now_ms. Only an asserted report five arms the one-shot release update.
  *
  * @param[in,out] value Wheel-value state to update.
  * @param[in] low Low byte of the protocol value.
