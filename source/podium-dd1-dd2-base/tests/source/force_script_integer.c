@@ -26,8 +26,12 @@ static void test_converts_unsigned_integer_to_float(void) {
 static void test_converts_bounded_float_to_unsigned_integer(void) {
     assert_value(FORCE_FEEDBACK_SCRIPT_INTEGER_FLOAT_TO_U32, float_bits(42.75f), 0, 42);
     assert_value(FORCE_FEEDBACK_SCRIPT_INTEGER_FLOAT_TO_U32, float_bits(-1.0f), 0, UINT32_MAX);
-    assert_value(FORCE_FEEDBACK_SCRIPT_INTEGER_FLOAT_TO_U32, UINT32_C(0x7fc00000), 0, 0);
-    assert_value(FORCE_FEEDBACK_SCRIPT_INTEGER_FLOAT_TO_U32, UINT32_C(0xffc00000), 0, 0);
+    assert_value(FORCE_FEEDBACK_SCRIPT_INTEGER_FLOAT_TO_U32, UINT32_C(0x7fc00000), 0,
+                 UINT32_C(0x80000000));
+    assert_value(FORCE_FEEDBACK_SCRIPT_INTEGER_FLOAT_TO_U32, UINT32_C(0xffc00000), 0,
+                 UINT32_C(0x80000000));
+    assert_value(FORCE_FEEDBACK_SCRIPT_INTEGER_FLOAT_TO_U32, UINT32_C(0x7fa00001), 0,
+                 UINT32_C(0x80000000));
     assert_value(FORCE_FEEDBACK_SCRIPT_INTEGER_FLOAT_TO_U32, UINT32_C(0x4dcccccd), 0,
                  UINT32_C(429496736));
     assert(!force_feedback_script_integer_evaluate(FORCE_FEEDBACK_SCRIPT_INTEGER_FLOAT_TO_U32,

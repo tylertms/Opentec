@@ -13,8 +13,8 @@ typedef uint8_t ForceFeedbackScriptLogicOperation;
 /**
  * @brief Force-feedback script logical-operation opcodes.
  *
- * The opcodes use nonzero floating-point values as boolean operands, including NaN, and return
- * canonical floating-point truth values.
+ * The opcodes use nonzero finite and infinite floating-point values as boolean operands. NaN is
+ * false, and the operations return canonical floating-point truth values.
  */
 enum {
     FORCE_FEEDBACK_SCRIPT_LOGICAL_AND = 0x30,  /**< Computes logical AND of both operands. */
@@ -29,7 +29,7 @@ enum {
 /**
  * @brief Evaluate one force-feedback script logical operation.
  *
- * Any nonzero value, including infinity and NaN, is true; both signed zeros are false. Logical NOT
+ * Nonzero finite values and infinities are true; NaN and both signed zeros are false. Logical NOT
  * uses only first, all other operations use both operands, and the result is always float 1.0 or
  * 0.0. An unknown opcode produces 0.0.
  *

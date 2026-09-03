@@ -7,7 +7,7 @@
 /**
  * @brief Tests a script value for nonzero truth.
  *
- * Any nonzero bit pattern, including infinities and NaN, is true. Both signed zeros are false.
+ * Nonzero finite values and infinities are true. NaN and both signed zeros are false.
  *
  * @param[in] value Floating-point script value.
  * @return true when the value is nonzero; otherwise false.
@@ -15,7 +15,10 @@
 static bool nonzero(float value) {
     uint32_t representation;
     memcpy(&representation, &value, sizeof(representation));
-    return (representation & UINT32_C(0x7fffffff)) != 0;
+    uint32_t magnitude = representation & UINT32_C(0x7fffffff);
+    uint32_t exponent = magnitude & UINT32_C(0x7f800000);
+    uint32_t fraction = magnitude & UINT32_C(0x007fffff);
+    return magnitude != 0 && (exponent != UINT32_C(0x7f800000) || fraction == 0);
 }
 
 /**

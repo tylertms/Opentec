@@ -65,7 +65,7 @@ force_feedback_script_integer_evaluate(ForceFeedbackScriptIntegerOperation opera
             return (ForceFeedbackScriptIntegerResult){0};
         }
         if (isnan(value)) {
-            return value_result(0);
+            return value_result(UINT32_C(0x80000000));
         }
         return value_result(value < 0.0f ? UINT32_MAX : (uint32_t)value);
     }

@@ -45,7 +45,7 @@ typedef struct {
  * Operands and results use raw 32-bit script representations. Integer-to-float conversions use
  * unsigned first, signed subtraction uses both operands as int32_t, and absolute difference and
  * modulo use unsigned operands. Float-to-uint32 truncates nonnegative values, maps negative values
- * to UINT32_MAX, maps NaN to zero, and suppresses values above the float represented by raw
+ * to UINT32_MAX, maps NaN to 0x80000000, and suppresses values above the float represented by raw
  * bits 0x4dcccccd. Modulo suppresses its result when second is zero; degree conversion uses pi
  * equal to 3.1415927f. Unknown operations also suppress the destination write.
  *
