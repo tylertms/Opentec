@@ -37,10 +37,20 @@ typedef struct {
 void tuning_menu_init(TuningMenu *menu);
 
 /**
+ * @brief Resets local tuning-menu state after a profile or mode change.
+ *
+ * Clears the current entry so the next entry-open update selects the first available entry in
+ * label view.
+ *
+ * @param[in,out] menu Menu state to reset.
+ */
+void tuning_menu_reset(TuningMenu *menu);
+
+/**
  * @brief Advances local menu selection or adjustment.
  *
- * Opens the first available entry, repairs unavailable selections, navigates entries, and applies
- * value changes while the interaction phase is open.
+ * Opens the first available entry, repairs unavailable selections, navigates from the current entry,
+ * and applies value changes only after the value presentation is already visible.
  *
  * @param[in,out] menu Menu state to update.
  * @param[in] phase Current tuning interaction phase.
