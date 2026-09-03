@@ -45,24 +45,30 @@ static void test_success_waits_for_usb_and_status_deadlines(void) {
     base_mode_controller_init(&controller);
     assert(base_mode_controller_start(&controller, 1000));
 
-    assert(base_mode_controller_step(&controller, 1200, BASE_MODE_CONTROLLER_MEMORY_COMPLETE, true,
+    assert(base_mode_controller_step(&controller, 1050, BASE_MODE_CONTROLLER_MEMORY_COMPLETE, true,
                                      true) == BASE_MODE_CONTROLLER_ACTION_NONE);
     assert(base_mode_controller_phase(&controller) == BASE_MODE_CONTROLLER_STATUS_USB_DELAY);
-    assert(base_mode_controller_step(&controller, 1300, BASE_MODE_CONTROLLER_MEMORY_RUNNING, true,
+    assert(base_mode_controller_step(&controller, 1100, BASE_MODE_CONTROLLER_MEMORY_RUNNING, true,
                                      true) == BASE_MODE_CONTROLLER_ACTION_NONE);
-    assert(base_mode_controller_step(&controller, 1301, BASE_MODE_CONTROLLER_MEMORY_RUNNING, true,
+    assert(base_mode_controller_step(&controller, 1101, BASE_MODE_CONTROLLER_MEMORY_RUNNING, true,
                                      true) == BASE_MODE_CONTROLLER_ACTION_ENABLE_USB);
     assert(base_mode_controller_phase(&controller) == BASE_MODE_CONTROLLER_STATUS_WAIT);
-    assert(base_mode_controller_step(&controller, 3301, BASE_MODE_CONTROLLER_MEMORY_RUNNING, true,
+    assert(base_mode_controller_step(&controller, 3101, BASE_MODE_CONTROLLER_MEMORY_RUNNING, true,
                                      true) == BASE_MODE_CONTROLLER_ACTION_NONE);
-    assert(base_mode_controller_step(&controller, 3302, BASE_MODE_CONTROLLER_MEMORY_RUNNING, true,
+    assert(base_mode_controller_step(&controller, 3102, BASE_MODE_CONTROLLER_MEMORY_RUNNING, true,
                                      true) == BASE_MODE_CONTROLLER_ACTION_NONE);
     assert(base_mode_controller_phase(&controller) == BASE_MODE_CONTROLLER_STATUS_ACTIVE);
-    assert(base_mode_controller_step(&controller, 3302, BASE_MODE_CONTROLLER_MEMORY_RUNNING, true,
+    assert(base_mode_controller_step(&controller, 3102, BASE_MODE_CONTROLLER_MEMORY_RUNNING, true,
                                      true) == BASE_MODE_CONTROLLER_ACTION_NONE);
-    assert(base_mode_controller_step(&controller, 3303, BASE_MODE_CONTROLLER_MEMORY_RUNNING, false,
+    assert(base_mode_controller_step(&controller, 3103, BASE_MODE_CONTROLLER_MEMORY_RUNNING, false,
                                      true) == BASE_MODE_CONTROLLER_ACTION_FALLBACK_NATIVE);
     assert(base_mode_controller_phase(&controller) == BASE_MODE_CONTROLLER_RESET);
+
+    base_mode_controller_init(&controller);
+    assert(base_mode_controller_start(&controller, 1000));
+    assert(base_mode_controller_step(&controller, 1200, BASE_MODE_CONTROLLER_MEMORY_COMPLETE, true,
+                                     true) == BASE_MODE_CONTROLLER_ACTION_ENABLE_USB);
+    assert(base_mode_controller_phase(&controller) == BASE_MODE_CONTROLLER_STATUS_WAIT);
 }
 
 static void test_invalid_memory_context_falls_back_immediately(void) {
@@ -79,8 +85,8 @@ static void test_invalid_memory_context_falls_back_immediately(void) {
     assert(base_mode_controller_step(&controller, 1898u, BASE_MODE_CONTROLLER_MEMORY_RUNNING, true,
                                      true) == BASE_MODE_CONTROLLER_ACTION_NONE);
     assert(base_mode_controller_step(&controller, 1899u, BASE_MODE_CONTROLLER_MEMORY_COMPLETE, true,
-                                     true) == BASE_MODE_CONTROLLER_ACTION_NONE);
-    assert(base_mode_controller_phase(&controller) == BASE_MODE_CONTROLLER_STATUS_USB_DELAY);
+                                     true) == BASE_MODE_CONTROLLER_ACTION_ENABLE_USB);
+    assert(base_mode_controller_phase(&controller) == BASE_MODE_CONTROLLER_STATUS_WAIT);
 }
 
 int main(void) {

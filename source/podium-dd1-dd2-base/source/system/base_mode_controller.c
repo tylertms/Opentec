@@ -22,6 +22,18 @@ static void enter_memory_timeout(BaseModeController *controller, uint32_t now_ms
     controller->phase = BASE_MODE_CONTROLLER_MEMORY_TIMEOUT;
 }
 
+static uint8_t begin_status_wait(BaseModeController *controller, uint32_t now_ms) {
+    controller->transport_deadline_ms = now_ms + BASE_MODE_CONTROLLER_STATUS_TIMEOUT_MS;
+    controller->phase = BASE_MODE_CONTROLLER_STATUS_WAIT;
+    return BASE_MODE_CONTROLLER_ACTION_ENABLE_USB;
+}
+
+static uint8_t begin_hid_wait(BaseModeController *controller, uint32_t now_ms) {
+    controller->transport_deadline_ms = now_ms + BASE_MODE_CONTROLLER_STATUS_TIMEOUT_MS;
+    controller->phase = BASE_MODE_CONTROLLER_HID_WAIT;
+    return BASE_MODE_CONTROLLER_ACTION_ENABLE_USB;
+}
+
 void base_mode_controller_init(BaseModeController *controller) {
     if (controller == 0) {
         return;
@@ -36,7 +48,17 @@ bool base_mode_controller_start(BaseModeController *controller, uint32_t now_ms)
         return false;
     }
     controller->memory_deadline_ms = now_ms + BASE_MODE_CONTROLLER_MEMORY_TIMEOUT_MS;
+    controller->usb_enable_deadline_ms = now_ms + BASE_MODE_CONTROLLER_USB_DELAY_MS;
     controller->phase = BASE_MODE_CONTROLLER_MEMORY_STARTUP;
+    return true;
+}
+
+bool base_mode_controller_start_playstation(BaseModeController *controller, uint32_t now_ms) {
+    if (controller == 0 || controller->phase != BASE_MODE_CONTROLLER_RESET) {
+        return false;
+    }
+    controller->usb_enable_deadline_ms = now_ms + BASE_MODE_CONTROLLER_USB_DELAY_MS;
+    controller->phase = BASE_MODE_CONTROLLER_HID_PREPARE;
     return true;
 }
 
@@ -50,8 +72,10 @@ uint8_t base_mode_controller_step(BaseModeController *controller, uint32_t now_m
     switch (controller->phase) {
     case BASE_MODE_CONTROLLER_MEMORY_STARTUP:
         if (memory_result == BASE_MODE_CONTROLLER_MEMORY_COMPLETE) {
-            controller->usb_enable_deadline_ms = now_ms + BASE_MODE_CONTROLLER_USB_DELAY_MS;
             controller->phase = BASE_MODE_CONTROLLER_STATUS_USB_DELAY;
+            if (after_deadline(now_ms, controller->usb_enable_deadline_ms)) {
+                return begin_status_wait(controller, now_ms);
+            }
             return BASE_MODE_CONTROLLER_ACTION_NONE;
         }
         if (!mode_valid || !protocol_active) {
@@ -69,14 +93,7 @@ uint8_t base_mode_controller_step(BaseModeController *controller, uint32_t now_m
         if (!after_deadline(now_ms, controller->usb_enable_deadline_ms)) {
             return BASE_MODE_CONTROLLER_ACTION_NONE;
         }
-        controller->transport_deadline_ms = now_ms + BASE_MODE_CONTROLLER_STATUS_TIMEOUT_MS;
-        controller->phase = BASE_MODE_CONTROLLER_STATUS_WAIT;
-        return BASE_MODE_CONTROLLER_ACTION_ENABLE_USB;
-
-    case BASE_MODE_CONTROLLER_STATUS_USB_ENABLE:
-        controller->transport_deadline_ms = now_ms + BASE_MODE_CONTROLLER_STATUS_TIMEOUT_MS;
-        controller->phase = BASE_MODE_CONTROLLER_STATUS_WAIT;
-        return BASE_MODE_CONTROLLER_ACTION_ENABLE_USB;
+        return begin_status_wait(controller, now_ms);
 
     case BASE_MODE_CONTROLLER_STATUS_WAIT:
         if (!after_deadline(now_ms, controller->transport_deadline_ms)) {
@@ -86,6 +103,33 @@ uint8_t base_mode_controller_step(BaseModeController *controller, uint32_t now_m
         return BASE_MODE_CONTROLLER_ACTION_NONE;
 
     case BASE_MODE_CONTROLLER_STATUS_ACTIVE:
+        if (mode_valid && protocol_active) {
+            return BASE_MODE_CONTROLLER_ACTION_NONE;
+        }
+        controller->phase = BASE_MODE_CONTROLLER_RESET;
+        return BASE_MODE_CONTROLLER_ACTION_FALLBACK_NATIVE;
+
+    case BASE_MODE_CONTROLLER_HID_PREPARE:
+        controller->phase = BASE_MODE_CONTROLLER_HID_USB_DELAY;
+        if (after_deadline(now_ms, controller->usb_enable_deadline_ms)) {
+            return begin_hid_wait(controller, now_ms);
+        }
+        return BASE_MODE_CONTROLLER_ACTION_NONE;
+
+    case BASE_MODE_CONTROLLER_HID_USB_DELAY:
+        if (!after_deadline(now_ms, controller->usb_enable_deadline_ms)) {
+            return BASE_MODE_CONTROLLER_ACTION_NONE;
+        }
+        return begin_hid_wait(controller, now_ms);
+
+    case BASE_MODE_CONTROLLER_HID_WAIT:
+        if (!after_deadline(now_ms, controller->transport_deadline_ms)) {
+            return BASE_MODE_CONTROLLER_ACTION_NONE;
+        }
+        controller->phase = BASE_MODE_CONTROLLER_HID_ACTIVE;
+        return BASE_MODE_CONTROLLER_ACTION_NONE;
+
+    case BASE_MODE_CONTROLLER_HID_ACTIVE:
         if (mode_valid && protocol_active) {
             return BASE_MODE_CONTROLLER_ACTION_NONE;
         }
@@ -113,4 +157,12 @@ bool base_mode_controller_memory_active(const BaseModeController *controller) {
 
 BaseModeControllerPhase base_mode_controller_phase(const BaseModeController *controller) {
     return controller != 0 ? controller->phase : BASE_MODE_CONTROLLER_RESET;
+}
+
+bool base_mode_controller_hid_active(const BaseModeController *controller) {
+    if (controller == 0) {
+        return false;
+    }
+    return controller->phase >= BASE_MODE_CONTROLLER_HID_PREPARE &&
+           controller->phase <= BASE_MODE_CONTROLLER_HID_ACTIVE;
 }
