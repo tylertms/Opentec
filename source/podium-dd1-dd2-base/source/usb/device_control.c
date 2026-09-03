@@ -14,8 +14,6 @@ enum {
     USB_RECIPIENT_DEVICE = 0,                    /**< Device request recipient. */
     USB_RECIPIENT_INTERFACE = 1,                 /**< Interface request recipient. */
     USB_RECIPIENT_ENDPOINT = 2,                  /**< Endpoint request recipient. */
-    USB_FEATURE_ENDPOINT_HALT = 0,               /**< Endpoint-halt feature selector. */
-    USB_FEATURE_DEVICE_REMOTE_WAKEUP = 1,        /**< Device remote-wakeup feature selector. */
     USB_ENDPOINT_NUMBER_MASK = 0x0f,             /**< Endpoint-number bit mask. */
     USB_ENDPOINT_ADDRESS_RESERVED_MASK = 0xff70, /**< Reserved endpoint-address bit mask. */
     USB_ENDPOINT_COUNT = 5,                      /**< Number of supported endpoint numbers. */
@@ -63,7 +61,8 @@ static UsbControlTransfer value(uint16_t response, uint16_t length) {
 /**
  * @brief Builds an endpoint-zero descriptor response.
  *
- * Limits valid descriptor data to the host-requested length and stalls empty descriptor views.
+ * Limits valid descriptor data to the host-requested length and stalls empty or null descriptor
+ * views. A physical descriptor is handled separately as its valid zero-length VALUE response.
  *
  * @param[in] descriptor Descriptor bytes and available length.
  * @param[in] requested_length Maximum length requested by the host.
@@ -87,11 +86,6 @@ void usb_device_control_init(UsbDeviceControl *device, bool self_powered,
         .self_powered = self_powered,
         .remote_wakeup_forced = remote_wakeup_forced,
     };
-}
-
-void usb_device_control_cancel(UsbDeviceControl *device) {
-    device->pending_change = USB_DEVICE_PENDING_NONE;
-    device->pending_value = 0;
 }
 
 /**
@@ -263,9 +257,6 @@ UsbControlTransfer usb_device_control_handle(UsbDeviceControl *device,
 void usb_device_control_complete(UsbDeviceControl *device) {
     if (device->pending_change == USB_DEVICE_PENDING_ADDRESS) {
         device->address = device->pending_value;
-        if (device->address == 0) {
-            device->configuration = 0;
-        }
     }
     device->pending_change = USB_DEVICE_PENDING_NONE;
     device->pending_value = 0;

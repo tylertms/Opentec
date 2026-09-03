@@ -83,15 +83,6 @@ void usb_device_control_init(UsbDeviceControl *device, bool self_powered,
                              bool remote_wakeup_forced);
 
 /**
- * @brief Cancels a deferred endpoint-zero state change.
- *
- * Clears the pending address operation and its retained value when a new setup transaction starts.
- *
- * @param[in,out] device Current endpoint-zero state.
- */
-void usb_device_control_cancel(UsbDeviceControl *device);
-
-/**
  * @brief Handles a classified endpoint-zero request.
  *
  * Applies standard device state changes, serves descriptors and HID state, and describes the

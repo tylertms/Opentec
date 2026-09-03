@@ -44,17 +44,19 @@ static void test_address_changes_after_status_stage(void) {
     assert(device.address == 42);
 }
 
-static void test_new_setup_cancels_pending_change(void) {
+static void test_new_setup_preserves_pending_change(void) {
     UsbDeviceControl device;
     usb_device_control_init(&device, true, false);
     UsbControlRequest control = request(USB_CONTROL_SET_ADDRESS);
     control.value = 42;
 
     usb_device_control_handle(&device, &control, &catalog, false);
-    usb_device_control_cancel(&device);
+    control = request(USB_CONTROL_GET_CONFIGURATION);
+    assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
+           USB_CONTROL_TRANSFER_VALUE);
     usb_device_control_complete(&device);
 
-    assert(device.address == 0);
+    assert(device.address == 42);
 }
 
 static void test_configuration_changes_during_setup(void) {
@@ -313,6 +315,17 @@ static void test_rejects_malformed_descriptors_and_endpoints(void) {
     assert(usb_device_control_handle(&device, &control, &empty, false).kind ==
            USB_CONTROL_TRANSFER_STALL);
 
+    empty.device.data = NULL;
+    empty.device.length = sizeof(device_descriptor);
+    assert(usb_device_control_handle(&device, &control, &empty, false).kind ==
+           USB_CONTROL_TRANSFER_STALL);
+
+    control.descriptor_type = 0x23;
+    control.recipient = 1;
+    control.descriptor_index = 0;
+    assert(usb_device_control_handle(&device, &control, &empty, false).kind ==
+           USB_CONTROL_TRANSFER_VALUE);
+
     control = request(USB_CONTROL_GET_STATUS);
     control.recipient = 3;
     assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
@@ -355,7 +368,7 @@ static void test_rejects_malformed_descriptors_and_endpoints(void) {
     control.value = 0;
     (void)usb_device_control_handle(&device, &control, &catalog, false);
     usb_device_control_complete(&device);
-    assert(!usb_device_control_configured(&device));
+    assert(usb_device_control_configured(&device));
     control.kind = (UsbControlRequestKind)UINT8_MAX;
     assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
            USB_CONTROL_TRANSFER_STALL);
@@ -363,7 +376,7 @@ static void test_rejects_malformed_descriptors_and_endpoints(void) {
 
 int main(void) {
     test_address_changes_after_status_stage();
-    test_new_setup_cancels_pending_change();
+    test_new_setup_preserves_pending_change();
     test_configuration_changes_during_setup();
     test_selects_and_clips_descriptors();
     test_hid_state_and_report_handoff();

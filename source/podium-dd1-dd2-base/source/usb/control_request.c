@@ -33,12 +33,11 @@ enum {
     USB_CDC_SEND_ENCAPSULATED_COMMAND = 0x00,
     USB_CDC_GET_ENCAPSULATED_RESPONSE = 0x01,
     USB_XBOX_SECURITY_REQUEST = 0x90,            /**< Xbox GIP security request code. */
-    USB_FEATURE_ENDPOINT_HALT = 0,               /**< Endpoint-halt feature selector. */
-    USB_FEATURE_DEVICE_REMOTE_WAKEUP = 1,        /**< Device remote-wakeup feature selector. */
     USB_ENDPOINT_NUMBER_MASK = 0x0f,             /**< Endpoint-number bit mask. */
     USB_ENDPOINT_ADDRESS_RESERVED_MASK = 0xff70, /**< Reserved endpoint-address bit mask. */
     USB_ENDPOINT_COUNT = 5,                      /**< Number of supported endpoint numbers. */
     USB_INTERFACE_COUNT = 2,                     /**< Number of supported interface numbers. */
+    USB_TUNING_HID_REPORT_SIZE = 64,              /**< Tuning-HID transfer size in bytes. */
 };
 
 /**
@@ -76,6 +75,7 @@ bool usb_setup_packet_decode(const uint8_t data[USB_SETUP_PACKET_SIZE], UsbSetup
 static bool set_request(const UsbSetupPacket *packet, UsbControlRequest *request,
                         UsbControlRequestKind kind) {
     request->kind = kind;
+    request->request_type = packet->request_type;
     request->value = packet->value;
     request->index = packet->index;
     request->length = packet->length;
@@ -140,7 +140,7 @@ static bool classify_standard(const UsbSetupPacket *packet, UsbControlRequest *r
         break;
     case USB_REQUEST_SET_CONFIGURATION:
         if (packet->request_type == USB_RECIPIENT_DEVICE && packet->index == 0 &&
-            packet->length == 0) {
+            (packet->length == 0 || packet->length == USB_TUNING_HID_REPORT_SIZE)) {
             return set_request(packet, request, USB_CONTROL_SET_CONFIGURATION);
         }
         break;
@@ -165,8 +165,9 @@ static bool classify_standard(const UsbSetupPacket *packet, UsbControlRequest *r
 /**
  * @brief Classifies supported HID interface requests.
  *
- * Classifies input and output reports plus the HID idle-rate and protocol requests for interface
- * zero. The device service applies the active operating-mode gate to the report transfers.
+ * Classifies input reports plus the HID idle-rate and protocol requests for interface zero. The
+ * interface OUT request code nine is the official SET_CONFIGURATION collision except for the
+ * 0x03f0 PlayStation tuning report, which remains a HID SET_REPORT.
  *
  * @param[in] packet Decoded USB setup packet.
  * @param[out] request Classified control request.
@@ -185,7 +186,10 @@ static bool classify_hid(const UsbSetupPacket *packet, UsbControlRequest *reques
         break;
     case USB_HID_SET_REPORT:
         if (!input && packet->length != 0) {
-            return set_request(packet, request, USB_CONTROL_HID_SET_REPORT);
+            if ((uint8_t)packet->value == 0xf0 && (uint8_t)(packet->value >> 8) == 3) {
+                return set_request(packet, request, USB_CONTROL_HID_SET_REPORT);
+            }
+            return set_request(packet, request, USB_CONTROL_SET_CONFIGURATION);
         }
         break;
     case USB_HID_GET_IDLE:
@@ -217,34 +221,30 @@ static bool classify_hid(const UsbSetupPacket *packet, UsbControlRequest *reques
 /**
  * @brief Classifies motor updater CDC interface requests.
  *
- * Accepts the encapsulated response, seven-byte line-coding, and zero-length control-line state
- * requests for interface zero.
+ * Accepts the five updater CDC request codes for interfaces zero or one. The controller's common
+ * control-stage state machine validates request direction and operation-specific data-stage
+ * length.
  *
  * @param[in] packet Decoded USB setup packet.
  * @param[out] request Classified control request.
  * @return True when the packet is a supported updater CDC request; otherwise false.
  */
 static bool classify_cdc(const UsbSetupPacket *packet, UsbControlRequest *request) {
-    if ((packet->request_type & 0x1f) != USB_RECIPIENT_INTERFACE || packet->index > 1 ||
+    if ((packet->request_type & 0x1f) != USB_RECIPIENT_INTERFACE || (uint8_t)packet->index > 1 ||
         (packet->value != 0 && packet->request != USB_CDC_SET_CONTROL_LINE_STATE)) {
         return false;
     }
-    bool input = (packet->request_type & USB_DIRECTION_IN) != 0;
     switch (packet->request) {
     case USB_CDC_SEND_ENCAPSULATED_COMMAND:
-        return input && packet->length <= 64 &&
-               set_request(packet, request, USB_CONTROL_CDC_SEND_ENCAPSULATED_COMMAND);
+        return set_request(packet, request, USB_CONTROL_CDC_SEND_ENCAPSULATED_COMMAND);
     case USB_CDC_GET_ENCAPSULATED_RESPONSE:
-        return input && set_request(packet, request, USB_CONTROL_CDC_GET_ENCAPSULATED_RESPONSE);
+        return set_request(packet, request, USB_CONTROL_CDC_GET_ENCAPSULATED_RESPONSE);
     case USB_CDC_SET_LINE_CODING:
-        return !input && packet->length == 7 &&
-               set_request(packet, request, USB_CONTROL_CDC_SET_LINE_CODING);
+        return set_request(packet, request, USB_CONTROL_CDC_SET_LINE_CODING);
     case USB_CDC_GET_LINE_CODING:
-        return input && packet->length == 7 &&
-               set_request(packet, request, USB_CONTROL_CDC_GET_LINE_CODING);
+        return set_request(packet, request, USB_CONTROL_CDC_GET_LINE_CODING);
     case USB_CDC_SET_CONTROL_LINE_STATE:
-        return !input && packet->length == 0 &&
-               set_request(packet, request, USB_CONTROL_CDC_SET_CONTROL_LINE_STATE);
+        return set_request(packet, request, USB_CONTROL_CDC_SET_CONTROL_LINE_STATE);
     default:
         return false;
     }

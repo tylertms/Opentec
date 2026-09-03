@@ -37,6 +37,8 @@ static void test_classifies_descriptor_request(void) {
 static void test_classifies_enumeration_state_changes(void) {
     const uint8_t address_data[] = {0x00, 0x05, 0x2a, 0x00, 0x00, 0x00, 0x00, 0x00};
     const uint8_t configuration_data[] = {0x00, 0x09, 0x07, 0x01, 0x00, 0x00, 0x00, 0x00};
+    const uint8_t tuning_hid_configuration_data[] = {0x00, 0x09, 0xf0, 0x00,
+                                                      0x00, 0x00, 0x40, 0x00};
     UsbControlRequest request;
     UsbSetupPacket packet = decode(address_data);
     assert(usb_control_request_classify(&packet, &request));
@@ -47,6 +49,14 @@ static void test_classifies_enumeration_state_changes(void) {
     assert(usb_control_request_classify(&packet, &request));
     assert(request.kind == USB_CONTROL_SET_CONFIGURATION);
     assert(request.value == 0x0107);
+
+    packet = decode(tuning_hid_configuration_data);
+    assert(usb_control_request_classify(&packet, &request));
+    assert(request.kind == USB_CONTROL_SET_CONFIGURATION);
+    assert(request.value == 0xf0 && request.length == 64);
+
+    packet.length = 65;
+    assert(!usb_control_request_classify(&packet, &request));
 }
 
 static void test_classifies_standard_queries(void) {
@@ -161,7 +171,7 @@ static void test_classifies_remaining_hid_requests(void) {
         .length = 64,
     };
     assert(usb_control_request_classify(&packet, &request));
-    assert(request.kind == USB_CONTROL_HID_SET_REPORT);
+    assert(request.kind == USB_CONTROL_SET_CONFIGURATION);
 
     packet.request_type = 0xa1;
     packet.request = 2;
@@ -181,19 +191,60 @@ static void test_classifies_remaining_hid_requests(void) {
     assert(!usb_control_request_classify(&packet, &request));
 }
 
+static void test_class_request_nine_uses_configuration_except_f0_tuning(void) {
+    UsbControlRequest request;
+    UsbSetupPacket packet = {
+        .request_type = 0x21,
+        .request = 9,
+        .value = 0x0201,
+        .length = 64,
+    };
+
+    assert(usb_control_request_classify(&packet, &request));
+    assert(request.kind == USB_CONTROL_SET_CONFIGURATION);
+
+    packet.value = 0x03f0;
+    assert(usb_control_request_classify(&packet, &request));
+    assert(request.kind == USB_CONTROL_HID_SET_REPORT);
+}
+
 static void test_classifies_cdc_requests(void) {
     const uint8_t send_encapsulated_command[] = {0xa1, 0x00, 0x00, 0x00,
                                                  0x00, 0x00, 0x08, 0x00};
+    const uint8_t request_types[] = {0x21, 0xa1};
+    const uint16_t interfaces[] = {0, 1, 0x0100, 0x0101};
     const uint8_t set_line_coding[] = {0x21, 0x20, 0x00, 0x00, 0x00, 0x00, 0x07, 0x00};
     const uint8_t get_line_coding[] = {0xa1, 0x21, 0x00, 0x00, 0x00, 0x00, 0x07, 0x00};
     const uint8_t set_control_lines[] = {0x21, 0x22, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00};
     UsbControlRequest request;
 
     UsbSetupPacket packet = decode(send_encapsulated_command);
-    assert(usb_control_request_classify(&packet, &request));
-    assert(request.kind == USB_CONTROL_CDC_SEND_ENCAPSULATED_COMMAND);
+    for (size_t request_type = 0; request_type < sizeof(request_types); request_type++) {
+        packet.request_type = request_types[request_type];
+        for (size_t interface = 0; interface < sizeof(interfaces) / sizeof(interfaces[0]);
+             interface++) {
+            packet.index = interfaces[interface];
+            packet.length = 0;
+            assert(usb_control_request_classify(&packet, &request));
+            assert(request.kind == USB_CONTROL_CDC_SEND_ENCAPSULATED_COMMAND);
 
-    packet.request_type = 0x21;
+            packet.length = 8;
+            assert(usb_control_request_classify(&packet, &request));
+            assert(request.kind == USB_CONTROL_CDC_SEND_ENCAPSULATED_COMMAND);
+
+            packet.length = 64;
+            assert(usb_control_request_classify(&packet, &request));
+            assert(request.kind == USB_CONTROL_CDC_SEND_ENCAPSULATED_COMMAND);
+
+            packet.length = 65;
+            assert(usb_control_request_classify(&packet, &request));
+        }
+    }
+
+    packet.length = 64;
+    packet.index = 2;
+    assert(!usb_control_request_classify(&packet, &request));
+    packet.index = 0x0102;
     assert(!usb_control_request_classify(&packet, &request));
 
     packet = decode(set_line_coding);
@@ -255,6 +306,7 @@ int main(void) {
     test_classifies_endpoint_halt_features();
     test_classifies_hid_requests();
     test_classifies_remaining_hid_requests();
+    test_class_request_nine_uses_configuration_except_f0_tuning();
     test_classifies_cdc_requests();
     test_classifies_xbox_security_request();
     test_rejects_invalid_requests();
