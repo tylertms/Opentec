@@ -7,6 +7,7 @@
 
 enum {
     CHUNK_SIZE = 0x38,
+    FINAL_CHUNK_SIZE = 0x20,
     DATA_OFFSET = 4,
 };
 
@@ -88,7 +89,8 @@ static void test_applies_optional_report_checksums(void) {
     upload[0] = 0xf0;
     upload[1] = 0x5a;
     memcpy(upload + 60, (uint8_t[]){0x1c, 0x46, 0x15, 0xc1}, 4);
-    assert(usb_playstation_authentication_receive(&authentication, upload));
+    assert(!usb_playstation_authentication_receive(&authentication, upload));
+    assert(authentication.status == USB_PLAYSTATION_AUTHENTICATION_CHECKSUM_ERROR);
     upload[60] ^= 1;
     assert(!usb_playstation_authentication_receive(&authentication, upload));
     assert(authentication.status == USB_PLAYSTATION_AUTHENTICATION_CHECKSUM_ERROR);
@@ -97,6 +99,34 @@ static void test_applies_optional_report_checksums(void) {
                                                            sizeof(response)));
     assert(usb_playstation_authentication_response_report(&authentication, download));
     assert(memcmp(download + 60, (uint8_t[]){0x55, 0x9a, 0x49, 0xb4}, 4) == 0);
+}
+
+static void test_failed_final_request_still_exposes_copied_request(void) {
+    UsbPlaystationAuthentication authentication;
+    uint8_t report[USB_PLAYSTATION_AUTHENTICATION_REPORT_SIZE] = {0};
+    uint8_t request[USB_PLAYSTATION_AUTHENTICATION_REQUEST_SIZE];
+    usb_playstation_authentication_init(&authentication);
+    authentication.checksum_enabled = true;
+
+    report[0] = 0xf0;
+    report[1] = 0x37;
+    report[2] = 4;
+    memset(report + DATA_OFFSET, 0xa5, CHUNK_SIZE);
+
+    assert(!usb_playstation_authentication_receive(&authentication, report));
+    assert(authentication.sequence == 0x37);
+    assert(authentication.status == USB_PLAYSTATION_AUTHENTICATION_PENDING);
+    assert(authentication.request_ready);
+    assert(!authentication.response_ready);
+    assert(authentication.response_index == 0);
+    assert(usb_playstation_authentication_take_request(&authentication, request));
+    for (uint16_t index = 0; index < USB_PLAYSTATION_AUTHENTICATION_REQUEST_SIZE - 0x20; index++) {
+        assert(request[index] == 0);
+    }
+    for (uint16_t index = USB_PLAYSTATION_AUTHENTICATION_REQUEST_SIZE - 0x20;
+         index < USB_PLAYSTATION_AUTHENTICATION_REQUEST_SIZE; index++) {
+        assert(request[index] == 0xa5);
+    }
 }
 
 static void test_streams_complete_response(void) {
@@ -112,13 +142,18 @@ static void test_streams_complete_response(void) {
     assert(usb_playstation_authentication_publish_response(&authentication, response,
                                                            sizeof(response)));
     assert(usb_playstation_authentication_response_active(&authentication));
+    uint8_t chunk_size = CHUNK_SIZE;
     for (uint8_t fragment = 0; fragment <= 18; fragment++) {
         assert(usb_playstation_authentication_response_report(&authentication, report));
         assert(report[0] == 0xf1);
         assert(report[1] == 0xa4);
         assert(report[2] == fragment);
-        uint16_t offset = (uint16_t)fragment * CHUNK_SIZE;
-        uint8_t count = fragment == 18 ? 0x20 : CHUNK_SIZE;
+        uint16_t offset = (uint16_t)fragment * chunk_size;
+        if (fragment >= sizeof(response) / chunk_size) {
+            chunk_size = FINAL_CHUNK_SIZE;
+        }
+        uint16_t remaining = sizeof(response) - offset;
+        uint8_t count = remaining < chunk_size ? (uint8_t)remaining : chunk_size;
         assert(memcmp(report + DATA_OFFSET, response + offset, count) == 0);
         if (fragment == 18) {
             assert(memcmp(report + DATA_OFFSET + count,
@@ -127,8 +162,22 @@ static void test_streams_complete_response(void) {
         }
     }
     assert(authentication.status == USB_PLAYSTATION_AUTHENTICATION_RESPONSE_ACTIVE);
+    assert(authentication.transmit_chunk_size == FINAL_CHUNK_SIZE);
+    assert(authentication.response_index == 19);
     assert(!usb_playstation_authentication_response_active(&authentication));
-    assert(!usb_playstation_authentication_response_report(&authentication, report));
+    memset(response, 0, sizeof(response));
+    assert(usb_playstation_authentication_response_report(&authentication, report));
+    assert(report[0] == 0xf1);
+    assert(report[1] == 0xa4);
+    assert(report[2] == 19);
+    for (uint8_t index = 0; index < FINAL_CHUNK_SIZE; index++) {
+        assert(report[DATA_OFFSET + index] ==
+               (uint8_t)((19 * FINAL_CHUNK_SIZE + index) ^ 0x96u));
+    }
+    assert(memcmp(report + DATA_OFFSET + FINAL_CHUNK_SIZE,
+                  (uint8_t[USB_PLAYSTATION_AUTHENTICATION_REPORT_SIZE]){0},
+                  USB_PLAYSTATION_AUTHENTICATION_REPORT_SIZE - DATA_OFFSET - FINAL_CHUNK_SIZE) == 0);
+    assert(authentication.response_index == 20);
 }
 
 static void test_rejects_wrong_response_size_and_reports_failure(void) {
@@ -149,6 +198,7 @@ int main(void) {
     test_assembles_request_and_exposes_pending_status();
     test_rejects_invalid_upload_reports();
     test_applies_optional_report_checksums();
+    test_failed_final_request_still_exposes_copied_request();
     test_streams_complete_response();
     test_rejects_wrong_response_size_and_reports_failure();
     return 0;

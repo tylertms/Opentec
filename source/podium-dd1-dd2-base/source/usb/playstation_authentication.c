@@ -22,6 +22,7 @@ enum {
         12, /**< Checksum offset in status reports. */
     PLAYSTATION_AUTHENTICATION_STATUS_CHECKSUM_INPUT_SIZE = 12, /**< Bytes covered by status CRC. */
     PLAYSTATION_AUTHENTICATION_CHUNK_SIZE = 0x38, /**< Default authentication fragment size. */
+    PLAYSTATION_AUTHENTICATION_FINAL_CHUNK_SIZE = 0x20, /**< Final authentication fragment size. */
     PLAYSTATION_AUTHENTICATION_FINAL_REQUEST_INDEX = 4, /**< Final request fragment index. */
 };
 
@@ -44,19 +45,6 @@ static uint32_t calculate_crc32(const uint8_t *data, uint8_t length) {
         }
     }
     return ~checksum;
-}
-
-/**
- * @brief Reads a little-endian checksum from a feature report.
- *
- * Combines four consecutive report bytes into the checksum value carried on the control pipe.
- *
- * @param[in] data First byte of the encoded checksum.
- * @return Decoded 32-bit checksum.
- */
-static uint32_t read_checksum(const uint8_t *data) {
-    return (uint32_t)data[0] | (uint32_t)data[1] << 8 | (uint32_t)data[2] << 16 |
-           (uint32_t)data[3] << 24;
 }
 
 /**
@@ -108,15 +96,10 @@ bool usb_playstation_authentication_receive(
         report[2] > PLAYSTATION_AUTHENTICATION_FINAL_REQUEST_INDEX) {
         return false;
     }
-    if (authentication->checksum_enabled &&
-        read_checksum(&report[PLAYSTATION_AUTHENTICATION_CHECKSUM_OFFSET]) !=
-            calculate_crc32(report, PLAYSTATION_AUTHENTICATION_CHECKSUM_INPUT_SIZE)) {
-        authentication->status = USB_PLAYSTATION_AUTHENTICATION_CHECKSUM_ERROR;
-        authentication->request_ready = false;
+    uint16_t offset = (uint16_t)report[2] * authentication->receive_chunk_size;
+    if (offset >= USB_PLAYSTATION_AUTHENTICATION_REQUEST_SIZE) {
         return false;
     }
-
-    uint16_t offset = (uint16_t)report[2] * authentication->receive_chunk_size;
     uint16_t remaining = USB_PLAYSTATION_AUTHENTICATION_REQUEST_SIZE - offset;
     uint8_t count = remaining < authentication->receive_chunk_size
                         ? (uint8_t)remaining
@@ -125,13 +108,21 @@ bool usb_playstation_authentication_receive(
            count);
     authentication->sequence = report[1];
 
+    bool checksum_valid = true;
+    if (authentication->checksum_enabled &&
+        (uint32_t)report[PLAYSTATION_AUTHENTICATION_CHECKSUM_OFFSET] !=
+            calculate_crc32(report, PLAYSTATION_AUTHENTICATION_CHECKSUM_INPUT_SIZE)) {
+        authentication->status = USB_PLAYSTATION_AUTHENTICATION_CHECKSUM_ERROR;
+        checksum_valid = false;
+    }
+
     if (report[2] == PLAYSTATION_AUTHENTICATION_FINAL_REQUEST_INDEX) {
         authentication->response_index = 0;
         authentication->status = USB_PLAYSTATION_AUTHENTICATION_PENDING;
         authentication->request_ready = true;
         authentication->response_ready = false;
     }
-    return true;
+    return checksum_valid;
 }
 
 bool usb_playstation_authentication_take_request(
@@ -152,7 +143,7 @@ bool usb_playstation_authentication_publish_response(UsbPlaystationAuthenticatio
         response_length != USB_PLAYSTATION_AUTHENTICATION_RESPONSE_SIZE) {
         return false;
     }
-    authentication->response = response;
+    memcpy(authentication->response, response, sizeof(authentication->response));
     authentication->response_index = 0;
     authentication->status = USB_PLAYSTATION_AUTHENTICATION_IDLE;
     authentication->response_ready = true;
@@ -166,7 +157,7 @@ void usb_playstation_authentication_fail(UsbPlaystationAuthentication *authentic
     authentication->status = USB_PLAYSTATION_AUTHENTICATION_RESPONSE_ERROR;
     authentication->request_ready = false;
     authentication->response_ready = false;
-    authentication->response = 0;
+    memset(authentication->response, 0, sizeof(authentication->response));
     authentication->response_index = 0;
 }
 
@@ -190,17 +181,19 @@ void usb_playstation_authentication_status_report(
 bool usb_playstation_authentication_response_report(
     UsbPlaystationAuthentication *authentication,
     uint8_t report[USB_PLAYSTATION_AUTHENTICATION_REPORT_SIZE]) {
-    if (authentication == 0 || report == 0 || !authentication->response_ready ||
-        authentication->response == 0 || authentication->transmit_chunk_size == 0) {
+    if (authentication == 0 || report == 0 || authentication->transmit_chunk_size == 0) {
         return false;
     }
 
-    uint16_t offset =
-        (uint16_t)authentication->response_index * authentication->transmit_chunk_size;
-    if (offset >= USB_PLAYSTATION_AUTHENTICATION_RESPONSE_SIZE) {
-        return false;
+    uint8_t index = authentication->response_index;
+    uint8_t chunk_size = authentication->transmit_chunk_size;
+    uint16_t offset = (uint16_t)index * chunk_size;
+    if (index >= USB_PLAYSTATION_AUTHENTICATION_RESPONSE_SIZE / chunk_size) {
+        authentication->transmit_chunk_size = PLAYSTATION_AUTHENTICATION_FINAL_CHUNK_SIZE;
     }
-    uint16_t remaining = USB_PLAYSTATION_AUTHENTICATION_RESPONSE_SIZE - offset;
+    uint16_t remaining = offset < USB_PLAYSTATION_AUTHENTICATION_RESPONSE_SIZE
+                              ? USB_PLAYSTATION_AUTHENTICATION_RESPONSE_SIZE - offset
+                              : 0;
     uint8_t count = remaining < authentication->transmit_chunk_size
                         ? (uint8_t)remaining
                         : authentication->transmit_chunk_size;
@@ -208,9 +201,11 @@ bool usb_playstation_authentication_response_report(
     memset(report, 0, USB_PLAYSTATION_AUTHENTICATION_REPORT_SIZE);
     report[0] = PLAYSTATION_AUTHENTICATION_DOWNLOAD_REPORT;
     report[1] = authentication->sequence;
-    report[2] = authentication->response_index;
-    memcpy(report + PLAYSTATION_AUTHENTICATION_DATA_OFFSET, authentication->response + offset,
-           count);
+    report[2] = index;
+    if (count != 0) {
+        memcpy(report + PLAYSTATION_AUTHENTICATION_DATA_OFFSET, authentication->response + offset,
+               count);
+    }
     if (authentication->checksum_enabled) {
         write_checksum(&report[PLAYSTATION_AUTHENTICATION_CHECKSUM_OFFSET],
                        calculate_crc32(report, PLAYSTATION_AUTHENTICATION_CHECKSUM_INPUT_SIZE));
@@ -218,10 +213,9 @@ bool usb_playstation_authentication_response_report(
     if (authentication->status == USB_PLAYSTATION_AUTHENTICATION_IDLE) {
         authentication->status = USB_PLAYSTATION_AUTHENTICATION_RESPONSE_ACTIVE;
     }
-    authentication->response_index++;
+    authentication->response_index = index + 1;
     if ((uint32_t)offset + count == USB_PLAYSTATION_AUTHENTICATION_RESPONSE_SIZE) {
         authentication->response_ready = false;
-        authentication->response = 0;
     }
     return true;
 }
