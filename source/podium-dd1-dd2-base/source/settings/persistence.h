@@ -42,7 +42,9 @@ void base_settings_persistence_mark_dirty(BaseSettingsPersistence *persistence);
 /**
  * @brief Saves changed base settings.
  *
- * Writes supported retained values and clears the dirty state only after every write succeeds.
+ * Writes supported retained values and clears the dirty state only after every write succeeds. An
+ * automatic auxiliary-calibration snapshot stores its mode but leaves the endpoint records intact
+ * until manual mode is selected.
  *
  * @param[in,out] persistence Persistence state to update.
  * @param[in] settings Current base settings to save.

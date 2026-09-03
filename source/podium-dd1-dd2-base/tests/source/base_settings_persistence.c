@@ -6,6 +6,7 @@
 #include "platform/storage.h"
 #include "settings/persistence.h"
 #include "settings/state.h"
+#include "usb/tuning_profile_report.h"
 
 static uint16_t storage[PLATFORM_STORAGE_VALUE_COUNT];
 static bool present[PLATFORM_STORAGE_VALUE_COUNT];
@@ -62,8 +63,8 @@ static void test_erased_storage_loads_defaults_and_saves_reference_format(void) 
     assert(storage[5] == 1);
     assert(storage[6] == 1);
     assert(storage[18] == 0);
-    assert(storage[27] == 0x0f38);
-    assert(storage[28] == 0x00c8);
+    assert(!present[27]);
+    assert(!present[28]);
     assert(storage[29] == 1);
     assert(storage[26] == 0xaa00);
     assert(present[19]);
@@ -112,7 +113,8 @@ static void test_all_supported_settings_round_trip(void) {
     expected.operating_mode = 6;
     expected.operating_mode_valid = true;
     for (uint8_t profile = 0; profile < TUNING_PROFILE_SLOT_COUNT; profile++) {
-        expected.retained_profile_values[profile] = (uint16_t)(0x7000 + profile);
+        expected.retained_profile_words[profile][USB_TUNING_PROFILE_VALUE_COUNT] =
+            (uint16_t)(0x7000 + profile);
     }
     storage[55] = 0xbeef;
     present[55] = true;
@@ -159,9 +161,30 @@ static void test_all_supported_settings_round_trip(void) {
     assert(actual.operating_mode_valid);
     assert(storage[19] == 0xaa06);
     for (uint8_t profile = 0; profile < TUNING_PROFILE_SLOT_COUNT; profile++) {
-        assert(actual.retained_profile_values[profile] == (uint16_t)(0x7000 + profile));
+        uint16_t expected_tail = profile == 0 ? 0 : (uint16_t)(0x7000 + profile);
+        assert(actual.retained_profile_words[profile][USB_TUNING_PROFILE_VALUE_COUNT] ==
+               expected_tail);
     }
     assert(storage[26] == 0xaa00);
+}
+
+static void test_automatic_auxiliary_save_keeps_endpoint_records(void) {
+    BaseSettingsPersistence persistence = {.dirty = true};
+    BaseSettings settings;
+    storage_reset();
+    storage[27] = 250;
+    storage[28] = 3900;
+    present[27] = true;
+    present[28] = true;
+    base_settings_defaults(&settings);
+    settings.auxiliary_axis.minimum = 600;
+    settings.auxiliary_axis.maximum = 3600;
+
+    assert(base_settings_persistence_save(&persistence, &settings) ==
+           BASE_SETTINGS_PERSISTENCE_SAVED);
+    assert(storage[27] == 250);
+    assert(storage[28] == 3900);
+    assert(storage[29] == 1);
 }
 
 static void test_unformatted_and_invalid_values_keep_defaults(void) {
@@ -186,7 +209,10 @@ static void test_unformatted_and_invalid_values_keep_defaults(void) {
     assert(base_settings_persistence_load(&persistence, &settings));
     assert(settings.tuning_profiles.standard_mode_enabled);
     assert(settings.tuning_profiles.selected_slot == 0);
-    assert(!settings.security_code.enabled);
+    assert(settings.security_code.enabled);
+    assert(settings.security_code.digits[0] == 0x0a);
+    assert(settings.security_code.digits[1] == 0x0f);
+    assert(settings.security_code.digits[2] == 0x0e);
     assert(settings.steering_limits.percent[0] == 100);
     assert(settings.auxiliary_axis.minimum == 0x0f38);
     assert(settings.auxiliary_axis.maximum == 0x00c8);
@@ -195,6 +221,36 @@ static void test_unformatted_and_invalid_values_keep_defaults(void) {
     storage[0] = 0x1234;
     assert(!base_settings_persistence_load(&persistence, &settings));
     assert(persistence.dirty);
+}
+
+static void test_profile_words_preserve_reference_high_bytes(void) {
+    BaseSettingsPersistence persistence;
+    BaseSettings settings;
+    TuningProfile defaults;
+    uint8_t encoded[USB_TUNING_PROFILE_VALUE_COUNT];
+    storage_reset();
+    storage[0] = 0x0300;
+    present[0] = true;
+    tuning_profile_defaults(&defaults);
+    usb_tuning_profile_report_encode(&defaults, encoded);
+    for (uint8_t profile = 0; profile < TUNING_PROFILE_SLOT_COUNT; profile++) {
+        uint16_t first = 30 + profile * BASE_SETTINGS_PROFILE_STORED_VALUE_COUNT;
+        for (uint8_t field = 0; field < USB_TUNING_PROFILE_VALUE_COUNT; field++) {
+            storage[first + field] = (uint16_t)(0xa500u | encoded[field]);
+            present[first + field] = true;
+        }
+        storage[first + USB_TUNING_PROFILE_VALUE_COUNT] = (uint16_t)(0xb000u + profile);
+        present[first + USB_TUNING_PROFILE_VALUE_COUNT] = true;
+    }
+
+    assert(base_settings_persistence_load(&persistence, &settings));
+    settings.tuning_profiles.slots[2].natural_friction = 31;
+    base_settings_persistence_mark_dirty(&persistence);
+    assert(base_settings_persistence_save(&persistence, &settings) ==
+           BASE_SETTINGS_PERSISTENCE_SAVED);
+    assert(storage[30 + 2 * BASE_SETTINGS_PROFILE_STORED_VALUE_COUNT + 11] == 0xa51f);
+    assert(storage[30 + 5 * BASE_SETTINGS_PROFILE_STORED_VALUE_COUNT + 24] == 0xa503);
+    assert(storage[30 + 5 * BASE_SETTINGS_PROFILE_STORED_VALUE_COUNT + 25] == 0xb005);
 }
 
 static void test_partial_and_invalid_reference_fields_keep_defaults(void) {
@@ -254,6 +310,7 @@ static void test_save_validation_and_each_write_boundary(void) {
          failure++) {
         storage_reset();
         base_settings_defaults(&settings);
+        settings.auxiliary_axis.reset_on_start = false;
         persistence = (BaseSettingsPersistence){.dirty = true};
         fail_write_index = failure_indices[failure];
         assert(base_settings_persistence_save(&persistence, &settings) ==
@@ -271,9 +328,10 @@ static void test_save_validation_and_each_write_boundary(void) {
     base_settings_defaults(&settings);
     persistence = (BaseSettingsPersistence){.dirty = true};
     settings.security_code.enabled = true;
-    settings.security_code.digits[1] = 10;
+    settings.security_code.digits[1] = 0x1a;
     assert(base_settings_persistence_save(&persistence, &settings) ==
-           BASE_SETTINGS_PERSISTENCE_RETRY);
+           BASE_SETTINGS_PERSISTENCE_SAVED);
+    assert(storage[18] == 0xa1a0);
 
     storage_reset();
     base_settings_defaults(&settings);
@@ -305,7 +363,9 @@ static void test_dirty_and_failure_behavior(void) {
 int main(void) {
     test_erased_storage_loads_defaults_and_saves_reference_format();
     test_all_supported_settings_round_trip();
+    test_automatic_auxiliary_save_keeps_endpoint_records();
     test_unformatted_and_invalid_values_keep_defaults();
+    test_profile_words_preserve_reference_high_bytes();
     test_partial_and_invalid_reference_fields_keep_defaults();
     test_absent_security_value_is_repaired();
     test_save_validation_and_each_write_boundary();

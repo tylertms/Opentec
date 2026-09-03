@@ -11,6 +11,9 @@
 #include "wheel/position.h"
 #include "wheel/steering_limit.h"
 
+/** @brief Number of 16-bit values in one retained tuning-profile block. */
+enum { BASE_SETTINGS_PROFILE_STORED_VALUE_COUNT = 26 };
+
 /** @brief Complete retained base settings state. */
 typedef struct {
     TuningProfileBank tuning_profiles;     /**< Retained tuning profiles and mode. */
@@ -20,8 +23,9 @@ typedef struct {
     WheelSteeringLimits steering_limits;   /**< Per-profile steering limits. */
     SecurityCodeSettings security_code;    /**< Retained security-code settings. */
     uint16_t retained_global_values[2];    /**< Retained compatibility values. */
-    uint16_t
-        retained_profile_values[TUNING_PROFILE_SLOT_COUNT]; /**< Retained unknown profile values. */
+    uint16_t retained_profile_words[TUNING_PROFILE_SLOT_COUNT]
+                                  [BASE_SETTINGS_PROFILE_STORED_VALUE_COUNT];
+    /**< Raw 16-bit profile words, including values not exposed by the runtime profile. */
     uint8_t operating_mode;                                 /**< Retained operating-mode value. */
     uint8_t wheel_auxiliary_option; /**< Retained attached-wheel auxiliary option. */
     bool operating_mode_valid;      /**< True when operating_mode has a valid retained marker. */

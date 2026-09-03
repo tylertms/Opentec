@@ -33,7 +33,8 @@ enum {
     AUXILIARY_MAXIMUM_INDEX = 28,           /**< Auxiliary maximum index. */
     AUXILIARY_RESET_INDEX = 29,             /**< Auxiliary reset flag index. */
     PROFILE_FIRST_INDEX = 30,               /**< First retained profile index. */
-    PROFILE_STORAGE_STRIDE = 26,            /**< Retained values per profile block. */
+    PROFILE_STORAGE_STRIDE = BASE_SETTINGS_PROFILE_STORED_VALUE_COUNT,
+                                             /**< Retained values per profile block. */
 };
 
 /**
@@ -109,9 +110,9 @@ static void tuning_bank_state_load(BaseSettings *settings) {
 /**
  * @brief Restores six retained tuning profiles.
  *
- * Reads the first 25 low-byte values from each 26-index profile block and decodes the same logical
- * values used by the device-control tuning report. The unimplemented final value in each reference
- * block is retained separately for round-trip persistence.
+ * Reads every 16-bit value from each 26-index profile block and decodes the low bytes into the
+ * logical values used by the device-control tuning report. The raw words remain cached so high
+ * bytes from the reference table survive a later write.
  *
  * @param[in,out] settings Base settings receiving tuning profiles.
  */
@@ -120,21 +121,27 @@ static void tuning_profiles_load(BaseSettings *settings) {
         uint8_t encoded[USB_TUNING_PROFILE_VALUE_COUNT];
         bool complete = true;
         uint16_t first = PROFILE_FIRST_INDEX + (uint16_t)profile * PROFILE_STORAGE_STRIDE;
-        for (uint8_t field = 0; field < USB_TUNING_PROFILE_VALUE_COUNT; field++) {
-            uint16_t value;
-            if (!value_read(first + field, &value)) {
+        for (uint8_t field = 0; field < BASE_SETTINGS_PROFILE_STORED_VALUE_COUNT; field++) {
+            uint16_t value = 0;
+            if (!value_read(first + field, &value) && field < USB_TUNING_PROFILE_VALUE_COUNT) {
                 complete = false;
-                break;
             }
-            encoded[field] = (uint8_t)value;
+            settings->retained_profile_words[profile][field] = value;
+            if (field < USB_TUNING_PROFILE_VALUE_COUNT) {
+                encoded[field] = (uint8_t)value;
+            }
         }
         if (complete) {
             usb_tuning_profile_report_decode(encoded, &settings->tuning_profiles.slots[profile]);
         }
-        value_read(first + USB_TUNING_PROFILE_VALUE_COUNT,
-                   &settings->retained_profile_values[profile]);
     }
     tuning_profile_defaults(&settings->tuning_profiles.slots[0]);
+    uint8_t defaults[USB_TUNING_PROFILE_VALUE_COUNT];
+    usb_tuning_profile_report_encode(&settings->tuning_profiles.slots[0], defaults);
+    for (uint8_t field = 0; field < USB_TUNING_PROFILE_VALUE_COUNT; field++) {
+        settings->retained_profile_words[0][field] = defaults[field];
+    }
+    settings->retained_profile_words[0][USB_TUNING_PROFILE_VALUE_COUNT] = 0;
 }
 
 /**
@@ -161,8 +168,8 @@ static void h_pattern_load(BaseSettings *settings) {
 /**
  * @brief Restores the three-digit security code.
  *
- * Recognizes the A marker nibble and extracts the three decimal digits from consecutive nibbles.
- * Invalid or absent marker values are replaced with the disabled value in persistent storage.
+ * Recognizes the A marker nibble and extracts three low nibbles from the retained word. Invalid or
+ * absent marker values are replaced with the disabled value in persistent storage.
  *
  * @param[in,out] settings Base settings receiving security-code state.
  */
@@ -170,15 +177,11 @@ static void security_code_load(BaseSettings *settings) {
     uint16_t encoded;
     if (!value_read(SECURITY_CODE_INDEX, &encoded) ||
         (encoded & UINT16_C(0xf000)) != UINT16_C(0xa000)) {
-        (void)platform_storage_value_write(SECURITY_CODE_INDEX, 0);
+        platform_storage_value_write(SECURITY_CODE_INDEX, 0);
         return;
     }
     for (uint8_t digit = 0; digit < SECURITY_CODE_DIGIT_COUNT; digit++) {
-        uint8_t value = (uint8_t)(encoded >> (digit * 4)) & 0x0f;
-        if (value > 9) {
-            return;
-        }
-        settings->security_code.digits[digit] = value;
+        settings->security_code.digits[digit] = (uint8_t)(encoded >> (digit * 4)) & 0x0f;
     }
     settings->security_code.enabled = true;
 }
@@ -255,10 +258,10 @@ static void compatibility_settings_load(BaseSettings *settings) {
 }
 
 /**
- * @brief Writes six logical tuning profiles.
+ * @brief Writes six retained tuning profiles.
  *
- * Encodes each profile in device-control order and writes the first 25 values of its 26-index
- * reference block and re-emits the retained unknown final index.
+ * Encodes each profile in device-control order, replaces only the low byte of each cached raw
+ * word, and re-emits the retained twenty-sixth word.
  *
  * @param[in] settings Base settings containing the profiles.
  * @return True when every implemented profile value is retained; otherwise false.
@@ -269,12 +272,15 @@ static bool tuning_profiles_save(const BaseSettings *settings) {
         usb_tuning_profile_report_encode(&settings->tuning_profiles.slots[profile], encoded);
         uint16_t first = PROFILE_FIRST_INDEX + (uint16_t)profile * PROFILE_STORAGE_STRIDE;
         for (uint8_t field = 0; field < USB_TUNING_PROFILE_VALUE_COUNT; field++) {
-            if (!platform_storage_value_write(first + field, encoded[field])) {
+            uint16_t value = (settings->retained_profile_words[profile][field] & 0xff00u) |
+                             encoded[field];
+            if (!platform_storage_value_write(first + field, value)) {
                 return false;
             }
         }
-        if (!platform_storage_value_write(first + USB_TUNING_PROFILE_VALUE_COUNT,
-                                          settings->retained_profile_values[profile])) {
+        if (!platform_storage_value_write(
+                first + USB_TUNING_PROFILE_VALUE_COUNT,
+                settings->retained_profile_words[profile][USB_TUNING_PROFILE_VALUE_COUNT])) {
             return false;
         }
     }
@@ -304,8 +310,8 @@ static bool h_pattern_save(const BaseSettings *settings) {
 /**
  * @brief Encodes and writes the three-digit security code.
  *
- * Writes zero when security is disabled or the A marker followed by three decimal nibbles when it
- * is enabled.
+ * Writes zero when security is disabled or the A marker followed by three low nibbles when it is
+ * enabled.
  *
  * @param[in] settings Base settings containing security-code state.
  * @return True when the security setting is valid and retained; otherwise false.
@@ -316,9 +322,6 @@ static bool security_code_save(const BaseSettings *settings) {
         encoded = UINT16_C(0xa000);
         for (uint8_t digit = 0; digit < SECURITY_CODE_DIGIT_COUNT; digit++) {
             uint8_t value = settings->security_code.digits[digit];
-            if (value > 9) {
-                return false;
-            }
             encoded |= (uint16_t)value << (digit * 4);
         }
     }
@@ -392,8 +395,9 @@ BaseSettingsPersistenceResult base_settings_persistence_save(BaseSettingsPersist
         platform_storage_value_write(OPERATING_MODE_INDEX,
                                      OPERATING_MODE_PREFIX | settings->operating_mode) &&
         steering_limits_save(settings) && tuning_profiles_save(settings) &&
-        platform_storage_value_write(AUXILIARY_MINIMUM_INDEX, settings->auxiliary_axis.minimum) &&
-        platform_storage_value_write(AUXILIARY_MAXIMUM_INDEX, settings->auxiliary_axis.maximum) &&
+        (settings->auxiliary_axis.reset_on_start ||
+         (platform_storage_value_write(AUXILIARY_MINIMUM_INDEX, settings->auxiliary_axis.minimum) &&
+          platform_storage_value_write(AUXILIARY_MAXIMUM_INDEX, settings->auxiliary_axis.maximum))) &&
         platform_storage_value_write(AUXILIARY_RESET_INDEX,
                                      settings->auxiliary_axis.reset_on_start ? 1 : 0) &&
         platform_storage_value_write(WHEEL_AUXILIARY_OPTION_INDEX,
