@@ -649,6 +649,10 @@ base_tests = {
     'wheel/output_reports.c',
     'wheel/interface_catalog.c',
   ],
+  'wheel-interface-catalog': [
+    'source/wheel_interface_catalog.c',
+    'wheel/interface_catalog.c',
+  ],
   'motor-command-digest': ['source/motor_command_digest.c', 'motor/command_digest.c'],
   'transfer-memory': ['source/transfer_memory.c', 'transfer/memory.c'],
   'transfer-command': ['source/transfer_command.c', 'transfer/command.c', 'transfer/memory.c'],

@@ -15,6 +15,7 @@ enum {
     INTERFACE_CATALOG_REMOTE_PACKET_TYPE = 0x80,      /**< Binary catalog packet type. */
     INTERFACE_CATALOG_CONFIGURATION_REPORT_ID = 0xa6, /**< Indexed-help report identifier. */
     INTERFACE_CATALOG_CONFIGURATION_PACKET_TYPE = 0x81, /**< Indexed-help packet type. */
+    INTERFACE_CATALOG_LEGACY_WHEEL_MODE = 0x0e,        /**< Legacy catalog output mode. */
     INTERFACE_CATALOG_EXTENDED_WHEEL_MODE = 0x1c,       /**< Extended remote-tuning wheel mode. */
 };
 
@@ -255,26 +256,31 @@ void wheel_interface_catalog_init(WheelInterfaceCatalog *catalog) {
 /**
  * @brief Starts one host-interface catalog presentation.
  *
- * Mode four restarts the remote-tuning record stream. Mode five restarts the indexed help stream.
- * Other values leave both independent streams unchanged.
+ * Mode four marks the remote-tuning record stream pending. Mode five marks indexed help pending.
+ * Each mode resets only an already exhausted stream; activation preserves midstream cursors and
+ * leaves the other stream pending. Other values leave both independent streams unchanged.
  *
  * @param[in,out] catalog Catalog transfer state.
  * @param[in] mode Requested host-interface presentation mode.
- * @return True when a catalog stream was started.
+ * @return True when a catalog stream was marked pending.
  */
 bool wheel_interface_catalog_activate(WheelInterfaceCatalog *catalog, uint8_t mode) {
     if (catalog == NULL) {
         return false;
     }
     if (mode == 4) {
-        catalog->record_index = 0;
+        if (catalog->record_index >= INTERFACE_CATALOG_RECORD_COUNT) {
+            catalog->record_index = 0;
+        }
         catalog->records_pending = true;
         return true;
     }
     if (mode == 5) {
-        catalog->page_index = 0;
-        catalog->section_index = 0;
-        catalog->chunk_index = 0;
+        if (catalog->page_index >= INTERFACE_CATALOG_PAGE_COUNT) {
+            catalog->page_index = 0;
+            catalog->section_index = 0;
+            catalog->chunk_index = 0;
+        }
         catalog->configuration_pending = true;
         return true;
     }
@@ -330,24 +336,16 @@ static void advance_configuration_section(WheelInterfaceCatalog *catalog) {
 /**
  * @brief Encodes the next indexed tuning-help text frame.
  *
- * Skips absent sections and advances each section as its chunks are emitted.
+ * Emits every section, including zero-length sections, and advances each section as its chunks
+ * are emitted.
  *
  * @param[in,out] catalog Catalog transfer state.
  * @param[out] frame Thirty-three-byte attached-wheel response frame.
  * @return True when a configuration frame was encoded.
  */
 static bool encode_configuration(WheelInterfaceCatalog *catalog, uint8_t frame[33]) {
-    const InterfaceCatalogText *text;
-    do {
-        text = &help_pages[catalog->page_index].sections[catalog->section_index];
-        if (text->length == 0) {
-            advance_configuration_section(catalog);
-        }
-    } while (catalog->configuration_pending && text->length == 0);
-
-    if (!catalog->configuration_pending) {
-        return false;
-    }
+    const InterfaceCatalogText *text =
+        &help_pages[catalog->page_index].sections[catalog->section_index];
 
     uint8_t full_chunks = text->length > INTERFACE_CATALOG_CHUNK_SIZE
                               ? (uint8_t)(text->length / INTERFACE_CATALOG_CHUNK_SIZE)
@@ -377,7 +375,8 @@ static bool encode_configuration(WheelInterfaceCatalog *catalog, uint8_t frame[3
 /**
  * @brief Encodes the next pending host-interface catalog frame.
  *
- * Gives the remote-tuning record stream priority over indexed help and consumes one transfer step.
+ * Emits catalog frames only in legacy wheel mode 0x0e. Gives the remote-tuning record stream
+ * priority over indexed help and consumes one transfer step.
  *
  * @param[in,out] catalog Catalog transfer state.
  * @param[in] wheel_mode Negotiated attached-wheel mode.
@@ -387,6 +386,9 @@ static bool encode_configuration(WheelInterfaceCatalog *catalog, uint8_t frame[3
 bool wheel_interface_catalog_encode_next(WheelInterfaceCatalog *catalog, uint8_t wheel_mode,
                                          uint8_t frame[33]) {
     if (catalog == NULL || frame == NULL) {
+        return false;
+    }
+    if (wheel_mode != INTERFACE_CATALOG_LEGACY_WHEEL_MODE) {
         return false;
     }
     if (catalog->records_pending) {

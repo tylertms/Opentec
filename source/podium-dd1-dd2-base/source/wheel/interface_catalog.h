@@ -26,20 +26,21 @@ void wheel_interface_catalog_init(WheelInterfaceCatalog *catalog);
 /**
  * @brief Starts one host-interface catalog stream.
  *
- * Mode four starts binary tuning records and mode five starts indexed help text. Other modes do
- * not change the transfer state.
+ * Mode four marks binary tuning records pending. Mode five marks indexed help text pending. Each
+ * mode resets only an exhausted stream; activation preserves midstream cursors and leaves the
+ * other stream pending. Other modes do not change the transfer state.
  *
  * @param[in,out] catalog Catalog state to update.
  * @param[in] mode Host-interface presentation mode.
- * @return True when mode four or five started a stream; otherwise false.
+ * @return True when mode four or five marked a stream pending; otherwise false.
  */
 bool wheel_interface_catalog_activate(WheelInterfaceCatalog *catalog, uint8_t mode);
 
 /**
  * @brief Encodes the next pending catalog frame.
  *
- * Gives binary records priority over indexed help text and advances the selected stream by one
- * transfer frame.
+ * Emits catalog frames only for legacy wheel mode 0x0e. Gives binary records priority over indexed
+ * help text and advances the selected stream by one transfer frame.
  *
  * @param[in,out] catalog Catalog state to advance.
  * @param[in] wheel_mode Negotiated attached-wheel mode.
