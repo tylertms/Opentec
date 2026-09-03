@@ -119,8 +119,6 @@ bool logitech_driving_force_pro_encode(uint8_t report[LOGITECH_DRIVING_FORCE_PRO
     report[3] = (uint8_t)(state->buttons >> 2);
     report[4] = (uint8_t)(((state->buttons >> 10) & 0x0fu) | ((state->hat & 0x0fu) << 4));
     report[5] = state->axes[0];
-    report[6] = state->axes[1];
-    report[7] = state->axes[2];
     return true;
 }
 

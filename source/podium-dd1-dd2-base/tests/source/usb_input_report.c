@@ -68,9 +68,11 @@ static void test_driving_force_ex_mode(void) {
 
 static void test_driving_force_pro_mode(void) {
     const uint8_t expected[LOGITECH_DRIVING_FORCE_PRO_REPORT_SIZE] = {
-        0x8d, 0xa4, 0x00, 0x37, 0x7f, 0x11, 0x22, 0x33,
+        0x8d, 0xa4, 0x00, 0x37, 0x7f, 0x11, 0xa5, 0x5a,
     };
-    uint8_t report[USB_INPUT_REPORT_MAX_SIZE];
+    uint8_t report[USB_INPUT_REPORT_MAX_SIZE] = {0};
+    report[6] = 0xa5;
+    report[7] = 0x5a;
 
     assert(usb_input_report_encode(USB_INPUT_REPORT_MODE_DRIVING_FORCE_PRO, report, &state) ==
            LOGITECH_DRIVING_FORCE_PRO_REPORT_SIZE);

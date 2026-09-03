@@ -23,9 +23,11 @@ static void test_driving_force_ex(void) {
 
 static void test_driving_force_pro(void) {
     const uint8_t expected[LOGITECH_DRIVING_FORCE_PRO_REPORT_SIZE] = {
-        0x8d, 0xa4, 0x00, 0x37, 0x7f, 0x11, 0x22, 0x33,
+        0x8d, 0xa4, 0x00, 0x37, 0x7f, 0x11, 0xa5, 0x5a,
     };
-    uint8_t report[LOGITECH_DRIVING_FORCE_PRO_REPORT_SIZE];
+    uint8_t report[LOGITECH_DRIVING_FORCE_PRO_REPORT_SIZE] = {
+        0, 0, 0, 0, 0, 0, 0xa5, 0x5a,
+    };
 
     assert(logitech_driving_force_pro_encode(report, &state));
     assert(memcmp(report, expected, sizeof(expected)) == 0);
@@ -51,11 +53,39 @@ static void test_driving_force_pro_maps_official_button_lanes(void) {
     for (size_t index = 0; index < sizeof(mappings) / sizeof(mappings[0]); index++) {
         LogitechInputSource source = {.pedals = {0, UINT16_MAX, 0}};
         LogitechInputState mapped;
-        uint8_t report[LOGITECH_DRIVING_FORCE_PRO_REPORT_SIZE];
+        uint8_t report[LOGITECH_DRIVING_FORCE_PRO_REPORT_SIZE] = {
+            0, 0, 0, 0, 0, 0, 0xff, 0,
+        };
         memcpy(source.buttons, mappings[index].buttons, sizeof(source.buttons));
         logitech_input_map(&mapped, LOGITECH_INPUT_MODEL_DRIVING_FORCE_PRO, &source);
         assert(logitech_driving_force_pro_encode(report, &mapped));
         assert(memcmp(report, mappings[index].report, sizeof(report)) == 0);
+    }
+}
+
+static void test_driving_force_pro_maps_sequential_transition_bits(void) {
+    static const struct {
+        uint8_t sequential_buttons;
+        uint8_t expected_secondary;
+    } mappings[] = {
+        {0x02, 0x08},
+        {0x01, 0x04},
+    };
+
+    for (size_t index = 0; index < sizeof(mappings) / sizeof(mappings[0]); index++) {
+        LogitechInputSource source = {
+            .sequential_buttons = mappings[index].sequential_buttons,
+            .sequential = true,
+        };
+        LogitechInputState mapped;
+        uint8_t report[LOGITECH_DRIVING_FORCE_PRO_REPORT_SIZE] = {
+            0, 0, 0, 0, 0, 0, 0xa5, 0x5a,
+        };
+        logitech_input_map(&mapped, LOGITECH_INPUT_MODEL_DRIVING_FORCE_PRO, &source);
+        assert(logitech_driving_force_pro_encode(report, &mapped));
+        assert((report[4] & 0x0fu) == mappings[index].expected_secondary);
+        assert(report[6] == 0xa5);
+        assert(report[7] == 0x5a);
     }
 }
 
@@ -86,6 +116,7 @@ int main(void) {
     test_driving_force_ex();
     test_driving_force_pro();
     test_driving_force_pro_maps_official_button_lanes();
+    test_driving_force_pro_maps_sequential_transition_bits();
     test_g27();
     test_validation();
     return 0;
