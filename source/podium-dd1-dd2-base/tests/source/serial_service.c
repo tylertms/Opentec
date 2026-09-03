@@ -12,14 +12,22 @@ static uint8_t received[SERIAL_PACKET_SIZE];
 static uint8_t start_count;
 static uint8_t reset_count;
 static bool received_ready;
+static bool link_active;
 
 void platform_serial_link_init(void) {}
 
-void platform_serial_link_reset(void) { reset_count++; }
+void platform_serial_link_reset(void) {
+    reset_count++;
+    link_active = false;
+}
 
 bool platform_serial_link_start(const uint8_t packet[SERIAL_PACKET_SIZE]) {
+    if (link_active) {
+        return false;
+    }
     memcpy(transmitted, packet, sizeof(transmitted));
     start_count++;
+    link_active = true;
     return true;
 }
 
@@ -29,6 +37,7 @@ bool platform_serial_link_take_received(uint8_t packet[SERIAL_PACKET_SIZE]) {
     }
     memcpy(packet, received, sizeof(received));
     received_ready = false;
+    link_active = false;
     return true;
 }
 
@@ -38,6 +47,7 @@ static void reset_link(void) {
     start_count = 0;
     reset_count = 0;
     received_ready = false;
+    link_active = false;
 }
 
 static SerialPacket transmitted_packet(void) {
@@ -48,6 +58,11 @@ static SerialPacket transmitted_packet(void) {
 
 static void queue_response(uint8_t type, uint8_t sequence, const uint8_t *message, uint8_t length) {
     assert(serial_packet_encode(type, sequence, message, length, received));
+    received_ready = true;
+}
+
+static void queue_malformed_response(void) {
+    memset(received, 0, sizeof(received));
     received_ready = true;
 }
 
@@ -115,17 +130,40 @@ static void test_fails_mismatched_response(void) {
     assert(serial_service_response(&service) == 0);
 }
 
-static void test_counts_invalid_packets(void) {
+static void test_ignores_unsupported_framed_commands(void) {
     SerialService service;
     reset_link();
     serial_service_init(&service);
     const uint8_t data = 1;
     assert(serial_service_start(&service, 3, &data, 1, 0));
 
-    received[0] = 0;
-    received_ready = true;
+    queue_response(6, 0, &data, 1);
     serial_service_run(&service, 1);
-    assert(serial_service_error_count(&service) == 1);
+    assert(service.status == SERIAL_SERVICE_PENDING);
+    assert(service.attempts == 0);
+    assert(serial_service_error_count(&service) == 0);
+    assert(start_count == 2);
+    assert(transmitted_packet().type_flags == 0);
+}
+
+static void test_sends_sync_before_bounded_malformed_failure(void) {
+    SerialService service;
+    reset_link();
+    serial_service_init(&service);
+    const uint8_t data = 1;
+    assert(serial_service_start(&service, 3, &data, 1, 100));
+
+    for (uint8_t attempt = 0; attempt < 5; attempt++) {
+        queue_malformed_response();
+        serial_service_run(&service, (uint32_t)attempt + 1u);
+    }
+
+    assert(service.status == SERIAL_SERVICE_FAILED);
+    assert(service.attempts == 5);
+    assert(service.packet_pending == false);
+    assert(start_count == 6);
+    assert(transmitted_packet().type_flags == 0);
+    assert(serial_service_error_count(&service) == 5);
 }
 
 static void test_retries_four_times_after_initial_send(void) {
@@ -133,7 +171,7 @@ static void test_retries_four_times_after_initial_send(void) {
     reset_link();
     serial_service_init(&service);
     const uint8_t data = 1;
-    assert(serial_service_start_wait(&service, 3, &data, 1, 100));
+    assert(serial_service_start(&service, 3, &data, 1, 100));
 
     serial_service_run(&service, 109);
     assert(service.status == SERIAL_SERVICE_PENDING);
@@ -142,7 +180,7 @@ static void test_retries_four_times_after_initial_send(void) {
     assert(reset_count == 0);
     serial_service_run(&service, 111);
     assert(service.status == SERIAL_SERVICE_PENDING);
-    assert(reset_count == 0);
+    assert(reset_count == 1);
     assert(start_count == 2);
     serial_service_run(&service, 122);
     assert(service.status == SERIAL_SERVICE_PENDING);
@@ -152,8 +190,28 @@ static void test_retries_four_times_after_initial_send(void) {
     assert(service.status == SERIAL_SERVICE_PENDING);
     serial_service_run(&service, 155);
     assert(service.status == SERIAL_SERVICE_FAILED);
-    assert(reset_count == 0);
+    assert(reset_count == 5);
     assert(start_count == 5);
+    assert(serial_service_error_count(&service) == 5);
+}
+
+static void test_start_wait_retries_without_bound(void) {
+    SerialService service;
+    reset_link();
+    serial_service_init(&service);
+    const uint8_t data = 1;
+    assert(serial_service_start_wait(&service, 3, &data, 1, 100));
+
+    serial_service_run(&service, 111);
+    serial_service_run(&service, 122);
+    serial_service_run(&service, 133);
+    serial_service_run(&service, 144);
+    serial_service_run(&service, 155);
+
+    assert(service.status == SERIAL_SERVICE_PENDING);
+    assert(service.attempts == 5);
+    assert(reset_count == 5);
+    assert(start_count == 6);
     assert(serial_service_error_count(&service) == 5);
 }
 
@@ -178,8 +236,10 @@ int main(void) {
     test_rejects_overlapping_transaction();
     test_enforces_logical_message_limit();
     test_fails_mismatched_response();
-    test_counts_invalid_packets();
+    test_ignores_unsupported_framed_commands();
+    test_sends_sync_before_bounded_malformed_failure();
     test_retries_four_times_after_initial_send();
+    test_start_wait_retries_without_bound();
     test_cancels_pending_transaction_without_resetting_sequence();
     return 0;
 }

@@ -10,8 +10,24 @@
 /** @brief Internal serial request retry constants. */
 enum {
     SERIAL_SERVICE_TIMEOUT_MS = 10,  /**< Response window for one packet attempt in milliseconds. */
-    SERIAL_SERVICE_MAX_ATTEMPTS = 5, /**< Maximum attempts for one packet before failure. */
+    SERIAL_SERVICE_MAX_ATTEMPTS = 5, /**< Maximum timeout or malformed-packet retries. */
 };
+
+/**
+ * @brief Identifies a valid framed packet with an unsupported logical type.
+ *
+ * Valid control packets use types zero and one, while logical messages use types two through five.
+ *
+ * @param[in] input Encoded framed packet to inspect.
+ * @return True when the packet is valid but its logical type is unsupported.
+ */
+static bool is_unsupported_packet(const uint8_t input[SERIAL_PACKET_SIZE]) {
+    SerialPacket packet;
+    if (serial_packet_decode(input, &packet) != SERIAL_PACKET_VALID) {
+        return false;
+    }
+    return (packet.type_flags & SERIAL_PACKET_TYPE_MASK) > SERIAL_MESSAGE_LAST_TYPE;
+}
 
 /**
  * @brief Starts the next scheduled attached-device packet exchange.
@@ -62,6 +78,7 @@ void serial_service_init(SerialService *service) {
  * @param[in] message Complete request message.
  * @param[in] length Request length from one through SERIAL_MESSAGE_MAX_SIZE bytes.
  * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[in] bounded_attempts Whether transport retries are bounded.
  * @return True when the request and first packet exchange start.
  */
 static bool start_request(SerialService *service, uint8_t type, const uint8_t *message,
@@ -84,7 +101,7 @@ static bool start_request(SerialService *service, uint8_t type, const uint8_t *m
 
 bool serial_service_start(SerialService *service, uint8_t type, const uint8_t *message,
                           uint16_t length, uint32_t now_ms) {
-    return start_request(service, type, message, length, now_ms, false);
+    return start_request(service, type, message, length, now_ms, true);
 }
 
 /**
@@ -99,7 +116,7 @@ bool serial_service_start(SerialService *service, uint8_t type, const uint8_t *m
  */
 bool serial_service_start_wait(SerialService *service, uint8_t type, const uint8_t *message,
                                uint16_t length, uint32_t now_ms) {
-    return start_request(service, type, message, length, now_ms, true);
+    return start_request(service, type, message, length, now_ms, false);
 }
 
 /**
@@ -107,8 +124,9 @@ bool serial_service_start_wait(SerialService *service, uint8_t type, const uint8
  *
  * Accepts completed packets, emits required fragment acknowledgements or resynchronization
  * packets, publishes a matching completed logical response, and retries a packet after each
- * ten-millisecond response deadline for up to five attempts. A failed restart or fifth missed
- * response fails the request.
+ * ten-millisecond response deadline for up to five retry events. A failed restart or fifth missed
+ * response fails a bounded request, while every malformed response first schedules its recovery
+ * synchronization packet.
  *
  * @param[in,out] service Serial service to advance.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -120,13 +138,23 @@ void serial_service_run(SerialService *service, uint32_t now_ms) {
     if (service->packet_pending && platform_serial_link_take_received(service->packet)) {
         service->packet_pending = false;
         SerialSessionResult result = serial_session_accept(&service->session, service->packet);
-        if (result == SERIAL_SESSION_INVALID_PACKET || result == SERIAL_SESSION_MESSAGE_OVERFLOW) {
+        bool malformed = result == SERIAL_SESSION_INVALID_PACKET ||
+                         result == SERIAL_SESSION_MESSAGE_OVERFLOW;
+        bool unsupported = malformed && is_unsupported_packet(service->packet);
+        if (malformed && !unsupported) {
             service->error_count++;
             service->attempts++;
-            if (service->bounded_attempts && service->attempts >= SERIAL_SERVICE_MAX_ATTEMPTS) {
+        }
+        if (malformed) {
+            bool recovery_started = start_next_packet(service, now_ms);
+            if (service->bounded_attempts && !unsupported &&
+                service->attempts >= SERIAL_SERVICE_MAX_ATTEMPTS) {
+                service->packet_pending = false;
                 service->status = SERIAL_SERVICE_FAILED;
-                return;
+            } else if (!recovery_started) {
+                service->status = SERIAL_SERVICE_FAILED;
             }
+            return;
         }
         if (result == SERIAL_SESSION_MESSAGE_COMPLETE) {
             const SerialMessageAssembly *message = serial_session_message(&service->session);
@@ -147,6 +175,7 @@ void serial_service_run(SerialService *service, uint32_t now_ms) {
     if (service->packet_pending && platform_time_reached(now_ms, service->deadline_ms + 1u)) {
         service->error_count++;
         service->attempts++;
+        platform_serial_link_reset();
         if ((!service->bounded_attempts || service->attempts < SERIAL_SERVICE_MAX_ATTEMPTS) &&
             platform_serial_link_start(service->packet)) {
             service->deadline_ms = now_ms + SERIAL_SERVICE_TIMEOUT_MS;
