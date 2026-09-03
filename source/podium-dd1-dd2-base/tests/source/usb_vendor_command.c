@@ -23,7 +23,7 @@ static void test_classifies_direct_command_routes(void) {
         {2, USB_VENDOR_COMMAND_TUNING_MENU},
         {3, USB_VENDOR_COMMAND_DEVICE_CONTROL_UPDATE},
         {4, USB_VENDOR_COMMAND_DIAGNOSTIC_SNAPSHOT},
-        {5, USB_VENDOR_COMMAND_NATIVE_TUNING_SERVICE},
+        {5, USB_VENDOR_COMMAND_REMOTE_TUNING},
         {8, USB_VENDOR_COMMAND_TUNING_STATUS},
         {0x10, USB_VENDOR_COMMAND_WHEEL_TRANSFER_PAYLOAD},
         {0x11, USB_VENDOR_COMMAND_WHEEL_TRANSFER_PAYLOAD},
@@ -44,7 +44,24 @@ static void test_classifies_direct_command_routes(void) {
 }
 
 static void test_classifies_xbox_tunnel_payload(void) {
-    uint8_t payload[59] = {5, 2, 1};
+    uint8_t payload[59] = {5, 0, 1};
+    UsbOutputCommand output = {
+        .kind = USB_OUTPUT_COMMAND_VENDOR_TRANSFER,
+        .payload = payload,
+        .length = sizeof(payload),
+    };
+    UsbVendorCommand command = {0};
+
+    for (uint8_t packet_kind = 1; packet_kind <= 5; packet_kind++) {
+        payload[1] = packet_kind;
+        assert(usb_vendor_command_decode(&output, &command));
+        assert(command.kind == USB_VENDOR_COMMAND_REMOTE_TUNING);
+        assert(command.arguments == payload + 1 && command.length == 58);
+    }
+}
+
+static void test_classifies_opcode_five_without_subtype(void) {
+    uint8_t payload[] = {5};
     UsbOutputCommand output = {
         .kind = USB_OUTPUT_COMMAND_VENDOR_TRANSFER,
         .payload = payload,
@@ -54,7 +71,9 @@ static void test_classifies_xbox_tunnel_payload(void) {
 
     assert(usb_vendor_command_decode(&output, &command));
     assert(command.kind == USB_VENDOR_COMMAND_REMOTE_TUNING);
-    assert(command.arguments == payload + 1 && command.length == 58);
+    assert(command.opcode == 5);
+    assert(command.arguments == payload + 1);
+    assert(command.length == 0);
 }
 
 static void test_classifies_native_reset(void) {
@@ -205,6 +224,7 @@ static void test_rejects_unhandled_payloads(void) {
 int main(void) {
     test_classifies_direct_command_routes();
     test_classifies_xbox_tunnel_payload();
+    test_classifies_opcode_five_without_subtype();
     test_classifies_native_reset();
     test_rejects_script_queries_on_native_reset_route();
     test_rejects_script_sample_query();

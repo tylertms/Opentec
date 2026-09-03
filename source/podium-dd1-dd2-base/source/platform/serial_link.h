@@ -6,10 +6,15 @@
 
 #include "serial/packet.h"
 
+/** @brief Framed receive-DMA storage size including the four-byte alignment window. */
+enum { PLATFORM_SERIAL_LINK_RECEIVE_DMA_SIZE = SERIAL_PACKET_SIZE + 4 };
+
 /**
  * @brief Initializes the serial device link.
  *
- * Configures UART3, its DMA channels, and the timing interrupt used by framed exchanges.
+ * Configures UART3, its DMA channels, and the timing interrupt used by framed exchanges. UART3 is
+ * enabled only after the DMA descriptors and interrupt gates are configured; receive DMA remains
+ * disarmed until a framed exchange starts.
  */
 void platform_serial_link_init(void);
 
@@ -32,15 +37,26 @@ void platform_serial_link_reset(void);
 bool platform_serial_link_start(const uint8_t packet[SERIAL_PACKET_SIZE]);
 
 /**
- * @brief Takes one completed framed serial response.
+ * @brief Takes one framed serial receive result.
  *
- * Copies and consumes the newest response packet when framed mode has a response ready. Direct mode
- * never provides a framed response.
+ * Copies and consumes the newest response packet or invalid timeout result when framed mode has a
+ * result ready. Direct mode never provides a framed result.
  *
  * @param[out] packet Destination for the received transport packet.
  * @return True when a response was copied; otherwise false.
  */
 bool platform_serial_link_take_received(uint8_t packet[SERIAL_PACKET_SIZE]);
+
+/**
+ * @brief Starts the periodic framed-receive recovery interval.
+ *
+ * Holds new framed exchanges until the official 0x27d8-cycle Timer 6 recovery interval expires.
+ * Direct mode and active or already-pending framed exchanges reject the request.
+ *
+ * @return True when recovery was scheduled; otherwise false while the link is busy or in direct
+ * mode.
+ */
+bool platform_serial_link_start_periodic_recovery(void);
 
 /**
  * @brief Enters raw direct serial mode.
@@ -79,5 +95,15 @@ bool platform_serial_link_direct_read(uint8_t *data, uint8_t length);
  * Leaves direct mode active while discarding the current response assembly.
  */
 void platform_serial_link_direct_clear(void);
+
+#ifdef OPENTEC_SIMULATOR_TEST
+/**
+ * @brief Loads a simulated framed receive-DMA buffer.
+ *
+ * @param[in] frame 68 bytes to expose through the receive-DMA completion interrupt.
+ */
+void platform_serial_link_test_set_receive_dma(
+    const uint8_t frame[PLATFORM_SERIAL_LINK_RECEIVE_DMA_SIZE]);
+#endif
 
 #endif

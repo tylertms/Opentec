@@ -10,7 +10,6 @@ enum {
     VENDOR_COMMAND_NATIVE_RESET = 0x0a,         /**< Native reset command opcode. */
     VENDOR_COMMAND_NATIVE_RESET_SELECTOR = 1,   /**< Native reset selector. */
     VENDOR_COMMAND_NATIVE_RESET_VALUE = 0x1a,   /**< Native reset confirmation value. */
-    VENDOR_COMMAND_REMOTE_SELECTION_PACKET = 2, /**< Remote-tuning selection packet type. */
     VENDOR_COMMAND_SCRIPT_SAMPLES_SELECTOR = 4, /**< Script samples selector. */
     VENDOR_COMMAND_SCRIPT_SAMPLES_LAST_FIRST = 0x01f5, /**< Largest accepted first sample index. */
     VENDOR_COMMAND_SCRIPT_SLOT_SELECTOR = 5,           /**< Script slot selector. */
@@ -28,8 +27,8 @@ enum {
  * @brief Selects the route for a vendor command opcode.
  *
  * Maps each supported top-level opcode to its command category. The native reset is accepted only
- * for the exact selector/value pair used by the Fanatec dispatcher, while opcode five keeps the
- * Xbox remote-selection packet distinct from the native pending-service request.
+ * for the exact selector/value pair used by the Fanatec dispatcher, while opcode five selects the
+ * remote-tuning route for every packet kind.
  *
  * @param[in] opcode Top-level vendor command opcode.
  * @param[in] payload Vendor command payload beginning with its opcode.
@@ -47,9 +46,7 @@ static int8_t command_kind(uint8_t opcode, const uint8_t *payload, uint8_t lengt
     case 4:
         return USB_VENDOR_COMMAND_DIAGNOSTIC_SNAPSHOT;
     case 5:
-        return length >= 2 && payload[1] == VENDOR_COMMAND_REMOTE_SELECTION_PACKET
-                   ? USB_VENDOR_COMMAND_REMOTE_TUNING
-                   : USB_VENDOR_COMMAND_NATIVE_TUNING_SERVICE;
+        return USB_VENDOR_COMMAND_REMOTE_TUNING;
     case 8:
         return USB_VENDOR_COMMAND_TUNING_STATUS;
     case VENDOR_COMMAND_NATIVE_RESET:

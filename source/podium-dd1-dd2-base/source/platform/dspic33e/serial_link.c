@@ -10,7 +10,8 @@
  */
 enum {
     SERIAL_LINK_TRANSMIT_SIZE = 72, /**< Number of bytes sent by one framed DMA transfer. */
-    SERIAL_LINK_RECEIVE_SIZE = 68,  /**< Number of bytes received by one framed DMA transfer. */
+    SERIAL_LINK_RECEIVE_SIZE =
+        PLATFORM_SERIAL_LINK_RECEIVE_DMA_SIZE, /**< Number of bytes received by one framed DMA transfer. */
     SERIAL_LINK_FRAME_OFFSET = 4, /**< Offset of the transport packet within the transmit buffer. */
     SERIAL_LINK_ALIGNMENT_LIMIT =
         5, /**< Number of leading receive offsets searched for a frame marker. */
@@ -24,6 +25,8 @@ enum {
     SERIAL_LINK_TRANSMIT_GUARD_PERIOD = 0x4b0, /**< Delay before arming framed receive DMA. */
     SERIAL_LINK_RECEIVE_TIMEOUT_PERIOD =
         10000, /**< Timer period for an incomplete framed response. */
+    SERIAL_LINK_PERIODIC_RECOVERY_PERIOD =
+        0x27d8, /**< Timer period for framing or incomplete-receive recovery. */
     SERIAL_LINK_DIRECT_TRANSMIT_CAPACITY = 63, /**< Maximum queued direct-mode request bytes. */
     SERIAL_LINK_DIRECT_RECEIVE_CAPACITY = 64,  /**< Maximum retained direct-mode response bytes. */
     SERIAL_LINK_DIRECT_BAUD_PERIOD = 0xc2, /**< UART3 baud-period register value for direct mode. */
@@ -36,8 +39,9 @@ enum {
  */
 typedef enum {
     SERIAL_LINK_TIMER_IDLE,            /**< No Timer 6 action is pending. */
-    SERIAL_LINK_TIMER_RECEIVE_TIMEOUT, /**< Abort an incomplete framed receive. */
+    SERIAL_LINK_TIMER_RECEIVE_TIMEOUT, /**< Publish a retained incomplete framed receive result. */
     SERIAL_LINK_TIMER_START_RECEIVE,   /**< Arm framed receive DMA after transmit guard time. */
+    SERIAL_LINK_TIMER_PERIODIC_RECOVERY, /**< Release a malformed-response recovery hold. */
     SERIAL_LINK_TIMER_DIRECT_SERVICE,  /**< Advance direct-mode transmission or reception. */
 } SerialLinkTimerAction;
 
@@ -61,7 +65,7 @@ static volatile uint8_t transmit_dma[SERIAL_LINK_TRANSMIT_SIZE];
 static volatile uint8_t receive_dma[SERIAL_LINK_RECEIVE_SIZE];
 
 /**
- * @brief Most recently aligned received transport packet.
+ * @brief Most recent framed receive result.
  */
 static volatile uint8_t received_packet[SERIAL_PACKET_SIZE];
 
@@ -71,7 +75,12 @@ static volatile uint8_t received_packet[SERIAL_PACKET_SIZE];
 static volatile bool transfer_active;
 
 /**
- * @brief True when an aligned framed response is ready for the foreground.
+ * @brief True while malformed framed traffic is held for Timer 6 recovery.
+ */
+static volatile bool periodic_recovery_pending;
+
+/**
+ * @brief True when a framed receive result is ready for the foreground.
  */
 static volatile bool frame_ready;
 
@@ -141,6 +150,21 @@ static void clear_uart(void) {
 }
 
 /**
+ * @brief Clears direct-mode UART state after the receiver becomes idle.
+ *
+ * Clears overrun before waiting for receiver idle, then drains the receive FIFO.
+ */
+static void clear_direct_turnaround(void) {
+    U3STAbits.OERR = 0;
+    while (U3STAbits.RIDLE == 0) {
+        __builtin_nop();
+    }
+    while (U3STAbits.URXDA != 0) {
+        (void)U3RXREG;
+    }
+}
+
+/**
  * @brief Configures UART3 for the normal attached-device link.
  *
  * The link uses inverted receive and transmit signals, high-speed baud generation, and a baud
@@ -155,17 +179,14 @@ static void configure_uart(void) {
     U3MODEbits.URXINV = 1;
     U3BRG = SERIAL_LINK_BAUD_PERIOD;
     U3STAbits.UTXINV = 1;
-    U3MODEbits.UARTEN = 1;
-    U3STAbits.UTXEN = 1;
 }
 
 /**
- * @brief Configures the byte-oriented, one-shot UART3 DMA channels.
+ * @brief Configures the byte-oriented, one-shot UART3 transmit DMA channel.
  *
- * DMA5 sends 72 bytes with request 0x53. DMA6 receives 68 bytes with request 0x52.
- *
+ * DMA5 sends 72 bytes with request 0x53.
  */
-static void configure_dma(void) {
+static void configure_transmit_dma(void) {
     DMA5CON = 0;
     DMA5CONbits.SIZE = 1;
     DMA5CONbits.DIR = 1;
@@ -176,7 +197,18 @@ static void configure_dma(void) {
     DMA5STAL = (uint16_t)transmit_dma;
     DMA5STAH = 0;
     DMA5CNT = SERIAL_LINK_TRANSMIT_SIZE - 1;
+}
 
+/**
+ * @brief Configures the byte-oriented, one-shot UART3 receive DMA channel.
+ *
+ * DMA6 receives 68 bytes with request 0x52 and remains disabled until a framed guard interval
+ * completes.
+ */
+static void configure_receive_dma(void) {
+    DMA6CONbits.CHEN = 0;
+    IFS4bits.DMA6IF = 0;
+    IEC4bits.DMA6IE = 0;
     DMA6CON = 0;
     DMA6CONbits.SIZE = 1;
     DMA6CONbits.DIR = 0;
@@ -187,6 +219,16 @@ static void configure_dma(void) {
     DMA6STAL = (uint16_t)receive_dma;
     DMA6STAH = 0;
     DMA6CNT = SERIAL_LINK_RECEIVE_SIZE - 1;
+}
+
+/**
+ * @brief Configures the byte-oriented, one-shot UART3 DMA channels.
+ *
+ * DMA5 sends 72 bytes with request 0x53. DMA6 receives 68 bytes with request 0x52.
+ */
+static void configure_dma(void) {
+    configure_transmit_dma();
+    configure_receive_dma();
 }
 
 /**
@@ -204,7 +246,9 @@ static void configure_interrupts(void) {
     IFS5bits.U3EIF = 0;
     IFS5bits.U3RXIF = 0;
     IEC3bits.DMA5IE = 1;
-    IEC4bits.DMA6IE = 1;
+    IEC4bits.DMA6IE = 0;
+    IEC5bits.U3TXIE = 0;
+    IEC5bits.U3RXIE = 0;
     IPC11bits.T6IP = SERIAL_LINK_TIMER_PRIORITY;
     IEC2bits.T6IE = 1;
     IEC5bits.U3EIE = 1;
@@ -254,22 +298,33 @@ static void stop_timer(void) {
 }
 
 /**
+ * @brief Stops only an active framed receive timeout.
+ *
+ * Leaves the action selected until the Timer 6 handler completes its dispatch.
+ */
+static void stop_receive_timeout(void) {
+    if (timer_action == SERIAL_LINK_TIMER_RECEIVE_TIMEOUT) {
+        TMR6 = 0;
+        T6CONbits.TON = 0;
+    }
+}
+
+/**
  * @brief Arms UART3 receive DMA for one 68-byte transfer.
  *
  * Clears the receive storage and UART state before enabling DMA6 and the first-byte interrupt.
  *
  */
 static void start_receive(void) {
-    DMA6CONbits.CHEN = 0;
-    IEC4bits.DMA6IE = 0;
+    clear_uart();
+    configure_receive_dma();
+    transfer_active = false;
     for (uint8_t index = 0; index < SERIAL_LINK_RECEIVE_SIZE; index++) {
         receive_dma[index] = 0;
     }
-    clear_uart();
-    IFS4bits.DMA6IF = 0;
-    IFS5bits.U3RXIF = 0;
     DMA6CONbits.CHEN = 1;
     IEC4bits.DMA6IE = 1;
+    IFS5bits.U3RXIF = 0;
     IEC5bits.U3RXIE = 1;
 }
 
@@ -310,10 +365,7 @@ static void service_direct_mode(void) {
         }
     }
     direct_receive_length = 0;
-    while (U3STAbits.RIDLE == 0) {
-        __builtin_nop();
-    }
-    clear_uart();
+    clear_direct_turnaround();
     IFS5bits.U3RXIF = 0;
     IEC5bits.U3RXIE = 1;
     direct_phase = SERIAL_LINK_DIRECT_IDLE;
@@ -322,7 +374,9 @@ static void service_direct_mode(void) {
 /**
  * @brief Initializes the attached-device UART3 exchange layer.
  *
- * Configures the physical pins, inverted high-speed UART, one-shot DMA channels, and Timer 6.
+ * Configures the physical pins, inverted high-speed UART, one-shot DMA channels, Timer 6, and
+ * interrupt routing while UART3 remains disabled. Enables UART3 only after all descriptors and
+ * interrupt gates are ready.
  *
  */
 void platform_serial_link_init(void) {
@@ -331,6 +385,7 @@ void platform_serial_link_init(void) {
     direct_transmit_length = 0;
     direct_receive_length = 0;
     transfer_active = false;
+    periodic_recovery_pending = false;
     frame_ready = false;
     TRISFbits.TRISF2 = 0;
     TRISFbits.TRISF8 = 1;
@@ -340,6 +395,8 @@ void platform_serial_link_init(void) {
     configure_dma();
     configure_timer();
     configure_interrupts();
+    U3MODEbits.UARTEN = 1;
+    U3STAbits.UTXEN = 1;
     clear_uart();
 }
 
@@ -347,6 +404,7 @@ void platform_serial_link_init(void) {
  * @brief Resets the attached-device UART3 exchange layer.
  *
  * Stops all active DMA and timer work, clears pending receive state, and releases the transaction.
+ * DMA descriptors remain configured for the next one-shot transfer.
  *
  */
 void platform_serial_link_reset(void) {
@@ -358,42 +416,29 @@ void platform_serial_link_reset(void) {
     IEC5bits.U3RXIE = 0;
     DMA5CONbits.CHEN = 0;
     DMA6CONbits.CHEN = 0;
-    DMA5CON = 0;
-    DMA5REQ = 0;
-    DMA5PAD = 0;
-    DMA5STAL = 0;
-    DMA5STAH = 0;
-    DMA5CNT = 0;
-    DMA6CON = 0;
-    DMA6REQ = 0;
-    DMA6PAD = 0;
-    DMA6STAL = 0;
-    DMA6STAH = 0;
-    DMA6CNT = 0;
     stop_timer();
     clear_uart();
     transfer_active = false;
+    periodic_recovery_pending = false;
     frame_ready = false;
     IFS3bits.DMA5IF = 0;
     IFS4bits.DMA6IF = 0;
     IEC3bits.DMA5IE = 1;
-    IEC4bits.DMA6IE = 1;
+    IEC4bits.DMA6IE = 0;
 }
 
 /**
  * @brief Starts one attached-device request and response exchange.
  *
- * Rebuilds both DMA descriptors, places the 64-byte transport frame between four leading and
- * trailing padding bytes, then starts the transmit DMA. Framed mode accepts only one exchange at a
- * time.
+ * Places the 64-byte transport frame between four leading and trailing padding bytes, then starts
+ * the transmit DMA descriptor configured during link initialization. Framed mode accepts only one
+ * exchange at a time.
  *
  * @param[in] packet Transport packet to transmit.
  * @return true when the exchange starts; false when another exchange is active.
  */
 bool platform_serial_link_start(const uint8_t packet[SERIAL_PACKET_SIZE]) {
-    IEC3bits.DMA5IE = 0;
-    if (direct_mode || transfer_active) {
-        IEC3bits.DMA5IE = 1;
+    if (direct_mode || transfer_active || periodic_recovery_pending) {
         return false;
     }
     for (uint8_t index = 0; index < SERIAL_LINK_TRANSMIT_SIZE; index++) {
@@ -402,36 +447,47 @@ bool platform_serial_link_start(const uint8_t packet[SERIAL_PACKET_SIZE]) {
     for (uint8_t index = 0; index < SERIAL_PACKET_SIZE; index++) {
         transmit_dma[SERIAL_LINK_FRAME_OFFSET + index] = packet[index];
     }
-    DMA5CONbits.CHEN = 0;
-    DMA6CONbits.CHEN = 0;
-    configure_dma();
-    IEC5bits.U3RXIE = 0;
-    stop_timer();
-    clear_uart();
     frame_ready = false;
     transfer_active = true;
-    IFS3bits.DMA5IF = 0;
-    IFS4bits.DMA6IF = 0;
+    DMA6CONbits.CHEN = 0;
+    IEC4bits.DMA6IE = 0;
     DMA5CONbits.CHEN = 1;
     DMA5REQbits.FORCE = 1;
-    IEC3bits.DMA5IE = 1;
     return true;
 }
 
 /**
- * @brief Takes the completed attached-device response frame.
+ * @brief Starts the official malformed framed-response recovery interval.
  *
- * Copies a newly aligned 64-byte response into caller storage and consumes its ready state. The
- * operation returns false while direct mode is active.
+ * Prevents a new framed exchange until Timer 6 has completed its 0x27d8-cycle recovery action.
+ * The receive path is already complete when a framing or incomplete-receive caller schedules this
+ * hold.
+ *
+ * @return True when recovery was scheduled; otherwise false while direct mode, another transfer,
+ * or an existing recovery interval is active.
+ */
+bool platform_serial_link_start_periodic_recovery(void) {
+    if (direct_mode || transfer_active || periodic_recovery_pending) {
+        return false;
+    }
+    periodic_recovery_pending = true;
+    start_timer(SERIAL_LINK_PERIODIC_RECOVERY_PERIOD, SERIAL_LINK_TIMER_PERIODIC_RECOVERY);
+    return true;
+}
+
+/**
+ * @brief Takes one framed receive result.
+ *
+ * Copies a newly aligned 64-byte response or retained partial timeout result into caller storage
+ * and consumes its ready state. The operation returns false while direct mode is active.
  *
  * @param[out] packet Storage that receives the transport packet.
- * @return true when a frame was copied; false when no response is ready.
+ * @return true when a result was copied; false when no result is ready.
  */
 bool platform_serial_link_take_received(uint8_t packet[SERIAL_PACKET_SIZE]) {
     if (direct_mode) {
         return false;
     }
-    IEC4bits.DMA6IE = 0;
     bool ready = frame_ready;
     if (ready) {
         for (uint8_t index = 0; index < SERIAL_PACKET_SIZE; index++) {
@@ -439,7 +495,6 @@ bool platform_serial_link_take_received(uint8_t packet[SERIAL_PACKET_SIZE]) {
         }
         frame_ready = false;
     }
-    IEC4bits.DMA6IE = 1;
     return ready;
 }
 
@@ -463,6 +518,7 @@ void platform_serial_link_enter_direct_mode(void) {
 
     transfer_active = false;
     frame_ready = false;
+    periodic_recovery_pending = false;
     direct_transmit_active = false;
     direct_transmit_length = 0;
     direct_transmit_index = 0;
@@ -575,25 +631,27 @@ void __attribute__((interrupt, no_auto_psv)) _DMA5Interrupt(void) {
 /**
  * @brief Handles completion of the 68-byte UART3 receive DMA.
  *
- * Stops receive timing, aligns the first frame marker within the five accepted offsets, and makes
- * the response available to the service layer.
+ * Stops only an active receive-timeout interval, aligns the first frame marker within the five
+ * accepted offsets, and makes the response available to the service layer. A missing marker is
+ * reported as an unaligned response beginning at offset zero.
  *
  */
 void __attribute__((interrupt, no_auto_psv)) _DMA6Interrupt(void) {
     DMA6CONbits.CHEN = 0;
     IEC4bits.DMA6IE = 0;
-    stop_timer();
+    stop_receive_timeout();
+    transfer_active = false;
     uint8_t offset = 0;
     while (offset < SERIAL_LINK_ALIGNMENT_LIMIT && receive_dma[offset] != SERIAL_PACKET_START) {
         offset++;
     }
-    if (offset < SERIAL_LINK_ALIGNMENT_LIMIT) {
-        for (uint8_t index = 0; index < SERIAL_PACKET_SIZE; index++) {
-            received_packet[index] = receive_dma[offset + index];
-        }
-        frame_ready = true;
+    if (offset == SERIAL_LINK_ALIGNMENT_LIMIT) {
+        offset = 0;
     }
-    transfer_active = false;
+    for (uint8_t index = 0; index < SERIAL_PACKET_SIZE; index++) {
+        received_packet[index] = receive_dma[offset + index];
+    }
+    frame_ready = true;
     IFS4bits.DMA6IF = 0;
 }
 
@@ -621,7 +679,8 @@ void __attribute__((interrupt, no_auto_psv)) _U3TXInterrupt(void) {
  * @brief Handles the first received UART3 byte.
  *
  * Retains bounded raw updater bytes in direct mode. During framed operation, disables further
- * receive interrupts and starts the 10000-cycle full-frame timeout.
+ * receive interrupts and starts the 10000-cycle full-frame timeout only when the transfer and
+ * periodic recovery flags are both clear.
  *
  */
 void __attribute__((interrupt, no_auto_psv)) _U3RXInterrupt(void) {
@@ -647,7 +706,7 @@ void __attribute__((interrupt, no_auto_psv)) _U3RXInterrupt(void) {
     }
     IEC5bits.U3RXIE = 0;
     IFS5bits.U3RXIF = 0;
-    if (transfer_active && DMA6CONbits.CHEN != 0) {
+    if (!transfer_active && !periodic_recovery_pending) {
         start_timer(SERIAL_LINK_RECEIVE_TIMEOUT_PERIOD, SERIAL_LINK_TIMER_RECEIVE_TIMEOUT);
     }
 }
@@ -655,26 +714,37 @@ void __attribute__((interrupt, no_auto_psv)) _U3RXInterrupt(void) {
 /**
  * @brief Handles attached-device link timing completion.
  *
- * Arms receive DMA after transmit turnaround or releases an exchange whose receive frame timed out.
+ * Arms receive DMA after transmit turnaround, publishes the retained partial result for a timed-out
+ * receive, or clears the periodic recovery hold.
  *
  */
 void __attribute__((interrupt, no_auto_psv)) _T6Interrupt(void) {
-    if (direct_mode && timer_action == SERIAL_LINK_TIMER_DIRECT_SERVICE) {
-        IFS2bits.T6IF = 0;
+    IFS2bits.T6IF = 0;
+    if (direct_mode) {
         service_direct_mode();
         return;
     }
+    T6CONbits.TON = 0;
     SerialLinkTimerAction action = timer_action;
-    stop_timer();
-    if (action == SERIAL_LINK_TIMER_START_RECEIVE && transfer_active) {
+    switch (action) {
+    case SERIAL_LINK_TIMER_START_RECEIVE:
         start_receive();
-    } else if (action == SERIAL_LINK_TIMER_RECEIVE_TIMEOUT) {
-        DMA6CONbits.CHEN = 0;
-        IEC4bits.DMA6IE = 0;
-        IEC5bits.U3RXIE = 0;
-        clear_uart();
+        break;
+    case SERIAL_LINK_TIMER_RECEIVE_TIMEOUT:
         transfer_active = false;
+        configure_receive_dma();
+        for (uint8_t index = 0; index < SERIAL_PACKET_SIZE; index++) {
+            received_packet[index] = receive_dma[index];
+        }
+        frame_ready = true;
+        break;
+    case SERIAL_LINK_TIMER_PERIODIC_RECOVERY:
+        periodic_recovery_pending = false;
+        break;
+    default:
+        break;
     }
+    timer_action = SERIAL_LINK_TIMER_IDLE;
 }
 
 /**
@@ -684,6 +754,20 @@ void __attribute__((interrupt, no_auto_psv)) _T6Interrupt(void) {
  *
  */
 void __attribute__((interrupt, no_auto_psv)) _U3ErrInterrupt(void) {
-    clear_uart();
     IFS5bits.U3EIF = 0;
+    clear_uart();
 }
+
+#ifdef OPENTEC_SIMULATOR_TEST
+/**
+ * @brief Loads a simulated framed receive-DMA buffer.
+ *
+ * @param[in] frame 68 bytes to expose through the receive-DMA completion interrupt.
+ */
+void platform_serial_link_test_set_receive_dma(
+    const uint8_t frame[PLATFORM_SERIAL_LINK_RECEIVE_DMA_SIZE]) {
+    for (uint8_t index = 0; index < SERIAL_LINK_RECEIVE_SIZE; index++) {
+        receive_dma[index] = frame[index];
+    }
+}
+#endif
