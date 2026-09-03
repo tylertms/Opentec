@@ -86,7 +86,21 @@ static void test_rejects_invalid_curve(void) {
     ForceFeedbackScriptSamples samples = prepare_curve();
     assert(!force_feedback_script_sample_interpolate(&samples, 100, 1, 5.0f).writes_value);
     assert(!force_feedback_script_sample_interpolate(&samples, 510, 2, 5.0f).writes_value);
+    assert(!force_feedback_script_sample_interpolate(&samples, 508, 2, 5.0f).writes_value);
+    assert(!force_feedback_script_sample_interpolate(&samples, 0, 256, 5.0f).writes_value);
     assert(!force_feedback_script_sample_interpolate(&samples, 100, 3, NAN).writes_value);
+}
+
+static void test_accepts_last_valid_sample_curve(void) {
+    ForceFeedbackScriptSamples samples = {0};
+    samples.values[507] = float_bits(0.0f);
+    samples.values[508] = float_bits(0.0f);
+    samples.values[509] = float_bits(10.0f);
+    samples.values[510] = float_bits(100.0f);
+    samples.values[511] = float_bits(20.0f);
+    ForceFeedbackScriptSampleResult result =
+        force_feedback_script_sample_interpolate(&samples, 507, 2, 15.0f);
+    assert(result.writes_value);
 }
 
 int main(void) {
@@ -96,5 +110,6 @@ int main(void) {
     test_rejects_invalid_wrapped_read();
     test_interpolates_and_extrapolates_curve();
     test_rejects_invalid_curve();
+    test_accepts_last_valid_sample_curve();
     return 0;
 }

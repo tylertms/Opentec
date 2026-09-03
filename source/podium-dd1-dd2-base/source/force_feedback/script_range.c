@@ -22,8 +22,7 @@ float force_feedback_script_range_evaluate(ForceFeedbackScriptRangeOperation ope
 
 float force_feedback_script_rotation_scale(float value, uint8_t range_code,
                                            uint16_t extended_range) {
-    int32_t selected_range =
-        (int8_t)range_code > 125 ? (int32_t)extended_range : (int8_t)range_code;
+    int32_t selected_range = range_code > 125u ? (int32_t)extended_range : (int8_t)range_code;
     float range_scale = (float)selected_range * 5.0f;
     return value * script_pi * range_scale / 180.0f;
 }

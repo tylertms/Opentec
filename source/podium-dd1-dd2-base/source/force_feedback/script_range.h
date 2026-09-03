@@ -44,12 +44,12 @@ float force_feedback_script_range_evaluate(ForceFeedbackScriptRangeOperation ope
 /**
  * @brief Scale a script value by the active rotation range.
  *
- * Selects the signed encoded range or the extended range for codes 126 and 127, multiplies that
- * range by five degrees, and applies it to value as a floating-point radian scale.
+ * Selects the raw range code or the extended range for raw codes above 125, multiplies that range
+ * by five degrees, and applies it to value as a floating-point radian scale.
  *
  * @param[in] value Script rotation value to scale.
- * @param[in] range_code Encoded active rotation-range code.
- * @param[in] extended_range Extended rotation range for codes 126 and 127.
+ * @param[in] range_code Raw rotation-range code; values above 125 select extended_range.
+ * @param[in] extended_range Extended rotation range for raw codes above 125.
  * @return The scaled rotation in radians.
  */
 float force_feedback_script_rotation_scale(float value, uint8_t range_code,

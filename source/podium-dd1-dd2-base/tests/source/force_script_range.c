@@ -48,10 +48,12 @@ static void test_bounded_normalization_uses_range_results(void) {
 }
 
 static void test_scales_rotation_from_range_code(void) {
-    assert(float_bits(force_feedback_script_rotation_scale(1.0f, 36, 0)) == UINT32_C(0x40490fdb));
+    assert(float_bits(force_feedback_script_rotation_scale(1.0f, 36, 0)) ==
+           UINT32_C(0x40490fdb));
     assert(float_bits(force_feedback_script_rotation_scale(1.0f, 126, 36)) == UINT32_C(0x40490fdb));
+    assert(float_bits(force_feedback_script_rotation_scale(1.0f, 127, 36)) == UINT32_C(0x40490fdb));
     assert(force_feedback_script_rotation_scale(10.0f, 0, 999) == 0.0f);
-    assert(force_feedback_script_rotation_scale(36.0f, UINT8_MAX, 999) < 0.0f);
+    assert(force_feedback_script_rotation_scale(1.0f, UINT8_MAX, 999) > 0.0f);
 }
 
 int main(void) {

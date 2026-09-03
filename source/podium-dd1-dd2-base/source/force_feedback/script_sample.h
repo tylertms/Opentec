@@ -55,7 +55,8 @@ force_feedback_script_sample_read_wrapped(const ForceFeedbackScriptSamples *samp
  *
  * Reads point_count x/y pairs beginning at base, extrapolates outside the first or last x value,
  * and interpolates the matching segment for an interior target. Fewer than two points, a curve that
- * exceeds the sample table, or a target without a matching segment suppresses the write.
+ * whose final y value exceeds the sample table, or a target without a matching segment suppresses
+ * the write. The final y index must be at most 511.
  *
  * @param[in] samples Script sample table.
  * @param[in] base Index of the first x value.

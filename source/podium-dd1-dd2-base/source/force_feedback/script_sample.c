@@ -96,7 +96,7 @@ ForceFeedbackScriptSampleResult
 force_feedback_script_sample_interpolate(const ForceFeedbackScriptSamples *samples, uint32_t base,
                                          uint32_t point_count, float target) {
     if (base >= FORCE_FEEDBACK_SCRIPT_SAMPLE_COUNT || point_count <= 1 ||
-        point_count > (FORCE_FEEDBACK_SCRIPT_SAMPLE_COUNT - base) / 2) {
+        point_count > (FORCE_FEEDBACK_SCRIPT_SAMPLE_COUNT - 1u - base) / 2u) {
         return (ForceFeedbackScriptSampleResult){0};
     }
 
