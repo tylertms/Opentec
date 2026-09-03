@@ -24,6 +24,12 @@ void force_feedback_state_deactivate_host_effects(ForceFeedbackState *state) {
     }
 }
 
+void force_feedback_state_set_position_limit_active(ForceFeedbackState *state, bool active) {
+    if (state != NULL) {
+        state->effects[FORCE_FEEDBACK_POSITION_LIMIT_EFFECT_SLOT].active = active;
+    }
+}
+
 void force_feedback_state_init(ForceFeedbackState *state) {
     memset(state, 0, sizeof(*state));
 
@@ -35,6 +41,11 @@ void force_feedback_state_init(ForceFeedbackState *state) {
     position->kind_2.directions[0] = -1;
     position->kind_2.directions[1] = -1;
     position->kind_2.strength = UINT16_MAX;
+
+    state->effects[FORCE_FEEDBACK_POSITION_LIMIT_EFFECT_SLOT] = (ForceFeedbackEffectState){
+        .kind = FORCE_FEEDBACK_EFFECT_KIND_3,
+        .kind_3 = {.mode = 3, .axis_mode = 1},
+    };
 }
 
 bool force_feedback_state_apply(ForceFeedbackState *state, const ForceFeedbackCommand *command,
@@ -133,7 +144,7 @@ bool force_feedback_state_rescale_positions(ForceFeedbackState *state, int32_t p
     }
     int32_t current = current_scale >> 7;
 
-    for (uint8_t slot = 0; slot < FORCE_FEEDBACK_STATE_EFFECT_COUNT; ++slot) {
+    for (uint8_t slot = 0; slot <= FORCE_FEEDBACK_POSITION_EFFECT_SLOT; ++slot) {
         ForceFeedbackEffectState *effect = &state->effects[slot];
         if (effect->kind != FORCE_FEEDBACK_EFFECT_KIND_2) {
             continue;

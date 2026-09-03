@@ -8,7 +8,9 @@
  * @brief Configuration for the wheel-range soft stop.
  *
  * The travel limit is the one-sided centered-position boundary used to report outside-travel
- * status and to place the force-ramp onset beyond either end of the wheel range.
+ * status and to place the force-ramp onset beyond either end of the wheel range. The input position
+ * uses the base sensor orientation; force-feedback end-stop calculations use its negation, matching
+ * the official center-minus-sample position.
  */
 typedef struct {
     int32_t travel_limit; /**< One-sided centered-position travel limit. */
@@ -57,7 +59,7 @@ void force_soft_stop_reset(ForceSoftStopState *state);
  *
  * @param[in,out] state Soft-stop ramp state to update.
  * @param[in] config Current one-sided wheel travel limit.
- * @param[in] position Centered wheel position.
+ * @param[in] position Centered wheel position in the base sensor orientation.
  * @param[in] accumulated_force Force accumulated before the soft stop is applied.
  * @param[in] output_disabled Whether the secondary output is disabled.
  * @param[in] now_ms Current system time in milliseconds.

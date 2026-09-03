@@ -38,15 +38,16 @@ ForceSoftStopResult force_soft_stop_update(ForceSoftStopState *state,
         return result;
     }
 
+    int64_t centered_position = -(int64_t)position;
     int32_t penetration = 0;
     int32_t force_bias = 0;
-    if (position > boundary) {
-        int64_t distance = (int64_t)position - boundary;
+    if (centered_position > boundary) {
+        int64_t distance = centered_position - boundary;
         penetration = distance > FORCE_SOFT_STOP_FULL_FORCE_SPAN ? FORCE_SOFT_STOP_FULL_FORCE_SPAN
                                                                  : (int32_t)distance;
         force_bias = force_soft_stop_target;
-    } else if (position < -boundary) {
-        int64_t distance = -(int64_t)boundary - position;
+    } else if (centered_position < -(int64_t)boundary) {
+        int64_t distance = -(int64_t)boundary - centered_position;
         penetration = distance > FORCE_SOFT_STOP_FULL_FORCE_SPAN ? FORCE_SOFT_STOP_FULL_FORCE_SPAN
                                                                  : (int32_t)distance;
         force_bias = -force_soft_stop_target;
@@ -58,6 +59,7 @@ ForceSoftStopResult force_soft_stop_update(ForceSoftStopState *state,
             (int64_t)gradient * penetration * state->ramp_percent / FORCE_SOFT_STOP_RAMP_MAXIMUM;
         result.force += (int32_t)ramped_force;
     }
-    result.outside_travel = position > config->travel_limit || position < -config->travel_limit;
+    result.outside_travel = centered_position > config->travel_limit ||
+                            centered_position < -(int64_t)config->travel_limit;
     return result;
 }

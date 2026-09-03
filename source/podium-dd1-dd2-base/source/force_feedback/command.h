@@ -6,10 +6,20 @@
 
 #include "usb/output_command.h"
 
-/** @brief Fixed number of host-controlled force-feedback effect slots. */
+/** @brief Force-feedback effect-slot layout used by the base controller. */
 enum {
-    FORCE_FEEDBACK_EFFECT_SLOT_COUNT = 16,    /**< Number of host-controlled effect slots. */
-    FORCE_FEEDBACK_POSITION_EFFECT_SLOT = 16, /**< Reserved built-in position-effect slot. */
+    FORCE_FEEDBACK_EFFECT_SLOT_COUNT = 16,         /**< Number of host-controlled effect slots. */
+    FORCE_FEEDBACK_INTERNAL_EFFECT_SLOT_COUNT = 3, /**< Number of internal effect slots. */
+    FORCE_FEEDBACK_EFFECT_RESERVED_SLOT_COUNT = 1, /**< Number of reserved effect slots. */
+    FORCE_FEEDBACK_EFFECT_SLOT_CAPACITY =
+        FORCE_FEEDBACK_EFFECT_SLOT_COUNT + FORCE_FEEDBACK_INTERNAL_EFFECT_SLOT_COUNT +
+        FORCE_FEEDBACK_EFFECT_RESERVED_SLOT_COUNT, /**< Total effect-slot capacity. */
+    FORCE_FEEDBACK_POSITION_EFFECT_SLOT =
+        FORCE_FEEDBACK_EFFECT_SLOT_COUNT, /**< Built-in position-effect slot. */
+    FORCE_FEEDBACK_PRIMARY_DISPLAY_EFFECT_SLOT =
+        FORCE_FEEDBACK_EFFECT_SLOT_COUNT + 1, /**< Built-in primary-display effect slot. */
+    FORCE_FEEDBACK_POSITION_LIMIT_EFFECT_SLOT =
+        FORCE_FEEDBACK_PRIMARY_DISPLAY_EFFECT_SLOT + 1, /**< Built-in position-limit effect slot. */
 };
 
 /**

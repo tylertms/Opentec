@@ -6,10 +6,9 @@
 
 #include "force_feedback/command.h"
 
-/** @brief Total effect-state slots, including the built-in position effect. */
+/** @brief Total effect-state slots, including internal and reserved slots. */
 enum {
-    FORCE_FEEDBACK_STATE_EFFECT_COUNT =
-        FORCE_FEEDBACK_EFFECT_SLOT_COUNT + 1 /**< Host and built-in slot count. */
+    FORCE_FEEDBACK_STATE_EFFECT_COUNT = FORCE_FEEDBACK_EFFECT_SLOT_CAPACITY /**< State capacity. */
 };
 
 /**
@@ -76,12 +75,12 @@ typedef struct {
 /**
  * @brief Complete host and built-in force-feedback state.
  *
- * Stores all host-controlled effect slots, the built-in position effect slot, and the independent
- * primary and secondary output gates.
+ * Stores all host-controlled effect slots, the built-in position and position-limit effect slots,
+ * and the independent primary and secondary output gates.
  */
 typedef struct {
-    ForceFeedbackEffectState
-        effects[FORCE_FEEDBACK_STATE_EFFECT_COUNT]; /**< Host and built-in effect slots. */
+    /** All host, internal, and reserved effect slots. */
+    ForceFeedbackEffectState effects[FORCE_FEEDBACK_STATE_EFFECT_COUNT];
     bool primary_output_disabled;   /**< Whether the primary force output is disabled. */
     bool secondary_output_disabled; /**< Whether the secondary force output is disabled. */
 } ForceFeedbackState;
@@ -89,9 +88,10 @@ typedef struct {
 /**
  * @brief Initializes force-feedback effect and output state.
  *
- * Clears every slot and output gate, then activates the built-in position effect in the reserved
+ * Clears every slot and output gate, then activates the built-in position effect in its internal
  * slot with centered positions, axis mode four, negative directions on both axes, and full
- * strength.
+ * strength. The position-limit effect is configured in its internal slot and starts inactive until
+ * the current wheel position is outside the configured travel limit.
  *
  * @param[out] state Force-feedback state to initialize.
  */
@@ -101,11 +101,22 @@ void force_feedback_state_init(ForceFeedbackState *state);
  * @brief Deactivates all host-controlled force-feedback effects.
  *
  * Clears the active flag in host slots zero through fifteen while preserving their configurations,
- * the built-in position effect, and both output gates.
+ * built-in internal effects, and both output gates.
  *
  * @param[in,out] state Force-feedback state containing host-controlled effects.
  */
 void force_feedback_state_deactivate_host_effects(ForceFeedbackState *state);
+
+/**
+ * @brief Updates the built-in position-limit effect lifecycle state.
+ *
+ * Changes only the active flag for the official position-limit effect slot. Host-controlled clears
+ * and resets do not alter this internal slot; the live soft-stop path owns its transitions.
+ *
+ * @param[in,out] state Force-feedback state containing the position-limit effect.
+ * @param[in] active Whether the current wheel position is outside the configured travel limit.
+ */
+void force_feedback_state_set_position_limit_active(ForceFeedbackState *state, bool active);
 
 /**
  * @brief Applies one decoded force-feedback command to state.
@@ -125,10 +136,10 @@ bool force_feedback_state_apply(ForceFeedbackState *state, const ForceFeedbackCo
 /**
  * @brief Rescales stored kind-2 effect positions after a wheel scale change.
  *
- * Converts every kind-2 position, including inactive and built-in effects, from the previous
- * position scale to the current scale using scales shifted right by seven and integer division
- * toward zero. Equal scales return success without modifying positions; a zero shifted previous
- * scale rejects a rescale when the scales differ.
+ * Converts every host and built-in-position kind-2 position, including inactive effects, from the
+ * previous position scale to the current scale using scales shifted right by seven and integer
+ * division toward zero. Equal scales return success without modifying positions; a zero shifted
+ * previous scale rejects a rescale when the scales differ.
  *
  * @param[in,out] state Force-feedback state containing positions to rescale.
  * @param[in] previous_scale Position scale used for the stored positions.

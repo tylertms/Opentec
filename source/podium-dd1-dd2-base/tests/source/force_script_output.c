@@ -67,7 +67,7 @@ static void test_applies_position_limit_and_secondary_gate(void) {
     state.soft_stop.ramp_percent = 100;
 
     assert(force_feedback_script_output_apply(&state, 0, 3500, 2, &config, &report));
-    assert(report.positive_direction);
+    assert(!report.positive_direction);
     assert(report.primary_magnitude == 4500);
 
     config.secondary_output_disabled = true;

@@ -82,7 +82,7 @@ void force_feedback_script_output_init(ForceFeedbackScriptOutputState *state);
  *
  * @param[in,out] state Script smoothing and travel-limit state.
  * @param[in] motion Raw floating-point bits from script motion output 2.
- * @param[in] position Centered wheel position.
+ * @param[in] position Centered wheel position in the base sensor orientation.
  * @param[in] now_ms Current system time in milliseconds.
  * @param[in] config Strength, smoothing, ramp, range, and output limits.
  * @param[in,out] report Motor output report to update.
@@ -103,7 +103,7 @@ bool force_feedback_script_output_apply(ForceFeedbackScriptOutputState *state, u
  * the result into the report without smoothing.
  *
  * @param[in,out] state Wheel travel-limit state.
- * @param[in] position Centered wheel position.
+ * @param[in] position Centered wheel position in the base sensor orientation.
  * @param[in] half_travel Positive travel from center to either endpoint.
  * @param[in] now_ms Current system time in milliseconds.
  * @param[in] config Strength, ramp, range, and output limits.

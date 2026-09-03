@@ -7,6 +7,13 @@ static void test_initializes_effects_and_output_gates(void) {
     ForceFeedbackState state;
     force_feedback_state_init(&state);
 
+    assert(FORCE_FEEDBACK_EFFECT_SLOT_COUNT == 16);
+    assert(FORCE_FEEDBACK_POSITION_EFFECT_SLOT == 16);
+    assert(FORCE_FEEDBACK_PRIMARY_DISPLAY_EFFECT_SLOT == 17);
+    assert(FORCE_FEEDBACK_POSITION_LIMIT_EFFECT_SLOT == 18);
+    assert(FORCE_FEEDBACK_EFFECT_SLOT_CAPACITY == 20);
+    assert(FORCE_FEEDBACK_STATE_EFFECT_COUNT == 20);
+
     for (uint8_t slot = 0; slot < FORCE_FEEDBACK_EFFECT_SLOT_COUNT; ++slot) {
         assert(state.effects[slot].kind == FORCE_FEEDBACK_EFFECT_NONE);
         assert(!state.effects[slot].active);
@@ -22,8 +29,28 @@ static void test_initializes_effects_and_output_gates(void) {
     assert(position->kind_2.directions[0] == -1);
     assert(position->kind_2.directions[1] == -1);
     assert(position->kind_2.strength == UINT16_MAX);
+    ForceFeedbackEffectState *position_limit =
+        &state.effects[FORCE_FEEDBACK_POSITION_LIMIT_EFFECT_SLOT];
+    assert(position_limit->kind == FORCE_FEEDBACK_EFFECT_KIND_3);
+    assert(!position_limit->active);
+    assert(position_limit->kind_3.mode == 3);
+    assert(position_limit->kind_3.axis_mode == 1);
     assert(!state.primary_output_disabled);
     assert(!state.secondary_output_disabled);
+}
+
+static void test_tracks_position_limit_lifecycle(void) {
+    ForceFeedbackState state;
+    force_feedback_state_init(&state);
+
+    force_feedback_state_set_position_limit_active(&state, true);
+    assert(state.effects[FORCE_FEEDBACK_POSITION_LIMIT_EFFECT_SLOT].active);
+
+    force_feedback_state_deactivate_host_effects(&state);
+    assert(state.effects[FORCE_FEEDBACK_POSITION_LIMIT_EFFECT_SLOT].active);
+
+    force_feedback_state_set_position_limit_active(&state, false);
+    assert(!state.effects[FORCE_FEEDBACK_POSITION_LIMIT_EFFECT_SLOT].active);
 }
 
 static void test_configures_and_activates_kind_1(void) {
@@ -151,6 +178,7 @@ static void test_resets_host_effects(void) {
     state.primary_output_disabled = true;
     state.secondary_output_disabled = true;
     state.effects[FORCE_FEEDBACK_POSITION_EFFECT_SLOT].active = false;
+    force_feedback_state_set_position_limit_active(&state, true);
 
     command.kind = FORCE_FEEDBACK_COMMAND_RESET_EFFECTS;
     assert(force_feedback_state_apply(&state, &command, 0));
@@ -161,6 +189,7 @@ static void test_resets_host_effects(void) {
     assert(state.effects[0].kind_1.magnitude == 1234);
     assert(state.effects[15].kind == FORCE_FEEDBACK_EFFECT_KIND_1);
     assert(!state.effects[FORCE_FEEDBACK_POSITION_EFFECT_SLOT].active);
+    assert(state.effects[FORCE_FEEDBACK_POSITION_LIMIT_EFFECT_SLOT].active);
     assert(state.primary_output_disabled);
     assert(state.secondary_output_disabled);
 }
@@ -240,6 +269,7 @@ static void test_rejects_invalid_inputs(void) {
 
 int main(void) {
     test_initializes_effects_and_output_gates();
+    test_tracks_position_limit_lifecycle();
     test_configures_and_activates_kind_1();
     test_configures_centered_kind_2();
     test_configures_kind_3();
