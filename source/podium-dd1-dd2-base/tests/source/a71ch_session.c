@@ -12,6 +12,7 @@ static A71chCommand started_command;
 static uint8_t *started_response;
 static uint8_t start_count;
 static uint8_t clear_count;
+static uint8_t init_count;
 static bool bus_accepts;
 
 bool a71ch_bus_start(A71chCommand command, uint8_t *response) {
@@ -22,6 +23,11 @@ bool a71ch_bus_start(A71chCommand command, uint8_t *response) {
 }
 
 PlatformAuxBusStatus platform_aux_bus_status(void) { return bus_status; }
+
+void platform_aux_bus_init(void) {
+    bus_status = PLATFORM_AUX_BUS_IDLE;
+    ++init_count;
+}
 
 void platform_aux_bus_clear(void) {
     bus_status = PLATFORM_AUX_BUS_IDLE;
@@ -34,6 +40,7 @@ static void reset_bus(void) {
     started_response = 0;
     start_count = 0;
     clear_count = 0;
+    init_count = 0;
     bus_accepts = true;
 }
 
@@ -84,6 +91,25 @@ static void test_retries_failed_and_rejected_transactions(void) {
     a71ch_session_service_run(&service, 5);
     assert(start_count == 4);
     assert(started_command == A71CH_SOFT_RESET);
+}
+
+static void test_reinitializes_the_bus_before_restarting_a_session(void) {
+    A71chSessionService service;
+
+    reset_bus();
+    a71ch_session_service_init(&service);
+    a71ch_session_service_start(&service);
+    a71ch_session_service_run(&service, 0);
+    assert(start_count == 1);
+
+    bus_status = PLATFORM_AUX_BUS_BUSY;
+    uint8_t previous_init_count = init_count;
+    a71ch_session_service_init(&service);
+    assert(init_count == (uint8_t)(previous_init_count + 1));
+    a71ch_session_service_start(&service);
+    a71ch_session_service_run(&service, 0);
+    assert(start_count == 2);
+    assert(started_command == A71CH_WAKE_UP);
 }
 
 static void test_honors_startup_status_retry_delay(void) {
@@ -154,6 +180,7 @@ static void test_completes_startup_from_bus_responses(void) {
 int main(void) {
     test_requires_explicit_start_and_idle_bus();
     test_retries_failed_and_rejected_transactions();
+    test_reinitializes_the_bus_before_restarting_a_session();
     test_honors_startup_status_retry_delay();
     test_completes_startup_from_bus_responses();
     return 0;

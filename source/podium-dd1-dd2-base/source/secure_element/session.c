@@ -10,11 +10,14 @@
 /**
  * @brief Initializes the A71CH SCI2C session service.
  *
- * Clears transaction ownership and leaves the session dormant until explicitly requested.
+ * Resets the shared auxiliary-bus controller before clearing transaction ownership, so an
+ * interrupted transfer cannot outlive a new session. Leaves the session dormant until explicitly
+ * requested.
  *
  * @param[out] service Session service state.
  */
 void a71ch_session_service_init(A71chSessionService *service) {
+    platform_aux_bus_init();
     *service = (A71chSessionService){0};
 }
 

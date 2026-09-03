@@ -32,7 +32,8 @@ typedef struct {
 /**
  * @brief Initializes the A71CH session service.
  *
- * Clears service-owned state and leaves the service idle until started.
+ * Resets the shared auxiliary-bus controller, clears service-owned state, and leaves the service
+ * idle until started.
  *
  * @param[out] service Service state to initialize.
  */
