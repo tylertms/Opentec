@@ -38,8 +38,7 @@ enum {
     WHEEL_ACCESSORY_HANDSHAKE_VALUE = 0x05fa,
     WHEEL_ACCESSORY_AUTO_SENSITIVITY = 0x7e,
     WHEEL_ACCESSORY_OUTPUT_OVERRIDE_VALUE = 0xff,
-    WHEEL_ACCESSORY_TELEMETRY_INTERVAL_MS = 200,
-    WHEEL_ACCESSORY_WAIT_CYCLE_MS = 200,
+    WHEEL_ACCESSORY_WAIT_CYCLE_MS = 200, /**< Official delay after a routed composite cycle. */
 };
 
 typedef enum {
@@ -91,6 +90,19 @@ static void reset_mirrored_parameters(WheelAccessoryService *service) {
     service->mirrored_parameters[14] = UINT8_MAX;
 }
 
+/**
+ * @brief Returns the steering-position modulus for a mirrored accessory model.
+ *
+ * The first extended probe uses the model retained by the previous completed probe. The current
+ * model is latched only after its modulus has been selected.
+ *
+ * @param[in] model Mirrored accessory model byte.
+ * @return Steering-position modulus encoded by the model family.
+ */
+static uint32_t position_modulus_for_model(uint8_t model) {
+    return (model & 0x02u) == 0 ? UINT32_C(0x5c7f) : UINT32_C(0x5d2b);
+}
+
 static uint16_t decode_u16(const uint8_t data[2]) {
     return (uint16_t)data[0] | (uint16_t)data[1] << 8;
 }
@@ -112,6 +124,9 @@ static bool accessory_supports_composite(const WheelAccessoryService *service) {
 static bool accessory_supports_extended(const WheelAccessoryService *service) {
     return service->accessory.kind == WHEEL_ACCESSORY_EXTENDED;
 }
+
+static bool queue_sync_state(WheelAccessoryService *service, CommandTransport *transport,
+                             uint32_t now_ms);
 
 static bool parameter_needs_sync(const WheelAccessoryService *service, uint8_t index) {
     const WheelAccessoryParameter *parameter = &parameters[index];
@@ -220,6 +235,25 @@ static uint8_t parameter_index_for_state(WheelAccessorySyncState state) {
     }
 }
 
+static bool is_parameter_write_state(WheelAccessorySyncState state) {
+    switch (state) {
+    case WHEEL_ACCESSORY_SYNC_WRITE_NATURAL_FRICTION:
+    case WHEEL_ACCESSORY_SYNC_WRITE_INTERPOLATION_FILTER:
+    case WHEEL_ACCESSORY_SYNC_WRITE_NATURAL_DAMPER:
+    case WHEEL_ACCESSORY_SYNC_WRITE_NATURAL_INERTIA:
+    case WHEEL_ACCESSORY_SYNC_WRITE_FORCE_FEEDBACK_SCALE:
+    case WHEEL_ACCESSORY_SYNC_WRITE_SENSITIVITY:
+    case WHEEL_ACCESSORY_SYNC_WRITE_FORCE_FEEDBACK_STRENGTH:
+    case WHEEL_ACCESSORY_SYNC_WRITE_FORCE_EFFECT_INTENSITY:
+    case WHEEL_ACCESSORY_SYNC_WRITE_FORCE_EFFECT_STRENGTH:
+    case WHEEL_ACCESSORY_SYNC_WRITE_SPRING_EFFECT_STRENGTH:
+    case WHEEL_ACCESSORY_SYNC_WRITE_DAMPER_EFFECT_STRENGTH:
+        return true;
+    default:
+        return false;
+    }
+}
+
 static void clear_parameter_if_unsupported(WheelAccessoryService *service, uint8_t index) {
     service->dirty_parameters &= (uint16_t)~(1u << index);
 }
@@ -238,13 +272,21 @@ static bool queue_read(WheelAccessoryService *service, CommandTransport *transpo
 
 static bool queue_write(WheelAccessoryService *service, CommandTransport *transport, uint8_t offset,
                         const uint8_t *data, uint16_t length, WheelAccessoryTransfer transfer) {
+    const uint8_t *queued_data = data;
+    if (transfer == WHEEL_ACCESSORY_TRANSFER_PARAMETER_WRITE) {
+        memcpy(service->sync_write_data, data, length);
+        queued_data = service->sync_write_data;
+    }
     if (command_transport_queue_write_to(transport, WHEEL_ACCESSORY_SERVICE_OWNER,
-                                         WHEEL_ACCESSORY_TARGET, offset, data,
+                                         WHEEL_ACCESSORY_TARGET, offset, queued_data,
                                          length) != COMMAND_TRANSPORT_COMPLETE) {
         return false;
     }
     service->request_pending = true;
     service->transfer = (uint8_t)transfer;
+    if (transfer == WHEEL_ACCESSORY_TRANSFER_PARAMETER_WRITE) {
+        service->sync_request = true;
+    }
     return true;
 }
 
@@ -255,7 +297,9 @@ static void set_calibration_event(WheelAccessoryService *service, MotorCalibrati
 }
 
 static void set_motor_event(WheelAccessoryService *service, MotorStatusEvent event) {
-    service->motor_event = event;
+    if (service->motor_event == MOTOR_STATUS_EVENT_NONE) {
+        service->motor_event = event;
+    }
 }
 
 static bool select_calibration(WheelAccessoryService *service) {
@@ -267,20 +311,6 @@ static bool select_calibration(WheelAccessoryService *service) {
             ? MOTOR_CALIBRATION_OPERATION_CALIBRATE
             : MOTOR_CALIBRATION_OPERATION_ERASE;
     return true;
-}
-
-static void reject_unavailable_calibration(WheelAccessoryService *service) {
-    if (!select_calibration(service)) {
-        return;
-    }
-    uint8_t bit = calibration_request_bit(service->calibration_operation);
-    if (service->calibration_operation == MOTOR_CALIBRATION_OPERATION_CALIBRATE &&
-        service->wheel_mode != 0) {
-        set_calibration_event(service, MOTOR_CALIBRATION_EVENT_DISCONNECT_WHEEL);
-    } else {
-        set_calibration_event(service, MOTOR_CALIBRATION_EVENT_UNSUPPORTED);
-    }
-    service->calibration_requests &= (uint8_t)~bit;
 }
 
 static void finish_calibration_read(WheelAccessoryService *service) {
@@ -351,6 +381,7 @@ static void finish_request(WheelAccessoryService *service, CommandTransport *tra
         service->sync_request = false;
         service->status_read_request = false;
         service->motor_temperature_request = false;
+        service->transfer = (uint8_t)WHEEL_ACCESSORY_TRANSFER_NONE;
         return;
     }
 
@@ -378,9 +409,10 @@ static void finish_request(WheelAccessoryService *service, CommandTransport *tra
             service->runtime_valid = false;
         }
         if (supported && (identified || protocol_three)) {
-            service->position_modulus = wheel_accessory_position_modulus(&service->accessory);
+            if (identified && service->accessory.kind == WHEEL_ACCESSORY_EXTENDED) {
+                service->position_modulus = position_modulus_for_model(service->mirrored_model);
+            }
             service->motor_temperature_enabled = true;
-            service->next_motor_temperature_ms = now_ms;
             service->sync_initialized = true;
             service->sync_state = WHEEL_ACCESSORY_SYNC_READ_NATURAL_DAMPER;
             service->accessory_type_stage = service->accessory.kind == WHEEL_ACCESSORY_EXTENDED;
@@ -392,6 +424,9 @@ static void finish_request(WheelAccessoryService *service, CommandTransport *tra
             service->sync_initialized = false;
             service->motor_temperature_enabled = false;
         }
+        if (identified) {
+            service->mirrored_model = service->accessory.model;
+        }
         service->probe_requested = false;
         service->version_stage = false;
         break;
@@ -402,9 +437,6 @@ static void finish_request(WheelAccessoryService *service, CommandTransport *tra
         if (service->calibration_requests != 0 && service->accessory_type_byte != UINT8_MAX) {
             service->sync_state = WHEEL_ACCESSORY_SYNC_READ_CALIBRATION_COMMAND;
         } else {
-            if (service->calibration_requests != 0) {
-                reject_unavailable_calibration(service);
-            }
             service->sync_state = WHEEL_ACCESSORY_SYNC_PREPARE_NATURAL_FRICTION;
         }
         break;
@@ -414,7 +446,6 @@ static void finish_request(WheelAccessoryService *service, CommandTransport *tra
         break;
     case WHEEL_ACCESSORY_TRANSFER_MOTOR_TEMPERATURE: {
         service->motor_temperature_request = false;
-        service->next_motor_temperature_ms = now_ms + WHEEL_ACCESSORY_TELEMETRY_INTERVAL_MS;
         uint16_t response = decode_u16(service->motor_temperature_response);
         if (response != UINT16_MAX) {
             service->motor_temperature_c = (int16_t)response;
@@ -446,9 +477,6 @@ static void finish_request(WheelAccessoryService *service, CommandTransport *tra
         break;
     case WHEEL_ACCESSORY_TRANSFER_CALIBRATION_WRITE:
         service->calibration_command_sent = true;
-        if (service->calibration_operation == MOTOR_CALIBRATION_OPERATION_CALIBRATE) {
-            set_calibration_event(service, MOTOR_CALIBRATION_EVENT_STARTED);
-        }
         service->sync_state = WHEEL_ACCESSORY_SYNC_PREPARE_NATURAL_FRICTION;
         break;
     case WHEEL_ACCESSORY_TRANSFER_MOTOR_COMMAND_READ:
@@ -460,8 +488,13 @@ static void finish_request(WheelAccessoryService *service, CommandTransport *tra
     case WHEEL_ACCESSORY_TRANSFER_PARAMETER_WRITE: {
         const WheelAccessoryParameter *parameter = &parameters[service->sync_index];
         memcpy(service->mirrored_parameters + parameter->data_offset,
-               service->desired_parameters + parameter->data_offset, parameter->length);
-        service->dirty_parameters &= (uint16_t)~(1u << service->sync_index);
+               service->sync_write_data, parameter->length);
+        if (memcmp(service->desired_parameters + parameter->data_offset, service->sync_write_data,
+                   parameter->length) == 0) {
+            service->dirty_parameters &= (uint16_t)~(1u << service->sync_index);
+        } else {
+            service->dirty_parameters |= (uint16_t)(1u << service->sync_index);
+        }
         service->sync_request = false;
         set_next_after_parameter(service, service->sync_state);
         break;
@@ -486,6 +519,11 @@ static void finish_request(WheelAccessoryService *service, CommandTransport *tra
         service->output_override_restore_pending = false;
         service->output_override_complete = true;
         service->mirrored_parameters[6] = service->output_override_value;
+        if (service->desired_parameters[6] == service->output_override_value) {
+            service->dirty_parameters &= (uint16_t)~(1u << 5);
+        } else {
+            service->dirty_parameters |= (uint16_t)(1u << 5);
+        }
         break;
     default:
         break;
@@ -503,17 +541,22 @@ static void advance_prepare_state(WheelAccessoryService *service, uint32_t now_m
         break;
     case WHEEL_ACCESSORY_SYNC_READ_ACCESSORY_TYPE:
         if (!accessory_supports_extended(service)) {
-            if (service->calibration_requests != 0) {
-                reject_unavailable_calibration(service);
-            }
             service->sync_state = WHEEL_ACCESSORY_SYNC_PREPARE_NATURAL_FRICTION;
         }
         break;
     case WHEEL_ACCESSORY_SYNC_READ_CALIBRATION_COMMAND:
         if (!accessory_supports_extended(service) ||
             service->accessory.accessory_type == UINT8_MAX || service->calibration_requests == 0) {
-            reject_unavailable_calibration(service);
             service->sync_state = WHEEL_ACCESSORY_SYNC_PREPARE_NATURAL_FRICTION;
+        }
+        break;
+    case WHEEL_ACCESSORY_SYNC_PREPARE_NATURAL_FRICTION:
+        if (!parameter_needs_sync(service, 6)) {
+            clear_parameter_if_unsupported(service, 6);
+            service->sync_state = WHEEL_ACCESSORY_SYNC_PREPARE_INTERPOLATION_FILTER;
+        } else {
+            service->sync_index = 6;
+            service->sync_state = WHEEL_ACCESSORY_SYNC_WRITE_NATURAL_FRICTION;
         }
         break;
     case WHEEL_ACCESSORY_SYNC_RESERVED:
@@ -664,6 +707,16 @@ static void advance_prepare_state(WheelAccessoryService *service, uint32_t now_m
     }
 }
 
+static bool queue_prepared_write(WheelAccessoryService *service, CommandTransport *transport,
+                                 uint32_t now_ms) {
+    WheelAccessorySyncState previous_state = service->sync_state;
+    advance_prepare_state(service, now_ms);
+    if (service->sync_state == previous_state || !is_parameter_write_state(service->sync_state)) {
+        return false;
+    }
+    return queue_sync_state(service, transport, now_ms);
+}
+
 static bool queue_sync_state(WheelAccessoryService *service, CommandTransport *transport,
                              uint32_t now_ms) {
     WheelAccessorySyncState state = service->sync_state;
@@ -715,21 +768,13 @@ static bool queue_sync_state(WheelAccessoryService *service, CommandTransport *t
                            service->calibration_data, sizeof(service->calibration_data),
                            WHEEL_ACCESSORY_TRANSFER_CALIBRATION_WRITE);
     case WHEEL_ACCESSORY_SYNC_PREPARE_NATURAL_FRICTION:
-        if (!parameter_needs_sync(service, 6)) {
-            clear_parameter_if_unsupported(service, 6);
-            service->sync_state = WHEEL_ACCESSORY_SYNC_PREPARE_INTERPOLATION_FILTER;
-            return false;
-        }
-        service->sync_index = 6;
-        service->sync_state = WHEEL_ACCESSORY_SYNC_WRITE_NATURAL_FRICTION;
-        return false;
+        return queue_prepared_write(service, transport, now_ms);
     case WHEEL_ACCESSORY_SYNC_WRITE_NATURAL_FRICTION:
         return queue_write(service, transport, parameters[6].offset,
                            service->desired_parameters + parameters[6].data_offset,
                            parameters[6].length, WHEEL_ACCESSORY_TRANSFER_PARAMETER_WRITE);
     case WHEEL_ACCESSORY_SYNC_PREPARE_INTERPOLATION_FILTER:
-        advance_prepare_state(service, now_ms);
-        return false;
+        return queue_prepared_write(service, transport, now_ms);
     case WHEEL_ACCESSORY_SYNC_WRITE_INTERPOLATION_FILTER:
         return queue_write(service, transport, parameters[8].offset,
                            service->desired_parameters + parameters[8].data_offset,
@@ -744,8 +789,8 @@ static bool queue_sync_state(WheelAccessoryService *service, CommandTransport *t
                           service->motor_command_data, sizeof(service->motor_command_data),
                           WHEEL_ACCESSORY_TRANSFER_MOTOR_COMMAND_READ);
     case WHEEL_ACCESSORY_SYNC_WRITE_MOTOR_START:
-        service->motor_command_data[0] = 0xab;
-        service->motor_command_data[1] = 0xcd;
+        service->motor_command_data[0] = 0xcd;
+        service->motor_command_data[1] = 0xab;
         if (!queue_write(service, transport, WHEEL_ACCESSORY_MOTOR_COMMAND_OFFSET,
                          service->motor_command_data, sizeof(service->motor_command_data),
                          WHEEL_ACCESSORY_TRANSFER_MOTOR_COMMAND_WRITE)) {
@@ -754,22 +799,19 @@ static bool queue_sync_state(WheelAccessoryService *service, CommandTransport *t
         service->motor_command_sent = true;
         return true;
     case WHEEL_ACCESSORY_SYNC_PREPARE_NATURAL_DAMPER:
-        advance_prepare_state(service, now_ms);
-        return false;
+        return queue_prepared_write(service, transport, now_ms);
     case WHEEL_ACCESSORY_SYNC_WRITE_NATURAL_DAMPER:
         return queue_write(service, transport, parameters[5].offset,
                            service->desired_parameters + parameters[5].data_offset,
                            parameters[5].length, WHEEL_ACCESSORY_TRANSFER_PARAMETER_WRITE);
     case WHEEL_ACCESSORY_SYNC_PREPARE_NATURAL_INERTIA:
-        advance_prepare_state(service, now_ms);
-        return false;
+        return queue_prepared_write(service, transport, now_ms);
     case WHEEL_ACCESSORY_SYNC_WRITE_NATURAL_INERTIA:
         return queue_write(service, transport, parameters[7].offset,
                            service->desired_parameters + parameters[7].data_offset,
                            parameters[7].length, WHEEL_ACCESSORY_TRANSFER_PARAMETER_WRITE);
     case WHEEL_ACCESSORY_SYNC_PREPARE_FORCE_FEEDBACK_SCALE:
-        advance_prepare_state(service, now_ms);
-        return false;
+        return queue_prepared_write(service, transport, now_ms);
     case WHEEL_ACCESSORY_SYNC_WRITE_FORCE_FEEDBACK_SCALE:
         return queue_write(service, transport, parameters[4].offset,
                            service->desired_parameters + parameters[4].data_offset,
@@ -797,43 +839,37 @@ static bool queue_sync_state(WheelAccessoryService *service, CommandTransport *t
                            service->desired_parameters + 1, 2,
                            WHEEL_ACCESSORY_TRANSFER_HANDSHAKE_WRITE);
     case WHEEL_ACCESSORY_SYNC_PREPARE_SENSITIVITY:
-        advance_prepare_state(service, now_ms);
-        return false;
+        return queue_prepared_write(service, transport, now_ms);
     case WHEEL_ACCESSORY_SYNC_WRITE_SENSITIVITY:
         return queue_write(service, transport, parameters[2].offset,
                            service->desired_parameters + parameters[2].data_offset,
                            parameters[2].length, WHEEL_ACCESSORY_TRANSFER_PARAMETER_WRITE);
     case WHEEL_ACCESSORY_SYNC_PREPARE_FORCE_FEEDBACK_STRENGTH:
-        advance_prepare_state(service, now_ms);
-        return false;
+        return queue_prepared_write(service, transport, now_ms);
     case WHEEL_ACCESSORY_SYNC_WRITE_FORCE_FEEDBACK_STRENGTH:
         return queue_write(service, transport, parameters[3].offset,
                            service->desired_parameters + parameters[3].data_offset,
                            parameters[3].length, WHEEL_ACCESSORY_TRANSFER_PARAMETER_WRITE);
     case WHEEL_ACCESSORY_SYNC_PREPARE_FORCE_EFFECT_INTENSITY:
-        advance_prepare_state(service, now_ms);
-        return false;
+        return queue_prepared_write(service, transport, now_ms);
     case WHEEL_ACCESSORY_SYNC_WRITE_FORCE_EFFECT_INTENSITY:
         return queue_write(service, transport, parameters[9].offset,
                            service->desired_parameters + parameters[9].data_offset,
                            parameters[9].length, WHEEL_ACCESSORY_TRANSFER_PARAMETER_WRITE);
     case WHEEL_ACCESSORY_SYNC_PREPARE_FORCE_EFFECT_STRENGTH:
-        advance_prepare_state(service, now_ms);
-        return false;
+        return queue_prepared_write(service, transport, now_ms);
     case WHEEL_ACCESSORY_SYNC_WRITE_FORCE_EFFECT_STRENGTH:
         return queue_write(service, transport, parameters[10].offset,
                            service->desired_parameters + parameters[10].data_offset,
                            parameters[10].length, WHEEL_ACCESSORY_TRANSFER_PARAMETER_WRITE);
     case WHEEL_ACCESSORY_SYNC_PREPARE_SPRING_EFFECT_STRENGTH:
-        advance_prepare_state(service, now_ms);
-        return false;
+        return queue_prepared_write(service, transport, now_ms);
     case WHEEL_ACCESSORY_SYNC_WRITE_SPRING_EFFECT_STRENGTH:
         return queue_write(service, transport, parameters[11].offset,
                            service->desired_parameters + parameters[11].data_offset,
                            parameters[11].length, WHEEL_ACCESSORY_TRANSFER_PARAMETER_WRITE);
     case WHEEL_ACCESSORY_SYNC_PREPARE_DAMPER_EFFECT_STRENGTH:
-        advance_prepare_state(service, now_ms);
-        return false;
+        return queue_prepared_write(service, transport, now_ms);
     case WHEEL_ACCESSORY_SYNC_WRITE_DAMPER_EFFECT_STRENGTH:
         return queue_write(service, transport, parameters[12].offset,
                            service->desired_parameters + parameters[12].data_offset,
@@ -862,27 +898,36 @@ static bool queue_output_override(WheelAccessoryService *service, CommandTranspo
                        WHEEL_ACCESSORY_TRANSFER_OUTPUT_OVERRIDE_WRITE);
 }
 
+/**
+ * @brief Queues the next accessory request without bypassing composite wait state.
+ *
+ * Official tuning preparation states queue changed writes in their fall-through pass. The wait
+ * state advances its deadline here; its resulting read is queued by the following service pass.
+ *
+ * @param[in,out] service Accessory state machine.
+ * @param[in,out] transport Shared command transport.
+ * @param[in] now_ms Current monotonic time.
+ * @return True when a request is queued.
+ */
 static bool queue_next_request(WheelAccessoryService *service, CommandTransport *transport,
                                uint32_t now_ms) {
-    if ((service->output_override_requested && !service->output_override_active) ||
-        service->output_override_restore_pending) {
+    if (service->probe_requested) {
+        return queue_probe(service, transport);
+    }
+    if (service->output_override_requested || service->output_override_restore_pending) {
         if (accessory_supports_extended(service) ||
             service->accessory.kind == WHEEL_ACCESSORY_STANDARD) {
-            return queue_output_override(service, transport);
+            if (service->output_override_restore_pending || !service->output_override_complete ||
+                !service->output_override_active) {
+                return queue_output_override(service, transport);
+            }
+            return false;
         }
         service->output_override_restore_pending = false;
         service->output_override_complete = true;
     }
-    if (service->probe_requested && !accessory_supports_composite(service)) {
-        return queue_probe(service, transport);
-    }
     if (!service->sync_initialized || !accessory_supports_composite(service)) {
         return false;
-    }
-    if (service->motor_temperature_enabled &&
-        platform_time_reached(now_ms, service->next_motor_temperature_ms) &&
-        service->sync_state == WHEEL_ACCESSORY_SYNC_WAIT_CYCLE) {
-        service->sync_state = WHEEL_ACCESSORY_SYNC_READ_NATURAL_DAMPER;
     }
     return queue_sync_state(service, transport, now_ms);
 }
@@ -898,6 +943,7 @@ void wheel_accessory_service_init(WheelAccessoryService *service) {
     service->desired_parameters[2] = 0x05;
     service->status_response = service->desired_parameters[0];
     service->motor_event = MOTOR_STATUS_EVENT_NONE;
+    service->remote_effects_enabled = true;
     service->probe_requested = true;
     service->sync_state = WHEEL_ACCESSORY_SYNC_READ_NATURAL_DAMPER;
 }
@@ -936,6 +982,9 @@ void wheel_accessory_service_configure(WheelAccessoryService *service,
                                        const WheelAccessorySyncParameters *parameters_value) {
     if (service == NULL || parameters_value == NULL) {
         return;
+    }
+    if (!service->output_override_requested && !service->output_override_active) {
+        service->drift_mode = parameters_value->drift_mode;
     }
     service->requested_sensitivity = parameters_value->sensitivity;
     service->desired_parameters[4] = parameters_value->force_feedback_strength;
@@ -1015,22 +1064,30 @@ void wheel_accessory_service_request_handshake(WheelAccessoryService *service) {
 }
 
 void wheel_accessory_service_set_output_override(WheelAccessoryService *service, bool enabled) {
-    if (service == NULL) {
+    if (service == NULL ||
+        (service->accessory.kind != WHEEL_ACCESSORY_STANDARD &&
+         service->accessory.kind != WHEEL_ACCESSORY_EXTENDED)) {
         return;
     }
+    service->output_override_complete = false;
     if (enabled) {
         if (!service->output_override_requested && !service->output_override_active) {
+            service->saved_drift_mode = service->drift_mode;
             service->saved_natural_damper = service->desired_parameters[6];
         }
+        service->drift_mode = 0xfb;
+        service->desired_parameters[6] = WHEEL_ACCESSORY_OUTPUT_OVERRIDE_VALUE;
         service->output_override_requested = true;
         service->output_override_restore_pending = false;
         service->output_override_value = WHEEL_ACCESSORY_OUTPUT_OVERRIDE_VALUE;
     } else if (service->output_override_requested || service->output_override_active) {
+        service->drift_mode = service->saved_drift_mode;
+        service->desired_parameters[6] = service->saved_natural_damper;
         service->output_override_requested = false;
         service->output_override_restore_pending = true;
         service->output_override_value = service->saved_natural_damper;
     }
-    service->output_override_complete = false;
+    service->remote_effects_enabled = false;
 }
 
 bool wheel_accessory_service_calibration_pending(const WheelAccessoryService *service) {
@@ -1107,4 +1164,17 @@ bool wheel_accessory_service_runtime(const WheelAccessoryService *service,
 
 const WheelAccessory *wheel_accessory_service_identity(const WheelAccessoryService *service) {
     return service == NULL ? NULL : &service->accessory;
+}
+
+bool wheel_accessory_service_remote_effects_enabled(const WheelAccessoryService *service) {
+    return service != NULL && service->remote_effects_enabled;
+}
+
+uint8_t wheel_accessory_service_input_transfer_code(const WheelAccessoryService *service) {
+    if (service == NULL ||
+        (service->accessory.kind != WHEEL_ACCESSORY_STANDARD &&
+         service->accessory.kind != WHEEL_ACCESSORY_EXTENDED)) {
+        return 0;
+    }
+    return wheel_accessory_transfer_code(&service->accessory);
 }

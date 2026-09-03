@@ -11,6 +11,7 @@
 
 /** @brief Tuning values mirrored to an attached wheel accessory. */
 typedef struct {
+    uint8_t drift_mode;              /**< Drift-mode byte used before an output override. */
     uint8_t sensitivity;             /**< Signed sensitivity, or 0x7e for automatic sensitivity. */
     uint8_t force_feedback_strength; /**< Overall force-feedback strength. */
     uint8_t force_feedback_scale;    /**< Force-feedback scale mode. */
@@ -76,7 +77,9 @@ typedef enum {
  *
  * One command-transport request is active at a time. The state machine retains successful
  * readbacks, retries rejected requests at the same phase, and advances through the official
- * identity, calibration, effect, status, handshake, tuning, telemetry, and override phases.
+ * identity, calibration, effect, status, handshake, tuning, telemetry, and override phases. Tuning
+ * preparation states queue changed parameter writes in the same pass as the official fall-through
+ * branches, while the wait-cycle state remains deadline-gated.
  */
 typedef struct {
     WheelAccessory accessory;    /**< Last accepted accessory identity and protocol state. */
@@ -92,6 +95,7 @@ typedef struct {
     uint8_t mirrored_parameters[15];    /**< Last successful compact parameter readback. */
     uint16_t dirty_parameters;          /**< Configurable values awaiting synchronization. */
     uint8_t sync_index;                 /**< Compact parameter selected for a write. */
+    uint8_t sync_write_data[2];         /**< Stable payload snapshot for the active tuning write. */
     bool sync_request;                  /**< True while a parameter write is active. */
     bool sync_initialized;              /**< True after a supported probe starts composite sync. */
     WheelAccessorySyncState sync_state; /**< Current official composite state. */
@@ -108,7 +112,6 @@ typedef struct {
 
     uint8_t motor_temperature_response[2];  /**< Raw little-endian wheel-motor temperature. */
     int16_t motor_temperature_c;            /**< Latest signed wheel-motor temperature. */
-    uint32_t next_motor_temperature_ms;     /**< Next official composite telemetry deadline. */
     bool motor_temperature_enabled;         /**< True after a supported probe. */
     bool motor_temperature_request;         /**< True while a wheel-motor read is active. */
     bool motor_temperature_valid;           /**< True after a non-sentinel motor value. */
@@ -120,9 +123,12 @@ typedef struct {
     bool runtime_valid;                     /**< True after a non-sentinel runtime value. */
 
     uint32_t wheel_travel_limit;   /**< Travel used for automatic sensitivity. */
+    uint8_t drift_mode;             /**< Current drift-mode byte, including override state. */
+    uint8_t saved_drift_mode;       /**< Drift-mode byte restored when override is disabled. */
     uint8_t requested_sensitivity; /**< Profile sensitivity before automatic encoding. */
     uint8_t wheel_mode;            /**< Current wheel mode used for calibration gates. */
-    uint32_t position_modulus;     /**< Position modulus selected from reported model. */
+    uint32_t position_modulus;     /**< Position modulus retained after a valid extended probe. */
+    uint8_t mirrored_model;        /**< Model retained by the official accessory parameter mirror. */
 
     uint8_t calibration_data[2];  /**< Calibration command or response bytes. */
     uint8_t calibration_requests; /**< Pending calibration and erase request bits. */
@@ -130,7 +136,7 @@ typedef struct {
     MotorCalibrationEvent calibration_event;         /**< Pending calibration lifecycle event. */
     bool calibration_command_sent; /**< True after a calibration command write succeeds. */
 
-    uint8_t motor_command_data[2]; /**< Motor position-sensor command or response. */
+    uint8_t motor_command_data[2]; /**< Little-endian motor position-sensor command or response. */
     bool motor_start_pending;      /**< True when a position-sensor start is queued. */
     bool motor_command_sent;       /**< True after the position-sensor command is accepted. */
     MotorStatusEvent motor_event;  /**< Pending position-sensor lifecycle event. */
@@ -141,6 +147,7 @@ typedef struct {
     bool output_override_complete; /**< True after the latest override operation completes. */
     uint8_t output_override_value; /**< Current override write value. */
     uint8_t saved_natural_damper;  /**< Damper value restored when override is disabled. */
+    bool remote_effects_enabled;    /**< Current force-feedback status bit zero. */
 } WheelAccessoryService;
 
 /** @brief Initializes attached wheel accessory composite polling. */
@@ -171,13 +178,20 @@ void wheel_accessory_service_request_calibration(WheelAccessoryService *service,
 /** @brief Requests the accessory position-sensor start command. */
 void wheel_accessory_service_request_motor_start(WheelAccessoryService *service);
 
-/** @brief Takes one pending accessory position-sensor lifecycle event. */
+/** @brief Takes the oldest pending accessory position-sensor lifecycle event. */
 MotorStatusEvent wheel_accessory_service_take_motor_event(WheelAccessoryService *service);
 
 /** @brief Requests the official accessory handshake write. */
 void wheel_accessory_service_request_handshake(WheelAccessoryService *service);
 
-/** @brief Requests or releases the full-damper accessory output override. */
+/**
+ * @brief Requests or releases the full-damper accessory output override.
+ *
+ * Requests are accepted only for standard and extended accessory states. Enabling preserves the
+ * configured drift and damper values, selects the official override values, and clears remote
+ * force-feedback status. Disabling restores the preserved values and schedules the restoring
+ * transfer through the composite service.
+ */
 void wheel_accessory_service_set_output_override(WheelAccessoryService *service, bool enabled);
 
 /** @brief Reports whether calibration work or an active calibration exchange remains. */
@@ -219,5 +233,26 @@ bool wheel_accessory_service_runtime(const WheelAccessoryService *service,
 
 /** @brief Returns the latest attached wheel accessory identity. */
 const WheelAccessory *wheel_accessory_service_identity(const WheelAccessoryService *service);
+
+/**
+ * @brief Reports the force-feedback status bit cleared by an accessory output override.
+ *
+ * The official override clears status bit zero for both enable and restore operations.
+ *
+ * @param[in] service Attached wheel accessory service.
+ * @return True while the status bit is set, or false for a null service.
+ */
+bool wheel_accessory_service_remote_effects_enabled(const WheelAccessoryService *service);
+
+/**
+ * @brief Returns the auxiliary transfer code used by native wheel input reports.
+ *
+ * Selects the low six bits of the retained auxiliary version only while the auxiliary state is
+ * standard or extended. Disconnected and legacy auxiliary states map to zero.
+ *
+ * @param[in] service Attached wheel accessory service.
+ * @return The six-bit auxiliary transfer code, or zero otherwise.
+ */
+uint8_t wheel_accessory_service_input_transfer_code(const WheelAccessoryService *service);
 
 #endif
