@@ -1,5 +1,6 @@
 #include "platform/pedal_link.h"
 
+#include <libpic30.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -14,6 +15,9 @@ enum {
     PEDAL_RECEIVE_DMA_REQUEST = 0x1e,  /**< DMA request number for UART2 reception. */
     PEDAL_TRANSMIT_DMA_REQUEST = 0x1f, /**< DMA request number for UART2 transmission. */
     PEDAL_INTERRUPT_PRIORITY = 4,      /**< Pedal UART and DMA interrupt priority. */
+    PEDAL_ANALOG_SETTLE_DELAY_COUNT = 0x4ff, /**< Official analog fallback delay count. */
+    PEDAL_ANALOG_SETTLE_DELAY_CYCLES =
+        (PEDAL_ANALOG_SETTLE_DELAY_COUNT + 1UL) * 0x0c81UL * 2UL, /**< Equivalent delay cycles. */
 };
 
 /**
@@ -35,9 +39,11 @@ static volatile uint8_t received_frame[PEDAL_FRAME_SIZE];
 static volatile uint8_t transfer_receive_ring[TRANSFER_FRAME_MAX_ENCODED_SIZE];
 
 /**
- * @brief In-progress variable-length pedal transfer frame.
+ * @brief In-progress V4 pedal transfer frame.
+ *
+ * The parser retains at most the 124 bytes accepted by the official firmware.
  */
-static volatile uint8_t transfer_buffer[TRANSFER_FRAME_MAX_RECEIVED_SIZE];
+static volatile uint8_t transfer_buffer[PEDAL_TRANSFER_MAX_FRAME_SIZE];
 
 /**
  * @brief Shared pedal transmit DMA buffer.
@@ -277,18 +283,22 @@ void platform_pedal_link_begin_discovery(void) {
  * @brief Selects direct analog pedal input.
  *
  * Stops UART and DMA reception, selects the three pedal analog inputs, makes the two detection
- * pins inputs, and clears stale serial results.
+ * pins inputs, drives both detection latches low, waits through the official analog-settle delay,
+ * and clears stale serial results.
  */
 void platform_pedal_link_begin_analog(void) {
     IEC0bits.DMA1IE = 0;
     IEC1bits.U2RXIE = 0;
     DMA1CONbits.CHEN = 0;
     U2MODEbits.UARTEN = 0;
+    TRISFbits.TRISF1 = 1;
+    TRISFbits.TRISF0 = 1;
+    LATFbits.LATF1 = 0;
+    PORTFbits.RF0 = 0;
     ANSELBbits.ANSB13 = 1;
     ANSELBbits.ANSB14 = 1;
     ANSELBbits.ANSB15 = 1;
-    TRISFbits.TRISF0 = 1;
-    TRISFbits.TRISF1 = 1;
+    __delay32(PEDAL_ANALOG_SETTLE_DELAY_CYCLES);
     byte_ready = false;
     frame_ready = false;
     clear_transfer_receive_state();
@@ -569,7 +579,7 @@ uint16_t platform_pedal_link_take_transfer(uint8_t *data, uint16_t capacity) {
  * @brief Accumulates one encoded V4 transfer byte.
  *
  * Retains bytes in the official-size receive ring until the foreground parser consumes them. Starts
- * or restarts collection at the opening marker, abandons oversized partial frames, and retains one
+ * or restarts collection at the opening marker, abandons frames after 124 bytes, and retains one
  * complete frame until the caller accepts it.
  *
  * @param[in] value Received encoded byte.
@@ -587,7 +597,7 @@ static void receive_transfer_byte(uint8_t value) {
     if (!transfer_receiving) {
         return;
     }
-    if (transfer_buffer_length >= TRANSFER_FRAME_MAX_RECEIVED_SIZE) {
+    if (transfer_buffer_length >= PEDAL_TRANSFER_MAX_FRAME_SIZE) {
         transfer_buffer_length = 0;
         transfer_receiving = false;
         return;

@@ -68,6 +68,27 @@ static void test_retains_transfer_burst(void) {
     assert(memcmp(output, transfer_frame_c, sizeof(output)) == 0);
 }
 
+static void test_limits_transfer_frame_to_official_size(void) {
+    uint8_t frame[PEDAL_TRANSFER_MAX_FRAME_SIZE] = {0};
+    frame[0] = TRANSFER_FRAME_START;
+    memset(frame + 1, 0x55, sizeof(frame) - 2);
+    frame[sizeof(frame) - 1] = TRANSFER_FRAME_END;
+
+    platform_pedal_link_begin_transfer_receive();
+    feed_transfer(frame, sizeof(frame));
+    uint8_t output[sizeof(frame)] = {0};
+    assert(platform_pedal_link_take_transfer(output, sizeof(output)) == sizeof(frame));
+    assert(memcmp(output, frame, sizeof(output)) == 0);
+
+    uint8_t oversized[PEDAL_TRANSFER_MAX_FRAME_SIZE + 1] = {0};
+    oversized[0] = TRANSFER_FRAME_START;
+    memset(oversized + 1, 0x66, sizeof(oversized) - 2);
+    oversized[sizeof(oversized) - 1] = TRANSFER_FRAME_END;
+    platform_pedal_link_begin_transfer_receive();
+    feed_transfer(oversized, sizeof(oversized));
+    assert(platform_pedal_link_take_transfer(output, sizeof(output)) == 0);
+}
+
 static void test_resets_transfer_generation_before_transmit(void) {
     uint8_t output[sizeof(transfer_frame_a)] = {0};
     const uint8_t transmit[] = {TRANSFER_FRAME_START, 0x44, TRANSFER_FRAME_END};
@@ -118,6 +139,7 @@ int main(void) {
     test_valid_frame_is_published();
     test_uart_error_enters_delimiter_recovery();
     test_retains_transfer_burst();
+    test_limits_transfer_frame_to_official_size();
     test_resets_transfer_generation_before_transmit();
     test_stop_receive_clears_generation_and_rearms();
     test_transmit_completion_preserves_stop_state();
