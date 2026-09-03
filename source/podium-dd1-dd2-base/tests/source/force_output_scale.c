@@ -82,11 +82,37 @@ static void test_narrows_available_force_before_tuning_scale(void) {
     assert(report.primary_magnitude == 654);
 }
 
+static void test_tuning_scaling_boundaries_and_sign(void) {
+    ForceOutputScale scale = {
+        .available_percent = 0,
+        .tuning_strength_percent = 127,
+        .output_strength_percent = 100,
+    };
+    ForceOutputReport report = {0};
+
+    force_output_scale_apply(INT32_MAX, 0, scale, &report);
+    assert(report.primary_magnitude == 0);
+
+    scale.available_percent = 100;
+    scale.tuning_strength_percent = 100;
+    force_output_scale_apply(INT32_MAX, 0, scale, &report);
+    assert(report.primary_magnitude == UINT16_MAX);
+
+    scale.tuning_strength_percent = 127;
+    force_output_scale_apply(INT32_MAX, 0, scale, &report);
+    assert(report.primary_magnitude == 17693);
+
+    scale.tuning_strength_percent = -50;
+    force_output_scale_apply(INT32_MAX, 0, scale, &report);
+    assert(report.primary_magnitude == 32769);
+}
+
 int main(void) {
     test_splits_and_clamps_primary_force();
     test_applies_all_strength_percentages();
     test_secondary_limit_depends_on_primary_limit();
     test_disabled_secondary_output_is_preserved();
     test_narrows_available_force_before_tuning_scale();
+    test_tuning_scaling_boundaries_and_sign();
     return 0;
 }
