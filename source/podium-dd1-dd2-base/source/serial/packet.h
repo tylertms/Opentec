@@ -63,6 +63,17 @@ bool serial_packet_encode_byte(uint8_t type_flags, uint8_t sequence, uint8_t pay
                                uint8_t output[SERIAL_PACKET_SIZE]);
 
 /**
+ * @brief Validates the checksum stored in a fixed-size serial packet.
+ *
+ * Checks the checksum over the fixed transport region without applying the logical payload-length
+ * limit.
+ *
+ * @param[in] input Received encoded packet.
+ * @return True when the stored checksum matches; otherwise false.
+ */
+bool serial_packet_checksum_valid(const uint8_t input[SERIAL_PACKET_SIZE]);
+
+/**
  * @brief Validates and decodes one fixed-size serial packet.
  *
  * Checks packet boundaries, payload length, and checksum before copying decoded fields into packet.

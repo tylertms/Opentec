@@ -42,7 +42,8 @@ void serial_service_init(SerialService *service);
  * @brief Starts one logical serial request.
  *
  * Queues a request message and starts its first packet exchange on the shared serial link. Timeout
- * and malformed-packet retries continue without a retry-count failure.
+ * and retryable malformed-packet retries continue without a retry-count failure. CRC-valid framed
+ * commands with unsupported logical types are ignored.
  *
  * @param[in,out] service Idle service state accepting the request.
  * @param[in] type Logical request type from SERIAL_MESSAGE_FIRST_TYPE through
@@ -58,7 +59,8 @@ bool serial_service_start(SerialService *service, uint8_t type, const uint8_t *m
 /**
  * @brief Starts a serial request with bounded transport retries.
  *
- * The request retries timeout and malformed packets through the fifth retry, then reports failure.
+ * The request retries timeouts and retryable malformed packets through the fifth retry, then
+ * reports failure. CRC-valid framed commands with unsupported logical types are ignored.
  *
  * @param[in,out] service Idle service state accepting the request.
  * @param[in] type Logical request type.

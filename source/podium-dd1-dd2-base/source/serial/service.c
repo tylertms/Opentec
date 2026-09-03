@@ -14,12 +14,13 @@ enum {
 };
 
 /**
- * @brief Identifies a valid framed packet with an unsupported logical type.
+ * @brief Identifies a CRC-valid framed packet with an unsupported logical type.
  *
+ * Checks transport boundaries and checksum without applying the logical payload-length limit.
  * Valid control packets use types zero and one, while logical messages use types two through five.
  *
  * @param[in] input Encoded framed packet to inspect.
- * @return True when the packet is valid but its logical type is unsupported.
+ * @return True when the packet is CRC-valid but its logical type is unsupported.
  */
 static bool is_unsupported_packet(const uint8_t input[SERIAL_PACKET_SIZE]) {
     if (input == 0 || input[0] != SERIAL_PACKET_START ||
@@ -171,8 +172,8 @@ bool serial_service_start_wait(SerialService *service, uint8_t type, const uint8
  * Accepts completed packets, emits required fragment acknowledgements or resynchronization
  * packets, publishes a matching completed logical response, and retries a packet after each
  * ten-millisecond response deadline for up to five retry events. A failed restart or fifth timeout
- * or malformed event fails a bounded request, while a framing failure schedules its recovery
- * synchronization packet after the official periodic hold.
+ * or retryable malformed event fails a bounded request, while a framing failure schedules its
+ * recovery synchronization packet after the official periodic hold.
  *
  * @param[in,out] service Serial service to advance.
  * @param[in] now_ms Current monotonic time in milliseconds.

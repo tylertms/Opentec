@@ -115,6 +115,16 @@ bool serial_packet_encode_byte(uint8_t type_flags, uint8_t sequence, uint8_t pay
     return true;
 }
 
+bool serial_packet_checksum_valid(const uint8_t input[SERIAL_PACKET_SIZE]) {
+    if (input == 0) {
+        return false;
+    }
+    uint16_t expected = checksum(input + SERIAL_PACKET_TYPE_OFFSET);
+    uint16_t received = input[SERIAL_PACKET_CHECKSUM_LOW_OFFSET] |
+                        (uint16_t)input[SERIAL_PACKET_CHECKSUM_HIGH_OFFSET] << 8;
+    return received == expected;
+}
+
 /**
  * @brief Validates and decodes one fixed attached-device serial transport packet.
  *
@@ -135,10 +145,7 @@ SerialPacketResult serial_packet_decode(const uint8_t input[SERIAL_PACKET_SIZE],
     if (payload_length > SERIAL_PACKET_MAX_PAYLOAD_SIZE) {
         return SERIAL_PACKET_INVALID_LENGTH;
     }
-    uint16_t expected = checksum(input + SERIAL_PACKET_TYPE_OFFSET);
-    uint16_t received = input[SERIAL_PACKET_CHECKSUM_LOW_OFFSET] |
-                        (uint16_t)input[SERIAL_PACKET_CHECKSUM_HIGH_OFFSET] << 8;
-    if (received != expected) {
+    if (!serial_packet_checksum_valid(input)) {
         return SERIAL_PACKET_INVALID_CHECKSUM;
     }
     packet->type_flags = input[SERIAL_PACKET_TYPE_OFFSET];
