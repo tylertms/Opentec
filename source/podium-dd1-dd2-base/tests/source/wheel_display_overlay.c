@@ -12,9 +12,20 @@ static void assert_glyphs(const WheelDisplayOverlay *overlay, uint8_t first, uin
     assert(!overlay->output.third_glyph_marker);
 }
 
+static void assert_reset(const WheelDisplayOverlay *overlay) {
+    assert_glyphs(overlay, 0, 0, 0);
+    assert(overlay->hold_until_ms == 0);
+    assert(overlay->deadline_ms == 0);
+    assert(overlay->command == 0);
+    assert(overlay->remaining_seconds == UINT8_MAX);
+    assert(overlay->phase == WHEEL_DISPLAY_OVERLAY_IDLE);
+    assert(!overlay->active);
+}
+
 static void test_shows_hold_label_then_countdown(void) {
     WheelDisplayOverlay overlay;
     wheel_display_overlay_init(&overlay);
+    assert(overlay.remaining_seconds == UINT8_MAX);
     wheel_display_overlay_begin(&overlay, 0x80, 100);
 
     assert(overlay.active);
@@ -27,8 +38,7 @@ static void test_shows_hold_label_then_countdown(void) {
     assert(wheel_display_overlay_update(&overlay, 1850));
     assert_glyphs(&overlay, 0, 0x06, 0x66);
     assert(wheel_display_overlay_update(&overlay, 15100));
-    assert_glyphs(&overlay, 0, 0, 0);
-    assert(!overlay.active);
+    assert_reset(&overlay);
 }
 
 static void test_maps_short_command_labels(void) {
@@ -50,7 +60,7 @@ static void test_maps_short_command_labels(void) {
                       cases[index].glyphs[2]);
         assert(!wheel_display_overlay_update(&overlay, 2024));
         assert(wheel_display_overlay_update(&overlay, 2025));
-        assert(!overlay.active);
+        assert_reset(&overlay);
     }
 }
 
@@ -66,7 +76,7 @@ static void test_replacement_and_clock_wrap_restart_timing(void) {
     assert_glyphs(&overlay, 0, 0x78, 0);
     assert(!wheel_display_overlay_update(&overlay, 2299));
     assert(wheel_display_overlay_update(&overlay, 2300));
-    assert(!overlay.active);
+    assert_reset(&overlay);
 }
 
 int main(void) {

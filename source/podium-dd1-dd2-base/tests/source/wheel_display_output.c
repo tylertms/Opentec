@@ -36,6 +36,10 @@ static void test_prioritizes_lower_scan_phase_bits(void) {
     assert(wheel_display_output_encode(&output, 0) == 0);
     assert(wheel_display_output_encode(&output, WHEEL_SCAN_PHASE_FIRST | WHEEL_SCAN_PHASE_SECOND) ==
            0x40);
+    assert(wheel_display_output_encode(&output, WHEEL_SCAN_PHASE_FIRST | WHEEL_SCAN_PHASE_THIRD) ==
+           0x40);
+    assert(wheel_display_output_encode(&output, WHEEL_SCAN_PHASE_SECOND | WHEEL_SCAN_PHASE_THIRD) ==
+           0x10);
     assert(wheel_display_output_encode(&output, WHEEL_SCAN_PHASE_THIRD |
                                                     WHEEL_SCAN_PHASE_AUXILIARY) == 0x09);
 }

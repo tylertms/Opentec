@@ -88,15 +88,26 @@ static void render_countdown(WheelDisplayOverlay *overlay, uint8_t remaining) {
                digit_glyph(remaining % 10u));
 }
 
+static void reset_overlay(WheelDisplayOverlay *overlay) {
+    overlay->output = (WheelDisplayOutput){0};
+    overlay->hold_until_ms = 0;
+    overlay->deadline_ms = 0;
+    overlay->command = 0;
+    overlay->remaining_seconds = UINT8_MAX;
+    overlay->phase = WHEEL_DISPLAY_OVERLAY_IDLE;
+    overlay->active = false;
+}
+
 /**
  * @brief Initializes the temporary attached-wheel display page.
  *
- * Clears its output, command, deadlines, phase, and ownership state.
+ * Clears its output, command, deadlines, phase, and ownership state. The countdown cache is reset
+ * to UINT8_MAX, the official no-countdown sentinel.
  *
  * @param[out] overlay Temporary display state to initialize.
  */
 void wheel_display_overlay_init(WheelDisplayOverlay *overlay) {
-    *overlay = (WheelDisplayOverlay){0};
+    reset_overlay(overlay);
 }
 
 /**
@@ -132,8 +143,8 @@ void wheel_display_overlay_begin(WheelDisplayOverlay *overlay, uint8_t command, 
  * @brief Advances the temporary attached-wheel command presentation.
  *
  * Retains the initial `PPC` label until its 750-millisecond deadline, then updates a
- * countdown capped at fifteen. At the presentation deadline, clears the temporary page and
- * releases display ownership.
+ * countdown capped at fifteen. At the presentation deadline, clears the temporary page, resets all
+ * retained timing and command state, and releases display ownership.
  *
  * @param[in,out] overlay Temporary display state to advance.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -144,9 +155,7 @@ bool wheel_display_overlay_update(WheelDisplayOverlay *overlay, uint32_t now_ms)
         return false;
     }
     if (platform_time_reached(now_ms, overlay->deadline_ms)) {
-        overlay->output = (WheelDisplayOutput){0};
-        overlay->phase = WHEEL_DISPLAY_OVERLAY_IDLE;
-        overlay->active = false;
+        reset_overlay(overlay);
         return true;
     }
     if (overlay->command != HOLD_COMMAND ||

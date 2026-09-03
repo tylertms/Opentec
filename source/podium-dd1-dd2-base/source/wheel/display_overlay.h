@@ -20,7 +20,7 @@ typedef struct {
     uint32_t hold_until_ms;         /**< Deadline for the initial hold label. */
     uint32_t deadline_ms;           /**< Deadline at which the overlay is released. */
     uint8_t command;                /**< Command that started the presentation. */
-    uint8_t remaining_seconds;      /**< Last rendered hold-command countdown. */
+    uint8_t remaining_seconds;      /**< Last countdown, or UINT8_MAX before any countdown. */
     WheelDisplayOverlayPhase phase; /**< Current presentation phase. */
     bool active;                    /**< Whether the overlay currently owns the display. */
 } WheelDisplayOverlay;
@@ -28,7 +28,8 @@ typedef struct {
 /**
  * @brief Initializes a temporary display overlay.
  *
- * Clears the output, timing, command, phase, and ownership state.
+ * Clears the output, timing, command, phase, and ownership state. The countdown cache is set to
+ * UINT8_MAX, the official no-countdown sentinel.
  *
  * @param[out] overlay Overlay state to initialize.
  */
@@ -49,7 +50,7 @@ void wheel_display_overlay_begin(WheelDisplayOverlay *overlay, uint8_t command, 
 /**
  * @brief Advances an active temporary display presentation.
  *
- * Updates the hold countdown after its label interval and clears the overlay at its deadline.
+ * Updates the hold countdown after its label interval and fully resets the overlay at its deadline.
  *
  * @param[in,out] overlay Overlay state to update.
  * @param[in] now_ms Current monotonic time in milliseconds.

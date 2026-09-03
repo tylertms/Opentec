@@ -17,7 +17,7 @@ enum {
 typedef struct {
     uint8_t glyphs[WHEEL_DISPLAY_GLYPH_COUNT]; /**< Raw seven-segment glyphs. */
     uint8_t auxiliary;                         /**< Auxiliary display byte. */
-    bool third_glyph_marker;                   /**< Whether the third glyph carries a marker. */
+    bool third_glyph_marker; /**< Whether the third glyph carries a marker during a third-only scan. */
 } WheelDisplayOutput;
 
 /**
