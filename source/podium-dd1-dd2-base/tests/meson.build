@@ -21,7 +21,9 @@ base_tests = {
   ],
   'display-auxiliary-calibration-page': [
     'source/display_auxiliary_calibration_page.c',
+    'display/bitmap.c',
     'display/auxiliary_calibration_page.c',
+    'display/icon_bitmaps.c',
     'display/font_10.c',
     'display/font_21.c',
     'display/text.c',
@@ -29,7 +31,9 @@ base_tests = {
   ],
   'display-shifter-page': [
     'source/display_shifter_page.c',
+    'display/bitmap.c',
     'display/shifter_page.c',
+    'display/icon_bitmaps.c',
     'display/font_10.c',
     'display/font_21.c',
     'display/text.c',

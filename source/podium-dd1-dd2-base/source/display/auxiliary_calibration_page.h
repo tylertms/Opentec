@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "display/bitmap.h"
 #include "display/framebuffer.h"
 
 /**
@@ -50,5 +51,16 @@ void display_auxiliary_calibration_page_render_title(DisplayFramebuffer framebuf
  */
 void display_auxiliary_calibration_page_render(DisplayFramebuffer framebuffer,
                                                const DisplayAuxiliaryCalibrationPage *page);
+
+/**
+ * @brief Renders the mirrored legacy display while queuing glyph bitmap rows.
+ *
+ * @param[in,out] framebuffer Framebuffer receiving the rendered page.
+ * @param[in,out] queue Bitmap queue owned by the framebuffer composition.
+ * @param[in] page Legacy display state to render.
+ */
+void display_auxiliary_calibration_page_render_queued(DisplayFramebuffer framebuffer,
+                                                     DisplayBitmapQueue *queue,
+                                                     const DisplayAuxiliaryCalibrationPage *page);
 
 #endif

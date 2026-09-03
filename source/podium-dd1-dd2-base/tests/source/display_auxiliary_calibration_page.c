@@ -48,10 +48,13 @@ static void renders_title_segments_decimal_point_and_itm_label(void) {
     assert(pixel(framebuffer, 0, 22) == 0);
 
     display_auxiliary_calibration_page_render(framebuffer, &page);
-    assert(pixel(framebuffer, 98, 18) == 15);
-    assert(pixel(framebuffer, 96, 21) == 15);
-    assert(pixel(framebuffer, 141, 51) == 15);
-    assert(pixel(framebuffer, 144, 54) == 15);
+    assert(pixel(framebuffer, 100, 18) == 15);
+    assert(pixel(framebuffer, 98, 21) == 15);
+    assert(pixel(framebuffer, 123, 18) == 0);
+    assert(pixel(framebuffer, 125, 18) == 15);
+    assert(pixel(framebuffer, 141, 51) == 0);
+    assert(pixel(framebuffer, 142, 51) == 15);
+    assert(pixel(framebuffer, 144, 54) == 0);
     assert(pixel(framebuffer, 145, 55) == 0);
     assert(has_lit_pixel(framebuffer, 235, 252, 50, 56));
 

@@ -17,6 +17,7 @@ base_sources = files(
   'source/display/auxiliary_calibration_page.c',
   'source/display/force_feedback_analysis_page.c',
   'source/display/bitmap.c',
+  'source/display/icon_bitmaps.c',
   'source/display/framebuffer.c',
   'source/display/high_torque_icon.c',
   'source/display/identity_page.c',

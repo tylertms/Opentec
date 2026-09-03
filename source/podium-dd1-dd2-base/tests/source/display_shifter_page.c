@@ -17,7 +17,8 @@ static void test_gear_uses_only_middle_position(void) {
         .glyph = 0x5b,
     };
     display_shifter_page_render(framebuffer, &presentation);
-    assert(pixel(123, 18) == 15);
+    assert(pixel(123, 18) == 0);
+    assert(pixel(125, 18) == 15);
     assert(pixel(98, 18) == 0);
 }
 
@@ -27,11 +28,16 @@ static void test_calibration_prompt_records(void) {
         .calibration_prompt = H_PATTERN_CALIBRATION_PROMPT_WAITING,
     };
     display_shifter_page_render(framebuffer, &presentation);
-    assert(pixel(111, 21) == 15);
+    assert(pixel(111, 21) == 0);
+    assert(pixel(113, 21) == 15);
     presentation.calibration_prompt = H_PATTERN_CALIBRATION_PROMPT_POSITION;
     display_shifter_page_render(framebuffer, &presentation);
     assert(pixel(1, 16) == 8);
+    assert(pixel(1, 55) == 8);
     assert(pixel(1, 56) == 8);
+    assert(pixel(254, 56) == 8);
+    assert(pixel(255, 56) == 0);
+    assert(pixel(1, 15) == 0);
 }
 
 int main(void) {

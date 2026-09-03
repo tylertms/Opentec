@@ -3,10 +3,10 @@
 #include <stdint.h>
 
 #include "display/framebuffer.h"
+#include "display/icon_bitmaps.h"
 #include "display/text.h"
 
 enum {
-    SHIFTER_PAGE_COLOR = 15,
     SHIFTER_PAGE_GLYPH_Y = 18,
     SHIFTER_PAGE_GLYPH_X = 120,
     SHIFTER_PAGE_WAITING_FIRST_X = 95,
@@ -19,76 +19,27 @@ enum {
     SHIFTER_PAGE_DIAGNOSTIC_FRAME_X = 1,
     SHIFTER_PAGE_DIAGNOSTIC_FRAME_TOP = 0x10,
     SHIFTER_PAGE_DIAGNOSTIC_FRAME_BOTTOM = 0x38,
+    SHIFTER_PAGE_DIAGNOSTIC_FRAME_RIGHT = 0xff,
 };
 
-enum {
-    SHIFTER_PAGE_SEGMENT_TOP = 1 << 0,
-    SHIFTER_PAGE_SEGMENT_UPPER_RIGHT = 1 << 1,
-    SHIFTER_PAGE_SEGMENT_LOWER_RIGHT = 1 << 2,
-    SHIFTER_PAGE_SEGMENT_BOTTOM = 1 << 3,
-    SHIFTER_PAGE_SEGMENT_LOWER_LEFT = 1 << 4,
-    SHIFTER_PAGE_SEGMENT_UPPER_LEFT = 1 << 5,
-    SHIFTER_PAGE_SEGMENT_MIDDLE = 1 << 6,
-    SHIFTER_PAGE_DECIMAL_POINT = 1 << 7,
-};
-
-static void draw_rectangle(DisplayFramebuffer framebuffer, uint16_t left, uint16_t top,
-                           uint16_t right, uint16_t bottom, uint8_t color) {
-    for (uint16_t y = top; y <= bottom; y++) {
-        for (uint16_t x = left; x <= right; x++) {
-            display_framebuffer_set_pixel(framebuffer, x, y, color);
-        }
-    }
-}
-
-static void draw_glyph(DisplayFramebuffer framebuffer, uint16_t x, uint8_t glyph) {
-    if ((glyph & SHIFTER_PAGE_SEGMENT_TOP) != 0) {
-        draw_rectangle(framebuffer, (uint16_t)(x + 3), SHIFTER_PAGE_GLYPH_Y, (uint16_t)(x + 18),
-                       SHIFTER_PAGE_GLYPH_Y + 2, SHIFTER_PAGE_COLOR);
-    }
-    if ((glyph & SHIFTER_PAGE_SEGMENT_UPPER_RIGHT) != 0) {
-        draw_rectangle(framebuffer, (uint16_t)(x + 16), SHIFTER_PAGE_GLYPH_Y + 3,
-                       (uint16_t)(x + 19), SHIFTER_PAGE_GLYPH_Y + 16, SHIFTER_PAGE_COLOR);
-    }
-    if ((glyph & SHIFTER_PAGE_SEGMENT_LOWER_RIGHT) != 0) {
-        draw_rectangle(framebuffer, (uint16_t)(x + 16), SHIFTER_PAGE_GLYPH_Y + 20,
-                       (uint16_t)(x + 19), SHIFTER_PAGE_GLYPH_Y + 33, SHIFTER_PAGE_COLOR);
-    }
-    if ((glyph & SHIFTER_PAGE_SEGMENT_BOTTOM) != 0) {
-        draw_rectangle(framebuffer, (uint16_t)(x + 3), SHIFTER_PAGE_GLYPH_Y + 34,
-                       (uint16_t)(x + 18), SHIFTER_PAGE_GLYPH_Y + 36, SHIFTER_PAGE_COLOR);
-    }
-    if ((glyph & SHIFTER_PAGE_SEGMENT_LOWER_LEFT) != 0) {
-        draw_rectangle(framebuffer, (uint16_t)(x + 1), SHIFTER_PAGE_GLYPH_Y + 20, (uint16_t)(x + 4),
-                       SHIFTER_PAGE_GLYPH_Y + 33, SHIFTER_PAGE_COLOR);
-    }
-    if ((glyph & SHIFTER_PAGE_SEGMENT_UPPER_LEFT) != 0) {
-        draw_rectangle(framebuffer, (uint16_t)(x + 1), SHIFTER_PAGE_GLYPH_Y + 3, (uint16_t)(x + 4),
-                       SHIFTER_PAGE_GLYPH_Y + 16, SHIFTER_PAGE_COLOR);
-    }
-    if ((glyph & SHIFTER_PAGE_SEGMENT_MIDDLE) != 0) {
-        draw_rectangle(framebuffer, (uint16_t)(x + 3), SHIFTER_PAGE_GLYPH_Y + 17,
-                       (uint16_t)(x + 18), SHIFTER_PAGE_GLYPH_Y + 19, SHIFTER_PAGE_COLOR);
-    }
-    if ((glyph & SHIFTER_PAGE_DECIMAL_POINT) != 0) {
-        draw_rectangle(framebuffer, (uint16_t)(x + 21), SHIFTER_PAGE_GLYPH_Y + 33,
-                       (uint16_t)(x + 24), SHIFTER_PAGE_GLYPH_Y + 36, SHIFTER_PAGE_COLOR);
-    }
+static void draw_glyph(DisplayBitmapQueue *queue, uint16_t x, uint8_t glyph) {
+    display_icon_group_draw_queued(queue, x, SHIFTER_PAGE_GLYPH_Y, glyph);
 }
 
 static void draw_diagnostic_frame(DisplayFramebuffer framebuffer) {
-    for (uint16_t y = SHIFTER_PAGE_DIAGNOSTIC_FRAME_TOP; y <= SHIFTER_PAGE_DIAGNOSTIC_FRAME_BOTTOM;
-         y++) {
+    for (uint16_t y = SHIFTER_PAGE_DIAGNOSTIC_FRAME_TOP;
+         y < SHIFTER_PAGE_DIAGNOSTIC_FRAME_BOTTOM; y++) {
         display_framebuffer_set_pixel(framebuffer, SHIFTER_PAGE_DIAGNOSTIC_FRAME_X, y, 8);
     }
-    for (uint16_t x = SHIFTER_PAGE_DIAGNOSTIC_FRAME_X; x < DISPLAY_FRAMEBUFFER_WIDTH; x++) {
+    for (uint16_t x = SHIFTER_PAGE_DIAGNOSTIC_FRAME_X; x < SHIFTER_PAGE_DIAGNOSTIC_FRAME_RIGHT;
+         x++) {
         display_framebuffer_set_pixel(framebuffer, x, SHIFTER_PAGE_DIAGNOSTIC_FRAME_BOTTOM, 8);
     }
 }
 
-static void render_waiting(DisplayFramebuffer framebuffer) {
-    draw_glyph(framebuffer, SHIFTER_PAGE_WAITING_FIRST_X, 0x06);
-    draw_glyph(framebuffer, SHIFTER_PAGE_WAITING_SECOND_X, 0x7f);
+static void render_waiting(DisplayBitmapQueue *queue) {
+    draw_glyph(queue, SHIFTER_PAGE_WAITING_FIRST_X, 0x06);
+    draw_glyph(queue, SHIFTER_PAGE_WAITING_SECOND_X, 0x7f);
 }
 
 static void render_label(DisplayFramebuffer framebuffer, const char *text) {
@@ -121,17 +72,25 @@ static void render_diagnostic(DisplayFramebuffer framebuffer) {
  */
 void display_shifter_page_render(DisplayFramebuffer framebuffer,
                                  const ShifterLocalDisplay *presentation) {
+    DisplayBitmapQueue queue;
+    display_bitmap_queue_reset(&queue);
+    display_shifter_page_render_queued(framebuffer, &queue, presentation);
+    display_bitmap_queue_finish(&queue, framebuffer);
+}
+
+void display_shifter_page_render_queued(DisplayFramebuffer framebuffer, DisplayBitmapQueue *queue,
+                                        const ShifterLocalDisplay *presentation) {
     display_framebuffer_clear(framebuffer);
     if (presentation == NULL || presentation->kind == SHIFTER_LOCAL_DISPLAY_NONE) {
         return;
     }
     if (presentation->kind == SHIFTER_LOCAL_DISPLAY_GEAR) {
-        draw_glyph(framebuffer, SHIFTER_PAGE_GLYPH_X, presentation->glyph);
+        draw_glyph(queue, SHIFTER_PAGE_GLYPH_X, presentation->glyph);
         return;
     }
     switch (presentation->calibration_prompt) {
     case H_PATTERN_CALIBRATION_PROMPT_WAITING:
-        render_waiting(framebuffer);
+        render_waiting(queue);
         break;
     case H_PATTERN_CALIBRATION_PROMPT_SHIFTER:
         render_label(framebuffer, "SFT");
