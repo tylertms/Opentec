@@ -40,7 +40,7 @@ typedef struct {
  * @brief Decoded wheel-position report from a position frame.
  */
 typedef struct {
-    bool replay;             /**< True when the source frame carries the replay flag. */
+    bool replay;             /**< Always false; replay frames are not decoded as position reports. */
     int32_t wheel_position;  /**< Signed little-endian wheel-position sample. */
     uint16_t motor_torque;   /**< Unsigned little-endian motor-torque sample. */
     bool auxiliary_negative; /**< True when the auxiliary position direction bit is set. */
@@ -76,13 +76,14 @@ MotorLiveFrameResult motor_live_frame_decode(const uint8_t input[MOTOR_LIVE_FRAM
 /**
  * @brief Decodes a position report from a motor live frame.
  *
- * Accepts position type 0x01 with or without the replay flag and expands its wheel position,
- * torque, and auxiliary fields. Other frame types do not modify the report. The frame and report
- * pointers must be non-null.
+ * Accepts only exact position type 0x01 and expands its wheel position, torque, and auxiliary
+ * fields. Replay type 0x81 frames are handled by the motor-link service without decoding their
+ * payload as a new position report. Other frame types do not modify the report. The frame and
+ * report pointers must be non-null.
  *
  * @param[in] frame Decoded live frame to inspect.
  * @param[out] report Destination for the decoded position report.
- * @return True when frame is a position or replay-position frame; otherwise false.
+ * @return True when frame is an exact position frame; otherwise false.
  */
 bool motor_position_report_decode(const MotorLiveFrame *frame, MotorPositionReport *report);
 

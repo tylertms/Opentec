@@ -25,20 +25,23 @@ static void test_decode_position(void) {
     assert(memcmp(reencoded, position_frame, sizeof(reencoded)) == 0);
 }
 
-static void test_decode_replay(void) {
+static void test_replay_is_not_a_position_report(void) {
     const uint8_t encoded[MOTOR_LIVE_FRAME_SIZE] = {
         0x7b, 0x81, 0xde, 0xad, 0xbe, 0xef, 0x68, 0x24, 0xe0, 0xac, 0x59, 0x14, 0x7d,
     };
     MotorLiveFrame frame;
-    MotorPositionReport report;
+    MotorPositionReport report = {
+        .replay = true,
+        .wheel_position = 123,
+        .motor_torque = 456,
+        .auxiliary_negative = true,
+        .auxiliary_position = 789,
+    };
+    MotorPositionReport before = report;
 
     assert(motor_live_frame_decode(encoded, &frame) == MOTOR_LIVE_FRAME_VALID);
-    assert(motor_position_report_decode(&frame, &report));
-    assert(report.replay);
-    assert(report.wheel_position == (int32_t)0xefbeaddeu);
-    assert(report.motor_torque == 0x2468);
-    assert(report.auxiliary_negative);
-    assert(report.auxiliary_position == 0x59c0);
+    assert(!motor_position_report_decode(&frame, &report));
+    assert(memcmp(&report, &before, sizeof(report)) == 0);
 }
 
 static void test_encode_force(void) {
@@ -119,7 +122,7 @@ static void test_rejects_invalid_frames(void) {
 
 int main(void) {
     test_decode_position();
-    test_decode_replay();
+    test_replay_is_not_a_position_report();
     test_encode_force();
     test_inhibit_primary_preserves_replay_frame_state();
     test_rejects_invalid_frames();

@@ -119,12 +119,12 @@ MotorLiveFrameResult motor_live_frame_decode(const uint8_t input[MOTOR_LIVE_FRAM
 }
 
 bool motor_position_report_decode(const MotorLiveFrame *frame, MotorPositionReport *report) {
-    if ((frame->type & ~MOTOR_LIVE_REPLAY_FLAG) != MOTOR_LIVE_POSITION_TYPE) {
+    if (frame->type != MOTOR_LIVE_POSITION_TYPE) {
         return false;
     }
 
     uint16_t auxiliary = read_u16(frame->payload + 6);
-    report->replay = (frame->type & MOTOR_LIVE_REPLAY_FLAG) != 0;
+    report->replay = false;
     report->wheel_position = read_i32(frame->payload);
     report->motor_torque = read_u16(frame->payload + 4);
     report->auxiliary_negative = (auxiliary & MOTOR_POSITION_AUXILIARY_DIRECTION) != 0;
