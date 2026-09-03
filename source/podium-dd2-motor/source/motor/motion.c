@@ -41,17 +41,31 @@ static int32_t motor_int32_saturate(int64_t value) {
 /**
  * @brief Applies the official signed Q15 motor scale with sixteen-bit saturation.
  *
- * The recovered mixed-width multiply is limited to the signed sixteen-bit output range.
+ * The mixed-width product wraps at thirty-two bits before the official endpoint checks. The
+ * wrapped most-negative accumulator maps to positive full scale, while an exact positive 0x8000
+ * result retains its signed sixteen-bit representation.
  *
  * @param[in] scale Unsigned fixed-point scale.
  * @param[in] value Signed input value.
- * @return Scaled signed value limited to the sixteen-bit range.
+ * @return Scaled signed value limited to the official sixteen-bit range.
  */
 int16_t motor_q15_scale_saturate(uint32_t scale, int16_t value) {
-    int32_t upper = (int32_t)scale >> 16;
+    int32_t upper = (int16_t)(scale >> 16U);
     int32_t lower = (int32_t)(scale & UINT16_MAX);
-    int32_t result = upper * value * 2 + (lower * value >> 15);
-    return motor_int16_saturate(result);
+    int32_t lower_term = (lower * (int32_t)value) >> 15U;
+    int32_t upper_product = upper * (int32_t)value;
+    uint32_t wrapped = ((uint32_t)upper_product << 1U) + (uint32_t)lower_term;
+    int32_t result = (int32_t)wrapped;
+    if (wrapped == UINT32_C(0x80000000)) {
+        return INT16_MAX;
+    }
+    if (result >= 0x8001) {
+        return INT16_MAX;
+    }
+    if (result < INT16_MIN) {
+        return INT16_MIN;
+    }
+    return (int16_t)wrapped;
 }
 
 /**

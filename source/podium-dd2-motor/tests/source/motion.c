@@ -8,6 +8,14 @@ static void test_fixed_point_scaling(void) {
     assert(motor_q15_scale_saturate(0x002985a1U, -1) == -84);
     assert(motor_q15_scale_saturate(0x002985a1U, 1000) == INT16_MAX);
     assert(motor_q15_scale_saturate(0x002985a1U, -1000) == INT16_MIN);
+    assert(motor_q15_scale_saturate(0x3fff8000U, 1) == INT16_MAX);
+    assert(motor_q15_scale_saturate(0x40000000U, 1) == INT16_MIN);
+    assert(motor_q15_scale_saturate(0x40008000U, 1) == INT16_MAX);
+    assert(motor_q15_scale_saturate(0x40010000U, 1) == INT16_MAX);
+    assert(motor_q15_scale_saturate(0xc0000000U, 1) == INT16_MIN);
+    assert(motor_q15_scale_saturate(0xbfff0000U, 1) == INT16_MIN);
+    assert(motor_q15_scale_saturate(0x80000000U, INT16_MIN) == INT16_MAX);
+    assert(motor_q15_scale_saturate(0x80000001U, INT16_MIN) == INT16_MAX);
     assert(motor_q15_scale_wrap(0x000f3851U, 1) == 30);
     assert(motor_q15_scale_wrap(0x000f3851U, -1) == -31);
     assert(motor_q15_scale_wrap(0x000f3851U, 0x5c7f) == -108);
