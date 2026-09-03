@@ -31,9 +31,16 @@ static void test_stores_scalar_selectors(void) {
     message = information(5, byte, sizeof(byte));
     assert(motor_command_information_apply(&state, &message) == MOTOR_COMMAND_INFORMATION_STORED);
     assert(state.selector_5 == 0x56);
-    message = information(6, word, sizeof(word));
+}
+
+static void test_accepts_selector_six_protocol_response(void) {
+    static const uint8_t word[] = {0x12, 0x34};
+    MotorCommandInformation state = {0};
+    MotorCommandMessage message = information(6, word, sizeof(word));
+
     assert(motor_command_information_apply(&state, &message) == MOTOR_COMMAND_INFORMATION_STORED);
-    assert(state.selector_6 == 0x1234);
+    message.data_length = 1;
+    assert(motor_command_information_apply(&state, &message) == MOTOR_COMMAND_INFORMATION_INVALID);
 }
 
 static void test_stores_block_selectors(void) {
@@ -92,6 +99,7 @@ static void test_rejects_invalid_responses(void) {
 
 int main(void) {
     test_stores_scalar_selectors();
+    test_accepts_selector_six_protocol_response();
     test_stores_block_selectors();
     test_forwards_selector_two();
     test_rejects_invalid_responses();

@@ -64,11 +64,8 @@ MotorCommandInformationResult motor_command_information_apply(MotorCommandInform
         state->selector_5 = message->data[0];
         break;
     case MOTOR_COMMAND_INFORMATION_SELECTOR_6:
-        if (message->data_length != 2) {
-            return MOTOR_COMMAND_INFORMATION_INVALID;
-        }
-        state->selector_6 = decode_word(message->data);
-        break;
+        return message->data_length == 2 ? MOTOR_COMMAND_INFORMATION_STORED
+                                         : MOTOR_COMMAND_INFORMATION_INVALID;
     case MOTOR_COMMAND_INFORMATION_SELECTOR_7:
         if (message->data_length != sizeof(state->selector_7)) {
             return MOTOR_COMMAND_INFORMATION_INVALID;
