@@ -42,6 +42,7 @@ enum {
     XBOX_GIP_EXTENDED_STATUS_PROTOCOL_VERSION = 9, /**< Extended-status protocol version. */
     XBOX_GIP_EXTENDED_STATUS_WHEEL_MODE =
         0x1d,                           /**< Wheel mode selecting extended-status version 5. */
+    XBOX_GIP_EXTENDED_STATUS_ADAPTER_CONNECTED = 1 << 0, /**< Adapter-connected status bit. */
     XBOX_GIP_INPUT_PAYLOAD_SIZE = 0x32, /**< Input payload size. */
     XBOX_GIP_INPUT_AXIS_MODE = 0x66,    /**< Encoded active axis mode value. */
     XBOX_GIP_INPUT_AXIS_FLAGS = 0x08,   /**< Base input-axis flags. */
@@ -134,8 +135,8 @@ void usb_xbox_gip_capability_response_encode(
 void usb_xbox_gip_extended_status_response_encode(
     uint8_t sequence, const UsbXboxGipExtendedStatus *status,
     uint8_t output[USB_XBOX_GIP_EXTENDED_STATUS_RESPONSE_SIZE]) {
-    memset(output, 0, USB_XBOX_GIP_EXTENDED_STATUS_RESPONSE_SIZE);
     output[0] = XBOX_GIP_EXTENDED_STATUS_RESPONSE;
+    output[1] = 0;
     output[2] = sequence;
     output[3] = XBOX_GIP_EXTENDED_STATUS_PAYLOAD_SIZE;
     output[4] =
@@ -169,8 +170,10 @@ void usb_xbox_gip_extended_status_response_encode(
     } else {
         output[12] = 4;
     }
-    output[13] = status->adapter_connected ? 1 : 0;
+    output[13] = (output[13] & 0xfeu) |
+                 (status->adapter_connected ? XBOX_GIP_EXTENDED_STATUS_ADAPTER_CONNECTED : 0);
     output[14] = status->board_variant == BOARD_VARIANT_DD2 ? 8 : status->hardware_option ? 7 : 6;
+    output[15] = 0;
 }
 
 void usb_xbox_gip_input_response_encode(uint8_t sequence, const UsbXboxGipInputSnapshot *snapshot,

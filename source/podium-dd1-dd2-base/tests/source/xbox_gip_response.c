@@ -100,7 +100,7 @@ static void test_encodes_extended_status_response(void) {
         0x11, 0x00, 0x2a, 0x0d, 0xff, 0x1d, 0x10, 0x01, 0x01,
         0x03, 0x09, 0x2a, 0x02, 0x01, 0x07, 0x00, 0x00,
     };
-    uint8_t output[USB_XBOX_GIP_EXTENDED_STATUS_RESPONSE_SIZE];
+    uint8_t output[USB_XBOX_GIP_EXTENDED_STATUS_RESPONSE_SIZE] = {0};
 
     usb_xbox_gip_extended_status_response_encode(0x2a, &status, output);
     assert(memcmp(output, expected, sizeof(expected)) == 0);
@@ -111,7 +111,7 @@ static void test_maps_extended_status_variants(void) {
         .board_variant = BOARD_VARIANT_DD2,
         .multi_position_supported = true,
     };
-    uint8_t output[USB_XBOX_GIP_EXTENDED_STATUS_RESPONSE_SIZE];
+    uint8_t output[USB_XBOX_GIP_EXTENDED_STATUS_RESPONSE_SIZE] = {0};
     static const uint8_t expected_variants[] = {1, 3, 2, 0};
 
     for (uint8_t mode = 0; mode < sizeof(expected_variants); mode++) {
@@ -127,6 +127,26 @@ static void test_maps_extended_status_variants(void) {
     status.board_variant = BOARD_VARIANT_DD1;
     usb_xbox_gip_extended_status_response_encode(1, &status, output);
     assert(output[14] == 6);
+}
+
+static void test_preserves_extended_status_workspace(void) {
+    UsbXboxGipExtendedStatus status = {
+        .board_variant = BOARD_VARIANT_DD1,
+        .adapter_connected = true,
+    };
+    uint8_t output[USB_XBOX_GIP_EXTENDED_STATUS_RESPONSE_SIZE] = {
+        [13] = 0xa4,
+        [16] = 0x5a,
+    };
+
+    usb_xbox_gip_extended_status_response_encode(1, &status, output);
+    assert(output[13] == 0xa5);
+    assert(output[16] == 0x5a);
+
+    status.adapter_connected = false;
+    usb_xbox_gip_extended_status_response_encode(1, &status, output);
+    assert(output[13] == 0xa4);
+    assert(output[16] == 0x5a);
 }
 
 static void test_encodes_input_response(void) {
@@ -167,6 +187,7 @@ int main(void) {
     test_encodes_capability_response();
     test_encodes_extended_status_response();
     test_maps_extended_status_variants();
+    test_preserves_extended_status_workspace();
     test_encodes_input_response();
     return 0;
 }

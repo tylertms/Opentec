@@ -133,11 +133,13 @@ void usb_xbox_gip_capability_response_encode(uint8_t sequence,
  * @brief Encodes the Xbox GIP attached-device status response.
  *
  * Emits the wheel, pedal, shifter, resistance-profile, axis-report, accessory, multi-position,
- * adapter, and base-identity state in the 13-byte type-11 payload. Reserved bytes are cleared.
+ * adapter, and base-identity state in the 13-byte type-11 payload. The high bits of byte 13 and
+ * byte 16 are preserved from the retained response workspace, matching the official encoder.
  *
  * @param[in] sequence Response sequence value.
  * @param[in] status Current logical attached-device status.
- * @param[out] output Destination for the extended-status response.
+ * @param[in,out] output Retained response workspace and destination for the extended-status
+ * response.
  */
 void usb_xbox_gip_extended_status_response_encode(
     uint8_t sequence, const UsbXboxGipExtendedStatus *status,
