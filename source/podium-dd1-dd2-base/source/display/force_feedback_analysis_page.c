@@ -14,8 +14,9 @@
  */
 enum {
     ANALYSIS_SAMPLE_INTERVAL_MS = 25, /**< Set-point sampling interval in milliseconds. */
+    ANALYSIS_DECAY_HOLD_MS = 1000,     /**< Split-progress secondary hold in milliseconds. */
     ANALYSIS_COLOR = 15,              /**< Foreground grayscale value. */
-    ANALYSIS_SERIES_COLOR = 8,        /**< History-series grayscale value. */
+    ANALYSIS_SERIES_COLOR = 4,        /**< History-series grayscale value. */
     ANALYSIS_GRID_COLOR = 1,          /**< Chart-grid grayscale value. */
     ANALYSIS_BAR_BORDER_COLOR = 10,   /**< Level-bar border grayscale value. */
     ANALYSIS_BAR_FILL_COLOR = 6,      /**< Level-bar fill grayscale value. */
@@ -36,16 +37,14 @@ enum {
 };
 
 /**
- * @brief Tests whether the next analysis sample is due.
- *
- * Uses signed modular subtraction so the sampling cadence remains valid across timer wrap.
+ * @brief Returns the next global analysis sample boundary.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
- * @param[in] deadline_ms Next sampling deadline.
- * @return True when the sampling deadline is current or past.
+ * @return The first sample boundary strictly after now_ms.
  */
-static bool sample_due(uint32_t now_ms, uint32_t deadline_ms) {
-    return (int32_t)(now_ms - deadline_ms) >= 0;
+static uint32_t next_sample_after(uint32_t now_ms) {
+    uint32_t remainder = now_ms % ANALYSIS_SAMPLE_INTERVAL_MS;
+    return now_ms + ANALYSIS_SAMPLE_INTERVAL_MS - remainder;
 }
 
 /**
@@ -64,6 +63,60 @@ static void format_percentage(char output[5], uint8_t percentage) {
     output[index++] = (char)('0' + percentage % 10u);
     output[index++] = '%';
     output[index] = '\0';
+}
+
+/**
+ * @brief Advances both reference split-progress records by one millisecond.
+ *
+ * @param[in,out] page Analysis state containing the two split-progress records.
+ * @return True when a visible secondary value changed.
+ */
+static bool update_decay_tick(volatile DisplayForceFeedbackAnalysisPage *page) {
+    bool changed = false;
+    for (uint8_t index = 0; index < DISPLAY_FORCE_FEEDBACK_ANALYSIS_BAR_COUNT; index++) {
+        if (page->primary_percentage[index] > page->secondary_percentage[index]) {
+            page->decay_countdown[index] = ANALYSIS_DECAY_HOLD_MS;
+            page->secondary_percentage[index] = page->primary_percentage[index];
+            page->decay_accumulator[index] =
+                (uint16_t)page->primary_percentage[index] << 8;
+            changed = true;
+            continue;
+        }
+        if (page->decay_countdown[index] != 0) {
+            page->decay_countdown[index]--;
+            continue;
+        }
+
+        int16_t delta = (int16_t)page->primary_percentage[index] -
+                        (int16_t)(page->decay_accumulator[index] >> 8);
+        page->decay_accumulator[index] =
+            (uint16_t)(page->decay_accumulator[index] + delta);
+        uint8_t decayed_percentage = (uint8_t)(page->decay_accumulator[index] >> 8);
+        if (page->secondary_percentage[index] != decayed_percentage) {
+            page->secondary_percentage[index] = decayed_percentage;
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+/**
+ * @brief Stores one sampled set point and updates the directional primary values.
+ *
+ * @param[in,out] page Analysis state receiving the sample.
+ * @param[in] direction Zero for counterclockwise; nonzero for clockwise.
+ * @param[in] position Unsigned set-point magnitude.
+ */
+static void store_sample(volatile DisplayForceFeedbackAnalysisPage *page, uint8_t direction,
+                         uint16_t position) {
+    page->percentage = (uint8_t)(((uint32_t)position * 100u) >> 16);
+    page->direction = direction;
+    page->samples[page->next_sample] =
+        (uint8_t)((uint32_t)(ANALYSIS_CHART_HEIGHT - 1u) * position / UINT16_MAX);
+    page->next_sample =
+        (uint16_t)((page->next_sample + 1u) % DISPLAY_FORCE_FEEDBACK_ANALYSIS_SAMPLE_COUNT);
+    page->primary_percentage[0] = direction == 0 ? page->percentage : 0;
+    page->primary_percentage[1] = direction == 0 ? 0 : page->percentage;
 }
 
 /**
@@ -112,10 +165,10 @@ static void draw_line(DisplayFramebuffer framebuffer, uint16_t start_x, uint16_t
                       uint16_t end_x, uint16_t end_y, uint8_t color) {
     int32_t x = start_x;
     int32_t y = start_y;
-    int32_t delta_x = end_x - start_x;
-    int32_t delta_y = end_y - start_y;
-    int32_t step_x = delta_x < 0 ? -1 : 1;
-    int32_t step_y = delta_y < 0 ? -1 : 1;
+    int32_t delta_x = (int32_t)end_x - (int32_t)start_x;
+    int32_t delta_y = (int32_t)end_y - (int32_t)start_y;
+    int32_t step_x = start_x < end_x ? 1 : -1;
+    int32_t step_y = start_y < end_y ? 1 : -1;
     if (delta_x < 0) {
         delta_x = -delta_x;
     }
@@ -171,10 +224,10 @@ static void draw_chart_grid(DisplayFramebuffer framebuffer) {
  * @param[in] page Retained sample history and ring position.
  */
 static void draw_samples(DisplayFramebuffer framebuffer,
-                         const DisplayForceFeedbackAnalysisPage *page) {
+                         const volatile DisplayForceFeedbackAnalysisPage *page) {
+    uint16_t next_sample = page->next_sample;
     for (uint16_t index = 0; index < ANALYSIS_CHART_WIDTH - 2; index++) {
-        uint16_t sample_index =
-            (uint16_t)((page->next_sample + index) % (ANALYSIS_CHART_WIDTH - 1));
+        uint16_t sample_index = (uint16_t)((next_sample + index) % (ANALYSIS_CHART_WIDTH - 1));
         uint16_t start_y = (uint16_t)(ANALYSIS_CHART_BOTTOM - page->samples[sample_index] - 1u);
         uint16_t end_y = (uint16_t)(ANALYSIS_CHART_BOTTOM - page->samples[sample_index + 1u] - 1u);
         draw_line(framebuffer, (uint16_t)(ANALYSIS_CHART_LEFT + index + 1u), start_y,
@@ -185,7 +238,7 @@ static void draw_samples(DisplayFramebuffer framebuffer,
 /**
  * @brief Draws a reference progress record.
  *
- * Supports the vertical modes used by the direction bars and the reference split-color overlay.
+ * Draws a bottom-anchored vertical fill inside the reference record.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
  * @param[in] left Left record coordinate.
@@ -195,12 +248,11 @@ static void draw_samples(DisplayFramebuffer framebuffer,
  * @param[in] border_width Border thickness.
  * @param[in] border_color Border grayscale value.
  * @param[in] value_color Fill grayscale value.
- * @param[in] mode Reference fill mode.
  * @param[in] value Fill percentage.
  */
 static void draw_progress(DisplayFramebuffer framebuffer, uint16_t left, uint16_t top,
                           uint16_t right, uint16_t bottom, uint8_t border_width,
-                          uint8_t border_color, uint8_t value_color, uint8_t mode, uint8_t value) {
+                          uint8_t border_color, uint8_t value_color, uint8_t value) {
     if (border_width != 0) {
         for (uint8_t offset = 0; offset < border_width; offset++) {
             draw_horizontal_span(framebuffer, left, right, (uint16_t)(top + offset), border_color);
@@ -214,25 +266,13 @@ static void draw_progress(DisplayFramebuffer framebuffer, uint16_t left, uint16_
     if (value > 99) {
         value = 100;
     }
-    if (mode == 2 || mode == 3) {
-        uint16_t filled = (uint16_t)((bottom - top) * value / 100u);
-        if (filled == 0) {
-            return;
-        }
-        uint16_t first_x = left + border_width;
-        uint16_t last_x = right - border_width;
-        for (uint16_t x = first_x; x < last_x; x++) {
-            uint16_t first_y;
-            uint16_t last_y;
-            if (mode == 2) {
-                first_y = (uint16_t)(bottom - filled);
-                last_y = bottom;
-            } else {
-                first_y = (uint16_t)(top + border_width);
-                last_y = (uint16_t)(first_y + filled);
-            }
-            draw_vertical_span(framebuffer, x, first_y, last_y, value_color);
-        }
+    uint16_t filled = (uint16_t)(((uint32_t)(bottom - top) * value) / 100u);
+    if (filled == 0) {
+        return;
+    }
+    uint16_t first_x = left + border_width;
+    for (uint16_t x = first_x; x < right; x++) {
+        draw_vertical_span(framebuffer, x, (uint16_t)(bottom - filled), bottom, value_color);
     }
 }
 
@@ -244,76 +284,118 @@ static void draw_progress(DisplayFramebuffer framebuffer, uint16_t left, uint16_
  * @param[in] top Top record coordinate.
  * @param[in] right Exclusive right record coordinate.
  * @param[in] bottom Bottom record coordinate.
- * @param[in] mode Reference fill mode.
- * @param[in] percentage Fill percentage.
+ * @param[in] primary_percentage Primary fill percentage.
+ * @param[in] secondary_percentage Secondary trail percentage.
  */
 static void draw_split_progress(DisplayFramebuffer framebuffer, uint16_t left, uint16_t top,
-                                uint16_t right, uint16_t bottom, uint8_t mode, uint8_t percentage) {
+                                uint16_t right, uint16_t bottom, uint8_t primary_percentage,
+                                uint8_t secondary_percentage) {
     draw_progress(framebuffer, left, top, right, bottom, 1, ANALYSIS_BAR_BORDER_COLOR,
-                  ANALYSIS_BAR_FILL_COLOR - 4u, mode, percentage);
-    uint16_t primary_top = top;
-    if (mode == 1 || mode == 3) {
-        primary_top++;
-    }
-    draw_progress(framebuffer, left + 1u, primary_top, right, bottom, 0, 0, ANALYSIS_BAR_FILL_COLOR,
-                  mode, percentage);
+                  ANALYSIS_BAR_FILL_COLOR - 4u, secondary_percentage);
+    draw_progress(framebuffer, left + 1u, top, right, bottom, 0, 0, ANALYSIS_BAR_FILL_COLOR,
+                  primary_percentage);
 }
 
 /**
  * @brief Opens a force-feedback analysis session.
  *
- * Preserves retained samples and aligns the next sample with the global 25-millisecond cadence.
+ * Publishes a timestamped request through the alternate mailbox slot. Timer 1 consumes the
+ * published request before restarting the sampling phase and decay clock.
  *
  * @param[in,out] page Analysis sample history and current presentation.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
-void display_force_feedback_analysis_page_open(DisplayForceFeedbackAnalysisPage *page,
+void display_force_feedback_analysis_page_open(volatile DisplayForceFeedbackAnalysisPage *page,
                                                uint32_t now_ms) {
-    page->next_sample_ms =
-        now_ms + ANALYSIS_SAMPLE_INTERVAL_MS - now_ms % ANALYSIS_SAMPLE_INTERVAL_MS;
+    uint8_t request_slot = (uint8_t)(page->open_request_slot ^ 1u);
+    page->open_request_ms[request_slot] = now_ms;
+    page->open_request_slot = request_slot;
+    page->open_pending = true;
 }
 
 /**
- * @brief Samples the force-feedback set point.
+ * @brief Consumes a force-feedback analysis render indication.
  *
- * When the 25-millisecond sampling deadline is due, converts the unsigned 16-bit magnitude to a
- * zero-through-99 percentage and a 0-through-39 chart sample, retains it in a 200-sample
- * five-second history, and records zero as counterclockwise and nonzero as clockwise direction.
+ * Consumes the one-byte render indication published by Timer 1. Timer 1 owns the elapsed
+ * one-millisecond split-progress decay, global 25-millisecond sampling, and retained history.
  *
- * @param[in,out] page Analysis sample history and current presentation.
- * @param[in] now_ms Current monotonic time in milliseconds.
- * @param[in] direction Zero for counterclockwise; nonzero for clockwise.
- * @param[in] position Unsigned set-point magnitude.
- * @return True when a new sample was retained.
+ * @param[in,out] page Analysis state whose pending indication is consumed.
+ * @return True when Timer 1 published a changed page.
  */
-bool display_force_feedback_analysis_page_update(DisplayForceFeedbackAnalysisPage *page,
-                                                 uint32_t now_ms, uint8_t direction,
-                                                 uint16_t position) {
-    if (!sample_due(now_ms, page->next_sample_ms)) {
+bool display_force_feedback_analysis_page_update(volatile DisplayForceFeedbackAnalysisPage *page) {
+    page->render_active = true;
+    bool changed = page->render_pending;
+    page->render_pending = false;
+    page->render_active = false;
+    return changed;
+}
+
+/**
+ * @brief Advances the force-feedback analysis from one millisecond timer tick.
+ *
+ * Samples the live set point on the global 25-millisecond phase and advances both split-progress
+ * secondary trails at one-millisecond resolution. It defers updates while the foreground renderer
+ * holds the render gate and applies any queued reopen before resuming. Timer-driven changes remain
+ * pending until the foreground update consumes them.
+ *
+ * @param[in,out] page Force-feedback analysis state to update.
+ * @param[in] now_ms Current monotonic timer tick.
+ * @param[in] direction Zero for counterclockwise and nonzero for clockwise.
+ * @param[in] position Unsigned live set-point magnitude.
+ * @return True when a sample or visible secondary value changed.
+ */
+bool display_force_feedback_analysis_page_tick(volatile DisplayForceFeedbackAnalysisPage *page,
+                                               uint32_t now_ms, uint8_t direction,
+                                               uint16_t position) {
+    if (page->render_active) {
         return false;
     }
-    page->percentage = (uint8_t)(((uint32_t)position * 100u) >> 16);
-    page->direction = direction;
-    page->samples[page->next_sample] =
-        (uint8_t)((uint32_t)(ANALYSIS_CHART_HEIGHT - 1u) * position / UINT16_MAX);
-    page->next_sample =
-        (uint16_t)((page->next_sample + 1u) % DISPLAY_FORCE_FEEDBACK_ANALYSIS_SAMPLE_COUNT);
-    if (page->sample_count < DISPLAY_FORCE_FEEDBACK_ANALYSIS_SAMPLE_COUNT) {
-        page->sample_count++;
+    if (page->open_pending) {
+        uint8_t request_slot = page->open_request_slot;
+        uint32_t open_time_ms = page->open_request_ms[request_slot];
+        page->open_pending = false;
+        page->next_sample_ms = next_sample_after(open_time_ms);
+        page->last_tick_ms = now_ms;
+        page->tick_initialized = true;
+        page->render_pending = false;
+        return false;
     }
-    page->next_sample_ms = now_ms + ANALYSIS_SAMPLE_INTERVAL_MS;
-    return true;
+    if (!page->tick_initialized) {
+        page->next_sample_ms = next_sample_after(now_ms);
+        page->last_tick_ms = now_ms;
+        page->tick_initialized = true;
+        return false;
+    }
+
+    int32_t elapsed = (int32_t)(now_ms - page->last_tick_ms);
+    if (elapsed <= 0) {
+        return false;
+    }
+
+    bool changed = false;
+    while (elapsed-- > 0) {
+        page->last_tick_ms++;
+        changed |= update_decay_tick(page);
+        if (page->last_tick_ms == page->next_sample_ms) {
+            store_sample(page, direction, position);
+            changed = true;
+            page->next_sample_ms += ANALYSIS_SAMPLE_INTERVAL_MS;
+        }
+    }
+    if (changed) {
+        page->render_pending = true;
+    }
+    return changed;
 }
 
 /**
  * @brief Renders the force-feedback analysis opening title.
  *
- * Clears the previous page and draws the inverted title at the official record coordinates.
+ * Draws the inverted title over the current page content at the official record coordinates.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
  */
 void display_force_feedback_analysis_page_render_title(DisplayFramebuffer framebuffer) {
-    display_framebuffer_clear(framebuffer);
     display_text_draw_with_font(framebuffer, &display_font_10_00c988,
                                 "Force Feedback Analysis Screen", 0, ANALYSIS_TITLE_Y, true);
 }
@@ -325,10 +407,11 @@ void display_force_feedback_analysis_page_render_title(DisplayFramebuffer frameb
  * direction-specific level bars.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
- * @param[in] page Current sample history, magnitude, and direction.
+ * @param[in,out] page Current sample history, magnitude, and direction.
  */
-void display_force_feedback_analysis_page_render(DisplayFramebuffer framebuffer,
-                                                 const DisplayForceFeedbackAnalysisPage *page) {
+void display_force_feedback_analysis_page_render(
+    DisplayFramebuffer framebuffer, volatile DisplayForceFeedbackAnalysisPage *page) {
+    page->render_active = true;
     char percentage[5];
     format_percentage(percentage, page->percentage);
     display_framebuffer_clear(framebuffer);
@@ -342,9 +425,10 @@ void display_force_feedback_analysis_page_render(DisplayFramebuffer framebuffer,
     draw_vertical_span(framebuffer, ANALYSIS_CHART_LEFT, ANALYSIS_CHART_TOP, ANALYSIS_CHART_BOTTOM,
                        ANALYSIS_COLOR);
     draw_split_progress(framebuffer, ANALYSIS_COUNTERCLOCKWISE_BAR_LEFT, ANALYSIS_BAR_TOP,
-                        ANALYSIS_COUNTERCLOCKWISE_BAR_RIGHT, ANALYSIS_BAR_BOTTOM, 2,
-                        page->direction == 0 ? page->percentage : 0);
+                        ANALYSIS_COUNTERCLOCKWISE_BAR_RIGHT, ANALYSIS_BAR_BOTTOM,
+                        page->primary_percentage[0], page->secondary_percentage[0]);
     draw_split_progress(framebuffer, ANALYSIS_CLOCKWISE_BAR_LEFT, ANALYSIS_BAR_TOP,
-                        ANALYSIS_CLOCKWISE_BAR_RIGHT, ANALYSIS_BAR_BOTTOM, 2,
-                        page->direction == 0 ? 0 : page->percentage);
+                        ANALYSIS_CLOCKWISE_BAR_RIGHT, ANALYSIS_BAR_BOTTOM,
+                        page->primary_percentage[1], page->secondary_percentage[1]);
+    page->render_active = false;
 }
