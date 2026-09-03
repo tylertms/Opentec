@@ -13,18 +13,23 @@
  * The ring buffer retains 120 samples collected at 41-millisecond intervals for approximately five
  * seconds of torque history.
  */
-enum { DISPLAY_MOTOR_DATA_ANALYSIS_SAMPLE_COUNT = 120 /**< Number of retained torque samples. */ };
+enum {
+    DISPLAY_MOTOR_DATA_ANALYSIS_SAMPLE_COUNT = 120, /**< Number of retained torque samples. */
+    DISPLAY_MOTOR_DATA_ANALYSIS_BAR_COUNT = 2,      /**< Positive and negative torque bars. */
+};
 
 /**
  * @brief Stores motor-analysis history and live telemetry.
  *
  * The state includes scaled chart samples, a ten-second peak hold, current torque, temperatures,
- * display fan tachometer speed, and the variant-specific torque limit.
+ * display fan tachometer speed, the variant-specific torque limit, and the two split-progress bar
+ * values. Secondary bar values hold their peak for five seconds before applying the reference
+ * fixed-point decay.
  */
 typedef struct {
     uint8_t samples[DISPLAY_MOTOR_DATA_ANALYSIS_SAMPLE_COUNT]; /**< Scaled signed torque samples for
                                                                   the chart. */
-    uint16_t next_sample;         /**< Ring-buffer index where the next torque sample is stored. */
+    uint16_t next_sample; /**< Next ring index; it transiently equals the capacity after index 119. */
     uint16_t sample_count;        /**< Number of valid torque samples currently retained. */
     uint32_t next_sample_ms;      /**< Next timestamp at which a torque sample may be stored. */
     uint32_t next_peak_update_ms; /**< Next timestamp at which the peak hold may be evaluated. */
@@ -37,13 +42,23 @@ typedef struct {
     uint16_t fan_speed_rpm; /**< Current display fan tachometer speed in revolutions per minute. */
     uint16_t torque_limit;  /**< Variant-specific display torque limit in thousandths of a
                                newton-metre. */
+    uint8_t primary_percentage[DISPLAY_MOTOR_DATA_ANALYSIS_BAR_COUNT]; /**< Current positive and
+                                                                           negative bar values. */
+    uint8_t secondary_percentage[DISPLAY_MOTOR_DATA_ANALYSIS_BAR_COUNT]; /**< Held positive and
+                                                                            negative bar peaks. */
+    uint16_t decay_accumulator[DISPLAY_MOTOR_DATA_ANALYSIS_BAR_COUNT]; /**< 8.8 fixed-point decay
+                                                                           accumulators. */
+    uint32_t decay_countdown[DISPLAY_MOTOR_DATA_ANALYSIS_BAR_COUNT]; /**< Millisecond hold
+                                                                         countdowns. */
+    uint32_t last_decay_ms; /**< Last elapsed decay timestamp applied to the bars. */
 } DisplayMotorDataAnalysisPage;
 
 /**
  * @brief Opens a motor-data analysis session.
  *
- * Preserves retained history and peak state, selects the DD1 or DD2 torque range, and aligns the
- * next chart sample with the global 41-millisecond cadence.
+ * Preserves retained history, peak state, and split-progress values, selects the DD1 or DD2 torque
+ * range, aligns the next chart sample with the global 41-millisecond cadence, and restarts the
+ * elapsed decay clock at the opening instant.
  *
  * @param[in,out] page Motor-analysis state to prepare.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -55,8 +70,9 @@ void display_motor_data_analysis_page_open(DisplayMotorDataAnalysisPage *page, u
 /**
  * @brief Updates motor-analysis history and telemetry.
  *
- * Samples the torque chart and evaluates the ten-second peak hold on their respective schedules,
- * while updating temperatures and the display fan tachometer whenever they change.
+ * Advances elapsed split-progress decay, samples the torque chart, and evaluates the ten-second
+ * peak hold on their respective schedules, while updating temperatures and the display fan
+ * tachometer whenever they change.
  *
  * @param[in,out] page Motor-analysis state to update.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -83,7 +99,7 @@ void display_motor_data_analysis_page_render_title(DisplayFramebuffer framebuffe
  * @brief Renders motor torque history and telemetry.
  *
  * Clears the framebuffer and draws current and peak torque, the signed history chart, directional
- * torque bars, temperatures, and the display fan tachometer.
+ * split-progress torque bars, temperatures, and the display fan tachometer.
  *
  * @param[in,out] framebuffer Framebuffer receiving the rendered page.
  * @param[in] page Motor-analysis state to render.

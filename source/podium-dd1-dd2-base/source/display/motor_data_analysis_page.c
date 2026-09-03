@@ -17,10 +17,13 @@ enum {
     MOTOR_ANALYSIS_SAMPLE_INTERVAL_MS = 41, /**< Torque-chart sampling interval in milliseconds. */
     MOTOR_ANALYSIS_PEAK_INTERVAL_MS = 30,   /**< Peak-hold evaluation interval in milliseconds. */
     MOTOR_ANALYSIS_PEAK_HOLD_MS = 10000,    /**< Peak-hold duration in milliseconds. */
+    MOTOR_ANALYSIS_DECAY_HOLD_MS = 5000, /**< Split-progress secondary hold in milliseconds. */
+    MOTOR_ANALYSIS_BAR_MAX_PERCENTAGE = 99, /**< Maximum primary bar percentage before drawing. */
+    MOTOR_ANALYSIS_PERCENTAGE_SIGN_BIT = 0x80, /**< Sign bit after reference byte narrowing. */
     MOTOR_ANALYSIS_DD1_LIMIT = 20000,     /**< DD1 torque limit in thousandths of a newton-metre. */
     MOTOR_ANALYSIS_DD2_LIMIT = 25000,     /**< DD2 torque limit in thousandths of a newton-metre. */
     MOTOR_ANALYSIS_COLOR = 15,            /**< Foreground grayscale value. */
-    MOTOR_ANALYSIS_SERIES_COLOR = 8,      /**< History-series grayscale value. */
+    MOTOR_ANALYSIS_SERIES_COLOR = 4,      /**< History-series grayscale value. */
     MOTOR_ANALYSIS_GRID_COLOR = 1,        /**< Chart-grid grayscale value. */
     MOTOR_ANALYSIS_BAR_BORDER_COLOR = 10, /**< Torque-bar border grayscale value. */
     MOTOR_ANALYSIS_BAR_FILL_COLOR = 6,    /**< Torque-bar fill grayscale value. */
@@ -31,13 +34,16 @@ enum {
     MOTOR_ANALYSIS_CHART_HEIGHT = 40, /**< Chart height in pixels. */
     MOTOR_ANALYSIS_CHART_TOP = 23,    /**< Chart top coordinate. */
     MOTOR_ANALYSIS_CHART_BOTTOM = 63, /**< Chart bottom coordinate. */
+    MOTOR_ANALYSIS_CHART_CENTER = 43, /**< Zero-torque horizontal axis coordinate. */
+    MOTOR_ANALYSIS_CHART_LABEL_X = 124, /**< Horizontal scale-label leading column. */
+    MOTOR_ANALYSIS_CHART_LABEL_Y = 33, /**< Horizontal scale-label top row. */
     MOTOR_ANALYSIS_SEPARATOR_X = 150, /**< Telemetry-column separator coordinate. */
 };
 
 /**
  * @brief Tests whether a motor-analysis deadline is due.
  *
- * Uses signed modular subtraction so sampling and peak hold remain valid across timer wrap.
+ * Uses signed modular subtraction so chart sampling remains valid across timer wrap.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  * @param[in] deadline_ms Deadline to test.
@@ -45,6 +51,98 @@ enum {
  */
 static bool deadline_reached(uint32_t now_ms, uint32_t deadline_ms) {
     return (int32_t)(now_ms - deadline_ms) >= 0;
+}
+
+/**
+ * @brief Tests whether a motor-analysis deadline has passed.
+ *
+ * Uses the unsigned comparison from the reference peak updater and excludes the exact deadline
+ * instant.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[in] deadline_ms Deadline to test.
+ * @return True when now_ms is later than deadline_ms.
+ */
+static bool deadline_passed(uint32_t now_ms, uint32_t deadline_ms) {
+    return now_ms > deadline_ms;
+}
+
+/**
+ * @brief Advances one split-progress decay accumulator by elapsed milliseconds.
+ *
+ * Applies the reference 8.8 fixed-point recurrence in bounded arithmetic rather than iterating
+ * once for every elapsed millisecond.
+ *
+ * @param[in] accumulator Current 8.8 fixed-point secondary value.
+ * @param[in] target Primary percentage that bounds the decay.
+ * @param[in] steps Number of one-millisecond decay steps to apply.
+ * @return Updated 8.8 fixed-point secondary value.
+ */
+static uint16_t advance_split_progress_decay_accumulator(uint16_t accumulator, uint8_t target,
+                                                         uint32_t steps) {
+    uint16_t whole = accumulator >> 8;
+    uint16_t fraction = accumulator & 0xffu;
+    while (steps != 0 && whole > target) {
+        uint16_t difference = (uint16_t)(whole - target);
+        uint32_t steps_to_lower = fraction / difference + 1u;
+        if (steps < steps_to_lower) {
+            fraction = (uint16_t)(fraction - steps * difference);
+            steps = 0;
+            break;
+        }
+        fraction = (uint16_t)(fraction - (steps_to_lower - 1u) * difference +
+                              0x100u - difference);
+        whole--;
+        steps -= steps_to_lower;
+    }
+    return (uint16_t)((whole << 8) | fraction);
+}
+
+/**
+ * @brief Advances split-progress secondary values by elapsed milliseconds.
+ *
+ * Matches the reference driver's five-second hold and 8.8 fixed-point decay for both directional
+ * torque bars.
+ *
+ * @param[in,out] page Retained motor-analysis state.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @return True when a visible secondary bar value changed.
+ */
+static bool advance_split_progress_decay(DisplayMotorDataAnalysisPage *page, uint32_t now_ms) {
+    int32_t elapsed = (int32_t)(now_ms - page->last_decay_ms);
+    if (elapsed <= 0) {
+        return false;
+    }
+
+    page->last_decay_ms = now_ms;
+    bool changed = false;
+    for (uint8_t index = 0; index < DISPLAY_MOTOR_DATA_ANALYSIS_BAR_COUNT; index++) {
+        uint32_t steps = (uint32_t)elapsed;
+        uint8_t primary = page->primary_percentage[index];
+        uint8_t secondary = page->secondary_percentage[index];
+        if (primary > secondary) {
+            secondary = primary;
+            page->secondary_percentage[index] = secondary;
+            page->decay_countdown[index] = MOTOR_ANALYSIS_DECAY_HOLD_MS;
+            page->decay_accumulator[index] = (uint16_t)primary << 8;
+            changed = true;
+            steps--;
+        }
+        uint32_t hold_steps = page->decay_countdown[index];
+        if (steps <= hold_steps) {
+            page->decay_countdown[index] = hold_steps - steps;
+            continue;
+        }
+        steps -= hold_steps;
+        page->decay_countdown[index] = 0;
+        page->decay_accumulator[index] =
+            advance_split_progress_decay_accumulator(page->decay_accumulator[index], primary,
+                                                     steps);
+        uint8_t decayed_percentage = (uint8_t)(page->decay_accumulator[index] >> 8);
+        changed |= secondary != decayed_percentage;
+        page->secondary_percentage[index] = decayed_percentage;
+    }
+    return changed;
 }
 
 /**
@@ -57,6 +155,29 @@ static bool deadline_reached(uint32_t now_ms, uint32_t deadline_ms) {
  */
 static uint16_t magnitude(int16_t value) {
     return value < 0 ? (uint16_t)(-(int32_t)value) : (uint16_t)value;
+}
+
+/**
+ * @brief Converts a torque percentage using the reference signed-byte behavior.
+ *
+ * The reference narrows the quotient to eight bits before testing its sign or clamping its
+ * magnitude. Values whose narrowed magnitude still has the sign bit are intentionally retained.
+ *
+ * @param[in] percentage Signed percentage quotient before narrowing.
+ * @param[out] positive_percentage Positive-direction bar value.
+ * @param[out] negative_percentage Negative-direction bar value.
+ */
+static void split_torque_percentage(int32_t percentage, uint8_t *positive_percentage,
+                                    uint8_t *negative_percentage) {
+    uint8_t narrowed = (uint8_t)percentage;
+    bool negative = narrowed >= MOTOR_ANALYSIS_PERCENTAGE_SIGN_BIT;
+    uint8_t bar_percentage = negative ? (uint8_t)(0u - narrowed) : narrowed;
+    if (bar_percentage > MOTOR_ANALYSIS_BAR_MAX_PERCENTAGE &&
+        bar_percentage < MOTOR_ANALYSIS_PERCENTAGE_SIGN_BIT) {
+        bar_percentage = MOTOR_ANALYSIS_BAR_MAX_PERCENTAGE;
+    }
+    *positive_percentage = negative ? 0 : bar_percentage;
+    *negative_percentage = negative ? bar_percentage : 0;
 }
 
 /**
@@ -90,20 +211,27 @@ static char *append_unsigned(char *output, uint32_t value, uint8_t minimum_digit
 /**
  * @brief Formats torque with one decimal place in newton-metres.
  *
- * Converts thousandths of a newton-metre to rounded tenths and appends the local unit suffix.
+ * Converts thousandths of a newton-metre to one rounded fractional digit and appends the local
+ * unit suffix. The fractional digit saturates at nine without carrying into the whole part, and
+ * the displayed value omits the torque sign.
  *
  * @param[out] output Null-terminated torque text.
  * @param[in] torque Signed torque in thousandths of a newton-metre.
  */
 static void format_torque(char output[16], int16_t torque) {
-    uint16_t tenths = (uint16_t)((magnitude(torque) + 50u) / 100u);
-    char *cursor = output;
-    if (torque < 0 && tenths != 0) {
-        *cursor++ = '-';
+    uint16_t absolute = magnitude(torque);
+    uint16_t whole = absolute / 1000u;
+    uint8_t fraction = (uint8_t)(absolute / 100u % 10u);
+    if ((absolute / 10u % 10u) > 4u) {
+        fraction++;
+        if (fraction > 9u) {
+            fraction = 9u;
+        }
     }
-    cursor = append_unsigned(cursor, tenths / 10u, 1);
+    char *cursor = output;
+    cursor = append_unsigned(cursor, whole, 1);
     *cursor++ = '.';
-    *cursor++ = (char)('0' + tenths % 10u);
+    *cursor++ = (char)('0' + fraction);
     *cursor++ = ' ';
     *cursor++ = 'N';
     *cursor++ = 'm';
@@ -257,7 +385,9 @@ static void draw_chart(DisplayFramebuffer framebuffer, const DisplayMotorDataAna
     draw_vertical_span(framebuffer, MOTOR_ANALYSIS_CHART_LEFT, MOTOR_ANALYSIS_CHART_TOP,
                        MOTOR_ANALYSIS_CHART_BOTTOM, MOTOR_ANALYSIS_COLOR);
     draw_horizontal_span(framebuffer, MOTOR_ANALYSIS_CHART_LEFT, MOTOR_ANALYSIS_CHART_RIGHT,
-                         MOTOR_ANALYSIS_CHART_BOTTOM, MOTOR_ANALYSIS_COLOR);
+                         MOTOR_ANALYSIS_CHART_CENTER, MOTOR_ANALYSIS_COLOR);
+    display_text_draw_with_font(framebuffer, &display_font_10_00c988, "5s ",
+                                MOTOR_ANALYSIS_CHART_LABEL_X, MOTOR_ANALYSIS_CHART_LABEL_Y, false);
 }
 
 /**
@@ -295,8 +425,7 @@ static void draw_progress(DisplayFramebuffer framebuffer, uint16_t left, uint16_
         return;
     }
     uint16_t first_x = left + border_width;
-    uint16_t last_x = right - border_width;
-    for (uint16_t x = first_x; x < last_x; x++) {
+    for (uint16_t x = first_x; x < right; x++) {
         uint16_t first_y = mode == 2 ? (uint16_t)(bottom - filled) : (uint16_t)(top + border_width);
         uint16_t last_y = mode == 2 ? bottom : (uint16_t)(first_y + filled);
         draw_vertical_span(framebuffer, x, first_y, last_y, value_color);
@@ -312,38 +441,36 @@ static void draw_progress(DisplayFramebuffer framebuffer, uint16_t left, uint16_
  * @param[in] right Exclusive right record coordinate.
  * @param[in] bottom Bottom record coordinate.
  * @param[in] mode Reference fill mode.
- * @param[in] percentage Fill percentage.
+ * @param[in] primary_percentage Current fill percentage.
+ * @param[in] secondary_percentage Held peak percentage.
  */
 static void draw_split_progress(DisplayFramebuffer framebuffer, uint16_t left, uint16_t top,
-                                uint16_t right, uint16_t bottom, uint8_t mode, uint8_t percentage) {
+                                uint16_t right, uint16_t bottom, uint8_t mode,
+                                uint8_t primary_percentage, uint8_t secondary_percentage) {
     draw_progress(framebuffer, left, top, right, bottom, 1, MOTOR_ANALYSIS_BAR_BORDER_COLOR,
-                  MOTOR_ANALYSIS_BAR_FILL_COLOR - 4u, mode, percentage);
+                  MOTOR_ANALYSIS_BAR_FILL_COLOR - 4u, mode, secondary_percentage);
     uint16_t primary_top = top;
     if (mode == 1 || mode == 3) {
         primary_top++;
     }
     draw_progress(framebuffer, left + 1u, primary_top, right, bottom, 0, 0,
-                  MOTOR_ANALYSIS_BAR_FILL_COLOR, mode, percentage);
+                  MOTOR_ANALYSIS_BAR_FILL_COLOR, mode, primary_percentage);
 }
 
 /**
  * @brief Draws positive and negative torque level bars.
  *
- * Scales the current torque against the DD1 or DD2 range and fills only the matching half.
+ * Draws the positive and negative split-progress records from their current and held values.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
- * @param[in] page Current torque and variant-specific limit.
+ * @param[in] page Current and held directional bar values.
  */
 static void draw_torque_bars(DisplayFramebuffer framebuffer,
                              const DisplayMotorDataAnalysisPage *page) {
-    uint16_t percentage = (uint16_t)((uint32_t)magnitude(page->torque) * 100u / page->torque_limit);
-    if (percentage > 99) {
-        percentage = 99;
-    }
-    draw_split_progress(framebuffer, 137, 24, 143, 43, 2,
-                        page->torque >= 0 ? (uint8_t)percentage : 0);
-    draw_split_progress(framebuffer, 137, 43, 143, 62, 3,
-                        page->torque < 0 ? (uint8_t)percentage : 0);
+    draw_split_progress(framebuffer, 137, 24, 143, 43, 2, page->primary_percentage[0],
+                        page->secondary_percentage[0]);
+    draw_split_progress(framebuffer, 137, 43, 143, 62, 3, page->primary_percentage[1],
+                        page->secondary_percentage[1]);
 }
 
 /**
@@ -362,13 +489,15 @@ void display_motor_data_analysis_page_open(DisplayMotorDataAnalysisPage *page, u
         variant == BOARD_VARIANT_DD1 ? MOTOR_ANALYSIS_DD1_LIMIT : MOTOR_ANALYSIS_DD2_LIMIT;
     page->next_sample_ms =
         now_ms + MOTOR_ANALYSIS_SAMPLE_INTERVAL_MS - now_ms % MOTOR_ANALYSIS_SAMPLE_INTERVAL_MS;
+    page->last_decay_ms = now_ms;
 }
 
 /**
  * @brief Updates motor analysis from live diagnostics.
  *
- * Samples the five-second torque chart every 41 milliseconds, evaluates absolute peak torque every
- * 30 milliseconds with a ten-second hold, and retains changed temperatures and the display fan
+ * Advances split-progress secondary values with a five-second hold and fixed-point decay, samples
+ * the five-second torque chart every 41 milliseconds, evaluates absolute peak torque every 30
+ * milliseconds with a ten-second hold, and retains changed temperatures and the display fan
  * tachometer.
  *
  * @param[in,out] page Retained motor-analysis state.
@@ -382,7 +511,7 @@ void display_motor_data_analysis_page_open(DisplayMotorDataAnalysisPage *page, u
 bool display_motor_data_analysis_page_update(DisplayMotorDataAnalysisPage *page, uint32_t now_ms,
                                              int16_t torque, int16_t motor_temperature,
                                              int16_t driver_temperature, uint16_t fan_speed_rpm) {
-    bool changed = false;
+    bool changed = advance_split_progress_decay(page, now_ms);
     if (deadline_reached(now_ms, page->next_sample_ms)) {
         page->torque = torque;
         int32_t clamped = torque;
@@ -391,18 +520,23 @@ bool display_motor_data_analysis_page_update(DisplayMotorDataAnalysisPage *page,
         } else if (clamped < -(int32_t)page->torque_limit) {
             clamped = -(int32_t)page->torque_limit;
         }
+        if (page->next_sample >= DISPLAY_MOTOR_DATA_ANALYSIS_SAMPLE_COUNT) {
+            page->next_sample = 0;
+        }
         page->samples[page->next_sample] =
             (uint8_t)((clamped + page->torque_limit) * 39 / ((int32_t)page->torque_limit * 2));
-        page->next_sample =
-            (uint16_t)((page->next_sample + 1u) % DISPLAY_MOTOR_DATA_ANALYSIS_SAMPLE_COUNT);
+        page->next_sample++;
         if (page->sample_count < DISPLAY_MOTOR_DATA_ANALYSIS_SAMPLE_COUNT) {
             page->sample_count++;
         }
+        int32_t percentage = (int32_t)torque * 100 / page->torque_limit;
+        split_torque_percentage(percentage, &page->primary_percentage[0],
+                                &page->primary_percentage[1]);
         page->next_sample_ms = now_ms + MOTOR_ANALYSIS_SAMPLE_INTERVAL_MS;
         changed = true;
     }
 
-    if (deadline_reached(now_ms, page->next_peak_update_ms)) {
+    if (deadline_passed(now_ms, page->next_peak_update_ms)) {
         page->next_peak_update_ms = now_ms + MOTOR_ANALYSIS_PEAK_INTERVAL_MS;
         uint16_t current_magnitude = magnitude(torque);
         if (current_magnitude > page->peak_magnitude) {
@@ -410,7 +544,7 @@ bool display_motor_data_analysis_page_update(DisplayMotorDataAnalysisPage *page,
             page->peak_magnitude = current_magnitude;
             page->peak_expiry_ms = now_ms + MOTOR_ANALYSIS_PEAK_HOLD_MS;
             changed = true;
-        } else if (deadline_reached(now_ms, page->peak_expiry_ms)) {
+        } else if (deadline_passed(now_ms, page->peak_expiry_ms)) {
             changed |= page->peak_torque != torque;
             page->peak_torque = torque;
             page->peak_magnitude = current_magnitude;
