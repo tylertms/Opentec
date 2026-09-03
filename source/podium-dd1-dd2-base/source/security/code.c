@@ -190,14 +190,17 @@ static SecurityCodeUpdate prompt_update(const SecurityCode *code, const Security
  * @brief Builds the current three-digit entry presentation.
  *
  * Encodes all three decimal digits, then either publishes the selected-digit report mask or blanks
- * the selected local glyph during blink phase zero.
+ * the digit selected at the start of this update during blink phase zero. This preserves the
+ * firmware's one-update render cadence when an action moves selection.
  *
  * @param[in] code Security-code interaction state.
  * @param[in] input Current attached-wheel and adapter input.
+ * @param[in] selected_digit Digit selected before this update's action is applied.
  * @return Digit presentation for the active entry field.
  */
 static SecurityCodePresentation digit_presentation(const SecurityCode *code,
-                                                   const SecurityCodeInput *input) {
+                                                   const SecurityCodeInput *input,
+                                                   uint8_t selected_digit) {
     /** @brief Seven-segment glyphs for decimal digits. */
     static const uint8_t digit_glyphs[] = {0x3f, 0x06, 0x5b, 0x4f, 0x66,
                                            0x6d, 0x7d, 0x07, 0x7f, 0x6f};
@@ -209,9 +212,9 @@ static SecurityCodePresentation digit_presentation(const SecurityCode *code,
         presentation.glyphs[digit] = digit_glyphs[code->entered_digits[digit]];
     }
     if (report_display_used(input)) {
-        presentation.report = reports[code->selected_digit];
+        presentation.report = reports[selected_digit];
     } else if (code->blink_phase == 0) {
-        presentation.glyphs[code->selected_digit] = 0;
+        presentation.glyphs[selected_digit] = 0;
     }
     return presentation;
 }
@@ -291,6 +294,7 @@ SecurityCodeUpdate security_code_update(SecurityCode *code, SecurityCodeSettings
         return update;
     }
     if (code->phase == SECURITY_CODE_EDIT) {
+        uint8_t selected_digit = code->selected_digit;
         SecurityCodeActionInput actions = action_input(input);
         if (deadline_reached(now_ms, code->input_deadline_ms)) {
             apply_action(code, actions, now_ms);
@@ -298,7 +302,7 @@ SecurityCodeUpdate security_code_update(SecurityCode *code, SecurityCodeSettings
             code->input_deadline_ms = now_ms;
         }
         advance_blink(code, now_ms);
-        update.presentation = digit_presentation(code, input);
+        update.presentation = digit_presentation(code, input, selected_digit);
         return update;
     }
     if (code->phase == SECURITY_CODE_CONFIRM) {

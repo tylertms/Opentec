@@ -260,6 +260,36 @@ static void test_prompt_modes_and_digit_markers(void) {
     assert(update.presentation.glyphs[1] == 0x5b);
 }
 
+static void test_digit_marker_uses_selection_at_update_start(void) {
+    SecurityCode code = {
+        .entered_digits = {1, 2, 3},
+        .phase = SECURITY_CODE_EDIT,
+        .selected_digit = 1,
+        .blink_deadline_ms = 100,
+    };
+    SecurityCodeSettings settings = {0};
+    SecurityCodeInput input = {
+        .wheel_mode = 1,
+        .primary_buttons = 0x0200,
+    };
+
+    SecurityCodeUpdate update = security_code_update(&code, &settings, &input, 50);
+    assert(code.selected_digit == 0);
+    assert(update.presentation.glyphs[0] == 0x06);
+    assert(update.presentation.glyphs[1] == 0);
+    assert(update.presentation.glyphs[2] == 0x4f);
+
+    code.phase = SECURITY_CODE_EDIT;
+    code.selected_digit = 1;
+    code.input_deadline_ms = 0;
+    code.blink_deadline_ms = 100;
+    input.wheel_mode = 0x0a;
+    input.primary_buttons = 0x0400;
+    update = security_code_update(&code, &settings, &input, 50);
+    assert(code.selected_digit == 2);
+    assert(update.presentation.report == 0x10);
+}
+
 static void test_deadlines_wrap_safely(void) {
     SecurityCode code = {
         .phase = SECURITY_CODE_WAIT,
@@ -285,6 +315,7 @@ int main(void) {
     test_enable_confirmation_stores_entered_code();
     test_disable_confirmation_requires_matching_code();
     test_prompt_modes_and_digit_markers();
+    test_digit_marker_uses_selection_at_update_start();
     test_deadlines_wrap_safely();
     return 0;
 }
