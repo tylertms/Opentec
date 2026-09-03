@@ -14,7 +14,6 @@ static void test_decode_position(void) {
 
     assert(motor_live_frame_decode(position_frame, &frame) == MOTOR_LIVE_FRAME_VALID);
     assert(motor_position_report_decode(&frame, &report));
-    assert(!report.replay);
     assert(report.wheel_position == 0x08070605);
     assert(report.motor_torque == 0xabcd);
     assert(!report.auxiliary_negative);
@@ -31,7 +30,6 @@ static void test_replay_is_not_a_position_report(void) {
     };
     MotorLiveFrame frame;
     MotorPositionReport report = {
-        .replay = true,
         .wheel_position = 123,
         .motor_torque = 456,
         .auxiliary_negative = true,

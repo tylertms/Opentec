@@ -40,7 +40,6 @@ typedef struct {
  * @brief Decoded wheel-position report from a position frame.
  */
 typedef struct {
-    bool replay;             /**< Always false; replay frames are not decoded as position reports. */
     int32_t wheel_position;  /**< Signed little-endian wheel-position sample. */
     uint16_t motor_torque;   /**< Unsigned little-endian motor-torque sample. */
     bool auxiliary_negative; /**< True when the auxiliary position direction bit is set. */

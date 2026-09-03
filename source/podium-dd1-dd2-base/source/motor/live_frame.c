@@ -124,7 +124,6 @@ bool motor_position_report_decode(const MotorLiveFrame *frame, MotorPositionRepo
     }
 
     uint16_t auxiliary = read_u16(frame->payload + 6);
-    report->replay = false;
     report->wheel_position = read_i32(frame->payload);
     report->motor_torque = read_u16(frame->payload + 4);
     report->auxiliary_negative = (auxiliary & MOTOR_POSITION_AUXILIARY_DIRECTION) != 0;
