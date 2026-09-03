@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "motor/command_packet.h"
 #include "usb/feature_upload.h"
 
 /** @brief Report identifiers used by the motor-command upload protocol. */
@@ -13,6 +14,13 @@ enum {
         0xfd, /**< Segmented-upload acknowledgement report identifier. */
     USB_MOTOR_COMMAND_COMPACT_ACKNOWLEDGEMENT_REPORT_ID =
         0xfe, /**< Compact-upload acknowledgement report identifier. */
+};
+
+/** @brief Motor-command upload storage limits. */
+enum {
+    USB_MOTOR_COMMAND_UPLOAD_WRAPPER_SIZE = 9, /**< Bytes surrounding the command payload. */
+    USB_MOTOR_COMMAND_UPLOAD_ASSEMBLY_SIZE =
+        MOTOR_COMMAND_PACKET_MAX_PACKET_SIZE, /**< Storage for one maximum feature upload. */
 };
 
 /** @brief Result of accepting a motor-command upload packet. */
@@ -35,6 +43,7 @@ typedef struct {
     uint8_t sequence; /**< Sequence value copied from a packet with a valid report ID and length. */
     uint8_t acknowledgement_report_id; /**< Report identifier for the required acknowledgement, if
                                           any. */
+    bool segmented; /**< True when a complete command resides in the segmented assembly buffer. */
 } UsbMotorCommandUploadEvent;
 
 /** @brief State for assembling motor-command upload packets. */
@@ -50,17 +59,31 @@ typedef struct {
  *
  * @param[out] upload Upload state to initialize.
  * @param[out] assembly Caller-owned storage for a segmented command.
- * @param[in] assembly_capacity Capacity of assembly in bytes.
+ * @param[in] assembly_capacity Capacity of assembly in bytes; use
+ * USB_MOTOR_COMMAND_UPLOAD_ASSEMBLY_SIZE for the maximum feature upload.
  * @return True when upload and assembly are non-null and the capacity is nonzero; otherwise false.
  */
 bool usb_motor_command_upload_init(UsbMotorCommandUpload *upload, uint8_t *assembly,
                                    uint16_t assembly_capacity);
 
 /**
+ * @brief Resets completed or in-progress motor-command upload state.
+ *
+ * Keeps the attached assembly storage and report identifier while discarding upload progress.
+ * A completed segmented command keeps its bytes in the attached storage, but callers must consume
+ * or copy those bytes before accepting another segmented upload.
+ *
+ * @param[in,out] upload Upload state to reset.
+ */
+void usb_motor_command_upload_reset(UsbMotorCommandUpload *upload);
+
+/**
  * @brief Accepts one motor-command feature packet.
  *
  * Decodes compact controls and commands, forwards segmented packets to the shared upload state, and
- * reports upload progress, acknowledgement requests, or a completed command payload.
+ * reports upload progress, acknowledgement requests, or a completed command payload. A completed
+ * segmented command resets upload progress while leaving its payload in assembly storage for the
+ * consumer.
  *
  * @param[in,out] upload Active motor-command upload state.
  * @param[in] packet Received packet, including its report identifier.

@@ -30,15 +30,15 @@ static UsbMotorVendorServiceResult apply_channel_event(UsbMotorVendorService *se
         result.motor_packet_length = channel_event.packet_length;
     }
     MotorCommandApplicationEvent application = channel_event.application;
-    if (application.result != MOTOR_COMMAND_APPLICATION_FORWARD || application.forward_data == 0 ||
+    if (application.result != MOTOR_COMMAND_APPLICATION_FORWARD || service->response_active ||
+        application.forward_data == 0 ||
         application.forward_length > service->buffers.application_data_capacity) {
         return result;
     }
     memmove(service->buffers.application_data, application.forward_data,
             application.forward_length);
-    service->response_length = application.forward_length;
     service->response_active = usb_motor_response_download_init(
-        &service->download, service->usb_sequence, service->response_length);
+        &service->download, service->usb_sequence, application.forward_length);
     if (service->response_active) {
         result.actions =
             (UsbMotorVendorAction)(result.actions | USB_MOTOR_VENDOR_ACTION_RESPONSE_READY);
@@ -46,11 +46,37 @@ static UsbMotorVendorServiceResult apply_channel_event(UsbMotorVendorService *se
     return result;
 }
 
+static void discard_pending_payload(UsbMotorVendorService *service) {
+    usb_motor_command_upload_reset(&service->upload);
+    service->pending_payload = 0;
+    service->pending_payload_length = 0;
+}
+
+static bool try_queue_pending_payload(UsbMotorVendorService *service) {
+    if (service->pending_payload == 0) {
+        return true;
+    }
+    if (!motor_command_channel_queue_payload(service->channel, service->pending_payload,
+                                             service->pending_payload_length)) {
+        if (!service->channel->command_pending && !service->channel->reset_pending) {
+            discard_pending_payload(service);
+        }
+        return false;
+    }
+    usb_motor_command_upload_reset(&service->upload);
+    service->pending_payload = 0;
+    service->pending_payload_length = 0;
+    return true;
+}
+
 bool usb_motor_vendor_service_init(UsbMotorVendorService *service, MotorCommandChannel *channel,
                                    const UsbMotorVendorServiceBuffers *buffers) {
     if (service == 0 || channel == 0 || buffers == 0 || buffers->upload_assembly == 0 ||
         buffers->upload_assembly_capacity == 0 || buffers->application_data == 0 ||
-        buffers->application_data_capacity == 0) {
+        buffers->application_data_capacity == 0 ||
+        buffers->upload_assembly == channel->buffers.pending_payload ||
+        buffers->application_data == channel->buffers.pending_payload ||
+        buffers->application_data == buffers->upload_assembly) {
         return false;
     }
     *service = (UsbMotorVendorService){.channel = channel, .buffers = *buffers};
@@ -71,16 +97,31 @@ UsbMotorVendorServiceResult usb_motor_vendor_service_accept_usb(
         return result;
     }
     result.actions = USB_MOTOR_VENDOR_ACTION_CLAIM;
+    if (service->response_active) {
+        return result;
+    }
+    if (service->pending_payload != 0) {
+        if (!try_queue_pending_payload(service)) {
+            return result;
+        }
+        result.actions =
+            (UsbMotorVendorAction)(result.actions | USB_MOTOR_VENDOR_ACTION_WRITE_MOTOR);
+        result.motor_packet = service->channel->buffers.transmit;
+        result.motor_packet_length = service->channel->transmit_length;
+        return result;
+    }
     UsbMotorCommandUploadEvent event =
         usb_motor_command_upload_accept(&service->upload, request, length);
     service->usb_sequence = event.sequence;
 
     if (event.result == USB_MOTOR_COMMAND_UPLOAD_RESTART) {
         motor_command_channel_reset(service->channel);
+        discard_pending_payload(service);
         result.actions = (UsbMotorVendorAction)(result.actions | USB_MOTOR_VENDOR_ACTION_RESTART);
         return result;
     }
     if (event.result == USB_MOTOR_COMMAND_UPLOAD_RELEASE) {
+        discard_pending_payload(service);
         result.actions = (UsbMotorVendorAction)(result.actions | USB_MOTOR_VENDOR_ACTION_RELEASE);
         return result;
     }
@@ -98,6 +139,10 @@ UsbMotorVendorServiceResult usb_motor_vendor_service_accept_usb(
 
     if (!motor_command_channel_queue_payload(service->channel, event.payload,
                                              event.payload_length)) {
+        if (event.segmented) {
+            service->pending_payload = event.payload;
+            service->pending_payload_length = event.payload_length;
+        }
         return result;
     }
     if (event.acknowledgement_report_id == USB_MOTOR_COMMAND_COMPACT_ACKNOWLEDGEMENT_REPORT_ID &&
@@ -171,9 +216,20 @@ usb_motor_vendor_service_run_mailbox(UsbMotorVendorService *service,
         return result;
     }
 
+    bool has_pending_payload = service->pending_payload != 0;
+    if (has_pending_payload && !service->response_active && !try_queue_pending_payload(service)) {
+        return result;
+    }
     MotorCommandChannelMailboxEvent event =
         motor_command_channel_mailbox_run(service->channel, exchange, transport);
     result = apply_channel_event(service, event.channel_event);
+    if (has_pending_payload && !service->response_active &&
+        (result.actions & USB_MOTOR_VENDOR_ACTION_WRITE_MOTOR) == 0) {
+        result.actions =
+            (UsbMotorVendorAction)(result.actions | USB_MOTOR_VENDOR_ACTION_WRITE_MOTOR);
+        result.motor_packet = service->channel->buffers.transmit;
+        result.motor_packet_length = service->channel->transmit_length;
+    }
     result.mailbox_event = event.mailbox_event;
     result.motor_status = event.status;
     return result;
@@ -206,7 +262,6 @@ uint8_t usb_motor_vendor_service_next_response(UsbMotorVendorService *service,
                                                       service->buffers.application_data, packet);
     if (service->download.complete) {
         service->response_active = false;
-        service->response_length = 0;
     }
     return length;
 }

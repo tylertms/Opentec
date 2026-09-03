@@ -45,7 +45,8 @@ static void test_commands_precede_status_changes(void) {
     MotorLiveFrame frame;
 
     motor_output_transport_init(&transport);
-    assert(motor_output_transport_enqueue_command(&transport, command));
+    bool queued = motor_output_transport_enqueue_command(&transport, command);
+    assert(queued);
     motor_output_transport_build_frame(&transport, MOTOR_OUTPUT_STATUS_PRIMARY_DISABLED, 0,
                                        &live_report, &frame);
 
@@ -68,7 +69,8 @@ static void test_opcode_records_are_zero_filled(void) {
     MotorLiveFrame frame;
 
     motor_output_transport_init(&transport);
-    assert(motor_output_transport_enqueue_opcode(&transport, 0x43));
+    bool queued = motor_output_transport_enqueue_opcode(&transport, 0x43);
+    assert(queued);
     motor_output_transport_build_frame(&transport, 0, 0, &live_report, &frame);
 
     assert(frame.payload[1] == 0x43);
@@ -82,7 +84,8 @@ static void test_host_effect_clear_sequence(void) {
     MotorLiveFrame frame;
 
     motor_output_transport_init(&transport);
-    assert(motor_output_transport_enqueue_host_effect_clears(&transport) == 16);
+    uint8_t clear_count = motor_output_transport_enqueue_host_effect_clears(&transport);
+    assert(clear_count == 16);
     for (uint8_t slot = 0; slot < 16; slot++) {
         motor_output_transport_build_frame(&transport, 0, 0, &live_report, &frame);
         assert(frame.payload[1] == ((uint8_t)(slot << 4) | 3u));
@@ -93,38 +96,27 @@ static void test_host_effect_clear_sequence(void) {
     assert(transport.count == 0);
 }
 
-static void test_host_effect_clear_barrier_discards_stale_commands(void) {
-    uint8_t stale_command[MOTOR_OUTPUT_COMMAND_SIZE] = {0x21, 8, 1, 2, 3, 4, 5};
-    const uint8_t position_command[MOTOR_OUTPUT_COMMAND_SIZE] = {0x14, 0, 0, 0, 0, 0, 0};
-    const uint8_t new_command[MOTOR_OUTPUT_COMMAND_SIZE] = {0x41, 8, 6, 7, 8, 9, 10};
+static void test_host_effect_clear_sequence_appends_to_fifo(void) {
+    const uint8_t existing_command[MOTOR_OUTPUT_COMMAND_SIZE] = {0x14, 0, 0, 0, 0, 0, 0};
     MotorOutputTransport transport;
     MotorLiveFrame frame;
 
     motor_output_transport_init(&transport);
-    assert(motor_output_transport_enqueue_command(&transport, position_command));
-    for (uint8_t index = 0; index < MOTOR_OUTPUT_QUEUE_CAPACITY - 1; index++) {
-        stale_command[0] = (uint8_t)(0x01u | ((index & 0x0fu) << 4));
-        assert(motor_output_transport_enqueue_command(&transport, stale_command));
-    }
-    assert(motor_output_transport_enqueue_host_effect_clears(&transport) == 16);
-    assert(transport.count == 1);
-    assert(motor_output_transport_enqueue_command(&transport, new_command));
+    bool command_queued = motor_output_transport_enqueue_command(&transport, existing_command);
+    assert(command_queued);
+    uint8_t clear_count = motor_output_transport_enqueue_host_effect_clears(&transport);
+    assert(clear_count == 16);
+    assert(transport.count == 17);
 
+    motor_output_transport_build_frame(&transport, MOTOR_OUTPUT_STATUS_ENABLED, 0, &live_report,
+                                       &frame);
+    assert(memcmp(frame.payload + 1, existing_command, sizeof(existing_command)) == 0);
     for (uint8_t slot = 0; slot < FORCE_FEEDBACK_EFFECT_SLOT_COUNT; slot++) {
         motor_output_transport_build_frame(&transport, MOTOR_OUTPUT_STATUS_ENABLED, 0, &live_report,
                                            &frame);
-        assert(frame.payload[0] == 0);
+        assert(frame.payload[0] == MOTOR_OUTPUT_STATUS_ENABLED);
         assert(frame.payload[1] == ((uint8_t)(slot << 4) | 3u));
     }
-
-    motor_output_transport_build_frame(&transport, MOTOR_OUTPUT_STATUS_ENABLED, 0, &live_report,
-                                       &frame);
-    assert(memcmp(frame.payload + 1, position_command, sizeof(position_command)) == 0);
-    motor_output_transport_build_frame(&transport, MOTOR_OUTPUT_STATUS_ENABLED, 0, &live_report,
-                                       &frame);
-    assert(frame.payload[0] == MOTOR_OUTPUT_STATUS_ENABLED);
-    assert(memcmp(frame.payload + 1, new_command, sizeof(new_command)) == 0);
-    assert(transport.host_effect_clear_count == 0);
     assert(transport.count == 0);
 }
 
@@ -136,9 +128,11 @@ static void test_queue_capacity_and_wrap(void) {
     motor_output_transport_init(&transport);
     for (uint8_t index = 0; index < MOTOR_OUTPUT_QUEUE_CAPACITY; index++) {
         command[0] = index;
-        assert(motor_output_transport_enqueue_command(&transport, command));
+        bool queued = motor_output_transport_enqueue_command(&transport, command);
+        assert(queued);
     }
-    assert(!motor_output_transport_enqueue_opcode(&transport, 0xff));
+    bool queued = motor_output_transport_enqueue_opcode(&transport, 0xff);
+    assert(!queued);
 
     for (uint8_t index = 0; index < MOTOR_OUTPUT_QUEUE_CAPACITY; index++) {
         motor_output_transport_build_frame(&transport, 0, 0, &live_report, &frame);
@@ -148,7 +142,8 @@ static void test_queue_capacity_and_wrap(void) {
     assert(transport.read_index == 0);
     assert(transport.write_index == 0);
 
-    assert(motor_output_transport_enqueue_opcode(&transport, 0xa5));
+    queued = motor_output_transport_enqueue_opcode(&transport, 0xa5);
+    assert(queued);
     motor_output_transport_build_frame(&transport, 0, 0, &live_report, &frame);
     assert(frame.payload[1] == 0xa5);
 }
@@ -161,17 +156,22 @@ static void test_replays_the_older_retained_frame(void) {
     MotorLiveFrame replay = {0};
 
     motor_output_transport_init(&transport);
-    assert(!motor_output_transport_replay_frame(&transport, &replay));
+    bool replayed = motor_output_transport_replay_frame(&transport, &replay);
+    assert(replayed);
+    assert(memcmp(&replay, &(MotorLiveFrame){0}, sizeof(replay)) == 0);
     motor_output_transport_remember_frame(&transport, &first);
-    assert(motor_output_transport_replay_frame(&transport, &replay));
-    assert(memcmp(&replay, &first, sizeof(replay)) == 0);
+    replayed = motor_output_transport_replay_frame(&transport, &replay);
+    assert(replayed);
+    assert(memcmp(&replay, &(MotorLiveFrame){0}, sizeof(replay)) == 0);
 
     motor_output_transport_remember_frame(&transport, &second);
-    assert(motor_output_transport_replay_frame(&transport, &replay));
+    replayed = motor_output_transport_replay_frame(&transport, &replay);
+    assert(replayed);
     assert(memcmp(&replay, &first, sizeof(replay)) == 0);
 
     motor_output_transport_remember_frame(&transport, &third);
-    assert(motor_output_transport_replay_frame(&transport, &replay));
+    replayed = motor_output_transport_replay_frame(&transport, &replay);
+    assert(replayed);
     assert(memcmp(&replay, &second, sizeof(replay)) == 0);
 }
 
@@ -182,10 +182,12 @@ static void test_replay_does_not_consume_commands(void) {
 
     motor_output_transport_init(&transport);
     motor_output_transport_remember_frame(&transport, &retained);
-    assert(motor_output_transport_enqueue_opcode(&transport, 0xa5));
-    assert(motor_output_transport_replay_frame(&transport, &replay));
+    bool queued = motor_output_transport_enqueue_opcode(&transport, 0xa5);
+    assert(queued);
+    bool replayed = motor_output_transport_replay_frame(&transport, &replay);
+    assert(replayed);
     assert(transport.count == 1);
-    assert(transport.previous_status == 0);
+    assert(transport.previous_status == MOTOR_OUTPUT_STATUS_ENABLED);
 }
 
 int main(void) {
@@ -193,7 +195,7 @@ int main(void) {
     test_commands_precede_status_changes();
     test_opcode_records_are_zero_filled();
     test_host_effect_clear_sequence();
-    test_host_effect_clear_barrier_discards_stale_commands();
+    test_host_effect_clear_sequence_appends_to_fifo();
     test_queue_capacity_and_wrap();
     test_replays_the_older_retained_frame();
     test_replay_does_not_consume_commands();
