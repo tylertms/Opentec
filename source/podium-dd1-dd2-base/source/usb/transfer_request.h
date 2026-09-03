@@ -28,7 +28,7 @@ typedef struct {
  * Supports single, first, and continuation/final command forms while retaining an incomplete
  * request across reports and exposing it only after the declared logical length is complete. A
  * first fragment contributes at most 60 payload bytes and each continuation or final fragment
- * contributes at most 61 payload bytes.
+ * contributes at most 62 payload bytes.
  */
 typedef struct {
     UsbTransferRequestPayload payload; /**< Reassembled payload and its valid length. */

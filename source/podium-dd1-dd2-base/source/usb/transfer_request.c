@@ -14,7 +14,7 @@ enum {
     TRANSFER_REQUEST_FIRST_CAPACITY =
         60, /**< Payload bytes available after a first-fragment header. */
     TRANSFER_REQUEST_FINAL_CAPACITY =
-        61, /**< Payload bytes available after a continuation/final header. */
+        62, /**< Payload bytes available after a continuation/final header. */
 };
 
 /**

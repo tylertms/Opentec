@@ -34,6 +34,20 @@ static void test_dma9_completion_rearms_both_channels(void) {
     assert(IFS7bits.DMA9IF == 0);
 }
 
+static void test_recovery_preserves_error_interrupt_after_synchronization(void) {
+    prepare_link();
+    IFS0bits.SPI1EIF = 1;
+    assert(IEC0bits.SPI1EIE == 0);
+
+    platform_motor_link_confirm_synchronized();
+
+    assert(IFS0bits.SPI1EIF == 0);
+    assert(IEC0bits.SPI1EIE == 1);
+
+    platform_motor_link_init(initial_frame);
+    assert(IEC0bits.SPI1EIE == 1);
+}
+
 static void test_multiple_completions_are_queued(void) {
     uint8_t frame[PLATFORM_MOTOR_LINK_FRAME_SIZE] = {0};
     prepare_link();
@@ -64,9 +78,35 @@ static void test_transmit_frame_waits_for_completion(void) {
     assert(DMA8CONbits.CHEN == 1);
 }
 
+static void test_reinitialization_clears_pending_dma_completion(void) {
+    uint8_t frame[PLATFORM_MOTOR_LINK_FRAME_SIZE] = {0};
+
+    prepare_link();
+    platform_motor_link_test_set_receive_dma(first_received_frame);
+    DMA8CONbits.CHEN = 1;
+    DMA9CONbits.CHEN = 1;
+    IFS7bits.DMA9IF = 1;
+
+    platform_motor_link_init(second_received_frame);
+
+    assert(SPI1STATbits.SPIEN == 1);
+    assert(DMA8CONbits.CHEN == 1);
+    assert(DMA9CONbits.CHEN == 1);
+    assert(IFS7bits.DMA8IF == 0);
+    assert(IFS7bits.DMA9IF == 0);
+    assert(!platform_motor_link_take_received(frame));
+
+    platform_motor_link_test_set_receive_dma(second_received_frame);
+    _DMA9Interrupt();
+    assert(platform_motor_link_take_received(frame));
+    assert(memcmp(frame, second_received_frame, sizeof(frame)) == 0);
+}
+
 int main(void) {
+    test_recovery_preserves_error_interrupt_after_synchronization();
     test_dma9_completion_rearms_both_channels();
     test_multiple_completions_are_queued();
     test_transmit_frame_waits_for_completion();
+    test_reinitialization_clears_pending_dma_completion();
     return 0;
 }

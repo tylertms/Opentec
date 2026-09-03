@@ -95,7 +95,7 @@ static void test_reassembles_direct_first_and_final_requests(void) {
     }
 }
 
-static void test_caps_direct_final_fragment_at_61_bytes(void) {
+static void test_accepts_direct_final_fragment_at_62_bytes(void) {
     UsbTransferRequest request;
     uint8_t first[62] = {0, 123};
     uint8_t final[63] = {0};
@@ -111,14 +111,14 @@ static void test_caps_direct_final_fragment_at_61_bytes(void) {
     assert(usb_transfer_request_apply(&request, &command));
     command = make_direct_command(0x13, final, sizeof(final));
     assert(usb_transfer_request_apply(&request, &command));
-    assert(request.cursor == 121);
+    assert(request.cursor == 122);
     assert(request.active);
     assert(usb_transfer_request_payload(&request) == NULL);
-    for (uint8_t index = 0; index < 121; index++) {
+    for (uint8_t index = 0; index < 122; index++) {
         assert(request.payload.data[index] == index);
     }
 
-    uint8_t last[] = {121, 121, 122};
+    uint8_t last[] = {0, 122};
     command = make_direct_command(0x13, last, sizeof(last));
     assert(usb_transfer_request_apply(&request, &command));
     const UsbTransferRequestPayload *payload = usb_transfer_request_payload(&request);
@@ -175,7 +175,7 @@ int main(void) {
     test_decodes_direct_single_request();
     test_reassembles_first_and_final_requests();
     test_reassembles_direct_first_and_final_requests();
-    test_caps_direct_final_fragment_at_61_bytes();
+    test_accepts_direct_final_fragment_at_62_bytes();
     test_accepts_multiple_final_fragments();
     test_ignores_invalid_transfer_forms();
     return 0;

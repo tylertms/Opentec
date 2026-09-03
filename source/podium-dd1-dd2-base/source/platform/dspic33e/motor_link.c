@@ -46,6 +46,14 @@ static volatile uint8_t received_head;
 static volatile uint8_t received_count;
 
 /**
+ * @brief Whether the motor link has accepted its first complete frame.
+ *
+ * The official transport keeps SPI overflow recovery enabled after synchronization, including
+ * across later transport reinitialization.
+ */
+static bool motor_link_synchronized;
+
+/**
  * @brief Copies one motor-link frame into volatile storage.
  *
  * Copies all thirteen frame bytes from foreground storage to an interrupt-shared destination.
@@ -85,6 +93,26 @@ static void copy_between_volatile(volatile uint8_t *destination, const volatile 
     for (uint8_t index = 0; index < PLATFORM_MOTOR_LINK_FRAME_SIZE; index++) {
         destination[index] = source[index];
     }
+}
+
+/**
+ * @brief Stops motor-link hardware before resetting shared transport state.
+ *
+ * Masks the motor-link interrupt sources, stops SPI1 and both DMA channels, and clears pending
+ * requests before the foreground resets buffers that are also accessed by DMA9.
+ */
+static void stop_transport(void) {
+    IEC0bits.SPI1IE = 0;
+    IEC0bits.SPI1EIE = 0;
+    IEC7bits.DMA8IE = 0;
+    IEC7bits.DMA9IE = 0;
+    SPI1STATbits.SPIEN = 0;
+    DMA8CONbits.CHEN = 0;
+    DMA9CONbits.CHEN = 0;
+    IFS0bits.SPI1IF = 0;
+    IFS0bits.SPI1EIF = 0;
+    IFS7bits.DMA8IF = 0;
+    IFS7bits.DMA9IF = 0;
 }
 
 /**
@@ -140,8 +168,8 @@ static void configure_dma(void) {
 /**
  * @brief Configures motor-link SPI and DMA interrupts.
  *
- * Clears pending requests, keeps overflow recovery disabled until frame synchronization, and
- * enables the SPI1, DMA8, and DMA9 interrupts at priority seven.
+ * Clears pending requests, restores the synchronized overflow-recovery state, and enables the SPI1,
+ * DMA8, and DMA9 interrupts at priority seven.
  */
 static void configure_interrupts(void) {
     IPC2bits.SPI1IP = MOTOR_LINK_INTERRUPT_PRIORITY;
@@ -153,7 +181,7 @@ static void configure_interrupts(void) {
     IFS7bits.DMA8IF = 0;
     IFS7bits.DMA9IF = 0;
     IEC0bits.SPI1IE = 1;
-    IEC0bits.SPI1EIE = 0;
+    IEC0bits.SPI1EIE = motor_link_synchronized ? 1 : 0;
     IEC7bits.DMA8IE = 1;
     IEC7bits.DMA9IE = 1;
 }
@@ -163,10 +191,13 @@ static void configure_interrupts(void) {
  *
  * Initializes both transmit buffers from the supplied frame, clears receive state, configures the
  * four SPI pins, controller, DMA channels, and interrupts, then primes the first transmission.
+ * Existing SPI and DMA activity is stopped before any shared buffer is reset, so this function is
+ * safe for foreground link recovery as well as startup initialization.
  *
  * @param[in] initial_frame First thirteen-byte frame presented to the motor controller.
  */
 void platform_motor_link_init(const uint8_t initial_frame[PLATFORM_MOTOR_LINK_FRAME_SIZE]) {
+    stop_transport();
     received_head = 0;
     received_count = 0;
     copy_to_volatile(transmitted_dma, initial_frame);
@@ -195,12 +226,12 @@ void platform_motor_link_init(const uint8_t initial_frame[PLATFORM_MOTOR_LINK_FR
 /**
  * @brief Enables motor-link overflow recovery after frame synchronization.
  *
- * Clears any stale SPI1 error request and permits the error handler only after the protocol layer
- * accepts a complete frame.
- *
+ * Clears any stale SPI1 error request and permits the error handler after the protocol layer accepts
+ * a complete frame. The synchronized state remains latched across transport reinitialization.
  */
 void platform_motor_link_confirm_synchronized(void) {
-    if (IEC0bits.SPI1EIE == 0) {
+    if (!motor_link_synchronized) {
+        motor_link_synchronized = true;
         IFS0bits.SPI1EIF = 0;
         IEC0bits.SPI1EIE = 1;
     }
