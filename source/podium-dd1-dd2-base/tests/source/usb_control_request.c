@@ -182,12 +182,21 @@ static void test_classifies_remaining_hid_requests(void) {
 }
 
 static void test_classifies_cdc_requests(void) {
+    const uint8_t send_encapsulated_command[] = {0xa1, 0x00, 0x00, 0x00,
+                                                 0x00, 0x00, 0x08, 0x00};
     const uint8_t set_line_coding[] = {0x21, 0x20, 0x00, 0x00, 0x00, 0x00, 0x07, 0x00};
     const uint8_t get_line_coding[] = {0xa1, 0x21, 0x00, 0x00, 0x00, 0x00, 0x07, 0x00};
     const uint8_t set_control_lines[] = {0x21, 0x22, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00};
     UsbControlRequest request;
 
-    UsbSetupPacket packet = decode(set_line_coding);
+    UsbSetupPacket packet = decode(send_encapsulated_command);
+    assert(usb_control_request_classify(&packet, &request));
+    assert(request.kind == USB_CONTROL_CDC_SEND_ENCAPSULATED_COMMAND);
+
+    packet.request_type = 0x21;
+    assert(!usb_control_request_classify(&packet, &request));
+
+    packet = decode(set_line_coding);
     assert(usb_control_request_classify(&packet, &request));
     assert(request.kind == USB_CONTROL_CDC_SET_LINE_CODING);
 

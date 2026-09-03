@@ -165,7 +165,8 @@ static bool classify_standard(const UsbSetupPacket *packet, UsbControlRequest *r
 /**
  * @brief Classifies supported HID interface requests.
  *
- * Accepts input and output reports plus the HID idle-rate and protocol requests for interface zero.
+ * Classifies input and output reports plus the HID idle-rate and protocol requests for interface
+ * zero. The device service applies the active operating-mode gate to the report transfers.
  *
  * @param[in] packet Decoded USB setup packet.
  * @param[out] request Classified control request.
@@ -216,8 +217,8 @@ static bool classify_hid(const UsbSetupPacket *packet, UsbControlRequest *reques
 /**
  * @brief Classifies motor updater CDC interface requests.
  *
- * Accepts the seven-byte line-coding input and output requests and the zero-length control-line
- * state request for interface zero.
+ * Accepts the encapsulated response, seven-byte line-coding, and zero-length control-line state
+ * requests for interface zero.
  *
  * @param[in] packet Decoded USB setup packet.
  * @param[out] request Classified control request.
@@ -231,7 +232,7 @@ static bool classify_cdc(const UsbSetupPacket *packet, UsbControlRequest *reques
     bool input = (packet->request_type & USB_DIRECTION_IN) != 0;
     switch (packet->request) {
     case USB_CDC_SEND_ENCAPSULATED_COMMAND:
-        return !input && packet->length <= 64 &&
+        return input && packet->length <= 64 &&
                set_request(packet, request, USB_CONTROL_CDC_SEND_ENCAPSULATED_COMMAND);
     case USB_CDC_GET_ENCAPSULATED_RESPONSE:
         return input && set_request(packet, request, USB_CONTROL_CDC_GET_ENCAPSULATED_RESPONSE);
