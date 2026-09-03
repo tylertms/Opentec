@@ -67,11 +67,11 @@ static void test_maps_command_targets(void) {
         complete_write(&transport, true);
         wheel_updater_command_service_run(&service, 0);
         assert(!wheel_updater_command_service_active(&service));
-        assert(command_transport_is_owner(&transport, 0));
+        assert(command_transport_is_owner(&transport, 0x43));
     }
 }
 
-static void test_retries_rejected_write(void) {
+static void test_advances_after_queued_write_without_response(void) {
     CommandTransport transport;
     WheelUpdaterCommandService service;
     const uint8_t request[] = {0x5a, 0xb0};
@@ -83,12 +83,54 @@ static void test_retries_rejected_write(void) {
 
     wheel_updater_command_service_run(&service, 0);
     submit(&transport, expected, sizeof(expected));
-    complete_write(&transport, false);
+    assert(service.bridge.phase == WHEEL_UPDATER_BRIDGE_READ_DELAY);
+    assert(command_transport_is_owner(&transport, 0x43));
     wheel_updater_command_service_run(&service, 0);
-    assert(wheel_updater_command_service_active(&service));
-    submit(&transport, expected, sizeof(expected));
+    wheel_updater_command_service_run(&service, 0);
+    assert(service.bridge.phase == WHEEL_UPDATER_BRIDGE_READ_HEADER);
+    assert(command_transport_is_owner(&transport, 0x43));
+    const uint8_t *queued = NULL;
+    uint16_t queued_length = 0;
+    assert(!command_transport_request(&transport, &queued, &queued_length));
+
     complete_write(&transport, true);
     wheel_updater_command_service_run(&service, 0);
+    const uint8_t expected_read[] = {2, 0x23, 0, 1, 0};
+    submit(&transport, expected_read, sizeof(expected_read));
+}
+
+static void test_stages_read_failure_before_retry(void) {
+    CommandTransport transport;
+    WheelUpdaterCommandService service;
+    const uint8_t request[] = {0x5a, 0xb0};
+    const uint8_t expected_write[] = {2, 0x22, 0, 0x5a, 0xb0};
+    command_transport_init(&transport);
+    wheel_updater_command_service_init(&service, &transport);
+    assert(wheel_updater_command_service_start(&service, WHEEL_UPDATER_TARGET_USB, request,
+                                               sizeof(request)));
+
+    wheel_updater_command_service_run(&service, 0);
+    submit(&transport, expected_write, sizeof(expected_write));
+    wheel_updater_command_service_run(&service, 0);
+    wheel_updater_command_service_run(&service, 0);
+    wheel_updater_command_service_run(&service, 0);
+    complete_write(&transport, true);
+    wheel_updater_command_service_run(&service, 0);
+
+    const uint8_t expected_read[] = {2, 0x23, 0, 1, 0};
+    submit(&transport, expected_read, sizeof(expected_read));
+    command_transport_fail(&transport);
+    wheel_updater_command_service_run(&service, 0);
+    assert(service.failure_pending);
+    const uint8_t *queued = NULL;
+    uint16_t queued_length = 0;
+    assert(!command_transport_request(&transport, &queued, &queued_length));
+
+    wheel_updater_command_service_run(&service, 0);
+    assert(!service.failure_pending);
+    assert(!command_transport_request(&transport, &queued, &queued_length));
+    wheel_updater_command_service_run(&service, 0);
+    submit(&transport, expected_read, sizeof(expected_read));
 }
 
 static void test_keeps_timed_out_read_pending_until_transport_finishes(void) {
@@ -103,9 +145,9 @@ static void test_keeps_timed_out_read_pending_until_transport_finishes(void) {
     wheel_updater_command_service_run(&service, 0);
     const uint8_t expected_write[] = {2, 0x22, 0, 0x5a, 0xb0};
     submit(&transport, expected_write, sizeof(expected_write));
+    wheel_updater_command_service_run(&service, 0);
+    wheel_updater_command_service_run(&service, 0);
     complete_write(&transport, true);
-    wheel_updater_command_service_run(&service, 0);
-    wheel_updater_command_service_run(&service, 0);
     wheel_updater_command_service_run(&service, 0);
 
     const uint8_t expected_read[] = {2, 0x23, 0, 1, 0};
@@ -129,14 +171,21 @@ static void test_keeps_timed_out_read_pending_until_transport_finishes(void) {
     uint8_t response_length = 0;
     assert(wheel_updater_command_service_take_response(&service, &response, &response_length));
     assert(response_length == 2 && response[0] == 0x5a && response[1] == 0xa1);
-    assert(wheel_updater_command_service_active(&service));
-    assert(!wheel_updater_command_service_start(&service, WHEEL_UPDATER_TARGET_USB, request,
-                                                sizeof(request)));
-
-    command_transport_fail(&transport);
-    wheel_updater_command_service_run(&service, 0);
     assert(!wheel_updater_command_service_active(&service));
-    assert(command_transport_is_owner(&transport, 0));
+    assert(wheel_updater_command_service_start(&service, WHEEL_UPDATER_TARGET_USB, request,
+                                               sizeof(request)));
+
+    wheel_updater_command_service_run(&service, 0);
+    const uint8_t *queued = NULL;
+    uint16_t queued_length = 0;
+    assert(!command_transport_request(&transport, &queued, &queued_length));
+    const uint8_t stale_marker = 0;
+    complete_read(&transport, &stale_marker, sizeof(stale_marker));
+    wheel_updater_command_service_run(&service, 0);
+    const uint8_t expected_restart_write[] = {2, 0x22, 0, 0x5a, 0xb0};
+    submit(&transport, expected_restart_write, sizeof(expected_restart_write));
+    complete_write(&transport, true);
+    command_transport_release(&transport, 0x43);
 }
 
 static void test_executes_zero_length_remote_read(void) {
@@ -244,13 +293,14 @@ static void test_exchanges_acknowledgement_response(void) {
     assert(response_length == sizeof(expected_response));
     assert(memcmp(response, expected_response, sizeof(expected_response)) == 0);
     assert(!wheel_updater_command_service_active(&service));
-    assert(command_transport_is_owner(&transport, 0));
+    assert(command_transport_is_owner(&transport, 0x43));
 }
 
 int main(void) {
     test_rejects_invalid_service_target_and_request();
     test_maps_command_targets();
-    test_retries_rejected_write();
+    test_advances_after_queued_write_without_response();
+    test_stages_read_failure_before_retry();
     test_keeps_timed_out_read_pending_until_transport_finishes();
     test_executes_zero_length_remote_read();
     test_waits_for_other_command_owner();

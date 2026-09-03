@@ -16,8 +16,10 @@ enum {
 /**
  * @brief Converts shared command completion into updater protocol input.
  *
- * Reports idle before an operation is queued, pending while the shared transport is busy, and a
- * complete read fragment or terminal failure after the transport finishes.
+ * Reports idle before an operation is queued, pending while a remote read is busy, and a complete
+ * read fragment after the shared transport finishes. A failed operation is staged for the next
+ * service iteration so the bridge observes the transport error boundary used by the reference
+ * poller.
  *
  * @param[in,out] service Updater command service polling its pending operation.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -25,6 +27,11 @@ enum {
  */
 static WheelUpdaterIo poll_transport(WheelUpdaterCommandService *service, uint32_t now_ms) {
     WheelUpdaterIo io = {.now_ms = now_ms};
+    if (service->failure_pending) {
+        service->failure_pending = false;
+        io.status = WHEEL_UPDATER_IO_FAILED;
+        return io;
+    }
     if (!service->operation_pending) {
         return io;
     }
@@ -36,13 +43,20 @@ static WheelUpdaterIo poll_transport(WheelUpdaterCommandService *service, uint32
         return io;
     }
 
+    bool read_operation = service->pending_operation == WHEEL_UPDATER_OPERATION_READ;
+    uint8_t pending_length = service->pending_length;
     service->operation_pending = false;
-    io.status =
-        result == COMMAND_TRANSPORT_COMPLETE ? WHEEL_UPDATER_IO_COMPLETE : WHEEL_UPDATER_IO_FAILED;
-    if (io.status == WHEEL_UPDATER_IO_COMPLETE &&
-        service->pending_operation == WHEEL_UPDATER_OPERATION_READ) {
+    service->pending_operation = WHEEL_UPDATER_OPERATION_NONE;
+    service->pending_length = 0;
+    if (result != COMMAND_TRANSPORT_COMPLETE) {
+        service->failure_pending = true;
+        io.status = WHEEL_UPDATER_IO_PENDING;
+        return io;
+    }
+    io.status = WHEEL_UPDATER_IO_COMPLETE;
+    if (read_operation) {
         io.data = service->read_buffer;
-        io.length = service->pending_length;
+        io.length = pending_length;
     }
     return io;
 }
@@ -51,14 +65,15 @@ static WheelUpdaterIo poll_transport(WheelUpdaterCommandService *service, uint32
  * @brief Queues one updater operation on the shared command transport.
  *
  * Claims local owner 0x43 and submits offset-zero reads or writes to the selected remote target.
- * Busy and rejected submissions remain available for retry on the next service iteration.
+ * Accepted writes complete the protocol operation immediately; accepted reads remain pending
+ * until their response arrives. A terminal transport result is staged for the next iteration.
  *
  * @param[in,out] service Updater command service submitting the operation.
  * @param[in] operation Write request or sized read returned by the protocol.
  */
-static void queue_operation(WheelUpdaterCommandService *service, WheelUpdaterOperation operation) {
+static void queue_operation(WheelUpdaterCommandService *service, WheelUpdaterOperation operation,
+                            uint32_t now_ms) {
     if (operation.kind == WHEEL_UPDATER_OPERATION_NONE) {
-        command_transport_release(service->transport, WHEEL_UPDATER_COMMAND_OWNER);
         return;
     }
 
@@ -66,8 +81,13 @@ static void queue_operation(WheelUpdaterCommandService *service, WheelUpdaterOpe
     if (!command_transport_is_owner(service->transport, WHEEL_UPDATER_COMMAND_OWNER)) {
         return;
     }
-    if (command_transport_poll(service->transport, WHEEL_UPDATER_COMMAND_OWNER) ==
-        COMMAND_TRANSPORT_BUSY) {
+    CommandTransportResult completion =
+        command_transport_poll(service->transport, WHEEL_UPDATER_COMMAND_OWNER);
+    if (completion == COMMAND_TRANSPORT_BUSY) {
+        return;
+    }
+    if (completion != COMMAND_TRANSPORT_COMPLETE) {
+        service->failure_pending = true;
         return;
     }
 
@@ -81,11 +101,20 @@ static void queue_operation(WheelUpdaterCommandService *service, WheelUpdaterOpe
             service->transport, WHEEL_UPDATER_COMMAND_OWNER, (uint8_t)service->target,
             WHEEL_UPDATER_COMMAND_OFFSET, service->read_buffer, operation.length);
     }
-    if (result == COMMAND_TRANSPORT_COMPLETE) {
-        service->pending_operation = operation.kind;
-        service->pending_length = operation.length;
-        service->operation_pending = true;
+    if (result != COMMAND_TRANSPORT_COMPLETE) {
+        return;
     }
+    if (operation.kind == WHEEL_UPDATER_OPERATION_WRITE) {
+        WheelUpdaterIo write_io = {
+            .now_ms = now_ms,
+            .status = WHEEL_UPDATER_IO_COMPLETE,
+        };
+        (void)wheel_updater_bridge_step(&service->bridge, write_io);
+        return;
+    }
+    service->pending_operation = WHEEL_UPDATER_OPERATION_READ;
+    service->pending_length = operation.length;
+    service->operation_pending = true;
 }
 
 /**
@@ -108,8 +137,10 @@ void wheel_updater_command_service_init(WheelUpdaterCommandService *service,
 /**
  * @brief Starts one normal or route-probe exchange on a remote command channel.
  *
- * Accepts USB target 0x11 or protocol target 0x12, rejects an outstanding command operation, and
- * delegates request validation and retention to the updater protocol.
+ * Accepts USB target 0x11 or protocol target 0x12 and delegates request validation and retention
+ * to the updater protocol. The bridge phase, rather than a lower transport operation, controls
+ * request ownership. Any lower read left behind by an earlier bridge timeout is drained by the
+ * next queue attempt instead of being applied to this new exchange.
  *
  * @param[in,out] service Idle updater command service accepting the request.
  * @param[in] target Remote updater command channel.
@@ -120,7 +151,7 @@ void wheel_updater_command_service_init(WheelUpdaterCommandService *service,
  */
 static bool start_exchange(WheelUpdaterCommandService *service, WheelUpdaterTarget target,
                            const uint8_t *request, uint8_t length, bool response_probe) {
-    if (service == NULL || service->transport == NULL || service->operation_pending ||
+    if (service == NULL || service->transport == NULL ||
         (target != WHEEL_UPDATER_TARGET_USB && target != WHEEL_UPDATER_TARGET_PROTOCOL)) {
         return false;
     }
@@ -131,6 +162,10 @@ static bool start_exchange(WheelUpdaterCommandService *service, WheelUpdaterTarg
         return false;
     }
     service->target = target;
+    service->operation_pending = false;
+    service->pending_operation = WHEEL_UPDATER_OPERATION_NONE;
+    service->pending_length = 0;
+    service->failure_pending = false;
     return true;
 }
 
@@ -149,23 +184,24 @@ bool wheel_updater_command_service_start_probe(WheelUpdaterCommandService *servi
 /**
  * @brief Advances updater protocol operations over the shared command transport.
  *
- * Polls a pending type-four operation, advances the transport-independent response parser, and
- * queues its next offset-zero read or write while respecting other command owners. A timed-out
- * response does not cancel a still-pending shared command operation.
+ * Polls a pending type-four read, advances the transport-independent response parser, and queues
+ * its next offset-zero read or write while respecting the retained command owner. A reported
+ * transport failure gets one bridge pass before its retry is queued. A timed-out response does
+ * not cancel a still-pending shared command read.
  *
  * @param[in,out] service Active updater command service to advance.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 void wheel_updater_command_service_run(WheelUpdaterCommandService *service, uint32_t now_ms) {
     if (service == NULL || service->transport == NULL ||
-        (!wheel_updater_bridge_active(&service->bridge) && !service->operation_pending)) {
+        !wheel_updater_bridge_active(&service->bridge)) {
         return;
     }
 
     WheelUpdaterIo io = poll_transport(service, now_ms);
     WheelUpdaterOperation operation = wheel_updater_bridge_step(&service->bridge, io);
-    if (!service->operation_pending) {
-        queue_operation(service, operation);
+    if (!service->operation_pending && io.status != WHEEL_UPDATER_IO_FAILED) {
+        queue_operation(service, operation, now_ms);
     }
 }
 
@@ -188,12 +224,13 @@ bool wheel_updater_command_service_take_response(WheelUpdaterCommandService *ser
 /**
  * @brief Reports whether the updater command service owns an exchange.
  *
- * Includes queued and pending command operations plus untaken complete responses.
+ * Includes every non-idle bridge phase, including delay and an untaken complete response. A lower
+ * transport operation can remain pending after the bridge becomes idle and is intentionally not
+ * part of this session predicate.
  *
  * @param[in] service Updater command service to inspect.
  * @return True while an updater exchange is active; otherwise false.
  */
 bool wheel_updater_command_service_active(const WheelUpdaterCommandService *service) {
-    return service != NULL &&
-           (service->operation_pending || wheel_updater_bridge_active(&service->bridge));
+    return service != NULL && wheel_updater_bridge_active(&service->bridge);
 }

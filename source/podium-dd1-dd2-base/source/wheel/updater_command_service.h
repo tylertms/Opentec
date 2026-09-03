@@ -19,10 +19,11 @@ typedef struct {
     CommandTransport *transport; /**< Shared command transport used by the service. */
     uint8_t read_buffer[60];     /**< Buffer for completed remote reads. */
     WheelUpdaterOperationKind
-        pending_operation;     /**< Operation kind stored for a pending transport operation. */
+        pending_operation;     /**< Operation kind stored for a pending remote read. */
     WheelUpdaterTarget target; /**< Remote updater command channel selected for the exchange. */
-    uint8_t pending_length;    /**< Number of bytes requested by the pending read or write. */
-    bool operation_pending;    /**< True while the shared command transport operation is active. */
+    uint8_t pending_length;    /**< Number of bytes requested by the pending read. */
+    bool operation_pending;    /**< True while the shared command transport read is active. */
+    bool failure_pending;      /**< True while a transport failure awaits the next iteration. */
 } WheelUpdaterCommandService;
 
 /**
@@ -95,7 +96,9 @@ bool wheel_updater_command_service_take_response(WheelUpdaterCommandService *ser
 /**
  * @brief Reports whether shared-command updater work is active.
  *
- * Includes queued and pending command operations plus an untaken complete response.
+ * Includes every non-idle bridge phase, including delay and an untaken complete response. A lower
+ * transport operation can remain pending after the bridge becomes idle and is intentionally not
+ * part of this session predicate.
  *
  * @param[in] service Updater command service to inspect.
  * @return True while service is non-null and owns an updater exchange; otherwise false.
