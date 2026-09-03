@@ -16,6 +16,8 @@ void platform_serial_link_init(void) {}
 
 void platform_serial_link_reset(void) {}
 
+bool platform_serial_link_start_periodic_recovery(void) { return true; }
+
 bool platform_serial_link_start(const uint8_t packet[SERIAL_PACKET_SIZE]) {
     memcpy(transmitted, packet, sizeof(transmitted));
     return true;
@@ -145,11 +147,43 @@ static void test_waits_for_scheduler_slot(void) {
     assert(transport.status == SERIAL_SERVICE_PENDING);
 }
 
+static void test_reports_active_exchange_until_release(void) {
+    WheelStatusService service;
+    SerialService transport;
+    initialize(&service, &transport);
+
+    assert(!wheel_status_service_exchange_active(&service));
+    wheel_status_service_run(&service, 0, true);
+    assert(wheel_status_service_exchange_active(&service));
+    transport.status = SERIAL_SERVICE_SUCCEEDED;
+    assert(wheel_status_service_exchange_active(&service));
+    wheel_status_service_run(&service, 1, false);
+    assert(!wheel_status_service_exchange_active(&service));
+}
+
+static void test_status_request_stops_after_fifth_timeout(void) {
+    WheelStatusService service;
+    SerialService transport;
+    initialize(&service, &transport);
+
+    wheel_status_service_run(&service, 0, true);
+    for (uint32_t attempt = 0; attempt < 5; attempt++) {
+        serial_service_run(&transport, 11u + attempt * 11u);
+    }
+
+    assert(transport.status == SERIAL_SERVICE_FAILED);
+    assert(transport.attempts == 5);
+    wheel_status_service_run(&service, 56, false);
+    assert(transport.status == SERIAL_SERVICE_IDLE);
+}
+
 int main(void) {
     test_polls_and_decodes_status();
     test_enforces_poll_interval();
     test_marks_and_takes_transition_response();
     test_marked_transition_bypasses_poll_deadline();
     test_waits_for_scheduler_slot();
+    test_reports_active_exchange_until_release();
+    test_status_request_stops_after_fifth_timeout();
     return 0;
 }

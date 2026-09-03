@@ -25,6 +25,7 @@ typedef struct {
     uint8_t attempts;                   /**< Number of timeout or malformed-packet retries. */
     SerialServiceStatus status;         /**< Current service lifecycle status. */
     bool packet_pending;                /**< Whether packet is active on the physical link. */
+    bool recovery_pending;              /**< Whether a synchronization packet awaits recovery expiry. */
     bool bounded_attempts;              /**< True when retries are limited to five. */
 } SerialService;
 
@@ -41,7 +42,7 @@ void serial_service_init(SerialService *service);
  * @brief Starts one logical serial request.
  *
  * Queues a request message and starts its first packet exchange on the shared serial link. Timeout
- * and malformed-packet retries stop after the fifth retry.
+ * and malformed-packet retries continue without a retry-count failure.
  *
  * @param[in,out] service Idle service state accepting the request.
  * @param[in] type Logical request type from SERIAL_MESSAGE_FIRST_TYPE through
@@ -55,10 +56,9 @@ bool serial_service_start(SerialService *service, uint8_t type, const uint8_t *m
                           uint16_t length, uint32_t now_ms);
 
 /**
- * @brief Starts a serial request that waits indefinitely for transport availability.
+ * @brief Starts a serial request with bounded transport retries.
  *
- * The request retries timeouts and malformed packets without the bounded-attempt failure used by
- * ordinary requests.
+ * The request retries timeout and malformed packets through the fifth retry, then reports failure.
  *
  * @param[in,out] service Idle service state accepting the request.
  * @param[in] type Logical request type.

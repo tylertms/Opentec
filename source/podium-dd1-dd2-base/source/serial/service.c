@@ -22,11 +22,26 @@ enum {
  * @return True when the packet is valid but its logical type is unsupported.
  */
 static bool is_unsupported_packet(const uint8_t input[SERIAL_PACKET_SIZE]) {
-    SerialPacket packet;
-    if (serial_packet_decode(input, &packet) != SERIAL_PACKET_VALID) {
+    if (input == 0 || input[0] != SERIAL_PACKET_START ||
+        input[SERIAL_PACKET_SIZE - 1] != SERIAL_PACKET_END ||
+        (input[1] & SERIAL_PACKET_TYPE_MASK) <= SERIAL_MESSAGE_LAST_TYPE ||
+        !serial_packet_checksum_valid(input)) {
         return false;
     }
-    return (packet.type_flags & SERIAL_PACKET_TYPE_MASK) > SERIAL_MESSAGE_LAST_TYPE;
+    return true;
+}
+
+/**
+ * @brief Identifies a transport framing failure.
+ *
+ * Boundary failures use the official periodic recovery hold. Length and checksum failures retain
+ * the ordinary synchronization retry path.
+ *
+ * @param[in] input Encoded framed packet to inspect.
+ * @return True when either transport boundary is invalid.
+ */
+static bool is_framing_failure(const uint8_t input[SERIAL_PACKET_SIZE]) {
+    return input[0] != SERIAL_PACKET_START || input[SERIAL_PACKET_SIZE - 1] != SERIAL_PACKET_END;
 }
 
 /**
@@ -49,6 +64,37 @@ static bool start_next_packet(SerialService *service, uint32_t now_ms) {
     service->deadline_ms = now_ms + SERIAL_SERVICE_TIMEOUT_MS;
     service->packet_pending = true;
     return true;
+}
+
+/**
+ * @brief Encodes the synchronization packet held during periodic recovery.
+ *
+ * Leaves the encoded packet in service storage until the physical link accepts it after Timer 6
+ * clears the reset-pending flag.
+ *
+ * @param[in,out] service Serial service with a pending synchronization packet.
+ * @return True when a packet was encoded.
+ */
+static bool defer_next_packet(SerialService *service) {
+    if (!serial_session_next_packet(&service->session, service->packet)) {
+        return false;
+    }
+    service->recovery_pending = true;
+    return true;
+}
+
+/**
+ * @brief Starts an encoded synchronization packet after periodic recovery.
+ *
+ * @param[in,out] service Serial service holding the encoded packet.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void start_recovery_packet(SerialService *service, uint32_t now_ms) {
+    if (platform_serial_link_start(service->packet)) {
+        service->recovery_pending = false;
+        service->packet_pending = true;
+        service->deadline_ms = now_ms + SERIAL_SERVICE_TIMEOUT_MS;
+    }
 }
 
 /**
@@ -101,11 +147,11 @@ static bool start_request(SerialService *service, uint8_t type, const uint8_t *m
 
 bool serial_service_start(SerialService *service, uint8_t type, const uint8_t *message,
                           uint16_t length, uint32_t now_ms) {
-    return start_request(service, type, message, length, now_ms, true);
+    return start_request(service, type, message, length, now_ms, false);
 }
 
 /**
- * @brief Starts a serial request without a bounded retry count.
+ * @brief Starts a serial request with a bounded retry count.
  *
  * @param[in,out] service Idle serial service.
  * @param[in] type Logical request type.
@@ -116,7 +162,7 @@ bool serial_service_start(SerialService *service, uint8_t type, const uint8_t *m
  */
 bool serial_service_start_wait(SerialService *service, uint8_t type, const uint8_t *message,
                                uint16_t length, uint32_t now_ms) {
-    return start_request(service, type, message, length, now_ms, false);
+    return start_request(service, type, message, length, now_ms, true);
 }
 
 /**
@@ -124,15 +170,19 @@ bool serial_service_start_wait(SerialService *service, uint8_t type, const uint8
  *
  * Accepts completed packets, emits required fragment acknowledgements or resynchronization
  * packets, publishes a matching completed logical response, and retries a packet after each
- * ten-millisecond response deadline for up to five retry events. A failed restart or fifth missed
- * response fails a bounded request, while every malformed response first schedules its recovery
- * synchronization packet.
+ * ten-millisecond response deadline for up to five retry events. A failed restart or fifth timeout
+ * or malformed event fails a bounded request, while a framing failure schedules its recovery
+ * synchronization packet after the official periodic hold.
  *
  * @param[in,out] service Serial service to advance.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 void serial_service_run(SerialService *service, uint32_t now_ms) {
     if (service == 0 || service->status != SERIAL_SERVICE_PENDING) {
+        return;
+    }
+    if (service->recovery_pending) {
+        start_recovery_packet(service, now_ms);
         return;
     }
     if (service->packet_pending && platform_serial_link_take_received(service->packet)) {
@@ -146,12 +196,19 @@ void serial_service_run(SerialService *service, uint32_t now_ms) {
             service->attempts++;
         }
         if (malformed) {
-            bool recovery_started = start_next_packet(service, now_ms);
-            if (service->bounded_attempts && !unsupported &&
-                service->attempts >= SERIAL_SERVICE_MAX_ATTEMPTS) {
-                service->packet_pending = false;
+            if (!unsupported && is_framing_failure(service->packet)) {
+                if (!platform_serial_link_start_periodic_recovery() ||
+                    !defer_next_packet(service)) {
+                    service->status = SERIAL_SERVICE_FAILED;
+                } else if (service->bounded_attempts &&
+                           service->attempts >= SERIAL_SERVICE_MAX_ATTEMPTS) {
+                    service->recovery_pending = false;
+                    service->status = SERIAL_SERVICE_FAILED;
+                }
+            } else if (!unsupported && service->bounded_attempts &&
+                       service->attempts >= SERIAL_SERVICE_MAX_ATTEMPTS) {
                 service->status = SERIAL_SERVICE_FAILED;
-            } else if (!recovery_started) {
+            } else if (!start_next_packet(service, now_ms)) {
                 service->status = SERIAL_SERVICE_FAILED;
             }
             return;
@@ -231,6 +288,7 @@ void serial_service_cancel(SerialService *service) {
     service->request_type = 0;
     service->attempts = 0;
     service->packet_pending = false;
+    service->recovery_pending = false;
     service->response = (SerialMessageAssembly){0};
     service->status = SERIAL_SERVICE_IDLE;
 }
@@ -251,6 +309,8 @@ void serial_service_release(SerialService *service) {
     serial_session_finish_transmit(&service->session);
     service->request_type = 0;
     service->attempts = 0;
+    service->packet_pending = false;
+    service->recovery_pending = false;
     service->response = (SerialMessageAssembly){0};
     service->status = SERIAL_SERVICE_IDLE;
 }

@@ -78,4 +78,15 @@ bool wheel_status_service_take_marked_response(WheelStatusService *service);
  */
 const WheelStatusSnapshot *wheel_status_service_snapshot(const WheelStatusService *service);
 
+/**
+ * @brief Reports whether the attached-wheel status exchange is active.
+ *
+ * Includes pending, completed, and failed status requests until the shared serial service consumes
+ * the result.
+ *
+ * @param[in] service Status service to inspect.
+ * @return True while a type-five status exchange owns the serial service; otherwise false.
+ */
+bool wheel_status_service_exchange_active(const WheelStatusService *service);
+
 #endif

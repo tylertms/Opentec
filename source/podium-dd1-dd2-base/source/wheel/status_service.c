@@ -164,3 +164,18 @@ bool wheel_status_service_take_marked_response(WheelStatusService *service) {
 const WheelStatusSnapshot *wheel_status_service_snapshot(const WheelStatusService *service) {
     return service != 0 ? &service->snapshot : 0;
 }
+
+/**
+ * @brief Reports whether an attached-wheel status exchange owns the serial service.
+ *
+ * Keeps the host-capability recovery gate independent of the serial service's implementation while
+ * retaining the completed and failed states until the status service releases them.
+ *
+ * @param[in] service Status service to inspect.
+ * @return True while a type-five exchange is active; otherwise false.
+ */
+bool wheel_status_service_exchange_active(const WheelStatusService *service) {
+    return service != 0 && service->transport != 0 &&
+           service->transport->request_type == WHEEL_STATUS_MESSAGE_TYPE &&
+           service->transport->status != SERIAL_SERVICE_IDLE;
+}

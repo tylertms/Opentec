@@ -17,6 +17,8 @@ void platform_serial_link_init(void) {}
 
 void platform_serial_link_reset(void) {}
 
+bool platform_serial_link_start_periodic_recovery(void) { return true; }
+
 bool platform_serial_link_start(const uint8_t packet[SERIAL_PACKET_SIZE]) {
     memcpy(transmitted, packet, sizeof(transmitted));
     return true;
