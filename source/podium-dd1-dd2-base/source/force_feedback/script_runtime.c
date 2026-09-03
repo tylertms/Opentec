@@ -56,15 +56,11 @@ void force_feedback_script_runtime_reset(ForceFeedbackScriptSystem *system) {
         return;
     }
 
+    system->values = (ForceFeedbackScriptRuntime){0};
     force_feedback_script_inputs_init(&system->inputs);
     force_feedback_script_samples_init(&system->values.samples);
     force_feedback_script_store_init(&system->store);
     for (uint8_t index = 0; index < FORCE_FEEDBACK_SCRIPT_SLOT_COUNT; index++) {
-        system->values.slots[index].state = FORCE_FEEDBACK_SCRIPT_SLOT_EMPTY;
-        system->values.slots[index].average_rate = 0;
-        system->values.slots[index].delta_rate = 0;
-        system->values.slots[index].execution_count = 0;
-        system->values.slots[index].tick_snapshot = 0;
         system->clock.slot_ticks[index] = 0;
     }
     system->clock.ticks = 0;

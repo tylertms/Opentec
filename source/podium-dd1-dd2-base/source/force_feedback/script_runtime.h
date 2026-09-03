@@ -42,9 +42,9 @@ void force_feedback_script_runtime_init(ForceFeedbackScriptSystem *system);
 /**
  * @brief Reset the force-feedback script session state.
  *
- * Matches the official session reset by clearing input state, sample values, uploaded script
- * storage, slot state and metrics, engine ticks, active-slot selection, and the pending position
- * request. Script-visible variables, slot values, motion values, motion history, snapshots,
+ * Matches the official session reset by clearing script-visible values, slot values and metrics,
+ * motion values, axes, rotation range, input state, sample values, uploaded script storage, engine
+ * ticks, active-slot selection, and the pending position request. Motion history, snapshots,
  * deadlines, and motion ticks are retained. A null system pointer is ignored.
  *
  * @param[in,out] system Script system whose session-owned state is reset.

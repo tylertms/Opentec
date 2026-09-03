@@ -42,25 +42,32 @@ static void test_initializes_complete_runtime(void) {
     assert(system.idle_tick_snapshot == 0);
 }
 
-static void test_resets_only_session_owned_runtime_state(void) {
+static void test_resets_script_values_and_session_state(void) {
     ForceFeedbackScriptSystem system;
     force_feedback_script_runtime_init(&system);
 
-    system.values.variables[0] = 1;
-    system.values.motion[0] = 2;
-    system.values.axes[0] = 3;
+    for (uint8_t index = 0; index < FORCE_FEEDBACK_SCRIPT_VARIABLE_COUNT; index++) {
+        system.values.variables[index] = UINT32_C(0x100) + index;
+    }
+    for (uint8_t index = 0; index < FORCE_FEEDBACK_SCRIPT_MOTION_VALUE_COUNT; index++) {
+        system.values.motion[index] = UINT32_C(0x200) + index;
+    }
+    for (uint8_t index = 0; index < FORCE_FEEDBACK_SCRIPT_AXIS_VALUE_COUNT; index++) {
+        system.values.axes[index] = UINT32_C(0x300) + index;
+    }
     system.values.extended_rotation_range = 4;
     system.values.rotation_range_code = 5;
-    system.values.slots[0] = (ForceFeedbackScriptSlot){
-        .state = FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE,
-        .values = {6, 7, 8, 9},
-        .average_rate = 10,
-        .delta_rate = 11,
-        .execution_count = 12,
-        .tick_snapshot = 13,
-    };
-    system.values.slots[1].state = FORCE_FEEDBACK_SCRIPT_SLOT_INACTIVE;
-    system.values.slots[1].values[0] = 14;
+    system.values.active_slot = 1;
+    for (uint8_t slot = 0; slot < FORCE_FEEDBACK_SCRIPT_SLOT_COUNT; slot++) {
+        system.values.slots[slot].state = FORCE_FEEDBACK_SCRIPT_SLOT_ACTIVE;
+        for (uint8_t value = 0; value < 4; value++) {
+            system.values.slots[slot].values[value] = UINT32_C(0x400) + slot * 4u + value;
+        }
+        system.values.slots[slot].average_rate = UINT32_C(0x500) + slot;
+        system.values.slots[slot].delta_rate = UINT32_C(0x600) + slot;
+        system.values.slots[slot].execution_count = UINT32_C(0x700) + slot;
+        system.values.slots[slot].tick_snapshot = UINT32_C(0x800) + slot;
+    }
     system.values.samples.values[15] = 16;
     system.store.data[0] = 17;
     system.store.slots[0] =
@@ -82,20 +89,28 @@ static void test_resets_only_session_owned_runtime_state(void) {
 
     force_feedback_script_runtime_reset(&system);
 
-    assert(system.values.variables[0] == 1);
-    assert(system.values.motion[0] == 2);
-    assert(system.values.axes[0] == 3);
-    assert(system.values.extended_rotation_range == 4);
-    assert(system.values.rotation_range_code == 5);
-    assert(system.values.slots[0].state == FORCE_FEEDBACK_SCRIPT_SLOT_EMPTY);
-    assert(system.values.slots[0].values[0] == 6);
-    assert(system.values.slots[0].values[3] == 9);
-    assert(system.values.slots[0].average_rate == 0);
-    assert(system.values.slots[0].delta_rate == 0);
-    assert(system.values.slots[0].execution_count == 0);
-    assert(system.values.slots[0].tick_snapshot == 0);
-    assert(system.values.slots[1].state == FORCE_FEEDBACK_SCRIPT_SLOT_EMPTY);
-    assert(system.values.slots[1].values[0] == 14);
+    for (uint8_t index = 0; index < FORCE_FEEDBACK_SCRIPT_VARIABLE_COUNT; index++) {
+        assert(system.values.variables[index] == 0);
+    }
+    for (uint8_t index = 0; index < FORCE_FEEDBACK_SCRIPT_MOTION_VALUE_COUNT; index++) {
+        assert(system.values.motion[index] == 0);
+    }
+    for (uint8_t index = 0; index < FORCE_FEEDBACK_SCRIPT_AXIS_VALUE_COUNT; index++) {
+        assert(system.values.axes[index] == 0);
+    }
+    assert(system.values.extended_rotation_range == 0);
+    assert(system.values.rotation_range_code == 0);
+    assert(system.values.active_slot == 0);
+    for (uint8_t slot = 0; slot < FORCE_FEEDBACK_SCRIPT_SLOT_COUNT; slot++) {
+        assert(system.values.slots[slot].state == FORCE_FEEDBACK_SCRIPT_SLOT_EMPTY);
+        for (uint8_t value = 0; value < 4; value++) {
+            assert(system.values.slots[slot].values[value] == 0);
+        }
+        assert(system.values.slots[slot].average_rate == 0);
+        assert(system.values.slots[slot].delta_rate == 0);
+        assert(system.values.slots[slot].execution_count == 0);
+        assert(system.values.slots[slot].tick_snapshot == 0);
+    }
     assert(system.values.samples.values[15] == UINT32_MAX);
     assert(system.store.used == 0);
     assert(!system.store.slots[0].allocated);
@@ -239,7 +254,7 @@ static void test_rejects_unknown_or_incomplete_script_packets(void) {
 
 int main(void) {
     test_initializes_complete_runtime();
-    test_resets_only_session_owned_runtime_state();
+    test_resets_script_values_and_session_state();
     test_applies_controls_and_compacts_storage();
     test_rejects_invalid_control_without_changes();
     test_routes_complete_script_packets();
