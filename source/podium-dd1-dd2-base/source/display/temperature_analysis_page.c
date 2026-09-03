@@ -9,28 +9,31 @@
 /**
  * @brief Defines temperature-analysis timing, scaling, colors, and chart geometry.
  *
- * These constants describe the sample cadence, 120-degree scale, chart dimensions, and display
- * colors used by the temperature-analysis page.
+ * These constants describe the startup delay, global sample cadence, 120-degree scale, chart
+ * dimensions, and display colors used by the temperature-analysis page.
  */
 enum {
+    TEMPERATURE_ANALYSIS_STARTUP_DELAY_MS =
+        1000, /**< Initial temperature-chart delay in milliseconds. */
     TEMPERATURE_ANALYSIS_SAMPLE_INTERVAL_MS =
-        2250, /**< Temperature-chart sampling interval in milliseconds. */
+        2250, /**< Global temperature-chart sampling interval in milliseconds. */
     TEMPERATURE_ANALYSIS_UPPER_LIMIT =
         120, /**< Upper chart temperature limit in degrees Celsius. */
     TEMPERATURE_ANALYSIS_CHART_HEIGHT = 30, /**< Chart height in pixels. */
     TEMPERATURE_ANALYSIS_CHART_WIDTH = 40,  /**< Chart width in pixels. */
     TEMPERATURE_ANALYSIS_CHART_BOTTOM = 58, /**< Chart bottom coordinate. */
     TEMPERATURE_ANALYSIS_COLOR = 15,        /**< Foreground grayscale value. */
-    TEMPERATURE_ANALYSIS_SERIES_COLOR = 8,  /**< History-series grayscale value. */
+    TEMPERATURE_ANALYSIS_SERIES_COLOR = 4,  /**< History-series grayscale value. */
     TEMPERATURE_ANALYSIS_GRID_COLOR = 1,    /**< Chart-grid grayscale value. */
 };
 
 /** @brief Left coordinate of each temperature chart in channel order. */
 static const uint16_t chart_left[DISPLAY_TEMPERATURE_ANALYSIS_CHANNEL_COUNT] = {25, 68, 110, 152};
+
 /**
  * @brief Tests whether a temperature-analysis deadline is due.
  *
- * Uses signed modular subtraction so the global sampling cadence remains valid across timer wrap.
+ * Uses signed modular subtraction so startup timing remains valid across timer wrap.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  * @param[in] deadline_ms Deadline to test.
@@ -115,12 +118,12 @@ static void format_fan_speed(char output[12], uint16_t fan_speed_rpm) {
 }
 
 /**
- * @brief Formats thermally available output power.
+ * @brief Formats the actual thermal output duty.
  *
  * Emits three minimum digits followed by a percent suffix.
  *
  * @param[out] output Null-terminated power text.
- * @param[in] power_percent Available output power in percent.
+ * @param[in] power_percent Actual thermal output duty in percent.
  */
 static void format_power(char output[8], uint8_t power_percent) {
     char *cursor = append_unsigned(output, power_percent, 3);
@@ -183,6 +186,9 @@ static uint8_t scale_temperature(int16_t temperature) {
 /**
  * @brief Draws one line between two display pixels.
  *
+ * Converts endpoint differences before subtraction so a rising chart line can use a negative
+ * screen-row delta without unsigned underflow.
+ *
  * @param[in,out] framebuffer Complete local-display framebuffer.
  * @param[in] start_x Starting column.
  * @param[in] start_y Starting row.
@@ -194,8 +200,8 @@ static void draw_line(DisplayFramebuffer framebuffer, uint16_t start_x, uint16_t
                       uint16_t end_x, uint16_t end_y, uint8_t color) {
     int32_t x = start_x;
     int32_t y = start_y;
-    int32_t delta_x = end_x - start_x;
-    int32_t delta_y = end_y - start_y;
+    int32_t delta_x = (int32_t)end_x - (int32_t)start_x;
+    int32_t delta_y = (int32_t)end_y - (int32_t)start_y;
     int32_t step_x = delta_x < 0 ? -1 : 1;
     int32_t step_y = delta_y < 0 ? -1 : 1;
     if (delta_x < 0) {
@@ -289,29 +295,16 @@ static void format_temperature_line(char output[10], const char prefix[4], int16
 }
 
 /**
- * @brief Opens the temperature analyzer.
- *
- * Preserves all four histories and aligns sampling with the next global 2.25-second tick.
- *
- * @param[in,out] page Retained temperature-analysis state.
- * @param[in] now_ms Current monotonic time in milliseconds.
- */
-void display_temperature_analysis_page_open(DisplayTemperatureAnalysisPage *page, uint32_t now_ms) {
-    page->next_sample_ms = now_ms + TEMPERATURE_ANALYSIS_SAMPLE_INTERVAL_MS -
-                           now_ms % TEMPERATURE_ANALYSIS_SAMPLE_INTERVAL_MS;
-}
-
-/**
  * @brief Updates temperature histories and live cooling values.
  *
- * Samples all four 90-second plots every 2.25 seconds and publishes changed fan tachometer speed
- * and thermally available output power without waiting for the chart cadence.
+ * Establishes the one-second startup deadline, then samples all four plots once on each eligible
+ * global 2.25-second tick and publishes changed fan tachometer speed and actual thermal output duty.
  *
  * @param[in,out] page Retained temperature-analysis state.
  * @param[in] now_ms Current monotonic time in milliseconds.
  * @param[in] temperatures Motor, driver, base, and quick-release temperatures in degrees Celsius.
  * @param[in] fan_speed_rpm Display fan tachometer speed in revolutions per minute.
- * @param[in] power_percent Thermally available output power in percent.
+ * @param[in] power_percent Actual thermal output duty in percent.
  * @return True when displayed analysis data changed.
  */
 bool display_temperature_analysis_page_update(
@@ -319,17 +312,33 @@ bool display_temperature_analysis_page_update(
     const int16_t temperatures[DISPLAY_TEMPERATURE_ANALYSIS_CHANNEL_COUNT], uint16_t fan_speed_rpm,
     uint8_t power_percent) {
     bool changed = false;
-    if (deadline_reached(now_ms, page->next_sample_ms)) {
+    if (!page->startup_initialized) {
+        page->startup_initialized = true;
+        page->startup_pending = true;
+        page->startup_deadline_ms = now_ms + TEMPERATURE_ANALYSIS_STARTUP_DELAY_MS;
+    }
+    if (page->startup_pending && deadline_reached(now_ms, page->startup_deadline_ms)) {
+        page->startup_pending = false;
+    }
+    for (uint8_t channel = 0; channel < DISPLAY_TEMPERATURE_ANALYSIS_CHANNEL_COUNT; channel++) {
+        if (page->temperatures[channel] != temperatures[channel]) {
+            changed = true;
+        }
+        page->temperatures[channel] = temperatures[channel];
+    }
+    bool eligible_sample_tick = now_ms % TEMPERATURE_ANALYSIS_SAMPLE_INTERVAL_MS == 0u;
+    bool new_sample_tick = !page->sample_tick_seen || page->last_sample_tick_ms != now_ms;
+    if (!page->startup_pending && eligible_sample_tick && new_sample_tick) {
+        page->sample_tick_seen = true;
+        page->last_sample_tick_ms = now_ms;
+        uint8_t sample_index = page->next_sample;
+        if (sample_index >= DISPLAY_TEMPERATURE_ANALYSIS_SAMPLE_COUNT) {
+            sample_index = 0;
+        }
         for (uint8_t channel = 0; channel < DISPLAY_TEMPERATURE_ANALYSIS_CHANNEL_COUNT; channel++) {
-            page->temperatures[channel] = temperatures[channel];
-            page->samples[channel][page->next_sample] = scale_temperature(temperatures[channel]);
+            page->samples[channel][sample_index] = scale_temperature(temperatures[channel]);
         }
-        page->next_sample =
-            (uint8_t)((page->next_sample + 1u) % DISPLAY_TEMPERATURE_ANALYSIS_SAMPLE_COUNT);
-        if (page->sample_count < DISPLAY_TEMPERATURE_ANALYSIS_SAMPLE_COUNT) {
-            page->sample_count++;
-        }
-        page->next_sample_ms = now_ms + TEMPERATURE_ANALYSIS_SAMPLE_INTERVAL_MS;
+        page->next_sample = (uint8_t)(sample_index + 1u);
         changed = true;
     }
     if (page->fan_speed_rpm != fan_speed_rpm || page->power_percent != power_percent) {
@@ -354,10 +363,10 @@ void display_temperature_analysis_page_render_title(DisplayFramebuffer framebuff
 }
 
 /**
- * @brief Renders temperature history, fan speed, and available output power.
+ * @brief Renders temperature history, fan speed, and actual output duty.
  *
- * Shows four labeled 90-second temperature plots, display fan tachometer RPM, and the current
- * thermal power allowance.
+ * Shows four labeled temperature plots with one-decimal 120, 80, 40, and zero degree scale labels,
+ * display fan tachometer RPM, and the current thermal output duty.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
  * @param[in] page Current temperature-analysis state.
@@ -369,6 +378,10 @@ void display_temperature_analysis_page_render(DisplayFramebuffer framebuffer,
         {'M', 'o', 't', ':'}, {'D', 'r', 'v', ':'}, {'B', 'a', 's', ':'}, {'W', 'Q', 'R', ':'}};
     display_framebuffer_clear(framebuffer);
     display_text_draw(framebuffer, "[`C]", 2, 13, 1, TEMPERATURE_ANALYSIS_COLOR);
+    display_text_draw(framebuffer, "120.0", 0, 23, 1, TEMPERATURE_ANALYSIS_COLOR);
+    display_text_draw(framebuffer, "80.0", 5, 33, 1, TEMPERATURE_ANALYSIS_COLOR);
+    display_text_draw(framebuffer, "40.0", 5, 43, 1, TEMPERATURE_ANALYSIS_COLOR);
+    display_text_draw(framebuffer, "0.0", 10, 53, 1, TEMPERATURE_ANALYSIS_COLOR);
 
     for (uint8_t channel = 0; channel < DISPLAY_TEMPERATURE_ANALYSIS_CHANNEL_COUNT; channel++) {
         format_temperature_line(value, labels[channel], page->temperatures[channel]);

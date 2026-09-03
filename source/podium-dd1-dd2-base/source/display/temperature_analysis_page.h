@@ -22,8 +22,8 @@ typedef enum {
 /**
  * @brief Defines the temperature-analysis history capacity.
  *
- * Forty samples collected at 2.25-second intervals cover the 90-second chart history for each
- * channel.
+ * Forty samples collected at 2.25-second global tick intervals cover the 90-second chart history
+ * for each channel.
  */
 enum {
     DISPLAY_TEMPERATURE_ANALYSIS_SAMPLE_COUNT = 40 /**< Number of retained samples per channel. */
@@ -33,7 +33,7 @@ enum {
  * @brief Stores temperature histories and live cooling values.
  *
  * Each channel has a ring buffer of scaled chart samples while the latest temperatures, display fan
- * tachometer speed, and thermally available output power remain available for the summary fields.
+ * tachometer speed, and actual thermal output duty remain available for the summary fields.
  */
 typedef struct {
     uint8_t samples[DISPLAY_TEMPERATURE_ANALYSIS_CHANNEL_COUNT]
@@ -42,36 +42,29 @@ typedef struct {
     int16_t
         temperatures[DISPLAY_TEMPERATURE_ANALYSIS_CHANNEL_COUNT]; /**< Latest channel temperatures
                                                                      in degrees Celsius. */
-    uint32_t next_sample_ms; /**< Next timestamp at which channel samples may be stored. */
-    uint16_t fan_speed_rpm;  /**< Current display fan tachometer speed in revolutions per minute. */
-    uint8_t next_sample;     /**< Ring-buffer index where the next channel samples are stored. */
-    uint8_t sample_count;    /**< Number of valid samples currently retained per channel. */
-    uint8_t power_percent;   /**< Current thermally available output power in percent. */
+    uint32_t startup_deadline_ms; /**< Timestamp at which startup sampling may begin. */
+    uint32_t last_sample_tick_ms; /**< Most recent global tick that stored a sample. */
+    bool startup_initialized;     /**< Whether the startup deadline has been established. */
+    bool startup_pending;         /**< Whether the one-second startup delay is still active. */
+    bool sample_tick_seen;        /**< Whether a divisible global tick has already been sampled. */
+    uint16_t fan_speed_rpm; /**< Current display fan tachometer speed in revolutions per minute. */
+    uint8_t next_sample; /**< Next ring index; it transiently equals the capacity after index 39. */
+    uint8_t power_percent; /**< Current actual thermal output duty in percent. */
 } DisplayTemperatureAnalysisPage;
-
-/**
- * @brief Opens a temperature analysis session.
- *
- * Preserves retained histories and aligns the next sample deadline with the global 2.25-second
- * cadence.
- *
- * @param[in,out] page Temperature-analysis state to prepare.
- * @param[in] now_ms Current monotonic time in milliseconds.
- */
-void display_temperature_analysis_page_open(DisplayTemperatureAnalysisPage *page, uint32_t now_ms);
 
 /**
  * @brief Updates temperature histories and cooling values.
  *
- * Samples all channels when the chart deadline is due and updates fan tachometer speed and
- * available output power whenever either live value changes.
+ * Establishes a one-second startup delay, then samples all channels once per divisible global
+ * 2,250-millisecond tick. Fan tachometer speed and actual output duty are updated whenever either
+ * live value changes.
  *
  * @param[in,out] page Temperature-analysis state to update.
  * @param[in] now_ms Current monotonic time in milliseconds.
  * @param[in] temperatures Motor, driver, base, and wheel quick-release temperatures in degrees
  * Celsius.
  * @param[in] fan_speed_rpm Display fan tachometer speed in revolutions per minute.
- * @param[in] power_percent Thermally available output power in percent.
+ * @param[in] power_percent Actual thermal output duty in percent.
  * @return True when displayed analysis data changed.
  */
 bool display_temperature_analysis_page_update(
@@ -91,8 +84,8 @@ void display_temperature_analysis_page_render_title(DisplayFramebuffer framebuff
 /**
  * @brief Renders temperature histories and cooling telemetry.
  *
- * Clears the framebuffer and draws four temperature charts with current values, display fan
- * tachometer speed, and thermally available output power.
+ * Clears the framebuffer and draws four temperature charts with one-decimal scale labels, current
+ * values, display fan tachometer speed, and actual thermal output duty.
  *
  * @param[in,out] framebuffer Framebuffer receiving the rendered page.
  * @param[in] page Temperature-analysis state to render.
