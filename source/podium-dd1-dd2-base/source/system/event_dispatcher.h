@@ -64,10 +64,10 @@ typedef struct {
 void system_event_dispatcher_init(SystemEventDispatcher *dispatcher);
 
 /**
- * @brief Dispatches the oldest recognized system event.
+ * @brief Dispatches the pending system event.
  *
- * Maps recognized event codes to presentation actions, consumes the queue entry, and starts the
- * minimum dispatch interval when the cadence permits an action.
+ * Maps recognized event codes to presentation actions and consumes the queue entry. Unknown event
+ * codes are released without changing the dispatch cadence.
  *
  * @param[in,out] dispatcher Event dispatcher cadence state.
  * @param[in,out] queue System event queue containing the pending code.

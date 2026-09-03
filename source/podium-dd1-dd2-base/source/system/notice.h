@@ -34,17 +34,24 @@ typedef enum {
 } SystemNoticeKind;
 
 /**
+ * @brief Maximum number of notice records retained by the official presentation stack.
+ *
+ * The active notice occupies one of these records, so at most four interrupted notices are
+ * retained alongside it.
+ */
+enum { SYSTEM_NOTICE_STACK_CAPACITY = 5 };
+
+/**
  * @brief Current local system-notice presentation state.
  *
  * A zero deadline represents a persistent notice or no notice; timed notices store their expiry
  * time in milliseconds.
  */
 typedef struct {
-    SystemNoticeKind kind;     /**< Currently visible notice kind. */
-    uint32_t deadline_ms;      /**< Expiration time for a timed notice, or zero for persistence. */
-    SystemNoticeKind stack[5]; /**< Interrupted notices retained in presentation order. */
-    uint32_t stack_deadlines[5]; /**< Expiry times paired with retained notices. */
-    uint8_t stack_count;         /**< Number of retained interrupted notices. */
+    SystemNoticeKind kind; /**< Currently visible notice kind. */
+    uint32_t deadline_ms;  /**< Expiration time for a timed notice, or zero for persistence. */
+    SystemNoticeKind stack[SYSTEM_NOTICE_STACK_CAPACITY]; /**< Interrupted notices, newest last. */
+    uint8_t stack_count; /**< Number of interrupted notices retained below the active notice. */
 } SystemNotice;
 
 /**
@@ -71,7 +78,8 @@ void system_notice_show(SystemNotice *notice, SystemNoticeKind kind, uint32_t no
 /**
  * @brief Expires a completed timed system notice.
  *
- * Clears the notice after its deadline while leaving persistent notices unchanged.
+ * Clears the notice after its deadline or restores the newest interrupted notice with a fresh
+ * duration while leaving persistent notices unchanged.
  *
  * @param[in,out] notice System notice state to service.
  * @param[in] now_ms Current monotonic time in milliseconds.

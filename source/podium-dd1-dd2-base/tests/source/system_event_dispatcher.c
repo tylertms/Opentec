@@ -71,7 +71,7 @@ static void test_dispatches_motor_notice_actions(void) {
     }
 }
 
-static void test_leaves_unowned_events_pending(void) {
+static void test_releases_unknown_events(void) {
     SystemEventDispatcher dispatcher;
     SystemEventQueue queue;
     system_event_dispatcher_init(&dispatcher);
@@ -79,7 +79,9 @@ static void test_leaves_unowned_events_pending(void) {
     assert(system_event_queue_try_push(&queue, 0x7f));
 
     assert(system_event_dispatcher_update(&dispatcher, &queue, 1000) == SYSTEM_EVENT_ACTION_NONE);
-    assert(queue.pending_code == 0x7f);
+    assert(queue.pending_code == 0);
+    assert(queue.count == 0);
+    assert(queue.last_code == 0x7f);
     assert(dispatcher.next_dispatch_ms == 0);
 }
 
@@ -102,7 +104,7 @@ static void test_preserves_cadence_across_counter_wrap(void) {
 int main(void) {
     test_dispatches_torque_notice_actions();
     test_dispatches_motor_notice_actions();
-    test_leaves_unowned_events_pending();
+    test_releases_unknown_events();
     test_preserves_cadence_across_counter_wrap();
     return 0;
 }

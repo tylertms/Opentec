@@ -114,6 +114,7 @@ SystemEventAction system_event_dispatcher_update(SystemEventDispatcher *dispatch
     } else if (queue->pending_code == SYSTEM_EVENT_ALTERNATIVE_SHIFTER_DISABLED) {
         action = SYSTEM_EVENT_ACTION_SHOW_ALTERNATIVE_SHIFTER_DISABLED;
     } else {
+        system_event_queue_complete(queue);
         return SYSTEM_EVENT_ACTION_NONE;
     }
     if (!dispatch_due(now_ms, dispatcher->next_dispatch_ms)) {

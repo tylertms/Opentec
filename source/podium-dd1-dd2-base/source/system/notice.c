@@ -43,26 +43,20 @@ static uint32_t notice_duration_ms(SystemNoticeKind kind) {
 void system_notice_init(SystemNotice *notice) { *notice = (SystemNotice){0}; }
 
 static bool replaces_active(SystemNoticeKind active, SystemNoticeKind next) {
-    bool active_warning = active == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED ||
-                          active == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED;
-    bool next_warning = next == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED ||
-                        next == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED;
-    bool active_tuning = active == SYSTEM_NOTICE_TUNING_MENU_RESET ||
-                         active == SYSTEM_NOTICE_STANDARD_TUNING_MODE ||
-                         active == SYSTEM_NOTICE_ADVANCED_TUNING_MODE;
-    bool next_tuning =
-        next == SYSTEM_NOTICE_STANDARD_TUNING_MODE || next == SYSTEM_NOTICE_ADVANCED_TUNING_MODE;
-    return (active_warning && next_warning) || (active_tuning && next_tuning);
+    return (active == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED &&
+            next == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED) ||
+           (active == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED &&
+            next == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED);
 }
 
 void system_notice_show(SystemNotice *notice, SystemNoticeKind kind, uint32_t now_ms) {
     if (notice->kind != SYSTEM_NOTICE_NONE && !replaces_active(notice->kind, kind)) {
-        if (notice->stack_count == 5) {
+        if (notice->stack_count >= SYSTEM_NOTICE_STACK_CAPACITY - 1) {
             notice->stack_count = 0;
+        } else {
+            notice->stack[notice->stack_count] = notice->kind;
+            notice->stack_count++;
         }
-        notice->stack[notice->stack_count] = notice->kind;
-        notice->stack_deadlines[notice->stack_count] = notice->deadline_ms;
-        notice->stack_count++;
     }
     uint32_t duration_ms = notice_duration_ms(kind);
     notice->kind = kind;
@@ -77,6 +71,7 @@ void system_notice_update(SystemNotice *notice, uint32_t now_ms) {
         }
         notice->stack_count--;
         notice->kind = notice->stack[notice->stack_count];
-        notice->deadline_ms = notice->stack_deadlines[notice->stack_count];
+        uint32_t duration_ms = notice_duration_ms(notice->kind);
+        notice->deadline_ms = duration_ms == 0 ? 0 : now_ms + duration_ms;
     }
 }
