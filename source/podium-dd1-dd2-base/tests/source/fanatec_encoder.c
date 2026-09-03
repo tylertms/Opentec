@@ -23,28 +23,36 @@ int main(void) {
     assert(input.encoder_position == 0);
     assert(input.button_banks[3] == (1 << 3));
     assert(!update(&encoder, 1, 116, &input));
-    assert(update(&encoder, 1, 117, &input));
+    assert(!update(&encoder, 1, 117, &input));
+    assert(update(&encoder, 1, 118, &input));
     assert(input.encoder_position == 1);
     assert(input.button_banks[3] == (1 << 3));
 
-    assert(!update(&encoder, 1, 118, &input));
+    assert(!update(&encoder, 1, 119, &input));
     assert(input.button_banks[3] == 0);
     assert(!update(&encoder, 1, 134, &input));
     assert(!update(&encoder, 1, 135, &input));
+    assert(input.button_banks[3] == 0);
+    assert(!update(&encoder, 1, 136, &input));
+    assert(!update(&encoder, 1, 152, &input));
     assert(input.button_banks[3] == (1 << 3));
-    assert(update(&encoder, 1, 151, &input));
+    assert(!update(&encoder, 1, 153, &input));
+    assert(update(&encoder, 1, 154, &input));
     assert(input.encoder_position == 2);
 
-    assert(!update(&encoder, -1, 168, &input));
-    assert(!update(&encoder, -1, 169, &input));
+    assert(!update(&encoder, -1, 171, &input));
+    assert(!update(&encoder, -1, 172, &input));
+    assert(input.button_banks[3] == 0);
+    assert(!update(&encoder, -1, 188, &input));
     assert(input.button_banks[3] == (1 << 2));
-    assert(update(&encoder, -1, 185, &input));
+    assert(!update(&encoder, -1, 189, &input));
+    assert(update(&encoder, -1, 190, &input));
     assert(input.encoder_position == 1);
 
     encoder.position = 0x7f;
     encoder.quiet_phase = false;
     encoder.deadline_ms = 0;
-    assert(update(&encoder, 1, 0, &input));
+    assert(update(&encoder, 1, 1, &input));
     assert((uint8_t)input.encoder_position == 0x80);
 
     return 0;

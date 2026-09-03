@@ -162,6 +162,75 @@ static void test_production_pipeline_first_five_report(void) {
     assert(memcmp(report + 1, (uint8_t[5]){0x88, 0x01, 0x05, 0x00, 0x00}, 5) == 0);
 }
 
+static void test_primary_third_button_bank_mapping(void) {
+    const fanatec_input_source source = {
+        .buttons = {0, 0, 0xff},
+        .hat = 0x05,
+        .mode = 0x10,
+        .protocol_active = true,
+    };
+    fanatec_input_state state = {0};
+
+    fanatec_input_pipeline_map(&state, &source);
+
+    assert(state.button_banks[2] == 0x05);
+    assert(state.button_banks[3] == 0x92);
+}
+
+static void test_default_auxiliary_button_source(void) {
+    fanatec_input_source source = {
+        .auxiliary_buttons = 0x03,
+        .mode = 0x01,
+        .protocol_active = true,
+    };
+    fanatec_input_state state = {0};
+
+    fanatec_input_pipeline_map(&state, &source);
+    assert(state.button_banks[4] == 0x0c);
+
+    source.auxiliary_buttons = 0;
+    source.secondary_buttons = 0x0003;
+    state = (fanatec_input_state){0};
+    fanatec_input_pipeline_map(&state, &source);
+    assert(state.button_banks[4] == 0);
+}
+
+static void test_adapter_auxiliary_merges(void) {
+    fanatec_input_source source = {
+        .auxiliary_buttons = 0x03,
+        .adapter_connected = true,
+        .adapter_mode = 0,
+        .protocol_active = true,
+    };
+    fanatec_input_state state = {0};
+
+    fanatec_input_pipeline_map(&state, &source);
+    assert(state.button_banks[4] == 0x0c);
+
+    source.auxiliary_buttons = 0x01;
+    source.adapter_mode = 1;
+    source.buttons[2] = 0x04;
+    state = (fanatec_input_state){0};
+    fanatec_input_pipeline_map(&state, &source);
+    assert(state.button_banks[1] == 0x80);
+    assert((state.button_banks[3] & 0x20) == 0);
+}
+
+static void test_pulse_status_mapping(void) {
+    const fanatec_input_source source = {
+        .mode = 0x1b,
+        .pulse_flags = {0x0f, 0x03, 0, 0},
+        .protocol_active = true,
+    };
+    fanatec_input_state state = {0};
+
+    fanatec_input_pipeline_map(&state, &source);
+
+    assert(state.button_banks[3] == 0x41);
+    assert(state.button_banks[4] == 0xc0);
+    assert(state.accessory[3] == 0xc0);
+}
+
 static void test_compatibility_encode(void) {
     const fanatec_input_state state = {
         .button_banks = {0x10, 0x21, 0x32, 0x43, 0x54},
@@ -446,6 +515,10 @@ int main(void) {
     test_official_source_history();
     test_official_first_five_mapping_and_axes();
     test_production_pipeline_first_five_report();
+    test_primary_third_button_bank_mapping();
+    test_default_auxiliary_button_source();
+    test_adapter_auxiliary_merges();
+    test_pulse_status_mapping();
     test_compatibility_encode();
     test_wheel_control_mapping();
     test_restricted_wheel_control_mapping();

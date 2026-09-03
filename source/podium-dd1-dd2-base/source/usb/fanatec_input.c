@@ -134,7 +134,7 @@ static void fanatec_map_primary_buttons(fanatec_input_state *state,
                                         const fanatec_input_source *source) {
     uint8_t *hat = &state->button_banks[0];
     uint8_t *first = &state->button_banks[1];
-    uint8_t *second = &state->button_banks[2];
+    uint8_t *third = &state->button_banks[3];
     uint8_t *fourth = &state->button_banks[4];
     uint8_t mode = source->mode;
 
@@ -165,54 +165,54 @@ static void fanatec_map_primary_buttons(fanatec_input_state *state,
         *first = fanatec_map_bit(*first, 0, source->buttons[1], 0);
         *first = fanatec_map_bit(*first, 1, source->buttons[1], 3);
         if (mode == 0x1b) {
-            *second = fanatec_map_bit(*second, 1, source->buttons[2], 1);
+            *third = fanatec_map_bit(*third, 1, source->buttons[2], 1);
         } else {
-            *second = fanatec_map_bit(*second, 1, source->buttons[2], 0);
-            *second = fanatec_map_bit(*second, 4, source->buttons[2], 1);
+            *third = fanatec_map_bit(*third, 1, source->buttons[2], 0);
+            *third = fanatec_map_bit(*third, 4, source->buttons[2], 1);
         }
-        *second = fanatec_map_bit(*second, 0, source->pulse_flags[0], 0);
-        *second = fanatec_map_bit(*second, 5, source->buttons[2], 2);
-        *second = fanatec_map_bit(*second, 7, source->buttons[2], 5);
-        *second = fanatec_map_bit(*second, 6, source->pulse_flags[0], 1);
+        *third = fanatec_map_bit(*third, 0, source->pulse_flags[0], 0);
+        *third = fanatec_map_bit(*third, 5, source->buttons[2], 2);
+        *third = fanatec_map_bit(*third, 7, source->buttons[2], 5);
+        *third = fanatec_map_bit(*third, 6, source->pulse_flags[0], 1);
         break;
     case 0x10:
-        *second = fanatec_map_bit(*second, 1, source->buttons[2], 0);
-        *second = fanatec_map_bit(*second, 4, source->buttons[2], 1);
+        *third = fanatec_map_bit(*third, 1, source->buttons[2], 0);
+        *third = fanatec_map_bit(*third, 4, source->buttons[2], 1);
         break;
     case 0x11:
         *hat = fanatec_map_bit(*hat, 5, source->buttons[2], 1);
         *first = fanatec_map_bit(*first, 0, source->buttons[1], 3);
         *first = fanatec_map_bit(*first, 1, source->buttons[1], 0);
-        *second = fanatec_map_bit(*second, 1, source->buttons[2], 0);
+        *third = fanatec_map_bit(*third, 1, source->buttons[2], 0);
         break;
     case 0x13:
     case 0x14:
-        *second = fanatec_map_bit(*second, 4, source->buttons[2], 1);
-        *second = fanatec_map_bit(*second, 5, source->buttons[2], 2);
-        *second = fanatec_map_bit(*second, 1, source->buttons[2], 0);
-        *second = fanatec_map_bit(*second, 6, source->buttons[2], 4);
+        *third = fanatec_map_bit(*third, 4, source->buttons[2], 1);
+        *third = fanatec_map_bit(*third, 5, source->buttons[2], 2);
+        *third = fanatec_map_bit(*third, 1, source->buttons[2], 0);
+        *third = fanatec_map_bit(*third, 6, source->buttons[2], 4);
         break;
     case 0x15:
-        *second = fanatec_map_bit(*second, 4, source->buttons[2], 1);
-        *second = fanatec_map_bit(*second, 1, source->buttons[2], 3);
-        *second = fanatec_map_bit(*second, 5, source->buttons[2], 2);
+        *third = fanatec_map_bit(*third, 4, source->buttons[2], 1);
+        *third = fanatec_map_bit(*third, 1, source->buttons[2], 3);
+        *third = fanatec_map_bit(*third, 5, source->buttons[2], 2);
         break;
     case 0x16:
-        *second = fanatec_map_bit(*second, 4, source->buttons[2], 1);
-        *second = fanatec_map_bit(*second, 5, source->buttons[2], 2);
-        *second = fanatec_map_bit(*second, 1, source->buttons[2], 0);
+        *third = fanatec_map_bit(*third, 4, source->buttons[2], 1);
+        *third = fanatec_map_bit(*third, 5, source->buttons[2], 2);
+        *third = fanatec_map_bit(*third, 1, source->buttons[2], 0);
         break;
     case 0x05:
     case 0x07:
     case 0x08:
-        *second = fanatec_map_bit(*second, 0, source->buttons[2], 0);
-        *second = fanatec_map_bit(*second, 1, source->buttons[2], 1);
-        *second = fanatec_map_bit(*second, 6, source->buttons[2], 3);
-        *second = fanatec_map_bit(*second, 4, source->buttons[2], 2);
+        *third = fanatec_map_bit(*third, 0, source->buttons[2], 0);
+        *third = fanatec_map_bit(*third, 1, source->buttons[2], 1);
+        *third = fanatec_map_bit(*third, 6, source->buttons[2], 3);
+        *third = fanatec_map_bit(*third, 4, source->buttons[2], 2);
         break;
     case 0x0e:
-        *second = fanatec_map_bit(*second, 5, source->buttons[2], 0);
-        *second = fanatec_map_bit(*second, 4, source->buttons[2], 1);
+        *third = fanatec_map_bit(*third, 5, source->buttons[2], 0);
+        *third = fanatec_map_bit(*third, 4, source->buttons[2], 1);
         *hat = fanatec_map_bit(*hat, 5, source->buttons[0], 5);
         *hat = fanatec_map_bit(*hat, 6, source->buttons[0], 7);
         *first = fanatec_map_bit(*first, 2, source->buttons[0], 6);
@@ -221,20 +221,20 @@ static void fanatec_map_primary_buttons(fanatec_input_state *state,
         *first = fanatec_map_bit(*first, 6, source->buttons[1], 2);
         *first = fanatec_map_bit(*first, 4, source->buttons[1], 6);
         *first = fanatec_map_bit(*first, 5, source->buttons[1], 7);
-        *second = fanatec_map_bit(*second, 7, source->buttons[2], 5);
-        *second = fanatec_map_bit(*second, 0, source->pulse_flags[0], 0);
-        *second = fanatec_map_bit(*second, 6, source->pulse_flags[0], 1);
+        *third = fanatec_map_bit(*third, 7, source->buttons[2], 5);
+        *third = fanatec_map_bit(*third, 0, source->pulse_flags[0], 0);
+        *third = fanatec_map_bit(*third, 6, source->pulse_flags[0], 1);
         break;
     default:
-        *second = fanatec_map_bit(*second, 0, source->buttons[2], 0);
-        *second = fanatec_map_bit(*second, 4, source->buttons[2], 1);
-        *second = fanatec_map_bit(*second, 5, source->buttons[2], 2);
-        *second = fanatec_map_bit(*second, 1, source->buttons[2], 3);
-        *second = fanatec_map_bit(*second, 6, source->buttons[2], 4);
+        *third = fanatec_map_bit(*third, 0, source->buttons[2], 0);
+        *third = fanatec_map_bit(*third, 4, source->buttons[2], 1);
+        *third = fanatec_map_bit(*third, 5, source->buttons[2], 2);
+        *third = fanatec_map_bit(*third, 1, source->buttons[2], 3);
+        *third = fanatec_map_bit(*third, 6, source->buttons[2], 4);
         break;
     }
 
-    *second = fanatec_map_bit(*second, 7, source->buttons[2], 5);
+    *third = fanatec_map_bit(*third, 7, source->buttons[2], 5);
     if (mode == 0x09 || mode == 0x0b || mode == 0x1d ||
         (mode == 0x0c && !source->adapter_connected)) {
         *fourth = fanatec_map_bit(*fourth, 2, source->buttons[2], 6);
@@ -260,8 +260,8 @@ static void fanatec_map_primary_buttons(fanatec_input_state *state,
     } else if (mode == 0x10) {
         *fourth &= 0x03u;
     } else {
-        *fourth = fanatec_map_bit(*fourth, 2, source->secondary_buttons, 0);
-        *fourth = fanatec_map_bit(*fourth, 3, source->secondary_buttons, 1);
+        *fourth = fanatec_map_bit(*fourth, 2, source->auxiliary_buttons, 0);
+        *fourth = fanatec_map_bit(*fourth, 3, source->auxiliary_buttons, 1);
         *fourth &= 0x0fu;
     }
 }
@@ -273,9 +273,10 @@ static void fanatec_map_adapter_buttons(fanatec_input_state *state,
     }
     uint8_t *hat = &state->button_banks[0];
     uint8_t *first = &state->button_banks[1];
-    uint8_t *second = &state->button_banks[2];
+    uint8_t *third = &state->button_banks[3];
     uint8_t *fourth = &state->button_banks[4];
     const uint8_t *adapter = source->adapter_buttons;
+    uint8_t auxiliary = source->auxiliary_buttons;
     if (source->adapter_mode == 0) {
         *first = fanatec_merge_bit(*first, 3, adapter[0], 4);
         *first = fanatec_merge_bit(*first, 7, adapter[0], 5);
@@ -287,13 +288,15 @@ static void fanatec_map_adapter_buttons(fanatec_input_state *state,
         *hat = fanatec_merge_bit(*hat, 4, adapter[1], 3);
         *hat = fanatec_merge_bit(*hat, 5, adapter[1], 4);
         *first = fanatec_merge_bit(*first, 5, adapter[1], 5);
-        *second = fanatec_merge_bit(*second, 4, adapter[2], 3);
+        *third = fanatec_merge_bit(*third, 4, adapter[2], 3);
         *fourth = fanatec_map_bit(*fourth, 5, adapter[1], 6);
         *fourth = fanatec_map_bit(*fourth, 3, adapter[1], 7);
+        *fourth = fanatec_merge_bit(*fourth, 3, auxiliary, 1);
         *fourth = fanatec_map_bit(*fourth, 4, adapter[2], 0);
         *fourth = fanatec_map_bit(*fourth, 2, adapter[2], 1);
-        *second = fanatec_merge_bit(*second, 5, adapter[2], 2);
-        *second = fanatec_map_bit(*second, 7, adapter[2], 4);
+        *fourth = fanatec_merge_bit(*fourth, 2, auxiliary, 0);
+        *third = fanatec_merge_bit(*third, 5, adapter[2], 2);
+        *third = fanatec_map_bit(*third, 7, adapter[2], 4);
     } else {
         *hat = fanatec_merge_bit(*hat, 7, adapter[0], 4);
         *first = fanatec_merge_bit(*first, 3, adapter[0], 5);
@@ -303,11 +306,12 @@ static void fanatec_map_adapter_buttons(fanatec_input_state *state,
         *hat = fanatec_merge_bit(*hat, 5, adapter[1], 1);
         *hat = fanatec_merge_bit(*hat, 6, adapter[1], 2);
         *first = fanatec_merge_bit(*first, 2, adapter[1], 3);
-        *second = fanatec_merge_bit(*second, 1, adapter[1], 4);
-        *second = fanatec_merge_bit(*second, 4, adapter[2], 3);
+        *third = fanatec_merge_bit(*third, 1, adapter[1], 4);
+        *third = fanatec_merge_bit(*third, 4, adapter[2], 3);
         *first = fanatec_merge_bit(*first, 7, adapter[2], 1);
+        *first = fanatec_merge_bit(*first, 7, auxiliary, 0);
         *first = fanatec_merge_bit(*first, 6, adapter[1], 6);
-        *second = fanatec_merge_bit(*second, 5, adapter[2], 2);
+        *third = fanatec_map_bit(*third, 5, adapter[2], 2);
     }
 }
 

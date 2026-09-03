@@ -48,8 +48,9 @@ typedef struct {
  * @brief Normalized source packet consumed by the native Fanatec mapper.
  *
  * The first three button bytes, hat, controls, and auxiliary bytes use the same offsets as the
- * official 36-byte source packet. The remaining fields carry the already calibrated values that
- * the native mapper copies into its 34-byte output.
+ * official 36-byte source packet. The independent auxiliary button byte and retained pulse groups
+ * carry status read from the corresponding wheel state. The remaining fields carry the already
+ * calibrated values that the native mapper copies into its 34-byte output.
  */
 typedef struct {
     uint8_t buttons[3];          /**< Primary source button bytes at offsets zero through two. */
@@ -57,6 +58,7 @@ typedef struct {
     uint8_t rotary_positions[2]; /**< Primary rotary positions at offsets four and five. */
     uint8_t extended_buttons[4]; /**< Extended source bytes at offsets six through nine. */
     uint8_t auxiliary_flags;     /**< Auxiliary flags at source offset eleven. */
+    uint8_t auxiliary_buttons;   /**< Independent auxiliary-report button byte. */
     uint8_t secondary_buttons;   /**< Secondary source byte at source offset twelve. */
     uint8_t packed_rotary_positions;  /**< Packed rotary byte at source offset thirteen. */
     uint8_t accessory;                /**< Accessory source byte at source offset fourteen. */

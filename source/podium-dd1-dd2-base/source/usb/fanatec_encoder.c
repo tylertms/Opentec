@@ -19,7 +19,7 @@ enum {
  *
  * Clears both direction bits, then sets the negative or positive bit for a nonzero direction.
  *
- * @param[in,out] input Fanatec input state to update.
+ * @param[in,out] buttons Fanatec direction-byte field to update.
  * @param[in] direction Negative one, zero, or positive one.
  */
 static void apply_direction(uint8_t *buttons, int8_t direction) {
@@ -33,6 +33,21 @@ static void apply_direction(uint8_t *buttons, int8_t direction) {
 
 void fanatec_encoder_init(FanatecEncoder *encoder) { *encoder = (FanatecEncoder){0}; }
 
+/**
+ * @brief Advances one Fanatec encoder channel.
+ *
+ * Presents the current direction, consumes a pending step only strictly after its deadline, and
+ * inserts the official quiet phase before another step can be consumed.
+ *
+ * @param[in,out] encoder Encoder position state.
+ * @param[in] pending_direction Requested direction.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[in,out] deadline_ms Channel phase deadline.
+ * @param[in,out] quiet_phase Whether the channel is in its quiet phase.
+ * @param[out] buttons Channel direction bits.
+ * @param[in,out] input Fanatec input receiving the position.
+ * @return True when a pending step was consumed.
+ */
 static bool update_channel(FanatecEncoder *encoder, int8_t pending_direction, uint32_t now_ms,
                            uint32_t *deadline_ms, bool *quiet_phase, uint8_t *buttons,
                            fanatec_input_state *input) {
@@ -41,7 +56,7 @@ static bool update_channel(FanatecEncoder *encoder, int8_t pending_direction, ui
 
     if (*quiet_phase) {
         apply_direction(buttons, 0);
-        if (platform_time_reached(now_ms, *deadline_ms)) {
+        if (platform_time_reached(now_ms, *deadline_ms + 1u)) {
             *quiet_phase = false;
             if (direction != 0) {
                 *deadline_ms = now_ms + ENCODER_PHASE_DURATION_MS;
@@ -55,7 +70,7 @@ static bool update_channel(FanatecEncoder *encoder, int8_t pending_direction, ui
         *deadline_ms = now_ms + ENCODER_PHASE_DURATION_MS;
         return false;
     }
-    if (!platform_time_reached(now_ms, *deadline_ms)) {
+    if (!platform_time_reached(now_ms, *deadline_ms + 1u)) {
         return false;
     }
 
