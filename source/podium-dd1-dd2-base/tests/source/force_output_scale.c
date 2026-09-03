@@ -65,7 +65,7 @@ static void test_disabled_secondary_output_is_preserved(void) {
     assert(report.secondary_magnitude == 0x4321);
 }
 
-static void test_available_force_stays_wide_through_tuning_scale(void) {
+static void test_narrows_available_force_before_tuning_scale(void) {
     ForceOutputScale scale = {
         .available_percent = 200,
         .tuning_strength_percent = 50,
@@ -74,12 +74,12 @@ static void test_available_force_stays_wide_through_tuning_scale(void) {
     ForceOutputReport report = {0};
 
     force_output_scale_apply(INT32_MAX, 0, scale, &report);
-    assert(report.primary_magnitude == UINT16_MAX);
+    assert(report.primary_magnitude == 32767);
 
     scale.available_percent = 100;
     scale.tuning_strength_percent = 101;
     force_output_scale_apply(50000, 0, scale, &report);
-    assert(report.primary_magnitude == 50000);
+    assert(report.primary_magnitude == 654);
 }
 
 int main(void) {
@@ -87,6 +87,6 @@ int main(void) {
     test_applies_all_strength_percentages();
     test_secondary_limit_depends_on_primary_limit();
     test_disabled_secondary_output_is_preserved();
-    test_available_force_stays_wide_through_tuning_scale();
+    test_narrows_available_force_before_tuning_scale();
     return 0;
 }

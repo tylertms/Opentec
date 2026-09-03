@@ -21,7 +21,7 @@ static uint16_t split_force(int32_t force, bool *positive_direction) {
 void force_output_scale_apply(int32_t force, int32_t secondary_magnitude, ForceOutputScale scale,
                               ForceOutputReport *report) {
     uint16_t primary = split_force(force, &report->positive_direction);
-    uint32_t available = (uint32_t)UINT16_MAX * scale.available_percent / 100;
+    uint16_t available = (uint16_t)((uint32_t)UINT16_MAX * scale.available_percent / 100);
     available = available * scale.tuning_strength_percent / 100;
 
     if (available <= primary) {

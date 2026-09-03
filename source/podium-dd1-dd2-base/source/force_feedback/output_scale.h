@@ -25,8 +25,9 @@ typedef struct {
  * @brief Applies available-output and strength scaling to motor force magnitudes.
  *
  * Splits the signed primary force into direction and magnitude, caps the primary magnitude at the
- * available range, caps the secondary magnitude at that range when the primary is below it, and
- * applies base output strength to each enabled report field.
+ * available range, narrows that range to 16 bits before tuning scaling, caps the secondary magnitude
+ * at that range when the primary is below it, and applies base output strength to each enabled report
+ * field.
  *
  * @param[in] force Signed primary force command.
  * @param[in] secondary_magnitude Nonnegative secondary force magnitude.
