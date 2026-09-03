@@ -64,7 +64,7 @@ typedef struct {
     uint8_t source_slot;      /**< Index of the report source used by this channel. */
     uint8_t overlay[4];       /**< Current overlay bytes. */
     uint8_t overlay_capacity; /**< Maximum accepted overlay bytes. */
-    uint8_t overlay_length;   /**< Number of valid overlay bytes. */
+    uint8_t overlay_length;   /**< Configured fixed-width overlay bytes. */
     bool overlay_enabled;     /**< True when overlay records are accepted. */
     bool dirty;               /**< True when a report is waiting to be emitted. */
 } RemoteTelemetryChannel;
@@ -184,7 +184,8 @@ RemoteTelemetryRecordResult remote_telemetry_apply_primary(RemoteTelemetry *tele
 /**
  * @brief Applies one overlay telemetry record.
  *
- * Copies the accepted overlay bytes up to the configured capacity and marks its report dirty.
+ * Copies accepted overlay bytes up to the configured fixed width, preserving trailing bytes, and
+ * marks its report dirty.
  *
  * @param[in,out] telemetry Telemetry state to update.
  * @param[in] channel Target channel index.

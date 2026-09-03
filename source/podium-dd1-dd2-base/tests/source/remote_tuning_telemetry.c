@@ -104,6 +104,68 @@ static void test_formats_speed_and_overlay(void) {
     assert(memcmp(report + 17, "SPEED", 5) == 0);
     assert(report[25] == 0x00 && report[26] == 0x30 && report[27] == 0x00);
     assert(report[28] == 0 && report[29] == 0);
+    const uint8_t short_overlay[] = {'x'};
+    assert(remote_telemetry_apply_overlay(&telemetry, 0, 1, short_overlay,
+                                          sizeof(short_overlay)) ==
+           REMOTE_TELEMETRY_RECORD_APPLIED);
+    assert(remote_telemetry_take_report(&telemetry, report));
+    assert(report[1] == 6);
+    assert(memcmp(report + 2, "123xph", 6) == 0);
+    assert(!remote_telemetry_take_report(&telemetry, report));
+}
+
+static void test_formats_scale_zero_uint32_with_reference_width(void) {
+    RemoteTelemetry telemetry;
+    uint8_t report[REMOTE_TELEMETRY_REPORT_SIZE];
+    uint8_t value[4];
+    write_u32(value, 100000000u);
+
+    remote_telemetry_init(&telemetry);
+    assert(remote_telemetry_select(&telemetry, REMOTE_TELEMETRY_RPM));
+    assert(remote_telemetry_apply_primary(&telemetry, 0, 2, value, sizeof(value)) ==
+           REMOTE_TELEMETRY_RECORD_APPLIED);
+    assert(remote_telemetry_take_report(&telemetry, report));
+    assert(report[1] == 8);
+    assert(memcmp(report + 2, ":0000000", 8) == 0);
+}
+
+static void test_formats_negative_decimal_boundaries(void) {
+    static const uint32_t values[] = {
+        (uint32_t)INT32_MIN,
+        (uint32_t)(-(int32_t)100000000),
+    };
+    static const uint8_t expected[][9] = {
+        {'0'},
+        {'-', ':', '0', '0', '0', '0', '0', '0', '0'},
+    };
+
+    for (uint8_t case_index = 0; case_index < sizeof(values) / sizeof(values[0]); case_index++) {
+        RemoteTelemetry telemetry;
+        uint8_t report[REMOTE_TELEMETRY_REPORT_SIZE];
+        uint8_t value[4];
+
+        write_u32(value, values[case_index]);
+        remote_telemetry_init(&telemetry);
+        assert(remote_telemetry_select(&telemetry, REMOTE_TELEMETRY_RPM));
+        assert(remote_telemetry_apply_primary(&telemetry, 0, 2, value, sizeof(value)) ==
+               REMOTE_TELEMETRY_RECORD_APPLIED);
+        assert(remote_telemetry_take_report(&telemetry, report));
+        const uint8_t expected_length = case_index == 0 ? 1 : sizeof(expected[case_index]);
+        assert(report[1] == expected_length);
+        assert(memcmp(report + 2, expected[case_index], expected_length) == 0);
+    }
+}
+
+static void test_select_marks_initial_report_dirty(void) {
+    RemoteTelemetry telemetry;
+    uint8_t report[REMOTE_TELEMETRY_REPORT_SIZE];
+
+    remote_telemetry_init(&telemetry);
+    assert(remote_telemetry_select(&telemetry, REMOTE_TELEMETRY_SPEED));
+    assert(remote_telemetry_take_report(&telemetry, report));
+    assert(report[0] == 1);
+    assert(report[1] == 7);
+    assert(memcmp(report + 2, "---    ", 7) == 0);
     assert(!remote_telemetry_take_report(&telemetry, report));
 }
 
@@ -136,6 +198,21 @@ static void test_scales_rpm_and_services_both_channels(void) {
     assert(report[28] == 127 && report[29] == 0);
 }
 
+static void test_range_limit_preserves_scale_for_zero_source(void) {
+    RemoteTelemetry telemetry;
+    uint8_t report[REMOTE_TELEMETRY_REPORT_SIZE];
+    uint8_t limit[4];
+    write_u32(limit, 8000);
+
+    remote_telemetry_init(&telemetry);
+    assert(remote_telemetry_select(&telemetry, REMOTE_TELEMETRY_RPM));
+    telemetry.sources[0].scale_value = 96;
+    assert(remote_telemetry_apply_primary(&telemetry, 1, 3, limit, sizeof(limit)) ==
+           REMOTE_TELEMETRY_RECORD_APPLIED);
+    assert(remote_telemetry_take_report(&telemetry, report));
+    assert(report[28] == 127 && report[29] == 96);
+}
+
 static void test_formats_specialized_metrics(void) {
     RemoteTelemetry telemetry;
     uint8_t report[REMOTE_TELEMETRY_REPORT_SIZE];
@@ -165,6 +242,12 @@ static void test_formats_specialized_metrics(void) {
            REMOTE_TELEMETRY_RECORD_APPLIED);
     assert(remote_telemetry_take_report(&telemetry, report));
     assert(report[1] == 5 && memcmp(report + 2, "-1.25", 5) == 0);
+
+    write_float(delta, 1.999f);
+    assert(remote_telemetry_apply_primary(&telemetry, 0, 516, delta, sizeof(delta)) ==
+           REMOTE_TELEMETRY_RECORD_APPLIED);
+    assert(remote_telemetry_take_report(&telemetry, report));
+    assert(report[1] == 6 && memcmp(report + 2, "+1.100", 6) == 0);
 }
 
 static void test_scales_fuel_and_classifies_stale_records(void) {
@@ -352,7 +435,11 @@ static void test_handles_queue_capacity_and_selection_atomicity(void) {
 int main(void) {
     test_exposes_metric_subscriptions();
     test_formats_speed_and_overlay();
+    test_formats_scale_zero_uint32_with_reference_width();
+    test_formats_negative_decimal_boundaries();
+    test_select_marks_initial_report_dirty();
     test_scales_rpm_and_services_both_channels();
+    test_range_limit_preserves_scale_for_zero_source();
     test_formats_specialized_metrics();
     test_scales_fuel_and_classifies_stale_records();
     test_queues_encoded_host_controls();

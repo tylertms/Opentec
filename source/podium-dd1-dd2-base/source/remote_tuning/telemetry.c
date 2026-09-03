@@ -155,6 +155,47 @@ static void initialize_source(RemoteTelemetrySource *source,
 }
 
 /**
+ * @brief Formats a reference-style 32-bit decimal value.
+ *
+ * Emits up to eight decimal positions plus an optional leading sign, for a maximum of nine bytes;
+ * interprets the input's high bit as a sign and preserves the reference formatter's zero result.
+ *
+ * @param[out] output Decimal text destination.
+ * @param[in] bits 32-bit value interpreted with the reference formatter's signed-bit behavior.
+ * @return Number of bytes written.
+ */
+static uint8_t format_decimal(uint8_t *output, uint32_t bits) {
+    uint8_t length = 0;
+    int32_t magnitude = (int32_t)bits;
+    bool negative = magnitude < 0;
+    int32_t divisor = 10000000;
+    bool started = false;
+
+    if (negative) {
+        output[length++] = '-';
+        if (magnitude != INT32_MIN) {
+            magnitude = -magnitude;
+        }
+    }
+
+    for (uint8_t index = 0; index < 8; index++) {
+        if (magnitude >= divisor || started) {
+            uint8_t digit = (uint8_t)(magnitude / divisor);
+            magnitude -= (int32_t)digit * divisor;
+            output[length++] = (uint8_t)(digit + '0');
+            started = true;
+        }
+        divisor /= 10;
+    }
+
+    if (!started) {
+        output[0] = '0';
+        return 1;
+    }
+    return length;
+}
+
+/**
  * @brief Formats a signed integer with an optional minimum width.
  *
  * Writes an unpadded decimal value when width is zero. A nonzero width adds leading zeroes after
@@ -194,8 +235,8 @@ static uint8_t format_integer(uint8_t *output, int32_t value, uint8_t width) {
 /**
  * @brief Formats a float with fixed decimal precision.
  *
- * Uses the absolute value, rounds the fractional digits to the requested precision, and omits a
- * sign. Callers that need a sign add it explicitly.
+ * Uses the absolute value, rounds the fractional digits independently without carrying into the
+ * integer part, and omits a sign. Callers that need a sign add it explicitly.
  *
  * @param[out] output Decimal text destination.
  * @param[in] value Value to format.
@@ -210,10 +251,6 @@ static uint8_t format_float(uint8_t *output, float value, uint8_t precision) {
         factor *= 10;
     }
     uint32_t fraction = (uint32_t)((magnitude - (float)integer) * (float)factor + 0.5f);
-    if (fraction >= factor && precision != 0) {
-        integer++;
-        fraction = 0;
-    }
 
     uint8_t length = format_integer(output, (int32_t)integer, 0);
     if (precision != 0) {
@@ -296,8 +333,9 @@ static uint8_t required_payload_size(uint8_t format) {
 /**
  * @brief Applies primary text or numeric content to a report source.
  *
- * Formats the channel payload according to its format and width or precision nibble. Signed-float
- * values receive an explicit leading sign and two fractional digits.
+ * Formats the channel payload according to its format and width or precision nibble. Zero-width
+ * 32-bit values use the reference's eight-position decimal formatter, while signed-float values
+ * receive an explicit leading sign and two fractional digits without integer carry on rounding.
  *
  * @param[in,out] source Dynamic report source.
  * @param[in] channel Selected telemetry channel.
@@ -339,9 +377,13 @@ static bool apply_primary_content(RemoteTelemetrySource *source,
         source->payload_length = format_integer(source->payload, (int16_t)read_u16(payload), scale);
         return true;
     case REMOTE_TELEMETRY_FORMAT_UINT32:
-    case REMOTE_TELEMETRY_FORMAT_INT32:
-        source->payload_length = format_integer(source->payload, (int32_t)read_u32(payload), scale);
+    case REMOTE_TELEMETRY_FORMAT_INT32: {
+        uint32_t value = read_u32(payload);
+        source->payload_length = scale == 0
+                                     ? format_decimal(source->payload, value)
+                                     : format_integer(source->payload, (int32_t)value, scale);
         return true;
+    }
     case REMOTE_TELEMETRY_FORMAT_FLOAT:
         source->payload_length = format_float(source->payload, read_float(payload), scale);
         return true;
@@ -360,8 +402,8 @@ static bool apply_primary_content(RemoteTelemetrySource *source,
  * @brief Recomputes a shared RPM or fuel scale.
  *
  * Uses the primary channel value and secondary range limit to update the selected source's scale
- * byte, including an explicit zero primary value when the range denominator is valid. RPM uses a
- * 127-step scale and fuel uses a percentage scale.
+ * byte. A range-limit update retains the previous scale when the cached primary value is zero.
+ * RPM uses a 127-step scale and fuel uses a percentage scale.
  *
  * @param[in,out] telemetry Selected telemetry state.
  * @param[in] channel_index Channel whose cached value changed.
@@ -370,17 +412,23 @@ static void update_range_scale(RemoteTelemetry *telemetry, uint8_t channel_index
     RemoteTelemetryChannel *primary = &telemetry->channels[0];
     RemoteTelemetryChannel *limit = &telemetry->channels[1];
     RemoteTelemetrySource *source = &telemetry->sources[primary->source_slot];
-    uint8_t format = telemetry->channels[channel_index].format & 0x0f;
+    const RemoteTelemetryChannel *channel = &telemetry->channels[channel_index];
+    uint8_t format = channel->format & 0x0f;
+    bool preserve_scale = (channel->behavior & REMOTE_TELEMETRY_BEHAVIOR_RANGE_LIMIT) != 0 &&
+                          ((format == REMOTE_TELEMETRY_FORMAT_UINT32 &&
+                            primary->cached_integer == 0) ||
+                           (format == REMOTE_TELEMETRY_FORMAT_FLOAT &&
+                            primary->cached_float == 0.0f));
 
     if (format == REMOTE_TELEMETRY_FORMAT_UINT32) {
         source->scale_limit = 127;
         uint32_t step = limit->cached_integer / 127u;
-        if (step != 0) {
+        if (step != 0 && !preserve_scale) {
             source->scale_value = (uint8_t)(primary->cached_integer / step);
         }
     } else if (format == REMOTE_TELEMETRY_FORMAT_FLOAT) {
         source->scale_limit = 100;
-        if (limit->cached_float != 0.0f) {
+        if (limit->cached_float != 0.0f && !preserve_scale) {
             source->scale_value = (uint8_t)((primary->cached_float / limit->cached_float) * 100.0f);
         }
     }
@@ -389,8 +437,8 @@ static void update_range_scale(RemoteTelemetry *telemetry, uint8_t channel_index
 /**
  * @brief Encodes one dynamic telemetry source as a wheel report.
  *
- * Writes the fixed 30-byte field layout and appends the primary channel overlay after the source
- * payload when it fits in the report payload area.
+ * Writes the fixed 30-byte field layout and appends the primary channel overlay at its configured
+ * fixed width when it fits in the report payload area.
  *
  * @param[in] telemetry Selected telemetry state.
  * @param[in] channel_index Channel whose source supplies the report.
@@ -484,7 +532,10 @@ bool remote_telemetry_select(RemoteTelemetry *telemetry, RemoteTelemetryMetric m
         channel->format = channel_definition->format;
         channel->behavior = channel_definition->behavior;
         channel->overlay_capacity = channel_definition->overlay_capacity;
+        channel->overlay_length = channel->overlay_capacity;
+        memset(channel->overlay, ' ', channel->overlay_length);
         channel->overlay_enabled = channel_definition->overlay_enabled;
+        channel->dirty = true;
 
         uint8_t source_slot = 0;
         while (source_slot < telemetry->source_count &&
@@ -655,7 +706,6 @@ RemoteTelemetryRecordResult remote_telemetry_apply_overlay(RemoteTelemetry *tele
         payload_length = mapping->overlay_capacity;
     }
     memcpy(mapping->overlay, payload, payload_length);
-    mapping->overlay_length = payload_length;
     mapping->dirty = true;
     return REMOTE_TELEMETRY_RECORD_APPLIED;
 }
