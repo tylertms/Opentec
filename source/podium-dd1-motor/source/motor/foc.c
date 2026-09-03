@@ -79,21 +79,6 @@ void motor_foc_step(MotorFocState *state, const MotorFocInput *input, MotorFocOu
     output->filtered_current.f16D =
         GDFLIB_FilterIIR1_F16(rotating_current.f16D, &state->d_current_filter);
 
-    if (input->dc_bus_voltage <= 0) {
-        state->stop_d_integrator = 1U;
-        state->stop_q_integrator = 1U;
-        state->d_controller.bLimFlag = 1U;
-        state->q_controller.bLimFlag = 1U;
-        output->voltage = (GMCLIB_2COOR_DQ_T_F16){0};
-        output->duty = (GMCLIB_3COOR_T_F16){
-            .f16A = 0x4000,
-            .f16B = 0x4000,
-            .f16C = 0x4000,
-        };
-        output->sector = 0U;
-        return;
-    }
-
     state->stop_d_integrator = 0U;
     state->stop_q_integrator = 0U;
 

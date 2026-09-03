@@ -61,10 +61,25 @@ static void test_reset_clears_runtime_history(void) {
     assert(state.controller.bLimFlag == 0U);
 }
 
+static void test_controller_reset_preserves_limiter_state(void) {
+    MotorVelocityControlState state;
+    motor_velocity_control_initialize(&state, INT16_MAX);
+    state.controller.f32IAccK_1 = INT32_C(0x23456789);
+    state.controller.f16InErrK_1 = -567;
+    state.controller.bLimFlag = 1U;
+
+    motor_velocity_control_controller_reset(&state);
+
+    assert(state.controller.f32IAccK_1 == 0);
+    assert(state.controller.f16InErrK_1 == 0);
+    assert(state.controller.bLimFlag == 1U);
+}
+
 int motor_test_velocity_control(void) {
     test_current_limiter_stops_integration();
     test_velocity_limiter_stops_integration();
     test_saturated_absolute_gate();
     test_reset_clears_runtime_history();
+    test_controller_reset_preserves_limiter_state();
     return 0;
 }

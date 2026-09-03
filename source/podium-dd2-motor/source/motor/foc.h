@@ -43,7 +43,7 @@ void motor_foc_initialize(MotorFocState *state);
  * @brief Runs one field-oriented current-control cycle.
  *
  * Measured phase current is transformed, filtered, regulated in D/Q coordinates, and converted to
- * compensated space-vector modulation duties.
+ * compensated space-vector modulation duties for every DC-bus voltage input.
  *
  * @param[in,out] state Persistent current-control state to update.
  * @param[in] input Phase current, current reference, rotor angle, and DC-bus voltage.

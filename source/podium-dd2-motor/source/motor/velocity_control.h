@@ -26,7 +26,7 @@ typedef struct {
 void motor_velocity_control_initialize(MotorVelocityControlState *state, int16_t current_limit);
 
 /**
- * @brief Clears velocity target, ramp, output, and controller history.
+ * @brief Clears velocity target, ramp, output, controller history, and limiter state.
  *
  * The configured controller gains and limits remain unchanged.
  *
@@ -35,7 +35,7 @@ void motor_velocity_control_initialize(MotorVelocityControlState *state, int16_t
 void motor_velocity_control_reset(MotorVelocityControlState *state);
 
 /**
- * @brief Clears velocity PI integral, error, and limiter history.
+ * @brief Clears velocity PI integral and error history while preserving limiter state.
  *
  * The configured controller gains and limits remain unchanged.
  *

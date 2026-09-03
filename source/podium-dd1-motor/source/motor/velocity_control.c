@@ -52,18 +52,19 @@ void motor_velocity_control_reset(MotorVelocityControlState *state) {
     state->current_reference = 0;
     state->stop_integrator = 0U;
     motor_velocity_control_controller_reset(state);
+    state->controller.bLimFlag = 0U;
 }
 
 /**
  * @brief Clears the calibration velocity PI controller history.
  *
- * Integral accumulation, previous error, and the published limiter flag return to zero.
+ * Integral accumulation and previous error return to zero while the published limiter flag is
+ * preserved.
  *
  * @param[in,out] state Velocity controller containing the PI state.
  */
 void motor_velocity_control_controller_reset(MotorVelocityControlState *state) {
     GFLIB_CtrlPIpAWInit_F16(0, &state->controller);
-    state->controller.bLimFlag = 0U;
 }
 
 /**
