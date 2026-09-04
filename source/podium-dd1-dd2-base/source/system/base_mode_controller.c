@@ -22,15 +22,10 @@ static void enter_memory_timeout(BaseModeController *controller, uint32_t now_ms
     controller->phase = BASE_MODE_CONTROLLER_MEMORY_TIMEOUT;
 }
 
-static uint8_t begin_status_wait(BaseModeController *controller, uint32_t now_ms) {
+static uint8_t begin_transport_wait(BaseModeController *controller,
+                                    BaseModeControllerPhase phase, uint32_t now_ms) {
     controller->transport_deadline_ms = now_ms + BASE_MODE_CONTROLLER_STATUS_TIMEOUT_MS;
-    controller->phase = BASE_MODE_CONTROLLER_STATUS_WAIT;
-    return BASE_MODE_CONTROLLER_ACTION_ENABLE_USB;
-}
-
-static uint8_t begin_hid_wait(BaseModeController *controller, uint32_t now_ms) {
-    controller->transport_deadline_ms = now_ms + BASE_MODE_CONTROLLER_STATUS_TIMEOUT_MS;
-    controller->phase = BASE_MODE_CONTROLLER_HID_WAIT;
+    controller->phase = phase;
     return BASE_MODE_CONTROLLER_ACTION_ENABLE_USB;
 }
 
@@ -74,7 +69,7 @@ uint8_t base_mode_controller_step(BaseModeController *controller, uint32_t now_m
         if (memory_result == BASE_MODE_CONTROLLER_MEMORY_COMPLETE) {
             controller->phase = BASE_MODE_CONTROLLER_STATUS_USB_DELAY;
             if (after_deadline(now_ms, controller->usb_enable_deadline_ms)) {
-                return begin_status_wait(controller, now_ms);
+                return begin_transport_wait(controller, BASE_MODE_CONTROLLER_STATUS_WAIT, now_ms);
             }
             return BASE_MODE_CONTROLLER_ACTION_NONE;
         }
@@ -93,7 +88,7 @@ uint8_t base_mode_controller_step(BaseModeController *controller, uint32_t now_m
         if (!after_deadline(now_ms, controller->usb_enable_deadline_ms)) {
             return BASE_MODE_CONTROLLER_ACTION_NONE;
         }
-        return begin_status_wait(controller, now_ms);
+        return begin_transport_wait(controller, BASE_MODE_CONTROLLER_STATUS_WAIT, now_ms);
 
     case BASE_MODE_CONTROLLER_STATUS_WAIT:
         if (!after_deadline(now_ms, controller->transport_deadline_ms)) {
@@ -112,7 +107,7 @@ uint8_t base_mode_controller_step(BaseModeController *controller, uint32_t now_m
     case BASE_MODE_CONTROLLER_HID_PREPARE:
         controller->phase = BASE_MODE_CONTROLLER_HID_USB_DELAY;
         if (after_deadline(now_ms, controller->usb_enable_deadline_ms)) {
-            return begin_hid_wait(controller, now_ms);
+            return begin_transport_wait(controller, BASE_MODE_CONTROLLER_HID_WAIT, now_ms);
         }
         return BASE_MODE_CONTROLLER_ACTION_NONE;
 
@@ -120,7 +115,7 @@ uint8_t base_mode_controller_step(BaseModeController *controller, uint32_t now_m
         if (!after_deadline(now_ms, controller->usb_enable_deadline_ms)) {
             return BASE_MODE_CONTROLLER_ACTION_NONE;
         }
-        return begin_hid_wait(controller, now_ms);
+        return begin_transport_wait(controller, BASE_MODE_CONTROLLER_HID_WAIT, now_ms);
 
     case BASE_MODE_CONTROLLER_HID_WAIT:
         if (!after_deadline(now_ms, controller->transport_deadline_ms)) {
