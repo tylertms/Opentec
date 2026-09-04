@@ -981,6 +981,32 @@ static void test_captures_mode_four_requests(void) {
     assert(input->controls[3] == 0);
 }
 
+static void test_uses_persistent_axis_override_mode_for_mode_four_requests(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    wheel_protocol_set_axis_processing(&protocol, 0, WHEEL_AXIS_OVERRIDE_MODE_PRIMARY, 0, 0);
+    protocol.mode = 4;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    request[0] = WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
+    request[13] = 0x30;
+    request[14] = WHEEL_AXIS_OVERRIDE_MODE_SECONDARY;
+    request[31] = 0x74;
+    mark_ready(request);
+
+    accept_active_request(&protocol, request);
+    accept_active_request(&protocol, request);
+    accept_active_request(&protocol, request);
+
+    const WheelAxisOverrideProcessor *processor = wheel_protocol_axis_overrides(&protocol);
+    assert(processor->overrides.axis_5.enabled);
+    assert(processor->overrides.axis_5.value == 0xfd);
+    assert(processor->overrides.axis_6.enabled);
+    assert(processor->overrides.axis_6.value == 0xcf);
+    assert(!processor->overrides.axis_7.enabled);
+    assert(!processor->overrides.auxiliary.enabled);
+}
+
 static void test_builds_mode_four_active_response(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -2145,6 +2171,7 @@ int main(void) {
     test_accumulates_motion_from_packet_modes();
     test_tracks_display_acknowledgement_input();
     test_captures_mode_four_requests();
+    test_uses_persistent_axis_override_mode_for_mode_four_requests();
     test_applies_authenticated_axis_overrides();
     test_builds_mode_one_active_response();
     test_builds_mode_four_active_response();

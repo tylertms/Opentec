@@ -836,11 +836,11 @@ static void capture_request(WheelProtocol *protocol,
             mode_four_controls[index + 4] = protocol->mode_four_input.control_data[index];
         }
         wheel_axis_override_process_packet(
-            &protocol->axis_override_processor, mode_four_controls[6], protocol->mode,
-            protocol->interface_mode, protocol->mode_four_input.axis_limit, protocol->now_ms,
-            &protocol->paddle_bite_point_percent, &protocol->mode_four_input.buttons[0],
-            &protocol->mode_four_input.motion, mode_four_controls,
-            protocol->mode_four_input.axis_outputs);
+            &protocol->axis_override_processor, protocol->configured_axis_override_mode,
+            protocol->mode, protocol->interface_mode, protocol->mode_four_input.axis_limit,
+            protocol->now_ms, &protocol->paddle_bite_point_percent,
+            &protocol->mode_four_input.buttons[0], &protocol->mode_four_input.motion,
+            mode_four_controls, protocol->mode_four_input.axis_outputs);
         for (uint8_t index = 0; index < 4; index++) {
             protocol->mode_four_input.controls[index] = mode_four_controls[index];
             protocol->mode_four_input.control_data[index] = mode_four_controls[index + 4];
@@ -1384,8 +1384,9 @@ bool wheel_protocol_remote_telemetry_pending(const WheelProtocol *protocol) {
 /**
  * @brief Configures attached-wheel axis processing.
  *
- * Retains the host interface mode, configured analog-paddle mode, and current time used by
- * incoming standard, common-payload, and CRC-family controls. Updates the bite-point percentage
+ * Retains the host interface mode, configured axis override mode, and current time used by
+ * incoming standard, common-payload, and CRC-family controls. Mode-four packet-axis processing
+ * uses this retained selector instead of packet control data. Updates the bite-point percentage
  * unless an adjustment is in progress.
  *
  * @param[in,out] protocol Wheel protocol state to configure.

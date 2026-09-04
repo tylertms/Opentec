@@ -268,7 +268,8 @@ bool wheel_protocol_remote_telemetry_pending(const WheelProtocol *protocol);
  * @brief Configures attached-wheel axis processing.
  *
  * Retains the host interface mode, axis override mode, current time, and bite-point percentage
- * used while normalizing wheel input. The bite point is left unchanged during an active adjustment.
+ * used while normalizing wheel input. Mode-four packet-axis processing uses this retained selector
+ * instead of packet control data. The bite point is left unchanged during an active adjustment.
  *
  * @param[in,out] protocol Protocol state to update.
  * @param[in] interface_mode Active host interface mode.
