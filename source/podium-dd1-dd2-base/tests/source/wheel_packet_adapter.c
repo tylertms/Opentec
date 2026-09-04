@@ -29,7 +29,7 @@ static void test_merges_adapter_input(void) {
     assert(input.buttons[2] == 0x66);
     assert(input.axis_outputs[0] == 0x34);
     assert(input.axis_outputs[1] == 0xed);
-    assert(input.motion == 0x20);
+    assert(input.motion == -1);
     assert(adapter.primary_delta == -1);
     assert(adapter.buttons_active);
 }
@@ -48,7 +48,7 @@ static void test_uses_reduced_mode_one_mapping(void) {
     assert(input.buttons[0] == 0);
     assert(input.buttons[1] == 0x80);
     assert(input.buttons[2] == 0x22);
-    assert(input.motion == 0x10);
+    assert(input.motion == 1);
     assert(adapter.primary_delta == 1);
 }
 

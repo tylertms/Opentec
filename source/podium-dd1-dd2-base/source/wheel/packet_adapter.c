@@ -50,8 +50,8 @@ bool wheel_packet_adapter_applies(uint8_t wheel_mode) {
  * @brief Merges attached-adapter state into mode-0x0C input.
  *
  * Adds the adapter's mapped buttons, replaces both output axes, publishes current button activity,
- * and consumes one queued primary motion step. A disconnected adapter leaves the wheel input
- * unchanged.
+ * and consumes one queued primary motion step. The primary step is published as signed wire motion
+ * -1, 0, or 1. A disconnected adapter leaves the wheel input unchanged.
  *
  * @param[in,out] input Filtered wheel input receiving adapter values.
  * @param[in,out] adapter Adapter state whose queued motion is consumed.
@@ -75,10 +75,10 @@ void wheel_packet_adapter_merge(WheelPacketAdapterInput *input, WheelAdapterInpu
     adapter->buttons_active =
         adapter->buttons[0] != 0 || adapter->buttons[1] != 0 || adapter->buttons[2] != 0;
     if (adapter->primary_delta > 0) {
-        input->motion = 0x10;
+        input->motion = 1;
         adapter->primary_delta--;
     } else if (adapter->primary_delta < 0) {
-        input->motion = 0x20;
+        input->motion = -1;
         adapter->primary_delta++;
     } else {
         input->motion = 0;

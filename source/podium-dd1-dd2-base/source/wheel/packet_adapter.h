@@ -42,7 +42,8 @@ bool wheel_packet_adapter_applies(uint8_t wheel_mode);
  * @brief Merges attached-adapter state into adapter-packet input.
  *
  * Maps adapter buttons and axes into the wheel input and consumes one queued primary motion step.
- * A disconnected adapter leaves the input unchanged.
+ * Publishes that step as signed wire motion (-1, 0, or 1). A disconnected adapter leaves the input
+ * unchanged.
  *
  * @param[in,out] input Wheel input receiving adapter values.
  * @param[in,out] adapter Adapter state whose motion and activity are updated.

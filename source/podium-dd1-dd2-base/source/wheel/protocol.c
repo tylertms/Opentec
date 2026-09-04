@@ -485,8 +485,8 @@ static void accumulate_axis_mode_motion(WheelProtocol *protocol) {
 /**
  * @brief Accumulates adapter-oriented rotary and interface pulse input.
  *
- * Converts adapter motion flags into the interface pulse counters after the Xbox or PlayStation
- * pulse gate. Other interfaces consume adapter motion without generating report pulses.
+ * Converts signed adapter motion into interface pulse flags for the Xbox or PlayStation pulse gate.
+ * Other interfaces retain the signed motion without generating report pulses.
  *
  * @param[in,out] protocol Protocol state containing adapter input, pulse timing, and counters.
  */
@@ -495,19 +495,17 @@ static void accumulate_adapter_motion(WheelProtocol *protocol) {
         return;
     }
 
-    uint8_t flags = (uint8_t)protocol->common_input.motion;
     if (protocol->interface_mode != 6 && protocol->interface_mode != 7) {
         return;
     }
+    const int8_t motion = protocol->common_input.motion;
+    const uint8_t flags = motion > 0 ? 0x10u : motion < 0 ? 0x20u : 0;
     if (!wheel_pulse_gate_ready(&protocol->pulse_gate, protocol->interface_mode, protocol->now_ms,
                                 flags)) {
         return;
     }
 
-    protocol->common_input.motion = pulse_delta(flags, 0x20, 0x10);
-    wheel_motion_accumulate_axis(&protocol->motion, 0, pulse_delta(flags, 0x20, 0x10));
-    wheel_motion_accumulate_axis(&protocol->motion, 1, pulse_delta(flags, 0x08, 0x04));
-    wheel_motion_accumulate_axis(&protocol->motion, 2, pulse_delta(flags, 0x02, 0x01));
+    wheel_motion_accumulate_axis(&protocol->motion, 0, motion);
 }
 
 /**
