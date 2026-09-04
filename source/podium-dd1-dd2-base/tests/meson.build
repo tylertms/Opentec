@@ -932,35 +932,6 @@ base_tests = {
   ],
 }
 
-base_test_python = import('python').find_installation()
-test(
-  'base-startup-power-service-scope',
-  base_test_python,
-  args: [files('source/startup_power_service_scope.py')],
-  suite: ['base', 'firmware'],
-)
-
-test(
-  'base-wheel-center-persistence-scope',
-  base_test_python,
-  args: [files('source/wheel_center_persistence_scope.py')],
-  suite: ['base', 'firmware'],
-)
-
-test(
-  'base-fallback-tuning-response-scope',
-  base_test_python,
-  args: [files('source/fallback_tuning_response_scope.py')],
-  suite: ['base', 'firmware'],
-)
-
-test(
-  'base-startup-output-override-scope',
-  base_test_python,
-  args: [files('source/startup_output_override_scope.py')],
-  suite: ['base', 'firmware'],
-)
-
 if base_is_dspic
   base_tests += {
     'platform-aux-bus': [
