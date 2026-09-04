@@ -45,6 +45,22 @@ typedef enum {
 } PedalServicePhase;
 
 /**
+ * @brief Identifies the current V3 report-service phase.
+ *
+ * Each receive or outbound report operation runs in its own one-millisecond service pass. The
+ * official sequence is sample, status, control, input, and sample; calibration inserts
+ * configuration and keepalive between input and sample.
+ */
+typedef enum {
+    PEDAL_V3_PHASE_SAMPLE,        /**< Receive one V3 sample or check its timeout. */
+    PEDAL_V3_PHASE_STATUS,        /**< Send one V3 status report. */
+    PEDAL_V3_PHASE_CONTROL,       /**< Send one V3 control report. */
+    PEDAL_V3_PHASE_INPUT,         /**< Send one V3 input report. */
+    PEDAL_V3_PHASE_CONFIGURATION, /**< Send one V3 configuration report. */
+    PEDAL_V3_PHASE_KEEPALIVE,     /**< Send one V3 calibration keepalive. */
+} PedalV3Phase;
+
+/**
  * @brief Identifies the current V4 operation phase.
  *
  * Tuning phases select individual settings; other phases select status, adjustment, or host
@@ -144,6 +160,7 @@ typedef struct {
     PedalAdjustmentDisplay adjustment_display; /**< Latest adjustment display result. */
     PedalAdjustmentSource adjustment_source;   /**< Source of the active adjustment operation. */
     PedalV4Phase v4_phase;                     /**< Current V4 operation phase. */
+    PedalV3Phase v3_phase;                     /**< Current V3 report-service phase. */
     uint16_t analog_samples[PEDAL_INPUT_AXIS_COUNT]; /**< Latest local analog samples. */
     bool analog_samples_ready;      /**< True after local analog samples have been supplied. */
     bool connected;                 /**< True while an input source is considered connected. */

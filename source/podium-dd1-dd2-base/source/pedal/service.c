@@ -1385,16 +1385,14 @@ bool pedal_service_flush_configuration(PedalService *service, uint32_t now_ms) {
 }
 
 /**
- * @brief Schedules V3 status, control, input, configuration, and keepalive frames.
+ * @brief Services one V3 status-report phase.
  *
- * Sends at most one frame per service pass in protocol priority order. Periodic status and input
- * frames use their 500-millisecond cadence, while calibration keepalive frames use 2500
- * milliseconds. Status frames are suppressed only while both V3 calibration paths are active.
+ * Advances to the control phase after one status attempt, including a suppressed or busy attempt.
  *
- * @param[in,out] service V3 outbound requests, deadlines, and transmitted state to update.
+ * @param[in,out] service V3 status and phase state to update.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
-static void service_v3_output(PedalService *service, uint32_t now_ms) {
+static void service_v3_status(PedalService *service, uint32_t now_ms) {
     const PedalProtocolStatus *status = &service->protocol_status;
     const PedalProtocolStatus *transmitted = &service->transmitted_status;
     bool status_changed =
@@ -1409,33 +1407,54 @@ static void service_v3_output(PedalService *service, uint32_t now_ms) {
             service->status_transmitted = true;
             service->next_status_ms = now_ms + PEDAL_STATUS_INTERVAL_MS;
         }
-        return;
     }
+    service->v3_phase = PEDAL_V3_PHASE_CONTROL;
+}
 
+/**
+ * @brief Services one V3 control-report phase.
+ *
+ * Advances to the input phase after one control attempt, including when no direct control is
+ * pending.
+ *
+ * @param[in,out] service V3 control and phase state to update.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_v3_control(PedalService *service, uint32_t now_ms) {
     if (service->pending_control != 0) {
-        if ((service->pending_control & 0x1fu) == 0) {
-            return;
+        if ((service->pending_control & 0x1fu) != 0) {
+            uint8_t remaining_control =
+                pedal_v3_build_control(service->pending_control, &service->transmit_frame);
+            uint8_t sent_control = service->pending_control ^ remaining_control;
+            if (send_frame(service)) {
+                service->pending_control = remaining_control;
+                if ((sent_control & PEDAL_V3_CONTROL_ENABLE) != 0) {
+                    service->v3.connection_flags = UINT8_MAX;
+                }
+                if ((sent_control & PEDAL_V3_CONTROL_DISABLE) != 0) {
+                    service->v3.connection_flags = 0;
+                }
+                for (uint8_t axis = 0; axis < PEDAL_INPUT_AXIS_COUNT; axis++) {
+                    service->input_command[axis] = 0;
+                }
+                service->input_command_pending = true;
+                restart_v3_timeout(service, now_ms);
+            }
         }
-        uint8_t remaining_control =
-            pedal_v3_build_control(service->pending_control, &service->transmit_frame);
-        uint8_t sent_control = service->pending_control ^ remaining_control;
-        if (send_frame(service)) {
-            service->pending_control = remaining_control;
-            if ((sent_control & PEDAL_V3_CONTROL_ENABLE) != 0) {
-                service->v3.connection_flags = UINT8_MAX;
-            }
-            if ((sent_control & PEDAL_V3_CONTROL_DISABLE) != 0) {
-                service->v3.connection_flags = 0;
-            }
-            for (uint8_t axis = 0; axis < PEDAL_INPUT_AXIS_COUNT; axis++) {
-                service->input_command[axis] = 0;
-            }
-            service->input_command_pending = true;
-            restart_v3_timeout(service, now_ms);
-        }
-        return;
     }
+    service->v3_phase = PEDAL_V3_PHASE_INPUT;
+}
 
+/**
+ * @brief Services one V3 input-report phase.
+ *
+ * Queues periodic zero input after its deadline, sends one pending command, and advances to the
+ * calibration phases or the next receive pass.
+ *
+ * @param[in,out] service V3 input and phase state to update.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_v3_input(PedalService *service, uint32_t now_ms) {
     if (!service->input_command_pending && now_ms > service->next_input_command_ms) {
         for (uint8_t axis = 0; axis < PEDAL_INPUT_AXIS_COUNT; axis++) {
             service->input_command[axis] = 0;
@@ -1451,9 +1470,21 @@ static void service_v3_output(PedalService *service, uint32_t now_ms) {
             }
             service->input_command_pending = false;
         }
-        return;
     }
+    service->v3_phase = service->v3.primary_calibration || service->v3.secondary_calibration
+                            ? PEDAL_V3_PHASE_CONFIGURATION
+                            : PEDAL_V3_PHASE_SAMPLE;
+}
 
+/**
+ * @brief Services one V3 configuration-report phase.
+ *
+ * Sends one pending calibration configuration and advances to the keepalive phase.
+ *
+ * @param[in,out] service V3 configuration and phase state to update.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_v3_configuration(PedalService *service, uint32_t now_ms) {
     bool calibrating = service->v3.primary_calibration || service->v3.secondary_calibration;
     if (calibrating && service->configuration_pending) {
         bool fine_scale = (service->v3.primary_calibration && !service->v3.legacy_calibration) ||
@@ -1468,29 +1499,75 @@ static void service_v3_output(PedalService *service, uint32_t now_ms) {
             service->configuration_pending = false;
             service->configuration_reset_pending = false;
         }
-        return;
     }
+    service->v3_phase = PEDAL_V3_PHASE_KEEPALIVE;
+}
+
+/**
+ * @brief Services one V3 calibration keepalive phase.
+ *
+ * Sends a due keepalive and advances to the next receive pass.
+ *
+ * @param[in,out] service V3 keepalive and phase state to update.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_v3_keepalive(PedalService *service, uint32_t now_ms) {
+    bool calibrating = service->v3.primary_calibration || service->v3.secondary_calibration;
     if (calibrating && now_ms > service->next_keepalive_ms) {
         pedal_v3_build_keepalive(&service->transmit_frame);
         if (send_frame(service)) {
             service->next_keepalive_ms = now_ms + PEDAL_KEEPALIVE_INTERVAL_MS;
         }
     }
+    service->v3_phase = PEDAL_V3_PHASE_SAMPLE;
 }
 
 /**
- * @brief Receives V3 reports and services the outbound calibration sequence.
+ * @brief Dispatches one V3 outbound report phase.
+ *
+ * Sample processing remains in service_v3_sample(), so each service pass performs at most one
+ * receive or outbound operation from the official sample, status, control, input, configuration,
+ * keepalive sequence.
+ *
+ * @param[in,out] service V3 report phase state to update.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_v3_output(PedalService *service, uint32_t now_ms) {
+    switch (service->v3_phase) {
+    case PEDAL_V3_PHASE_STATUS:
+        service_v3_status(service, now_ms);
+        break;
+    case PEDAL_V3_PHASE_CONTROL:
+        service_v3_control(service, now_ms);
+        break;
+    case PEDAL_V3_PHASE_INPUT:
+        service_v3_input(service, now_ms);
+        break;
+    case PEDAL_V3_PHASE_CONFIGURATION:
+        service_v3_configuration(service, now_ms);
+        break;
+    case PEDAL_V3_PHASE_KEEPALIVE:
+        service_v3_keepalive(service, now_ms);
+        break;
+    default:
+        break;
+    }
+}
+
+/**
+ * @brief Services one V3 sample-receive phase.
  *
  * Refreshes the report deadline for every structurally valid frame, including unknown report types.
  * Applies recognized reports, clears the extended-status handshake latch after 250 recognized
- * startup frames, and reconnects when the report deadline expires. The auxiliary source lock is
- * passed to V3 decoding while the remote auxiliary byte is retained independently for later
- * release of a local override.
+ * startup frames, and reconnects when the report deadline expires. Each receive pass advances to
+ * the status phase; outbound phases advance independently on later service passes.
+ * The auxiliary source lock is passed to V3 decoding while the remote auxiliary byte is retained
+ * independently for later release of a local override.
  *
  * @param[in,out] service V3 transport, input, activity, and timeout state to update.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
-static void service_v3_stream(PedalService *service, uint32_t now_ms) {
+static void service_v3_sample(PedalService *service, uint32_t now_ms) {
     if (platform_pedal_link_take_frame(service->frame_buffer) &&
         pedal_frame_decode(service->frame_buffer, &service->receive_frame) == PEDAL_FRAME_VALID) {
         bool startup_timeout = service->startup_frame_count < PEDAL_STARTUP_FRAME_COUNT;
@@ -1532,14 +1609,15 @@ static void service_v3_stream(PedalService *service, uint32_t now_ms) {
         return;
     }
 
-    service_v3_output(service, now_ms);
+    service->v3_phase = PEDAL_V3_PHASE_STATUS;
 }
 
 /**
  * @brief Advances the pedal transport service at its one-millisecond cadence.
  *
  * Processes at most one discovery, legacy, V3, V4, reconnect, or analog phase per elapsed
- * millisecond. Calls made before the next service deadline leave the retained phase unchanged.
+ * millisecond. V3 stream processing alternates one receive or outbound report phase per pass.
+ * Calls made before the next service deadline leave the retained phase unchanged.
  *
  * @param[in,out] service Pedal transport, protocol, timing, and input state to update.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -1604,10 +1682,15 @@ void pedal_service_run(PedalService *service, uint32_t now_ms) {
             service->status_transmitted = false;
             service->next_input_command_ms = 0;
             service->next_keepalive_ms = 0;
+            service->v3_phase = PEDAL_V3_PHASE_SAMPLE;
         }
         break;
     case PEDAL_SERVICE_V3_STREAM:
-        service_v3_stream(service, now_ms);
+        if (service->v3_phase == PEDAL_V3_PHASE_SAMPLE) {
+            service_v3_sample(service, now_ms);
+        } else {
+            service_v3_output(service, now_ms);
+        }
         break;
     case PEDAL_SERVICE_V4_START:
         platform_pedal_link_begin_transfer_receive();
