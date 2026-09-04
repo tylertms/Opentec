@@ -35,7 +35,8 @@ typedef struct {
 /**
  * @brief Initializes the USB device controller.
  *
- * Configures the controller, descriptor table, endpoint-zero setup buffers, and interrupt routing.
+ * Configures the controller, descriptor table, endpoint-zero bank-zero setup descriptor, and
+ * interrupt routing.
  */
 void platform_usb_init(void);
 
@@ -119,7 +120,8 @@ bool platform_usb_receive(uint8_t endpoint, uint8_t length, bool data_one);
 /**
  * @brief Prepares endpoint zero for the next control setup packet.
  *
- * Arms available setup banks, clears a control stall, and releases controller token processing.
+ * Arms available setup banks after control activity, clears a control stall, and releases
+ * controller token processing. Reset initialization publishes only bank-zero setup ownership.
  */
 void platform_usb_control_ready(void);
 

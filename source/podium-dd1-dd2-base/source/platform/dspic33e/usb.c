@@ -279,7 +279,8 @@ static void push_event(PlatformUsbEventType type, uint8_t endpoint, bool odd_ban
  * @brief Restores the USB controller to its default device state.
  *
  * Clears pending controller events, resets ping-pong selection, address zero, endpoint controls,
- * queued events, descriptors, and both endpoint-zero setup banks before allowing token processing.
+ * queued events, and descriptors, then arms endpoint-zero setup bank zero before allowing token
+ * processing.
  *
  */
 static void reset_controller(void) {
@@ -304,7 +305,6 @@ static void reset_controller(void) {
     control_out_current_bank = 0;
     clear_sof_recovery();
     arm_setup_bank(false);
-    arm_setup_bank(true);
     U1CONbits.PKTDIS = 0;
     U1CONbits.PPBRST = 0;
 }
@@ -313,8 +313,8 @@ static void reset_controller(void) {
  * @brief Initializes the USB device controller.
  *
  * Configures the active-high RB1 connection input, enables and powers the controller, selects all
- * supported device interrupt sources, installs the aligned descriptor table, resets endpoint
- * state, and records the detached state.
+ * supported device interrupt sources, installs the aligned descriptor table, arms endpoint-zero
+ * setup bank zero, resets endpoint state, and records the detached state.
  *
  */
 void platform_usb_init(void) {

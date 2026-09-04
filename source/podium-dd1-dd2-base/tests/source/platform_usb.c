@@ -46,6 +46,15 @@ static void test_detach_allows_reattachment(void) {
     assert(IEC5bits.USB1IE == 1);
 }
 
+static void test_init_arms_only_ep0_setup_bank_zero(void) {
+    platform_usb_init();
+
+    assert(platform_usb_test_descriptor_status(0, false, false) == 0x0084);
+    assert(platform_usb_test_descriptor_count(0, false, false) == PLATFORM_USB_PACKET_SIZE);
+    assert(platform_usb_test_descriptor_status(0, false, true) == 0);
+    assert(platform_usb_test_descriptor_count(0, false, true) == 0);
+}
+
 static void test_halts_both_ping_pong_banks(void) {
     platform_usb_init();
     platform_usb_configure_endpoint(1, true, false);
@@ -113,6 +122,7 @@ static void test_sof_recovers_stuck_descriptor_after_45_frames(void) {
 int main(void) {
     test_attach_is_complete_and_idempotent();
     test_detach_allows_reattachment();
+    test_init_arms_only_ep0_setup_bank_zero();
     test_halts_both_ping_pong_banks();
     test_interrupt_sources_obey_enable_mask();
     test_sof_recovers_stuck_descriptor_after_45_frames();
