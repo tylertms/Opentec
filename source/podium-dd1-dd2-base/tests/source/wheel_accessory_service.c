@@ -107,8 +107,7 @@ static void preserves_sticky_position_modulus_across_non_position_probes(void) {
     service.sync_initialized = false;
     const uint8_t model_three_standard_status[] = {0x8c};
     run_read(&service, &transport, status_request, sizeof(status_request),
-             model_three_standard_status,
-             sizeof(model_three_standard_status), 0);
+             model_three_standard_status, sizeof(model_three_standard_status), 0);
     run_read(&service, &transport, version_request, sizeof(version_request), model_two_version,
              sizeof(model_two_version), 0);
     assert(service.accessory.kind == WHEEL_ACCESSORY_STANDARD);
@@ -255,6 +254,23 @@ static void polls_identity_and_official_composite_order(void) {
     assert(memcmp(request, natural_damper_request, request_length) == 0);
 }
 
+static void selects_native_input_transfer_code_from_accessory_state(void) {
+    WheelAccessoryService service;
+    wheel_accessory_service_init(&service);
+
+    assert(wheel_accessory_apply_probe(&service.accessory, (int8_t)0x94, UINT32_C(0xabcdef3f)));
+    assert(service.accessory.kind == WHEEL_ACCESSORY_STANDARD);
+    assert(wheel_accessory_service_input_transfer_code(&service) == 0x3f);
+
+    assert(wheel_accessory_apply_probe(&service.accessory, (int8_t)0x95, UINT32_C(0x12345634)));
+    assert(service.accessory.kind == WHEEL_ACCESSORY_EXTENDED);
+    assert(wheel_accessory_service_input_transfer_code(&service) == 0x34);
+
+    assert(wheel_accessory_apply_probe(&service.accessory, 1, UINT32_C(0xabcdef3f)));
+    assert(service.accessory.kind == WHEEL_ACCESSORY_LEGACY);
+    assert(wheel_accessory_service_input_transfer_code(&service) == 0);
+}
+
 static void preserves_tuning_updates_during_an_inflight_write(void) {
     WheelAccessoryService service;
     CommandTransport transport;
@@ -273,8 +289,8 @@ static void preserves_tuning_updates_during_an_inflight_write(void) {
     submit_request(&transport, first_write, sizeof(first_write));
     assert(service.sync_request);
 
-    wheel_accessory_service_configure(
-        &service, &(WheelAccessorySyncParameters){.natural_friction = 0x4433});
+    wheel_accessory_service_configure(&service,
+                                      &(WheelAccessorySyncParameters){.natural_friction = 0x4433});
     complete_write(&transport);
     wheel_accessory_service_run(&service, &transport);
 
@@ -327,7 +343,8 @@ static void retries_calibration_and_override_without_losing_state(void) {
     submit_request(&transport, calibration_write, sizeof(calibration_write));
     complete_write(&transport);
     wheel_accessory_service_run(&service, &transport);
-    assert(wheel_accessory_service_take_calibration_event(&service) == MOTOR_CALIBRATION_EVENT_NONE);
+    assert(wheel_accessory_service_take_calibration_event(&service) ==
+           MOTOR_CALIBRATION_EVENT_NONE);
     service.sync_state = WHEEL_ACCESSORY_SYNC_READ_CALIBRATION_COMMAND;
     wheel_accessory_service_run(&service, &transport);
     submit_request(&transport, calibration_read, sizeof(calibration_read));
@@ -375,8 +392,7 @@ static void releases_calibration_ownership_after_failed_transfer(void) {
     service.probe_requested = false;
     service.accessory.accessory_type = 1;
     service.sync_state = WHEEL_ACCESSORY_SYNC_READ_CALIBRATION_COMMAND;
-    wheel_accessory_service_request_calibration(&service,
-                                                MOTOR_CALIBRATION_OPERATION_CALIBRATE);
+    wheel_accessory_service_request_calibration(&service, MOTOR_CALIBRATION_OPERATION_CALIBRATE);
 
     wheel_accessory_service_run(&service, &transport);
     assert(wheel_accessory_service_calibration_owns_transport(&service));
@@ -481,18 +497,21 @@ static void retains_unavailable_calibrations_before_composite_sync(void) {
     assert(service.sync_state == WHEEL_ACCESSORY_SYNC_PREPARE_NATURAL_FRICTION);
     assert(service.calibration_requests == (1u << 0 | 1u << 1));
     assert(!service.calibration_command_sent);
-    assert(wheel_accessory_service_take_calibration_event(&service) == MOTOR_CALIBRATION_EVENT_NONE);
+    assert(wheel_accessory_service_take_calibration_event(&service) ==
+           MOTOR_CALIBRATION_EVENT_NONE);
 
     run_prepare(&service, &transport, 0);
     assert(service.calibration_requests == (1u << 0 | 1u << 1));
-    assert(wheel_accessory_service_take_calibration_event(&service) == MOTOR_CALIBRATION_EVENT_NONE);
+    assert(wheel_accessory_service_take_calibration_event(&service) ==
+           MOTOR_CALIBRATION_EVENT_NONE);
 
     assert(wheel_accessory_apply_probe(&service.accessory, (int8_t)0x88, 1));
     service.sync_state = WHEEL_ACCESSORY_SYNC_READ_ACCESSORY_TYPE;
     run_prepare(&service, &transport, 0);
     assert(service.sync_state == WHEEL_ACCESSORY_SYNC_PREPARE_NATURAL_FRICTION);
     assert(service.calibration_requests == (1u << 0 | 1u << 1));
-    assert(wheel_accessory_service_take_calibration_event(&service) == MOTOR_CALIBRATION_EVENT_NONE);
+    assert(wheel_accessory_service_take_calibration_event(&service) ==
+           MOTOR_CALIBRATION_EVENT_NONE);
 }
 
 static void starts_motor_only_after_an_idle_command(void) {
@@ -560,6 +579,7 @@ int main(void) {
     initializes_official_parameter_mirror_defaults();
     preserves_sticky_position_modulus_across_non_position_probes();
     polls_identity_and_official_composite_order();
+    selects_native_input_transfer_code_from_accessory_state();
     preserves_tuning_updates_during_an_inflight_write();
     retries_calibration_and_override_without_losing_state();
     releases_calibration_ownership_after_failed_transfer();

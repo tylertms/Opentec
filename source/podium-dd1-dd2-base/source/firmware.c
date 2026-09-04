@@ -5307,13 +5307,13 @@ static void service_usb_input(uint32_t now_ms) {
         input_calibration = &xbox_position_calibration;
     }
 
-    const MotorIdentity *motor_identity = motor_probe_identity(&motor_probe);
     usb_input_state = (UsbInputReportState){
         .fanatec =
             {
                 .steering = wheel_position_hid_axis(motor_position_report.wheel_position,
                                                     input_calibration),
-                .transfer_code = motor_identity_input_transfer_code(motor_identity),
+                .transfer_code =
+                    wheel_accessory_service_input_transfer_code(&wheel_accessory_service),
                 .wheel_mode = wheel_mode,
                 .axis_limit = wheel_service_axis_limit(&wheel_service),
                 .clutch_paddles = {0xff, 0},

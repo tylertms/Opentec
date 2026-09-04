@@ -20,16 +20,15 @@ typedef struct {
     MotorProtocol protocol; /**< Decoded protocol family; valid only after successful decoding. */
     uint8_t version[4];     /**< Four-byte version response copied from the controller. */
     uint8_t model;          /**< Five-bit model identifier from the initial status byte. */
-    uint8_t transfer_code;  /**< Six-bit transfer identifier from version byte zero. */
     uint8_t initial_status; /**< Initial status byte used for protocol and model decoding. */
 } MotorIdentity;
 
 /**
  * @brief Decodes a motor-controller identity response.
  *
- * Copies the status and four-byte version response, extracts model and transfer fields, and
- * classifies the controller. A clear status high bit selects legacy; otherwise status bits zero
- * and one select standard for zero, position for one or two, and an invalid encoding for three.
+ * Copies the status and four-byte version response, extracts the model field, and classifies the
+ * controller. A clear status high bit selects legacy; otherwise status bits zero and one select
+ * standard for zero, position for one or two, and an invalid encoding for three.
  * The output protocol is valid only when the function returns true.
  *
  * @param[in] status Initial controller status byte.
@@ -50,17 +49,6 @@ bool motor_identity_decode(uint8_t status, const uint8_t version[4], MotorIdenti
  * @return True for the position-capable protocol; otherwise false.
  */
 bool motor_identity_has_extended_parameters(const MotorIdentity *identity);
-
-/**
- * @brief Selects the motor transfer identifier for input reports.
- *
- * Returns the decoded six-bit transfer code for standard and position-capable controllers. Legacy
- * controllers and unavailable identities map to zero. A null identity is accepted.
- *
- * @param[in] identity Decoded motor-controller identity, or null when unavailable.
- * @return Input-report transfer identifier.
- */
-uint8_t motor_identity_input_transfer_code(const MotorIdentity *identity);
 
 /**
  * @brief Selects the runtime state code for a motor-controller identity.

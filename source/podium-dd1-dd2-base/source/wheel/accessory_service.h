@@ -123,8 +123,8 @@ typedef struct {
     bool runtime_valid;                     /**< True after a non-sentinel runtime value. */
 
     uint32_t wheel_travel_limit;   /**< Travel used for automatic sensitivity. */
-    uint8_t drift_mode;             /**< Current drift-mode byte, including override state. */
-    uint8_t saved_drift_mode;       /**< Drift-mode byte restored when override is disabled. */
+    uint8_t drift_mode;            /**< Current drift-mode byte, including override state. */
+    uint8_t saved_drift_mode;      /**< Drift-mode byte restored when override is disabled. */
     uint8_t requested_sensitivity; /**< Profile sensitivity before automatic encoding. */
     uint8_t wheel_mode;            /**< Current wheel mode used for calibration gates. */
     uint32_t position_modulus; /**< Sticky steering modulus, initialized to the official default. */
@@ -141,7 +141,8 @@ typedef struct {
     bool motor_command_sent;       /**< True after the position-sensor command is accepted. */
     MotorStatusEvent motor_event;  /**< Pending position-sensor lifecycle event. */
 
-    bool output_override_requested; /**< True while the prioritized full-damper write is requested. */
+    bool output_override_requested; /**< True while the prioritized full-damper write is requested.
+                                     */
     bool output_override_active;    /**< True after the prioritized full-scale write succeeds. */
     uint8_t saved_natural_damper;   /**< Damper value exposed to composite sync on disable. */
     bool remote_effects_enabled;    /**< Current force-feedback status bit zero. */
@@ -251,10 +252,11 @@ const WheelAccessory *wheel_accessory_service_identity(const WheelAccessoryServi
 bool wheel_accessory_service_remote_effects_enabled(const WheelAccessoryService *service);
 
 /**
- * @brief Returns the auxiliary transfer code used by native wheel input reports.
+ * @brief Returns the auxiliary transfer code used by native Fanatec input reports.
  *
- * Selects the low six bits of the retained auxiliary version only while the auxiliary state is
- * standard or extended. Disconnected and legacy auxiliary states map to zero.
+ * The attached-wheel service owns the native Fanatec transfer byte. Selects the low six bits of
+ * the retained auxiliary version only while the auxiliary state is standard or extended.
+ * Disconnected and legacy auxiliary states map to zero.
  *
  * @param[in] service Attached wheel accessory service.
  * @return The six-bit auxiliary transfer code, or zero otherwise.

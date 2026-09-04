@@ -8,7 +8,6 @@ bool motor_identity_decode(uint8_t status, const uint8_t version[4], MotorIdenti
     for (uint8_t index = 0; index < sizeof(identity->version); index++) {
         identity->version[index] = version[index];
     }
-    identity->transfer_code = version[0] & 0x3f;
     identity->model = 0;
 
     if ((status & 0x80) == 0) {
@@ -32,11 +31,6 @@ bool motor_identity_decode(uint8_t status, const uint8_t version[4], MotorIdenti
 
 bool motor_identity_has_extended_parameters(const MotorIdentity *identity) {
     return identity->protocol == MOTOR_PROTOCOL_POSITION;
-}
-
-uint8_t motor_identity_input_transfer_code(const MotorIdentity *identity) {
-    return identity != 0 && identity->protocol != MOTOR_PROTOCOL_LEGACY ? identity->transfer_code
-                                                                        : 0;
 }
 
 uint8_t motor_identity_runtime_state(const MotorIdentity *identity) {

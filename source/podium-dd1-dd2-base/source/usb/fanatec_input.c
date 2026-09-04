@@ -327,8 +327,7 @@ static void fanatec_map_adapter_buttons(fanatec_input_state *state,
  * @param[in] auxiliary_flags Caller-supplied auxiliary flags.
  */
 static void fanatec_map_auxiliary_high_nibble(fanatec_input_state *state, uint8_t auxiliary_flags) {
-    state->accessory[1] =
-        (uint8_t)((state->accessory[1] & 0x0fu) | (auxiliary_flags & 0xf0u));
+    state->accessory[1] = (uint8_t)((state->accessory[1] & 0x0fu) | (auxiliary_flags & 0xf0u));
 }
 
 void fanatec_input_pipeline_map(fanatec_input_state *state, const fanatec_input_source *source) {
@@ -381,8 +380,8 @@ void fanatec_input_pipeline_map(fanatec_input_state *state, const fanatec_input_
         if (source->profile_selector_held) {
             packed_rotary_positions &= STANDARD_PROFILE_ROTARY_MASK;
         }
-        uint16_t remapped = fanatec_remap_axis_bits(
-            (uint16_t)source->secondary_buttons | ((uint16_t)packed_rotary_positions << 8));
+        uint16_t remapped = fanatec_remap_axis_bits((uint16_t)source->secondary_buttons |
+                                                    ((uint16_t)packed_rotary_positions << 8));
         state->accessory[2] = (uint8_t)remapped;
         state->accessory[3] = (uint8_t)(remapped >> 8);
         fanatec_map_auxiliary_high_nibble(state, source->auxiliary_flags);
@@ -635,8 +634,7 @@ void fanatec_input_apply_bite_point_update(fanatec_input_state *state, uint8_t p
  * @param[out] report Buffer that receives the encoded payload.
  * @param[in] state Logical Fanatec input values.
  */
-static void encode_payload(uint8_t report[FANATEC_INPUT_COMPATIBILITY_REPORT_SIZE],
-                           const fanatec_input_state *state) {
+static void encode_payload(uint8_t report[USAGE_OFFSET + 1], const fanatec_input_state *state) {
     size_t pedal;
 
     memcpy(report + BUTTONS_OFFSET, state->button_banks, sizeof(state->button_banks));

@@ -223,6 +223,24 @@ static void test_protocol_active_clears_extended_fields(void) {
     assert(memcmp(report + 11, expected_accessory, sizeof(expected_accessory)) == 0);
 }
 
+static void test_auxiliary_transfer_code_reaches_native_report_byte(void) {
+    const fanatec_input_source source = {
+        .transfer_code = 0x3f,
+        .mode = 0x10,
+        .protocol_active = true,
+    };
+    fanatec_input_state state = {0};
+    uint8_t report[FANATEC_INPUT_REPORT_SIZE];
+    uint8_t compatibility_report[FANATEC_INPUT_COMPATIBILITY_REPORT_SIZE];
+
+    fanatec_input_pipeline_map(&state, &source);
+    assert(state.transfer_code == 0x3f);
+    assert(fanatec_input_encode(report, &state));
+    assert(report[16] == 0x3f);
+    assert(fanatec_input_compatibility_encode(compatibility_report, &state));
+    assert(compatibility_report[15] == 0x3f);
+}
+
 static void test_production_pipeline_first_five_report(void) {
     fanatec_input_pipeline_state pipeline;
     fanatec_input_state state = {0};
@@ -603,6 +621,7 @@ int main(void) {
     test_official_first_five_mapping_and_axes();
     test_legacy_mode_maps_auxiliary_high_nibble();
     test_protocol_active_clears_extended_fields();
+    test_auxiliary_transfer_code_reaches_native_report_byte();
     test_production_pipeline_first_five_report();
     test_primary_third_button_bank_mapping();
     test_default_auxiliary_button_source();

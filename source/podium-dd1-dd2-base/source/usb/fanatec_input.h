@@ -36,7 +36,7 @@ typedef struct {
     uint8_t clutch_paddles[2];  /**< Clutch-paddle values; unavailable is encoded as 0xff, 0x00. */
     uint8_t auxiliary_pedal;    /**< Auxiliary pedal axis value. */
     int8_t encoder_position;    /**< Signed rotary encoder position. */
-    uint8_t transfer_code;      /**< Attached-wheel transfer code. */
+    uint8_t transfer_code;      /**< Auxiliary-wheel transfer code copied to native reports. */
     uint8_t status_flags;       /**< Wheel, shifter, pedal, and thermal status bits. */
     uint8_t wheel_mode;         /**< Attached-wheel operating mode. */
     uint8_t axis_limit;         /**< Steering axis limit. */
@@ -62,7 +62,7 @@ typedef struct {
     uint8_t secondary_buttons;   /**< Secondary source byte at source offset twelve. */
     uint8_t packed_rotary_positions;  /**< Packed rotary byte at source offset thirteen. */
     uint8_t accessory;                /**< Accessory source byte at source offset fourteen. */
-    uint8_t transfer_code;            /**< Transfer-code source byte at source offset fifteen. */
+    uint8_t transfer_code;            /**< Auxiliary transfer byte at source offset fifteen. */
     uint16_t steering;                /**< Calibrated steering axis. */
     uint16_t pedals[3];               /**< Calibrated pedal axes. */
     uint8_t auxiliary_pedal;          /**< Calibrated auxiliary pedal axis. */
