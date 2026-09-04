@@ -138,6 +138,32 @@ static void test_official_first_five_mapping_and_axes(void) {
     assert(state.wheel_mode == 0x10);
 }
 
+static void test_protocol_active_clears_extended_fields(void) {
+    const fanatec_input_source source = {
+        .rotary_positions = {0x12, 0x34},
+        .extended_buttons = {0x56, 0x78, 0x9a, 0xbc},
+        .accessory = 0x0d,
+        .mode = 0x01,
+        .protocol_active = true,
+    };
+    fanatec_input_state state = {
+        .rotary = {0xa1, 0xa2, 0xa3, 0xa4, 0xa5},
+        .accessory = {0xb1, 0xb2, 0xb3, 0xb4, 0xb5},
+    };
+    const uint8_t expected_rotary[FANATEC_INPUT_ROTARY_BYTES] = {0x12, 0x34, 0, 0x78, 0};
+    const uint8_t expected_accessory[FANATEC_INPUT_ACCESSORY_BYTES] = {0, 0, 0, 0, 0x0d};
+
+    fanatec_input_pipeline_map(&state, &source);
+
+    assert(memcmp(state.rotary, expected_rotary, sizeof(expected_rotary)) == 0);
+    assert(memcmp(state.accessory, expected_accessory, sizeof(expected_accessory)) == 0);
+
+    uint8_t report[FANATEC_INPUT_REPORT_SIZE];
+    assert(fanatec_input_encode(report, &state));
+    assert(memcmp(report + 6, expected_rotary, sizeof(expected_rotary)) == 0);
+    assert(memcmp(report + 11, expected_accessory, sizeof(expected_accessory)) == 0);
+}
+
 static void test_production_pipeline_first_five_report(void) {
     fanatec_input_pipeline_state pipeline;
     fanatec_input_state state = {0};
@@ -514,6 +540,7 @@ int main(void) {
     test_validation();
     test_official_source_history();
     test_official_first_five_mapping_and_axes();
+    test_protocol_active_clears_extended_fields();
     test_production_pipeline_first_five_report();
     test_primary_third_button_bank_mapping();
     test_default_auxiliary_button_source();

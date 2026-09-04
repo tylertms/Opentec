@@ -115,7 +115,8 @@ void fanatec_input_pipeline_filter(fanatec_input_pipeline_state *pipeline,
  * @brief Maps one filtered source packet to native Fanatec output fields.
  *
  * Reconstructs the official first-five-byte mapping, source arbitration, mode extensions, axis
- * status, clutch availability, and adapter button merge. The existing encoder then serializes the
+ * status, clutch availability, and adapter button merge. Active protocol input clears every rotary
+ * and accessory byte before applying the current packet. The existing encoder then serializes the
  * resulting logical state without changing report length or usage identifiers.
  *
  * @param[out] state Native Fanatec output state.

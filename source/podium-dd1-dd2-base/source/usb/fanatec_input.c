@@ -320,6 +320,11 @@ void fanatec_input_pipeline_map(fanatec_input_state *state, const fanatec_input_
         return;
     }
 
+    if (source->protocol_active) {
+        memset(state->rotary, 0, sizeof(state->rotary));
+        memset(state->accessory, 0, sizeof(state->accessory));
+    }
+
     fanatec_map_primary_buttons(state, source);
     if (source->neutral_shifter_axes) {
         state->button_banks[2] = 0;
