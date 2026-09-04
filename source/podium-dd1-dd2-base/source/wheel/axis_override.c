@@ -457,7 +457,9 @@ static void set_axis_mode_inactive_output(uint8_t interface_mode, uint8_t axes[2
  * @brief Advances axis-mode packet multiplexing.
  *
  * Tracks the two filtered controls, emits centered independent axes on nonmultiplexed interfaces,
- * and serializes an available source through the interface-specific primary axis otherwise.
+ * and serializes an available source through the interface-specific primary axis otherwise. The
+ * PlayStation selection phase always emits its unavailable-axis sentinel while choosing the next
+ * source.
  *
  * @param[in,out] processor Persistent availability and multiplex phase.
  * @param[in] interface_mode Current input-report interface mode.
@@ -488,7 +490,8 @@ static void process_axis_mode_multiplexed_axes(WheelAxisOverrideProcessor *proce
             processor->multiplex_phase = WHEEL_AXIS_MULTIPLEX_X;
         } else if (y != AXIS_UNAVAILABLE) {
             processor->multiplex_phase = WHEEL_AXIS_MULTIPLEX_Y;
-        } else if (interface_mode == 7) {
+        }
+        if (interface_mode == 7) {
             axes[0] = UINT8_MAX;
         }
         break;

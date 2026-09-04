@@ -503,6 +503,7 @@ static void test_multiplexes_axis_mode_packet_axes(void) {
 
     wheel_axis_override_processor_init(&processor);
     process_axis_mode(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 7, controls, axes);
+    assert(axes[0] == UINT8_MAX);
     process_axis_mode(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 7, controls, axes);
     assert(axes[0] == 0x75);
     assert(axes[1] == 0);
@@ -524,7 +525,7 @@ static void test_multiplexes_axis_mode_packet_axes(void) {
     process_axis_mode(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 7, controls, axes);
     assert(!processor.x_available);
     assert(!processor.y_available);
-    assert(axes[0] == 0x80);
+    assert(axes[0] == UINT8_MAX);
 
     controls[4] = UINT8_MAX;
     wheel_axis_override_processor_init(&processor);
