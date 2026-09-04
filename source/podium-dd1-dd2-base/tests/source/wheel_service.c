@@ -14,6 +14,7 @@ static uint8_t transmitted[SERIAL_PACKET_SIZE];
 static uint8_t received[SERIAL_PACKET_SIZE];
 static SerialService transport;
 static bool received_ready;
+static bool platform_start_successful = true;
 
 enum {
     WHEEL_BUTTON_PRIMARY_RESPONSE = 0xe0,
@@ -29,6 +30,9 @@ void platform_serial_link_reset(void) {}
 bool platform_serial_link_start_periodic_recovery(void) { return true; }
 
 bool platform_serial_link_start(const uint8_t packet[SERIAL_PACKET_SIZE]) {
+    if (!platform_start_successful) {
+        return false;
+    }
     memcpy(transmitted, packet, sizeof(transmitted));
     return true;
 }
@@ -55,6 +59,7 @@ static void respond_frame(const SerialPacket *packet) {
 }
 
 static void initialize_service(WheelService *service) {
+    platform_start_successful = true;
     serial_service_init(&transport);
     wheel_service_init(service, &transport);
 }
@@ -179,6 +184,60 @@ static void test_omits_scan_status_flags_when_available(void) {
     wheel_service_run(&service, 0, true);
 
     assert(request().payload[0] == WHEEL_SCAN_PHASE_AUXILIARY);
+}
+
+static void test_retries_scan_after_transport_start_failure(void) {
+    WheelService service;
+    initialize_service(&service);
+    service.protocol.phase = WHEEL_PROTOCOL_SCANNING_PRIMARY;
+    service.protocol.mode = WHEEL_MODE_SCAN_PRIMARY;
+    service.protocol.crc_output.report_state = 0;
+    service.protocol.crc_output.status_update_pending = true;
+    service.scan_phase = WHEEL_SCAN_PHASE_SECOND;
+    platform_start_successful = false;
+
+    wheel_service_run(&service, 0, true);
+
+    assert(service.protocol.phase == WHEEL_PROTOCOL_SCANNING_PRIMARY);
+    assert(service.protocol.mode == WHEEL_MODE_SCAN_PRIMARY);
+    assert(service.scan_phase == WHEEL_SCAN_PHASE_SECOND);
+    assert(service.protocol.crc_output.status_update_pending);
+    assert(service.request_kind == WHEEL_SERVICE_REQUEST_NONE);
+    assert(transport.status == SERIAL_SERVICE_IDLE);
+
+    platform_start_successful = true;
+    wheel_service_run(&service, 1, true);
+
+    assert(service.scan_phase == WHEEL_SCAN_PHASE_FIRST);
+    assert(service.request_kind == WHEEL_SERVICE_REQUEST_BUTTONS);
+    assert(service.protocol.crc_output.status_update_pending == false);
+    assert(request().payload[0] == (WHEEL_SCAN_PHASE_FIRST | 0x80));
+    assert(transport.status == SERIAL_SERVICE_PENDING);
+}
+
+static void test_retries_protocol_after_transport_start_failure(void) {
+    WheelService service;
+    initialize_service(&service);
+    service.protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    service.protocol.mode = WHEEL_MODE_LEGACY_ALTERNATE;
+    service.protocol_transport_deadline_active = true;
+    service.protocol_transport_deadline_ms = 0;
+    platform_start_successful = false;
+
+    wheel_service_run(&service, 1, true);
+
+    assert(service.protocol.phase == WHEEL_PROTOCOL_ACTIVE);
+    assert(service.protocol.mode == WHEEL_MODE_LEGACY_ALTERNATE);
+    assert(service.request_kind == WHEEL_SERVICE_REQUEST_NONE);
+    assert(service.protocol_transport_deadline_active);
+    assert(service.protocol_transport_deadline_ms == 0);
+    assert(transport.status == SERIAL_SERVICE_IDLE);
+
+    platform_start_successful = true;
+    wheel_service_run(&service, 2, true);
+
+    assert(service.request_kind == WHEEL_SERVICE_REQUEST_PROTOCOL);
+    assert(transport.status == SERIAL_SERVICE_PENDING);
 }
 
 static void test_paces_logical_protocol_requests(void) {
@@ -699,14 +758,10 @@ static void test_keeps_scan_mode_active_without_protocol_timeout(void) {
 
 static void test_requires_active_phase_for_startup_discovery_completion(void) {
     static const WheelProtocolPhase waiting_phases[] = {
-        WHEEL_PROTOCOL_WAITING,
-        WHEEL_PROTOCOL_SYNCHRONIZING,
-        WHEEL_PROTOCOL_ACKNOWLEDGING,
-        WHEEL_PROTOCOL_SELECTING,
-        WHEEL_PROTOCOL_AUTHENTICATING,
-        WHEEL_PROTOCOL_UNSUPPORTED,
-        WHEEL_PROTOCOL_SCANNING_PRIMARY,
-        WHEEL_PROTOCOL_SCANNING_SECONDARY,
+        WHEEL_PROTOCOL_WAITING,          WHEEL_PROTOCOL_SYNCHRONIZING,
+        WHEEL_PROTOCOL_ACKNOWLEDGING,    WHEEL_PROTOCOL_SELECTING,
+        WHEEL_PROTOCOL_AUTHENTICATING,   WHEEL_PROTOCOL_UNSUPPORTED,
+        WHEEL_PROTOCOL_SCANNING_PRIMARY, WHEEL_PROTOCOL_SCANNING_SECONDARY,
     };
     WheelService service;
     initialize_service(&service);
@@ -1221,8 +1276,8 @@ static void test_activates_xbox_gip_display_report(void) {
     assert(service.protocol.adapter_output.display_report == 0xa060);
 
     const uint16_t inhibited_reports[] = {0x0001, 0x1000, 0x1001};
-    for (size_t index = 0;
-         index < sizeof(inhibited_reports) / sizeof(inhibited_reports[0]); index++) {
+    for (size_t index = 0; index < sizeof(inhibited_reports) / sizeof(inhibited_reports[0]);
+         index++) {
         service.protocol.adapter_output.display_report = inhibited_reports[index];
         wheel_service_activate_xbox_gip_display(&service);
         assert(service.protocol.adapter_output.display_report == inhibited_reports[index]);
@@ -1870,6 +1925,8 @@ int main(void) {
     test_exposes_protocol_bridge_report_id();
     test_applies_scan_status_flags_once();
     test_omits_scan_status_flags_when_available();
+    test_retries_scan_after_transport_start_failure();
+    test_retries_protocol_after_transport_start_failure();
     test_paces_logical_protocol_requests();
     test_recovers_malformed_protocol_response_and_clears_completion();
     test_recovers_unknown_selection_after_deadline();

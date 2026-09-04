@@ -16,18 +16,18 @@
 
 /** @brief Attached-wheel protocol, packet-layout, and timing constants. */
 enum {
-    WHEEL_PROTOCOL_TRANSPORT_COMMAND = 2,   /**< Serial message type for command-two traffic. */
-    WHEEL_BUTTON_COMMAND = 3,               /**< Serial message type for command-three scans. */
-    WHEEL_BUTTON_REQUEST_READY = 1,         /**< Ready flag in a command-three request. */
-    WHEEL_BUTTON_RESPONSE_READY = 2,        /**< Ready flag in a command-three response. */
-    WHEEL_BUTTON_SCAN_STATUS_UNAVAILABLE = 0x40, /**< Status-report service is unavailable. */
+    WHEEL_PROTOCOL_TRANSPORT_COMMAND = 2, /**< Serial message type for command-two traffic. */
+    WHEEL_BUTTON_COMMAND = 3,             /**< Serial message type for command-three scans. */
+    WHEEL_BUTTON_REQUEST_READY = 1,       /**< Ready flag in a command-three request. */
+    WHEEL_BUTTON_RESPONSE_READY = 2,      /**< Ready flag in a command-three response. */
+    WHEEL_BUTTON_SCAN_STATUS_UNAVAILABLE = 0x40,   /**< Status-report service is unavailable. */
     WHEEL_BUTTON_SCAN_STATUS_MEMORY_UPDATE = 0x80, /**< One-shot status-memory update marker. */
-    WHEEL_BUTTON_PRIMARY_RESPONSE = 0xe0,   /**< Primary command-three response marker. */
-    WHEEL_BUTTON_SECONDARY_RESPONSE = 0xc0, /**< Secondary command-three response marker. */
-    WHEEL_BUTTON_RESPONSE_MASK = 0xe0,      /**< Mask for a command-three response marker. */
-    WHEEL_BUTTON_VALUE_MASK = 0x1f,         /**< Mask for a command-three sample value. */
-    WHEEL_PROTOCOL_WAITING_INTERVAL_MS = 1, /**< Initial and reset transport interval. */
-    WHEEL_PROTOCOL_SYNCHRONIZING_INTERVAL_MS = 10,   /**< Handshake acknowledgement interval. */
+    WHEEL_BUTTON_PRIMARY_RESPONSE = 0xe0,          /**< Primary command-three response marker. */
+    WHEEL_BUTTON_SECONDARY_RESPONSE = 0xc0,        /**< Secondary command-three response marker. */
+    WHEEL_BUTTON_RESPONSE_MASK = 0xe0,             /**< Mask for a command-three response marker. */
+    WHEEL_BUTTON_VALUE_MASK = 0x1f,                /**< Mask for a command-three sample value. */
+    WHEEL_PROTOCOL_WAITING_INTERVAL_MS = 1,        /**< Initial and reset transport interval. */
+    WHEEL_PROTOCOL_SYNCHRONIZING_INTERVAL_MS = 10, /**< Handshake acknowledgement interval. */
     WHEEL_PROTOCOL_ACKNOWLEDGING_INTERVAL_MS = 2000, /**< Ready-mode interval. */
     WHEEL_PROTOCOL_SELECTING_INTERVAL_MS = 1,        /**< Mode-selection transport interval. */
     WHEEL_PROTOCOL_AUTHENTICATING_INTERVAL_MS = 4,   /**< Authentication transport interval. */
@@ -512,45 +512,55 @@ static void refresh_protocol_deadline(WheelService *service, uint32_t now_ms) {
  * Rotates through scan phases 8, 4, 2, and 1, publishes status-service availability and a pending
  * status-memory update in the phase byte, encodes current display output, marks the request ready,
  * and submits a full 57-byte type-three message.
+ * A rejected physical start releases only the failed serial request. The scan phase and pending
+ * status-memory update remain owned by discovery so the next service pass retries the same scan
+ * without resetting the negotiated connection.
  *
  * @param[in,out] service Wheel service starting the scan.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 static void start_scan(WheelService *service, uint32_t now_ms) {
-    service->scan_phase >>= 1;
-    if (service->scan_phase == 0) {
-        service->scan_phase = WHEEL_SCAN_PHASE_AUXILIARY;
+    uint8_t scan_phase = service->scan_phase >> 1;
+    if (scan_phase == 0) {
+        scan_phase = WHEEL_SCAN_PHASE_AUXILIARY;
     }
+    const bool status_update_pending = service->protocol.crc_output.status_update_pending;
     for (uint8_t index = 0; index < SERIAL_PACKET_MAX_PAYLOAD_SIZE; index++) {
         service->request[index] = 0;
     }
-    service->request[0] = service->scan_phase;
+    service->request[0] = scan_phase;
     if (service->protocol.crc_output.report_state == UINT8_MAX) {
         service->request[0] |= WHEEL_BUTTON_SCAN_STATUS_UNAVAILABLE;
     }
-    if (service->protocol.crc_output.status_update_pending) {
+    if (status_update_pending) {
         service->request[0] |= WHEEL_BUTTON_SCAN_STATUS_MEMORY_UPDATE;
-        service->protocol.crc_output.status_update_pending = false;
     }
     WheelDisplayOutput display_output = service->display_output;
-    display_output.third_glyph_marker = service->scan_phase == WHEEL_SCAN_PHASE_THIRD &&
+    display_output.third_glyph_marker = scan_phase == WHEEL_SCAN_PHASE_THIRD &&
                                         wheel_protocol_report_mode_marker(&service->protocol);
-    uint8_t encoded = service->scan_phase == WHEEL_SCAN_PHASE_AUXILIARY
+    uint8_t encoded = scan_phase == WHEEL_SCAN_PHASE_AUXILIARY
                           ? wheel_auxiliary_output_encode(&service->auxiliary_output)
-                          : wheel_display_output_encode(&display_output, service->scan_phase);
+                          : wheel_display_output_encode(&display_output, scan_phase);
     service->request[1] = (uint8_t)~encoded;
     service->request[SERIAL_PACKET_MAX_PAYLOAD_SIZE - 1] = WHEEL_BUTTON_REQUEST_READY;
-    service->request_kind = WHEEL_SERVICE_REQUEST_BUTTONS;
-    if (!serial_service_start(service->transport, WHEEL_BUTTON_COMMAND, service->request,
-                              sizeof(service->request), now_ms)) {
-        reset_connection(service);
+    if (serial_service_start(service->transport, WHEEL_BUTTON_COMMAND, service->request,
+                             sizeof(service->request), now_ms)) {
+        service->scan_phase = scan_phase;
+        service->request_kind = WHEEL_SERVICE_REQUEST_BUTTONS;
+        if (status_update_pending) {
+            service->protocol.crc_output.status_update_pending = false;
+        }
+        return;
     }
+    serial_service_release(service->transport);
 }
 
 /**
  * @brief Starts the next command-two wheel protocol exchange.
  *
- * Submits the current 57-byte protocol response through serial message type two.
+ * Submits the current 57-byte protocol response through serial message type two. A rejected
+ * physical start releases only the failed serial request so the next service pass retries without
+ * resetting the negotiated connection.
  *
  * @param[in,out] service Wheel service starting the protocol exchange.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -561,16 +571,16 @@ static bool start_protocol(WheelService *service, uint32_t now_ms, bool bypass_i
         (!bypass_interval && !protocol_transport_due(service, now_ms))) {
         return false;
     }
-    service->request_kind = WHEEL_SERVICE_REQUEST_PROTOCOL;
     if (serial_service_start(service->transport, WHEEL_PROTOCOL_TRANSPORT_COMMAND,
                              wheel_protocol_response(&service->protocol),
                              WHEEL_PROTOCOL_PACKET_SIZE, now_ms)) {
+        service->request_kind = WHEEL_SERVICE_REQUEST_PROTOCOL;
         service->protocol_transport_interval_ms = protocol_transport_interval(service);
         service->protocol_transport_deadline_ms = now_ms + service->protocol_transport_interval_ms;
         service->protocol_transport_deadline_active = true;
         return true;
     }
-    reset_connection(service);
+    serial_service_release(service->transport);
     return false;
 }
 
