@@ -170,12 +170,14 @@ void DMA0_DMA4_IRQHandler(void) {
 /**
  * @brief Completes the official SPI receive DMA channel and processes its frame.
  *
- * Channel-one completion releases chip select and records whether the decoded request schedules a
- * delayed response.
+ * Channel-one completion releases chip select and latches a delayed response when the callback
+ * requests one. A rejected frame leaves an earlier pending response intact.
  */
 void DMA1_DMA5_IRQHandler(void) {
     EDMA_ClearChannelStatusFlags(DMA0, 1U, kEDMA_InterruptFlag | kEDMA_DoneFlag);
     GPIO_PortSet(GPIOC, 1UL << 0U);
-    response_pending = transfer_receive_handler == NULL ||
-                       transfer_receive_handler(transfer_buffers->receive, transfer_context);
+    if (transfer_receive_handler == NULL ||
+        transfer_receive_handler(transfer_buffers->receive, transfer_context)) {
+        response_pending = true;
+    }
 }

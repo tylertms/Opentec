@@ -28,12 +28,12 @@ typedef void (*MotorSpiPrepareHandler)(uint8_t frame[MOTOR_SPI_TRANSFER_SIZE], v
 /**
  * @brief Processes one received motor-link frame.
  *
- * The callback validates and applies the frame, then reports whether the response scheduler should
- * start another transfer.
+ * The callback validates and applies the frame, then reports whether the frame requires a delayed
+ * response. A false result does not cancel a response already pending from an earlier frame.
  *
  * @param[in] frame Persistent receive frame buffer.
  * @param[in] context Caller context supplied during SPI initialization.
- * @return True when a delayed response should be scheduled.
+ * @return True when this frame requires a delayed response.
  */
 typedef bool (*MotorSpiReceiveHandler)(const uint8_t frame[MOTOR_SPI_TRANSFER_SIZE], void *context);
 
