@@ -27,16 +27,17 @@ enum {
     PEDAL_SAMPLE_TIMEOUT_MS = 1000,          /**< V3 active sample timeout. */
     PEDAL_STARTUP_FRAME_COUNT = 250, /**< Accepted reports required to leave startup timeout. */
     PEDAL_RECONNECT_DELAY_MS = 550,  /**< Published-input hold after a digital-link failure. */
-    PEDAL_STATUS_INTERVAL_MS = 500,  /**< V3 status request interval. */
-    PEDAL_INPUT_COMMAND_INTERVAL_MS = 500, /**< V3 input-command interval. */
-    PEDAL_KEEPALIVE_INTERVAL_MS = 2500,    /**< V3 calibration keepalive interval. */
-    PEDAL_V4_STATUS_INTERVAL_MS = 15,      /**< V4 status request interval. */
-    PEDAL_V4_RESPONSE_TIMEOUT_MS = 100,    /**< V4 initial response timeout. */
-    PEDAL_V4_OPERATION_TIMEOUT_MS = 20000, /**< V4 asynchronous operation timeout. */
-    PEDAL_V4_KEEPALIVE_INTERVAL_MS = 100,  /**< V4 adjustment keepalive interval. */
-    PEDAL_LEGACY_RESPONSE_TIMEOUT_MS = 18, /**< Legacy channel response timeout. */
-    PEDAL_LEGACY_AXIS_1_RETRY_LIMIT = 5,   /**< Retry limit for the first legacy axis. */
-    PEDAL_LEGACY_RETRY_LIMIT = 6,          /**< Retry limit for other legacy channels. */
+    PEDAL_RECOVERY_HANDSHAKE_DELAY_MS = 20, /**< V3 recovery-handshake settle interval. */
+    PEDAL_STATUS_INTERVAL_MS = 500,         /**< V3 status request interval. */
+    PEDAL_INPUT_COMMAND_INTERVAL_MS = 500,  /**< V3 input-command interval. */
+    PEDAL_KEEPALIVE_INTERVAL_MS = 2500,     /**< V3 calibration keepalive interval. */
+    PEDAL_V4_STATUS_INTERVAL_MS = 15,       /**< V4 status request interval. */
+    PEDAL_V4_RESPONSE_TIMEOUT_MS = 100,     /**< V4 initial response timeout. */
+    PEDAL_V4_OPERATION_TIMEOUT_MS = 20000,  /**< V4 asynchronous operation timeout. */
+    PEDAL_V4_KEEPALIVE_INTERVAL_MS = 100,   /**< V4 adjustment keepalive interval. */
+    PEDAL_LEGACY_RESPONSE_TIMEOUT_MS = 18,  /**< Legacy channel response timeout. */
+    PEDAL_LEGACY_AXIS_1_RETRY_LIMIT = 5,    /**< Retry limit for the first legacy axis. */
+    PEDAL_LEGACY_RETRY_LIMIT = 6,           /**< Retry limit for other legacy channels. */
     PEDAL_PROTOCOL_PRESERVE_VALUE =
         0x66, /**< Value that preserves the retained value and second selector. */
 };
@@ -153,8 +154,9 @@ static void reset_reconnect_state(PedalService *service) {
  *
  * @param[in,out] service Pedal source, transport, and reconnect state to reset.
  * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[in] unestablished_delay_ms Delay before discovery when no digital input was accepted.
  */
-static void reconnect(PedalService *service, uint32_t now_ms) {
+static void reconnect(PedalService *service, uint32_t now_ms, uint16_t unestablished_delay_ms) {
     const bool retain_published_input = service->digital_activity;
     platform_pedal_link_stop_receive();
     if (!retain_published_input) {
@@ -172,7 +174,8 @@ static void reconnect(PedalService *service, uint32_t now_ms) {
         return;
     }
     service->phase = PEDAL_SERVICE_RECONNECT_WAIT;
-    service->deadline_ms = now_ms + (retain_published_input ? PEDAL_RECONNECT_DELAY_MS : 0);
+    service->deadline_ms =
+        now_ms + (retain_published_input ? PEDAL_RECONNECT_DELAY_MS : unestablished_delay_ms);
 }
 
 /**
@@ -199,6 +202,29 @@ static void setup_reconnect_link(PedalService *service) {
 static bool send_frame(PedalService *service) {
     pedal_frame_encode(&service->transmit_frame, service->frame_buffer);
     return platform_pedal_link_send_frame(service->frame_buffer);
+}
+
+/**
+ * @brief Performs the official V3 timeout-recovery setup pass.
+ *
+ * An established digital link keeps its published input through the 550-millisecond reconnect
+ * hold. Before any valid digital input, the service submits the recovery handshake and waits 20
+ * milliseconds before discovery. A busy transmitter leaves the setup pending for the next pass.
+ *
+ * @param[in,out] service V3 recovery and reconnect state to update.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_v3_recovery_setup(PedalService *service, uint32_t now_ms) {
+    if (!service->digital_activity && service->recovery_handshake) {
+        pedal_v3_build_handshake(true, &service->transmit_frame);
+        if (!send_frame(service)) {
+            return;
+        }
+        service->recovery_handshake = false;
+        reconnect(service, now_ms, PEDAL_RECOVERY_HANDSHAKE_DELAY_MS);
+        return;
+    }
+    reconnect(service, now_ms, 0);
 }
 
 /**
@@ -441,7 +467,7 @@ void pedal_service_set_analog_samples(PedalService *service,
     service->analog_samples_ready = true;
     if (service->phase == PEDAL_SERVICE_ANALOG &&
         !pedal_analog_update(&service->analog, service->analog_samples, &service->input)) {
-        reconnect(service, service->clock_ms);
+        reconnect(service, service->clock_ms, 0);
     } else if (service->phase == PEDAL_SERVICE_ANALOG) {
         service->remote_auxiliary = service->input.auxiliary;
         publish_auxiliary(service);
@@ -852,7 +878,7 @@ static void service_detect_response(PedalService *service, uint32_t now_ms) {
         }
     }
     if (platform_time_reached(now_ms, service->deadline_ms)) {
-        reconnect(service, now_ms);
+        reconnect(service, now_ms, 0);
     }
 }
 
@@ -871,7 +897,7 @@ static void service_protocol_response(PedalService *service, uint32_t now_ms) {
         return;
     }
     if (platform_time_reached(now_ms, service->deadline_ms)) {
-        reconnect(service, now_ms);
+        reconnect(service, now_ms, 0);
     }
 }
 
@@ -1335,7 +1361,7 @@ static void service_legacy_response(PedalService *service, uint32_t now_ms) {
         publish_auxiliary(service);
     }
     *retries = 0;
-    reconnect(service, now_ms);
+    reconnect(service, now_ms, 0);
 }
 
 /**
@@ -1559,8 +1585,8 @@ static void service_v3_output(PedalService *service, uint32_t now_ms) {
  *
  * Refreshes the report deadline for every structurally valid frame, including unknown report types.
  * Applies recognized reports, clears the extended-status handshake latch after 250 recognized
- * startup frames, and reconnects when the report deadline expires. Each receive pass advances to
- * the status phase; outbound phases advance independently on later service passes.
+ * startup frames, and defers an expired report deadline to the recovery setup phase. Each receive
+ * pass advances to the status phase; outbound phases advance independently on later service passes.
  * The auxiliary source lock is passed to V3 decoding while the remote auxiliary byte is retained
  * independently for later release of a local override.
  *
@@ -1599,13 +1625,7 @@ static void service_v3_sample(PedalService *service, uint32_t now_ms) {
 
     if (platform_time_reached(now_ms, service->deadline_ms)) {
         service->recovery_handshake = true;
-        if (!service->digital_activity) {
-            pedal_v3_build_handshake(true, &service->transmit_frame);
-            if (send_frame(service)) {
-                service->recovery_handshake = false;
-            }
-        }
-        reconnect(service, now_ms);
+        service->phase = PEDAL_SERVICE_V3_RECOVERY_SETUP;
         return;
     }
 
@@ -1616,8 +1636,9 @@ static void service_v3_sample(PedalService *service, uint32_t now_ms) {
  * @brief Advances the pedal transport service at its one-millisecond cadence.
  *
  * Processes at most one discovery, legacy, V3, V4, reconnect, or analog phase per elapsed
- * millisecond. V3 stream processing alternates one receive or outbound report phase per pass.
- * Calls made before the next service deadline leave the retained phase unchanged.
+ * millisecond. V3 stream processing alternates one receive or outbound report phase per pass, and
+ * sample timeouts defer recovery setup to the next pass. Calls made before the next service
+ * deadline leave the retained phase unchanged.
  *
  * @param[in,out] service Pedal transport, protocol, timing, and input state to update.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -1701,11 +1722,14 @@ void pedal_service_run(PedalService *service, uint32_t now_ms) {
             service->v4_request_active = false;
             service->v4_response_received = false;
         } else {
-            reconnect(service, now_ms);
+            reconnect(service, now_ms, 0);
         }
         break;
     case PEDAL_SERVICE_V4_STREAM:
         service_v4_stream(service, now_ms);
+        break;
+    case PEDAL_SERVICE_V3_RECOVERY_SETUP:
+        service_v3_recovery_setup(service, now_ms);
         break;
     case PEDAL_SERVICE_RECONNECT_HOLD_START:
         service->deadline_ms = now_ms + PEDAL_RECONNECT_DELAY_MS;

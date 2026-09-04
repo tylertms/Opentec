@@ -319,26 +319,34 @@ static void test_refreshes_timeout_for_unknown_structurally_valid_v3_reports(voi
     run_v3_sample(&service, 15010);
     assert(service.phase == PEDAL_SERVICE_V3_STREAM);
     run_v3_sample(&service, 15012);
+    assert(service.phase == PEDAL_SERVICE_V3_RECOVERY_SETUP);
+    assert(service.recovery_handshake);
+    uint8_t sends_before_recovery = frame_send_count;
+    pedal_service_run(&service, 15013);
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
+    assert(frame_send_count == sends_before_recovery + 1);
     assert(pedal_frame_decode(sent_frame, &handshake) == PEDAL_FRAME_VALID);
     assert(handshake.type == 2);
     assert(handshake.payload[0] == 0);
     assert(handshake.payload[1] == UINT8_MAX);
     assert(!service.recovery_handshake);
+    assert(service.deadline_ms == 15033);
     assert(discovery_count == 0);
-    pedal_service_run(&service, 15013);
+    pedal_service_run(&service, 15032);
+    assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
+    pedal_service_run(&service, 15033);
     assert(service.phase == PEDAL_SERVICE_DETECT_REQUEST);
     assert(discovery_count == 1);
 
-    pedal_service_run(&service, 15014);
+    pedal_service_run(&service, 15034);
     receive_byte(PEDAL_DEVICE_V3);
-    pedal_service_run(&service, 15015);
-    pedal_service_run(&service, 15016);
+    pedal_service_run(&service, 15035);
+    pedal_service_run(&service, 15036);
     receive_byte(0x15);
-    pedal_service_run(&service, 15017);
-    pedal_service_run(&service, 15018);
-    pedal_service_run(&service, 15023);
-    pedal_service_run(&service, 15024);
+    pedal_service_run(&service, 15037);
+    pedal_service_run(&service, 15038);
+    pedal_service_run(&service, 15043);
+    pedal_service_run(&service, 15044);
     assert(pedal_frame_decode(sent_frame, &handshake) == PEDAL_FRAME_VALID);
     assert(handshake.type == 2);
     assert(handshake.payload[0] == UINT8_MAX);
@@ -643,6 +651,9 @@ static void test_uses_long_timeout_during_stream_startup(void) {
     run_v3_sample(&service, 15011);
 
     const PedalInput *input = pedal_service_input(&service);
+    assert(service.phase == PEDAL_SERVICE_V3_RECOVERY_SETUP);
+    assert(service.recovery_handshake);
+    pedal_service_run(&service, 15012);
     assert(!service.connected);
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
     assert(service.recovery_handshake);
@@ -651,17 +662,17 @@ static void test_uses_long_timeout_during_stream_startup(void) {
     assert(input->axes[2] == 3);
     assert(input->auxiliary == 4);
     assert(service.remote_auxiliary == 4);
-    assert(service.deadline_ms == 15561);
+    assert(service.deadline_ms == 15562);
     assert(discovery_count == 0);
 
-    pedal_service_run(&service, 15560);
+    pedal_service_run(&service, 15561);
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
     assert(input->axes[0] == 1);
     assert(input->axes[1] == 2);
     assert(input->axes[2] == 3);
     assert(input->auxiliary == 4);
     assert(service.remote_auxiliary == 4);
-    pedal_service_run(&service, 15561);
+    pedal_service_run(&service, 15562);
     assert(service.phase == PEDAL_SERVICE_DETECT_REQUEST);
     assert(discovery_count == 1);
     assert(input->axes[0] == 0);
@@ -694,8 +705,13 @@ static void test_tightens_timeout_after_stream_startup(void) {
     run_v3_sample(&service, 2260);
     assert(service.connected);
     run_v3_sample(&service, 2261);
+    assert(service.connected);
+    assert(service.phase == PEDAL_SERVICE_V3_RECOVERY_SETUP);
+    assert(service.recovery_handshake);
+    pedal_service_run(&service, 2262);
     assert(!service.connected);
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
+    assert(service.deadline_ms == 2812);
 }
 
 static void test_runs_at_most_once_per_millisecond(void) {

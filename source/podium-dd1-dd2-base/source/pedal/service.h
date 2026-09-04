@@ -38,6 +38,7 @@ typedef enum {
     PEDAL_SERVICE_V3_STREAM,            /**< Processing framed V3 reports. */
     PEDAL_SERVICE_V4_START,             /**< Initializing the V4 transfer session. */
     PEDAL_SERVICE_V4_STREAM,            /**< Processing V4 transfers and status polls. */
+    PEDAL_SERVICE_V3_RECOVERY_SETUP,    /**< Sending a deferred V3 recovery handshake. */
     PEDAL_SERVICE_RECONNECT_HOLD_START, /**< Anchoring the reconnect hold after a failed digital
                                            pass. */
     PEDAL_SERVICE_RECONNECT_WAIT, /**< Setting up the link and holding input before discovery. */
