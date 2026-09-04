@@ -26,6 +26,8 @@ void platform_serial_link_init(void) {}
 
 void platform_serial_link_reset(void) {}
 
+bool platform_serial_link_start_periodic_recovery(void) { return true; }
+
 bool platform_serial_link_start(const uint8_t packet[SERIAL_PACKET_SIZE]) {
     memcpy(transmitted, packet, sizeof(transmitted));
     return true;
@@ -147,6 +149,36 @@ static uint32_t begin_protocol_mode(WheelService *service, uint8_t command, uint
 
 static uint32_t begin_scan_mode(WheelService *service, uint8_t command) {
     return begin_protocol_mode(service, command, 0);
+}
+
+static void test_applies_scan_status_flags_once(void) {
+    WheelService service;
+    initialize_service(&service);
+    service.protocol.phase = WHEEL_PROTOCOL_SCANNING_PRIMARY;
+    service.protocol.mode = WHEEL_MODE_SCAN_PRIMARY;
+    service.protocol.crc_output.report_state = UINT8_MAX;
+    service.protocol.crc_output.status_update_pending = true;
+
+    wheel_service_run(&service, 0, true);
+    SerialPacket scan = request();
+    assert(scan.payload[0] == (WHEEL_SCAN_PHASE_AUXILIARY | 0x40 | 0x80));
+    assert(!service.protocol.crc_output.status_update_pending);
+
+    respond_scan(WHEEL_BUTTON_PRIMARY_RESPONSE);
+    run_service(&service, 1);
+    scan = request();
+    assert(scan.payload[0] == (WHEEL_SCAN_PHASE_THIRD | 0x40));
+}
+
+static void test_omits_scan_status_flags_when_available(void) {
+    WheelService service;
+    initialize_service(&service);
+    service.protocol.phase = WHEEL_PROTOCOL_SCANNING_PRIMARY;
+    service.protocol.mode = WHEEL_MODE_SCAN_PRIMARY;
+
+    wheel_service_run(&service, 0, true);
+
+    assert(request().payload[0] == WHEEL_SCAN_PHASE_AUXILIARY);
 }
 
 static void test_paces_logical_protocol_requests(void) {
@@ -1718,6 +1750,8 @@ static void test_legacy_alternative_shifter_ignores_latch_flags(void) {
 
 int main(void) {
     test_exposes_protocol_bridge_report_id();
+    test_applies_scan_status_flags_once();
+    test_omits_scan_status_flags_when_available();
     test_paces_logical_protocol_requests();
     test_recovers_malformed_protocol_response_and_clears_completion();
     test_recovers_unknown_selection_after_deadline();

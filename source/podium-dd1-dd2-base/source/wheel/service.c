@@ -20,6 +20,8 @@ enum {
     WHEEL_BUTTON_COMMAND = 3,               /**< Serial message type for command-three scans. */
     WHEEL_BUTTON_REQUEST_READY = 1,         /**< Ready flag in a command-three request. */
     WHEEL_BUTTON_RESPONSE_READY = 2,        /**< Ready flag in a command-three response. */
+    WHEEL_BUTTON_SCAN_STATUS_UNAVAILABLE = 0x40, /**< Status-report service is unavailable. */
+    WHEEL_BUTTON_SCAN_STATUS_MEMORY_UPDATE = 0x80, /**< One-shot status-memory update marker. */
     WHEEL_BUTTON_PRIMARY_RESPONSE = 0xe0,   /**< Primary command-three response marker. */
     WHEEL_BUTTON_SECONDARY_RESPONSE = 0xc0, /**< Secondary command-three response marker. */
     WHEEL_BUTTON_RESPONSE_MASK = 0xe0,      /**< Mask for a command-three response marker. */
@@ -505,8 +507,9 @@ static void refresh_protocol_deadline(WheelService *service, uint32_t now_ms) {
 /**
  * @brief Starts the next command-three wheel scan.
  *
- * Rotates through scan phases 8, 4, 2, and 1, encodes current display output, marks the request
- * ready, and submits a full 57-byte type-three message.
+ * Rotates through scan phases 8, 4, 2, and 1, publishes status-service availability and a pending
+ * status-memory update in the phase byte, encodes current display output, marks the request ready,
+ * and submits a full 57-byte type-three message.
  *
  * @param[in,out] service Wheel service starting the scan.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -520,6 +523,13 @@ static void start_scan(WheelService *service, uint32_t now_ms) {
         service->request[index] = 0;
     }
     service->request[0] = service->scan_phase;
+    if (service->protocol.crc_output.report_state == UINT8_MAX) {
+        service->request[0] |= WHEEL_BUTTON_SCAN_STATUS_UNAVAILABLE;
+    }
+    if (service->protocol.crc_output.status_update_pending) {
+        service->request[0] |= WHEEL_BUTTON_SCAN_STATUS_MEMORY_UPDATE;
+        service->protocol.crc_output.status_update_pending = false;
+    }
     WheelDisplayOutput display_output = service->display_output;
     display_output.third_glyph_marker = service->scan_phase == WHEEL_SCAN_PHASE_THIRD &&
                                         wheel_protocol_report_mode_marker(&service->protocol);
