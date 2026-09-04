@@ -152,7 +152,7 @@ static void test_maps_standard_buttons_and_builds_snapshot(void) {
     uint8_t snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE];
 
     wheel_packet_crc_normalize(&input, 6, 7, 0);
-    wheel_packet_crc_snapshot(&input, snapshot);
+    wheel_packet_crc_snapshot(&input, 0x5a, snapshot);
 
     assert(input.buttons[0] == 0xff);
     assert(input.buttons[1] == 0xff);
@@ -169,6 +169,21 @@ static void test_maps_standard_buttons_and_builds_snapshot(void) {
     assert(snapshot[16] == 0x34);
     assert(snapshot[17] == 0x12);
     assert(snapshot[29] == 0x77);
+    assert(snapshot[30] == 0x5a);
+}
+
+static void test_writes_exact_official_snapshot_length(void) {
+    WheelPacketCrcInput input = {0};
+    uint8_t snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE + 1];
+    memset(snapshot, 0xa5, sizeof(snapshot));
+
+    wheel_packet_crc_snapshot(&input, 0x6c, snapshot);
+
+    for (uint8_t index = 0; index < WHEEL_PACKET_CRC_SNAPSHOT_SIZE - 1; index++) {
+        assert(snapshot[index] == 0);
+    }
+    assert(snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE - 1] == 0x6c);
+    assert(snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE] == 0xa5);
 }
 
 static void test_maps_direct_xbox_buttons(void) {
@@ -297,6 +312,7 @@ int main(void) {
     test_averages_three_axis_control_samples();
     test_prepares_authenticated_podium_buttons();
     test_maps_standard_buttons_and_builds_snapshot();
+    test_writes_exact_official_snapshot_length();
     test_maps_direct_xbox_buttons();
     test_does_not_map_authenticated_standard_auxiliary_bit();
     test_normalizes_pulse_mode_with_temporary_control();

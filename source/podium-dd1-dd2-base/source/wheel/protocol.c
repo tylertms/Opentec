@@ -990,7 +990,8 @@ static void capture_request(WheelProtocol *protocol,
         if (protocol->mode != WHEEL_MODE_FILTERED_PULSE) {
             wheel_motion_accumulate_primary(&protocol->motion, protocol->crc_input.motion);
         }
-        wheel_packet_crc_snapshot(&protocol->crc_input, snapshot);
+        wheel_packet_crc_snapshot(&protocol->crc_input, request[WHEEL_PACKET_CRC_CONTENT_SIZE],
+                                  snapshot);
         protocol->acknowledgement_input_active =
             crc_acknowledgement_input_active(&protocol->crc_input);
         bool changed = false;

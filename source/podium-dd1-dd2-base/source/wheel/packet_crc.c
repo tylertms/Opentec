@@ -239,12 +239,14 @@ static void merge_adapter_input(WheelPacketCrcInput *input, uint8_t interface_mo
 /**
  * @brief Serializes normalized CRC-family input.
  *
- * Writes every logical input field into its 30-byte change-detection position.
+ * Writes every logical input field into its 30-byte change-detection position, then retains the
+ * received CRC byte at the official thirty-first snapshot position.
  *
  * @param[in] input Normalized CRC-family input.
- * @param[out] snapshot Thirty-byte protocol request view.
+ * @param[in] request_crc CRC byte received with the request.
+ * @param[out] snapshot Thirty-one-byte processed-request view.
  */
-static void write_snapshot(const WheelPacketCrcInput *input,
+static void write_snapshot(const WheelPacketCrcInput *input, uint8_t request_crc,
                            uint8_t snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE]) {
     for (uint8_t index = 0; index < WHEEL_PACKET_CRC_BUTTON_COUNT; index++) {
         snapshot[index] = input->buttons[index];
@@ -271,6 +273,7 @@ static void write_snapshot(const WheelPacketCrcInput *input,
     snapshot[REQUEST_RESERVED_REPORT_OFFSET] = input->reserved_report;
     snapshot[REQUEST_REPORT_CAPABILITIES_OFFSET] = input->report_capabilities;
     snapshot[REQUEST_AXIS_LIMIT_OFFSET] = input->axis_limit;
+    snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE - 1] = request_crc;
 }
 
 /**
@@ -486,15 +489,16 @@ void wheel_packet_crc_normalize(WheelPacketCrcInput *input, uint8_t wheel_mode,
 /**
  * @brief Encodes normalized CRC-family input as a protocol request view.
  *
- * Writes the logical button, axis, motion, control, report, and capability fields into their
- * 30-byte payload positions.
+ * Writes the logical button, axis, motion, control, report, and capability fields into their first
+ * thirty positions, then appends the received request CRC.
  *
  * @param[in] input Normalized CRC-family input to encode.
- * @param[out] snapshot Thirty-byte protocol request view.
+ * @param[in] request_crc CRC byte received with the request.
+ * @param[out] snapshot Thirty-one-byte processed-request view.
  */
-void wheel_packet_crc_snapshot(const WheelPacketCrcInput *input,
+void wheel_packet_crc_snapshot(const WheelPacketCrcInput *input, uint8_t request_crc,
                                uint8_t snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE]) {
-    write_snapshot(input, snapshot);
+    write_snapshot(input, request_crc, snapshot);
 }
 
 /**

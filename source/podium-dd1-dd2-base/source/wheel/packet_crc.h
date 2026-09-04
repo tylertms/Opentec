@@ -14,7 +14,7 @@ enum {
     WHEEL_PACKET_CRC_CONTENT_SIZE =
         WHEEL_PACKET_CRC_RESPONSE_SIZE - 1, /**< Response bytes covered by the CRC. */
     WHEEL_PACKET_CRC_REQUEST_SIZE = 33,          /**< Complete request size in bytes. */
-    WHEEL_PACKET_CRC_SNAPSHOT_SIZE = 30,         /**< Normalized snapshot size in bytes. */
+    WHEEL_PACKET_CRC_SNAPSHOT_SIZE = 31, /**< Processed payload plus the received CRC byte. */
     WHEEL_PACKET_CRC_BUTTON_COUNT = 3,           /**< Number of filtered button bytes. */
     WHEEL_PACKET_CRC_FILTERED_CONTROL_COUNT = 5, /**< Number of filtered control bytes. */
     WHEEL_PACKET_CRC_CONTROL_COUNT = 8,          /**< Number of logical control bytes. */
@@ -128,12 +128,14 @@ void wheel_packet_crc_normalize(WheelPacketCrcInput *input, uint8_t wheel_mode,
 /**
  * @brief Serializes normalized CRC-family input.
  *
- * Writes the logical input fields into the thirty-byte snapshot layout.
+ * Writes the logical input fields into the first thirty snapshot bytes and appends the received
+ * request CRC. The official processor copies all thirty-one bytes after normalizing the payload.
  *
  * @param[in] input Normalized CRC-family input.
- * @param[out] snapshot Thirty-byte snapshot destination.
+ * @param[in] request_crc CRC byte received with the request.
+ * @param[out] snapshot Thirty-one-byte processed-request snapshot destination.
  */
-void wheel_packet_crc_snapshot(const WheelPacketCrcInput *input,
+void wheel_packet_crc_snapshot(const WheelPacketCrcInput *input, uint8_t request_crc,
                                uint8_t snapshot[WHEEL_PACKET_CRC_SNAPSHOT_SIZE]);
 
 /**
