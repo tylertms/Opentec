@@ -24,10 +24,9 @@ static void test_completes_callback_on_endpoint(uint8_t report_id) {
 
     assert(wheel_protocol_bridge_service_request(&service, report_id));
     assert(service.report_id == report_id);
-    uint8_t refreshed_report_id =
-        report_id == WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD
-            ? WHEEL_PROTOCOL_BRIDGE_REPORT_ID_EXTENDED
-            : WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD;
+    uint8_t refreshed_report_id = report_id == WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD
+                                      ? WHEEL_PROTOCOL_BRIDGE_REPORT_ID_EXTENDED
+                                      : WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD;
     assert(wheel_protocol_bridge_service_request(&service, refreshed_report_id));
     assert(service.report_id == refreshed_report_id);
     wheel_protocol_bridge_service_run(&service);
@@ -106,11 +105,11 @@ static void test_refreshes_target_without_clearing_acknowledgement(void) {
     wheel_protocol_bridge_service_init(&service, &transport);
 
     service.acknowledged = true;
-    assert(wheel_protocol_bridge_service_request(&service,
-                                                WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD));
+    assert(
+        wheel_protocol_bridge_service_request(&service, WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD));
     assert(service.acknowledged);
-    assert(wheel_protocol_bridge_service_request(&service,
-                                                WHEEL_PROTOCOL_BRIDGE_REPORT_ID_EXTENDED));
+    assert(
+        wheel_protocol_bridge_service_request(&service, WHEEL_PROTOCOL_BRIDGE_REPORT_ID_EXTENDED));
     assert(service.report_id == WHEEL_PROTOCOL_BRIDGE_REPORT_ID_EXTENDED);
     assert(service.acknowledged);
 }
@@ -121,8 +120,8 @@ static void test_recovers_after_the_wait_limit(void) {
     command_transport_init(&transport);
     wheel_protocol_bridge_service_init(&service, &transport);
 
-    assert(wheel_protocol_bridge_service_request(
-        &service, WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD));
+    assert(
+        wheel_protocol_bridge_service_request(&service, WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD));
     wheel_protocol_bridge_service_run(&service);
     assert_request(&transport, WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD);
     for (uint16_t poll = 0; poll < 500; ++poll) {

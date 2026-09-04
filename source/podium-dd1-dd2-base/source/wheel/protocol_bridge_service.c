@@ -63,17 +63,14 @@ bool wheel_protocol_bridge_service_request(WheelProtocolBridgeService *service, 
  * negotiated owner, and schedules the next callback attempt.
  *
  * @param[in,out] service Callback service entering startup recovery.
- * @return True when the transport was recovered; otherwise false while another owner is active.
  */
-static bool recover_failed_write(WheelProtocolBridgeService *service) {
-    if (command_transport_poll(service->transport, service->report_id) ==
-        COMMAND_TRANSPORT_BUSY) {
-        return false;
+static void recover_failed_write(WheelProtocolBridgeService *service) {
+    if (command_transport_poll(service->transport, service->report_id) == COMMAND_TRANSPORT_BUSY) {
+        return;
     }
     command_transport_release(service->transport, service->report_id);
     service->wait_calls = 0;
     service->phase = WHEEL_PROTOCOL_BRIDGE_STARTUP_RECOVERY;
-    return true;
 }
 
 /**
@@ -95,7 +92,7 @@ void wheel_protocol_bridge_service_run(WheelProtocolBridgeService *service) {
     }
 
     if (service->phase == WHEEL_PROTOCOL_BRIDGE_WRITE_ERROR) {
-        (void)recover_failed_write(service);
+        recover_failed_write(service);
         return;
     }
     if (service->phase == WHEEL_PROTOCOL_BRIDGE_STARTUP_RECOVERY) {
