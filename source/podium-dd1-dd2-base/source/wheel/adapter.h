@@ -28,7 +28,7 @@ typedef struct {
     int8_t primary_delta;  /**< Pending signed primary rotary steps to merge into wheel input. */
     uint8_t profile_flags; /**< Latest adapter status and profile-request flags. */
     bool connected;        /**< True when the latest endpoint probe reports an attached adapter. */
-    bool buttons_active;   /**< True when any retained adapter button bit is active. */
+    bool buttons_active;   /**< True when any raw adapter button byte is active. */
 } WheelAdapterInput;
 
 #endif

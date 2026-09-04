@@ -1614,6 +1614,32 @@ static void test_captures_crc_family_requests(void) {
     assert(capabilities->input_available);
 }
 
+static void test_uses_raw_adapter_buttons_for_crc_acknowledgement(void) {
+    static const uint8_t raw_unmapped_masks[3] = {0x10, 0x04, 0x01};
+    for (uint8_t adapter_button = 0; adapter_button < 3; adapter_button++) {
+        WheelProtocol protocol;
+        uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+        wheel_protocol_init(&protocol);
+        protocol.mode = WHEEL_MODE_CRC_AUTHENTICATED;
+        protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+        protocol.adapter.connected = true;
+        protocol.adapter.buttons[adapter_button] = raw_unmapped_masks[adapter_button];
+
+        request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+        mark_ready(request);
+        accept_active_request(&protocol, request);
+
+        const WheelPacketCrcInput *input = wheel_protocol_crc_input(&protocol);
+        assert(input != 0);
+        assert(input->buttons[0] == 0);
+        assert(input->buttons[1] == 0);
+        assert(input->buttons[2] == 0);
+        assert(input->controls[4] == 0);
+        assert(protocol.adapter.buttons_active);
+        assert(wheel_protocol_acknowledgement_input_active(&protocol));
+    }
+}
+
 static void test_applies_crc_family_axis_controls(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -2242,6 +2268,7 @@ int main(void) {
     test_captures_alternate_packets();
     test_forwards_remote_telemetry_in_alternate_mode();
     test_captures_crc_family_requests();
+    test_uses_raw_adapter_buttons_for_crc_acknowledgement();
     test_applies_crc_family_axis_controls();
     test_captures_axis_mode_packets();
     test_selects_mode_nine_display_encoding();

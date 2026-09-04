@@ -460,15 +460,18 @@ static bool mode_four_acknowledgement_input_active(const WheelPacketModeFourInpu
 /**
  * @brief Detects CRC-family input eligible to acknowledge a display overlay.
  *
- * Accepts any filtered directional or button bit and payload byte 10, which is enabled for modes
- * 6 and 0x15 by the overlay input gate.
+ * Accepts any filtered directional or button bit, payload byte 10, or raw adapter button activity.
+ * Payload byte 10 is enabled for modes 6 and 0x15 by the overlay input gate. Raw adapter activity
+ * remains eligible even when the CRC adapter map does not expose a particular adapter bit.
  *
  * @param[in] input Filtered and normalized CRC-family request.
+ * @param[in] adapter_buttons_active True when any raw adapter button byte is active.
  * @return True while an eligible input is active.
  */
-static bool crc_acknowledgement_input_active(const WheelPacketCrcInput *input) {
+static bool crc_acknowledgement_input_active(const WheelPacketCrcInput *input,
+                                             bool adapter_buttons_active) {
     bool button_active = input->buttons[0] != 0 || input->buttons[1] != 0 || input->buttons[2] != 0;
-    return button_active || input->controls[4] != 0;
+    return button_active || input->controls[4] != 0 || adapter_buttons_active;
 }
 
 /**
@@ -1037,8 +1040,8 @@ static void capture_request(WheelProtocol *protocol,
         }
         wheel_packet_crc_snapshot(&protocol->crc_input, request[WHEEL_PACKET_CRC_CONTENT_SIZE],
                                   snapshot);
-        protocol->acknowledgement_input_active =
-            crc_acknowledgement_input_active(&protocol->crc_input);
+        protocol->acknowledgement_input_active = crc_acknowledgement_input_active(
+            &protocol->crc_input, protocol->adapter.buttons_active);
         bool changed = false;
         for (uint8_t index = 0; index < WHEEL_PROTOCOL_SNAPSHOT_SIZE; index++) {
             changed |= protocol->request[index] != snapshot[index];

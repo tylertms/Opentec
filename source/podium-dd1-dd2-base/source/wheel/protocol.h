@@ -690,7 +690,8 @@ bool wheel_protocol_request_changed(WheelProtocol *protocol);
 /**
  * @brief Reports display-acknowledgement input from the wheel.
  *
- * Reads the active packet's eligibility latch without changing it.
+ * Reads the active packet's eligibility latch without changing it. CRC-family packets include raw
+ * adapter button activity even when the selected adapter map does not expose that bit.
  *
  * @param[in] protocol Protocol state to inspect.
  * @return True while eligible input is active; otherwise false.
