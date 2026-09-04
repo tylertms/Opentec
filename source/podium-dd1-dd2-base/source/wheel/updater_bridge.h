@@ -60,7 +60,7 @@ typedef enum {
 typedef struct {
     uint8_t request[WHEEL_UPDATER_BRIDGE_MAX_REQUEST_SIZE];   /**< Retained request bytes. */
     uint8_t response[WHEEL_UPDATER_BRIDGE_MAX_RESPONSE_SIZE]; /**< Assembled response bytes. */
-    uint16_t service_ticks;           /**< Official bridge service ticks for delay and retry. */
+    uint16_t service_ticks; /**< Retained bridge ticks reset only by their owning protocol phase. */
     uint16_t variable_payload_length; /**< Expected variable response payload length. */
     uint8_t request_length;           /**< Number of valid bytes in request. */
     uint8_t response_length;          /**< Number of valid bytes in response. */

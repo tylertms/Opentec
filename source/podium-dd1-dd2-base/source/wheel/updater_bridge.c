@@ -94,7 +94,8 @@ static bool append_fragment(WheelUpdaterBridge *bridge, WheelUpdaterIo io, uint8
 /**
  * @brief Initializes an updater bridge exchange.
  *
- * Clears retained request, response, timing, and parser state.
+ * Clears retained request, response, timing, and parser state. This is the only operation that
+ * resets the service counter outside its protocol phase transitions.
  *
  * @param[out] bridge Updater bridge state to initialize.
  */
@@ -127,7 +128,6 @@ static bool start_exchange(WheelUpdaterBridge *bridge, const uint8_t *request, u
     memcpy(bridge->request, request, length);
     bridge->request_length = length;
     bridge->response_length = 0;
-    bridge->service_ticks = 0;
     bridge->variable_payload_length = 0;
     bridge->retry_response = false;
     bridge->response_probe = response_probe;
@@ -166,8 +166,9 @@ static bool retry_timeout_expired(WheelUpdaterBridge *bridge) {
  * write, waits two bridge service ticks before a normal response read, recognizes response opcodes
  * 0xA1, 0xA2, 0xA4, and 0xA7, retains all response fragments through an 0xA1 continuation, and
  * executes a zero-length variable-payload read. The retry response uses the official 16-bit
- * service-tick timeout. A route probe keeps terminal failure behavior and ignores stray non-marker
- * bytes without restarting the request.
+ * service-tick timeout. Starting an exchange and completing its write preserve that counter; the
+ * read-delay and retry-continuation transitions own its resets. A route probe keeps terminal
+ * failure behavior and ignores stray non-marker bytes without restarting the request.
  *
  * @param[in,out] bridge Active updater bridge to advance.
  * @param[in] io Transport completion state; service timing uses bridge invocation ticks.
@@ -203,7 +204,6 @@ WheelUpdaterOperation wheel_updater_bridge_step(WheelUpdaterBridge *bridge, Whee
             return (WheelUpdaterOperation){0};
         }
         bridge->retry_response = false;
-        bridge->service_ticks = 0;
         if (bridge->response_probe) {
             bridge->phase = WHEEL_UPDATER_BRIDGE_READ_HEADER;
             return current_operation(bridge);

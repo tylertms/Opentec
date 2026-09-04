@@ -340,6 +340,18 @@ static void test_finishes_retry_sequence_after_timeout(void) {
     assert_operation(step(&bridge, WHEEL_UPDATER_IO_PENDING, 1000, NULL, 0),
                      WHEEL_UPDATER_OPERATION_NONE, 0);
     assert_response(&bridge, expected, sizeof(expected));
+
+    assert(bridge.service_ticks == 0x7d2);
+    assert(wheel_updater_bridge_start(&bridge, request, sizeof(request)));
+    assert(bridge.service_ticks == 0x7d2);
+    assert_operation(step(&bridge, WHEEL_UPDATER_IO_IDLE, 1001, NULL, 0),
+                     WHEEL_UPDATER_OPERATION_WRITE, sizeof(request));
+    assert_operation(step(&bridge, WHEEL_UPDATER_IO_COMPLETE, 1002, NULL, 0),
+                     WHEEL_UPDATER_OPERATION_NONE, 0);
+    assert(bridge.service_ticks == 0x7d2);
+    assert_operation(step(&bridge, WHEEL_UPDATER_IO_IDLE, 1003, NULL, 0),
+                     WHEEL_UPDATER_OPERATION_READ, 1);
+    assert(bridge.service_ticks == 0);
 }
 
 int main(void) {
