@@ -29,7 +29,8 @@ typedef void (*TransferSessionSend)(void *context, const uint8_t *data, uint16_t
 /**
  * @brief Callback that reports lower-transport availability.
  *
- * The session uses a true result to defer submission while the lower transport is occupied.
+ * The session checks this callback before submission and retains inbound acknowledgements when the
+ * lower transport is occupied.
  *
  * @param[in] context Opaque callback context supplied at session initialization.
  * @return True when the lower transport is occupied; otherwise false.
@@ -76,12 +77,10 @@ typedef struct {
 /**
  * @brief Result of a transfer-session operation.
  *
- * The result identifies transport availability, frame validity, sequence handling, remote errors,
- * and timeout state.
+ * The result identifies frame validity, sequence handling, remote errors, and timeout state.
  */
 typedef enum {
     TRANSFER_SESSION_OK,             /**< Operation completed without a session error. */
-    TRANSFER_SESSION_BUSY,           /**< Lower transport could not accept a response. */
     TRANSFER_SESSION_INACTIVE,       /**< Session is not active. */
     TRANSFER_SESSION_INVALID_FRAME,  /**< Received frame failed validation. */
     TRANSFER_SESSION_SEQUENCE_ERROR, /**< Received sequence or acknowledgement was unexpected. */
@@ -93,13 +92,15 @@ typedef enum {
  * @brief State for one bidirectional transfer session.
  *
  * The session retains callbacks, decoded and pending frames, encoded storage, deadline state,
- * sequence tracking, and retry counters for one transfer conversation.
+ * sequence tracking, and retry counters for one transfer conversation. Inbound acknowledgements
+ * remain pending when the lower transport is busy and are retried during remote-error recovery.
  */
 typedef struct {
     TransferSessionCallbacks callbacks; /**< Lower-transport and delivery callbacks. */
     void *callback_context;             /**< Opaque context passed to every callback. */
     TransferFrame receive_frame;        /**< Storage for the most recently decoded frame. */
     TransferFrame pending_frame;        /**< Retained outbound frame used for retry. */
+    uint16_t pending_acknowledgement;   /**< Retained inbound acknowledgement command. */
     uint8_t encoded[TRANSFER_FRAME_MAX_ENCODED_SIZE]; /**< Working encoded-frame storage. */
     uint32_t activity_deadline;                       /**< Deadline for any session activity. */
     uint32_t data_deadline;                           /**< Deadline for the next data frame. */
@@ -111,6 +112,7 @@ typedef struct {
     bool active;                /**< Whether the session accepts transfer operations. */
     bool receive_active;        /**< Whether a segmented inbound message is open. */
     bool outbound_pending;      /**< Whether a retained outbound frame awaits acknowledgement. */
+    bool acknowledgement_pending; /**< Whether an inbound acknowledgement awaits retry. */
 } TransferSession;
 
 /**
@@ -156,8 +158,8 @@ bool transfer_session_keepalive(TransferSession *session);
 /**
  * @brief Processes one complete encoded frame and advances transfer state.
  *
- * Validates the frame, handles data or status sequencing, delivers payloads, refreshes the active
- * session deadline, and refreshes the data deadline for non-minimal frames.
+ * Validates the frame, handles data or status sequencing, delivers payloads, and refreshes active
+ * and data deadlines for the received frame.
  *
  * @param[in,out] session Active transfer session.
  * @param[in] data Encoded frame including boundary markers.

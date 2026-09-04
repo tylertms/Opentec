@@ -6,15 +6,16 @@
 /**
  * @brief Transfer-frame wire-format limits and boundary markers.
  *
- * Encoded frames use reserved start and end markers, while separate send and receive limits
- * account for the protocol's framing requirements.
+ * Encoded frames use reserved start and end markers. The receive limit applies to encoded input
+ * accepted by the decoder; outbound encoding may use the complete encoded-frame buffer when
+ * escaping a maximum payload.
  */
 enum {
     TRANSFER_FRAME_START = 0x3c,                /**< Start marker for an encoded transfer frame. */
     TRANSFER_FRAME_END = 0x3e,                  /**< End marker for an encoded transfer frame. */
     TRANSFER_FRAME_MAX_PAYLOAD_SIZE = 125,      /**< Maximum decoded payload capacity. */
     TRANSFER_FRAME_MAX_SEND_PAYLOAD_SIZE = 124, /**< Maximum payload accepted by the encoder. */
-    TRANSFER_FRAME_MAX_RECEIVED_SIZE = 135,     /**< Maximum decoded transfer-frame size. */
+    TRANSFER_FRAME_MAX_RECEIVED_SIZE = 135, /**< Maximum encoded frame size accepted by decoder. */
     TRANSFER_FRAME_MAX_ENCODED_SIZE = 256, /**< Capacity required for an encoded frame buffer. */
 };
 
@@ -172,7 +173,7 @@ uint16_t transfer_frame_encode(const TransferFrame *frame,
  * payload to frame.
  *
  * @param[in] input Complete encoded frame including boundary markers.
- * @param[in] input_length Encoded byte count from 5 through 256.
+ * @param[in] input_length Encoded byte count from 5 through 135.
  * @param[out] frame Destination for the decoded command and payload.
  * @return Frame status identifying length, boundary, escape, or checksum failures.
  */

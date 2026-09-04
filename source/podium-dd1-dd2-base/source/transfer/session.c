@@ -26,8 +26,8 @@ enum {
 /**
  * @brief Submits one encoded frame when the lower transport is idle.
  *
- * Optionally retains the command and payload for a protocol retry and leaves all session state
- * unchanged when encoding fails or the lower transport is busy.
+ * Optionally retains the command and payload for a protocol retry. Encoding or lower-transport
+ * rejection leaves the retained-frame state unchanged.
  *
  * @param[in,out] session Transfer session and retained-frame state.
  * @param[in] command Encoded transfer command fields.
@@ -59,17 +59,43 @@ static bool send_frame(TransferSession *session, uint16_t command, const uint8_t
  * @brief Sends a status or progress response for the current inbound sequence.
  *
  * Uses progress zero for an acknowledgement and a nonzero progress value for an error response.
+ * A busy transport retains the acknowledgement for remote-error recovery.
  *
  * @param[in,out] session Transfer session containing the inbound group and parameter.
  * @param[in] progress Zero for acknowledgement or the protocol error value.
- * @return True when the response is submitted.
  */
-static bool send_status(TransferSession *session, uint8_t progress) {
+static void send_status(TransferSession *session, uint8_t progress) {
     uint16_t command =
         progress == 0 ? transfer_status_command(session->receive_group, session->receive_parameter)
                       : transfer_progress_command(session->receive_group,
                                                   session->receive_parameter, progress);
-    return send_frame(session, command, NULL, 0, false);
+    if (!send_frame(session, command, NULL, 0, false)) {
+        if (progress != 0) {
+            return;
+        }
+        session->pending_acknowledgement = command;
+        session->acknowledgement_pending = true;
+        return;
+    }
+    if (progress == 0) {
+        session->acknowledgement_pending = false;
+    }
+}
+
+/**
+ * @brief Retries a retained inbound acknowledgement.
+ *
+ * The lower transport can reject an inbound acknowledgement. The latest acknowledgement command
+ * remains available for the protocol's remote-error retry path.
+ *
+ * @param[in,out] session Transfer session containing the retained acknowledgement.
+ */
+static void retry_pending_acknowledgement(TransferSession *session) {
+    if (!session->acknowledgement_pending ||
+        !send_frame(session, session->pending_acknowledgement, NULL, 0, false)) {
+        return;
+    }
+    session->acknowledgement_pending = false;
 }
 
 /**
@@ -141,12 +167,13 @@ static int8_t advance_receive_sequence(TransferSession *session, uint8_t sequenc
 /**
  * @brief Handles one inbound data frame.
  *
- * Validates its sequence transition, attempts to acknowledge the current parameter, and delivers
- * the payload with the message-completion state.
+ * Validates its sequence transition, acknowledges the current parameter, and delivers the payload
+ * with the message-completion state. A busy lower transport retains the acknowledgement for the
+ * protocol's remote-error retry path without changing the receive result.
  *
  * @param[in,out] session Transfer session receiving the frame.
  * @param[in] frame Decoded data frame.
- * @return Okay when acknowledged, busy when acknowledgement is deferred, or a sequence error.
+ * @return Okay after delivery, or a sequence error.
  */
 static TransferSessionResult receive_data(TransferSession *session, const TransferFrame *frame) {
     session->receive_group = transfer_command_group(frame->command);
@@ -157,10 +184,10 @@ static TransferSessionResult receive_data(TransferSession *session, const Transf
         return record_error(session, TRANSFER_ERROR_SEQUENCE, TRANSFER_SESSION_SEQUENCE_ERROR);
     }
 
-    bool acknowledged = send_status(session, 0);
+    send_status(session, 0);
     session->callbacks.data(session->callback_context, frame->payload, frame->payload_length,
                             session->receive_group, sequence_state != 0);
-    return acknowledged ? TRANSFER_SESSION_OK : TRANSFER_SESSION_BUSY;
+    return TRANSFER_SESSION_OK;
 }
 
 /**
@@ -168,7 +195,8 @@ static TransferSessionResult receive_data(TransferSession *session, const Transf
  *
  * A matching zero-progress status completes the retained outbound frame. A mismatched
  * acknowledgement follows the local error threshold, while the first two remote progress errors
- * deactivate the session; later errors attempt a retry when the session remains active.
+ * report the remote failure and leave the session active. Later errors retry retained transfer
+ * state when the session remains active.
  *
  * @param[in,out] session Transfer session awaiting a status response.
  * @param[in] command Decoded status command.
@@ -180,7 +208,7 @@ static TransferSessionResult receive_status(TransferSession *session, uint16_t c
     uint8_t progress = transfer_command_progress(command);
 
     if (progress == 0) {
-        if (session->outbound_pending && parameter == session->outbound_parameter) {
+        if (parameter == session->outbound_parameter) {
             session->outbound_pending = false;
             session->remote_error_count = 0;
             return TRANSFER_SESSION_OK;
@@ -190,10 +218,11 @@ static TransferSessionResult receive_status(TransferSession *session, uint16_t c
 
     session->remote_error_count = (session->remote_error_count + 1) & 3;
     if (session->remote_error_count <= 2) {
-        session->active = false;
         return TRANSFER_SESSION_REMOTE_ERROR;
     }
-    if (session->outbound_pending) {
+    if (session->acknowledgement_pending) {
+        retry_pending_acknowledgement(session);
+    } else if (session->outbound_pending) {
         send_frame(session, session->pending_frame.command, session->pending_frame.payload,
                    session->pending_frame.payload_length, false);
     }

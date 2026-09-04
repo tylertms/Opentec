@@ -139,7 +139,7 @@ uint16_t transfer_frame_encode_values(uint16_t command, const uint8_t *payload,
     }
     output_length = append_encoded(checksum(decoded, decoded_length), output, output_length);
     output[output_length++] = TRANSFER_FRAME_END;
-    return output_length <= TRANSFER_FRAME_MAX_RECEIVED_SIZE ? output_length : 0;
+    return output_length <= TRANSFER_FRAME_MAX_ENCODED_SIZE ? output_length : 0;
 }
 
 uint16_t transfer_frame_encode(const TransferFrame *frame,

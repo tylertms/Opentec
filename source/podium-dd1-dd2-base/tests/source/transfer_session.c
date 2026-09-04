@@ -207,7 +207,7 @@ static void test_rejects_bad_sequence_without_immediate_shutdown(void) {
     assert(fixture.receive_count == 0);
 }
 
-static void test_busy_transport_defers_send_and_acknowledgement(void) {
+static void test_busy_transport_retains_acknowledgement_until_remote_retry(void) {
     TransferSession session;
     Fixture fixture = {.ready = true};
     TransferSessionCallbacks valid = callbacks();
@@ -219,9 +219,40 @@ static void test_busy_transport_defers_send_and_acknowledgement(void) {
     assert(!session.outbound_pending);
 
     uint16_t length = encode(transfer_data_command(0, 0, 0), payload, sizeof(payload), frame);
-    assert(transfer_session_receive(&session, frame, length) == TRANSFER_SESSION_BUSY);
+    assert(transfer_session_receive(&session, frame, length) == TRANSFER_SESSION_OK);
     assert(fixture.receive_count == 1);
     assert(fixture.send_count == 0);
+    assert(session.acknowledgement_pending);
+    assert(session.pending_acknowledgement == transfer_status_command(0, 0));
+
+    assert(transfer_session_poll(&session) == TRANSFER_SESSION_OK);
+    assert(session.acknowledgement_pending);
+    assert(fixture.send_count == 0);
+
+    session.remote_error_count = 2;
+    fixture.ready = false;
+    length = encode(transfer_progress_command(0, 0, 1), NULL, 0, frame);
+    assert(transfer_session_receive(&session, frame, length) == TRANSFER_SESSION_OK);
+    assert(!session.acknowledgement_pending);
+    assert(session.remote_error_count == 3);
+    assert(session.active);
+    assert(fixture.send_count == 1);
+
+    TransferFrame acknowledgement = decode_sent(&fixture);
+    assert(acknowledgement.command == transfer_status_command(0, 0));
+}
+
+static void test_accepts_matching_status_without_pending_outbound(void) {
+    TransferSession session;
+    Fixture fixture = {0};
+    TransferSessionCallbacks valid = callbacks();
+    uint8_t frame[TRANSFER_FRAME_MAX_ENCODED_SIZE];
+
+    assert(transfer_session_init(&session, &valid, &fixture));
+    uint16_t length = encode(transfer_status_command(3, 0), NULL, 0, frame);
+    assert(transfer_session_receive(&session, frame, length) == TRANSFER_SESSION_OK);
+    assert(session.receive_group == 3);
+    assert(!session.outbound_pending);
 }
 
 static void test_enforces_strict_deadlines(void) {
@@ -279,7 +310,7 @@ static void test_stops_after_repeated_frame_errors(void) {
     assert(error.command == transfer_progress_command(0, 0, 0));
 }
 
-static void test_remote_progress_error_stops_session(void) {
+static void test_remote_progress_error_keeps_session_active(void) {
     TransferSession session;
     Fixture fixture = {0};
     TransferSessionCallbacks valid = callbacks();
@@ -289,8 +320,21 @@ static void test_remote_progress_error_stops_session(void) {
     assert(transfer_session_init(&session, &valid, &fixture));
     assert(transfer_session_send(&session, payload, sizeof(payload), 0));
     uint16_t length = encode(transfer_progress_command(0, 0, 1), NULL, 0, frame);
-    assert(transfer_session_receive(&session, frame, length) == TRANSFER_SESSION_REMOTE_ERROR);
-    assert(!session.active);
+    for (uint8_t attempt = 0; attempt < 2; attempt++) {
+        assert(transfer_session_receive(&session, frame, length) == TRANSFER_SESSION_REMOTE_ERROR);
+        assert(session.active);
+    }
+    assert(session.remote_error_count == 2);
+
+    assert(transfer_session_receive(&session, frame, length) == TRANSFER_SESSION_OK);
+    assert(session.active);
+    assert(session.remote_error_count == 3);
+    assert(session.outbound_pending);
+    assert(fixture.send_count == 2);
+    TransferFrame retry = decode_sent(&fixture);
+    assert(retry.command == transfer_data_command(0, 0, 0));
+    assert(retry.payload_length == sizeof(payload));
+    assert(memcmp(retry.payload, payload, sizeof(payload)) == 0);
 }
 
 int main(void) {
@@ -301,10 +345,11 @@ int main(void) {
     test_single_frame_cancels_segmented_receive();
     test_accepts_reserved_sequence_as_incomplete();
     test_rejects_bad_sequence_without_immediate_shutdown();
-    test_busy_transport_defers_send_and_acknowledgement();
+    test_busy_transport_retains_acknowledgement_until_remote_retry();
+    test_accepts_matching_status_without_pending_outbound();
     test_enforces_strict_deadlines();
     test_keepalive_refreshes_both_deadlines();
     test_stops_after_repeated_frame_errors();
-    test_remote_progress_error_stops_session();
+    test_remote_progress_error_keeps_session_active();
     return 0;
 }

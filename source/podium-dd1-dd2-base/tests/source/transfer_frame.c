@@ -79,14 +79,14 @@ static void test_accepts_maximum_received_payload(void) {
     }
 }
 
-static void test_decodes_maximally_escaped_frame(void) {
+static void test_encodes_maximally_escaped_frame(void) {
     TransferFrame source = {.command = UINT16_C(0x3d3d),
                             .payload_length = TRANSFER_FRAME_MAX_SEND_PAYLOAD_SIZE};
     memset(source.payload, 0x3d, source.payload_length);
     uint8_t encoded[TRANSFER_FRAME_MAX_ENCODED_SIZE];
 
     uint16_t length = transfer_frame_encode(&source, encoded);
-    assert(length == 0);
+    assert(length == TRANSFER_FRAME_MAX_ENCODED_SIZE - 1);
 }
 
 int main(void) {
@@ -95,6 +95,6 @@ int main(void) {
     test_rejects_invalid_frames();
     test_enforces_payload_limits();
     test_accepts_maximum_received_payload();
-    test_decodes_maximally_escaped_frame();
+    test_encodes_maximally_escaped_frame();
     return 0;
 }
