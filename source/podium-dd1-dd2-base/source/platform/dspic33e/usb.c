@@ -407,12 +407,13 @@ void platform_usb_restart(void) {
 /**
  * @brief Signals USB resume to the host.
  *
- * Disables the USB interrupt, waits 0x0e10 delay cycles, asserts the controller resume bit for
- * 0x09c4 delay cycles, clears the bit, and re-enables the USB interrupt.
+ * Disables the USB interrupt, clears controller suspend, waits 0x0e10 delay cycles, asserts the
+ * controller resume bit for 0x09c4 delay cycles, clears the bit, and re-enables the USB interrupt.
  *
  */
 void platform_usb_signal_resume(void) {
     IEC5bits.USB1IE = 0;
+    U1PWRCbits.USUSPND = 0;
     __delay32(USB_RESUME_PREPARE_DELAY_CYCLES);
     U1CONbits.RESUME = 1;
     __delay32(USB_RESUME_SIGNAL_DELAY_CYCLES);

@@ -119,6 +119,18 @@ static void test_sof_recovers_stuck_descriptor_after_45_frames(void) {
     assert(platform_usb_test_descriptor_count(0, false, true) == 0x0041);
 }
 
+static void test_resume_clears_suspend_before_signaling(void) {
+    platform_usb_init();
+    IEC5bits.USB1IE = 1;
+    U1PWRCbits.USUSPND = 1;
+
+    platform_usb_signal_resume();
+
+    assert(U1PWRCbits.USUSPND == 0);
+    assert(U1CONbits.RESUME == 0);
+    assert(IEC5bits.USB1IE == 1);
+}
+
 int main(void) {
     test_attach_is_complete_and_idempotent();
     test_detach_allows_reattachment();
@@ -126,5 +138,6 @@ int main(void) {
     test_halts_both_ping_pong_banks();
     test_interrupt_sources_obey_enable_mask();
     test_sof_recovers_stuck_descriptor_after_45_frames();
+    test_resume_clears_suspend_before_signaling();
     return 0;
 }
