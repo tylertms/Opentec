@@ -608,11 +608,12 @@ static void accumulate_adapter_motion(WheelProtocol *protocol) {
 /**
  * @brief Accumulates extended-family rotary and pulse input.
  *
- * Queues the packet's primary rotary step before applying interface pulse timing. Xbox and
- * PlayStation interfaces map the three lower directional pairs to auxiliary counters. Status mode
- * additionally maps bits six and seven to a fourth counter. Direct interfaces retain each pair
- * independently for 80 milliseconds and expose bits four and five as the normalized motion
- * direction.
+ * Mode 0x1C edge-triggered primary flags feed auxiliary axis zero and bits six and seven feed
+ * auxiliary axis one. Other extended modes queue primary rotary motion before applying interface
+ * pulse timing. Xbox and PlayStation interfaces map the three lower directional pairs to auxiliary
+ * counters. Status mode additionally maps bits six and seven to a fourth counter. Direct
+ * interfaces retain each pair independently for 80 milliseconds and expose bits four and five as
+ * the normalized motion direction.
  *
  * @param[in,out] protocol Protocol state containing extended input, pulse timing, and counters.
  */
@@ -624,7 +625,7 @@ static void accumulate_extended_motion(WheelProtocol *protocol) {
             protocol->extended_primary_released = true;
         } else if (protocol->extended_primary_released) {
             protocol->extended_primary_released = false;
-            wheel_motion_accumulate_primary(&protocol->motion, primary);
+            wheel_motion_accumulate_axis(&protocol->motion, 0, primary);
         }
         int8_t secondary = (flags & 0x40u) != 0 ? 1 : (flags & 0x80u) != 0 ? -1 : 0;
         if (secondary == 0) {

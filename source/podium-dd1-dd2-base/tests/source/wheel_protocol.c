@@ -2015,6 +2015,40 @@ static void test_accumulates_extended_interface_pulses(void) {
     assert(protocol.motion.axes[3] == 1);
 }
 
+static void test_accumulates_mode_one_c_primary_pulses_on_auxiliary_axis(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    protocol.mode = WHEEL_PACKET_EXTENDED_MODE_REMOTE;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    mark_ready(request);
+
+    request[7] = 0x10;
+    accept_active_request(&protocol, request);
+    assert(protocol.motion.primary == 0);
+    assert(protocol.motion.axes[0] == 1);
+    assert(protocol.motion.axes[1] == 0);
+
+    accept_active_request(&protocol, request);
+    assert(protocol.motion.axes[0] == 1);
+
+    request[7] = 0;
+    accept_active_request(&protocol, request);
+    request[7] = 0x20;
+    accept_active_request(&protocol, request);
+    assert(protocol.motion.primary == 0);
+    assert(protocol.motion.axes[0] == 0);
+
+    request[7] = 0;
+    accept_active_request(&protocol, request);
+    request[7] = 0x40;
+    accept_active_request(&protocol, request);
+    assert(protocol.motion.primary == 0);
+    assert(protocol.motion.axes[0] == 0);
+    assert(protocol.motion.axes[1] == 1);
+}
+
 static void test_accumulates_axis_mode_interface_pulses(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -2198,6 +2232,7 @@ int main(void) {
     test_accumulates_adapter_interface_pulses();
     test_preserves_signed_adapter_motion_before_pulse_gate();
     test_accumulates_extended_interface_pulses();
+    test_accumulates_mode_one_c_primary_pulses_on_auxiliary_axis();
     test_accumulates_axis_mode_interface_pulses();
     test_captures_extended_remote_tuning_controls();
     test_accepts_a5_modes_and_rejects_out_of_range();
