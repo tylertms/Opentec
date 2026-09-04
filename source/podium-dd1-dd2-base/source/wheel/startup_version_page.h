@@ -28,17 +28,21 @@ typedef struct {
 /**
  * @brief Builds an extended-adapter startup version page.
  *
- * Populates the base, motor, adapter, and blank lines when the connected adapter exposes mode-one
- * version-page support.
+ * Populates the base, motor, steering-wheel, and blank lines when the connected adapter exposes
+ * mode-one version-page support. Modes 0x1B and 0x1C source the steering-wheel line from the two
+ * retained axis words instead of the adapter firmware bytes.
  *
  * @param[in] motor_identity Motor-controller identity, or null when unavailable.
  * @param[in] adapter Adapter input supplying connection, mode, and firmware version.
+ * @param[in] wheel_mode Negotiated attached-wheel mode.
+ * @param[in] wheel_axis_values Two retained 16-bit axis values, required for modes 0x1B and 0x1C.
  * @param[out] page Version page to populate.
  * @return True when adapter and page are valid and the adapter supports the version page; otherwise
  * false.
  */
 bool wheel_startup_adapter_version_page_build(const MotorIdentity *motor_identity,
-                                              const WheelAdapterInput *adapter,
+                                              const WheelAdapterInput *adapter, uint8_t wheel_mode,
+                                              const uint16_t wheel_axis_values[2],
                                               WheelStartupVersionPage *page);
 
 #endif

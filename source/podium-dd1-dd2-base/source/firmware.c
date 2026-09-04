@@ -5975,7 +5975,13 @@ static void service_shifter_display(uint32_t now_ms) {
  */
 static void queue_wheel_startup_version_presentation(void) {
     const WheelAdapterInput *adapter = wheel_service_adapter(&wheel_service);
+    const uint8_t wheel_mode = wheel_service_mode(&wheel_service);
+    uint16_t wheel_axis_values[2] = {0};
+    if (wheel_mode == 0x1bu || wheel_mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED) {
+        wheel_service_axis_values(&wheel_service, wheel_axis_values);
+    }
     if (wheel_startup_adapter_version_page_build(motor_probe_identity(&motor_probe), adapter,
+                                                 wheel_mode, wheel_axis_values,
                                                  &wheel_startup_version_page)) {
         for (uint8_t index = 0; index < WHEEL_STARTUP_VERSION_LINE_COUNT; index++) {
             (void)wheel_service_queue_adapter_text_line(
