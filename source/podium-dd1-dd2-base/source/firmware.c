@@ -5357,6 +5357,8 @@ static void service_usb_input(uint32_t now_ms) {
             .calibration_available = wheel_service_calibration_available(&wheel_service),
             .axis_report_enabled = wheel_service_axis_report_enabled(&wheel_service),
             .adapter_connected = wheel_service_adapter_connected(&wheel_service),
+            .profile_selector_held =
+                tuning_interaction.phase == TUNING_INTERACTION_MENU_HELD,
         };
         if (wheel_mode == 0x10u || wheel_mode == WHEEL_MODE_REMOTE_TUNING_LEGACY) {
             source.secondary_buttons = wheel_snapshot.auxiliary_report[0];

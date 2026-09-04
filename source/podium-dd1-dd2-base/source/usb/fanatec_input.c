@@ -33,6 +33,8 @@ enum {
     STATUS_THERMAL_EFFECT_LIMIT = 1 << 4,        /**< Status bit for thermal effect limiting. */
     STATUS_WHEEL_CALIBRATION_AVAILABLE = 1 << 6, /**< Status bit for wheel calibration support. */
     STATUS_WHEEL_INPUT_CAPABILITY = 1 << 7,      /**< Status bit for wheel input capability. */
+    STANDARD_WHEEL_MODE = 0x10,                  /**< Standard attached-wheel report mode. */
+    STANDARD_PROFILE_ROTARY_MASK = 0xf0,         /**< Rotary bits retained during profile hold. */
     MULTI_POSITION_ENCODER_MODE = 0,             /**< Multi-position encoder-event mode. */
     MULTI_POSITION_PULSE_MODE = 1,               /**< Multi-position pulse mode. */
     MULTI_POSITION_CONSTANT_MODE = 2,            /**< Multi-position constant-position mode. */
@@ -374,9 +376,13 @@ void fanatec_input_pipeline_map(fanatec_input_state *state, const fanatec_input_
     state->wheel_mode = source->mode;
     state->axis_limit = source->axis_limit;
 
-    if (source->mode == 0x10) {
+    if (source->mode == STANDARD_WHEEL_MODE) {
+        uint8_t packed_rotary_positions = source->packed_rotary_positions;
+        if (source->profile_selector_held) {
+            packed_rotary_positions &= STANDARD_PROFILE_ROTARY_MASK;
+        }
         uint16_t remapped = fanatec_remap_axis_bits(
-            (uint16_t)source->secondary_buttons | ((uint16_t)source->packed_rotary_positions << 8));
+            (uint16_t)source->secondary_buttons | ((uint16_t)packed_rotary_positions << 8));
         state->accessory[2] = (uint8_t)remapped;
         state->accessory[3] = (uint8_t)(remapped >> 8);
         fanatec_map_auxiliary_high_nibble(state, source->auxiliary_flags);

@@ -82,6 +82,37 @@ static void test_invalid_command_report_mode(void) {
            FANATEC_INPUT_DIRECT_DRIVE_MODE);
 }
 
+static void test_standard_profile_selector_masks_packed_rotary_low_nibble(void) {
+    fanatec_input_source source = {
+        .packed_rotary_positions = 0xff,
+        .mode = 0x10,
+        .protocol_active = true,
+        .profile_selector_held = true,
+    };
+    fanatec_input_state masked = {0};
+    fanatec_input_pipeline_map(&masked, &source);
+
+    source.packed_rotary_positions = 0xf0;
+    source.profile_selector_held = false;
+    fanatec_input_state expected = {0};
+    fanatec_input_pipeline_map(&expected, &source);
+    assert(memcmp(masked.accessory, expected.accessory, sizeof(masked.accessory)) == 0);
+
+    source.packed_rotary_positions = 0xff;
+    fanatec_input_state unmasked = {0};
+    fanatec_input_pipeline_map(&unmasked, &source);
+    assert(memcmp(masked.accessory, unmasked.accessory, sizeof(masked.accessory)) != 0);
+
+    source.mode = 0x0e;
+    source.profile_selector_held = true;
+    fanatec_input_state legacy = {0};
+    fanatec_input_pipeline_map(&legacy, &source);
+    source.profile_selector_held = false;
+    fanatec_input_state expected_legacy = {0};
+    fanatec_input_pipeline_map(&expected_legacy, &source);
+    assert(memcmp(legacy.accessory, expected_legacy.accessory, sizeof(legacy.accessory)) == 0);
+}
+
 static void test_official_source_history(void) {
     fanatec_input_pipeline_state pipeline;
     fanatec_input_source source;
@@ -567,6 +598,7 @@ int main(void) {
     test_bite_point_update();
     test_validation();
     test_invalid_command_report_mode();
+    test_standard_profile_selector_masks_packed_rotary_low_nibble();
     test_official_source_history();
     test_official_first_five_mapping_and_axes();
     test_legacy_mode_maps_auxiliary_high_nibble();

@@ -81,6 +81,7 @@ typedef struct {
     bool calibration_available;       /**< True when wheel calibration is available. */
     bool axis_report_enabled;         /**< True when wheel axis output is enabled. */
     bool adapter_connected;           /**< True when an adapter endpoint is connected. */
+    bool profile_selector_held; /**< True while the standard report masks profile rotary bits. */
 } fanatec_input_source;
 
 /** @brief Retained source/history state for the official native Fanatec pipeline. */
@@ -116,8 +117,9 @@ void fanatec_input_pipeline_filter(fanatec_input_pipeline_state *pipeline,
  *
  * Reconstructs the official first-five-byte mapping, source arbitration, mode extensions, axis
  * status, clutch availability, and adapter button merge. Active protocol input clears every rotary
- * and accessory byte before applying the current packet. The existing encoder then serializes the
- * resulting logical state without changing report length or usage identifiers.
+ * and accessory byte before applying the current packet. Standard mode preserves only the upper
+ * nibble of the packed rotary source while the profile selector is held. The existing encoder then
+ * serializes the resulting logical state without changing report length or usage identifiers.
  *
  * @param[out] state Native Fanatec output state.
  * @param[in] source Filtered source packet.
