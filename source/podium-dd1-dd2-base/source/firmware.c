@@ -1378,9 +1378,9 @@ static void initialize_motor_link(void) {
 /**
  * @brief Captures and persists the current absolute wheel center.
  *
- * Ignores capture before a valid motor-position report is available. Otherwise normalizes the
- * current sample with the retained wheel-position modulus, stores the reference, and persists
- * settings after every valid capture.
+ * Ignores capture before a valid motor-position report is available. Explicit center-capture
+ * actions normalize the current sample with the retained wheel-position modulus, store the
+ * reference, and persist settings; ordinary live motor reports never change the reference.
  *
  * @return True when a valid position sample was captured.
  */
@@ -1458,8 +1458,10 @@ static bool motor_force_output_inhibited(void) {
  * the older response
  * without consuming output state. Every non-startup frame passes the primary-force interlock
  * immediately before encoding, and bridge frames retain the preceding status byte while force is
- * zeroed. CRC-valid packets clear delimiter-failure tracking, CRC failures preserve it, and the
- * transport restarts after the 101st packet with invalid delimiters.
+ * zeroed. The startup centering dispatch at 0x038016-0x038026 consumes live position through
+ * 0x048162 without changing the retained center; live position reports update readiness only.
+ * CRC-valid packets clear delimiter-failure tracking, CRC failures preserve it, and the transport
+ * restarts after the 101st packet with invalid delimiters.
  */
 static void service_motor_link(void) {
     if (!platform_motor_link_take_received(motor_received_frame)) {
@@ -1476,9 +1478,6 @@ static void service_motor_link(void) {
         if (motor_position_report_decode(&motor_live_frame, &motor_position_report)) {
             motor_position_ready = true;
             wheel_position_ready = true;
-            if (!base_settings.wheel_position.calibrated) {
-                (void)capture_current_wheel_center();
-            }
         }
     } else if (frame_result == MOTOR_LIVE_FRAME_INVALID_BOUNDARY) {
         motor_malformed_frame_count++;

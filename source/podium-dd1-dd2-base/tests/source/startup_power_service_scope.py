@@ -70,6 +70,23 @@ def test_documented_reference_scope():
     assert "retained-console selection" in SOURCE
 
 
+def test_live_motor_samples_do_not_capture_uncalibrated_center():
+    motor_link = function_body("service_motor_link")
+    assert "capture_current_wheel_center" not in motor_link
+    assert "motor_position_ready = true;" in motor_link
+    assert "wheel_position_ready = true;" in motor_link
+
+    replay = motor_link.index("replay_requested = motor_live_frame_requests_replay")
+    position_decode = motor_link.index("motor_position_report_decode")
+    assert replay < position_decode
+
+    capture = function_body("capture_current_wheel_center")
+    assert "wheel_position_reference_capture" in capture
+    assert "base_settings_persistence_mark_dirty" in capture
+    assert "save_base_settings()" in capture
+    assert SOURCE.count("capture_current_wheel_center()") == 2
+
+
 def test_led_service_follows_current_motor_status():
     main_body = function_body("main")
     calls = list(re.finditer(r"\bservice_led_pattern\s*\(now_ms\)", main_body))
@@ -85,6 +102,7 @@ def main():
     test_startup_call_counts()
     test_startup_call_order()
     test_documented_reference_scope()
+    test_live_motor_samples_do_not_capture_uncalibrated_center()
     test_led_service_follows_current_motor_status()
 
 
