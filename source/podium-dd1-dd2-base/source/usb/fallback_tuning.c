@@ -18,6 +18,16 @@ bool usb_fallback_tuning_range_allowed(const TuningProfile *profile) {
            (profile->automatic_rotation != 0 || profile->rotation_degrees == 1300);
 }
 
+bool usb_fallback_tuning_sensitivity_value(const UsbFallbackCommand *command,
+                                           int32_t *sensitivity) {
+    if (command == NULL || sensitivity == NULL || command->kind != USB_FALLBACK_SENSITIVITY) {
+        return false;
+    }
+
+    *sensitivity = (int32_t)(command->value / 10U) - 127;
+    return true;
+}
+
 bool usb_fallback_tuning_steering_travel(const UsbFallbackCommand *command, uint32_t *travel) {
     if (command == NULL || travel == NULL) {
         return false;
@@ -67,7 +77,11 @@ bool usb_fallback_tuning_apply(const UsbFallbackCommand *command, uint8_t active
 
     switch (command->kind) {
     case USB_FALLBACK_SENSITIVITY: {
-        uint8_t encoded = (uint8_t)(command->value / 10U - 127U);
+        int32_t sensitivity;
+        if (!usb_fallback_tuning_sensitivity_value(command, &sensitivity)) {
+            return false;
+        }
+        uint8_t encoded = (uint8_t)sensitivity;
         if (encoded == 126U) {
             profile->automatic_rotation = 1;
             profile->rotation_degrees = TUNING_ROTATION_MAX_DEGREES;

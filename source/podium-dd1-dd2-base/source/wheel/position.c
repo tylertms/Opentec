@@ -4,6 +4,8 @@
 #include <string.h>
 
 static int16_t last_reported_axis;
+/** @brief Signed runtime automatic steering travel reference. */
+static float travel_reference = WHEEL_POSITION_SAMPLE_LIMIT;
 
 /**
  * @brief Clamps a signed wheel position to the supported sensor range.
@@ -87,7 +89,8 @@ int32_t wheel_position_filter(int32_t sample, const WheelPositionCalibration *ca
  * @brief Scales a filtered wheel position to its floating-point axis value.
  *
  * Applies the signed sixteen-bit limits before conversion to an integer so callers that add the
- * unsigned HID midpoint preserve the device's truncation order.
+ * unsigned HID midpoint preserve the device's truncation order. A negative travel scale remains
+ * signed and reverses the scaled axis, matching the shared runtime reference.
  *
  * @param[in] sample Current absolute wheel-position sample.
  * @param[in] calibration Active wheel center, travel, and deadband.
@@ -96,17 +99,17 @@ int32_t wheel_position_filter(int32_t sample, const WheelPositionCalibration *ca
 static float wheel_position_scaled_axis(int32_t sample,
                                         const WheelPositionCalibration *calibration) {
     int32_t position = wheel_position_filter(sample, calibration);
-    uint32_t travel = calibration->travel;
+    float travel = calibration->travel;
 
-    if (travel == 0) {
+    if (travel == 0.0f) {
         return 0.0f;
     }
-    if (travel > WHEEL_POSITION_SAMPLE_LIMIT) {
-        travel = WHEEL_POSITION_SAMPLE_LIMIT;
+    if (travel > (float)WHEEL_POSITION_SAMPLE_LIMIT) {
+        travel = (float)WHEEL_POSITION_SAMPLE_LIMIT;
     }
 
     float limit = position < 0 ? 32768.0f : 32767.0f;
-    float scaled = limit / (float)travel * (float)position;
+    float scaled = limit / travel * (float)position;
     if (scaled > 32767.0f) {
         scaled = 32767.0f;
     } else if (scaled < -32768.0f) {
@@ -149,17 +152,17 @@ uint16_t wheel_position_hid_axis(int32_t sample, const WheelPositionCalibration 
  * @brief Calculates display rotation from the last reported signed wheel axis.
  *
  * Converts the axis retained by wheel_position_hid_axis() to hundredths of a degree using the
- * configured travel and folds successive half turns into the signed range from -18000 through
+ * signed travel scale and folds successive half turns into the signed range from -18000 through
  * 18000.
  *
- * @param[in] travel One-sided travel limit in wheel counts.
+ * @param[in] travel Signed one-sided travel scale in wheel counts.
  * @return Signed display angle in hundredths of a degree.
  */
-int16_t wheel_position_display_rotation(uint32_t travel) {
-    if (travel > WHEEL_POSITION_SAMPLE_LIMIT) {
-        travel = WHEEL_POSITION_SAMPLE_LIMIT;
+int16_t wheel_position_display_rotation(float travel) {
+    if (travel > (float)WHEEL_POSITION_SAMPLE_LIMIT) {
+        travel = (float)WHEEL_POSITION_SAMPLE_LIMIT;
     }
-    float angle = (float)((int32_t)travel * 100);
+    float angle = travel * 100.0f;
     angle /= 32.888889f;
     angle = (float)last_reported_axis * angle;
     angle /= 65535.0f;
@@ -221,6 +224,14 @@ uint32_t wheel_position_travel_from_degrees(uint16_t rotation_degrees) {
     return travel > WHEEL_POSITION_SAMPLE_LIMIT ? WHEEL_POSITION_SAMPLE_LIMIT : travel;
 }
 
+float wheel_position_travel_reference(void) { return travel_reference; }
+
+void wheel_position_set_travel_reference(int32_t travel) {
+    float value = (float)travel;
+    travel_reference =
+        value > (float)WHEEL_POSITION_SAMPLE_LIMIT ? (float)WHEEL_POSITION_SAMPLE_LIMIT : value;
+}
+
 /**
  * @brief Builds the active wheel-position calibration.
  *
@@ -237,7 +248,9 @@ WheelPositionCalibration wheel_position_calibration_build(const WheelPositionRef
                                                           uint8_t deadzone) {
     return (WheelPositionCalibration){
         .center = reference->center,
-        .travel = reference->calibrated ? wheel_position_travel_from_degrees(rotation_degrees) : 0,
+        .travel = reference->calibrated
+                      ? (float)wheel_position_travel_from_degrees(rotation_degrees)
+                      : 0.0f,
         .deadband = (uint32_t)deadzone * 10,
     };
 }

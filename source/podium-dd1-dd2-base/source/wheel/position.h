@@ -19,7 +19,7 @@ typedef struct {
 /** @brief Calibration values used to transform wheel position samples. */
 typedef struct {
     int32_t center;    /**< Signed absolute center sample. */
-    uint32_t travel;   /**< One-sided travel limit in position counts. */
+    float travel;      /**< Signed one-sided travel scale in position counts. */
     uint32_t deadband; /**< Center deadband in position counts. */
 } WheelPositionCalibration;
 
@@ -85,10 +85,10 @@ uint16_t wheel_position_hid_axis(int32_t sample, const WheelPositionCalibration 
  * Uses the signed axis retained by wheel_position_hid_axis(), converts it to hundredths of a
  * degree, and folds the result into the signed range from -18000 through 18000.
  *
- * @param[in] travel One-sided travel limit in wheel counts.
+ * @param[in] travel Signed one-sided travel scale in wheel counts.
  * @return Signed display angle in hundredths of a degree.
  */
-int16_t wheel_position_display_rotation(uint32_t travel);
+int16_t wheel_position_display_rotation(float travel);
 
 /**
  * @brief Clears the retained wheel center reference.
@@ -122,6 +122,26 @@ bool wheel_position_reference_capture(WheelPositionReference *reference, int32_t
  * @return One-sided travel limit in wheel counts.
  */
 uint32_t wheel_position_travel_from_degrees(uint16_t rotation_degrees);
+
+/**
+ * @brief Returns the signed runtime automatic steering travel reference.
+ *
+ * The reference starts at the supported sample limit and remains independent of retained profile
+ * settings until a startup or fallback steering command updates it.
+ *
+ * @return Signed floating-point travel reference in wheel counts.
+ */
+float wheel_position_travel_reference(void);
+
+/**
+ * @brief Updates the signed runtime automatic steering travel reference.
+ *
+ * Values above the supported sample limit are clamped after conversion to floating point. Zero and
+ * negative values remain signed and valid, matching the released reference setter.
+ *
+ * @param[in] travel Signed travel reference in wheel counts.
+ */
+void wheel_position_set_travel_reference(int32_t travel);
 
 /**
  * @brief Builds wheel-position calibration from retained settings.

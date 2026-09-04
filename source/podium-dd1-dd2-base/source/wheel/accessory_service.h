@@ -122,7 +122,7 @@ typedef struct {
     uint32_t runtime_seconds;               /**< Latest valid accessory runtime. */
     bool runtime_valid;                     /**< True after a non-sentinel runtime value. */
 
-    uint32_t wheel_travel_limit;   /**< Travel used for automatic sensitivity. */
+    float wheel_travel_limit;      /**< Signed travel used for automatic sensitivity. */
     uint8_t drift_mode;            /**< Current drift-mode byte, including override state. */
     uint8_t saved_drift_mode;      /**< Drift-mode byte restored when override is disabled. */
     uint8_t requested_sensitivity; /**< Profile sensitivity before automatic encoding. */
@@ -162,9 +162,9 @@ void wheel_accessory_service_run_at(WheelAccessoryService *service, CommandTrans
 void wheel_accessory_service_configure(WheelAccessoryService *service,
                                        const WheelAccessorySyncParameters *parameters);
 
-/** @brief Supplies the travel used to resolve the automatic sensitivity sentinel. */
+/** @brief Supplies the signed travel scale used to resolve the automatic sensitivity sentinel. */
 void wheel_accessory_service_set_wheel_travel(WheelAccessoryService *service,
-                                              uint32_t wheel_travel_limit);
+                                              float wheel_travel_limit);
 
 /** @brief Supplies the current wheel mode used to gate calibration requests. */
 void wheel_accessory_service_set_wheel_mode(WheelAccessoryService *service, uint8_t wheel_mode);

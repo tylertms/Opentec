@@ -58,6 +58,19 @@ static void test_invalid_travel(void) {
     assert(wheel_position_axis(INT32_MAX, &calibration) == 0);
 }
 
+static void test_signed_travel(void) {
+    const WheelPositionCalibration calibration = {
+        .center = 0,
+        .travel = -127.0f,
+        .deadband = 0,
+    };
+
+    assert(wheel_position_axis(1, &calibration) < 0);
+    assert(wheel_position_axis(-1, &calibration) > 0);
+    assert(wheel_position_hid_axis(1, &calibration) < 32768);
+    assert(wheel_position_hid_axis(-1, &calibration) > 32768);
+}
+
 static void test_reference_capture(void) {
     WheelPositionReference reference;
     wheel_position_reference_reset(&reference);
@@ -98,6 +111,23 @@ static void test_range_conversion(void) {
     assert(wheel_position_travel_from_degrees(1080) == 35520);
     assert(wheel_position_travel_from_degrees(2520) == WHEEL_POSITION_SAMPLE_LIMIT);
     assert(wheel_position_travel_from_degrees(UINT16_MAX) == WHEEL_POSITION_SAMPLE_LIMIT);
+}
+
+static void test_travel_reference(void) {
+    assert(wheel_position_travel_reference() == (float)WHEEL_POSITION_SAMPLE_LIMIT);
+
+    wheel_position_set_travel_reference(35520);
+    assert(wheel_position_travel_reference() == 35520.0f);
+
+    wheel_position_set_travel_reference(0);
+    assert(wheel_position_travel_reference() == 0.0f);
+
+    wheel_position_set_travel_reference(-127);
+    assert(wheel_position_travel_reference() == -127.0f);
+
+    wheel_position_set_travel_reference(INT32_MAX);
+    assert(wheel_position_travel_reference() == (float)WHEEL_POSITION_SAMPLE_LIMIT);
+    wheel_position_set_travel_reference(WHEEL_POSITION_SAMPLE_LIMIT);
 }
 
 static void test_display_rotation(void) {
@@ -141,9 +171,11 @@ int main(void) {
     test_deadband();
     test_axis_scaling();
     test_invalid_travel();
+    test_signed_travel();
     test_reference_capture();
     test_calibration_building();
     test_range_conversion();
+    test_travel_reference();
     test_display_rotation();
     test_velocity();
     return 0;

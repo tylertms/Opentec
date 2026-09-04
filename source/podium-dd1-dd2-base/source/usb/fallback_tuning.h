@@ -18,6 +18,19 @@
 bool usb_fallback_tuning_range_allowed(const TuningProfile *profile);
 
 /**
+ * @brief Converts a fallback sensitivity command to its signed sensitivity value.
+ *
+ * Divides the raw little-endian command value by ten with integer truncation, then subtracts the
+ * 127 midpoint code. The complete signed result is preserved for the official force-feedback and
+ * travel-reference updates.
+ *
+ * @param[in] command Decoded fallback command.
+ * @param[out] sensitivity Destination for the signed sensitivity value.
+ * @return True for a sensitivity command with a valid destination; otherwise false.
+ */
+bool usb_fallback_tuning_sensitivity_value(const UsbFallbackCommand *command, int32_t *sensitivity);
+
+/**
  * @brief Converts one direct fallback steering command to a physical travel limit.
  *
  * Uses the native low and high limits and the raw steering-limit formula without changing the

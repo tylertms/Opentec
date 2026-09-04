@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "profile/tuning.h"
@@ -148,6 +149,29 @@ static void test_decodes_sensitivity_and_range_gate(void) {
     assert(!usb_fallback_tuning_range_allowed(NULL));
 }
 
+static void test_decodes_signed_sensitivity_value(void) {
+    static const struct {
+        uint16_t raw_value;
+        int32_t sensitivity;
+    } cases[] = {
+        {0, -127}, {1270, 0}, {1300, 3}, {2530, 126}, {UINT16_MAX, 6426},
+    };
+
+    for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {
+        UsbFallbackCommand update = command(USB_FALLBACK_SENSITIVITY, 0);
+        update.value = cases[index].raw_value;
+        int32_t sensitivity;
+        assert(usb_fallback_tuning_sensitivity_value(&update, &sensitivity));
+        assert(sensitivity == cases[index].sensitivity);
+    }
+
+    UsbFallbackCommand non_sensitivity = command(USB_FALLBACK_STEERING_RANGE_LOW, 0);
+    int32_t sensitivity;
+    assert(!usb_fallback_tuning_sensitivity_value(&non_sensitivity, &sensitivity));
+    assert(!usb_fallback_tuning_sensitivity_value(NULL, &sensitivity));
+    assert(!usb_fallback_tuning_sensitivity_value(&non_sensitivity, NULL));
+}
+
 static void test_converts_steering_commands_to_physical_travel(void) {
     uint32_t travel;
     UsbFallbackCommand update = command(USB_FALLBACK_STEERING_RANGE_LOW, 0);
@@ -184,6 +208,7 @@ int main(void) {
     test_decodes_and_applies_wire_update();
     test_rejects_non_setup_one_and_invalid_scale();
     test_decodes_sensitivity_and_range_gate();
+    test_decodes_signed_sensitivity_value();
     test_converts_steering_commands_to_physical_travel();
     return 0;
 }

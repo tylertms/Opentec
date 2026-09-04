@@ -278,8 +278,6 @@ static bool motor_position_ready;
 static bool wheel_position_ready;
 /** @brief Current wheel-position calibration. */
 static WheelPositionCalibration wheel_position_calibration;
-/** @brief Automatic steering travel applied after startup centering. */
-static uint32_t automatic_steering_travel;
 /** @brief Whether a native fallback command overrides a manual profile's physical travel. */
 static bool fallback_steering_travel_override;
 /** @brief Wheel velocity estimator state. */
@@ -1647,13 +1645,6 @@ static void apply_active_tuning_profile(void) {
     runtime_tuning_profile = *active_tuning_profile_source();
     tuning_profile = &runtime_tuning_profile;
     fallback_steering_travel_override = false;
-    if (runtime_tuning_profile.automatic_rotation == 0) {
-        automatic_steering_travel =
-            wheel_position_travel_from_degrees(runtime_tuning_profile.rotation_degrees);
-    } else if (automatic_steering_travel == 0) {
-        automatic_steering_travel =
-            wheel_position_travel_from_degrees(runtime_tuning_profile.rotation_degrees);
-    }
     refresh_runtime_tuning_profile();
     usb_tuning_profile_service_request_response(&usb_tuning_profile_service);
 }
@@ -1850,20 +1841,18 @@ static uint16_t xbox_effective_steering_range_degrees(void) {
 /**
  * @brief Returns the active wheel position scale for force-feedback state.
  *
- * Xbox automatic profiles use the host-selected range. Native automatic profiles use their
- * transient physical travel, and accepted fallback range commands can override a manual profile's
- * physical travel without changing its stored degrees.
+ * Xbox automatic profiles use the host-selected range. Native automatic profiles use the runtime
+ * travel reference, and accepted fallback range commands can override a manual profile's physical
+ * travel without changing its stored degrees.
  *
- * @return Positive centered wheel-position scale.
+ * @return Signed wheel-position scale.
  */
-static uint32_t active_force_feedback_position_scale(void) {
+static float active_force_feedback_position_scale(void) {
     if (usb_device_operating_mode() == USB_OPERATING_MODE_XBOX_GIP) {
         return wheel_position_travel_from_degrees(xbox_effective_steering_range_degrees());
     }
     if (fallback_steering_travel_override || tuning_profile->automatic_rotation != 0) {
-        return automatic_steering_travel != 0
-                   ? automatic_steering_travel
-                   : wheel_position_travel_from_degrees(tuning_profile->rotation_degrees);
+        return wheel_position_travel_reference();
     }
     return wheel_position_travel_from_degrees(tuning_profile->rotation_degrees);
 }
@@ -2948,7 +2937,7 @@ static void service_usb_command_bridge(uint32_t now_ms) {
         return;
     }
     wheel_transfer_service_run(&wheel_transfer_service, &command_transport);
-    uint32_t accessory_travel = active_force_feedback_position_scale();
+    float accessory_travel = active_force_feedback_position_scale();
     uint8_t accessory_sensitivity =
         tuning_profile->automatic_rotation
             ? 0x7eu
@@ -3260,8 +3249,9 @@ static void run_wheel_startup_discovery(void) {
 /**
  * @brief Refreshes wheel calibration from the active steering-range selection.
  *
- * Uses transient or fallback-overridden physical travel for non-Xbox operation, the host-selected
- * Xbox range for automatic Xbox operation, and the active profile's concrete degrees otherwise.
+ * Uses the runtime travel reference for non-Xbox automatic or fallback-overridden operation, the
+ * host-selected Xbox range for automatic Xbox operation, and the active profile's concrete degrees
+ * otherwise.
  */
 static void refresh_wheel_position_calibration(void) {
     bool automatic = tuning_profile->automatic_rotation != 0;
@@ -3272,13 +3262,14 @@ static void refresh_wheel_position_calibration(void) {
         &base_settings.wheel_position, rotation_degrees, tuning_profile->steering_deadzone);
     if ((automatic || fallback_steering_travel_override) && !xbox &&
         base_settings.wheel_position.calibrated) {
-        wheel_position_calibration.travel = automatic_steering_travel;
+        wheel_position_calibration.travel = wheel_position_travel_reference();
     }
     if (automatic && xbox) {
         motor_tuning_context.automatic_rotation_degrees = rotation_degrees;
     } else {
-        uint32_t automatic_sensitivity = (wheel_position_calibration.travel / 10u) *
-                                         TUNING_ROTATION_MAX_DEGREES / WHEEL_POSITION_SAMPLE_LIMIT;
+        float automatic_sensitivity = (wheel_position_calibration.travel / 10.0f) *
+                                      TUNING_ROTATION_MAX_DEGREES /
+                                      (float)WHEEL_POSITION_SAMPLE_LIMIT;
         motor_tuning_context.automatic_rotation_degrees =
             (uint16_t)(automatic_sensitivity * TUNING_ROTATION_STEP_DEGREES);
     }
@@ -3462,7 +3453,7 @@ static void initialize_startup_usb(void) {
         bool output_override_active =
             apply_motor_startup_output_override(motor_identity, &output_override);
         run_motor_startup_centering();
-        automatic_steering_travel = MOTOR_STARTUP_AUTOMATIC_STEERING_TRAVEL;
+        wheel_position_set_travel_reference(MOTOR_STARTUP_AUTOMATIC_STEERING_TRAVEL);
         platform_serial_link_init();
         serial_service_init(&serial_service);
         wheel_status_service_init(&wheel_status_service, &serial_service);
@@ -3804,8 +3795,8 @@ static void service_force_feedback_script(uint32_t now_ms) {
         return;
     }
 
-    uint32_t travel = active_force_feedback_position_scale();
-    if (travel == 0) {
+    float travel = active_force_feedback_position_scale();
+    if (travel == 0.0f) {
         return;
     }
 
@@ -4031,9 +4022,9 @@ static void forward_force_feedback_command(const ForceFeedbackCommand *command,
 /**
  * @brief Applies a physical steering-travel update from a native fallback command.
  *
- * Changes physical travel only for the official 1300-degree or automatic sensitivity gates. The
- * active profile remains unchanged, while base-side position effects and motor consumers are
- * refreshed immediately.
+ * Updates the runtime travel reference only for the official 1300-degree or automatic sensitivity
+ * gates. The active profile remains unchanged, while base-side position effects and motor
+ * consumers are refreshed immediately.
  *
  * @param[in] travel Requested one-sided wheel-position travel.
  */
@@ -4041,13 +4032,11 @@ static void apply_fallback_steering_travel(uint32_t travel) {
     if (!usb_fallback_tuning_range_allowed(tuning_profile) || travel == 0) {
         return;
     }
-    uint32_t previous = active_force_feedback_position_scale();
-    automatic_steering_travel = travel;
+    float previous = active_force_feedback_position_scale();
+    force_feedback_state_rescale_positions(&force_feedback_state, (int32_t)previous,
+                                           (int32_t)travel);
+    wheel_position_set_travel_reference((int32_t)travel);
     fallback_steering_travel_override = tuning_profile->automatic_rotation == 0;
-    if (previous != travel) {
-        (void)force_feedback_state_rescale_positions(&force_feedback_state, (int32_t)previous,
-                                                     (int32_t)travel);
-    }
     refresh_wheel_position_calibration();
     if (motor_tuning_ready) {
         motor_tuning_service_refresh(&motor_tuning_service, tuning_profile, &motor_tuning_context);
@@ -4096,7 +4085,9 @@ static bool fallback_marks_automatic_profile_pending(UsbFallbackCommandKind kind
  */
 static void apply_fallback_tuning(const UsbFallbackCommand *command) {
     TuningProfile previous_profile = automatic_tuning_profile;
-    uint32_t previous = active_force_feedback_position_scale();
+    float previous = active_force_feedback_position_scale();
+    int32_t sensitivity;
+    bool sensitivity_command = usb_fallback_tuning_sensitivity_value(command, &sensitivity);
     if (!usb_fallback_tuning_apply(command, base_settings.tuning_profiles.active_slot,
                                    &automatic_tuning_profile)) {
         return;
@@ -4104,18 +4095,12 @@ static void apply_fallback_tuning(const UsbFallbackCommand *command) {
     runtime_tuning_profile = automatic_tuning_profile;
     tuning_profile = &runtime_tuning_profile;
     refresh_runtime_tuning_profile();
-    if (command->kind == USB_FALLBACK_SENSITIVITY) {
+    if (sensitivity_command) {
         fallback_steering_travel_override = false;
-        if (tuning_profile->automatic_rotation == 0) {
-            automatic_steering_travel =
-                wheel_position_travel_from_degrees(tuning_profile->rotation_degrees);
-        }
+        force_feedback_state_rescale_positions(&force_feedback_state, (int32_t)previous,
+                                               sensitivity);
+        wheel_position_set_travel_reference(sensitivity);
         refresh_wheel_position_calibration();
-        uint32_t current = active_force_feedback_position_scale();
-        if (previous != current) {
-            (void)force_feedback_state_rescale_positions(&force_feedback_state, (int32_t)previous,
-                                                         (int32_t)current);
-        }
     }
     if (fallback_marks_automatic_profile_pending(command->kind)) {
         set_automatic_tuning_apply_pending(true);
@@ -4491,7 +4476,7 @@ static void service_usb_output(void) {
             return;
         }
         if (force_feedback_command.kind == FORCE_FEEDBACK_COMMAND_SET_PRIMARY_OUTPUT) {
-            (void)motor_output_transport_enqueue_host_effect_clears(&motor_output_transport);
+            motor_output_transport_enqueue_host_effect_clears(&motor_output_transport);
         }
         if (force_feedback_state_apply(&force_feedback_state, &force_feedback_command,
                                        (int32_t)active_force_feedback_position_scale())) {

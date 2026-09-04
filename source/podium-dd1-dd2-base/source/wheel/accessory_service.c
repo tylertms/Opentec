@@ -144,10 +144,9 @@ static bool parameter_needs_sync(const WheelAccessoryService *service, uint8_t i
                   service->mirrored_parameters + parameter->data_offset, parameter->length) != 0;
 }
 
-static uint8_t encode_automatic_sensitivity(uint32_t wheel_travel_limit) {
-    uint32_t sensitivity = wheel_travel_limit / 10u;
-    sensitivity = (sensitivity * 2520u) / 82880u;
-    return (uint8_t)(sensitivity + 0x81u);
+static uint8_t encode_automatic_sensitivity(float wheel_travel_limit) {
+    float sensitivity = wheel_travel_limit / 10.0f * 2520.0f / 82880.0f;
+    return (uint8_t)((int32_t)sensitivity + 0x81);
 }
 
 static void refresh_sensitivity(WheelAccessoryService *service) {
@@ -496,8 +495,8 @@ static void finish_request(WheelAccessoryService *service, CommandTransport *tra
         break;
     case WHEEL_ACCESSORY_TRANSFER_PARAMETER_WRITE: {
         const WheelAccessoryParameter *parameter = &parameters[service->sync_index];
-        memcpy(service->mirrored_parameters + parameter->data_offset,
-               service->sync_write_data, parameter->length);
+        memcpy(service->mirrored_parameters + parameter->data_offset, service->sync_write_data,
+               parameter->length);
         if (memcmp(service->desired_parameters + parameter->data_offset, service->sync_write_data,
                    parameter->length) == 0) {
             service->dirty_parameters &= (uint16_t)~(1u << service->sync_index);
@@ -902,8 +901,7 @@ static bool queue_probe(WheelAccessoryService *service, CommandTransport *transp
 static bool queue_output_override(WheelAccessoryService *service, CommandTransport *transport) {
     service->sync_write_data[0] = WHEEL_ACCESSORY_OUTPUT_OVERRIDE_VALUE;
     return queue_write(service, transport, WHEEL_ACCESSORY_NATURAL_DAMPER_OFFSET,
-                       service->sync_write_data, 1,
-                       WHEEL_ACCESSORY_TRANSFER_OUTPUT_OVERRIDE_WRITE);
+                       service->sync_write_data, 1, WHEEL_ACCESSORY_TRANSFER_OUTPUT_OVERRIDE_WRITE);
 }
 
 /**
@@ -1015,7 +1013,7 @@ void wheel_accessory_service_configure(WheelAccessoryService *service,
 }
 
 void wheel_accessory_service_set_wheel_travel(WheelAccessoryService *service,
-                                              uint32_t wheel_travel_limit) {
+                                              float wheel_travel_limit) {
     if (service == NULL) {
         return;
     }
@@ -1162,9 +1160,8 @@ bool wheel_accessory_service_remote_effects_enabled(const WheelAccessoryService 
 }
 
 uint8_t wheel_accessory_service_input_transfer_code(const WheelAccessoryService *service) {
-    if (service == NULL ||
-        (service->accessory.kind != WHEEL_ACCESSORY_STANDARD &&
-         service->accessory.kind != WHEEL_ACCESSORY_EXTENDED)) {
+    if (service == NULL || (service->accessory.kind != WHEEL_ACCESSORY_STANDARD &&
+                            service->accessory.kind != WHEEL_ACCESSORY_EXTENDED)) {
         return 0;
     }
     return wheel_accessory_transfer_code(&service->accessory);
