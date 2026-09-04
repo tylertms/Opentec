@@ -65,7 +65,8 @@ bool serial_message_fragment_encode(uint8_t type, uint8_t sequence, const uint8_
  * @brief Adds one decoded packet to a logical message assembly.
  *
  * Validates the logical type, appends payload bytes, and reports whether an acknowledgement or
- * completion follows.
+ * completion follows. An over-capacity packet clears the entire assembly before returning
+ * SERIAL_MESSAGE_OVERFLOW.
  *
  * @param[in,out] assembly Assembly state to update.
  * @param[in] packet Decoded packet to append.

@@ -7,7 +7,7 @@
 /**
  * @brief Resets an attached-device serial message assembly.
  *
- * Discards the accumulated payload and packet type so the assembly can accept a new message.
+ * Discards the accumulated length and type so the assembly can accept a new message.
  *
  * @param[out] assembly Message assembly to reset.
  */
@@ -82,7 +82,8 @@ bool serial_message_fragment_encode(uint8_t type, uint8_t sequence, const uint8_
  *
  * Appends packets of types two through five to the current SERIAL_MESSAGE_MAX_SIZE-byte message.
  * First and continuation fragments request an acknowledgement; an unmarked or final fragment
- * completes the message.
+ * completes the message. An over-capacity packet clears the entire assembly before returning
+ * SERIAL_MESSAGE_OVERFLOW.
  *
  * @param[in,out] assembly Message payload and type accumulated across packets.
  * @param[in] packet Decoded attached-device serial packet.
@@ -98,7 +99,9 @@ SerialMessageResult serial_message_accept(SerialMessageAssembly *assembly,
         (assembly->length != 0 && assembly->type != type)) {
         return SERIAL_MESSAGE_INVALID_PACKET;
     }
-    if ((uint16_t)(SERIAL_MESSAGE_MAX_SIZE - assembly->length) < packet->payload_length) {
+    if (assembly->length > SERIAL_MESSAGE_MAX_SIZE ||
+        packet->payload_length > SERIAL_MESSAGE_MAX_SIZE - assembly->length) {
+        serial_message_assembly_reset(assembly);
         return SERIAL_MESSAGE_OVERFLOW;
     }
     if (assembly->length == 0) {

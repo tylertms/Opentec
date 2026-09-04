@@ -128,11 +128,34 @@ static void test_rejects_invalid_messages(void) {
     assert(serial_message_accept(&assembly, &packet) == SERIAL_MESSAGE_OVERFLOW);
 }
 
+static void test_clears_assembly_after_overflow(void) {
+    SerialMessageAssembly assembly;
+    SerialPacket packet = {
+        .type_flags = 4,
+        .payload = {0x11, 0x22},
+        .payload_length = 2,
+    };
+    serial_message_assembly_reset(&assembly);
+    assembly.length = SERIAL_MESSAGE_MAX_SIZE - 1;
+    assembly.type = 4;
+
+    assert(serial_message_accept(&assembly, &packet) == SERIAL_MESSAGE_OVERFLOW);
+    assert(assembly.length == 0);
+    assert(assembly.type == 0);
+    packet.type_flags = 2;
+    packet.payload_length = 1;
+    assert(serial_message_accept(&assembly, &packet) == SERIAL_MESSAGE_COMPLETE);
+    assert(assembly.type == 2);
+    assert(assembly.length == 1);
+    assert(assembly.data[0] == 0x11);
+}
+
 int main(void) {
     test_encodes_single_packet_message();
     test_encodes_first_and_final_fragments();
     test_encodes_and_assembles_maximum_message();
     test_encodes_acknowledgement();
     test_rejects_invalid_messages();
+    test_clears_assembly_after_overflow();
     return 0;
 }
