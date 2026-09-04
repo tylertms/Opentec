@@ -213,6 +213,15 @@ static void test_recovers_malformed_protocol_response_and_clears_completion(void
     WheelService service;
     initialize_service(&service);
     service.protocol.display_character_mode = true;
+    service.protocol.capabilities.report_flags = 0x1234;
+    service.protocol.capabilities.capability_flags = 0x5678;
+    service.protocol.capabilities.multi_position_override = 2;
+    service.protocol.capabilities.calibration_available = true;
+    service.protocol.capabilities.tuning_menu_available = true;
+    service.protocol.capabilities.input_available = true;
+    service.protocol.axis_override_processor.x_available = true;
+    service.protocol.axis_override_processor.y_available = true;
+    service.protocol.axis_override_processor.packet_axis_report_enabled = true;
     service.protocol_exchange_completed = true;
     service.auxiliary_output.exclusive_mode = true;
     service.auxiliary_output.latched_bands = 0x07;
@@ -229,6 +238,15 @@ static void test_recovers_malformed_protocol_response_and_clears_completion(void
 
     assert(service.protocol.phase == WHEEL_PROTOCOL_WAITING);
     assert(service.protocol.display_character_mode);
+    assert(service.protocol.capabilities.report_flags == 0x1234);
+    assert(service.protocol.capabilities.capability_flags == 0x5678);
+    assert(service.protocol.capabilities.multi_position_override == 2);
+    assert(!service.protocol.capabilities.calibration_available);
+    assert(!service.protocol.capabilities.tuning_menu_available);
+    assert(!service.protocol.capabilities.input_available);
+    assert(service.protocol.axis_override_processor.x_available);
+    assert(service.protocol.axis_override_processor.y_available);
+    assert(service.protocol.axis_override_processor.packet_axis_report_enabled);
     assert(!service.protocol_exchange_completed);
     assert(!service.auxiliary_output.exclusive_mode);
     assert(service.auxiliary_output.latched_bands == 0);

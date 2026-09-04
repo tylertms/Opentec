@@ -293,10 +293,10 @@ static void clear_scan_filter(WheelService *service) {
  * @brief Restarts attached-wheel connection discovery.
  *
  * Reinitializes handshake and input state while preserving configured outputs, input filters,
- * adapter state, report capabilities, pending system status and remote-tuning work, and
- * axis-processing configuration, including an in-progress bite-point adjustment and its pending
- * notifications. The transient input-capability latch, scan input, and activity timing restart
- * from their initial states.
+ * adapter state, report capability configuration, pending system status, remote-tuning work, and
+ * axis-processing configuration. An in-progress bite-point adjustment and its pending notifications
+ * also remain intact. Negotiated calibration, tuning-menu, and input availability latches restart
+ * with scan input and activity timing, matching the official reset phase at 0x044CDA-0x044CE0.
  *
  * @param[in,out] service Attached-wheel service to restart.
  */
@@ -321,6 +321,8 @@ static void reset_connection(WheelService *service) {
     WheelPacketRemoteTuningOutput remote_tuning_output = service->protocol.remote_tuning_output;
     WheelOutputReports output_reports = service->protocol.output_reports;
     WheelCapabilityState capabilities = service->protocol.capabilities;
+    capabilities.calibration_available = false;
+    capabilities.tuning_menu_available = false;
     capabilities.input_available = false;
     uint32_t now_ms = service->protocol.now_ms;
     uint8_t interface_mode = service->protocol.interface_mode;
