@@ -171,6 +171,7 @@ static uint8_t expected_scan_response(const WheelService *service) {
 }
 
 static void clear_scan_filter(WheelService *service);
+static void reset_transient_display_state(WheelService *service);
 static void reset_connection(WheelService *service);
 
 /**
@@ -296,7 +297,9 @@ static void clear_scan_filter(WheelService *service) {
  * adapter state, report capability configuration, pending system status, remote-tuning work, and
  * axis-processing configuration. An in-progress bite-point adjustment and its pending notifications
  * also remain intact. Negotiated calibration, tuning-menu, and input availability latches restart
- * with scan input and activity timing, matching the official reset phase at 0x044CDA-0x044CE0.
+ * with scan input and activity timing. Transient page-one and interaction-owned display state is
+ * cleared before the retained page-zero output is published, matching the official reset sequence
+ * at 0x044CDA-0x044D00.
  *
  * @param[in,out] service Attached-wheel service to restart.
  */
@@ -407,6 +410,7 @@ static void reset_connection(WheelService *service) {
     service->status_memory_startup_pending = false;
     service->tuning_menu_override_enabled = false;
     service->tuning_menu_override_value = false;
+    reset_transient_display_state(service);
 }
 
 /**
@@ -615,8 +619,7 @@ void wheel_service_init(WheelService *service, SerialService *transport) {
     clear_scan_filter(service);
     service->display_output = (WheelDisplayOutput){0};
     service->default_display_output = (WheelDisplayOutput){0};
-    service->display_override_output = (WheelDisplayOutput){0};
-    wheel_display_overlay_init(&service->display_overlay);
+    reset_transient_display_state(service);
     service->auxiliary_output = (WheelAuxiliaryOutput){0};
     for (uint16_t index = 0; index < sizeof(service->request); index++) {
         service->request[index] = 0;
@@ -631,7 +634,6 @@ void wheel_service_init(WheelService *service, SerialService *transport) {
     service->protocol_transport_deadline_active = false;
     service->protocol_exchange_completed = false;
     service->bridge_recovery_pending = false;
-    service->display_override_active = false;
     service->alternative_shifter_enabled = false;
     service->alternative_shifter_debounced = false;
     service->status_memory_startup_pending = false;
@@ -991,6 +993,13 @@ static void publish_display_output(WheelService *service, WheelDisplayOutput out
     service->protocol.alternate_output.display = output;
     service->protocol.alternate_output.display.auxiliary = alternate_auxiliary;
     service->protocol.adapter_output.display = output;
+}
+
+static void reset_transient_display_state(WheelService *service) {
+    service->display_override_output = (WheelDisplayOutput){0};
+    service->display_override_active = false;
+    wheel_display_overlay_init(&service->display_overlay);
+    publish_display_output(service, service->default_display_output);
 }
 
 /**

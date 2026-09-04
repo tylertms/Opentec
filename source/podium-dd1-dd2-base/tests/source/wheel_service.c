@@ -321,6 +321,51 @@ static void test_recovers_malformed_protocol_response_and_clears_completion(void
     assert(request().type_flags == 2);
 }
 
+static void test_resets_transient_display_state(void) {
+    WheelService service;
+    initialize_service(&service);
+    const WheelDisplayOutput default_display = {
+        .glyphs = {1, 2, 3},
+        .auxiliary = 0x45,
+        .third_glyph_marker = true,
+    };
+    const WheelDisplayOutput override = {
+        .glyphs = {7, 8, 9},
+        .auxiliary = 0x23,
+    };
+
+    wheel_service_set_display_output(&service, &default_display);
+    wheel_service_begin_display_overlay(&service, 0x93, 100);
+    wheel_service_set_display_override(&service, &override);
+    assert(wheel_service_display_overlay_active(&service));
+    assert(service.display_override_active);
+
+    wheel_service_run(&service, 100, true);
+    SerialPacket malformed = {
+        .type_flags = 2,
+        .payload_length = 1,
+    };
+    respond_frame(&malformed);
+    serial_service_run(&transport, 102);
+    wheel_service_run(&service, 102, false);
+
+    assert(!wheel_service_display_overlay_active(&service));
+    assert(!service.display_override_active);
+    assert(memcmp(&service.display_override_output, &(WheelDisplayOutput){0},
+                  sizeof(service.display_override_output)) == 0);
+    assert(memcmp(&service.default_display_output, &default_display,
+                  sizeof(service.default_display_output)) == 0);
+    assert(memcmp(&service.display_output, &default_display, sizeof(service.display_output)) == 0);
+    assert(memcmp(&service.protocol.mode_one_output.display, &default_display,
+                  sizeof(default_display)) == 0);
+    assert(memcmp(&service.protocol.mode_four_output.display, &default_display,
+                  sizeof(default_display)) == 0);
+    assert(memcmp(&service.protocol.crc_output.display, &default_display,
+                  sizeof(default_display)) == 0);
+    assert(memcmp(&service.protocol.adapter_output.display, &default_display,
+                  sizeof(default_display)) == 0);
+}
+
 static void test_recovers_unknown_selection_after_deadline(void) {
     WheelService service;
     uint32_t now_ms = begin_protocol_mode(&service, 0x55, 0);
@@ -1929,6 +1974,7 @@ int main(void) {
     test_retries_protocol_after_transport_start_failure();
     test_paces_logical_protocol_requests();
     test_recovers_malformed_protocol_response_and_clears_completion();
+    test_resets_transient_display_state();
     test_recovers_unknown_selection_after_deadline();
     test_maps_primary_scan_bits();
     test_maps_secondary_scan_bit();
