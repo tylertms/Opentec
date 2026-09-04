@@ -25,10 +25,14 @@ static void expire_transfer_with_timer(void) {
 
 static void test_initialization(void) {
     platform_time_init();
+    PORTFbits.RF4 = 0;
     platform_aux_bus_init();
     assert(platform_aux_bus_status() == PLATFORM_AUX_BUS_IDLE);
     assert(I2C2CONbits.PEN == 1);
     assert(platform_aux_bus_reset_finish_active());
+    assert(TRISFbits.TRISF4 == 1);
+    assert(TRISFbits.TRISF5 == 1);
+    assert(LATFbits.LATF5 == 0);
 
     consume_reset_stop();
     assert(platform_aux_bus_status() == PLATFORM_AUX_BUS_IDLE);

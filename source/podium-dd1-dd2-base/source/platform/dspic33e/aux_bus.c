@@ -1,6 +1,6 @@
 #include "platform/aux_bus.h"
 
-#include <libpic30.h>
+#include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <xc.h>
@@ -29,9 +29,9 @@ enum {
     AUX_BUS_BAUD_RATE = 0xa3,       /**< I2C2 baud generator value. */
     AUX_BUS_INTERRUPT_PRIORITY = 7, /**< I2C2 interrupt priority. */
     AUX_BUS_PROGRESS_TIMEOUT_MS = 2,
-    AUX_BUS_MAX_RETRIES = 4,                  /**< Maximum NACK retries for one transaction. */
-    AUX_BUS_RECOVERY_PULSES = 9,              /**< Maximum SCL recovery pulses. */
-    AUX_BUS_RECOVERY_DELAY_CYCLES = 0x23 * 2, /**< Delay cycles for each bus-recovery interval. */
+    AUX_BUS_MAX_RETRIES = 4,       /**< Maximum NACK retries for one transaction. */
+    AUX_BUS_RECOVERY_PULSES = 9,   /**< Maximum SCL recovery pulses. */
+    AUX_BUS_RECOVERY_DELAY = 0x23, /**< Decrement-loop count for each recovery interval. */
 };
 
 /**
@@ -199,20 +199,47 @@ static void send_data_or_stop(void) {
 }
 
 /**
+ * @brief Waits through one official auxiliary-bus recovery interval.
+ *
+ * Uses the dsPIC decrement loop represented by the reference firmware rather than a compiler
+ * library delay, reloading 0x23 before the fixed decrement-and-branch loop.
+ */
+static inline void recovery_delay(void) {
+    __asm__ volatile("mov.b #%0, w0\n"
+                     "1:\n"
+                     "dec.b w0, w0\n"
+                     "bra NZ, 1b"
+                     :
+                     : "i"(AUX_BUS_RECOVERY_DELAY)
+                     : "w0", "memory");
+}
+
+/**
  * @brief Releases a stalled auxiliary bus.
  *
  * Samples SDA on RF4 and, while it remains low, drives and releases SCL on RF5 up to nine times.
- * Each low interval uses one configured recovery delay and each high interval uses two.
+ * Each pulse drives RF5 low, waits one 0x23-decrement interval, releases RF5, waits two more
+ * 0x23-decrement intervals, and then samples RF4 again.
  */
 static void recover_bus(void) {
+    uint8_t attempts;
+
     TRISFbits.TRISF4 = 1;
-    for (uint8_t pulse = 0; pulse < AUX_BUS_RECOVERY_PULSES && PORTFbits.RF4 == 0; pulse++) {
-        LATFbits.LATF5 = 0;
+    if (PORTFbits.RF4 != 0) {
+        return;
+    }
+
+    attempts = AUX_BUS_RECOVERY_PULSES;
+    for (;;) {
         TRISFbits.TRISF5 = 0;
-        __delay32(AUX_BUS_RECOVERY_DELAY_CYCLES);
+        LATFbits.LATF5 = 0;
+        recovery_delay();
         TRISFbits.TRISF5 = 1;
-        __delay32(AUX_BUS_RECOVERY_DELAY_CYCLES);
-        __delay32(AUX_BUS_RECOVERY_DELAY_CYCLES);
+        recovery_delay();
+        recovery_delay();
+        if (PORTFbits.RF4 != 0 || --attempts == 0) {
+            break;
+        }
     }
 }
 
