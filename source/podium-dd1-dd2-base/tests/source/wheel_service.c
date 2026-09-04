@@ -1278,7 +1278,7 @@ static void test_reports_bite_point_adjustment(void) {
     assert(percent == 62);
 }
 
-static void test_applies_vibration_to_every_packet_family(void) {
+static void test_applies_vibration_to_vibration_packet_families(void) {
     WheelService service;
     initialize_service(&service);
     const WheelVibrationOutput output = {.channels = {0x34, 0x56}};
@@ -1289,8 +1289,6 @@ static void test_applies_vibration_to_every_packet_family(void) {
     assert(service.protocol.mode_one_output.vibration[1] == 0x56);
     assert(service.protocol.mode_four_output.vibration[0] == 0x34);
     assert(service.protocol.mode_four_output.vibration[1] == 0x56);
-    assert(service.protocol.crc_output.vibration[0] == 0x34);
-    assert(service.protocol.crc_output.vibration[1] == 0x56);
     assert(service.auxiliary_output.report == 0x5634);
     assert(service.protocol.alternate_output.display.auxiliary == 0x34);
     assert(!service.protocol.alternate_output.auxiliary_status);
@@ -1750,7 +1748,7 @@ int main(void) {
     test_reports_mode_gated_input_capability();
     test_exposes_axis_overrides();
     test_reports_bite_point_adjustment();
-    test_applies_vibration_to_every_packet_family();
+    test_applies_vibration_to_vibration_packet_families();
     test_applies_legacy_axes_to_every_packet_family();
     test_synchronizes_exclusive_auxiliary_mode();
     test_resets_host_protocol_outputs();

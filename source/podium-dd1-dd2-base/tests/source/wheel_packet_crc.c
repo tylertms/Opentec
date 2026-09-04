@@ -255,34 +255,38 @@ static void test_uses_adapter_xbox_button_sources(void) {
     assert(input.buttons[2] == 0xc0);
 }
 
-static void test_encodes_standard_and_authenticated_responses(void) {
+static void test_encodes_official_crc_response_layout(void) {
     WheelPacketCrcOutput output = {
         .display = {.glyphs = {0x11, 0x22, 0x33}, .third_glyph_marker = true},
-        .vibration = {0x22, 0x33},
         .legacy_axes = {0x44, 0x55},
         .report_state = 0x66,
-        .command_restart_pending = true,
         .status_update_pending = true,
     };
-    uint8_t response[WHEEL_PACKET_CRC_RESPONSE_SIZE] = {0};
+    uint8_t response[WHEEL_PACKET_CRC_RESPONSE_SIZE] = {
+        0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7a,
+        0x7b, 0x7c, 0x7d, 0x7e, 0x7f, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85,
+        0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b, 0x8c, 0x8d, 0x8e, 0x8f, 0x90,
+    };
 
-    wheel_packet_crc_encode(6, true, &output, response);
+    wheel_packet_crc_encode(6, &output, response);
 
-    const uint8_t expected[] = {0xa5, 0, 0x11, 0x22, 0xb3, 0x22, 0x33, 0xff, 0xff, 0x66, 0xff};
+    const uint8_t expected[] = {
+        0xa5, 0x00, 0x11, 0x22, 0xb3, 0x75, 0x76, 0x44, 0x55, 0x66, 0xff,
+        0x7b, 0x7c, 0x7d, 0x7e, 0x7f, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85,
+        0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b, 0x8c, 0x8d, 0x8e, 0x8f, 0x89,
+    };
     assert(memcmp(response, expected, sizeof(expected)) == 0);
-    assert(!output.command_restart_pending);
     assert(!output.status_update_pending);
 
-    memset(response, 0, sizeof(response));
-    wheel_packet_crc_encode(0x15, false, &output, response);
-    assert(response[0] == 0xa6);
-    assert(response[7] == 0x44);
-    assert(response[8] == 0x55);
-    assert(response[10] == 0);
+    memset(response, 0xa0, sizeof(response));
+    wheel_packet_crc_encode(0x15, &output, response);
 
-    memset(response, 0, sizeof(response));
-    wheel_packet_crc_encode(0x18, false, &output, response);
-    assert(response[0] == 0xa6);
+    const uint8_t expected_authenticated[] = {
+        0xa6, 0x00, 0x11, 0x22, 0xb3, 0xa0, 0xa0, 0x44, 0x55, 0x66, 0x00,
+        0xa0, 0xa0, 0xa0, 0xa0, 0xa0, 0xa0, 0xa0, 0xa0, 0xa0, 0xa0, 0xa0,
+        0xa0, 0xa0, 0xa0, 0xa0, 0xa0, 0xa0, 0xa0, 0xa0, 0xa0, 0xa0, 0xe9,
+    };
+    assert(memcmp(response, expected_authenticated, sizeof(expected_authenticated)) == 0);
 }
 
 int main(void) {
@@ -298,6 +302,6 @@ int main(void) {
     test_normalizes_pulse_mode_with_temporary_control();
     test_merges_adapter_buttons_axes_and_motion();
     test_uses_adapter_xbox_button_sources();
-    test_encodes_standard_and_authenticated_responses();
+    test_encodes_official_crc_response_layout();
     return 0;
 }

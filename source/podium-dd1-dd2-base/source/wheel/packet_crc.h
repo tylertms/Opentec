@@ -11,6 +11,8 @@
 /** @brief CRC-packet dimensions and history sizes. */
 enum {
     WHEEL_PACKET_CRC_RESPONSE_SIZE = 33,         /**< Complete response size in bytes. */
+    WHEEL_PACKET_CRC_CONTENT_SIZE =
+        WHEEL_PACKET_CRC_RESPONSE_SIZE - 1, /**< Response bytes covered by the CRC. */
     WHEEL_PACKET_CRC_REQUEST_SIZE = 33,          /**< Complete request size in bytes. */
     WHEEL_PACKET_CRC_SNAPSHOT_SIZE = 30,         /**< Normalized snapshot size in bytes. */
     WHEEL_PACKET_CRC_BUTTON_COUNT = 3,           /**< Number of filtered button bytes. */
@@ -37,14 +39,12 @@ typedef struct {
     uint8_t next_axis_sample;    /**< Index receiving the next axis sample. */
 } WheelPacketCrcFilter;
 
-/** @brief Display, vibration, and status state for CRC-packet responses. */
+/** @brief Display, axis, and status state for CRC-packet responses. */
 typedef struct {
-    WheelDisplayOutput display;   /**< Current display output. */
-    uint8_t vibration[2];         /**< Two vibration-channel values. */
-    uint8_t legacy_axes[2];       /**< Two legacy output-axis values. */
-    uint8_t report_state;         /**< Current attached-wheel report state. */
-    bool command_restart_pending; /**< Whether a motor-link restart is pending. */
-    bool status_update_pending;   /**< Whether report status needs publication. */
+    WheelDisplayOutput display; /**< Current display output. */
+    uint8_t legacy_axes[2];     /**< Two legacy output-axis values. */
+    uint8_t report_state;        /**< Current attached-wheel report state. */
+    bool status_update_pending;  /**< Whether report status needs publication. */
 } WheelPacketCrcOutput;
 
 /**
@@ -139,16 +139,15 @@ void wheel_packet_crc_snapshot(const WheelPacketCrcInput *input,
 /**
  * @brief Encodes a CRC-family attached-wheel response.
  *
- * Writes display, vibration, axis, and mode-specific status fields and consumes one-shot output
- * markers when they are encoded.
+ * Writes display, legacy-axis, report-state, and one-shot status fields. Existing display-value and
+ * reserved-tail bytes remain unchanged, and the final byte receives the CRC-8 over bytes zero
+ * through thirty-one.
  *
  * @param[in] wheel_mode Negotiated attached-wheel mode.
- * @param[in] host_capability_enabled True when host capability is enabled.
  * @param[in,out] output Response state to encode and update.
  * @param[out] response Thirty-three-byte response destination.
  */
-void wheel_packet_crc_encode(uint8_t wheel_mode, bool host_capability_enabled,
-                             WheelPacketCrcOutput *output,
+void wheel_packet_crc_encode(uint8_t wheel_mode, WheelPacketCrcOutput *output,
                              uint8_t response[WHEEL_PACKET_CRC_RESPONSE_SIZE]);
 
 #endif

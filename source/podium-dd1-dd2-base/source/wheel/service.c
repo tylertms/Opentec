@@ -888,8 +888,8 @@ bool wheel_service_queue_adapter_text_close(WheelService *service) {
 /**
  * @brief Applies the shared two-byte auxiliary report.
  *
- * Updates each vibration packet family, the alternate packet's auxiliary fields, the scan encoder,
- * and the adapter display report from one logical value.
+ * Updates the mode-one and mode-four vibration fields, the alternate packet's auxiliary fields,
+ * the scan encoder, and the adapter display report from one logical value.
  *
  * @param[in,out] service Attached-wheel service to update.
  * @param[in] report Shared auxiliary report.
@@ -903,7 +903,6 @@ void wheel_service_set_auxiliary_report(WheelService *service, uint16_t report) 
         uint8_t value = channel == 0 ? (uint8_t)report : (uint8_t)(report >> 8);
         service->protocol.mode_one_output.vibration[channel] = value;
         service->protocol.mode_four_output.vibration[channel] = value;
-        service->protocol.crc_output.vibration[channel] = value;
     }
     service->protocol.alternate_output.display.auxiliary = (uint8_t)report;
     service->protocol.alternate_output.auxiliary_status = ((report >> 8) & 1u) != 0;

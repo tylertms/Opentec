@@ -41,6 +41,27 @@ static uint16_t read_little_endian_u16(const uint8_t *data) {
 }
 
 /**
+ * @brief Computes the CRC-8 used by complete CRC-family responses.
+ *
+ * Starts at 0xFF and applies the reflected 0x8C polynomial to each covered byte.
+ *
+ * @param[in] data First covered response byte.
+ * @param[in] length Number of covered bytes.
+ * @return CRC-8 value.
+ */
+static uint8_t crc8(const uint8_t *data, uint8_t length) {
+    uint8_t crc = UINT8_MAX;
+    while (length-- != 0) {
+        crc ^= *data++;
+        for (uint8_t bit = 0; bit < 8; bit++) {
+            crc = (crc & 1u) != 0 ? (uint8_t)((crc >> 1) ^ 0x8cu) :
+                                    (uint8_t)(crc >> 1);
+        }
+    }
+    return crc;
+}
+
+/**
  * @brief Reads one bit from a byte.
  *
  * Shifts the selected bit into the low position and returns it as zero or one.
@@ -479,18 +500,16 @@ void wheel_packet_crc_snapshot(const WheelPacketCrcInput *input,
 /**
  * @brief Encodes a CRC-family attached-wheel response payload.
  *
- * Writes the mode-specific command, three display glyphs, optional third-glyph marker, two
- * vibration channels, legacy axes, host capability, one-shot motor-link restart state, report
- * state, and one-shot status-update marker. Capability and restart markers replace their
- * corresponding legacy-axis byte while active. The caller supplies the CRC byte.
+ * Writes the mode-specific command, three display glyphs, the legacy axes, report state, and the
+ * one-shot status-update marker. Display-value bytes five and six and reserved bytes eleven
+ * through thirty-one remain in the response buffer. The final byte is the CRC-8 of the first
+ * thirty-two bytes.
  *
  * @param[in] wheel_mode Selected mode 6, mode 0x15, or mode 0x18.
- * @param[in] host_capability_enabled True when the host enabled the attached-wheel capability.
  * @param[in,out] output Current response values whose pending markers are consumed.
  * @param[out] response Thirty-three-byte destination buffer for the encoded response fields.
  */
-void wheel_packet_crc_encode(uint8_t wheel_mode, bool host_capability_enabled,
-                             WheelPacketCrcOutput *output,
+void wheel_packet_crc_encode(uint8_t wheel_mode, WheelPacketCrcOutput *output,
                              uint8_t response[WHEEL_PACKET_CRC_RESPONSE_SIZE]) {
     bool authenticated_command = wheel_mode == WHEEL_PACKET_CRC_AUTHENTICATED_MODE ||
                                  wheel_mode == WHEEL_PACKET_CRC_PULSE_MODE;
@@ -503,12 +522,10 @@ void wheel_packet_crc_encode(uint8_t wheel_mode, bool host_capability_enabled,
     if (output->display.third_glyph_marker) {
         response[4] |= 0x80u;
     }
-    response[5] = output->vibration[0];
-    response[6] = output->vibration[1];
-    response[7] = host_capability_enabled ? UINT8_MAX : output->legacy_axes[0];
-    response[8] = output->command_restart_pending ? UINT8_MAX : output->legacy_axes[1];
+    response[7] = output->legacy_axes[0];
+    response[8] = output->legacy_axes[1];
     response[9] = output->report_state;
     response[10] = output->status_update_pending ? UINT8_MAX : 0;
-    output->command_restart_pending = false;
     output->status_update_pending = false;
+    response[WHEEL_PACKET_CRC_CONTENT_SIZE] = crc8(response, WHEEL_PACKET_CRC_CONTENT_SIZE);
 }

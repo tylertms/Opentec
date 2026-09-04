@@ -64,6 +64,25 @@ static void clear(uint8_t *data, uint8_t length) {
     }
 }
 
+/**
+ * @brief Clears response fields before an active packet-family encoder runs.
+ *
+ * CRC-family responses retain display-value bytes five and six and reserved bytes eleven through
+ * thirty-one because the official encoder does not write those fields.
+ *
+ * @param[in,out] protocol Active protocol state and response storage.
+ */
+static void clear_active_response(WheelProtocol *protocol) {
+    if (!wheel_packet_crc_applies(protocol->mode)) {
+        clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
+        return;
+    }
+    clear(protocol->response, 5);
+    clear(protocol->response + 7, 4);
+    clear(protocol->response + WHEEL_PACKET_CRC_CONTENT_SIZE,
+          WHEEL_PROTOCOL_PACKET_SIZE - WHEEL_PACKET_CRC_CONTENT_SIZE);
+}
+
 static bool report_mode_marker(uint8_t report_mode) { return report_mode >= 2 && report_mode <= 4; }
 
 static uint8_t active_report_mode(const WheelProtocol *protocol) {
@@ -195,7 +214,7 @@ static void build_active_response(WheelProtocol *protocol) {
         wheel_packet_remote_tuning_pending(&protocol->remote_tuning_output);
     bool third_glyph_marker = wheel_protocol_report_mode_marker(protocol);
     uint8_t flags = protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET];
-    clear(protocol->response, WHEEL_PROTOCOL_PACKET_SIZE);
+    clear_active_response(protocol);
     if (system_control_response) {
         RemoteTuningResponse response = protocol->system_control_output.response;
         (void)wheel_packet_remote_tuning_encode(&protocol->system_control_output,
@@ -216,8 +235,7 @@ static void build_active_response(WheelProtocol *protocol) {
     } else if (wheel_packet_crc_applies(protocol->mode)) {
         bool marker = protocol->crc_output.display.third_glyph_marker;
         protocol->crc_output.display.third_glyph_marker = third_glyph_marker;
-        wheel_packet_crc_encode(protocol->mode, protocol->host_capability_enabled,
-                                &protocol->crc_output, protocol->response);
+        wheel_packet_crc_encode(protocol->mode, &protocol->crc_output, protocol->response);
         protocol->crc_output.display.third_glyph_marker = marker;
     } else if (protocol->mode == 4) {
         WheelPacketModeFourOutput output = protocol->mode_four_output;
@@ -289,8 +307,10 @@ static void build_active_response(WheelProtocol *protocol) {
         protocol->response[2] = protocol->system_status_code;
         protocol->system_status_pending = false;
     }
-    protocol->response[WHEEL_PROTOCOL_CHECKSUM_OFFSET] =
-        crc8(protocol->response, WHEEL_PROTOCOL_CONTENT_SIZE);
+    if (!wheel_packet_crc_applies(protocol->mode) || system_status_response) {
+        protocol->response[WHEEL_PROTOCOL_CHECKSUM_OFFSET] =
+            crc8(protocol->response, WHEEL_PROTOCOL_CONTENT_SIZE);
+    }
     protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] = flags;
 }
 

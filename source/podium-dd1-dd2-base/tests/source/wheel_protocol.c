@@ -967,9 +967,7 @@ static void test_builds_crc_family_active_response(void) {
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
     const WheelPacketCrcOutput output = {
         .display = {.glyphs = {0x11, 0x22, 0x33}, .third_glyph_marker = true},
-        .vibration = {0x22, 0x33},
         .report_state = 0x66,
-        .command_restart_pending = true,
         .status_update_pending = true,
     };
     wheel_protocol_init(&protocol);
@@ -977,12 +975,21 @@ static void test_builds_crc_family_active_response(void) {
     synchronize(&protocol, request);
     select_mode(&protocol, request, 6);
     wheel_protocol_set_host_capability(&protocol, true);
+    protocol.response[5] = 0x75;
+    protocol.response[6] = 0x76;
+    for (uint8_t index = 11; index < WHEEL_PACKET_CRC_CONTENT_SIZE; index++) {
+        protocol.response[index] = (uint8_t)(index + 0x70);
+    }
 
     request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
     wheel_protocol_accept(&protocol, request);
 
     const uint8_t *response = wheel_protocol_response(&protocol);
-    const uint8_t expected[] = {0xa5, 0, 0x11, 0x22, 0x33, 0x22, 0x33, 0xff, 0xff, 0x66, 0xff};
+    const uint8_t expected[] = {
+        0xa5, 0, 0x11, 0x22, 0x33, 0x75, 0x76, 0, 0, 0x66, 0xff,
+        0x7b, 0x7c, 0x7d, 0x7e, 0x7f, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85,
+        0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b, 0x8c, 0x8d, 0x8e, 0x8f, 0x6f,
+    };
     assert(memcmp(response, expected, sizeof(expected)) == 0);
     assert((response[WHEEL_PROTOCOL_FLAGS_OFFSET] & WHEEL_PROTOCOL_HOST_CAPABILITY) != 0);
     assert(wheel_protocol_message_valid(response));
