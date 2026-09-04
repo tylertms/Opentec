@@ -193,6 +193,35 @@ static void test_calibration_capture_sequence(void) {
     assert(!service.active);
 }
 
+static void test_reports_release_stage_for_captured_position(void) {
+    static const uint16_t positions[][2] = {
+        {500, 500}, {900, 900}, {700, 850}, {650, 100}, {500, 800},
+        {450, 150}, {300, 750}, {250, 200}, {100, 700},
+    };
+    static const uint8_t expected_stages[] = {7, 9, 11, 13, 15, 17, 19, 21, 23};
+    HPatternCalibrationService service = {0};
+    HPatternSettings settings = {0};
+    uint8_t report[3] = {0};
+
+    h_pattern_calibration_service_request(&service, H_PATTERN_CALIBRATION_COMMAND_START, 0, 0);
+    h_pattern_calibration_service_set_advance_input(&service, true);
+    for (uint8_t position = 0; position < 9; position++) {
+        HPatternCalibrationResult expected = position == 8 ? H_PATTERN_CALIBRATION_COMPLETED
+                                                           : H_PATTERN_CALIBRATION_CAPTURED;
+        assert(h_pattern_calibration_service_capture(&service, 5001, positions[position][0],
+                                                     positions[position][1], &settings) == expected);
+        assert(h_pattern_calibration_service_take_report(&service, 5001, false, report));
+        assert(report[1] == expected_stages[position]);
+        assert(report[2] == 0);
+        if (position != 8) {
+            h_pattern_calibration_service_set_advance_input(&service, false);
+            assert(h_pattern_calibration_service_capture(&service, 5001, 0, 0, &settings) ==
+                   H_PATTERN_CALIBRATION_NO_CAPTURE);
+            h_pattern_calibration_service_set_advance_input(&service, true);
+        }
+    }
+}
+
 static void test_extended_completion_waits_for_release_and_deadline(void) {
     HPatternCalibrationService service = {
         .session = {.next_position = H_PATTERN_CALIBRATION_SEVENTH},
@@ -316,6 +345,7 @@ int main(void) {
     test_entry_prompts_and_capture_delay();
     test_requires_release_between_physical_captures();
     test_calibration_capture_sequence();
+    test_reports_release_stage_for_captured_position();
     test_extended_completion_waits_for_release_and_deadline();
     test_completion_ignores_adapter_advance_input();
     test_cancel_clears_only_transient_state();

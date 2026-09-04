@@ -300,8 +300,9 @@ void h_pattern_calibration_service_cancel(HPatternCalibrationService *service) {
 /**
  * @brief Maps H-pattern lifecycle state to the official wheel-report stage.
  *
- * Entry presentation reports the ready, start, and wait stages before capture. Each capture and
- * required release uses the corresponding official pair, and completed ownership reports stage 23.
+ * Entry presentation reports the ready, start, and wait stages before capture. A required release
+ * reports the odd stage paired with the position just captured, while the next capture reports its
+ * following even stage. Completed ownership reports stage 23.
  *
  * @param[in] service Calibration lifecycle state.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -339,7 +340,7 @@ h_pattern_calibration_service_stage(const HPatternCalibrationService *service, u
     uint16_t stage = (uint16_t)H_PATTERN_CALIBRATION_STAGE_CAPTURE_NEUTRAL +
                      (uint16_t)service->session.next_position * 2u;
     if (service->release_required) {
-        stage++;
+        stage--;
     }
     return (HPatternCalibrationStage)stage;
 }
