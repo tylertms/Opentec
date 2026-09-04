@@ -1889,8 +1889,10 @@ static uint8_t xbox_effective_force_feedback_level(void) {
 /**
  * @brief Builds the current host diagnostic snapshot.
  *
- * Collects board, motor, attached-wheel, cooling, fan, auxiliary-position, and centered wheel
- * motion state in the order used by vendor report route four.
+ * Collects board, attached-wheel telemetry, thermal phase, force availability, fan, and centered
+ * wheel motion state in the order used by vendor report route four. The motor block takes identity
+ * and the 0x12, 0x13, and 0x11 telemetry registers from the attached-wheel auxiliary target 0xf0;
+ * its torque field remains the base motor live-position sample.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -1925,22 +1927,23 @@ static void update_usb_diagnostic_snapshot(uint32_t now_ms) {
             },
     };
 
-    const MotorIdentity *identity = motor_probe_identity(&motor_probe);
-    if (identity != 0) {
-        usb_diagnostic_snapshot.motor.version = identity->transfer_code;
-        usb_diagnostic_snapshot.motor.initial_status = (int8_t)identity->initial_status;
+    const WheelAccessory *accessory = wheel_accessory_service_identity(&wheel_accessory_service);
+    if (accessory != NULL) {
+        usb_diagnostic_snapshot.motor.version = wheel_accessory_transfer_code(accessory);
+        usb_diagnostic_snapshot.motor.initial_status = accessory->initial_status;
     }
-    if (motor_tuning_ready) {
-        const MotorTelemetry *telemetry = motor_telemetry_service_value(&motor_telemetry_service);
-        if (telemetry->motor_temperature_valid) {
-            usb_diagnostic_snapshot.motor.motor_temperature = telemetry->motor_temperature;
-        }
-        if (telemetry->driver_temperature_valid) {
-            usb_diagnostic_snapshot.motor.driver_temperature = telemetry->driver_temperature;
-        }
-        if (telemetry->runtime_valid) {
-            usb_diagnostic_snapshot.motor.runtime_seconds = telemetry->runtime_seconds;
-        }
+    int16_t accessory_temperature;
+    if (wheel_accessory_service_motor_temperature(&wheel_accessory_service,
+                                                  &accessory_temperature)) {
+        usb_diagnostic_snapshot.motor.motor_temperature = (uint16_t)accessory_temperature;
+    }
+    if (wheel_accessory_service_driver_temperature(&wheel_accessory_service,
+                                                   &accessory_temperature)) {
+        usb_diagnostic_snapshot.motor.driver_temperature = (uint16_t)accessory_temperature;
+    }
+    uint32_t accessory_runtime;
+    if (wheel_accessory_service_runtime(&wheel_accessory_service, &accessory_runtime)) {
+        usb_diagnostic_snapshot.motor.runtime_seconds = accessory_runtime;
     }
 
     usb_diagnostic_snapshot.wheel_status = *wheel_status_service_snapshot(&wheel_status_service);

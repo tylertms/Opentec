@@ -8,15 +8,20 @@
 #include "usb/vendor_command.h"
 #include "wheel/status_service.h"
 
-/** @brief Motor values carried by the diagnostic report. */
+/**
+ * @brief Attached-wheel telemetry and base-motor torque carried in the diagnostic motor block.
+ *
+ * The identity, temperature, and runtime fields are populated from the attached-wheel auxiliary
+ * bus target 0xf0. The torque field remains the base motor live-position sample.
+ */
 typedef struct {
-    uint8_t version;             /**< Motor transfer code. */
-    int8_t initial_status;       /**< Initial motor status code. */
-    uint16_t motor_temperature;  /**< Motor temperature value. */
-    uint16_t driver_temperature; /**< Motor-driver temperature value. */
-    uint8_t reserved[2];         /**< Reserved motor-report bytes. */
-    uint32_t runtime_seconds;    /**< Motor runtime in seconds. */
-    uint16_t motor_torque;       /**< Motor torque value. */
+    uint8_t version;             /**< Low six bits of the attached-wheel version value. */
+    int8_t initial_status;       /**< Signed status byte from the attached-wheel identity probe. */
+    uint16_t motor_temperature;  /**< Raw signed temperature from auxiliary register 0x12. */
+    uint16_t driver_temperature; /**< Raw signed temperature from auxiliary register 0x13. */
+    uint8_t reserved[2];         /**< Reserved diagnostic motor-block bytes, normally zero. */
+    uint32_t runtime_seconds;    /**< Runtime counter from auxiliary register 0x11. */
+    uint16_t motor_torque;       /**< Raw torque sample from the base motor live-position frame. */
 } UsbDiagnosticMotorState;
 
 /** @brief Cooling phase and threshold values carried by the diagnostic report. */
@@ -53,7 +58,7 @@ typedef struct {
     uint16_t resistance_values[2];     /**< Native primary and secondary resistance values. */
     uint32_t system_seconds;           /**< System uptime in seconds. */
     uint32_t transport_error_count;    /**< Count of transport errors. */
-    UsbDiagnosticMotorState motor;     /**< Motor diagnostic values. */
+    UsbDiagnosticMotorState motor;     /**< F0 attached-wheel telemetry and base motor torque. */
     WheelStatusSnapshot wheel_status;  /**< Attached-wheel status values. */
     UsbDiagnosticCoolingState cooling; /**< Cooling diagnostic values. */
     UsbDiagnosticPwmState pwm;         /**< PWM diagnostic values. */

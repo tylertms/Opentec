@@ -77,6 +77,31 @@ static void test_encodes_exact_diagnostic_payload(void) {
     assert(memcmp(report, expected, sizeof(expected)) == 0);
 }
 
+static void test_encodes_attached_wheel_fields_exactly(void) {
+    UsbDiagnosticReportService service;
+    usb_diagnostic_report_service_init(&service);
+    uint8_t arguments[2];
+    UsbVendorCommand enable = command(1, 0xff, arguments);
+    assert(usb_diagnostic_report_apply_command(&service, &enable));
+
+    UsbDiagnosticSnapshot snapshot = {0};
+    snapshot.motor.version = 0x3f;
+    snapshot.motor.initial_status = -3;
+    snapshot.motor.motor_temperature = (uint16_t)(int16_t)-100;
+    snapshot.motor.driver_temperature = 25;
+    snapshot.motor.reserved[0] = 0xa5;
+    snapshot.motor.reserved[1] = 0xb6;
+    snapshot.motor.runtime_seconds = UINT32_C(0x12345678);
+    snapshot.motor.motor_torque = 0x4a3b;
+    uint8_t report[USB_DEVICE_REPORT_SIZE];
+    assert(usb_diagnostic_report_prepare(&service, &snapshot, report));
+    static const uint8_t expected_motor_block[] = {
+        0x3f, 0xfd, 0x9c, 0xff, 0x19, 0x00, 0xa5,
+        0xb6, 0x78, 0x56, 0x34, 0x12, 0x3b, 0x4a,
+    };
+    assert(memcmp(report + 17, expected_motor_block, sizeof(expected_motor_block)) == 0);
+}
+
 static void test_publishes_only_when_due(void) {
     UsbDiagnosticReportService service;
     usb_diagnostic_report_service_init(&service);
@@ -118,6 +143,7 @@ static void test_rejects_other_routes(void) {
 
 int main(void) {
     test_encodes_exact_diagnostic_payload();
+    test_encodes_attached_wheel_fields_exactly();
     test_publishes_only_when_due();
     test_rejects_other_routes();
     return 0;
