@@ -32,13 +32,15 @@ typedef enum {
     SYSTEM_EVENT_ACTION_DISMISS_FORCE_OUTPUT_PROMPT,        /**< Dismiss the force-output prompt. */
     SYSTEM_EVENT_ACTION_SHOW_STANDARD_TUNING_MODE,          /**< Show standard tuning mode. */
     SYSTEM_EVENT_ACTION_SHOW_ADVANCED_TUNING_MODE,          /**< Show advanced tuning mode. */
-    SYSTEM_EVENT_ACTION_SHOW_MAXIMUM_ROTATIONS_EXCEEDED,    /**< Show the maximum-rotation alert. */
-    SYSTEM_EVENT_ACTION_SHOW_SHUTDOWN,                      /**< Show the shutdown notice. */
-    SYSTEM_EVENT_ACTION_SHOW_UNSUPPORTED_WHEEL_INVERTED,    /**< Show an inverted-wheel alert. */
-    SYSTEM_EVENT_ACTION_SHOW_UNSUPPORTED_WHEEL_OUTLINED,    /**< Show an outlined-wheel alert. */
-    SYSTEM_EVENT_ACTION_DISMISS_TORQUE_KEY_PROMPT,          /**< Dismiss the Torque Key prompt. */
-    SYSTEM_EVENT_ACTION_SHOW_TORQUE_DISABLED,               /**< Show the torque-disabled notice. */
-    SYSTEM_EVENT_ACTION_DISMISS_TORQUE_DISABLED, /**< Dismiss the torque-disabled notice. */
+    SYSTEM_EVENT_ACTION_SHOW_TUNING_MODE_TRANSITION_STANDARD, /**< Show standard transition. */
+    SYSTEM_EVENT_ACTION_SHOW_TUNING_MODE_TRANSITION_ADVANCED, /**< Show advanced transition. */
+    SYSTEM_EVENT_ACTION_SHOW_MAXIMUM_ROTATIONS_EXCEEDED, /**< Show the maximum-rotation alert. */
+    SYSTEM_EVENT_ACTION_SHOW_SHUTDOWN,                   /**< Show the shutdown notice. */
+    SYSTEM_EVENT_ACTION_SHOW_UNSUPPORTED_WHEEL_INVERTED, /**< Show an inverted-wheel alert. */
+    SYSTEM_EVENT_ACTION_SHOW_UNSUPPORTED_WHEEL_OUTLINED, /**< Show an outlined-wheel alert. */
+    SYSTEM_EVENT_ACTION_DISMISS_TORQUE_KEY_PROMPT,       /**< Dismiss the Torque Key prompt. */
+    SYSTEM_EVENT_ACTION_SHOW_TORQUE_DISABLED,            /**< Show the torque-disabled notice. */
+    SYSTEM_EVENT_ACTION_DISMISS_TORQUE_DISABLED,         /**< Dismiss the torque-disabled notice. */
     SYSTEM_EVENT_ACTION_SHOW_ALTERNATIVE_SHIFTER_ENABLED,  /**< Show alternative-shifter enabled. */
     SYSTEM_EVENT_ACTION_SHOW_ALTERNATIVE_SHIFTER_DISABLED, /**< Show alternative-shifter disabled.
                                                             */

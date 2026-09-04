@@ -45,6 +45,12 @@ static const char standard_tuning_mode_text[] = "Standard Tuning Menu mode";
 static const char advanced_tuning_mode_text[] = "Advanced Tuning Menu mode";
 /** @brief Text displayed below a tuning-mode activation message. */
 static const char tuning_mode_activated_text[] = "activated";
+/** @brief Transition prefix from official catalog events 0x14 and 0x15. */
+static const char tuning_mode_transition_text[] = "Switching Tuning Menu mode to";
+/** @brief Standard-mode suffix from official catalog event 0x14. */
+static const char standard_mode_transition_text[] = "Standard Mode ";
+/** @brief Advanced-mode suffix from official catalog event 0x15. */
+static const char advanced_mode_transition_text[] = "Advanced Mode";
 /** @brief Text displayed while the wheel base shuts down. */
 static const char shutdown_text[] = "Switching off Podium DD Wheel Base";
 /** @brief Primary text for an unsupported steering-wheel notice. */
@@ -290,6 +296,14 @@ void display_notice_render_system(DisplayFramebuffer framebuffer, SystemNoticeKi
         draw_notice_text(framebuffer, mode_text, NOTICE_PRIMARY_TEXT_Y, true, inverted);
         draw_notice_text(framebuffer, tuning_mode_activated_text, NOTICE_SECONDARY_TEXT_Y, false,
                          inverted);
+    } else if (kind == SYSTEM_NOTICE_TUNING_MODE_TRANSITION_STANDARD ||
+               kind == SYSTEM_NOTICE_TUNING_MODE_TRANSITION_ADVANCED) {
+        const char *mode_text = kind == SYSTEM_NOTICE_TUNING_MODE_TRANSITION_STANDARD
+                                    ? standard_mode_transition_text
+                                    : advanced_mode_transition_text;
+        draw_notice_text(framebuffer, tuning_mode_transition_text, NOTICE_PRIMARY_TEXT_Y, true,
+                         inverted);
+        draw_notice_text(framebuffer, mode_text, NOTICE_SECONDARY_TEXT_Y, false, inverted);
     } else if (kind == SYSTEM_NOTICE_SHUTDOWN) {
         draw_notice_text(framebuffer, shutdown_text, NOTICE_TEXT_Y, true, inverted);
     } else if (kind == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED ||

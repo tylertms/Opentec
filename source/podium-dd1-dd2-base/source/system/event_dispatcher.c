@@ -30,6 +30,8 @@ enum {
     SYSTEM_EVENT_UNSUPPORTED_WHEEL_OUTLINED = 0x10,      /**< Outlined-wheel event code. */
     SYSTEM_EVENT_STANDARD_TUNING_MODE = 0x12,            /**< Standard tuning-mode event code. */
     SYSTEM_EVENT_ADVANCED_TUNING_MODE = 0x13,            /**< Advanced tuning-mode event code. */
+    SYSTEM_EVENT_TUNING_MODE_TRANSITION_STANDARD = 0x14, /**< Standard-mode transition code. */
+    SYSTEM_EVENT_TUNING_MODE_TRANSITION_ADVANCED = 0x15, /**< Advanced-mode transition code. */
     SYSTEM_EVENT_MAXIMUM_ROTATIONS_EXCEEDED = 0x17,      /**< Maximum-rotation event code. */
     SYSTEM_EVENT_DISMISS_TORQUE_KEY_PROMPT = 0x18,       /**< Torque Key dismissal event code. */
     SYSTEM_EVENT_DISMISS_FORCE_OUTPUT_PROMPT = 0x1a,     /**< Force-output dismissal event code. */
@@ -95,6 +97,10 @@ SystemEventAction system_event_dispatcher_update(SystemEventDispatcher *dispatch
         action = SYSTEM_EVENT_ACTION_SHOW_STANDARD_TUNING_MODE;
     } else if (queue->pending_code == SYSTEM_EVENT_ADVANCED_TUNING_MODE) {
         action = SYSTEM_EVENT_ACTION_SHOW_ADVANCED_TUNING_MODE;
+    } else if (queue->pending_code == SYSTEM_EVENT_TUNING_MODE_TRANSITION_STANDARD) {
+        action = SYSTEM_EVENT_ACTION_SHOW_TUNING_MODE_TRANSITION_STANDARD;
+    } else if (queue->pending_code == SYSTEM_EVENT_TUNING_MODE_TRANSITION_ADVANCED) {
+        action = SYSTEM_EVENT_ACTION_SHOW_TUNING_MODE_TRANSITION_ADVANCED;
     } else if (queue->pending_code == SYSTEM_EVENT_MAXIMUM_ROTATIONS_EXCEEDED) {
         action = SYSTEM_EVENT_ACTION_SHOW_MAXIMUM_ROTATIONS_EXCEEDED;
     } else if (queue->pending_code == SYSTEM_EVENT_SHUTDOWN) {

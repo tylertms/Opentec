@@ -167,6 +167,14 @@ static void test_renders_tuning_mode_notices(void) {
     display_notice_render_system(framebuffer, SYSTEM_NOTICE_ADVANCED_TUNING_MODE);
     assert(has_dark_pixel(framebuffer, 2, 30, 251, 10));
     assert(has_dark_pixel(framebuffer, 2, 40, 251, 10));
+
+    display_notice_render_system(framebuffer, SYSTEM_NOTICE_TUNING_MODE_TRANSITION_STANDARD);
+    assert(has_dark_pixel(framebuffer, 2, 30, 251, 10));
+    assert(has_dark_pixel(framebuffer, 2, 40, 251, 10));
+
+    display_notice_render_system(framebuffer, SYSTEM_NOTICE_TUNING_MODE_TRANSITION_ADVANCED);
+    assert(has_dark_pixel(framebuffer, 2, 30, 251, 10));
+    assert(has_dark_pixel(framebuffer, 2, 40, 251, 10));
 }
 
 static void test_renders_alternative_shifter_notices(void) {

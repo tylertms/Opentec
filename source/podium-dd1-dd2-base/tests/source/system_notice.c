@@ -33,9 +33,14 @@ static void test_timed_notices_expire_after_four_seconds(void) {
 
 static void test_persistent_notices_do_not_expire(void) {
     static const SystemNoticeKind kinds[] = {
-        SYSTEM_NOTICE_POSITION_SENSOR_TEST_FAILED, SYSTEM_NOTICE_MOTOR_CALIBRATION_ONGOING,
-        SYSTEM_NOTICE_MAXIMUM_ROTATIONS_EXCEEDED,  SYSTEM_NOTICE_SHUTDOWN,
-        SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED,  SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED,
+        SYSTEM_NOTICE_POSITION_SENSOR_TEST_FAILED,
+        SYSTEM_NOTICE_MOTOR_CALIBRATION_ONGOING,
+        SYSTEM_NOTICE_MAXIMUM_ROTATIONS_EXCEEDED,
+        SYSTEM_NOTICE_SHUTDOWN,
+        SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED,
+        SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED,
+        SYSTEM_NOTICE_TUNING_MODE_TRANSITION_STANDARD,
+        SYSTEM_NOTICE_TUNING_MODE_TRANSITION_ADVANCED,
     };
 
     for (size_t index = 0; index < sizeof(kinds) / sizeof(kinds[0]); index++) {
@@ -91,6 +96,10 @@ static void test_coalesces_related_notices(void) {
     } cases[] = {
         {SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED, SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED},
         {SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED, SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED},
+        {SYSTEM_NOTICE_TORQUE_REDUCED, SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED},
+        {SYSTEM_NOTICE_TORQUE_REDUCED, SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED},
+        {SYSTEM_NOTICE_TORQUE_REDUCED, SYSTEM_NOTICE_TUNING_MODE_TRANSITION_STANDARD},
+        {SYSTEM_NOTICE_TUNING_MODE_TRANSITION_STANDARD, SYSTEM_NOTICE_STANDARD_TUNING_MODE},
     };
 
     for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {
@@ -111,10 +120,12 @@ static void test_coalesces_related_notices(void) {
         {SYSTEM_NOTICE_STANDARD_TUNING_MODE, SYSTEM_NOTICE_ADVANCED_TUNING_MODE},
         {SYSTEM_NOTICE_ALTERNATIVE_SHIFTER_ENABLED, SYSTEM_NOTICE_ALTERNATIVE_SHIFTER_DISABLED},
         {SYSTEM_NOTICE_TORQUE_REDUCED, SYSTEM_NOTICE_WHEEL_CENTER_CALIBRATED},
+        {SYSTEM_NOTICE_TUNING_MODE_TRANSITION_STANDARD,
+         SYSTEM_NOTICE_TUNING_MODE_TRANSITION_ADVANCED},
     };
 
-    for (size_t index = 0;
-         index < sizeof(non_coalescing_cases) / sizeof(non_coalescing_cases[0]); index++) {
+    for (size_t index = 0; index < sizeof(non_coalescing_cases) / sizeof(non_coalescing_cases[0]);
+         index++) {
         SystemNotice notice;
         system_notice_init(&notice);
         system_notice_show(&notice, non_coalescing_cases[index].active, 100);
@@ -149,7 +160,7 @@ static void test_restored_notice_gets_a_fresh_deadline(void) {
     assert(notice.deadline_ms == 0);
 }
 
-static void test_dismissed_warning_restores_saved_notice(void) {
+static void test_replacing_warning_discards_superseded_notice(void) {
     SystemNotice notice;
     system_notice_init(&notice);
     system_notice_show(&notice, SYSTEM_NOTICE_WHEEL_CENTER_CALIBRATED, 100);
@@ -157,8 +168,8 @@ static void test_dismissed_warning_restores_saved_notice(void) {
 
     system_notice_dismiss(&notice, 300);
 
-    assert(notice.kind == SYSTEM_NOTICE_WHEEL_CENTER_CALIBRATED);
-    assert(notice.deadline_ms == 4300);
+    assert(notice.kind == SYSTEM_NOTICE_NONE);
+    assert(notice.deadline_ms == 0);
     assert(notice.stack_count == 0);
 }
 
@@ -202,7 +213,7 @@ int main(void) {
     test_timed_notice_expires_across_counter_wrap();
     test_coalesces_related_notices();
     test_restored_notice_gets_a_fresh_deadline();
-    test_dismissed_warning_restores_saved_notice();
+    test_replacing_warning_discards_superseded_notice();
     test_compacts_the_fifth_notice_and_retains_it_below_the_sixth();
     return 0;
 }

@@ -25,6 +25,8 @@ typedef enum {
     SYSTEM_NOTICE_MOTOR_CALIBRATION_ERASED,           /**< Erased motor-calibration notice. */
     SYSTEM_NOTICE_STANDARD_TUNING_MODE,               /**< Standard tuning-mode notice. */
     SYSTEM_NOTICE_ADVANCED_TUNING_MODE,               /**< Advanced tuning-mode notice. */
+    SYSTEM_NOTICE_TUNING_MODE_TRANSITION_STANDARD,    /**< Standard-mode transition notice. */
+    SYSTEM_NOTICE_TUNING_MODE_TRANSITION_ADVANCED,    /**< Advanced-mode transition notice. */
     SYSTEM_NOTICE_MAXIMUM_ROTATIONS_EXCEEDED,         /**< Maximum-rotation notice. */
     SYSTEM_NOTICE_SHUTDOWN,                           /**< Shutdown notice. */
     SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED,         /**< Unsupported inverted-wheel notice. */

@@ -1112,6 +1112,10 @@ static void service_system_events(uint32_t now_ms) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_STANDARD_TUNING_MODE, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_ADVANCED_TUNING_MODE) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_ADVANCED_TUNING_MODE, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_TUNING_MODE_TRANSITION_STANDARD) {
+        system_notice_show(&system_notice, SYSTEM_NOTICE_TUNING_MODE_TRANSITION_STANDARD, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_SHOW_TUNING_MODE_TRANSITION_ADVANCED) {
+        system_notice_show(&system_notice, SYSTEM_NOTICE_TUNING_MODE_TRANSITION_ADVANCED, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_MAXIMUM_ROTATIONS_EXCEEDED) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_MAXIMUM_ROTATIONS_EXCEEDED, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_SHUTDOWN) {
