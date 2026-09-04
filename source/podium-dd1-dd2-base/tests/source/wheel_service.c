@@ -821,6 +821,44 @@ static void test_builds_direct_multi_position_input(void) {
     assert(input.channels[0].event == WHEEL_ROTARY_EVENT_FORWARD);
     assert(input.channels[1].event == WHEEL_ROTARY_EVENT_BACKWARD);
     assert(input.channels[2].event == WHEEL_ROTARY_EVENT_FORWARD);
+    assert(wheel_service_rotary_event(&service, 3) == WHEEL_ROTARY_EVENT_NONE);
+    assert(service.rotary_input.channels[3].position == UINT8_MAX);
+}
+
+static void test_gates_quaternary_rotary_to_legacy_mode(void) {
+    WheelService service;
+    WheelMultiPositionInput input;
+    initialize_service(&service);
+    service.protocol.request_ready = true;
+    service.protocol.mode = WHEEL_MODE_LEGACY_ALTERNATE;
+    service.protocol.request[13] = 0x10;
+
+    assert(wheel_service_multi_position_input(&service, 0, &input));
+    assert(service.rotary_input.channels[3].position == UINT8_MAX);
+    assert(service.rotary_input.channels[3].pending_steps == 0);
+    assert(service.rotary_input.channels[3].event == WHEEL_ROTARY_EVENT_NONE);
+    assert(service.rotary_input.channels[3].phase == WHEEL_ROTARY_PHASE_IDLE);
+    assert(service.rotary_input.channels[3].deadline_ms == 0);
+
+    service.protocol.request[13] = 0x20;
+    assert(wheel_service_multi_position_input(&service, 1, &input));
+    assert(service.rotary_input.channels[3].position == UINT8_MAX);
+    assert(service.rotary_input.channels[3].pending_steps == 0);
+    assert(service.rotary_input.channels[3].event == WHEEL_ROTARY_EVENT_NONE);
+    assert(service.rotary_input.channels[3].phase == WHEEL_ROTARY_PHASE_IDLE);
+    assert(service.rotary_input.channels[3].deadline_ms == 0);
+
+    initialize_service(&service);
+    service.protocol.request_ready = true;
+    service.protocol.mode = WHEEL_MODE_REMOTE_TUNING_LEGACY;
+    service.protocol.request[13] = 0x10;
+    assert(wheel_service_multi_position_input(&service, 0, &input));
+    assert(service.rotary_input.channels[3].position == 1);
+    assert(wheel_service_rotary_event(&service, 3) == WHEEL_ROTARY_EVENT_NONE);
+
+    service.protocol.request[13] = 0x20;
+    assert(wheel_service_multi_position_input(&service, 1, &input));
+    assert(service.rotary_input.channels[3].position == 2);
     assert(wheel_service_rotary_event(&service, 3) == WHEEL_ROTARY_EVENT_FORWARD);
 }
 
@@ -1856,6 +1894,7 @@ int main(void) {
     test_initializes_rotary_input();
     test_routes_multi_position_mode();
     test_builds_direct_multi_position_input();
+    test_gates_quaternary_rotary_to_legacy_mode();
     test_builds_adapter_multi_position_input();
     test_marks_extended_multi_position_layout();
     test_filters_adapter_remote_tuning_active_state();

@@ -1544,8 +1544,9 @@ static bool third_multi_position_channel_active(const WheelService *service, boo
  * @brief Builds the current multi-position rotary input.
  *
  * Selects direct protocol positions or adapter selectors, advances the three selector transition
- * channels, advances the fourth direct rotary channel from the packed high nibble, and marks the
- * alternate selector layout used by extended remote-tuning wheels.
+ * channels, advances the fourth direct rotary channel from the packed high nibble in legacy
+ * remote-tuning mode, and marks the alternate selector layout used by extended remote-tuning
+ * wheels.
  *
  * @param[in,out] service Attached-wheel service and rotary transition state.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -1584,7 +1585,7 @@ bool wheel_service_multi_position_input(WheelService *service, uint32_t now_ms,
                 &service->rotary_input, channel, input->channels[channel].position, now_ms);
         }
     }
-    if (!adapter_source) {
+    if (!adapter_source && service->protocol.mode == WHEEL_MODE_REMOTE_TUNING_LEGACY) {
         uint8_t quaternary_position = request[WHEEL_MULTI_POSITION_PACKED_OFFSET] >> 4;
         (void)wheel_rotary_input_update(&service->rotary_input,
                                         WHEEL_ROTARY_INPUT_CHANNEL_COUNT - 1, quaternary_position,
