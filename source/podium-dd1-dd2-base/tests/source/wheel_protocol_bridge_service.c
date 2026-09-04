@@ -24,9 +24,17 @@ static void test_completes_callback_on_endpoint(uint8_t report_id) {
 
     assert(wheel_protocol_bridge_service_request(&service, report_id));
     assert(service.report_id == report_id);
-    assert(!wheel_protocol_bridge_service_request(&service, report_id));
+    uint8_t refreshed_report_id =
+        report_id == WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD
+            ? WHEEL_PROTOCOL_BRIDGE_REPORT_ID_EXTENDED
+            : WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD;
+    assert(wheel_protocol_bridge_service_request(&service, refreshed_report_id));
+    assert(service.report_id == refreshed_report_id);
     wheel_protocol_bridge_service_run(&service);
-    assert_request(&transport, report_id);
+    assert(transport.owner == refreshed_report_id);
+    assert_request(&transport, refreshed_report_id);
+    assert(wheel_protocol_bridge_service_request(&service, report_id));
+    assert(service.report_id == refreshed_report_id);
     const uint8_t accepted[] = {1};
     command_transport_receive(&transport, accepted, sizeof(accepted));
     wheel_protocol_bridge_service_run(&service);
@@ -35,7 +43,7 @@ static void test_completes_callback_on_endpoint(uint8_t report_id) {
     assert(transport.owner == 0);
 }
 
-static void test_stops_after_rejected_transfer(void) {
+static void test_recovers_after_rejected_transfer(void) {
     WheelProtocolBridgeService service;
     CommandTransport transport;
     command_transport_init(&transport);
@@ -48,11 +56,17 @@ static void test_stops_after_rejected_transfer(void) {
     command_transport_fail(&transport);
     wheel_protocol_bridge_service_run(&service);
     assert(!wheel_protocol_bridge_service_take_acknowledgement(&service));
-    assert(service.phase == WHEEL_PROTOCOL_BRIDGE_IDLE);
+    assert(service.phase == WHEEL_PROTOCOL_BRIDGE_WRITE_ERROR);
     assert(transport.owner == 0);
-    const uint8_t *request;
-    uint16_t length;
-    assert(!command_transport_request(&transport, &request, &length));
+    wheel_protocol_bridge_service_run(&service);
+    assert(service.phase == WHEEL_PROTOCOL_BRIDGE_STARTUP_RECOVERY);
+    assert(transport.owner == 0);
+    assert(transport.completion == COMMAND_TRANSPORT_COMPLETE);
+    wheel_protocol_bridge_service_run(&service);
+    assert(service.phase == WHEEL_PROTOCOL_BRIDGE_WRITE_READY);
+    wheel_protocol_bridge_service_run(&service);
+    assert(service.phase == WHEEL_PROTOCOL_BRIDGE_WRITE_PENDING);
+    assert_request(&transport, WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD);
 }
 
 static void test_waits_for_shared_transport(void) {
@@ -69,23 +83,66 @@ static void test_waits_for_shared_transport(void) {
     command_transport_release(&transport, 0x20);
     wheel_protocol_bridge_service_run(&service);
     assert(service.phase == WHEEL_PROTOCOL_BRIDGE_WRITE_PENDING);
+    assert(transport.owner == WHEEL_PROTOCOL_BRIDGE_REPORT_ID_EXTENDED);
 }
 
-static void test_rejects_invalid_report_identifier(void) {
+static void test_requires_nonzero_report_identifier(void) {
     WheelProtocolBridgeService service;
     CommandTransport transport;
     command_transport_init(&transport);
     wheel_protocol_bridge_service_init(&service, &transport);
 
     assert(!wheel_protocol_bridge_service_request(&service, 0));
-    assert(!wheel_protocol_bridge_service_request(&service, 0x14));
-    assert(!wheel_protocol_bridge_service_request(&service, 0x17));
-    assert(!wheel_protocol_bridge_service_request(&service, UINT8_MAX));
-    assert(service.phase == WHEEL_PROTOCOL_BRIDGE_IDLE);
-    assert(
-        wheel_protocol_bridge_service_request(&service, WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD));
-    assert(!wheel_protocol_bridge_service_request(&service, 0));
-    assert(service.report_id == WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD);
+    assert(wheel_protocol_bridge_service_request(&service, 0x14));
+    assert(service.report_id == 0x14);
+    assert(wheel_protocol_bridge_service_request(&service, 0x17));
+    assert(service.report_id == 0x17);
+}
+
+static void test_refreshes_target_without_clearing_acknowledgement(void) {
+    WheelProtocolBridgeService service;
+    CommandTransport transport;
+    command_transport_init(&transport);
+    wheel_protocol_bridge_service_init(&service, &transport);
+
+    service.acknowledged = true;
+    assert(wheel_protocol_bridge_service_request(&service,
+                                                WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD));
+    assert(service.acknowledged);
+    assert(wheel_protocol_bridge_service_request(&service,
+                                                WHEEL_PROTOCOL_BRIDGE_REPORT_ID_EXTENDED));
+    assert(service.report_id == WHEEL_PROTOCOL_BRIDGE_REPORT_ID_EXTENDED);
+    assert(service.acknowledged);
+}
+
+static void test_recovers_after_the_wait_limit(void) {
+    WheelProtocolBridgeService service;
+    CommandTransport transport;
+    command_transport_init(&transport);
+    wheel_protocol_bridge_service_init(&service, &transport);
+
+    assert(wheel_protocol_bridge_service_request(
+        &service, WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD));
+    wheel_protocol_bridge_service_run(&service);
+    assert_request(&transport, WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD);
+    for (uint16_t poll = 0; poll < 500; ++poll) {
+        wheel_protocol_bridge_service_run(&service);
+        assert(service.phase == WHEEL_PROTOCOL_BRIDGE_WRITE_PENDING);
+    }
+    assert(service.wait_calls == 500);
+    wheel_protocol_bridge_service_run(&service);
+    assert(service.phase == WHEEL_PROTOCOL_BRIDGE_WRITE_ERROR);
+    assert(transport.phase == COMMAND_TRANSPORT_IDLE);
+    assert(transport.owner == WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD);
+    assert(transport.completion == COMMAND_TRANSPORT_WRITE_REJECTED);
+    wheel_protocol_bridge_service_run(&service);
+    assert(service.phase == WHEEL_PROTOCOL_BRIDGE_STARTUP_RECOVERY);
+    wheel_protocol_bridge_service_run(&service);
+    assert(service.phase == WHEEL_PROTOCOL_BRIDGE_WRITE_READY);
+    wheel_protocol_bridge_service_run(&service);
+    assert(service.phase == WHEEL_PROTOCOL_BRIDGE_WRITE_PENDING);
+    assert_request(&transport, WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD);
+    assert(transport.owner == WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD);
 }
 
 static void test_rejects_unavailable_service(void) {
@@ -101,9 +158,11 @@ static void test_rejects_unavailable_service(void) {
 int main(void) {
     test_completes_callback_on_endpoint(WHEEL_PROTOCOL_BRIDGE_REPORT_ID_STANDARD);
     test_completes_callback_on_endpoint(WHEEL_PROTOCOL_BRIDGE_REPORT_ID_EXTENDED);
-    test_stops_after_rejected_transfer();
+    test_recovers_after_rejected_transfer();
     test_waits_for_shared_transport();
-    test_rejects_invalid_report_identifier();
+    test_requires_nonzero_report_identifier();
+    test_refreshes_target_without_clearing_acknowledgement();
+    test_recovers_after_the_wait_limit();
     test_rejects_unavailable_service();
     return 0;
 }
