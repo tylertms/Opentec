@@ -88,10 +88,9 @@ void wheel_status_service_init(WheelStatusService *service, SerialService *trans
  * next one-byte status request no more than once per second when the scheduler grants a slot.
  *
  * @param[in,out] service Wheel-status service to advance.
- * @param[in] now_ms Current monotonic time in milliseconds.
  * @param[in] start_allowed Allows a due status request to claim the shared serial service.
  */
-void wheel_status_service_run(WheelStatusService *service, uint32_t now_ms, bool start_allowed) {
+void wheel_status_service_run(WheelStatusService *service, bool start_allowed) {
     if (service == 0 || service->transport == 0 ||
         service->transport->status == SERIAL_SERVICE_PENDING) {
         return;
@@ -110,30 +109,28 @@ void wheel_status_service_run(WheelStatusService *service, uint32_t now_ms, bool
         serial_service_release(service->transport);
     }
 
-    if (!start_allowed ||
-        (service->poll_deadline_active && !platform_time_reached(now_ms, service->next_poll_ms))) {
+    const uint32_t now_ms = platform_time_ms();
+    if (!start_allowed || now_ms <= service->next_poll_ms) {
         return;
     }
     if (serial_service_start_wait(service->transport, WHEEL_STATUS_MESSAGE_TYPE,
                                   &service->request_marker, 1, now_ms)) {
         service->request_marker = 0;
-        service->next_poll_ms = now_ms + WHEEL_STATUS_POLL_INTERVAL_MS;
-        service->poll_deadline_active = true;
+        service->next_poll_ms = platform_time_ms() + WHEEL_STATUS_POLL_INTERVAL_MS;
     }
 }
 
 /**
  * @brief Marks the next attached-wheel status request.
  *
- * Sets the one-byte request payload to 0xAA and makes the request immediately eligible so a
- * matching response can signal completion.
+ * Sets the one-byte request payload to 0xAA while retaining the existing periodic poll deadline.
+ * A matching response can signal completion after the request becomes due.
  *
  * @param[in,out] service Wheel-status service whose next request is marked.
  */
 void wheel_status_service_mark_next_request(WheelStatusService *service) {
     if (service != 0) {
         service->request_marker = WHEEL_STATUS_MARKER;
-        service->poll_deadline_active = false;
     }
 }
 

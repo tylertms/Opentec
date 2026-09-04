@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "platform/time.h"
 #include "platform/serial_link.h"
 #include "serial/packet.h"
 #include "serial/service.h"
@@ -11,6 +12,10 @@
 static uint8_t transmitted[SERIAL_PACKET_SIZE];
 static uint8_t received[SERIAL_PACKET_SIZE];
 static bool received_ready;
+static uint32_t current_time_ms;
+static uint32_t start_time_advance_ms;
+
+uint32_t platform_time_ms(void) { return current_time_ms; }
 
 void platform_serial_link_init(void) {}
 
@@ -20,6 +25,7 @@ bool platform_serial_link_start_periodic_recovery(void) { return true; }
 
 bool platform_serial_link_start(const uint8_t packet[SERIAL_PACKET_SIZE]) {
     memcpy(transmitted, packet, sizeof(transmitted));
+    current_time_ms += start_time_advance_ms;
     return true;
 }
 
@@ -47,8 +53,15 @@ static void initialize(WheelStatusService *service, SerialService *transport) {
     memset(transmitted, 0, sizeof(transmitted));
     memset(received, 0, sizeof(received));
     received_ready = false;
+    current_time_ms = 0;
+    start_time_advance_ms = 0;
     serial_service_init(transport);
     wheel_status_service_init(service, transport);
+}
+
+static void run(WheelStatusService *service, uint32_t now_ms, bool start_allowed) {
+    current_time_ms = now_ms;
+    wheel_status_service_run(service, start_allowed);
 }
 
 static void test_polls_and_decodes_status(void) {
@@ -56,7 +69,9 @@ static void test_polls_and_decodes_status(void) {
     SerialService transport;
     initialize(&service, &transport);
 
-    wheel_status_service_run(&service, 0, true);
+    run(&service, 0, true);
+    assert(transport.status == SERIAL_SERVICE_IDLE);
+    run(&service, 1, true);
     SerialPacket packet = request();
     assert(packet.type_flags == 5);
     assert(packet.payload_length == 1);
@@ -65,8 +80,8 @@ static void test_polls_and_decodes_status(void) {
     static const uint8_t response[15] = {0x12, 0x34, 0x78, 0x56, 0x04, 0x03, 0x02, 0x01,
                                          0x0d, 0x0c, 0x0b, 0x0a, 0x9a, 0xff, 0};
     respond(packet.sequence, response);
-    serial_service_run(&transport, 1);
-    wheel_status_service_run(&service, 1, true);
+    serial_service_run(&transport, 2);
+    run(&service, 2, true);
 
     const WheelStatusSnapshot *snapshot = wheel_status_service_snapshot(&service);
     assert(snapshot->status_high == 0x12);
@@ -78,22 +93,25 @@ static void test_polls_and_decodes_status(void) {
     assert(transport.status == SERIAL_SERVICE_IDLE);
 }
 
-static void test_enforces_poll_interval(void) {
+static void test_enforces_strict_poll_deadline(void) {
     WheelStatusService service;
     SerialService transport;
     initialize(&service, &transport);
 
-    wheel_status_service_run(&service, 10, true);
+    run(&service, 10, true);
+    assert(service.next_poll_ms == 1010);
     SerialPacket first = request();
     static const uint8_t response[15] = {0};
     respond(first.sequence, response);
     serial_service_run(&transport, 11);
-    wheel_status_service_run(&service, 11, true);
+    run(&service, 11, true);
     assert(transport.status == SERIAL_SERVICE_IDLE);
 
-    wheel_status_service_run(&service, 1009, true);
+    run(&service, 1009, true);
     assert(transport.status == SERIAL_SERVICE_IDLE);
-    wheel_status_service_run(&service, 1010, true);
+    run(&service, 1010, true);
+    assert(transport.status == SERIAL_SERVICE_IDLE);
+    run(&service, 1011, true);
     assert(transport.status == SERIAL_SERVICE_PENDING);
     assert(request().sequence == 1);
 }
@@ -104,36 +122,62 @@ static void test_marks_and_takes_transition_response(void) {
     initialize(&service, &transport);
 
     wheel_status_service_mark_next_request(&service);
-    wheel_status_service_run(&service, 20, true);
+    run(&service, 20, true);
     SerialPacket packet = request();
     assert(packet.payload[0] == 0xaa);
     static const uint8_t response[15] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xaa};
     respond(packet.sequence, response);
     serial_service_run(&transport, 21);
-    wheel_status_service_run(&service, 21, true);
+    run(&service, 21, true);
 
     assert(wheel_status_service_take_marked_response(&service));
     assert(!wheel_status_service_take_marked_response(&service));
 }
 
-static void test_marked_transition_bypasses_poll_deadline(void) {
+static void test_marked_transition_preserves_poll_deadline(void) {
     WheelStatusService service;
     SerialService transport;
     initialize(&service, &transport);
 
-    wheel_status_service_run(&service, 10, true);
+    run(&service, 10, true);
     SerialPacket first = request();
     static const uint8_t response[15] = {0};
     respond(first.sequence, response);
     serial_service_run(&transport, 11);
-    wheel_status_service_run(&service, 11, true);
+    run(&service, 11, true);
     assert(transport.status == SERIAL_SERVICE_IDLE);
 
     wheel_status_service_mark_next_request(&service);
-    wheel_status_service_run(&service, 12, true);
+    assert(service.next_poll_ms == 1010);
+    run(&service, 12, true);
+    assert(transport.status == SERIAL_SERVICE_IDLE);
+    run(&service, 1011, true);
     assert(transport.status == SERIAL_SERVICE_PENDING);
     SerialPacket marked = request();
     assert(marked.payload[0] == 0xaa);
+}
+
+static void test_uses_official_unsigned_deadline_ordering(void) {
+    WheelStatusService service;
+    SerialService transport;
+    initialize(&service, &transport);
+
+    service.next_poll_ms = UINT32_MAX - 10u;
+    run(&service, 5, true);
+    assert(transport.status == SERIAL_SERVICE_IDLE);
+    run(&service, UINT32_MAX - 9u, true);
+    assert(transport.status == SERIAL_SERVICE_PENDING);
+}
+
+static void test_records_deadline_after_request_starts(void) {
+    WheelStatusService service;
+    SerialService transport;
+    initialize(&service, &transport);
+
+    start_time_advance_ms = 10;
+    run(&service, 10, true);
+    start_time_advance_ms = 0;
+    assert(service.next_poll_ms == 1020);
 }
 
 static void test_waits_for_scheduler_slot(void) {
@@ -141,9 +185,9 @@ static void test_waits_for_scheduler_slot(void) {
     SerialService transport;
     initialize(&service, &transport);
 
-    wheel_status_service_run(&service, 0, false);
+    run(&service, 0, false);
     assert(transport.status == SERIAL_SERVICE_IDLE);
-    wheel_status_service_run(&service, 1, true);
+    run(&service, 1, true);
     assert(transport.status == SERIAL_SERVICE_PENDING);
 }
 
@@ -153,11 +197,11 @@ static void test_reports_active_exchange_until_release(void) {
     initialize(&service, &transport);
 
     assert(!wheel_status_service_exchange_active(&service));
-    wheel_status_service_run(&service, 0, true);
+    run(&service, 1, true);
     assert(wheel_status_service_exchange_active(&service));
     transport.status = SERIAL_SERVICE_SUCCEEDED;
     assert(wheel_status_service_exchange_active(&service));
-    wheel_status_service_run(&service, 1, false);
+    run(&service, 2, false);
     assert(!wheel_status_service_exchange_active(&service));
 }
 
@@ -166,22 +210,24 @@ static void test_status_request_stops_after_fifth_timeout(void) {
     SerialService transport;
     initialize(&service, &transport);
 
-    wheel_status_service_run(&service, 0, true);
+    run(&service, 1, true);
     for (uint32_t attempt = 0; attempt < 5; attempt++) {
-        serial_service_run(&transport, 11u + attempt * 11u);
+        serial_service_run(&transport, 12u + attempt * 11u);
     }
 
     assert(transport.status == SERIAL_SERVICE_FAILED);
     assert(transport.attempts == 5);
-    wheel_status_service_run(&service, 56, false);
+    run(&service, 56, false);
     assert(transport.status == SERIAL_SERVICE_IDLE);
 }
 
 int main(void) {
     test_polls_and_decodes_status();
-    test_enforces_poll_interval();
+    test_enforces_strict_poll_deadline();
     test_marks_and_takes_transition_response();
-    test_marked_transition_bypasses_poll_deadline();
+    test_marked_transition_preserves_poll_deadline();
+    test_uses_official_unsigned_deadline_ordering();
+    test_records_deadline_after_request_starts();
     test_waits_for_scheduler_slot();
     test_reports_active_exchange_until_release();
     test_status_request_stops_after_fifth_timeout();

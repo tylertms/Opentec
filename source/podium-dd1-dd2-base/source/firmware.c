@@ -321,6 +321,8 @@ static ShifterInputMode previous_secondary_shifter_mode;
 static bool shifter_modes_initialized;
 /** @brief Shifter display state. */
 static ShifterDisplay shifter_display;
+/** @brief Whether the pending shifter request requires native command 10. */
+static bool shifter_display_native_refresh_pending;
 /** @brief Current local OLED shifter presentation. */
 static ShifterLocalDisplay local_display_shifter;
 /** @brief Revision of the local OLED shifter presentation. */
@@ -851,6 +853,8 @@ enum {
         2000, /**< Timeout for the wheel-mode status-memory startup read. */
     MOTOR_LINK_MALFORMED_FRAME_LIMIT = 100, /**< Malformed motor frames before link recovery. */
     SHIFTER_DISPLAY_REFRESH_COMMAND = 10,   /**< Native command that refreshes a shifter page. */
+    TUNING_SECONDARY_STANDARD_CENTER_BUTTON = 0x0080, /**< Standard center shortcut button. */
+    TUNING_SECONDARY_PROFILE_SHORTCUT_BUTTON = 0x0100, /**< Legacy shifter shortcut button. */
     WHEEL_STARTUP_VERSION_COMMAND = 0x0a,   /**< Wheel startup-version command code. */
     WHEEL_STARTUP_TEXT_METADATA = 0x10,     /**< Wheel startup text-metadata command code. */
     WHEEL_DISPLAY_TORQUE_KEY_PROMPT_STATE = 0x07,  /**< Direct-wheel Torque Key prompt state. */
@@ -3165,7 +3169,7 @@ static void run_motor_startup_centering(void) {
  * @return True when the wheel-status transaction completed successfully; otherwise false.
  */
 static bool run_wheel_startup_status_transaction(void) {
-    wheel_status_service_run(&wheel_status_service, platform_time_ms(), true);
+    wheel_status_service_run(&wheel_status_service, true);
     while (serial_service.status == SERIAL_SERVICE_PENDING) {
         uint32_t now_ms = platform_time_ms();
         serial_service_run(&serial_service, now_ms);
@@ -3173,7 +3177,7 @@ static bool run_wheel_startup_status_transaction(void) {
         service_profile_save(now_ms);
     }
     bool succeeded = serial_service.status == SERIAL_SERVICE_SUCCEEDED;
-    wheel_status_service_run(&wheel_status_service, platform_time_ms(), false);
+    wheel_status_service_run(&wheel_status_service, false);
     return succeeded;
 }
 
@@ -3591,7 +3595,7 @@ static bool service_runtime_bridge(uint32_t now_ms) {
         wheel_service_run(&wheel_service, now_ms, false);
     }
     if (runtime_bridge.phase == RUNTIME_BRIDGE_WAIT_WHEEL_STATUS) {
-        wheel_status_service_run(&wheel_status_service, now_ms, true);
+        wheel_status_service_run(&wheel_status_service, true);
     }
 
     usb_updater_input = (UsbUpdaterServiceInput){
@@ -4100,6 +4104,31 @@ static uint16_t fallback_display_report(uint8_t flags) {
 }
 
 /**
+ * @brief Retains one shifter-display request and its transport effects.
+ *
+ * Records the official connection state, dispatches the base-mode page when requested, and keeps
+ * native command ten pending until the wheel service accepts it.
+ *
+ * @param[in] extended True when the extended connection state owns the request.
+ * @param[in] dispatch_base_mode True when command five must be dispatched.
+ * @param[in] queue_native_command True when native command ten must be queued.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void request_shifter_display_refresh(bool extended, bool dispatch_base_mode,
+                                            bool queue_native_command, uint32_t now_ms) {
+    shifter_display_request_refresh_for_mode(&shifter_display, extended);
+    shifter_display_native_refresh_pending = queue_native_command;
+    if (dispatch_base_mode) {
+        wheel_service_dispatch_base_mode_display(&wheel_service,
+                                                 WHEEL_BASE_MODE_DISPLAY_SHIFTER_GEAR,
+                                                 WHEEL_BASE_MODE_SHIFTER_GEAR_NEUTRAL, now_ms);
+    }
+    if (!queue_native_command) {
+        (void)shifter_display_take_refresh_side_effect(&shifter_display);
+    }
+}
+
+/**
  * @brief Applies one decoded direct fallback command.
  *
  * Routes steering, tuning, display, cooling, and security operations to their existing subsystem
@@ -4185,7 +4214,13 @@ static bool apply_fallback_device_command(const UsbOperatingModeCommand *command
         return true;
     case 0x19:
         if (command->parameters[1] == 1) {
-            shifter_display_request_refresh(&shifter_display);
+            uint8_t wheel_mode = wheel_service_mode(&wheel_service);
+            const WheelAdapterInput *adapter = wheel_service_adapter(&wheel_service);
+            bool extended = wheel_mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED;
+            bool adapter_mode_one = adapter->connected && adapter->mode == 1;
+            bool native_display = !extended && !adapter_mode_one &&
+                                  wheel_service_tuning_display_supported(&wheel_service);
+            request_shifter_display_refresh(extended, !extended, native_display, platform_time_ms());
         } else if (command->parameters[1] == 2) {
             h_pattern_calibration_service_request(
                 &h_pattern_calibration_service, H_PATTERN_CALIBRATION_COMMAND_ADVANCE,
@@ -6699,7 +6734,7 @@ int main(void) {
         wheel_service_set_vibration_output(&wheel_service, &wheel_vibration_output);
         serial_service_run(&serial_service, now_ms);
         service_usb_command_bridge(now_ms);
-        wheel_status_service_run(&wheel_status_service, now_ms, !serial_command_waiting());
+        wheel_status_service_run(&wheel_status_service, !serial_command_waiting());
         wheel_service_configure_axis_processing(
             &wheel_service, (uint8_t)usb_device_operating_mode(),
             (uint8_t)tuning_profile->paddle_mode,
