@@ -22,12 +22,14 @@ enum {
     OVERLAY_BOTTOM = 63,     /**< Exclusive filled-overlay bottom endpoint. */
     TORQUE_KEY_ICON_X = 123, /**< Torque Key icon left coordinate. */
     TORQUE_KEY_ICON_Y = 16,  /**< Torque Key icon top coordinate. */
+    PROMPT_ACKNOWLEDGEMENT_X = 120, /**< Acknowledgement label left coordinate. */
+    PROMPT_ACKNOWLEDGEMENT_Y = 52,  /**< Acknowledgement label top coordinate. */
 };
 
 static void draw_filled_overlay(DisplayFramebuffer framebuffer) {
     for (uint16_t row = OVERLAY_TOP; row < OVERLAY_BOTTOM; row++) {
         for (uint16_t column = OVERLAY_LEFT; column < OVERLAY_RIGHT; column++) {
-            display_framebuffer_set_pixel(framebuffer, column, row, 0x0f);
+            display_framebuffer_set_pixel(framebuffer, column, row, PROMPT_COLOR);
         }
     }
 }
@@ -61,6 +63,8 @@ void display_prompt_render(DisplayFramebuffer framebuffer, bool visible) {
     draw_filled_overlay(framebuffer);
     display_high_torque_icon_draw(framebuffer, TORQUE_KEY_ICON_X, TORQUE_KEY_ICON_Y, true);
     draw_overlay_text(framebuffer, "ATTENTION Enable torque?", 37, true);
+    display_text_draw_with_font(framebuffer, &display_font_10_00c988, "OK",
+                                PROMPT_ACKNOWLEDGEMENT_X, PROMPT_ACKNOWLEDGEMENT_Y, false);
 }
 
 /**
@@ -82,7 +86,8 @@ void display_prompt_render_torque_key(DisplayFramebuffer framebuffer, bool visib
     display_high_torque_icon_draw(framebuffer, TORQUE_KEY_ICON_X, TORQUE_KEY_ICON_Y, true);
     draw_overlay_text(framebuffer, "CAUTION! Torque Key Inserted! Please read", 30, true);
     draw_overlay_text(framebuffer, "the manuals safety guidelines before use.", 40, false);
-    display_text_draw_with_font(framebuffer, &display_font_10_00c988, "OK", 120, 52, false);
+    display_text_draw_with_font(framebuffer, &display_font_10_00c988, "OK",
+                                PROMPT_ACKNOWLEDGEMENT_X, PROMPT_ACKNOWLEDGEMENT_Y, false);
 }
 
 /**

@@ -19,7 +19,7 @@ typedef struct {
  * @brief Renders the force-output acknowledgement prompt.
  *
  * Clears the framebuffer and, while visible, draws the official white-panel high-torque icon and
- * one-line inverted Font10 acknowledgement text.
+ * one-line inverted Font10 acknowledgement text, and the non-inverted OK label at (120, 52).
  *
  * @param[in,out] framebuffer Framebuffer receiving the prompt.
  * @param[in] visible Whether the prompt should be drawn after clearing the framebuffer.
@@ -30,7 +30,7 @@ void display_prompt_render(DisplayFramebuffer framebuffer, bool visible);
  * @brief Renders the Torque Key acknowledgement prompt.
  *
  * Clears the framebuffer and, while visible, draws the official white-panel high-torque icon,
- * inverted Font10 safety message, and non-inverted acknowledgement label.
+ * inverted Font10 safety message, and the non-inverted OK label at (120, 52).
  *
  * @param[in,out] framebuffer Framebuffer receiving the prompt.
  * @param[in] visible Whether the prompt should be drawn after clearing the framebuffer.

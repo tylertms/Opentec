@@ -5,6 +5,7 @@
 
 #include "display/framebuffer.h"
 #include "display/prompt.h"
+#include "display/text.h"
 
 static void test_render_and_clear(void) {
     uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE] = {0};
@@ -62,6 +63,22 @@ static void assert_filled_overlay(const uint8_t framebuffer[DISPLAY_FRAMEBUFFER_
     assert(pixel(framebuffer, 2, 15) == 0);
 }
 
+static void assert_acknowledgement_label(const uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE]) {
+    uint8_t expected[DISPLAY_FRAMEBUFFER_SIZE] = {0};
+    for (uint16_t row = 16; row < 63; row++) {
+        for (uint16_t column = 2; column < 253; column++) {
+            display_framebuffer_set_pixel(expected, column, row, 15);
+        }
+    }
+    display_text_draw_with_font(expected, &display_font_10_00c988, "OK", 120, 52, false);
+    for (uint16_t row = 52; row < 62; row++) {
+        for (uint16_t column = 0; column < DISPLAY_FRAMEBUFFER_WIDTH / 2; column++) {
+            uint16_t offset = row * (DISPLAY_FRAMEBUFFER_WIDTH / 2) + column;
+            assert(framebuffer[offset] == expected[offset]);
+        }
+    }
+}
+
 static void test_render_enable_torque_prompt(void) {
     uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE] = {0};
 
@@ -72,6 +89,7 @@ static void test_render_enable_torque_prompt(void) {
     assert(pixel(framebuffer, 128, 16) == 0);
     assert(pixel(framebuffer, 129, 16) == 12);
     assert(has_dark_pixel(framebuffer, 2, 37, 251, 10));
+    assert_acknowledgement_label(framebuffer);
 }
 
 static void test_render_torque_key_prompt(void) {
@@ -85,7 +103,6 @@ static void test_render_torque_key_prompt(void) {
 
     bool primary_text_present = false;
     bool secondary_text_present = false;
-    bool acknowledgement_present = false;
     for (uint16_t y = 30; y < 40; y++) {
         for (uint16_t x = 2; x < 253; x++) {
             primary_text_present |= pixel(framebuffer, x, y) < 15;
@@ -96,10 +113,9 @@ static void test_render_torque_key_prompt(void) {
             secondary_text_present |= pixel(framebuffer, x, y) < 15;
         }
     }
-    acknowledgement_present = pixel(framebuffer, 120, 52) == 0;
     assert(primary_text_present);
     assert(secondary_text_present);
-    assert(acknowledgement_present);
+    assert_acknowledgement_label(framebuffer);
 }
 
 static void test_render_bite_point(void) {

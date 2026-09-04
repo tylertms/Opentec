@@ -211,6 +211,10 @@ static void test_renders_unsupported_wheel_alert_variants(void) {
     assert(pixel(outlined, 2, 16) == 0);
     assert(pixel(outlined, 252, 62) == 0);
     assert(pixel(outlined, 253, 62) == 0);
+    assert(pixel(outlined, 128, 13) == 15);
+    assert(pixel(outlined, 128, 29) == 15);
+    assert(pixel(outlined, 120, 21) == 15);
+    assert(pixel(outlined, 136, 21) == 15);
     assert(pixel(inverted, 123, 17) == 15);
     assert(pixel(outlined, 123, 17) == 0);
     assert(pixel(inverted, 126, 17) == 11);

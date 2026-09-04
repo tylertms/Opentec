@@ -26,6 +26,9 @@ enum {
     OVERLAY_TOP = 16,           /**< Filled overlay top coordinate. */
     OVERLAY_RIGHT = 253,        /**< Exclusive filled-overlay right endpoint. */
     OVERLAY_BOTTOM = 63,        /**< Exclusive filled-overlay bottom endpoint. */
+    NOTICE_CIRCLE_X = 128,      /**< Notice circle center column. */
+    NOTICE_CIRCLE_Y = 21,       /**< Notice circle center row. */
+    NOTICE_CIRCLE_RADIUS = 8,   /**< Notice circle radius. */
     NOTICE_TEXT_Y = 37,         /**< Vertical coordinate for one-line notice text. */
     NOTICE_PRIMARY_TEXT_Y = 30, /**< Vertical coordinate for the first line of a two-line notice. */
     NOTICE_SECONDARY_TEXT_Y =
@@ -125,6 +128,46 @@ static bool notice_is_outlined(SystemNoticeKind kind) {
 }
 
 /**
+ * @brief Draws the official one-pixel unfilled notice ring.
+ *
+ * @param[in,out] framebuffer Framebuffer receiving the ring.
+ */
+static void draw_notice_ring(DisplayFramebuffer framebuffer) {
+    int16_t x = 0;
+    int16_t y = NOTICE_CIRCLE_RADIUS;
+    int16_t error = 1 - y;
+
+    for (;;) {
+        display_framebuffer_set_pixel(framebuffer, NOTICE_CIRCLE_X + x, NOTICE_CIRCLE_Y + y,
+                                      NOTICE_COLOR);
+        display_framebuffer_set_pixel(framebuffer, NOTICE_CIRCLE_X + x, NOTICE_CIRCLE_Y - y,
+                                      NOTICE_COLOR);
+        display_framebuffer_set_pixel(framebuffer, NOTICE_CIRCLE_X - x, NOTICE_CIRCLE_Y + y,
+                                      NOTICE_COLOR);
+        display_framebuffer_set_pixel(framebuffer, NOTICE_CIRCLE_X - x, NOTICE_CIRCLE_Y - y,
+                                      NOTICE_COLOR);
+        display_framebuffer_set_pixel(framebuffer, NOTICE_CIRCLE_X + y, NOTICE_CIRCLE_Y + x,
+                                      NOTICE_COLOR);
+        display_framebuffer_set_pixel(framebuffer, NOTICE_CIRCLE_X + y, NOTICE_CIRCLE_Y - x,
+                                      NOTICE_COLOR);
+        display_framebuffer_set_pixel(framebuffer, NOTICE_CIRCLE_X - y, NOTICE_CIRCLE_Y + x,
+                                      NOTICE_COLOR);
+        display_framebuffer_set_pixel(framebuffer, NOTICE_CIRCLE_X - y, NOTICE_CIRCLE_Y - x,
+                                      NOTICE_COLOR);
+        if (y <= x) {
+            return;
+        }
+        if (error < 0) {
+            error += 2 * x + 3;
+        } else {
+            error += 2 * (x - y) + 5;
+            y--;
+        }
+        x++;
+    }
+}
+
+/**
  * @brief Draws the warning icon used by operator notices.
  *
  * Renders the official eleven-by-ten warning bitmap at the notice icon position.
@@ -187,6 +230,8 @@ void display_notice_render_system(DisplayFramebuffer framebuffer, SystemNoticeKi
     bool inverted = !outlined;
     if (inverted) {
         draw_filled_overlay(framebuffer);
+    } else {
+        draw_notice_ring(framebuffer);
     }
 
     if (kind == SYSTEM_NOTICE_POSITION_SENSOR_TEST_FAILED ||

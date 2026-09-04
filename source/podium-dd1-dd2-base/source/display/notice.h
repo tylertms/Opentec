@@ -21,8 +21,9 @@ void display_notice_render_torque_disabled(DisplayFramebuffer framebuffer, bool 
 /**
  * @brief Renders a system notice.
  *
- * Clears the framebuffer and draws the official filled or outlined overlay, icon, and Font10
- * message selected by the supplied notice kind; the none kind leaves the framebuffer clear.
+ * Clears the framebuffer and draws the official filled or outlined overlay, including the
+ * one-pixel ring centered at (128, 21) for outlined wheel warnings, icon, and Font10 message
+ * selected by the supplied notice kind; the none kind leaves the framebuffer clear.
  *
  * @param[in,out] framebuffer Framebuffer receiving the notice.
  * @param[in] kind System notice kind to render.
