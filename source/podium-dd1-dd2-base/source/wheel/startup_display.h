@@ -28,6 +28,7 @@ typedef struct {
                                                presentation. */
     bool ready;                             /**< True after the startup presentation completes. */
     bool extended_mode_clear_pending; /**< True when extended startup must clear base-mode state. */
+    bool interface_activation_pending; /**< True when ready startup must activate interface one. */
     bool version_presentation_pending; /**< True while a tuning-display version request is pending.
                                         */
     bool version_presentation_close_armed;   /**< True while waiting for the version presentation
@@ -107,5 +108,16 @@ bool wheel_startup_display_take_version_presentation_close(WheelStartupDisplay *
  * @return True when a clear event was pending; otherwise false.
  */
 bool wheel_startup_display_take_extended_mode_clear(WheelStartupDisplay *display);
+
+/**
+ * @brief Takes the pending startup interface-activation event.
+ *
+ * Consumes the one-shot event raised when the normal ready delay completes. The wheel service maps
+ * this event to the official interface-one presentation.
+ *
+ * @param[in,out] display Startup display state holding the event.
+ * @return True when an interface-activation event was pending; otherwise false.
+ */
+bool wheel_startup_display_take_interface_activation(WheelStartupDisplay *display);
 
 #endif

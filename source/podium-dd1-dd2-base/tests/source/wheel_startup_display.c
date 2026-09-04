@@ -21,6 +21,7 @@ static void test_presents_base_version_and_ready_delay(void) {
     WheelStartupDisplay display;
     WheelDisplayOutput output = {.third_glyph_marker = true};
     wheel_startup_display_init(&display);
+    assert(!wheel_startup_display_take_interface_activation(&display));
 
     assert(wheel_startup_display_update(&display, true, false, true, 0, false, 1, &output));
     assert(output.glyphs[0] == 0x40);
@@ -43,11 +44,16 @@ static void test_presents_base_version_and_ready_delay(void) {
     assert(wheel_startup_display_update(&display, true, false, true, 0, false, 1001, &output));
     assert(output.glyphs[0] == 0x40);
     assert(!wheel_startup_display_update(&display, true, false, true, 0, false, 2001, &output));
+    assert(!wheel_startup_display_take_interface_activation(&display));
     assert(wheel_startup_display_update(&display, true, false, true, 0, false, 2002, &output));
     assert(output.glyphs[0] == 0);
     assert(output.glyphs[1] == 0);
     assert(output.glyphs[2] == 0);
     assert(wheel_startup_display_ready(&display));
+    assert(wheel_startup_display_take_interface_activation(&display));
+    assert(!wheel_startup_display_take_interface_activation(&display));
+    assert(!wheel_startup_display_update(&display, true, false, true, 0, false, 2003, &output));
+    assert(!wheel_startup_display_take_interface_activation(&display));
 }
 
 static void test_presents_managed_motor_version(void) {
@@ -95,6 +101,10 @@ static void test_reserves_longer_version_time_for_tuning_displays(void) {
     assert(!wheel_startup_display_update(&display, true, true, true, 0, false, 3502, &output));
     assert(wheel_startup_display_take_version_presentation_close(&display));
     assert(!wheel_startup_display_take_version_presentation_close(&display));
+    assert(!wheel_startup_display_update(&display, true, true, true, 0, false, 4001, &output));
+    assert(wheel_startup_display_update(&display, true, true, true, 0, false, 4002, &output));
+    assert(wheel_startup_display_take_interface_activation(&display));
+    assert(!wheel_startup_display_take_interface_activation(&display));
 }
 
 static void test_requests_extended_mode_clear_once_at_base_version_expiry(void) {
@@ -140,6 +150,7 @@ static void test_blinks_calibration_until_position_is_ready(void) {
     assert(wheel_startup_display_update(&display, true, false, true, 0, false, 3004, &output));
     assert(wheel_startup_display_ready(&display));
     assert(output.glyphs[0] == 0);
+    assert(!wheel_startup_display_take_interface_activation(&display));
 }
 
 int main(void) {

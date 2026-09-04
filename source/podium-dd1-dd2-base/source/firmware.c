@@ -867,6 +867,8 @@ enum {
                                                      error. */
     WHEEL_DISPLAY_EXTENDED_MODE_CLEAR_COMMAND = 0x1e, /**< Native display command that clears the
                                                           extended base-mode page. */
+    WHEEL_STARTUP_INTERFACE_PRESENTATION_MODE = 1,    /**< Interface presentation selected at normal
+                                                          startup completion. */
 };
 
 /** @brief Tuning values preserved while the official startup output override is active. */
@@ -5991,7 +5993,8 @@ static void queue_wheel_startup_version_presentation(void) {
  * Advances the startup sequence only after protocol activation, selects the display-capability
  * timing, supplies the identified motor-controller version and position readiness, and publishes
  * changed glyphs through the shared wheel output. When extended startup leaves the base-version
- * phase, queues the official native base-state clear command.
+ * phase, queues the official native base-state clear command. Normal ready completion activates
+ * the official interface-one presentation.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -6015,6 +6018,10 @@ static void service_wheel_startup_display(uint32_t now_ms) {
     if (wheel_startup_display_take_extended_mode_clear(&wheel_startup_display)) {
         (void)wheel_service_queue_tuning_display_command(&wheel_service,
                                                          WHEEL_DISPLAY_EXTENDED_MODE_CLEAR_COMMAND);
+    }
+    if (wheel_startup_display_take_interface_activation(&wheel_startup_display)) {
+        (void)wheel_service_activate_interface_presentation(
+            &wheel_service, WHEEL_STARTUP_INTERFACE_PRESENTATION_MODE);
     }
     if (!was_ready && wheel_startup_display_ready(&wheel_startup_display)) {
         shifter_display_request_refresh(&shifter_display);

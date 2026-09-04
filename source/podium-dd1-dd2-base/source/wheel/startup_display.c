@@ -115,7 +115,8 @@ void wheel_startup_display_init(WheelStartupDisplay *display) {
  * while three seconds are reserved for their separate version presentation. Missing position input
  * alternates the CAL label and a blank display every 500 milliseconds until position becomes
  * available. Leaving the base-version phase in mode 0x1C raises a one-shot base-state clear event.
- * Completion clears the glyphs and releases normal display owners.
+ * Normal ready completion clears the glyphs, requests interface-one presentation, and releases
+ * normal display owners.
  *
  * @param[in,out] display Persistent startup phase, deadline, and readiness state.
  * @param[in] wheel_active True while the attached-wheel protocol is active.
@@ -186,6 +187,7 @@ bool wheel_startup_display_update(WheelStartupDisplay *display, bool wheel_activ
         changed |= set_glyphs(output, 0, 0, 0);
         display->phase = WHEEL_STARTUP_DISPLAY_COMPLETE;
         display->ready = true;
+        display->interface_activation_pending = true;
         return changed;
     }
     case WHEEL_STARTUP_DISPLAY_CALIBRATION: {
@@ -269,5 +271,20 @@ bool wheel_startup_display_take_version_presentation_close(WheelStartupDisplay *
 bool wheel_startup_display_take_extended_mode_clear(WheelStartupDisplay *display) {
     bool pending = display->extended_mode_clear_pending;
     display->extended_mode_clear_pending = false;
+    return pending;
+}
+
+/**
+ * @brief Takes the pending startup interface-activation event.
+ *
+ * Returns the event once and clears it so later service passes cannot repeat the interface-one
+ * presentation.
+ *
+ * @param[in,out] display Persistent startup display state.
+ * @return True once when normal startup reaches ready state.
+ */
+bool wheel_startup_display_take_interface_activation(WheelStartupDisplay *display) {
+    bool pending = display->interface_activation_pending;
+    display->interface_activation_pending = false;
     return pending;
 }
