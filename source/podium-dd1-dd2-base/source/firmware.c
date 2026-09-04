@@ -3177,21 +3177,24 @@ static void run_motor_startup_centering(void) {
 /**
  * @brief Runs the official pre-USB wheel-status transaction.
  *
- * Starts one type-five request, services the serial exchange through its bounded retry sequence,
- * and releases the completed request after recording whether the transport succeeded.
+ * Queues one unmarked type-five request and services the shared wheel transport through the
+ * official queue, wait, complete, and terminal-failure states.
  *
- * @return True when the wheel-status transaction completed successfully; otherwise false.
+ * @return Terminal state two for completion or three after retry exhaustion.
  */
-static bool run_wheel_startup_status_transaction(void) {
-    wheel_status_service_run(&wheel_status_service, true);
-    while (serial_service.status == SERIAL_SERVICE_PENDING) {
-        uint32_t now_ms = platform_time_ms();
-        serial_service_run(&serial_service, now_ms);
-        service_motor_link();
+static WheelStatusStartupState run_wheel_startup_status_transaction(void) {
+    WheelStatusStartupTransaction transaction;
+    wheel_status_startup_transaction_init(&transaction, &wheel_status_service);
+    WheelStatusStartupState state = WHEEL_STATUS_STARTUP_QUEUE;
+    while (state == WHEEL_STATUS_STARTUP_QUEUE || state == WHEEL_STATUS_STARTUP_WAIT) {
+        state = wheel_status_startup_transaction_run(&transaction, platform_time_ms());
+        if (state == WHEEL_STATUS_STARTUP_QUEUE || state == WHEEL_STATUS_STARTUP_WAIT) {
+            uint32_t now_ms = platform_time_ms();
+            serial_service_run(&serial_service, now_ms);
+            service_motor_link();
+        }
     }
-    bool succeeded = serial_service.status == SERIAL_SERVICE_SUCCEEDED;
-    wheel_status_service_run(&wheel_status_service, false);
-    return succeeded;
+    return state;
 }
 
 /**
@@ -3461,8 +3464,8 @@ static void initialize_startup_usb(void) {
             platform_time_ms() + MOTOR_STARTUP_WHEEL_STATUS_SETTLE_MS;
         while (!platform_time_reached(platform_time_ms(), wheel_status_deadline_ms + 1u)) {
         }
-        if (!run_wheel_startup_status_transaction()) {
-            (void)start_startup_status_bridge();
+        if (run_wheel_startup_status_transaction() == WHEEL_STATUS_STARTUP_FAILED) {
+            start_startup_status_bridge();
             return;
         }
         wheel_service_init(&wheel_service, &serial_service);

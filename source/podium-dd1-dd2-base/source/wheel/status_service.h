@@ -21,10 +21,24 @@ typedef struct {
 typedef struct {
     SerialService *transport;     /**< Shared serial service used for type-five requests. */
     WheelStatusSnapshot snapshot; /**< Most recently decoded status response. */
-    uint32_t next_poll_ms; /**< Deadline compared with strict unsigned time ordering. */
+    uint32_t next_poll_ms;        /**< Deadline compared with strict unsigned time ordering. */
     uint8_t request_marker;       /**< Marker byte for the next request, normally zero or 0xAA. */
     bool marked_response_ready;   /**< Whether a response ending in marker 0xAA is latched. */
 } WheelStatusService;
+
+/** @brief State of the bounded startup status transaction. */
+typedef enum {
+    WHEEL_STATUS_STARTUP_QUEUE = 0,    /**< Request has not claimed the serial transport. */
+    WHEEL_STATUS_STARTUP_WAIT = 1,     /**< Bounded serial exchange is active. */
+    WHEEL_STATUS_STARTUP_COMPLETE = 2, /**< Matching type-five response completed. */
+    WHEEL_STATUS_STARTUP_FAILED = 3,   /**< Transport start or bounded retries failed. */
+} WheelStatusStartupState;
+
+/** @brief Local state for the bounded startup status transaction. */
+typedef struct {
+    WheelStatusService *service;   /**< Status service that owns the request. */
+    WheelStatusStartupState state; /**< Current official transaction state. */
+} WheelStatusStartupTransaction;
 
 /**
  * @brief Initializes attached-wheel status polling.
@@ -46,6 +60,30 @@ void wheel_status_service_init(WheelStatusService *service, SerialService *trans
  * @param[in] start_allowed Whether a new request may claim the shared serial service.
  */
 void wheel_status_service_run(WheelStatusService *service, bool start_allowed);
+
+/**
+ * @brief Initializes the bounded startup status transaction.
+ *
+ * Clears the request marker and starts in the queue state used by the official startup transfer.
+ *
+ * @param[out] transaction Transaction to initialize.
+ * @param[in,out] service Status service that owns the shared serial transport.
+ */
+void wheel_status_startup_transaction_init(WheelStatusStartupTransaction *transaction,
+                                           WheelStatusService *service);
+
+/**
+ * @brief Advances the bounded startup status transaction.
+ *
+ * Queues one unmarked type-five request, retains the official one-second periodic deadline, and
+ * maps transport completion and retry exhaustion to terminal states two and three.
+ *
+ * @param[in,out] transaction Transaction to advance.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @return Current startup transaction state.
+ */
+WheelStatusStartupState
+wheel_status_startup_transaction_run(WheelStatusStartupTransaction *transaction, uint32_t now_ms);
 
 /**
  * @brief Marks the next status request.

@@ -81,6 +81,72 @@ void wheel_status_service_init(WheelStatusService *service, SerialService *trans
     };
 }
 
+void wheel_status_startup_transaction_init(WheelStatusStartupTransaction *transaction,
+                                           WheelStatusService *service) {
+    if (transaction == 0) {
+        return;
+    }
+    *transaction = (WheelStatusStartupTransaction){
+        .service = service,
+        .state = WHEEL_STATUS_STARTUP_QUEUE,
+    };
+    if (service != 0) {
+        service->request_marker = 0;
+        service->marked_response_ready = false;
+    }
+}
+
+WheelStatusStartupState
+wheel_status_startup_transaction_run(WheelStatusStartupTransaction *transaction, uint32_t now_ms) {
+    if (transaction == 0 || transaction->service == 0 || transaction->service->transport == 0) {
+        return WHEEL_STATUS_STARTUP_FAILED;
+    }
+
+    WheelStatusService *service = transaction->service;
+    SerialService *transport = service->transport;
+    switch (transaction->state) {
+    case WHEEL_STATUS_STARTUP_QUEUE:
+        if (transport->status != SERIAL_SERVICE_IDLE) {
+            return transaction->state;
+        }
+        if (serial_service_start_wait(transport, WHEEL_STATUS_MESSAGE_TYPE,
+                                      &service->request_marker, 1, now_ms)) {
+            service->request_marker = 0;
+            service->next_poll_ms = platform_time_ms() + WHEEL_STATUS_POLL_INTERVAL_MS;
+            transaction->state = WHEEL_STATUS_STARTUP_WAIT;
+        } else if (transport->status == SERIAL_SERVICE_FAILED) {
+            serial_service_release(transport);
+            transaction->state = WHEEL_STATUS_STARTUP_FAILED;
+        }
+        return transaction->state;
+
+    case WHEEL_STATUS_STARTUP_WAIT:
+        if (transport->status == SERIAL_SERVICE_PENDING) {
+            return transaction->state;
+        }
+        if (transport->status == SERIAL_SERVICE_SUCCEEDED) {
+            const SerialMessageAssembly *response = serial_service_response(transport);
+            if (response != 0 && response->length == WHEEL_STATUS_RESPONSE_SIZE) {
+                accept_response(service, response->data);
+            }
+            serial_service_release(transport);
+            transaction->state = WHEEL_STATUS_STARTUP_COMPLETE;
+        } else {
+            serial_service_release(transport);
+            transaction->state = WHEEL_STATUS_STARTUP_FAILED;
+        }
+        return transaction->state;
+
+    case WHEEL_STATUS_STARTUP_COMPLETE:
+    case WHEEL_STATUS_STARTUP_FAILED:
+        return transaction->state;
+
+    default:
+        transaction->state = WHEEL_STATUS_STARTUP_FAILED;
+        return transaction->state;
+    }
+}
+
 /**
  * @brief Advances attached-wheel status polling.
  *

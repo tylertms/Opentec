@@ -3,8 +3,8 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "platform/time.h"
 #include "platform/serial_link.h"
+#include "platform/time.h"
 #include "serial/packet.h"
 #include "serial/service.h"
 #include "wheel/status_service.h"
@@ -90,6 +90,57 @@ static void test_polls_and_decodes_status(void) {
     assert(snapshot->runtime_seconds == UINT32_C(0x01020304));
     assert(snapshot->runtime_counter == UINT32_C(0x0a0b0c0d));
     assert(snapshot->trailing_status == 0x9a);
+    assert(transport.status == SERIAL_SERVICE_IDLE);
+}
+
+static void test_runs_startup_transaction_to_completion(void) {
+    WheelStatusService service;
+    SerialService transport;
+    WheelStatusStartupTransaction transaction;
+    initialize(&service, &transport);
+
+    wheel_status_service_mark_next_request(&service);
+    wheel_status_startup_transaction_init(&transaction, &service);
+    current_time_ms = 301;
+    start_time_advance_ms = 10;
+    assert(wheel_status_startup_transaction_run(&transaction, 301) == WHEEL_STATUS_STARTUP_WAIT);
+    start_time_advance_ms = 0;
+    SerialPacket packet = request();
+    assert(packet.type_flags == 5);
+    assert(packet.payload_length == 1);
+    assert(packet.payload[0] == 0);
+    assert(service.next_poll_ms == 1311);
+
+    static const uint8_t response[15] = {0x12, 0x34, 0x78, 0x56, 0x04, 0x03, 0x02, 0x01,
+                                         0x0d, 0x0c, 0x0b, 0x0a, 0x9a, 0xff, 0};
+    respond(packet.sequence, response);
+    serial_service_run(&transport, 302);
+    assert(wheel_status_startup_transaction_run(&transaction, 302) ==
+           WHEEL_STATUS_STARTUP_COMPLETE);
+    assert(transport.status == SERIAL_SERVICE_IDLE);
+    assert(wheel_status_service_snapshot(&service)->status_high == 0x12);
+}
+
+static void test_reports_terminal_failure_after_fifth_startup_retry(void) {
+    WheelStatusService service;
+    SerialService transport;
+    WheelStatusStartupTransaction transaction;
+    initialize(&service, &transport);
+
+    wheel_status_startup_transaction_init(&transaction, &service);
+    assert(WHEEL_STATUS_STARTUP_FAILED == 3);
+    assert(wheel_status_startup_transaction_run(&transaction, 1) == WHEEL_STATUS_STARTUP_WAIT);
+    for (uint32_t attempt = 0; attempt < 5; ++attempt) {
+        uint32_t now_ms = 12u + attempt * 11u;
+        serial_service_run(&transport, now_ms);
+        if (attempt < 4) {
+            assert(wheel_status_startup_transaction_run(&transaction, now_ms) ==
+                   WHEEL_STATUS_STARTUP_WAIT);
+        } else {
+            assert(wheel_status_startup_transaction_run(&transaction, now_ms) ==
+                   WHEEL_STATUS_STARTUP_FAILED);
+        }
+    }
     assert(transport.status == SERIAL_SERVICE_IDLE);
 }
 
@@ -223,6 +274,8 @@ static void test_status_request_stops_after_fifth_timeout(void) {
 
 int main(void) {
     test_polls_and_decodes_status();
+    test_runs_startup_transaction_to_completion();
+    test_reports_terminal_failure_after_fifth_startup_retry();
     test_enforces_strict_poll_deadline();
     test_marks_and_takes_transition_response();
     test_marked_transition_preserves_poll_deadline();
