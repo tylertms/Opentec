@@ -116,11 +116,18 @@ static void configure_parallel_port(void) {
  */
 void platform_display_reset(void) {
     wait_past(DISPLAY_RESET_START_DELAY_MS);
-    LATGbits.LATG14 = 0;
+    platform_display_reset_set(false);
     wait_past(DISPLAY_RESET_LOW_MS);
-    LATGbits.LATG14 = 1;
+    platform_display_reset_set(true);
     wait_past(DISPLAY_RESET_RECOVERY_MS);
 }
+
+/**
+ * @brief Drives the display controller reset input.
+ *
+ * @param[in] high True to release reset; false to assert reset.
+ */
+void platform_display_reset_set(bool high) { LATGbits.LATG14 = high; }
 
 /**
  * @brief Starts a full framebuffer transfer on DMA channel 10.

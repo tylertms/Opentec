@@ -12,6 +12,10 @@ base_tests = {
   'cooling-pwm': ['source/cooling_pwm.c', 'cooling/pwm.c'],
   'cooling-temperature': ['source/cooling_temperature.c', 'cooling/temperature.c'],
   'display-controller': ['source/display_controller.c', 'display/controller.c'],
+  'display-reset-scheduler': [
+    'source/display_reset_scheduler.c',
+    'display/reset_scheduler.c',
+  ],
   'display-text': [
     'source/display_text.c',
     'display/font_10.c',

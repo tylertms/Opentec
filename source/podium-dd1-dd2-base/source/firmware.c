@@ -18,6 +18,7 @@
 #include "display/motor_data_analysis_page.h"
 #include "display/notice.h"
 #include "display/prompt.h"
+#include "display/reset_scheduler.h"
 #include "display/shifter_page.h"
 #include "display/system_information_page.h"
 #include "display/temperature_analysis_page.h"
@@ -592,6 +593,8 @@ static __eds__ uint8_t display_framebuffer[DISPLAY_FRAMEBUFFER_SIZE] __attribute
 /** @brief Local display framebuffer. */
 static uint8_t display_framebuffer[DISPLAY_FRAMEBUFFER_SIZE];
 #endif
+/** @brief Shared asynchronous reset timing for runtime bridge display ownership. */
+static DisplayResetScheduler runtime_display_reset_scheduler;
 /** @brief Force-output prompt display state. */
 static DisplayPrompt force_output_display_prompt;
 /** @brief Torque Key prompt display state. */
@@ -3491,6 +3494,7 @@ static void initialize_startup_usb(void) {
  */
 static void initialize_startup_display(void) {
     platform_display_init();
+    display_reset_scheduler_init(&runtime_display_reset_scheduler);
     display_identity_page_render(display_framebuffer, board_identity);
     platform_display_write_frame(display_framebuffer);
     local_display_page = LOCAL_DISPLAY_PAGE_IDENTITY;
@@ -3567,9 +3571,38 @@ static bool start_wheel_selection_recovery(void) {
 }
 
 /**
+ * @brief Services the display reset owner for bridge runtime modes.
+ *
+ * The reference main loop advances one shared high-low-high reset state machine on every AUX,
+ * USB-bridge, and protocol-bridge iteration. Protocol-recovery and status-bridge iterations do
+ * not own the display reset line. Hardware changes are applied only when the asynchronous owner
+ * reports a transition.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void service_runtime_display_reset(uint32_t now_ms) {
+    bool owns_reset = runtime_bridge.mode == USB_RUNTIME_MODE_AUXILIARY ||
+                      runtime_bridge.mode == USB_RUNTIME_MODE_AUXILIARY_RECOVERY ||
+                      runtime_bridge.mode == USB_RUNTIME_MODE_USB_BRIDGE ||
+                      runtime_bridge.mode == USB_RUNTIME_MODE_PROTOCOL_BRIDGE;
+    if (!owns_reset) {
+        return;
+    }
+
+    DisplayResetAction action =
+        display_reset_scheduler_step(&runtime_display_reset_scheduler, now_ms);
+    if (action == DISPLAY_RESET_ACTION_ASSERT_LOW) {
+        platform_display_reset_set(false);
+    } else if (action == DISPLAY_RESET_ACTION_RELEASE_HIGH) {
+        platform_display_reset_set(true);
+    }
+}
+
+/**
  * @brief Advances an active updater transition and service.
  *
  * Keeps the motor link on disabled zero-force frames, finishes any in-flight wheel exchange,
+ * advances the asynchronous display reset owner for AUX, USB-bridge, and protocol-bridge modes,
  * advances auxiliary-bus, raw-link, or command-routed updater probes, handles the protocol
  * callback, services updater USB after activation, and handles a guarded updater reset request by
  * disabling interrupts and immediately restarting the processor.
@@ -3581,6 +3614,7 @@ static bool service_runtime_bridge(uint32_t now_ms) {
     if (runtime_bridge.phase == RUNTIME_BRIDGE_IDLE) {
         return false;
     }
+    service_runtime_display_reset(now_ms);
     service_motor_link();
     bool serial_route = runtime_bridge.mode == USB_RUNTIME_MODE_USB_BRIDGE ||
                         runtime_bridge.mode == USB_RUNTIME_MODE_PROTOCOL_BRIDGE ||

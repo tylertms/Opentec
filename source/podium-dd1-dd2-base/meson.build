@@ -14,6 +14,7 @@ base_sources = files(
   'source/cooling/tachometer.c',
   'source/cooling/temperature.c',
   'source/display/controller.c',
+  'source/display/reset_scheduler.c',
   'source/display/auxiliary_calibration_page.c',
   'source/display/force_feedback_analysis_page.c',
   'source/display/bitmap.c',
