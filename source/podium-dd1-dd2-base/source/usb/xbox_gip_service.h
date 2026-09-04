@@ -31,7 +31,7 @@ typedef struct {
 typedef struct {
     UsbXboxGipSessionAction session_actions; /**< Session actions accepted in the cycle. */
     uint8_t response_length;                 /**< Number of valid bytes in the response buffer. */
-    bool application_output; /**< Whether the request is an application-output packet. */
+    bool dispatch_request; /**< Whether the received request must reach application handlers. */
 } UsbXboxGipServiceResult;
 
 /**
@@ -52,13 +52,15 @@ void usb_xbox_gip_service_init(UsbXboxGipService *service);
  * @param[in,out] service Active GIP service.
  * @param[in] identity Base, wheel, digest, and metadata identity inputs.
  * @param[in] request Current 64-byte request packet, or an all-zero packet when none was received.
+ * @param[in] request_received Whether the request buffer contains a packet received this cycle.
  * @param[in] now Current monotonic time in milliseconds.
  * @param[out] response Destination for a response packet.
- * @return Session actions, response length, and application-output classification for the cycle.
+ * @return Session actions, response length, and application dispatch handling for the cycle.
  */
 UsbXboxGipServiceResult
 usb_xbox_gip_service_poll(UsbXboxGipService *service, const UsbXboxGipServiceIdentity *identity,
-                          const uint8_t request[USB_XBOX_GIP_METADATA_PACKET_SIZE], uint32_t now,
+                          const uint8_t request[USB_XBOX_GIP_METADATA_PACKET_SIZE],
+                          bool request_received, uint32_t now,
                           uint8_t response[USB_XBOX_GIP_METADATA_PACKET_SIZE]);
 
 #endif

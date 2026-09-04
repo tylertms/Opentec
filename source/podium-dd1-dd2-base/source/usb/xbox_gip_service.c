@@ -12,6 +12,7 @@
 enum {
     XBOX_GIP_COMMAND_PACKET = 0x0a, /**< First application-output packet identifier. */
     XBOX_GIP_VENDOR_PACKET = 0x0f,  /**< Last application-output packet identifier. */
+    XBOX_GIP_MEMORY_PACKET = 0x06,  /**< Memory-control packet identifier. */
 };
 
 /**
@@ -26,6 +27,24 @@ enum {
 static bool
 is_force_feedback_application_packet(const uint8_t request[USB_XBOX_GIP_METADATA_PACKET_SIZE]) {
     return request[0] >= XBOX_GIP_COMMAND_PACKET && request[0] <= XBOX_GIP_VENDOR_PACKET;
+}
+
+/**
+ * @brief Classifies a packet-6 request in a memory-capable session state.
+ *
+ * Keeps memory requests on the application dispatch path while the session owns one of the
+ * official active, memory-control, or memory-response states.
+ *
+ * @param[in] session Current Xbox GIP session.
+ * @param[in] request Received Xbox GIP endpoint packet.
+ * @return True when the packet belongs to the active memory path.
+ */
+static bool is_memory_packet(const UsbXboxGipSession *session,
+                             const uint8_t request[USB_XBOX_GIP_METADATA_PACKET_SIZE]) {
+    return request[0] == XBOX_GIP_MEMORY_PACKET &&
+           (session->state == USB_XBOX_GIP_SESSION_ACTIVE ||
+            session->state == USB_XBOX_GIP_SESSION_MEMORY_CONTROL ||
+            session->state == USB_XBOX_GIP_SESSION_MEMORY_RESPONSE);
 }
 
 /**
@@ -56,28 +75,52 @@ static uint8_t emit_session_response(UsbXboxGipService *service, const uint8_t r
 }
 
 /**
+ * @brief Processes one Xbox GIP metadata acknowledgement.
+ *
+ * Leaves the transfer waiting for the same packet when an acknowledgement is rejected and requests
+ * application redispatch while the session is active.
+ *
+ * @param[in,out] service Active GIP service.
+ * @param[in] request Current received packet.
+ * @param[in] request_received Whether the request buffer contains a packet received this cycle.
+ * @param[in,out] dispatch_request Set when the received request must reach application handlers.
+ */
+static void
+service_metadata_acknowledgement(UsbXboxGipService *service,
+                                 const uint8_t request[USB_XBOX_GIP_METADATA_PACKET_SIZE],
+                                 bool request_received, bool *dispatch_request) {
+    if (request_received && service->metadata_download.awaiting_acknowledgement &&
+        !usb_xbox_gip_metadata_download_acknowledge(&service->metadata_download, request) &&
+        service->session.state == USB_XBOX_GIP_SESSION_ACTIVE) {
+        *dispatch_request = true;
+    }
+}
+
+/**
  * @brief Services an active Xbox GIP metadata download.
  *
- * Checks acknowledgement packets against the current transfer progress and emits the next packet
- * when its acknowledgement boundary permits progress. A missing or rejected acknowledgement
- * leaves the transfer waiting for the same packet.
+ * Completes metadata setup, checks acknowledgement progress, and emits the next metadata packet
+ * when its acknowledgement boundary permits progress.
  *
  * @param[in,out] service Active GIP service.
  * @param[in] identity Identity data containing the metadata document.
  * @param[in] request Current received packet.
+ * @param[in] request_received Whether the request buffer contains a packet received this cycle.
+ * @param[in,out] dispatch_request Set when the received request must reach application handlers.
  * @param[out] response Destination for the next metadata packet.
  * @return Metadata response length, or zero while waiting for acknowledgement.
  */
 static uint8_t service_metadata(UsbXboxGipService *service,
                                 const UsbXboxGipServiceIdentity *identity,
                                 const uint8_t request[USB_XBOX_GIP_METADATA_PACKET_SIZE],
+                                bool request_received, bool *dispatch_request,
                                 uint8_t response[USB_XBOX_GIP_METADATA_PACKET_SIZE]) {
     if (service->metadata_pending) {
         usb_xbox_gip_session_finish_metadata(&service->session);
         service->metadata_pending = false;
     }
     if (service->metadata_download.awaiting_acknowledgement) {
-        (void)usb_xbox_gip_metadata_download_acknowledge(&service->metadata_download, request);
+        service_metadata_acknowledgement(service, request, request_received, dispatch_request);
         return 0;
     }
 
@@ -100,10 +143,12 @@ void usb_xbox_gip_service_init(UsbXboxGipService *service) {
 
 UsbXboxGipServiceResult
 usb_xbox_gip_service_poll(UsbXboxGipService *service, const UsbXboxGipServiceIdentity *identity,
-                          const uint8_t request[USB_XBOX_GIP_METADATA_PACKET_SIZE], uint32_t now,
+                          const uint8_t request[USB_XBOX_GIP_METADATA_PACKET_SIZE],
+                          bool request_received, uint32_t now,
                           uint8_t response[USB_XBOX_GIP_METADATA_PACKET_SIZE]) {
     UsbXboxGipServiceResult result = {
-        .application_output = is_force_feedback_application_packet(request),
+        .dispatch_request = request_received && (is_force_feedback_application_packet(request) ||
+                                                 is_memory_packet(&service->session, request)),
     };
     if (service->metadata_active) {
         result.session_actions = usb_xbox_gip_session_handle(&service->session, request);
@@ -113,9 +158,12 @@ usb_xbox_gip_service_poll(UsbXboxGipService *service, const UsbXboxGipServiceIde
             usb_xbox_gip_session_finish_force_feedback_reset(&service->session);
         }
         if (result.session_actions != USB_XBOX_GIP_SESSION_ACTION_NONE) {
+            service_metadata_acknowledgement(service, request, request_received,
+                                             &result.dispatch_request);
             return result;
         }
-        result.response_length = service_metadata(service, identity, request, response);
+        result.response_length = service_metadata(service, identity, request, request_received,
+                                                  &result.dispatch_request, response);
         return result;
     }
 

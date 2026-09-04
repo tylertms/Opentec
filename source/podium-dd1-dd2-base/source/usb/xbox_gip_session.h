@@ -12,6 +12,8 @@ typedef enum {
     USB_XBOX_GIP_SESSION_RESET_DEVICE = 4,         /**< Device reset has been requested. */
     USB_XBOX_GIP_SESSION_RESET_FORCE_FEEDBACK = 6, /**< Force-feedback reset is in progress. */
     USB_XBOX_GIP_SESSION_METADATA_DOWNLOAD = 7,    /**< Metadata download is in progress. */
+    USB_XBOX_GIP_SESSION_MEMORY_CONTROL = 8,       /**< Memory control transfer is in progress. */
+    USB_XBOX_GIP_SESSION_MEMORY_RESPONSE = 9,      /**< Memory response is being completed. */
 } UsbXboxGipSessionState;
 
 /** @brief Bit flags describing actions accepted by the Xbox GIP session state machine. */
@@ -62,15 +64,17 @@ void usb_xbox_gip_session_finish_metadata(UsbXboxGipSession *session);
 /**
  * @brief Handles an Xbox GIP session command.
  *
- * Applies activation, pause, output suspension, reset, and transfer-status commands from byte 4
- * of request packet 5 while enforcing state restrictions for the state-changing commands.
+ * Applies activation, pause, output suspension, reset, transfer-status, and packet-6 memory
+ * commands while enforcing state restrictions for the state-changing commands. Memory packet
+ * handling uses byte 4 as the complete marker and byte 5 as the information selector, matching
+ * the two transient memory states in the released session state machine.
  *
  * @param[in,out] session Active Xbox GIP session.
- * @param[in] request Five-byte session request packet.
+ * @param[in] request Request packet with at least six valid bytes.
  * @return Actions required to complete the accepted command.
  */
 UsbXboxGipSessionAction usb_xbox_gip_session_handle(UsbXboxGipSession *session,
-                                                    const uint8_t request[5]);
+                                                    const uint8_t request[]);
 
 /**
  * @brief Completes an Xbox GIP force-feedback reset.
@@ -80,5 +84,16 @@ UsbXboxGipSessionAction usb_xbox_gip_session_handle(UsbXboxGipSession *session,
  * @param[in,out] session Session completing the force-feedback reset.
  */
 void usb_xbox_gip_session_finish_force_feedback_reset(UsbXboxGipSession *session);
+
+/**
+ * @brief Completes an Xbox GIP memory-response transfer.
+ *
+ * Returns a session held in the official memory-response state to active after its lower-level
+ * response transfer has been accepted. Calls for any other session state leave the session
+ * unchanged.
+ *
+ * @param[in,out] session Session completing its memory response.
+ */
+void usb_xbox_gip_session_finish_memory_response(UsbXboxGipSession *session);
 
 #endif

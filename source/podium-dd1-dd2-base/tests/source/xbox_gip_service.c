@@ -29,9 +29,11 @@ static void fixture_init(Fixture *fixture) {
     usb_xbox_gip_service_init(&fixture->service);
 }
 
-static UsbXboxGipServiceResult poll_service(Fixture *fixture, uint32_t now) {
+static UsbXboxGipServiceResult poll_service(Fixture *fixture, bool request_received,
+                                             uint32_t now) {
     UsbXboxGipServiceResult result = usb_xbox_gip_service_poll(
-        &fixture->service, &fixture->identity, fixture->request, now, fixture->response);
+        &fixture->service, &fixture->identity, fixture->request, request_received, now,
+        fixture->response);
     memset(fixture->request, 0, sizeof(fixture->request));
     return result;
 }
@@ -47,10 +49,10 @@ static void acknowledge_metadata(Fixture *fixture) {
 }
 
 static void start_metadata_packet(Fixture *fixture) {
-    poll_service(fixture, 100);
+    poll_service(fixture, false, 100);
     fixture->request[0] = 4;
-    assert(poll_service(fixture, 101).response_length == 0);
-    UsbXboxGipServiceResult result = poll_service(fixture, 102);
+    assert(poll_service(fixture, true, 101).response_length == 0);
+    UsbXboxGipServiceResult result = poll_service(fixture, false, 102);
     assert(result.response_length == USB_XBOX_GIP_METADATA_PACKET_SIZE);
     assert(fixture->service.metadata_active);
     assert(fixture->service.metadata_download.awaiting_acknowledgement);
@@ -60,20 +62,22 @@ static void test_runs_discovery_and_metadata_download(void) {
     Fixture fixture;
     fixture_init(&fixture);
 
-    UsbXboxGipServiceResult result = poll_service(&fixture, 100);
+    UsbXboxGipServiceResult result = poll_service(&fixture, false, 100);
     assert(result.response_length == USB_XBOX_GIP_DIGEST_RESPONSE_SIZE);
+    assert(!result.dispatch_request);
     assert(fixture.response[0] == 2 && fixture.response[2] == 1);
     assert(fixture.service.next_sequence == 2);
 
     fixture.request[0] = 4;
-    result = poll_service(&fixture, 101);
+    result = poll_service(&fixture, true, 101);
     assert(result.response_length == 0);
     assert(fixture.service.metadata_pending);
     assert(fixture.service.session.state == USB_XBOX_GIP_SESSION_METADATA_DOWNLOAD);
 
     uint16_t reconstructed = 0;
     while (fixture.service.metadata_active) {
-        result = poll_service(&fixture, 102);
+        result = poll_service(&fixture, fixture.service.metadata_download.awaiting_acknowledgement,
+                              102);
         if (result.response_length == 0) {
             continue;
         }
@@ -103,7 +107,7 @@ static void test_responds_to_session_commands(void) {
 
     fixture.request[0] = 5;
     fixture.request[4] = 0;
-    UsbXboxGipServiceResult result = poll_service(&fixture, 0);
+    UsbXboxGipServiceResult result = poll_service(&fixture, true, 0);
     assert(result.session_actions ==
            (USB_XBOX_GIP_SESSION_ACTION_SEND_READY | USB_XBOX_GIP_SESSION_ACTION_REFRESH_STATE));
     assert(result.response_length == USB_XBOX_GIP_READY_RESPONSE_SIZE);
@@ -113,7 +117,7 @@ static void test_responds_to_session_commands(void) {
     fixture.request[0] = 5;
     fixture.request[1] = 0x77;
     fixture.request[4] = 3;
-    result = poll_service(&fixture, 1);
+    result = poll_service(&fixture, true, 1);
     assert(result.response_length == USB_XBOX_GIP_TRANSFER_STATUS_RESPONSE_SIZE);
     assert(fixture.response[2] == 3);
     assert(fixture.response[5] == 5 && fixture.response[6] == 0x77);
@@ -127,15 +131,16 @@ static void test_classifies_force_feedback_application_packets(void) {
 
     for (uint8_t packet = 0x0b; packet <= 0x0e; packet++) {
         fixture.request[0] = packet;
-        UsbXboxGipServiceResult result = poll_service(&fixture, packet);
-        assert(result.application_output);
+        UsbXboxGipServiceResult result = poll_service(&fixture, true, packet);
+        assert(result.dispatch_request);
         assert(result.response_length == 0);
     }
 
     fixture.request[0] = 0x0a;
-    assert(poll_service(&fixture, 0).application_output);
+    assert(poll_service(&fixture, true, 0).dispatch_request);
     fixture.request[0] = 0x0f;
-    assert(poll_service(&fixture, 0).application_output);
+    assert(poll_service(&fixture, true, 0).dispatch_request);
+    assert(!poll_service(&fixture, false, 0).dispatch_request);
 }
 
 static void test_preserves_metadata_for_idle_and_malformed_acknowledgements(void) {
@@ -144,8 +149,9 @@ static void test_preserves_metadata_for_idle_and_malformed_acknowledgements(void
     start_metadata_packet(&fixture);
     uint16_t offset = fixture.service.metadata_download.offset;
 
-    UsbXboxGipServiceResult result = poll_service(&fixture, 103);
+    UsbXboxGipServiceResult result = poll_service(&fixture, false, 103);
     assert(result.response_length == 0);
+    assert(!result.dispatch_request);
     assert(fixture.service.metadata_active);
     assert(fixture.service.metadata_download.awaiting_acknowledgement);
     assert(fixture.service.metadata_download.offset == offset);
@@ -170,20 +176,45 @@ static void test_preserves_metadata_for_idle_and_malformed_acknowledgements(void
             break;
         }
 
-        result = poll_service(&fixture, 104 + field);
+        result = poll_service(&fixture, true, 104 + field);
         assert(result.response_length == 0);
+        assert(!result.dispatch_request);
         assert(fixture.service.metadata_active);
         assert(fixture.service.metadata_download.awaiting_acknowledgement);
         assert(fixture.service.metadata_download.offset == offset);
     }
 
     acknowledge_metadata(&fixture);
-    assert(poll_service(&fixture, 110).response_length == 0);
+    result = poll_service(&fixture, true, 110);
+    assert(result.response_length == 0);
+    assert(!result.dispatch_request);
     assert(fixture.service.metadata_active);
     assert(!fixture.service.metadata_download.awaiting_acknowledgement);
-    result = poll_service(&fixture, 111);
+    result = poll_service(&fixture, false, 111);
     assert(result.response_length != 0);
     assert(fixture.service.metadata_download.offset > offset);
+}
+
+static void test_redispatches_invalid_metadata_ack_in_active_session(void) {
+    Fixture fixture;
+    fixture_init(&fixture);
+    start_metadata_packet(&fixture);
+    fixture.service.session.state = USB_XBOX_GIP_SESSION_ACTIVE;
+    uint16_t offset = fixture.service.metadata_download.offset;
+
+    UsbXboxGipServiceResult result = poll_service(&fixture, false, 112);
+    assert(!result.dispatch_request);
+    assert(fixture.service.metadata_download.awaiting_acknowledgement);
+    assert(fixture.service.metadata_download.offset == offset);
+
+    acknowledge_metadata(&fixture);
+    fixture.request[7]++;
+    result = poll_service(&fixture, true, 113);
+    assert(result.response_length == 0);
+    assert(result.dispatch_request);
+    assert(fixture.service.metadata_active);
+    assert(fixture.service.metadata_download.awaiting_acknowledgement);
+    assert(fixture.service.metadata_download.offset == offset);
 }
 
 static void test_routes_session_commands_during_metadata(void) {
@@ -192,20 +223,34 @@ static void test_routes_session_commands_during_metadata(void) {
     start_metadata_packet(&fixture);
 
     fixture.request[0] = 5;
+    fixture.request[4] = 0;
+    UsbXboxGipServiceResult result = poll_service(&fixture, true, 119);
+    assert(result.session_actions ==
+           (USB_XBOX_GIP_SESSION_ACTION_SEND_READY | USB_XBOX_GIP_SESSION_ACTION_REFRESH_STATE));
+    assert(result.response_length == USB_XBOX_GIP_READY_RESPONSE_SIZE);
+    assert(result.dispatch_request);
+    assert(fixture.service.session.state == USB_XBOX_GIP_SESSION_ACTIVE);
+
+    fixture_init(&fixture);
+    start_metadata_packet(&fixture);
+
+    fixture.request[0] = 5;
     fixture.request[1] = 0x77;
     fixture.request[4] = 3;
-    UsbXboxGipServiceResult result = poll_service(&fixture, 120);
+    result = poll_service(&fixture, true, 120);
     assert(result.session_actions == USB_XBOX_GIP_SESSION_ACTION_SEND_TRANSFER_STATUS);
     assert(result.response_length == USB_XBOX_GIP_TRANSFER_STATUS_RESPONSE_SIZE);
+    assert(!result.dispatch_request);
     assert(fixture.service.metadata_active);
     assert(fixture.service.metadata_download.awaiting_acknowledgement);
 
     fixture.request[0] = 5;
     fixture.request[1] = 0x78;
     fixture.request[4] = 6;
-    result = poll_service(&fixture, 121);
+    result = poll_service(&fixture, true, 121);
     assert(result.session_actions == USB_XBOX_GIP_SESSION_ACTION_SEND_TRANSFER_STATUS);
     assert(result.response_length == USB_XBOX_GIP_TRANSFER_STATUS_RESPONSE_SIZE);
+    assert(!result.dispatch_request);
     assert(fixture.service.metadata_active);
     assert(fixture.service.metadata_download.awaiting_acknowledgement);
 
@@ -213,11 +258,52 @@ static void test_routes_session_commands_during_metadata(void) {
     start_metadata_packet(&fixture);
     fixture.request[0] = 5;
     fixture.request[4] = 7;
-    result = poll_service(&fixture, 122);
+    result = poll_service(&fixture, true, 122);
     assert(result.session_actions ==
            (USB_XBOX_GIP_SESSION_ACTION_SEND_READY | USB_XBOX_GIP_SESSION_ACTION_RESET_DEVICE));
     assert(result.response_length == USB_XBOX_GIP_READY_RESPONSE_SIZE);
+    assert(!result.dispatch_request);
     assert(fixture.service.session.state == USB_XBOX_GIP_SESSION_RESET_DEVICE);
+}
+
+static void test_routes_memory_control_packets(void) {
+    Fixture fixture;
+    fixture_init(&fixture);
+    fixture.service.session.state = USB_XBOX_GIP_SESSION_ACTIVE;
+
+    fixture.request[0] = 6;
+    fixture.request[5] = 0;
+    UsbXboxGipServiceResult result = poll_service(&fixture, true, 123);
+    assert(result.response_length == 0);
+    assert(result.dispatch_request);
+    assert(fixture.service.session.state == USB_XBOX_GIP_SESSION_MEMORY_CONTROL);
+
+    fixture.request[0] = 6;
+    fixture.request[4] = 1;
+    fixture.request[5] = 0;
+    result = poll_service(&fixture, true, 124);
+    assert(result.response_length == 0);
+    assert(result.dispatch_request);
+    assert(fixture.service.session.state == USB_XBOX_GIP_SESSION_ACTIVE);
+
+    fixture.request[0] = 6;
+    fixture.request[4] = 0;
+    fixture.request[5] = 5;
+    result = poll_service(&fixture, true, 125);
+    assert(result.response_length == 0);
+    assert(result.dispatch_request);
+    assert(fixture.service.session.state == USB_XBOX_GIP_SESSION_MEMORY_RESPONSE);
+
+    fixture.request[0] = 6;
+    fixture.request[4] = 1;
+    fixture.request[5] = 0;
+    result = poll_service(&fixture, true, 126);
+    assert(result.response_length == 0);
+    assert(result.dispatch_request);
+    assert(fixture.service.session.state == USB_XBOX_GIP_SESSION_MEMORY_RESPONSE);
+
+    usb_xbox_gip_session_finish_memory_response(&fixture.service.session);
+    assert(fixture.service.session.state == USB_XBOX_GIP_SESSION_ACTIVE);
 }
 
 int main(void) {
@@ -225,6 +311,8 @@ int main(void) {
     test_responds_to_session_commands();
     test_classifies_force_feedback_application_packets();
     test_preserves_metadata_for_idle_and_malformed_acknowledgements();
+    test_redispatches_invalid_metadata_ack_in_active_session();
     test_routes_session_commands_during_metadata();
+    test_routes_memory_control_packets();
     return 0;
 }
