@@ -1058,8 +1058,8 @@ bool wheel_service_take_remote_tuning_controls(WheelService *service, uint8_t ou
 /**
  * @brief Discards host-visible wheel motion.
  *
- * Clears protocol motion and rotary transition state so tuning navigation cannot emit delayed host
- * input.
+ * Clears queued protocol motion so tuning navigation cannot emit delayed host input, while
+ * preserving rotary synchronization and debounce state.
  *
  * @param[in,out] service Wheel service whose motion state is cleared; null is ignored.
  */

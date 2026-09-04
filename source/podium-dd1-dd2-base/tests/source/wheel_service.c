@@ -1001,6 +1001,42 @@ static void test_marks_extended_multi_position_layout(void) {
     assert(input.channels[2].active);
 }
 
+static void test_discards_host_motion_without_resetting_rotary_state(void) {
+    WheelService service;
+    initialize_service(&service);
+    service.protocol.motion = (WheelMotion){.primary = 2, .axes = {3, 4, 5, 6}};
+    for (uint8_t channel = 0; channel < WHEEL_ROTARY_INPUT_CHANNEL_COUNT; channel++) {
+        service.rotary_input.channels[channel] = (WheelRotaryChannel){
+            .deadline_ms = (uint32_t)(100 + channel),
+            .pending_steps = (int8_t)(channel + 1),
+            .position = (uint8_t)(channel + 2),
+            .event = (WheelRotaryEvent)(channel % 3),
+            .phase = (WheelRotaryPhase)(channel % 3),
+        };
+    }
+    WheelRotaryInput expected_rotary_input = service.rotary_input;
+
+    wheel_service_discard_host_motion(&service);
+
+    assert(service.protocol.motion.primary == 0);
+    for (uint8_t axis = 0; axis < WHEEL_MOTION_AXIS_COUNT; axis++) {
+        assert(service.protocol.motion.axes[axis] == 0);
+    }
+    for (uint8_t channel = 0; channel < WHEEL_ROTARY_INPUT_CHANNEL_COUNT; channel++) {
+        assert(service.rotary_input.channels[channel].deadline_ms ==
+               expected_rotary_input.channels[channel].deadline_ms);
+        assert(service.rotary_input.channels[channel].pending_steps ==
+               expected_rotary_input.channels[channel].pending_steps);
+        assert(service.rotary_input.channels[channel].position ==
+               expected_rotary_input.channels[channel].position);
+        assert(service.rotary_input.channels[channel].event ==
+               expected_rotary_input.channels[channel].event);
+        assert(service.rotary_input.channels[channel].phase ==
+               expected_rotary_input.channels[channel].phase);
+    }
+    wheel_service_discard_host_motion(NULL);
+}
+
 static void test_filters_adapter_remote_tuning_active_state(void) {
     WheelService service;
     initialize_service(&service);
@@ -2005,6 +2041,7 @@ int main(void) {
     test_gates_quaternary_rotary_to_legacy_mode();
     test_builds_adapter_multi_position_input();
     test_marks_extended_multi_position_layout();
+    test_discards_host_motion_without_resetting_rotary_state();
     test_filters_adapter_remote_tuning_active_state();
     test_retains_adapter_display_state_across_command_resets();
     test_mirrors_standard_adapter_output_reports();

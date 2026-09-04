@@ -2360,8 +2360,8 @@ bool wheel_service_take_remote_tuning_controls(WheelService *service, uint8_t ou
 /**
  * @brief Discards motion accumulated while tuning owns attached-wheel controls.
  *
- * Clears protocol motion and rotary transition state so tuning navigation cannot emerge later as
- * a delayed host input event.
+ * Clears queued protocol motion so tuning navigation cannot emerge later as a delayed host input
+ * event. Rotary synchronization and debounce state remain intact for the next report.
  *
  * @param[in,out] service Attached-wheel protocol and rotary input state.
  */
@@ -2370,7 +2370,6 @@ void wheel_service_discard_host_motion(WheelService *service) {
         return;
     }
     wheel_motion_init(&service->protocol.motion);
-    wheel_rotary_input_init(&service->rotary_input);
 }
 
 /**
