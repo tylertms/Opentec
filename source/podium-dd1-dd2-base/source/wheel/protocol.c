@@ -222,8 +222,9 @@ static void build_invalid_mode_response(WheelProtocol *protocol) {
  * host output reports. A setup-page response schedules its corresponding status for the following
  * exchange. Otherwise, encodes the selected packet family, the official A6 invalid-mode display
  * response, or a blank A6 remote-tuning frame and overlays the highest-priority host output report.
- * A closed interface gate blanks idle mode-0x0F and mode-0x17 content. The checksum is updated
- * while transport acknowledgement flags are preserved.
+ * Remote-tuning modes 0x0E and 0x1C run the output-report scheduler after any queued remote-tuning
+ * response. A closed interface gate blanks idle mode-0x0F and mode-0x17 content. The checksum is
+ * updated while transport acknowledgement flags are preserved.
  *
  * @param[in,out] protocol Active protocol state and response storage.
  */
@@ -324,10 +325,10 @@ static void build_active_response(WheelProtocol *protocol) {
         encode_legacy_status(protocol, protocol->response);
         if (!system_status_response) {
             bool generic_output_supported =
-                protocol->mode == 0x09 || protocol->mode == 0x0a || protocol->mode == 0x0b ||
-                protocol->mode == 0x0f || protocol->mode == 0x10 || protocol->mode == 0x11 ||
-                protocol->mode == 0x16 || protocol->mode == 0x17 || protocol->mode == 0x1b ||
-                protocol->mode == 0x1d ||
+                remote_tuning_mode || protocol->mode == 0x09 || protocol->mode == 0x0a ||
+                protocol->mode == 0x0b || protocol->mode == 0x0f || protocol->mode == 0x10 ||
+                protocol->mode == 0x11 || protocol->mode == 0x16 || protocol->mode == 0x17 ||
+                protocol->mode == 0x1b || protocol->mode == 0x1d ||
                 wheel_output_reports_shifter_state_pending(&protocol->output_reports);
             bool report_encoded =
                 generic_output_supported &&

@@ -1191,7 +1191,7 @@ static void test_builds_crc_family_active_response(void) {
             WHEEL_PROTOCOL_HOST_CAPABILITY) == 0);
 }
 
-static void test_builds_remote_tuning_responses_without_generic_output_overlay(void) {
+static void test_builds_remote_tuning_responses_before_generic_output_overlay(void) {
     static const struct {
         uint8_t mode;
         RemoteTuningLink link;
@@ -1213,7 +1213,7 @@ static void test_builds_remote_tuning_responses_without_generic_output_overlay(v
         assert(wheel_protocol_queue_remote_tuning_response(&protocol, &pending));
         assert(wheel_protocol_remote_tuning_response_pending(&protocol));
         uint8_t report_arguments[26] = {1, 0x55};
-        wheel_output_reports_apply(&protocol.output_reports, report_arguments, 0, 0);
+        assert(wheel_output_reports_apply(&protocol.output_reports, report_arguments, 0, 0));
 
         uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
         request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
@@ -1232,16 +1232,46 @@ static void test_builds_remote_tuning_responses_without_generic_output_overlay(v
         wheel_protocol_accept(&protocol, request);
         response = wheel_protocol_response(&protocol);
         assert(response[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
-        assert(response[1] == 0);
-        assert(response[2] == 0);
+        assert(response[1] == 1);
+        assert(response[2] == 0x55);
         assert(wheel_protocol_message_valid(response));
-        assert(protocol.output_reports.pending != 0);
+        assert(protocol.output_reports.pending == 0);
 
         wheel_protocol_accept(&protocol, request);
         response = wheel_protocol_response(&protocol);
         assert(response[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
         assert(response[1] == 0);
         assert(wheel_protocol_message_valid(response));
+    }
+}
+
+static void test_forwards_interface_presentations_in_remote_tuning_modes(void) {
+    const uint8_t modes[] = {WHEEL_MODE_REMOTE_TUNING_LEGACY, WHEEL_MODE_REMOTE_TUNING_EXTENDED};
+
+    for (uint8_t index = 0; index < sizeof(modes); index++) {
+        WheelProtocol protocol;
+        uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+        wheel_protocol_init(&protocol);
+        protocol.mode = modes[index];
+        protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+        wheel_output_reports_activate_interface_presentation(&protocol.output_reports, 1);
+
+        request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+        mark_ready(request);
+        request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+        for (uint8_t transmission = 0; transmission < 3; transmission++) {
+            wheel_protocol_accept(&protocol, request);
+
+            const uint8_t *response = wheel_protocol_response(&protocol);
+            assert(response[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
+            assert(response[1] == 0x20);
+            for (uint8_t payload_index = 2; payload_index < WHEEL_PROTOCOL_CONTENT_SIZE;
+                 payload_index++) {
+                assert(response[payload_index] == 0);
+            }
+            assert(wheel_protocol_message_valid(response));
+        }
+        assert(protocol.output_reports.interface_presentation_transmissions == 0);
     }
 }
 
@@ -1362,7 +1392,7 @@ static void test_system_setup_response_precedes_host_response_and_schedules_stat
     assert(wheel_protocol_message_valid(packet));
 }
 
-static void test_does_not_overlay_remote_telemetry_in_legacy_mode(void) {
+static void test_overlays_remote_telemetry_in_legacy_mode(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
     uint8_t telemetry[WHEEL_OUTPUT_REMOTE_TELEMETRY_SIZE];
@@ -1381,10 +1411,11 @@ static void test_does_not_overlay_remote_telemetry_in_legacy_mode(void) {
         wheel_protocol_accept(&protocol, request);
         const uint8_t *response = wheel_protocol_response(&protocol);
         assert(response[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
-        assert(response[1] == 0);
+        assert(response[1] == 3);
+        assert(memcmp(response + 2, telemetry, sizeof(telemetry)) == 0);
         assert(wheel_protocol_message_valid(response));
     }
-    assert(wheel_output_reports_remote_telemetry_pending(&protocol.output_reports));
+    assert(!wheel_output_reports_remote_telemetry_pending(&protocol.output_reports));
 
     wheel_protocol_accept(&protocol, request);
     assert(wheel_protocol_response(&protocol)[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
@@ -2257,11 +2288,12 @@ int main(void) {
     test_builds_packed_family_active_response();
     test_reports_legacy_interface_gate_on_idle_responses();
     test_builds_crc_family_active_response();
-    test_builds_remote_tuning_responses_without_generic_output_overlay();
+    test_builds_remote_tuning_responses_before_generic_output_overlay();
+    test_forwards_interface_presentations_in_remote_tuning_modes();
     test_system_status_preempts_one_remote_tuning_response();
     test_system_operating_responses_use_remote_tuning_control_encoding();
     test_system_setup_response_precedes_host_response_and_schedules_status();
-    test_does_not_overlay_remote_telemetry_in_legacy_mode();
+    test_overlays_remote_telemetry_in_legacy_mode();
     test_encodes_legacy_display_rotation_status();
     test_rejects_remote_tuning_link_mismatch();
     test_forwards_one_pending_host_report();
