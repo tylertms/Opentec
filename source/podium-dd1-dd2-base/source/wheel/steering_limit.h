@@ -23,12 +23,6 @@ typedef struct {
     bool reset_all;  /**< True to restore every profile to the default percentage. */
 } WheelSteeringLimitCommand;
 
-/** @brief Result of applying a steering-limit command. */
-typedef enum {
-    WHEEL_STEERING_LIMIT_UNCHANGED, /**< Stored limits did not change. */
-    WHEEL_STEERING_LIMIT_CHANGED,   /**< At least one stored limit changed. */
-} WheelSteeringLimitResult;
-
 /**
  * @brief Restores all steering limits to their defaults.
  *
@@ -51,22 +45,6 @@ void wheel_steering_limits_defaults(WheelSteeringLimits *limits);
  */
 bool wheel_steering_limit_command_decode(const UsbOperatingModeCommand *source,
                                          WheelSteeringLimitCommand *command);
-
-/**
- * @brief Applies one steering-limit command.
- *
- * Restores every profile when reset_all is true; otherwise updates the selected profile. An invalid
- * profile index leaves all stored values unchanged.
- *
- * @param[in,out] limits Per-profile steering-limit settings.
- * @param[in] active_profile Zero-based active profile index.
- * @param[in] command Steering-limit command to apply.
- * @return WHEEL_STEERING_LIMIT_CHANGED when a stored value changed; otherwise
- * WHEEL_STEERING_LIMIT_UNCHANGED.
- */
-WheelSteeringLimitResult wheel_steering_limits_apply(WheelSteeringLimits *limits,
-                                                     uint8_t active_profile,
-                                                     const WheelSteeringLimitCommand *command);
 
 /**
  * @brief Returns the active profile's steering limit.

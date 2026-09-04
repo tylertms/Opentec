@@ -6,11 +6,11 @@
 
 #include "settings/state.h"
 
-/** @brief Result of a retained-settings save attempt. */
+/** @brief Result of a retained-settings persistence operation. */
 typedef enum {
-    BASE_SETTINGS_PERSISTENCE_IDLE,  /**< No save was needed. */
-    BASE_SETTINGS_PERSISTENCE_SAVED, /**< All settings were saved. */
-    BASE_SETTINGS_PERSISTENCE_RETRY, /**< A write failed and the save should be retried. */
+    BASE_SETTINGS_PERSISTENCE_IDLE,  /**< No retained write was needed. */
+    BASE_SETTINGS_PERSISTENCE_SAVED, /**< The requested retained values were saved. */
+    BASE_SETTINGS_PERSISTENCE_RETRY, /**< The operation failed and should be retried. */
 } BaseSettingsPersistenceResult;
 
 /** @brief Runtime state of base-settings persistence. */
@@ -52,5 +52,23 @@ void base_settings_persistence_mark_dirty(BaseSettingsPersistence *persistence);
  */
 BaseSettingsPersistenceResult base_settings_persistence_save(BaseSettingsPersistence *persistence,
                                                              const BaseSettings *settings);
+
+/**
+ * @brief Persists one bounded steering-limit percentage.
+ *
+ * Reads the selected profile record before applying the request. A record without the AA marker
+ * forces the effective percentage to the default and repairs the record with AA64; a marked
+ * record accepts the requested zero-through-100 percentage. Only the selected record is written,
+ * and the general dirty state is unchanged.
+ *
+ * @param[in,out] settings Base settings receiving the effective percentage.
+ * @param[in] active_profile Zero-based profile index.
+ * @param[in] requested_percent Requested zero-through-100 percentage.
+ * @return BASE_SETTINGS_PERSISTENCE_IDLE when no write is needed, SAVED after a successful write,
+ * or RETRY after invalid input or a failed write.
+ */
+BaseSettingsPersistenceResult
+base_settings_persistence_set_steering_limit(BaseSettings *settings, uint8_t active_profile,
+                                             uint8_t requested_percent);
 
 #endif

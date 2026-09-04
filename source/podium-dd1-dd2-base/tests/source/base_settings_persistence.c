@@ -289,6 +289,52 @@ static void test_partial_and_invalid_reference_fields_keep_defaults(void) {
     assert(present[18]);
 }
 
+static void test_steering_limit_setter_repairs_before_applying_request(void) {
+    BaseSettingsPersistence persistence = {.dirty = true};
+    BaseSettings settings;
+    storage_reset();
+    base_settings_defaults(&settings);
+    for (uint8_t profile = 0; profile < TUNING_PROFILE_SLOT_COUNT; profile++) {
+        storage[20 + profile] = 0xaa64;
+        present[20 + profile] = true;
+    }
+
+    storage[20] = 0xbb32;
+    assert(base_settings_persistence_set_steering_limit(&settings, 0, 50) ==
+           BASE_SETTINGS_PERSISTENCE_SAVED);
+    assert(settings.steering_limits.percent[0] == 100);
+    assert(storage[20] == 0xaa64);
+    assert(write_count == 1);
+    assert(persistence.dirty);
+    for (uint8_t profile = 1; profile < TUNING_PROFILE_SLOT_COUNT; profile++) {
+        assert(storage[20 + profile] == 0xaa64);
+    }
+
+    write_count = 0;
+    assert(base_settings_persistence_set_steering_limit(&settings, 0, 50) ==
+           BASE_SETTINGS_PERSISTENCE_SAVED);
+    assert(settings.steering_limits.percent[0] == 50);
+    assert(storage[20] == 0xaa32);
+    assert(write_count == 1);
+    assert(persistence.dirty);
+    for (uint8_t profile = 1; profile < TUNING_PROFILE_SLOT_COUNT; profile++) {
+        assert(storage[20 + profile] == 0xaa64);
+    }
+
+    fail_write_index = 20;
+    assert(base_settings_persistence_set_steering_limit(&settings, 0, 25) ==
+           BASE_SETTINGS_PERSISTENCE_RETRY);
+    assert(settings.steering_limits.percent[0] == 25);
+    assert(storage[20] == 0xaa32);
+
+    assert(base_settings_persistence_set_steering_limit(&settings, TUNING_PROFILE_SLOT_COUNT, 25) ==
+           BASE_SETTINGS_PERSISTENCE_RETRY);
+    assert(base_settings_persistence_set_steering_limit(&settings, 0, 101) ==
+           BASE_SETTINGS_PERSISTENCE_RETRY);
+    assert(base_settings_persistence_set_steering_limit(NULL, 0, 25) ==
+           BASE_SETTINGS_PERSISTENCE_RETRY);
+}
+
 static void test_absent_security_value_is_repaired(void) {
     BaseSettingsPersistence persistence;
     BaseSettings settings;
@@ -367,6 +413,7 @@ int main(void) {
     test_unformatted_and_invalid_values_keep_defaults();
     test_profile_words_preserve_reference_high_bytes();
     test_partial_and_invalid_reference_fields_keep_defaults();
+    test_steering_limit_setter_repairs_before_applying_request();
     test_absent_security_value_is_repaired();
     test_save_validation_and_each_write_boundary();
     test_dirty_and_failure_behavior();

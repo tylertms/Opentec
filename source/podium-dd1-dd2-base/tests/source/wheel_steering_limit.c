@@ -49,38 +49,9 @@ static void test_rejects_other_device_control_commands(void) {
     assert(!wheel_steering_limit_command_decode(&source, NULL));
 }
 
-static void test_updates_only_the_active_profile(void) {
+static void test_active_limit_rejects_invalid_inputs(void) {
     WheelSteeringLimits limits;
     wheel_steering_limits_defaults(&limits);
-    WheelSteeringLimitCommand command = {.percent = 40};
-    assert(wheel_steering_limits_apply(&limits, 2, &command) == WHEEL_STEERING_LIMIT_CHANGED);
-    assert(limits.percent[2] == 40);
-    assert(limits.percent[1] == 100);
-    assert(wheel_steering_limits_active(&limits, 2) == 40);
-    assert(wheel_steering_limits_apply(&limits, 2, &command) == WHEEL_STEERING_LIMIT_UNCHANGED);
-}
-
-static void test_reset_restores_every_profile(void) {
-    WheelSteeringLimits limits;
-    wheel_steering_limits_defaults(&limits);
-    limits.percent[0] = 10;
-    limits.percent[5] = 90;
-    WheelSteeringLimitCommand command = {.percent = 101, .reset_all = true};
-    assert(wheel_steering_limits_apply(&limits, 0, &command) == WHEEL_STEERING_LIMIT_CHANGED);
-    for (uint8_t profile = 0; profile < TUNING_PROFILE_SLOT_COUNT; profile++) {
-        assert(limits.percent[profile] == 100);
-    }
-    assert(wheel_steering_limits_apply(&limits, 0, &command) == WHEEL_STEERING_LIMIT_UNCHANGED);
-}
-
-static void test_invalid_inputs_leave_settings_unchanged(void) {
-    WheelSteeringLimits limits;
-    wheel_steering_limits_defaults(&limits);
-    WheelSteeringLimitCommand command = {.percent = 50};
-    assert(wheel_steering_limits_apply(&limits, TUNING_PROFILE_SLOT_COUNT, &command) ==
-           WHEEL_STEERING_LIMIT_UNCHANGED);
-    assert(wheel_steering_limits_apply(NULL, 0, &command) == WHEEL_STEERING_LIMIT_UNCHANGED);
-    assert(wheel_steering_limits_apply(&limits, 0, NULL) == WHEEL_STEERING_LIMIT_UNCHANGED);
     assert(wheel_steering_limits_active(NULL, 0) == 100);
     assert(wheel_steering_limits_active(&limits, TUNING_PROFILE_SLOT_COUNT) == 100);
 }
@@ -89,8 +60,6 @@ int main(void) {
     test_defaults_cover_all_profiles();
     test_decodes_set_and_reset_commands();
     test_rejects_other_device_control_commands();
-    test_updates_only_the_active_profile();
-    test_reset_restores_every_profile();
-    test_invalid_inputs_leave_settings_unchanged();
+    test_active_limit_rejects_invalid_inputs();
     return 0;
 }

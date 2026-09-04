@@ -1,6 +1,7 @@
 #include "settings/persistence.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "platform/storage.h"
@@ -34,7 +35,7 @@ enum {
     AUXILIARY_RESET_INDEX = 29,             /**< Auxiliary reset flag index. */
     PROFILE_FIRST_INDEX = 30,               /**< First retained profile index. */
     PROFILE_STORAGE_STRIDE = BASE_SETTINGS_PROFILE_STORED_VALUE_COUNT,
-                                             /**< Retained values per profile block. */
+    /**< Retained values per profile block. */
 };
 
 /**
@@ -272,8 +273,8 @@ static bool tuning_profiles_save(const BaseSettings *settings) {
         usb_tuning_profile_report_encode(&settings->tuning_profiles.slots[profile], encoded);
         uint16_t first = PROFILE_FIRST_INDEX + (uint16_t)profile * PROFILE_STORAGE_STRIDE;
         for (uint8_t field = 0; field < USB_TUNING_PROFILE_VALUE_COUNT; field++) {
-            uint16_t value = (settings->retained_profile_words[profile][field] & 0xff00u) |
-                             encoded[field];
+            uint16_t value =
+                (settings->retained_profile_words[profile][field] & 0xff00u) | encoded[field];
             if (!platform_storage_value_write(first + field, value)) {
                 return false;
             }
@@ -329,7 +330,7 @@ static bool security_code_save(const BaseSettings *settings) {
 }
 
 /**
- * @brief Writes per-profile steering limits.
+ * @brief Writes all steering limits for a full retained-settings snapshot.
  *
  * Combines the AA validity marker with each zero-through-100 percentage at indices 20 through 25.
  *
@@ -346,6 +347,29 @@ static bool steering_limits_save(const BaseSettings *settings) {
         }
     }
     return true;
+}
+
+BaseSettingsPersistenceResult
+base_settings_persistence_set_steering_limit(BaseSettings *settings, uint8_t active_profile,
+                                             uint8_t requested_percent) {
+    if (settings == NULL || active_profile >= TUNING_PROFILE_SLOT_COUNT ||
+        requested_percent > WHEEL_STEERING_LIMIT_DEFAULT_PERCENT) {
+        return BASE_SETTINGS_PERSISTENCE_RETRY;
+    }
+
+    uint16_t index = STEERING_LIMIT_FIRST_INDEX + active_profile;
+    uint16_t stored = 0;
+    bool marked =
+        value_read(index, &stored) && (stored & UINT16_C(0xff00)) == STEERING_LIMIT_PREFIX;
+    uint8_t effective_percent = marked ? requested_percent : WHEEL_STEERING_LIMIT_DEFAULT_PERCENT;
+    bool needs_write = (uint8_t)stored != effective_percent;
+    settings->steering_limits.percent[active_profile] = effective_percent;
+    if (needs_write &&
+        !platform_storage_value_write(index, STEERING_LIMIT_PREFIX | effective_percent)) {
+        return BASE_SETTINGS_PERSISTENCE_RETRY;
+    }
+
+    return needs_write ? BASE_SETTINGS_PERSISTENCE_SAVED : BASE_SETTINGS_PERSISTENCE_IDLE;
 }
 
 bool base_settings_persistence_load(BaseSettingsPersistence *persistence, BaseSettings *settings) {
@@ -397,7 +421,8 @@ BaseSettingsPersistenceResult base_settings_persistence_save(BaseSettingsPersist
         steering_limits_save(settings) && tuning_profiles_save(settings) &&
         (settings->auxiliary_axis.reset_on_start ||
          (platform_storage_value_write(AUXILIARY_MINIMUM_INDEX, settings->auxiliary_axis.minimum) &&
-          platform_storage_value_write(AUXILIARY_MAXIMUM_INDEX, settings->auxiliary_axis.maximum))) &&
+          platform_storage_value_write(AUXILIARY_MAXIMUM_INDEX,
+                                       settings->auxiliary_axis.maximum))) &&
         platform_storage_value_write(AUXILIARY_RESET_INDEX,
                                      settings->auxiliary_axis.reset_on_start ? 1 : 0) &&
         platform_storage_value_write(WHEEL_AUXILIARY_OPTION_INDEX,

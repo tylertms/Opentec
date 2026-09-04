@@ -4277,18 +4277,30 @@ static void apply_pedal_calibration_actions(const PedalCalibrationActions *actio
 /**
  * @brief Applies an active-profile wheel percentage command.
  *
- * Updates the selected profile or resets all profile values, then schedules settings persistence
- * when the effective configuration changes.
+ * Persists each bounded update through the per-profile setter. Reset requests invoke the setter
+ * once for each profile, so an invalid record is repaired with the effective default and no
+ * unrelated setting record is rewritten.
  *
  * @param[in] command Decoded percentage update or reset request.
  */
 static void apply_wheel_steering_limit_command(const WheelSteeringLimitCommand *command) {
-    if (wheel_steering_limits_apply(&base_settings.steering_limits,
-                                    base_settings.tuning_profiles.active_slot,
-                                    command) == WHEEL_STEERING_LIMIT_CHANGED) {
-        base_settings_persistence_mark_dirty(&settings_persistence);
-        save_base_settings();
+    if (command == NULL) {
+        return;
     }
+
+    if (command->reset_all) {
+        for (uint8_t profile = 0; profile < TUNING_PROFILE_SLOT_COUNT; profile++) {
+            if (base_settings_persistence_set_steering_limit(
+                    &base_settings, profile, WHEEL_STEERING_LIMIT_DEFAULT_PERCENT) ==
+                BASE_SETTINGS_PERSISTENCE_RETRY) {
+                return;
+            }
+        }
+        return;
+    }
+
+    base_settings_persistence_set_steering_limit(
+        &base_settings, base_settings.tuning_profiles.active_slot, command->percent);
 }
 
 /**

@@ -54,41 +54,6 @@ bool wheel_steering_limit_command_decode(const UsbOperatingModeCommand *source,
 }
 
 /**
- * @brief Applies a profile steering-limit command.
- *
- * Updates the active profile for a bounded percentage or restores all six profile values for a
- * reset request. Invalid profile indices leave the settings unchanged.
- *
- * @param[in,out] limits Per-profile steering-limit settings.
- * @param[in] active_profile Zero-based active profile index.
- * @param[in] command Steering-limit value or reset request.
- * @return Changed when at least one stored percentage changed; otherwise unchanged.
- */
-WheelSteeringLimitResult wheel_steering_limits_apply(WheelSteeringLimits *limits,
-                                                     uint8_t active_profile,
-                                                     const WheelSteeringLimitCommand *command) {
-    if (limits == NULL || command == NULL) {
-        return WHEEL_STEERING_LIMIT_UNCHANGED;
-    }
-
-    if (command->reset_all) {
-        bool changed = false;
-        for (uint8_t profile = 0; profile < TUNING_PROFILE_SLOT_COUNT; profile++) {
-            changed |= limits->percent[profile] != WHEEL_STEERING_LIMIT_DEFAULT_PERCENT;
-            limits->percent[profile] = WHEEL_STEERING_LIMIT_DEFAULT_PERCENT;
-        }
-        return changed ? WHEEL_STEERING_LIMIT_CHANGED : WHEEL_STEERING_LIMIT_UNCHANGED;
-    }
-
-    if (active_profile >= TUNING_PROFILE_SLOT_COUNT ||
-        limits->percent[active_profile] == command->percent) {
-        return WHEEL_STEERING_LIMIT_UNCHANGED;
-    }
-    limits->percent[active_profile] = command->percent;
-    return WHEEL_STEERING_LIMIT_CHANGED;
-}
-
-/**
  * @brief Reads the steering limit for the active profile.
  *
  * Returns the selected profile percentage, or the default when settings are unavailable or the
