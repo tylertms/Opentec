@@ -5,22 +5,11 @@
 #include <stdint.h>
 
 /**
- * @brief Events reported by the debounced Torque Key filter.
- *
- * An event is emitted only when the integrated input reaches a stable inserted or removed
- * endpoint.
- */
-typedef enum {
-    TORQUE_KEY_EVENT_NONE,     /**< No stable Torque Key transition occurred. */
-    TORQUE_KEY_EVENT_INSERTED, /**< The Torque Key became stably inserted. */
-    TORQUE_KEY_EVENT_REMOVED,  /**< The Torque Key became stably removed. */
-} TorqueKeyEvent;
-
-/**
  * @brief Stateful Torque Key debounce filter.
  *
  * The filter integrates elapsed time between the removed and inserted endpoints and separately
- * records whether a stable state has been reported.
+ * records whether a stable state has been reported. Endpoint observations are handled before the
+ * current raw sample, matching the firmware's reversal behavior.
  */
 typedef struct {
     uint32_t last_update_ms;     /**< Timestamp of the preceding update in milliseconds. */
@@ -43,14 +32,13 @@ void torque_key_init(TorqueKey *key);
 /**
  * @brief Filters a raw Torque Key input into stable transitions.
  *
- * Integrates elapsed milliseconds toward the inserted or removed endpoint, clamps each interval
- * to the filter duration, and emits at most one transition per update.
+ * Integrates elapsed milliseconds toward the inserted or removed endpoint and clamps each interval
+ * to the filter duration. Endpoint state is retained for consumers that need the debounced level.
  *
  * @param[in,out] key Torque Key filter state.
  * @param[in] raw_inserted True when the logical Torque Key input reports insertion.
  * @param[in] now_ms Current monotonic time in milliseconds.
- * @return Stable insertion or removal transition, or TORQUE_KEY_EVENT_NONE.
  */
-TorqueKeyEvent torque_key_update(TorqueKey *key, bool raw_inserted, uint32_t now_ms);
+void torque_key_update(TorqueKey *key, bool raw_inserted, uint32_t now_ms);
 
 #endif

@@ -28,20 +28,21 @@ void torque_key_init(TorqueKey *key) {
 /**
  * @brief Filters the logical Torque Key state into stable transitions.
  *
- * Integrates elapsed milliseconds toward the inserted or removed endpoint. The neutral startup
- * position requires 250 milliseconds to establish either initial state. Later state changes
- * require 500 milliseconds of net travel, with opposite samples cancelling prior travel.
+ * Checks an endpoint before integrating the current sample, backs the integrator away by one
+ * millisecond, and then integrates the current sample.
+ * The neutral startup position requires 250 milliseconds to establish either initial state. Later
+ * state changes require 500 milliseconds of net travel, with opposite samples cancelling prior
+ * travel.
  *
  * @param[in,out] key Torque Key filter state.
  * @param[in] raw_inserted True when the logical Torque Key input reports insertion.
  * @param[in] now_ms Current monotonic time in milliseconds.
- * @return Stable insertion or removal transition, or no transition.
  */
-TorqueKeyEvent torque_key_update(TorqueKey *key, bool raw_inserted, uint32_t now_ms) {
+void torque_key_update(TorqueKey *key, bool raw_inserted, uint32_t now_ms) {
     if (!key->initialized) {
         key->initialized = true;
         key->last_update_ms = now_ms;
-        return TORQUE_KEY_EVENT_NONE;
+        return;
     }
 
     uint32_t elapsed_ms = now_ms - key->last_update_ms;
@@ -50,25 +51,27 @@ TorqueKeyEvent torque_key_update(TorqueKey *key, bool raw_inserted, uint32_t now
         elapsed_ms = TORQUE_KEY_FILTER_MS;
     }
 
+    if (key->filter_position_ms == TORQUE_KEY_FILTER_MS) {
+        if (!key->state_known || key->inserted) {
+            key->state_known = true;
+            key->inserted = false;
+        }
+        key->filter_position_ms = TORQUE_KEY_FILTER_MS - 1;
+    } else if (key->filter_position_ms == 0) {
+        if (!key->state_known || !key->inserted) {
+            key->state_known = true;
+            key->inserted = true;
+        }
+        key->filter_position_ms = 1;
+    }
+
     if (raw_inserted) {
         key->filter_position_ms = elapsed_ms >= key->filter_position_ms
                                       ? 0
                                       : (uint16_t)(key->filter_position_ms - elapsed_ms);
-        if (key->filter_position_ms == 0 && (!key->state_known || !key->inserted)) {
-            key->state_known = true;
-            key->inserted = true;
-            return TORQUE_KEY_EVENT_INSERTED;
-        }
     } else {
         uint32_t position_ms = key->filter_position_ms + elapsed_ms;
         key->filter_position_ms =
             position_ms >= TORQUE_KEY_FILTER_MS ? TORQUE_KEY_FILTER_MS : (uint16_t)position_ms;
-        if (key->filter_position_ms == TORQUE_KEY_FILTER_MS &&
-            (!key->state_known || key->inserted)) {
-            key->state_known = true;
-            key->inserted = false;
-            return TORQUE_KEY_EVENT_REMOVED;
-        }
     }
-    return TORQUE_KEY_EVENT_NONE;
 }

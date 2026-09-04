@@ -4,82 +4,106 @@
 #include <stdbool.h>
 
 /**
- * @brief Torque Key acknowledgement-prompt phase.
+ * @brief Torque Key calibration-display phases.
  *
- * The phase tracks stable key presence, event-queue presentation, operator confirmation, and
- * removal cancellation.
+ * Numeric values match the official calibration display service at base-binary addresses
+ * 0x046498-0x046628.
  */
 typedef enum {
-    TORQUE_KEY_PROMPT_REMOVED,               /**< Key is absent and no prompt is pending. */
-    TORQUE_KEY_PROMPT_SHOW_REQUIRED,         /**< Key insertion requires a prompt event. */
-    TORQUE_KEY_PROMPT_AWAITING_CONFIRMATION, /**< Prompt is shown and awaits acceptance. */
-    TORQUE_KEY_PROMPT_CANCEL_REQUIRED,       /**< Key removal requires prompt cancellation. */
-    TORQUE_KEY_PROMPT_ACKNOWLEDGED,          /**< Inserted key has been accepted by the operator. */
+    TORQUE_KEY_PROMPT_IDLE = 0,
+    TORQUE_KEY_PROMPT_SHOW_REQUIRED = 1,
+    TORQUE_KEY_PROMPT_AWAITING_CONFIRMATION = 2,
+    TORQUE_KEY_PROMPT_TORQUE_ENABLED = 3,
+    TORQUE_KEY_PROMPT_REDUCED_TORQUE = 4,
+    TORQUE_KEY_PROMPT_DISMISS_REQUIRED = 5,
+    TORQUE_KEY_PROMPT_SHOW_REDUCED_REQUIRED = 6,
 } TorqueKeyPromptPhase;
 
 /**
- * @brief Action emitted by the Torque Key prompt controller.
+ * @brief Stable input values used by the Torque Key calibration-display service.
  *
- * The firmware integration layer translates these actions into system event or display updates.
+ * Numeric values match the official input-state byte at base-binary addresses 0x046240-0x046274.
  */
 typedef enum {
-    TORQUE_KEY_PROMPT_ACTION_NONE,    /**< No prompt action is ready. */
-    TORQUE_KEY_PROMPT_ACTION_SHOW,    /**< Queue the prompt display event. */
-    TORQUE_KEY_PROMPT_ACTION_CANCEL,  /**< Queue prompt cancellation. */
-    TORQUE_KEY_PROMPT_ACTION_DISMISS, /**< Dismiss an acknowledged prompt. */
+    TORQUE_KEY_INPUT_UNKNOWN = 0,
+    TORQUE_KEY_INPUT_LOW = 1,
+    TORQUE_KEY_INPUT_HIGH = 2,
+} TorqueKeyInputState;
+
+/**
+ * @brief Action requested by the Torque Key calibration-display service.
+ *
+ * Actions carrying a local display command must be acknowledged with
+ * torque_key_prompt_accept_action() only after that command is accepted. Native display state
+ * changes therefore cannot advance the phase while their local command is blocked.
+ */
+typedef enum {
+    TORQUE_KEY_PROMPT_ACTION_NONE,
+    TORQUE_KEY_PROMPT_ACTION_SHOW_PROMPT,
+    TORQUE_KEY_PROMPT_ACTION_DISMISS_TORQUE_KEY_PROMPT,
+    TORQUE_KEY_PROMPT_ACTION_ENABLE_TORQUE,
+    TORQUE_KEY_PROMPT_ACTION_DISMISS_CURRENT,
+    TORQUE_KEY_PROMPT_ACTION_DISMISS_REDUCED_TORQUE,
+    TORQUE_KEY_PROMPT_ACTION_SHOW_REDUCED_QUICK_RELEASE,
+    TORQUE_KEY_PROMPT_ACTION_SHOW_REDUCED_STEERING_WHEEL,
 } TorqueKeyPromptAction;
 
 /**
- * @brief Torque Key prompt policy state.
- *
- * Stores the current prompt phase and an accepted response waiting for service.
+ * @brief Torque Key calibration-display policy state.
  */
 typedef struct {
-    TorqueKeyPromptPhase phase; /**< Current prompt phase. */
-    bool response_pending;      /**< Whether an accepted response awaits service. */
+    TorqueKeyPromptPhase phase; /**< Current official calibration-display phase. */
+    bool response_pending; /**< Accepted local-display response awaiting service. */
 } TorqueKeyPrompt;
 
 /**
- * @brief Initializes Torque Key acknowledgement policy.
+ * @brief Initializes Torque Key calibration-display policy.
  *
- * Starts in the removed phase without a pending operator response.
+ * Starts at official phase zero with no accepted response.
  *
- * @param[out] prompt Torque Key prompt policy to initialize.
+ * @param[out] prompt Torque Key policy to initialize.
  */
 void torque_key_prompt_init(TorqueKeyPrompt *prompt);
 
 /**
- * @brief Applies a stable Torque Key presence change.
+ * @brief Stores an accepted Torque Key response.
  *
- * Insertion from the removed phase requests acknowledgement, while removal cancels an active
- * prompt or returns the policy to its removed phase.
+ * Only response one while phase two is active is retained, matching the official response branch.
  *
- * @param[in,out] prompt Torque Key prompt policy.
- * @param[in] inserted True when the Torque Key is stably inserted.
- */
-void torque_key_prompt_set_inserted(TorqueKeyPrompt *prompt, bool inserted);
-
-/**
- * @brief Stores an accepted Torque Key safety response.
- *
- * Retains an accepted response only while the prompt awaits confirmation; other responses do not
- * advance the policy.
- *
- * @param[in,out] prompt Torque Key prompt policy.
- * @param[in] accepted True for the accepted response value.
+ * @param[in,out] prompt Torque Key policy state.
+ * @param[in] accepted True when the local display accepted the safety prompt.
  */
 void torque_key_prompt_set_response(TorqueKeyPrompt *prompt, bool accepted);
 
 /**
- * @brief Advances Torque Key prompt presentation through the shared event queue.
+ * @brief Selects the next Torque Key calibration-display action.
  *
- * Waits for an available event queue position before showing or cancelling the prompt and dismisses
- * an accepted prompt immediately.
+ * Applies official revocation before dispatching the current phase. Button scanning or attached
+ * wheel calibration moves phases two and three to phase five. The returned action does not commit
+ * a command-backed phase change until torque_key_prompt_accept_action() is called.
  *
- * @param[in,out] prompt Torque Key prompt policy.
- * @param[in] event_slot_available True when a presentation event can be accepted.
- * @return Prompt presentation action for the firmware integration layer.
+ * @param[in,out] prompt Torque Key policy state.
+ * @param[in] input Stable active-low Torque Key input state.
+ * @param[in] button_scan_pending True while the wheel button scan is active.
+ * @param[in] calibration_available True while wheel calibration controls are available.
+ * @param[in] protocol_request_pending True after a display or alternate wheel report was received.
+ * @return One action for the current service pass, or NONE.
  */
-TorqueKeyPromptAction torque_key_prompt_service(TorqueKeyPrompt *prompt, bool event_slot_available);
+TorqueKeyPromptAction torque_key_prompt_service(TorqueKeyPrompt *prompt,
+                                                TorqueKeyInputState input,
+                                                bool button_scan_pending,
+                                                bool calibration_available,
+                                                bool protocol_request_pending);
+
+/**
+ * @brief Commits an accepted Torque Key calibration-display action.
+ *
+ * The caller invokes this only after the action's local display command has entered its queue.
+ * Repeated or stale actions are ignored.
+ *
+ * @param[in,out] prompt Torque Key policy state.
+ * @param[in] action Action accepted by the display/event queue.
+ */
+void torque_key_prompt_accept_action(TorqueKeyPrompt *prompt, TorqueKeyPromptAction action);
 
 #endif
