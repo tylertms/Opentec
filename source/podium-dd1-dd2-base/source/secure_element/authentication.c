@@ -10,7 +10,8 @@
 /**
  * @brief Initializes the A71CH authentication service.
  *
- * Clears the owned request and response buffers, command sequence, exchange state, and result.
+ * Clears the owned request and response buffers, command sequence, exchange state, and recovery
+ * state.
  *
  * @param[out] service Authentication service state.
  */
@@ -22,7 +23,8 @@ void a71ch_authentication_service_init(A71chAuthenticationService *service) {
  * @brief Starts an A71CH authentication exchange.
  *
  * Copies the exact 256-byte request into service-owned storage, clears the 1,040-byte response,
- * and selects plain or SCI2C LRC commands. An active exchange is left unchanged.
+ * and selects plain or SCI2C LRC commands. A fresh session initializes its exchange and performs
+ * the normal readiness poll; an active exchange is left unchanged.
  *
  * @param[in,out] service Authentication service state.
  * @param[in] request Complete authentication request.
@@ -42,8 +44,26 @@ bool a71ch_authentication_service_start(A71chAuthenticationService *service, con
     a71ch_authentication_sequence_init(&service->sequence, use_lrc);
     a71ch_exchange_service_init(&service->exchange);
     service->status = A71CH_AUTHENTICATION_SERVICE_RUNNING;
-    service->result = A71CH_EXCHANGE_PENDING;
+    service->finish_recovery_pending = false;
     return true;
+}
+
+/**
+ * @brief Restarts the authentication sequence from its first upload fragment.
+ *
+ * Preserves the request and protocol variant while clearing partial response data and the current
+ * APDU state. A failed exchange keeps its command-queue stage so the exchange owner can submit the
+ * recovery command without another readiness poll.
+ *
+ * @param[in,out] service Authentication service state to restart.
+ */
+static void restart_authentication_sequence(A71chAuthenticationService *service) {
+    bool use_lrc = service->sequence.use_lrc;
+
+    a71ch_authentication_sequence_init(&service->sequence, use_lrc);
+    memset(service->response, 0, sizeof(service->response));
+    service->current_payload_length = 0;
+    service->finish_recovery_pending = false;
 }
 
 /**
@@ -104,17 +124,58 @@ static bool complete_current_exchange(A71chAuthenticationService *service) {
         return false;
     }
     if (service->sequence.stage == A71CH_AUTHENTICATION_COMPLETE) {
-        service->status = A71CH_AUTHENTICATION_SERVICE_COMPLETE;
-        service->result = A71CH_EXCHANGE_SUCCEEDED;
+        if (service->finish_recovery_pending) {
+            restart_authentication_sequence(service);
+        } else {
+            service->status = A71CH_AUTHENTICATION_SERVICE_COMPLETE;
+        }
     }
     return true;
 }
 
 /**
+ * @brief Restarts the official authentication recovery path for a failed APDU.
+ *
+ * Command and integrity failures restart at the first upload fragment. A malformed device response
+ * first sends the finish command, then restarts the upload after that command succeeds. The
+ * exchange service owns the failed command queue and is deliberately not reinitialized here.
+ *
+ * @param[in,out] service Authentication service with the failed APDU.
+ * @param[in] result Result reported by the failed exchange.
+ * @return True when the recovery APDU was started; otherwise false.
+ */
+static bool recover_authentication(A71chAuthenticationService *service,
+                                   A71chExchangeResult result) {
+    if (result == A71CH_EXCHANGE_RESPONSE_ERROR) {
+        service->sequence.stage = A71CH_AUTHENTICATION_FINISHING;
+        service->sequence.chunk_index = 0;
+        service->current_payload_length = 0;
+        service->finish_recovery_pending = true;
+    } else {
+        restart_authentication_sequence(service);
+    }
+
+    return start_current_exchange(service);
+}
+
+/**
+ * @brief Marks an unrecoverable local authentication error.
+ *
+ * Protocol failures are handled by recover_authentication(). This status is reserved for an
+ * invalid local sequence or an encoded frame that cannot be submitted.
+ *
+ * @param[in,out] service Authentication service state to mark failed.
+ */
+static void fail_authentication(A71chAuthenticationService *service) {
+    service->status = A71CH_AUTHENTICATION_SERVICE_FAILED;
+}
+
+/**
  * @brief Advances the A71CH authentication exchange.
  *
- * Services the active APDU, copies retrieved fragments, starts the next step, and preserves
- * command, LRC, and response failures from the exchange layer.
+ * Services the active APDU, copies retrieved fragments, starts the next step, and routes protocol
+ * failures through the device's startup or finish recovery path. Only local setup failures stop the
+ * service.
  *
  * @param[in,out] service Authentication service state and owned buffers.
  */
@@ -129,19 +190,20 @@ void a71ch_authentication_service_run(A71chAuthenticationService *service) {
         return;
     }
     if (exchange_status == A71CH_EXCHANGE_SERVICE_FAILED) {
-        service->status = A71CH_AUTHENTICATION_SERVICE_FAILED;
-        service->result = a71ch_exchange_service_result(&service->exchange);
+        if (!recover_authentication(service, a71ch_exchange_service_result(&service->exchange))) {
+            fail_authentication(service);
+        }
         return;
     }
     if (exchange_status == A71CH_EXCHANGE_SERVICE_COMPLETE && !complete_current_exchange(service)) {
-        service->status = A71CH_AUTHENTICATION_SERVICE_FAILED;
-        service->result = A71CH_EXCHANGE_RESPONSE_ERROR;
+        if (!recover_authentication(service, A71CH_EXCHANGE_RESPONSE_ERROR)) {
+            fail_authentication(service);
+        }
         return;
     }
     if (service->status == A71CH_AUTHENTICATION_SERVICE_RUNNING &&
         !start_current_exchange(service)) {
-        service->status = A71CH_AUTHENTICATION_SERVICE_FAILED;
-        service->result = A71CH_EXCHANGE_RESPONSE_ERROR;
+        fail_authentication(service);
     }
 }
 
@@ -156,19 +218,6 @@ void a71ch_authentication_service_run(A71chAuthenticationService *service) {
 A71chAuthenticationServiceStatus
 a71ch_authentication_service_status(const A71chAuthenticationService *service) {
     return service == 0 ? A71CH_AUTHENTICATION_SERVICE_IDLE : service->status;
-}
-
-/**
- * @brief Returns the A71CH authentication result.
- *
- * Exposes the pending, success, command, LRC, or response classification from the active or
- * most recently completed transfer.
- *
- * @param[in] service Authentication service state.
- * @return Current result, or pending for a null service.
- */
-A71chExchangeResult a71ch_authentication_service_result(const A71chAuthenticationService *service) {
-    return service == 0 ? A71CH_EXCHANGE_PENDING : service->result;
 }
 
 /**

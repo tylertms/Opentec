@@ -13,7 +13,8 @@ typedef enum {
     A71CH_AUTHENTICATION_SERVICE_RUNNING,  /**< An authentication exchange is in progress. */
     A71CH_AUTHENTICATION_SERVICE_COMPLETE, /**< The authentication exchange completed successfully.
                                             */
-    A71CH_AUTHENTICATION_SERVICE_FAILED,   /**< The authentication exchange failed. */
+    A71CH_AUTHENTICATION_SERVICE_FAILED,   /**< Local exchange setup failed and needs session
+                                                recovery. */
 } A71chAuthenticationServiceStatus;
 
 /** @brief State and storage for one authentication exchange. */
@@ -29,14 +30,15 @@ typedef struct {
                                                          buffer. */
     uint8_t current_payload_length; /**< Number of payload bytes returned by the current read
                                        exchange. */
+    bool finish_recovery_pending; /**< A response failure has scheduled the official finish step
+                                    before restarting the transfer. */
     A71chAuthenticationServiceStatus status; /**< Current service lifecycle status. */
-    A71chExchangeResult result;              /**< Result of the current or most recent exchange. */
 } A71chAuthenticationService;
 
 /**
  * @brief Initializes the authentication service.
  *
- * Clears service-owned buffers and resets the sequence, exchange, status, and result state.
+ * Clears service-owned buffers and resets the sequence, exchange, and status state.
  *
  * @param[out] service Service state to initialize.
  */
@@ -46,6 +48,8 @@ void a71ch_authentication_service_init(A71chAuthenticationService *service);
  * @brief Starts an authentication exchange.
  *
  * Copies a complete request into service-owned storage and selects plain or LRC protocol commands.
+ * A fresh session initializes its exchange and performs the normal readiness poll before its first
+ * command.
  *
  * @param[in,out] service Service state that is not currently running.
  * @param[in] request Authentication request bytes.
@@ -60,8 +64,11 @@ bool a71ch_authentication_service_start(A71chAuthenticationService *service, con
 /**
  * @brief Advances the authentication exchange.
  *
- * Services one asynchronous APDU step and starts subsequent steps until the exchange completes or
- * fails.
+ * Services one asynchronous APDU step and starts subsequent steps until the exchange completes.
+ * Command, integrity, and response failures follow the secure element's internal startup or finish
+ * recovery path. The exchange command queue is preserved across protocol failures so recovery
+ * starts with a command write instead of another readiness poll. Only an unrecoverable local
+ * encoding or state error enters the failed status.
  *
  * @param[in,out] service Running authentication service state.
  */
@@ -77,16 +84,6 @@ void a71ch_authentication_service_run(A71chAuthenticationService *service);
  */
 A71chAuthenticationServiceStatus
 a71ch_authentication_service_status(const A71chAuthenticationService *service);
-
-/**
- * @brief Returns the authentication exchange result.
- *
- * Exposes the protocol result associated with the active or most recently completed exchange.
- *
- * @param[in] service Service state to inspect.
- * @return Current exchange result, or pending when service is null.
- */
-A71chExchangeResult a71ch_authentication_service_result(const A71chAuthenticationService *service);
 
 /**
  * @brief Returns the completed authentication response.
