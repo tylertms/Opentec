@@ -2034,16 +2034,9 @@ static void update_usb_tuning_status_snapshot(void) {
         pedal_status = PEDAL_STATUS_TRANSFER;
     }
 
-    uint8_t output_status = 0;
-    if (!power_controller.torque_disabled &&
-        (wheel_phase > WHEEL_PROTOCOL_SELECTING || force_feedback_state.primary_output_disabled)) {
-        if (tuning_profile->force_feedback_strength > 99) {
-            output_status = 0x0f;
-        } else if (tuning_profile->force_feedback_strength == 40 ||
-                   tuning_profile->force_feedback_strength == 32) {
-            output_status = 1;
-        }
-    }
+    uint8_t output_status = usb_tuning_status_report_output_status(
+        power_controller.torque_disabled, wheel_phase > WHEEL_PROTOCOL_SELECTING,
+        force_feedback_state.primary_output_disabled, motor_tuning_context.strength_percent);
 
     uint8_t pedal_auxiliary = 0;
     uint8_t pedal_axis_low = 0;

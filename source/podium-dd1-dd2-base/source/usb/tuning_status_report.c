@@ -14,6 +14,11 @@ enum {
     TUNING_STATUS_PROTOCOL_LOW = 3,     /**< Fixed protocol field low value. */
     TUNING_STATUS_PROTOCOL_HIGH = 1,    /**< Fixed protocol field high value. */
     TUNING_STATUS_CODE = 0x0d,          /**< Fixed tuning-status report code. */
+    TUNING_STATUS_OUTPUT_STRENGTH_LIMIT = 99, /**< Highest non-saturated strength. */
+    TUNING_STATUS_OUTPUT_ACTIVE = 1,           /**< Active output-status value. */
+    TUNING_STATUS_OUTPUT_SATURATED = 0x0f,     /**< Saturated output-status value. */
+    TUNING_STATUS_DD1_STRENGTH_PERCENT = 40,   /**< Reduced DD1 runtime strength. */
+    TUNING_STATUS_DD2_STRENGTH_PERCENT = 32,   /**< Reduced DD2 runtime strength. */
 };
 
 /**
@@ -89,6 +94,23 @@ static void encode_report(const UsbTuningStatusSnapshot *snapshot,
     output[53] = TUNING_STATUS_CODE;
     output[55] = snapshot->output_status;
     output[56] = snapshot->interface_gate ? 1 : 0;
+}
+
+uint8_t usb_tuning_status_report_output_status(bool force_output_override_requested,
+                                               bool wheel_protocol_past_selection,
+                                               bool primary_output_disabled,
+                                               uint32_t runtime_strength_percent) {
+    if (force_output_override_requested ||
+        (!wheel_protocol_past_selection && !primary_output_disabled)) {
+        return 0;
+    }
+    if (runtime_strength_percent > TUNING_STATUS_OUTPUT_STRENGTH_LIMIT) {
+        return TUNING_STATUS_OUTPUT_SATURATED;
+    }
+    return runtime_strength_percent == TUNING_STATUS_DD1_STRENGTH_PERCENT ||
+                   runtime_strength_percent == TUNING_STATUS_DD2_STRENGTH_PERCENT
+               ? TUNING_STATUS_OUTPUT_ACTIVE
+               : 0;
 }
 
 void usb_tuning_status_report_service_init(UsbTuningStatusReportService *service) {

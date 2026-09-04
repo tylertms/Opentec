@@ -34,7 +34,7 @@ typedef struct {
     bool system_active;        /**< True when the system is active. */
     uint8_t force_effect;      /**< Force-effect value; encoded with the report's active bit. */
     uint8_t system_flags;      /**< System flags byte. */
-    uint8_t output_status;     /**< Output status byte. */
+    uint8_t output_status;     /**< Output status from force-output gates and runtime strength. */
     bool interface_gate;       /**< True when the interface gate is open. */
 } UsbTuningStatusSnapshot;
 
@@ -71,6 +71,24 @@ void usb_tuning_status_report_service_init(UsbTuningStatusReportService *service
  */
 bool usb_tuning_status_report_apply_command(UsbTuningStatusReportService *service,
                                             const UsbVendorCommand *command);
+
+/**
+ * @brief Encodes the tuning-status output byte from live force-output state.
+ *
+ * Output is suppressed while an override is requested or while both the wheel protocol and
+ * primary-output gates are closed. An open path maps runtime strength above 99 to 0x0f and the
+ * reduced DD1/DD2 strengths 40 and 32 to one.
+ *
+ * @param[in] force_output_override_requested True while force output is overridden.
+ * @param[in] wheel_protocol_past_selection True after wheel protocol selection.
+ * @param[in] primary_output_disabled True when the primary output disable gate is active.
+ * @param[in] runtime_strength_percent Current runtime force strength percentage.
+ * @return Encoded native output-status byte.
+ */
+uint8_t usb_tuning_status_report_output_status(bool force_output_override_requested,
+                                               bool wheel_protocol_past_selection,
+                                               bool primary_output_disabled,
+                                               uint32_t runtime_strength_percent);
 
 /**
  * @brief Prepares a changed or refreshed tuning-status report.

@@ -102,9 +102,21 @@ static void test_rejects_invalid_requests(void) {
     usb_tuning_status_report_commit(0, 0);
 }
 
+static void test_encodes_live_output_status(void) {
+    assert(usb_tuning_status_report_output_status(true, true, true, 100) == 0);
+    assert(usb_tuning_status_report_output_status(false, false, false, 100) == 0);
+    assert(usb_tuning_status_report_output_status(false, true, false, 100) == 0x0f);
+    assert(usb_tuning_status_report_output_status(false, false, true, 100) == 0x0f);
+    assert(usb_tuning_status_report_output_status(false, true, false, 99) == 0);
+    assert(usb_tuning_status_report_output_status(false, true, false, 40) == 1);
+    assert(usb_tuning_status_report_output_status(false, true, false, 32) == 1);
+    assert(usb_tuning_status_report_output_status(false, true, false, 41) == 0);
+}
+
 int main(void) {
     test_encodes_exact_status_payload();
     test_publishes_only_when_due();
     test_rejects_invalid_requests();
+    test_encodes_live_output_status();
     return 0;
 }
