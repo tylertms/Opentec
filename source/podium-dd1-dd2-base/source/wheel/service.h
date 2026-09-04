@@ -1173,6 +1173,16 @@ bool wheel_service_tuning_menu_available(const WheelService *service);
 bool wheel_service_tuning_display_supported(const WheelService *service);
 
 /**
+ * @brief Activates the Xbox GIP display-report state.
+ *
+ * Applies the selector-0x02 attached-wheel capability and inhibit gates, clears report bits two
+ * through four, and sets report bits six and thirteen.
+ *
+ * @param[in,out] service Wheel service containing the display-report state.
+ */
+void wheel_service_activate_xbox_gip_display(WheelService *service);
+
+/**
  * @brief Reports whether attached-wheel input capability is available.
  *
  * Applies negotiated mode eligibility to the retained input-capability latch.

@@ -1166,6 +1166,42 @@ static void test_reports_tuning_display_support(void) {
     assert(!wheel_service_tuning_display_supported(&service));
 }
 
+static void test_activates_xbox_gip_display_report(void) {
+    WheelService service = {0};
+    service.protocol.mode = 9;
+
+    wheel_service_activate_xbox_gip_display(&service);
+    assert(service.protocol.adapter_output.display_report == 0x2040);
+    assert(!service.protocol.crc_output.status_update_pending);
+
+    service.protocol.adapter_output.display_report = 0x001e;
+    wheel_service_activate_xbox_gip_display(&service);
+    assert(service.protocol.adapter_output.display_report == 0x2042);
+
+    service.protocol.adapter_output.display_report = 0x8020;
+    wheel_service_activate_xbox_gip_display(&service);
+    assert(service.protocol.adapter_output.display_report == 0xa060);
+
+    const uint16_t inhibited_reports[] = {0x0001, 0x1000, 0x1001};
+    for (size_t index = 0;
+         index < sizeof(inhibited_reports) / sizeof(inhibited_reports[0]); index++) {
+        service.protocol.adapter_output.display_report = inhibited_reports[index];
+        wheel_service_activate_xbox_gip_display(&service);
+        assert(service.protocol.adapter_output.display_report == inhibited_reports[index]);
+    }
+
+    service.protocol.mode = 24;
+    service.protocol.adapter_output.display_report = 0;
+    wheel_service_activate_xbox_gip_display(&service);
+    assert(service.protocol.adapter_output.display_report == 0);
+
+    service.protocol.mode = 4;
+    service.protocol.adapter.connected = true;
+    service.protocol.adapter.mode = 1;
+    wheel_service_activate_xbox_gip_display(&service);
+    assert(service.protocol.adapter_output.display_report == 0x2040);
+}
+
 static void test_routes_tuning_display_output_by_connection(void) {
     WheelService service = {0};
     uint8_t frame[33] = {0};
@@ -1835,6 +1871,7 @@ int main(void) {
     test_reports_calibration_availability();
     test_gates_torque_key_acknowledgement();
     test_reports_tuning_display_support();
+    test_activates_xbox_gip_display_report();
     test_routes_tuning_display_output_by_connection();
     test_queues_selected_tuning_configuration_commands();
     test_activates_interface_presentation_by_connection();

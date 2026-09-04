@@ -4212,6 +4212,9 @@ static void apply_fallback_command(const UsbFallbackCommand *command) {
  *
  * Routes direct wheel display and protocol values, pedal discovery, tuning presentation, shifter
  * display, force-feedback reset, and repeated host-interface activation through existing services.
+ * Selector 0x02 matches the reference path at 0x03fb00: it suppresses output while remote tuning is
+ * active, copies three glyphs through the reference 0x4ed48 behavior, applies the 0x2581e display
+ * capability gate, and then performs the 0x2658e Xbox GIP display-report transition.
  *
  * @param[in] command Decoded F8 09 operating-mode command.
  * @return True when opcode one selected a supported device-control operation.
@@ -4229,6 +4232,7 @@ static bool apply_fallback_device_command(const UsbOperatingModeCommand *command
             output.glyphs[1] = command->parameters[2];
             output.glyphs[2] = command->parameters[3];
             wheel_service_set_display_output(&wheel_service, &output);
+            wheel_service_activate_xbox_gip_display(&wheel_service);
         }
         return true;
     }

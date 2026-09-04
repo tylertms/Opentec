@@ -719,6 +719,27 @@ bool wheel_service_tuning_display_supported(const WheelService *service) {
 }
 
 /**
+ * @brief Activates the Xbox GIP display-report state.
+ *
+ * Applies the attached-wheel display capability gate, preserves inhibited reports, clears report
+ * bits two through four, and sets report bits six and thirteen.
+ *
+ * @param[in,out] service Wheel service containing the display-report state.
+ */
+void wheel_service_activate_xbox_gip_display(WheelService *service) {
+    if (service == NULL || !wheel_service_tuning_display_supported(service)) {
+        return;
+    }
+
+    uint16_t report = service->protocol.adapter_output.display_report;
+    if ((report & 0x1001u) != 0) {
+        return;
+    }
+
+    service->protocol.adapter_output.display_report = (report & 0xffe3u) | 0x2040u;
+}
+
+/**
  * @brief Queues the adapter's remote-tuning active state.
  *
  * Sends an active state only while an adapter is connected and the current wheel does not provide
