@@ -112,8 +112,11 @@ bool shifter_display_update_local(ShifterDisplay *display, ShifterGear gear, boo
 /**
  * @brief Advances H-pattern gear and calibration presentation.
  *
- * Updates the attached-wheel glyph output according to connection, calibration, refresh, and
- * timed gear-display state.
+ * Updates the attached-wheel glyph output according to the official phase-first state machine.
+ * Showing expiry and neutral clearing run before the connection gate. The first active waiting
+ * sample records its gear and returns before rendering, while a monitoring sample can render
+ * before connection loss returns the state to waiting. The corresponding official dispatch spans
+ * 0x034C78-0x034DC2 and returns through 0x034DC8.
  *
  * @param[in,out] display Persistent display state to update.
  * @param[in] gear Current H-pattern gear.

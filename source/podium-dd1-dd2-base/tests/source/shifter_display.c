@@ -27,6 +27,51 @@ static void test_waits_for_connection_and_next_gear(void) {
     assert(output.glyphs[2] == 0);
 }
 
+static void test_phase_handling_precedes_connection_gate(void) {
+    ShifterDisplay display;
+    WheelDisplayOutput output = {0};
+    shifter_display_init(&display);
+
+    assert(!shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true,
+                                   H_PATTERN_CALIBRATION_PROMPT_NONE,
+                                   H_PATTERN_CALIBRATION_COMPLETE, 0, &output));
+    assert(shifter_display_update(&display, SHIFTER_GEAR_REVERSE, true,
+                                  H_PATTERN_CALIBRATION_PROMPT_NONE, H_PATTERN_CALIBRATION_COMPLETE,
+                                  1, &output));
+    assert(display.phase == SHIFTER_DISPLAY_SHOWING);
+    assert(!shifter_display_update(&display, SHIFTER_GEAR_REVERSE, false,
+                                   H_PATTERN_CALIBRATION_PROMPT_NONE,
+                                   H_PATTERN_CALIBRATION_COMPLETE, 1001, &output));
+    assert(output.glyphs[1] == 0x50);
+    assert(display.phase == SHIFTER_DISPLAY_SHOWING);
+    assert(shifter_display_update(&display, SHIFTER_GEAR_REVERSE, false,
+                                  H_PATTERN_CALIBRATION_PROMPT_NONE, H_PATTERN_CALIBRATION_COMPLETE,
+                                  1002, &output));
+    assert(output.glyphs[0] == 0);
+    assert(output.glyphs[1] == 0);
+    assert(output.glyphs[2] == 0);
+    assert(display.phase == SHIFTER_DISPLAY_MONITORING);
+    assert(!shifter_display_update(&display, SHIFTER_GEAR_REVERSE, false,
+                                   H_PATTERN_CALIBRATION_PROMPT_NONE,
+                                   H_PATTERN_CALIBRATION_COMPLETE, 1003, &output));
+    assert(display.phase == SHIFTER_DISPLAY_WAITING);
+}
+
+static void test_monitor_sample_precedes_connection_gate(void) {
+    ShifterDisplay display;
+    WheelDisplayOutput output = {0};
+    shifter_display_init(&display);
+
+    assert(!shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true,
+                                   H_PATTERN_CALIBRATION_PROMPT_NONE,
+                                   H_PATTERN_CALIBRATION_COMPLETE, 0, &output));
+    assert(shifter_display_update(&display, SHIFTER_GEAR_REVERSE, false,
+                                  H_PATTERN_CALIBRATION_PROMPT_NONE, H_PATTERN_CALIBRATION_COMPLETE,
+                                  1, &output));
+    assert(output.glyphs[1] == 0x50);
+    assert(display.phase == SHIFTER_DISPLAY_WAITING);
+}
+
 static void test_clears_after_strict_one_second_deadline(void) {
     ShifterDisplay display;
     WheelDisplayOutput output = {0};
@@ -80,6 +125,10 @@ static void test_calibration_stage_and_completion(void) {
     ShifterDisplay display;
     WheelDisplayOutput output = {.glyphs = {1, 2, 3}};
     shifter_display_init(&display);
+
+    assert(!shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true,
+                                   H_PATTERN_CALIBRATION_PROMPT_NONE,
+                                   H_PATTERN_CALIBRATION_COMPLETE, 0, &output));
 
     for (HPatternCalibrationPosition position = H_PATTERN_CALIBRATION_NEUTRAL;
          position <= H_PATTERN_CALIBRATION_SEVENTH; position++) {
@@ -140,9 +189,12 @@ static void test_requested_refresh_shows_current_gear(void) {
                                    H_PATTERN_CALIBRATION_PROMPT_NONE,
                                    H_PATTERN_CALIBRATION_COMPLETE, 0, &output));
     assert(display.refresh_requested);
+    assert(!shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true,
+                                   H_PATTERN_CALIBRATION_PROMPT_NONE,
+                                   H_PATTERN_CALIBRATION_COMPLETE, 1, &output));
     assert(shifter_display_update(&display, SHIFTER_GEAR_NEUTRAL, true,
                                   H_PATTERN_CALIBRATION_PROMPT_NONE, H_PATTERN_CALIBRATION_COMPLETE,
-                                  1, &output));
+                                  2, &output));
     assert(output.glyphs[1] == 0x54);
     assert(!display.refresh_requested);
 }
@@ -242,6 +294,8 @@ static void test_refresh_side_effect_is_separate_from_start_latch(void) {
 
 int main(void) {
     test_waits_for_connection_and_next_gear();
+    test_phase_handling_precedes_connection_gate();
+    test_monitor_sample_precedes_connection_gate();
     test_clears_after_strict_one_second_deadline();
     test_neutral_clears_immediately();
     test_does_not_replace_busy_display();

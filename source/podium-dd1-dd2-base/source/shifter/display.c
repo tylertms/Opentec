@@ -263,7 +263,11 @@ bool shifter_display_update_local(ShifterDisplay *display, ShifterGear gear, boo
  * and then shows the next position to capture. Extended-mode entry waits without replacing its
  * separate presentation. The seventh-gear glyph remains visible for one second after completion.
  * Outside calibration, a changed non-neutral gear is shown for one second when the display is
- * idle. Neutral clears a shown gear, and connection loss returns the service to its waiting phase.
+ * idle. Phase dispatch handles expiry and neutral clearing before the connection gate. The first
+ * active waiting sample records the current gear and returns before rendering, while a monitoring
+ * sample is rendered before connection loss returns the service to its waiting phase. This is the
+ * official 0x034C78 dispatch: waiting is handled at 0x034C88-0x034CA4, monitoring at
+ * 0x034CA6-0x034DA0, showing at 0x034DA2-0x034DC2, and all paths return through 0x034DC8.
  *
  * @param[in,out] display Persistent display phase, last gear, and clear deadline.
  * @param[in] gear Current H-pattern gear, or neutral.
@@ -278,13 +282,31 @@ bool shifter_display_update(ShifterDisplay *display, ShifterGear gear, bool whee
                             HPatternCalibrationPrompt calibration_prompt,
                             HPatternCalibrationPosition calibration_position, uint32_t now_ms,
                             WheelDisplayOutput *output) {
-    if (!wheel_active) {
-        display->phase = SHIFTER_DISPLAY_WAITING;
-        display->calibration_visible = false;
+    switch (display->phase) {
+    case SHIFTER_DISPLAY_SHOWING:
+        if (calibration_prompt == H_PATTERN_CALIBRATION_PROMPT_NONE) {
+            if (now_ms > display->clear_after_ms || gear == SHIFTER_GEAR_NEUTRAL) {
+                clear_glyphs(output);
+                display->phase = SHIFTER_DISPLAY_MONITORING;
+                return true;
+            }
+            return false;
+        }
+        break;
+    case SHIFTER_DISPLAY_WAITING:
+        if (!wheel_active) {
+            display->phase = SHIFTER_DISPLAY_WAITING;
+            display->calibration_visible = false;
+            return false;
+        }
+        display->phase = SHIFTER_DISPLAY_MONITORING;
+        display->last_gear = gear;
         return false;
+    case SHIFTER_DISPLAY_MONITORING:
+        break;
     }
 
-    if (calibration_prompt != H_PATTERN_CALIBRATION_PROMPT_NONE) {
+    if (wheel_active && calibration_prompt != H_PATTERN_CALIBRATION_PROMPT_NONE) {
         display->phase = SHIFTER_DISPLAY_MONITORING;
         display->last_gear = gear;
         display->clear_after_ms = 0;
@@ -315,7 +337,7 @@ bool shifter_display_update(ShifterDisplay *display, ShifterGear gear, bool whee
         return true;
     }
 
-    if (display->calibration_visible) {
+    if (wheel_active && display->calibration_visible) {
         if (calibration_position == H_PATTERN_CALIBRATION_COMPLETE) {
             if (display->clear_after_ms == 0) {
                 display->clear_after_ms = now_ms + DISPLAY_HOLD_DURATION_MS;
@@ -332,7 +354,7 @@ bool shifter_display_update(ShifterDisplay *display, ShifterGear gear, bool whee
         return true;
     }
 
-    if (display->refresh_requested && display_idle(output)) {
+    if (wheel_active && display->refresh_requested && display_idle(output)) {
         uint8_t glyph = gear == SHIFTER_GEAR_NEUTRAL ? GLYPH_NEUTRAL : gear_glyph(gear);
         display->refresh_requested = false;
         if (glyph != 0) {
@@ -344,33 +366,22 @@ bool shifter_display_update(ShifterDisplay *display, ShifterGear gear, bool whee
         }
     }
 
-    if (display->phase == SHIFTER_DISPLAY_WAITING) {
-        display->phase = SHIFTER_DISPLAY_MONITORING;
+    bool output_changed = false;
+    if (!display->calibration_visible && display->phase == SHIFTER_DISPLAY_MONITORING &&
+        gear != display->last_gear) {
         display->last_gear = gear;
-        return false;
-    }
-
-    if (display->phase == SHIFTER_DISPLAY_SHOWING) {
-        if (now_ms > display->clear_after_ms || gear == SHIFTER_GEAR_NEUTRAL) {
-            clear_glyphs(output);
-            display->phase = SHIFTER_DISPLAY_MONITORING;
-            return true;
+        uint8_t glyph = gear_glyph(gear);
+        if (glyph != 0 && display_idle(output)) {
+            output->glyphs[GEAR_DISPLAY_POSITION] = glyph;
+            display->clear_after_ms = now_ms + DISPLAY_HOLD_DURATION_MS;
+            display->phase = SHIFTER_DISPLAY_SHOWING;
+            output_changed = true;
         }
-        return false;
     }
 
-    if (gear == display->last_gear) {
-        return false;
+    if (!wheel_active) {
+        display->phase = SHIFTER_DISPLAY_WAITING;
+        display->calibration_visible = false;
     }
-
-    display->last_gear = gear;
-    uint8_t glyph = gear_glyph(gear);
-    if (glyph == 0 || !display_idle(output)) {
-        return false;
-    }
-
-    output->glyphs[GEAR_DISPLAY_POSITION] = glyph;
-    display->clear_after_ms = now_ms + DISPLAY_HOLD_DURATION_MS;
-    display->phase = SHIFTER_DISPLAY_SHOWING;
-    return true;
+    return output_changed;
 }
