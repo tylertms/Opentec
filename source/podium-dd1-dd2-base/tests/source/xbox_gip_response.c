@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "profile/tuning.h"
+
 static void test_advances_and_wraps_response_sequence(void) {
     uint8_t sequence = 1;
     assert(usb_xbox_gip_sequence_take(&sequence) == 1);
@@ -112,10 +114,16 @@ static void test_maps_extended_status_variants(void) {
         .multi_position_supported = true,
     };
     uint8_t output[USB_XBOX_GIP_EXTENDED_STATUS_RESPONSE_SIZE] = {0};
+    static const TuningMultiPositionMode profile_modes[] = {
+        TUNING_MULTI_POSITION_ENCODER,
+        TUNING_MULTI_POSITION_PULSE,
+        TUNING_MULTI_POSITION_CONSTANT,
+        TUNING_MULTI_POSITION_AUTOMATIC,
+    };
     static const uint8_t expected_variants[] = {1, 3, 2, 0};
 
-    for (uint8_t mode = 0; mode < sizeof(expected_variants); mode++) {
-        status.multi_position_mode = mode;
+    for (uint8_t mode = 0; mode < sizeof(profile_modes) / sizeof(profile_modes[0]); mode++) {
+        status.multi_position_mode = profile_modes[mode];
         usb_xbox_gip_extended_status_response_encode(1, &status, output);
         assert(output[12] == expected_variants[mode]);
         assert(output[14] == 8);
@@ -127,6 +135,23 @@ static void test_maps_extended_status_variants(void) {
     status.board_variant = BOARD_VARIANT_DD1;
     usb_xbox_gip_extended_status_response_encode(1, &status, output);
     assert(output[14] == 6);
+}
+
+static void test_encodes_automatic_profile_as_wire_zero(void) {
+    static const UsbXboxGipExtendedStatus status = {
+        .board_variant = BOARD_VARIANT_DD2,
+        .wheel_mode = 0x1d,
+        .multi_position_mode = TUNING_MULTI_POSITION_AUTOMATIC,
+        .multi_position_supported = true,
+    };
+    static const uint8_t expected[USB_XBOX_GIP_EXTENDED_STATUS_RESPONSE_SIZE] = {
+        0x11, 0x00, 0x17, 0x0d, 0x00, 0x1d, 0x00, 0x00, 0x00,
+        0x03, 0x09, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00,
+    };
+    uint8_t output[USB_XBOX_GIP_EXTENDED_STATUS_RESPONSE_SIZE] = {0};
+
+    usb_xbox_gip_extended_status_response_encode(0x17, &status, output);
+    assert(memcmp(output, expected, sizeof(expected)) == 0);
 }
 
 static void test_preserves_extended_status_workspace(void) {
@@ -187,6 +212,7 @@ int main(void) {
     test_encodes_capability_response();
     test_encodes_extended_status_response();
     test_maps_extended_status_variants();
+    test_encodes_automatic_profile_as_wire_zero();
     test_preserves_extended_status_workspace();
     test_encodes_input_response();
     return 0;

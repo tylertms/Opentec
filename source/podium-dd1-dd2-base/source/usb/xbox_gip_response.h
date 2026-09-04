@@ -50,7 +50,7 @@ typedef struct {
     uint8_t auxiliary_axis_active;    /**< Auxiliary-axis activity value. */
     uint8_t axis_mode;                /**< Current axis mode. */
     uint8_t transfer_code;            /**< Current transfer status code. */
-    uint8_t multi_position_mode;      /**< Current multi-position mode. */
+    uint8_t multi_position_mode; /**< Raw profile mode; automatic is emitted as wire value zero. */
     bool hardware_option;             /**< Whether the hardware option is present. */
     bool h_pattern_available;         /**< Whether an H-pattern shifter is available. */
     bool legacy_pedal_mode;           /**< Whether legacy pedal mode is active. */
@@ -134,7 +134,8 @@ void usb_xbox_gip_capability_response_encode(uint8_t sequence,
  *
  * Emits the wheel, pedal, shifter, resistance-profile, axis-report, accessory, multi-position,
  * adapter, and base-identity state in the 13-byte type-11 payload. The high bits of byte 13 and
- * byte 16 are preserved from the retained response workspace, matching the official encoder.
+ * byte 16 are preserved from the retained response workspace, matching the official encoder. The
+ * automatic profile mode remains unresolved until encoding and is emitted as wire byte zero.
  *
  * @param[in] sequence Response sequence value.
  * @param[in] status Current logical attached-device status.

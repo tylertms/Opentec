@@ -2594,7 +2594,8 @@ static uint8_t encode_pending_force_feedback_script_report(uint8_t *response) {
  *
  * Collects the base identity, negotiated wheel capabilities, pedal state, shifter modes,
  * resistance-profile state, and attached-accessory identity into the logical type-11 response
- * model.
+ * model. The profile multi-position value remains raw so the response encoder can emit the
+ * automatic wire sentinel.
  *
  * @param[out] status Destination for the current logical extended status.
  */
@@ -2614,8 +2615,7 @@ static void build_xbox_extended_status(UsbXboxGipExtendedStatus *status) {
                      : sequential ? 2
                                   : 0,
         .transfer_code = wheel_accessory_transfer_code(accessory),
-        .multi_position_mode =
-            wheel_service_multi_position_mode(&wheel_service, tuning_profile->multi_position_mode),
+        .multi_position_mode = tuning_profile->multi_position_mode,
         .hardware_option = board_identity.hardware_option != 0,
         .h_pattern_available = h_pattern,
         .legacy_pedal_mode = pedal_service_legacy_mode(&pedal_service),
