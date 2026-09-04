@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "motor/identity.h"
+#include "wheel/accessory.h"
 #include "wheel/adapter.h"
 
 /** @brief Startup-page mode values with packed axis version data. */
@@ -92,18 +92,18 @@ static bool wheel_mode_uses_packed_axes(uint8_t wheel_mode) {
 /**
  * @brief Builds the extended-adapter startup version page.
  *
- * Produces the four lines shown during startup: the base firmware version, managed motor version or
- * NA, the steering-wheel version, and one blank line. Pulse-input and extended wheel modes source
- * the steering-wheel version from the retained pair of axis words.
+ * Produces the four lines shown during startup: the base firmware version, supported auxiliary
+ * version or NA, the steering-wheel version, and one blank line. Pulse-input and extended wheel
+ * modes source the steering-wheel version from the retained pair of axis words.
  *
- * @param[in] motor_identity Identified motor controller, or null when unavailable.
+ * @param[in] accessory Identified auxiliary processor, or null when unavailable.
  * @param[in] adapter Connected extended adapter supplying its three version components.
  * @param[in] wheel_mode Negotiated attached-wheel mode.
  * @param[in] wheel_axis_values Two retained 16-bit axis values for modes 0x1B and 0x1C.
  * @param[out] page Four startup text lines populated in display order.
  * @return True when an extended adapter page was built.
  */
-bool wheel_startup_adapter_version_page_build(const MotorIdentity *motor_identity,
+bool wheel_startup_adapter_version_page_build(const WheelAccessory *accessory,
                                               const WheelAdapterInput *adapter, uint8_t wheel_mode,
                                               const uint16_t wheel_axis_values[2],
                                               WheelStartupVersionPage *page) {
@@ -116,11 +116,11 @@ bool wheel_startup_adapter_version_page_build(const MotorIdentity *motor_identit
 
     /** @brief Label prefix for the base firmware version line. */
     static const uint8_t base_label[] = {'B', 'A', 'S', 'E', ':', ' '};
-    /** @brief Label prefix for the motor-controller version line. */
+    /** @brief Label prefix for the auxiliary version line. */
     static const uint8_t motor_label[] = {'M', 'O', 'T', 'O', 'R', ':', ' '};
     /** @brief Label prefix for the adapter firmware version line. */
     static const uint8_t wheel_label[] = {'S', 'T', ' ', 'W', 'H', 'E', 'E', 'L', ':', ' '};
-    /** @brief Text shown when motor identity is unavailable. */
+    /** @brief Text shown when the auxiliary identity is unavailable. */
     static const uint8_t unavailable[] = {'N', 'A'};
     /** @brief Base firmware version shown on the adapter page. */
     static const uint8_t base_version[] = {3, 9, 1};
@@ -128,8 +128,9 @@ bool wheel_startup_adapter_version_page_build(const MotorIdentity *motor_identit
     append_text(&page->lines[0], base_label, sizeof(base_label));
     append_version(&page->lines[0], base_version);
     append_text(&page->lines[1], motor_label, sizeof(motor_label));
-    if (motor_identity != NULL && motor_identity->protocol != MOTOR_PROTOCOL_LEGACY) {
-        append_version(&page->lines[1], motor_identity->version);
+    if (accessory != NULL && (accessory->kind == WHEEL_ACCESSORY_STANDARD ||
+                              accessory->kind == WHEEL_ACCESSORY_EXTENDED)) {
+        append_packed_version(&page->lines[1], accessory->version);
     } else {
         append_text(&page->lines[1], unavailable, sizeof(unavailable));
     }

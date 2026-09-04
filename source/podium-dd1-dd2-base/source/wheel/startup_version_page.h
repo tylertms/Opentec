@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "motor/identity.h"
+#include "wheel/accessory.h"
 #include "wheel/adapter.h"
 
 /** @brief Dimensions of the extended-adapter startup version page. */
@@ -28,11 +28,12 @@ typedef struct {
 /**
  * @brief Builds an extended-adapter startup version page.
  *
- * Populates the base, motor, steering-wheel, and blank lines when the connected adapter exposes
- * mode-one version-page support. Modes 0x1B and 0x1C source the steering-wheel line from the two
+ * Populates the base, auxiliary, steering-wheel, and blank lines when the connected adapter exposes
+ * mode-one version-page support. Standard and extended auxiliary states supply the MOTOR line;
+ * other states encode as NA. Modes 0x1B and 0x1C source the steering-wheel line from the two
  * retained axis words instead of the adapter firmware bytes.
  *
- * @param[in] motor_identity Motor-controller identity, or null when unavailable.
+ * @param[in] accessory Auxiliary identity and protocol state, or null when unavailable.
  * @param[in] adapter Adapter input supplying connection, mode, and firmware version.
  * @param[in] wheel_mode Negotiated attached-wheel mode.
  * @param[in] wheel_axis_values Two retained 16-bit axis values, required for modes 0x1B and 0x1C.
@@ -40,7 +41,7 @@ typedef struct {
  * @return True when adapter and page are valid and the adapter supports the version page; otherwise
  * false.
  */
-bool wheel_startup_adapter_version_page_build(const MotorIdentity *motor_identity,
+bool wheel_startup_adapter_version_page_build(const WheelAccessory *accessory,
                                               const WheelAdapterInput *adapter, uint8_t wheel_mode,
                                               const uint16_t wheel_axis_values[2],
                                               WheelStartupVersionPage *page);

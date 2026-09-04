@@ -5971,17 +5971,18 @@ static void service_shifter_display(uint32_t now_ms) {
  * @brief Queues the tuning-display startup version presentation.
  *
  * Sends native wheels display command 0x0A. For a connected extended adapter, builds the four
- * version lines and queues them through its offset-0x1A line transport instead.
+ * version lines from the adapter and retained auxiliary identity, then queues them through its
+ * offset-0x1A line transport instead.
  */
 static void queue_wheel_startup_version_presentation(void) {
+    const WheelAccessory *accessory = wheel_accessory_service_identity(&wheel_accessory_service);
     const WheelAdapterInput *adapter = wheel_service_adapter(&wheel_service);
     const uint8_t wheel_mode = wheel_service_mode(&wheel_service);
     uint16_t wheel_axis_values[2] = {0};
     if (wheel_mode == 0x1bu || wheel_mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED) {
         wheel_service_axis_values(&wheel_service, wheel_axis_values);
     }
-    if (wheel_startup_adapter_version_page_build(motor_probe_identity(&motor_probe), adapter,
-                                                 wheel_mode, wheel_axis_values,
+    if (wheel_startup_adapter_version_page_build(accessory, adapter, wheel_mode, wheel_axis_values,
                                                  &wheel_startup_version_page)) {
         for (uint8_t index = 0; index < WHEEL_STARTUP_VERSION_LINE_COUNT; index++) {
             (void)wheel_service_queue_adapter_text_line(
