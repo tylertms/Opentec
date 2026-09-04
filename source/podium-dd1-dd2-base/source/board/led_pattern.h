@@ -32,15 +32,16 @@ typedef enum {
 /**
  * @brief Inputs that select autonomous LED behavior.
  *
- * The controller gives inhibited output a heartbeat priority, turns the LED off after profile save,
- * and uses the remaining fields to request or sustain a breathing transition.
+ * The controller gives motor or accessory output inhibition a heartbeat priority, turns the LED off
+ * after profile save, and uses the remaining fields to request or sustain a breathing transition.
  */
 typedef struct {
-    bool output_inhibited;         /**< True to select the inhibited-output heartbeat. */
-    bool profile_save_complete;    /**< True to force the LED output off. */
-    bool pedal_handshake_active;   /**< True while the pedal handshake requests breathing. */
-    bool alternate_runtime_active; /**< True while alternate runtime requests breathing. */
-    bool force_override_requested; /**< True to start breathing for a force override request. */
+    bool motor_output_inhibited;     /**< True when motor status inhibits the base output. */
+    bool accessory_output_inhibited; /**< True when accessory status inhibits the base output. */
+    bool profile_save_complete;      /**< True to force the LED output off. */
+    bool pedal_handshake_active;     /**< True while the pedal handshake requests breathing. */
+    bool alternate_runtime_active;   /**< True while alternate runtime requests breathing. */
+    bool force_override_requested;   /**< True to start breathing for a force override request. */
 } LedPatternControllerInput;
 
 /**
@@ -94,8 +95,8 @@ void led_pattern_controller_init(LedPatternController *controller);
 /**
  * @brief Advances autonomous board LED behavior.
  *
- * Gives inhibited output priority over normal output, forces the LED off after profile save, and
- * otherwise starts or advances the requested breathing transition.
+ * Gives motor or accessory inhibited output priority over normal output, forces the LED off after
+ * profile save, and otherwise starts or advances the requested breathing transition.
  *
  * @param[in,out] controller Persistent autonomous LED state.
  * @param[in] input Current output gate, profile-save, and transition requests.

@@ -191,9 +191,9 @@ static uint16_t update_breathing(LedPatternController *controller, LedPatternCon
 /**
  * @brief Advances autonomous board LED behavior.
  *
- * Gives the inhibited-output heartbeat priority over normal output. Completed profile save forces
- * the output off. The first normal pass selects full brightness, and later passes retain the
- * current output unless a breathing transition produces a new pattern.
+ * Gives motor or accessory inhibited output the heartbeat priority over normal output. Completed
+ * profile save forces the output off. The first normal pass selects full brightness, and later
+ * passes retain the current output unless a breathing transition produces a new pattern.
  *
  * @param[in,out] controller Persistent autonomous LED state.
  * @param[in] input Current output gate, profile-save, and transition requests.
@@ -202,7 +202,7 @@ static uint16_t update_breathing(LedPatternController *controller, LedPatternCon
  */
 uint16_t led_pattern_controller_update(LedPatternController *controller,
                                        LedPatternControllerInput input, uint32_t now_ms) {
-    if (input.output_inhibited) {
+    if (input.motor_output_inhibited || input.accessory_output_inhibited) {
         return update_heartbeat(controller, now_ms);
     }
     if (input.profile_save_complete) {

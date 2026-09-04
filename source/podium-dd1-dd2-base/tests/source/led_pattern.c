@@ -42,7 +42,7 @@ static void test_runs_inhibited_heartbeat(void) {
     LedPatternController controller;
     led_pattern_controller_init(&controller);
     LedPatternControllerInput input = controller_input();
-    input.output_inhibited = true;
+    input.motor_output_inhibited = true;
 
     assert(led_pattern_controller_update(&controller, input, 100) == 0x00);
     assert(led_pattern_controller_update(&controller, input, 350) == LED_PATTERN_NO_UPDATE);
@@ -53,11 +53,22 @@ static void test_runs_inhibited_heartbeat(void) {
     assert(led_pattern_controller_update(&controller, input, 604) == 0x00);
 }
 
+static void test_accessory_inhibition_selects_heartbeat(void) {
+    LedPatternController controller;
+    led_pattern_controller_init(&controller);
+    LedPatternControllerInput input = controller_input();
+    input.accessory_output_inhibited = true;
+
+    assert(led_pattern_controller_update(&controller, input, 100) == 0x00);
+    input.accessory_output_inhibited = false;
+    assert(led_pattern_controller_update(&controller, input, 101) == 0xff);
+}
+
 static void test_inhibited_heartbeat_precedes_profile_save(void) {
     LedPatternController controller;
     led_pattern_controller_init(&controller);
     LedPatternControllerInput input = controller_input();
-    input.output_inhibited = true;
+    input.motor_output_inhibited = true;
     input.profile_save_complete = true;
 
     assert(led_pattern_controller_update(&controller, input, 100) == 0x00);
@@ -70,12 +81,12 @@ static void test_heartbeat_resumes_after_normal_output(void) {
     LedPatternController controller;
     led_pattern_controller_init(&controller);
     LedPatternControllerInput input = controller_input();
-    input.output_inhibited = true;
+    input.motor_output_inhibited = true;
 
     assert(led_pattern_controller_update(&controller, input, 10) == 0x00);
-    input.output_inhibited = false;
+    input.motor_output_inhibited = false;
     assert(led_pattern_controller_update(&controller, input, 20) == 0xff);
-    input.output_inhibited = true;
+    input.motor_output_inhibited = true;
     assert(led_pattern_controller_update(&controller, input, 261) == LED_PATTERN_NO_UPDATE);
     assert(led_pattern_controller_update(&controller, input, 262) == 0xff);
 }
@@ -152,7 +163,7 @@ static void test_deadlines_survive_counter_wraparound(void) {
     LedPatternController controller;
     led_pattern_controller_init(&controller);
     LedPatternControllerInput input = controller_input();
-    input.output_inhibited = true;
+    input.motor_output_inhibited = true;
 
     assert(led_pattern_controller_update(&controller, input, UINT32_MAX - 100) == 0x00);
     assert(led_pattern_controller_update(&controller, input, 149) == LED_PATTERN_NO_UPDATE);
@@ -165,6 +176,7 @@ int main(void) {
     test_builds_startup_sweep();
     test_starts_normal_output_at_full_brightness();
     test_runs_inhibited_heartbeat();
+    test_accessory_inhibition_selects_heartbeat();
     test_inhibited_heartbeat_precedes_profile_save();
     test_heartbeat_resumes_after_normal_output();
     test_profile_save_forces_output_off();

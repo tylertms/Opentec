@@ -6710,17 +6710,20 @@ static void service_usb_host_capability_recovery(uint32_t now_ms) {
 /**
  * @brief Services autonomous board LED output.
  *
- * Selects the inhibited-output heartbeat from motor status, clears the LED after profile save
- * starts, and requests the breathing transition from the torque-disable toggle or pedal recovery
- * handshake. The normal path runs this service after current motor status is available and before
- * cooling. A returned no-update marker leaves host-selected output unchanged.
+ * Selects the inhibited-output heartbeat from motor or wheel-accessory status, clears the LED after
+ * profile save starts, and requests the breathing transition from the torque-disable toggle or
+ * pedal recovery handshake. The normal path runs this service after current motor and accessory
+ * status are available and before cooling. A returned no-update marker leaves host-selected output
+ * unchanged.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 static void service_led_pattern(uint32_t now_ms) {
     LedPatternControllerInput input = {
-        .output_inhibited =
+        .motor_output_inhibited =
             motor_tuning_ready && motor_status_service_output_inhibited(&motor_status_service),
+        .accessory_output_inhibited =
+            wheel_accessory_service_output_inhibited(&wheel_accessory_service),
         .pedal_handshake_active = pedal_service.recovery_handshake,
         .alternate_runtime_active = runtime_bridge.phase != RUNTIME_BRIDGE_IDLE,
         .force_override_requested = power_controller.torque_disabled,
