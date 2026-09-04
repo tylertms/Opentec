@@ -10,14 +10,16 @@
 /**
  * @brief Phases of the motor command and status exchange.
  *
- * Selects the protocol-specific handshake, status initialization, and periodic status read.
+ * Selects the official state-0 register read, protocol-specific handshake, status initialization,
+ * and periodic status read.
  */
 typedef enum {
-    MOTOR_STATUS_DISABLED,      /**< Status exchange is unsupported by the identified controller. */
-    MOTOR_STATUS_READ_COMMAND,  /**< Reading the extended controller command response. */
-    MOTOR_STATUS_WRITE_COMMAND, /**< Writing the position-sensor test command. */
-    MOTOR_STATUS_INITIALIZE,    /**< Initializing the controller status register. */
-    MOTOR_STATUS_READ,          /**< Reading the controller status register. */
+    MOTOR_STATUS_DISABLED, /**< Status exchange is unsupported by the identified controller. */
+    MOTOR_STATUS_READ_INITIAL_REGISTER, /**< Reading the official state-0 register 0x23. */
+    MOTOR_STATUS_READ_COMMAND,          /**< Reading the extended controller command response. */
+    MOTOR_STATUS_WRITE_COMMAND,         /**< Writing the position-sensor test command. */
+    MOTOR_STATUS_INITIALIZE,            /**< Initializing the controller status register. */
+    MOTOR_STATUS_READ,                  /**< Reading the controller status register. */
 } MotorStatusPhase;
 
 /**
@@ -45,7 +47,7 @@ typedef struct {
     MotorStatusPhase phase;         /**< Current command or status exchange phase. */
     uint32_t next_cycle_ms;         /**< Monotonic deadline for the next periodic status cycle. */
     uint8_t command[2];             /**< Little-endian command-register response or request word. */
-    uint8_t status;                 /**< Current one-byte status-register response. */
+    uint8_t status;                 /**< Current one-byte state-0 or status-register response. */
     MotorStatusEvent event;         /**< Pending position-sensor event. */
     bool command_pending;           /**< True when a position-sensor test should be requested. */
     bool command_sent;              /**< True after the position-sensor test request was written. */

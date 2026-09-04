@@ -15,6 +15,7 @@ enum {
     MOTOR_AUX_BUS_ADDRESS = 0x78,  /**< Auxiliary-bus address of the motor controller. */
     MOTOR_COMMAND_REGISTER = 0x05, /**< Register for the extended command handshake. */
     MOTOR_STATUS_REGISTER = 0x04,  /**< Register for the periodic motor status byte. */
+    MOTOR_INITIAL_REGISTER = 0x23, /**< Register read during the official state-0 startup. */
     MOTOR_STATUS_CYCLE_INTERVAL_MS =
         200,                         /**< Delay between successful status cycles in milliseconds. */
     MOTOR_COMMAND_IDLE = 0x0000,     /**< Response indicating the command register is idle. */
@@ -38,8 +39,8 @@ static bool status_exchange_supported(const MotorIdentity *identity) {
 /**
  * @brief Initializes the motor-command handshake, status exchange, and output interlock.
  *
- * Selects the protocol-specific starting phase and clears all pending command, transfer, event,
- * and interlock state.
+ * Selects the official state-0 register read as the starting phase for supported controllers and
+ * clears all pending command, transfer, event, and interlock state.
  *
  * @param[out] service Motor status service state.
  * @param[in] identity Identified motor-controller protocol.
@@ -47,9 +48,8 @@ static bool status_exchange_supported(const MotorIdentity *identity) {
 void motor_status_service_init(MotorStatusService *service, const MotorIdentity *identity) {
     motor_output_interlock_init(&service->interlock);
     service->identity = identity;
-    service->phase = !status_exchange_supported(identity)               ? MOTOR_STATUS_DISABLED
-                     : motor_identity_has_extended_parameters(identity) ? MOTOR_STATUS_READ_COMMAND
-                                                                        : MOTOR_STATUS_INITIALIZE;
+    service->phase = status_exchange_supported(identity) ? MOTOR_STATUS_READ_INITIAL_REGISTER
+                                                         : MOTOR_STATUS_DISABLED;
     service->next_cycle_ms = 0;
     service->command[0] = 0;
     service->command[1] = 0;
@@ -75,7 +75,8 @@ void motor_status_service_request_command(MotorStatusService *service) {
 /**
  * @brief Selects the next status phase after a command exchange.
  *
- * Initializes the status register before the first read and otherwise resumes periodic reads.
+ * Initializes the status register before the first read and otherwise resumes periodic reads after
+ * the state-0 register exchange.
  *
  * @param[in,out] service Motor status service state.
  */
@@ -132,8 +133,8 @@ static void finish_command_read(MotorStatusService *service) {
 /**
  * @brief Completes the active auxiliary-bus transfer.
  *
- * Clears the bus transaction, advances successful command and status phases, and leaves failed
- * phases eligible for retry.
+ * Clears the bus transaction, advances successful state-0, command, and status phases, and leaves
+ * failed phases eligible for retry.
  *
  * @param[in,out] service Motor status service state.
  * @param[in] succeeded True when the transfer completed successfully.
@@ -147,7 +148,12 @@ static void finish_transfer(MotorStatusService *service, bool succeeded, uint32_
         return;
     }
 
-    if (completed_phase == MOTOR_STATUS_READ_COMMAND) {
+    if (completed_phase == MOTOR_STATUS_READ_INITIAL_REGISTER) {
+        service->status = 0;
+        service->phase = motor_identity_has_extended_parameters(service->identity)
+                             ? MOTOR_STATUS_READ_COMMAND
+                             : MOTOR_STATUS_INITIALIZE;
+    } else if (completed_phase == MOTOR_STATUS_READ_COMMAND) {
         finish_command_read(service);
     } else if (completed_phase == MOTOR_STATUS_WRITE_COMMAND) {
         continue_to_status(service);
@@ -167,12 +173,16 @@ static void finish_transfer(MotorStatusService *service, bool succeeded, uint32_
 /**
  * @brief Starts the transfer required by the current motor status phase.
  *
- * Reads command or status data and writes the fixed command request or initial status byte.
+ * Reads the state-0 register, command response, or status data and writes the fixed command request
+ * or initial status byte.
  *
  * @param[in,out] service Motor status service state.
  */
 static void start_transfer(MotorStatusService *service) {
-    if (service->phase == MOTOR_STATUS_READ_COMMAND) {
+    if (service->phase == MOTOR_STATUS_READ_INITIAL_REGISTER) {
+        service->transfer_active = platform_aux_bus_start_read(
+            MOTOR_AUX_BUS_ADDRESS, MOTOR_INITIAL_REGISTER, &service->status, 1);
+    } else if (service->phase == MOTOR_STATUS_READ_COMMAND) {
         service->transfer_active =
             platform_aux_bus_start_read(MOTOR_AUX_BUS_ADDRESS, MOTOR_COMMAND_REGISTER,
                                         service->command, sizeof(service->command));

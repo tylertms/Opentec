@@ -58,9 +58,7 @@ static void reset_bus(void) {
 }
 
 static MotorIdentity identity(MotorProtocol protocol) {
-    MotorIdentity value = {0};
-    value.protocol = protocol;
-    return value;
+    return (MotorIdentity){.protocol = protocol};
 }
 
 static void finish_status(uint8_t response) {
@@ -80,38 +78,56 @@ static void finish_command(uint16_t response) {
 
 static void finish_write(void) { bus_status = PLATFORM_AUX_BUS_SUCCEEDED; }
 
+static void assert_initial_register_read(void) {
+    assert(requested_read);
+    assert(requested_register == 0x23);
+    assert(requested_length == 1);
+    assert(requested_read_data != NULL);
+}
+
+static void finish_initial_register_read(MotorStatusService *service, uint8_t response,
+                                         uint32_t now_ms) {
+    assert_initial_register_read();
+    finish_status(response);
+    motor_status_service_run(service, now_ms);
+}
+
 static void test_extended_status_cycle(void) {
     MotorStatusService service;
     MotorIdentity extended = identity(MOTOR_PROTOCOL_POSITION);
     reset_bus();
     motor_status_service_init(&service, &extended);
+    assert(service.phase == MOTOR_STATUS_READ_INITIAL_REGISTER);
 
     motor_status_service_run(&service, 0);
+    assert_initial_register_read();
+
+    finish_initial_register_read(&service, 0x7f, 1);
     assert(requested_read);
     assert(requested_register == 5);
     assert(requested_length == 2);
 
     finish_command(0xaaaa);
-    motor_status_service_run(&service, 1);
+    motor_status_service_run(&service, 2);
     assert(!requested_read);
     assert(requested_register == 4);
     assert(requested_length == 1);
     assert(*requested_write_data == 0);
-    assert(start_count == 2);
+    assert(start_count == 3);
 
     finish_write();
-    motor_status_service_run(&service, 2);
+    motor_status_service_run(&service, 3);
     assert(requested_read);
     assert(requested_register == 4);
 
     finish_status(0xaa);
-    motor_status_service_run(&service, 3);
+    motor_status_service_run(&service, 4);
     assert(motor_status_service_output_inhibited(&service));
 
-    motor_status_service_run(&service, 202);
-    assert(start_count == 3);
     motor_status_service_run(&service, 203);
     assert(start_count == 4);
+    motor_status_service_run(&service, 204);
+    assert(start_count == 5);
     assert(requested_read);
     assert(requested_register == 5);
 }
@@ -123,10 +139,14 @@ static void test_standard_status_response(void) {
     motor_status_service_init(&service, &standard);
 
     motor_status_service_run(&service, 0);
+    assert_initial_register_read();
+    finish_initial_register_read(&service, 0, 1);
+    assert(!requested_read);
+    assert(requested_register == 4);
     finish_write();
-    motor_status_service_run(&service, 1);
-    finish_status(0xff);
     motor_status_service_run(&service, 2);
+    finish_status(0xff);
+    motor_status_service_run(&service, 3);
 
     assert(motor_status_service_output_inhibited(&service));
 }
@@ -151,13 +171,16 @@ static void test_failed_transfer_retries(void) {
     motor_status_service_init(&service, &extended);
 
     motor_status_service_run(&service, 0);
+    assert_initial_register_read();
     bus_status = PLATFORM_AUX_BUS_FAILED;
     motor_status_service_run(&service, 1);
 
-    assert(service.phase == MOTOR_STATUS_READ_COMMAND);
+    assert(service.phase == MOTOR_STATUS_READ_INITIAL_REGISTER);
+    assert(start_count == 1);
+    motor_status_service_run(&service, 2);
     assert(start_count == 2);
     assert(requested_read);
-    assert(requested_register == 5);
+    assert(requested_register == 0x23);
 }
 
 static void finish_initial_status_cycle(MotorStatusService *service, uint32_t now_ms) {
@@ -175,8 +198,9 @@ static void test_extended_command_request_and_acknowledgement(void) {
     motor_status_service_request_command(&service);
 
     motor_status_service_run(&service, 0);
+    finish_initial_register_read(&service, 0, 1);
     finish_command(0);
-    motor_status_service_run(&service, 1);
+    motor_status_service_run(&service, 2);
 
     assert(motor_status_service_take_event(&service) ==
            MOTOR_STATUS_EVENT_POSITION_SENSOR_TEST_STARTED);
@@ -189,11 +213,11 @@ static void test_extended_command_request_and_acknowledgement(void) {
     assert(service.command_sent);
 
     finish_write();
-    motor_status_service_run(&service, 2);
-    finish_initial_status_cycle(&service, 3);
-    motor_status_service_run(&service, 204);
-    finish_command(0);
+    motor_status_service_run(&service, 3);
+    finish_initial_status_cycle(&service, 4);
     motor_status_service_run(&service, 205);
+    finish_command(0);
+    motor_status_service_run(&service, 206);
 
     assert(motor_status_service_take_event(&service) ==
            MOTOR_STATUS_EVENT_POSITION_SENSOR_TEST_SUCCEEDED);
@@ -210,8 +234,9 @@ static void test_extended_command_fault_latches_output(void) {
     motor_status_service_request_command(&service);
 
     motor_status_service_run(&service, 0);
+    finish_initial_register_read(&service, 0, 1);
     finish_command(0xbbbb);
-    motor_status_service_run(&service, 1);
+    motor_status_service_run(&service, 2);
 
     assert(motor_status_service_take_event(&service) ==
            MOTOR_STATUS_EVENT_POSITION_SENSOR_TEST_FAILED);
@@ -232,8 +257,9 @@ static void test_terminal_command_responses_preserve_request(void) {
         motor_status_service_request_command(&service);
 
         motor_status_service_run(&service, 0);
+        finish_initial_register_read(&service, 0, 1);
         finish_command(responses[index]);
-        motor_status_service_run(&service, 1);
+        motor_status_service_run(&service, 2);
 
         assert(service.command_pending);
         assert(!service.command_sent);
@@ -249,10 +275,11 @@ static void test_unknown_command_response_retries_read(void) {
     motor_status_service_init(&service, &extended);
 
     motor_status_service_run(&service, 0);
+    finish_initial_register_read(&service, 0, 1);
     finish_command(0x1234);
-    motor_status_service_run(&service, 1);
+    motor_status_service_run(&service, 2);
 
-    assert(start_count == 2);
+    assert(start_count == 3);
     assert(requested_read);
     assert(requested_register == 5);
 }
