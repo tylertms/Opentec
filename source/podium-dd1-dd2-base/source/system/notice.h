@@ -90,6 +90,19 @@ void system_notice_show(SystemNotice *notice, SystemNoticeKind kind, uint32_t no
 void system_notice_dismiss(SystemNotice *notice, uint32_t now_ms);
 
 /**
+ * @brief Dismisses one notice kind without disturbing unrelated presentation.
+ *
+ * Restores the newest interrupted notice when the requested kind is active. When the requested
+ * kind is interrupted, removes its newest occurrence while retaining the active notice and the
+ * order of all other interrupted notices.
+ *
+ * @param[in,out] notice System notice state to update.
+ * @param[in] kind Notice kind to dismiss.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+void system_notice_dismiss_kind(SystemNotice *notice, SystemNoticeKind kind, uint32_t now_ms);
+
+/**
  * @brief Expires a completed timed system notice.
  *
  * Clears the notice after its deadline or restores the newest interrupted notice with a fresh

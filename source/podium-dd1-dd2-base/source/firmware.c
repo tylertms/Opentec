@@ -1124,6 +1124,12 @@ static void service_system_events(uint32_t now_ms) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_UNSUPPORTED_WHEEL_OUTLINED) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_DISMISS_CURRENT_NOTICE) {
+        system_notice_dismiss(&system_notice, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_DISMISS_TORQUE_REDUCED) {
+        system_notice_dismiss_kind(&system_notice, SYSTEM_NOTICE_TORQUE_REDUCED, now_ms);
+    } else if (action == SYSTEM_EVENT_ACTION_DISMISS_MOTOR_CALIBRATION) {
+        system_notice_dismiss_kind(&system_notice, SYSTEM_NOTICE_MOTOR_CALIBRATION_ONGOING, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_ALTERNATIVE_SHIFTER_ENABLED) {
         system_notice_show(&system_notice, SYSTEM_NOTICE_ALTERNATIVE_SHIFTER_ENABLED, now_ms);
     } else if (action == SYSTEM_EVENT_ACTION_SHOW_ALTERNATIVE_SHIFTER_DISABLED) {

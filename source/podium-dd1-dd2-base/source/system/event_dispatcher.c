@@ -28,15 +28,18 @@ enum {
     SYSTEM_EVENT_SHUTDOWN = 0x0e,                        /**< Shutdown event code. */
     SYSTEM_EVENT_UNSUPPORTED_WHEEL_INVERTED = 0x0f,      /**< Inverted-wheel event code. */
     SYSTEM_EVENT_UNSUPPORTED_WHEEL_OUTLINED = 0x10,      /**< Outlined-wheel event code. */
+    SYSTEM_EVENT_DISMISS_CURRENT_NOTICE = 0x11,          /**< Active-notice dismissal code. */
     SYSTEM_EVENT_STANDARD_TUNING_MODE = 0x12,            /**< Standard tuning-mode event code. */
     SYSTEM_EVENT_ADVANCED_TUNING_MODE = 0x13,            /**< Advanced tuning-mode event code. */
     SYSTEM_EVENT_TUNING_MODE_TRANSITION_STANDARD = 0x14, /**< Standard-mode transition code. */
     SYSTEM_EVENT_TUNING_MODE_TRANSITION_ADVANCED = 0x15, /**< Advanced-mode transition code. */
     SYSTEM_EVENT_MAXIMUM_ROTATIONS_EXCEEDED = 0x17,      /**< Maximum-rotation event code. */
     SYSTEM_EVENT_DISMISS_TORQUE_KEY_PROMPT = 0x18,       /**< Torque Key dismissal event code. */
+    SYSTEM_EVENT_DISMISS_TORQUE_REDUCED = 0x19,          /**< Reduced-torque dismissal code. */
     SYSTEM_EVENT_DISMISS_FORCE_OUTPUT_PROMPT = 0x1a,     /**< Force-output dismissal event code. */
     SYSTEM_EVENT_TORQUE_ENABLED = 0x1b,                  /**< Torque-enabled event code. */
     SYSTEM_EVENT_MOTOR_CALIBRATION_ONGOING = 0x1c,       /**< Calibration-ongoing event code. */
+    SYSTEM_EVENT_DISMISS_MOTOR_CALIBRATION = 0x1d,       /**< Calibration dismissal code. */
     SYSTEM_EVENT_ALTERNATIVE_SHIFTER_ENABLED = 0x20,     /**< Alternative-shifter enabled code. */
     SYSTEM_EVENT_ALTERNATIVE_SHIFTER_DISABLED = 0x21,    /**< Alternative-shifter disabled code. */
     SYSTEM_EVENT_DISPATCH_INTERVAL_MS = 100, /**< Minimum interval between dispatched events. */
@@ -109,12 +112,18 @@ SystemEventAction system_event_dispatcher_update(SystemEventDispatcher *dispatch
         action = SYSTEM_EVENT_ACTION_SHOW_UNSUPPORTED_WHEEL_INVERTED;
     } else if (queue->pending_code == SYSTEM_EVENT_UNSUPPORTED_WHEEL_OUTLINED) {
         action = SYSTEM_EVENT_ACTION_SHOW_UNSUPPORTED_WHEEL_OUTLINED;
+    } else if (queue->pending_code == SYSTEM_EVENT_DISMISS_CURRENT_NOTICE) {
+        action = SYSTEM_EVENT_ACTION_DISMISS_CURRENT_NOTICE;
     } else if (queue->pending_code == SYSTEM_EVENT_DISMISS_TORQUE_KEY_PROMPT) {
         action = SYSTEM_EVENT_ACTION_DISMISS_TORQUE_KEY_PROMPT;
+    } else if (queue->pending_code == SYSTEM_EVENT_DISMISS_TORQUE_REDUCED) {
+        action = SYSTEM_EVENT_ACTION_DISMISS_TORQUE_REDUCED;
     } else if (queue->pending_code == SYSTEM_EVENT_TORQUE_DISABLED) {
         action = SYSTEM_EVENT_ACTION_SHOW_TORQUE_DISABLED;
     } else if (queue->pending_code == SYSTEM_EVENT_TORQUE_ENABLED) {
         action = SYSTEM_EVENT_ACTION_DISMISS_TORQUE_DISABLED;
+    } else if (queue->pending_code == SYSTEM_EVENT_DISMISS_MOTOR_CALIBRATION) {
+        action = SYSTEM_EVENT_ACTION_DISMISS_MOTOR_CALIBRATION;
     } else if (queue->pending_code == SYSTEM_EVENT_ALTERNATIVE_SHIFTER_ENABLED) {
         action = SYSTEM_EVENT_ACTION_SHOW_ALTERNATIVE_SHIFTER_ENABLED;
     } else if (queue->pending_code == SYSTEM_EVENT_ALTERNATIVE_SHIFTER_DISABLED) {

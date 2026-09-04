@@ -48,14 +48,17 @@ static void test_dispatches_motor_notice_actions(void) {
         {0x0e, SYSTEM_EVENT_ACTION_SHOW_SHUTDOWN},
         {0x0f, SYSTEM_EVENT_ACTION_SHOW_UNSUPPORTED_WHEEL_INVERTED},
         {0x10, SYSTEM_EVENT_ACTION_SHOW_UNSUPPORTED_WHEEL_OUTLINED},
+        {0x11, SYSTEM_EVENT_ACTION_DISMISS_CURRENT_NOTICE},
         {0x12, SYSTEM_EVENT_ACTION_SHOW_STANDARD_TUNING_MODE},
         {0x13, SYSTEM_EVENT_ACTION_SHOW_ADVANCED_TUNING_MODE},
         {0x14, SYSTEM_EVENT_ACTION_SHOW_TUNING_MODE_TRANSITION_STANDARD},
         {0x15, SYSTEM_EVENT_ACTION_SHOW_TUNING_MODE_TRANSITION_ADVANCED},
         {0x17, SYSTEM_EVENT_ACTION_SHOW_MAXIMUM_ROTATIONS_EXCEEDED},
         {0x18, SYSTEM_EVENT_ACTION_DISMISS_TORQUE_KEY_PROMPT},
+        {0x19, SYSTEM_EVENT_ACTION_DISMISS_TORQUE_REDUCED},
         {0x1a, SYSTEM_EVENT_ACTION_DISMISS_FORCE_OUTPUT_PROMPT},
         {0x1c, SYSTEM_EVENT_ACTION_SHOW_MOTOR_CALIBRATION_ONGOING},
+        {0x1d, SYSTEM_EVENT_ACTION_DISMISS_MOTOR_CALIBRATION},
         {0x20, SYSTEM_EVENT_ACTION_SHOW_ALTERNATIVE_SHIFTER_ENABLED},
         {0x21, SYSTEM_EVENT_ACTION_SHOW_ALTERNATIVE_SHIFTER_DISABLED},
     };
@@ -85,6 +88,12 @@ static void test_releases_unknown_events(void) {
     assert(queue.count == 0);
     assert(queue.last_code == 0x7f);
     assert(dispatcher.next_dispatch_ms == 0);
+
+    assert(system_event_queue_try_push(&queue, 0x11));
+    assert(system_event_dispatcher_update(&dispatcher, &queue, 1000) ==
+           SYSTEM_EVENT_ACTION_DISMISS_CURRENT_NOTICE);
+    assert(queue.pending_code == 0);
+    assert(queue.last_code == 0x11);
 }
 
 static void test_preserves_cadence_across_counter_wrap(void) {

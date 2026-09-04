@@ -173,6 +173,29 @@ static void test_replacing_warning_discards_superseded_notice(void) {
     assert(notice.stack_count == 0);
 }
 
+static void test_dismisses_a_targeted_notice(void) {
+    SystemNotice notice;
+    system_notice_init(&notice);
+    system_notice_show(&notice, SYSTEM_NOTICE_TORQUE_REDUCED, 100);
+    system_notice_show(&notice, SYSTEM_NOTICE_MOTOR_CALIBRATION_ONGOING, 200);
+    system_notice_show(&notice, SYSTEM_NOTICE_WHEEL_CENTER_CALIBRATED, 300);
+
+    system_notice_dismiss_kind(&notice, SYSTEM_NOTICE_MOTOR_CALIBRATION_ONGOING, 400);
+
+    assert(notice.kind == SYSTEM_NOTICE_WHEEL_CENTER_CALIBRATED);
+    assert(notice.stack_count == 1);
+    assert(notice.stack[0] == SYSTEM_NOTICE_TORQUE_REDUCED);
+
+    system_notice_dismiss_kind(&notice, SYSTEM_NOTICE_WHEEL_CENTER_CALIBRATED, 500);
+
+    assert(notice.kind == SYSTEM_NOTICE_TORQUE_REDUCED);
+    assert(notice.deadline_ms == 4500);
+    assert(notice.stack_count == 0);
+
+    system_notice_dismiss_kind(&notice, SYSTEM_NOTICE_MOTOR_CALIBRATION_ONGOING, 600);
+    assert(notice.kind == SYSTEM_NOTICE_TORQUE_REDUCED);
+}
+
 static void test_compacts_the_fifth_notice_and_retains_it_below_the_sixth(void) {
     static const SystemNoticeKind kinds[] = {
         SYSTEM_NOTICE_TORQUE_REDUCED,
@@ -214,6 +237,7 @@ int main(void) {
     test_coalesces_related_notices();
     test_restored_notice_gets_a_fresh_deadline();
     test_replacing_warning_discards_superseded_notice();
+    test_dismisses_a_targeted_notice();
     test_compacts_the_fifth_notice_and_retains_it_below_the_sixth();
     return 0;
 }

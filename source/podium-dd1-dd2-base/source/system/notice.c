@@ -145,6 +145,25 @@ void system_notice_dismiss(SystemNotice *notice, uint32_t now_ms) {
     restore_previous_notice(notice, now_ms);
 }
 
+void system_notice_dismiss_kind(SystemNotice *notice, SystemNoticeKind kind, uint32_t now_ms) {
+    if (notice->kind == kind) {
+        restore_previous_notice(notice, now_ms);
+        return;
+    }
+
+    for (uint8_t index = notice->stack_count; index > 0; index--) {
+        uint8_t match = index - 1;
+        if (notice->stack[match] != kind) {
+            continue;
+        }
+        for (uint8_t move = match; move + 1 < notice->stack_count; move++) {
+            notice->stack[move] = notice->stack[move + 1];
+        }
+        notice->stack_count--;
+        return;
+    }
+}
+
 void system_notice_update(SystemNotice *notice, uint32_t now_ms) {
     if (notice_duration_ms(notice->kind) != 0 && (int32_t)(now_ms - notice->deadline_ms) > 0) {
         restore_previous_notice(notice, now_ms);

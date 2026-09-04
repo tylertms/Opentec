@@ -38,9 +38,12 @@ typedef enum {
     SYSTEM_EVENT_ACTION_SHOW_SHUTDOWN,                   /**< Show the shutdown notice. */
     SYSTEM_EVENT_ACTION_SHOW_UNSUPPORTED_WHEEL_INVERTED, /**< Show an inverted-wheel alert. */
     SYSTEM_EVENT_ACTION_SHOW_UNSUPPORTED_WHEEL_OUTLINED, /**< Show an outlined-wheel alert. */
+    SYSTEM_EVENT_ACTION_DISMISS_CURRENT_NOTICE,       /**< Dismiss the active system notice. */
     SYSTEM_EVENT_ACTION_DISMISS_TORQUE_KEY_PROMPT,       /**< Dismiss the Torque Key prompt. */
+    SYSTEM_EVENT_ACTION_DISMISS_TORQUE_REDUCED,       /**< Dismiss the reduced-torque notice. */
     SYSTEM_EVENT_ACTION_SHOW_TORQUE_DISABLED,            /**< Show the torque-disabled notice. */
     SYSTEM_EVENT_ACTION_DISMISS_TORQUE_DISABLED,         /**< Dismiss the torque-disabled notice. */
+    SYSTEM_EVENT_ACTION_DISMISS_MOTOR_CALIBRATION, /**< Dismiss the calibration-ongoing notice. */
     SYSTEM_EVENT_ACTION_SHOW_ALTERNATIVE_SHIFTER_ENABLED,  /**< Show alternative-shifter enabled. */
     SYSTEM_EVENT_ACTION_SHOW_ALTERNATIVE_SHIFTER_DISABLED, /**< Show alternative-shifter disabled.
                                                             */
@@ -68,8 +71,8 @@ void system_event_dispatcher_init(SystemEventDispatcher *dispatcher);
 /**
  * @brief Dispatches the pending system event.
  *
- * Maps recognized event codes to presentation actions and consumes the queue entry. Unknown event
- * codes are released without changing the dispatch cadence.
+ * Maps recognized event codes to presentation or targeted dismissal actions and consumes the queue
+ * entry. Unknown event codes are released without changing the dispatch cadence.
  *
  * @param[in,out] dispatcher Event dispatcher cadence state.
  * @param[in,out] queue System event queue containing the pending code.
