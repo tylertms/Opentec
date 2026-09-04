@@ -18,6 +18,7 @@ enum {
     TUNING_PRIMARY_PREVIOUS = 0x0200,                /**< Primary previous button. */
     TUNING_PRIMARY_NEXT = 0x0400,                    /**< Primary next button. */
     TUNING_PRIMARY_DECREASE = 0x0800,                /**< Primary decrease button. */
+    TUNING_PRIMARY_NAVIGATION = 0x0f00,              /**< Primary navigation buttons. */
     TUNING_PRIMARY_STANDARD_CENTER = 0x1000,         /**< Primary standard center button. */
     TUNING_PRIMARY_LEGACY_CENTER = 0x4000,           /**< Primary legacy center button. */
     TUNING_SECONDARY_PEDAL_CHORD = 0x0009,           /**< Pedal-operation chord. */
@@ -287,6 +288,25 @@ static bool profile_hold_blocked(const TuningInteractionInput *input) {
 }
 
 /**
+ * @brief Reports whether current input resets the timed profile hold.
+ *
+ * Matches the reference checks at 0x034282-0x0342AA: primary navigation and nonzero analog
+ * input reset the hold in every menu-held mode, while profile-selector activity resets it only for
+ * standard and extended wheel modes.
+ *
+ * @param[in] input Current attached-wheel and selector inputs.
+ * @return True when the current input resets the profile hold; otherwise false.
+ */
+static bool profile_hold_input_resets(const TuningInteractionInput *input) {
+    bool primary_navigation = (input->primary_buttons & TUNING_PRIMARY_NAVIGATION) != 0;
+    bool analog_activity = input->analog_scale != 0;
+    bool profile_selector_activity =
+        (input->wheel_mode == WHEEL_MODE_STANDARD || input->wheel_mode == WHEEL_MODE_EXTENDED) &&
+        input->profile_selector_active;
+    return primary_navigation || analog_activity || profile_selector_activity;
+}
+
+/**
  * @brief Applies profile-menu shortcuts in their reference priority.
  *
  * Produces the normal or extended shifter request before the pedal end-stop query and preserves a
@@ -330,8 +350,8 @@ static TuningInteractionAction profile_shortcut_action(TuningInteraction *intera
  * @brief Advances the timed profile-mode and reset hold.
  *
  * Emits the mode action once after two seconds and enters the two-second reset-result phase at ten
- * seconds. Wheel and adapter shortcuts restart the timer; ordinary navigation, analog input, and
- * profile selectors do not.
+ * seconds. Wheel and adapter shortcuts, primary navigation, analog input, and gated profile
+ * selectors restart the timer.
  *
  * @param[in,out] interaction Active menu-hold state.
  * @param[in] input Current attached-wheel and adapter inputs.
@@ -347,6 +367,10 @@ static TuningInteractionAction update_profile_hold(TuningInteraction *interactio
         return shortcut;
     }
     if (profile_hold_blocked(input)) {
+        clear_profile_hold(interaction);
+        return TUNING_INTERACTION_ACTION_NONE;
+    }
+    if (profile_hold_input_resets(input)) {
         clear_profile_hold(interaction);
         return TUNING_INTERACTION_ACTION_NONE;
     }
