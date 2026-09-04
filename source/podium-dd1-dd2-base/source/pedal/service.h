@@ -38,7 +38,7 @@ typedef enum {
     PEDAL_SERVICE_V3_STREAM,         /**< Processing framed V3 reports. */
     PEDAL_SERVICE_V4_START,          /**< Initializing the V4 transfer session. */
     PEDAL_SERVICE_V4_STREAM,         /**< Processing V4 transfers and status polls. */
-    PEDAL_SERVICE_RECONNECT_WAIT,    /**< Waiting before restarting discovery. */
+    PEDAL_SERVICE_RECONNECT_WAIT,    /**< Holding digital input before restarting discovery. */
     PEDAL_SERVICE_ANALOG,            /**< Publishing local analog pedal input. */
 } PedalServicePhase;
 
@@ -107,7 +107,7 @@ typedef struct {
     PedalAnalog analog;               /**< Local analog calibration state. */
     PedalServicePhase phase;          /**< Current service phase. */
     PedalDevice device;               /**< Detected pedal device identity. */
-    uint32_t deadline_ms;             /**< Current phase timeout or reconnect deadline. */
+    uint32_t deadline_ms;             /**< Current phase timeout or reconnect-hold expiry. */
     uint32_t next_status_ms;          /**< Next status request deadline for the active transport. */
     uint32_t next_input_command_ms;   /**< Next V3 input-command deadline. */
     uint32_t next_keepalive_ms;       /**< Next V3 calibration keepalive deadline. */

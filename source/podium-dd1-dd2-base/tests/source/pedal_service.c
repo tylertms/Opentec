@@ -562,17 +562,29 @@ static void test_uses_long_timeout_during_stream_startup(void) {
     assert(!service.connected);
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
     assert(service.recovery_handshake);
-    assert(input->axes[0] == 0);
-    assert(input->axes[1] == 0);
-    assert(input->axes[2] == 0);
-    assert(input->auxiliary == 0);
+    assert(input->axes[0] == 1);
+    assert(input->axes[1] == 2);
+    assert(input->axes[2] == 3);
+    assert(input->auxiliary == 4);
+    assert(service.remote_auxiliary == 4);
+    assert(service.deadline_ms == 15561);
     assert(discovery_count == 0);
 
     pedal_service_run(&service, 15560);
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
+    assert(input->axes[0] == 1);
+    assert(input->axes[1] == 2);
+    assert(input->axes[2] == 3);
+    assert(input->auxiliary == 4);
+    assert(service.remote_auxiliary == 4);
     pedal_service_run(&service, 15561);
     assert(service.phase == PEDAL_SERVICE_DETECT_REQUEST);
     assert(discovery_count == 1);
+    assert(input->axes[0] == 0);
+    assert(input->axes[1] == 0);
+    assert(input->axes[2] == 0);
+    assert(input->auxiliary == 0);
+    assert(service.remote_auxiliary == 0);
 }
 
 static void test_tightens_timeout_after_stream_startup(void) {
@@ -1061,18 +1073,39 @@ static void test_reconnects_after_v4_transfer_timeout(void) {
     reset_link();
     pedal_service_init(&service);
     connect_v4(&service);
+    service.input.axes[0] = 0x1234;
+    service.input.axes[1] = 0x2345;
+    service.input.axes[2] = 0x3456;
+    service.remote_auxiliary = 0x45;
+    service.input.auxiliary = service.remote_auxiliary;
+    service.connected = true;
 
     pedal_service_run(&service, 205);
     assert(service.phase == PEDAL_SERVICE_V4_STREAM);
     pedal_service_run(&service, 206);
 
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
+    assert(service.deadline_ms == 756);
     assert(!service.connected);
+    assert(service.input.axes[0] == 0x1234);
+    assert(service.input.axes[1] == 0x2345);
+    assert(service.input.axes[2] == 0x3456);
+    assert(service.input.auxiliary == 0x45);
+    assert(service.remote_auxiliary == 0x45);
     assert(discovery_count == 0);
     pedal_service_run(&service, 755);
     assert(service.phase == PEDAL_SERVICE_RECONNECT_WAIT);
+    assert(service.input.axes[0] == 0x1234);
+    assert(service.input.axes[1] == 0x2345);
+    assert(service.input.axes[2] == 0x3456);
+    assert(service.input.auxiliary == 0x45);
     pedal_service_run(&service, 756);
     assert(service.phase == PEDAL_SERVICE_DETECT_REQUEST);
+    assert(service.input.axes[0] == 0);
+    assert(service.input.axes[1] == 0);
+    assert(service.input.axes[2] == 0);
+    assert(service.input.auxiliary == 0);
+    assert(service.remote_auxiliary == 0);
     assert(discovery_count == 1);
     assert(stop_receive_count == 3);
 }

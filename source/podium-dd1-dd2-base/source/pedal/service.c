@@ -26,7 +26,7 @@ enum {
     PEDAL_INITIAL_SAMPLE_TIMEOUT_MS = 15000, /**< V3 startup sample timeout. */
     PEDAL_SAMPLE_TIMEOUT_MS = 1000,          /**< V3 active sample timeout. */
     PEDAL_STARTUP_FRAME_COUNT = 250, /**< Accepted reports required to leave startup timeout. */
-    PEDAL_RECONNECT_DELAY_MS = 550,  /**< Delay after an established digital-link failure. */
+    PEDAL_RECONNECT_DELAY_MS = 550,  /**< Published-input hold after a digital-link failure. */
     PEDAL_STATUS_INTERVAL_MS = 500,  /**< V3 status request interval. */
     PEDAL_INPUT_COMMAND_INTERVAL_MS = 500, /**< V3 input-command interval. */
     PEDAL_KEEPALIVE_INTERVAL_MS = 2500,    /**< V3 calibration keepalive interval. */
@@ -75,6 +75,19 @@ static void publish_auxiliary(PedalService *service) {
 }
 
 /**
+ * @brief Releases the published digital pedal input.
+ *
+ * Clears remote pedal values while preserving a currently active local auxiliary override.
+ *
+ * @param[in,out] service Pedal input and auxiliary source state to release.
+ */
+static void release_published_input(PedalService *service) {
+    pedal_input_release(&service->input);
+    service->remote_auxiliary = 0;
+    publish_auxiliary(service);
+}
+
+/**
  * @brief Clears pending V3 output operations.
  *
  * Restores the control, input-command, configuration, and periodic output state used when a V3
@@ -101,19 +114,19 @@ static void clear_v3_outbound(PedalService *service) {
  *
  * Stops serial reception before clearing the current generation. Selects local analog input only
  * when no digital traffic preceded the failure. A link that has produced accepted digital traffic
- * observes the reconnect hold before discovery resumes.
+ * retains its published input through the reconnect hold before discovery resumes.
  *
  * @param[in,out] service Pedal source, transport, and reconnect state to reset.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 static void reconnect(PedalService *service, uint32_t now_ms) {
-    bool backoff = service->digital_activity;
+    const bool retain_published_input = service->digital_activity;
     bool configuration_pending = service->configuration_pending;
     bool configuration_reset_pending = service->configuration_reset_pending;
     platform_pedal_link_stop_receive();
-    pedal_input_release(&service->input);
-    service->remote_auxiliary = 0;
-    publish_auxiliary(service);
+    if (!retain_published_input) {
+        release_published_input(service);
+    }
     pedal_v3_state_init(&service->v3);
     service->v4.active = false;
     clear_v3_outbound(service);
@@ -136,7 +149,8 @@ static void reconnect(PedalService *service, uint32_t now_ms) {
     for (uint8_t channel = 0; channel < PEDAL_LEGACY_CHANNEL_COUNT; channel++) {
         service->legacy_retries[channel] = 0;
     }
-    if (!backoff && service->analog_samples_ready && pedal_analog_detect(service->analog_samples) &&
+    if (!retain_published_input && service->analog_samples_ready &&
+        pedal_analog_detect(service->analog_samples) &&
         pedal_analog_update(&service->analog, service->analog_samples, &service->input)) {
         service->remote_auxiliary = service->input.auxiliary;
         publish_auxiliary(service);
@@ -146,7 +160,8 @@ static void reconnect(PedalService *service, uint32_t now_ms) {
         return;
     }
     service->phase = PEDAL_SERVICE_RECONNECT_WAIT;
-    service->deadline_ms = now_ms + (backoff ? PEDAL_RECONNECT_DELAY_MS : 0);
+    service->deadline_ms = now_ms +
+                           (retain_published_input ? PEDAL_RECONNECT_DELAY_MS : 0);
 }
 
 /**
@@ -1587,6 +1602,7 @@ void pedal_service_run(PedalService *service, uint32_t now_ms) {
     case PEDAL_SERVICE_RECONNECT_WAIT:
         platform_pedal_link_stop_receive();
         if (platform_time_reached(now_ms, service->deadline_ms)) {
+            release_published_input(service);
             platform_pedal_link_begin_discovery();
             service->phase = PEDAL_SERVICE_DETECT_REQUEST;
         }
