@@ -20,6 +20,7 @@ enum {
     GLYPH_C = 0x39,                            /**< Seven-segment C glyph. */
     GLYPH_L = 0x38,                            /**< Seven-segment L glyph. */
     GLYPH_DECIMAL_POINT = 0x80,                /**< Seven-segment decimal-point bit. */
+    VERSION_FIRST_COMPONENT_MASK = 0x3f,       /**< Mask for flags in the first version byte. */
 };
 
 /**
@@ -45,33 +46,36 @@ static bool set_glyphs(WheelDisplayOutput *output, uint8_t first, uint8_t second
 }
 
 /**
- * @brief Encodes one decimal digit as a raw seven-segment glyph.
+ * @brief Encodes one hexadecimal digit as a raw seven-segment glyph.
  *
- * Maps values zero through nine to their display segments and returns a blank glyph for other
- * values.
+ * Maps values zero through F to the official seven-segment table and returns a blank glyph for
+ * other values.
  *
- * @param[in] digit Decimal digit to encode.
- * @return Raw seven-segment glyph, or zero for a non-decimal value.
+ * @param[in] digit Hexadecimal digit to encode.
+ * @return Raw seven-segment glyph, or zero for a non-hexadecimal value.
  */
-static uint8_t digit_glyph(uint8_t digit) {
-    /** @brief Raw seven-segment glyphs indexed by decimal digit. */
-    static const uint8_t glyphs[] = {0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f};
+static uint8_t version_glyph(uint8_t digit) {
+    static const uint8_t glyphs[] = {0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07,
+                                     0x7f, 0x6f, 0x77, 0x7c, 0x39, 0x5e, 0x79, 0x71};
     return digit < sizeof(glyphs) ? glyphs[digit] : 0;
 }
 
 /**
  * @brief Shows a three-component firmware version.
  *
- * Places one decimal component in each glyph and enables the decimal point after the first and
- * second components.
+ * Masks the first component to six bits, maps each component through the official hexadecimal
+ * table, and enables the decimal point after the first and second components.
  *
  * @param[in,out] output Attached-wheel display output to update.
  * @param[in] version Four-byte version record whose first three bytes are display components.
  * @return True when the displayed version changed.
  */
 static bool show_version(WheelDisplayOutput *output, const uint8_t version[4]) {
-    return set_glyphs(output, digit_glyph(version[0]) | GLYPH_DECIMAL_POINT,
-                      digit_glyph(version[1]) | GLYPH_DECIMAL_POINT, digit_glyph(version[2]));
+    return set_glyphs(output,
+                      version_glyph(version[0] & VERSION_FIRST_COMPONENT_MASK) |
+                          GLYPH_DECIMAL_POINT,
+                      version_glyph(version[1]) | GLYPH_DECIMAL_POINT,
+                      version_glyph(version[2]));
 }
 
 /**

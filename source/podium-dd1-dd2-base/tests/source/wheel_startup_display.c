@@ -54,7 +54,7 @@ static void test_presents_managed_motor_version(void) {
     WheelDisplayOutput output = {0};
     MotorIdentity motor = {
         .protocol = MOTOR_PROTOCOL_STANDARD,
-        .version = {1, 2, 3, 4},
+        .version = {0x4c, 0x0a, 0x0f, 4},
     };
     wheel_startup_display_init(&display);
 
@@ -63,9 +63,9 @@ static void test_presents_managed_motor_version(void) {
     assert(display.phase == WHEEL_STARTUP_DISPLAY_MOTOR_VERSION);
     assert(display.deadline_ms == 2001);
     assert(wheel_startup_display_update(&display, true, false, true, &motor, 1002, &output));
-    assert(output.glyphs[0] == 0x86);
-    assert(output.glyphs[1] == 0xdb);
-    assert(output.glyphs[2] == 0x4f);
+    assert(output.glyphs[0] == 0xb9);
+    assert(output.glyphs[1] == 0xf7);
+    assert(output.glyphs[2] == 0x71);
     assert(!wheel_startup_display_update(&display, true, false, true, &motor, 2001, &output));
     assert(!wheel_startup_display_update(&display, true, false, true, &motor, 2002, &output));
     assert(display.phase == WHEEL_STARTUP_DISPLAY_READY_DELAY);
