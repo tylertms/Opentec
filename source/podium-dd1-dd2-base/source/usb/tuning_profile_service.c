@@ -15,7 +15,7 @@ enum {
     PROFILE_ACTION_SELECT = 1,         /**< Select and activate a profile. */
     PROFILE_ACTION_REFRESH = 2,        /**< Request a profile response refresh. */
     PROFILE_ACTION_SAVE = 3,           /**< Request profile persistence. */
-    PROFILE_ACTION_RESET_ALL = 4,      /**< Restore every profile and Standard mode. */
+    PROFILE_ACTION_RESET_ALL = 4,      /**< Restore retained profiles and Auto core values. */
     PROFILE_ACTION_RESET_STANDARD = 5, /**< Restore the Standard profile. */
     PROFILE_ACTION_TOGGLE_MODE = 6,    /**< Toggle Standard and Advanced mode. */
     PROFILE_SELECTOR_MINIMUM = 1,      /**< Smallest accepted one-based profile selector. */
@@ -33,6 +33,58 @@ enum {
  */
 static bool deadline_reached(uint32_t now_ms, uint32_t deadline_ms) {
     return (int32_t)(now_ms - deadline_ms) >= 0;
+}
+
+/**
+ * @brief Tests the strict deadline used by profile-mode toggles.
+ *
+ * The official mode-toggle path remains blocked when the current time equals its deadline.
+ *
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[in] deadline_ms Mode-toggle deadline to test.
+ * @return True only when the deadline has passed; otherwise false.
+ */
+static bool mode_toggle_deadline_passed(uint32_t now_ms, uint32_t deadline_ms) {
+    return now_ms > deadline_ms;
+}
+
+/**
+ * @brief Restores the core values of the transient automatic profile.
+ *
+ * Reset-all restores the six values handled by the official automatic-profile core reset while
+ * retaining the secondary values supplied by the attached-wheel interface.
+ *
+ * @param[in,out] profile Automatic profile receiving its core defaults.
+ */
+static void reset_automatic_profile_core(TuningProfile *profile) {
+    TuningProfile defaults;
+    tuning_profile_defaults(&defaults);
+    profile->vibration_strength = defaults.vibration_strength;
+    profile->brake_indicator_level = defaults.brake_indicator_level;
+    profile->brake_force = defaults.brake_force;
+    profile->alternate_brake_force = defaults.alternate_brake_force;
+    profile->multi_position_mode = defaults.multi_position_mode;
+    profile->paddle_mode = defaults.paddle_mode;
+}
+
+/**
+ * @brief Restores the profile records covered by the official reset-all command.
+ *
+ * Retained profiles map to slots one through five in the effective bank. Slot zero is the
+ * transient automatic profile, whose secondary values and apply-pending marker are retained.
+ *
+ * @param[in,out] bank Profile bank receiving reset values and Standard selection state.
+ */
+static void reset_profiles(TuningProfileBank *bank) {
+    bool automatic_apply_pending = bank->automatic_apply_pending;
+    for (uint8_t slot = 1; slot < TUNING_PROFILE_SLOT_COUNT; slot++) {
+        tuning_profile_defaults(&bank->slots[slot]);
+    }
+    reset_automatic_profile_core(&bank->slots[0]);
+    bank->selected_slot = 0;
+    bank->active_slot = 0;
+    bank->standard_mode_enabled = true;
+    bank->automatic_apply_pending = automatic_apply_pending;
 }
 
 /**
@@ -99,9 +151,7 @@ UsbTuningProfileAction usb_tuning_profile_service_apply(UsbTuningProfileService 
     case PROFILE_ACTION_RESET_ALL:
         if (deadline_reached(now_ms, service->reset_after_ms)) {
             bool mode_changed = !bank->standard_mode_enabled;
-            bool automatic_apply_pending = bank->automatic_apply_pending;
-            tuning_profile_bank_defaults(bank);
-            bank->automatic_apply_pending = automatic_apply_pending;
+            reset_profiles(bank);
             service->reset_after_ms = now_ms + USB_TUNING_PROFILE_RESET_DELAY_MS;
             service->response_pending = true;
             result |= USB_TUNING_PROFILE_ACTION_PROFILE_CHANGED |
@@ -124,7 +174,7 @@ UsbTuningProfileAction usb_tuning_profile_service_apply(UsbTuningProfileService 
         }
         return result;
     case PROFILE_ACTION_TOGGLE_MODE:
-        if (deadline_reached(now_ms, service->mode_change_after_ms)) {
+        if (mode_toggle_deadline_passed(now_ms, service->mode_change_after_ms)) {
             bool enable_standard = !bank->standard_mode_enabled;
             if (tuning_profile_bank_set_standard_mode(bank, enable_standard)) {
                 if (enable_standard) {
