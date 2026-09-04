@@ -43,7 +43,8 @@ static void test_classifies_direct_command_routes(void) {
     }
 }
 
-static void test_classifies_xbox_tunnel_payload(void) {
+static void test_classifies_remote_tuning_packet_kinds(void) {
+    static const uint8_t packet_kinds[] = {0, 1, 2, 3, 4, 5, 0x7f, 0xff};
     uint8_t payload[59] = {5, 0, 1};
     UsbOutputCommand output = {
         .kind = USB_OUTPUT_COMMAND_VENDOR_TRANSFER,
@@ -52,8 +53,8 @@ static void test_classifies_xbox_tunnel_payload(void) {
     };
     UsbVendorCommand command = {0};
 
-    for (uint8_t packet_kind = 1; packet_kind <= 5; packet_kind++) {
-        payload[1] = packet_kind;
+    for (size_t index = 0; index < sizeof(packet_kinds); index++) {
+        payload[1] = packet_kinds[index];
         assert(usb_vendor_command_decode(&output, &command));
         assert(command.kind == USB_VENDOR_COMMAND_REMOTE_TUNING);
         assert(command.arguments == payload + 1 && command.length == 58);
@@ -223,7 +224,7 @@ static void test_rejects_unhandled_payloads(void) {
 
 int main(void) {
     test_classifies_direct_command_routes();
-    test_classifies_xbox_tunnel_payload();
+    test_classifies_remote_tuning_packet_kinds();
     test_classifies_opcode_five_without_subtype();
     test_classifies_native_reset();
     test_rejects_script_queries_on_native_reset_route();

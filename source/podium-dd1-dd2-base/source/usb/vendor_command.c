@@ -10,6 +10,7 @@ enum {
     VENDOR_COMMAND_NATIVE_RESET = 0x0a,         /**< Native reset command opcode. */
     VENDOR_COMMAND_NATIVE_RESET_SELECTOR = 1,   /**< Native reset selector. */
     VENDOR_COMMAND_NATIVE_RESET_VALUE = 0x1a,   /**< Native reset confirmation value. */
+    VENDOR_COMMAND_REMOTE_TUNING = 5,           /**< Remote-tuning command opcode. */
     VENDOR_COMMAND_SCRIPT_SAMPLES_SELECTOR = 4, /**< Script samples selector. */
     VENDOR_COMMAND_SCRIPT_SAMPLES_LAST_FIRST = 0x01f5, /**< Largest accepted first sample index. */
     VENDOR_COMMAND_SCRIPT_SLOT_SELECTOR = 5,           /**< Script slot selector. */
@@ -45,7 +46,7 @@ static int8_t command_kind(uint8_t opcode, const uint8_t *payload, uint8_t lengt
         return USB_VENDOR_COMMAND_DEVICE_CONTROL_UPDATE;
     case 4:
         return USB_VENDOR_COMMAND_DIAGNOSTIC_SNAPSHOT;
-    case 5:
+    case VENDOR_COMMAND_REMOTE_TUNING:
         return USB_VENDOR_COMMAND_REMOTE_TUNING;
     case 8:
         return USB_VENDOR_COMMAND_TUNING_STATUS;
