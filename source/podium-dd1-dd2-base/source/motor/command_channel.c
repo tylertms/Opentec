@@ -22,8 +22,6 @@ enum {
         20, /**< Calibration digest response length requested by the channel. */
     MOTOR_COMMAND_CHANNEL_INFORMATION_WORD_LENGTH =
         2, /**< Length requested for selectors 3 and 4. */
-    MOTOR_COMMAND_CHANNEL_SEQUENCE_RESET_COMMAND =
-        0xfe, /**< Application command used to recover a stalled sequence. */
 };
 
 /**
@@ -155,6 +153,9 @@ void motor_command_channel_mark_written(MotorCommandChannel *channel, const uint
     if (channel->reset_pending) {
         channel->reset_pending = false;
         channel->transmit_length = 0;
+        if (channel->command_pending) {
+            (void)rebuild_payload(channel);
+        }
     } else if (channel->command_pending && !channel->command_sent) {
         channel->command_sent = true;
     }
@@ -189,14 +190,17 @@ bool motor_command_channel_requeue_pending(MotorCommandChannel *channel) {
 }
 
 bool motor_command_channel_queue_recovery_command(MotorCommandChannel *channel) {
-    if (channel == 0 || !channel->command_pending || channel->pending_payload_length == 0) {
+    if (channel == 0 || !channel->command_pending || channel->pending_payload_length == 0 ||
+        channel->reset_pending ||
+        channel->buffers.transmit_capacity < MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE) {
         return false;
     }
-    channel->buffers.pending_payload[0] = MOTOR_COMMAND_CHANNEL_SEQUENCE_RESET_COMMAND;
-    channel->pending_payload_length = 1;
+    motor_command_packet_sequence_reset_encode(channel->buffers.transmit);
+    channel->transmit_length = MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE;
+    channel->reset_pending = true;
     channel->retry_count = 0;
     channel->command_sent = false;
-    return rebuild_payload(channel);
+    return true;
 }
 
 bool motor_command_channel_queue_digest_request(MotorCommandChannel *channel) {

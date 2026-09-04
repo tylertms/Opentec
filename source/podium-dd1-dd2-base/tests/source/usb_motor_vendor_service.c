@@ -62,6 +62,15 @@ static void complete_mailbox_write(Fixture *fixture) {
     command_transport_receive(&fixture->transport, response, sizeof(response));
 }
 
+static void assert_transport_request(Fixture *fixture, const uint8_t *expected,
+                                     uint16_t expected_length) {
+    const uint8_t *request;
+    uint16_t request_length;
+    assert(command_transport_request(&fixture->transport, &request, &request_length));
+    assert(request_length == expected_length);
+    assert(memcmp(request, expected, request_length) == 0);
+}
+
 static void test_bridges_compact_command_and_response(void) {
     Fixture fixture;
     fixture_init(&fixture);
@@ -427,10 +436,11 @@ static void test_recovers_after_ten_control_sentinels(void) {
     assert(!command_transport_is_owner(&fixture.transport, MOTOR_COMMAND_MAILBOX_OWNER));
 }
 
-static void test_scheduler_requeues_and_then_recovers_live_command(void) {
+static void test_requeues_payload_after_recovery_control_write(void) {
     Fixture fixture;
     fixture_init(&fixture);
     static const uint8_t payload[] = {0xc1, 0x12};
+    static const uint8_t reset_write[] = {2, 0x40, 0x80, 0xc0, 0, 0, 0x0a, 0x9a};
 
     command_transport_claim(&fixture.transport, MOTOR_COMMAND_MAILBOX_OWNER);
     bool payload_queued = motor_command_channel_queue_payload(&fixture.channel, payload,
@@ -456,11 +466,54 @@ static void test_scheduler_requeues_and_then_recovers_live_command(void) {
     assert(event.mailbox_event == MOTOR_COMMAND_MAILBOX_EXCHANGE_NONE);
     assert(fixture.channel.command_pending);
     assert(!fixture.channel.command_sent);
-    assert(fixture.channel.pending_payload_length == 1);
-    assert(fixture.channel.buffers.pending_payload[0] == 0xfe);
-    assert(fixture.channel.buffers.transmit[4] == 0xfe);
-    assert(!fixture.channel.reset_pending);
+    assert(fixture.channel.pending_payload_length == sizeof(payload));
+    assert(memcmp(fixture.channel.buffers.pending_payload, payload, sizeof(payload)) == 0);
+    assert(fixture.channel.reset_pending);
+    assert(fixture.channel.transmit_length == MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE);
+    assert(memcmp(fixture.channel.buffers.transmit, reset_write + 3,
+                  MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE) == 0);
     assert(fixture.exchange.write_packet == fixture.channel.buffers.transmit);
+    assert(fixture.exchange.write_length == MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE);
+
+    static const uint8_t idle_control[MOTOR_COMMAND_MAILBOX_CONTROL_SIZE] = {0};
+    complete_mailbox_read(&fixture, idle_control, sizeof(idle_control));
+    event =
+        motor_command_channel_mailbox_run(&fixture.channel, &fixture.exchange, &fixture.transport);
+    assert(event.mailbox_event == MOTOR_COMMAND_MAILBOX_EXCHANGE_NONE);
+    assert(fixture.exchange.phase == MOTOR_COMMAND_MAILBOX_EXCHANGE_PAYLOAD_WRITE_WAIT);
+    assert_transport_request(&fixture, reset_write, sizeof(reset_write));
+
+    complete_mailbox_write(&fixture);
+    event =
+        motor_command_channel_mailbox_run(&fixture.channel, &fixture.exchange, &fixture.transport);
+    assert(event.mailbox_event == MOTOR_COMMAND_MAILBOX_EXCHANGE_PACKET_WRITTEN);
+    assert(!fixture.channel.reset_pending);
+    assert(fixture.channel.command_pending);
+    assert(!fixture.channel.command_sent);
+    assert(fixture.channel.pending_payload_length == sizeof(payload));
+    assert(fixture.channel.transmit_length == sizeof(payload) +
+                                               MOTOR_COMMAND_PACKET_ENCODING_OVERHEAD);
+    assert(fixture.channel.buffers.transmit[0] == 0x07);
+    assert(fixture.channel.buffers.transmit[1] == 0);
+    assert(fixture.channel.buffers.transmit[2] == 0x03);
+    assert(fixture.channel.buffers.transmit[3] == 0);
+    assert(memcmp(fixture.channel.buffers.transmit + 4, payload, sizeof(payload)) == 0);
+    assert(motor_command_packet_checksum_valid(
+        fixture.channel.buffers.transmit, fixture.channel.transmit_length));
+
+    event =
+        motor_command_channel_mailbox_run(&fixture.channel, &fixture.exchange, &fixture.transport);
+    assert(event.mailbox_event == MOTOR_COMMAND_MAILBOX_EXCHANGE_NONE);
+    assert(fixture.exchange.write_packet == fixture.channel.buffers.transmit);
+    assert(fixture.exchange.write_length == fixture.channel.transmit_length);
+    complete_mailbox_read(&fixture, idle_control, sizeof(idle_control));
+    event =
+        motor_command_channel_mailbox_run(&fixture.channel, &fixture.exchange, &fixture.transport);
+    assert(event.mailbox_event == MOTOR_COMMAND_MAILBOX_EXCHANGE_NONE);
+    assert(fixture.exchange.phase == MOTOR_COMMAND_MAILBOX_EXCHANGE_PAYLOAD_WRITE_WAIT);
+    static const uint8_t original_write[] = {2, 0x40, 0x80, 0x07, 0, 0x03, 0, 0xc1, 0x12,
+                                             0xd9, 0xfd};
+    assert_transport_request(&fixture, original_write, sizeof(original_write));
 }
 
 static void test_motor_channel_rejects_invalid_storage_and_requests(void) {
@@ -551,7 +604,7 @@ int main(void) {
     test_retries_after_lower_layer_write_refusal();
     test_requests_retry_after_lower_layer_read_refusal();
     test_recovers_after_ten_control_sentinels();
-    test_scheduler_requeues_and_then_recovers_live_command();
+    test_requeues_payload_after_recovery_control_write();
     test_motor_channel_rejects_invalid_storage_and_requests();
     return 0;
 }

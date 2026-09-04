@@ -114,13 +114,34 @@ static void test_peer_reset_restarts_pending_command(void) {
     event = motor_command_channel_accept(&fixture.channel, packet, sizeof(packet));
     assert(event.receive_result == MOTOR_COMMAND_RECEIVE_RESET);
     assert(event.actions == MOTOR_COMMAND_CHANNEL_ACTION_WRITE);
+    assert(event.packet == fixture.channel.buffers.transmit);
+    assert(event.packet_length == MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE);
     assert(fixture.channel.command_pending);
     assert(!fixture.channel.command_sent);
     assert(fixture.channel.retry_count == 0);
-    assert(fixture.channel.pending_payload_length == 1);
-    assert(fixture.pending_payload[0] == 0xfe);
-    assert(fixture.transmit[0] == 3);
-    assert(fixture.transmit[4] == 0xfe);
+    assert(fixture.channel.reset_pending);
+    assert(fixture.channel.pending_payload_length == sizeof(payload));
+    assert(memcmp(fixture.pending_payload, payload, sizeof(payload)) == 0);
+    assert(fixture.transmit[0] == 0xc0);
+    assert(fixture.transmit[1] == 0);
+    assert(fixture.transmit[2] == 0);
+    assert(fixture.transmit[3] == 0x0a);
+    assert(fixture.transmit[4] == 0x9a);
+    assert(motor_command_packet_checksum_valid(
+        fixture.transmit, MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE));
+    motor_command_channel_mark_written(&fixture.channel, fixture.transmit);
+    assert(!fixture.channel.reset_pending);
+    assert(fixture.channel.transmit_length == sizeof(payload) +
+                                               MOTOR_COMMAND_PACKET_ENCODING_OVERHEAD);
+    assert(fixture.channel.command_pending);
+    assert(fixture.channel.pending_payload_length == sizeof(payload));
+    assert(memcmp(fixture.pending_payload, payload, sizeof(payload)) == 0);
+    assert(fixture.transmit[0] == 0x03);
+    assert(fixture.transmit[1] == 0);
+    assert(fixture.transmit[2] == sizeof(payload) + 1);
+    assert(fixture.transmit[3] == 0);
+    assert(memcmp(fixture.transmit + 4, payload, sizeof(payload)) == 0);
+    assert(motor_command_packet_checksum_valid(fixture.transmit, fixture.channel.transmit_length));
 }
 
 static void test_invalid_packet_always_requests_retry(void) {
@@ -144,12 +165,18 @@ static void test_recovery_command_retains_sequence_and_ownership(void) {
     assert(motor_command_channel_queue_recovery_command(&fixture.channel));
     assert(fixture.channel.command_pending);
     assert(!fixture.channel.command_sent);
-    assert(!fixture.channel.reset_pending);
+    assert(fixture.channel.reset_pending);
     assert(fixture.channel.receiver.sequence.transmit == 1);
     assert(fixture.channel.pending_payload_length == 1);
-    assert(fixture.pending_payload[0] == 0xfe);
-    assert(fixture.transmit[0] == 7);
-    assert(fixture.transmit[4] == 0xfe);
+    assert(fixture.pending_payload[0] == 0xc1);
+    assert(fixture.channel.transmit_length == MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE);
+    assert(fixture.transmit[0] == 0xc0);
+    assert(fixture.transmit[1] == 0);
+    assert(fixture.transmit[2] == 0);
+    assert(fixture.transmit[3] == 0x0a);
+    assert(fixture.transmit[4] == 0x9a);
+    assert(motor_command_packet_checksum_valid(
+        fixture.transmit, MOTOR_COMMAND_PACKET_CONTROL_PACKET_SIZE));
 }
 
 int main(void) {

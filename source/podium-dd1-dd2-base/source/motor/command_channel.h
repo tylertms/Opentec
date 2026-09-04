@@ -124,19 +124,23 @@ MotorCommandChannelEvent motor_command_channel_queue_retry(MotorCommandChannel *
 bool motor_command_channel_requeue_pending(MotorCommandChannel *channel);
 
 /**
- * @brief Replaces the retained command with the protocol recovery command.
+ * @brief Queues the protocol recovery control packet.
  *
- * Keeps the reserved transmit sequence and active-command ownership while changing the retained
- * application payload to the one-byte recovery command used after the official second retry and
- * timeout paths.
+ * Sends the official five-byte sequence-reset control packet for the 0xFE recovery action while
+ * retaining the outstanding application payload, sequence ownership, and command-pending state.
+ * The retained application command can be rebuilt after the reset packet is written.
  *
  * @param[in,out] channel Channel retaining the stalled command.
- * @return true when the recovery frame was rebuilt; otherwise false.
+ * @return true when the recovery frame was queued; otherwise false.
  */
 bool motor_command_channel_queue_recovery_command(MotorCommandChannel *channel);
 
 /**
  * @brief Records that a channel packet was written to the physical transport.
+ *
+ * Completes a sequence-reset control write before rebuilding any retained application request.
+ * This keeps the reset packet stable through its transport exchange and makes the retained request
+ * available to the next mailbox exchange.
  *
  * @param[in,out] channel Motor command channel retaining acknowledgement state.
  * @param[in] packet Packet accepted by the physical transport.
