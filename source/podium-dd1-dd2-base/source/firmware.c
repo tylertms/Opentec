@@ -1520,13 +1520,13 @@ static void service_motor_link(void) {
 }
 
 /**
- * @brief Refreshes consumers of the current runtime tuning profile.
+ * @brief Refreshes initialized non-wheel consumers of the runtime tuning profile.
  *
- * Applies the current runtime values to cooling, pedal, wheel, and motor services without
- * changing retained setup storage. V3 configuration refreshes are queued only in the V3 lifecycle;
- * V4 tuning remains owned by the V4 transfer service.
+ * Applies current runtime values to cooling, pedal, and motor services without changing retained
+ * setup storage. V3 configuration refreshes are queued only in the V3 lifecycle; V4 tuning remains
+ * owned by the V4 transfer service.
  */
-static void refresh_runtime_tuning_profile(void) {
+static void refresh_non_wheel_tuning_consumers(void) {
     cooling_effect_strengths = (CoolingEffectStrengths){
         .force = tuning_profile->force_effect_strength,
         .spring = tuning_profile->spring_effect_strength,
@@ -1545,8 +1545,6 @@ static void refresh_runtime_tuning_profile(void) {
         .throttle_curve = (uint8_t)tuning_profile->throttle_pedal_curve,
     };
     pedal_service_set_v4_tuning(&pedal_service, pedal_tuning);
-    wheel_service_set_button_illumination(&wheel_service,
-                                          tuning_profile->button_illumination_enabled != 0);
     motor_tuning_context.automatic_rotation_degrees =
         tuning_profile->automatic_rotation != 0 &&
                 usb_device_operating_mode() == USB_OPERATING_MODE_XBOX_GIP
@@ -1555,6 +1553,22 @@ static void refresh_runtime_tuning_profile(void) {
     if (motor_tuning_ready) {
         motor_tuning_service_refresh(&motor_tuning_service, tuning_profile, &motor_tuning_context);
     }
+}
+
+/**
+ * @brief Refreshes the initialized attached-wheel tuning consumer.
+ */
+static void refresh_wheel_tuning_consumer(void) {
+    wheel_service_set_button_illumination(&wheel_service,
+                                          tuning_profile->button_illumination_enabled != 0);
+}
+
+/**
+ * @brief Refreshes every initialized runtime tuning consumer.
+ */
+static void refresh_runtime_tuning_profile(void) {
+    refresh_non_wheel_tuning_consumers();
+    refresh_wheel_tuning_consumer();
 }
 
 /**
@@ -1634,17 +1648,29 @@ static const TuningProfile *active_tuning_profile_source(void) {
 }
 
 /**
+ * @brief Loads the active profile before attached-wheel service initialization.
+ *
+ * Copies the active retained user slot or transient automatic setup into runtime storage and
+ * refreshes consumers that are already initialized. Attached-wheel output is restored separately
+ * after wheel service initialization.
+ */
+static void load_active_tuning_profile(void) {
+    runtime_tuning_profile = *active_tuning_profile_source();
+    tuning_profile = &runtime_tuning_profile;
+    fallback_steering_travel_override = false;
+    refresh_non_wheel_tuning_consumers();
+    usb_tuning_profile_service_request_response(&usb_tuning_profile_service);
+}
+
+/**
  * @brief Applies the active tuning profile to runtime consumers.
  *
  * Copies the active retained user slot or transient automatic setup into runtime storage and
  * refreshes cooling, pedal, wheel, and motor settings that take effect immediately.
  */
 static void apply_active_tuning_profile(void) {
-    runtime_tuning_profile = *active_tuning_profile_source();
-    tuning_profile = &runtime_tuning_profile;
-    fallback_steering_travel_override = false;
-    refresh_runtime_tuning_profile();
-    usb_tuning_profile_service_request_response(&usb_tuning_profile_service);
+    load_active_tuning_profile();
+    refresh_wheel_tuning_consumer();
 }
 
 /**
@@ -1711,7 +1737,14 @@ static void initialize_base_settings(void) {
     base_mode_recovery_requested = requested_base_mode == UINT8_MAX || requested_base_mode == 6;
     save_base_settings();
     auxiliary_axis_init(&auxiliary_axis, &base_settings.auxiliary_axis);
+}
+
+/**
+ * @brief Applies retained wheel output settings after wheel service initialization.
+ */
+static void apply_retained_wheel_output_settings(void) {
     wheel_service_set_auxiliary_output_option(&wheel_service, base_settings.wheel_auxiliary_option);
+    refresh_wheel_tuning_consumer();
 }
 
 /**
@@ -1735,7 +1768,7 @@ static void initialize_motor(void) {
     motor_startup_direct_force = true;
     motor_calibration_service_init(&motor_calibration_service);
     motor_rotation_guard_init(&motor_rotation_guard);
-    apply_active_tuning_profile();
+    load_active_tuning_profile();
     motor_probe_init(&motor_probe);
 }
 
@@ -3469,6 +3502,7 @@ static void initialize_startup_usb(void) {
             return;
         }
         wheel_service_init(&wheel_service, &serial_service);
+        apply_retained_wheel_output_settings();
         run_wheel_startup_discovery();
         initialize_startup_console_usb();
         if (output_override_active) {

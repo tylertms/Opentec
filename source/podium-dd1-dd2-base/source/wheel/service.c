@@ -605,7 +605,8 @@ static bool scan_active(const WheelService *service) {
  * @brief Initializes attached-wheel protocol service state.
  *
  * Attaches the shared serial service and resets protocol, rotary transitions, display, scan
- * filter, request, and activity-deadline state.
+ * filter, request, and activity-deadline state. Retained output settings are applied by the
+ * firmware after this reset.
  *
  * @param[out] service Wheel service to initialize.
  * @param[in,out] transport Shared serial service used for type-two and type-three traffic.

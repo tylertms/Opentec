@@ -1308,6 +1308,28 @@ static void test_routes_auxiliary_output_commands(void) {
     assert(!wheel_service_apply_auxiliary_output_command(&service, NULL));
 }
 
+static void test_restores_retained_output_settings_after_service_reset(void) {
+    WheelService service;
+    initialize_service(&service);
+
+    wheel_service_set_auxiliary_output_option(&service, 2);
+    wheel_service_set_button_illumination(&service, true);
+    assert(service.auxiliary_output.option == 1);
+    assert(service.protocol.alternate_output.suppress_auxiliary_display);
+    assert(service.protocol.output_reports.button_illumination);
+
+    wheel_service_init(&service, &transport);
+    assert(service.auxiliary_output.option == 0);
+    assert(!service.protocol.alternate_output.suppress_auxiliary_display);
+    assert(!service.protocol.output_reports.button_illumination);
+
+    wheel_service_set_auxiliary_output_option(&service, 2);
+    wheel_service_set_button_illumination(&service, true);
+    assert(service.auxiliary_output.option == 1);
+    assert(service.protocol.alternate_output.suppress_auxiliary_display);
+    assert(service.protocol.output_reports.button_illumination);
+}
+
 static void test_routes_report_six_command(void) {
     WheelService service;
     initialize_service(&service);
@@ -2160,6 +2182,7 @@ int main(void) {
     test_mirrors_standard_adapter_output_reports();
     test_mirrors_extended_adapter_output_reports();
     test_routes_auxiliary_output_commands();
+    test_restores_retained_output_settings_after_service_reset();
     test_routes_packed_report_commands();
     test_routes_report_six_command();
     test_routes_and_toggles_interface_mode_gate();
