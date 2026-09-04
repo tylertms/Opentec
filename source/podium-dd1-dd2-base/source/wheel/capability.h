@@ -19,6 +19,7 @@ typedef struct {
     uint8_t multi_position_override; /**< Host override, or 0xff for automatic selection. */
     bool calibration_available; /**< True when calibration is available for the selected mode. */
     bool tuning_menu_available; /**< True when the tuning menu capability bit is set. */
+    bool status_memory_tuning_menu_available; /**< Status-memory tuning-menu availability. */
     bool input_available; /**< True after any active input path has been observed since reset. */
 } WheelCapabilityState;
 
@@ -70,6 +71,14 @@ void wheel_capability_update(WheelCapabilityState *state, uint8_t wheel_mode, ui
                              uint8_t report_capabilities);
 
 /**
+ * @brief Stores tuning-menu availability recovered from wheel status memory.
+ *
+ * @param[in,out] state Attached-wheel capability state.
+ * @param[in] available Recovered tuning-menu availability.
+ */
+void wheel_capability_set_status_memory_tuning_menu(WheelCapabilityState *state, bool available);
+
+/**
  * @brief Reports the effective attached-wheel input capability.
  *
  * Exposes the retained input latch only for wheel modes that publish it through the primary input
@@ -85,13 +94,12 @@ bool wheel_capability_input_available(const WheelCapabilityState *state, uint8_t
 /**
  * @brief Reports whether the attached wheel exposes the tuning menu.
  *
- * Returns true for inherently supported wheel modes and otherwise consults the retained capability
- * state only for modes ten, nineteen, twenty, and twenty-one.
+ * Returns true for inherently supported wheel modes, consults status-memory availability for mode
+ * ten, and consults report capability state for modes nineteen, twenty, and twenty-one.
  *
  * @param[in] state Persistent attached-wheel capability state.
  * @param[in] wheel_mode Negotiated attached-wheel mode.
- * @return true for inherently supported modes, or for modes ten, nineteen, twenty, and twenty-one
- * when state is nonnull and its flag is set; false otherwise.
+ * @return true when the selected mode's inherent or retained availability rule succeeds.
  */
 bool wheel_capability_tuning_menu_available(const WheelCapabilityState *state, uint8_t wheel_mode);
 

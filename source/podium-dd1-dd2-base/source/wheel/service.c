@@ -408,8 +408,6 @@ static void reset_connection(WheelService *service) {
         service->request[index] = 0;
     }
     service->status_memory_startup_pending = false;
-    service->tuning_menu_override_enabled = false;
-    service->tuning_menu_override_value = false;
     reset_transient_display_state(service);
 }
 
@@ -638,8 +636,6 @@ void wheel_service_init(WheelService *service, SerialService *transport) {
     service->alternative_shifter_enabled = false;
     service->alternative_shifter_debounced = false;
     service->status_memory_startup_pending = false;
-    service->tuning_menu_override_enabled = false;
-    service->tuning_menu_override_value = false;
 }
 
 /**
@@ -1837,8 +1833,6 @@ void wheel_service_run(WheelService *service, uint32_t now_ms, bool start_allowe
                 if (selecting && response->data[0] == WHEEL_PROTOCOL_COMMAND_SELECT_MODE) {
                     uint8_t mode = wheel_service_mode(service);
                     service->status_memory_startup_pending = mode == 0x0au || mode == 0x1cu;
-                    service->tuning_menu_override_enabled = false;
-                    service->tuning_menu_override_value = false;
                 }
                 service->protocol_exchange_completed = true;
                 if ((response->data[WHEEL_PROTOCOL_FLAGS_OFFSET] & WHEEL_PROTOCOL_REQUEST_READY) !=
@@ -1958,8 +1952,8 @@ bool wheel_service_status_memory_startup_pending(const WheelService *service) {
  * @brief Completes selected-wheel status-memory startup.
  *
  * Clears the startup gate, disarms the activity deadline that was retained while the gate was
- * active, and records the recovered tuning-menu availability. Calls without pending startup work
- * are ignored.
+ * active, and records the recovered tuning-menu availability. Mode 0x0A consumes the retained
+ * value; mode 0x1C remains unavailable. Calls without pending startup work are ignored.
  *
  * @param[in,out] service Wheel service awaiting startup status.
  * @param[in] available Recovered tuning-menu availability.
@@ -1970,8 +1964,7 @@ void wheel_service_finish_status_memory_startup(WheelService *service, bool avai
     }
     service->status_memory_startup_pending = false;
     service->protocol_deadline_active = false;
-    service->tuning_menu_override_enabled = true;
-    service->tuning_menu_override_value = available;
+    wheel_capability_set_status_memory_tuning_menu(&service->protocol.capabilities, available);
 }
 
 /**
@@ -2539,16 +2532,13 @@ bool wheel_service_torque_key_acknowledgement_available(const WheelService *serv
 /**
  * @brief Reports whether the attached wheel exposes the tuning menu.
  *
- * Applies the negotiated wheel mode's inherent and report-driven availability rules to the retained
- * capability state.
+ * Applies the negotiated wheel mode's inherent, status-memory, and report-driven availability
+ * rules to the retained capability state.
  *
  * @param[in] service Attached-wheel service and capability state.
  * @return True when tuning-menu operation is available.
  */
 bool wheel_service_tuning_menu_available(const WheelService *service) {
-    if (service->tuning_menu_override_enabled) {
-        return service->tuning_menu_override_value;
-    }
     return wheel_capability_tuning_menu_available(wheel_protocol_capabilities(&service->protocol),
                                                   wheel_service_mode(service));
 }

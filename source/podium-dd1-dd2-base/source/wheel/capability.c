@@ -20,6 +20,8 @@ enum {
         UINT8_MAX, /**< Sentinel indicating automatic host selection. */
     MULTI_POSITION_AUTOMATIC_WHEEL_MODE =
         9, /**< Wheel mode whose automatic selection uses pulse mode. */
+    STATUS_MEMORY_TUNING_MENU_MODE =
+        0x0a, /**< Wheel mode whose tuning-menu availability comes from status memory. */
 };
 
 /**
@@ -83,7 +85,8 @@ static bool calibration_forced_unavailable(uint8_t wheel_mode) {
 /**
  * @brief Initializes attached-wheel capability state.
  *
- * Clears report, feature, and input capabilities and selects automatic multi-position reporting.
+ * Clears report, feature, input, and status-memory capabilities and selects automatic
+ * multi-position reporting.
  *
  * @param[out] state Attached-wheel capability state to initialize.
  */
@@ -147,6 +150,18 @@ void wheel_capability_update(WheelCapabilityState *state, uint8_t wheel_mode, ui
 }
 
 /**
+ * @brief Stores tuning-menu availability recovered from wheel status memory.
+ *
+ * @param[in,out] state Attached-wheel capability state.
+ * @param[in] available Recovered tuning-menu availability.
+ */
+void wheel_capability_set_status_memory_tuning_menu(WheelCapabilityState *state, bool available) {
+    if (state != NULL) {
+        state->status_memory_tuning_menu_available = available;
+    }
+}
+
+/**
  * @brief Reports the effective attached-wheel input capability.
  *
  * Exposes the retained input-capability latch only for wheel modes that publish it through the
@@ -183,13 +198,13 @@ bool wheel_capability_input_available(const WheelCapabilityState *state, uint8_t
 /**
  * @brief Reports whether the attached wheel exposes the tuning menu.
  *
- * Treats wheel modes 6, 7, 9, 11, 18, and 29 as inherently available. Modes 10, 19, 20, and 21
- * use the retained capability state, while every other mode suppresses the menu.
+ * Treats wheel modes 6, 7, 9, 11, 18, and 29 as inherently available. Mode 10 uses status-memory
+ * availability, modes 19, 20, and 21 use report capability state, and every other mode suppresses
+ * the menu.
  *
  * @param[in] state Persistent attached-wheel capability state.
  * @param[in] wheel_mode Negotiated attached-wheel mode.
- * @return true for inherently supported modes, or for modes ten, nineteen, twenty, and twenty-one
- * when state is nonnull and its flag is set; false otherwise.
+ * @return true when the selected mode's inherent or retained availability rule succeeds.
  */
 bool wheel_capability_tuning_menu_available(const WheelCapabilityState *state, uint8_t wheel_mode) {
     switch (wheel_mode) {
@@ -200,7 +215,8 @@ bool wheel_capability_tuning_menu_available(const WheelCapabilityState *state, u
     case 18:
     case 29:
         return true;
-    case 10:
+    case STATUS_MEMORY_TUNING_MENU_MODE:
+        return state != NULL && state->status_memory_tuning_menu_available;
     case 19:
     case 20:
     case 21:

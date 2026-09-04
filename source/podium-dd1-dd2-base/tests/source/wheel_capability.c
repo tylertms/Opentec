@@ -86,20 +86,35 @@ static void test_gates_latched_input_capability_by_wheel_mode(void) {
 
 static void test_resolves_tuning_menu_availability(void) {
     static const uint8_t inherent_modes[] = {6, 7, 9, 11, 18, 29};
-    static const uint8_t reported_modes[] = {10, 19, 20, 21};
-    WheelCapabilityState state = {0};
+    static const uint8_t reported_modes[] = {19, 20, 21};
+    WheelCapabilityState state;
+    wheel_capability_init(&state);
 
-    for (uint8_t mode = 0; mode <= 30; mode++) {
+    for (uint16_t mode = 0; mode <= UINT8_MAX; mode++) {
         bool expected = false;
         for (uint8_t index = 0; index < sizeof(inherent_modes); index++) {
-            expected |= mode == inherent_modes[index];
+            expected |= (uint8_t)mode == inherent_modes[index];
         }
-        assert(wheel_capability_tuning_menu_available(&state, mode) == expected);
+        assert(wheel_capability_tuning_menu_available(&state, (uint8_t)mode) == expected);
     }
     state.tuning_menu_available = true;
     for (uint8_t index = 0; index < sizeof(reported_modes); index++) {
         assert(wheel_capability_tuning_menu_available(&state, reported_modes[index]));
     }
+    assert(!wheel_capability_tuning_menu_available(&state, 0x0a));
+    wheel_capability_set_status_memory_tuning_menu(&state, true);
+    for (uint16_t mode = 0; mode <= UINT8_MAX; mode++) {
+        bool expected = (uint8_t)mode == 0x0a;
+        for (uint8_t index = 0; index < sizeof(inherent_modes); index++) {
+            expected |= (uint8_t)mode == inherent_modes[index];
+        }
+        for (uint8_t index = 0; index < sizeof(reported_modes); index++) {
+            expected |= (uint8_t)mode == reported_modes[index];
+        }
+        assert(wheel_capability_tuning_menu_available(&state, (uint8_t)mode) == expected);
+    }
+    wheel_capability_set_status_memory_tuning_menu(&state, false);
+    assert(!wheel_capability_tuning_menu_available(&state, 0x0a));
     assert(!wheel_capability_tuning_menu_available(NULL, 10));
 }
 

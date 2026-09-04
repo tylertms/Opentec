@@ -103,8 +103,6 @@ typedef struct {
     bool alternative_shifter_enabled;   /**< Whether alternative shifter mode is enabled. */
     bool alternative_shifter_debounced; /**< Whether the current activation chord was debounced. */
     bool status_memory_startup_pending; /**< Whether mode 0x0A or 0x1C awaits status memory. */
-    bool tuning_menu_override_enabled;  /**< Whether startup status overrides capability data. */
-    bool tuning_menu_override_value;    /**< Startup status tuning-menu availability result. */
 } WheelService;
 
 /**
@@ -192,9 +190,9 @@ bool wheel_service_status_memory_startup_pending(const WheelService *service);
 /**
  * @brief Completes selected-wheel status-memory startup.
  *
- * Releases the startup gate, disarms its retained activity deadline, and applies the recovered
- * tuning-menu availability result. Calls without pending mode-0x0A or mode-0x1C startup are
- * ignored.
+ * Releases the startup gate, disarms its retained activity deadline, and stores recovered
+ * tuning-menu availability. Mode 0x0A consumes the retained value; mode 0x1C remains unavailable.
+ * Calls without pending mode-0x0A or mode-0x1C startup are ignored.
  *
  * @param[in,out] service Wheel service awaiting startup status.
  * @param[in] available Recovered tuning-menu availability.

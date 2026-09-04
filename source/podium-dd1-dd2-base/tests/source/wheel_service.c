@@ -277,6 +277,7 @@ static void test_recovers_malformed_protocol_response_and_clears_completion(void
     service.protocol.capabilities.multi_position_override = 2;
     service.protocol.capabilities.calibration_available = true;
     service.protocol.capabilities.tuning_menu_available = true;
+    service.protocol.capabilities.status_memory_tuning_menu_available = true;
     service.protocol.capabilities.input_available = true;
     service.protocol.axis_override_processor.x_available = true;
     service.protocol.axis_override_processor.y_available = true;
@@ -302,6 +303,7 @@ static void test_recovers_malformed_protocol_response_and_clears_completion(void
     assert(service.protocol.capabilities.multi_position_override == 2);
     assert(!service.protocol.capabilities.calibration_available);
     assert(!service.protocol.capabilities.tuning_menu_available);
+    assert(service.protocol.capabilities.status_memory_tuning_menu_available);
     assert(!service.protocol.capabilities.input_available);
     assert(service.protocol.axis_override_processor.x_available);
     assert(service.protocol.axis_override_processor.y_available);
@@ -763,20 +765,22 @@ static void test_gates_selected_modes_on_status_memory_startup(void) {
         run_service(&service, now_ms++);
         assert(wheel_service_protocol_phase(&service) == selected_phase);
 
-        bool available = index != 0;
+        bool available = index == 0;
         wheel_service_finish_status_memory_startup(&service, available);
         assert(!wheel_service_status_memory_startup_pending(&service));
         assert(!service.protocol_deadline_active);
-        assert(wheel_service_tuning_menu_available(&service) == available);
+        assert(service.protocol.capabilities.status_memory_tuning_menu_available == available);
+        assert(wheel_service_tuning_menu_available(&service) == (modes[index] == 0x0a));
         wheel_service_run(&service, stale_deadline_ms, false);
         assert(wheel_service_protocol_phase(&service) == selected_phase);
     }
 
     WheelService service;
-    (void)begin_protocol_mode(&service, WHEEL_PROTOCOL_COMMAND_SELECT_MODE, 0x0b);
+    begin_protocol_mode(&service, WHEEL_PROTOCOL_COMMAND_SELECT_MODE, 0x0b);
     assert(!wheel_service_status_memory_startup_pending(&service));
+    service.protocol.capabilities.status_memory_tuning_menu_available = true;
     wheel_service_finish_status_memory_startup(&service, false);
-    assert(service.tuning_menu_override_enabled == false);
+    assert(service.protocol.capabilities.status_memory_tuning_menu_available);
 }
 
 static void test_publishes_packet_mode_buttons(void) {
