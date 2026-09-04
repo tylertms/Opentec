@@ -130,7 +130,7 @@ static void test_applies_extended_torque_transitions(void) {
     assert(state.active_event_code == 0x11);
     assert(!state.operating_feature_enabled);
     assert(state.wheel_response.link == REMOTE_TUNING_LINK_EXTENDED);
-    assert(state.wheel_response.code == REMOTE_TUNING_RESPONSE_SETUP);
+    assert(state.wheel_response.code == REMOTE_TUNING_RESPONSE_NEXT_SETUP_PAGE);
     assert(state.wheel_response.value == 4);
 }
 

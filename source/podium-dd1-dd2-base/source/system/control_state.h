@@ -118,12 +118,13 @@ void system_control_state_set_operating_status(SystemControlState *state, uint8_
 /**
  * @brief Applies an accepted torque transition to shared system-control state.
  *
- * Stores the active transition event and applies the status, feature, and setup-response changes
- * selected by the transition policy.
+ * Stores the active transition event and applies the status, feature, and next-page response
+ * changes selected by the transition policy. An extended active restore retains the current page
+ * as the response value while using semantic response code 0x10.
  *
  * @param[in,out] state System-control state receiving the transition.
  * @param[in] wheel_mode Current attached-wheel mode.
- * @param[in] setup_page Current remote-tuning setup page.
+ * @param[in] setup_page Current remote-tuning setup page carried by response code 0x10.
  * @param[in] action Accepted torque transition action.
  */
 void system_control_state_apply_torque_transition(SystemControlState *state, uint8_t wheel_mode,

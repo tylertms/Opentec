@@ -7,17 +7,17 @@
 /**
  * @brief Effects selected for an accepted torque disable-state transition.
  *
- * The action separates event, status, feature, and setup-response updates so each owning service
- * can apply only the changes relevant to its protocol.
+ * The action separates event, status, feature, and next-page response updates so each owning
+ * service can apply only the changes relevant to its protocol.
  */
 typedef struct {
     uint8_t pending_event_code; /**< Event code to queue for presentation. */
     uint8_t active_event_code;  /**< Event code to retain as the active system event. */
     uint8_t status_code;        /**< Status code to publish when status_update is true. */
     bool status_update;         /**< Whether status_code must be published. */
-    bool feature_update;  /**< Whether feature_enabled must replace the current feature state. */
-    bool feature_enabled; /**< New operating-mode feature state when feature_update is true. */
-    bool setup_response;  /**< Whether the current setup page needs a wheel response. */
+    bool feature_update;     /**< Whether feature_enabled must replace the current feature state. */
+    bool feature_enabled;    /**< New operating-mode feature state when feature_update is true. */
+    bool next_page_response; /**< Whether an extended active restore needs response 0x10. */
 } SystemTorqueTransitionAction;
 
 /**
@@ -41,9 +41,9 @@ void system_torque_transition_init(SystemTorqueTransition *transition);
 /**
  * @brief Builds a queued system transition for a torque disable-state change.
  *
- * Produces event, status, feature, and setup-response effects only when the requested state differs
- * from the last accepted state and the event path can accept a new event. The state remains
- * unchanged until system_torque_transition_accept() confirms that the event was queued.
+ * Produces event, status, feature, and next-page response effects only when the requested state
+ * differs from the last accepted state and the event path can accept a new event. The state
+ * remains unchanged until system_torque_transition_accept() confirms that the event was queued.
  *
  * @param[in] transition Last torque disable state accepted by the system event path.
  * @param[in] disable_requested Requested torque disable state.

@@ -101,10 +101,10 @@ void system_control_state_apply_torque_transition(SystemControlState *state, uin
     if (action->status_update) {
         system_control_state_set_status(state, wheel_mode, action->status_code);
     }
-    if (wheel_mode == WHEEL_MODE_EXTENDED && action->setup_response) {
+    if (wheel_mode == WHEEL_MODE_EXTENDED && action->next_page_response) {
         state->wheel_response = (RemoteTuningResponse){
             .link = REMOTE_TUNING_LINK_EXTENDED,
-            .code = REMOTE_TUNING_RESPONSE_SETUP,
+            .code = REMOTE_TUNING_RESPONSE_NEXT_SETUP_PAGE,
             .value = setup_page,
         };
     }

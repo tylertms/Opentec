@@ -45,7 +45,7 @@ bool system_torque_transition_update(const SystemTorqueTransition *transition,
             action->status_update = true;
             action->status_code = SYSTEM_STATUS_IDLE;
         } else {
-            action->setup_response = true;
+            action->next_page_response = true;
         }
     }
 

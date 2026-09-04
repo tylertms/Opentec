@@ -25,7 +25,7 @@ static void test_builds_standard_disable_and_restore_events(void) {
     assert(action.active_event_code == 0x0d);
     assert(!action.status_update);
     assert(!action.feature_update);
-    assert(!action.setup_response);
+    assert(!action.next_page_response);
     system_torque_transition_accept(&transition, true);
     assert(transition.applied_disabled);
 
@@ -36,7 +36,7 @@ static void test_builds_standard_disable_and_restore_events(void) {
     assert(action.active_event_code == 0x11);
     assert(!action.status_update);
     assert(!action.feature_update);
-    assert(!action.setup_response);
+    assert(!action.next_page_response);
     system_torque_transition_accept(&transition, false);
     assert(!transition.applied_disabled);
 }
@@ -54,7 +54,7 @@ static void test_builds_extended_mode_disable_transition(void) {
     assert(action.feature_enabled);
     assert(action.status_update);
     assert(action.status_code == 0x2b);
-    assert(!action.setup_response);
+    assert(!action.next_page_response);
     system_torque_transition_accept(&transition, true);
 }
 
@@ -69,7 +69,7 @@ static void test_builds_extended_mode_idle_transition(void) {
     assert(!action.feature_enabled);
     assert(action.status_update);
     assert(action.status_code == 0x1e);
-    assert(!action.setup_response);
+    assert(!action.next_page_response);
     system_torque_transition_accept(&transition, false);
     assert(!transition.applied_disabled);
 }
@@ -82,7 +82,7 @@ static void test_builds_extended_mode_active_transition(void) {
     assert(action.feature_update);
     assert(!action.feature_enabled);
     assert(!action.status_update);
-    assert(action.setup_response);
+    assert(action.next_page_response);
 }
 
 static void test_retries_until_event_acceptance(void) {
