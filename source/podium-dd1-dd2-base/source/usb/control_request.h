@@ -45,6 +45,7 @@ typedef enum {
 /** @brief Classified endpoint-zero request fields used by the USB control service. */
 typedef struct {
     UsbControlRequestKind kind; /**< Request classification. */
+    uint8_t request_type;       /**< Direction, type, and recipient bit fields. */
     uint16_t value;             /**< Request-specific value. */
     uint16_t index;             /**< Request-specific index. */
     uint16_t length;            /**< Number of bytes requested in the data stage. */

@@ -944,8 +944,9 @@ static void handle_control_transfer(void) {
 /**
  * @brief Dispatches one endpoint-zero setup packet.
  *
- * Routes console-specific, updater, descriptor, and standard HID requests to their owning control
- * transfer state machines and stalls malformed or unsupported packets.
+ * Resets the active control transfer before routing console-specific, updater, descriptor, and
+ * standard HID requests to their owning control transfer state machines. A deferred address
+ * remains pending until the next endpoint-zero input completion.
  */
 static void handle_setup(void) {
     if (usb_event.endpoint != USB_CONTROL_ENDPOINT) {
@@ -954,7 +955,6 @@ static void handle_setup(void) {
     }
     control_status_in_armed = false;
     platform_usb_control_reset();
-    usb_device_control_cancel(&device_control);
     if (usb_event.length != USB_SETUP_PACKET_SIZE ||
         !usb_setup_packet_decode(usb_event.data, &setup_packet) ||
         !usb_control_request_classify(&setup_packet, &control_request)) {
@@ -1113,23 +1113,25 @@ static void apply_configuration(void) {
 /**
  * @brief Applies a completed USB address change.
  *
- * Commits the pending address after the endpoint-zero status stage and updates the controller.
+ * Commits a retained address after the next endpoint-zero input completion and updates the
+ * controller only when an address change is pending.
  */
 static void complete_control_change(void) {
-    UsbDevicePendingChange pending_change = device_control.pending_change;
-    usb_device_control_complete(&device_control);
-    if (pending_change == USB_DEVICE_PENDING_ADDRESS) {
-        platform_usb_set_address(device_control.address);
+    if (device_control.pending_change != USB_DEVICE_PENDING_ADDRESS) {
+        return;
     }
+    usb_device_control_complete(&device_control);
+    platform_usb_set_address(device_control.address);
 }
 
 /**
  * @brief Advances a completed endpoint-zero input transaction.
  *
- * Sends the next data packet, enters the prearmed zero-length output status stage after the last
- * packet, or commits an acknowledged state change and rearms setup reception.
+ * Commits a retained address before processing the active transfer, sends the next data packet,
+ * enters the zero-length output status stage after the last packet, or rearms setup reception.
  */
 static void handle_control_input_complete(void) {
+    complete_control_change();
     if (control_stage == USB_CONTROL_STAGE_DATA_IN) {
         if (send_next_control_packet()) {
             return;
@@ -1138,7 +1140,6 @@ static void handle_control_input_complete(void) {
         return;
     }
     if (control_stage == USB_CONTROL_STAGE_STATUS_IN) {
-        complete_control_change();
         control_status_in_armed = false;
         control_stage = USB_CONTROL_STAGE_IDLE;
         platform_usb_control_ready();

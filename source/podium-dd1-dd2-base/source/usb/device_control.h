@@ -48,10 +48,10 @@ typedef struct {
     uint8_t report_id;           /**< HID report identifier for a report transfer. */
 } UsbControlTransfer;
 
-/** @brief Deferred device-state changes applied after a control status stage. */
+/** @brief Deferred device-state changes applied after an endpoint-zero input completion. */
 typedef enum {
     USB_DEVICE_PENDING_NONE,    /**< No deferred state change. */
-    USB_DEVICE_PENDING_ADDRESS, /**< Apply a pending device address. */
+    USB_DEVICE_PENDING_ADDRESS, /**< Apply the retained address on the next input completion. */
 } UsbDevicePendingChange;
 
 /** @brief USB address, configuration, interface, HID, power, and pending-change state. */
@@ -61,8 +61,8 @@ typedef struct {
     uint8_t alternate_interfaces[USB_DEVICE_INTERFACE_COUNT]; /**< Active alternate settings. */
     uint8_t hid_idle_rate;                 /**< HID idle rate for interface zero. */
     uint8_t hid_protocol;                  /**< HID protocol selected by the host. */
-    uint8_t pending_value;                 /**< Value retained for the pending state change. */
-    UsbDevicePendingChange pending_change; /**< Deferred state change kind. */
+    uint8_t pending_value;                 /**< Address retained through setup interruption. */
+    UsbDevicePendingChange pending_change; /**< State change retained through setup interruption. */
     bool self_powered;         /**< True when the active configuration is self-powered. */
     bool remote_wakeup;        /**< True when the host enabled remote wakeup. */
     bool remote_wakeup_forced; /**< True when hardware requires remote wakeup status. */
@@ -86,7 +86,8 @@ void usb_device_control_init(UsbDeviceControl *device, bool self_powered,
  * @brief Handles a classified endpoint-zero request.
  *
  * Applies standard device state changes, serves descriptors and HID state, and describes the
- * transfer that the control pipe must perform.
+ * transfer that the control pipe must perform. A pending address survives a subsequent setup
+ * dispatch until usb_device_control_complete consumes the next endpoint-zero input completion.
  *
  * @param[in,out] device Current USB device state.
  * @param[in] request Classified control request.
@@ -102,7 +103,8 @@ UsbControlTransfer usb_device_control_handle(UsbDeviceControl *device,
 /**
  * @brief Commits a pending USB address.
  *
- * Applies the retained address after the status stage and clears the pending transition.
+ * Applies the retained address after the next endpoint-zero input completion and clears the
+ * pending transition.
  *
  * @param[in,out] device Current USB device state.
  */

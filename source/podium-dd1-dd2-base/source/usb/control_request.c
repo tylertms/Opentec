@@ -12,6 +12,8 @@ enum {
     USB_RECIPIENT_DEVICE = 0x00,           /**< Device request recipient. */
     USB_RECIPIENT_INTERFACE = 0x01,        /**< Interface request recipient. */
     USB_RECIPIENT_ENDPOINT = 0x02,         /**< Endpoint request recipient. */
+    USB_FEATURE_ENDPOINT_HALT = 0,         /**< Endpoint halt feature selector. */
+    USB_FEATURE_DEVICE_REMOTE_WAKEUP = 1,  /**< Device remote-wakeup feature selector. */
     USB_REQUEST_GET_STATUS = 0,            /**< Standard GET_STATUS request code. */
     USB_REQUEST_CLEAR_FEATURE = 1,         /**< Standard CLEAR_FEATURE request code. */
     USB_REQUEST_SET_FEATURE = 3,           /**< Standard SET_FEATURE request code. */

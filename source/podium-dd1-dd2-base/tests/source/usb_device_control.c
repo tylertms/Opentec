@@ -44,19 +44,28 @@ static void test_address_changes_after_status_stage(void) {
     assert(device.address == 42);
 }
 
-static void test_new_setup_preserves_pending_change(void) {
+static void test_new_setup_preserves_pending_address(void) {
     UsbDeviceControl device;
     usb_device_control_init(&device, true, false);
     UsbControlRequest control = request(USB_CONTROL_SET_ADDRESS);
     control.value = 42;
 
-    usb_device_control_handle(&device, &control, &catalog, false);
+    UsbControlTransfer transfer = usb_device_control_handle(&device, &control, &catalog, false);
+    assert(transfer.kind == USB_CONTROL_TRANSFER_ACKNOWLEDGE);
+    assert(device.pending_change == USB_DEVICE_PENDING_ADDRESS);
+    assert(device.pending_value == 42);
+
     control = request(USB_CONTROL_GET_CONFIGURATION);
-    assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
-           USB_CONTROL_TRANSFER_VALUE);
+    transfer = usb_device_control_handle(&device, &control, &catalog, false);
+    assert(transfer.kind == USB_CONTROL_TRANSFER_VALUE);
+    assert(device.address == 0);
+    assert(device.pending_change == USB_DEVICE_PENDING_ADDRESS);
+    assert(device.pending_value == 42);
     usb_device_control_complete(&device);
 
     assert(device.address == 42);
+    assert(device.pending_change == USB_DEVICE_PENDING_NONE);
+    assert(device.pending_value == 0);
 }
 
 static void test_configuration_changes_during_setup(void) {
@@ -376,7 +385,7 @@ static void test_rejects_malformed_descriptors_and_endpoints(void) {
 
 int main(void) {
     test_address_changes_after_status_stage();
-    test_new_setup_preserves_pending_change();
+    test_new_setup_preserves_pending_address();
     test_configuration_changes_during_setup();
     test_selects_and_clips_descriptors();
     test_hid_state_and_report_handoff();
