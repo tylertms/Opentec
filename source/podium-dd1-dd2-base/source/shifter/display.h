@@ -116,7 +116,9 @@ bool shifter_display_update_local(ShifterDisplay *display, ShifterGear gear, boo
  * Showing expiry and neutral clearing run before the connection gate. The first active waiting
  * sample records its gear and returns before rendering, while a monitoring sample can render
  * before connection loss returns the state to waiting. The corresponding official dispatch spans
- * 0x034C78-0x034DC2 and returns through 0x034DC8.
+ * 0x034C78-0x034DC2 and returns through 0x034DC8. Calibration WAITING writes 0x7D and 0x08 to
+ * attached-display slots zero and one while preserving slot two; each POSITION prompt writes slot
+ * two, and SHIFTER/CALIBRATION replace all three slots. These writes match 0x03505A-0x035D74.
  *
  * @param[in,out] display Persistent display state to update.
  * @param[in] gear Current H-pattern gear.

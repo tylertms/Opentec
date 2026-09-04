@@ -11,16 +11,21 @@
  * @brief H-pattern display timing, position, and glyph constants.
  */
 enum {
-    DISPLAY_HOLD_DURATION_MS = 1000, /**< Duration of a temporary gear glyph. */
-    GEAR_DISPLAY_POSITION = 1,       /**< Display slot used for gear glyphs. */
-    GLYPH_A = 0x77,                  /**< Seven-segment glyph for the letter A. */
-    GLYPH_C = 0x39,                  /**< Seven-segment glyph for the letter C. */
-    GLYPH_F = 0x71,                  /**< Seven-segment glyph for the letter F. */
-    GLYPH_L = 0x38,                  /**< Seven-segment glyph for the letter L. */
-    GLYPH_NEUTRAL = 0x54,            /**< Seven-segment glyph for neutral. */
-    GLYPH_REVERSE = 0x50,            /**< Seven-segment glyph for reverse. */
-    GLYPH_S = 0x6d,                  /**< Seven-segment glyph for the letter S. */
-    GLYPH_T = 0x78,                  /**< Seven-segment glyph for the letter T. */
+    DISPLAY_HOLD_DURATION_MS = 1000,           /**< Duration of a temporary gear glyph. */
+    GEAR_DISPLAY_POSITION = 1,                 /**< Display slot used for gear glyphs. */
+    CALIBRATION_WAITING_FIRST_POSITION = 0,    /**< Official waiting-prompt first slot. */
+    CALIBRATION_WAITING_SECOND_POSITION = 1,   /**< Official waiting-prompt second slot. */
+    CALIBRATION_POSITION_DISPLAY_POSITION = 2, /**< Official calibration-position slot. */
+    GLYPH_A = 0x77,                            /**< Seven-segment glyph for the letter A. */
+    GLYPH_C = 0x39,                            /**< Seven-segment glyph for the letter C. */
+    GLYPH_F = 0x71,                            /**< Seven-segment glyph for the letter F. */
+    GLYPH_L = 0x38,                            /**< Seven-segment glyph for the letter L. */
+    GLYPH_CALIBRATION_WAITING_FIRST = 0x7d,    /**< Official waiting-prompt digit glyph. */
+    GLYPH_CALIBRATION_WAITING_SECOND = 0x08,   /**< Official waiting-prompt raw glyph. */
+    GLYPH_NEUTRAL = 0x54,                      /**< Seven-segment glyph for neutral. */
+    GLYPH_REVERSE = 0x50,                      /**< Seven-segment glyph for reverse. */
+    GLYPH_S = 0x6d,                            /**< Seven-segment glyph for the letter S. */
+    GLYPH_T = 0x78,                            /**< Seven-segment glyph for the letter T. */
 };
 
 /**
@@ -92,6 +97,51 @@ static uint8_t calibration_glyph(HPatternCalibrationPosition position) {
         return 0;
     }
     return 0;
+}
+
+/**
+ * @brief Applies an H-pattern calibration prompt to the attached-wheel glyph page.
+ *
+ * The official waiting prompt writes its first two slots and preserves the position slot. Each
+ * position prompt writes only the third slot, while the shifter and calibration labels replace all
+ * three slots. These writes correspond to the 0x03505A-0x035D74 calibration display sequence.
+ *
+ * @param[in,out] output Attached-wheel display output to update.
+ * @param[in] prompt Calibration prompt to render.
+ * @param[in] position Position glyph to render for a position prompt.
+ * @return True when a glyph changed.
+ */
+static bool set_calibration_output(WheelDisplayOutput *output, HPatternCalibrationPrompt prompt,
+                                   HPatternCalibrationPosition position) {
+    uint8_t glyphs[WHEEL_DISPLAY_GLYPH_COUNT] = {output->glyphs[0], output->glyphs[1],
+                                                 output->glyphs[2]};
+    switch (prompt) {
+    case H_PATTERN_CALIBRATION_PROMPT_WAITING:
+        glyphs[CALIBRATION_WAITING_FIRST_POSITION] = GLYPH_CALIBRATION_WAITING_FIRST;
+        glyphs[CALIBRATION_WAITING_SECOND_POSITION] = GLYPH_CALIBRATION_WAITING_SECOND;
+        break;
+    case H_PATTERN_CALIBRATION_PROMPT_SHIFTER:
+        glyphs[0] = GLYPH_S;
+        glyphs[1] = GLYPH_F;
+        glyphs[2] = GLYPH_T;
+        break;
+    case H_PATTERN_CALIBRATION_PROMPT_CALIBRATION:
+        glyphs[0] = GLYPH_C;
+        glyphs[1] = GLYPH_A;
+        glyphs[2] = GLYPH_L;
+        break;
+    case H_PATTERN_CALIBRATION_PROMPT_POSITION:
+        glyphs[CALIBRATION_POSITION_DISPLAY_POSITION] = calibration_glyph(position);
+        break;
+    case H_PATTERN_CALIBRATION_PROMPT_NONE:
+        return false;
+    }
+    bool changed = output->glyphs[0] != glyphs[0] || output->glyphs[1] != glyphs[1] ||
+                   output->glyphs[2] != glyphs[2];
+    output->glyphs[0] = glyphs[0];
+    output->glyphs[1] = glyphs[1];
+    output->glyphs[2] = glyphs[2];
+    return changed;
 }
 
 /**
@@ -262,6 +312,9 @@ bool shifter_display_update_local(ShifterDisplay *display, ShifterGear gear, boo
  * Calibration owns the glyph display while active, presents the shifter and calibration labels,
  * and then shows the next position to capture. Extended-mode entry waits without replacing its
  * separate presentation. The seventh-gear glyph remains visible for one second after completion.
+ * The waiting prompt writes 0x7D and 0x08 to the first two attached-display slots, position prompts
+ * write only the third slot, and the SFT and CAL labels replace all three slots. This matches the
+ * official calibration sequence at 0x03505A-0x035D74.
  * Outside calibration, a changed non-neutral gear is shown for one second when the display is
  * idle. Phase dispatch handles expiry and neutral clearing before the connection gate. The first
  * active waiting sample records the current gear and returns before rendering, while a monitoring
@@ -311,30 +364,7 @@ bool shifter_display_update(ShifterDisplay *display, ShifterGear gear, bool whee
         display->last_gear = gear;
         display->clear_after_ms = 0;
         display->calibration_visible = true;
-        if (calibration_prompt == H_PATTERN_CALIBRATION_PROMPT_WAITING) {
-            return false;
-        }
-
-        uint8_t glyphs[3] = {0};
-        if (calibration_prompt == H_PATTERN_CALIBRATION_PROMPT_SHIFTER) {
-            glyphs[0] = GLYPH_S;
-            glyphs[1] = GLYPH_F;
-            glyphs[2] = GLYPH_T;
-        } else if (calibration_prompt == H_PATTERN_CALIBRATION_PROMPT_CALIBRATION) {
-            glyphs[0] = GLYPH_C;
-            glyphs[1] = GLYPH_A;
-            glyphs[2] = GLYPH_L;
-        } else {
-            glyphs[GEAR_DISPLAY_POSITION] = calibration_glyph(calibration_position);
-        }
-        if (output->glyphs[0] == glyphs[0] && output->glyphs[1] == glyphs[1] &&
-            output->glyphs[2] == glyphs[2]) {
-            return false;
-        }
-        output->glyphs[0] = glyphs[0];
-        output->glyphs[1] = glyphs[1];
-        output->glyphs[2] = glyphs[2];
-        return true;
+        return set_calibration_output(output, calibration_prompt, calibration_position);
     }
 
     if (wheel_active && display->calibration_visible) {
