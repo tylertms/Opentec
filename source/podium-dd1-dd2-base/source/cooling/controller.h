@@ -50,8 +50,9 @@ typedef struct {
 /**
  * @brief Initializes the thermal fan and force controller.
  *
- * Starts in the idle phase with default managed-motor offsets, startup fan duty, full force scale,
- * and the selected standard or dual-fan output map.
+ * Starts in the initialization phase with default managed-motor offsets, startup fan duty, full
+ * force scale, and the selected standard or dual-fan output map. The phase remains initialization
+ * until the first automatic update publishes the first thermal state.
  *
  * @param[out] controller Thermal controller state to initialize.
  * @param[in] dual_fan_mode True to select the alternate two-output fan duty map.
