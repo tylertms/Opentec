@@ -47,13 +47,27 @@ static void test_bounded_normalization_uses_range_results(void) {
                                                       10.0f, 20.0f, NAN)));
 }
 
-static void test_scales_rotation_from_range_code(void) {
+static void test_scales_rotation_from_raw_sensitivity_code(void) {
     assert(float_bits(force_feedback_script_rotation_scale(1.0f, 36, 0)) ==
            UINT32_C(0x40490fdb));
     assert(float_bits(force_feedback_script_rotation_scale(1.0f, 126, 36)) == UINT32_C(0x40490fdb));
     assert(float_bits(force_feedback_script_rotation_scale(1.0f, 127, 36)) == UINT32_C(0x40490fdb));
     assert(force_feedback_script_rotation_scale(10.0f, 0, 999) == 0.0f);
-    assert(force_feedback_script_rotation_scale(1.0f, UINT8_MAX, 999) > 0.0f);
+}
+
+static void test_uses_signed_sensitivity_boundaries(void) {
+    const uint16_t extended_range = 999;
+
+    assert(float_bits(force_feedback_script_rotation_scale(1.0f, 125, extended_range)) ==
+           UINT32_C(0x412e886e));
+    assert(float_bits(force_feedback_script_rotation_scale(1.0f, 126, extended_range)) ==
+           UINT32_C(0x42ae5bc0));
+    assert(float_bits(force_feedback_script_rotation_scale(1.0f, 127, extended_range)) ==
+           UINT32_C(0x42ae5bc0));
+    assert(float_bits(force_feedback_script_rotation_scale(1.0f, 0x80, extended_range)) ==
+           UINT32_C(0xc132b8c3));
+    assert(float_bits(force_feedback_script_rotation_scale(1.0f, 0xa5, extended_range)) ==
+           UINT32_C(0xc0fe1eb5));
 }
 
 int main(void) {
@@ -61,6 +75,7 @@ int main(void) {
     test_classification_uses_ordered_comparisons();
     test_normalizes_between_boundaries();
     test_bounded_normalization_uses_range_results();
-    test_scales_rotation_from_range_code();
+    test_scales_rotation_from_raw_sensitivity_code();
+    test_uses_signed_sensitivity_boundaries();
     return 0;
 }

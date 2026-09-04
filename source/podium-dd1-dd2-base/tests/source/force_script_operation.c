@@ -102,14 +102,17 @@ static void test_executes_range_and_integer_operations(void) {
     assert(runtime.variables[2] == 11);
 }
 
-static void test_scales_rotation_from_runtime_range(void) {
+static void test_scales_rotation_from_raw_sensitivity_code(void) {
+    const uint8_t raw_sensitivity_code = (uint8_t)((int16_t)36 - 127);
+    assert(raw_sensitivity_code == 0xa5);
     ForceFeedbackScriptRuntime runtime = {
-        .extended_rotation_range = 1080,
-        .rotation_range_code = 126,
+        .extended_rotation_range = 999,
+        .rotation_range_code = raw_sensitivity_code,
     };
     const uint8_t script[] = {0x02, 0x20};
     execute(&runtime, 0xd7, script, sizeof(script));
-    assert(runtime.variables[0] == float_bits(1.0f * 3.1415927f * 5400.0f / 180.0f));
+    assert(runtime.variables[0] == UINT32_C(0xc0fe1eb5));
+    assert(runtime.variables[0] != UINT32_C(0x40490fdb));
 }
 
 static void test_consumes_without_committing(void) {
@@ -162,7 +165,7 @@ int main(void) {
     test_executes_bit_operations();
     test_executes_copy_and_sample_operations();
     test_executes_range_and_integer_operations();
-    test_scales_rotation_from_runtime_range();
+    test_scales_rotation_from_raw_sensitivity_code();
     test_consumes_without_committing();
     test_rejects_invalid_records();
     test_dispatches_every_operation_byte();

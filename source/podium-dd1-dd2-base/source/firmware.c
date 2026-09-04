@@ -3812,16 +3812,17 @@ static void service_force_feedback_script(uint32_t now_ms) {
 
     int32_t position = wheel_position_center(motor_position_report.wheel_position,
                                              base_settings.wheel_position.center);
-    uint16_t rotation_range = tuning_profile->rotation_degrees / 10u;
+    uint16_t rotation_range_units = tuning_profile->rotation_degrees / 10u;
     if (usb_device_operating_mode() == USB_OPERATING_MODE_XBOX_GIP &&
         tuning_profile->automatic_rotation != 0) {
-        rotation_range = xbox_runtime_steering_range_units;
+        rotation_range_units = xbox_runtime_steering_range_units;
     }
-    force_feedback_script_system.values.extended_rotation_range = rotation_range;
-    force_feedback_script_system.values.rotation_range_code =
-        tuning_profile->automatic_rotation ? 126u
-        : rotation_range > 125u            ? 127u
-                                           : (uint8_t)rotation_range;
+    force_feedback_script_system.values.extended_rotation_range = rotation_range_units;
+    uint8_t raw_sensitivity_code =
+        tuning_profile->automatic_rotation != 0
+            ? 0x7eu
+            : (uint8_t)((int16_t)rotation_range_units - 127);
+    force_feedback_script_system.values.rotation_range_code = raw_sensitivity_code;
     force_feedback_script_output_config = (ForceFeedbackScriptOutputConfig){
         .soft_stop = {.travel_limit = (int32_t)travel},
         .available_percent = cooling_controller.available_force_percent,

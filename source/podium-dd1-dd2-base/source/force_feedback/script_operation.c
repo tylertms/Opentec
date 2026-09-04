@@ -476,7 +476,8 @@ static ForceFeedbackScriptDestinationResult execute_range(ForceFeedbackScriptRun
  * @brief Executes rotation-range scaling.
  *
  * Resolves one floating-point source, scales it from the active rotation range, and consumes or
- * writes the encoded destination.
+ * writes the encoded destination. The runtime keeps the raw sensitivity byte separate from the
+ * decoded extended range because the VM operation consumes the byte exactly as received.
  *
  * @param[in,out] runtime Script state containing the rotation range and destination state.
  * @param[in] script Complete encoded script.
@@ -494,8 +495,9 @@ execute_rotation_scale(ForceFeedbackScriptRuntime *runtime, const uint8_t *scrip
     if (!value.valid) {
         return operation_result(value.cursor, false);
     }
+    uint8_t raw_sensitivity_code = runtime->rotation_range_code;
     float result = force_feedback_script_rotation_scale(
-        (OperationValue){.bits = value.value}.number, runtime->rotation_range_code,
+        (OperationValue){.bits = value.value}.number, raw_sensitivity_code,
         runtime->extended_rotation_range);
     return write_value(runtime, script, length, value.cursor,
                        (OperationValue){.number = result}.bits, commit);

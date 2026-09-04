@@ -24,9 +24,10 @@ typedef struct {
  * Uses motion value 0 as the input selector. When integration is enabled, a matching live-input
  * slot adds its floating-point duration to position and clamps the result to -1 through 1. If no
  * slot matches and the selector is the position status, position is sampled as wheel_position
- * divided by half_travel; other unmatched selectors retain position. Derives angle, velocity, and
- * acceleration from the configured rotation range and motion clock, then stores position, angle,
- * velocity, and acceleration in motion values 4 through 7 and axes 0 through 3 respectively.
+ * divided by half_travel; other unmatched selectors retain position. Derives angle from the raw
+ * encoded sensitivity code and its separate decoded extended range, then derives velocity and
+ * acceleration from the motion clock. Stores position, angle, velocity, and acceleration in
+ * motion values 4 through 7 and axes 0 through 3 respectively.
  *
  * @param[in,out] runtime Script motion values, rotation range, and axes to update.
  * @param[in] inputs Live integration inputs and selector statuses.
