@@ -1453,8 +1453,9 @@ static bool motor_force_output_inhibited(void) {
 /**
  * @brief Processes one completed motor exchange and prepares its successor.
  *
- * Decodes valid live packets and publishes position reports. Normal exchanges retain the current
- * force-output response in a two-frame history; replay exchanges restore the older response
+ * Decodes only exact type-0x01 live packets as position reports. Normal exchanges retain the
+ * current force-output response in a two-frame history; exact type-0x81 replay exchanges restore
+ * the older response
  * without consuming output state. Every non-startup frame passes the primary-force interlock
  * immediately before encoding, and bridge frames retain the preceding status byte while force is
  * zeroed. CRC-valid packets clear delimiter-failure tracking, CRC failures preserve it, and the
@@ -1471,10 +1472,10 @@ static void service_motor_link(void) {
     if (frame_result == MOTOR_LIVE_FRAME_VALID) {
         motor_malformed_frame_count = 0;
         platform_motor_link_confirm_synchronized();
+        replay_requested = motor_live_frame_requests_replay(&motor_live_frame);
         if (motor_position_report_decode(&motor_live_frame, &motor_position_report)) {
             motor_position_ready = true;
             wheel_position_ready = true;
-            replay_requested = motor_position_report.replay;
             if (!base_settings.wheel_position.calibrated) {
                 (void)capture_current_wheel_center();
             }

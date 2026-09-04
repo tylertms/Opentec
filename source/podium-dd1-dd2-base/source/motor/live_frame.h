@@ -87,6 +87,17 @@ MotorLiveFrameResult motor_live_frame_decode(const uint8_t input[MOTOR_LIVE_FRAM
 bool motor_position_report_decode(const MotorLiveFrame *frame, MotorPositionReport *report);
 
 /**
+ * @brief Reports whether a live frame requests output replay.
+ *
+ * Accepts only exact type 0x81. Position type 0x01 and every other flagged or unflagged type are
+ * ordinary non-replay frames.
+ *
+ * @param[in] frame Decoded live frame to inspect.
+ * @return True only for an exact replay request.
+ */
+bool motor_live_frame_requests_replay(const MotorLiveFrame *frame);
+
+/**
  * @brief Inhibits the primary force component in a live position frame.
  *
  * Clears the two primary-magnitude payload bytes in position frames, including replay frames,

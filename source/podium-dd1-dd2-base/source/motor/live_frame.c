@@ -131,6 +131,11 @@ bool motor_position_report_decode(const MotorLiveFrame *frame, MotorPositionRepo
     return true;
 }
 
+bool motor_live_frame_requests_replay(const MotorLiveFrame *frame) {
+    return frame != NULL &&
+           frame->type == (uint8_t)(MOTOR_LIVE_POSITION_TYPE | MOTOR_LIVE_REPLAY_FLAG);
+}
+
 void motor_live_frame_inhibit_primary(MotorLiveFrame *frame) {
     if (frame == NULL ||
         (frame->type & (uint8_t)~MOTOR_LIVE_REPLAY_FLAG) != MOTOR_LIVE_POSITION_TYPE) {

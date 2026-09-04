@@ -38,8 +38,18 @@ static void test_replay_is_not_a_position_report(void) {
     MotorPositionReport before = report;
 
     assert(motor_live_frame_decode(encoded, &frame) == MOTOR_LIVE_FRAME_VALID);
+    assert(motor_live_frame_requests_replay(&frame));
     assert(!motor_position_report_decode(&frame, &report));
     assert(memcmp(&report, &before, sizeof(report)) == 0);
+
+    const uint8_t non_replay_types[] = {0x00, MOTOR_LIVE_POSITION_TYPE, MOTOR_LIVE_REPLAY_FLAG,
+                                        MOTOR_LIVE_STATUS_TYPE,
+                                        MOTOR_LIVE_STATUS_TYPE | MOTOR_LIVE_REPLAY_FLAG};
+    for (size_t index = 0; index < sizeof(non_replay_types); index++) {
+        frame.type = non_replay_types[index];
+        assert(!motor_live_frame_requests_replay(&frame));
+    }
+    assert(!motor_live_frame_requests_replay(NULL));
 }
 
 static void test_encode_force(void) {
