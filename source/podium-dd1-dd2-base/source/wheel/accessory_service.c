@@ -37,6 +37,7 @@ enum {
     WHEEL_ACCESSORY_ERASE_VALUE = 0xbb,
     WHEEL_ACCESSORY_HANDSHAKE_VALUE = 0x05fa,
     WHEEL_ACCESSORY_AUTO_SENSITIVITY = 0x7e,
+    WHEEL_ACCESSORY_OUTPUT_OVERRIDE_TUNING_VALUE = 0x64,
     WHEEL_ACCESSORY_OUTPUT_OVERRIDE_VALUE = 0xff,
     WHEEL_ACCESSORY_POSITION_MODULUS_LOW = 0x5c7f,
     WHEEL_ACCESSORY_POSITION_MODULUS_DEFAULT = 0x5d2b,
@@ -126,6 +127,11 @@ static bool accessory_supports_composite(const WheelAccessoryService *service) {
 
 static bool accessory_supports_extended(const WheelAccessoryService *service) {
     return service->accessory.kind == WHEEL_ACCESSORY_EXTENDED;
+}
+
+static bool accessory_supports_output_override(const WheelAccessoryService *service) {
+    return service->accessory.kind == WHEEL_ACCESSORY_STANDARD ||
+           service->accessory.kind == WHEEL_ACCESSORY_EXTENDED;
 }
 
 static bool queue_sync_state(WheelAccessoryService *service, CommandTransport *transport,
@@ -519,10 +525,8 @@ static void finish_request(WheelAccessoryService *service, CommandTransport *tra
         break;
     case WHEEL_ACCESSORY_TRANSFER_OUTPUT_OVERRIDE_WRITE:
         service->output_override_active = service->output_override_requested;
-        service->output_override_restore_pending = false;
-        service->output_override_complete = true;
-        service->mirrored_parameters[6] = service->output_override_value;
-        if (service->desired_parameters[6] == service->output_override_value) {
+        service->mirrored_parameters[6] = WHEEL_ACCESSORY_OUTPUT_OVERRIDE_VALUE;
+        if (service->desired_parameters[6] == WHEEL_ACCESSORY_OUTPUT_OVERRIDE_VALUE) {
             service->dirty_parameters &= (uint16_t)~(1u << 5);
         } else {
             service->dirty_parameters |= (uint16_t)(1u << 5);
@@ -896,8 +900,9 @@ static bool queue_probe(WheelAccessoryService *service, CommandTransport *transp
 }
 
 static bool queue_output_override(WheelAccessoryService *service, CommandTransport *transport) {
+    service->sync_write_data[0] = WHEEL_ACCESSORY_OUTPUT_OVERRIDE_VALUE;
     return queue_write(service, transport, WHEEL_ACCESSORY_NATURAL_DAMPER_OFFSET,
-                       &service->output_override_value, 1,
+                       service->sync_write_data, 1,
                        WHEEL_ACCESSORY_TRANSFER_OUTPUT_OVERRIDE_WRITE);
 }
 
@@ -917,17 +922,11 @@ static bool queue_next_request(WheelAccessoryService *service, CommandTransport 
     if (service->probe_requested) {
         return queue_probe(service, transport);
     }
-    if (service->output_override_requested || service->output_override_restore_pending) {
-        if (accessory_supports_extended(service) ||
-            service->accessory.kind == WHEEL_ACCESSORY_STANDARD) {
-            if (service->output_override_restore_pending || !service->output_override_complete ||
-                !service->output_override_active) {
-                return queue_output_override(service, transport);
-            }
-            return false;
+    if (service->output_override_requested) {
+        if (!service->output_override_active) {
+            return queue_output_override(service, transport);
         }
-        service->output_override_restore_pending = false;
-        service->output_override_complete = true;
+        return false;
     }
     if (!service->sync_initialized || !accessory_supports_composite(service)) {
         return false;
@@ -1003,9 +1002,7 @@ void wheel_accessory_service_configure(WheelAccessoryService *service,
     service->desired_parameters[13] = parameters_value->spring_effect_strength;
     service->desired_parameters[14] = parameters_value->damper_effect_strength;
     if (service->output_override_requested) {
-        service->desired_parameters[6] = service->output_override_value;
-    } else if (service->output_override_restore_pending) {
-        service->desired_parameters[6] = service->saved_natural_damper;
+        service->desired_parameters[6] = WHEEL_ACCESSORY_OUTPUT_OVERRIDE_TUNING_VALUE;
     }
     refresh_sensitivity(service);
     for (uint8_t index = 2; index < WHEEL_ACCESSORY_SYNC_PARAMETER_COUNT; index++) {
@@ -1068,28 +1065,22 @@ void wheel_accessory_service_request_handshake(WheelAccessoryService *service) {
 }
 
 void wheel_accessory_service_set_output_override(WheelAccessoryService *service, bool enabled) {
-    if (service == NULL ||
-        (service->accessory.kind != WHEEL_ACCESSORY_STANDARD &&
-         service->accessory.kind != WHEEL_ACCESSORY_EXTENDED)) {
+    if (service == NULL || !accessory_supports_output_override(service)) {
         return;
     }
-    service->output_override_complete = false;
     if (enabled) {
         if (!service->output_override_requested && !service->output_override_active) {
             service->saved_drift_mode = service->drift_mode;
             service->saved_natural_damper = service->desired_parameters[6];
         }
         service->drift_mode = 0xfb;
-        service->desired_parameters[6] = WHEEL_ACCESSORY_OUTPUT_OVERRIDE_VALUE;
+        service->desired_parameters[6] = WHEEL_ACCESSORY_OUTPUT_OVERRIDE_TUNING_VALUE;
         service->output_override_requested = true;
-        service->output_override_restore_pending = false;
-        service->output_override_value = WHEEL_ACCESSORY_OUTPUT_OVERRIDE_VALUE;
     } else if (service->output_override_requested || service->output_override_active) {
         service->drift_mode = service->saved_drift_mode;
         service->desired_parameters[6] = service->saved_natural_damper;
         service->output_override_requested = false;
-        service->output_override_restore_pending = true;
-        service->output_override_value = service->saved_natural_damper;
+        service->output_override_active = false;
     }
     service->remote_effects_enabled = false;
 }
@@ -1125,10 +1116,6 @@ wheel_accessory_service_take_calibration_event(WheelAccessoryService *service) {
 
 bool wheel_accessory_service_output_override_active(const WheelAccessoryService *service) {
     return service != NULL && service->output_override_active;
-}
-
-bool wheel_accessory_service_output_override_complete(const WheelAccessoryService *service) {
-    return service != NULL && service->output_override_complete;
 }
 
 uint32_t wheel_accessory_service_position_modulus(const WheelAccessoryService *service) {

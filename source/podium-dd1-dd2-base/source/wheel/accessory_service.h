@@ -141,12 +141,9 @@ typedef struct {
     bool motor_command_sent;       /**< True after the position-sensor command is accepted. */
     MotorStatusEvent motor_event;  /**< Pending position-sensor lifecycle event. */
 
-    bool output_override_requested;       /**< True while full-damper override is requested. */
-    bool output_override_restore_pending; /**< True while the saved damper is being restored. */
-    bool output_override_active;          /**< True after the override write succeeds. */
-    bool output_override_complete; /**< True after the latest override operation completes. */
-    uint8_t output_override_value; /**< Current override write value. */
-    uint8_t saved_natural_damper;  /**< Damper value restored when override is disabled. */
+    bool output_override_requested; /**< True while the prioritized full-damper write is requested. */
+    bool output_override_active;    /**< True after the prioritized full-scale write succeeds. */
+    uint8_t saved_natural_damper;   /**< Damper value exposed to composite sync on disable. */
     bool remote_effects_enabled;    /**< Current force-feedback status bit zero. */
 } WheelAccessoryService;
 
@@ -188,9 +185,13 @@ void wheel_accessory_service_request_handshake(WheelAccessoryService *service);
  * @brief Requests or releases the full-damper accessory output override.
  *
  * Requests are accepted only for standard and extended accessory states. Enabling preserves the
- * configured drift and damper values, selects the official override values, and clears remote
- * force-feedback status. Disabling restores the preserved values and schedules the restoring
- * transfer through the composite service.
+ * configured drift and damper values, selects local drift mode 0xfb and tuning damper value 0x64,
+ * clears force-feedback status bit zero, and schedules the prioritized wire write of damper byte
+ * 0xff. Disabling restores the preserved values and clears status bit zero again; the normal
+ * composite state machine then writes the restored damper value.
+ *
+ * @param[in,out] service Attached wheel accessory service.
+ * @param[in] enabled True to apply the override, or false to restore the saved tuning.
  */
 void wheel_accessory_service_set_output_override(WheelAccessoryService *service, bool enabled);
 
@@ -209,9 +210,6 @@ wheel_accessory_service_take_calibration_event(WheelAccessoryService *service);
 
 /** @brief Reports whether the output override is active. */
 bool wheel_accessory_service_output_override_active(const WheelAccessoryService *service);
-
-/** @brief Reports whether the latest output override operation completed. */
-bool wheel_accessory_service_output_override_complete(const WheelAccessoryService *service);
 
 /**
  * @brief Returns the sticky steering-position modulus.

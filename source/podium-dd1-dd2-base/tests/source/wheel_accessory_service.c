@@ -339,16 +339,24 @@ static void retries_calibration_and_override_without_losing_state(void) {
 
     wheel_accessory_service_configure(
         &service, &(WheelAccessorySyncParameters){.natural_damper = 0x44, .sensitivity = 0});
-    service.sync_initialized = false;
+    service.sync_initialized = true;
+    service.status_response = 0x55;
     wheel_accessory_service_set_output_override(&service, true);
     wheel_accessory_service_run(&service, &transport);
     const uint8_t override_write[] = {2, 0xe0, 0x23, 0xff};
     submit_request(&transport, override_write, sizeof(override_write));
+    command_transport_fail(&transport);
+    wheel_accessory_service_run(&service, &transport);
+    assert(service.output_override_requested);
+    wheel_accessory_service_run(&service, &transport);
+    submit_request(&transport, override_write, sizeof(override_write));
     complete_write(&transport);
     wheel_accessory_service_run(&service, &transport);
+    assert(service.status_response == 0x55);
     assert(wheel_accessory_service_output_override_active(&service));
-    assert(wheel_accessory_service_output_override_complete(&service));
     wheel_accessory_service_set_output_override(&service, false);
+    assert(!wheel_accessory_service_output_override_active(&service));
+    service.sync_state = WHEEL_ACCESSORY_SYNC_PREPARE_NATURAL_DAMPER;
     wheel_accessory_service_run(&service, &transport);
     const uint8_t restore_write[] = {2, 0xe0, 0x23, 0x44};
     submit_request(&transport, restore_write, sizeof(restore_write));
@@ -401,21 +409,19 @@ static void applies_output_override_gate_and_state_sequence(void) {
     assert(service.saved_natural_damper == 0x44);
     assert(service.saved_drift_mode == 0x12);
     assert(service.drift_mode == 0xfb);
-    assert(service.desired_parameters[6] == UINT8_MAX);
+    assert(service.desired_parameters[6] == 0x64);
     assert(!wheel_accessory_service_remote_effects_enabled(&service));
 
     wheel_accessory_service_set_output_override(&service, false);
     assert(!service.output_override_requested);
-    assert(service.output_override_restore_pending);
+    assert(!service.output_override_active);
+    assert(service.drift_mode == 0x12);
     assert(service.desired_parameters[6] == 0x44);
 
     service.accessory.kind = WHEEL_ACCESSORY_LEGACY;
     service.output_override_active = true;
-    service.output_override_complete = true;
-    service.output_override_restore_pending = false;
     wheel_accessory_service_set_output_override(&service, false);
     assert(service.output_override_active);
-    assert(service.output_override_complete);
 }
 
 static void probes_before_pending_output_override(void) {
@@ -425,8 +431,7 @@ static void probes_before_pending_output_override(void) {
     command_transport_init(&transport);
     service.accessory.kind = WHEEL_ACCESSORY_STANDARD;
     service.sync_initialized = true;
-    service.output_override_requested = true;
-    service.output_override_value = UINT8_MAX;
+    wheel_accessory_service_set_output_override(&service, true);
 
     wheel_accessory_service_run(&service, &transport);
     const uint8_t status_request[] = {2, 0xe1, 0, 1, 0};
@@ -444,9 +449,8 @@ static void holds_composite_sync_while_output_override_is_active(void) {
     service.sync_state = WHEEL_ACCESSORY_SYNC_PREPARE_NATURAL_FRICTION;
     service.desired_parameters[7] = 1;
     service.dirty_parameters = 1u << 6;
-    service.output_override_requested = true;
+    wheel_accessory_service_set_output_override(&service, true);
     service.output_override_active = true;
-    service.output_override_complete = true;
 
     wheel_accessory_service_run(&service, &transport);
 
