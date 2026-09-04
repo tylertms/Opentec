@@ -79,7 +79,8 @@ typedef struct {
     bool active_sync_pending;     /**< True while active state awaits adapter synchronization. */
     bool setup_sync_pending;      /**< True while setup selection awaits adapter synchronization. */
     bool refresh_sync_pending;    /**< True while refresh state awaits adapter synchronization. */
-    bool physical_input_released; /**< True when a standard-wheel button edge can be consumed. */
+    bool physical_input_released; /**< True when a standard-wheel button edge can be consumed; the
+                                       initial state accepts the first sampled press. */
     bool
         physical_rotary_initialized; /**< True after a physical rotary position has been sampled. */
     UsbRemoteTuningItmPage itm_page; /**< Retained intelligent-telemetry-mode page. */
@@ -89,7 +90,8 @@ typedef struct {
  * @brief Initializes the host remote-tuning service.
  *
  * Clears the session, retained records, telemetry mappings, pending responses, selection latches,
- * synchronization latches, and physical-input history.
+ * synchronization latches, and physical-input history. The standard-wheel edge latch starts in
+ * the released state so the first sampled navigation press is consumed immediately.
  *
  * @param[out] service Service state to initialize.
  */

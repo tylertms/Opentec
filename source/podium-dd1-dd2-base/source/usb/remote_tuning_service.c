@@ -582,6 +582,7 @@ static void apply_refresh(UsbRemoteTuningService *service, uint8_t value, uint8_
 void usb_remote_tuning_service_init(UsbRemoteTuningService *service) {
     memset(service, 0, sizeof(*service));
     remote_telemetry_init(&service->telemetry);
+    service->physical_input_released = true;
 }
 
 bool usb_remote_tuning_service_update_physical_selection(UsbRemoteTuningService *service,
