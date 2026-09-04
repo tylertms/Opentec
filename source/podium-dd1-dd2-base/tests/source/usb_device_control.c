@@ -40,8 +40,10 @@ static void test_address_changes_after_status_stage(void) {
 
     assert(transfer.kind == USB_CONTROL_TRANSFER_ACKNOWLEDGE);
     assert(device.address == 0);
+    assert(device.state == USB_DEVICE_STATE_ADDRESS_PENDING);
     usb_device_control_complete(&device);
     assert(device.address == 42);
+    assert(device.state == USB_DEVICE_STATE_ADDRESSED);
 }
 
 static void test_new_setup_preserves_pending_address(void) {
@@ -52,6 +54,7 @@ static void test_new_setup_preserves_pending_address(void) {
 
     UsbControlTransfer transfer = usb_device_control_handle(&device, &control, &catalog, false);
     assert(transfer.kind == USB_CONTROL_TRANSFER_ACKNOWLEDGE);
+    assert(device.state == USB_DEVICE_STATE_ADDRESS_PENDING);
     assert(device.pending_change == USB_DEVICE_PENDING_ADDRESS);
     assert(device.pending_value == 42);
 
@@ -59,13 +62,66 @@ static void test_new_setup_preserves_pending_address(void) {
     transfer = usb_device_control_handle(&device, &control, &catalog, false);
     assert(transfer.kind == USB_CONTROL_TRANSFER_VALUE);
     assert(device.address == 0);
+    assert(device.state == USB_DEVICE_STATE_ADDRESS_PENDING);
     assert(device.pending_change == USB_DEVICE_PENDING_ADDRESS);
     assert(device.pending_value == 42);
     usb_device_control_complete(&device);
 
     assert(device.address == 42);
+    assert(device.state == USB_DEVICE_STATE_ADDRESSED);
     assert(device.pending_change == USB_DEVICE_PENDING_NONE);
     assert(device.pending_value == 0);
+}
+
+static void test_zero_address_returns_to_default_without_discarding_configuration(void) {
+    UsbDeviceControl device;
+    usb_device_control_init(&device, true, false);
+    UsbControlRequest control = request(USB_CONTROL_SET_CONFIGURATION);
+    control.value = 1;
+    assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
+           USB_CONTROL_TRANSFER_ACKNOWLEDGE);
+    assert(device.state == USB_DEVICE_STATE_CONFIGURED);
+
+    control = request(USB_CONTROL_SET_ADDRESS);
+    control.value = 0;
+    assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
+           USB_CONTROL_TRANSFER_ACKNOWLEDGE);
+    assert(device.state == USB_DEVICE_STATE_ADDRESS_PENDING);
+    assert(!usb_device_control_configured(&device));
+
+    usb_device_control_complete(&device);
+    assert(device.address == 0);
+    assert(device.state == USB_DEVICE_STATE_DEFAULT);
+    assert(device.configuration == 1);
+    assert(!usb_device_control_configured(&device));
+
+    control = request(USB_CONTROL_GET_CONFIGURATION);
+    UsbControlTransfer transfer = usb_device_control_handle(&device, &control, &catalog, false);
+    assert(transfer.kind == USB_CONTROL_TRANSFER_VALUE && transfer.value == 1 &&
+           transfer.length == 1);
+
+    control = request(USB_CONTROL_GET_DESCRIPTOR);
+    control.descriptor_type = 0x21;
+    control.recipient = 1;
+    transfer = usb_device_control_handle(&device, &control, &catalog, false);
+    assert(transfer.kind == USB_CONTROL_TRANSFER_DATA && transfer.data.data == hid_descriptor);
+
+    control.descriptor_type = 0x22;
+    transfer = usb_device_control_handle(&device, &control, &catalog, false);
+    assert(transfer.kind == USB_CONTROL_TRANSFER_DATA && transfer.data.data == report_descriptor);
+
+    control = request(USB_CONTROL_SET_FEATURE);
+    control.recipient = 2;
+    control.index = 0x81;
+    assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
+           USB_CONTROL_TRANSFER_STALL);
+
+    control = request(USB_CONTROL_GET_STATUS);
+    control.recipient = 2;
+    control.index = 0x81;
+    transfer = usb_device_control_handle(&device, &control, &catalog, false);
+    assert(transfer.kind == USB_CONTROL_TRANSFER_VALUE && transfer.value == 0 &&
+           transfer.length == 2);
 }
 
 static void test_configuration_changes_during_setup(void) {
@@ -113,10 +169,12 @@ static void test_selects_and_clips_descriptors(void) {
     assert(transfer.kind == USB_CONTROL_TRANSFER_STALL);
 
     device.configuration = 1;
+    device.state = USB_DEVICE_STATE_CONFIGURED;
     transfer = usb_device_control_handle(&device, &control, &catalog, false);
     assert(transfer.kind == USB_CONTROL_TRANSFER_DATA && transfer.data.data == hid_descriptor);
 
     device.configuration = 0;
+    device.state = USB_DEVICE_STATE_ADDRESSED;
     control.descriptor_type = 0x23;
     transfer = usb_device_control_handle(&device, &control, &catalog, false);
     assert(transfer.kind == USB_CONTROL_TRANSFER_VALUE && transfer.length == 0);
@@ -230,7 +288,8 @@ static void test_forces_xbox_wakeup_status(void) {
     usb_device_control_init(&device, true, true);
     UsbControlRequest control = request(USB_CONTROL_CLEAR_FEATURE);
     control.value = 1;
-    (void)usb_device_control_handle(&device, &control, &catalog, false);
+    UsbControlTransfer transfer = usb_device_control_handle(&device, &control, &catalog, false);
+    assert(transfer.kind == USB_CONTROL_TRANSFER_ACKNOWLEDGE);
 
     control = request(USB_CONTROL_GET_STATUS);
     assert(usb_device_control_handle(&device, &control, &catalog, false).value == 3);
@@ -247,6 +306,7 @@ static void test_endpoint_halt_feature(void) {
            USB_CONTROL_TRANSFER_STALL);
 
     device.configuration = 1;
+    device.state = USB_DEVICE_STATE_CONFIGURED;
     assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
            USB_CONTROL_TRANSFER_ACKNOWLEDGE);
 
@@ -302,6 +362,7 @@ static void test_rejects_malformed_descriptors_and_endpoints(void) {
     assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
            USB_CONTROL_TRANSFER_STALL);
     device.configuration = 1;
+    device.state = USB_DEVICE_STATE_CONFIGURED;
     transfer = usb_device_control_handle(&device, &control, &catalog, false);
     assert(transfer.kind == USB_CONTROL_TRANSFER_DATA && transfer.data.data == report_descriptor);
     control.descriptor_type = 0x23;
@@ -373,11 +434,15 @@ static void test_rejects_malformed_descriptors_and_endpoints(void) {
            transfer.report_id == 2 && transfer.length == 64);
 
     device.configuration = 1;
+    device.state = USB_DEVICE_STATE_CONFIGURED;
     control = request(USB_CONTROL_SET_ADDRESS);
     control.value = 0;
-    (void)usb_device_control_handle(&device, &control, &catalog, false);
+    transfer = usb_device_control_handle(&device, &control, &catalog, false);
+    assert(transfer.kind == USB_CONTROL_TRANSFER_ACKNOWLEDGE);
     usb_device_control_complete(&device);
-    assert(usb_device_control_configured(&device));
+    assert(device.state == USB_DEVICE_STATE_DEFAULT);
+    assert(device.configuration == 1);
+    assert(!usb_device_control_configured(&device));
     control.kind = (UsbControlRequestKind)UINT8_MAX;
     assert(usb_device_control_handle(&device, &control, &catalog, false).kind ==
            USB_CONTROL_TRANSFER_STALL);
@@ -386,6 +451,7 @@ static void test_rejects_malformed_descriptors_and_endpoints(void) {
 int main(void) {
     test_address_changes_after_status_stage();
     test_new_setup_preserves_pending_address();
+    test_zero_address_returns_to_default_without_discarding_configuration();
     test_configuration_changes_during_setup();
     test_selects_and_clips_descriptors();
     test_hid_state_and_report_handoff();

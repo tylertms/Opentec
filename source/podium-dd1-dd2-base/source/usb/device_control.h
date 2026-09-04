@@ -54,10 +54,19 @@ typedef enum {
     USB_DEVICE_PENDING_ADDRESS, /**< Apply the retained address on the next input completion. */
 } UsbDevicePendingChange;
 
-/** @brief USB address, configuration, interface, HID, power, and pending-change state. */
+/** @brief USB enumeration states used by the endpoint-zero controller. */
+typedef enum {
+    USB_DEVICE_STATE_DEFAULT = 0x04,         /**< Device has no assigned address. */
+    USB_DEVICE_STATE_ADDRESS_PENDING = 0x08, /**< Address is waiting for input completion. */
+    USB_DEVICE_STATE_ADDRESSED = 0x10,       /**< Device has an assigned address. */
+    USB_DEVICE_STATE_CONFIGURED = 0x20,      /**< Device has an active configuration. */
+} UsbDeviceState;
+
+/** @brief USB address, configuration, enumeration, interface, HID, power, and pending state. */
 typedef struct {
     uint8_t address;       /**< Current USB device address. */
     uint8_t configuration; /**< Active USB configuration value. */
+    UsbDeviceState state;  /**< Current USB enumeration state. */
     uint8_t alternate_interfaces[USB_DEVICE_INTERFACE_COUNT]; /**< Active alternate settings. */
     uint8_t hid_idle_rate;                 /**< HID idle rate for interface zero. */
     uint8_t hid_protocol;                  /**< HID protocol selected by the host. */
@@ -71,8 +80,8 @@ typedef struct {
 /**
  * @brief Initializes endpoint-zero device state.
  *
- * Clears address, configuration, interface, HID, and pending-change state while retaining the
- * supplied device capability flags.
+ * Clears address, configuration, enumeration, interface, HID, and pending-change state while
+ * retaining the supplied device capability flags.
  *
  * @param[out] device Endpoint-zero state to initialize.
  * @param[in] self_powered True when the active configuration is self-powered.
@@ -101,22 +110,24 @@ UsbControlTransfer usb_device_control_handle(UsbDeviceControl *device,
                                              bool endpoint_halted);
 
 /**
- * @brief Commits a pending USB address.
+ * @brief Commits a pending USB address and enumeration state.
  *
- * Applies the retained address after the next endpoint-zero input completion and clears the
- * pending transition.
+ * Applies the retained address after the next endpoint-zero input completion, enters DEFAULT for
+ * address zero or ADDRESSED for a nonzero address, and clears the pending transition. The active
+ * configuration value is retained when address zero is committed.
  *
  * @param[in,out] device Current USB device state.
  */
 void usb_device_control_complete(UsbDeviceControl *device);
 
 /**
- * @brief Reports whether the USB device has an active configuration.
+ * @brief Reports whether the USB device is in the configured state.
  *
- * Treats every nonzero configuration value as configured, matching endpoint request gating.
+ * Uses the explicit enumeration state so address changes can leave the active configuration value
+ * available to GET_CONFIGURATION while disabling configured-only endpoint behavior.
  *
  * @param[in] device Current endpoint-zero state.
- * @return True when the configuration value is nonzero; otherwise false.
+ * @return True only when the enumeration state is CONFIGURED.
  */
 bool usb_device_control_configured(const UsbDeviceControl *device);
 

@@ -85,6 +85,7 @@ static UsbControlTransfer data(UsbDescriptorView descriptor, uint16_t requested_
 void usb_device_control_init(UsbDeviceControl *device, bool self_powered,
                              bool remote_wakeup_forced) {
     *device = (UsbDeviceControl){
+        .state = USB_DEVICE_STATE_DEFAULT,
         .self_powered = self_powered,
         .remote_wakeup_forced = remote_wakeup_forced,
     };
@@ -94,16 +95,18 @@ void usb_device_control_init(UsbDeviceControl *device, bool self_powered,
  * @brief Selects a descriptor response for endpoint zero.
  *
  * Serves device, configuration, and string descriptors by index, gates HID and report descriptors
- * on an active configuration, and completes physical-descriptor requests with an empty data stage.
- * An active string alias hides its target from ordinary descriptor-index requests.
+ * on the retained configuration value independently of the enumeration state, and completes
+ * physical-descriptor requests with an empty data stage. An active string alias hides its target
+ * from ordinary descriptor-index requests.
  *
  * @param[in] request Classified descriptor request.
  * @param[in] catalog Active descriptor catalog.
- * @param[in] configured True when configuration one is active.
+ * @param[in] configuration_active True when a nonzero configuration is retained.
  * @return Selected descriptor transfer or a stall for an unsupported request.
  */
 static UsbControlTransfer get_descriptor(const UsbControlRequest *request,
-                                         const UsbDescriptorCatalog *catalog, bool configured) {
+                                         const UsbDescriptorCatalog *catalog,
+                                         bool configuration_active) {
     switch (request->descriptor_type) {
     case USB_DESCRIPTOR_DEVICE:
         return request->recipient == USB_RECIPIENT_DEVICE && request->descriptor_index == 0
@@ -129,12 +132,12 @@ static UsbControlTransfer get_descriptor(const UsbControlRequest *request,
                    ? data(catalog->strings[request->descriptor_index], request->length)
                    : stall();
     case USB_DESCRIPTOR_HID:
-        return configured && request->recipient == USB_RECIPIENT_INTERFACE &&
+        return configuration_active && request->recipient == USB_RECIPIENT_INTERFACE &&
                        request->descriptor_index == 0 && request->index == 0
                    ? data(catalog->hid, request->length)
                    : stall();
     case USB_DESCRIPTOR_HID_REPORT:
-        return configured && request->recipient == USB_RECIPIENT_INTERFACE &&
+        return configuration_active && request->recipient == USB_RECIPIENT_INTERFACE &&
                        request->descriptor_index == 0 && request->index == 0
                    ? data(catalog->report, request->length)
                    : stall();
@@ -214,11 +217,12 @@ UsbControlTransfer usb_device_control_handle(UsbDeviceControl *device,
         }
         return stall();
     case USB_CONTROL_SET_ADDRESS:
+        device->state = USB_DEVICE_STATE_ADDRESS_PENDING;
         device->pending_change = USB_DEVICE_PENDING_ADDRESS;
         device->pending_value = (uint8_t)request->value;
         return acknowledge();
     case USB_CONTROL_GET_DESCRIPTOR:
-        return get_descriptor(request, catalog, usb_device_control_configured(device));
+        return get_descriptor(request, catalog, device->configuration != 0);
     case USB_CONTROL_GET_CONFIGURATION:
         return value(device->configuration, 1);
     case USB_CONTROL_SET_CONFIGURATION:
@@ -226,6 +230,8 @@ UsbControlTransfer usb_device_control_handle(UsbDeviceControl *device,
         for (uint8_t index = 0; index < USB_DEVICE_INTERFACE_COUNT; index++) {
             device->alternate_interfaces[index] = 0;
         }
+        device->state = device->configuration == 0 ? USB_DEVICE_STATE_ADDRESSED
+                                                    : USB_DEVICE_STATE_CONFIGURED;
         return acknowledge();
     case USB_CONTROL_GET_INTERFACE:
         return request->index < USB_DEVICE_INTERFACE_COUNT
@@ -259,11 +265,13 @@ UsbControlTransfer usb_device_control_handle(UsbDeviceControl *device,
 void usb_device_control_complete(UsbDeviceControl *device) {
     if (device->pending_change == USB_DEVICE_PENDING_ADDRESS) {
         device->address = device->pending_value;
+        device->state = device->address == 0 ? USB_DEVICE_STATE_DEFAULT
+                                             : USB_DEVICE_STATE_ADDRESSED;
     }
     device->pending_change = USB_DEVICE_PENDING_NONE;
     device->pending_value = 0;
 }
 
 bool usb_device_control_configured(const UsbDeviceControl *device) {
-    return device->configuration != 0;
+    return device->state == USB_DEVICE_STATE_CONFIGURED;
 }
