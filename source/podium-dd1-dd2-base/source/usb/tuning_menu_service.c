@@ -9,10 +9,10 @@
 
 /** @brief Tuning-menu command and response constants. */
 enum {
-    TUNING_MENU_ACTION_NAVIGATE = 2,     /**< Menu-navigation command action. */
-    TUNING_MENU_ACTION_SERVICE = 3,      /**< Native service-response command action. */
-    TUNING_MENU_STATUS_COMMAND = 2,      /**< Status-response command identifier. */
-    TUNING_MENU_SERVICE_CODE_REPEAT = 7, /**< Service code exempt from duplicate suppression. */
+    TUNING_MENU_ACTION_NAVIGATE = 2,       /**< Menu-navigation command action. */
+    TUNING_MENU_ACTION_REFRESH_STATUS = 3, /**< Menu-status refresh command action. */
+    TUNING_MENU_STATUS_COMMAND = 2,        /**< Status-response command identifier. */
+    TUNING_MENU_SERVICE_CODE_REPEAT = 7,   /**< Service code exempt from duplicate suppression. */
 };
 
 void usb_tuning_menu_service_init(UsbTuningMenuService *service) {
@@ -27,8 +27,9 @@ bool usb_tuning_menu_service_apply(UsbTuningMenuService *service, const UsbVendo
         return false;
     }
 
-    if (command->arguments[0] == TUNING_MENU_ACTION_SERVICE) {
-        return usb_tuning_menu_service_request_native_service_response(service);
+    if (command->arguments[0] == TUNING_MENU_ACTION_REFRESH_STATUS) {
+        service->response_pending = true;
+        return true;
     }
     if (command->arguments[0] != TUNING_MENU_ACTION_NAVIGATE || command->length < 2) {
         return false;

@@ -52,8 +52,9 @@ void usb_tuning_menu_service_init(UsbTuningMenuService *service);
 /**
  * @brief Applies one tuning-menu command.
  *
- * Handles action two menu navigation and action three native service responses. Unsupported page
- * selectors are ignored without changing the selected entry.
+ * Handles action two menu navigation and action three status refreshes. Every action-three request
+ * arms a status response, including repeated requests; unsupported page selectors are ignored
+ * without changing the selected entry.
  *
  * @param[in,out] service Tuning-menu state to update.
  * @param[in] command Decoded tuning-menu vendor command.
@@ -64,8 +65,9 @@ bool usb_tuning_menu_service_apply(UsbTuningMenuService *service, const UsbVendo
 /**
  * @brief Requests the native service response for the active menu entry.
  *
- * Applies the official duplicate suppression rule. Service code seven is always allowed to
- * repeat; other codes are suppressed until the active entry changes.
+ * Applies the official duplicate suppression rule for the dedicated native service command.
+ * Service code seven is always allowed to repeat; other codes are suppressed until the active
+ * entry changes. Action-three status refreshes use the unconditional status path instead.
  *
  * @param[in,out] service Tuning-menu state retaining the active entry.
  * @return True when a response was armed; otherwise false for a duplicate request or null state.
