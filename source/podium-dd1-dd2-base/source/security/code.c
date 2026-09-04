@@ -28,9 +28,9 @@ enum {
     SECURITY_CODE_ADAPTER_CANCEL = 0x04,           /**< Adapter cancel bit. */
     SECURITY_CODE_ENABLE_PROMPT = 0x1e,            /**< Native enable prompt command. */
     SECURITY_CODE_DISABLE_PROMPT = 0x1f,           /**< Native disable prompt command. */
-    SECURITY_CODE_FIRST_REPORT = 0x20,             /**< First selected-digit report mask. */
-    SECURITY_CODE_SECOND_REPORT = 0x10,            /**< Second selected-digit report mask. */
-    SECURITY_CODE_THIRD_REPORT = 0x08,             /**< Third selected-digit report mask. */
+    SECURITY_CODE_FIRST_REPORT_MASK = 0x20,        /**< First selected-digit report mask. */
+    SECURITY_CODE_SECOND_REPORT_MASK = 0x10,       /**< Second selected-digit report mask. */
+    SECURITY_CODE_THIRD_REPORT_MASK = 0x08,        /**< Third selected-digit report mask. */
     SECURITY_CODE_GLYPH_L = 0x38,                  /**< Seven-segment L glyph. */
     SECURITY_CODE_GLYPH_O = 0x3f,                  /**< Seven-segment O glyph. */
     SECURITY_CODE_GLYPH_C = 0x39,                  /**< Seven-segment C glyph. */
@@ -60,12 +60,13 @@ static bool deadline_reached(uint32_t now_ms, uint32_t deadline_ms) {
 }
 
 /**
- * @brief Reports whether the selected wheel path uses the auxiliary digit marker.
+ * @brief Reports whether the selected wheel path uses the independent display report.
  *
- * Selects the five direct report modes and every connected adapter path.
+ * Selects the five direct report modes and every connected adapter path. The mode set and adapter
+ * gate match the report setters at 0x04881a and 0x0488a8.
  *
  * @param[in] input Current attached-wheel and adapter input.
- * @return true when digit selection is carried by the auxiliary report; false otherwise.
+ * @return true when digit selection is carried by the display report; false otherwise.
  */
 static bool report_display_used(const SecurityCodeInput *input) {
     return input->adapter_connected || input->wheel_mode == 0x0a || input->wheel_mode == 0x0c ||
@@ -161,8 +162,8 @@ static void advance_blink(SecurityCode *code, uint32_t now_ms) {
 /**
  * @brief Builds the enable or disable prompt presentation.
  *
- * Uses the native prompt command in modes 0x0C, 0x06, and 0x15. Mode 0x0C leaves the local glyphs
- * clear, while every other mode presents LOC.
+ * Uses the native prompt command in modes 0x0C, 0x06, and 0x15. Mode 0x0C leaves local glyph state
+ * untouched, while every other mode presents LOC. This matches the branch at 0x048a16.
  *
  * @param[in] code Security-code interaction state.
  * @param[in] input Current attached-wheel and adapter input.
@@ -171,6 +172,7 @@ static void advance_blink(SecurityCode *code, uint32_t now_ms) {
 static SecurityCodeUpdate prompt_update(const SecurityCode *code, const SecurityCodeInput *input) {
     SecurityCodeUpdate update = {
         .presentation.kind = SECURITY_CODE_PRESENTATION_PROMPT,
+        .presentation.uses_local_display = input->wheel_mode != 0x0c,
         .prompt_command =
             code->enable_requested ? SECURITY_CODE_ENABLE_PROMPT : SECURITY_CODE_DISABLE_PROMPT,
         .active = true,
@@ -189,9 +191,9 @@ static SecurityCodeUpdate prompt_update(const SecurityCode *code, const Security
 /**
  * @brief Builds the current three-digit entry presentation.
  *
- * Encodes all three decimal digits, then either publishes the selected-digit report mask or blanks
- * the digit selected at the start of this update during blink phase zero. This preserves the
- * firmware's one-update render cadence when an action moves selection.
+ * Encodes all three decimal digits, then either publishes the selected-digit mask and position in
+ * the independent two-byte report or blanks the digit selected at the start of this update during
+ * blink phase zero. The report layout matches the stores at 0x04ef4a.
  *
  * @param[in] code Security-code interaction state.
  * @param[in] input Current attached-wheel and adapter input.
@@ -204,15 +206,21 @@ static SecurityCodePresentation digit_presentation(const SecurityCode *code,
     /** @brief Seven-segment glyphs for decimal digits. */
     static const uint8_t digit_glyphs[] = {0x3f, 0x06, 0x5b, 0x4f, 0x66,
                                            0x6d, 0x7d, 0x07, 0x7f, 0x6f};
-    /** @brief Native report masks for selected digits. */
-    static const uint8_t reports[] = {SECURITY_CODE_FIRST_REPORT, SECURITY_CODE_SECOND_REPORT,
-                                      SECURITY_CODE_THIRD_REPORT};
-    SecurityCodePresentation presentation = {.kind = SECURITY_CODE_PRESENTATION_DIGITS};
+    /** @brief Native display-report masks for selected digits. */
+    static const uint8_t report_masks[] = {SECURITY_CODE_FIRST_REPORT_MASK,
+                                           SECURITY_CODE_SECOND_REPORT_MASK,
+                                           SECURITY_CODE_THIRD_REPORT_MASK};
+    SecurityCodePresentation presentation = {
+        .kind = SECURITY_CODE_PRESENTATION_DIGITS,
+        .uses_local_display = true,
+        .uses_display_report = report_display_used(input),
+    };
     for (uint8_t digit = 0; digit < SECURITY_CODE_DIGIT_COUNT; digit++) {
         presentation.glyphs[digit] = digit_glyphs[code->entered_digits[digit]];
     }
-    if (report_display_used(input)) {
-        presentation.report = reports[selected_digit];
+    if (presentation.uses_display_report) {
+        presentation.display_report =
+            (uint16_t)report_masks[selected_digit] | (uint16_t)selected_digit << 8;
     } else if (code->blink_phase == 0) {
         presentation.glyphs[selected_digit] = 0;
     }
@@ -327,6 +335,7 @@ SecurityCodeUpdate security_code_update(SecurityCode *code, SecurityCodeSettings
             update.mismatch = true;
         }
         update.presentation.kind = SECURITY_CODE_PRESENTATION_CLEAR;
+        update.presentation.uses_display_report = report_display_used(input);
         return update;
     }
 

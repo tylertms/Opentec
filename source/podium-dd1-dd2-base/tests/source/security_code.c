@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "security/code.h"
@@ -228,6 +229,9 @@ static void test_prompt_modes_and_digit_markers(void) {
 
     SecurityCodeUpdate update = security_code_update(&code, &settings, &input, 0);
     assert(update.prompt_command == 0x1e);
+    assert(!update.presentation.uses_local_display);
+    assert(!update.presentation.uses_display_report);
+    assert(update.presentation.display_report == 0);
     assert(update.presentation.glyphs[0] == 0);
     assert(update.presentation.glyphs[1] == 0);
     assert(update.presentation.glyphs[2] == 0);
@@ -236,6 +240,8 @@ static void test_prompt_modes_and_digit_markers(void) {
     input.wheel_mode = 6;
     update = security_code_update(&code, &settings, &input, 1);
     assert(update.prompt_command == 0x1e);
+    assert(update.presentation.uses_local_display);
+    assert(!update.presentation.uses_display_report);
     assert(update.presentation.glyphs[0] == 0x38);
     assert(update.presentation.glyphs[1] == 0x3f);
     assert(update.presentation.glyphs[2] == 0x39);
@@ -246,7 +252,8 @@ static void test_prompt_modes_and_digit_markers(void) {
     code.blink_deadline_ms = 100;
     input.wheel_mode = 1;
     update = security_code_update(&code, &settings, &input, 50);
-    assert(update.presentation.report == 0);
+    assert(!update.presentation.uses_display_report);
+    assert(update.presentation.display_report == 0);
     assert(update.presentation.glyphs[0] == 0x06);
     assert(update.presentation.glyphs[1] == 0);
     assert(update.presentation.glyphs[2] == 0x4f);
@@ -256,7 +263,8 @@ static void test_prompt_modes_and_digit_markers(void) {
     code.blink_deadline_ms = 100;
     input.wheel_mode = 0x0a;
     update = security_code_update(&code, &settings, &input, 50);
-    assert(update.presentation.report == 0x10);
+    assert(update.presentation.uses_display_report);
+    assert(update.presentation.display_report == 0x0110);
     assert(update.presentation.glyphs[1] == 0x5b);
 }
 
@@ -287,7 +295,87 @@ static void test_digit_marker_uses_selection_at_update_start(void) {
     input.primary_buttons = 0x0400;
     update = security_code_update(&code, &settings, &input, 50);
     assert(code.selected_digit == 2);
-    assert(update.presentation.report == 0x10);
+    assert(update.presentation.uses_display_report);
+    assert(update.presentation.display_report == 0x0110);
+}
+
+static void test_display_report_modes_and_layout(void) {
+    const uint8_t report_modes[] = {0x0a, 0x0c, 0x0f, 0x17, 0x1c};
+    const uint8_t report_masks[] = {0x20, 0x10, 0x08};
+    SecurityCodeSettings settings = {0};
+    SecurityCodeInput input = {0};
+
+    for (size_t mode = 0; mode < sizeof(report_modes); mode++) {
+        input.wheel_mode = report_modes[mode];
+        for (uint8_t selected_digit = 0; selected_digit < SECURITY_CODE_DIGIT_COUNT;
+             selected_digit++) {
+            SecurityCode code = {
+                .entered_digits = {1, 2, 3},
+                .phase = SECURITY_CODE_EDIT,
+                .selected_digit = selected_digit,
+                .blink_deadline_ms = 100,
+            };
+            SecurityCodeUpdate update = security_code_update(&code, &settings, &input, 50);
+            uint16_t expected_report =
+                (uint16_t)report_masks[selected_digit] | (uint16_t)selected_digit << 8;
+
+            assert(update.presentation.uses_local_display);
+            assert(update.presentation.uses_display_report);
+            assert(update.presentation.display_report == expected_report);
+        }
+    }
+
+    input.wheel_mode = 1;
+    input.adapter_connected = true;
+    SecurityCode code = {
+        .entered_digits = {1, 2, 3},
+        .phase = SECURITY_CODE_EDIT,
+        .selected_digit = 2,
+        .blink_deadline_ms = 100,
+    };
+    SecurityCodeUpdate update = security_code_update(&code, &settings, &input, 50);
+    assert(update.presentation.uses_display_report);
+    assert(update.presentation.display_report == 0x0208);
+}
+
+static void test_clear_report_ownership_matches_reference_gate(void) {
+    SecurityCodeSettings settings = {.enabled = true};
+    SecurityCodeInput input = {.wheel_mode = 0x0a};
+    SecurityCode code = {.phase = SECURITY_CODE_CONFIRM};
+
+    SecurityCodeUpdate update = security_code_update(&code, &settings, &input, 0);
+    assert(update.presentation.kind == SECURITY_CODE_PRESENTATION_CLEAR);
+    assert(update.presentation.uses_display_report);
+
+    code.phase = SECURITY_CODE_CONFIRM;
+    input.wheel_mode = 1;
+    update = security_code_update(&code, &settings, &input, 1);
+    assert(!update.presentation.uses_display_report);
+
+    code.phase = SECURITY_CODE_CONFIRM;
+    input.adapter_connected = true;
+    update = security_code_update(&code, &settings, &input, 2);
+    assert(update.presentation.uses_display_report);
+}
+
+static void test_prompt_display_ownership_matches_reference_modes(void) {
+    const uint8_t modes[] = {0x0c, 0x06, 0x15, 0x01};
+    SecurityCodeSettings settings = {0};
+
+    for (size_t index = 0; index < sizeof(modes); index++) {
+        SecurityCode code = {
+            .phase = SECURITY_CODE_PREPARE,
+            .enable_requested = true,
+        };
+        SecurityCodeInput input = {.wheel_mode = modes[index]};
+        SecurityCodeUpdate update = security_code_update(&code, &settings, &input, 0);
+        bool native_prompt = modes[index] == 0x0c || modes[index] == 0x06 || modes[index] == 0x15;
+
+        assert(update.presentation.kind == SECURITY_CODE_PRESENTATION_PROMPT);
+        assert(update.presentation.uses_local_display == (modes[index] != 0x0c));
+        assert(!update.presentation.uses_display_report);
+        assert(update.prompt_command == (native_prompt ? 0x1e : 0));
+    }
 }
 
 static void test_deadlines_wrap_safely(void) {
@@ -316,6 +404,9 @@ int main(void) {
     test_disable_confirmation_requires_matching_code();
     test_prompt_modes_and_digit_markers();
     test_digit_marker_uses_selection_at_update_start();
+    test_display_report_modes_and_layout();
+    test_clear_report_ownership_matches_reference_gate();
+    test_prompt_display_ownership_matches_reference_modes();
     test_deadlines_wrap_safely();
     return 0;
 }

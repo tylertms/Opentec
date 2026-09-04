@@ -4783,31 +4783,37 @@ static void service_usb_output(void) {
 /**
  * @brief Applies a security-code presentation to attached-wheel output.
  *
- * Publishes prompt or digit glyphs through the interaction override, applies selected-digit report
- * masks, and restores lower-priority display state when entry completes.
+ * Publishes prompt or digit glyphs through the interaction override, applies the independent
+ * selected-digit display report, and restores lower-priority display state when entry completes.
+ * A mode-0C prompt leaves local display state untouched.
  *
  */
 static void apply_security_code_presentation(void) {
-    if (security_code_update_state.presentation.kind == SECURITY_CODE_PRESENTATION_KEEP) {
+    const SecurityCodePresentation *presentation = &security_code_update_state.presentation;
+    if (presentation->kind == SECURITY_CODE_PRESENTATION_KEEP) {
         return;
     }
-    if (security_code_update_state.presentation.kind == SECURITY_CODE_PRESENTATION_CLEAR) {
-        wheel_service_set_auxiliary_report(&wheel_service, 0);
+    if (presentation->kind == SECURITY_CODE_PRESENTATION_CLEAR) {
+        if (presentation->uses_display_report) {
+            wheel_service_set_display_report(&wheel_service, 0);
+        }
         wheel_service_clear_display_override(&wheel_service);
+        return;
+    }
+
+    if (presentation->uses_display_report) {
+        wheel_service_set_display_report(&wheel_service, presentation->display_report);
+    }
+    if (!presentation->uses_local_display) {
         return;
     }
 
     security_code_display_output = *wheel_service_default_display_output(&wheel_service);
     for (uint8_t digit = 0; digit < SECURITY_CODE_DIGIT_COUNT; digit++) {
-        security_code_display_output.glyphs[digit] =
-            security_code_update_state.presentation.glyphs[digit];
+        security_code_display_output.glyphs[digit] = presentation->glyphs[digit];
     }
     security_code_display_output.third_glyph_marker = false;
     wheel_service_set_display_override(&wheel_service, &security_code_display_output);
-    if (security_code_update_state.presentation.report != 0) {
-        wheel_service_set_auxiliary_report(&wheel_service,
-                                           security_code_update_state.presentation.report);
-    }
 }
 
 /**

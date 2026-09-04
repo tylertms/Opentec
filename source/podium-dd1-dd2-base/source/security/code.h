@@ -39,11 +39,13 @@ typedef enum {
     SECURITY_CODE_PRESENTATION_CLEAR,  /**< Clear the security-code presentation. */
 } SecurityCodePresentationKind;
 
-/** @brief Security-code display glyphs and optional native report. */
+/** @brief Security-code display glyphs and independent wheel-report ownership. */
 typedef struct {
     SecurityCodePresentationKind kind;         /**< Presentation operation. */
     uint8_t glyphs[SECURITY_CODE_DIGIT_COUNT]; /**< Seven-segment glyphs for the digits. */
-    uint16_t report;                           /**< Optional native digit-selection report mask. */
+    uint16_t display_report;  /**< Two-byte wheel report with mask low and digit position high. */
+    bool uses_local_display;  /**< Whether this presentation writes local wheel glyphs. */
+    bool uses_display_report; /**< Whether this presentation owns the wheel display report. */
 } SecurityCodePresentation;
 
 /** @brief Result of one security-code interaction update. */
