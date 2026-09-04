@@ -1,6 +1,7 @@
 #include "profile/bank.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 void tuning_profile_bank_defaults(TuningProfileBank *bank) {
@@ -23,6 +24,10 @@ bool tuning_profile_bank_select(TuningProfileBank *bank, uint8_t slot) {
 
 void tuning_profile_bank_activate_selected(TuningProfileBank *bank) {
     bank->active_slot = bank->selected_slot;
+}
+
+bool tuning_profile_bank_automatic_setup_active(const TuningProfileBank *bank) {
+    return bank != NULL && bank->active_slot == 0;
 }
 
 bool tuning_profile_bank_store(TuningProfileBank *bank, uint8_t slot,

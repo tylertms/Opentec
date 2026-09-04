@@ -176,7 +176,7 @@ static void test_enforces_security_and_automatic_setup_restrictions(void) {
     assert(!tuning_entry_adjust(&bank, TUNING_ENTRY_VIBRATION_STRENGTH,
                                 navigation(TUNING_NAVIGATION_DECREASE, 0), &context));
     context.security_code_active = false;
-    context.automatic_setup_selected = true;
+    context.automatic_setup_active = true;
     assert(!tuning_entry_adjust(&bank, TUNING_ENTRY_FORCE_FEEDBACK_STRENGTH,
                                 navigation(TUNING_NAVIGATION_INCREASE, 0), &context));
     assert(tuning_entry_adjust(&bank, TUNING_ENTRY_VIBRATION_STRENGTH,
@@ -184,6 +184,35 @@ static void test_enforces_security_and_automatic_setup_restrictions(void) {
     assert(bank.slots[0].vibration_strength == 0);
     assert(tuning_entry_adjustable_in_automatic_setup(TUNING_ENTRY_BRAKE_PEDAL_CURVE));
     assert(!tuning_entry_adjustable_in_automatic_setup(TUNING_ENTRY_NATURAL_FRICTION));
+}
+
+static void test_uses_active_setup_for_automatic_lock(void) {
+    TuningProfileBank bank;
+    TuningEntryAdjustmentContext context = default_context;
+    tuning_profile_bank_defaults(&bank);
+
+    bank.selected_slot = 2;
+    bank.active_slot = 0;
+    context.automatic_setup_active = tuning_profile_bank_automatic_setup_active(&bank);
+    assert(context.automatic_setup_active);
+    assert(!tuning_entry_adjust(&bank, TUNING_ENTRY_FORCE_FEEDBACK_STRENGTH,
+                                navigation(TUNING_NAVIGATION_INCREASE, 0), &context));
+    assert(bank.slots[2].force_feedback_strength == 35);
+
+    bank.selected_slot = 0;
+    bank.active_slot = 2;
+    context.automatic_setup_active = tuning_profile_bank_automatic_setup_active(&bank);
+    assert(!context.automatic_setup_active);
+    assert(tuning_entry_adjust(&bank, TUNING_ENTRY_FORCE_FEEDBACK_STRENGTH,
+                               navigation(TUNING_NAVIGATION_INCREASE, 0), &context));
+    assert(bank.slots[0].force_feedback_strength == 36);
+
+    bank.selected_slot = 0;
+    bank.active_slot = 0;
+    assert(tuning_profile_bank_automatic_setup_active(&bank));
+    bank.selected_slot = 3;
+    assert(tuning_profile_bank_automatic_setup_active(&bank));
+    assert(!tuning_profile_bank_automatic_setup_active(NULL));
 }
 
 static void test_applies_interface_and_hardware_availability(void) {
@@ -274,6 +303,7 @@ int main(void) {
     test_adjusts_sensitivity_through_automatic_range();
     test_adjusts_and_activates_setup_selection();
     test_enforces_security_and_automatic_setup_restrictions();
+    test_uses_active_setup_for_automatic_lock();
     test_applies_interface_and_hardware_availability();
     test_filters_entries_for_standard_setups();
     test_navigates_available_entries_in_display_order();

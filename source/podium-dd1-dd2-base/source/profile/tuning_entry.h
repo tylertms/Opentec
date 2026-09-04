@@ -42,7 +42,8 @@ typedef enum {
 /** @brief Runtime conditions that change local tuning adjustment rules. */
 typedef struct {
     bool security_code_active;      /**< True while security code blocks editing. */
-    bool automatic_setup_selected;  /**< True when the automatic setup is selected. */
+    bool automatic_setup_active; /**< True when runtime slot zero is active, even if another
+                                      slot is selected. */
     bool alternate_brake_fine_step; /**< True when alternate brake uses one-percent steps. */
     bool multi_position_automatic_available; /**< True when automatic switch mode is available. */
     bool xbox_mode; /**< True when the Xbox interface limits available entries. */

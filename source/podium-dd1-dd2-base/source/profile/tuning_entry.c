@@ -523,7 +523,7 @@ bool tuning_entry_adjust(TuningProfileBank *bank, TuningEntry entry,
     int16_t count = adjustment_count(navigation);
     TuningEntryLimits limits = tuning_entry_limits(entry, bank, context);
     if (count == 0 || !limits.valid || context->security_code_active ||
-        (context->automatic_setup_selected && entry != TUNING_ENTRY_SETUP &&
+        (context->automatic_setup_active && entry != TUNING_ENTRY_SETUP &&
          !tuning_entry_adjustable_in_automatic_setup(entry))) {
         return false;
     }

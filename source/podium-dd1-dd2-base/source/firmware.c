@@ -4998,8 +4998,10 @@ static void update_local_tuning_availability(void) {
 /**
  * @brief Builds current restrictions and dynamic limits for local tuning adjustment.
  *
- * Protects the automatic setup, selects the pedal controller's active brake-force increment, and
- * permits automatic multi-position mode only for its supporting wheel mode.
+ * Protects the runtime-active automatic setup, selects the pedal controller's active brake-force
+ * increment, and permits automatic multi-position mode only for its supporting wheel mode. The
+ * automatic lock follows active_slot through the profile-bank predicate because selected_slot can
+ * be staged independently.
  *
  * Updates the retained context consumed by the local tuning-menu controller.
  */
@@ -5007,7 +5009,8 @@ static void update_local_tuning_adjustment(void) {
     const PedalV3State *pedal_state = pedal_service_v3_state(&pedal_service);
     tuning_adjustment = (TuningEntryAdjustmentContext){
         .security_code_active = security_code_update_state.active,
-        .automatic_setup_selected = base_settings.tuning_profiles.selected_slot == 0,
+        .automatic_setup_active =
+            tuning_profile_bank_automatic_setup_active(&base_settings.tuning_profiles),
         .alternate_brake_fine_step =
             (pedal_state->primary_calibration && !pedal_state->legacy_calibration) ||
             pedal_state->secondary_calibration,

@@ -49,6 +49,17 @@ bool tuning_profile_bank_select(TuningProfileBank *bank, uint8_t slot);
 void tuning_profile_bank_activate_selected(TuningProfileBank *bank);
 
 /**
+ * @brief Reports whether the runtime automatic setup is active.
+ *
+ * Uses the active setup slot rather than the setup selected for editing. The selected slot may be
+ * staged independently while runtime tuning continues to use the active slot.
+ *
+ * @param[in] bank Profile bank to inspect.
+ * @return true when the runtime automatic setup is active; false for a null bank or another slot.
+ */
+bool tuning_profile_bank_automatic_setup_active(const TuningProfileBank *bank);
+
+/**
  * @brief Stores and normalizes one setup.
  *
  * Copies profile into the requested slot and applies all profile limits and enum normalization.
