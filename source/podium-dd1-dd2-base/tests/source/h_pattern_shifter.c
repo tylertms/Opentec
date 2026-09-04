@@ -92,10 +92,28 @@ static void test_reclassifies_after_strict_deadline(void) {
     assert(h_pattern_shifter_update(&shifter, &calibration, 600, 701, 12) == SHIFTER_GEAR_THIRD);
 }
 
+static void test_output_neutralization_preserves_state(void) {
+    HPatternShifter shifter = {
+        .neutral_position = 500,
+        .latched_position = 700,
+        .update_deadline_ms = 1234,
+        .gear = SHIFTER_GEAR_FIRST,
+    };
+
+    assert(h_pattern_shifter_output_gear(&shifter, false) == SHIFTER_GEAR_NEUTRAL);
+    assert(shifter.neutral_position == 500);
+    assert(shifter.latched_position == 700);
+    assert(shifter.update_deadline_ms == 1234);
+    assert(shifter.gear == SHIFTER_GEAR_FIRST);
+    assert(h_pattern_shifter_output_gear(&shifter, true) == SHIFTER_GEAR_FIRST);
+    assert(h_pattern_shifter_output_gear(NULL, true) == SHIFTER_GEAR_NEUTRAL);
+}
+
 int main(void) {
     test_gear_map();
     test_row_hysteresis();
     test_neutral_hysteresis();
     test_reclassifies_after_strict_deadline();
+    test_output_neutralization_preserves_state();
     return 0;
 }

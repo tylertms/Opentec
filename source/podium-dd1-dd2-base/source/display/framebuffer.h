@@ -55,7 +55,8 @@ void display_framebuffer_clear(DisplayFramebuffer framebuffer);
  * @brief Writes one grayscale pixel into the framebuffer.
  *
  * Packs even columns into a byte's high nibble and odd columns into its low nibble; coordinates
- * outside the 256-by-64 drawable range are ignored.
+ * outside the controller's legal 0..254 by 0..62 drawable range are ignored. The packed storage
+ * still reserves the complete 256-by-64 transfer window.
  *
  * @param[in,out] framebuffer Framebuffer whose pixel data is updated.
  * @param[in] x Pixel column.

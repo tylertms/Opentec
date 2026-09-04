@@ -1,6 +1,7 @@
 #include "shifter/h_pattern.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 /**
@@ -127,6 +128,20 @@ static ShifterGear select_lower_row(const HPatternCalibration *calibration,
  */
 bool h_pattern_shifter_update_due(const HPatternShifter *shifter, uint32_t now_ms) {
     return (int32_t)(now_ms - shifter->update_deadline_ms) > 0;
+}
+
+/**
+ * @brief Selects the H-pattern gear value published to external consumers.
+ *
+ * Temporarily neutralizes the published output while retaining the classifier's hysteresis and
+ * timing state for the next active H-pattern sample.
+ *
+ * @param[in] shifter Retained H-pattern classification state.
+ * @param[in] enabled True when the classified gear may be published.
+ * @return Retained gear when enabled and available; otherwise neutral.
+ */
+ShifterGear h_pattern_shifter_output_gear(const HPatternShifter *shifter, bool enabled) {
+    return enabled && shifter != NULL ? shifter->gear : SHIFTER_GEAR_NEUTRAL;
 }
 
 /**

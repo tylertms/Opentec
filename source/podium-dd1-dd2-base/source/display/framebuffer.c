@@ -8,8 +8,8 @@
  * These bounds match the coordinates accepted by the pixel helper.
  */
 enum {
-    DISPLAY_DRAWABLE_MAX_X = DISPLAY_FRAMEBUFFER_WIDTH - 1,
-    DISPLAY_DRAWABLE_MAX_Y = DISPLAY_FRAMEBUFFER_HEIGHT - 1,
+    DISPLAY_DRAWABLE_MAX_X = 254,
+    DISPLAY_DRAWABLE_MAX_Y = 62,
     DISPLAY_ROW_SIZE = DISPLAY_FRAMEBUFFER_WIDTH / 2, /**< Packed bytes in one framebuffer row. */
 };
 
@@ -30,7 +30,8 @@ void display_framebuffer_clear(DisplayFramebuffer framebuffer) {
  * @brief Writes one four-bit grayscale display pixel.
  *
  * Packs even columns into the high nibble and odd columns into the low nibble of each framebuffer
- * byte. Coordinates outside the 256-by-64 framebuffer are ignored.
+ * byte. The controller's legal coordinate range is 0..254 by 0..62; all other coordinates are
+ * ignored so the unused final column and row remain zero for DMA refreshes.
  *
  * @param[in,out] framebuffer Packed 256-by-64 grayscale framebuffer.
  * @param[in] x Pixel column.

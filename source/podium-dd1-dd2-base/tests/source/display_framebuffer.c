@@ -22,8 +22,8 @@ static void test_bounds(void) {
     display_framebuffer_set_pixel(framebuffer, 255, 62, 15);
     display_framebuffer_set_pixel(framebuffer, 254, 63, 15);
     display_framebuffer_set_pixel(framebuffer, 255, 63, 10);
-    assert(framebuffer[62 * 128 + 127] == 0xff);
-    assert(framebuffer[63 * 128 + 127] == 0xfa);
+    assert(framebuffer[62 * 128 + 127] == 0xf0);
+    assert(framebuffer[63 * 128 + 127] == 0x00);
 }
 
 static void test_clear(void) {

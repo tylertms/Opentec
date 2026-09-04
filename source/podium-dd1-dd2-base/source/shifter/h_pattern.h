@@ -75,6 +75,19 @@ typedef struct {
 bool h_pattern_shifter_update_due(const HPatternShifter *shifter, uint32_t now_ms);
 
 /**
+ * @brief Selects the H-pattern gear value published to external consumers.
+ *
+ * Returns neutral while the H-pattern output is disabled without changing the retained
+ * classifier state. This keeps the last valid gear available for resumption after a temporary
+ * disconnect or calibration interval.
+ *
+ * @param[in] shifter Retained H-pattern classification state.
+ * @param[in] enabled True when the classified gear may be published.
+ * @return Retained gear when enabled and available; otherwise neutral.
+ */
+ShifterGear h_pattern_shifter_output_gear(const HPatternShifter *shifter, bool enabled);
+
+/**
  * @brief Classifies one H-pattern analog sample.
  *
  * Applies the calibrated lateral boundaries and longitudinal hysteresis, updates the retained
