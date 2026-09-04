@@ -126,6 +126,20 @@ uint16_t usb_xbox_gip_steering_range_normalize(uint16_t requested_degrees) {
     return requested_degrees / 10u;
 }
 
+bool usb_xbox_gip_steering_range_update(uint16_t *range_units, uint16_t requested_degrees) {
+    if (range_units == NULL) {
+        return false;
+    }
+
+    uint16_t normalized_range = usb_xbox_gip_steering_range_normalize(requested_degrees);
+    if (*range_units == normalized_range) {
+        return false;
+    }
+
+    *range_units = normalized_range;
+    return true;
+}
+
 uint8_t usb_xbox_gip_force_feedback_strength_normalize(uint8_t requested_level) {
     return (uint8_t)((uint16_t)requested_level * XBOX_GIP_FORCE_FEEDBACK_PERCENT_MAXIMUM /
                      XBOX_GIP_FORCE_FEEDBACK_LEVEL_MAXIMUM);

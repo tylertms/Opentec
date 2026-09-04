@@ -4369,7 +4369,8 @@ static void apply_wheel_steering_limit_command(const WheelSteeringLimitCommand *
  * Decodes group-zero command packet 0A, applies transient steering-range, force-level, and
  * attached-wheel capability controls, and schedules capability, attached-device status,
  * transfer-status, or script responses. Earlier pending responses are retained until they reach
- * the endpoint.
+ * the endpoint. Xbox range changes refresh automatic-travel consumers without rewriting retained
+ * kind-two effect positions.
  *
  * @param[in] report Complete USB output report containing the GIP packet.
  * @return True when the report belongs to the Xbox application-command path.
@@ -4387,17 +4388,9 @@ static bool route_xbox_gip_command(const UsbDeviceOutputReport *report) {
         }
         break;
     case USB_XBOX_GIP_COMMAND_STEERING_RANGE: {
-        uint16_t previous_range_units = xbox_runtime_steering_range_units;
-        xbox_runtime_steering_range_units =
-            usb_xbox_gip_steering_range_normalize(usb_xbox_gip_command.parameter);
-        if (tuning_profile->automatic_rotation != 0 &&
-            previous_range_units != xbox_runtime_steering_range_units) {
-            uint32_t previous_scale =
-                wheel_position_travel_from_degrees((uint16_t)(previous_range_units * 10u));
-            uint32_t current_scale = wheel_position_travel_from_degrees(
-                (uint16_t)(xbox_runtime_steering_range_units * 10u));
-            (void)force_feedback_state_rescale_positions(
-                &force_feedback_state, (int32_t)previous_scale, (int32_t)current_scale);
+        if (usb_xbox_gip_steering_range_update(&xbox_runtime_steering_range_units,
+                                               usb_xbox_gip_command.parameter) &&
+            tuning_profile->automatic_rotation != 0) {
             refresh_wheel_position_calibration();
             if (motor_tuning_ready) {
                 motor_tuning_service_refresh(&motor_tuning_service, tuning_profile,

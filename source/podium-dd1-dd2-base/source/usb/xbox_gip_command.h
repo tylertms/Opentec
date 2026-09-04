@@ -52,6 +52,18 @@ bool usb_xbox_gip_command_decode(const uint8_t *packet, size_t length, UsbXboxGi
 uint16_t usb_xbox_gip_steering_range_normalize(uint16_t requested_degrees);
 
 /**
+ * @brief Applies a normalized Xbox steering-range request to transient runtime state.
+ *
+ * Updates the runtime range only when its ten-degree unit value changes. The travel-limit caller
+ * applies dependent updates without rewriting retained force-feedback effect positions.
+ *
+ * @param[in,out] range_units Current runtime range in ten-degree units.
+ * @param[in] requested_degrees Host-requested lock-to-lock range in degrees.
+ * @return True when the normalized range differs from the current value.
+ */
+bool usb_xbox_gip_steering_range_update(uint16_t *range_units, uint16_t requested_degrees);
+
+/**
  * @brief Normalizes an Xbox force-feedback strength request.
  *
  * Converts the host's unsigned-byte scale to the truncated zero-through-100 percentage used by

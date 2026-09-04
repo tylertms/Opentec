@@ -53,6 +53,14 @@ static void test_normalizes_control_values(void) {
     assert(usb_xbox_gip_force_feedback_strength_normalize(0xff) == 100);
 }
 
+static void test_updates_normalized_runtime_range(void) {
+    uint16_t range_units = 108;
+    assert(usb_xbox_gip_steering_range_update(&range_units, 900));
+    assert(range_units == 90);
+    assert(!usb_xbox_gip_steering_range_update(&range_units, 900));
+    assert(!usb_xbox_gip_steering_range_update(NULL, 900));
+}
+
 static void test_decodes_script_queries(void) {
     uint8_t packet[7] = {0x0a, 0, 0, 0, 4, 0xf5, 1};
     UsbXboxGipCommand command;
@@ -114,6 +122,7 @@ static void test_rejects_other_packets_and_invalid_query_ranges(void) {
 int main(void) {
     test_decodes_control_commands();
     test_normalizes_control_values();
+    test_updates_normalized_runtime_range();
     test_decodes_script_queries();
     test_rejects_other_packets_and_invalid_query_ranges();
     return 0;
