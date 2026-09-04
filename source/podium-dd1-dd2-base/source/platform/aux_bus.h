@@ -83,6 +83,14 @@ PlatformAuxBusStatus platform_aux_bus_status(void);
  */
 void platform_aux_bus_clear(void);
 
+/**
+ * @brief Aborts an active auxiliary-bus transaction.
+ *
+ * Resets the I2C controller, releases the bus, and returns the shared transaction status to idle.
+ * Completed statuses remain available to their owner until platform_aux_bus_clear() is called.
+ */
+void platform_aux_bus_cancel(void);
+
 #ifdef OPENTEC_SIMULATOR_TEST
 /**
  * @brief Reads the retry count after a simulated auxiliary-bus transaction.

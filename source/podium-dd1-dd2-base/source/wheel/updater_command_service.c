@@ -118,6 +118,22 @@ static void queue_operation(WheelUpdaterCommandService *service, WheelUpdaterOpe
 }
 
 /**
+ * @brief Cancels the active command updater operation.
+ *
+ * Releases the shared command owner so a late remote response cannot be applied to a later
+ * exchange, then clears the adapter's pending-operation state.
+ *
+ * @param[in,out] service Command updater service with a timed-out read.
+ */
+static void cancel_operation(WheelUpdaterCommandService *service) {
+    command_transport_release(service->transport, WHEEL_UPDATER_COMMAND_OWNER);
+    service->pending_operation = WHEEL_UPDATER_OPERATION_NONE;
+    service->pending_length = 0;
+    service->operation_pending = false;
+    service->failure_pending = false;
+}
+
+/**
  * @brief Initializes updater command transport state.
  *
  * Attaches the shared command transport and clears protocol, target, and pending-operation state.
@@ -139,8 +155,7 @@ void wheel_updater_command_service_init(WheelUpdaterCommandService *service,
  *
  * Accepts USB target 0x11 or protocol target 0x12 and delegates request validation and retention
  * to the updater protocol. The bridge phase, rather than a lower transport operation, controls
- * request ownership. Any lower read left behind by an earlier bridge timeout is drained by the
- * next queue attempt instead of being applied to this new exchange.
+ * request ownership. A bridge timeout releases any lower read before a later exchange can start.
  *
  * @param[in,out] service Idle updater command service accepting the request.
  * @param[in] target Remote updater command channel.
@@ -186,8 +201,8 @@ bool wheel_updater_command_service_start_probe(WheelUpdaterCommandService *servi
  *
  * Polls a pending type-four read, advances the transport-independent response parser, and queues
  * its next offset-zero read or write while respecting the retained command owner. A reported
- * transport failure gets one bridge pass before its retry is queued. A timed-out response does
- * not cancel a still-pending shared command read.
+ * transport failure gets one bridge pass before its retry is queued. A bridge timeout releases the
+ * still-pending shared command read before the response is exposed.
  *
  * @param[in,out] service Active updater command service to advance.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -200,7 +215,9 @@ void wheel_updater_command_service_run(WheelUpdaterCommandService *service, uint
 
     WheelUpdaterIo io = poll_transport(service, now_ms);
     WheelUpdaterOperation operation = wheel_updater_bridge_step(&service->bridge, io);
-    if (!service->operation_pending && io.status != WHEEL_UPDATER_IO_FAILED) {
+    if (operation.kind == WHEEL_UPDATER_OPERATION_CANCEL) {
+        cancel_operation(service);
+    } else if (!service->operation_pending && io.status != WHEEL_UPDATER_IO_FAILED) {
         queue_operation(service, operation, now_ms);
     }
 }

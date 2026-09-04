@@ -85,8 +85,8 @@ static void test_advances_after_queued_write_without_response(void) {
     submit(&transport, expected, sizeof(expected));
     assert(service.bridge.phase == WHEEL_UPDATER_BRIDGE_READ_DELAY);
     assert(command_transport_is_owner(&transport, 0x43));
-    wheel_updater_command_service_run(&service, 0);
-    wheel_updater_command_service_run(&service, 0);
+    wheel_updater_command_service_run(&service, 1);
+    wheel_updater_command_service_run(&service, 2);
     assert(service.bridge.phase == WHEEL_UPDATER_BRIDGE_READ_HEADER);
     assert(command_transport_is_owner(&transport, 0x43));
     const uint8_t *queued = NULL;
@@ -111,11 +111,11 @@ static void test_stages_read_failure_before_retry(void) {
 
     wheel_updater_command_service_run(&service, 0);
     submit(&transport, expected_write, sizeof(expected_write));
-    wheel_updater_command_service_run(&service, 0);
-    wheel_updater_command_service_run(&service, 0);
-    wheel_updater_command_service_run(&service, 0);
+    wheel_updater_command_service_run(&service, 1);
+    wheel_updater_command_service_run(&service, 2);
+    wheel_updater_command_service_run(&service, 2);
     complete_write(&transport, true);
-    wheel_updater_command_service_run(&service, 0);
+    wheel_updater_command_service_run(&service, 2);
 
     const uint8_t expected_read[] = {2, 0x23, 0, 1, 0};
     submit(&transport, expected_read, sizeof(expected_read));
@@ -133,7 +133,7 @@ static void test_stages_read_failure_before_retry(void) {
     submit(&transport, expected_read, sizeof(expected_read));
 }
 
-static void test_keeps_timed_out_read_pending_until_transport_finishes(void) {
+static void test_cancels_timed_out_read_before_response(void) {
     CommandTransport transport;
     WheelUpdaterCommandService service;
     const uint8_t request[] = {0x5a, 0xb0};
@@ -145,10 +145,10 @@ static void test_keeps_timed_out_read_pending_until_transport_finishes(void) {
     wheel_updater_command_service_run(&service, 0);
     const uint8_t expected_write[] = {2, 0x22, 0, 0x5a, 0xb0};
     submit(&transport, expected_write, sizeof(expected_write));
-    wheel_updater_command_service_run(&service, 0);
-    wheel_updater_command_service_run(&service, 0);
+    wheel_updater_command_service_run(&service, 1);
+    wheel_updater_command_service_run(&service, 2);
     complete_write(&transport, true);
-    wheel_updater_command_service_run(&service, 0);
+    wheel_updater_command_service_run(&service, 2);
 
     const uint8_t expected_read[] = {2, 0x23, 0, 1, 0};
     submit(&transport, expected_read, sizeof(expected_read));
@@ -161,12 +161,17 @@ static void test_keeps_timed_out_read_pending_until_transport_finishes(void) {
     wheel_updater_command_service_run(&service, 0);
     submit(&transport, expected_read, sizeof(expected_read));
 
+    uint32_t now_ms = 3;
     for (uint16_t tick = 0; tick <= 0x7d0; tick++) {
-        wheel_updater_command_service_run(&service, 0);
+        wheel_updater_command_service_run(&service, now_ms++);
     }
     assert(wheel_updater_command_service_active(&service));
-    wheel_updater_command_service_run(&service, 0);
-    assert(service.operation_pending);
+    wheel_updater_command_service_run(&service, now_ms);
+    assert(!service.operation_pending);
+    assert(!command_transport_is_owner(&transport, 0x43));
+    const uint8_t *queued = NULL;
+    uint16_t queued_length = 0;
+    assert(!command_transport_request(&transport, &queued, &queued_length));
     const uint8_t *response = NULL;
     uint8_t response_length = 0;
     assert(wheel_updater_command_service_take_response(&service, &response, &response_length));
@@ -174,17 +179,9 @@ static void test_keeps_timed_out_read_pending_until_transport_finishes(void) {
     assert(!wheel_updater_command_service_active(&service));
     assert(wheel_updater_command_service_start(&service, WHEEL_UPDATER_TARGET_USB, request,
                                                sizeof(request)));
-
-    wheel_updater_command_service_run(&service, 0);
-    const uint8_t *queued = NULL;
-    uint16_t queued_length = 0;
-    assert(!command_transport_request(&transport, &queued, &queued_length));
-    const uint8_t stale_marker = 0;
-    complete_read(&transport, &stale_marker, sizeof(stale_marker));
-    wheel_updater_command_service_run(&service, 0);
     const uint8_t expected_restart_write[] = {2, 0x22, 0, 0x5a, 0xb0};
+    wheel_updater_command_service_run(&service, now_ms);
     submit(&transport, expected_restart_write, sizeof(expected_restart_write));
-    complete_write(&transport, true);
     command_transport_release(&transport, 0x43);
 }
 
@@ -201,9 +198,9 @@ static void test_executes_zero_length_remote_read(void) {
     const uint8_t expected_write[] = {2, 0x22, 0, 0x5a, 0xb0};
     submit(&transport, expected_write, sizeof(expected_write));
     complete_write(&transport, true);
-    wheel_updater_command_service_run(&service, 0);
-    wheel_updater_command_service_run(&service, 0);
-    wheel_updater_command_service_run(&service, 0);
+    wheel_updater_command_service_run(&service, 1);
+    wheel_updater_command_service_run(&service, 2);
+    wheel_updater_command_service_run(&service, 2);
 
     const uint8_t expected_read[] = {2, 0x23, 0, 1, 0};
     submit(&transport, expected_read, sizeof(expected_read));
@@ -301,7 +298,7 @@ int main(void) {
     test_maps_command_targets();
     test_advances_after_queued_write_without_response();
     test_stages_read_failure_before_retry();
-    test_keeps_timed_out_read_pending_until_transport_finishes();
+    test_cancels_timed_out_read_before_response();
     test_executes_zero_length_remote_read();
     test_waits_for_other_command_owner();
     test_exchanges_acknowledgement_response();

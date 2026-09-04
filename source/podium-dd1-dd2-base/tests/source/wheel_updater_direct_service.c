@@ -122,8 +122,8 @@ static void test_executes_zero_length_remote_read(void) {
 
     wheel_updater_direct_service_run(&service, 0);
     wheel_updater_direct_service_run(&service, 0);
-    wheel_updater_direct_service_run(&service, 0);
-    wheel_updater_direct_service_run(&service, 0);
+    wheel_updater_direct_service_run(&service, 1);
+    wheel_updater_direct_service_run(&service, 2);
     received = response;
     received_length = sizeof(response);
     for (uint8_t iteration = 0; iteration < 8; iteration++) {
@@ -137,41 +137,37 @@ static void test_executes_zero_length_remote_read(void) {
     assert(memcmp(actual, response, sizeof(response)) == 0);
 }
 
-static void test_keeps_timed_out_read_pending_until_transport_finishes(void) {
+static void test_cancels_timed_out_read_before_response(void) {
     WheelUpdaterDirectService service;
     const uint8_t request[] = {0x5a, 0xb0};
     const uint8_t response[] = {0x5a, 0xa1};
-    const uint8_t empty = 0;
     reset_transport();
     wheel_updater_direct_service_init(&service);
     assert(wheel_updater_direct_service_start(&service, request, sizeof(request)));
 
     wheel_updater_direct_service_run(&service, 0);
     wheel_updater_direct_service_run(&service, 0);
-    wheel_updater_direct_service_run(&service, 0);
-    wheel_updater_direct_service_run(&service, 0);
+    wheel_updater_direct_service_run(&service, 1);
+    wheel_updater_direct_service_run(&service, 2);
     received = response;
     received_length = sizeof(response);
     wheel_updater_direct_service_run(&service, 0);
     wheel_updater_direct_service_run(&service, 0);
     assert(service.operation_pending);
 
+    uint32_t now_ms = 3;
     for (uint16_t tick = 0; tick <= 0x7d0; tick++) {
-        wheel_updater_direct_service_run(&service, 0);
+        wheel_updater_direct_service_run(&service, now_ms++);
     }
-    wheel_updater_direct_service_run(&service, 0);
-    assert(service.operation_pending);
+    wheel_updater_direct_service_run(&service, now_ms);
+    assert(!service.operation_pending);
+    assert(received == NULL);
+    assert(received_length == 0);
     const uint8_t *actual = NULL;
     uint8_t actual_length = 0;
     assert(wheel_updater_direct_service_take_response(&service, &actual, &actual_length));
     assert(actual_length == sizeof(response));
     assert(memcmp(actual, response, sizeof(response)) == 0);
-    assert(wheel_updater_direct_service_active(&service));
-    assert(!wheel_updater_direct_service_start(&service, request, sizeof(request)));
-
-    received = &empty;
-    received_length = 1;
-    wheel_updater_direct_service_run(&service, 0);
     assert(!wheel_updater_direct_service_active(&service));
 }
 
@@ -181,6 +177,6 @@ int main(void) {
     test_completes_write_only_request();
     test_exchanges_full_variable_response();
     test_executes_zero_length_remote_read();
-    test_keeps_timed_out_read_pending_until_transport_finishes();
+    test_cancels_timed_out_read_before_response();
     return 0;
 }

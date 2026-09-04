@@ -61,6 +61,21 @@ static void start_operation(WheelUpdaterDirectService *service, WheelUpdaterOper
 }
 
 /**
+ * @brief Cancels the active direct updater operation.
+ *
+ * Drops buffered response bytes so a late fragment cannot be consumed by a later exchange, then
+ * clears the adapter's pending-operation state.
+ *
+ * @param[in,out] service Direct updater service with a timed-out read.
+ */
+static void cancel_operation(WheelUpdaterDirectService *service) {
+    platform_serial_link_direct_clear();
+    service->pending_operation = WHEEL_UPDATER_OPERATION_NONE;
+    service->pending_length = 0;
+    service->operation_pending = false;
+}
+
+/**
  * @brief Initializes raw updater service state.
  *
  * Clears protocol and pending-operation state for a later status-bridge exchange.
@@ -110,8 +125,8 @@ bool wheel_updater_direct_service_start_probe(WheelUpdaterDirectService *service
  * @brief Advances updater protocol operations over the raw UART link.
  *
  * Polls a pending byte operation, advances the common response parser, and starts its next raw read
- * or write without exposing peripheral state to the protocol layer. A timed-out response does not
- * cancel a still-pending direct read.
+ * or write without exposing peripheral state to the protocol layer. A bridge timeout cancels the
+ * pending direct read before the retained response is exposed.
  *
  * @param[in,out] service Active direct updater service to advance.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -123,7 +138,9 @@ void wheel_updater_direct_service_run(WheelUpdaterDirectService *service, uint32
     }
     WheelUpdaterIo io = poll_operation(service, now_ms);
     WheelUpdaterOperation operation = wheel_updater_bridge_step(&service->bridge, io);
-    if (!service->operation_pending) {
+    if (operation.kind == WHEEL_UPDATER_OPERATION_CANCEL) {
+        cancel_operation(service);
+    } else if (!service->operation_pending) {
         start_operation(service, operation);
     }
 }

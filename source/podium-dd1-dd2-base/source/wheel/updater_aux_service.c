@@ -65,6 +65,21 @@ static void start_operation(WheelUpdaterAuxService *service, WheelUpdaterOperati
 }
 
 /**
+ * @brief Cancels the active auxiliary updater operation.
+ *
+ * Aborts the peripheral transaction so a late response cannot be consumed by a later exchange,
+ * then clears the adapter's pending-operation state.
+ *
+ * @param[in,out] service Auxiliary updater service with a timed-out read.
+ */
+static void cancel_operation(WheelUpdaterAuxService *service) {
+    platform_aux_bus_cancel();
+    service->pending_operation = WHEEL_UPDATER_OPERATION_NONE;
+    service->pending_length = 0;
+    service->transfer_active = false;
+}
+
+/**
  * @brief Initializes auxiliary updater transport state.
  *
  * Clears handshake, bus-operation, and updater response state.
@@ -157,8 +172,8 @@ bool wheel_updater_aux_service_start_probe(WheelUpdaterAuxService *service, cons
  *
  * Retries the parameter-three handshake after failed transfers. Once the handshake succeeds, it
  * converts offset-zero auxiliary-bus completions into input for the transport-independent updater
- * protocol and starts the next requested operation. A timed-out response does not cancel a
- * still-pending bus transfer.
+ * protocol and starts the next requested operation. A bridge timeout aborts the still-pending bus
+ * transfer before the retained response is exposed.
  *
  * @param[in,out] service Auxiliary updater service to advance.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -207,7 +222,9 @@ void wheel_updater_aux_service_run(WheelUpdaterAuxService *service, uint32_t now
     }
 
     WheelUpdaterOperation operation = wheel_updater_bridge_step(&service->bridge, io);
-    if (!service->transfer_active) {
+    if (operation.kind == WHEEL_UPDATER_OPERATION_CANCEL) {
+        cancel_operation(service);
+    } else if (!service->transfer_active) {
         start_operation(service, operation);
     }
 }

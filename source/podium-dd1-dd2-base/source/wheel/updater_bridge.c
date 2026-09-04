@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <string.h>
 
-/** @brief Updater frame, opcode, size, and service-tick constants. */
+/** @brief Updater frame, opcode, size, and Timer-1 counter constants. */
 enum {
     WHEEL_UPDATER_FRAME_MARKER = 0x5a,           /**< Updater frame marker byte. */
     WHEEL_UPDATER_RETRY_OPCODE = 0xa1,           /**< Retry-response opcode. */
@@ -14,8 +14,8 @@ enum {
     WHEEL_UPDATER_FIXED_PAYLOAD_SIZE = 8,        /**< Fixed response payload length. */
     WHEEL_UPDATER_LENGTH_SIZE = 2,               /**< Variable-payload length field size. */
     WHEEL_UPDATER_METADATA_SIZE = 2,             /**< Variable-payload metadata size. */
-    WHEEL_UPDATER_READ_DELAY_TICKS = 2,        /**< Service ticks before the first response read. */
-    WHEEL_UPDATER_RETRY_TIMEOUT_TICKS = 0x7d0, /**< Retry-response service-tick limit. */
+    WHEEL_UPDATER_READ_DELAY_TICKS = 2,        /**< Timer-1 ticks before the first response read. */
+    WHEEL_UPDATER_RETRY_TIMEOUT_TICKS = 0x7d0, /**< Retry-response Timer-1 counter limit. */
 };
 
 /**
@@ -66,6 +66,19 @@ static WheelUpdaterOperation finish_response(WheelUpdaterBridge *bridge) {
 }
 
 /**
+ * @brief Finishes a timed-out response and requests lower-transport cancellation.
+ *
+ * Retains the partial retry response while telling the owning adapter to abort its pending read.
+ *
+ * @param[in,out] bridge Updater bridge completing its timed-out response.
+ * @return Cancellation operation for the active lower transport read.
+ */
+static WheelUpdaterOperation cancel_response(WheelUpdaterBridge *bridge) {
+    bridge->phase = WHEEL_UPDATER_BRIDGE_RESPONSE_READY;
+    return (WheelUpdaterOperation){.kind = WHEEL_UPDATER_OPERATION_CANCEL};
+}
+
+/**
  * @brief Stores one completed response fragment.
  *
  * Copies only an exact-length fragment that fits in the remaining response capacity. A zero-length
@@ -94,8 +107,7 @@ static bool append_fragment(WheelUpdaterBridge *bridge, WheelUpdaterIo io, uint8
 /**
  * @brief Initializes an updater bridge exchange.
  *
- * Clears retained request, response, timing, and parser state. This is the only operation that
- * resets the service counter outside its protocol phase transitions.
+ * Clears retained request, response, timing, and parser state.
  *
  * @param[out] bridge Updater bridge state to initialize.
  */
@@ -146,33 +158,62 @@ bool wheel_updater_bridge_start_probe(WheelUpdaterBridge *bridge, const uint8_t 
 }
 
 /**
- * @brief Advances the retry-response service-tick counter.
+ * @brief Advances the Timer-1 counter from its timestamp.
  *
- * Uses the post-increment and strict greater-than comparison implemented by the reference
- * bridge, so the response remains active through tick 0x7D0 and completes on the next tick.
+ * Counts elapsed Timer-1 milliseconds rather than bridge invocations. Repeated foreground calls
+ * with one timestamp therefore do not consume delay or retry time, and unsigned subtraction keeps
+ * the timestamp delta correct across the 32-bit platform-time wrap. The official 16-bit counter is
+ * intentionally retained when a request starts or its write completes; protocol phase changes
+ * clear it only when the normal read delay completes or an A1 continuation starts.
+ *
+ * @param[in,out] bridge Active updater bridge with a Timer-1 baseline.
+ * @param[in] now_ms Current Timer-1 timestamp.
+ * @return Elapsed Timer-1 milliseconds since the preceding timed service.
+ */
+static uint32_t advance_timer_ticks(WheelUpdaterBridge *bridge, uint32_t now_ms) {
+    uint32_t elapsed_ms = now_ms - bridge->last_timer_ms;
+    bridge->last_timer_ms = now_ms;
+    bridge->timer_ticks = (uint16_t)(bridge->timer_ticks + elapsed_ms);
+    return elapsed_ms;
+}
+
+/**
+ * @brief Tests the official retry-response timeout threshold.
+ *
+ * The reference uses a post-increment and strict greater-than comparison. The last Timer-1 tick
+ * represented by one elapsed interval is tested, so tick 0x7D0 remains active and completion
+ * begins at tick 0x7D1. The retained 16-bit counter wraps naturally, while the pre-increment
+ * value remains the value used for the threshold comparison.
  *
  * @param[in,out] bridge Active updater bridge with retry-response handling enabled.
- * @return True when the retry-response service-tick limit has elapsed.
+ * @param[in] now_ms Current Timer-1 timestamp.
+ * @return True when the retry-response Timer-1 counter limit has elapsed.
  */
-static bool retry_timeout_expired(WheelUpdaterBridge *bridge) {
-    uint16_t previous_ticks = bridge->service_ticks++;
-    return previous_ticks > WHEEL_UPDATER_RETRY_TIMEOUT_TICKS;
+static bool retry_timeout_expired(WheelUpdaterBridge *bridge, uint32_t now_ms) {
+    uint16_t previous_ticks = bridge->timer_ticks;
+    uint32_t elapsed_ms = advance_timer_ticks(bridge, now_ms);
+    if (elapsed_ms == 0u) {
+        return false;
+    }
+    uint32_t last_tick = (uint32_t)previous_ticks + elapsed_ms - 1u;
+    return last_tick > WHEEL_UPDATER_RETRY_TIMEOUT_TICKS;
 }
 
 /**
  * @brief Advances one updater request and response exchange.
  *
  * Keeps normal transport failures retryable, reads a route probe immediately after its request
- * write, waits two bridge service ticks before a normal response read, recognizes response opcodes
+ * write, waits two Timer-1 service ticks before a normal response read, recognizes response opcodes
  * 0xA1, 0xA2, 0xA4, and 0xA7, retains all response fragments through an 0xA1 continuation, and
  * executes a zero-length variable-payload read. The retry response uses the official 16-bit
- * service-tick timeout. Starting an exchange and completing its write preserve that counter; the
- * read-delay and retry-continuation transitions own its resets. A route probe keeps terminal
- * failure behavior and ignores stray non-marker bytes without restarting the request.
+ * Timer-1 counter timeout and requests lower-transport cancellation before exposing a timed-out
+ * response. A route probe keeps terminal failure behavior and ignores stray non-marker bytes
+ * without restarting the request.
  *
  * @param[in,out] bridge Active updater bridge to advance.
- * @param[in] io Transport completion state; service timing uses bridge invocation ticks.
- * @return Next wheel write or read operation, or no operation while waiting or response-ready.
+ * @param[in] io Transport completion state and Timer-1 timestamp.
+ * @return Next wheel write, read, or cancellation operation, or no operation while waiting or
+ * response-ready.
  */
 WheelUpdaterOperation wheel_updater_bridge_step(WheelUpdaterBridge *bridge, WheelUpdaterIo io) {
     if (bridge == NULL || bridge->phase == WHEEL_UPDATER_BRIDGE_IDLE ||
@@ -181,9 +222,10 @@ WheelUpdaterOperation wheel_updater_bridge_step(WheelUpdaterBridge *bridge, Whee
     }
 
     if (bridge->phase == WHEEL_UPDATER_BRIDGE_READ_HEADER && bridge->retry_response &&
-        io.status != WHEEL_UPDATER_IO_COMPLETE && retry_timeout_expired(bridge)) {
+        io.status != WHEEL_UPDATER_IO_COMPLETE &&
+        retry_timeout_expired(bridge, io.now_ms)) {
         bridge->retry_response = false;
-        return finish_response(bridge);
+        return cancel_response(bridge);
     }
 
     if (io.status == WHEEL_UPDATER_IO_FAILED) {
@@ -204,6 +246,7 @@ WheelUpdaterOperation wheel_updater_bridge_step(WheelUpdaterBridge *bridge, Whee
             return (WheelUpdaterOperation){0};
         }
         bridge->retry_response = false;
+        bridge->last_timer_ms = io.now_ms;
         if (bridge->response_probe) {
             bridge->phase = WHEEL_UPDATER_BRIDGE_READ_HEADER;
             return current_operation(bridge);
@@ -213,11 +256,12 @@ WheelUpdaterOperation wheel_updater_bridge_step(WheelUpdaterBridge *bridge, Whee
     }
 
     if (bridge->phase == WHEEL_UPDATER_BRIDGE_READ_DELAY) {
-        uint16_t previous_ticks = bridge->service_ticks++;
-        if (previous_ticks < WHEEL_UPDATER_READ_DELAY_TICKS - 1) {
+        uint16_t previous_ticks = bridge->timer_ticks;
+        uint32_t elapsed_ms = advance_timer_ticks(bridge, io.now_ms);
+        if ((uint32_t)previous_ticks + elapsed_ms < WHEEL_UPDATER_READ_DELAY_TICKS) {
             return (WheelUpdaterOperation){0};
         }
-        bridge->service_ticks = 0;
+        bridge->timer_ticks = 0;
         bridge->phase = WHEEL_UPDATER_BRIDGE_READ_HEADER;
         return current_operation(bridge);
     }
@@ -270,7 +314,8 @@ WheelUpdaterOperation wheel_updater_bridge_step(WheelUpdaterBridge *bridge, Whee
         if (opcode == WHEEL_UPDATER_RETRY_OPCODE) {
             bridge->response_length += 2;
             bridge->retry_response = true;
-            bridge->service_ticks = 0;
+            bridge->timer_ticks = 0;
+            bridge->last_timer_ms = io.now_ms;
             bridge->phase = WHEEL_UPDATER_BRIDGE_READ_HEADER;
             return current_operation(bridge);
         }

@@ -30,8 +30,8 @@ enum {
     AUX_BUS_INTERRUPT_PRIORITY = 7, /**< I2C2 interrupt priority. */
     AUX_BUS_PROGRESS_TIMEOUT_MS = 2,
     AUX_BUS_MAX_RETRIES = 4,       /**< Maximum NACK retries for one transaction. */
-    AUX_BUS_RECOVERY_PULSES = 9,   /**< Maximum SCL recovery pulses. */
-    AUX_BUS_RECOVERY_DELAY = 0x23, /**< Decrement-loop count for each recovery interval. */
+    AUX_BUS_RECOVERY_PULSES = 9,    /**< Maximum SCL recovery pulses. */
+    AUX_BUS_RECOVERY_DELAY = 0x23,  /**< Decrement-loop count for each recovery interval. */
 };
 
 /**
@@ -379,6 +379,21 @@ void platform_aux_bus_clear(void) {
     if (status != PLATFORM_AUX_BUS_BUSY) {
         status = PLATFORM_AUX_BUS_IDLE;
     }
+}
+
+/**
+ * @brief Aborts an active auxiliary-bus transaction.
+ *
+ * Resets the I2C controller, releases the bus, and publishes an idle status for the next owner.
+ */
+void platform_aux_bus_cancel(void) {
+    if (status != PLATFORM_AUX_BUS_BUSY) {
+        return;
+    }
+
+    IEC3bits.MI2C2IE = 0;
+    reset_controller();
+    status = PLATFORM_AUX_BUS_IDLE;
 }
 
 #ifdef OPENTEC_SIMULATOR_TEST

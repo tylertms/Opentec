@@ -21,7 +21,7 @@ typedef enum {
 /** @brief Result supplied by a wheel transport for one updater protocol step. */
 typedef struct {
     const uint8_t *data;         /**< Completed read bytes, or null when no bytes are available. */
-    uint32_t now_ms;             /**< Current monotonic time in milliseconds. */
+    uint32_t now_ms;             /**< Current Timer-1 timestamp in milliseconds. */
     uint8_t length;              /**< Number of completed read bytes in data. */
     WheelUpdaterIoStatus status; /**< Completion state of the preceding transport operation. */
 } WheelUpdaterIo;
@@ -31,12 +31,13 @@ typedef enum {
     WHEEL_UPDATER_OPERATION_NONE,  /**< No transport operation is requested. */
     WHEEL_UPDATER_OPERATION_WRITE, /**< Write the operation data to the updater endpoint. */
     WHEEL_UPDATER_OPERATION_READ,  /**< Read the requested number of bytes from the endpoint. */
+    WHEEL_UPDATER_OPERATION_CANCEL, /**< Cancel the pending lower transport operation. */
 } WheelUpdaterOperationKind;
 
 /** @brief Transport operation and associated updater byte range. */
 typedef struct {
-    const uint8_t *data;            /**< Bytes to write, or null for a read operation. */
-    uint8_t length;                 /**< Number of bytes to write or read. */
+    const uint8_t *data;            /**< Bytes to write, or null for a read or cancel operation. */
+    uint8_t length;                 /**< Number of bytes to write or read, or zero for cancel. */
     WheelUpdaterOperationKind kind; /**< Requested transport operation kind. */
 } WheelUpdaterOperation;
 
@@ -60,7 +61,8 @@ typedef enum {
 typedef struct {
     uint8_t request[WHEEL_UPDATER_BRIDGE_MAX_REQUEST_SIZE];   /**< Retained request bytes. */
     uint8_t response[WHEEL_UPDATER_BRIDGE_MAX_RESPONSE_SIZE]; /**< Assembled response bytes. */
-    uint16_t service_ticks; /**< Retained bridge ticks reset only by their owning protocol phase. */
+    uint16_t timer_ticks;              /**< Official 16-bit Timer-1 service counter. */
+    uint32_t last_timer_ms;            /**< Last Timer-1 timestamp used for the counter. */
     uint16_t variable_payload_length; /**< Expected variable response payload length. */
     uint8_t request_length;           /**< Number of valid bytes in request. */
     uint8_t response_length;          /**< Number of valid bytes in response. */
@@ -112,9 +114,10 @@ bool wheel_updater_bridge_start_probe(WheelUpdaterBridge *bridge, const uint8_t 
  * the updater protocol.
  *
  * @param[in,out] bridge Updater bridge exchange to advance.
- * @param[in] io Current transport result and monotonic time.
- * @return Next transport operation, or WHEEL_UPDATER_OPERATION_NONE while waiting or when no
- * exchange is active.
+ * @param[in] io Current transport result and Timer-1 timestamp.
+ * @return Next transport operation, including WHEEL_UPDATER_OPERATION_CANCEL when a timeout
+ * aborts a pending lower read, or WHEEL_UPDATER_OPERATION_NONE while waiting or when no exchange
+ * is active.
  */
 WheelUpdaterOperation wheel_updater_bridge_step(WheelUpdaterBridge *bridge, WheelUpdaterIo io);
 
