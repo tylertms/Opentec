@@ -27,6 +27,7 @@ typedef struct {
     uint32_t version_presentation_close_ms; /**< Monotonic close time for the tuning-display version
                                                presentation. */
     bool ready;                             /**< True after the startup presentation completes. */
+    bool extended_mode_clear_pending; /**< True when extended startup must clear base-mode state. */
     bool version_presentation_pending; /**< True while a tuning-display version request is pending.
                                         */
     bool version_presentation_close_armed;   /**< True while waiting for the version presentation
@@ -49,20 +50,22 @@ void wheel_startup_display_init(WheelStartupDisplay *display);
  *
  * Updates the startup glyphs for the current time and reports whether the attached-wheel display
  * output changed. The sequence does not advance while the wheel is inactive or after completion.
+ * Leaving the base-version phase in extended mode raises a one-shot base-mode clear event.
  *
  * @param[in,out] display Startup display state to update.
  * @param[in] wheel_active True while the attached-wheel protocol is active.
  * @param[in] tuning_display_supported True when the wheel provides a separate tuning display.
  * @param[in] position_ready True when a valid motor-position report is available.
  * @param[in] motor_identity Motor-controller identity, or null when unavailable.
+ * @param[in] extended_mode True when the attached wheel uses mode 0x1C.
  * @param[in] now_ms Current monotonic time in milliseconds.
  * @param[in,out] output Attached-wheel display output to update.
  * @return True when the display glyphs or marker changed; otherwise false.
  */
 bool wheel_startup_display_update(WheelStartupDisplay *display, bool wheel_active,
                                   bool tuning_display_supported, bool position_ready,
-                                  const MotorIdentity *motor_identity, uint32_t now_ms,
-                                  WheelDisplayOutput *output);
+                                  const MotorIdentity *motor_identity, bool extended_mode,
+                                  uint32_t now_ms, WheelDisplayOutput *output);
 
 /**
  * @brief Reports startup readiness.
@@ -93,5 +96,16 @@ bool wheel_startup_display_take_version_presentation(WheelStartupDisplay *displa
  * @return True when a close request was pending; otherwise false.
  */
 bool wheel_startup_display_take_version_presentation_close(WheelStartupDisplay *display);
+
+/**
+ * @brief Takes the pending extended-mode base-state clear event.
+ *
+ * Consumes the one-shot event raised when mode 0x1C leaves the base-version phase. The transport
+ * owner maps this event to native display command 0x1E.
+ *
+ * @param[in,out] display Startup display state holding the event.
+ * @return True when a clear event was pending; otherwise false.
+ */
+bool wheel_startup_display_take_extended_mode_clear(WheelStartupDisplay *display);
 
 #endif

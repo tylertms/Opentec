@@ -71,11 +71,9 @@ static uint8_t version_glyph(uint8_t digit) {
  * @return True when the displayed version changed.
  */
 static bool show_version(WheelDisplayOutput *output, const uint8_t version[4]) {
-    return set_glyphs(output,
-                      version_glyph(version[0] & VERSION_FIRST_COMPONENT_MASK) |
-                          GLYPH_DECIMAL_POINT,
-                      version_glyph(version[1]) | GLYPH_DECIMAL_POINT,
-                      version_glyph(version[2]));
+    return set_glyphs(
+        output, version_glyph(version[0] & VERSION_FIRST_COMPONENT_MASK) | GLYPH_DECIMAL_POINT,
+        version_glyph(version[1]) | GLYPH_DECIMAL_POINT, version_glyph(version[2]));
 }
 
 /**
@@ -116,21 +114,23 @@ void wheel_startup_display_init(WheelStartupDisplay *display) {
  * motor version, and a one-second ready delay. Wheels with a tuning display retain the dash glyphs
  * while three seconds are reserved for their separate version presentation. Missing position input
  * alternates the CAL label and a blank display every 500 milliseconds until position becomes
- * available. Completion clears the glyphs and releases normal display owners.
+ * available. Leaving the base-version phase in mode 0x1C raises a one-shot base-state clear event.
+ * Completion clears the glyphs and releases normal display owners.
  *
  * @param[in,out] display Persistent startup phase, deadline, and readiness state.
  * @param[in] wheel_active True while the attached-wheel protocol is active.
  * @param[in] tuning_display_supported True when the wheel supplies its own tuning display.
  * @param[in] position_ready True when a valid motor-position report is available.
  * @param[in] motor_identity Identified motor controller, or null when unavailable.
+ * @param[in] extended_mode True when the attached wheel uses mode 0x1C.
  * @param[in] now_ms Current monotonic time in milliseconds.
  * @param[in,out] output Attached-wheel glyph output updated by the active presentation.
  * @return True when the glyph output changed.
  */
 bool wheel_startup_display_update(WheelStartupDisplay *display, bool wheel_active,
                                   bool tuning_display_supported, bool position_ready,
-                                  const MotorIdentity *motor_identity, uint32_t now_ms,
-                                  WheelDisplayOutput *output) {
+                                  const MotorIdentity *motor_identity, bool extended_mode,
+                                  uint32_t now_ms, WheelDisplayOutput *output) {
     if (!wheel_active || display->phase == WHEEL_STARTUP_DISPLAY_COMPLETE) {
         return false;
     }
@@ -162,6 +162,7 @@ bool wheel_startup_display_update(WheelStartupDisplay *display, bool wheel_activ
         if (now_ms < display->deadline_ms) {
             return changed;
         }
+        display->extended_mode_clear_pending = extended_mode;
         display->deadline_ms = now_ms + MOTOR_VERSION_DURATION_MS;
         continue_after_version(display, motor_identity, position_ready);
         return changed;
@@ -254,5 +255,19 @@ bool wheel_startup_display_take_version_presentation(WheelStartupDisplay *displa
 bool wheel_startup_display_take_version_presentation_close(WheelStartupDisplay *display) {
     bool pending = display->version_presentation_close_pending;
     display->version_presentation_close_pending = false;
+    return pending;
+}
+
+/**
+ * @brief Takes the pending extended-mode base-state clear event.
+ *
+ * Returns the event once and clears it so later startup passes cannot repeat the native clear.
+ *
+ * @param[in,out] display Persistent startup display state.
+ * @return True once when the mode-0x1C base-version page expires.
+ */
+bool wheel_startup_display_take_extended_mode_clear(WheelStartupDisplay *display) {
+    bool pending = display->extended_mode_clear_pending;
+    display->extended_mode_clear_pending = false;
     return pending;
 }

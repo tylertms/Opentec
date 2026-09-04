@@ -865,6 +865,8 @@ enum {
     BASE_MODE_XBOX_MODE_DISPLAY_COMMAND = 0x09,   /**< Native display command for Xbox mode. */
     BASE_MODE_XBOX_ERROR_DISPLAY_COMMAND = 0x0d,  /**< Native display command for Xbox recovery
                                                      error. */
+    WHEEL_DISPLAY_EXTENDED_MODE_CLEAR_COMMAND = 0x1e, /**< Native display command that clears the
+                                                          extended base-mode page. */
 };
 
 /** @brief Tuning values preserved while the official startup output override is active. */
@@ -5988,18 +5990,20 @@ static void queue_wheel_startup_version_presentation(void) {
  *
  * Advances the startup sequence only after protocol activation, selects the display-capability
  * timing, supplies the identified motor-controller version and position readiness, and publishes
- * changed glyphs through the shared wheel output.
+ * changed glyphs through the shared wheel output. When extended startup leaves the base-version
+ * phase, queues the official native base-state clear command.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 static void service_wheel_startup_display(uint32_t now_ms) {
     bool wheel_active = wheel_service_protocol_phase(&wheel_service) == WHEEL_PROTOCOL_ACTIVE;
+    bool extended_mode = wheel_service_mode(&wheel_service) == WHEEL_MODE_REMOTE_TUNING_EXTENDED;
     bool was_ready = wheel_startup_display_ready(&wheel_startup_display);
     WheelDisplayOutput *output = wheel_service_default_display_output(&wheel_service);
     if (wheel_startup_display_update(&wheel_startup_display, wheel_active,
                                      wheel_service_tuning_display_supported(&wheel_service),
                                      wheel_position_ready, motor_probe_identity(&motor_probe),
-                                     now_ms, output)) {
+                                     extended_mode, now_ms, output)) {
         wheel_service_set_display_output(&wheel_service, output);
     }
     if (wheel_startup_display_take_version_presentation(&wheel_startup_display)) {
@@ -6007,6 +6011,10 @@ static void service_wheel_startup_display(uint32_t now_ms) {
     }
     if (wheel_startup_display_take_version_presentation_close(&wheel_startup_display)) {
         (void)wheel_service_queue_adapter_text_close(&wheel_service);
+    }
+    if (wheel_startup_display_take_extended_mode_clear(&wheel_startup_display)) {
+        (void)wheel_service_queue_tuning_display_command(&wheel_service,
+                                                         WHEEL_DISPLAY_EXTENDED_MODE_CLEAR_COMMAND);
     }
     if (!was_ready && wheel_startup_display_ready(&wheel_startup_display)) {
         shifter_display_request_refresh(&shifter_display);
