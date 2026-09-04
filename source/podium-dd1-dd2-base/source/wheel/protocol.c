@@ -427,6 +427,20 @@ static bool crc_acknowledgement_input_active(const WheelPacketCrcInput *input) {
 }
 
 /**
+ * @brief Clears the motion deltas consumed by the wheel acknowledgement transition.
+ *
+ * The official reset covers the primary counter and the first two auxiliary counters while
+ * preserving the later auxiliary channels.
+ *
+ * @param[in,out] protocol Protocol state containing queued wheel motion.
+ */
+static void reset_acknowledgement_motion(WheelProtocol *protocol) {
+    protocol->motion.primary = 0;
+    protocol->motion.axes[0] = 0;
+    protocol->motion.axes[1] = 0;
+}
+
+/**
  * @brief Decodes one negative and positive pulse pair.
  *
  * Gives the negative flag priority when both flags are present, otherwise returns the positive or
@@ -1419,6 +1433,7 @@ void wheel_protocol_accept(WheelProtocol *protocol,
         protocol->phase = WHEEL_PROTOCOL_ACKNOWLEDGING;
         return;
     case WHEEL_PROTOCOL_ACKNOWLEDGING:
+        reset_acknowledgement_motion(protocol);
         if (!ready) {
             protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] &=
                 (uint8_t)~WHEEL_PROTOCOL_RESPONSE_ACKNOWLEDGED;

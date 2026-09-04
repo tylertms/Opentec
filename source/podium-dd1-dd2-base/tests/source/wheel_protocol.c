@@ -410,6 +410,37 @@ static void test_restarts_synchronization_when_ready_drops(void) {
     assert(wheel_protocol_response(&protocol)[WHEEL_PROTOCOL_FLAGS_OFFSET] == 0);
 }
 
+static void test_resets_acknowledgement_motion_for_both_transitions(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    protocol.phase = WHEEL_PROTOCOL_ACKNOWLEDGING;
+    protocol.motion = (WheelMotion){.primary = 1, .axes = {2, 3, 4, 5}};
+    mark_ready(request);
+
+    wheel_protocol_accept(&protocol, request);
+
+    assert(protocol.phase == WHEEL_PROTOCOL_SELECTING);
+    assert(protocol.motion.primary == 0);
+    assert(protocol.motion.axes[0] == 0);
+    assert(protocol.motion.axes[1] == 0);
+    assert(protocol.motion.axes[2] == 4);
+    assert(protocol.motion.axes[3] == 5);
+
+    protocol.phase = WHEEL_PROTOCOL_ACKNOWLEDGING;
+    protocol.motion = (WheelMotion){.primary = 6, .axes = {7, 8, 9, 10}};
+    request[WHEEL_PROTOCOL_FLAGS_OFFSET] = 0;
+
+    wheel_protocol_accept(&protocol, request);
+
+    assert(protocol.phase == WHEEL_PROTOCOL_WAITING);
+    assert(protocol.motion.primary == 0);
+    assert(protocol.motion.axes[0] == 0);
+    assert(protocol.motion.axes[1] == 0);
+    assert(protocol.motion.axes[2] == 9);
+    assert(protocol.motion.axes[3] == 10);
+}
+
 static void test_selects_mode_when_ready_drops(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -1963,6 +1994,7 @@ int main(void) {
     test_accepts_authenticated_active_commands_and_restarts_authentication();
     test_refreshes_active_response_after_invalid_checksum();
     test_restarts_synchronization_when_ready_drops();
+    test_resets_acknowledgement_motion_for_both_transitions();
     test_selects_mode_when_ready_drops();
     test_captures_normalized_active_requests();
     test_captures_packed_family_requests();
