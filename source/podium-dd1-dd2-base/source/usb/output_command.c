@@ -9,7 +9,7 @@ enum {
     SHORT_REPORT_PAYLOAD_SIZE = 7,                /**< Short command payload size in bytes. */
     VENDOR_TRANSFER_REPORT_ID = 0xff,             /**< Native vendor-transfer report identifier. */
     VENDOR_TRANSFER_PAYLOAD_SIZE = 63,            /**< Vendor-transfer payload size in bytes. */
-    PLAYSTATION_SHORT_REPORT_ID = 0x30,           /**< PlayStation short-report identifier. */
+    PLAYSTATION_REPORT_ID = 0x30,                 /**< PlayStation full-report identifier. */
     PLAYSTATION_VENDOR_TRANSFER_REPORT_ID = 0x34, /**< PlayStation vendor-transfer identifier. */
     PLAYSTATION_REPORT_SIZE = 64,                 /**< PlayStation report size in bytes. */
 };
@@ -41,16 +41,6 @@ bool usb_output_command_decode(const UsbDeviceOutputReport *report, UsbOutputCom
         return true;
     }
 
-    if (report->report_id == PLAYSTATION_SHORT_REPORT_ID &&
-        report->length == PLAYSTATION_REPORT_SIZE) {
-        *command = (UsbOutputCommand){
-            .kind = USB_OUTPUT_COMMAND_SHORT,
-            .payload = report->data + 1,
-            .length = SHORT_REPORT_PAYLOAD_SIZE,
-        };
-        return true;
-    }
-
     if (report->report_id == VENDOR_TRANSFER_REPORT_ID &&
         report->length == VENDOR_TRANSFER_PAYLOAD_SIZE + 1) {
         *command = (UsbOutputCommand){
@@ -61,7 +51,8 @@ bool usb_output_command_decode(const UsbDeviceOutputReport *report, UsbOutputCom
         return true;
     }
 
-    if (report->report_id == PLAYSTATION_VENDOR_TRANSFER_REPORT_ID &&
+    if ((report->report_id == PLAYSTATION_REPORT_ID ||
+         report->report_id == PLAYSTATION_VENDOR_TRANSFER_REPORT_ID) &&
         report->length == PLAYSTATION_REPORT_SIZE) {
         *command = (UsbOutputCommand){
             .kind = USB_OUTPUT_COMMAND_VENDOR_TRANSFER,
