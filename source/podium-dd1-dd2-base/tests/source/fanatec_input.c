@@ -75,6 +75,13 @@ static void test_validation(void) {
     assert(!fanatec_input_compatibility_encode(compatibility_report, NULL));
 }
 
+static void test_invalid_command_report_mode(void) {
+    assert(fanatec_input_report_mode(0x10, false) == 0x10);
+    assert(fanatec_input_report_mode(0x10, true) == FANATEC_INPUT_DIRECT_DRIVE_MODE);
+    assert(fanatec_input_report_mode(FANATEC_INPUT_DIRECT_DRIVE_MODE, true) ==
+           FANATEC_INPUT_DIRECT_DRIVE_MODE);
+}
+
 static void test_official_source_history(void) {
     fanatec_input_pipeline_state pipeline;
     fanatec_input_source source;
@@ -538,6 +545,7 @@ int main(void) {
     test_zero_state();
     test_bite_point_update();
     test_validation();
+    test_invalid_command_report_mode();
     test_official_source_history();
     test_official_first_five_mapping_and_axes();
     test_protocol_active_clears_extended_fields();

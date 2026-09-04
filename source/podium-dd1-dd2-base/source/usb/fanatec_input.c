@@ -397,6 +397,10 @@ void fanatec_input_pipeline_map(fanatec_input_state *state, const fanatec_input_
     }
 }
 
+uint8_t fanatec_input_report_mode(uint8_t wheel_mode, bool command_invalid) {
+    return command_invalid ? FANATEC_INPUT_DIRECT_DRIVE_MODE : wheel_mode;
+}
+
 void fanatec_input_pipeline_apply(fanatec_input_pipeline_state *pipeline,
                                   fanatec_input_state *state, const fanatec_input_source *source) {
     if (pipeline == NULL || state == NULL || source == NULL) {

@@ -5266,6 +5266,7 @@ static void service_usb_input(uint32_t now_ms) {
     uint8_t wheel_mode = protocol_phase > WHEEL_PROTOCOL_SELECTING
                              ? wheel_service_mode(&wheel_service)
                              : FANATEC_INPUT_DIRECT_DRIVE_MODE;
+    wheel_mode = fanatec_input_report_mode(wheel_mode, wheel_service.protocol.command_invalid);
     bool fanatec_report_mode = input_mode == USB_INPUT_REPORT_MODE_FANATEC ||
                                input_mode == USB_INPUT_REPORT_MODE_FANATEC_COMPATIBILITY;
     bool fanatec_pipeline_active =

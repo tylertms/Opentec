@@ -125,6 +125,18 @@ void fanatec_input_pipeline_filter(fanatec_input_pipeline_state *pipeline,
 void fanatec_input_pipeline_map(fanatec_input_state *state, const fanatec_input_source *source);
 
 /**
+ * @brief Selects the wheel mode written to a native Fanatec report.
+ *
+ * The official report builder substitutes the direct-drive mode code while the active wheel
+ * command is invalid. Valid commands retain their negotiated wheel mode.
+ *
+ * @param[in] wheel_mode Negotiated wheel mode.
+ * @param[in] command_invalid True when the active wheel command is invalid.
+ * @return Direct-drive mode for an invalid command; otherwise wheel_mode.
+ */
+uint8_t fanatec_input_report_mode(uint8_t wheel_mode, bool command_invalid);
+
+/**
  * @brief Filters and maps one source packet through the native Fanatec pipeline.
  *
  * @param[in,out] pipeline Source/history state.
