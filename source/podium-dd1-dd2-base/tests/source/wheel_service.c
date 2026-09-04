@@ -718,7 +718,9 @@ static void test_gates_selected_modes_on_status_memory_startup(void) {
 
         assert(wheel_service_mode(&service) == modes[index]);
         assert(wheel_service_status_memory_startup_pending(&service));
+        assert(service.protocol_deadline_active);
         WheelProtocolPhase selected_phase = wheel_service_protocol_phase(&service);
+        uint32_t stale_deadline_ms = service.protocol_deadline_ms;
         respond_active(0);
         run_service(&service, now_ms++);
         assert(wheel_service_protocol_phase(&service) == selected_phase);
@@ -726,7 +728,10 @@ static void test_gates_selected_modes_on_status_memory_startup(void) {
         bool available = index != 0;
         wheel_service_finish_status_memory_startup(&service, available);
         assert(!wheel_service_status_memory_startup_pending(&service));
+        assert(!service.protocol_deadline_active);
         assert(wheel_service_tuning_menu_available(&service) == available);
+        wheel_service_run(&service, stale_deadline_ms, false);
+        assert(wheel_service_protocol_phase(&service) == selected_phase);
     }
 
     WheelService service;

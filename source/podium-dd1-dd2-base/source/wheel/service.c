@@ -1929,8 +1929,9 @@ bool wheel_service_status_memory_startup_pending(const WheelService *service) {
 /**
  * @brief Completes selected-wheel status-memory startup.
  *
- * Clears the protocol timeout gate and retains the recovered tuning-menu availability as an
- * explicit capability override. Calls without pending startup work are ignored.
+ * Clears the startup gate, disarms the activity deadline that was retained while the gate was
+ * active, and records the recovered tuning-menu availability. Calls without pending startup work
+ * are ignored.
  *
  * @param[in,out] service Wheel service awaiting startup status.
  * @param[in] available Recovered tuning-menu availability.
@@ -1940,6 +1941,7 @@ void wheel_service_finish_status_memory_startup(WheelService *service, bool avai
         return;
     }
     service->status_memory_startup_pending = false;
+    service->protocol_deadline_active = false;
     service->tuning_menu_override_enabled = true;
     service->tuning_menu_override_value = available;
 }

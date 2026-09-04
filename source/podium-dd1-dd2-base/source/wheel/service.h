@@ -192,8 +192,9 @@ bool wheel_service_status_memory_startup_pending(const WheelService *service);
 /**
  * @brief Completes selected-wheel status-memory startup.
  *
- * Releases the protocol timeout gate and applies the recovered tuning-menu availability result.
- * Calls without a pending mode-0x0A or mode-0x1C startup are ignored.
+ * Releases the startup gate, disarms its retained activity deadline, and applies the recovered
+ * tuning-menu availability result. Calls without pending mode-0x0A or mode-0x1C startup are
+ * ignored.
  *
  * @param[in,out] service Wheel service awaiting startup status.
  * @param[in] available Recovered tuning-menu availability.
@@ -718,7 +719,8 @@ bool wheel_service_multi_position_input(WheelService *service, uint32_t now_ms,
  *
  * Reads the latest event from the requested rotary channel without consuming it. The fourth
  * channel is populated from the high nibble of the packed direct-wheel rotary byte only in legacy
- * remote-tuning mode 0x0e and is not part of the three selector channels in WheelMultiPositionInput.
+ * remote-tuning mode 0x0e and is not part of the three selector channels in
+ * WheelMultiPositionInput.
  *
  * @param[in] service Wheel service and rotary state to inspect.
  * @param[in] channel Zero-based rotary channel index.
