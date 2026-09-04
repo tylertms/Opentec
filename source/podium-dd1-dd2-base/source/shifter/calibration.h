@@ -240,8 +240,10 @@ h_pattern_calibration_service_stage(const HPatternCalibrationService *service, u
 /**
  * @brief Takes a pending type-0x16 shifter-state report.
  *
- * Publishes state changes immediately and repeats stages after SHOW_READY at the official
- * two-second cadence when an attached wheel is connected. The output is byte zero followed by the
+ * Publishes state changes immediately and repeats stages after SHOW_READY at the official connected
+ * two-second cadence. The due comparison is the raw unsigned `now_ms >= report_deadline_ms` test,
+ * and each repeated report starts a fresh interval from the current time. State changes and
+ * disconnected calls do not move the retained deadline. The output is byte zero followed by the
  * little-endian stage value.
  *
  * @param[in,out] service Calibration lifecycle and report cadence state.

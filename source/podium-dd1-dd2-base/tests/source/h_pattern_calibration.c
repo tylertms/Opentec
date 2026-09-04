@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "shifter/calibration.h"
 
@@ -275,13 +276,36 @@ static void test_reports_stage_changes_and_connected_cadence(void) {
     h_pattern_calibration_service_request(&service, H_PATTERN_CALIBRATION_COMMAND_ADVANCE, 0, 4201);
     assert(h_pattern_calibration_service_take_report(&service, 4201, false, report));
     assert(report[1] == H_PATTERN_CALIBRATION_STAGE_CAPTURE_NEUTRAL);
-    assert(!h_pattern_calibration_service_take_report(&service, 6200, true, report));
-    assert(h_pattern_calibration_service_take_report(&service, 6201, true, report));
+    assert(h_pattern_calibration_service_take_report(&service, 6200, true, report));
     assert(report[1] == H_PATTERN_CALIBRATION_STAGE_CAPTURE_NEUTRAL);
+    assert(service.report_deadline_ms == 8200);
+    assert(!h_pattern_calibration_service_take_report(&service, 8199, true, report));
+    assert(h_pattern_calibration_service_take_report(&service, 8200, true, report));
+    assert(service.report_deadline_ms == 10200);
 
     h_pattern_calibration_service_cancel(&service);
     assert(h_pattern_calibration_service_take_report(&service, 6202, false, report));
     assert(report[1] == H_PATTERN_CALIBRATION_STAGE_DETECT_INPUT);
+    assert(service.report_deadline_ms == 10200);
+}
+
+static void test_report_deadline_uses_unsigned_time_order(void) {
+    HPatternCalibrationService service = {
+        .session = {.next_position = H_PATTERN_CALIBRATION_REVERSE},
+        .active = true,
+        .reported_state = H_PATTERN_CALIBRATION_STAGE_CAPTURE_REVERSE,
+        .report_deadline_ms = 0,
+    };
+    uint8_t report[3] = {0};
+
+    assert(h_pattern_calibration_service_take_report(&service, UINT32_C(0x80000000), true,
+                                                     report));
+    assert(report[1] == H_PATTERN_CALIBRATION_STAGE_CAPTURE_REVERSE);
+    assert(service.report_deadline_ms == UINT32_C(0x800007d0));
+
+    service.report_deadline_ms = UINT32_MAX;
+    assert(!h_pattern_calibration_service_take_report(&service, 0, true, report));
+    assert(service.report_deadline_ms == UINT32_MAX);
 }
 
 int main(void) {
@@ -296,5 +320,6 @@ int main(void) {
     test_completion_ignores_adapter_advance_input();
     test_cancel_clears_only_transient_state();
     test_reports_stage_changes_and_connected_cadence();
+    test_report_deadline_uses_unsigned_time_order();
     return 0;
 }

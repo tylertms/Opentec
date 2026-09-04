@@ -17,6 +17,7 @@ enum {
     H_PATTERN_EXTENDED_READY_PROMPT_MS = 1000, /**< Extended ready-label presentation duration. */
     H_PATTERN_EXTENDED_ENTRY_DELAY_MS = 5000,  /**< Extended-mode entry delay. */
     H_PATTERN_EXTENDED_COMPLETION_MS = 1000,   /**< Extended-mode completion hold duration. */
+    H_PATTERN_CALIBRATION_REPORT_INTERVAL_MS = 2000, /**< Unchanged-stage report interval. */
     SEVENTH_BOUNDARY_MINIMUM_SPAN = 5, /**< Maximum fifth-to-seventh span for fallback boundary. */
     SEVENTH_BOUNDARY_FALLBACK_OFFSET = 20, /**< Offset below fifth gear for fallback boundary. */
 };
@@ -347,7 +348,9 @@ h_pattern_calibration_service_stage(const HPatternCalibrationService *service, u
  * @brief Publishes a changed or due H-pattern stage through type 0x16.
  *
  * State changes are queued immediately. Once capture starts, an attached wheel receives the
- * unchanged state again every two seconds, matching the official ready-report cadence.
+ * unchanged state again only while connected and at the inclusive two-second deadline. A repeated
+ * report starts a fresh interval from the current scheduler time; state changes and disconnects do
+ * not move the retained deadline.
  *
  * @param[in,out] service Calibration lifecycle and report cadence state.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -364,8 +367,8 @@ bool h_pattern_calibration_service_take_report(HPatternCalibrationService *servi
     HPatternCalibrationStage stage = h_pattern_calibration_service_stage(service, now_ms);
     service->report_state = stage;
     bool changed = stage != service->reported_state;
-    bool repeated = stage > H_PATTERN_CALIBRATION_STAGE_SHOW_READY && adapter_connected &&
-                    (int32_t)(now_ms - service->report_deadline_ms) >= 0;
+    bool repeated = !changed && stage > H_PATTERN_CALIBRATION_STAGE_SHOW_READY &&
+                    adapter_connected && now_ms >= service->report_deadline_ms;
     if (!changed && !repeated) {
         return false;
     }
@@ -374,7 +377,9 @@ bool h_pattern_calibration_service_take_report(HPatternCalibrationService *servi
     report[1] = (uint8_t)stage;
     report[2] = (uint8_t)((uint16_t)stage >> 8);
     service->reported_state = stage;
-    service->report_deadline_ms = now_ms + 2000;
+    if (repeated) {
+        service->report_deadline_ms = now_ms + H_PATTERN_CALIBRATION_REPORT_INTERVAL_MS;
+    }
     return true;
 }
 
