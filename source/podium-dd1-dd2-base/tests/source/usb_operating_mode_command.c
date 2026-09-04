@@ -63,21 +63,15 @@ static void test_identifies_native_reset(void) {
     assert(!usb_operating_mode_command_requests_native_reset(NULL));
 }
 
-static void test_decodes_operating_status(void) {
-    UsbOperatingModeCommand command = {.opcode = 2, .parameters = {0}};
-    bool enabled = true;
+static void test_identifies_type_two_noop(void) {
+    UsbOperatingModeCommand command = {.opcode = 2, .parameters = {0xa5, 0x5a, 0x33, 0xcc}};
 
-    assert(usb_operating_mode_command_decode_status(&command, &enabled));
-    assert(!enabled);
-
-    command.parameters[0] = 0xa5;
-    assert(usb_operating_mode_command_decode_status(&command, &enabled));
-    assert(enabled);
-
+    assert(usb_operating_mode_command_is_noop(&command));
+    command.opcode = 1;
+    assert(!usb_operating_mode_command_is_noop(&command));
     command.opcode = 3;
-    assert(!usb_operating_mode_command_decode_status(&command, &enabled));
-    assert(!usb_operating_mode_command_decode_status(NULL, &enabled));
-    assert(!usb_operating_mode_command_decode_status(&command, NULL));
+    assert(!usb_operating_mode_command_is_noop(&command));
+    assert(!usb_operating_mode_command_is_noop(NULL));
 }
 
 static void test_identifies_led_pattern(void) {
@@ -184,7 +178,7 @@ int main(void) {
     test_decodes_command_envelope();
     test_rejects_other_envelopes();
     test_identifies_native_reset();
-    test_decodes_operating_status();
+    test_identifies_type_two_noop();
     test_identifies_led_pattern();
     test_decodes_auxiliary_runtime_modes();
     test_decodes_bridge_runtime_modes();

@@ -496,8 +496,6 @@ static UsbRuntimeModeTransition usb_runtime_transition;
 static RuntimeBridgeInput runtime_bridge_input;
 /** @brief USB updater service inputs. */
 static UsbUpdaterServiceInput usb_updater_input;
-/** @brief Whether host operating status is enabled. */
-static bool usb_operating_status_enabled;
 /** @brief Number of fallback interface modes observed. */
 static uint8_t fallback_interface_mode_count;
 /** @brief Pending pedal calibration command. */
@@ -4531,6 +4529,9 @@ static void service_usb_output(void) {
     }
 
     if (usb_operating_mode_command_decode(&usb_output_command, &usb_operating_mode_command)) {
+        if (usb_operating_mode_command_is_noop(&usb_operating_mode_command)) {
+            return;
+        }
         if (apply_fallback_device_command(&usb_operating_mode_command)) {
             return;
         }
@@ -4543,11 +4544,6 @@ static void service_usb_output(void) {
             if (usb_device_set_input_mode(USB_INPUT_REPORT_MODE_FANATEC) && leaving_playstation) {
                 initialize_usb_command_bridge();
             }
-        } else if (usb_operating_mode_command_decode_status(&usb_operating_mode_command,
-                                                            &usb_operating_status_enabled)) {
-            system_control_state_set_operating_status(&system_control_state,
-                                                      wheel_service_mode(&wheel_service),
-                                                      usb_operating_status_enabled);
         } else if (start_runtime_bridge(&usb_operating_mode_command)) {
             return;
         } else if (usb_operating_mode_command_requests_led_pattern(&usb_operating_mode_command)) {

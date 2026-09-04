@@ -70,18 +70,14 @@ bool usb_operating_mode_command_decode(const UsbOutputCommand *output,
 bool usb_operating_mode_command_requests_native_reset(const UsbOperatingModeCommand *command);
 
 /**
- * @brief Decodes an operating-status update.
+ * @brief Tests whether a decoded command is an official no-op.
  *
- * Accepts opcode 2 and converts its first parameter to a Boolean value, where zero disables the
- * status and any nonzero value enables it.
+ * Type two is accepted by the official dispatcher but exits without changing runtime state.
  *
  * @param[in] command Decoded operating-mode command.
- * @param[out] enabled Destination for the requested status value.
- * @return True when command and enabled are non-null and command carries an operating-status
- * update; otherwise false.
+ * @return True when the command is the official type-two no-op.
  */
-bool usb_operating_mode_command_decode_status(const UsbOperatingModeCommand *command,
-                                              bool *enabled);
+bool usb_operating_mode_command_is_noop(const UsbOperatingModeCommand *command);
 
 /**
  * @brief Tests for an accepted LED-pattern request.

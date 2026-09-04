@@ -57,13 +57,8 @@ bool usb_operating_mode_command_requests_native_reset(const UsbOperatingModeComm
     return command != NULL && command->opcode == 1 && command->parameters[0] == 1;
 }
 
-bool usb_operating_mode_command_decode_status(const UsbOperatingModeCommand *command,
-                                              bool *enabled) {
-    if (command == NULL || enabled == NULL || command->opcode != 2) {
-        return false;
-    }
-    *enabled = command->parameters[0] != 0;
-    return true;
+bool usb_operating_mode_command_is_noop(const UsbOperatingModeCommand *command) {
+    return command != NULL && command->opcode == 2;
 }
 
 bool usb_operating_mode_command_requests_led_pattern(const UsbOperatingModeCommand *command) {
