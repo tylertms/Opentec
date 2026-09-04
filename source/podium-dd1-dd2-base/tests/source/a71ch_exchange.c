@@ -21,9 +21,11 @@ static const uint8_t *bus_write_data;
 static uint8_t *bus_read_data;
 static uint16_t bus_length;
 static bool bus_accepts;
+static uint8_t bus_start_count;
 
 bool platform_aux_bus_start_write(uint8_t address, uint16_t register_address, const uint8_t *data,
                                   uint16_t length) {
+    ++bus_start_count;
     bus_call = BUS_CALL_WRITE;
     bus_address = address;
     bus_register = register_address;
@@ -37,6 +39,7 @@ bool platform_aux_bus_start_write(uint8_t address, uint16_t register_address, co
 
 bool platform_aux_bus_start_read(uint8_t address, uint16_t register_address, uint8_t *data,
                                  uint16_t length) {
+    ++bus_start_count;
     bus_call = BUS_CALL_READ;
     bus_address = address;
     bus_register = register_address;
@@ -64,6 +67,7 @@ static void reset_bus(void) {
     bus_read_data = 0;
     bus_length = 0;
     bus_accepts = true;
+    bus_start_count = 0;
 }
 
 static A71chAuthenticationFrame make_frame(void) {
@@ -126,6 +130,28 @@ static void advance_to_response(A71chExchangeService *service) {
     assert(bus_length == service->frame.response_length);
 }
 
+static void advance_recovery_to_response(A71chExchangeService *service) {
+    a71ch_exchange_service_run(service);
+    assert(bus_call == BUS_CALL_WRITE);
+    assert(bus_register == service->frame.selector);
+    assert(bus_write_data == service->frame.write_data);
+    assert(bus_length == service->frame.write_length);
+    complete_operation();
+    a71ch_exchange_service_run(service);
+
+    a71ch_exchange_service_run(service);
+    assert(bus_call == BUS_CALL_READ);
+    assert(bus_register == 0x07);
+    assert(bus_length == 2);
+    complete_read(0x07);
+    a71ch_exchange_service_run(service);
+
+    a71ch_exchange_service_run(service);
+    assert(bus_call == BUS_CALL_READ);
+    assert(bus_register == 0x82);
+    assert(bus_length == service->frame.response_length);
+}
+
 static void test_completes_exchange_and_exposes_payload(void) {
     reset_bus();
     A71chExchangeService service;
@@ -166,7 +192,36 @@ static void test_waits_through_busy_statuses(void) {
     assert(bus_register == 0x07);
 }
 
-static void test_retries_failed_bus_operation(void) {
+static void test_retries_repeated_bus_failures(void) {
+    reset_bus();
+    A71chExchangeService service;
+    A71chAuthenticationFrame frame = make_frame();
+    a71ch_exchange_service_init(&service);
+    assert(a71ch_exchange_service_start(&service, &frame));
+
+    for (uint8_t attempt = 0; attempt < 4; ++attempt) {
+        a71ch_exchange_service_run(&service);
+        assert(service.transfer_active);
+        assert(bus_call == BUS_CALL_READ);
+        assert(bus_register == 0x07);
+        bus_status = PLATFORM_AUX_BUS_FAILED;
+        a71ch_exchange_service_run(&service);
+        assert(a71ch_exchange_service_status(&service) == A71CH_EXCHANGE_SERVICE_RUNNING);
+        assert(service.exchange.stage == A71CH_EXCHANGE_WAIT_READY);
+        assert(!service.transfer_active);
+        assert(bus_status == PLATFORM_AUX_BUS_IDLE);
+    }
+    assert(bus_start_count == 4);
+
+    a71ch_exchange_service_run(&service);
+    assert(a71ch_exchange_service_status(&service) == A71CH_EXCHANGE_SERVICE_RUNNING);
+    assert(service.transfer_active);
+    assert(bus_call == BUS_CALL_READ);
+    assert(bus_register == 0x07);
+    assert(bus_start_count == 5);
+}
+
+static void test_resumes_acceptance_poll_after_write_failure(void) {
     reset_bus();
     A71chExchangeService service;
     A71chAuthenticationFrame frame = make_frame();
@@ -174,13 +229,72 @@ static void test_retries_failed_bus_operation(void) {
     assert(a71ch_exchange_service_start(&service, &frame));
 
     a71ch_exchange_service_run(&service);
+    complete_read(0x07);
+    a71ch_exchange_service_run(&service);
+    assert(service.exchange.stage == A71CH_EXCHANGE_QUEUE_COMMAND);
+
+    a71ch_exchange_service_run(&service);
+    assert(bus_call == BUS_CALL_WRITE);
+    assert(service.transfer_active);
     bus_status = PLATFORM_AUX_BUS_FAILED;
     a71ch_exchange_service_run(&service);
-    assert(service.exchange.stage == A71CH_EXCHANGE_WAIT_READY);
+    assert(a71ch_exchange_service_status(&service) == A71CH_EXCHANGE_SERVICE_RUNNING);
+    assert(service.exchange.stage == A71CH_EXCHANGE_WAIT_ACCEPTANCE);
     assert(!service.transfer_active);
+
     a71ch_exchange_service_run(&service);
     assert(bus_call == BUS_CALL_READ);
     assert(bus_register == 0x07);
+    assert(bus_length == 2);
+    complete_read(0x07);
+    a71ch_exchange_service_run(&service);
+    assert(service.exchange.stage == A71CH_EXCHANGE_WAIT_RESPONSE);
+    a71ch_exchange_service_run(&service);
+    assert(bus_call == BUS_CALL_READ);
+    assert(bus_register == 0x82);
+}
+
+static void test_retries_rejected_bus_start(void) {
+    reset_bus();
+    bus_accepts = false;
+    A71chExchangeService service;
+    A71chAuthenticationFrame frame = make_frame();
+    a71ch_exchange_service_init(&service);
+    assert(a71ch_exchange_service_start(&service, &frame));
+
+    a71ch_exchange_service_run(&service);
+    assert(a71ch_exchange_service_status(&service) == A71CH_EXCHANGE_SERVICE_RUNNING);
+    assert(service.exchange.stage == A71CH_EXCHANGE_WAIT_READY);
+    assert(!service.transfer_active);
+    assert(bus_status == PLATFORM_AUX_BUS_IDLE);
+    assert(bus_start_count == 1);
+
+    bus_accepts = true;
+    a71ch_exchange_service_run(&service);
+    assert(a71ch_exchange_service_status(&service) == A71CH_EXCHANGE_SERVICE_RUNNING);
+    assert(service.transfer_active);
+    assert(bus_call == BUS_CALL_READ);
+    assert(bus_register == 0x07);
+    assert(bus_start_count == 2);
+
+    complete_read(0x07);
+    a71ch_exchange_service_run(&service);
+    assert(service.exchange.stage == A71CH_EXCHANGE_QUEUE_COMMAND);
+
+    bus_accepts = false;
+    a71ch_exchange_service_run(&service);
+    assert(a71ch_exchange_service_status(&service) == A71CH_EXCHANGE_SERVICE_RUNNING);
+    assert(service.exchange.stage == A71CH_EXCHANGE_QUEUE_COMMAND);
+    assert(!service.transfer_active);
+    assert(bus_status == PLATFORM_AUX_BUS_IDLE);
+    assert(bus_start_count == 3);
+
+    bus_accepts = true;
+    a71ch_exchange_service_run(&service);
+    assert(service.transfer_active);
+    assert(bus_call == BUS_CALL_WRITE);
+    assert(bus_register == service.frame.selector);
+    assert(bus_start_count == 4);
 }
 
 static void test_classifies_command_and_checksum_failures(void) {
@@ -197,15 +311,21 @@ static void test_classifies_command_and_checksum_failures(void) {
     }
     assert(a71ch_exchange_service_status(&service) == A71CH_EXCHANGE_SERVICE_FAILED);
     assert(a71ch_exchange_service_result(&service) == A71CH_EXCHANGE_COMMAND_ERROR);
+    assert(service.exchange.stage == A71CH_EXCHANGE_QUEUE_COMMAND);
+    assert(bus_start_count == 4);
+    a71ch_exchange_service_run(&service);
+    assert(bus_start_count == 4);
 
     frame = make_read_frame(true);
     assert(a71ch_exchange_service_start(&service, &frame));
-    advance_to_response(&service);
+    assert(service.exchange.stage == A71CH_EXCHANGE_QUEUE_COMMAND);
+    advance_recovery_to_response(&service);
     bus_read_data[2] = 1;
     complete_operation();
     a71ch_exchange_service_run(&service);
     assert(a71ch_exchange_service_status(&service) == A71CH_EXCHANGE_SERVICE_FAILED);
     assert(a71ch_exchange_service_result(&service) == A71CH_EXCHANGE_LRC_ERROR);
+    assert(service.exchange.stage == A71CH_EXCHANGE_QUEUE_COMMAND);
 }
 
 static void test_rejects_invalid_or_overlapping_starts(void) {
@@ -227,7 +347,9 @@ static void test_rejects_invalid_or_overlapping_starts(void) {
 int main(void) {
     test_completes_exchange_and_exposes_payload();
     test_waits_through_busy_statuses();
-    test_retries_failed_bus_operation();
+    test_retries_repeated_bus_failures();
+    test_resumes_acceptance_poll_after_write_failure();
+    test_retries_rejected_bus_start();
     test_classifies_command_and_checksum_failures();
     test_rejects_invalid_or_overlapping_starts();
     return 0;

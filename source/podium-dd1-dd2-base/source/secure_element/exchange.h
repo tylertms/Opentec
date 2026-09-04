@@ -44,7 +44,9 @@ void a71ch_exchange_service_init(A71chExchangeService *service);
 /**
  * @brief Starts an encoded APDU exchange.
  *
- * Copies frame into service-owned storage and schedules the initial readiness status poll.
+ * Copies frame into service-owned storage and schedules the initial readiness status poll. When a
+ * prior protocol error left the service in its recovery queue stage, submits the new frame directly
+ * without another readiness poll.
  *
  * @param[in,out] service Service state that is not currently running.
  * @param[in] frame Encoded command frame and expected response layout.
@@ -57,6 +59,9 @@ bool a71ch_exchange_service_start(A71chExchangeService *service,
  * @brief Advances the asynchronous APDU exchange.
  *
  * Completes an active bus operation or starts the operation required by the current protocol stage.
+ * A failed bus operation is released and retried at the same stage, except a completed APDU write
+ * failure, which resumes at acceptance polling. Protocol validation failures are exposed once
+ * through the failed service status and prepare the next start at command queue.
  *
  * @param[in,out] service Running exchange service state.
  */

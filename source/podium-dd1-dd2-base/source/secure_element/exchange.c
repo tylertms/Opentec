@@ -22,8 +22,9 @@ void a71ch_exchange_service_init(A71chExchangeService *service) {
 /**
  * @brief Starts one encoded A71CH APDU exchange.
  *
- * Copies the command frame and begins with an SCI2C status poll. An active exchange is left
- * unchanged.
+ * Copies the command frame and begins with an SCI2C status poll. A service that previously exposed
+ * a protocol error retains its recovery queue stage, so its next command is submitted directly.
+ * An active exchange is left unchanged.
  *
  * @param[in,out] service Exchange service state.
  * @param[in] frame Encoded write command and expected response layout.
@@ -37,11 +38,18 @@ bool a71ch_exchange_service_start(A71chExchangeService *service,
         return false;
     }
 
+    bool recovery = service->status == A71CH_EXCHANGE_SERVICE_FAILED &&
+                    service->exchange.stage == A71CH_EXCHANGE_QUEUE_COMMAND;
     service->frame = *frame;
     memset(service->status_response, 0, sizeof(service->status_response));
     memset(service->response, 0, sizeof(service->response));
     service->parsed_response = (A71chAuthenticationResponse){0};
-    a71ch_exchange_init(&service->exchange);
+    if (recovery) {
+        service->exchange.result = A71CH_EXCHANGE_PENDING;
+        service->exchange.readiness.retry_count = 0;
+    } else {
+        a71ch_exchange_init(&service->exchange);
+    }
     service->status = A71CH_EXCHANGE_SERVICE_RUNNING;
     service->transfer_active = false;
     return true;
@@ -50,8 +58,11 @@ bool a71ch_exchange_service_start(A71chExchangeService *service,
 /**
  * @brief Applies one completed auxiliary-bus operation to the command exchange.
  *
- * Releases the bus result and, on success, evaluates the status response, records a queued APDU
- * write, or validates the final response for the current protocol stage.
+ * Releases the bus result. A failed transport leaves the protocol stage pending so the next service
+ * pass retries the same operation. Once an APDU write was accepted by the bus, its completed
+ * failure advances to acceptance polling rather than retransmitting the APDU. On success,
+ * evaluates the status response, records a queued APDU write, or validates the final response for
+ * the current protocol stage.
  *
  * @param[in,out] service Active exchange service state and response buffers.
  * @param[in] succeeded True when the auxiliary-bus operation succeeded.
@@ -60,6 +71,9 @@ static void complete_transfer(A71chExchangeService *service, bool succeeded) {
     platform_aux_bus_clear();
     service->transfer_active = false;
     if (!succeeded) {
+        if (service->exchange.stage == A71CH_EXCHANGE_QUEUE_COMMAND) {
+            service->exchange.stage = A71CH_EXCHANGE_WAIT_ACCEPTANCE;
+        }
         return;
     }
 
@@ -80,6 +94,7 @@ static void complete_transfer(A71chExchangeService *service, bool succeeded) {
 
     if (service->exchange.stage == A71CH_EXCHANGE_FAILED) {
         service->status = A71CH_EXCHANGE_SERVICE_FAILED;
+        service->exchange.stage = A71CH_EXCHANGE_QUEUE_COMMAND;
     }
 }
 
@@ -87,7 +102,10 @@ static void complete_transfer(A71chExchangeService *service, bool succeeded) {
  * @brief Advances one asynchronous A71CH APDU exchange.
  *
  * Services one owned transaction or, while the shared bus is idle, starts the ready poll, command
- * write, acceptance poll, or final response read selected by the protocol stage.
+ * write, acceptance poll, or final response read selected by the protocol stage. A completed bus
+ * failure remains pending at the current stage and is retried on a later pass, except for an
+ * accepted APDU write, which resumes with its acceptance status poll. A terminal protocol error is
+ * exposed once and leaves the next start at the command queue stage.
  *
  * @param[in,out] service Exchange service state and response buffers.
  */
