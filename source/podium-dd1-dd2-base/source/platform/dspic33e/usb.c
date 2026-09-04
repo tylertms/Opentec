@@ -17,16 +17,17 @@ enum {
     USB_DESCRIPTOR_COUNT =
         USB_ENDPOINT_COUNT * USB_BANK_COUNT * USB_DIRECTION_COUNT, /**< Total descriptor entries. */
     USB_EVENT_CAPACITY = 24,
-    USB_INTERRUPT_PRIORITY = 4,       /**< USB interrupt priority. */
-    USB_PACKET_ID_SETUP = 0x0d,       /**< USB packet identifier for a setup transaction. */
-    USB_TRANSACTION_ODD_BANK = 0x04,  /**< U1STAT mask for the odd ping-pong bank. */
-    USB_TRANSACTION_INPUT = 0x08,     /**< U1STAT mask for a device-to-host transaction. */
-    USB_INTERRUPT_RESET = 0x01,       /**< U1IR and U1IE bus-reset flag. */
-    USB_INTERRUPT_ERROR = 0x02,       /**< U1IR and U1IE transaction-error flag. */
-    USB_INTERRUPT_SOF = 0x04,         /**< U1IR and U1IE start-of-frame flag. */
-    USB_INTERRUPT_TRANSACTION = 0x08, /**< U1IR and U1IE transaction-complete flag. */
-    USB_INTERRUPT_IDLE = 0x10,        /**< U1IR and U1IE idle flag. */
-    USB_INTERRUPT_STALL = 0x80,       /**< U1IR and U1IE stall flag. */
+    USB_INTERRUPT_PRIORITY = 4,        /**< USB interrupt priority. */
+    USB_PACKET_ID_SETUP = 0x0d,        /**< USB packet identifier for a setup transaction. */
+    USB_TRANSACTION_ODD_BANK = 0x04,   /**< U1STAT mask for the odd ping-pong bank. */
+    USB_TRANSACTION_INPUT = 0x08,      /**< U1STAT mask for a device-to-host transaction. */
+    USB_INTERRUPT_RESET = 0x01,        /**< U1IR and U1IE bus-reset flag. */
+    USB_INTERRUPT_ERROR = 0x02,        /**< U1IR and U1IE transaction-error flag. */
+    USB_INTERRUPT_SOF = 0x04,          /**< U1IR and U1IE start-of-frame flag. */
+    USB_INTERRUPT_TRANSACTION = 0x08,  /**< U1IR and U1IE transaction-complete flag. */
+    USB_INTERRUPT_IDLE = 0x10,         /**< U1IR and U1IE idle flag. */
+    USB_INTERRUPT_STALL = 0x80,        /**< U1IR and U1IE stall flag. */
+    USB_OTG_ACTIVITY_INTERRUPT = 0x10, /**< U1OTGIR activity flag. */
     USB_INTERRUPT_MASK = USB_INTERRUPT_RESET | USB_INTERRUPT_ERROR | USB_INTERRUPT_SOF |
                          USB_INTERRUPT_TRANSACTION | USB_INTERRUPT_IDLE | USB_INTERRUPT_STALL,
     USB_SOF_RECOVERY_FRAME_COUNT = 0x2d,  /**< SOF frames allowed before descriptor recovery. */
@@ -883,15 +884,16 @@ static void handle_transaction(uint8_t status) {
 /**
  * @brief Services USB device-controller interrupts.
  *
- * Handles reset, suspend, protocol errors, frame, stall, and up to four queued transaction events
- * before clearing the CPU interrupt request.
+ * Acknowledges activity with a whole-register U1OTGIR write and an ACTVIE read-modify-write, and
+ * acknowledges idle with an ACTVIE read-modify-write and a whole-register U1IR write. Neither
+ * source changes the controller suspend state. Reset, suspend, protocol errors, frame, stall, and
+ * up to four queued transaction events are then handled before clearing the CPU interrupt request.
  *
  */
 void __attribute__((interrupt, no_auto_psv)) _USB1Interrupt(void) {
-    if (U1OTGIEbits.ACTVIE != 0 && U1OTGIRbits.ACTVIF != 0) {
-        U1OTGIRbits.ACTVIF = 1;
+    if (U1OTGIRbits.ACTVIF != 0 && U1OTGIEbits.ACTVIE != 0) {
+        U1OTGIR = USB_OTG_ACTIVITY_INTERRUPT;
         U1OTGIEbits.ACTVIE = 0;
-        U1PWRCbits.USUSPEND = 0;
     }
     if (U1PWRCbits.USUSPEND != 0) {
         IFS5bits.USB1IF = 0;
@@ -904,11 +906,9 @@ void __attribute__((interrupt, no_auto_psv)) _USB1Interrupt(void) {
         U1IR = USB_INTERRUPT_RESET;
     }
     if (U1IRbits.IDLEIF != 0 && (U1IE & USB_INTERRUPT_IDLE) != 0) {
-        push_event(PLATFORM_USB_EVENT_SUSPEND, 0, false, 0);
-        U1IR = USB_INTERRUPT_IDLE;
-        U1OTGIRbits.ACTVIF = 1;
         U1OTGIEbits.ACTVIE = 1;
-        U1PWRCbits.USUSPEND = 1;
+        U1IR = USB_INTERRUPT_IDLE;
+        push_event(PLATFORM_USB_EVENT_SUSPEND, 0, false, 0);
     }
     if (U1IRbits.UERRIF != 0 && (U1IE & USB_INTERRUPT_ERROR) != 0) {
         U1EIR = 0xff;

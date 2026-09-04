@@ -105,6 +105,51 @@ static void test_interrupt_sources_obey_enable_mask(void) {
     assert(event.type == PLATFORM_USB_EVENT_OUT && event.endpoint == 1 && event.length == 64);
 }
 
+static void test_activity_acknowledges_flag_and_preserves_suspend_state(void) {
+    platform_usb_init();
+    U1IR = 0;
+    U1OTGIE = 0xf0;
+    U1OTGIR = 0x90;
+    U1PWRC = 0x01;
+
+    _USB1Interrupt();
+
+    assert(U1OTGIE == 0xe0);
+    assert(U1OTGIR == 0x10);
+    assert(U1PWRCbits.USUSPND == 0);
+
+    U1OTGIE = 0x10;
+    U1OTGIR = 0x90;
+    U1PWRCbits.USUSPND = 1;
+    U1IR = 0;
+
+    _USB1Interrupt();
+
+    assert(U1OTGIE == 0);
+    assert(U1OTGIR == 0x10);
+    assert(U1PWRCbits.USUSPND == 1);
+    assert(U1IR == 0);
+}
+
+static void test_idle_arms_activity_without_changing_suspend(void) {
+    platform_usb_init();
+    U1IE = 0x10;
+    U1IR = 0x10;
+    U1OTGIE = 0x80;
+    U1OTGIR = 0;
+    U1PWRC = 0x01;
+
+    _USB1Interrupt();
+
+    assert(U1OTGIE == 0x90);
+    assert(U1OTGIR == 0);
+    assert(U1IR == 0x10);
+    assert(U1PWRCbits.USUSPND == 0);
+    PlatformUsbEvent event;
+    assert(platform_usb_take_event(&event));
+    assert(event.type == PLATFORM_USB_EVENT_SUSPEND);
+}
+
 static void test_sof_recovers_stuck_descriptor_after_45_frames(void) {
     platform_usb_init();
     assert(platform_usb_receive(0, 64, true));
@@ -159,6 +204,8 @@ int main(void) {
     test_bus_reset_restores_controller_registers();
     test_halts_both_ping_pong_banks();
     test_interrupt_sources_obey_enable_mask();
+    test_activity_acknowledges_flag_and_preserves_suspend_state();
+    test_idle_arms_activity_without_changing_suspend();
     test_sof_recovers_stuck_descriptor_after_45_frames();
     test_resume_clears_suspend_before_signaling();
     return 0;
