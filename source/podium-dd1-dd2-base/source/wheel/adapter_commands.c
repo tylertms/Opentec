@@ -75,8 +75,8 @@ static uint8_t endpoint_target(const WheelAdapterCommandService *service) {
  * @brief Restarts adapter discovery on the alternate endpoint.
  *
  * Releases the local command owner, clears incomplete input and endpoint-specific output work,
- * retains a requested system display state, marks the adapter disconnected, and selects the other
- * supported adapter mode.
+ * unconditionally re-promotes the retained system display state, marks the adapter disconnected,
+ * and selects the other supported adapter mode.
  *
  * @param[in,out] service Adapter command service restarting discovery.
  * @param[in,out] adapter Logical adapter state to disconnect.
@@ -84,9 +84,7 @@ static uint8_t endpoint_target(const WheelAdapterCommandService *service) {
  */
 static void advance_endpoint(WheelAdapterCommandService *service, WheelAdapterInput *adapter,
                              CommandTransport *transport) {
-    if (service->phase == WHEEL_ADAPTER_COMMAND_DISPLAY_STATE_PENDING) {
-        service->display_state_pending = true;
-    }
+    service->display_state_pending = true;
     command_transport_release(transport, WHEEL_ADAPTER_COMMAND_OWNER);
     service->endpoint_index =
         (uint8_t)((service->endpoint_index + 1u) % WHEEL_ADAPTER_ENDPOINT_COUNT);

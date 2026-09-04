@@ -309,6 +309,109 @@ static void writes_system_display_state(void) {
     wheel_adapter_command_service_run(&service, &adapter, &transport);
 }
 
+static void retries_display_state_after_each_endpoint_reset(void) {
+    WheelAdapterCommandService service;
+    WheelAdapterInput adapter;
+    CommandTransport transport;
+    command_transport_init(&transport);
+    wheel_adapter_command_service_init(&service, &adapter);
+    complete_standard_probe(&service, &adapter, &transport);
+
+    wheel_adapter_command_service_queue_display_state(&service, 0x39);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    const uint8_t status_request[] = {2, 0x2b, 0x00, 2, 0};
+    expect_request(&transport, status_request, sizeof(status_request));
+    const uint8_t status[] = {0, 0};
+    complete_read(&transport, status, sizeof(status));
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    const uint8_t display_state_request[] = {2, 0x2a, 0x18, 0x39};
+    expect_request(&transport, display_state_request, sizeof(display_state_request));
+    assert(!service.display_state_pending);
+    complete_write(&transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+
+    wheel_adapter_command_service_queue_remote_tuning_active(&service, true);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    const uint8_t remote_tuning_request[] = {2, 0x2a, 0x0e, 1};
+    expect_request(&transport, remote_tuning_request, sizeof(remote_tuning_request));
+    command_transport_fail(&transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    assert(service.endpoint_index == 1);
+    assert(service.display_state == 0x39);
+    assert(service.display_state_pending);
+
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    const uint8_t extended_probe_request[] = {2, 0x2d, 0x0c, 4, 0};
+    expect_request(&transport, extended_probe_request, sizeof(extended_probe_request));
+    command_transport_fail(&transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    assert(service.endpoint_index == 0);
+    assert(service.display_state_pending);
+
+    complete_standard_probe(&service, &adapter, &transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    expect_request(&transport, status_request, sizeof(status_request));
+    command_transport_fail(&transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    assert(service.endpoint_index == 1);
+    assert(service.display_state_pending);
+
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    expect_request(&transport, extended_probe_request, sizeof(extended_probe_request));
+    command_transport_fail(&transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    assert(service.endpoint_index == 0);
+    assert(service.display_state_pending);
+
+    complete_standard_probe(&service, &adapter, &transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    expect_request(&transport, status_request, sizeof(status_request));
+    complete_read(&transport, status, sizeof(status));
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    expect_request(&transport, display_state_request, sizeof(display_state_request));
+    assert(!service.display_state_pending);
+}
+
+static void writes_zero_display_state_after_endpoint_reset(void) {
+    WheelAdapterCommandService service;
+    WheelAdapterInput adapter;
+    CommandTransport transport;
+    command_transport_init(&transport);
+    wheel_adapter_command_service_init(&service, &adapter);
+
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    const uint8_t standard_probe_request[] = {2, 0x2b, 0x0c, 1, 0};
+    expect_request(&transport, standard_probe_request, sizeof(standard_probe_request));
+    command_transport_fail(&transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    assert(service.endpoint_index == 1);
+    assert(service.display_state == 0);
+    assert(service.display_state_pending);
+
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    const uint8_t extended_probe_request[] = {2, 0x2d, 0x0c, 4, 0};
+    expect_request(&transport, extended_probe_request, sizeof(extended_probe_request));
+    command_transport_fail(&transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    assert(service.endpoint_index == 0);
+    assert(service.display_state_pending);
+
+    complete_standard_probe(&service, &adapter, &transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    const uint8_t status_request[] = {2, 0x2b, 0x00, 2, 0};
+    expect_request(&transport, status_request, sizeof(status_request));
+    const uint8_t status[] = {0, 0};
+    complete_read(&transport, status, sizeof(status));
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    const uint8_t zero_display_state_request[] = {2, 0x2a, 0x18, 0};
+    expect_request(&transport, zero_display_state_request, sizeof(zero_display_state_request));
+    assert(!service.display_state_pending);
+}
+
 static void writes_extended_output_reports(void) {
     WheelAdapterCommandService service;
     WheelAdapterInput adapter;
@@ -559,6 +662,8 @@ int main(void) {
     writes_extended_interface_presentation();
     writes_refresh_state();
     writes_system_display_state();
+    retries_display_state_after_each_endpoint_reset();
+    writes_zero_display_state_after_endpoint_reset();
     writes_standard_output_reports();
     writes_extended_output_reports();
     writes_extended_text_lines_in_display_order();
