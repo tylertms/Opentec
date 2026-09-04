@@ -8,7 +8,7 @@
  * @brief Configures the motor-controller pins.
  *
  * Port clocks, pin multiplexing, pull devices, filters, and safe output levels are initialized for
- * the motor board.
+ * the motor board. Each output pin changes to output before its latch level is written.
  */
 void motor_pins_initialize(void);
 

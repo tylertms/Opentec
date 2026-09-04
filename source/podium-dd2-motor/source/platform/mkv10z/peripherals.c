@@ -164,13 +164,12 @@ void ADC1_IRQHandler(void) { motor_adc_interrupt_dispatch(); }
 /**
  * @brief Clears both official PDB ADC-channel status banks and resumes triggering.
  *
- * The interrupt temporarily disables the PDB while clearing completion and sequence-error flags.
+ * The interrupt temporarily disables the PDB, clears only the low-byte sequence-error fields, and
+ * resumes triggering without modifying completion flags.
  */
 void PDB0_PDB1_IRQHandler(void) {
     PDB0->SC &= ~PDB_SC_PDBEN_MASK;
-    PDB0->CH[0].S &= ~PDB_S_CF_MASK;
     PDB0->CH[0].S &= ~PDB_S_ERR_MASK;
-    PDB0->CH[1].S &= ~PDB_S_CF_MASK;
     PDB0->CH[1].S &= ~PDB_S_ERR_MASK;
     PDB0->SC |= PDB_SC_PDBEN_MASK;
 }

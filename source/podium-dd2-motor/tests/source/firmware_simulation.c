@@ -227,6 +227,106 @@ static bool call_symbol(Kinetis *device, const char *path, const char *name) {
     return returned && disabled;
 }
 
+static bool motor_output_initialization_order_matches(Kinetis *device, const char *path) {
+    static const uint32_t gpio_bases[] = {
+        UINT32_C(0x400ff000),
+        UINT32_C(0x400ff040),
+        UINT32_C(0x400ff080),
+    };
+    static const uint32_t initial_latches[] = {
+        0U,
+        UINT32_C(1) << 17U | UINT32_C(1) << 16U,
+        0U,
+    };
+    static const struct {
+        size_t port;
+        uint32_t mask;
+        bool high;
+    } outputs[] = {
+        {0U, UINT32_C(1) << 19U, true},
+        {2U, UINT32_C(1) << 1U, true},
+        {2U, UINT32_C(1) << 0U, true},
+        {1U, UINT32_C(1) << 17U, false},
+        {1U, UINT32_C(1) << 16U, false},
+    };
+    const uint32_t zero = 0U;
+    for (size_t port = 0U; port < sizeof(gpio_bases) / sizeof(gpio_bases[0]); ++port) {
+        if (!kinetis_write(device, gpio_bases[port], &initial_latches[port], sizeof(uint32_t)) ||
+            !kinetis_write(device, gpio_bases[port] + UINT32_C(0x14), &zero, sizeof(zero)))
+            return false;
+    }
+
+    uint32_t function_address = 0U;
+    if (!cortex_m4_elf_symbol(path, "motor_pins_initialize", &function_address))
+        return false;
+    CortexM4 *cpu = kinetis_cpu(device);
+    uint32_t registers[15];
+    for (uint8_t index = 0U; index < 15U; ++index)
+        registers[index] = cortex_m4_get_register(cpu, index);
+    const uint32_t previous_pc = cortex_m4_get_register(cpu, 15U);
+    const uint32_t return_address = previous_pc & ~1U;
+    if (!cortex_m4_set_breakpoint(cpu, 1U, return_address, true))
+        return false;
+    cortex_m4_set_register(cpu, 14U, return_address | 1U);
+    cortex_m4_set_register(cpu, 15U, function_address & ~1U);
+
+    uint32_t previous_latches[sizeof(gpio_bases) / sizeof(gpio_bases[0])];
+    for (size_t port = 0U; port < sizeof(gpio_bases) / sizeof(gpio_bases[0]); ++port)
+        previous_latches[port] = initial_latches[port];
+    bool latched[sizeof(outputs) / sizeof(outputs[0])] = {false};
+    bool order_matches = true;
+    bool returned = false;
+    for (uint32_t step = 0U; step < 10000U; ++step) {
+        const CortexM4Result result = cortex_m4_step(cpu);
+        if (result.stop == CORTEX_M4_STOP_BREAKPOINT) {
+            returned = true;
+            break;
+        }
+        if (result.stop != CORTEX_M4_STOP_RUNNING || !execution_valid(device)) {
+            order_matches = false;
+            break;
+        }
+        uint32_t pddr[sizeof(gpio_bases) / sizeof(gpio_bases[0])];
+        uint32_t latches[sizeof(gpio_bases) / sizeof(gpio_bases[0])];
+        for (size_t port = 0U; port < sizeof(gpio_bases) / sizeof(gpio_bases[0]); ++port) {
+            if (!kinetis_read(device, gpio_bases[port] + UINT32_C(0x14), &pddr[port],
+                              sizeof(pddr[port])) ||
+                !kinetis_read(device, gpio_bases[port], &latches[port], sizeof(latches[port]))) {
+                order_matches = false;
+                break;
+            }
+        }
+        if (!order_matches)
+            break;
+        for (size_t output = 0U; output < sizeof(outputs) / sizeof(outputs[0]); ++output) {
+            const size_t port = outputs[output].port;
+            const uint32_t mask = outputs[output].mask;
+            if ((previous_latches[port] ^ latches[port]) & mask) {
+                const bool high = (latches[port] & mask) != 0U;
+                if (high != outputs[output].high || (pddr[port] & mask) == 0U)
+                    order_matches = false;
+                latched[output] = true;
+            }
+        }
+        for (size_t port = 0U; port < sizeof(gpio_bases) / sizeof(gpio_bases[0]); ++port)
+            previous_latches[port] = latches[port];
+        if (!order_matches)
+            break;
+    }
+    const bool disabled = cortex_m4_set_breakpoint(cpu, 1U, return_address, false);
+    for (uint8_t index = 0U; index < 15U; ++index)
+        cortex_m4_set_register(cpu, index, registers[index]);
+    cortex_m4_set_register(cpu, 15U, previous_pc);
+    if (!returned || !disabled || !order_matches)
+        return false;
+    for (size_t output = 0U; output < sizeof(outputs) / sizeof(outputs[0]); ++output) {
+        if (!latched[output])
+            return false;
+    }
+
+    return true;
+}
+
 static bool ftm2_reinitialization_matches(Kinetis *device, const char *path) {
     const uint32_t dirty_status = UINT32_C(0xe7);
     const uint32_t dirty_filter = UINT32_MAX;
@@ -263,7 +363,9 @@ static bool pdb_status_clear_matches(Kinetis *device, const char *path) {
     uint32_t channel_one = 0U;
     return kinetis_read(device, UINT32_C(0x40036014), &channel_zero, sizeof(channel_zero)) &&
            kinetis_read(device, UINT32_C(0x4003603c), &channel_one, sizeof(channel_one)) &&
-           (channel_zero & UINT32_C(0xff00ff)) == 0U && (channel_one & UINT32_C(0xff00ff)) == 0U;
+           (channel_zero & UINT32_C(0xff0000)) == (initial_channel_zero & UINT32_C(0xff0000)) &&
+           (channel_one & UINT32_C(0xff0000)) == (initial_channel_one & UINT32_C(0xff0000)) &&
+           (channel_zero & UINT32_C(0xff)) == 0U && (channel_one & UINT32_C(0xff)) == 0U;
 }
 
 static bool fatal_output_state_safe(Kinetis *device, const char *path) {
@@ -882,11 +984,14 @@ int main(int argc, char **argv) {
         cortex_m4_set_coverage(kinetis_cpu(device), coverage);
         passed = run_to_symbol(device, argv[1], "motor_link_frame_decode_checked", 10000000U) &&
                  adc_calibration_configuration_matches(device) &&
-                 startup_output_state_safe(device) && force_frame_checksum_matches(device) &&
+                 startup_output_state_safe(device) &&
+                 motor_output_initialization_order_matches(device, argv[1]) &&
+                 force_frame_checksum_matches(device) &&
                  received_force_frame(argv[1], device) &&
                  run_to_symbol(device, argv[1], "motor_protocol_frame_apply", 10000000U) &&
                  run_to_symbol(device, argv[1], "motor_runtime_poll", 20000000U) &&
-                 pdb_status_clear_matches(device, argv[1]) && i2c_configuration_matches(device);
+                 pdb_status_clear_matches(device, argv[1]) &&
+                 i2c_configuration_matches(device);
         const uint64_t initialization_reads = kinetis_get_uninitialized_sram_read_count(device);
         if (initialization_reads != 0U)
             fprintf(stderr,

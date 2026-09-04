@@ -76,9 +76,9 @@ static void motor_filtered_pullup_input_initialize(PORT_Type *port, GPIO_Type *g
 }
 
 /**
- * @brief Configures one official digital output without exposing an intermediate level.
+ * @brief Configures one official digital output.
  *
- * The requested output latch is installed before the pin direction changes to output.
+ * The pin direction changes to output before the requested latch level is installed.
  *
  * @param[in,out] port Port-control block for the pin.
  * @param[in,out] gpio GPIO block containing the output and direction registers.
@@ -88,12 +88,12 @@ static void motor_filtered_pullup_input_initialize(PORT_Type *port, GPIO_Type *g
 static void motor_gpio_output_initialize(PORT_Type *port, GPIO_Type *gpio, uint32_t pin,
                                          bool high) {
     PORT_SetPinMux(port, pin, kPORT_MuxAsGpio);
+    gpio->PDDR |= 1UL << pin;
     if (high) {
         GPIO_PortSet(gpio, 1UL << pin);
     } else {
         GPIO_PortClear(gpio, 1UL << pin);
     }
-    gpio->PDDR |= 1UL << pin;
 }
 
 void motor_pins_initialize(void) {
