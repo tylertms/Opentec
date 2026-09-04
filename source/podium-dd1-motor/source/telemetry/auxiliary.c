@@ -8,6 +8,7 @@
 enum {
     MOTOR_AUXILIARY_SAMPLE_COUNT = 10000, /**< Samples in one published auxiliary window. */
     MOTOR_TEMPERATURE_TABLE_LENGTH = 32, /**< Entries in each temperature conversion table. */
+    MOTOR_TEMPERATURE_ERROR = 255, /**< Sentinel returned for an out-of-range sample. */
 };
 
 /**
@@ -31,16 +32,16 @@ static const uint16_t driver_temperature_table[MOTOR_TEMPERATURE_TABLE_LENGTH] =
 int16_t motor_temperature_interpolate(uint16_t sample, MotorTemperatureSensor sensor) {
     const uint16_t *table =
         sensor == kMotorTemperatureMotor ? motor_temperature_table : driver_temperature_table;
-    uint32_t index = 0U;
-    while (index < MOTOR_TEMPERATURE_TABLE_LENGTH && sample < table[index]) {
-        ++index;
+    if (sample >= table[0]) {
+        return -MOTOR_TEMPERATURE_ERROR;
+    }
+    if (sample < table[MOTOR_TEMPERATURE_TABLE_LENGTH - 1U]) {
+        return MOTOR_TEMPERATURE_ERROR;
     }
 
-    if (index == 0U) {
-        return -255;
-    }
-    if (index == MOTOR_TEMPERATURE_TABLE_LENGTH) {
-        return 255;
+    uint32_t index = 1U;
+    while (index < MOTOR_TEMPERATURE_TABLE_LENGTH && sample < table[index]) {
+        ++index;
     }
 
     uint32_t upper = table[index - 1U];

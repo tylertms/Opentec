@@ -37,12 +37,13 @@ typedef struct {
 /**
  * @brief Converts an auxiliary ADC average to a temperature.
  *
- * Selects the motor or driver table, interpolates between adjacent entries, and returns an
- * endpoint sentinel when the sample is outside the supported table range.
+ * Selects the motor or driver table and interpolates between adjacent entries. The official
+ * boundary is strict: a sample at or above the first ADC entry returns -255, a sample below the
+ * final ADC entry returns 255, and the final ADC entry remains a valid interpolation input.
  *
  * @param[in] sample Averaged twelve-bit ADC sample.
  * @param[in] sensor Temperature-table selection.
- * @return Interpolated temperature, or -255 or 255 for a sample outside the table range.
+ * @return Interpolated temperature, or -255 or 255 for a sample at an error boundary.
  */
 int16_t motor_temperature_interpolate(uint16_t sample, MotorTemperatureSensor sensor);
 

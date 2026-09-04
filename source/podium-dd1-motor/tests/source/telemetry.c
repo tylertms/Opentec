@@ -4,12 +4,16 @@
 
 static void test_temperature_interpolation(void) {
     assert(motor_temperature_interpolate(3987U, kMotorTemperatureMotor) == -255);
+    assert(motor_temperature_interpolate(3986U, kMotorTemperatureMotor) == -15);
     assert(motor_temperature_interpolate(3970U, kMotorTemperatureMotor) == -13);
     assert(motor_temperature_interpolate(3953U, kMotorTemperatureMotor) == -11);
+    assert(motor_temperature_interpolate(429U, kMotorTemperatureMotor) == 139);
     assert(motor_temperature_interpolate(428U, kMotorTemperatureMotor) == 255);
 
     assert(motor_temperature_interpolate(3948U, kMotorTemperatureDriver) == -255);
+    assert(motor_temperature_interpolate(3947U, kMotorTemperatureDriver) == -15);
     assert(motor_temperature_interpolate(3930U, kMotorTemperatureDriver) == -13);
+    assert(motor_temperature_interpolate(719U, kMotorTemperatureDriver) == 139);
     assert(motor_temperature_interpolate(718U, kMotorTemperatureDriver) == 255);
 }
 
