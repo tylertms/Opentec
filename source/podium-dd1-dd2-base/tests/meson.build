@@ -43,6 +43,10 @@ base_tests = {
     'display/text.c',
     'display/framebuffer.c',
   ],
+  'display-setup-activity': [
+    'source/display_setup_activity.c',
+    'display/setup_activity.c',
+  ],
   'display-framebuffer': ['source/display_framebuffer.c', 'display/framebuffer.c'],
   'display-bitmap': ['source/display_bitmap.c', 'display/bitmap.c', 'display/framebuffer.c'],
   'display-force-feedback-analysis-page': [

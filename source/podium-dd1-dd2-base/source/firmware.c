@@ -19,6 +19,7 @@
 #include "display/notice.h"
 #include "display/prompt.h"
 #include "display/reset_scheduler.h"
+#include "display/setup_activity.h"
 #include "display/shifter_page.h"
 #include "display/system_information_page.h"
 #include "display/temperature_analysis_page.h"
@@ -714,14 +715,8 @@ static uint8_t local_display_auxiliary_test_rendered_revision;
 static bool local_display_auxiliary_test_active;
 /** @brief Whether the auxiliary-test title is active. */
 static bool local_display_auxiliary_test_title_active;
-/** @brief Deadline for the current setup-activity message. */
-static uint32_t local_display_setup_activity_deadline_ms;
-/** @brief Current setup-activity phase. */
-static uint8_t local_display_setup_activity_phase;
-/** @brief Setup-activity text phase currently selected. */
-static uint8_t local_display_setup_activity_text_phase;
-/** @brief Revision of the setup-activity display state. */
-static uint8_t local_display_setup_activity_revision;
+/** @brief Current setup-activity display state. */
+static DisplaySetupActivity local_display_setup_activity;
 /** @brief Last rendered setup-activity revision. */
 static uint8_t local_display_setup_activity_rendered_revision;
 /** @brief Last rendered intelligent-telemetry-mode page revision. */
@@ -3509,6 +3504,7 @@ static void initialize_startup_usb(void) {
  * waits through the official 33-millisecond refresh interval before other startup work begins.
  */
 static void initialize_startup_display(void) {
+    display_setup_activity_init(&local_display_setup_activity);
     platform_display_init();
     display_reset_scheduler_init(&runtime_display_reset_scheduler);
     display_identity_page_render(display_framebuffer, board_identity);
@@ -6333,24 +6329,10 @@ static void render_itm_display(const UsbRemoteTuningItmPage *page) {
 
 static void service_local_display(void) {
     uint32_t now_ms = platform_time_ms();
-    bool setup_activity_active = pedal_service_handshake_active(&pedal_service) ||
-                                 runtime_bridge.phase != RUNTIME_BRIDGE_IDLE;
-    if (local_display_setup_activity_phase == 0) {
-        if (setup_activity_active) {
-            local_display_setup_activity_phase = 1;
-        }
-    } else if (local_display_setup_activity_phase == 5) {
-        local_display_setup_activity_phase = 1;
-    } else if (platform_time_reached(now_ms, local_display_setup_activity_deadline_ms)) {
-        local_display_setup_activity_text_phase = local_display_setup_activity_phase;
-        local_display_setup_activity_revision++;
-        if (local_display_setup_activity_phase == 1 && !setup_activity_active) {
-            local_display_setup_activity_phase = 0;
-        } else {
-            local_display_setup_activity_deadline_ms = now_ms + 500u;
-            local_display_setup_activity_phase++;
-        }
-    }
+    bool setup_activity_active = display_setup_activity_update(
+        &local_display_setup_activity,
+        pedal_service_extended_status_handshake_active(&pedal_service),
+        usb_device_operating_mode() != USB_OPERATING_MODE_FANATEC, now_ms);
     if (local_pedal_adjustment_display != PEDAL_ADJUSTMENT_DISPLAY_IDLE &&
         platform_time_reached(now_ms, local_pedal_adjustment_deadline_ms)) {
         local_pedal_adjustment_display = PEDAL_ADJUSTMENT_DISPLAY_IDLE;
@@ -6498,7 +6480,7 @@ static void service_local_display(void) {
         (page != LOCAL_DISPLAY_PAGE_PEDAL_ADJUSTMENT ||
          local_pedal_adjustment_revision == local_pedal_adjustment_rendered_revision) &&
         (page != LOCAL_DISPLAY_PAGE_IDENTITY ||
-         local_display_setup_activity_revision == local_display_setup_activity_rendered_revision) &&
+         local_display_setup_activity.revision == local_display_setup_activity_rendered_revision) &&
         (page != LOCAL_DISPLAY_PAGE_SHIFTER ||
          local_display_shifter_revision == local_display_shifter_rendered_revision) &&
         (page != LOCAL_DISPLAY_PAGE_ITM ||
@@ -6608,11 +6590,11 @@ static void service_local_display(void) {
     } else if (page == LOCAL_DISPLAY_PAGE_IDENTITY) {
         display_identity_page_render(display_framebuffer, board_identity);
         static const char *const setup_activity_text[] = {"   ", ".  ", ".. ", "..."};
-        uint8_t phase = local_display_setup_activity_text_phase;
+        uint8_t phase = local_display_setup_activity.text_phase;
         if (phase >= 1 && phase <= 4) {
             display_text_draw(display_framebuffer, setup_activity_text[phase - 1u], 246, 0, 1, 15);
         }
-        local_display_setup_activity_rendered_revision = local_display_setup_activity_revision;
+        local_display_setup_activity_rendered_revision = local_display_setup_activity.revision;
     } else {
         display_prompt_render_bite_point(display_framebuffer, page == LOCAL_DISPLAY_PAGE_BITE_POINT,
                                          wheel_bite_point_display_percent);

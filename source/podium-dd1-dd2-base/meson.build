@@ -26,6 +26,7 @@ base_sources = files(
   'source/display/motor_data_analysis_page.c',
   'source/display/notice.c',
   'source/display/prompt.c',
+  'source/display/setup_activity.c',
   'source/display/system_information_page.c',
   'source/display/shifter_page.c',
   'source/display/temperature_analysis_page.c',
