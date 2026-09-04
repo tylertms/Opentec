@@ -22,8 +22,6 @@ static MotorParameterChangedHandler motor_bus_changed_handler;
 static void *motor_bus_context;
 /** @brief Receive buffer for one parameter request. */
 static uint8_t motor_bus_receive[MOTOR_PARAMETER_REQUEST_SIZE];
-/** @brief Transmit buffer for one parameter response. */
-static uint8_t motor_bus_transmit[MOTOR_PARAMETER_RESPONSE_SIZE];
 /** @brief Current internal parameter-bus transaction state. */
 static MotorBusState motor_bus_state;
 /** @brief True while an I2C transaction requires service or completion. */
@@ -32,12 +30,8 @@ static volatile bool motor_bus_active;
 static bool motor_bus_extended_header_pending;
 /** @brief Number of service ticks elapsed during the active transaction. */
 static uint16_t motor_bus_active_ticks;
-/** @brief Number of request bytes received for the current transaction. */
+/** @brief Number of request bytes observed by the receive-event callback. */
 static uint8_t motor_bus_receive_size;
-/** @brief Parameter index selected by the preceding write transaction. */
-static uint8_t motor_bus_selected_parameter;
-/** @brief True when the retained parameter index is valid for a repeated-start read. */
-static bool motor_bus_selected_parameter_valid;
 
 /**
  * @brief Restores the official idle parameter-selection buffer.
@@ -53,22 +47,24 @@ static void motor_bus_receive_reset(void) {
 /**
  * @brief Prepares the selected parameter for one I2C read transaction.
  *
- * A valid selection publishes its encoded five-byte value, while an invalid index suppresses data.
+ * A valid selection publishes the live five-byte value and width fields, while an invalid index
+ * suppresses data. The SDK consumes the parameter entry directly so updates between transmitted
+ * bytes remain visible on the bus. The receive buffer remains intact across a repeated start, so
+ * its selector can select the response without a separate latch.
  *
+ * @param[in] parameters Live motor parameter bank.
  * @param[out] transfer Active NXP SDK slave transfer descriptor.
  */
-static void motor_bus_transmit_prepare(i2c_slave_transfer_t *transfer) {
-    MotorParameterResponse response = {0};
-    const uint8_t selected_parameter =
-        motor_bus_selected_parameter_valid ? motor_bus_selected_parameter : motor_bus_receive[0];
-    if (!motor_parameter_read(motor_bus_parameters, selected_parameter, &response)) {
+static void motor_bus_transmit_prepare(const MotorParameterBank *parameters,
+                                       i2c_slave_transfer_t *transfer) {
+    const uint8_t selected_parameter = motor_bus_receive[0];
+    if (selected_parameter >= MOTOR_PARAMETER_COUNT) {
         transfer->data = NULL;
         transfer->dataSize = 0U;
         return;
     }
-    motor_parameter_response_encode(&response, motor_bus_transmit);
-    transfer->data = motor_bus_transmit;
-    transfer->dataSize = sizeof(motor_bus_transmit);
+    transfer->data = (uint8_t *)&parameters->entries[selected_parameter].value;
+    transfer->dataSize = MOTOR_PARAMETER_RESPONSE_SIZE;
     motor_bus_state = kMotorBusTransmitting;
 }
 
@@ -77,15 +73,17 @@ static void motor_bus_transmit_prepare(i2c_slave_transfer_t *transfer) {
  *
  * Accepted live-control writes notify the runtime after updating the parameter bank.
  *
+ * @param[in,out] parameters Live motor parameter bank.
  * @param[in] transfer Completed NXP SDK slave transfer descriptor.
  */
-static void motor_bus_receive_complete(const i2c_slave_transfer_t *transfer) {
+static void motor_bus_receive_complete(MotorParameterBank *parameters,
+                                       const i2c_slave_transfer_t *transfer) {
     bool control_settings_changed;
-    size_t transferred =
-        motor_bus_receive_size == 0U ? transfer->transferredCount : motor_bus_receive_size;
+    size_t transferred = motor_bus_receive_size == 0U ? transfer->transferredCount
+                                                       : motor_bus_receive_size;
     uint8_t received_size =
         transferred > sizeof(motor_bus_receive) ? sizeof(motor_bus_receive) : (uint8_t)transferred;
-    if (motor_parameter_request_apply(motor_bus_parameters, motor_bus_receive, received_size,
+    if (motor_parameter_request_apply(parameters, motor_bus_receive, received_size,
                                       &control_settings_changed) &&
         control_settings_changed && motor_bus_changed_handler != NULL) {
         motor_bus_changed_handler(motor_bus_context);
@@ -93,17 +91,16 @@ static void motor_bus_receive_complete(const i2c_slave_transfer_t *transfer) {
 }
 
 /**
- * @brief Restores an I2C transfer descriptor to the idle receive state.
+ * @brief Restores an I2C transfer descriptor to the idle state.
  *
- * Transaction state, selected-parameter validity, data pointers, and transfer counters are cleared.
+ * Transaction state, data pointers, and transfer counters are cleared. The receive buffer and its
+ * byte count remain untouched so an in-progress request can continue after a repeated start.
  *
  * @param[out] transfer Active NXP SDK slave transfer descriptor.
  */
 static void motor_bus_transfer_reset(i2c_slave_transfer_t *transfer) {
     motor_bus_state = kMotorBusIdle;
     motor_bus_extended_header_pending = false;
-    motor_bus_receive_reset();
-    motor_bus_selected_parameter_valid = false;
     transfer->data = NULL;
     transfer->dataSize = 0U;
     transfer->transferredCount = 0U;
@@ -117,26 +114,17 @@ static void motor_bus_transfer_reset(i2c_slave_transfer_t *transfer) {
  *
  * @param[in] base Active I2C peripheral instance.
  * @param[in,out] transfer NXP SDK transfer descriptor for the current event.
- * @param[in] user_data Unused callback context.
+ * @param[in] user_data Parameter bank installed as the callback context.
  */
 static void motor_bus_transfer_callback(I2C_Type *base, i2c_slave_transfer_t *transfer,
                                         void *user_data) {
-    (void)base;
-    (void)user_data;
-
+    MotorParameterBank *parameters = user_data;
     switch (transfer->event) {
     case kI2C_SlaveStartEvent:
-        if (motor_bus_state == kMotorBusReceiving && transfer->transferredCount == 1U) {
-            motor_bus_selected_parameter = motor_bus_receive[0];
-            motor_bus_selected_parameter_valid = true;
-        } else {
-            motor_bus_selected_parameter_valid = false;
+        if (!motor_bus_active) {
+            motor_bus_transfer_reset(transfer);
+            motor_bus_receive_reset();
         }
-        motor_bus_state = kMotorBusIdle;
-        motor_bus_receive_reset();
-        transfer->data = NULL;
-        transfer->dataSize = 0U;
-        transfer->transferredCount = 0U;
         motor_bus_extended_header_pending = true;
         motor_bus_active = true;
         motor_bus_active_ticks = 0U;
@@ -145,15 +133,18 @@ static void motor_bus_transfer_callback(I2C_Type *base, i2c_slave_transfer_t *tr
         motor_bus_extended_header_pending = false;
         if ((I2C_SlaveGetStatusFlags(base) & (uint32_t)kI2C_TransferDirectionFlag) != 0U) {
             transfer->transferredCount = 0U;
-            motor_bus_transmit_prepare(transfer);
-        } else {
-            motor_bus_selected_parameter_valid = false;
+            motor_bus_transmit_prepare(parameters, transfer);
+        } else if (motor_bus_state == kMotorBusIdle) {
+            transfer->data = motor_bus_receive;
+            transfer->dataSize = sizeof(motor_bus_receive);
+            motor_bus_state = kMotorBusReceiving;
         }
         motor_bus_active = true;
         break;
     case kI2C_SlaveGenaralcallEvent:
         motor_bus_extended_header_pending = false;
-        motor_bus_selected_parameter_valid = false;
+        motor_bus_transfer_reset(transfer);
+        motor_bus_receive_reset();
         motor_bus_active = true;
         break;
     case kI2C_SlaveReceiveEvent:
@@ -170,14 +161,15 @@ static void motor_bus_transfer_callback(I2C_Type *base, i2c_slave_transfer_t *tr
     case kI2C_SlaveTransmitEvent:
         if (motor_bus_state == kMotorBusTransmitting && transfer->dataSize == 0U) {
             motor_bus_transfer_reset(transfer);
+            motor_bus_receive_reset();
         } else {
-            motor_bus_transmit_prepare(transfer);
+            motor_bus_transmit_prepare(parameters, transfer);
         }
         break;
     case kI2C_SlaveCompletionEvent: {
         if (motor_bus_state == kMotorBusReceiving &&
             transfer->completionStatus == kStatus_Success) {
-            motor_bus_receive_complete(transfer);
+            motor_bus_receive_complete(parameters, transfer);
         }
         const bool completed = transfer->completionStatus == kStatus_Success;
         motor_bus_transfer_reset(transfer);
@@ -185,6 +177,7 @@ static void motor_bus_transfer_callback(I2C_Type *base, i2c_slave_transfer_t *tr
         if (completed) {
             motor_bus_active_ticks = 0U;
         } else {
+            motor_bus_receive_reset();
             motor_bus_handle.isBusy = true;
         }
         break;
@@ -208,8 +201,9 @@ static void motor_bus_hardware_initialize(void) {
 
     I2C0->F = 0x27U;
 
-    I2C_SlaveTransferCreateHandle(I2C0, &motor_bus_handle, motor_bus_transfer_callback, NULL);
-    (void)I2C_SlaveTransferNonBlocking(I2C0, &motor_bus_handle, kI2C_SlaveAllEvents);
+    I2C_SlaveTransferCreateHandle(I2C0, &motor_bus_handle, motor_bus_transfer_callback,
+                                  motor_bus_parameters);
+    I2C_SlaveTransferNonBlocking(I2C0, &motor_bus_handle, kI2C_SlaveAllEvents);
     I2C0->FLT = (I2C0->FLT & 0xa0U) | 4U;
 }
 
@@ -222,7 +216,6 @@ void motor_bus_initialize(MotorParameterBank *parameters,
     motor_bus_active = false;
     motor_bus_extended_header_pending = false;
     motor_bus_active_ticks = 0U;
-    motor_bus_selected_parameter_valid = false;
     motor_bus_receive_reset();
     motor_bus_hardware_initialize();
 }
@@ -244,7 +237,6 @@ void motor_bus_service(void) {
     motor_bus_active = false;
     motor_bus_extended_header_pending = false;
     motor_bus_active_ticks = 0U;
-    motor_bus_selected_parameter_valid = false;
     motor_bus_receive_reset();
     motor_bus_hardware_initialize();
 }
