@@ -149,6 +149,19 @@ static void test_restored_notice_gets_a_fresh_deadline(void) {
     assert(notice.deadline_ms == 0);
 }
 
+static void test_dismissed_warning_restores_saved_notice(void) {
+    SystemNotice notice;
+    system_notice_init(&notice);
+    system_notice_show(&notice, SYSTEM_NOTICE_WHEEL_CENTER_CALIBRATED, 100);
+    system_notice_show(&notice, SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED, 200);
+
+    system_notice_dismiss(&notice, 300);
+
+    assert(notice.kind == SYSTEM_NOTICE_WHEEL_CENTER_CALIBRATED);
+    assert(notice.deadline_ms == 4300);
+    assert(notice.stack_count == 0);
+}
+
 static void test_compacts_at_five_total_notice_entries(void) {
     static const SystemNoticeKind kinds[] = {
         SYSTEM_NOTICE_TORQUE_REDUCED,
@@ -180,6 +193,7 @@ int main(void) {
     test_timed_notice_expires_across_counter_wrap();
     test_coalesces_related_notices();
     test_restored_notice_gets_a_fresh_deadline();
+    test_dismissed_warning_restores_saved_notice();
     test_compacts_at_five_total_notice_entries();
     return 0;
 }

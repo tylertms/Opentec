@@ -49,6 +49,17 @@ static bool replaces_active(SystemNoticeKind active, SystemNoticeKind next) {
             next == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED);
 }
 
+static void restore_previous_notice(SystemNotice *notice, uint32_t now_ms) {
+    if (notice->stack_count == 0) {
+        system_notice_init(notice);
+        return;
+    }
+    notice->stack_count--;
+    notice->kind = notice->stack[notice->stack_count];
+    uint32_t duration_ms = notice_duration_ms(notice->kind);
+    notice->deadline_ms = duration_ms == 0 ? 0 : now_ms + duration_ms;
+}
+
 void system_notice_show(SystemNotice *notice, SystemNoticeKind kind, uint32_t now_ms) {
     if (notice->kind != SYSTEM_NOTICE_NONE && !replaces_active(notice->kind, kind)) {
         if (notice->stack_count >= SYSTEM_NOTICE_STACK_CAPACITY - 1) {
@@ -63,15 +74,12 @@ void system_notice_show(SystemNotice *notice, SystemNoticeKind kind, uint32_t no
     notice->deadline_ms = duration_ms == 0 ? 0 : now_ms + duration_ms;
 }
 
+void system_notice_dismiss(SystemNotice *notice, uint32_t now_ms) {
+    restore_previous_notice(notice, now_ms);
+}
+
 void system_notice_update(SystemNotice *notice, uint32_t now_ms) {
     if (notice_duration_ms(notice->kind) != 0 && (int32_t)(now_ms - notice->deadline_ms) > 0) {
-        if (notice->stack_count == 0) {
-            system_notice_init(notice);
-            return;
-        }
-        notice->stack_count--;
-        notice->kind = notice->stack[notice->stack_count];
-        uint32_t duration_ms = notice_duration_ms(notice->kind);
-        notice->deadline_ms = duration_ms == 0 ? 0 : now_ms + duration_ms;
+        restore_previous_notice(notice, now_ms);
     }
 }

@@ -76,6 +76,17 @@ void system_notice_init(SystemNotice *notice);
 void system_notice_show(SystemNotice *notice, SystemNoticeKind kind, uint32_t now_ms);
 
 /**
+ * @brief Dismisses the active notice and restores the newest interrupted notice.
+ *
+ * Restarts the restored notice's presentation interval. Clears the active notice when no saved
+ * notice remains.
+ *
+ * @param[in,out] notice System notice state to update.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+void system_notice_dismiss(SystemNotice *notice, uint32_t now_ms);
+
+/**
  * @brief Expires a completed timed system notice.
  *
  * Clears the notice after its deadline or restores the newest interrupted notice with a fresh

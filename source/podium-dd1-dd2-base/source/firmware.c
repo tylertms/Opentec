@@ -6629,7 +6629,7 @@ static void service_wheel_compatibility_alert(uint32_t now_ms) {
     } else if (action == WHEEL_COMPATIBILITY_ALERT_ACTION_CLEAR) {
         if (system_notice.kind == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED ||
             system_notice.kind == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_OUTLINED) {
-            system_notice_init(&system_notice);
+            system_notice_dismiss(&system_notice, now_ms);
         }
         system_control_state_set_active_event(&system_control_state,
                                               SYSTEM_DISPLAY_DISMISS_EVENT_CODE);
