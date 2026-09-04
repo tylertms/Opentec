@@ -40,7 +40,14 @@ static uint32_t notice_duration_ms(SystemNoticeKind kind) {
     return SYSTEM_NOTICE_DURATION_MS;
 }
 
-void system_notice_init(SystemNotice *notice) { *notice = (SystemNotice){0}; }
+void system_notice_init(SystemNotice *notice) {
+    notice->kind = SYSTEM_NOTICE_NONE;
+    notice->deadline_ms = 0;
+    for (uint8_t index = 0; index < SYSTEM_NOTICE_STACK_CAPACITY; index++) {
+        notice->stack[index] = SYSTEM_NOTICE_NONE;
+    }
+    notice->stack_count = 0;
+}
 
 static bool replaces_active(SystemNoticeKind active, SystemNoticeKind next) {
     return (active == SYSTEM_NOTICE_UNSUPPORTED_WHEEL_INVERTED &&
@@ -62,7 +69,7 @@ static void restore_previous_notice(SystemNotice *notice, uint32_t now_ms) {
 
 void system_notice_show(SystemNotice *notice, SystemNoticeKind kind, uint32_t now_ms) {
     if (notice->kind != SYSTEM_NOTICE_NONE && !replaces_active(notice->kind, kind)) {
-        if (notice->stack_count >= SYSTEM_NOTICE_STACK_CAPACITY - 1) {
+        if (notice->stack_count >= SYSTEM_NOTICE_STACK_CAPACITY) {
             notice->stack_count = 0;
         } else {
             notice->stack[notice->stack_count] = notice->kind;

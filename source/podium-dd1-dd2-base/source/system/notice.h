@@ -34,12 +34,13 @@ typedef enum {
 } SystemNoticeKind;
 
 /**
- * @brief Maximum number of notice records retained by the official presentation stack.
+ * @brief Maximum number of interrupted notice records retained between compactions.
  *
- * The active notice occupies one of these records, so at most four interrupted notices are
- * retained alongside it.
+ * The official queue retains four total records. Because the active notice is stored separately,
+ * three interrupted notices can remain below it. Appending a fifth record compacts the queue to
+ * that new active notice.
  */
-enum { SYSTEM_NOTICE_STACK_CAPACITY = 5 };
+enum { SYSTEM_NOTICE_STACK_CAPACITY = 3 };
 
 /**
  * @brief Current local system-notice presentation state.

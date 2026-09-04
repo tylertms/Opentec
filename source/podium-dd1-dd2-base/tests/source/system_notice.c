@@ -162,7 +162,7 @@ static void test_dismissed_warning_restores_saved_notice(void) {
     assert(notice.stack_count == 0);
 }
 
-static void test_compacts_at_five_total_notice_entries(void) {
+static void test_compacts_the_fifth_notice_and_retains_it_below_the_sixth(void) {
     static const SystemNoticeKind kinds[] = {
         SYSTEM_NOTICE_TORQUE_REDUCED,
         SYSTEM_NOTICE_WHEEL_CENTER_CALIBRATED,
@@ -174,16 +174,25 @@ static void test_compacts_at_five_total_notice_entries(void) {
     SystemNotice notice;
     system_notice_init(&notice);
 
-    for (size_t index = 0; index < 5; index++) {
+    for (size_t index = 0; index < 4; index++) {
         system_notice_show(&notice, kinds[index], (uint32_t)(index * 100));
     }
+    assert(notice.kind == kinds[3]);
+    assert(notice.stack_count == SYSTEM_NOTICE_STACK_CAPACITY);
+    for (size_t index = 0; index < SYSTEM_NOTICE_STACK_CAPACITY; index++) {
+        assert(notice.stack[index] == kinds[index]);
+    }
+
+    system_notice_show(&notice, kinds[4], 400);
     assert(notice.kind == kinds[4]);
-    assert(notice.stack_count == SYSTEM_NOTICE_STACK_CAPACITY - 1);
+    assert(notice.deadline_ms == 4400);
+    assert(notice.stack_count == 0);
 
     system_notice_show(&notice, kinds[5], 500);
     assert(notice.kind == kinds[5]);
     assert(notice.deadline_ms == 4500);
-    assert(notice.stack_count == 0);
+    assert(notice.stack_count == 1);
+    assert(notice.stack[0] == kinds[4]);
 }
 
 int main(void) {
@@ -194,6 +203,6 @@ int main(void) {
     test_coalesces_related_notices();
     test_restored_notice_gets_a_fresh_deadline();
     test_dismissed_warning_restores_saved_notice();
-    test_compacts_at_five_total_notice_entries();
+    test_compacts_the_fifth_notice_and_retains_it_below_the_sixth();
     return 0;
 }
