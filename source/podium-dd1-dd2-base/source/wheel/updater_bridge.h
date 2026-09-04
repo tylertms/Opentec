@@ -44,7 +44,7 @@ typedef struct {
 typedef enum {
     WHEEL_UPDATER_BRIDGE_IDLE,          /**< No updater exchange is active. */
     WHEEL_UPDATER_BRIDGE_WRITE_REQUEST, /**< The retained request is ready for transport. */
-    WHEEL_UPDATER_BRIDGE_READ_DELAY, /**< The protocol is waiting before its first response read. */
+    WHEEL_UPDATER_BRIDGE_READ_DELAY, /**< The protocol is waiting before a normal response read. */
     WHEEL_UPDATER_BRIDGE_READ_HEADER, /**< The protocol is reading a response frame marker. */
     WHEEL_UPDATER_BRIDGE_READ_OPCODE, /**< The protocol is reading a response opcode. */
     WHEEL_UPDATER_BRIDGE_READ_FIXED_PAYLOAD, /**< The protocol is reading a fixed response payload.

@@ -162,11 +162,12 @@ static bool retry_timeout_expired(WheelUpdaterBridge *bridge) {
 /**
  * @brief Advances one updater request and response exchange.
  *
- * Keeps normal transport failures retryable, waits two bridge service ticks after a request write,
- * recognizes response opcodes 0xA1, 0xA2, 0xA4, and 0xA7, retains all response fragments through
- * an 0xA1 continuation, and executes a zero-length variable-payload read. The retry response uses
- * the official 16-bit service-tick timeout. A route probe keeps terminal failure behavior and
- * ignores stray non-marker bytes without restarting the request.
+ * Keeps normal transport failures retryable, reads a route probe immediately after its request
+ * write, waits two bridge service ticks before a normal response read, recognizes response opcodes
+ * 0xA1, 0xA2, 0xA4, and 0xA7, retains all response fragments through an 0xA1 continuation, and
+ * executes a zero-length variable-payload read. The retry response uses the official 16-bit
+ * service-tick timeout. A route probe keeps terminal failure behavior and ignores stray non-marker
+ * bytes without restarting the request.
  *
  * @param[in,out] bridge Active updater bridge to advance.
  * @param[in] io Transport completion state; service timing uses bridge invocation ticks.
@@ -203,6 +204,10 @@ WheelUpdaterOperation wheel_updater_bridge_step(WheelUpdaterBridge *bridge, Whee
         }
         bridge->retry_response = false;
         bridge->service_ticks = 0;
+        if (bridge->response_probe) {
+            bridge->phase = WHEEL_UPDATER_BRIDGE_READ_HEADER;
+            return current_operation(bridge);
+        }
         bridge->phase = WHEEL_UPDATER_BRIDGE_READ_DELAY;
         return (WheelUpdaterOperation){0};
     }

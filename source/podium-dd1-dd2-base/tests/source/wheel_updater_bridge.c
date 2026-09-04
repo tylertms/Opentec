@@ -31,6 +31,10 @@ static void begin_exchange(WheelUpdaterBridge *bridge, const uint8_t *request, u
     assert_operation(operation, WHEEL_UPDATER_OPERATION_WRITE, length);
     assert(memcmp(operation.data, request, length) == 0);
     operation = step(bridge, WHEEL_UPDATER_IO_COMPLETE, now_ms, NULL, 0);
+    if (response_probe) {
+        assert_operation(operation, WHEEL_UPDATER_OPERATION_READ, 1);
+        return;
+    }
     assert_operation(operation, WHEEL_UPDATER_OPERATION_NONE, 0);
     operation = step(bridge, WHEEL_UPDATER_IO_IDLE, now_ms, NULL, 0);
     assert_operation(operation, WHEEL_UPDATER_OPERATION_NONE, 0);
