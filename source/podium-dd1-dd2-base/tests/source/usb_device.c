@@ -640,6 +640,44 @@ static void test_reenumerates_compatibility_modes(void) {
     assert(memcmp(report.data, unnumbered_output, sizeof(unnumbered_output)) == 0);
 }
 
+static void test_playstation_transition_accepts_primary_hid_modes(void) {
+    static const UsbInputReportMode primary_hid_modes[] = {
+        USB_INPUT_REPORT_MODE_FANATEC,
+        USB_INPUT_REPORT_MODE_FANATEC_COMPATIBILITY,
+        USB_INPUT_REPORT_MODE_DRIVING_FORCE_EX,
+        USB_INPUT_REPORT_MODE_DRIVING_FORCE_PRO,
+        USB_INPUT_REPORT_MODE_G27,
+    };
+    static const UsbOperatingMode non_primary_modes[] = {
+        (UsbOperatingMode)-1,
+        USB_OPERATING_MODE_UPDATER,
+        USB_OPERATING_MODE_XBOX_GIP,
+        USB_OPERATING_MODE_PLAYSTATION,
+    };
+
+    for (uint8_t index = 0; index < sizeof(non_primary_modes) / sizeof(non_primary_modes[0]);
+         index++) {
+        assert(!usb_device_operating_mode_is_primary_hid(non_primary_modes[index]));
+    }
+
+    for (uint8_t index = 0; index < sizeof(primary_hid_modes) / sizeof(primary_hid_modes[0]);
+         index++) {
+        usb_device_init(BOARD_VARIANT_DD1);
+        assert(usb_device_set_input_mode(primary_hid_modes[index]));
+        assert(usb_device_operating_mode_is_primary_hid(usb_device_operating_mode()));
+        assert(usb_device_prepare_playstation_wheel_mode(4));
+        assert(usb_device_operating_mode() == USB_OPERATING_MODE_PLAYSTATION);
+        assert(!usb_device_operating_mode_is_primary_hid(usb_device_operating_mode()));
+        assert(!attached);
+
+        usb_device_init(BOARD_VARIANT_DD1);
+        assert(usb_device_set_input_mode(primary_hid_modes[index]));
+        assert(usb_device_set_playstation_wheel_mode(4));
+        assert(usb_device_operating_mode() == USB_OPERATING_MODE_PLAYSTATION);
+        assert(attached);
+    }
+}
+
 static void test_exchanges_updater_packets(void) {
     static const uint8_t get_device_descriptor[] = {0x80, 6, 0, 1, 0, 0, 18, 0};
     static const uint8_t get_configuration_descriptor[] = {0x80, 6, 0, 2, 0, 0, 64, 0};
@@ -1156,6 +1194,7 @@ int main(void) {
     test_serves_hidden_feature_reports();
     test_controls_endpoint_halt();
     test_reenumerates_compatibility_modes();
+    test_playstation_transition_accepts_primary_hid_modes();
     test_exchanges_updater_packets();
     test_exchanges_xbox_gip_discovery();
     test_preserves_xbox_remote_wakeup_predicate();

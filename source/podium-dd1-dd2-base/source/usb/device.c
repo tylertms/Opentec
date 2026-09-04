@@ -535,7 +535,7 @@ void usb_device_shutdown(void) {
 }
 
 bool usb_device_set_input_mode(UsbInputReportMode mode) {
-    if (mode > USB_INPUT_REPORT_MODE_G27) {
+    if (!usb_device_operating_mode_is_primary_hid((UsbOperatingMode)mode)) {
         return false;
     }
     return usb_device_set_operating_mode((UsbOperatingMode)mode);
@@ -581,6 +581,10 @@ bool usb_device_prepare_playstation_wheel_mode(uint8_t wheel_mode) {
     }
     playstation_wheel_mode = wheel_mode;
     return apply_operating_mode(USB_OPERATING_MODE_PLAYSTATION, false);
+}
+
+bool usb_device_operating_mode_is_primary_hid(UsbOperatingMode mode) {
+    return (unsigned int)mode <= (unsigned int)USB_OPERATING_MODE_G27;
 }
 
 static bool apply_xbox_mode(uint8_t wheel_mode, const uint8_t digest[USB_XBOX_GIP_DIGEST_SIZE],

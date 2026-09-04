@@ -175,6 +175,17 @@ bool usb_device_set_playstation_wheel_mode(uint8_t wheel_mode);
 bool usb_device_prepare_playstation_wheel_mode(uint8_t wheel_mode);
 
 /**
+ * @brief Reports whether an operating mode is a primary native or compatibility HID mode.
+ *
+ * Fanatec through G27 modes can transition to the PlayStation interface. Updater, Xbox GIP, and
+ * PlayStation console modes use dedicated lifecycle paths and are outside this transition range.
+ *
+ * @param[in] mode Operating mode to classify.
+ * @return True for Fanatec through G27; otherwise false.
+ */
+bool usb_device_operating_mode_is_primary_hid(UsbOperatingMode mode);
+
+/**
  * @brief Returns the active USB operating mode.
  *
  * Reports the descriptor and transport mode selected by the device.

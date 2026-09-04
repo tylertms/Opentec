@@ -2381,16 +2381,18 @@ static bool service_base_mode_recovery(uint32_t now_ms) {
 /**
  * @brief Starts the selected PlayStation USB interface.
  *
- * Changes the base from its initial Fanatec interface when retained base mode two, four, or five is
- * selected. The change waits until the shared motor-command transport and retained response state
- * are idle, applies the matching PlayStation identity, and persists the active selection.
+ * Changes the base from a primary native or compatibility HID interface when retained base mode
+ * two, four, or five is selected. The change waits until the shared motor-command transport and
+ * retained response state are idle, applies the matching PlayStation identity, and persists the
+ * active selection. This admission and the following identity transition mirror the official
+ * state-11 deadline and state-12 helper at 0x037a50-0x037a68.
  *
  * @param[in] attach_usb True to expose the selected identity immediately; false to leave it
  * detached until the remaining startup sequence completes.
  * @return True when PlayStation mode was selected; otherwise false.
  */
 static bool service_playstation_mode_startup(bool attach_usb) {
-    if (usb_device_operating_mode() != USB_OPERATING_MODE_FANATEC) {
+    if (!usb_device_operating_mode_is_primary_hid(usb_device_operating_mode())) {
         return false;
     }
 
