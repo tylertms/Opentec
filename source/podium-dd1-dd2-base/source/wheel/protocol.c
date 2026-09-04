@@ -579,8 +579,14 @@ static void accumulate_common_pulses(WheelProtocol *protocol, WheelPacketCommonI
                                                       : 0;
         return;
     }
-    if (!wheel_pulse_gate_ready(&protocol->pulse_gate, protocol->interface_mode, protocol->now_ms,
-                                flags)) {
+    bool packed_mode = wheel_packet_packed_applies(protocol->mode);
+    bool pulse_ready = packed_mode
+                           ? wheel_pulse_gate_ready_for_packed(
+                                 &protocol->pulse_gate, protocol->interface_mode,
+                                 protocol->now_ms, flags)
+                           : wheel_pulse_gate_ready(&protocol->pulse_gate, protocol->interface_mode,
+                                                    protocol->now_ms, flags);
+    if (!pulse_ready) {
         input->motion = 0;
         return;
     }

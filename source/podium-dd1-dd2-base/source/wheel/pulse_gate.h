@@ -33,4 +33,19 @@ void wheel_pulse_gate_init(WheelPulseGate *gate);
 bool wheel_pulse_gate_ready(WheelPulseGate *gate, uint8_t interface_mode, uint32_t now_ms,
                             uint8_t pulse_flags);
 
+/**
+ * @brief Applies packed-wheel interface pulse timing.
+ *
+ * Xbox, PlayStation, and auxiliary-pulse interfaces retain packed-wheel pulses for 80 milliseconds,
+ * independent of their normal interface-specific hold intervals.
+ *
+ * @param[in,out] gate Interface deadlines to update.
+ * @param[in] interface_mode Active wheel interface mode.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[in] pulse_flags Positive and negative pulse flags.
+ * @return True when the pulse flags may update motion counters; otherwise false.
+ */
+bool wheel_pulse_gate_ready_for_packed(WheelPulseGate *gate, uint8_t interface_mode,
+                                       uint32_t now_ms, uint8_t pulse_flags);
+
 #endif
