@@ -141,29 +141,47 @@ static void test_derives_report_mode_marker(void) {
     assert(!wheel_protocol_report_mode_marker(&protocol));
 }
 
-static void test_reports_axis_capability_for_active_packet_family(void) {
+static void test_reports_axis_capability_for_official_modes(void) {
     WheelProtocol protocol;
+    static const uint8_t enabled_modes[] = {0x04, 0x06, 0x0c, 0x0e, 0x0f,
+                                            0x13, 0x14, 0x15, 0x16, 0x17, 0x1c};
+    static const uint8_t disabled_modes[] = {
+        0x00, 0x01, 0x02, 0x03, 0x05, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x10, 0x11, 0x12,
+        0x18, 0x19, 0x1a, 0x1b, 0x1d, 0x1e, 0x1f, 0xff,
+    };
+
     wheel_protocol_init(&protocol);
     assert(!wheel_protocol_axis_report_enabled(&protocol));
 
     protocol.request_ready = true;
+    protocol.axis_report_enabled_latched = true;
+    for (uint8_t index = 0; index < sizeof(enabled_modes); index++) {
+        protocol.mode = enabled_modes[index];
+        assert(wheel_protocol_axis_report_enabled(&protocol));
+    }
+    for (uint8_t index = 0; index < sizeof(disabled_modes); index++) {
+        protocol.mode = disabled_modes[index];
+        assert(!wheel_protocol_axis_report_enabled(&protocol));
+    }
+
+    protocol.axis_report_enabled_latched = false;
     protocol.mode = 1;
     protocol.mode_one_input.axis_report_enabled = 1;
-    assert(wheel_protocol_axis_report_enabled(&protocol));
-    protocol.mode_one_input.axis_report_enabled = 0;
+    assert(!wheel_protocol_axis_report_enabled(&protocol));
+    protocol.mode = 0x13;
     assert(!wheel_protocol_axis_report_enabled(&protocol));
 
     protocol.mode = 4;
     protocol.mode_four_input.axis_report_enabled = 2;
-    assert(wheel_protocol_axis_report_enabled(&protocol));
+    assert(!wheel_protocol_axis_report_enabled(&protocol));
 
     protocol.mode = WHEEL_MODE_LEGACY_ALTERNATE;
     protocol.packed_input.axis_report_enabled = 3;
-    assert(wheel_protocol_axis_report_enabled(&protocol));
+    assert(!wheel_protocol_axis_report_enabled(&protocol));
 
     protocol.mode = WHEEL_MODE_CRC_AUTHENTICATED;
     protocol.crc_input.axis_report_enabled = 4;
-    assert(wheel_protocol_axis_report_enabled(&protocol));
+    assert(!wheel_protocol_axis_report_enabled(&protocol));
 }
 
 static void test_selects_authentication_from_wheel_mode(void) {
@@ -1329,7 +1347,7 @@ static void test_captures_alternate_packets(void) {
     assert(wheel_protocol_axis_outputs(&protocol)[1] == 0x84);
     assert(wheel_protocol_axis_limit(&protocol) == 0x62);
     assert(wheel_protocol_mode_buttons(&protocol) == 0x6a);
-    assert(wheel_protocol_axis_report_enabled(&protocol));
+    assert(!wheel_protocol_axis_report_enabled(&protocol));
     uint16_t axis_values[2];
     assert(wheel_protocol_axis_values(&protocol, axis_values));
     assert(axis_values[0] == 0x1234);
@@ -1497,7 +1515,7 @@ static void test_captures_axis_mode_packets(void) {
     assert(input->axis_outputs[1] == 0xbc);
     assert(wheel_protocol_axis_limit(&protocol) == 0x62);
     assert(wheel_protocol_mode_buttons(&protocol) == 0x61);
-    assert(wheel_protocol_axis_report_enabled(&protocol));
+    assert(!wheel_protocol_axis_report_enabled(&protocol));
     uint16_t values[2];
     assert(wheel_protocol_axis_values(&protocol, values));
     assert(values[0] == 0x1234);
@@ -1586,7 +1604,7 @@ static void test_captures_extended_packets(void) {
     assert(input->axis_outputs[1] == 0xbc);
     assert(wheel_protocol_axis_limit(&protocol) == 0x62);
     assert(wheel_protocol_mode_buttons(&protocol) == 0x61);
-    assert(wheel_protocol_axis_report_enabled(&protocol));
+    assert(!wheel_protocol_axis_report_enabled(&protocol));
     uint16_t values[2];
     assert(wheel_protocol_axis_values(&protocol, values));
     assert(values[0] == 0x1234);
@@ -1934,7 +1952,7 @@ int main(void) {
     test_synchronizes_and_selects_mode();
     test_selects_scan_variants();
     test_derives_report_mode_marker();
-    test_reports_axis_capability_for_active_packet_family();
+    test_reports_axis_capability_for_official_modes();
     test_selects_authentication_from_wheel_mode();
     test_authentication_mode_set();
     test_selects_authentication_keys_for_each_wheel_mode();

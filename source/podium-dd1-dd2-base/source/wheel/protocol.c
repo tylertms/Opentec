@@ -1838,57 +1838,31 @@ const uint8_t *wheel_protocol_axis_outputs(const WheelProtocol *protocol) {
 }
 
 /**
+ * @brief Tests the official axis-report mode gate.
+ *
+ * The firmware exposes the retained axis-report flag only for modes 0x04, 0x06, 0x0C, 0x0E,
+ * 0x0F, and 0x13 through 0x17, plus 0x1C.
+ *
+ * @param[in] mode Negotiated attached-wheel mode.
+ * @return True when the mode can expose the axis-report flag.
+ */
+static bool axis_report_mode_allowed(uint8_t mode) {
+    return mode == 0x04 || mode == 0x06 || mode == 0x0c || mode == 0x0e || mode == 0x0f ||
+           (mode >= 0x13 && mode <= 0x17) || mode == 0x1c;
+}
+
+/**
  * @brief Reports whether the attached wheel enabled its axis report.
  *
- * Selects the axis-report flag retained by the current mode-one, mode-four, display, remapped,
- * alternate, packed, axis-mode, extended, adapter-oriented, or CRC-family input packet.
- * Unsupported and inactive modes report disabled.
+ * Applies the official mode gate before exposing the retained global axis-report flag. Unsupported
+ * modes report disabled.
  *
  * @param[in] protocol Attached-wheel protocol state.
- * @return True while the current input packet enables its axis report.
+ * @return True while the retained global axis-report flag is enabled.
  */
 bool wheel_protocol_axis_report_enabled(const WheelProtocol *protocol) {
-    if (protocol != NULL && protocol->axis_report_enabled_latched) {
-        return true;
-    }
-    const WheelPacketModeOneInput *mode_one = wheel_protocol_mode_one_input(protocol);
-    if (mode_one != 0) {
-        return mode_one->axis_report_enabled != 0;
-    }
-    const WheelPacketModeFourInput *mode_four = wheel_protocol_mode_four_input(protocol);
-    if (mode_four != 0) {
-        return mode_four->axis_report_enabled != 0;
-    }
-    const WheelPacketDisplayInput *display = wheel_protocol_display_input(protocol);
-    if (display != 0) {
-        return display->axis_report_enabled != 0;
-    }
-    const WheelPacketRemappedInput *remapped = wheel_protocol_remapped_input(protocol);
-    if (remapped != 0) {
-        return remapped->axis_report_enabled != 0;
-    }
-    const WheelPacketAlternateInput *alternate = wheel_protocol_alternate_input(protocol);
-    if (alternate != 0) {
-        return alternate->axis_report_enabled != 0;
-    }
-    const WheelPacketPackedInput *packed = wheel_protocol_packed_input(protocol);
-    if (packed != 0) {
-        return packed->axis_report_enabled != 0;
-    }
-    const WheelPacketAxisModeInput *axis_mode = wheel_protocol_axis_mode_input(protocol);
-    if (axis_mode != 0) {
-        return axis_mode->axis_report_enabled != 0;
-    }
-    const WheelPacketExtendedInput *extended = wheel_protocol_extended_input(protocol);
-    if (extended != 0) {
-        return extended->axis_report_enabled != 0;
-    }
-    const WheelPacketAdapterInput *adapter = wheel_protocol_adapter_input(protocol);
-    if (adapter != 0) {
-        return adapter->axis_report_enabled != 0;
-    }
-    const WheelPacketCrcInput *crc = wheel_protocol_crc_input(protocol);
-    return crc != 0 && crc->axis_report_enabled != 0;
+    return protocol != NULL && axis_report_mode_allowed(protocol->mode) &&
+           protocol->axis_report_enabled_latched;
 }
 
 /**
