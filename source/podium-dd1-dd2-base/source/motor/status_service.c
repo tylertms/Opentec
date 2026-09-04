@@ -211,7 +211,11 @@ void motor_status_service_run(MotorStatusService *service, uint32_t now_ms) {
         if (bus_status == PLATFORM_AUX_BUS_BUSY) {
             return;
         }
-        finish_transfer(service, bus_status == PLATFORM_AUX_BUS_SUCCEEDED, now_ms);
+        bool succeeded = bus_status == PLATFORM_AUX_BUS_SUCCEEDED;
+        finish_transfer(service, succeeded, now_ms);
+        if (!succeeded) {
+            return;
+        }
         bus_status = PLATFORM_AUX_BUS_IDLE;
     }
 
