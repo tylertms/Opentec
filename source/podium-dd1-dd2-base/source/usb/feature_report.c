@@ -161,7 +161,7 @@ static uint8_t encode_extra_extended_buttons(uint8_t buttons) {
 
 static void encode_report_33_buttons(const UsbFeatureReport33State *state, uint8_t *output) {
     uint8_t mode = state->wheel_mode;
-    if (mode == 0x01 || mode == 0x0e) {
+    if (mode == 0x10 || mode == 0x0e) {
         uint8_t first = state->auxiliary_report[0];
         uint8_t second = state->auxiliary_report[1];
         uint8_t third = state->auxiliary_report[2];
@@ -181,7 +181,7 @@ static void encode_report_33_buttons(const UsbFeatureReport33State *state, uint8
                                 (third & 0x08u));
         return;
     }
-    if (mode == 0x09 || mode == 0x0b || mode == 0x1b) {
+    if (mode == 0x09 || mode == 0x0b || mode == 0x1d) {
         output[12] = encode_low_request_extended_buttons(state->secondary_buttons);
         return;
     }
@@ -190,7 +190,7 @@ static void encode_report_33_buttons(const UsbFeatureReport33State *state, uint8
                      encode_control_extended_buttons(state->control_extended[0]);
         return;
     }
-    if (mode == 0x12) {
+    if (mode == 0x11) {
         output[12] = encode_high_request_extended_buttons(state->secondary_buttons);
         return;
     }
@@ -205,7 +205,7 @@ static void encode_report_33_buttons(const UsbFeatureReport33State *state, uint8
             (uint8_t)(((third >> 1) & 0x02u) | ((first >> 6) & 0x01u) | ((third << 3) & 0x40u));
         return;
     }
-    if (mode == 0x04 || mode == 0x06 || mode == 0x1d || mode == 0x0c) {
+    if (mode == 0x04 || mode == 0x06 || mode == 0x15 || mode == 0x0c) {
         output[12] = state->adapter_connected
                          ? encode_adapter_extended_buttons(state->adapter_buttons)
                          : encode_high_request_extended_buttons(state->secondary_buttons);

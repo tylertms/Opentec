@@ -79,7 +79,8 @@ bool usb_feature_report_33_supports_rotary(uint8_t wheel_mode);
  * @brief Encodes native feature report 33.
  *
  * Publishes rotary events or positions, queued motion directions, and extended and auxiliary
- * button state.
+ * button state. The button encoder uses the official auxiliary, low-request, high-request, and
+ * adapter mappings for wheel modes 0x10, 0x1d, 0x11, and 0x15 respectively.
  *
  * @param[in] state Current rotary, motion, and button sources.
  * @param[out] output Encoded 64-byte report.
