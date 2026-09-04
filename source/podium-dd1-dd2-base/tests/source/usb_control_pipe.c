@@ -44,9 +44,25 @@ static void test_adds_required_short_packet(void) {
     assert(!usb_control_pipe_next(&pipe, &packet));
 }
 
+static void test_adds_boundary_packet_at_requested_length(void) {
+    uint8_t data[USB_CONTROL_PACKET_SIZE + 2];
+    UsbControlPipe pipe;
+    UsbControlPacket packet;
+    usb_control_pipe_begin(&pipe, (UsbDescriptorView){.data = data, .length = sizeof(data)},
+                           USB_CONTROL_PACKET_SIZE);
+
+    assert(usb_control_pipe_next(&pipe, &packet));
+    assert(packet.data.data == data && packet.data.length == USB_CONTROL_PACKET_SIZE &&
+           packet.data_one);
+    assert(usb_control_pipe_next(&pipe, &packet));
+    assert(packet.data.length == 0 && !packet.data_one);
+    assert(!usb_control_pipe_next(&pipe, &packet));
+}
+
 int main(void) {
     test_splits_and_toggles_packets();
     test_clips_to_requested_length();
     test_adds_required_short_packet();
+    test_adds_boundary_packet_at_requested_length();
     return 0;
 }
