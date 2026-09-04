@@ -80,9 +80,10 @@ static void initializes_official_parameter_mirror_defaults(void) {
     assert(service.mirrored_parameters[13] == UINT8_MAX);
     assert(service.mirrored_parameters[14] == UINT8_MAX);
     assert(service.mirrored_model == 0);
+    assert(wheel_accessory_service_position_modulus(&service) == UINT32_C(0x5d2b));
 }
 
-static void selects_position_modulus_from_previous_mirrored_model(void) {
+static void preserves_sticky_position_modulus_across_non_position_probes(void) {
     WheelAccessoryService service;
     CommandTransport transport;
     wheel_accessory_service_init(&service);
@@ -100,14 +101,42 @@ static void selects_position_modulus_from_previous_mirrored_model(void) {
     assert(wheel_accessory_service_position_modulus(&service) == UINT32_C(0x5c7f));
 
     wheel_accessory_init(&service.accessory);
+    assert(wheel_accessory_service_position_modulus(&service) == UINT32_C(0x5c7f));
     service.probe_requested = true;
     service.version_stage = false;
     service.sync_initialized = false;
-    const uint8_t model_zero_status[] = {0x82};
-    run_read(&service, &transport, status_request, sizeof(status_request), model_zero_status,
-             sizeof(model_zero_status), 0);
+    const uint8_t model_three_standard_status[] = {0x8c};
+    run_read(&service, &transport, status_request, sizeof(status_request),
+             model_three_standard_status,
+             sizeof(model_three_standard_status), 0);
     run_read(&service, &transport, version_request, sizeof(version_request), model_two_version,
              sizeof(model_two_version), 0);
+    assert(service.accessory.kind == WHEEL_ACCESSORY_STANDARD);
+    assert(service.mirrored_model == 3);
+    assert(wheel_accessory_service_position_modulus(&service) == UINT32_C(0x5c7f));
+
+    service.probe_requested = true;
+    service.version_stage = false;
+    service.sync_initialized = false;
+    const uint8_t legacy_status[] = {0x02};
+    run_read(&service, &transport, status_request, sizeof(status_request), legacy_status,
+             sizeof(legacy_status), 0);
+    run_read(&service, &transport, version_request, sizeof(version_request), model_two_version,
+             sizeof(model_two_version), 0);
+    assert(service.accessory.kind == WHEEL_ACCESSORY_LEGACY);
+    assert(service.accessory.model == 3);
+    assert(service.mirrored_model == 3);
+    assert(wheel_accessory_service_position_modulus(&service) == UINT32_C(0x5c7f));
+
+    service.probe_requested = true;
+    service.version_stage = false;
+    service.sync_initialized = false;
+    const uint8_t model_zero_position_status[] = {0x81};
+    run_read(&service, &transport, status_request, sizeof(status_request),
+             model_zero_position_status, sizeof(model_zero_position_status), 0);
+    run_read(&service, &transport, version_request, sizeof(version_request), model_two_version,
+             sizeof(model_two_version), 0);
+    assert(service.accessory.kind == WHEEL_ACCESSORY_EXTENDED);
     assert(service.mirrored_model == 0);
     assert(wheel_accessory_service_position_modulus(&service) == UINT32_C(0x5d2b));
 
@@ -525,7 +554,7 @@ static void handles_unavailable_services(void) {
 
 int main(void) {
     initializes_official_parameter_mirror_defaults();
-    selects_position_modulus_from_previous_mirrored_model();
+    preserves_sticky_position_modulus_across_non_position_probes();
     polls_identity_and_official_composite_order();
     preserves_tuning_updates_during_an_inflight_write();
     retries_calibration_and_override_without_losing_state();

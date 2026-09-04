@@ -1356,7 +1356,7 @@ static void initialize_motor_link(void) {
  * @brief Captures and persists the current absolute wheel center.
  *
  * Ignores capture before a valid motor-position report is available. Otherwise normalizes the
- * current sample with the identified controller modulus, stores the reference, and persists the
+ * current sample with the retained wheel-position modulus, stores the reference, and persists the
  * settings when the reference changes.
  *
  * @return True when a valid position sample was captured.
@@ -1366,9 +1366,6 @@ static bool capture_current_wheel_center(void) {
         return false;
     }
     uint32_t modulus = wheel_accessory_service_position_modulus(&wheel_accessory_service);
-    if (modulus == 0) {
-        modulus = motor_identity_position_modulus(motor_probe_identity(&motor_probe));
-    }
     if (wheel_position_reference_capture(&base_settings.wheel_position,
                                          motor_position_report.wheel_position, modulus)) {
         base_settings_persistence_mark_dirty(&settings_persistence);

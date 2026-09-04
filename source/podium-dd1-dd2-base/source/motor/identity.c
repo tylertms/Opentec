@@ -42,11 +42,3 @@ uint8_t motor_identity_input_transfer_code(const MotorIdentity *identity) {
 uint8_t motor_identity_runtime_state(const MotorIdentity *identity) {
     return identity == 0 ? 0 : (uint8_t)identity->protocol + 1;
 }
-
-uint32_t motor_identity_position_modulus(const MotorIdentity *identity) {
-    if (identity != 0 && identity->protocol == MOTOR_PROTOCOL_POSITION &&
-        (identity->model & 2u) == 0) {
-        return UINT32_C(0x5c7f);
-    }
-    return UINT32_C(0x5d2b);
-}

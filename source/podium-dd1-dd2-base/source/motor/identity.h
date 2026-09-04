@@ -73,16 +73,4 @@ uint8_t motor_identity_input_transfer_code(const MotorIdentity *identity);
  */
 uint8_t motor_identity_runtime_state(const MotorIdentity *identity);
 
-/**
- * @brief Selects the signed-position modulus for a motor controller.
- *
- * Uses modulus 0x5c7f for position-capable models with model bit one clear. Position-capable
- * models with that bit set, standard and legacy controllers, and unavailable identities use
- * modulus 0x5d2b. A null identity is accepted.
- *
- * @param[in] identity Decoded motor-controller identity, or null when unavailable.
- * @return Modulus for signed wheel-position normalization.
- */
-uint32_t motor_identity_position_modulus(const MotorIdentity *identity);
-
 #endif

@@ -39,9 +39,9 @@ void wheel_accessory_init(WheelAccessory *accessory) {
  * @brief Applies a completed attached wheel accessory probe.
  *
  * Stores the status and version before classifying the status. Nonnegative status selects the
- * legacy protocol. Negative status selects standard for protocol zero or extended for protocols
- * one and two and extracts the five-bit model. Protocol three is unsupported, so it leaves the
- * previous kind and model in place.
+ * legacy protocol and retains the previous model. Negative status selects standard for protocol
+ * zero or extended for protocols one and two and replaces the five-bit model. Protocol three is
+ * unsupported, so it leaves the previous kind and model in place.
  *
  * @param[in,out] accessory Accessory identity and protocol state.
  * @param[in] status Signed probe status byte.
@@ -121,11 +121,4 @@ uint8_t wheel_accessory_mode_flags(const WheelAccessory *accessory) {
         flags |= 1;
     }
     return (uint8_t)(flags | accessory->model << 1);
-}
-
-uint32_t wheel_accessory_position_modulus(const WheelAccessory *accessory) {
-    if (accessory == NULL || accessory->kind != WHEEL_ACCESSORY_EXTENDED) {
-        return 0;
-    }
-    return (accessory->model & 0x02u) == 0 ? 0x5c7fu : 0x5d2bu;
 }

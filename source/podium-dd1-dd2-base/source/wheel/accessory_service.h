@@ -127,8 +127,8 @@ typedef struct {
     uint8_t saved_drift_mode;       /**< Drift-mode byte restored when override is disabled. */
     uint8_t requested_sensitivity; /**< Profile sensitivity before automatic encoding. */
     uint8_t wheel_mode;            /**< Current wheel mode used for calibration gates. */
-    uint32_t position_modulus;     /**< Position modulus retained after a valid extended probe. */
-    uint8_t mirrored_model;        /**< Model retained by the official accessory parameter mirror. */
+    uint32_t position_modulus; /**< Sticky steering modulus, initialized to the official default. */
+    uint8_t mirrored_model;    /**< Model retained by the official accessory parameter mirror. */
 
     uint8_t calibration_data[2];  /**< Calibration command or response bytes. */
     uint8_t calibration_requests; /**< Pending calibration and erase request bits. */
@@ -213,7 +213,15 @@ bool wheel_accessory_service_output_override_active(const WheelAccessoryService 
 /** @brief Reports whether the latest output override operation completed. */
 bool wheel_accessory_service_output_override_complete(const WheelAccessoryService *service);
 
-/** @brief Returns the model-derived position modulus for the attached extended accessory. */
+/**
+ * @brief Returns the sticky steering-position modulus.
+ *
+ * The default is 0x5d2b. Only an accepted position-capable probe changes the value, and the
+ * value remains available while the accessory is in any other protocol state.
+ *
+ * @param[in] service Attached wheel accessory service.
+ * @return Sticky steering-position modulus, or zero when service is null.
+ */
 uint32_t wheel_accessory_service_position_modulus(const WheelAccessoryService *service);
 
 /** @brief Reports whether the latest accessory status inhibits force output. */

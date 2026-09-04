@@ -24,7 +24,7 @@ typedef enum {
 typedef struct {
     uint32_t version;       /**< Latest accessory version value returned by a probe. */
     int8_t initial_status;  /**< Signed status byte returned by the latest probe. */
-    uint8_t model;          /**< Five-bit model value extracted from a supported negative status. */
+    uint8_t model;          /**< Five-bit model value retained from the latest supported identity. */
     uint8_t accessory_type; /**< Extended accessory type returned by the accessory service. */
     WheelAccessoryKind kind; /**< Protocol classification from the latest supported probe. */
 } WheelAccessory;
@@ -43,9 +43,9 @@ void wheel_accessory_init(WheelAccessory *accessory);
  * @brief Applies a completed attached wheel accessory probe.
  *
  * Stores the signed status and version before classifying the status. Nonnegative status selects
- * the legacy protocol; negative status selects standard for protocol zero or extended for
- * protocols one and two and extracts the model. Protocol three is unsupported, so it leaves the
- * previous kind and model in place.
+ * the legacy protocol and retains the previous model; negative status selects standard for
+ * protocol zero or extended for protocols one and two and replaces the model. Protocol three is
+ * unsupported, so it leaves the previous kind and model in place.
  *
  * @param[in,out] accessory Accessory identity and protocol state.
  * @param[in] status Signed probe status byte.
@@ -86,16 +86,5 @@ uint8_t wheel_accessory_mode_code(const WheelAccessory *accessory);
  * @return Compact accessory mode flags, or zero when accessory is null.
  */
 uint8_t wheel_accessory_mode_flags(const WheelAccessory *accessory);
-
-/**
- * @brief Returns the position modulus selected by the reported accessory model.
- *
- * Position protocols use one of two controller-specific absolute-position moduli. The model bit
- * reported in the signed identity status selects the modulus; other protocols return zero.
- *
- * @param[in] accessory Current accessory identity.
- * @return Model-dependent position modulus, or zero when no position protocol is active.
- */
-uint32_t wheel_accessory_position_modulus(const WheelAccessory *accessory);
 
 #endif

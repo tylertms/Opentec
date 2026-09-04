@@ -38,6 +38,8 @@ enum {
     WHEEL_ACCESSORY_HANDSHAKE_VALUE = 0x05fa,
     WHEEL_ACCESSORY_AUTO_SENSITIVITY = 0x7e,
     WHEEL_ACCESSORY_OUTPUT_OVERRIDE_VALUE = 0xff,
+    WHEEL_ACCESSORY_POSITION_MODULUS_LOW = 0x5c7f,
+    WHEEL_ACCESSORY_POSITION_MODULUS_DEFAULT = 0x5d2b,
     WHEEL_ACCESSORY_WAIT_CYCLE_MS = 200, /**< Official delay after a routed composite cycle. */
 };
 
@@ -100,7 +102,8 @@ static void reset_mirrored_parameters(WheelAccessoryService *service) {
  * @return Steering-position modulus encoded by the model family.
  */
 static uint32_t position_modulus_for_model(uint8_t model) {
-    return (model & 0x02u) == 0 ? UINT32_C(0x5c7f) : UINT32_C(0x5d2b);
+    return (model & 0x02u) == 0 ? WHEEL_ACCESSORY_POSITION_MODULUS_LOW
+                                : WHEEL_ACCESSORY_POSITION_MODULUS_DEFAULT;
 }
 
 static uint16_t decode_u16(const uint8_t data[2]) {
@@ -944,6 +947,7 @@ void wheel_accessory_service_init(WheelAccessoryService *service) {
     service->status_response = service->desired_parameters[0];
     service->motor_event = MOTOR_STATUS_EVENT_NONE;
     service->remote_effects_enabled = true;
+    service->position_modulus = WHEEL_ACCESSORY_POSITION_MODULUS_DEFAULT;
     service->probe_requested = true;
     service->sync_state = WHEEL_ACCESSORY_SYNC_READ_NATURAL_DAMPER;
 }

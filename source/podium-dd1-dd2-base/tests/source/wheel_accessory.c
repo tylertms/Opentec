@@ -43,7 +43,6 @@ static void test_detects_legacy_standard_and_extended_protocols(void) {
     assert(accessory.model == 5);
     assert(wheel_accessory_mode_code(&accessory) == 2);
     assert(wheel_accessory_mode_flags(&accessory) == 0x8b);
-    assert(wheel_accessory_position_modulus(&accessory) == UINT32_C(0x5c7f));
 
     assert(wheel_accessory_apply_probe(&accessory, signed_status(0x96), 3));
     assert(accessory.kind == WHEEL_ACCESSORY_EXTENDED);
@@ -62,14 +61,11 @@ static void test_rejects_reserved_protocol_without_replacing_identity(void) {
     assert(accessory.version == UINT32_C(0xabcdef12));
     assert(wheel_accessory_mode_code(&accessory) == 4);
     assert(wheel_accessory_mode_flags(&accessory) == 0x8b);
-    assert(wheel_accessory_position_modulus(&accessory) == UINT32_C(0x5c7f));
 
     assert(wheel_accessory_apply_probe(&accessory, signed_status(0x91), 0));
     assert(accessory.model == 4);
-    assert(wheel_accessory_position_modulus(&accessory) == UINT32_C(0x5c7f));
     assert(wheel_accessory_apply_probe(&accessory, signed_status(0x89), 0));
     assert(accessory.model == 2);
-    assert(wheel_accessory_position_modulus(&accessory) == UINT32_C(0x5d2b));
 }
 
 static void test_preserves_model_when_legacy_status_follows_extended(void) {
