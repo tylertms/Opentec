@@ -1016,16 +1016,77 @@ static void test_builds_adapter_multi_position_input(void) {
     service.protocol.request[14] = 3;
     service.protocol.adapter.connected = true;
     service.protocol.adapter.mode = 1;
-    service.protocol.adapter.rotary_positions[0] = 5;
-    service.protocol.adapter.rotary_positions[1] = 6;
-    service.protocol.adapter.rotary_positions[2] = 7;
+    service.protocol.adapter.rotary_positions[0] = 0xa5;
+    service.protocol.adapter.rotary_positions[1] = 0xb7;
     WheelMultiPositionInput input;
 
     assert(wheel_service_multi_position_input(&service, 0, &input));
     assert(input.channels[0].position == 5);
-    assert(input.channels[1].position == 6);
+    assert(input.channels[1].position == 10);
     assert(input.channels[2].position == 7);
     assert(input.channels[2].active);
+}
+
+static void test_builds_adapter_normal_multi_position_input(void) {
+    static const uint8_t normal_modes[] = {9, 10, 11, 12, 0x0e, 0x0f, 0x17, 0x1b, 0x1c, 0x1d};
+    WheelService service;
+    WheelMultiPositionInput input;
+
+    for (size_t index = 0; index < sizeof(normal_modes) / sizeof(normal_modes[0]); index++) {
+        initialize_service(&service);
+        service.protocol.request_ready = true;
+        service.protocol.mode = normal_modes[index];
+        service.protocol.request[6] = 1;
+        service.protocol.request[7] = 2;
+        service.protocol.request[13] = 0xac;
+        service.protocol.request[14] = 3;
+        service.protocol.adapter.connected = true;
+        service.protocol.adapter.mode = 0;
+        service.protocol.adapter.rotary_positions[0] = 0xa5;
+        service.protocol.adapter.rotary_positions[1] = 0xb7;
+
+        assert(wheel_service_multi_position_input(&service, 0, &input));
+        assert(input.channels[0].position == 5);
+        assert(input.channels[1].position == 10);
+        assert(input.channels[2].position == 12);
+        assert(input.channels[2].active ==
+               (normal_modes[index] == 0x0f || normal_modes[index] == 0x17 ||
+                normal_modes[index] == 0x1c));
+    }
+
+    initialize_service(&service);
+    service.protocol.request_ready = true;
+    service.protocol.mode = 0x1c;
+    service.protocol.request[6] = 1;
+    service.protocol.request[7] = 2;
+    service.protocol.request[13] = 0xac;
+    service.protocol.adapter.connected = true;
+    service.protocol.adapter.mode = 1;
+    service.protocol.adapter.rotary_positions[0] = 0xa5;
+    service.protocol.adapter.rotary_positions[1] = 0xb7;
+
+    assert(wheel_service_multi_position_input(&service, 0, &input));
+    assert(input.channels[0].position == 5);
+    assert(input.channels[1].position == 10);
+    assert(input.channels[2].position == 7);
+    assert(input.channels[2].active);
+
+    initialize_service(&service);
+    service.protocol.request_ready = true;
+    service.protocol.mode = 0x10;
+    service.protocol.request[6] = 1;
+    service.protocol.request[7] = 2;
+    service.protocol.request[13] = 0xac;
+    service.protocol.adapter.connected = true;
+    service.protocol.adapter.mode = 1;
+    service.protocol.adapter.rotary_positions[0] = 0xa5;
+    service.protocol.adapter.rotary_positions[1] = 0xb7;
+
+    assert(wheel_service_multi_position_input(&service, 0, &input));
+    assert(input.channels[0].position == 1);
+    assert(input.channels[1].position == 2);
+    assert(input.channels[2].position == 12);
+    assert(!input.channels[2].active);
 }
 
 static void test_marks_extended_multi_position_layout(void) {
@@ -2080,6 +2141,7 @@ int main(void) {
     test_builds_direct_multi_position_input();
     test_gates_quaternary_rotary_to_legacy_mode();
     test_builds_adapter_multi_position_input();
+    test_builds_adapter_normal_multi_position_input();
     test_marks_extended_multi_position_layout();
     test_discards_host_motion_without_resetting_rotary_state();
     test_filters_adapter_remote_tuning_active_state();

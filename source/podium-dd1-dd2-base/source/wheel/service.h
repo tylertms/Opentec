@@ -702,9 +702,12 @@ bool wheel_service_multi_position_supported(const WheelService *service);
  * @brief Builds the current multi-position rotary input.
  *
  * Selects direct wheel positions or adapter selectors, advances rotary debounce state, and marks
- * the extended selector layout when required. Direct packed input advances the fourth rotary
- * channel only in legacy remote-tuning mode 0x0e, where it is exposed separately for native
- * legacy accessory reporting.
+ * the extended selector layout when required. Normal adapter modes use the first response byte's
+ * low and high nibbles for the primary and secondary selectors. Adapter endpoint mode one uses
+ * the second response byte's low nibble for the third selector; direct modes 0x0f, 0x17, and
+ * 0x1c retain their direct third selector. Direct packed input advances the fourth rotary channel
+ * only in legacy remote-tuning mode 0x0e, where it is exposed separately for native legacy
+ * accessory reporting.
  *
  * @param[in,out] service Wheel service and rotary state to update.
  * @param[in] now_ms Current monotonic time in milliseconds.

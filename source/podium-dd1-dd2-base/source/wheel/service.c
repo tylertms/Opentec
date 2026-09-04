@@ -1521,8 +1521,8 @@ bool wheel_service_multi_position_supported(const WheelService *service) {
 /**
  * @brief Tests whether the attached adapter supplies rotary positions.
  *
- * Selects the wheel modes that replace the direct rotary bytes with the three adapter selectors
- * while the adapter is connected.
+ * Selects the wheel modes that replace the direct rotary bytes with adapter selectors while the
+ * adapter is connected. The normal Fanatec modes use the packed adapter rotary response.
  *
  * @param[in] service Attached-wheel service and adapter state.
  * @return True when adapter rotary positions are the active source.
@@ -1534,8 +1534,17 @@ static bool adapter_supplies_multi_position_input(const WheelService *service) {
     switch (service->protocol.mode) {
     case 4:
     case 6:
+    case 9:
+    case 10:
+    case 11:
     case 12:
+    case WHEEL_MODE_REMOTE_TUNING_LEGACY:
+    case WHEEL_MODE_LEGACY_ALTERNATE:
     case WHEEL_MODE_CRC_AUTHENTICATED:
+    case WHEEL_MODE_LEGACY_COMPATIBILITY:
+    case 0x1b:
+    case WHEEL_MODE_REMOTE_TUNING_EXTENDED:
+    case 0x1d:
         return true;
     default:
         return false;
@@ -1543,19 +1552,32 @@ static bool adapter_supplies_multi_position_input(const WheelService *service) {
 }
 
 /**
+ * @brief Tests whether a direct third multi-position channel is exposed.
+ *
+ * The direct third selector is present only in the legacy alternate, legacy compatibility, and
+ * extended remote-tuning modes.
+ *
+ * @param[in] service Attached-wheel service and protocol state.
+ * @return True when the direct third selector contributes to the input report.
+ */
+static bool direct_third_multi_position_channel(const WheelService *service) {
+    return service->protocol.mode == WHEEL_MODE_LEGACY_ALTERNATE ||
+           service->protocol.mode == WHEEL_MODE_LEGACY_COMPATIBILITY ||
+           service->protocol.mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED;
+}
+
+/**
  * @brief Tests whether the third multi-position channel is exposed.
  *
- * Enables the third direct selector for its three wheel modes and the third adapter selector for
- * adapter mode one.
+ * Enables the direct third selector for its three wheel modes and the third adapter selector for
+ * adapter endpoint mode one.
  *
  * @param[in] service Attached-wheel service and adapter state.
  * @param[in] adapter_source True when rotary positions come from the attached adapter.
  * @return True when the third channel contributes to the input report.
  */
 static bool third_multi_position_channel_active(const WheelService *service, bool adapter_source) {
-    return service->protocol.mode == WHEEL_MODE_LEGACY_ALTERNATE ||
-           service->protocol.mode == WHEEL_MODE_LEGACY_COMPATIBILITY ||
-           service->protocol.mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED ||
+    return direct_third_multi_position_channel(service) ||
            (adapter_source && service->protocol.adapter.mode == 1);
 }
 
@@ -1565,7 +1587,8 @@ static bool third_multi_position_channel_active(const WheelService *service, boo
  * Selects direct protocol positions or adapter selectors, advances the three selector transition
  * channels, advances the fourth direct rotary channel from the packed high nibble in legacy
  * remote-tuning mode, and marks the alternate selector layout used by extended remote-tuning
- * wheels.
+ * wheels. Adapter normal modes decode primary and secondary from the packed first response byte;
+ * endpoint mode one supplies the third selector from the low nibble of the second response byte.
  *
  * @param[in,out] service Attached-wheel service and rotary transition state.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -1585,9 +1608,13 @@ bool wheel_service_multi_position_input(WheelService *service, uint32_t now_ms,
 
     bool adapter_source = adapter_supplies_multi_position_input(service);
     if (adapter_source) {
-        for (uint8_t channel = 0; channel < WHEEL_MULTI_POSITION_CHANNEL_COUNT; channel++) {
-            input->channels[channel].position = service->protocol.adapter.rotary_positions[channel];
-        }
+        const WheelAdapterInput *adapter = &service->protocol.adapter;
+        const uint8_t packed_rotary = adapter->rotary_positions[0];
+        input->channels[0].position = packed_rotary & 0x0fu;
+        input->channels[1].position = packed_rotary >> 4;
+        input->channels[2].position = adapter->mode == 1
+                                          ? adapter->rotary_positions[1] & 0x0fu
+                                          : request[WHEEL_MULTI_POSITION_PACKED_OFFSET] & 0x0fu;
     } else {
         input->channels[0].position = request[WHEEL_MULTI_POSITION_PRIMARY_OFFSET];
         input->channels[1].position = request[WHEEL_MULTI_POSITION_SECONDARY_OFFSET];

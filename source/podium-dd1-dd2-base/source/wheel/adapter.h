@@ -5,11 +5,12 @@
 #include <stdint.h>
 
 /**
- * @brief Number of rotary positions reported by an attached adapter.
+ * @brief Number of rotary response bytes retained from an attached adapter.
  *
- * The input state retains one position byte for each of the adapter's rotary controls.
+ * The standard endpoint returns one packed primary and secondary position byte. The extended
+ * endpoint adds one auxiliary position byte.
  */
-enum { WHEEL_ADAPTER_ROTARY_COUNT = 3 /**< Number of retained rotary positions. */ };
+enum { WHEEL_ADAPTER_ROTARY_COUNT = 2 /**< Maximum retained rotary response length. */ };
 
 /**
  * @brief Logical buttons, axes, selectors, mode, and queued motion from an attached adapter.
@@ -20,7 +21,7 @@ enum { WHEEL_ADAPTER_ROTARY_COUNT = 3 /**< Number of retained rotary positions. 
 typedef struct {
     uint8_t buttons[3]; /**< Three raw adapter button bytes. */
     uint8_t axes[2];    /**< Two raw adapter axis bytes in adapter report order. */
-    uint8_t rotary_positions[WHEEL_ADAPTER_ROTARY_COUNT]; /**< Raw rotary position bytes. */
+    uint8_t rotary_positions[WHEEL_ADAPTER_ROTARY_COUNT]; /**< Packed rotary response bytes. */
     uint8_t firmware_version[3]; /**< Three firmware-version bytes from the extended probe. */
     uint8_t information[4];      /**< Four information bytes from the extended probe. */
     uint16_t mode; /**< Selected adapter endpoint mode, zero for standard or one for extended. */
