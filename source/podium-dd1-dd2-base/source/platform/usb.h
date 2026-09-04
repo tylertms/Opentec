@@ -225,6 +225,13 @@ void platform_usb_set_endpoint_halt(uint8_t endpoint_address, bool halted);
 
 #ifdef OPENTEC_SIMULATOR_TEST
 /**
+ * @brief Services a synthetic bus-reset source for platform tests.
+ *
+ * Runs the production bus-reset restoration sequence and leaves the CPU USB interrupt enabled.
+ */
+void platform_usb_test_service_reset(void);
+
+/**
  * @brief Reads one simulator-visible USB descriptor status field.
  *
  * Exposes descriptor ownership and transfer-mode state to platform regression tests without adding

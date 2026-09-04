@@ -4,7 +4,7 @@
 
 #include "platform/usb.h"
 
-void _USB1Interrupt(void);
+void __attribute__((interrupt, no_auto_psv)) _USB1Interrupt(void);
 
 static void test_attach_is_complete_and_idempotent(void) {
     platform_usb_init();
@@ -53,6 +53,27 @@ static void test_init_arms_only_ep0_setup_bank_zero(void) {
     assert(platform_usb_test_descriptor_count(0, false, false) == PLATFORM_USB_PACKET_SIZE);
     assert(platform_usb_test_descriptor_status(0, false, true) == 0);
     assert(platform_usb_test_descriptor_count(0, false, true) == 0);
+}
+
+static void test_bus_reset_restores_controller_registers(void) {
+    platform_usb_init();
+    uint16_t descriptor_table_page = U1BDTP1;
+
+    IEC5bits.USB1IE = 1;
+    U1CNFG1 = 0xff;
+    U1EIE = 0x01;
+    U1IE = 0x01;
+    U1PWRCbits.USBPWR = 0;
+    U1BDTP1 = 0;
+
+    platform_usb_test_service_reset();
+
+    assert(IEC5bits.USB1IE == 1);
+    assert(U1CNFG1 == 0);
+    assert(U1EIE == 0x9f);
+    assert(U1IE == 0x9f);
+    assert(U1PWRCbits.USBPWR == 1);
+    assert(U1BDTP1 == descriptor_table_page);
 }
 
 static void test_halts_both_ping_pong_banks(void) {
@@ -135,6 +156,7 @@ int main(void) {
     test_attach_is_complete_and_idempotent();
     test_detach_allows_reattachment();
     test_init_arms_only_ep0_setup_bank_zero();
+    test_bus_reset_restores_controller_registers();
     test_halts_both_ping_pong_banks();
     test_interrupt_sources_obey_enable_mask();
     test_sof_recovers_stuck_descriptor_after_45_frames();

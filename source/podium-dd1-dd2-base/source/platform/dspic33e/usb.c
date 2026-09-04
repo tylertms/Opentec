@@ -17,16 +17,18 @@ enum {
     USB_DESCRIPTOR_COUNT =
         USB_ENDPOINT_COUNT * USB_BANK_COUNT * USB_DIRECTION_COUNT, /**< Total descriptor entries. */
     USB_EVENT_CAPACITY = 24,
-    USB_INTERRUPT_PRIORITY = 4,           /**< USB interrupt priority. */
-    USB_PACKET_ID_SETUP = 0x0d,           /**< USB packet identifier for a setup transaction. */
-    USB_TRANSACTION_ODD_BANK = 0x04,      /**< U1STAT mask for the odd ping-pong bank. */
-    USB_TRANSACTION_INPUT = 0x08,         /**< U1STAT mask for a device-to-host transaction. */
-    USB_INTERRUPT_RESET = 0x01,           /**< U1IR and U1IE bus-reset flag. */
-    USB_INTERRUPT_ERROR = 0x02,           /**< U1IR and U1IE transaction-error flag. */
-    USB_INTERRUPT_SOF = 0x04,             /**< U1IR and U1IE start-of-frame flag. */
-    USB_INTERRUPT_TRANSACTION = 0x08,     /**< U1IR and U1IE transaction-complete flag. */
-    USB_INTERRUPT_IDLE = 0x10,            /**< U1IR and U1IE idle flag. */
-    USB_INTERRUPT_STALL = 0x80,           /**< U1IR and U1IE stall flag. */
+    USB_INTERRUPT_PRIORITY = 4,       /**< USB interrupt priority. */
+    USB_PACKET_ID_SETUP = 0x0d,       /**< USB packet identifier for a setup transaction. */
+    USB_TRANSACTION_ODD_BANK = 0x04,  /**< U1STAT mask for the odd ping-pong bank. */
+    USB_TRANSACTION_INPUT = 0x08,     /**< U1STAT mask for a device-to-host transaction. */
+    USB_INTERRUPT_RESET = 0x01,       /**< U1IR and U1IE bus-reset flag. */
+    USB_INTERRUPT_ERROR = 0x02,       /**< U1IR and U1IE transaction-error flag. */
+    USB_INTERRUPT_SOF = 0x04,         /**< U1IR and U1IE start-of-frame flag. */
+    USB_INTERRUPT_TRANSACTION = 0x08, /**< U1IR and U1IE transaction-complete flag. */
+    USB_INTERRUPT_IDLE = 0x10,        /**< U1IR and U1IE idle flag. */
+    USB_INTERRUPT_STALL = 0x80,       /**< U1IR and U1IE stall flag. */
+    USB_INTERRUPT_MASK = USB_INTERRUPT_RESET | USB_INTERRUPT_ERROR | USB_INTERRUPT_SOF |
+                         USB_INTERRUPT_TRANSACTION | USB_INTERRUPT_IDLE | USB_INTERRUPT_STALL,
     USB_SOF_RECOVERY_FRAME_COUNT = 0x2d,  /**< SOF frames allowed before descriptor recovery. */
     USB_TRANSACTION_ENDPOINT_MASK = 0xf0, /**< U1STAT mask for the endpoint number. */
     USB_ENDPOINT_STALL = 0x02,            /**< Endpoint-control stall bit. */
@@ -278,12 +280,14 @@ static void push_event(PlatformUsbEventType type, uint8_t endpoint, bool odd_ban
 /**
  * @brief Restores the USB controller to its default device state.
  *
- * Clears pending controller events, resets ping-pong selection, address zero, endpoint controls,
- * queued events, and descriptors, then arms endpoint-zero setup bank zero before allowing token
- * processing.
+ * Disables the CPU USB interrupt, clears pending controller events, restores the controller
+ * interrupt sources, USB power, and descriptor-table page, resets ping-pong selection and address,
+ * clears queued events and descriptors, then arms endpoint-zero setup bank zero before allowing
+ * token processing.
  *
  */
 static void reset_controller(void) {
+    IEC5bits.USB1IE = 0;
     U1EIR = 0xff;
     U1IR = 0xff;
     while (U1IRbits.TRNIF != 0) {
@@ -295,6 +299,11 @@ static void reset_controller(void) {
         volatile uint16_t *endpoint_control = &U1EP0 + endpoint;
         *endpoint_control = endpoint == 0 ? USB_ENDPOINT_CONTROL : 0;
     }
+    U1CNFG1 = 0;
+    U1EIE = USB_INTERRUPT_MASK;
+    U1IE = USB_INTERRUPT_MASK;
+    U1PWRCbits.USBPWR = 1;
+    U1BDTP1 = (uint16_t)((uint16_t)&descriptors[0] >> 8);
     event_head = 0;
     event_tail = 0;
     clear_descriptors();
@@ -332,8 +341,8 @@ void platform_usb_init(void) {
         *endpoint_control = 0;
     }
     U1CNFG1 = 0;
-    U1EIE = 0x9f;
-    U1IE = 0x9f;
+    U1EIE = USB_INTERRUPT_MASK;
+    U1IE = USB_INTERRUPT_MASK;
     U1PWRCbits.USBPWR = 1;
     U1BDTP1 = (uint16_t)((uint16_t)&descriptors[0] >> 8);
     reset_controller();
@@ -364,8 +373,8 @@ void platform_usb_attach(void) {
     U1CON = 0;
     U1IE = 0;
     U1CNFG1 = 0;
-    U1EIE = 0x9f;
-    U1IE = 0x9f;
+    U1EIE = USB_INTERRUPT_MASK;
+    U1IE = USB_INTERRUPT_MASK;
     IEC5bits.USB1IE = 1;
     IPC21bits.USB1IP = USB_INTERRUPT_PRIORITY;
     while (U1CONbits.USBEN == 0) {
@@ -890,6 +899,7 @@ void __attribute__((interrupt, no_auto_psv)) _USB1Interrupt(void) {
     }
     if (U1IRbits.URSTIF != 0 && (U1IE & USB_INTERRUPT_RESET) != 0) {
         reset_controller();
+        IEC5bits.USB1IE = 1;
         push_event(PLATFORM_USB_EVENT_RESET, 0, false, 0);
         U1IR = USB_INTERRUPT_RESET;
     }
@@ -933,6 +943,17 @@ void __attribute__((interrupt, no_auto_psv)) _USB1Interrupt(void) {
 }
 
 #ifdef OPENTEC_SIMULATOR_TEST
+/**
+ * @brief Services a synthetic bus-reset source for platform tests.
+ *
+ * Runs the production bus-reset restoration sequence and leaves the CPU USB interrupt enabled as
+ * the interrupt handler does after resetting the controller.
+ */
+void platform_usb_test_service_reset(void) {
+    reset_controller();
+    IEC5bits.USB1IE = 1;
+}
+
 /**
  * @brief Services a synthetic transaction-complete source for platform tests.
  *
