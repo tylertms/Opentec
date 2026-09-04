@@ -15,6 +15,11 @@ enum {
     PEDAL_RECEIVE_DMA_REQUEST = 0x1e,  /**< DMA request number for UART2 reception. */
     PEDAL_TRANSMIT_DMA_REQUEST = 0x1f, /**< DMA request number for UART2 transmission. */
     PEDAL_INTERRUPT_PRIORITY = 4,      /**< Pedal UART and DMA interrupt priority. */
+    PEDAL_FRAME_TYPE_AXIS_SAMPLE = 1,  /**< V3 axis-sample report type. */
+    PEDAL_FRAME_TYPE_CONNECTION = 4,   /**< V3 connection report type. */
+    PEDAL_FRAME_TYPE_CALIBRATION = 5,  /**< V3 calibration report type. */
+    PEDAL_FRAME_TYPE_BRAKE_FORCE = 7,  /**< V3 brake-force report type. */
+    PEDAL_FRAME_TYPE_SHARED_AXES = 8,  /**< V3 shared-axes report type. */
     PEDAL_ANALOG_SETTLE_DELAY_COUNT = 0x4ff, /**< Official analog fallback delay count. */
     PEDAL_ANALOG_SETTLE_DELAY_CYCLES =
         (PEDAL_ANALOG_SETTLE_DELAY_COUNT + 1UL) * 0x0c81UL * 2UL, /**< Equivalent delay cycles. */
@@ -121,14 +126,6 @@ static volatile bool transfer_frame_ready;
  */
 static volatile bool transfer_receive_enabled;
 
-/**
- * @brief True after a pedal receive byte reported a UART framing or overrun error.
- *
- * The flag remains set until the current fixed-size DMA frame is rejected or delimiter recovery
- * accepts a clean closing marker.
- */
-static volatile bool receive_error_pending;
-
 static void receive_transfer_byte(uint8_t value);
 
 /**
@@ -152,9 +149,69 @@ static void clear_transfer_receive_state(void) {
  */
 static void clear_receive_fifo(void) {
     while (U2STAbits.URXDA != 0) {
-        (void)U2RXREG;
+        U2RXREG;
     }
     U2STAbits.OERR = 0;
+}
+
+/**
+ * @brief Computes the fixed pedal-frame checksum.
+ *
+ * Applies the reflected CRC-8 polynomial used by the official receive-DMA validator to the report
+ * type and eight payload bytes.
+ *
+ * @param[in] input Report type followed by the payload bytes.
+ * @return The calculated checksum byte.
+ */
+static uint8_t calculate_frame_checksum(const volatile uint8_t *input) {
+    uint8_t checksum = UINT8_MAX;
+    for (uint8_t index = 0; index < PEDAL_FRAME_PAYLOAD_SIZE + 1; index++) {
+        checksum ^= input[index];
+        for (uint8_t bit = 0; bit < 8; bit++) {
+            checksum = (checksum & 1u) != 0
+                           ? (uint8_t)((checksum >> 1) ^ 0x8cu)
+                           : (uint8_t)(checksum >> 1);
+        }
+    }
+    return checksum;
+}
+
+/**
+ * @brief Reports whether a decoded V3 report type is accepted by receive DMA.
+ *
+ * Matches the five report cases reached by the official DMA ISR.
+ *
+ * @param[in] type Decoded report type.
+ * @return True for an official report type; otherwise false.
+ */
+static bool is_supported_frame_type(uint8_t type) {
+    return type == PEDAL_FRAME_TYPE_AXIS_SAMPLE || type == PEDAL_FRAME_TYPE_CONNECTION ||
+           type == PEDAL_FRAME_TYPE_CALIBRATION || type == PEDAL_FRAME_TYPE_BRAKE_FORCE ||
+           type == PEDAL_FRAME_TYPE_SHARED_AXES;
+}
+
+/**
+ * @brief Reports whether a receive-DMA frame has the official boundary markers.
+ *
+ * @return True when the frame starts and ends with the protocol delimiters; otherwise false.
+ */
+static bool has_valid_frame_boundary(void) {
+    return received_dma[0] == PEDAL_FRAME_START &&
+           received_dma[PEDAL_FRAME_SIZE - 1] == PEDAL_FRAME_END;
+}
+
+/**
+ * @brief Validates the boundary, checksum, and report type of a receive-DMA frame.
+ *
+ * Separates boundary failure, which enters UART delimiter recovery, from complete-frame failures,
+ * which simply rearm receive DMA.
+ *
+ * @return True when the fixed frame is accepted by the official DMA gate.
+ */
+static bool is_valid_received_frame(void) {
+    return has_valid_frame_boundary() &&
+           received_dma[PEDAL_FRAME_SIZE - 2] == calculate_frame_checksum(received_dma + 1) &&
+           is_supported_frame_type(received_dma[1]);
 }
 
 /**
@@ -242,10 +299,7 @@ void platform_pedal_link_init(void) {
     receive_enabled = true;
     receive_dma_enabled = false;
     resynchronizing = false;
-    transfer_receiving = false;
     transfer_receive_enabled = false;
-    receive_error_pending = false;
-    transfer_buffer_length = 0;
     configure_uart();
     configure_receive_dma();
     configure_transmit_dma();
@@ -273,9 +327,7 @@ void platform_pedal_link_begin_discovery(void) {
     frame_ready = false;
     clear_transfer_receive_state();
     resynchronizing = false;
-    transfer_receiving = false;
     transfer_receive_enabled = false;
-    receive_error_pending = false;
     receive_enabled = true;
     receive_dma_enabled = false;
     IFS1bits.U2RXIF = 0;
@@ -306,9 +358,7 @@ void platform_pedal_link_begin_analog(void) {
     frame_ready = false;
     clear_transfer_receive_state();
     resynchronizing = false;
-    transfer_receiving = false;
     transfer_receive_enabled = false;
-    receive_error_pending = false;
     receive_enabled = false;
     receive_dma_enabled = false;
 }
@@ -330,7 +380,6 @@ void platform_pedal_link_stop_receive(void) {
     clear_transfer_receive_state();
     resynchronizing = false;
     transfer_receive_enabled = false;
-    receive_error_pending = false;
     receive_enabled = false;
     receive_dma_enabled = false;
     IFS0bits.DMA1IF = 0;
@@ -352,9 +401,7 @@ void platform_pedal_link_begin_framed_receive(void) {
     frame_ready = false;
     clear_transfer_receive_state();
     resynchronizing = false;
-    transfer_receiving = false;
     transfer_receive_enabled = false;
-    receive_error_pending = false;
     receive_enabled = true;
     receive_dma_enabled = true;
     DMA1CNT = PEDAL_FRAME_SIZE - 1;
@@ -380,12 +427,9 @@ void platform_pedal_link_begin_transfer_receive(void) {
     frame_ready = false;
     clear_transfer_receive_state();
     resynchronizing = false;
-    transfer_receiving = false;
     transfer_receive_enabled = true;
-    receive_error_pending = false;
     receive_enabled = true;
     receive_dma_enabled = false;
-    transfer_buffer_length = 0;
     IFS1bits.U2RXIF = 0;
     IEC1bits.U2RXIE = 1;
 }
@@ -433,7 +477,6 @@ static void reset_transfer_receive_generation(void) {
     IFS0bits.DMA1IF = 0;
     DMA1CNT = TRANSFER_FRAME_MAX_ENCODED_SIZE - 1;
     clear_transfer_receive_state();
-    receive_error_pending = false;
     IEC1bits.U2RXIE = receive_enabled;
 }
 
@@ -582,8 +625,8 @@ uint16_t platform_pedal_link_take_transfer(uint8_t *data, uint16_t capacity) {
  * @brief Accumulates one encoded V4 transfer byte.
  *
  * Retains bytes in the official-size receive ring until the foreground parser consumes them. Starts
- * or restarts collection at the opening marker, abandons frames after 124 bytes, and retains one
- * complete frame until the caller accepts it.
+ * collection at the opening marker while idle, appends nested markers, abandons frames after 124
+ * bytes, and retains one complete frame until the caller accepts it.
  *
  * @param[in] value Received encoded byte.
  */
@@ -591,13 +634,12 @@ static void receive_transfer_byte(uint8_t value) {
     if (transfer_frame_ready) {
         return;
     }
-    if (value == TRANSFER_FRAME_START) {
-        transfer_buffer[0] = value;
-        transfer_buffer_length = 1;
-        transfer_receiving = true;
-        return;
-    }
     if (!transfer_receiving) {
+        if (value == TRANSFER_FRAME_START) {
+            transfer_buffer[0] = value;
+            transfer_buffer_length = 1;
+            transfer_receiving = true;
+        }
         return;
     }
     if (transfer_buffer_length >= TRANSFER_FRAME_MAX_SEND_PAYLOAD_SIZE) {
@@ -634,29 +676,38 @@ static void retain_transfer_receive_byte(uint8_t value) {
 }
 
 /**
- * @brief Processes one UART2 receive value.
+ * @brief Completes UART delimiter recovery after one receive event.
  *
- * Drops bytes reported with framing or overrun errors, assembles transfer bytes, publishes clean
- * byte-oriented responses, and accepts only a clean closing marker during DMA recovery.
+ * Uses only the final value drained from a recovery FIFO pass. The official receiver rearms DMA
+ * only when that final value is the closing delimiter.
  *
- * @param[in] value Received UART2 value.
- * @param[in] error True when UART2 reported a framing or overrun error for the value.
+ * @param[in] was_resynchronizing True when the receive event started in delimiter recovery.
+ * @param[in] byte_received True when the receive event drained at least one value.
+ * @param[in] value Final value drained from the receive FIFO.
  */
-static void process_received_byte(uint8_t value, bool error) {
-    if (error) {
-        receive_error_pending = true;
+static void complete_receive_recovery(bool was_resynchronizing, bool byte_received,
+                                      uint8_t value) {
+    if (!was_resynchronizing || !byte_received || value != PEDAL_FRAME_END) {
         return;
     }
+    resynchronizing = false;
+    DMA1CONbits.CHEN = 1;
+}
+
+/**
+ * @brief Processes one UART2 receive value.
+ *
+ * Assembles transfer bytes, ignores stray UART values while fixed-size DMA owns reception, and
+ * publishes byte-oriented responses without filtering UART status flags.
+ *
+ * @param[in] value Received UART2 value.
+ */
+static void process_received_byte(uint8_t value) {
     if (transfer_receive_enabled) {
         retain_transfer_receive_byte(value);
         return;
     }
-    if (resynchronizing) {
-        if (value == PEDAL_FRAME_END) {
-            resynchronizing = false;
-            receive_error_pending = false;
-            DMA1CONbits.CHEN = 1;
-        }
+    if (resynchronizing || receive_dma_enabled) {
         return;
     }
     received_byte = value;
@@ -666,9 +717,9 @@ static void process_received_byte(uint8_t value, bool error) {
 /**
  * @brief Services UART2 pedal receive events.
  *
- * Drains all available bytes, rejects values with framing or overrun errors, assembles V4 transfer
- * frames, publishes clean discovery bytes, or rearms V3 DMA after a clean closing delimiter.
- * UART overruns are cleared before return.
+ * Drains all available bytes, assembles V4 transfer frames, publishes byte-oriented responses, or
+ * rearms V3 DMA from the final value after delimiter recovery. UART framing status is not used to
+ * reject a value; normal-path UART overruns are cleared before return.
  */
 void __attribute__((interrupt, no_auto_psv)) _U2RXInterrupt(void) {
     if (!receive_enabled) {
@@ -676,12 +727,18 @@ void __attribute__((interrupt, no_auto_psv)) _U2RXInterrupt(void) {
         IFS1bits.U2RXIF = 0;
         return;
     }
+    bool was_resynchronizing = resynchronizing;
+    bool byte_received = false;
+    uint8_t final_value = 0;
     while (U2STAbits.URXDA != 0) {
-        bool error = U2STAbits.FERR != 0 || U2STAbits.OERR != 0;
-        process_received_byte((uint8_t)U2RXREG, error);
+        final_value = (uint8_t)U2RXREG;
+        byte_received = true;
+        if (!was_resynchronizing) {
+            process_received_byte(final_value);
+        }
     }
-    if (U2STAbits.OERR) {
-        receive_error_pending = true;
+    complete_receive_recovery(was_resynchronizing, byte_received, final_value);
+    if (!was_resynchronizing && U2STAbits.OERR) {
         U2STAbits.OERR = 0;
     }
     IFS1bits.U2RXIF = 0;
@@ -690,28 +747,27 @@ void __attribute__((interrupt, no_auto_psv)) _U2RXInterrupt(void) {
 /**
  * @brief Services fixed-size pedal receive completion.
  *
- * Publishes a twelve-byte frame with valid boundary markers and no pending UART receive error, then
- * immediately rearms DMA. A malformed or errored frame switches reception to UART delimiter
- * recovery before the next DMA frame is accepted.
+ * Publishes a twelve-byte frame with valid boundaries, checksum, and recognized report type, then
+ * immediately rearms DMA. A malformed-boundary frame switches reception to UART delimiter recovery
+ * while a bad checksum or unknown report type simply rearms the next DMA frame.
  */
 void __attribute__((interrupt, no_auto_psv)) _DMA1Interrupt(void) {
     if (!receive_dma_enabled) {
         IFS0bits.DMA1IF = 0;
         return;
     }
-    bool receive_error = receive_error_pending || U2STAbits.FERR != 0 || U2STAbits.OERR != 0;
-    receive_error_pending = false;
     DMA1CNT = PEDAL_FRAME_SIZE - 1;
-    if (!receive_error && received_dma[0] == PEDAL_FRAME_START &&
-        received_dma[PEDAL_FRAME_SIZE - 1] == PEDAL_FRAME_END) {
-        for (uint8_t index = 0; index < PEDAL_FRAME_SIZE; index++) {
-            received_frame[index] = received_dma[index];
-        }
-        frame_ready = true;
-        DMA1CONbits.CHEN = 1;
-    } else {
+    if (!has_valid_frame_boundary()) {
         resynchronizing = true;
         IEC1bits.U2RXIE = 1;
+    } else {
+        if (is_valid_received_frame()) {
+            for (uint8_t index = 0; index < PEDAL_FRAME_SIZE; index++) {
+                received_frame[index] = received_dma[index];
+            }
+            frame_ready = true;
+        }
+        DMA1CONbits.CHEN = 1;
     }
     IFS0bits.DMA1IF = 0;
 }
@@ -721,26 +777,57 @@ void __attribute__((interrupt, no_auto_psv)) _DMA1Interrupt(void) {
  * @brief Loads a receive-DMA frame for platform tests.
  *
  * @param[in] frame Twelve bytes to expose through the simulated receive DMA buffer.
- * @param[in] uart_error True when the frame includes a UART framing or overrun error.
+ * @param[in] uart_error True to set the simulated UART overrun status while the frame is checked.
  */
 void platform_pedal_link_test_set_receive_dma(const uint8_t frame[PEDAL_FRAME_SIZE],
                                               bool uart_error) {
     for (uint8_t index = 0; index < PEDAL_FRAME_SIZE; index++) {
         received_dma[index] = frame[index];
     }
-    receive_error_pending = uart_error;
+    if (uart_error) {
+        U2STAbits.OERR = 1;
+    }
 }
 
 /**
- * @brief Feeds one UART2 value through the receive-error and recovery logic.
+ * @brief Feeds one UART2 value through receive and recovery logic.
  *
  * @param[in] value Value to process.
- * @param[in] uart_error True when UART2 reported a framing or overrun error.
+ * @param[in] uart_error True to set the simulated UART framing status while the value is processed.
  */
 void platform_pedal_link_test_receive_byte(uint8_t value, bool uart_error) {
     if (receive_enabled) {
-        process_received_byte(value, uart_error);
+        bool was_resynchronizing = resynchronizing;
+        if (uart_error) {
+            U2STAbits.FERR = 1;
+        }
+        process_received_byte(value);
+        complete_receive_recovery(was_resynchronizing, true, value);
+        U2STAbits.FERR = 0;
     }
+}
+
+/**
+ * @brief Feeds a simulated UART receive FIFO burst.
+ *
+ * Recovery examines only the final value in the burst, matching the UART ISR's FIFO-drain order.
+ *
+ * @param[in] values Values exposed in FIFO order.
+ * @param[in] length Number of values in the burst.
+ */
+void platform_pedal_link_test_receive_burst(const uint8_t *values, uint8_t length) {
+    if (!receive_enabled || values == NULL || length == 0) {
+        return;
+    }
+    bool was_resynchronizing = resynchronizing;
+    uint8_t final_value = 0;
+    for (uint8_t index = 0; index < length; index++) {
+        final_value = values[index];
+        if (!was_resynchronizing) {
+            process_received_byte(final_value);
+        }
+    }
+    complete_receive_recovery(was_resynchronizing, true, final_value);
 }
 #endif
 

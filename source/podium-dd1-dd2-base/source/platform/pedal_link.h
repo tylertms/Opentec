@@ -32,7 +32,8 @@ void platform_pedal_link_begin_discovery(void);
 /**
  * @brief Selects fixed-size framed pedal reception.
  *
- * Configures the modern serial rate and arms DMA for one PEDAL_FRAME_SIZE-byte frame.
+ * Configures the modern serial rate and arms DMA for one PEDAL_FRAME_SIZE-byte frame. The receive
+ * path publishes only frames with valid boundaries, checksum, and supported report type.
  */
 void platform_pedal_link_begin_framed_receive(void);
 
@@ -103,7 +104,8 @@ bool platform_pedal_link_take_byte(uint8_t *value);
 /**
  * @brief Takes one completed fixed-size pedal frame.
  *
- * Copies and consumes the newest boundary-aligned PEDAL_FRAME_SIZE-byte frame.
+ * Copies and consumes the newest boundary-aligned PEDAL_FRAME_SIZE-byte frame that passed the
+ * checksum and report-type gates.
  *
  * @param[out] frame Destination for the received frame.
  * @return True when a frame was consumed; otherwise false.
@@ -113,7 +115,8 @@ bool platform_pedal_link_take_frame(uint8_t frame[PEDAL_FRAME_SIZE]);
 /**
  * @brief Takes one complete variable-length pedal transfer.
  *
- * Parses and consumes the oldest retained transfer when it fits the destination capacity.
+ * Parses and consumes the oldest retained transfer when it fits the destination capacity. Nested
+ * start markers inside an active transfer remain part of that transfer until its end marker.
  *
  * @param[out] data Destination for the encoded transfer frame.
  * @param[in] capacity Number of bytes available in data.
@@ -126,7 +129,7 @@ uint16_t platform_pedal_link_take_transfer(uint8_t *data, uint16_t capacity);
  * @brief Loads a simulated fixed-size pedal receive-DMA frame.
  *
  * @param[in] frame Twelve bytes to expose to the receive-DMA interrupt.
- * @param[in] uart_error True when UART2 reported a framing or overrun error.
+ * @param[in] uart_error True to set the simulated UART overrun status while the frame is checked.
  */
 void platform_pedal_link_test_set_receive_dma(const uint8_t frame[PEDAL_FRAME_SIZE],
                                               bool uart_error);
@@ -135,9 +138,19 @@ void platform_pedal_link_test_set_receive_dma(const uint8_t frame[PEDAL_FRAME_SI
  * @brief Feeds one simulated UART2 value through receive-error recovery.
  *
  * @param[in] value Value to process.
- * @param[in] uart_error True when UART2 reported a framing or overrun error.
+ * @param[in] uart_error True to set the simulated UART framing status while the value is processed.
  */
 void platform_pedal_link_test_receive_byte(uint8_t value, bool uart_error);
+
+/**
+ * @brief Feeds a simulated UART receive FIFO burst.
+ *
+ * Delimiter recovery uses the final value in the burst, matching the UART ISR.
+ *
+ * @param[in] values Values exposed in FIFO order.
+ * @param[in] length Number of values in the burst.
+ */
+void platform_pedal_link_test_receive_burst(const uint8_t *values, uint8_t length);
 #endif
 
 #endif
