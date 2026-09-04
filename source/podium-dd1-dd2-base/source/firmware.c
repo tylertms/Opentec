@@ -606,8 +606,6 @@ static bool motor_output_override_active;
 static bool force_output_prompt_visible;
 /** @brief Board LED pattern controller state. */
 static LedPatternController led_pattern_controller;
-/** @brief Whether the most recent synchronous settings save completed. */
-static bool settings_save_completed;
 /** @brief Deadline for leaving the temporary tuning-profile mode. */
 static uint32_t tuning_profile_mode_deadline_ms;
 /** @brief Whether calibration-dismiss input is latched until release. */
@@ -812,7 +810,7 @@ enum {
     ALTERNATIVE_SHIFTER_ENABLED_EVENT_CODE = 0x20,   /**< Alternative-shifter enabled event code. */
     ALTERNATIVE_SHIFTER_DISABLED_EVENT_CODE = 0x21,  /**< Alternative-shifter disabled code. */
     WHEEL_CENTER_CALIBRATED_STATUS_CODE = 0x1f,      /**< Wheel-center calibrated status code. */
-    SHUTDOWN_EVENT_CODE = 0x0e,                      /**< Shutdown event code. */
+    PROFILE_SAVE_EVENT_CODE = 0x0e,                 /**< Profile-save event code. */
     SYSTEM_DISPLAY_DISMISS_EVENT_CODE = 0x11,        /**< System-display dismissal event code. */
     FORCE_OUTPUT_PROMPT_EVENT_CODE = 0x0c,           /**< Force-output prompt event code. */
     FORCE_OUTPUT_PROMPT_DISMISS_EVENT_CODE = 0x1a,   /**< Force-output dismissal event code. */
@@ -820,7 +818,7 @@ enum {
     TORQUE_KEY_PROMPT_DISMISS_EVENT_CODE = 0x18,     /**< Torque Key dismissal event code. */
     UNSUPPORTED_WHEEL_INVERTED_EVENT_CODE = 0x0f,    /**< Unsupported inverted-wheel event code. */
     UNSUPPORTED_WHEEL_OUTLINED_EVENT_CODE = 0x10,    /**< Unsupported outlined-wheel event code. */
-    SHUTDOWN_STATUS_CODE = 0x2d,                     /**< Shutdown status code. */
+    PROFILE_SAVE_DISPLAY_COMMAND = 0x2d,            /**< Profile-save display command. */
     FORCE_FEEDBACK_FULL_STRENGTH_PERCENT = 100, /**< Full force-feedback strength in percent. */
     FORCE_FEEDBACK_AUTOMATIC_STRENGTH_PERCENT = 101,    /**< Automatic force-feedback sentinel. */
     FORCE_FEEDBACK_DD1_REDUCED_STRENGTH_PERCENT = 40,   /**< DD1 reduced strength in percent. */
@@ -937,9 +935,7 @@ static const UsbMotorVendorServiceBuffers usb_motor_buffers = {
  * Performs the synchronous storage pass used at explicit commit, shutdown, and restart boundaries.
  */
 static void save_base_settings(void) {
-    settings_save_completed =
-        base_settings_persistence_save(&settings_persistence, &base_settings) ==
-        BASE_SETTINGS_PERSISTENCE_SAVED;
+    base_settings_persistence_save(&settings_persistence, &base_settings);
     usb_tuning_profile_service_request_response(&usb_tuning_profile_service);
 }
 
@@ -951,9 +947,7 @@ static void save_base_settings(void) {
  */
 static void save_base_settings_interrupt_safe(void) {
     platform_system_interrupts_set(false);
-    settings_save_completed =
-        base_settings_persistence_save(&settings_persistence, &base_settings) ==
-        BASE_SETTINGS_PERSISTENCE_SAVED;
+    base_settings_persistence_save(&settings_persistence, &base_settings);
     platform_system_interrupts_set(true);
     usb_tuning_profile_service_request_response(&usb_tuning_profile_service);
 }
@@ -963,41 +957,60 @@ static uint16_t xbox_effective_steering_range_degrees(void);
 static void start_force_feedback_script_timer(void);
 
 /**
- * @brief Applies a power-controller transition to base hardware and retained settings.
+ * @brief Disables direct startup force output.
  *
- * Enables the external power hold at startup. Shutdown start persists any dirty retained settings,
- * flushes the pending pedal configuration, inhibits force output, publishes shutdown state, and
- * releases the power hold. The following completion sample resets USB software state and publishes
- * the terminal dismissal after the official one-second display interval.
+ * Clears the startup override and the next primary motor output frame.
+ */
+static void disable_motor_startup_direct_force(void) {
+    motor_startup_direct_force = false;
+    force_output_report_inhibit_primary(&motor_output_report);
+}
+
+/**
+ * @brief Applies a physical profile-save transition to base hardware and retained settings.
+ *
+ * Enables the external power hold at startup. Profile-save start persists retained settings,
+ * flushes pending pedal configuration, clears active force-feedback state, publishes profile-save
+ * state, and releases the power hold. Completion detaches USB and publishes dismissal after the
+ * official one-second state-three interval.
  *
  * @param[in] action Power transition produced by the controller.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
-static void apply_power_action(PowerAction action, uint32_t now_ms) {
+static void apply_profile_save_action(PowerAction action, uint32_t now_ms) {
     switch (action) {
     case POWER_ACTION_ENABLE_LATCH:
         platform_power_latch_set(true);
         break;
-    case POWER_ACTION_BEGIN_SHUTDOWN:
+    case POWER_ACTION_BEGIN_PROFILE_SAVE:
         save_base_settings_interrupt_safe();
         pedal_service_request_configuration(&pedal_service, tuning_profile->alternate_brake_force,
                                             true);
-        (void)pedal_service_flush_configuration(&pedal_service, now_ms);
+        pedal_service_flush_configuration(&pedal_service, now_ms);
         platform_power_latch_set(false);
-        force_output_report_inhibit_primary(&motor_output_report);
+        motor_startup_centering = (MotorStartupCentering){0};
+        motor_output_transport_enqueue_host_effect_clears(&motor_output_transport);
+        force_feedback_state_deactivate_host_effects(&force_feedback_state);
+        system_torque_transition_init(&system_torque_transition);
+        disable_motor_startup_direct_force();
+        force_output_enabled = false;
         motor_output_override_active = false;
-        (void)system_event_queue_try_push(&system_event_queue, SHUTDOWN_EVENT_CODE);
+        if (system_event_queue_try_push(&system_event_queue, PROFILE_SAVE_EVENT_CODE)) {
+            system_control_state_set_active_event(&system_control_state, PROFILE_SAVE_EVENT_CODE);
+        }
         system_control_state_set_status(&system_control_state, wheel_service_mode(&wheel_service),
-                                        SHUTDOWN_STATUS_CODE);
-        system_control_state_set_active_event(&system_control_state, SHUTDOWN_EVENT_CODE);
-        (void)wheel_service_queue_tuning_display_command(&wheel_service, SHUTDOWN_STATUS_CODE);
+                                        PROFILE_SAVE_DISPLAY_COMMAND);
+        wheel_service_queue_tuning_display_command(&wheel_service, PROFILE_SAVE_DISPLAY_COMMAND);
+        wheel_service_queue_adapter_display_state(&wheel_service, PROFILE_SAVE_EVENT_CODE);
         platform_led_pattern_set_duty(0);
+        power_controller_arm_profile_save_completion(&power_controller, platform_time_ms());
         break;
-    case POWER_ACTION_FINISH_SHUTDOWN:
-        usb_device_shutdown();
+    case POWER_ACTION_FINISH_PROFILE_SAVE:
+        platform_usb_detach();
         wheel_position_ready = true;
-        if ((int32_t)(now_ms - power_controller.completion_deadline_ms) > 0) {
-            tuning_interaction_request_close(&tuning_interaction);
+        tuning_interaction_request_close(&tuning_interaction);
+        wheel_service_queue_adapter_display_state(&wheel_service, SYSTEM_DISPLAY_DISMISS_EVENT_CODE);
+        if (system_event_queue_try_push(&system_event_queue, SYSTEM_DISPLAY_DISMISS_EVENT_CODE)) {
             system_control_state_set_active_event(&system_control_state,
                                                   SYSTEM_DISPLAY_DISMISS_EVENT_CODE);
         }
@@ -1009,27 +1022,27 @@ static void apply_power_action(PowerAction action, uint32_t now_ms) {
 }
 
 /**
- * @brief Services the wheel-base power button.
+ * @brief Services the wheel-base profile-save input.
  *
- * Samples the active-high platform input, advances the short-press and shutdown controller only
- * while security-code interaction is inactive, and applies any resulting hardware transition.
+ * Samples RD9, advances the physical profile-save controller while retained security protection is
+ * inactive, and applies any resulting hardware transition.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
-static void service_power(uint32_t now_ms) {
+static void service_profile_save(uint32_t now_ms) {
     PowerAction action =
-        power_controller_update(&power_controller, platform_power_button_pressed(),
-                                !security_code_interaction_active(&security_code), now_ms);
-    apply_power_action(action, now_ms);
+        power_controller_update(&power_controller, platform_profile_save_input_active(),
+                                !base_settings.security_code.enabled, now_ms);
+    apply_profile_save_action(action, now_ms);
 }
 
 /**
- * @brief Applies a pending power-button torque request.
+ * @brief Applies a pending profile-save torque request.
  *
  * Waits for the shared event queue, then publishes the event and applies its status, feature, and
  * attached-wheel response changes as one accepted transition.
  */
-static void service_power_torque_request(void) {
+static void service_profile_save_torque_request(void) {
     uint8_t wheel_mode = wheel_service_mode(&wheel_service);
     if (!system_torque_transition_update(
             &system_torque_transition, power_controller.torque_disabled,
@@ -3149,7 +3162,7 @@ static void run_motor_startup_centering(void) {
         int32_t force = motor_startup_centering_run(&motor_startup_centering, now_ms,
                                                     motor_position_ready, centered_position);
         force_output_scale_apply(force, 0, scale, &motor_output_report);
-        service_power(now_ms);
+        service_profile_save(now_ms);
     }
     motor_output_report = (ForceOutputReport){0};
 }
@@ -3168,7 +3181,7 @@ static bool run_wheel_startup_status_transaction(void) {
         uint32_t now_ms = platform_time_ms();
         serial_service_run(&serial_service, now_ms);
         service_motor_link();
-        service_power(now_ms);
+        service_profile_save(now_ms);
     }
     bool succeeded = serial_service.status == SERIAL_SERVICE_SUCCEEDED;
     wheel_status_service_run(&wheel_status_service, platform_time_ms(), false);
@@ -3192,7 +3205,7 @@ static void run_wheel_startup_status_memory(void) {
             (void)motor_command_serial_submit(&command_transport, &serial_service, now_ms);
         }
         service_motor_link();
-        service_power(now_ms);
+        service_profile_save(now_ms);
     }
 }
 
@@ -3215,7 +3228,7 @@ static void run_wheel_startup_discovery(void) {
         wheel_service_run(&wheel_service, now_ms, true);
         run_wheel_startup_status_memory();
         service_motor_link();
-        service_power(now_ms);
+        service_profile_save(now_ms);
         phase = wheel_service_protocol_phase(&wheel_service);
     }
 
@@ -3226,7 +3239,7 @@ static void run_wheel_startup_discovery(void) {
             serial_service_run(&serial_service, now_ms);
             wheel_service_run(&wheel_service, now_ms, true);
             service_motor_link();
-            service_power(now_ms);
+            service_profile_save(now_ms);
         }
     }
 }
@@ -3322,7 +3335,7 @@ static void initialize_startup_console_usb(void) {
             (void)motor_command_serial_submit(&command_transport, &serial_service, now_ms);
         }
         service_motor_link();
-        service_power(now_ms);
+        service_profile_save(now_ms);
         if (retained_xbox_mode && platform_time_reached(platform_time_ms(), xbox_deadline_ms)) {
             cancel_xbox_mode_startup();
             finish_native_mode_startup();
@@ -6562,8 +6575,8 @@ static void service_usb_host_capability_recovery(uint32_t now_ms) {
 /**
  * @brief Services autonomous board LED output.
  *
- * Selects the inhibited-output heartbeat from motor status, clears the LED after shutdown starts,
- * and requests the breathing transition from the torque-disable toggle or pedal recovery
+ * Selects the inhibited-output heartbeat from motor status, clears the LED after profile save
+ * starts, and requests the breathing transition from the torque-disable toggle or pedal recovery
  * handshake. A returned no-update marker leaves host-selected output unchanged.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -6572,18 +6585,15 @@ static void service_led_pattern(uint32_t now_ms) {
     LedPatternControllerInput input = {
         .output_inhibited =
             motor_tuning_ready && motor_status_service_output_inhibited(&motor_status_service),
-        .shutdown_complete = power_controller.phase == POWER_PHASE_COMPLETE ||
-                             power_controller.phase == POWER_PHASE_OFF,
         .pedal_handshake_active = pedal_service.recovery_handshake,
         .alternate_runtime_active = runtime_bridge.phase != RUNTIME_BRIDGE_IDLE,
         .force_override_requested = power_controller.torque_disabled,
-        .profile_save_complete = settings_save_completed,
+        .profile_save_complete = power_controller.phase == POWER_PHASE_COMPLETE,
     };
     uint16_t pattern = led_pattern_controller_update(&led_pattern_controller, input, now_ms);
     if (pattern != LED_PATTERN_NO_UPDATE) {
         platform_led_pattern_set_duty(led_pattern_pwm_duty((uint8_t)pattern));
     }
-    settings_save_completed = false;
 }
 
 /**
@@ -6602,7 +6612,7 @@ int main(void) {
     platform_system_init();
     platform_power_init();
     power_controller_init(&power_controller);
-    service_power(0);
+    service_profile_save(0);
     platform_system_enable_firmware_protection();
     platform_led_pattern_init();
     platform_torque_key_init();
@@ -6646,12 +6656,12 @@ int main(void) {
     usb_host_capability_recovery_init(&usb_host_capability_recovery);
     for (;;) {
         uint32_t now_ms = platform_time_ms();
-        service_power(now_ms);
+        service_profile_save(now_ms);
         usb_device_service();
         service_usb_xbox_session_actions();
         service_usb_output();
         platform_aux_bus_service();
-        service_power_torque_request();
+        service_profile_save_torque_request();
         if (service_runtime_bridge(now_ms)) {
             service_led_pattern(now_ms);
             continue;
@@ -6723,8 +6733,7 @@ int main(void) {
         service_motor_rotation_guard(now_ms);
         wheel_service_set_display_rotation(
             &wheel_service, tuning_profile->display_rotation_enabled != 0,
-            wheel_position_display_rotation(motor_position_report.wheel_position,
-                                            &wheel_position_calibration));
+            wheel_position_display_rotation(wheel_position_calibration.travel));
         if (system_control_state_take_status(&system_control_state, &pending_system_status_code)) {
             wheel_service_queue_system_status(&wheel_service, pending_system_status_code);
         }

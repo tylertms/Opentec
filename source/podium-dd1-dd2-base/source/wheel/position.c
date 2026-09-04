@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <string.h>
 
+static int16_t last_reported_axis;
+
 /**
  * @brief Clamps a signed wheel position to the supported sensor range.
  *
@@ -82,21 +84,22 @@ int32_t wheel_position_filter(int32_t sample, const WheelPositionCalibration *ca
 }
 
 /**
- * @brief Scales a wheel-position sample to a signed HID axis.
+ * @brief Scales a filtered wheel position to its floating-point axis value.
  *
- * Applies centering and deadband, scales negative travel to 32,768 steps and positive travel to
- * 32,767 steps, and saturates samples at the configured end stops.
+ * Applies the signed sixteen-bit limits before conversion to an integer so callers that add the
+ * unsigned HID midpoint preserve the device's truncation order.
  *
  * @param[in] sample Current absolute wheel-position sample.
  * @param[in] calibration Active wheel center, travel, and deadband.
- * @return Signed sixteen-bit steering axis.
+ * @return Floating-point signed axis value constrained to the sixteen-bit range.
  */
-int16_t wheel_position_axis(int32_t sample, const WheelPositionCalibration *calibration) {
+static float wheel_position_scaled_axis(int32_t sample,
+                                        const WheelPositionCalibration *calibration) {
     int32_t position = wheel_position_filter(sample, calibration);
     uint32_t travel = calibration->travel;
 
     if (travel == 0) {
-        return 0;
+        return 0.0f;
     }
     if (travel > WHEEL_POSITION_SAMPLE_LIMIT) {
         travel = WHEEL_POSITION_SAMPLE_LIMIT;
@@ -109,7 +112,21 @@ int16_t wheel_position_axis(int32_t sample, const WheelPositionCalibration *cali
     } else if (scaled < -32768.0f) {
         scaled = -32768.0f;
     }
-    return (int16_t)(int32_t)scaled;
+    return scaled;
+}
+
+/**
+ * @brief Scales a wheel-position sample to a signed HID axis.
+ *
+ * Applies centering and deadband, scales negative travel to 32,768 steps and positive travel to
+ * 32,767 steps, and saturates samples at the configured end stops.
+ *
+ * @param[in] sample Current absolute wheel-position sample.
+ * @param[in] calibration Active wheel center, travel, and deadband.
+ * @return Signed sixteen-bit steering axis.
+ */
+int16_t wheel_position_axis(int32_t sample, const WheelPositionCalibration *calibration) {
+    return (int16_t)(int32_t)wheel_position_scaled_axis(sample, calibration);
 }
 
 /**
@@ -123,29 +140,28 @@ int16_t wheel_position_axis(int32_t sample, const WheelPositionCalibration *cali
  * @return Unsigned sixteen-bit steering axis.
  */
 uint16_t wheel_position_hid_axis(int32_t sample, const WheelPositionCalibration *calibration) {
-    return (uint16_t)((int32_t)wheel_position_axis(sample, calibration) + 32768);
+    float axis = wheel_position_scaled_axis(sample, calibration);
+    last_reported_axis = (int16_t)(int32_t)axis;
+    return (uint16_t)(int32_t)(axis + 32768.0f);
 }
 
 /**
- * @brief Calculates the attached-wheel display rotation angle.
+ * @brief Calculates display rotation from the last reported signed wheel axis.
  *
- * Converts the centered, deadband-adjusted position to hundredths of a degree, clamps it to the
- * configured steering travel, and folds successive half turns into the signed range from -18000
- * through 18000.
+ * Converts the axis retained by wheel_position_hid_axis() to hundredths of a degree using the
+ * configured travel and folds successive half turns into the signed range from -18000 through
+ * 18000.
  *
- * @param[in] sample Current absolute wheel-position sample.
- * @param[in] calibration Active wheel center, travel, and deadband.
+ * @param[in] travel One-sided travel limit in wheel counts.
  * @return Signed display angle in hundredths of a degree.
  */
-int16_t wheel_position_display_rotation(int32_t sample,
-                                        const WheelPositionCalibration *calibration) {
-    int16_t axis = wheel_position_axis(sample, calibration);
-    uint32_t travel = calibration->travel > WHEEL_POSITION_SAMPLE_LIMIT
-                          ? WHEEL_POSITION_SAMPLE_LIMIT
-                          : calibration->travel;
+int16_t wheel_position_display_rotation(uint32_t travel) {
+    if (travel > WHEEL_POSITION_SAMPLE_LIMIT) {
+        travel = WHEEL_POSITION_SAMPLE_LIMIT;
+    }
     float angle = (float)((int32_t)travel * 100);
     angle /= 32.888889f;
-    angle = (float)axis * angle;
+    angle = (float)last_reported_axis * angle;
     angle /= 65535.0f;
 
     int32_t scaled = (int32_t)angle;

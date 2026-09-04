@@ -41,6 +41,10 @@ static void test_axis_scaling(void) {
     assert(wheel_position_hid_axis(1000 - WHEEL_POSITION_SAMPLE_LIMIT, &calibration) == 0);
     assert(wheel_position_hid_axis(1000, &calibration) == 32768);
     assert(wheel_position_hid_axis(1000 + WHEEL_POSITION_SAMPLE_LIMIT, &calibration) == UINT16_MAX);
+
+    const WheelPositionCalibration fractional = {.center = 0, .travel = 10, .deadband = 0};
+    assert(wheel_position_axis(-1, &fractional) == -3276);
+    assert(wheel_position_hid_axis(-1, &fractional) == 29491);
 }
 
 static void test_invalid_travel(void) {
@@ -103,14 +107,22 @@ static void test_display_rotation(void) {
         .deadband = 0,
     };
 
-    assert(wheel_position_display_rotation(1000, &calibration) == 0);
-    assert(wheel_position_display_rotation(1000 + 5920, &calibration) == 8999);
-    assert(wheel_position_display_rotation(1000 + 35520, &calibration) == 17999);
-    assert(wheel_position_display_rotation(1000 - 35520, &calibration) == 18000);
+    assert(wheel_position_hid_axis(1000, &calibration) == 32768);
+    assert(wheel_position_display_rotation(35520) == 0);
+    assert(wheel_position_hid_axis(1000 + 5920, &calibration) == 38229);
+    assert(wheel_position_display_rotation(35520) == 8999);
+    assert(wheel_position_hid_axis(1000 + 35520, &calibration) == UINT16_MAX);
+    assert(wheel_position_display_rotation(35520) == 17999);
+    assert(wheel_position_hid_axis(1000 - 35520, &calibration) == 0);
+    assert(wheel_position_display_rotation(35520) == 18000);
 
     WheelPositionCalibration deadband = calibration;
     deadband.deadband = 10;
-    assert(wheel_position_display_rotation(1010, &deadband) == 0);
+    assert(wheel_position_hid_axis(1010, &deadband) == 32768);
+    assert(wheel_position_display_rotation(35520) == 0);
+
+    assert(wheel_position_hid_axis(1000 + 5920, &calibration) == 38229);
+    assert(wheel_position_display_rotation(82880) == -15001);
 }
 
 static void test_velocity(void) {

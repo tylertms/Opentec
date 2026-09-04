@@ -80,17 +80,15 @@ int16_t wheel_position_axis(int32_t sample, const WheelPositionCalibration *cali
 uint16_t wheel_position_hid_axis(int32_t sample, const WheelPositionCalibration *calibration);
 
 /**
- * @brief Converts a wheel-position sample to a display rotation angle.
+ * @brief Converts the last reported signed wheel axis to a display rotation angle.
  *
- * Converts the calibrated axis to hundredths of a degree and folds the result into the signed
- * range from -18000 through 18000.
+ * Uses the signed axis retained by wheel_position_hid_axis(), converts it to hundredths of a
+ * degree, and folds the result into the signed range from -18000 through 18000.
  *
- * @param[in] sample Current absolute wheel-position sample.
- * @param[in] calibration Center, travel, and deadband calibration.
+ * @param[in] travel One-sided travel limit in wheel counts.
  * @return Signed display angle in hundredths of a degree.
  */
-int16_t wheel_position_display_rotation(int32_t sample,
-                                        const WheelPositionCalibration *calibration);
+int16_t wheel_position_display_rotation(uint32_t travel);
 
 /**
  * @brief Clears the retained wheel center reference.
