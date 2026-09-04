@@ -102,7 +102,8 @@ static bool interface_multiplexes_axes(uint8_t interface_mode) {
 /**
  * @brief Encodes the first wheel axis for a multiplexed host interface.
  *
- * Halves the source range and applies the interface-specific center offset.
+ * Halves the source range and applies the interface-specific center offset. Xbox GIP uses the
+ * active-low transform 0x80 minus the halved source value.
  *
  * @param[in] interface_mode Current input-report interface mode.
  * @param[in] value First attached-wheel axis value.
@@ -414,12 +415,8 @@ static void process_packet_multiplexed_axes(WheelAxisOverrideProcessor *processo
     case WHEEL_AXIS_MULTIPLEX_X:
         if (x == AXIS_UNAVAILABLE) {
             processor->multiplex_phase = WHEEL_AXIS_MULTIPLEX_SELECT;
-        } else if (interface_mode == 6) {
-            axes[0] = x >> 1;
-        } else if (interface_mode == 7) {
-            axes[0] = (uint8_t)(0x7fu - ((uint16_t)x >> 1));
         } else {
-            axes[0] = (uint8_t)((uint16_t)x >> 1);
+            axes[0] = encode_multiplexed_x(interface_mode, x);
         }
         break;
     case WHEEL_AXIS_MULTIPLEX_Y:

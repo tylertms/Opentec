@@ -391,7 +391,7 @@ static void test_multiplexes_crc_packet_axes(void) {
     assert(processor.multiplex_phase == WHEEL_AXIS_MULTIPLEX_X);
     assert(axes[0] == 0x11);
     process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 6, 0, 0, controls, axes);
-    assert(axes[0] == 0x10);
+    assert(axes[0] == 0x70);
 
     controls[5] = UINT8_MAX;
     process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 6, 0, 0, controls, axes);
@@ -425,6 +425,23 @@ static void test_multiplexes_crc_packet_axes(void) {
     assert(axes[1] == 0xc0);
     assert(controls[5] == 0xa0);
     assert(controls[6] == 0xc0);
+}
+
+static void test_encodes_gip_x_axis_limit_boundaries(void) {
+    WheelAxisOverrideProcessor processor;
+    wheel_axis_override_processor_init(&processor);
+    processor.multiplex_phase = WHEEL_AXIS_MULTIPLEX_X;
+    uint8_t controls[8] = {0, 0, 0, 0, 0, 0, UINT8_MAX, 1};
+    uint8_t axes[2] = {0, 0};
+
+    process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 6, 0, 0, controls,
+                   axes);
+    assert(axes[0] == 0x80);
+
+    controls[5] = 0xfe;
+    process_packet(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0x15, 6, 0, 0, controls,
+                   axes);
+    assert(axes[0] == 0x01);
 }
 
 static void test_publishes_axis_mode_overrides_and_inactive_outputs(void) {
@@ -527,6 +544,7 @@ int main(void) {
     test_tracks_crc_packet_axis_report_availability();
     test_publishes_crc_packet_overrides();
     test_multiplexes_crc_packet_axes();
+    test_encodes_gip_x_axis_limit_boundaries();
     test_publishes_axis_mode_overrides_and_inactive_outputs();
     test_multiplexes_axis_mode_packet_axes();
     return 0;
