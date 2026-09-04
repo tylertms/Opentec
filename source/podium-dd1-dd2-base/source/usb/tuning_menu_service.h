@@ -29,14 +29,16 @@ typedef enum {
 /**
  * @brief Active tuning-menu page and pending USB status state.
  *
- * Tracks the page encoded in the next status response and the native service-response duplicate
- * suppression state.
+ * Tracks the page owned by the foreground menu controller, the raw action-two selection waiting for
+ * that controller, and the native service-response duplicate suppression state.
  */
 typedef struct {
-    UsbTuningMenuPage active_page; /**< Currently selected one-based menu entry. */
-    uint8_t service_code;          /**< Service code encoded by the next native response. */
-    uint8_t last_service_code;     /**< Last service code sent for duplicate suppression. */
-    bool response_pending;         /**< True when a menu response must be encoded. */
+    UsbTuningMenuPage active_page; /**< Page currently selected by the foreground controller. */
+    uint8_t pending_selection;     /**< Raw action-two selection awaiting foreground consumption. */
+    uint8_t last_selection;    /**< Last action-two selection accepted for duplicate suppression. */
+    uint8_t service_code;      /**< Service code encoded by the next native response. */
+    uint8_t last_service_code; /**< Last service code sent for duplicate suppression. */
+    bool response_pending;     /**< True when a menu status response must be encoded. */
     bool service_response_pending; /**< True when a native service response is pending. */
 } UsbTuningMenuService;
 
@@ -52,15 +54,28 @@ void usb_tuning_menu_service_init(UsbTuningMenuService *service);
 /**
  * @brief Applies one tuning-menu command.
  *
- * Handles action two menu navigation and action three status refreshes. Every action-three request
- * arms a status response, including repeated requests; unsupported page selectors are ignored
- * without changing the selected entry.
+ * Stages action-two menu navigation for the foreground controller and handles action-three status
+ * refreshes. Every action-three request arms a status response, including repeated requests;
+ * unsupported nonzero selectors remain pending until the controller consumes them without changing
+ * the active entry.
  *
  * @param[in,out] service Tuning-menu state to update.
  * @param[in] command Decoded tuning-menu vendor command.
  * @return True when the command has a recognized action and required arguments; otherwise false.
  */
 bool usb_tuning_menu_service_apply(UsbTuningMenuService *service, const UsbVendorCommand *command);
+
+/**
+ * @brief Consumes one pending action-two page selection at the foreground controller boundary.
+ *
+ * Maps selections one through six to menu pages, clears every nonzero raw selection including
+ * unmapped values, and marks the menu status response pending. The active page is unchanged for
+ * an unmapped selection.
+ *
+ * @param[in,out] service Tuning-menu state retaining the pending selection.
+ * @return True when a nonzero selection was consumed; otherwise false for null or idle state.
+ */
+bool usb_tuning_menu_service_consume_pending_selection(UsbTuningMenuService *service);
 
 /**
  * @brief Requests the native service response for the active menu entry.

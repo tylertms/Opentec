@@ -6381,6 +6381,17 @@ static void service_local_display(void) {
     }
     bool bite_point_visible =
         wheel_service_bite_point_adjustment(&wheel_service, &wheel_bite_point_display_percent);
+    const UsbRemoteTuningItmPage *itm_page =
+        usb_remote_tuning_service_itm_page(&usb_remote_tuning_service);
+    bool higher_priority_display_active =
+        setup_activity_active || system_notice.kind != SYSTEM_NOTICE_NONE ||
+        torque_disabled_notice_visible || torque_key_prompt_visible ||
+        force_output_prompt_visible || local_display_shifter.kind != SHIFTER_LOCAL_DISPLAY_NONE ||
+        bite_point_visible || local_pedal_adjustment_display != PEDAL_ADJUSTMENT_DISPLAY_IDLE ||
+        local_display_auxiliary_test_active || itm_page != NULL;
+    if (!higher_priority_display_active) {
+        usb_tuning_menu_service_consume_pending_selection(&usb_tuning_menu_service);
+    }
     bool system_information_selected =
         usb_tuning_menu_service.active_page == USB_TUNING_MENU_PAGE_SYSTEM_INFORMATION;
     bool force_feedback_analysis_selected =
@@ -6391,8 +6402,6 @@ static void service_local_display(void) {
         usb_tuning_menu_service.active_page == USB_TUNING_MENU_PAGE_THERMAL_POWER;
     bool auxiliary_calibration_selected =
         usb_tuning_menu_service.active_page == USB_TUNING_MENU_PAGE_AUXILIARY_CALIBRATION;
-    const UsbRemoteTuningItmPage *itm_page =
-        usb_remote_tuning_service_itm_page(&usb_remote_tuning_service);
     uint8_t page = system_notice.kind != SYSTEM_NOTICE_NONE ? LOCAL_DISPLAY_PAGE_SYSTEM_NOTICE
                    : torque_disabled_notice_visible         ? LOCAL_DISPLAY_PAGE_TORQUE_DISABLED
                    : torque_key_prompt_visible              ? LOCAL_DISPLAY_PAGE_TORQUE_KEY_PROMPT

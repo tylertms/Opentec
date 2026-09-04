@@ -22,14 +22,21 @@ static void test_selects_pages_and_encodes_status(void) {
 
     assert(!usb_tuning_menu_service_response_pending(&service));
     assert(usb_tuning_menu_service_apply(&service, &select));
+    assert(service.active_page == USB_TUNING_MENU_PAGE_ROOT);
+    assert(service.pending_selection == USB_TUNING_MENU_PAGE_MOTOR_DATA_ANALYSIS);
     assert(usb_tuning_menu_service_response_pending(&service));
     usb_tuning_menu_service_encode_response(&service, output);
     assert(output[0] == UINT8_MAX);
     assert(output[1] == 2);
-    assert(output[2] == USB_TUNING_MENU_PAGE_MOTOR_DATA_ANALYSIS);
+    assert(output[2] == USB_TUNING_MENU_PAGE_ROOT);
     for (uint8_t index = 3; index < USB_DEVICE_REPORT_SIZE; index++) {
         assert(output[index] == 0);
     }
+    assert(usb_tuning_menu_service_consume_pending_selection(&service));
+    assert(service.active_page == USB_TUNING_MENU_PAGE_MOTOR_DATA_ANALYSIS);
+    assert(service.pending_selection == 0);
+    usb_tuning_menu_service_encode_response(&service, output);
+    assert(output[2] == USB_TUNING_MENU_PAGE_MOTOR_DATA_ANALYSIS);
     usb_tuning_menu_service_response_sent(&service);
     assert(!usb_tuning_menu_service_response_pending(&service));
 }
@@ -76,16 +83,27 @@ static void test_native_service_response_remains_duplicate_suppressed(void) {
     assert(!usb_tuning_menu_service_request_native_service_response(&service));
 }
 
-static void test_preserves_page_for_unsupported_selectors(void) {
+static void test_consumes_unmapped_selection_without_changing_page(void) {
     UsbTuningMenuService service;
     usb_tuning_menu_service_init(&service);
     uint8_t arguments[2] = {2, 7};
     UsbVendorCommand select = command(arguments, sizeof(arguments));
     assert(usb_tuning_menu_service_apply(&service, &select));
+    assert(service.active_page == USB_TUNING_MENU_PAGE_ROOT);
+    assert(service.pending_selection == 7);
+    assert(usb_tuning_menu_service_response_pending(&service));
+    assert(usb_tuning_menu_service_consume_pending_selection(&service));
+    assert(service.active_page == USB_TUNING_MENU_PAGE_ROOT);
+    assert(service.pending_selection == 0);
+    assert(usb_tuning_menu_service_response_pending(&service));
+    usb_tuning_menu_service_response_sent(&service);
+    assert(!usb_tuning_menu_service_consume_pending_selection(&service));
+    assert(usb_tuning_menu_service_apply(&service, &select));
     assert(!usb_tuning_menu_service_response_pending(&service));
     arguments[1] = 0;
     assert(usb_tuning_menu_service_apply(&service, &select));
-    assert(!usb_tuning_menu_service_response_pending(&service));
+    assert(usb_tuning_menu_service_response_pending(&service));
+    assert(!usb_tuning_menu_service_consume_pending_selection(&service));
 }
 
 static void test_rejects_incomplete_or_unrelated_commands(void) {
@@ -110,7 +128,7 @@ int main(void) {
     test_refreshes_without_changing_page();
     test_repeated_action_three_requests_status();
     test_native_service_response_remains_duplicate_suppressed();
-    test_preserves_page_for_unsupported_selectors();
+    test_consumes_unmapped_selection_without_changing_page();
     test_rejects_incomplete_or_unrelated_commands();
     return 0;
 }

@@ -36,12 +36,26 @@ bool usb_tuning_menu_service_apply(UsbTuningMenuService *service, const UsbVendo
     }
 
     uint8_t selection = command->arguments[1];
-    if (selection >= 1 && selection <= 6) {
-        if (service->active_page != (UsbTuningMenuPage)selection) {
-            service->active_page = (UsbTuningMenuPage)selection;
-            service->response_pending = true;
-        }
+    if (selection != service->last_selection) {
+        service->last_selection = selection;
+        service->pending_selection = selection;
+        service->response_pending = true;
     }
+    return true;
+}
+
+bool usb_tuning_menu_service_consume_pending_selection(UsbTuningMenuService *service) {
+    if (service == NULL || service->pending_selection == 0) {
+        return false;
+    }
+
+    uint8_t selection = service->pending_selection;
+    service->pending_selection = 0;
+    if (selection >= USB_TUNING_MENU_PAGE_ROOT &&
+        selection <= USB_TUNING_MENU_PAGE_AUXILIARY_CALIBRATION) {
+        service->active_page = (UsbTuningMenuPage)selection;
+    }
+    service->response_pending = true;
     return true;
 }
 
