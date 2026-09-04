@@ -23,11 +23,12 @@
 
 /** @brief Internal legacy-status response values and offsets. */
 enum {
-    WHEEL_STATUS_SELECT_PREFIX_MODE = 9,   /**< Mode prefix that includes status fields. */
-    WHEEL_STATUS_RESPONSE_CODE = 0x82,     /**< Legacy status response code. */
-    WHEEL_STATUS_IDLE = 0x1e,              /**< Idle status value. */
-    WHEEL_STATUS_SETUP_PAGE_OFFSET = 0x1f, /**< Setup-page status offset. */
-    WHEEL_SETUP_PAGE_MAXIMUM = 5,          /**< Highest setup page value. */
+    WHEEL_STATUS_SELECT_PREFIX_MODE = 9,    /**< Mode prefix that includes status fields. */
+    WHEEL_STATUS_RESPONSE_CODE = 0x82,      /**< Legacy status response code. */
+    WHEEL_STATUS_IDLE = 0x1e,               /**< Idle status value. */
+    WHEEL_STATUS_SETUP_PAGE_OFFSET = 0x1f,  /**< Setup-page status offset. */
+    WHEEL_SETUP_PAGE_MAXIMUM = 5,           /**< Highest setup page value. */
+    WHEEL_MODE_AUTHENTICATED_VENDOR = 0x16, /**< Vendor mode with feature-capability updates. */
 };
 
 /**
@@ -81,6 +82,26 @@ static void clear_active_response(WheelProtocol *protocol) {
     clear(protocol->response + 7, 4);
     clear(protocol->response + WHEEL_PACKET_CRC_CONTENT_SIZE,
           WHEEL_PROTOCOL_PACKET_SIZE - WHEEL_PACKET_CRC_CONTENT_SIZE);
+}
+
+/**
+ * @brief Updates capability state for a shared mode-one-layout wheel report.
+ *
+ * The official standard and vendor handlers refresh report state for modes 0x01, 0x02, 0x03,
+ * 0x13, and 0x14. Only the vendor mode-0x16 branch applies feature-capability changes.
+ *
+ * @param[in,out] state Persistent attached-wheel capability state.
+ * @param[in] wheel_mode Negotiated attached-wheel mode.
+ * @param[in] report_mode Report-mode byte.
+ * @param[in] report_capabilities Report-capability byte.
+ */
+static void update_mode_one_capabilities(WheelCapabilityState *state, uint8_t wheel_mode,
+                                         uint8_t report_mode, uint8_t report_capabilities) {
+    if (wheel_mode == WHEEL_MODE_AUTHENTICATED_VENDOR) {
+        wheel_capability_update(state, wheel_mode, report_mode, report_capabilities);
+    } else {
+        wheel_capability_update_report(state, report_mode, report_capabilities);
+    }
 }
 
 static bool report_mode_marker(uint8_t report_mode) { return report_mode >= 2 && report_mode <= 4; }
@@ -633,12 +654,11 @@ static void accumulate_common_pulses(WheelProtocol *protocol, WheelPacketCommonI
         return;
     }
     bool packed_mode = wheel_packet_packed_applies(protocol->mode);
-    bool pulse_ready = packed_mode
-                           ? wheel_pulse_gate_ready_for_packed(
-                                 &protocol->pulse_gate, protocol->interface_mode,
-                                 protocol->now_ms, flags)
-                           : wheel_pulse_gate_ready(&protocol->pulse_gate, protocol->interface_mode,
-                                                    protocol->now_ms, flags);
+    bool pulse_ready =
+        packed_mode ? wheel_pulse_gate_ready_for_packed(
+                          &protocol->pulse_gate, protocol->interface_mode, protocol->now_ms, flags)
+                    : wheel_pulse_gate_ready(&protocol->pulse_gate, protocol->interface_mode,
+                                             protocol->now_ms, flags);
     if (!pulse_ready) {
         input->motion = 0;
         return;
@@ -711,9 +731,9 @@ static void capture_request(WheelProtocol *protocol,
         protocol->mode_one_report_state.report_capabilities =
             protocol->mode_one_input.report_capabilities;
         protocol->mode_one_report_state.axis_limit = protocol->mode_one_input.axis_limit;
-        wheel_capability_update(&protocol->capabilities, protocol->mode,
-                                protocol->mode_one_input.report_mode,
-                                protocol->mode_one_input.report_capabilities);
+        update_mode_one_capabilities(&protocol->capabilities, protocol->mode,
+                                     protocol->mode_one_input.report_mode,
+                                     protocol->mode_one_input.report_capabilities);
         protocol->capabilities.input_available |=
             protocol->mode_one_input.controls.enabled != 0 ||
             protocol->mode_one_input.controls.latch_flags != 0;
@@ -777,9 +797,9 @@ static void capture_request(WheelProtocol *protocol,
         uint8_t snapshot[WHEEL_PACKET_MODE_FOUR_SNAPSHOT_SIZE];
         wheel_packet_mode_four_decode(request, &protocol->mode_four_input);
         wheel_motion_accumulate_primary(&protocol->motion, protocol->mode_four_input.motion);
-        wheel_capability_update(&protocol->capabilities, protocol->mode,
-                                protocol->mode_four_input.report_mode,
-                                protocol->mode_four_input.report_capabilities);
+        wheel_capability_update_report(&protocol->capabilities,
+                                       protocol->mode_four_input.report_mode,
+                                       protocol->mode_four_input.report_capabilities);
         protocol->capabilities.input_available |=
             protocol->mode_four_input.controls[2] != 0 ||
             protocol->mode_four_input.controls[3] != 0 ||

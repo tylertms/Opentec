@@ -6,6 +6,11 @@
 #include "wheel/packet_mode_one.h"
 #include "wheel/protocol.h"
 
+enum {
+    WHEEL_TEST_REPORT_MODE_OFFSET = 28,
+    WHEEL_TEST_REPORT_CAPABILITIES_OFFSET = 30,
+};
+
 static void mark_ready(uint8_t packet[WHEEL_PROTOCOL_PACKET_SIZE]) {
     packet[WHEEL_PROTOCOL_FLAGS_OFFSET] = WHEEL_PROTOCOL_REQUEST_READY;
 }
@@ -143,11 +148,11 @@ static void test_derives_report_mode_marker(void) {
 
 static void test_reports_axis_capability_for_official_modes(void) {
     WheelProtocol protocol;
-    static const uint8_t enabled_modes[] = {0x04, 0x06, 0x0c, 0x0e, 0x0f,
-                                            0x13, 0x14, 0x15, 0x16, 0x17, 0x1c};
+    static const uint8_t enabled_modes[] = {0x04, 0x06, 0x0c, 0x0e, 0x0f, 0x13,
+                                            0x14, 0x15, 0x16, 0x17, 0x1c};
     static const uint8_t disabled_modes[] = {
-        0x00, 0x01, 0x02, 0x03, 0x05, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x10, 0x11, 0x12,
-        0x18, 0x19, 0x1a, 0x1b, 0x1d, 0x1e, 0x1f, 0xff,
+        0x00, 0x01, 0x02, 0x03, 0x05, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x10,
+        0x11, 0x12, 0x18, 0x19, 0x1a, 0x1b, 0x1d, 0x1e, 0x1f, 0xff,
     };
 
     wheel_protocol_init(&protocol);
@@ -565,6 +570,51 @@ static void accept_active_request(WheelProtocol *protocol,
                                   uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE]) {
     request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
     wheel_protocol_accept(protocol, request);
+}
+
+static void test_retains_feature_capabilities_for_report_only_modes(void) {
+    static const uint8_t modes[] = {1, 2, 3, 4, 0x13, 0x14};
+    for (uint8_t index = 0; index < sizeof(modes); index++) {
+        WheelProtocol protocol;
+        uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+        wheel_protocol_init(&protocol);
+        protocol.mode = modes[index];
+        protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+        protocol.capabilities.calibration_available = true;
+        protocol.capabilities.tuning_menu_available = true;
+        request[0] = modes[index] == 0x13 || modes[index] == 0x14
+                         ? WHEEL_PROTOCOL_COMMAND_AUTHENTICATE
+                         : WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
+        request[WHEEL_TEST_REPORT_MODE_OFFSET] = 0x45;
+        request[WHEEL_TEST_REPORT_CAPABILITIES_OFFSET] = 0x3c;
+        mark_ready(request);
+
+        accept_active_request(&protocol, request);
+
+        const WheelCapabilityState *capabilities = wheel_protocol_capabilities(&protocol);
+        assert(capabilities->capability_flags == 0x3c45);
+        assert(capabilities->report_flags == 0x001e);
+        assert(capabilities->calibration_available);
+        assert(capabilities->tuning_menu_available);
+    }
+
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    protocol.mode = 0x16;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    protocol.capabilities.calibration_available = true;
+    protocol.capabilities.tuning_menu_available = true;
+    request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    request[WHEEL_TEST_REPORT_MODE_OFFSET] = 0x45;
+    mark_ready(request);
+
+    accept_active_request(&protocol, request);
+
+    const WheelCapabilityState *capabilities = wheel_protocol_capabilities(&protocol);
+    assert(capabilities->capability_flags == 0x0045);
+    assert(!capabilities->calibration_available);
+    assert(!capabilities->tuning_menu_available);
 }
 
 static void test_routes_vendor_packet_modes(void) {
@@ -1079,7 +1129,7 @@ static void test_builds_crc_family_active_response(void) {
 
     const uint8_t *response = wheel_protocol_response(&protocol);
     const uint8_t expected[] = {
-        0xa5, 0, 0x11, 0x22, 0x33, 0x75, 0x76, 0, 0, 0x66, 0xff,
+        0xa5, 0,    0x11, 0x22, 0x33, 0x75, 0x76, 0,    0,    0x66, 0xff,
         0x7b, 0x7c, 0x7d, 0x7e, 0x7f, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85,
         0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b, 0x8c, 0x8d, 0x8e, 0x8f, 0x6f,
     };
@@ -2041,6 +2091,7 @@ int main(void) {
     test_converts_compatibility_signed_primary_motion();
     test_captures_packed_family_requests();
     test_averages_control_axes_only_for_authenticated_wheel_modes();
+    test_retains_feature_capabilities_for_report_only_modes();
     test_routes_vendor_packet_modes();
     test_captures_standard_display_packets();
     test_uses_display_buttons_for_acknowledgement();
