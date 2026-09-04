@@ -661,7 +661,8 @@ static bool send_next_control_packet(void) {
  * @brief Starts an endpoint-zero input data stage.
  *
  * Reserves the output status stage, limits the source to the host-requested length, sends its first
- * packet, and enters the input stage or stalls when either descriptor cannot be submitted.
+ * packet, and enters the input stage or stalls when either descriptor cannot be submitted. An empty
+ * response is sent as a DATA1 zero-length packet.
  *
  * @param[in] data Response bytes and available length.
  * @param[in] requested_length Maximum response length requested by the host.

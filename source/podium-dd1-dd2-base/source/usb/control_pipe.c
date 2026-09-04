@@ -10,8 +10,7 @@ void usb_control_pipe_begin(UsbControlPipe *pipe, UsbDescriptorView data,
     }
     pipe->remaining = data;
     pipe->data_one = true;
-    pipe->zero_pending =
-        data.length != 0 && data.length % USB_CONTROL_PACKET_SIZE == 0;
+    pipe->zero_pending = data.length == 0 || data.length % USB_CONTROL_PACKET_SIZE == 0;
 }
 
 bool usb_control_pipe_next(UsbControlPipe *pipe, UsbControlPacket *packet) {

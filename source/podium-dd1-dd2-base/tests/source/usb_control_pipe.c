@@ -59,10 +59,21 @@ static void test_adds_boundary_packet_at_requested_length(void) {
     assert(!usb_control_pipe_next(&pipe, &packet));
 }
 
+static void test_starts_empty_response_with_zero_packet(void) {
+    UsbControlPipe pipe;
+    UsbControlPacket packet;
+    usb_control_pipe_begin(&pipe, (UsbDescriptorView){0}, 0);
+
+    assert(usb_control_pipe_next(&pipe, &packet));
+    assert(packet.data.data == 0 && packet.data.length == 0 && packet.data_one);
+    assert(!usb_control_pipe_next(&pipe, &packet));
+}
+
 int main(void) {
     test_splits_and_toggles_packets();
     test_clips_to_requested_length();
     test_adds_required_short_packet();
     test_adds_boundary_packet_at_requested_length();
+    test_starts_empty_response_with_zero_packet();
     return 0;
 }

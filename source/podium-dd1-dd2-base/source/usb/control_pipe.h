@@ -26,7 +26,7 @@ typedef struct {
  * @brief Starts an endpoint-zero input data stage.
  *
  * Clips the available data to the host request, starts with DATA1, and schedules a terminating
- * zero-length packet whenever a non-empty response ends on a packet boundary.
+ * zero-length packet whenever the response ends on a packet boundary, including an empty response.
  *
  * @param[out] pipe Control input packetizer to initialize.
  * @param[in] data Complete response data.
@@ -38,8 +38,8 @@ void usb_control_pipe_begin(UsbControlPipe *pipe, UsbDescriptorView data,
 /**
  * @brief Produces the next endpoint-zero input packet.
  *
- * Returns consecutive chunks of at most 64 bytes, alternates DATA1 and DATA0, and emits a pending
- * terminating zero-length packet once after an exact packet boundary for a non-empty response.
+ * Returns consecutive chunks of at most 64 bytes, alternates DATA1 and DATA0, and emits one
+ * terminating zero-length packet after an exact packet boundary, including an empty response.
  *
  * @param[in,out] pipe Remaining response and data-toggle state.
  * @param[out] packet Next response chunk and its data toggle.
