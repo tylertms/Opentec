@@ -64,6 +64,11 @@ static void test_rotary_and_fourth_pulse_report(void) {
     assert(output[13] == 0xa0 && output[14] == 0x43 && output[15] == 0);
 }
 
+static void test_rotary_supported_mode_gate(void) {
+    assert(usb_feature_report_33_supports_rotary(0x15));
+    assert(!usb_feature_report_33_supports_rotary(0x18));
+}
+
 static void test_page_report(void) {
     uint8_t output[USB_DEVICE_REPORT_SIZE];
     usb_feature_report_36_encode(6, output);
@@ -74,6 +79,7 @@ int main(void) {
     test_status_report();
     test_tuning_report();
     test_rotary_and_fourth_pulse_report();
+    test_rotary_supported_mode_gate();
     test_page_report();
     return 0;
 }

@@ -128,8 +128,8 @@ static uint8_t pulse_bit(int8_t direction, uint8_t positive, uint8_t negative) {
  * @return True when rotary feature data is available; otherwise false.
  */
 bool usb_feature_report_33_supports_rotary(uint8_t mode) {
-    return (mode >= 0x09 && mode <= 0x0b) || mode == 0x04 || mode == 0x1d || mode == 0x06 ||
-           mode == 0x0c || mode == 0x0f || mode == 0x17 || mode == 0x0e || mode == 0x18 ||
+    return (mode >= 0x09 && mode <= 0x0b) || mode == 0x04 || mode == 0x15 || mode == 0x1d ||
+           mode == 0x06 || mode == 0x0c || mode == 0x0f || mode == 0x17 || mode == 0x0e ||
            mode == 0x1b || mode == 0x1c;
 }
 
