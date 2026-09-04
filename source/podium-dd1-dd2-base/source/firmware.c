@@ -4606,7 +4606,7 @@ static void service_usb_output(void) {
 
     if (usb_vendor_command_decode(&usb_output_command, &usb_vendor_command)) {
         if (usb_vendor_command.kind == USB_VENDOR_COMMAND_NATIVE_RESET) {
-            reset_force_feedback_script();
+            reset_force_feedback_session();
             return;
         }
         if (usb_vendor_command.kind == USB_VENDOR_COMMAND_NATIVE_TUNING_SERVICE) {

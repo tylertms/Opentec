@@ -27,9 +27,9 @@ enum {
 /**
  * @brief Selects the route for a vendor command opcode.
  *
- * Maps each supported top-level opcode to its command category. The native reset is accepted only
- * for the exact selector/value pair used by the Fanatec dispatcher, while opcode five selects the
- * remote-tuning route for every packet kind.
+ * Maps each supported top-level opcode to its command category. The full force-feedback session
+ * reset is accepted only for the exact selector/value pair used by the Fanatec dispatcher, while
+ * opcode five selects the remote-tuning route for every packet kind.
  *
  * @param[in] opcode Top-level vendor command opcode.
  * @param[in] payload Vendor command payload beginning with its opcode.

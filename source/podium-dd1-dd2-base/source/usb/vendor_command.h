@@ -9,18 +9,18 @@
 
 /** @brief Category selected by a decoded vendor command opcode. */
 typedef enum {
-    USB_VENDOR_COMMAND_WHEEL_OUTPUT_REPORT,    /**< Wheel output report command. */
-    USB_VENDOR_COMMAND_TUNING_MENU,            /**< Tuning-menu command. */
-    USB_VENDOR_COMMAND_DEVICE_CONTROL_UPDATE,  /**< Device-control update command. */
-    USB_VENDOR_COMMAND_DIAGNOSTIC_SNAPSHOT,    /**< Diagnostic snapshot command. */
-    USB_VENDOR_COMMAND_REMOTE_TUNING,          /**< Opcode-five remote-tuning command. */
-    USB_VENDOR_COMMAND_TUNING_STATUS,          /**< Tuning-status command. */
-    USB_VENDOR_COMMAND_SCRIPT_AXES,            /**< Script axes query. */
-    USB_VENDOR_COMMAND_SCRIPT_SAMPLES,         /**< Script sample query. */
-    USB_VENDOR_COMMAND_SCRIPT_SLOT,            /**< Script slot query. */
-    USB_VENDOR_COMMAND_SCRIPT_STATUS,          /**< Script status query. */
-    USB_VENDOR_COMMAND_SCRIPT_VALUES,          /**< Script values query. */
-    USB_VENDOR_COMMAND_NATIVE_RESET,           /**< Native service reset command. */
+    USB_VENDOR_COMMAND_WHEEL_OUTPUT_REPORT,   /**< Wheel output report command. */
+    USB_VENDOR_COMMAND_TUNING_MENU,           /**< Tuning-menu command. */
+    USB_VENDOR_COMMAND_DEVICE_CONTROL_UPDATE, /**< Device-control update command. */
+    USB_VENDOR_COMMAND_DIAGNOSTIC_SNAPSHOT,   /**< Diagnostic snapshot command. */
+    USB_VENDOR_COMMAND_REMOTE_TUNING,         /**< Opcode-five remote-tuning command. */
+    USB_VENDOR_COMMAND_TUNING_STATUS,         /**< Tuning-status command. */
+    USB_VENDOR_COMMAND_SCRIPT_AXES,           /**< Script axes query. */
+    USB_VENDOR_COMMAND_SCRIPT_SAMPLES,        /**< Script sample query. */
+    USB_VENDOR_COMMAND_SCRIPT_SLOT,           /**< Script slot query. */
+    USB_VENDOR_COMMAND_SCRIPT_STATUS,         /**< Script status query. */
+    USB_VENDOR_COMMAND_SCRIPT_VALUES,         /**< Script values query. */
+    USB_VENDOR_COMMAND_NATIVE_RESET, /**< Native full force-feedback session reset (0A 01 1A). */
     USB_VENDOR_COMMAND_WHEEL_TRANSFER_PAYLOAD, /**< Native attached-wheel transfer fragment. */
     USB_VENDOR_COMMAND_TRANSFER_REQUEST =
         USB_VENDOR_COMMAND_WHEEL_TRANSFER_PAYLOAD, /**< Compatibility alias for wheel transfer. */

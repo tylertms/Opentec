@@ -85,8 +85,17 @@ static void test_classifies_native_reset(void) {
     assert(!usb_vendor_command_decode(&output, &command));
     payload[1] = 1;
     payload[2] = 0x1a;
+    output.length = 2;
+    assert(!usb_vendor_command_decode(&output, &command));
+    output.length = sizeof(payload);
     assert(usb_vendor_command_decode(&output, &command));
     assert(command.kind == USB_VENDOR_COMMAND_NATIVE_RESET);
+    assert(command.opcode == 0x0a);
+    assert(command.arguments == payload + 1);
+    assert(command.length == 62);
+    payload[1] = 2;
+    assert(!usb_vendor_command_decode(&output, &command));
+    payload[1] = 1;
     payload[2] = 0;
     assert(!usb_vendor_command_decode(&output, &command));
 }
