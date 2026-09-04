@@ -29,6 +29,40 @@ static void test_decodes_short_report(void) {
     assert(command.payload[6] == 7);
 }
 
+static void test_decodes_extended_short_report(void) {
+    UsbDeviceOutputReport report = make_report(2, 8);
+    UsbOutputCommand command;
+    report.data[1] = 0xf8;
+    report.data[2] = 9;
+    report.data[7] = 0xa5;
+
+    assert(usb_output_command_decode(&report, &command));
+    assert(command.kind == USB_OUTPUT_COMMAND_SHORT);
+    assert(command.payload == report.data + 1);
+    assert(command.length == 7);
+    assert(command.payload[0] == 0xf8);
+    assert(command.payload[1] == 9);
+    assert(command.payload[6] == 0xa5);
+}
+
+static void test_decodes_extended_control_short_report(void) {
+    UsbDeviceOutputReport report = {
+        .report_type = USB_DEVICE_HID_REPORT_OUTPUT,
+        .report_id = 2,
+        .length = 7,
+        .data = {0xf8, 9, 1, 0x50, 0, 0, 0xa5},
+    };
+    UsbOutputCommand command;
+
+    assert(usb_output_command_decode(&report, &command));
+    assert(command.kind == USB_OUTPUT_COMMAND_SHORT);
+    assert(command.payload == report.data);
+    assert(command.length == 7);
+    assert(command.payload[0] == 0xf8);
+    assert(command.payload[1] == 9);
+    assert(command.payload[6] == 0xa5);
+}
+
 static void test_decodes_unnumbered_short_report(void) {
     UsbDeviceOutputReport report = make_report(0, 7);
     UsbOutputCommand command;
@@ -83,7 +117,13 @@ static void test_decodes_playstation_vendor_transfer_report(void) {
 
 static void test_rejects_unhandled_reports(void) {
     UsbOutputCommand command;
-    UsbDeviceOutputReport report = make_report(2, 8);
+    UsbDeviceOutputReport report = make_report(3, 8);
+    assert(!usb_output_command_decode(&report, &command));
+
+    report = make_report(2, 6);
+    assert(!usb_output_command_decode(&report, &command));
+
+    report = make_report(2, 9);
     assert(!usb_output_command_decode(&report, &command));
 
     report = make_report(1, 7);
@@ -112,6 +152,8 @@ static void test_rejects_unhandled_reports(void) {
 
 int main(void) {
     test_decodes_short_report();
+    test_decodes_extended_short_report();
+    test_decodes_extended_control_short_report();
     test_decodes_unnumbered_short_report();
     test_decodes_vendor_transfer_report();
     test_decodes_playstation_full_report();

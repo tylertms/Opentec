@@ -23,8 +23,11 @@ typedef struct {
  * @brief Decodes a supported USB HID output report.
  *
  * Validates the report type, report identifier, and length, then exposes either the seven-byte
- * short command payload or the sixty-three-byte vendor-transfer payload without copying it. Both
- * PlayStation report identifiers 0x30 and 0x34 expose all 63 bytes following the identifier.
+ * short command payload or the sixty-three-byte vendor-transfer payload without copying it. Native
+ * reports 1 and 2 accept an eight-byte interrupt-transfer payload with the identifier repeated in
+ * data[0]. Native report 2 also accepts its seven-byte control-transfer payload, whose identifier is
+ * carried in report_id. Both PlayStation report identifiers 0x30 and 0x34 expose all 63 bytes
+ * following the identifier.
  *
  * @param[in] report USB HID output report to classify.
  * @param[out] command Destination for the command kind and payload view.
