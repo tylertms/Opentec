@@ -27,7 +27,7 @@ static void test_encodes_the_complete_response(void) {
         0xa5, 0x00, 0x11, 0x22, 0xb3, 0x44, 0x55, 0x66, 0x77,
     };
 
-    wheel_packet_mode_one_encode(0x12, &output, response);
+    wheel_packet_mode_one_encode(0x12, &output, 0x5544, response);
     assert(memcmp(response, expected, sizeof(expected)) == 0);
 }
 
@@ -35,19 +35,19 @@ static void test_requests_authentication_for_authenticated_packet_modes(void) {
     const WheelPacketModeOneOutput output = {0};
     uint8_t response[WHEEL_PACKET_MODE_ONE_RESPONSE_SIZE] = {0};
 
-    wheel_packet_mode_one_encode(0x13, &output, response);
+    wheel_packet_mode_one_encode(0x13, &output, 0, response);
     assert(response[0] == 0xa6);
 
-    wheel_packet_mode_one_encode(0x14, &output, response);
+    wheel_packet_mode_one_encode(0x14, &output, 0, response);
     assert(response[0] == 0xa6);
 
-    wheel_packet_mode_one_encode(0x16, &output, response);
+    wheel_packet_mode_one_encode(0x16, &output, 0, response);
     assert(response[0] == 0xa6);
 
-    wheel_packet_mode_one_encode(2, &output, response);
+    wheel_packet_mode_one_encode(2, &output, 0, response);
     assert(response[0] == 0xa5);
 
-    wheel_packet_mode_one_encode(0x15, &output, response);
+    wheel_packet_mode_one_encode(0x15, &output, 0, response);
     assert(response[0] == 0xa5);
 }
 

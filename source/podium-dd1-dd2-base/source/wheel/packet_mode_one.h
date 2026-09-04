@@ -153,13 +153,15 @@ void wheel_packet_mode_one_normalize(WheelPacketModeOneInput *input, bool authen
 /**
  * @brief Encodes a mode-one attached-wheel response.
  *
- * Writes the mode-appropriate command, display output, vibration channels, and legacy axes.
+ * Writes the mode-appropriate command, display output, shared display report, and legacy axes.
  *
  * @param[in] wheel_mode Negotiated attached-wheel mode.
  * @param[in] output Mode-one response output state.
+ * @param[in] display_report Shared two-byte display report in little-endian order.
  * @param[out] response Nine-byte response destination.
  */
 void wheel_packet_mode_one_encode(uint8_t wheel_mode, const WheelPacketModeOneOutput *output,
+                                  uint16_t display_report,
                                   uint8_t response[WHEEL_PACKET_MODE_ONE_RESPONSE_SIZE]);
 
 #endif

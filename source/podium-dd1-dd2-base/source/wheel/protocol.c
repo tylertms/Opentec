@@ -240,7 +240,8 @@ static void build_active_response(WheelProtocol *protocol) {
     } else if (protocol->mode == 4) {
         WheelPacketModeFourOutput output = protocol->mode_four_output;
         output.display.third_glyph_marker = third_glyph_marker;
-        wheel_packet_mode_four_encode(&output, protocol->response);
+        wheel_packet_mode_four_encode(&output, protocol->adapter_output.display_report,
+                                      protocol->response);
     } else if (wheel_packet_alternate_applies(protocol->mode)) {
         wheel_packet_alternate_encode(&protocol->alternate_output, protocol->response);
     } else if (wheel_packet_display_applies(protocol->mode) ||
@@ -269,7 +270,8 @@ static void build_active_response(WheelProtocol *protocol) {
     } else if (!remote_tuning_mode) {
         WheelPacketModeOneOutput output = protocol->mode_one_output;
         output.display.third_glyph_marker = third_glyph_marker;
-        wheel_packet_mode_one_encode(protocol->mode, &output, protocol->response);
+        wheel_packet_mode_one_encode(protocol->mode, &output,
+                                     protocol->adapter_output.display_report, protocol->response);
     } else {
         protocol->response[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
     }

@@ -242,14 +242,16 @@ void wheel_packet_mode_one_normalize(WheelPacketModeOneInput *input, bool authen
 /**
  * @brief Encodes the shared standard attached-wheel response.
  *
- * Writes the command, display output, vibration channels, and legacy axes for the standard and
+ * Writes the command, display output, shared display report, and legacy axes for the standard and
  * vendor packet modes. Modes 0x13, 0x14, and 0x16 use the authentication command byte.
  *
  * @param[in] wheel_mode Selected attached-wheel mode.
- * @param[in] output Current display output, vibration channels, and legacy axes.
+ * @param[in] output Current display output and legacy axes.
+ * @param[in] display_report Shared two-byte display report in little-endian order.
  * @param[out] response Nine-byte destination buffer.
  */
 void wheel_packet_mode_one_encode(uint8_t wheel_mode, const WheelPacketModeOneOutput *output,
+                                  uint16_t display_report,
                                   uint8_t response[WHEEL_PACKET_MODE_ONE_RESPONSE_SIZE]) {
     bool authenticated = (wheel_mode >= WHEEL_PACKET_AUTHENTICATION_MODE_FIRST &&
                           wheel_mode <= WHEEL_PACKET_AUTHENTICATION_MODE_LAST) ||
@@ -263,8 +265,8 @@ void wheel_packet_mode_one_encode(uint8_t wheel_mode, const WheelPacketModeOneOu
     if (output->display.third_glyph_marker) {
         response[4] |= 0x80u;
     }
-    response[5] = output->vibration[0];
-    response[6] = output->vibration[1];
+    response[5] = (uint8_t)display_report;
+    response[6] = (uint8_t)(display_report >> 8);
     response[7] = output->legacy_axes[0];
     response[8] = output->legacy_axes[1];
 }

@@ -867,17 +867,25 @@ static void test_routes_packed_report_commands(void) {
     initialize_service(&service);
     UsbOperatingModeCommand command = {.opcode = 0x0a, .parameters = {7, 0, 0, 0}};
 
+    wheel_service_set_display_report(&service, 0x2468);
+    service.protocol.crc_output.status_update_pending = false;
     assert(wheel_service_apply_packed_report_command(&service, &command));
     assert(service.protocol.output_reports.report_two[0] == 0xff);
     assert(service.protocol.output_reports.report_two[1] == 0xff);
     assert(service.adapter_commands.report_two_pending);
+    assert(service.protocol.adapter_output.display_report == 0);
+    assert(!service.protocol.crc_output.status_update_pending);
     assert(memcmp(service.adapter_commands.report_two, service.protocol.output_reports.report_two,
                   WHEEL_OUTPUT_REPORT_TWO_SIZE) == 0);
 
     initialize_service(&service);
     service.protocol.mode = WHEEL_MODE_LEGACY_ALTERNATE;
+    wheel_service_set_display_report(&service, 0x1357);
+    service.protocol.crc_output.status_update_pending = false;
     assert(wheel_service_apply_packed_report_command(&service, &command));
     assert(!service.adapter_commands.report_two_pending);
+    assert(service.protocol.adapter_output.display_report == 0x1357);
+    assert(!service.protocol.crc_output.status_update_pending);
     command.opcode = 0x0b;
     assert(wheel_service_apply_packed_report_command(&service, &command));
     assert(service.adapter_commands.report_one_pending);
@@ -893,6 +901,8 @@ static void test_routes_packed_report_commands(void) {
 static void test_routes_auxiliary_output_commands(void) {
     WheelService service;
     initialize_service(&service);
+    wheel_service_set_auxiliary_report(&service, 0x5634);
+    service.protocol.crc_output.status_update_pending = false;
     UsbOperatingModeCommand command = {
         .opcode = WHEEL_AUXILIARY_OPTION_OPCODE,
         .parameters = {2, 0, 0, 0},
@@ -926,12 +936,16 @@ static void test_routes_auxiliary_output_commands(void) {
     command.parameters[0] = 0x01;
     command.parameters[1] = 0x34;
     assert(wheel_service_apply_auxiliary_output_command(&service, &command));
-    assert(service.auxiliary_output.report == 0x0134);
+    assert(service.auxiliary_output.report == 0x5634);
     assert(service.protocol.mode_one_output.vibration[0] == 0x34);
-    assert(service.protocol.mode_one_output.vibration[1] == 0x01);
+    assert(service.protocol.mode_one_output.vibration[1] == 0x56);
     assert(service.protocol.alternate_output.display.auxiliary == 0x34);
-    assert(service.protocol.alternate_output.auxiliary_status);
+    assert(!service.protocol.alternate_output.auxiliary_status);
     assert(service.protocol.adapter_output.display_report == 0x0134);
+    assert(service.protocol.crc_output.status_update_pending);
+    service.protocol.crc_output.status_update_pending = false;
+    assert(wheel_service_apply_auxiliary_output_command(&service, &command));
+    assert(service.protocol.crc_output.status_update_pending);
 
     command.opcode = 0x09;
     assert(!wheel_service_apply_auxiliary_output_command(&service, &command));
@@ -1278,7 +1292,7 @@ static void test_reports_bite_point_adjustment(void) {
     assert(percent == 62);
 }
 
-static void test_applies_vibration_to_vibration_packet_families(void) {
+static void test_keeps_vibration_independent_from_display_report(void) {
     WheelService service;
     initialize_service(&service);
     const WheelVibrationOutput output = {.channels = {0x34, 0x56}};
@@ -1287,12 +1301,10 @@ static void test_applies_vibration_to_vibration_packet_families(void) {
 
     assert(service.protocol.mode_one_output.vibration[0] == 0x34);
     assert(service.protocol.mode_one_output.vibration[1] == 0x56);
-    assert(service.protocol.mode_four_output.vibration[0] == 0x34);
-    assert(service.protocol.mode_four_output.vibration[1] == 0x56);
     assert(service.auxiliary_output.report == 0x5634);
     assert(service.protocol.alternate_output.display.auxiliary == 0x34);
     assert(!service.protocol.alternate_output.auxiliary_status);
-    assert(service.protocol.adapter_output.display_report == 0x5634);
+    assert(service.protocol.adapter_output.display_report == 0);
 
     WheelDisplayOutput display = {.glyphs = {1, 2, 3}};
     wheel_service_set_display_output(&service, &display);
@@ -1338,6 +1350,8 @@ static void test_resets_host_protocol_outputs(void) {
     const uint8_t packed[4] = {0xff, 0xff, 0xff, 0xff};
     const WheelDisplayOutput display = {.glyphs = {1, 2, 3}, .third_glyph_marker = true};
     wheel_service_set_vibration_output(&service, &vibration);
+    wheel_service_set_display_report(&service, 0x2468);
+    service.protocol.crc_output.status_update_pending = false;
     wheel_service_set_legacy_axes(&service, axes);
     wheel_service_set_display_output(&service, &display);
     assert(wheel_output_reports_queue_packed(&service.protocol.output_reports, 2, packed,
@@ -1349,6 +1363,7 @@ static void test_resets_host_protocol_outputs(void) {
 
     assert(service.auxiliary_output.report == 0);
     assert(service.protocol.adapter_output.display_report == 0);
+    assert(service.protocol.crc_output.status_update_pending);
     assert(service.protocol.mode_one_output.legacy_axes[0] == 0);
     assert(service.protocol.mode_one_output.legacy_axes[1] == 0);
     for (uint8_t index = 0; index < WHEEL_OUTPUT_REPORT_ONE_SIZE; index++) {
@@ -1748,7 +1763,7 @@ int main(void) {
     test_reports_mode_gated_input_capability();
     test_exposes_axis_overrides();
     test_reports_bite_point_adjustment();
-    test_applies_vibration_to_vibration_packet_families();
+    test_keeps_vibration_independent_from_display_report();
     test_applies_legacy_axes_to_every_packet_family();
     test_synchronizes_exclusive_auxiliary_mode();
     test_resets_host_protocol_outputs();

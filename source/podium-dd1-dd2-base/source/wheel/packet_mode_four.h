@@ -54,10 +54,9 @@ typedef struct {
     uint8_t axis_report_enabled; /**< Latched axis-report enable state. */
 } WheelPacketModeFourRuntime;
 
-/** @brief Display, vibration, and axis fields for a mode-four response. */
+/** @brief Display and axis fields for a mode-four response. */
 typedef struct {
     WheelDisplayOutput display; /**< Display output. */
-    uint8_t vibration[2];       /**< Two vibration-channel values. */
     uint8_t legacy_axes[2];     /**< Two legacy output-axis values. */
 } WheelPacketModeFourOutput;
 
@@ -111,12 +110,14 @@ void wheel_packet_mode_four_normalize(WheelPacketModeFourInput *input, uint8_t i
 /**
  * @brief Encodes a mode-four attached-wheel response.
  *
- * Writes the select-mode command, display output, vibration channels, and legacy axes.
+ * Writes the select-mode command, display output, shared display report, and legacy axes.
  *
  * @param[in] output Mode-four response output state.
+ * @param[in] display_report Shared two-byte display report in little-endian order.
  * @param[out] response Nine-byte response destination.
  */
 void wheel_packet_mode_four_encode(const WheelPacketModeFourOutput *output,
+                                   uint16_t display_report,
                                    uint8_t response[WHEEL_PACKET_MODE_FOUR_RESPONSE_SIZE]);
 
 #endif

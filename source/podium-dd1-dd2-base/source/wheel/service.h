@@ -424,12 +424,24 @@ void wheel_service_set_vibration_output(WheelService *service, const WheelVibrat
 /**
  * @brief Sets the shared auxiliary report.
  *
- * Applies the two report bytes to vibration, alternate-packet, scan, and adapter output state.
+ * Applies the two report bytes to legacy vibration, alternate-packet, and scan output state. The
+ * display report is retained independently by wheel_service_set_display_report().
  *
  * @param[in,out] service Wheel service receiving the report.
  * @param[in] report Two-byte auxiliary report in little-endian order.
  */
 void wheel_service_set_auxiliary_report(WheelService *service, uint16_t report);
+
+/**
+ * @brief Sets the shared display report.
+ *
+ * Stores the two-byte report used by attached-wheel response builders and marks the one-shot
+ * status-memory update for the next report 0x0F response.
+ *
+ * @param[in,out] service Wheel service receiving the display report.
+ * @param[in] report Two-byte display report in little-endian order.
+ */
+void wheel_service_set_display_report(WheelService *service, uint16_t report);
 
 /**
  * @brief Sets the attached-wheel auxiliary output option.

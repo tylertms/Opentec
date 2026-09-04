@@ -888,8 +888,8 @@ bool wheel_service_queue_adapter_text_close(WheelService *service) {
 /**
  * @brief Applies the shared two-byte auxiliary report.
  *
- * Updates the mode-one and mode-four vibration fields, the alternate packet's auxiliary fields,
- * the scan encoder, and the adapter display report from one logical value.
+ * Updates the legacy response vibration fields, alternate-packet auxiliary fields, and scan
+ * encoder. The display report is retained independently.
  *
  * @param[in,out] service Attached-wheel service to update.
  * @param[in] report Shared auxiliary report.
@@ -902,11 +902,26 @@ void wheel_service_set_auxiliary_report(WheelService *service, uint16_t report) 
     for (uint8_t channel = 0; channel < WHEEL_VIBRATION_CHANNEL_COUNT; channel++) {
         uint8_t value = channel == 0 ? (uint8_t)report : (uint8_t)(report >> 8);
         service->protocol.mode_one_output.vibration[channel] = value;
-        service->protocol.mode_four_output.vibration[channel] = value;
     }
     service->protocol.alternate_output.display.auxiliary = (uint8_t)report;
     service->protocol.alternate_output.auxiliary_status = ((report >> 8) & 1u) != 0;
+}
+
+/**
+ * @brief Applies the shared two-byte display report.
+ *
+ * Stores the report used by attached-wheel response builders and raises the one-shot status-memory
+ * marker used by report 0x0F.
+ *
+ * @param[in,out] service Attached-wheel service to update.
+ * @param[in] report Shared display report.
+ */
+void wheel_service_set_display_report(WheelService *service, uint16_t report) {
+    if (service == NULL) {
+        return;
+    }
     service->protocol.adapter_output.display_report = report;
+    service->protocol.crc_output.status_update_pending = true;
 }
 
 /**
@@ -1200,6 +1215,7 @@ void wheel_service_reset_host_protocol_outputs(WheelService *service) {
         wheel_adapter_command_service_queue_report_one(&service->adapter_commands,
                                                        service->protocol.output_reports.report_one);
     }
+    wheel_service_set_display_report(service, 0);
 }
 
 /**
@@ -1274,7 +1290,7 @@ bool wheel_service_remote_tuning_response_pending(const WheelService *service) {
  * @brief Applies an auxiliary-output operating-mode command.
  *
  * Opcode 0x06 normalizes the auxiliary option, opcode 0x07 normalizes code mode, and opcode 0x08
- * updates the shared report from its high-byte and low-byte parameters.
+ * updates the independent display report from its high-byte and low-byte parameters.
  *
  * @param[in,out] service Attached-wheel service and output state.
  * @param[in] command Decoded F8 09 operating-mode command.
@@ -1297,8 +1313,8 @@ bool wheel_service_apply_auxiliary_output_command(WheelService *service,
         return false;
     }
 
-    wheel_service_set_auxiliary_report(service, (uint16_t)command->parameters[1] |
-                                                    (uint16_t)command->parameters[0] << 8);
+    wheel_service_set_display_report(service, (uint16_t)command->parameters[1] |
+                                                  (uint16_t)command->parameters[0] << 8);
     return true;
 }
 
@@ -1344,6 +1360,7 @@ bool wheel_service_apply_packed_report_command(WheelService *service,
     if (report == 2) {
         wheel_adapter_command_service_queue_report_two(&service->adapter_commands,
                                                        service->protocol.output_reports.report_two);
+        service->protocol.adapter_output.display_report = 0;
     } else {
         wheel_adapter_command_service_queue_report_one(&service->adapter_commands,
                                                        service->protocol.output_reports.report_one);
