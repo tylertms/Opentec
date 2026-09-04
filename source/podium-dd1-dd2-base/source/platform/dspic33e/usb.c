@@ -740,6 +740,22 @@ void platform_usb_stall(uint8_t endpoint) {
 }
 
 /**
+ * @brief Arms the endpoint-zero terminal input STALL.
+ *
+ * Publishes STALL and controller ownership on the selected endpoint-zero input descriptor without
+ * changing the already armed output status stage or endpoint control state.
+ */
+void platform_usb_control_stall_input(void) {
+    bool interrupt_enabled = IEC5bits.USB1IE != 0;
+    IEC5bits.USB1IE = 0;
+    bool odd_bank = next_bank[0][1] != 0;
+    volatile UsbBufferDescriptor *input = descriptor(0, true, odd_bank);
+    input->count = 0;
+    input->status = USB_BUFFER_STALL | USB_BUFFER_OWNED_BY_USB;
+    IEC5bits.USB1IE = interrupt_enabled;
+}
+
+/**
  * @brief Reports the halt state of one USB endpoint direction.
  *
  * Selects the current ping-pong descriptor from the endpoint address and reports a halt only while

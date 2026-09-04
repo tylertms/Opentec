@@ -10,12 +10,21 @@ void usb_control_pipe_begin(UsbControlPipe *pipe, UsbDescriptorView data,
     }
     pipe->remaining = data;
     pipe->data_one = true;
-    pipe->zero_pending = data.length == 0 || data.length % USB_CONTROL_PACKET_SIZE == 0;
+    pipe->phase = data.length == 0 ? USB_CONTROL_PIPE_PHASE_ZERO : USB_CONTROL_PIPE_PHASE_DATA;
 }
 
 bool usb_control_pipe_next(UsbControlPipe *pipe, UsbControlPacket *packet) {
-    if (pipe->remaining.length == 0 && !pipe->zero_pending) {
+    if (pipe->phase == USB_CONTROL_PIPE_PHASE_STALL ||
+        pipe->phase == USB_CONTROL_PIPE_PHASE_COMPLETE) {
         return false;
+    }
+
+    if (pipe->phase == USB_CONTROL_PIPE_PHASE_ZERO) {
+        packet->data = (UsbDescriptorView){0};
+        packet->data_one = pipe->data_one;
+        pipe->data_one = !pipe->data_one;
+        pipe->phase = USB_CONTROL_PIPE_PHASE_STALL;
+        return true;
     }
 
     uint16_t length = pipe->remaining.length;
@@ -30,8 +39,18 @@ bool usb_control_pipe_next(UsbControlPipe *pipe, UsbControlPacket *packet) {
         pipe->remaining.data += length;
     }
     pipe->remaining.length -= length;
-    if (length == 0) {
-        pipe->zero_pending = false;
+    if (length < USB_CONTROL_PACKET_SIZE) {
+        pipe->phase = USB_CONTROL_PIPE_PHASE_STALL;
+    } else if (pipe->remaining.length == 0) {
+        pipe->phase = USB_CONTROL_PIPE_PHASE_ZERO;
     }
+    return true;
+}
+
+bool usb_control_pipe_take_terminal_stall(UsbControlPipe *pipe) {
+    if (pipe->phase != USB_CONTROL_PIPE_PHASE_STALL) {
+        return false;
+    }
+    pipe->phase = USB_CONTROL_PIPE_PHASE_COMPLETE;
     return true;
 }

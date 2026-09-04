@@ -25,6 +25,7 @@ static uint8_t send_count;
 static uint8_t address;
 static uint8_t control_ready_count;
 static uint8_t control_status_arm_count;
+static uint8_t control_input_stall_count;
 static bool control_status_arm_input[EVENT_CAPACITY];
 static uint8_t endpoint_state_reset_count;
 static bool attached;
@@ -47,6 +48,7 @@ static void reset_platform(void) {
     address = 0;
     control_ready_count = 0;
     control_status_arm_count = 0;
+    control_input_stall_count = 0;
     memset(control_status_arm_input, 0, sizeof(control_status_arm_input));
     endpoint_state_reset_count = 0;
     attached = false;
@@ -133,6 +135,7 @@ bool platform_usb_control_arm_status(bool input) {
     control_status_arm_count++;
     return true;
 }
+void platform_usb_control_stall_input(void) { control_input_stall_count++; }
 void platform_usb_reset_endpoint_state(void) {
     endpoint_state_reset_count++;
     memset(endpoint_input, 0, sizeof(endpoint_input));
@@ -366,6 +369,51 @@ static void test_enumerates_podium_device(void) {
     assert(!usb_device_send_input(input, USB_DEVICE_REPORT_SIZE));
     assert(!usb_device_send_vendor_report(input, USB_DEVICE_REPORT_SIZE));
     endpoint_halted[1][1] = false;
+}
+
+static void test_completes_control_input_with_terminal_stall(void) {
+    static const uint8_t get_device_descriptor[] = {0x80, 6, 0, 1, 0, 0, 18, 0};
+    static const uint8_t get_updater_configuration[] = {0x80, 6, 0, 2, 0, 0, 64, 0};
+    static const uint8_t get_physical_descriptor[] = {0x81, 6, 0, 0x23, 0, 0, 64, 0};
+
+    usb_device_init(BOARD_VARIANT_DD1);
+    push_setup(get_device_descriptor);
+    usb_device_service();
+    assert(sent.length == 18);
+    assert(control_input_stall_count == 0);
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 0, 0, 0);
+    usb_device_service();
+    assert(control_input_stall_count == 1);
+    push_event(PLATFORM_USB_EVENT_OUT, 0, 0, 0);
+    usb_device_service();
+    assert(control_input_stall_count == 1);
+
+    assert(usb_device_set_operating_mode(USB_OPERATING_MODE_UPDATER));
+    push_setup(get_updater_configuration);
+    usb_device_service();
+    assert(sent.length == PLATFORM_USB_PACKET_SIZE);
+    assert(sent.data_one);
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 0, 0, 0);
+    usb_device_service();
+    assert(sent.length == 0);
+    assert(!sent.data_one);
+    assert(control_input_stall_count == 1);
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 0, 0, 0);
+    usb_device_service();
+    assert(control_input_stall_count == 2);
+    push_event(PLATFORM_USB_EVENT_OUT, 0, 0, 0);
+    usb_device_service();
+
+    push_setup(get_physical_descriptor);
+    usb_device_service();
+    assert(sent.length == 0);
+    assert(sent.data_one);
+    assert(control_input_stall_count == 2);
+    push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 0, 0, 0);
+    usb_device_service();
+    assert(control_input_stall_count == 3);
+    push_event(PLATFORM_USB_EVENT_OUT, 0, 0, 0);
+    usb_device_service();
 }
 
 static void test_returns_xbox_security_descriptor(void) {
@@ -1101,6 +1149,7 @@ int main(void) {
     test_prepares_console_modes_without_restarting_or_attaching();
     test_prearms_control_status_and_resets_configuration();
     test_enumerates_podium_device();
+    test_completes_control_input_with_terminal_stall();
     test_returns_xbox_security_descriptor();
     test_exchanges_hid_reports();
     test_retains_hid_state_across_bus_reset();

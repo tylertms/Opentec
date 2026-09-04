@@ -148,6 +148,14 @@ void platform_usb_control_reset(void);
 bool platform_usb_control_arm_status(bool input);
 
 /**
+ * @brief Arms the endpoint-zero terminal input STALL.
+ *
+ * Publishes STALL and controller ownership on the selected endpoint-zero input descriptor while
+ * preserving the already armed output status stage and endpoint control state.
+ */
+void platform_usb_control_stall_input(void);
+
+/**
  * @brief Resets non-control endpoint state after a configuration change.
  *
  * Disables non-control endpoints, clears every descriptor, resets the controller ping-pong state,

@@ -1129,13 +1129,17 @@ static void complete_control_change(void) {
  * @brief Advances a completed endpoint-zero input transaction.
  *
  * Commits a retained address before processing the active transfer, sends the next data packet,
- * enters the zero-length output status stage after the last packet, or rearms setup reception.
+ * arms the official terminal input STALL after the final data-stage packet, enters the zero-length
+ * output status stage, or rearms setup reception.
  */
 static void handle_control_input_complete(void) {
     complete_control_change();
     if (control_stage == USB_CONTROL_STAGE_DATA_IN) {
         if (send_next_control_packet()) {
             return;
+        }
+        if (usb_control_pipe_take_terminal_stall(&control_pipe)) {
+            platform_usb_control_stall_input();
         }
         control_stage = USB_CONTROL_STAGE_STATUS_OUT;
         return;

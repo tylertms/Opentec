@@ -9,11 +9,19 @@
 /** @brief Maximum endpoint-zero control-pipe packet size in bytes. */
 enum { USB_CONTROL_PACKET_SIZE = 64 /**< Maximum endpoint-zero packet size in bytes. */ };
 
-/** @brief Remaining endpoint-zero response data and data-toggle state. */
+/** @brief Endpoint-zero input packetizer phase. */
+typedef enum {
+    USB_CONTROL_PIPE_PHASE_DATA,     /**< Response data remains to be sent. */
+    USB_CONTROL_PIPE_PHASE_ZERO,     /**< A zero-length data-stage packet is next. */
+    USB_CONTROL_PIPE_PHASE_STALL,    /**< The terminal input STALL is ready to arm. */
+    USB_CONTROL_PIPE_PHASE_COMPLETE, /**< The terminal indication was consumed. */
+} UsbControlPipePhase;
+
+/** @brief Remaining endpoint-zero response data, data-toggle, and completion state. */
 typedef struct {
     UsbDescriptorView remaining; /**< Unsent response bytes. */
     bool data_one;               /**< Data toggle for the next packet. */
-    bool zero_pending;           /**< True when a terminating zero-length packet is pending. */
+    UsbControlPipePhase phase;   /**< Packet or terminal action to produce next. */
 } UsbControlPipe;
 
 /** @brief One endpoint-zero response packet and its USB data toggle. */
@@ -46,5 +54,16 @@ void usb_control_pipe_begin(UsbControlPipe *pipe, UsbDescriptorView data,
  * @return True when a packet is available; otherwise false.
  */
 bool usb_control_pipe_next(UsbControlPipe *pipe, UsbControlPacket *packet);
+
+/**
+ * @brief Takes the endpoint-zero terminal input STALL indication.
+ *
+ * Returns true once after the final short packet, including the terminating zero-length packet for
+ * an empty or packet-aligned response.
+ *
+ * @param[in,out] pipe Control input packetizer whose terminal indication is consumed.
+ * @return True when the terminal STALL should be armed; otherwise false.
+ */
+bool usb_control_pipe_take_terminal_stall(UsbControlPipe *pipe);
 
 #endif

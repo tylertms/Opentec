@@ -15,9 +15,12 @@ static void test_splits_and_toggles_packets(void) {
     assert(packet.data.data == data && packet.data.length == 64 && packet.data_one);
     assert(usb_control_pipe_next(&pipe, &packet));
     assert(packet.data.data == &data[64] && packet.data.length == 64 && !packet.data_one);
+    assert(!usb_control_pipe_take_terminal_stall(&pipe));
     assert(usb_control_pipe_next(&pipe, &packet));
     assert(packet.data.data == &data[128] && packet.data.length == 2 && packet.data_one);
     assert(!usb_control_pipe_next(&pipe, &packet));
+    assert(usb_control_pipe_take_terminal_stall(&pipe));
+    assert(!usb_control_pipe_take_terminal_stall(&pipe));
 }
 
 static void test_clips_to_requested_length(void) {
@@ -29,6 +32,8 @@ static void test_clips_to_requested_length(void) {
     assert(usb_control_pipe_next(&pipe, &packet));
     assert(packet.data.length == 18);
     assert(!usb_control_pipe_next(&pipe, &packet));
+    assert(usb_control_pipe_take_terminal_stall(&pipe));
+    assert(!usb_control_pipe_take_terminal_stall(&pipe));
 }
 
 static void test_adds_required_short_packet(void) {
@@ -39,9 +44,12 @@ static void test_adds_required_short_packet(void) {
 
     assert(usb_control_pipe_next(&pipe, &packet));
     assert(packet.data.length == 64);
+    assert(!usb_control_pipe_take_terminal_stall(&pipe));
     assert(usb_control_pipe_next(&pipe, &packet));
-    assert(packet.data.length == 0 && !packet.data_one);
+    assert(packet.data.data == 0 && packet.data.length == 0 && !packet.data_one);
     assert(!usb_control_pipe_next(&pipe, &packet));
+    assert(usb_control_pipe_take_terminal_stall(&pipe));
+    assert(!usb_control_pipe_take_terminal_stall(&pipe));
 }
 
 static void test_adds_boundary_packet_at_requested_length(void) {
@@ -54,9 +62,12 @@ static void test_adds_boundary_packet_at_requested_length(void) {
     assert(usb_control_pipe_next(&pipe, &packet));
     assert(packet.data.data == data && packet.data.length == USB_CONTROL_PACKET_SIZE &&
            packet.data_one);
+    assert(!usb_control_pipe_take_terminal_stall(&pipe));
     assert(usb_control_pipe_next(&pipe, &packet));
-    assert(packet.data.length == 0 && !packet.data_one);
+    assert(packet.data.data == 0 && packet.data.length == 0 && !packet.data_one);
     assert(!usb_control_pipe_next(&pipe, &packet));
+    assert(usb_control_pipe_take_terminal_stall(&pipe));
+    assert(!usb_control_pipe_take_terminal_stall(&pipe));
 }
 
 static void test_starts_empty_response_with_zero_packet(void) {
@@ -67,6 +78,8 @@ static void test_starts_empty_response_with_zero_packet(void) {
     assert(usb_control_pipe_next(&pipe, &packet));
     assert(packet.data.data == 0 && packet.data.length == 0 && packet.data_one);
     assert(!usb_control_pipe_next(&pipe, &packet));
+    assert(usb_control_pipe_take_terminal_stall(&pipe));
+    assert(!usb_control_pipe_take_terminal_stall(&pipe));
 }
 
 int main(void) {
