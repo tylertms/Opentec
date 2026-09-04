@@ -86,7 +86,7 @@ typedef struct {
                                                                 host-control area. */
     uint8_t endpoint_index; /**< Selected endpoint index, zero for standard or one for extended. */
     uint8_t pending_inputs; /**< Changed input components awaiting reads. */
-    uint8_t output_report_cadence;  /**< Number of scheduling passes since the last output batch. */
+    uint8_t output_report_cadence;  /**< Global scheduling-pass counter for output report slots. */
     uint16_t wait_calls;            /**< Remaining service calls before retry or continuation. */
     WheelAdapterCommandPhase phase; /**< Current command-processing phase. */
     bool glyphs_pending;            /**< True when retained glyphs await a write. */
@@ -107,8 +107,6 @@ typedef struct {
     bool report_four_pending;   /**< True when report_four awaits a write. */
     bool report_five_pending;   /**< True when report_five awaits a write. */
     bool report_six_pending;    /**< True when report-six bytes await a write. */
-    bool
-        output_reports_due; /**< True while the current endpoint's output batch is being written. */
 } WheelAdapterCommandService;
 
 /**
@@ -127,7 +125,8 @@ void wheel_adapter_command_service_init(WheelAdapterCommandService *service,
  * @brief Retains the newest adapter display report for transmission.
  *
  * Stores a nonzero report as two little-endian bytes followed by the fixed zero byte used by the
- * adapter display command; a null service or zero report is ignored.
+ * adapter display command; a null service or zero report is ignored. The live payload is read at
+ * the next modulo-five output slot on the standard adapter endpoint.
  *
  * @param[in,out] service Adapter command service retaining the report.
  * @param[in] report Nonzero two-byte display report.

@@ -64,6 +64,12 @@ static void complete_write(CommandTransport *transport) {
     command_transport_receive(transport, response, sizeof(response));
 }
 
+static void run_at_output_slot(WheelAdapterCommandService *service, WheelAdapterInput *adapter,
+                               CommandTransport *transport) {
+    service->output_report_cadence = 5;
+    wheel_adapter_command_service_run(service, adapter, transport);
+}
+
 static void complete_standard_probe(WheelAdapterCommandService *service, WheelAdapterInput *adapter,
                                     CommandTransport *transport) {
     wheel_adapter_command_service_run(service, adapter, transport);
@@ -428,31 +434,64 @@ static void writes_extended_output_reports(void) {
     for (uint8_t index = 0; index < sizeof(report_five); index++) {
         report_five[index] = (uint8_t)(0x80 + index);
     }
+    wheel_adapter_command_service_queue_display(&service, 0x1234);
     wheel_adapter_command_service_queue_report_four(&service, report_four);
     wheel_adapter_command_service_queue_report_five(&service, report_five);
     wheel_adapter_command_service_queue_report_six(&service, 0xa5, 0x5a);
     report_four[0] = 0xa5;
     report_four[1] = 0x5a;
 
-    wheel_adapter_command_service_run(&service, &adapter, &transport);
     uint8_t expected_four[WHEEL_OUTPUT_REPORT_FOUR_SIZE + 3] = {2, 0x2c, 0x08};
     memcpy(expected_four + 3, report_four, sizeof(report_four));
+    service.output_report_cadence = 0;
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
     expect_request(&transport, expected_four, sizeof(expected_four));
+    assert(!service.report_four_pending);
+    assert(service.display_pending);
     complete_write(&transport);
     wheel_adapter_command_service_run(&service, &adapter, &transport);
 
-    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    run_at_output_slot(&service, &adapter, &transport);
     uint8_t expected_five[WHEEL_OUTPUT_REPORT_FIVE_SIZE + 3] = {2, 0x2c, 0x09};
     memcpy(expected_five + 3, report_five, sizeof(report_five));
     expect_request(&transport, expected_five, sizeof(expected_five));
+    assert(!service.report_five_pending);
     complete_write(&transport);
     wheel_adapter_command_service_run(&service, &adapter, &transport);
 
-    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    run_at_output_slot(&service, &adapter, &transport);
     const uint8_t expected_six[] = {2, 0x2c, 0x19, 0xa5, 0x5a};
     expect_request(&transport, expected_six, sizeof(expected_six));
+    assert(!service.report_six_pending);
     complete_write(&transport);
     wheel_adapter_command_service_run(&service, &adapter, &transport);
+}
+
+static void retains_display_until_standard_endpoint_is_active(void) {
+    WheelAdapterCommandService service;
+    WheelAdapterInput adapter;
+    CommandTransport transport;
+    command_transport_init(&transport);
+    wheel_adapter_command_service_init(&service, &adapter);
+    complete_extended_probe(&service, &adapter, &transport);
+
+    service.display_state_pending = false;
+    wheel_adapter_command_service_queue_display(&service, 0x1234);
+    service.output_report_cadence = 0;
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    const uint8_t status_request[] = {2, 0x2d, 0x00, 2, 0};
+    expect_request(&transport, status_request, sizeof(status_request));
+    assert(service.display_pending);
+
+    const uint8_t status[] = {0, 0};
+    complete_read(&transport, status, sizeof(status));
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    service.endpoint_index = 0;
+    service.output_report_cadence = 5;
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    const uint8_t expected_display[] = {2, 0x2a, 0x0f, 0x34, 0x12, 0};
+    expect_request(&transport, expected_display, sizeof(expected_display));
+    assert(!service.display_pending);
 }
 
 static void writes_standard_output_reports(void) {
@@ -473,18 +512,29 @@ static void writes_standard_output_reports(void) {
     }
     wheel_adapter_command_service_queue_report_one(&service, report_one);
     wheel_adapter_command_service_queue_report_two(&service, report_two);
+    wheel_adapter_command_service_queue_display(&service, 0x4321);
 
+    service.output_report_cadence = 0;
     wheel_adapter_command_service_run(&service, &adapter, &transport);
     uint8_t expected_two[WHEEL_OUTPUT_REPORT_TWO_SIZE + 3] = {2, 0x2a, 0x04};
     memcpy(expected_two + 3, report_two, sizeof(report_two));
     expect_request(&transport, expected_two, sizeof(expected_two));
+    assert(!service.report_two_pending);
     complete_write(&transport);
     wheel_adapter_command_service_run(&service, &adapter, &transport);
 
-    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    run_at_output_slot(&service, &adapter, &transport);
     uint8_t expected_one[WHEEL_OUTPUT_REPORT_ONE_SIZE + 3] = {2, 0x2a, 0x05};
     memcpy(expected_one + 3, report_one, sizeof(report_one));
     expect_request(&transport, expected_one, sizeof(expected_one));
+    assert(!service.report_one_pending);
+    complete_write(&transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+
+    run_at_output_slot(&service, &adapter, &transport);
+    const uint8_t expected_display[] = {2, 0x2a, 0x0f, 0x21, 0x43, 0};
+    expect_request(&transport, expected_display, sizeof(expected_display));
+    assert(!service.display_pending);
     complete_write(&transport);
     wheel_adapter_command_service_run(&service, &adapter, &transport);
 }
@@ -522,37 +572,73 @@ static void writes_extended_text_lines_in_display_order(void) {
     expect_request(&transport, expected_close, sizeof(expected_close));
 }
 
-static void paces_separate_extended_output_reports(void) {
+static void waits_for_global_output_slot_after_idle(void) {
     WheelAdapterCommandService service;
     WheelAdapterInput adapter;
     CommandTransport transport;
     command_transport_init(&transport);
     wheel_adapter_command_service_init(&service, &adapter);
-    complete_extended_probe(&service, &adapter, &transport);
+    complete_standard_probe(&service, &adapter, &transport);
 
-    uint8_t report_four[WHEEL_OUTPUT_REPORT_FOUR_SIZE] = {1};
-    uint8_t report_five[WHEEL_OUTPUT_REPORT_FIVE_SIZE] = {2};
-    wheel_adapter_command_service_queue_report_four(&service, report_four);
+    service.output_report_cadence = 3;
     wheel_adapter_command_service_run(&service, &adapter, &transport);
-    uint8_t expected_four[WHEEL_OUTPUT_REPORT_FOUR_SIZE + 3] = {2, 0x2c, 0x08, 1};
-    expect_request(&transport, expected_four, sizeof(expected_four));
-    complete_write(&transport);
-    wheel_adapter_command_service_run(&service, &adapter, &transport);
-
-    wheel_adapter_command_service_queue_report_five(&service, report_five);
-    const uint8_t status_request[] = {2, 0x2d, 0x00, 2, 0};
+    const uint8_t status_request[] = {2, 0x2b, 0x00, 2, 0};
+    expect_request(&transport, status_request, sizeof(status_request));
+    assert(service.output_report_cadence == 3);
     const uint8_t status[] = {0, 0};
-    for (uint8_t index = 0; index < 4; index++) {
-        wheel_adapter_command_service_run(&service, &adapter, &transport);
-        expect_request(&transport, status_request, sizeof(status_request));
-        complete_read(&transport, status, sizeof(status));
-        wheel_adapter_command_service_run(&service, &adapter, &transport);
-    }
+    complete_read(&transport, status, sizeof(status));
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    assert(service.output_report_cadence == 3);
+
+    wheel_adapter_command_service_queue_display(&service, 0x2468);
+    command_transport_claim(&transport, 0x71);
+    const uint8_t *request;
+    uint16_t length;
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    assert(service.output_report_cadence == 4);
+    assert(!command_transport_request(&transport, &request, &length));
+    assert(service.display_pending);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    assert(service.output_report_cadence == 5);
+    assert(!command_transport_request(&transport, &request, &length));
+    assert(service.display_pending);
+    command_transport_release(&transport, 0x71);
 
     wheel_adapter_command_service_run(&service, &adapter, &transport);
-    uint8_t expected[WHEEL_OUTPUT_REPORT_FIVE_SIZE + 3] = {2, 0x2c, 0x09};
-    memcpy(expected + 3, report_five, sizeof(report_five));
+    const uint8_t expected[] = {2, 0x2a, 0x0f, 0x68, 0x24, 0};
     expect_request(&transport, expected, sizeof(expected));
+    assert(!service.display_pending);
+}
+
+static void sends_latest_payload_at_output_boundary(void) {
+    WheelAdapterCommandService service;
+    WheelAdapterInput adapter;
+    CommandTransport transport;
+    uint8_t first[WHEEL_OUTPUT_REPORT_TWO_SIZE];
+    uint8_t latest[WHEEL_OUTPUT_REPORT_TWO_SIZE];
+    command_transport_init(&transport);
+    wheel_adapter_command_service_init(&service, &adapter);
+    complete_standard_probe(&service, &adapter, &transport);
+    for (uint8_t index = 0; index < sizeof(first); index++) {
+        first[index] = (uint8_t)(index + 1u);
+        latest[index] = (uint8_t)(0xa0u + index);
+    }
+    wheel_adapter_command_service_queue_report_two(&service, first);
+    service.output_report_cadence = 1;
+    command_transport_claim(&transport, 0x71);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    wheel_adapter_command_service_queue_report_two(&service, latest);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    assert(service.output_report_cadence == 5);
+    command_transport_release(&transport, 0x71);
+
+    wheel_adapter_command_service_run(&service, &adapter, &transport);
+    uint8_t expected[WHEEL_OUTPUT_REPORT_TWO_SIZE + 3] = {2, 0x2a, 0x04};
+    memcpy(expected + 3, latest, sizeof(latest));
+    expect_request(&transport, expected, sizeof(expected));
+    assert(!service.report_two_pending);
 }
 
 static void switches_endpoints_after_a_failed_transfer(void) {
@@ -666,8 +752,10 @@ int main(void) {
     writes_zero_display_state_after_endpoint_reset();
     writes_standard_output_reports();
     writes_extended_output_reports();
+    retains_display_until_standard_endpoint_is_active();
     writes_extended_text_lines_in_display_order();
-    paces_separate_extended_output_reports();
+    waits_for_global_output_slot_after_idle();
+    sends_latest_payload_at_output_boundary();
     forwards_requested_host_controls();
     switches_endpoints_after_a_failed_transfer();
     rejects_invalid_adapter_command_inputs();
