@@ -143,6 +143,8 @@ static volatile uint16_t adc_sample;
 static volatile bool reset_pending;
 
 static void restore_uart_registers(void);
+static status_t configure_uart_receive(void);
+static status_t rearm_uart_receive(void);
 
 /**
  * @brief Resets the device after a failed mandatory initialization step.
@@ -314,16 +316,23 @@ static void start_uart_guard(uint32_t ticks) {
 }
 
 /**
- * @brief Starts guarded recovery of the UART receive path.
+ * @brief Restarts UART reception before entering guarded recovery.
  *
- * Aborts the active receive descriptor, restores its destination rewind and UART register state,
- * marks recovery active, and schedules the longer recovery guard.
+ * Aborts the active receive descriptor, rebuilds the official receive descriptor immediately, marks
+ * recovery active, and schedules the longer recovery guard. A failed rearm leaves the descriptor
+ * rewind in the official state so the guard expiry can retry it.
  */
 static void start_uart_recovery(void) {
+    status_t status;
+
     UART_TransferAbortReceiveEDMA(UART1, &uart_handle);
-    DMA0->TCD[UART_RECEIVE_DMA_CHANNEL].DLAST_SGA = (uint32_t)-(int32_t)UART_WINDOW_SIZE;
-    restore_uart_registers();
     uart_recovery_active = true;
+    status = rearm_uart_receive();
+    if (status != kStatus_Success) {
+        DMA0->TCD[UART_RECEIVE_DMA_CHANNEL].DLAST_SGA =
+            (uint32_t)-(int32_t)UART_WINDOW_SIZE;
+        restore_uart_registers();
+    }
     start_uart_guard(UART_RECOVERY_GUARD_TICKS);
 }
 
@@ -406,14 +415,35 @@ static status_t configure_uart_receive(void) {
     SIM->SCGC7 |= SIM_SCGC7_DMA_MASK;
     SIM->SCGC6 |= SIM_SCGC6_DMAMUX_MASK;
     configure_dmamux_channel(UART_RECEIVE_DMA_CHANNEL, UART_RECEIVE_DMA_SOURCE, false);
+    EDMA_ClearChannelStatusFlags(DMA0, UART_RECEIVE_DMA_CHANNEL,
+                                 kEDMA_DoneFlag | kEDMA_ErrorFlag | kEDMA_InterruptFlag);
     memset(uart_receive_window, 0, sizeof(uart_receive_window));
     status = UART_ReceiveEDMA(UART1, &uart_handle, &transfer);
     if (status == kStatus_Success) {
         DMA0->TCD[UART_RECEIVE_DMA_CHANNEL].SLAST = 0;
         DMA0->TCD[UART_RECEIVE_DMA_CHANNEL].DLAST_SGA = (uint32_t)-(int32_t)UART_WINDOW_SIZE;
+        EDMA_EnableChannelRequest(DMA0, UART_RECEIVE_DMA_CHANNEL);
         configure_dmamux_channel(UART_RECEIVE_DMA_CHANNEL, UART_RECEIVE_DMA_SOURCE, true);
     }
     restore_uart_registers();
+    return status;
+}
+
+/**
+ * @brief Arms UART reception with one retry for a busy eDMA handle.
+ *
+ * Submits the receive descriptor and retries after an SDK busy result so recovery and guard expiry
+ * share the same receive-path contract.
+ *
+ * @return SDK status from the final receive submission.
+ */
+static status_t rearm_uart_receive(void) {
+    status_t status = configure_uart_receive();
+
+    if (status == kStatus_UART_RxBusy) {
+        UART_TransferAbortReceiveEDMA(UART1, &uart_handle);
+        status = configure_uart_receive();
+    }
     return status;
 }
 
@@ -1405,11 +1435,7 @@ void PIT1_IRQHandler(void) {
         wqr_protocol_response_sent(&protocol);
     }
     drain_uart_errors();
-    status = configure_uart_receive();
-    if (status == kStatus_UART_RxBusy) {
-        UART_TransferAbortReceiveEDMA(UART1, &uart_handle);
-        status = configure_uart_receive();
-    }
+    status = rearm_uart_receive();
     if (status != kStatus_Success) {
         start_uart_recovery();
     }

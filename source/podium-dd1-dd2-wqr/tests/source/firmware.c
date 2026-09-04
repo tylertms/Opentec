@@ -106,7 +106,8 @@ enum {
     EXPECTED_WDOG_CONTROL = 0x40d7,
     EXPECTED_WDOG_TIMEOUT = 0x004c01f4,
     DMA3_PRIORITY = 14,
-    PIT0_PRIORITY = 11
+    PIT0_PRIORITY = 11,
+    EXPECTED_UART_RECOVERY_GUARD_TICKS = 3964
 };
 
 static const uint32_t NVIC_PRIORITY_BASE = UINT32_C(0xe000e400);
@@ -352,6 +353,37 @@ static bool uart_descriptors_match_reference(Kinetis *device) {
     }
     fprintf(stderr, "UART TCD mismatch: TX SLAST 0x%08x, RX SLAST 0x%08x, DLAST 0x%08x\n",
             transmit_slast, receive_slast, receive_dlast);
+    return false;
+}
+
+static bool uart_receive_armed(Kinetis *device) {
+    uint32_t receive = DMA_TCD_BASE + DMA_UART_RECEIVE_CHANNEL * DMA_TCD_STRIDE;
+
+    return register_equals(device, DMAMUX_CHCFG1_ADDRESS, 1, 0x84) &&
+           register_equals(device, receive + DMA_TCD_SLAST_OFFSET, 4, 0) &&
+           register_equals(device, receive + DMA_TCD_DLAST_OFFSET, 4,
+                           (uint32_t)-(int32_t)RECEIVE_WINDOW_SIZE) &&
+           register_equals(device, receive + DMA_TCD_CITER_OFFSET, 2, RECEIVE_WINDOW_SIZE) &&
+           register_equals(device, receive + DMA_TCD_BITER_OFFSET, 2, RECEIVE_WINDOW_SIZE);
+}
+
+static bool uart_recovery_guard_is_active(Kinetis *device) {
+    uint32_t ticks = 0;
+
+    return kinetis_read(device, PIT1_LDVAL_ADDRESS, &ticks, sizeof(ticks)) &&
+           ticks > EXPECTED_UART_RESPONSE_GUARD_TICKS &&
+           ticks <= EXPECTED_UART_RECOVERY_GUARD_TICKS;
+}
+
+static bool wait_for_uart_recovery_guard(Kinetis *device) {
+    for (size_t instruction = 0; instruction < INTERRUPT_INSTRUCTIONS * 10; ++instruction) {
+        if (uart_recovery_guard_is_active(device)) {
+            return true;
+        }
+        if (!step_firmware(device)) {
+            return false;
+        }
+    }
     return false;
 }
 
@@ -688,8 +720,13 @@ static bool recover_from_bad_end_marker(Kinetis *device) {
         return false;
     }
     request[WQR_FRAME_SIZE - 1] = 0;
-    return send_request(device, request) && receive_response(device, response) &&
-           nack_response_valid(response);
+    if (!send_request(device, request) || !wait_for_uart_recovery_guard(device)) {
+        return false;
+    }
+    if (!uart_receive_armed(device)) {
+        return false;
+    }
+    return receive_response(device, response) && nack_response_valid(response);
 }
 
 static bool reject_invalid_crc(Kinetis *device, uint8_t request_sequence) {
