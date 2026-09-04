@@ -508,6 +508,18 @@ const WheelPacketMetadataInput *wheel_protocol_metadata_input(const WheelProtoco
 const WheelPacketCrcInput *wheel_protocol_crc_input(const WheelProtocol *protocol);
 
 /**
+ * @brief Returns normalized buttons from the active button-bearing packet family.
+ *
+ * Selects mode-one, mode-four, display, remapped, alternate, packed, axis-mode, extended,
+ * adapter-oriented, or CRC-family buttons after a supported request has been captured. The
+ * metadata-only mode 0x1E report is excluded because it carries no buttons.
+ *
+ * @param[in] protocol Protocol state to inspect.
+ * @return Pointer to three normalized button bytes, or null when unavailable.
+ */
+const uint8_t *wheel_protocol_buttons(const WheelProtocol *protocol);
+
+/**
  * @brief Returns separately retained mode-one report fields.
  *
  * Exposes axis values and report metadata retained before mode-one normalization.

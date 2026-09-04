@@ -827,7 +827,7 @@ void wheel_service_queue_system_status(WheelService *service, uint16_t code);
 /**
  * @brief Returns the current attached-wheel button banks.
  *
- * Selects decoded packet-family buttons or the filtered scan-mode banks.
+ * Selects normalized protocol packet-family buttons or the filtered scan-mode banks.
  *
  * @param[in] service Wheel service to inspect.
  * @return Pointer to three current button bytes.

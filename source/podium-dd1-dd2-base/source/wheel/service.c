@@ -1949,38 +1949,16 @@ void wheel_service_finish_status_memory_startup(WheelService *service, bool avai
 /**
  * @brief Returns the current attached-wheel button banks.
  *
- * Selects decoded mode-one, mode-four, display, remapped, packed, or CRC-family packet buttons
- * after the wheel protocol becomes active. Scan-mode wheels use the three filtered button banks
- * assembled from command-3 responses.
+ * Selects normalized buttons from the active protocol packet family after the wheel protocol
+ * becomes active. Scan-mode wheels use the three filtered button banks assembled from command-3
+ * responses.
  *
  * @param[in] service Attached-wheel service state.
  * @return Three current button bytes.
  */
 const uint8_t *wheel_service_buttons(const WheelService *service) {
-    const WheelPacketModeOneInput *input = wheel_protocol_mode_one_input(&service->protocol);
-    if (input != 0) {
-        return input->buttons;
-    }
-    const WheelPacketModeFourInput *mode_four_input =
-        wheel_protocol_mode_four_input(&service->protocol);
-    if (mode_four_input != 0) {
-        return mode_four_input->buttons;
-    }
-    const WheelPacketDisplayInput *display_input = wheel_protocol_display_input(&service->protocol);
-    if (display_input != 0) {
-        return display_input->buttons;
-    }
-    const WheelPacketRemappedInput *remapped_input =
-        wheel_protocol_remapped_input(&service->protocol);
-    if (remapped_input != 0) {
-        return remapped_input->buttons;
-    }
-    const WheelPacketPackedInput *packed_input = wheel_protocol_packed_input(&service->protocol);
-    if (packed_input != 0) {
-        return packed_input->buttons;
-    }
-    const WheelPacketCrcInput *crc_input = wheel_protocol_crc_input(&service->protocol);
-    return crc_input != 0 ? crc_input->buttons : service->button_banks;
+    const uint8_t *buttons = wheel_protocol_buttons(&service->protocol);
+    return buttons != 0 ? buttons : service->button_banks;
 }
 
 /**

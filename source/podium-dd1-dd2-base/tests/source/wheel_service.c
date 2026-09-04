@@ -422,6 +422,44 @@ static void assert_scan_mapping(const ScanMapping *mapping) {
     assert(wheel_service_acknowledgement_input_active(&service));
 }
 
+static void test_delegates_protocol_button_families_and_scan_fallback(void) {
+    WheelService service = {0};
+    service.protocol.request_ready = true;
+
+    service.protocol.mode = 1;
+    assert(wheel_service_buttons(&service) == service.protocol.mode_one_input.buttons);
+    service.protocol.mode = 4;
+    assert(wheel_service_buttons(&service) == service.protocol.mode_four_input.buttons);
+    service.protocol.mode = 0x10;
+    assert(wheel_service_buttons(&service) == service.protocol.display_input.buttons);
+    service.protocol.mode = 0x11;
+    assert(wheel_service_buttons(&service) == service.protocol.remapped_input.buttons);
+    service.protocol.mode = 0x12;
+    assert(wheel_service_buttons(&service) == service.protocol.alternate_input.buttons);
+    service.protocol.mode = WHEEL_MODE_LEGACY_ALTERNATE;
+    assert(wheel_service_buttons(&service) == service.protocol.packed_input.buttons);
+    service.protocol.mode = 0x09;
+    assert(wheel_service_buttons(&service) == service.protocol.common_input.buttons);
+    service.protocol.mode = 0x0a;
+    assert(wheel_service_buttons(&service) == service.protocol.common_input.buttons);
+    service.protocol.mode = WHEEL_PACKET_ADAPTER_MODE;
+    assert(wheel_service_buttons(&service) == service.protocol.common_input.buttons);
+    service.protocol.mode = 6;
+    assert(wheel_service_buttons(&service) == service.protocol.crc_input.buttons);
+
+    service.button_banks[0] = 0xaa;
+    service.button_banks[1] = 0xbb;
+    service.button_banks[2] = 0xcc;
+    service.protocol.common_input.buttons[0] = 1;
+    service.protocol.common_input.buttons[1] = 2;
+    service.protocol.common_input.buttons[2] = 3;
+    service.protocol.mode = WHEEL_PACKET_METADATA_MODE;
+    assert(wheel_service_buttons(&service) == service.button_banks);
+    service.protocol.request_ready = false;
+    service.protocol.mode = 1;
+    assert(wheel_service_buttons(&service) == service.button_banks);
+}
+
 static void test_maps_primary_scan_bits(void) {
     static const ScanMapping mappings[] = {
         {.phase = 8, .sample = 0x01, .buttons = {0x00, 0x00, 0x04}},
@@ -752,6 +790,7 @@ static void test_publishes_packet_mode_buttons(void) {
     }
 
     const uint8_t *buttons = wheel_service_buttons(&service);
+    assert(buttons == wheel_protocol_buttons(&service.protocol));
     assert(buttons[0] == 0x20);
     assert(buttons[1] == 0x04);
     assert(buttons[2] == 0x02);
@@ -2029,6 +2068,7 @@ int main(void) {
     test_matches_official_clutch_paddle_availability();
     test_gates_selected_modes_on_status_memory_startup();
     test_publishes_packet_mode_buttons();
+    test_delegates_protocol_button_families_and_scan_fallback();
     test_restarts_inactive_packet_mode_at_deadline();
     test_ready_packet_refreshes_activity_at_deadline();
     test_keeps_scan_mode_active_without_protocol_timeout();

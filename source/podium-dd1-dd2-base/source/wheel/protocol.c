@@ -1722,6 +1722,56 @@ const WheelPacketCrcInput *wheel_protocol_crc_input(const WheelProtocol *protoco
 }
 
 /**
+ * @brief Returns normalized buttons from the active button-bearing packet family.
+ *
+ * Selects the decoded family state used by the attached-wheel input path. Metadata-only mode 0x1E
+ * is intentionally omitted because its report-state handler does not carry buttons.
+ *
+ * @param[in] protocol Wheel protocol state.
+ * @return Pointer to three normalized button bytes, or null when unavailable.
+ */
+const uint8_t *wheel_protocol_buttons(const WheelProtocol *protocol) {
+    const WheelPacketModeOneInput *mode_one = wheel_protocol_mode_one_input(protocol);
+    if (mode_one != 0) {
+        return mode_one->buttons;
+    }
+    const WheelPacketModeFourInput *mode_four = wheel_protocol_mode_four_input(protocol);
+    if (mode_four != 0) {
+        return mode_four->buttons;
+    }
+    const WheelPacketDisplayInput *display = wheel_protocol_display_input(protocol);
+    if (display != 0) {
+        return display->buttons;
+    }
+    const WheelPacketRemappedInput *remapped = wheel_protocol_remapped_input(protocol);
+    if (remapped != 0) {
+        return remapped->buttons;
+    }
+    const WheelPacketAlternateInput *alternate = wheel_protocol_alternate_input(protocol);
+    if (alternate != 0) {
+        return alternate->buttons;
+    }
+    const WheelPacketPackedInput *packed = wheel_protocol_packed_input(protocol);
+    if (packed != 0) {
+        return packed->buttons;
+    }
+    const WheelPacketAxisModeInput *axis_mode = wheel_protocol_axis_mode_input(protocol);
+    if (axis_mode != 0) {
+        return axis_mode->buttons;
+    }
+    const WheelPacketExtendedInput *extended = wheel_protocol_extended_input(protocol);
+    if (extended != 0) {
+        return extended->buttons;
+    }
+    const WheelPacketAdapterInput *adapter = wheel_protocol_adapter_input(protocol);
+    if (adapter != 0) {
+        return adapter->buttons;
+    }
+    const WheelPacketCrcInput *crc = wheel_protocol_crc_input(protocol);
+    return crc != 0 ? crc->buttons : 0;
+}
+
+/**
  * @brief Returns separately retained standard report fields.
  *
  * Exposes axis, report-mode, capability, and limit fields retained before standard input

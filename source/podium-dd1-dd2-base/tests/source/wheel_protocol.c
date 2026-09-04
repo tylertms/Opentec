@@ -100,6 +100,7 @@ static void test_synchronizes_and_selects_mode(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
     wheel_protocol_init(&protocol);
+    assert(wheel_protocol_buttons(&protocol) == 0);
 
     synchronize(&protocol, request);
     select_mode(&protocol, request, 1);
@@ -497,6 +498,7 @@ static void test_captures_normalized_active_requests(void) {
     assert(memcmp(wheel_protocol_request(&protocol), expected, sizeof(expected)) == 0);
     const WheelPacketModeOneInput *input = wheel_protocol_mode_one_input(&protocol);
     assert(input != 0);
+    assert(wheel_protocol_buttons(&protocol) == input->buttons);
     assert(input->buttons[0] == 0);
     assert(input->buttons[2] == 0);
     assert(input->motion == 7);
@@ -686,6 +688,7 @@ static void test_captures_standard_display_packets(void) {
 
     const WheelPacketDisplayInput *input = wheel_protocol_display_input(&protocol);
     assert(input != 0);
+    assert(wheel_protocol_buttons(&protocol) == input->buttons);
     assert(memcmp(input->buttons, (uint8_t[]){0xf3, 0x5a, 0x7f}, 3) == 0);
     assert(memcmp(input->controls, (uint8_t[]){0x7f, 0xf3, 0x5a, 0x64}, 4) == 0);
     assert(input->axis_outputs[0] == 0x41);
@@ -750,6 +753,7 @@ static void test_captures_remapped_packets(void) {
 
     const WheelPacketRemappedInput *input = wheel_protocol_remapped_input(&protocol);
     assert(input != 0);
+    assert(wheel_protocol_buttons(&protocol) == input->buttons);
     assert(memcmp(input->buttons, (uint8_t[]){0x10, 0x08, 0x03}, 3) == 0);
     assert(input->axis_outputs[0] == 0x41);
     assert(input->axis_outputs[1] == 0x52);
@@ -822,6 +826,7 @@ static void test_captures_packed_family_requests(void) {
 
     const WheelPacketPackedInput *input = wheel_protocol_packed_input(&protocol);
     assert(input != 0);
+    assert(wheel_protocol_buttons(&protocol) == input->buttons);
     assert(input->buttons[0] == 0x80);
     assert(input->buttons[1] == 0x08);
     assert(input->buttons[2] == 0x40);
@@ -945,6 +950,7 @@ static void test_captures_mode_four_requests(void) {
 
     const WheelPacketModeFourInput *input = wheel_protocol_mode_four_input(&protocol);
     assert(input != 0);
+    assert(wheel_protocol_buttons(&protocol) == input->buttons);
     assert(input->buttons[0] == 0x80);
     assert(input->buttons[1] == 0x40);
     assert(input->buttons[2] == 0x20);
@@ -1462,6 +1468,7 @@ static void test_captures_alternate_packets(void) {
 
     const WheelPacketAlternateInput *input = wheel_protocol_alternate_input(&protocol);
     assert(input != 0);
+    assert(wheel_protocol_buttons(&protocol) == input->buttons);
     assert(input->buttons[0] == 0x10);
     assert(input->buttons[1] == 0x08);
     assert(input->buttons[2] == 0x0a);
@@ -1546,6 +1553,7 @@ static void test_captures_crc_family_requests(void) {
 
     const WheelPacketCrcInput *input = wheel_protocol_crc_input(&protocol);
     assert(input != 0);
+    assert(wheel_protocol_buttons(&protocol) == input->buttons);
     assert(input->buttons[0] == 0x80);
     assert(input->buttons[1] == 0x08);
     assert(wheel_protocol_axis_outputs(&protocol)[0] == 0x52);
@@ -1625,6 +1633,7 @@ static void test_captures_axis_mode_packets(void) {
 
     const WheelPacketAxisModeInput *input = wheel_protocol_axis_mode_input(&protocol);
     assert(input != 0);
+    assert(wheel_protocol_buttons(&protocol) == input->buttons);
     assert(input->buttons[0] == 0x80);
     assert(input->buttons[1] == 0x08);
     assert(input->buttons[2] == 0x04);
@@ -1714,6 +1723,7 @@ static void test_captures_extended_packets(void) {
 
     const WheelPacketExtendedInput *input = wheel_protocol_extended_input(&protocol);
     assert(input != 0);
+    assert(wheel_protocol_buttons(&protocol) == input->buttons);
     assert(input->buttons[0] == 0x80);
     assert(input->buttons[1] == 0x08);
     assert(input->buttons[2] == 0x04);
@@ -1764,6 +1774,7 @@ static void test_captures_metadata_packets(void) {
 
     const WheelPacketMetadataInput *input = wheel_protocol_metadata_input(&protocol);
     assert(input != 0);
+    assert(wheel_protocol_buttons(&protocol) == 0);
     assert(input->axis_values[0] == 0x1234);
     assert(input->axis_values[1] == 0x5678);
     assert(input->report_mode == 0x45);
@@ -1837,6 +1848,7 @@ static void test_captures_adapter_packets(void) {
 
     const WheelPacketAdapterInput *input = wheel_protocol_adapter_input(&protocol);
     assert(input != 0);
+    assert(wheel_protocol_buttons(&protocol) == input->buttons);
     assert(input->buttons[0] == 0xcf);
     assert(input->buttons[1] == 0xc8);
     assert(input->buttons[2] == 0x27);
