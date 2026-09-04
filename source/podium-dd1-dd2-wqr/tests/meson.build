@@ -35,7 +35,7 @@ if meson.is_cross_build()
     'wqr-hex',
     python,
     args: [
-      meson.current_source_dir() / 'source/package.py',
+      meson.current_source_dir() / 'build/package.py',
       hex.full_path(),
       checksummed_binary.full_path(),
     ],
