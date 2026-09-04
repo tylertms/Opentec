@@ -6677,7 +6677,8 @@ static void service_usb_host_capability_recovery(uint32_t now_ms) {
  *
  * Selects the inhibited-output heartbeat from motor status, clears the LED after profile save
  * starts, and requests the breathing transition from the torque-disable toggle or pedal recovery
- * handshake. A returned no-update marker leaves host-selected output unchanged.
+ * handshake. The normal path runs this service after current motor status is available and before
+ * cooling. A returned no-update marker leaves host-selected output unchanged.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -6793,7 +6794,6 @@ int main(void) {
         }
         pedal_service_run(&pedal_service, now_ms);
         service_pedal_adjustment_display(now_ms);
-        service_led_pattern(now_ms);
         service_alternate_brake_force(now_ms);
         uint8_t brake_indicator_selector = pedal_brake_indicator_update(
             &pedal_brake_indicator, tuning_profile->brake_indicator_level,
@@ -6868,6 +6868,7 @@ int main(void) {
         service_usb_input(now_ms);
         service_usb_feature_reports();
         service_motor();
+        service_led_pattern(now_ms);
         service_cooling(now_ms);
     }
 }

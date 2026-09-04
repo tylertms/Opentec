@@ -70,10 +70,22 @@ def test_documented_reference_scope():
     assert "retained-console selection" in SOURCE
 
 
+def test_led_service_follows_current_motor_status():
+    main_body = function_body("main")
+    calls = list(re.finditer(r"\bservice_led_pattern\s*\(now_ms\)", main_body))
+    assert len(calls) == 2
+    bridge_call = calls[0].start()
+    normal_call = calls[1].start()
+    assert bridge_call < main_body.index("continue;", bridge_call)
+    assert main_body.index("service_motor();", bridge_call) < normal_call
+    assert normal_call < main_body.index("service_cooling(now_ms);", normal_call)
+
+
 def main():
     test_startup_call_counts()
     test_startup_call_order()
     test_documented_reference_scope()
+    test_led_service_follows_current_motor_status()
 
 
 if __name__ == "__main__":
