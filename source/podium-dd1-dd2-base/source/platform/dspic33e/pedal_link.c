@@ -43,7 +43,7 @@ static volatile uint8_t transfer_receive_ring[TRANSFER_FRAME_MAX_ENCODED_SIZE];
  *
  * The parser retains at most the 124 bytes accepted by the official firmware.
  */
-static volatile uint8_t transfer_buffer[PEDAL_TRANSFER_MAX_FRAME_SIZE];
+static volatile uint8_t transfer_buffer[TRANSFER_FRAME_MAX_SEND_PAYLOAD_SIZE];
 
 /**
  * @brief Shared pedal transmit DMA buffer.
@@ -115,6 +115,9 @@ static volatile bool transfer_frame_ready;
 
 /**
  * @brief True when UART bytes are being assembled as transfer frames.
+ *
+ * The transmit-DMA completion path uses this state to select the official V4 receive-generation
+ * reset instead of merely restoring the UART interrupt.
  */
 static volatile bool transfer_receive_enabled;
 
@@ -417,15 +420,15 @@ static bool begin_send(uint16_t length) {
 }
 
 /**
- * @brief Starts a new V4 receive generation before transmission.
+ * @brief Resets the V4 receive generation around a transfer.
  *
- * Matches the official receiver reset before each V4 transfer: stop receive DMA and interrupts,
- * discard stale UART bytes, clear the retained byte ring and parser, then leave the selected UART
- * receive route ready for the response generation.
+ * Stops receive DMA and its UART interrupt before draining stale input, clears the DMA status,
+ * reloads the official 256-byte receive window, clears the retained ring and parser, and restores
+ * the selected UART receive route.
  */
 static void reset_transfer_receive_generation(void) {
-    IEC1bits.U2RXIE = 0;
     DMA1CONbits.CHEN = 0;
+    IEC1bits.U2RXIE = 0;
     clear_receive_fifo();
     IFS0bits.DMA1IF = 0;
     DMA1CNT = TRANSFER_FRAME_MAX_ENCODED_SIZE - 1;
@@ -597,7 +600,7 @@ static void receive_transfer_byte(uint8_t value) {
     if (!transfer_receiving) {
         return;
     }
-    if (transfer_buffer_length >= PEDAL_TRANSFER_MAX_FRAME_SIZE) {
+    if (transfer_buffer_length >= TRANSFER_FRAME_MAX_SEND_PAYLOAD_SIZE) {
         transfer_buffer_length = 0;
         transfer_receiving = false;
         return;
@@ -744,10 +747,16 @@ void platform_pedal_link_test_receive_byte(uint8_t value, bool uart_error) {
 /**
  * @brief Services pedal transmit completion.
  *
- * Releases the shared transmitter, clears the DMA request, and restores UART2 receive servicing.
+ * Releases the shared transmitter, clears the DMA completion flag, and restores the selected receive
+ * generation. Transfer mode also resets the UART FIFO, DMA state, parser, and retained ring before
+ * receive servicing is restored.
  */
 void __attribute__((interrupt, no_auto_psv)) _DMA2Interrupt(void) {
-    transmit_active = false;
     IFS1bits.DMA2IF = 0;
-    IEC1bits.U2RXIE = receive_enabled;
+    transmit_active = false;
+    if (transfer_receive_enabled) {
+        reset_transfer_receive_generation();
+    } else {
+        IEC1bits.U2RXIE = receive_enabled;
+    }
 }

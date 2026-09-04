@@ -69,7 +69,7 @@ static void test_retains_transfer_burst(void) {
 }
 
 static void test_limits_transfer_frame_to_official_size(void) {
-    uint8_t frame[PEDAL_TRANSFER_MAX_FRAME_SIZE] = {0};
+    uint8_t frame[TRANSFER_FRAME_MAX_SEND_PAYLOAD_SIZE] = {0};
     frame[0] = TRANSFER_FRAME_START;
     memset(frame + 1, 0x55, sizeof(frame) - 2);
     frame[sizeof(frame) - 1] = TRANSFER_FRAME_END;
@@ -80,7 +80,7 @@ static void test_limits_transfer_frame_to_official_size(void) {
     assert(platform_pedal_link_take_transfer(output, sizeof(output)) == sizeof(frame));
     assert(memcmp(output, frame, sizeof(output)) == 0);
 
-    uint8_t oversized[PEDAL_TRANSFER_MAX_FRAME_SIZE + 1] = {0};
+    uint8_t oversized[TRANSFER_FRAME_MAX_SEND_PAYLOAD_SIZE + 1] = {0};
     oversized[0] = TRANSFER_FRAME_START;
     memset(oversized + 1, 0x66, sizeof(oversized) - 2);
     oversized[sizeof(oversized) - 1] = TRANSFER_FRAME_END;
@@ -89,7 +89,7 @@ static void test_limits_transfer_frame_to_official_size(void) {
     assert(platform_pedal_link_take_transfer(output, sizeof(output)) == 0);
 }
 
-static void test_resets_transfer_generation_before_transmit(void) {
+static void test_resets_transfer_generation_around_transmit(void) {
     uint8_t output[sizeof(transfer_frame_a)] = {0};
     const uint8_t transmit[] = {TRANSFER_FRAME_START, 0x44, TRANSFER_FRAME_END};
     platform_pedal_link_begin_transfer_receive();
@@ -97,8 +97,18 @@ static void test_resets_transfer_generation_before_transmit(void) {
     assert(platform_pedal_link_send_transfer(transmit, sizeof(transmit)));
     assert(DMA2CNT == sizeof(transmit) - 1);
     assert(IEC1bits.U2RXIE == 1);
+    feed_transfer(transfer_frame_c, sizeof(transfer_frame_c));
+    IFS0bits.DMA1IF = 1;
+    IFS1bits.DMA2IF = 1;
+    U2STAbits.OERR = 1;
     _DMA2Interrupt();
 
+    assert(!platform_pedal_link_transmit_busy());
+    assert(IFS0bits.DMA1IF == 0);
+    assert(IFS1bits.DMA2IF == 0);
+    assert(U2STAbits.OERR == 0);
+    assert(DMA1CNT == TRANSFER_FRAME_MAX_ENCODED_SIZE - 1);
+    assert(IEC1bits.U2RXIE == 1);
     assert(platform_pedal_link_take_transfer(output, sizeof(output)) == 0);
     feed_transfer(transfer_frame_b, sizeof(transfer_frame_b));
     assert(platform_pedal_link_take_transfer(NULL, sizeof(output)) == 0);
@@ -140,7 +150,7 @@ int main(void) {
     test_uart_error_enters_delimiter_recovery();
     test_retains_transfer_burst();
     test_limits_transfer_frame_to_official_size();
-    test_resets_transfer_generation_before_transmit();
+    test_resets_transfer_generation_around_transmit();
     test_stop_receive_clears_generation_and_rearms();
     test_transmit_completion_preserves_stop_state();
     return 0;
