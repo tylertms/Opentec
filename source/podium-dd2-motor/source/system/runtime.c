@@ -36,26 +36,26 @@
  * @brief Identifies motor parameter entries and runtime timing constants.
  */
 enum {
-    MOTOR_PARAMETER_RESET_COMMAND = 3, /**< Reset-command parameter index. */
-    MOTOR_PARAMETER_DIRECTION_COMMAND = 5, /**< Encoder-direction command index. */
-    MOTOR_PARAMETER_CALIBRATION_COMMAND = 6, /**< Encoder-calibration command index. */
-    MOTOR_PARAMETER_CALIBRATION_VERSION = 7, /**< Stored-calibration version index. */
-    MOTOR_PARAMETER_ENCODER_INDEX = 8, /**< Encoder-index status index. */
-    MOTOR_PARAMETER_TORQUE = 16, /**< Measured torque telemetry index. */
-    MOTOR_PARAMETER_UPTIME = 17, /**< Uptime telemetry index. */
-    MOTOR_PARAMETER_MOTOR_TEMPERATURE = 18, /**< Motor-temperature telemetry index. */
-    MOTOR_PARAMETER_DRIVER_TEMPERATURE = 19, /**< Driver-temperature telemetry index. */
-    MOTOR_PARAMETER_DRIVE_CURRENT = 20, /**< Measured drive-current telemetry index. */
-    MOTOR_PARAMETER_STEERING_RANGE = 32, /**< Steering-range setting index. */
-    MOTOR_PARAMETER_OVERALL_GAIN = 33, /**< Overall-gain setting index. */
+    MOTOR_PARAMETER_RESET_COMMAND = 3,         /**< Reset-command parameter index. */
+    MOTOR_PARAMETER_DIRECTION_COMMAND = 5,     /**< Encoder-direction command index. */
+    MOTOR_PARAMETER_CALIBRATION_COMMAND = 6,   /**< Encoder-calibration command index. */
+    MOTOR_PARAMETER_CALIBRATION_VERSION = 7,   /**< Stored-calibration version index. */
+    MOTOR_PARAMETER_ENCODER_INDEX = 8,         /**< Encoder-index status index. */
+    MOTOR_PARAMETER_TORQUE = 16,               /**< Measured torque telemetry index. */
+    MOTOR_PARAMETER_UPTIME = 17,               /**< Uptime telemetry index. */
+    MOTOR_PARAMETER_MOTOR_TEMPERATURE = 18,    /**< Motor-temperature telemetry index. */
+    MOTOR_PARAMETER_DRIVER_TEMPERATURE = 19,   /**< Driver-temperature telemetry index. */
+    MOTOR_PARAMETER_DRIVE_CURRENT = 20,        /**< Measured drive-current telemetry index. */
+    MOTOR_PARAMETER_STEERING_RANGE = 32,       /**< Steering-range setting index. */
+    MOTOR_PARAMETER_OVERALL_GAIN = 33,         /**< Overall-gain setting index. */
     MOTOR_PARAMETER_MINIMUM_CURRENT_MODE = 34, /**< Minimum-current-mode setting index. */
-    MOTOR_PARAMETER_NATURAL_DAMPING = 35, /**< Natural-damping setting index. */
-    MOTOR_PARAMETER_NATURAL_FRICTION = 36, /**< Natural-friction setting index. */
-    MOTOR_PARAMETER_NATURAL_INERTIA = 37, /**< Natural-inertia setting index. */
-    MOTOR_PARAMETER_INTERPOLATION = 38, /**< Force-interpolation setting index. */
-    MOTOR_PARAMETER_FILTER = 39, /**< Force-feedback filter setting index. */
-    MOTOR_PARAMETER_CONSTANT_GAIN = 40, /**< Force-feedback constant-gain setting index. */
-    MOTOR_PARAMETER_WINDOW_GAIN = 41, /**< Force-feedback window-gain setting index. */
+    MOTOR_PARAMETER_NATURAL_DAMPING = 35,      /**< Natural-damping setting index. */
+    MOTOR_PARAMETER_NATURAL_FRICTION = 36,     /**< Natural-friction setting index. */
+    MOTOR_PARAMETER_NATURAL_INERTIA = 37,      /**< Natural-inertia setting index. */
+    MOTOR_PARAMETER_INTERPOLATION = 38,        /**< Force-interpolation setting index. */
+    MOTOR_PARAMETER_FILTER = 39,               /**< Force-feedback filter setting index. */
+    MOTOR_PARAMETER_CONSTANT_GAIN = 40,        /**< Force-feedback constant-gain setting index. */
+    MOTOR_PARAMETER_WINDOW_GAIN = 41,          /**< Force-feedback window-gain setting index. */
     MOTOR_PARAMETER_DIRECTIONAL_GAIN = 42, /**< Force-feedback directional-gain setting index. */
     MOTOR_ENCODER_CALIBRATION_TIMEOUT = 30000U, /**< Maximum encoder-calibration service ticks. */
 };
@@ -64,7 +64,7 @@ enum {
  * @brief Identifies deferred flash-maintenance operations.
  */
 typedef enum {
-    kMotorMaintenanceNone, /**< No flash-maintenance operation is pending. */
+    kMotorMaintenanceNone,             /**< No flash-maintenance operation is pending. */
     kMotorMaintenanceEraseCalibration, /**< Erase the persisted encoder calibration. */
     kMotorMaintenanceStoreCalibration, /**< Store the completed encoder calibration. */
 } MotorMaintenanceRequest;
@@ -75,42 +75,44 @@ typedef enum {
 typedef struct {
     MotorHardwareProfile hardware; /**< Selected board hardware profile. */
     MotorParameterBank parameters; /**< Live and telemetry motor parameters. */
-    MotorProtocolState protocol; /**< Decoded link and force-feedback state. */
-    MotorFocState foc; /**< Field-oriented current controller state. */
-    MotorFocOutput foc_output; /**< Latest FOC duty and measured-current output. */
-    MotorVelocityControlState velocity_control; /**< Encoder-calibration velocity controller state. */
+    MotorProtocolState protocol;   /**< Decoded link and force-feedback state. */
+    MotorFocState foc;             /**< Field-oriented current controller state. */
+    MotorFocOutput foc_output;     /**< Latest FOC duty and measured-current output. */
+    MotorVelocityControlState
+        velocity_control;      /**< Encoder-calibration velocity controller state. */
     MotorAdcSample adc_sample; /**< Latest phase-current and bus-voltage ADC sample. */
-    MotorCurrentCalibrationState current_calibration; /**< Startup current-offset calibration state. */
+    MotorCurrentCalibrationState
+        current_calibration;   /**< Startup current-offset calibration state. */
     MotorEncoderState encoder; /**< Extended encoder position state. */
-    MotorCenterState center; /**< Requested and active center-command state. */
+    MotorCenterState center;   /**< Requested and active center-command state. */
     MotorEncoderCalibrationState encoder_calibration; /**< Encoder correction calibration state. */
-    MotorEncoderDirectionState encoder_direction; /**< Encoder-direction diagnostic state. */
-    MotorMotionState motion; /**< Raw motion estimator state. */
-    MotorMotionFilter position_filter; /**< Position-delta filter state. */
-    MotorMotionFilter velocity_filter; /**< Velocity-delta filter state. */
-    MotorMotionSample motion_sample; /**< Latest filtered motion sample. */
-    MotorServiceTiming timing; /**< Service countdown and cadence state. */
-    MotorAuxiliaryAccumulator auxiliary_accumulator; /**< Auxiliary ADC accumulation state. */
-    MotorAuxiliaryTelemetry auxiliary_telemetry; /**< Latest resolved auxiliary telemetry. */
-    MotorSpiTransferBuffers spi; /**< Persistent SPI transmit and receive buffers. */
+    MotorEncoderDirectionState encoder_direction;     /**< Encoder-direction diagnostic state. */
+    MotorMotionState motion;                          /**< Raw motion estimator state. */
+    MotorMotionFilter position_filter;                /**< Position-delta filter state. */
+    MotorMotionFilter velocity_filter;                /**< Velocity-delta filter state. */
+    MotorMotionSample motion_sample;                  /**< Latest filtered motion sample. */
+    MotorServiceTiming timing;                        /**< Service countdown and cadence state. */
+    MotorAuxiliaryAccumulator auxiliary_accumulator;  /**< Auxiliary ADC accumulation state. */
+    MotorAuxiliaryTelemetry auxiliary_telemetry;      /**< Latest resolved auxiliary telemetry. */
+    MotorSpiTransferBuffers spi;  /**< Persistent SPI transmit and receive buffers. */
     MotorDriveCommand live_drive; /**< Currently applied live drive command. */
     MotorDriveInterpolationState drive_interpolation; /**< Primary-force interpolation state. */
-    MotorDriveFrictionState drive_friction; /**< Natural-friction compensation state. */
-    MotorDriveDeratingState drive_derating; /**< Thermal current-derating state. */
-    MotorDriveOverspeedState drive_overspeed; /**< Overspeed protection state. */
-    GFLIB_CTRL_PI_P_AW_T_A32 derating_controller; /**< Thermal derating PI controller state. */
+    MotorDriveFrictionState drive_friction;           /**< Natural-friction compensation state. */
+    MotorDriveDeratingState drive_derating;           /**< Thermal current-derating state. */
+    MotorDriveOverspeedState drive_overspeed;         /**< Overspeed protection state. */
+    GFLIB_CTRL_PI_P_AW_T_A32 derating_controller;     /**< Thermal derating PI controller state. */
     MotorControlMode mode; /**< Current startup, run, diagnostic, or inactive mode. */
     uint32_t service_tick; /**< Current motor service tick. */
     uint32_t encoder_calibration_deadline; /**< Service tick at which calibration expires. */
-    int16_t electrical_angle; /**< Latest wrapped electrical rotor angle. */
-    int16_t control_current; /**< Current reference used by the ADC control cycle. */
-    int16_t friction_current; /**< Latest natural-friction current compensation. */
-    uint8_t identity; /**< Board identity read during initialization. */
-    bool control_update_pending; /**< True when a deferred control update awaits service. */
+    int16_t electrical_angle;              /**< Latest wrapped electrical rotor angle. */
+    int16_t control_current;               /**< Current reference used by the ADC control cycle. */
+    int16_t friction_current;              /**< Latest natural-friction current compensation. */
+    uint8_t identity;                      /**< Board identity read during initialization. */
+    bool control_update_pending;      /**< True when a deferred control update awaits service. */
     bool current_calibration_started; /**< True after startup current calibration begins. */
-    bool calibration_valid; /**< True when persisted encoder calibration is valid. */
-    bool correction_reverse; /**< Direction selected for encoder correction lookup. */
-    bool encoder_zero_captured; /**< True after the first encoder index establishes zero. */
+    bool calibration_valid;           /**< True when persisted encoder calibration is valid. */
+    bool correction_reverse;          /**< Direction selected for encoder correction lookup. */
+    bool encoder_zero_captured;       /**< True after the first encoder index establishes zero. */
     volatile bool encoder_index_detected; /**< True after an encoder index interrupt. */
     volatile MotorMaintenanceRequest maintenance_request; /**< Pending flash-maintenance request. */
 } MotorRuntime;
@@ -638,19 +640,18 @@ static void motor_runtime_encoder_direction_step(MotorRuntime *runtime) {
 /**
  * @brief Runs one normal motor-control interrupt cycle.
  *
- * The encoder position is refreshed and the normal rotor-angle FOC path consumes the current
- * command most recently published by the main-loop drive service.
+ * Run requests are applied before the encoder position is refreshed. The normal rotor-angle FOC
+ * path then consumes the current command most recently published by the main-loop drive service,
+ * and the startup interlock output is applied after control. Maintenance requests share this
+ * common cycle.
  *
  * @param[in,out] runtime Active motor runtime and run-mode state.
  */
 static void motor_runtime_run_step(MotorRuntime *runtime) {
-    motor_runtime_encoder_position_refresh(runtime);
     motor_runtime_request_apply(runtime);
-    if (runtime->maintenance_request != kMotorMaintenanceNone) {
-        return;
-    }
-    motor_startup_interlock_outputs_apply(false, true);
+    motor_runtime_encoder_position_refresh(runtime);
     motor_runtime_control_cycle(runtime, runtime->control_current, false);
+    motor_startup_interlock_outputs_apply(false, true);
 }
 
 /**

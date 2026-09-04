@@ -32,6 +32,11 @@ static void test_calibration_transitions(void) {
         kMotorControlEncoderDirectionCheck);
 }
 
+static void test_maintenance_request_preserves_run_mode(void) {
+    assert(motor_control_request_apply(
+               kMotorControlRun, kMotorControlRequestEraseEncoderCalibration) == kMotorControlRun);
+}
+
 static void test_request_decode(void) {
     assert(motor_control_request_decode(0x1234aaaaU, 0U) == kMotorControlRequestCalibrateEncoder);
     assert(motor_control_request_decode(0xbbbbU, 0xabcdU) ==
@@ -82,6 +87,7 @@ static void test_current_reference(void) {
 int motor_test_control(void) {
     test_startup_sequence();
     test_calibration_transitions();
+    test_maintenance_request_preserves_run_mode();
     test_request_decode();
     test_control_update_cadence();
     test_startup_ramp();
