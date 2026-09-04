@@ -121,15 +121,17 @@ bool usb_remote_tuning_service_apply(UsbRemoteTuningService *service,
  * @brief Takes the next attached-wheel remote-tuning response.
  *
  * Returns a pending state response before taking the next bounded record response for the selected
- * legacy or extended wheel mode.
+ * legacy or extended wheel mode. State responses remain available during deactivation; retained
+ * record responses require an active remote session.
  *
  * @param[in,out] service Service state containing pending responses and records.
  * @param[in] wheel_mode Current attached-wheel mode.
+ * @param[in] protocol_active Whether the attached-wheel protocol is active.
  * @param[out] response Destination for the response.
  * @return True when a response was taken; otherwise false.
  */
 bool usb_remote_tuning_service_take_response(UsbRemoteTuningService *service, uint8_t wheel_mode,
-                                             RemoteTuningResponse *response);
+                                             bool protocol_active, RemoteTuningResponse *response);
 
 /**
  * @brief Returns the retained intelligent-telemetry-mode page.
@@ -197,18 +199,16 @@ usb_remote_tuning_service_queue_host_controls(UsbRemoteTuningService *service,
 /**
  * @brief Takes a generic attached-device command batch.
  *
- * Serializes route-three records unless extended remote-tuning mode reserves them for its wheel
- * response channel.
+ * Serializes retained route-three records only while the remote session is active.
  *
  * @param[in,out] service Service state containing retained records.
- * @param[in] wheel_mode Current attached-wheel mode.
  * @param[out] output Destination for serialized records.
  * @param[out] length Number of serialized bytes written.
  * @return True when a nonempty batch was taken; otherwise false.
  */
 bool usb_remote_tuning_service_take_forward_batch(
-    UsbRemoteTuningService *service, uint8_t wheel_mode,
-    uint8_t output[USB_REMOTE_TUNING_FORWARD_BATCH_SIZE], uint8_t *length);
+    UsbRemoteTuningService *service, uint8_t output[USB_REMOTE_TUNING_FORWARD_BATCH_SIZE],
+    uint8_t *length);
 
 /**
  * @brief Takes one host telemetry subscription report.

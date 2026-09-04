@@ -2908,17 +2908,18 @@ static void complete_usb_vendor_response(void) {
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 static void service_usb_command_bridge(uint32_t now_ms) {
+    bool wheel_protocol_active =
+        wheel_service_protocol_phase(&wheel_service) == WHEEL_PROTOCOL_ACTIVE;
     uint8_t remote_tuning_controls[REMOTE_TELEMETRY_REPORT_SIZE];
     if (wheel_service_take_remote_tuning_controls(&wheel_service, remote_tuning_controls)) {
-        (void)usb_remote_tuning_service_queue_host_controls(&usb_remote_tuning_service,
-                                                            remote_tuning_controls);
+        usb_remote_tuning_service_queue_host_controls(&usb_remote_tuning_service,
+                                                      remote_tuning_controls);
     }
     if (!wheel_service_remote_tuning_response_pending(&wheel_service) &&
-        usb_remote_tuning_service_take_response(&usb_remote_tuning_service,
-                                                wheel_service_mode(&wheel_service),
-                                                &usb_remote_tuning_response)) {
-        (void)wheel_service_queue_remote_tuning_response(&wheel_service,
-                                                         &usb_remote_tuning_response);
+        usb_remote_tuning_service_take_response(
+            &usb_remote_tuning_service, wheel_service_mode(&wheel_service), wheel_protocol_active,
+            &usb_remote_tuning_response)) {
+        wheel_service_queue_remote_tuning_response(&wheel_service, &usb_remote_tuning_response);
     }
     if (!wheel_service_remote_telemetry_pending(&wheel_service) &&
         usb_remote_tuning_service_take_telemetry_report(&usb_remote_tuning_service,
@@ -3001,10 +3002,9 @@ static void service_usb_command_bridge(uint32_t now_ms) {
     }
     if (wheel_command_forwarder_accepting(&wheel_command_forwarder) &&
         usb_remote_tuning_service_take_forward_batch(
-            &usb_remote_tuning_service, wheel_service_mode(&wheel_service), wheel_command_batch,
-            &wheel_command_batch_length)) {
-        (void)wheel_command_forwarder_queue(&wheel_command_forwarder, wheel_command_batch,
-                                            wheel_command_batch_length);
+            &usb_remote_tuning_service, wheel_command_batch, &wheel_command_batch_length)) {
+        wheel_command_forwarder_queue(&wheel_command_forwarder, wheel_command_batch,
+                                      wheel_command_batch_length);
     }
     wheel_command_forwarder_run(&wheel_command_forwarder, &command_transport);
     (void)service_console_mode_transition();

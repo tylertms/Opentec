@@ -418,6 +418,22 @@ static uint8_t host_report_marker(UsbRemoteTuningHost host) {
 }
 
 /**
+ * @brief Resolves the attached-wheel response link for a wheel mode.
+ *
+ * @param[in] wheel_mode Negotiated attached-wheel mode.
+ * @return Matching response link, or none for an unrelated mode.
+ */
+static RemoteTuningLink remote_tuning_link_for_mode(uint8_t wheel_mode) {
+    if (wheel_mode == WHEEL_MODE_REMOTE_TUNING_LEGACY) {
+        return REMOTE_TUNING_LINK_LEGACY;
+    }
+    if (wheel_mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED) {
+        return REMOTE_TUNING_LINK_EXTENDED;
+    }
+    return REMOTE_TUNING_LINK_NONE;
+}
+
+/**
  * @brief Queues a mode-specific remote-tuning response.
  *
  * Routes the response to the legacy transport in wheel mode 0x0E and the extended transport in
@@ -430,15 +446,10 @@ static uint8_t host_report_marker(UsbRemoteTuningHost host) {
  */
 static void queue_response(UsbRemoteTuningService *service, uint8_t wheel_mode,
                            RemoteTuningResponseCode response, uint8_t value) {
-    if (wheel_mode == WHEEL_MODE_REMOTE_TUNING_LEGACY) {
+    RemoteTuningLink link = remote_tuning_link_for_mode(wheel_mode);
+    if (link != REMOTE_TUNING_LINK_NONE) {
         service->pending_response = (RemoteTuningResponse){
-            .link = REMOTE_TUNING_LINK_LEGACY,
-            .code = response,
-            .value = value,
-        };
-    } else if (wheel_mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED) {
-        service->pending_response = (RemoteTuningResponse){
-            .link = REMOTE_TUNING_LINK_EXTENDED,
+            .link = link,
             .code = response,
             .value = value,
         };
@@ -752,21 +763,22 @@ bool usb_remote_tuning_service_apply(UsbRemoteTuningService *service,
 }
 
 bool usb_remote_tuning_service_take_response(UsbRemoteTuningService *service, uint8_t wheel_mode,
-                                             RemoteTuningResponse *response) {
-    if (service == NULL || response == NULL) {
+                                             bool protocol_active, RemoteTuningResponse *response) {
+    if (service == NULL || response == NULL || !protocol_active) {
+        return false;
+    }
+    RemoteTuningLink link = remote_tuning_link_for_mode(wheel_mode);
+    if (link == REMOTE_TUNING_LINK_NONE) {
         return false;
     }
     if (service->pending_response.code != REMOTE_TUNING_RESPONSE_NONE) {
         *response = service->pending_response;
+        response->link = link;
         service->pending_response = (RemoteTuningResponse){0};
         return true;
     }
-
-    RemoteTuningLink link = REMOTE_TUNING_LINK_NONE;
-    if (wheel_mode == WHEEL_MODE_REMOTE_TUNING_LEGACY) {
-        link = REMOTE_TUNING_LINK_LEGACY;
-    } else if (wheel_mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED) {
-        link = REMOTE_TUNING_LINK_EXTENDED;
+    if (!service->active) {
+        return false;
     }
     return usb_remote_tuning_records_take_response(&service->records, link, response);
 }
@@ -829,10 +841,9 @@ usb_remote_tuning_service_queue_host_controls(UsbRemoteTuningService *service,
 }
 
 bool usb_remote_tuning_service_take_forward_batch(
-    UsbRemoteTuningService *service, uint8_t wheel_mode,
-    uint8_t output[USB_REMOTE_TUNING_FORWARD_BATCH_SIZE], uint8_t *length) {
-    (void)wheel_mode;
-    if (service == NULL) {
+    UsbRemoteTuningService *service, uint8_t output[USB_REMOTE_TUNING_FORWARD_BATCH_SIZE],
+    uint8_t *length) {
+    if (service == NULL || !service->active) {
         return false;
     }
     return usb_remote_tuning_records_take_forward_batch(&service->records, output, length);
