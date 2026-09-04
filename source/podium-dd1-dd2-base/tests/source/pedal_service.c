@@ -786,32 +786,48 @@ static void test_selects_v4_throttle_before_brake_curve(void) {
     assert(service.v4_phase == PEDAL_V4_PHASE_THROTTLE_CURVE);
 }
 
-static void test_queues_zero_v4_tuning_values_in_protocol_order(void) {
+static void test_marks_only_changed_v4_tuning_values(void) {
     PedalService service;
     const PedalV4Tuning tuning = {
+        .brake_force = 50,
+        .clutch_curve = 3,
         .brake_curve = 2,
         .throttle_curve = 5,
     };
     reset_link();
     pedal_service_init(&service);
+    pedal_service_set_v4_tuning(&service, (PedalV4Tuning){0});
+    assert(service.v4_tuning_pending == 0);
+
     pedal_service_set_v4_tuning(&service, tuning);
-    connect_v4(&service);
+    assert(service.v4_tuning_pending == 0x0f);
 
-    pedal_service_run(&service, 6);
-    complete_v4_request(&service, 7, 8);
-    pedal_service_run(&service, 9);
-    pedal_service_run(&service, 10);
+    service.v4_tuning_pending = 0;
+    pedal_service_set_v4_tuning(&service, tuning);
+    assert(service.v4_tuning_pending == 0);
 
-    assert_v4_tuning_request(32, 0);
-    complete_v4_request(&service, 11, 12);
-    pedal_service_run(&service, 13);
-    assert_v4_tuning_request(24, 0);
-    complete_v4_request(&service, 14, 15);
-    pedal_service_run(&service, 16);
-    assert_v4_tuning_request(16, 2);
-    complete_v4_request(&service, 17, 18);
-    pedal_service_run(&service, 19);
-    assert_v4_tuning_request(8, 5);
+    PedalV4Tuning changed = service.v4_tuning;
+    changed.brake_force++;
+    pedal_service_set_v4_tuning(&service, changed);
+    assert(service.v4_tuning_pending == (1u << (PEDAL_V4_TUNING_BRAKE_FORCE - 1u)));
+
+    changed = service.v4_tuning;
+    changed.clutch_curve++;
+    service.v4_tuning_pending = 0;
+    pedal_service_set_v4_tuning(&service, changed);
+    assert(service.v4_tuning_pending == (1u << (PEDAL_V4_TUNING_CLUTCH_CURVE - 1u)));
+
+    changed = service.v4_tuning;
+    changed.brake_curve++;
+    service.v4_tuning_pending = 0;
+    pedal_service_set_v4_tuning(&service, changed);
+    assert(service.v4_tuning_pending == (1u << (PEDAL_V4_TUNING_BRAKE_CURVE - 1u)));
+
+    changed = service.v4_tuning;
+    changed.throttle_curve++;
+    service.v4_tuning_pending = 0;
+    pedal_service_set_v4_tuning(&service, changed);
+    assert(service.v4_tuning_pending == (1u << (PEDAL_V4_TUNING_THROTTLE_CURVE - 1u)));
 }
 
 static void test_v4_tuning_does_not_enter_v3_lifecycle(void) {
@@ -1414,7 +1430,7 @@ int main(void) {
     test_waits_for_complete_v4_status_response();
     test_sends_v4_tuning_in_protocol_order();
     test_selects_v4_throttle_before_brake_curve();
-    test_queues_zero_v4_tuning_values_in_protocol_order();
+    test_marks_only_changed_v4_tuning_values();
     test_v4_tuning_does_not_enter_v3_lifecycle();
     test_queries_and_publishes_v4_pedal_adjustment();
     test_forwards_both_host_adjustment_responses();

@@ -425,16 +425,18 @@ void pedal_service_set_brake_force(PedalService *service, uint8_t force_percent)
 /**
  * @brief Records one changed V4 tuning value for transmission.
  *
- * Stores the requested value and raises the setting's pending bit, including for zero and
- * unchanged values.
+ * Stores the requested value and raises the setting's pending bit only when the value changes.
  *
  * @param[in,out] current Retained value for the setting.
  * @param[in] value Requested value for the setting.
  * @param[in] setting One-based V4 tuning setting identifier.
  * @param[in,out] pending Pending-setting mask to update.
  */
-static void update_v4_tuning_value(uint8_t *current, uint8_t value, uint8_t setting,
+static void update_v4_tuning_value(uint8_t *current, uint8_t value, PedalV4TuningSetting setting,
                                    uint8_t *pending) {
+    if (*current == value) {
+        return;
+    }
     *current = value;
     *pending |= (uint8_t)(1u << (setting - 1));
 }
@@ -442,8 +444,8 @@ static void update_v4_tuning_value(uint8_t *current, uint8_t value, uint8_t sett
 /**
  * @brief Applies the current V4 pedal tuning values.
  *
- * Queues brake force and every pedal curve in the protocol-defined priority order, including
- * values that match the retained configuration.
+ * Records brake force and pedal curves in the protocol-defined priority order when their values
+ * differ from the retained configuration.
  *
  * @param[in,out] service V4 tuning values and pending-setting mask to update.
  * @param[in] tuning Requested brake-force and pedal-curve values.
