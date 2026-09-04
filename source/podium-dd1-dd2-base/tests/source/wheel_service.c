@@ -697,6 +697,32 @@ static void test_keeps_scan_mode_active_without_protocol_timeout(void) {
     assert(request().type_flags == 3);
 }
 
+static void test_requires_active_phase_for_startup_discovery_completion(void) {
+    static const WheelProtocolPhase waiting_phases[] = {
+        WHEEL_PROTOCOL_WAITING,
+        WHEEL_PROTOCOL_SYNCHRONIZING,
+        WHEEL_PROTOCOL_ACKNOWLEDGING,
+        WHEEL_PROTOCOL_SELECTING,
+        WHEEL_PROTOCOL_AUTHENTICATING,
+        WHEEL_PROTOCOL_UNSUPPORTED,
+        WHEEL_PROTOCOL_SCANNING_PRIMARY,
+        WHEEL_PROTOCOL_SCANNING_SECONDARY,
+    };
+    WheelService service;
+    initialize_service(&service);
+
+    service.protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    assert(wheel_service_startup_discovery_complete(&service));
+    service.status_memory_startup_pending = true;
+    assert(wheel_service_startup_discovery_complete(&service));
+
+    for (uint8_t index = 0; index < sizeof(waiting_phases) / sizeof(waiting_phases[0]); index++) {
+        service.protocol.phase = waiting_phases[index];
+        assert(!wheel_service_startup_discovery_complete(&service));
+    }
+    assert(!wheel_service_startup_discovery_complete(NULL));
+}
+
 static void test_defers_next_request_for_shared_serial_work(void) {
     WheelService service;
     received_ready = false;
@@ -1788,6 +1814,7 @@ int main(void) {
     test_restarts_inactive_packet_mode_at_deadline();
     test_ready_packet_refreshes_activity_at_deadline();
     test_keeps_scan_mode_active_without_protocol_timeout();
+    test_requires_active_phase_for_startup_discovery_completion();
     test_defers_next_request_for_shared_serial_work();
     test_forces_and_reports_protocol_exchange();
     test_initializes_rotary_input();

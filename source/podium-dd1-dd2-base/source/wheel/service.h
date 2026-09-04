@@ -1223,4 +1223,15 @@ uint8_t wheel_service_mode(const WheelService *service);
  */
 WheelProtocolPhase wheel_service_protocol_phase(const WheelService *service);
 
+/**
+ * @brief Reports whether startup discovery reached the active protocol phase.
+ *
+ * Command-three scan phases remain inside the startup discovery window until the active protocol
+ * phase is reached or the caller's discovery deadline expires.
+ *
+ * @param[in] service Wheel service to inspect.
+ * @return True when startup discovery can leave its protocol wait; otherwise false.
+ */
+bool wheel_service_startup_discovery_complete(const WheelService *service);
+
 #endif

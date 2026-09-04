@@ -2557,3 +2557,19 @@ uint8_t wheel_service_mode(const WheelService *service) { return service->protoc
 WheelProtocolPhase wheel_service_protocol_phase(const WheelService *service) {
     return service->protocol.phase;
 }
+
+/**
+ * @brief Reports whether startup discovery reached the active protocol phase.
+ *
+ * Startup discovery remains in its protocol wait while command-three scan traffic is active. The
+ * scan tail is serviced only after the discovery deadline or an active protocol transition.
+ *
+ * @param[in] service Wheel service to inspect.
+ * @return True when startup discovery can leave its protocol wait; otherwise false.
+ */
+bool wheel_service_startup_discovery_complete(const WheelService *service) {
+    if (service == NULL) {
+        return false;
+    }
+    return service->protocol.phase == WHEEL_PROTOCOL_ACTIVE;
+}

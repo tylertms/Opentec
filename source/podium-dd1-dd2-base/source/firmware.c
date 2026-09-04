@@ -3223,25 +3223,22 @@ static void run_wheel_startup_status_memory(void) {
  * @brief Discovers the attached wheel before normal USB enumeration.
  *
  * Services wheel protocol and button traffic for up to 500 milliseconds until the protocol is
- * active or selects a scan mode. Mode 0x0A and 0x1C status-memory startup is drained before
- * console identity selection begins. A selected command-three scan then receives the official
- * ten-millisecond finish interval.
+ * active. Command-three scan traffic remains inside this discovery window; if the timeout leaves
+ * scanning active, the scan receives the official ten-millisecond finish interval. Mode 0x0A and
+ * 0x1C status-memory startup is drained only after that discovery and scan-tail work completes.
  */
 static void run_wheel_startup_discovery(void) {
     uint32_t deadline_ms = platform_time_ms() + MOTOR_STARTUP_WHEEL_DISCOVERY_TIMEOUT_MS;
-    WheelProtocolPhase phase = wheel_service_protocol_phase(&wheel_service);
-    while (phase != WHEEL_PROTOCOL_ACTIVE && phase != WHEEL_PROTOCOL_SCANNING_PRIMARY &&
-           phase != WHEEL_PROTOCOL_SCANNING_SECONDARY &&
+    while (!wheel_service_startup_discovery_complete(&wheel_service) &&
            !platform_time_reached(platform_time_ms(), deadline_ms + 1u)) {
         uint32_t now_ms = platform_time_ms();
         serial_service_run(&serial_service, now_ms);
         wheel_service_run(&wheel_service, now_ms, true);
-        run_wheel_startup_status_memory();
         service_motor_link();
         service_profile_save(now_ms);
-        phase = wheel_service_protocol_phase(&wheel_service);
     }
 
+    WheelProtocolPhase phase = wheel_service_protocol_phase(&wheel_service);
     if (phase == WHEEL_PROTOCOL_SCANNING_PRIMARY || phase == WHEEL_PROTOCOL_SCANNING_SECONDARY) {
         deadline_ms = platform_time_ms() + MOTOR_STARTUP_BUTTON_SCAN_FINISH_MS;
         while (!platform_time_reached(platform_time_ms(), deadline_ms)) {
@@ -3251,6 +3248,7 @@ static void run_wheel_startup_discovery(void) {
             service_motor_link();
         }
     }
+    run_wheel_startup_status_memory();
 }
 
 /**
