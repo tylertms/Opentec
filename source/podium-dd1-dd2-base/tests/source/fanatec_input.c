@@ -145,6 +145,27 @@ static void test_official_first_five_mapping_and_axes(void) {
     assert(state.wheel_mode == 0x10);
 }
 
+static void test_legacy_mode_maps_auxiliary_high_nibble(void) {
+    const fanatec_input_source active_source = {
+        .auxiliary_flags = 0xa7,
+        .mode = 0x0e,
+        .protocol_active = true,
+    };
+    fanatec_input_state state = {.accessory = {0, 0x05}};
+
+    fanatec_input_pipeline_map(&state, &active_source);
+    assert(state.accessory[1] == 0xa0);
+
+    const fanatec_input_source inactive_source = {
+        .auxiliary_flags = 0xa7,
+        .mode = 0x0e,
+    };
+    state = (fanatec_input_state){.accessory = {0, 0x05}};
+
+    fanatec_input_pipeline_map(&state, &inactive_source);
+    assert(state.accessory[1] == 0xa5);
+}
+
 static void test_protocol_active_clears_extended_fields(void) {
     const fanatec_input_source source = {
         .rotary_positions = {0x12, 0x34},
@@ -548,6 +569,7 @@ int main(void) {
     test_invalid_command_report_mode();
     test_official_source_history();
     test_official_first_five_mapping_and_axes();
+    test_legacy_mode_maps_auxiliary_high_nibble();
     test_protocol_active_clears_extended_fields();
     test_production_pipeline_first_five_report();
     test_primary_third_button_bank_mapping();

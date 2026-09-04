@@ -315,6 +315,20 @@ static void fanatec_map_adapter_buttons(fanatec_input_state *state,
     }
 }
 
+/**
+ * @brief Copies the caller-supplied auxiliary high nibble into accessory byte one.
+ *
+ * Preserves the destination low nibble while replacing bits four through seven for standard and
+ * legacy native wheel modes.
+ *
+ * @param[in,out] state Native Fanatec output state.
+ * @param[in] auxiliary_flags Caller-supplied auxiliary flags.
+ */
+static void fanatec_map_auxiliary_high_nibble(fanatec_input_state *state, uint8_t auxiliary_flags) {
+    state->accessory[1] =
+        (uint8_t)((state->accessory[1] & 0x0fu) | (auxiliary_flags & 0xf0u));
+}
+
 void fanatec_input_pipeline_map(fanatec_input_state *state, const fanatec_input_source *source) {
     if (state == NULL || source == NULL) {
         return;
@@ -365,13 +379,13 @@ void fanatec_input_pipeline_map(fanatec_input_state *state, const fanatec_input_
             (uint16_t)source->secondary_buttons | ((uint16_t)source->packed_rotary_positions << 8));
         state->accessory[2] = (uint8_t)remapped;
         state->accessory[3] = (uint8_t)(remapped >> 8);
-        state->accessory[1] =
-            (uint8_t)((state->accessory[1] & 0x0fu) | (source->auxiliary_flags & 0xf0u));
+        fanatec_map_auxiliary_high_nibble(state, source->auxiliary_flags);
     } else if (source->mode == 0x0e) {
         state->button_banks[1] =
             fanatec_map_bit(state->button_banks[1], 6, source->secondary_buttons, 6);
         state->button_banks[1] =
             fanatec_map_bit(state->button_banks[1], 7, source->secondary_buttons, 5);
+        fanatec_map_auxiliary_high_nibble(state, source->auxiliary_flags);
         uint16_t remapped = fanatec_remap_reduced_axis_bits(
             (uint16_t)source->secondary_buttons | ((uint16_t)source->packed_rotary_positions << 8));
         state->accessory[2] = (uint8_t)remapped;
