@@ -20,6 +20,19 @@ typedef enum {
 } MotorTelemetryRead;
 
 /**
+ * @brief Transfer phase for the selected motor telemetry read.
+ *
+ * A failed start or terminal transfer enters the error phase for one service pass. That pass rearms
+ * the selected read without starting a replacement transfer; the following pass may queue it when
+ * the shared auxiliary bus is idle.
+ */
+typedef enum {
+    MOTOR_TELEMETRY_TRANSFER_QUEUE = 0, /**< The selected read may be queued. */
+    MOTOR_TELEMETRY_TRANSFER_WAIT = 1,  /**< The selected read is active on the auxiliary bus. */
+    MOTOR_TELEMETRY_TRANSFER_ERROR = 2, /**< The failed read awaits its rearm pass. */
+} MotorTelemetryTransferPhase;
+
+/**
  * @brief Periodic motor telemetry acquisition state.
  *
  * Stores the latest telemetry, selected channel, transfer buffer, poll deadline, and controller
@@ -30,8 +43,8 @@ typedef struct {
     MotorTelemetryRead read;  /**< Channel selected for the current or next transfer. */
     uint8_t data[4];          /**< Buffer for the selected register response. */
     uint32_t next_poll_ms;    /**< Monotonic deadline for the next telemetry pass. */
-    bool extended;        /**< True when extended runtime and accessory registers are available. */
-    bool transfer_active; /**< True while an auxiliary-bus telemetry read is active. */
+    bool extended; /**< Extended runtime and accessory registers are available. */
+    MotorTelemetryTransferPhase transfer_phase; /**< Current queue, wait, or error phase. */
 } MotorTelemetryService;
 
 /**
@@ -49,7 +62,9 @@ void motor_telemetry_service_init(MotorTelemetryService *service, const MotorIde
  * @brief Advances periodic motor telemetry acquisition.
  *
  * Completes an active read, stores successful responses, and starts the next due register read when
- * the shared auxiliary bus is idle.
+ * the shared auxiliary bus is idle. A failed read remains selected while one error phase rearms
+ * it, so the retry starts only after that dedicated pass and a fresh idle-bus check. The failure
+ * path does not advance the channel or change the periodic poll deadline.
  *
  * @param[in,out] service Motor telemetry service state.
  * @param[in] now_ms Current monotonic time in milliseconds.

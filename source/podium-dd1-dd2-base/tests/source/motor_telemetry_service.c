@@ -10,10 +10,16 @@ static uint16_t requested_register;
 static uint8_t *requested_data;
 static uint16_t requested_length;
 static uint8_t start_count;
+static uint8_t clear_count;
+static bool reject_next_start;
 
 bool platform_aux_bus_start_read(uint8_t address, uint16_t register_address, uint8_t *data,
                                  uint16_t length) {
     assert(address == 0x78);
+    if (reject_next_start) {
+        reject_next_start = false;
+        return false;
+    }
     if (bus_status != PLATFORM_AUX_BUS_IDLE) {
         return false;
     }
@@ -28,7 +34,12 @@ bool platform_aux_bus_start_read(uint8_t address, uint16_t register_address, uin
 
 PlatformAuxBusStatus platform_aux_bus_status(void) { return bus_status; }
 
-void platform_aux_bus_clear(void) { bus_status = PLATFORM_AUX_BUS_IDLE; }
+void platform_aux_bus_clear(void) {
+    clear_count++;
+    if (bus_status != PLATFORM_AUX_BUS_BUSY) {
+        bus_status = PLATFORM_AUX_BUS_IDLE;
+    }
+}
 
 static void reset_bus(void) {
     bus_status = PLATFORM_AUX_BUS_IDLE;
@@ -36,6 +47,8 @@ static void reset_bus(void) {
     requested_data = 0;
     requested_length = 0;
     start_count = 0;
+    clear_count = 0;
+    reject_next_start = false;
 }
 
 static void finish_read(const uint8_t *data) {
@@ -160,10 +173,96 @@ static void test_failed_read_does_not_publish_value(void) {
 
     assert(!service.telemetry.motor_temperature_valid);
     assert(start_count == 1);
+    assert(clear_count == 0);
+    assert(service.transfer_phase == MOTOR_TELEMETRY_TRANSFER_ERROR);
+    assert(bus_status == PLATFORM_AUX_BUS_FAILED);
 
     motor_telemetry_service_run(&service, 2);
+    assert(start_count == 1);
+    assert(clear_count == 1);
+    assert(bus_status == PLATFORM_AUX_BUS_IDLE);
+    assert(service.transfer_phase == MOTOR_TELEMETRY_TRANSFER_QUEUE);
+
+    motor_telemetry_service_run(&service, 3);
     assert(start_count == 2);
     assert(requested_register == 0x12);
+}
+
+static void test_failed_start_uses_error_rearm_pass(void) {
+    MotorTelemetryService service;
+    MotorIdentity identity = extended_identity();
+    reset_bus();
+    motor_telemetry_service_init(&service, &identity);
+
+    reject_next_start = true;
+    motor_telemetry_service_run(&service, 0);
+    assert(start_count == 0);
+    assert(clear_count == 0);
+    assert(bus_status == PLATFORM_AUX_BUS_IDLE);
+    assert(service.transfer_phase == MOTOR_TELEMETRY_TRANSFER_ERROR);
+
+    motor_telemetry_service_run(&service, 1);
+    assert(start_count == 0);
+    assert(clear_count == 1);
+    assert(bus_status == PLATFORM_AUX_BUS_IDLE);
+    assert(service.transfer_phase == MOTOR_TELEMETRY_TRANSFER_QUEUE);
+
+    motor_telemetry_service_run(&service, 2);
+    assert(start_count == 1);
+    assert(service.transfer_phase == MOTOR_TELEMETRY_TRANSFER_WAIT);
+}
+
+static void test_waits_for_shared_bus_before_queueing(void) {
+    MotorTelemetryService service;
+    MotorIdentity identity = extended_identity();
+    reset_bus();
+    motor_telemetry_service_init(&service, &identity);
+
+    bus_status = PLATFORM_AUX_BUS_BUSY;
+    motor_telemetry_service_run(&service, 0);
+    assert(start_count == 0);
+    assert(service.transfer_phase == MOTOR_TELEMETRY_TRANSFER_QUEUE);
+
+    bus_status = PLATFORM_AUX_BUS_IDLE;
+    motor_telemetry_service_run(&service, 1);
+    assert(start_count == 1);
+    assert(service.transfer_phase == MOTOR_TELEMETRY_TRANSFER_WAIT);
+}
+
+static void test_preserves_unexpected_idle_status(void) {
+    MotorTelemetryService service;
+    MotorIdentity identity = extended_identity();
+    reset_bus();
+    motor_telemetry_service_init(&service, &identity);
+
+    motor_telemetry_service_run(&service, 0);
+    bus_status = PLATFORM_AUX_BUS_IDLE;
+    motor_telemetry_service_run(&service, 1);
+    assert(start_count == 1);
+    assert(service.transfer_phase == MOTOR_TELEMETRY_TRANSFER_WAIT);
+
+    bus_status = PLATFORM_AUX_BUS_BUSY;
+    motor_telemetry_service_run(&service, 2);
+    assert(start_count == 1);
+    assert(service.transfer_phase == MOTOR_TELEMETRY_TRANSFER_WAIT);
+}
+
+static void test_preserves_other_terminal_status_before_queueing(void) {
+    MotorTelemetryService service;
+    MotorIdentity identity = extended_identity();
+    reset_bus();
+    motor_telemetry_service_init(&service, &identity);
+
+    bus_status = PLATFORM_AUX_BUS_SUCCEEDED;
+    motor_telemetry_service_run(&service, 0);
+    assert(start_count == 0);
+    assert(bus_status == PLATFORM_AUX_BUS_SUCCEEDED);
+    assert(service.transfer_phase == MOTOR_TELEMETRY_TRANSFER_QUEUE);
+
+    bus_status = PLATFORM_AUX_BUS_IDLE;
+    motor_telemetry_service_run(&service, 1);
+    assert(start_count == 1);
+    assert(service.transfer_phase == MOTOR_TELEMETRY_TRANSFER_WAIT);
 }
 
 int main(void) {
@@ -171,5 +270,9 @@ int main(void) {
     test_standard_protocol_skips_extended_values();
     test_extended_protocol_rejects_unavailable_values();
     test_failed_read_does_not_publish_value();
+    test_failed_start_uses_error_rearm_pass();
+    test_waits_for_shared_bus_before_queueing();
+    test_preserves_unexpected_idle_status();
+    test_preserves_other_terminal_status_before_queueing();
     return 0;
 }

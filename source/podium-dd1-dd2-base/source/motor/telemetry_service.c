@@ -32,7 +32,7 @@ void motor_telemetry_service_init(MotorTelemetryService *service, const MotorIde
     service->read = MOTOR_TELEMETRY_READ_MOTOR_TEMPERATURE;
     service->next_poll_ms = 0;
     service->extended = motor_identity_has_extended_parameters(identity);
-    service->transfer_active = false;
+    service->transfer_phase = MOTOR_TELEMETRY_TRANSFER_QUEUE;
 }
 
 /**
@@ -114,42 +114,53 @@ static void start_read(MotorTelemetryService *service) {
         return;
     }
 
-    service->transfer_active =
+    bool started =
         platform_aux_bus_start_read(MOTOR_AUX_BUS_ADDRESS, address, service->data, length);
+    service->transfer_phase = started ? MOTOR_TELEMETRY_TRANSFER_WAIT
+                                      : MOTOR_TELEMETRY_TRANSFER_ERROR;
 }
 
 /**
  * @brief Advances periodic motor telemetry acquisition.
  *
- * Publishes successful reads, retries a failed register on the next service pass, and starts the
- * next due transfer when the shared auxiliary bus is idle.
+ * Publishes successful reads, gives a failed transfer one error rearm pass, and starts the next due
+ * transfer only after a fresh check confirms that the shared auxiliary bus is idle.
  *
  * @param[in,out] service Motor telemetry service state.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 void motor_telemetry_service_run(MotorTelemetryService *service, uint32_t now_ms) {
-    PlatformAuxBusStatus bus_status = platform_aux_bus_status();
-    if (service->transfer_active) {
+    if (service->transfer_phase == MOTOR_TELEMETRY_TRANSFER_ERROR) {
+        service->transfer_phase = MOTOR_TELEMETRY_TRANSFER_QUEUE;
+        platform_aux_bus_clear();
+        return;
+    }
+
+    if (service->transfer_phase == MOTOR_TELEMETRY_TRANSFER_WAIT) {
+        PlatformAuxBusStatus bus_status = platform_aux_bus_status();
         if (bus_status == PLATFORM_AUX_BUS_BUSY) {
             return;
         }
-        bool succeeded = bus_status == PLATFORM_AUX_BUS_SUCCEEDED;
-        if (succeeded) {
+        if (bus_status == PLATFORM_AUX_BUS_SUCCEEDED) {
             store_read(service);
-        }
-        platform_aux_bus_clear();
-        service->transfer_active = false;
-        if (!succeeded) {
+            platform_aux_bus_clear();
+            service->transfer_phase = MOTOR_TELEMETRY_TRANSFER_QUEUE;
+            advance_read(service, now_ms);
+        } else if (bus_status == PLATFORM_AUX_BUS_FAILED) {
+            service->transfer_phase = MOTOR_TELEMETRY_TRANSFER_ERROR;
+            return;
+        } else {
             return;
         }
-        advance_read(service, now_ms);
-        bus_status = PLATFORM_AUX_BUS_IDLE;
     }
 
-    if (bus_status == PLATFORM_AUX_BUS_IDLE &&
-        platform_time_reached(now_ms, service->next_poll_ms)) {
-        start_read(service);
+    if (service->transfer_phase != MOTOR_TELEMETRY_TRANSFER_QUEUE ||
+        !platform_time_reached(now_ms, service->next_poll_ms) ||
+        platform_aux_bus_status() != PLATFORM_AUX_BUS_IDLE) {
+        return;
     }
+
+    start_read(service);
 }
 
 /**
