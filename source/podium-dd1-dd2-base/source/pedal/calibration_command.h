@@ -61,16 +61,17 @@ bool pedal_calibration_command_decode(const UsbOperatingModeCommand *source,
 /**
  * @brief Routes a decoded calibration command to active pedal and auxiliary sources.
  *
- * Produces independent actions for the attached pedals and local auxiliary input according to
- * source availability and the command values.
+ * Produces independent actions for the attached pedals and local auxiliary input according to the
+ * latest source sample and command values.
  *
  * @param[in] command Decoded calibration command.
  * @param[in] pedal_calibration_active True when attached pedals accept calibration controls.
- * @param[in] auxiliary_active True when the local auxiliary input is connected.
+ * @param[in] auxiliary_axis_sample Latest raw local auxiliary-axis ADC sample. Source presence is
+ * probed from this sample for each command invocation.
  * @return Routed pedal and auxiliary actions.
  */
 PedalCalibrationActions pedal_calibration_command_route(const PedalCalibrationCommand *command,
                                                         bool pedal_calibration_active,
-                                                        bool auxiliary_active);
+                                                        uint16_t auxiliary_axis_sample);
 
 #endif

@@ -28,6 +28,16 @@ static void test_detects_the_unfiltered_connection_threshold(void) {
     assert(connected.active);
 }
 
+static void test_reports_current_source_presence_without_changing_state(void) {
+    AuxiliaryAxis axis = initialized_axis(100, 1100);
+
+    (void)auxiliary_axis_update(&axis, 62, AUXILIARY_AXIS_MANUAL_CALIBRATION, 0);
+    assert(axis.active);
+    assert(!auxiliary_axis_source_present(61));
+    assert(auxiliary_axis_source_present(62));
+    assert(axis.active);
+}
+
 static void test_filters_and_scales_the_normalized_sample(void) {
     AuxiliaryAxis axis = initialized_axis(100, 1100);
 
@@ -134,6 +144,7 @@ static void test_reset_restarts_endpoint_learning(void) {
 
 int main(void) {
     test_detects_the_unfiltered_connection_threshold();
+    test_reports_current_source_presence_without_changing_state();
     test_filters_and_scales_the_normalized_sample();
     test_learns_the_minimum_from_ten_samples();
     test_manual_endpoint_captures_apply_margins();

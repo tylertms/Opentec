@@ -4567,7 +4567,7 @@ static void service_usb_output(void) {
                                                     &pedal_calibration_command)) {
             pedal_calibration_actions = pedal_calibration_command_route(
                 &pedal_calibration_command, pedal_service_calibration_active(&pedal_service),
-                auxiliary_axis.active);
+                platform_adc_latest_auxiliary_axis_sample());
             apply_pedal_calibration_actions(&pedal_calibration_actions);
         } else if (pedal_protocol_command_decode(&usb_operating_mode_command,
                                                  &pedal_protocol_command)) {

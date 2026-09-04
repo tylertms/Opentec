@@ -15,6 +15,7 @@ enum {
     ADC_DMA_REQUEST = 13,            /**< DMA request number for ADC conversion results. */
     ADC_DMA_PRIORITY = 2,            /**< ADC DMA interrupt priority. */
     ADC_READY_NONE = 2,              /**< Sentinel indicating that no completed scan is pending. */
+    ADC_AUXILIARY_AXIS_INDEX = 2,    /**< Scan index of the auxiliary-axis input. */
     ADC_PRIMARY_SHIFTER_Y_INDEX = 3, /**< Scan index of the primary shifter longitudinal input. */
     ADC_SECONDARY_SHIFTER_Y_INDEX =
         5, /**< Scan index of the secondary shifter longitudinal input. */
@@ -119,6 +120,19 @@ bool platform_adc_read(AnalogSamples *samples) {
     }
     analog_samples_decode(ready == 0 ? adc_primary : adc_secondary, samples);
     return true;
+}
+
+/**
+ * @brief Reads the newest raw auxiliary-axis ADC sample.
+ *
+ * Selects the DMA buffer recorded by the latest ADC completion interrupt and leaves the pending
+ * foreground decode state untouched.
+ *
+ * @return Raw 12-bit auxiliary-axis ADC sample.
+ */
+uint16_t platform_adc_latest_auxiliary_axis_sample(void) {
+    const volatile uint16_t *scan = adc_latest == 0 ? adc_primary : adc_secondary;
+    return scan[ADC_AUXILIARY_AXIS_INDEX];
 }
 
 /**

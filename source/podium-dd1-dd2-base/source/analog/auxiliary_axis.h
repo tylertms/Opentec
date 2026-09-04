@@ -127,6 +127,17 @@ void auxiliary_axis_reset(AuxiliaryAxis *axis);
 void auxiliary_axis_request_adjustment(AuxiliaryAxis *axis, AuxiliaryAxisAdjustment adjustment);
 
 /**
+ * @brief Reports source presence from one raw auxiliary-axis sample.
+ *
+ * Applies the inverted-signal threshold without filtering or changing auxiliary-axis calibration
+ * state.
+ *
+ * @param[in] adc_sample Raw 12-bit ADC sample.
+ * @return True when the sample indicates a connected local source.
+ */
+bool auxiliary_axis_source_present(uint16_t adc_sample);
+
+/**
  * @brief Samples, calibrates, and scales the local auxiliary-axis input.
  *
  * Detects source presence before filtering, advances the selected calibration mode, and returns the

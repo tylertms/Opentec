@@ -23,6 +23,16 @@ void platform_adc_init(void);
 bool platform_adc_read(AnalogSamples *samples);
 
 /**
+ * @brief Reads the newest raw auxiliary-axis ADC sample.
+ *
+ * Returns the sample from the DMA buffer most recently completed by the ADC, without consuming
+ * the foreground-ready indication used by platform_adc_read().
+ *
+ * @return Raw 12-bit auxiliary-axis ADC sample.
+ */
+uint16_t platform_adc_latest_auxiliary_axis_sample(void);
+
+/**
  * @brief Averages one shifter longitudinal analog input.
  *
  * Accumulates reads from the newest completed scan buffer for the selected primary or secondary

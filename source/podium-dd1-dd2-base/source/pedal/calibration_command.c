@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "analog/auxiliary_axis.h"
 #include "pedal/protocol.h"
 #include "usb/operating_mode_command.h"
 
@@ -75,23 +76,25 @@ bool pedal_calibration_command_decode(const UsbOperatingModeCommand *source,
  *
  * @param[in] command Decoded pedal-calibration command.
  * @param[in] pedal_calibration_active True when attached pedals accept calibration commands.
- * @param[in] auxiliary_active True when the local auxiliary analog source is connected.
+ * @param[in] auxiliary_axis_sample Latest raw local auxiliary-axis ADC sample. Source presence is
+ * probed from this sample for each routed command.
  * @return Independent attached-pedal and local auxiliary actions.
  */
 PedalCalibrationActions pedal_calibration_command_route(const PedalCalibrationCommand *command,
                                                         bool pedal_calibration_active,
-                                                        bool auxiliary_active) {
+                                                        uint16_t auxiliary_axis_sample) {
     PedalCalibrationActions actions = {0};
     if (command == NULL) {
         return actions;
     }
+    bool auxiliary_source_present = auxiliary_axis_source_present(auxiliary_axis_sample);
 
     switch (command->kind) {
     case PEDAL_CALIBRATION_COMMAND_UP:
         if (pedal_calibration_active) {
             actions.pedal_control = PEDAL_V3_CONTROL_UP;
         }
-        if (auxiliary_active) {
+        if (auxiliary_source_present) {
             actions.auxiliary_action = PEDAL_AUXILIARY_CALIBRATION_MAXIMUM;
         }
         break;
@@ -99,7 +102,7 @@ PedalCalibrationActions pedal_calibration_command_route(const PedalCalibrationCo
         if (pedal_calibration_active) {
             actions.pedal_control = PEDAL_V3_CONTROL_DOWN;
         }
-        if (auxiliary_active) {
+        if (auxiliary_source_present) {
             actions.auxiliary_action = PEDAL_AUXILIARY_CALIBRATION_MINIMUM;
         }
         break;
@@ -107,7 +110,7 @@ PedalCalibrationActions pedal_calibration_command_route(const PedalCalibrationCo
         if (pedal_calibration_active) {
             actions.pedal_control = PEDAL_V3_CONTROL_ENABLE;
         }
-        if (auxiliary_active) {
+        if (auxiliary_source_present) {
             actions.auxiliary_action = PEDAL_AUXILIARY_CALIBRATION_RESET;
         }
         break;
@@ -115,12 +118,12 @@ PedalCalibrationActions pedal_calibration_command_route(const PedalCalibrationCo
         if (pedal_calibration_active) {
             actions.pedal_control = PEDAL_V3_CONTROL_DISABLE;
         }
-        if (auxiliary_active) {
+        if (auxiliary_source_present) {
             actions.auxiliary_action = PEDAL_AUXILIARY_CALIBRATION_RESET;
         }
         break;
     case PEDAL_CALIBRATION_COMMAND_INPUT:
-        if (auxiliary_active && command->input[0] == PEDAL_AUXILIARY_INPUT_GROUP &&
+        if (auxiliary_source_present && command->input[0] == PEDAL_AUXILIARY_INPUT_GROUP &&
             command->input[1] == PEDAL_AUXILIARY_INPUT_CHANNEL) {
             if (command->input[2] == 0) {
                 actions.auxiliary_action = PEDAL_AUXILIARY_CALIBRATION_MINIMUM;

@@ -547,6 +547,8 @@ base_tests = {
   'pedal-calibration-command': [
     'source/pedal_calibration_command.c',
     'pedal/calibration_command.c',
+    'analog/auxiliary_axis.c',
+    'analog/axis.c',
   ],
   'pedal-analog': [
     'source/pedal_analog.c',
