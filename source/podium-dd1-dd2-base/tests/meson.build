@@ -928,6 +928,14 @@ base_tests = {
   ],
 }
 
+base_test_python = import('python').find_installation()
+test(
+  'base-startup-power-service-scope',
+  base_test_python,
+  args: [files('source/startup_power_service_scope.py')],
+  suite: ['base', 'firmware'],
+)
+
 if base_is_dspic
   base_tests += {
     'platform-aux-bus': [

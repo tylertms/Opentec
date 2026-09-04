@@ -1021,6 +1021,12 @@ static void apply_profile_save_action(PowerAction action, uint32_t now_ms) {
  *
  * Samples RD9, advances the physical profile-save controller while retained security protection is
  * inactive, and applies any resulting hardware transition.
+ * During startup, the reference samples this controller only during the initial startup pass, the
+ * centering loop, and the timed wheel-discovery loop. The status transaction, scan tail,
+ * status-memory exchange, and retained-console selection remain unsampled until the runtime loop.
+ *
+ * @note The reference call sites are 0x037f3a, 0x03801e, and 0x0380b8. The normal runtime call is
+ * reached through the post-startup loop at 0x0386fe.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -3183,7 +3189,6 @@ static bool run_wheel_startup_status_transaction(void) {
         uint32_t now_ms = platform_time_ms();
         serial_service_run(&serial_service, now_ms);
         service_motor_link();
-        service_profile_save(now_ms);
     }
     bool succeeded = serial_service.status == SERIAL_SERVICE_SUCCEEDED;
     wheel_status_service_run(&wheel_status_service, false);
@@ -3207,7 +3212,6 @@ static void run_wheel_startup_status_memory(void) {
             (void)motor_command_serial_submit(&command_transport, &serial_service, now_ms);
         }
         service_motor_link();
-        service_profile_save(now_ms);
     }
 }
 
@@ -3241,7 +3245,6 @@ static void run_wheel_startup_discovery(void) {
             serial_service_run(&serial_service, now_ms);
             wheel_service_run(&wheel_service, now_ms, true);
             service_motor_link();
-            service_profile_save(now_ms);
         }
     }
 }
@@ -3337,7 +3340,6 @@ static void initialize_startup_console_usb(void) {
             (void)motor_command_serial_submit(&command_transport, &serial_service, now_ms);
         }
         service_motor_link();
-        service_profile_save(now_ms);
         if (retained_xbox_mode && platform_time_reached(platform_time_ms(), xbox_deadline_ms)) {
             cancel_xbox_mode_startup();
             finish_native_mode_startup();
