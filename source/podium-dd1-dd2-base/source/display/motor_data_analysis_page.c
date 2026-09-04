@@ -321,8 +321,8 @@ static void draw_line(DisplayFramebuffer framebuffer, uint16_t start_x, uint16_t
                       uint16_t end_x, uint16_t end_y, uint8_t color) {
     int32_t x = start_x;
     int32_t y = start_y;
-    int32_t delta_x = end_x - start_x;
-    int32_t delta_y = end_y - start_y;
+    int32_t delta_x = (int32_t)end_x - (int32_t)start_x;
+    int32_t delta_y = (int32_t)end_y - (int32_t)start_y;
     int32_t step_x = delta_x < 0 ? -1 : 1;
     int32_t step_y = delta_y < 0 ? -1 : 1;
     if (delta_x < 0) {
@@ -564,12 +564,11 @@ bool display_motor_data_analysis_page_update(DisplayMotorDataAnalysisPage *page,
 /**
  * @brief Renders the motor-data analysis opening title.
  *
- * Clears the previous page and draws the inverted title at the official record coordinates.
+ * Draws the inverted title over the current page at the official record coordinates.
  *
  * @param[in,out] framebuffer Complete local-display framebuffer.
  */
 void display_motor_data_analysis_page_render_title(DisplayFramebuffer framebuffer) {
-    display_framebuffer_clear(framebuffer);
     display_text_draw_with_font(framebuffer, &display_font_10_00c988, "Motor Data Analysis Screen",
                                 0, 12, true);
 }

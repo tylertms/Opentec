@@ -89,7 +89,7 @@ bool display_motor_data_analysis_page_update(DisplayMotorDataAnalysisPage *page,
 /**
  * @brief Renders the motor-analysis title.
  *
- * Clears the framebuffer and draws the inverted title at the reference record coordinates.
+ * Draws the inverted title over the current page at the reference record coordinates.
  *
  * @param[in,out] framebuffer Framebuffer receiving the title pixels.
  */

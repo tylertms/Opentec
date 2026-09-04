@@ -160,16 +160,25 @@ static void preserves_transient_ring_index_for_chart_rotation(void) {
     assert(page.next_sample == 1);
 }
 
+static void renders_rising_chart_line_without_coordinate_wrap(void) {
+    uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE] = {0};
+    DisplayMotorDataAnalysisPage page = {0};
+    display_motor_data_analysis_page_open(&page, 0, BOARD_VARIANT_DD1);
+    page.samples[0] = 0;
+    page.samples[1] = 39;
+    page.next_sample = 119;
+
+    display_motor_data_analysis_page_render(framebuffer, &page);
+
+    assert(pixel(framebuffer, 4, 62) == 4);
+    assert(pixel(framebuffer, 5, 23) == 4);
+}
+
 static void renders_title_chart_telemetry_and_directional_bars(void) {
     uint8_t framebuffer[DISPLAY_FRAMEBUFFER_SIZE] = {0};
     uint8_t positive_framebuffer[DISPLAY_FRAMEBUFFER_SIZE] = {0};
     DisplayMotorDataAnalysisPage page = {0};
     display_motor_data_analysis_page_open(&page, 0, BOARD_VARIANT_DD1);
-
-    display_motor_data_analysis_page_render_title(framebuffer);
-    assert(has_lit_pixel(framebuffer, 0, DISPLAY_FRAMEBUFFER_WIDTH - 1, 12, 18));
-    assert(pixel(framebuffer, 0, 12) != 0);
-    assert(pixel(framebuffer, 0, 22) == 0);
 
     assert(display_motor_data_analysis_page_update(&page, 41, 20000, 42, -5, 1234));
     page.samples[0] = 0;
@@ -195,6 +204,12 @@ static void renders_title_chart_telemetry_and_directional_bars(void) {
     assert(pixel(framebuffer, 140, 25) == 6);
     assert(pixel(framebuffer, 140, 42) == 6);
     assert(pixel(framebuffer, 140, 43) == 10);
+
+    display_motor_data_analysis_page_render_title(framebuffer);
+    assert(has_lit_pixel(framebuffer, 0, DISPLAY_FRAMEBUFFER_WIDTH - 1, 12, 18));
+    assert(pixel(framebuffer, 0, 12) != 0);
+    assert(pixel(framebuffer, 3, 43) == pixel(positive_framebuffer, 3, 43));
+    assert(pixel(framebuffer, 150, 62) == pixel(positive_framebuffer, 150, 62));
 
     assert(display_motor_data_analysis_page_update(&page, 82, -20000, 42, -5, 1234));
     page.torque = -1599;
@@ -228,6 +243,7 @@ int main(void) {
     retains_history_and_peak_when_reopened();
     holds_split_progress_peak_for_five_seconds_then_decays();
     preserves_transient_ring_index_for_chart_rotation();
+    renders_rising_chart_line_without_coordinate_wrap();
     renders_title_chart_telemetry_and_directional_bars();
     return 0;
 }
