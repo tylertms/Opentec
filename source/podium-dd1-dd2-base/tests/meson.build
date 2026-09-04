@@ -936,6 +936,13 @@ test(
   suite: ['base', 'firmware'],
 )
 
+test(
+  'base-wheel-center-persistence-scope',
+  base_test_python,
+  args: [files('source/wheel_center_persistence_scope.py')],
+  suite: ['base', 'firmware'],
+)
+
 if base_is_dspic
   base_tests += {
     'platform-aux-bus': [
