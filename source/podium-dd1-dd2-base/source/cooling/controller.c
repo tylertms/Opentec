@@ -174,27 +174,27 @@ static void update_fan_profile(CoolingController *controller, float temperature,
 }
 
 /**
- * @brief Updates the thermally available force-output scale.
+ * @brief Updates the force availability remaining after thermal limiting.
  *
  * Disables output when inhibited or limited, preserves full output below the managed threshold,
  * and applies the managed temperature ramp above 125 degrees Celsius.
  *
- * @param[in,out] controller Thermal controller state and resulting force scale.
+ * @param[in,out] controller Thermal controller state and resulting force availability.
  * @param[in] temperature Current motor temperature in degrees Celsius.
- * @param[in] managed_motor_present True after a managed motor controller is identified.
- * @param[in] output_inhibited True when force output is inhibited.
+ * @param[in] managed_motor_present True after an attached wheel accessory is identified.
+ * @param[in] output_inhibited True when the attached accessory inhibits force output.
  */
-static void update_force_scale(CoolingController *controller, float temperature,
-                               bool managed_motor_present, bool output_inhibited) {
+static void update_force_availability(CoolingController *controller, float temperature,
+                                      bool managed_motor_present, bool output_inhibited) {
     if (output_inhibited) {
-        controller->force_scale_percent = 0;
+        controller->available_force_percent = 0;
         return;
     }
     if (!managed_motor_present) {
         if (controller->phase <= COOLING_PHASE_FULL) {
-            controller->force_scale_percent = 100;
+            controller->available_force_percent = 100;
         } else if (controller->phase == COOLING_PHASE_STANDARD_LIMIT) {
-            controller->force_scale_percent = 0;
+            controller->available_force_percent = 0;
         }
         return;
     }
@@ -210,14 +210,15 @@ static void update_force_scale(CoolingController *controller, float temperature,
     case COOLING_PHASE_START_MANAGED_WINDOW:
     case COOLING_PHASE_MANAGED_WINDOW:
         if (temperature > 125.0f) {
-            uint8_t next_scale = (uint8_t)((temperature - 125.0f) * -5.0f + 100.0f);
-            controller->force_scale_percent = next_scale <= 69 ? 0 : next_scale;
+            uint8_t next_availability = (uint8_t)((temperature - 125.0f) * -5.0f + 100.0f);
+            controller->available_force_percent =
+                next_availability <= 69 ? 0 : next_availability;
         } else {
-            controller->force_scale_percent = 100;
+            controller->available_force_percent = 100;
         }
         break;
     case COOLING_PHASE_MANAGED_LIMIT:
-        controller->force_scale_percent = 0;
+        controller->available_force_percent = 0;
         break;
     default:
         break;
@@ -242,7 +243,7 @@ void cooling_controller_init(CoolingController *controller, bool dual_fan_mode) 
         .secondary_delay_ms = COOLING_DEFAULT_SECONDARY_DELAY_MS,
         .primary_duty_percent = FAN_STARTUP_DUTY_PERCENT,
         .secondary_duty_percent = FAN_STARTUP_DUTY_PERCENT,
-        .force_scale_percent = 100,
+        .available_force_percent = 100,
         .dual_fan_mode = dual_fan_mode,
     };
 }
@@ -320,22 +321,22 @@ void cooling_controller_set_suspend_request(CoolingController *controller, uint8
 }
 
 /**
- * @brief Applies the service cooling and output override.
+ * @brief Applies the service cooling and force-availability override.
  *
  * A request of 0xFF suspends automatic thermal control and replaces both fan duties and the force
- * availability scale. Each percentage is constrained to one hundred. Other request values resume
- * automatic control without replacing its last outputs.
+ * availability. Each percentage is constrained to one hundred. Other request values resume
+ * automatic control without replacing the retained outputs.
  *
  * @param[in,out] controller Thermal controller state and output percentages.
  * @param[in] request Suspension request byte.
  * @param[in] primary_duty_percent Requested primary fan duty.
  * @param[in] secondary_duty_percent Requested secondary fan duty.
- * @param[in] force_scale_percent Requested available force percentage.
+ * @param[in] available_force_percent Requested force availability.
  */
 void cooling_controller_apply_service_override(CoolingController *controller, uint8_t request,
                                                uint8_t primary_duty_percent,
                                                uint8_t secondary_duty_percent,
-                                               uint8_t force_scale_percent) {
+                                               uint8_t available_force_percent) {
     cooling_controller_set_suspend_request(controller, request);
     if (!controller->automatic_control_suspended) {
         return;
@@ -343,7 +344,8 @@ void cooling_controller_apply_service_override(CoolingController *controller, ui
     controller->primary_duty_percent = primary_duty_percent > 100 ? 100 : primary_duty_percent;
     controller->secondary_duty_percent =
         secondary_duty_percent > 100 ? 100 : secondary_duty_percent;
-    controller->force_scale_percent = force_scale_percent > 100 ? 100 : force_scale_percent;
+    controller->available_force_percent =
+        available_force_percent > 100 ? 100 : available_force_percent;
 }
 
 /**
@@ -354,8 +356,8 @@ void cooling_controller_apply_service_override(CoolingController *controller, ui
  *
  * @param[in,out] controller Thermal controller state and resulting output percentages.
  * @param[in] motor_temperature_c Current motor temperature in degrees Celsius.
- * @param[in] managed_motor_present True after a motor controller is identified.
- * @param[in] output_inhibited True when force output is inhibited.
+ * @param[in] managed_motor_present True after an attached wheel accessory is identified.
+ * @param[in] output_inhibited True when the attached accessory inhibits force output.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 void cooling_controller_update(CoolingController *controller, float motor_temperature_c,
@@ -364,5 +366,6 @@ void cooling_controller_update(CoolingController *controller, float motor_temper
         return;
     }
     update_fan_profile(controller, motor_temperature_c, managed_motor_present, now_ms);
-    update_force_scale(controller, motor_temperature_c, managed_motor_present, output_inhibited);
+    update_force_availability(controller, motor_temperature_c, managed_motor_present,
+                              output_inhibited);
 }

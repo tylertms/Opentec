@@ -29,7 +29,7 @@ typedef enum {
  * @brief Stateful fan and force-availability thermal controller.
  *
  * Stores the current thermal phase, configurable managed-motor offsets, timing deadlines, selected
- * fan duties, force scale, fan topology, and service-override state.
+ * fan duties, force availability, fan topology, and service-override state.
  */
 typedef struct {
     CoolingPhase phase;           /**< Current thermal phase. */
@@ -39,10 +39,10 @@ typedef struct {
     int32_t secondary_delay_ms;   /**< Managed secondary-window delay adjustment in milliseconds. */
     uint32_t primary_deadline_ms; /**< Deadline for the managed primary timing window. */
     uint32_t secondary_deadline_ms; /**< Deadline for the managed secondary timing window. */
-    uint8_t primary_duty_percent;   /**< Selected primary fan duty percentage. */
-    uint8_t secondary_duty_percent; /**< Selected secondary fan duty percentage. */
-    uint8_t force_scale_percent;    /**< Available force-feedback scale percentage. */
-    bool dual_fan_mode;             /**< True when the dual-fan duty map is selected. */
+    uint8_t primary_duty_percent;     /**< Selected primary fan duty percentage. */
+    uint8_t secondary_duty_percent;   /**< Selected secondary fan duty percentage. */
+    uint8_t available_force_percent;  /**< Force percentage remaining after thermal limiting. */
+    bool dual_fan_mode;               /**< True when the dual-fan duty map is selected. */
     bool
         automatic_control_suspended; /**< True while service override suspends automatic control. */
 } CoolingController;
@@ -51,8 +51,8 @@ typedef struct {
  * @brief Initializes the thermal fan and force controller.
  *
  * Starts in the initialization phase with default managed-motor offsets, startup fan duty, full
- * force scale, and the selected standard or dual-fan output map. The phase remains initialization
- * until the first automatic update publishes the first thermal state.
+ * force availability, and the selected standard or dual-fan output map. The phase remains
+ * initialization until the first automatic update publishes the first thermal state.
  *
  * @param[out] controller Thermal controller state to initialize.
  * @param[in] dual_fan_mode True to select the alternate two-output fan duty map.
@@ -114,7 +114,7 @@ void cooling_controller_set_secondary_delay_seconds(CoolingController *controlle
 void cooling_controller_set_suspend_request(CoolingController *controller, uint8_t request);
 
 /**
- * @brief Applies a service fan and force-output override.
+ * @brief Applies a service fan and force-availability override.
  *
  * A UINT8_MAX request suspends automatic control and clamps all supplied percentages to 100; any
  * other request resumes automatic control without changing the retained outputs.
@@ -123,23 +123,23 @@ void cooling_controller_set_suspend_request(CoolingController *controller, uint8
  * @param[in] request Service suspension request byte.
  * @param[in] primary_duty_percent Requested primary fan duty percentage.
  * @param[in] secondary_duty_percent Requested secondary fan duty percentage.
- * @param[in] force_scale_percent Requested force-availability scale percentage.
+ * @param[in] available_force_percent Requested force-availability percentage.
  */
 void cooling_controller_apply_service_override(CoolingController *controller, uint8_t request,
                                                uint8_t primary_duty_percent,
                                                uint8_t secondary_duty_percent,
-                                               uint8_t force_scale_percent);
+                                               uint8_t available_force_percent);
 
 /**
  * @brief Advances automatic fan cooling and force derating.
  *
- * Updates the thermal phase, fan duties, managed timing windows, and force scale unless service
- * suspension is active.
+ * Updates the thermal phase, fan duties, managed timing windows, and force availability unless
+ * service suspension is active.
  *
  * @param[in,out] controller Thermal controller state and resulting outputs.
  * @param[in] motor_temperature_c Current motor temperature in degrees Celsius.
- * @param[in] managed_motor_present True after a managed motor controller is identified.
- * @param[in] output_inhibited True when force output is inhibited.
+ * @param[in] managed_motor_present True after an attached wheel accessory is identified.
+ * @param[in] output_inhibited True when the attached accessory inhibits force output.
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 void cooling_controller_update(CoolingController *controller, float motor_temperature_c,

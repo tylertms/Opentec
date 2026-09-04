@@ -28,9 +28,11 @@ static void test_adc_conversion(void) {
 static void test_sample_window(void) {
     CoolingTemperatureMonitor monitor;
     cooling_temperature_monitor_init(&monitor);
+    assert(monitor.motor_temperature_c == COOLING_DEFAULT_MOTOR_TEMPERATURE_C);
 
     for (uint16_t sample = 1; sample < COOLING_TEMPERATURE_SAMPLE_COUNT; sample++) {
         assert(!cooling_temperature_monitor_add(&monitor, 2048, 2048));
+        assert(monitor.motor_temperature_c == COOLING_DEFAULT_MOTOR_TEMPERATURE_C);
     }
     assert(cooling_temperature_monitor_add(&monitor, 2048, 2048));
     assert(monitor.temperatures_c[0] == 64);
@@ -40,6 +42,17 @@ static void test_sample_window(void) {
     assert(monitor.adc_totals[0] == 0);
     assert(monitor.adc_totals[1] == 0);
     assert(monitor.sample_count == 0);
+
+    cooling_temperature_monitor_latch_motor_temperature(&monitor, 131);
+    assert(monitor.motor_temperature_c == 131);
+    for (uint16_t sample = 1; sample < COOLING_TEMPERATURE_SAMPLE_COUNT; sample++) {
+        assert(!cooling_temperature_monitor_add(&monitor, 1024, 1024));
+        assert(monitor.motor_temperature_c == 131);
+    }
+    assert(cooling_temperature_monitor_add(&monitor, 1024, 1024));
+    assert(monitor.motor_temperature_c == 131);
+    cooling_temperature_monitor_latch_motor_temperature(&monitor, -12);
+    assert(monitor.motor_temperature_c == -12);
 }
 
 int main(void) {

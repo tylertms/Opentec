@@ -113,12 +113,13 @@ uint16_t cooling_resistance_value_from_adc_total(uint32_t adc_total) {
 /**
  * @brief Initializes a thermistor sampling window.
  *
- * Clears both channel accumulators, the sample count, and the published temperatures.
+ * Clears both channel accumulators, the sample count, and the published measurements.
  *
  * @param[out] monitor Temperature sampling state to initialize.
  */
 void cooling_temperature_monitor_init(CoolingTemperatureMonitor *monitor) {
     *monitor = (CoolingTemperatureMonitor){0};
+    monitor->motor_temperature_c = COOLING_DEFAULT_MOTOR_TEMPERATURE_C;
 }
 
 /**
@@ -150,4 +151,17 @@ bool cooling_temperature_monitor_add(CoolingTemperatureMonitor *monitor, uint16_
     }
     monitor->sample_count = 0;
     return true;
+}
+
+/**
+ * @brief Stores one completed attached-wheel motor-temperature measurement.
+ *
+ * The retained value remains unchanged between completed thermistor windows.
+ *
+ * @param[in,out] monitor Temperature monitor state.
+ * @param[in] motor_temperature_c Signed attached-motor temperature in degrees Celsius.
+ */
+void cooling_temperature_monitor_latch_motor_temperature(CoolingTemperatureMonitor *monitor,
+                                                         int16_t motor_temperature_c) {
+    monitor->motor_temperature_c = motor_temperature_c;
 }

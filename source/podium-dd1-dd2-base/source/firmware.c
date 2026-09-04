@@ -580,6 +580,8 @@ static CoolingEffectStrengths cooling_effect_strengths;
 static CoolingTemperatureMonitor cooling_temperature_monitor;
 /** @brief Whether a completed ADC-DMA scan awaits one cooling-controller update. */
 static bool cooling_update_pending;
+/** @brief Whether a completed 1,000-scan window awaits an accessory-temperature latch. */
+static bool cooling_measurement_latch_pending;
 /** @brief Whether fan hardware is ready for Timer 1 tachometer servicing. */
 static bool cooling_initialized;
 /** @brief Fan tachometer state. */
@@ -1265,6 +1267,7 @@ static void initialize_cooling(void) {
     cooling_effect_limit_init(&cooling_effect_limit);
     cooling_temperature_monitor_init(&cooling_temperature_monitor);
     cooling_update_pending = false;
+    cooling_measurement_latch_pending = false;
     fan_speed_rpm[PLATFORM_FAN_PRIMARY] = 0;
     fan_speed_rpm[PLATFORM_FAN_SECONDARY] = 0;
     platform_cooling_init(board_identity.mode_bits != 7);
@@ -1275,9 +1278,10 @@ static void initialize_cooling(void) {
 /**
  * @brief Services fan output, force derating, and thermal effect limits.
  *
- * Uses signed wheel-motor accessory telemetry, or 20 degrees Celsius until telemetry is available,
- * only once for each completed ADC-DMA scan. It advances the cooling controllers and, unless
- * automatic control is suspended, publishes effect-strength changes and applies both fan duties.
+ * Uses the latest signed wheel-motor accessory telemetry latched at each completed 1,000-scan
+ * measurement window. It advances the cooling controllers once for each completed ADC-DMA scan
+ * and, unless automatic control is suspended, publishes resulting effect-strength changes before
+ * applying both fan duties.
  *
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
@@ -1286,14 +1290,20 @@ static void service_cooling(uint32_t now_ms) {
         return;
     }
     cooling_update_pending = false;
-    bool managed_motor_present = motor_probe_identity(&motor_probe) != 0;
-    int16_t motor_temperature_c;
-    float motor_temperature =
-        wheel_accessory_service_motor_temperature(&wheel_accessory_service, &motor_temperature_c)
-            ? (float)motor_temperature_c
-            : (float)COOLING_STARTUP_TEMPERATURE_C;
-    bool output_inhibited =
-        motor_tuning_ready && motor_status_service_output_inhibited(&motor_status_service);
+    if (cooling_measurement_latch_pending) {
+        int16_t motor_temperature_c;
+        if (wheel_accessory_service_motor_temperature(&wheel_accessory_service,
+                                                      &motor_temperature_c)) {
+            cooling_temperature_monitor_latch_motor_temperature(&cooling_temperature_monitor,
+                                                                motor_temperature_c);
+        }
+        cooling_measurement_latch_pending = false;
+    }
+    const WheelAccessory *accessory = wheel_accessory_service_identity(&wheel_accessory_service);
+    bool managed_motor_present =
+        accessory != NULL && accessory->kind != WHEEL_ACCESSORY_DISCONNECTED;
+    float motor_temperature = (float)cooling_temperature_monitor.motor_temperature_c;
+    bool output_inhibited = wheel_accessory_service_output_inhibited(&wheel_accessory_service);
     cooling_controller_update(&cooling_controller, motor_temperature, managed_motor_present,
                               output_inhibited, now_ms);
     if (cooling_controller.automatic_control_suspended) {
@@ -1891,7 +1901,7 @@ static void update_usb_diagnostic_snapshot(uint32_t now_ms) {
         .cooling =
             {
                 .phase = (uint8_t)cooling_controller.phase,
-                .output_duty_percent = cooling_controller.force_scale_percent,
+                .output_duty_percent = cooling_controller.available_force_percent,
                 .primary_delay_seconds = (int8_t)(cooling_controller.primary_delay_ms / 1000),
                 .secondary_delay_seconds = (int8_t)(cooling_controller.secondary_delay_ms / 1000),
                 .low_threshold_offset = cooling_controller.low_threshold_offset,
@@ -3137,7 +3147,7 @@ static void enter_bootloader(void) {
 static void run_motor_startup_centering(void) {
     motor_startup_centering_init(&motor_startup_centering, platform_time_ms());
     ForceOutputScale scale = {
-        .available_percent = cooling_controller.force_scale_percent,
+        .available_percent = cooling_controller.available_force_percent,
         .tuning_strength_percent = tuning_profile->force_feedback_strength,
         .output_strength_percent = motor_tuning_context.strength_percent,
         .secondary_output_disabled = false,
@@ -3811,7 +3821,7 @@ static void service_force_feedback_script(uint32_t now_ms) {
                                            : (uint8_t)rotation_range;
     force_feedback_script_output_config = (ForceFeedbackScriptOutputConfig){
         .soft_stop = {.travel_limit = (int32_t)travel},
-        .available_percent = cooling_controller.force_scale_percent,
+        .available_percent = cooling_controller.available_force_percent,
         .output_strength_percent = motor_tuning_context.strength_percent,
         .automatic_strength = active_automatic_force_feedback_strength(),
         .ramp_percent = motor_tuning_context.ramp_percent,
@@ -5799,9 +5809,11 @@ static void service_analog_input(uint32_t now_ms) {
     }
     bool samples_updated = platform_adc_read(&analog_samples);
     if (samples_updated) {
-        (void)cooling_temperature_monitor_add(&cooling_temperature_monitor,
-                                              analog_samples.primary_thermistor,
-                                              analog_samples.secondary_thermistor);
+        if (cooling_temperature_monitor_add(&cooling_temperature_monitor,
+                                            analog_samples.primary_thermistor,
+                                            analog_samples.secondary_thermistor)) {
+            cooling_measurement_latch_pending = true;
+        }
         cooling_update_pending = true;
         pedal_service_set_analog_samples(&pedal_service, analog_samples.pedal_axes);
         service_auxiliary_axis(now_ms);
@@ -6112,6 +6124,25 @@ static LocalMotorTemperatures read_motor_temperatures(void) {
 }
 
 /**
+ * @brief Reads the latest valid attached-wheel auxiliary temperatures.
+ *
+ * Publishes zero for either channel until its attached-wheel auxiliary telemetry is valid.
+ *
+ * @return Attached-wheel motor and driver temperatures in degrees Celsius.
+ */
+static LocalMotorTemperatures read_attached_wheel_temperatures(void) {
+    LocalMotorTemperatures temperatures = {0};
+    int16_t temperature;
+    if (wheel_accessory_service_motor_temperature(&wheel_accessory_service, &temperature)) {
+        temperatures.motor = temperature;
+    }
+    if (wheel_accessory_service_driver_temperature(&wheel_accessory_service, &temperature)) {
+        temperatures.driver = temperature;
+    }
+    return temperatures;
+}
+
+/**
  * @brief Updates the local display when its active page changes.
  *
  * Gives motor-originated notices priority over the persistent torque-disabled notice,
@@ -6369,7 +6400,7 @@ static void service_local_display(void) {
     bool temperature_data_changed = false;
     if (page == LOCAL_DISPLAY_PAGE_TEMPERATURE_ANALYSIS && page == local_display_page) {
         int16_t temperatures[DISPLAY_TEMPERATURE_ANALYSIS_CHANNEL_COUNT];
-        LocalMotorTemperatures motor_temperatures = read_motor_temperatures();
+        LocalMotorTemperatures motor_temperatures = read_attached_wheel_temperatures();
         temperatures[DISPLAY_TEMPERATURE_ANALYSIS_MOTOR] = motor_temperatures.motor;
         temperatures[DISPLAY_TEMPERATURE_ANALYSIS_DRIVER] = motor_temperatures.driver;
         temperatures[DISPLAY_TEMPERATURE_ANALYSIS_BASE] =
@@ -6378,7 +6409,7 @@ static void service_local_display(void) {
             (int16_t)wheel_status_service_snapshot(&wheel_status_service)->accessory_value;
         temperature_data_changed = display_temperature_analysis_page_update(
             &local_display_temperature_analysis, now_ms, temperatures,
-            fan_speed_rpm[PLATFORM_FAN_SECONDARY], cooling_controller.force_scale_percent);
+            fan_speed_rpm[PLATFORM_FAN_SECONDARY], cooling_controller.available_force_percent);
     }
     bool temperature_analysis_changed =
         page == LOCAL_DISPLAY_PAGE_TEMPERATURE_ANALYSIS && page == local_display_page &&

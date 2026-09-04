@@ -11,15 +11,16 @@
  * window before publishing converted temperatures and the native resistance-report values.
  */
 enum {
-    COOLING_TEMPERATURE_CHANNEL_COUNT = 2,   /**< Number of thermistor channels. */
-    COOLING_TEMPERATURE_SAMPLE_COUNT = 1000, /**< Samples accumulated per conversion window. */
+    COOLING_TEMPERATURE_CHANNEL_COUNT = 2,      /**< Number of thermistor channels. */
+    COOLING_TEMPERATURE_SAMPLE_COUNT = 1000,    /**< Samples accumulated per conversion window. */
+    COOLING_DEFAULT_MOTOR_TEMPERATURE_C = 20, /**< Default attached-motor temperature. */
 };
 
 /**
  * @brief State for two-channel thermistor accumulation and conversion.
  *
- * Accumulators and sample_count represent the current partial window; temperatures_c contains the
- * most recently completed conversion for each channel.
+ * Accumulators and sample_count represent the current partial window; temperatures_c and
+ * motor_temperature_c contain the most recently completed measurements.
  */
 typedef struct {
     uint32_t
@@ -30,12 +31,14 @@ typedef struct {
                                                                       temperatures in degrees Celsius. */
     uint16_t resistance_values[COOLING_TEMPERATURE_CHANNEL_COUNT]; /**< Latest native diagnostic
                                                                        resistance values. */
+    int16_t motor_temperature_c; /**< Latest latched attached-motor temperature. */
 } CoolingTemperatureMonitor;
 
 /**
  * @brief Initializes a thermistor sampling window.
  *
- * Clears both channel accumulators, the sample count, and the published temperatures.
+ * Clears both channel accumulators and the sample count, and initializes the published
+ * temperatures to their startup values.
  *
  * @param[out] monitor Temperature sampling state to initialize.
  */
@@ -54,6 +57,18 @@ void cooling_temperature_monitor_init(CoolingTemperatureMonitor *monitor);
  */
 bool cooling_temperature_monitor_add(CoolingTemperatureMonitor *monitor, uint16_t primary_adc,
                                      uint16_t secondary_adc);
+
+/**
+ * @brief Latches the latest attached-wheel motor temperature.
+ *
+ * The firmware calls this only after a complete 1,000-scan thermistor window so the cooling
+ * controller observes one accessory measurement for each published ADC measurement window.
+ *
+ * @param[in,out] monitor Temperature monitor state.
+ * @param[in] motor_temperature_c Signed attached-motor temperature in degrees Celsius.
+ */
+void cooling_temperature_monitor_latch_motor_temperature(CoolingTemperatureMonitor *monitor,
+                                                         int16_t motor_temperature_c);
 
 /**
  * @brief Converts thermistor resistance through the board calibration curve.
