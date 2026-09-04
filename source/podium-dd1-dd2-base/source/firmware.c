@@ -4095,13 +4095,16 @@ static bool fallback_marks_automatic_profile_pending(UsbFallbackCommandKind kind
  * @brief Applies an active-slot fallback tuning command.
  *
  * The direct tuning interface accepts official setup one only. Values use their command-specific
- * clamps and update transient runtime consumers without changing retained setup storage.
+ * clamps and update transient runtime consumers without changing retained setup storage. A change
+ * to the encoded automatic profile requests the same native response emitted by the official
+ * periodic comparison path.
  * Sensitivity also rescales base-side position effects, while selectors 16 through 20 set the Auto
  * apply-pending marker consumed by the profile service.
  *
  * @param[in] command Decoded fallback tuning command.
  */
 static void apply_fallback_tuning(const UsbFallbackCommand *command) {
+    TuningProfile previous_profile = automatic_tuning_profile;
     uint32_t previous = active_force_feedback_position_scale();
     if (!usb_fallback_tuning_apply(command, base_settings.tuning_profiles.active_slot,
                                    &automatic_tuning_profile)) {
@@ -4126,6 +4129,8 @@ static void apply_fallback_tuning(const UsbFallbackCommand *command) {
     if (fallback_marks_automatic_profile_pending(command->kind)) {
         set_automatic_tuning_apply_pending(true);
     }
+    usb_tuning_profile_service_request_response_if_changed(
+        &usb_tuning_profile_service, &previous_profile, &automatic_tuning_profile);
     local_display_tuning_revision++;
 }
 

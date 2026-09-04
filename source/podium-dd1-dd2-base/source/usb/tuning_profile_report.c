@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "usb/device.h"
 
@@ -165,6 +166,19 @@ void usb_tuning_profile_report_encode(const TuningProfile *profile,
     output[22] = (uint8_t)profile->brake_pedal_curve;
     output[23] = (uint8_t)profile->clutch_pedal_curve;
     output[24] = (uint8_t)profile->throttle_pedal_curve;
+}
+
+bool usb_tuning_profile_report_changed(const TuningProfile *previous,
+                                       const TuningProfile *current) {
+    if (previous == NULL || current == NULL) {
+        return false;
+    }
+
+    uint8_t previous_report[USB_TUNING_PROFILE_VALUE_COUNT];
+    uint8_t current_report[USB_TUNING_PROFILE_VALUE_COUNT];
+    usb_tuning_profile_report_encode(previous, previous_report);
+    usb_tuning_profile_report_encode(current, current_report);
+    return memcmp(previous_report, current_report, sizeof(previous_report)) != 0;
 }
 
 void usb_tuning_profile_report_encode_response(const TuningProfileBank *bank,

@@ -62,6 +62,29 @@ static void test_refresh_and_save_actions(void) {
     assert((result & USB_TUNING_PROFILE_ACTION_SAVE) != 0);
 }
 
+static void test_requests_response_for_encoded_profile_changes(void) {
+    TuningProfile previous;
+    TuningProfile current;
+    UsbTuningProfileService service;
+    tuning_profile_defaults(&previous);
+    current = previous;
+    usb_tuning_profile_service_init(&service);
+    usb_tuning_profile_service_response_sent(&service);
+
+    usb_tuning_profile_service_request_response_if_changed(&service, &previous, &current);
+    assert(!usb_tuning_profile_service_response_pending(&service));
+
+    current.natural_damper++;
+    usb_tuning_profile_service_request_response_if_changed(&service, &previous, &current);
+    assert(usb_tuning_profile_service_response_pending(&service));
+
+    usb_tuning_profile_service_response_sent(&service);
+    usb_tuning_profile_service_request_response_if_changed(NULL, &previous, &current);
+    usb_tuning_profile_service_request_response_if_changed(&service, NULL, &current);
+    usb_tuning_profile_service_request_response_if_changed(&service, &previous, NULL);
+    assert(!usb_tuning_profile_service_response_pending(&service));
+}
+
 static void test_resets_profiles_with_shared_guard(void) {
     uint8_t arguments[62] = {4};
     UsbVendorCommand update = command(arguments);
@@ -220,6 +243,7 @@ static void test_rejects_invalid_and_incomplete_profile_commands(void) {
 int main(void) {
     test_applies_and_selects_profile();
     test_refresh_and_save_actions();
+    test_requests_response_for_encoded_profile_changes();
     test_resets_profiles_with_shared_guard();
     test_rate_limits_mode_changes();
     test_rejects_other_routes();

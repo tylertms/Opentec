@@ -98,6 +98,28 @@ static void test_encodes_profile_response(void) {
     assert(output[2] == 4);
 }
 
+static void test_compares_encoded_profile_changes(void) {
+    TuningProfile previous;
+    TuningProfile current;
+    tuning_profile_defaults(&previous);
+    current = previous;
+
+    assert(!usb_tuning_profile_report_changed(&previous, &current));
+
+    current.force_feedback_strength++;
+    assert(usb_tuning_profile_report_changed(&previous, &current));
+
+    current = previous;
+    previous.automatic_rotation = 1;
+    previous.rotation_degrees = TUNING_ROTATION_MAX_DEGREES;
+    current.automatic_rotation = 1;
+    current.rotation_degrees = 900;
+    assert(!usb_tuning_profile_report_changed(&previous, &current));
+
+    assert(!usb_tuning_profile_report_changed(NULL, &current));
+    assert(!usb_tuning_profile_report_changed(&previous, NULL));
+}
+
 int main(void) {
     test_encodes_factory_profile();
     test_round_trips_manual_rotation();
@@ -105,5 +127,6 @@ int main(void) {
     test_rejects_null_inputs();
     test_ignores_invalid_values();
     test_encodes_profile_response();
+    test_compares_encoded_profile_changes();
     return 0;
 }

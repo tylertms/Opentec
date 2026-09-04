@@ -39,6 +39,18 @@ void usb_tuning_profile_report_encode(const TuningProfile *profile,
                                       uint8_t output[USB_TUNING_PROFILE_VALUE_COUNT]);
 
 /**
+ * @brief Compares two tuning profiles as encoded for the native response.
+ *
+ * Internal differences that encode to the same twenty-five bytes do not count as a report change.
+ *
+ * @param[in] previous Profile before an update.
+ * @param[in] current Profile after an update.
+ * @return True when both profiles are valid and their encoded values differ; otherwise false.
+ */
+bool usb_tuning_profile_report_changed(const TuningProfile *previous,
+                                       const TuningProfile *current);
+
+/**
  * @brief Encodes a complete tuning-profile response.
  *
  * Clears the report, writes the fixed vendor header, combines the one-based active slot with the

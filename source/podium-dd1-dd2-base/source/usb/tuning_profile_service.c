@@ -201,6 +201,14 @@ void usb_tuning_profile_service_response_sent(UsbTuningProfileService *service) 
     service->response_pending = false;
 }
 
+void usb_tuning_profile_service_request_response_if_changed(
+    UsbTuningProfileService *service, const TuningProfile *previous,
+    const TuningProfile *current) {
+    if (service != NULL && usb_tuning_profile_report_changed(previous, current)) {
+        usb_tuning_profile_service_request_response(service);
+    }
+}
+
 /**
  * @brief Requests publication of the active tuning profile.
  *

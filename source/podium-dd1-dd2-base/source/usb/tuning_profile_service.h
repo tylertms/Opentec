@@ -93,6 +93,19 @@ bool usb_tuning_profile_service_response_pending(const UsbTuningProfileService *
 void usb_tuning_profile_service_response_sent(UsbTuningProfileService *service);
 
 /**
+ * @brief Requests a response when an update changes the encoded active profile.
+ *
+ * Equal or invalid profiles leave the response latch unchanged.
+ *
+ * @param[in,out] service Tuning-profile service whose response latch may be set.
+ * @param[in] previous Profile before the update.
+ * @param[in] current Profile after the update.
+ */
+void usb_tuning_profile_service_request_response_if_changed(
+    UsbTuningProfileService *service, const TuningProfile *previous,
+    const TuningProfile *current);
+
+/**
  * @brief Requests publication of the active tuning-profile response.
  *
  * @param[in,out] service Tuning-profile service whose response latch is set.
