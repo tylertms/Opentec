@@ -2286,6 +2286,18 @@ bool wheel_service_extended_report_fields(const WheelService *service) {
 }
 
 /**
+ * @brief Returns retained extended-packet pulse flags.
+ *
+ * Reads the active direct-pulse flags retained by the wheel protocol.
+ *
+ * @param[in] service Attached-wheel service state.
+ * @return Retained extended-packet pulse flags, or zero when unavailable.
+ */
+uint8_t wheel_service_extended_pulse_flags(const WheelService *service) {
+    return service != 0 ? wheel_protocol_extended_pulse_flags(&service->protocol) : 0;
+}
+
+/**
  * @brief Returns the attached-wheel accessory flags.
  *
  * Reads the low-nibble accessory field retained in the normalized request view.

@@ -1393,6 +1393,17 @@ static void test_selects_extended_report_fields(void) {
     assert(!wheel_service_extended_report_fields(&service));
 }
 
+static void test_exposes_extended_pulse_flags(void) {
+    WheelService service;
+    initialize_service(&service);
+
+    assert(wheel_service_extended_pulse_flags(NULL) == 0);
+    assert(wheel_service_extended_pulse_flags(&service) == 0);
+
+    service.protocol.extended_pulse_state.active_flags = 0xc3;
+    assert(wheel_service_extended_pulse_flags(&service) == 0xc3);
+}
+
 static void test_reports_calibration_availability(void) {
     WheelService service;
     initialize_service(&service);
@@ -2154,6 +2165,7 @@ int main(void) {
     test_routes_and_toggles_interface_mode_gate();
     test_rejects_unavailable_multi_position_input();
     test_selects_extended_report_fields();
+    test_exposes_extended_pulse_flags();
     test_reports_calibration_availability();
     test_gates_torque_key_acknowledgement();
     test_reports_tuning_display_support();

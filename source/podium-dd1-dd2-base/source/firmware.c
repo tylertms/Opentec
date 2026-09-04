@@ -5364,6 +5364,7 @@ static void service_usb_input(uint32_t now_ms) {
             .status_flags = usb_input_state.fanatec.status_flags,
             .mode = wheel_mode,
             .axis_limit = usb_input_state.fanatec.axis_limit,
+            .pulse_flags = {wheel_service_extended_pulse_flags(&wheel_service)},
             .protocol_active = true,
             .neutral_shifter_axes = sequential_shifters,
             .calibration_available = wheel_service_calibration_available(&wheel_service),

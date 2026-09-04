@@ -147,6 +147,17 @@ static void test_derives_report_mode_marker(void) {
     assert(!wheel_protocol_report_mode_marker(&protocol));
 }
 
+static void test_exposes_extended_pulse_flags(void) {
+    WheelProtocol protocol;
+    wheel_protocol_init(&protocol);
+
+    assert(wheel_protocol_extended_pulse_flags(NULL) == 0);
+    assert(wheel_protocol_extended_pulse_flags(&protocol) == 0);
+
+    protocol.extended_pulse_state.active_flags = 0xc3;
+    assert(wheel_protocol_extended_pulse_flags(&protocol) == 0xc3);
+}
+
 static void test_reports_axis_capability_for_official_modes(void) {
     WheelProtocol protocol;
     static const uint8_t enabled_modes[] = {0x04, 0x06, 0x0c, 0x0e, 0x0f, 0x13,
@@ -1993,6 +2004,13 @@ static void test_accumulates_extended_interface_pulses(void) {
     request[7] = 0x15;
     mark_ready(request);
 
+    wheel_protocol_set_axis_processing(&protocol, 0, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50, 1);
+    accept_active_request(&protocol, request);
+    assert(wheel_protocol_extended_pulse_flags(&protocol) == 0x15);
+
+    wheel_protocol_init(&protocol);
+    protocol.mode = WHEEL_PACKET_EXTENDED_MODE_STANDARD;
+    protocol.phase = WHEEL_PROTOCOL_ACTIVE;
     wheel_protocol_set_axis_processing(&protocol, 6, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50, 1);
     accept_active_request(&protocol, request);
     wheel_protocol_set_axis_processing(&protocol, 6, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50, 2);
@@ -2180,6 +2198,7 @@ int main(void) {
     test_synchronizes_and_selects_mode();
     test_selects_scan_variants();
     test_derives_report_mode_marker();
+    test_exposes_extended_pulse_flags();
     test_reports_axis_capability_for_official_modes();
     test_selects_authentication_from_wheel_mode();
     test_authentication_mode_set();

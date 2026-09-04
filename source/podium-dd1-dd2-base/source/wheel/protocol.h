@@ -612,6 +612,18 @@ bool wheel_protocol_axis_values(const WheelProtocol *protocol, uint16_t values[2
  * @return True when controls were available; otherwise false.
  */
 bool wheel_protocol_controls(const WheelProtocol *protocol, uint8_t controls[8]);
+
+/**
+ * @brief Returns retained extended-packet pulse flags.
+ *
+ * Exposes the active direct-pulse flags retained by extended packet processing for native input
+ * mapping.
+ *
+ * @param[in] protocol Protocol state to inspect.
+ * @return Retained extended-packet pulse flags, or zero when unavailable.
+ */
+uint8_t wheel_protocol_extended_pulse_flags(const WheelProtocol *protocol);
+
 /**
  * @brief Reads the queued primary motion direction.
  *

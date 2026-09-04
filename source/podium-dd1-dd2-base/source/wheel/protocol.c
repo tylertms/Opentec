@@ -2173,6 +2173,18 @@ bool wheel_protocol_controls(const WheelProtocol *protocol, uint8_t controls[8])
 }
 
 /**
+ * @brief Returns retained extended-packet pulse flags.
+ *
+ * Reads the active direct-pulse flags retained while processing extended packet input.
+ *
+ * @param[in] protocol Attached-wheel protocol state.
+ * @return Retained extended-packet pulse flags, or zero when unavailable.
+ */
+uint8_t wheel_protocol_extended_pulse_flags(const WheelProtocol *protocol) {
+    return protocol != 0 ? protocol->extended_pulse_state.active_flags : 0;
+}
+
+/**
  * @brief Returns the queued attached-wheel motion direction.
  *
  * Inspects the protocol's primary wrapping motion counter without consuming it.

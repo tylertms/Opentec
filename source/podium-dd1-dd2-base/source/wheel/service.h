@@ -996,6 +996,17 @@ bool wheel_service_controls(const WheelService *service, uint8_t controls[8]);
 bool wheel_service_extended_report_fields(const WheelService *service);
 
 /**
+ * @brief Returns retained extended-packet pulse flags.
+ *
+ * Exposes active direct-pulse flags retained by the wheel protocol for native Fanatec input
+ * mapping.
+ *
+ * @param[in] service Wheel service to inspect.
+ * @return Retained extended-packet pulse flags, or zero when unavailable.
+ */
+uint8_t wheel_service_extended_pulse_flags(const WheelService *service);
+
+/**
  * @brief Returns attached-wheel accessory flags.
  *
  * Reads the low-nibble accessory field from the current normalized request view.
