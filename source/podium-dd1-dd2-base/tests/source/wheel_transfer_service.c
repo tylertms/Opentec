@@ -86,6 +86,9 @@ static void begin_read(WheelTransferService *service, CommandTransport *transpor
     static const uint8_t accepted[] = {1};
     submit_and_respond(transport, accepted, sizeof(accepted));
     wheel_transfer_service_run(service, transport);
+    assert(service->phase == WHEEL_TRANSFER_PHASE_READ_READY);
+    assert(!command_transport_request(transport, &message, &length));
+    wheel_transfer_service_run(service, transport);
     assert(command_transport_request(transport, &message, &length));
     assert(length == 5);
     assert(message[0] == 2);
@@ -93,6 +96,31 @@ static void begin_read(WheelTransferService *service, CommandTransport *transpor
     assert(message[2] == 0);
     assert(message[3] == WHEEL_TRANSFER_PAYLOAD_SIZE);
     assert(message[4] == 0);
+}
+
+static void test_defers_command_read_until_following_pass(void) {
+    WheelTransferService service;
+    CommandTransport transport;
+    const uint8_t *message;
+    uint16_t length;
+    static const uint8_t accepted[] = {1};
+
+    wheel_transfer_service_init(&service);
+    command_transport_init(&transport);
+    assert(wheel_transfer_service_start(&service, WHEEL_TRANSFER_READ));
+    wheel_transfer_service_run(&service, &transport);
+    assert(command_transport_request(&transport, &message, &length));
+    submit_and_respond(&transport, accepted, sizeof(accepted));
+
+    wheel_transfer_service_run(&service, &transport);
+    assert(service.phase == WHEEL_TRANSFER_PHASE_READ_READY);
+    assert(transport.owner == 0x30);
+    assert(transport.phase == COMMAND_TRANSPORT_IDLE);
+    assert(!command_transport_request(&transport, &message, &length));
+
+    wheel_transfer_service_run(&service, &transport);
+    assert(service.phase == WHEEL_TRANSFER_PHASE_READ_PENDING);
+    assert(command_transport_request(&transport, &message, &length));
 }
 
 static void test_completes_valid_command_read_channel(void) {
@@ -144,6 +172,7 @@ static void test_maps_command_direction_failures(void) {
     wheel_transfer_service_run(&service, &transport);
     static const uint8_t accepted[] = {1};
     submit_and_respond(&transport, accepted, sizeof(accepted));
+    wheel_transfer_service_run(&service, &transport);
     wheel_transfer_service_run(&service, &transport);
     submit_and_respond(&transport, rejected, sizeof(rejected));
     wheel_transfer_service_run(&service, &transport);
@@ -301,6 +330,7 @@ int main(void) {
     test_completes_valid_command_read_channel();
     test_rejects_invalid_response_crc();
     test_maps_command_direction_failures();
+    test_defers_command_read_until_following_pass();
     test_routes_write_channel_over_auxiliary_bus();
     test_preserves_another_auxiliary_owner_result();
     test_reports_auxiliary_write_and_read_failures();

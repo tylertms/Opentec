@@ -153,7 +153,8 @@ bool wheel_transfer_service_start(WheelTransferService *service, WheelTransferRe
  *
  * Writes the fixed ten-byte probe at offset zero and reads ten response bytes from offset zero.
  * Request 0x31 uses the shared auxiliary bus; request 0x30 claims the matching command owner.
- * Publishes the CRC or transport result when the exchange completes.
+ * A completed command write enters the read-ready phase, and the following service pass queues its
+ * response read. Publishes the CRC or transport result when the exchange completes.
  *
  * @param[in,out] service Wheel-transfer service to advance.
  * @param[in,out] transport Shared command transport used by the command-backed handshake.
@@ -236,6 +237,10 @@ void wheel_transfer_service_run(WheelTransferService *service, CommandTransport 
         return;
     }
     if (service->phase == WHEEL_TRANSFER_PHASE_WRITE_PENDING) {
+        service->phase = WHEEL_TRANSFER_PHASE_READ_READY;
+        return;
+    }
+    if (service->phase == WHEEL_TRANSFER_PHASE_READ_READY) {
         result = command_transport_queue_read(transport, owner, 0, service->response,
                                               sizeof(service->response));
         if (result == COMMAND_TRANSPORT_COMPLETE) {
