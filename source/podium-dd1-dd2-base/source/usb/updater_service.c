@@ -50,6 +50,19 @@ static bool auxiliary_route(UsbRuntimeMode mode) {
 static bool direct_route(UsbRuntimeMode mode) { return mode == USB_RUNTIME_MODE_STATUS_BRIDGE; }
 
 /**
+ * @brief Reports whether a mode can start the foreground runtime bridge.
+ *
+ * Excludes the internal protocol-recovery route, which is selected only by the bridge state
+ * machine after a protocol transfer failure.
+ *
+ * @param[in] mode Requested runtime mode.
+ * @return True for externally requested runtime bridge modes; otherwise false.
+ */
+static bool startable_runtime_bridge_mode(UsbRuntimeMode mode) {
+    return mode >= USB_RUNTIME_MODE_AUXILIARY && mode <= USB_RUNTIME_MODE_PROTOCOL_BRIDGE;
+}
+
+/**
  * @brief Selects the shared command target for an updater runtime mode.
  *
  * Routes protocol bridge mode to target 0x12 and USB bridge and protocol recovery modes to target
@@ -281,6 +294,24 @@ bool usb_updater_service_select_mode(UsbUpdaterService *service, UsbRuntimeMode 
     } else {
         wheel_updater_command_service_init(&service->route.command, service->command_transport);
     }
+    return true;
+}
+
+bool usb_updater_service_start_runtime_bridge(UsbUpdaterService *service, RuntimeBridge *bridge,
+                                              UsbRuntimeMode mode, uint16_t *actions) {
+    if (service == NULL || bridge == NULL || actions == NULL ||
+        bridge->phase != RUNTIME_BRIDGE_IDLE || !startable_runtime_bridge_mode(mode)) {
+        return false;
+    }
+
+    RuntimeBridge candidate = *bridge;
+    uint16_t candidate_actions = runtime_bridge_start(&candidate, mode);
+    if (candidate.phase == RUNTIME_BRIDGE_IDLE || !usb_updater_service_select_mode(service, mode)) {
+        return false;
+    }
+
+    *bridge = candidate;
+    *actions = candidate_actions;
     return true;
 }
 

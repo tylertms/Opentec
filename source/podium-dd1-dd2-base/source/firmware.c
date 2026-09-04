@@ -490,8 +490,6 @@ static UsbOperatingModeCommand usb_operating_mode_command;
 static RuntimeBridge runtime_bridge;
 /** @brief USB updater service state. */
 static UsbUpdaterService usb_updater_service;
-/** @brief USB runtime-mode transition state. */
-static UsbRuntimeModeTransition usb_runtime_transition;
 /** @brief Runtime bridge transition inputs. */
 static RuntimeBridgeInput runtime_bridge_input;
 /** @brief USB updater service inputs. */
@@ -3510,42 +3508,39 @@ static void initialize_startup_display(void) {
  * @brief Starts an accepted runtime transition.
  *
  * Handles reset requests immediately. For updater modes, decodes the route against the active
- * host, wheel, and motor modes, persists settings when required, initializes the selected service,
- * disables force output, and applies the transition's initial action.
+ * host, wheel, and motor modes, atomically selects the updater route and runtime bridge transition,
+ * persists settings when required, disables force output, and applies the initial action.
  *
  * @param[in] command Decoded operating-mode command.
  * @return True when an accepted runtime transition started; otherwise false.
  */
 static bool start_runtime_bridge(const UsbOperatingModeCommand *command) {
     const WheelAccessory *accessory = wheel_accessory_service_identity(&wheel_accessory_service);
+    UsbRuntimeModeTransition transition;
     if (!usb_operating_mode_command_decode_runtime(
             command, (uint8_t)usb_device_operating_mode(), wheel_service_mode(&wheel_service),
-            accessory != 0 ? (uint8_t)accessory->kind : 0, &usb_runtime_transition)) {
+            accessory != 0 ? (uint8_t)accessory->kind : 0, &transition)) {
         return false;
     }
-    if (usb_runtime_transition.mode == USB_RUNTIME_MODE_RESET) {
+    if (transition.mode == USB_RUNTIME_MODE_RESET) {
         enter_bootloader();
         return true;
     }
-    if ((usb_runtime_transition.mode != USB_RUNTIME_MODE_AUXILIARY &&
-         usb_runtime_transition.mode != USB_RUNTIME_MODE_AUXILIARY_RECOVERY &&
-         usb_runtime_transition.mode != USB_RUNTIME_MODE_STATUS_BRIDGE &&
-         usb_runtime_transition.mode != USB_RUNTIME_MODE_USB_BRIDGE &&
-         usb_runtime_transition.mode != USB_RUNTIME_MODE_PROTOCOL_BRIDGE) ||
-        !usb_updater_service_select_mode(&usb_updater_service, usb_runtime_transition.mode)) {
+    uint16_t actions;
+    if (!usb_updater_service_start_runtime_bridge(&usb_updater_service, &runtime_bridge,
+                                                  transition.mode, &actions)) {
         return false;
     }
-    if (usb_runtime_transition.save_settings) {
+    if (transition.save_settings) {
         save_base_settings();
     }
-    if (usb_runtime_transition.mode == USB_RUNTIME_MODE_USB_BRIDGE) {
+    if (transition.mode == USB_RUNTIME_MODE_USB_BRIDGE) {
         wheel_usb_bridge_gate_init(&wheel_usb_bridge_gate);
-        (void)wheel_service_take_protocol_exchange_completed(&wheel_service);
+        wheel_service_take_protocol_exchange_completed(&wheel_service);
     }
     force_output_enabled = false;
     motor_output_report = (ForceOutputReport){0};
-    apply_runtime_bridge_actions(
-        runtime_bridge_start(&runtime_bridge, usb_runtime_transition.mode));
+    apply_runtime_bridge_actions(actions);
     return true;
 }
 
@@ -3563,9 +3558,9 @@ static bool start_wheel_selection_recovery(void) {
         !usb_updater_service_select_mode(&usb_updater_service, USB_RUNTIME_MODE_USB_BRIDGE)) {
         return false;
     }
-    (void)wheel_service_take_bridge_recovery(&wheel_service);
+    wheel_service_take_bridge_recovery(&wheel_service);
     wheel_usb_bridge_gate_init(&wheel_usb_bridge_gate);
-    (void)wheel_service_take_protocol_exchange_completed(&wheel_service);
+    wheel_service_take_protocol_exchange_completed(&wheel_service);
     force_output_enabled = false;
     motor_output_report = (ForceOutputReport){0};
     apply_runtime_bridge_actions(

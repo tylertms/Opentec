@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "board/identity.h"
+#include "system/runtime_bridge.h"
 #include "transfer/command.h"
 #include "usb/device.h"
 #include "usb/operating_mode_command.h"
@@ -82,6 +83,21 @@ void usb_updater_service_init(UsbUpdaterService *service, CommandTransport *tran
  * @return `true` when the route was selected; otherwise `false`.
  */
 bool usb_updater_service_select_mode(UsbUpdaterService *service, UsbRuntimeMode mode);
+
+/**
+ * @brief Starts an updater-backed runtime bridge transition atomically.
+ *
+ * Stages the runtime bridge transition before selecting its updater route. A busy bridge or a
+ * route that cannot be selected leaves both state objects and the action result unchanged.
+ *
+ * @param[in,out] service Updater service receiving the selected route.
+ * @param[in,out] bridge Runtime bridge accepting the transition.
+ * @param[in] mode Requested updater runtime mode.
+ * @param[out] actions Initial runtime bridge actions for the owning services.
+ * @return `true` when both the route and transition were accepted; otherwise `false`.
+ */
+bool usb_updater_service_start_runtime_bridge(UsbUpdaterService *service, RuntimeBridge *bridge,
+                                              UsbRuntimeMode mode, uint16_t *actions);
 
 /**
  * @brief Selects auxiliary updater recovery after startup discovery fails.

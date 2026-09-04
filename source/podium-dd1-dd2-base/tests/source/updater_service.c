@@ -53,6 +53,8 @@ PlatformAuxBusStatus platform_aux_bus_status(void) { return aux_bus_status; }
 
 void platform_aux_bus_clear(void) { aux_bus_status = PLATFORM_AUX_BUS_IDLE; }
 
+void platform_aux_bus_cancel(void) { aux_bus_status = PLATFORM_AUX_BUS_IDLE; }
+
 bool usb_device_take_updater_packet(UsbDeviceUpdaterPacket *packet) {
     if (!host_packet_ready || packet == NULL) {
         return false;
@@ -144,6 +146,64 @@ static void test_selects_supported_routes(void) {
     assert(usb_updater_service_select_mode(&service, USB_RUNTIME_MODE_AUXILIARY));
     assert(usb_updater_service_select_mode(&service, USB_RUNTIME_MODE_STATUS_BRIDGE));
     assert(!usb_updater_service_select_mode(&service, USB_RUNTIME_MODE_USB_BRIDGE));
+}
+
+static void test_rejects_busy_runtime_bridge_without_side_effects(void) {
+    UsbUpdaterService service;
+    CommandTransport transport;
+    RuntimeBridge bridge;
+    reset_fakes();
+    command_transport_init(&transport);
+    usb_updater_service_init(&service, &transport);
+    runtime_bridge_init(&bridge);
+
+    uint16_t actions;
+    assert(usb_updater_service_start_runtime_bridge(&service, &bridge,
+                                                    USB_RUNTIME_MODE_STATUS_BRIDGE, &actions));
+    UsbUpdaterService service_before = service;
+    RuntimeBridge bridge_before = bridge;
+    actions = UINT16_MAX;
+
+    assert(!usb_updater_service_start_runtime_bridge(&service, &bridge, USB_RUNTIME_MODE_USB_BRIDGE,
+                                                     &actions));
+    assert(actions == UINT16_MAX);
+    assert(memcmp(&service, &service_before, sizeof(service)) == 0);
+    assert(memcmp(&bridge, &bridge_before, sizeof(bridge)) == 0);
+}
+
+static void test_accepts_zero_action_usb_bridge_start(void) {
+    UsbUpdaterService service;
+    CommandTransport transport;
+    RuntimeBridge bridge;
+    reset_fakes();
+    command_transport_init(&transport);
+    usb_updater_service_init(&service, &transport);
+    runtime_bridge_init(&bridge);
+
+    uint16_t actions = UINT16_MAX;
+    assert(usb_updater_service_start_runtime_bridge(&service, &bridge, USB_RUNTIME_MODE_USB_BRIDGE,
+                                                    &actions));
+    assert(actions == RUNTIME_BRIDGE_ACTION_NONE);
+    assert(service.runtime_mode == USB_RUNTIME_MODE_USB_BRIDGE);
+    assert(bridge.mode == USB_RUNTIME_MODE_USB_BRIDGE);
+    assert(bridge.phase == RUNTIME_BRIDGE_WAIT_USB_READY);
+}
+
+static void test_rejects_unavailable_route_without_bridge_side_effects(void) {
+    UsbUpdaterService service;
+    RuntimeBridge bridge;
+    reset_fakes();
+    usb_updater_service_init(&service, NULL);
+    runtime_bridge_init(&bridge);
+
+    UsbUpdaterService service_before = service;
+    RuntimeBridge bridge_before = bridge;
+    uint16_t actions = UINT16_MAX;
+    assert(!usb_updater_service_start_runtime_bridge(&service, &bridge, USB_RUNTIME_MODE_USB_BRIDGE,
+                                                     &actions));
+    assert(actions == UINT16_MAX);
+    assert(memcmp(&service, &service_before, sizeof(service)) == 0);
+    assert(memcmp(&bridge, &bridge_before, sizeof(bridge)) == 0);
 }
 
 static void test_services_device_information_on_strict_cadence(void) {
@@ -453,6 +513,9 @@ static void test_routes_probe_to_protocol_recovery_target(void) {
 
 int main(void) {
     test_selects_supported_routes();
+    test_rejects_busy_runtime_bridge_without_side_effects();
+    test_accepts_zero_action_usb_bridge_start();
+    test_rejects_unavailable_route_without_bridge_side_effects();
     test_services_device_information_on_strict_cadence();
     test_routes_auxiliary_handshake_and_probe();
     test_routes_startup_recovery_without_handshake();
