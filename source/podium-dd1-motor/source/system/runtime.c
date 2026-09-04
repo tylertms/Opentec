@@ -573,7 +573,7 @@ static void motor_runtime_encoder_calibration_step(MotorRuntime *runtime) {
         motor_encoder_calibration_step(&runtime->encoder_calibration, &input);
 
     if (step.reset_controller) {
-        motor_velocity_control_reset(&runtime->velocity_control);
+        motor_velocity_control_controller_reset(&runtime->velocity_control);
     }
     motor_velocity_control_target_set(&runtime->velocity_control, step.target_velocity);
     if (step.clear_revolution) {

@@ -56,10 +56,10 @@ void motor_velocity_control_reset(MotorVelocityControlState *state) {
 }
 
 /**
- * @brief Clears the calibration velocity PI controller history.
+ * @brief Clears only the calibration velocity PI controller history.
  *
- * Integral accumulation and previous error return to zero while the published limiter flag is
- * preserved.
+ * The integral accumulator and previous input error return to zero. The velocity target, ramp,
+ * output, controller gains and limits, and published limiter flag are preserved.
  *
  * @param[in,out] state Velocity controller containing the PI state.
  */

@@ -61,15 +61,39 @@ static void test_reset_clears_runtime_history(void) {
     assert(state.controller.bLimFlag == 0U);
 }
 
-static void test_controller_reset_preserves_limiter_state(void) {
+static void test_controller_reset_preserves_unmodified_state(void) {
     MotorVelocityControlState state;
     motor_velocity_control_initialize(&state, INT16_MAX);
+    state.controller.a32PGain = INT32_C(0x13579bdf);
+    state.controller.a32IGain = INT32_C(0x02468ace);
+    state.controller.f16UpperLim = 1234;
+    state.controller.f16LowerLim = -2345;
+    state.target_velocity = 123;
+    state.target_ramp.f32RampUp = INT32_C(0x10203040);
+    state.target_ramp.f32RampDown = INT32_C(0x50607080);
+    state.target_ramp.f32State = INT32_C(0x12345678);
+    state.ramped_velocity = 234;
+    state.velocity_error = -345;
+    state.current_reference = 456;
+    state.stop_integrator = 1U;
     state.controller.f32IAccK_1 = INT32_C(0x23456789);
     state.controller.f16InErrK_1 = -567;
     state.controller.bLimFlag = 1U;
 
     motor_velocity_control_controller_reset(&state);
 
+    assert(state.controller.a32PGain == INT32_C(0x13579bdf));
+    assert(state.controller.a32IGain == INT32_C(0x02468ace));
+    assert(state.controller.f16UpperLim == 1234);
+    assert(state.controller.f16LowerLim == -2345);
+    assert(state.target_velocity == 123);
+    assert(state.target_ramp.f32RampUp == INT32_C(0x10203040));
+    assert(state.target_ramp.f32RampDown == INT32_C(0x50607080));
+    assert(state.target_ramp.f32State == INT32_C(0x12345678));
+    assert(state.ramped_velocity == 234);
+    assert(state.velocity_error == -345);
+    assert(state.current_reference == 456);
+    assert(state.stop_integrator == 1U);
     assert(state.controller.f32IAccK_1 == 0);
     assert(state.controller.f16InErrK_1 == 0);
     assert(state.controller.bLimFlag == 1U);
@@ -80,6 +104,6 @@ int motor_test_velocity_control(void) {
     test_velocity_limiter_stops_integration();
     test_saturated_absolute_gate();
     test_reset_clears_runtime_history();
-    test_controller_reset_preserves_limiter_state();
+    test_controller_reset_preserves_unmodified_state();
     return 0;
 }

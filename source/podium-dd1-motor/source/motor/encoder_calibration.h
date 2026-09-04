@@ -51,7 +51,7 @@ typedef struct {
 typedef struct {
     MotorEncoderCalibrationResult result; /**< Calibration result. */
     int16_t target_velocity; /**< Velocity target for the calibration controller. */
-    bool reset_controller; /**< True when the velocity controller must be reset. */
+    bool reset_controller; /**< True when velocity PI integral and previous-error history reset. */
     bool arm_revolution; /**< True when revolution completion tracking must be armed. */
     bool clear_revolution; /**< True when revolution completion tracking must be cleared. */
 } MotorEncoderCalibrationStep;

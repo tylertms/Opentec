@@ -35,9 +35,10 @@ void motor_velocity_control_initialize(MotorVelocityControlState *state, int16_t
 void motor_velocity_control_reset(MotorVelocityControlState *state);
 
 /**
- * @brief Clears velocity PI integral and error history while preserving limiter state.
+ * @brief Clears only velocity PI integral and error history.
  *
- * The configured controller gains and limits remain unchanged.
+ * The target, ramp, output, configured gains and limits, and published limiter state remain
+ * unchanged.
  *
  * @param[in,out] state Velocity-control state containing the PI controller.
  */
