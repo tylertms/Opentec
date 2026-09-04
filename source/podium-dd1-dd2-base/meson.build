@@ -145,6 +145,7 @@ base_sources = files(
   'source/motor/output_interlock.c',
   'source/motor/probe.c',
   'source/motor/startup_centering.c',
+  'source/motor/startup_output_override.c',
   'source/motor/calibration.c',
   'source/motor/rotation_guard.c',
   'source/motor/status_service.c',

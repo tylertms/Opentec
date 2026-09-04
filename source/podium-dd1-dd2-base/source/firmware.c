@@ -43,6 +43,7 @@
 #include "motor/probe.h"
 #include "motor/rotation_guard.h"
 #include "motor/startup_centering.h"
+#include "motor/startup_output_override.h"
 #include "motor/status_service.h"
 #include "motor/telemetry_service.h"
 #include "motor/tuning_service.h"
@@ -835,11 +836,6 @@ enum {
     DISPLAY_STARTUP_FRAME_SETTLE_MS = 33, /**< Display frame settle interval in milliseconds. */
     MOTOR_STARTUP_AUTOMATIC_STEERING_TRAVEL =
         35520,                        /**< Automatic steering travel after startup centering. */
-    MOTOR_STARTUP_AUX_ADDRESS = 0x78, /**< Auxiliary-bus address of the motor controller. */
-    MOTOR_STARTUP_OUTPUT_OVERRIDE_REGISTER =
-        0x23, /**< Motor natural-damper register used by the startup override. */
-    MOTOR_STARTUP_OUTPUT_OVERRIDE_VALUE =
-        0xff, /**< Motor natural-damper value used by the startup override. */
     MOTOR_STARTUP_DRIFT_MODE_VALUE =
         0xfb, /**< Temporary signed drift-mode byte used by the startup override. */
     MOTOR_STARTUP_NATURAL_DAMPER_PERCENT =
@@ -3399,12 +3395,13 @@ static void run_led_pattern_startup_sequence(void) {
  *
  * Preserves the active drift-mode and natural-damper bytes, selects signed drift mode -5 and
  * 100-percent natural damper, and writes the corresponding full-scale damper byte to motor register
- * 0x23 for standard and position controllers. Failed auxiliary-bus transfers are reset and retried
- * until the write succeeds. Legacy controllers do not support this override.
+ * 0x23 for standard and position controllers. The accepted write is serviced until the shared bus
+ * publishes a terminal completion state; the reference does not inspect or retry that state.
+ * Legacy controllers do not support this override.
  *
  * @param[in] identity Identified motor controller.
  * @param[out] override Preserved runtime tuning values.
- * @return True when the override was applied; otherwise false.
+ * @return True when the accepted transaction reached a terminal state; otherwise false.
  */
 static bool apply_motor_startup_output_override(const MotorIdentity *identity,
                                                 MotorStartupOutputOverride *override) {
@@ -3417,22 +3414,12 @@ static bool apply_motor_startup_output_override(const MotorIdentity *identity,
     runtime_tuning_profile.drift_compensation = MOTOR_STARTUP_DRIFT_MODE_VALUE;
     runtime_tuning_profile.natural_damper = MOTOR_STARTUP_NATURAL_DAMPER_PERCENT;
 
-    uint8_t value = MOTOR_STARTUP_OUTPUT_OVERRIDE_VALUE;
-    for (;;) {
-        platform_aux_bus_clear();
-        if (!platform_aux_bus_start_write(MOTOR_STARTUP_AUX_ADDRESS,
-                                          MOTOR_STARTUP_OUTPUT_OVERRIDE_REGISTER, &value, 1)) {
-            continue;
-        }
-
-        while (platform_aux_bus_status() == PLATFORM_AUX_BUS_BUSY) {
-            platform_aux_bus_service();
-        }
-        if (platform_aux_bus_status() == PLATFORM_AUX_BUS_SUCCEEDED) {
-            platform_aux_bus_clear();
-            return true;
-        }
+    bool applied = motor_startup_output_override_write(identity);
+    if (!applied) {
+        runtime_tuning_profile.drift_compensation = override->drift_mode;
+        runtime_tuning_profile.natural_damper = override->natural_damper;
     }
+    return applied;
 }
 
 /**

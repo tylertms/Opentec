@@ -504,6 +504,10 @@ base_tests = {
     'motor/startup_centering.c',
     'platform/time.c',
   ],
+  'motor-startup-output-override': [
+    'source/motor_startup_output_override.c',
+    'motor/startup_output_override.c',
+  ],
   'motor-calibration': ['source/motor_calibration.c', 'motor/calibration.c'],
   'motor-rotation-guard': ['source/motor_rotation_guard.c', 'motor/rotation_guard.c'],
   'motor-status-service': [
@@ -947,6 +951,13 @@ test(
   'base-fallback-tuning-response-scope',
   base_test_python,
   args: [files('source/fallback_tuning_response_scope.py')],
+  suite: ['base', 'firmware'],
+)
+
+test(
+  'base-startup-output-override-scope',
+  base_test_python,
+  args: [files('source/startup_output_override_scope.py')],
   suite: ['base', 'firmware'],
 )
 
