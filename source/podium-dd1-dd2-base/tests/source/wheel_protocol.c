@@ -1508,8 +1508,8 @@ static void test_captures_axis_mode_packets(void) {
     assert(input->buttons[2] == 0x04);
     assert(input->controls[0] == 5);
     assert(input->controls[1] == 10);
-    assert(input->controls[4] == 30);
-    assert(input->controls[5] == 60);
+    assert(input->controls[4] == 0x9e);
+    assert(input->controls[5] == 0xbc);
     assert(input->controls[6] == WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED);
     assert(input->axis_outputs[0] == 0x9e);
     assert(input->axis_outputs[1] == 0xbc);

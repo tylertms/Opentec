@@ -464,9 +464,13 @@ static void test_multiplexes_axis_mode_packet_axes(void) {
     uint8_t axes[2] = {0};
     wheel_axis_override_processor_init(&processor);
 
-    process_axis_mode(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0, controls, axes);
+    uint8_t nonmultiplex_controls[8] = {0, 0, 0, 0, 20, 40, 4, 0};
+    process_axis_mode(&processor, WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED, 0,
+                      nonmultiplex_controls, axes);
     assert(axes[0] == 0x94);
     assert(axes[1] == 0xa8);
+    assert(nonmultiplex_controls[4] == 0x94);
+    assert(nonmultiplex_controls[5] == 0xa8);
     assert(processor.x_available);
     assert(processor.y_available);
 

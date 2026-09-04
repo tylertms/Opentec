@@ -464,18 +464,22 @@ static void set_axis_mode_inactive_output(uint8_t interface_mode, uint8_t axes[2
  *
  * @param[in,out] processor Persistent availability and multiplex phase.
  * @param[in] interface_mode Current input-report interface mode.
- * @param[in] x First filtered axis-mode control.
- * @param[in] y Second filtered axis-mode control.
+ * @param[in,out] controls Eight filtered axis-mode control bytes. Nonmultiplexed output is written
+ * back to controls four and five.
  * @param[out] axes Two packet output axes.
  */
 static void process_axis_mode_multiplexed_axes(WheelAxisOverrideProcessor *processor,
-                                               uint8_t interface_mode, uint8_t x, uint8_t y,
+                                               uint8_t interface_mode, uint8_t controls[8],
                                                uint8_t axes[2]) {
+    uint8_t x = controls[4];
+    uint8_t y = controls[5];
     processor->x_available = x <= AXIS_AVAILABLE_THRESHOLD;
     processor->y_available = y <= AXIS_AVAILABLE_THRESHOLD;
     if (!interface_multiplexes_axes(interface_mode)) {
         axes[0] = (uint8_t)(x + 0x80u);
         axes[1] = (uint8_t)(y + 0x80u);
+        controls[4] = axes[0];
+        controls[5] = axes[1];
         return;
     }
 
@@ -656,13 +660,14 @@ void wheel_axis_override_process_packet(WheelAxisOverrideProcessor *processor, u
  * @param[in,out] bite_point_percent Active profile bite-point percentage.
  * @param[in,out] buttons Primary attached-wheel button bank.
  * @param[in,out] motion Primary attached-wheel rotary motion.
- * @param[in] controls Eight filtered axis-mode control bytes.
+ * @param[in,out] controls Eight filtered axis-mode control bytes. Nonmultiplexed output is written
+ * back to controls four and five.
  * @param[out] axes Two packet output axes.
  */
 void wheel_axis_override_process_axis_mode(WheelAxisOverrideProcessor *processor, uint8_t mode,
                                            uint8_t interface_mode, uint32_t now_ms,
                                            uint8_t *bite_point_percent, uint8_t *buttons,
-                                           int8_t *motion, const uint8_t controls[8],
+                                           int8_t *motion, uint8_t controls[8],
                                            uint8_t axes[2]) {
     uint8_t x = controls[4];
     uint8_t y = controls[5];
@@ -689,7 +694,7 @@ void wheel_axis_override_process_axis_mode(WheelAxisOverrideProcessor *processor
         set_axis_mode_inactive_output(interface_mode, axes);
         break;
     case WHEEL_AXIS_OVERRIDE_MODE_MULTIPLEXED:
-        process_axis_mode_multiplexed_axes(processor, interface_mode, x, y, axes);
+        process_axis_mode_multiplexed_axes(processor, interface_mode, controls, axes);
         break;
     default:
         set_axis_mode_inactive_output(interface_mode, axes);

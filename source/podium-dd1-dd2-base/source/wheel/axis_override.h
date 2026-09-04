@@ -142,13 +142,14 @@ void wheel_axis_override_process_packet(WheelAxisOverrideProcessor *processor, u
  * @param[in,out] bite_point_percent Active profile bite-point percentage.
  * @param[in,out] buttons Primary attached-wheel button bank.
  * @param[in,out] motion Primary attached-wheel rotary motion.
- * @param[in] controls Eight filtered axis-mode control bytes.
+ * @param[in,out] controls Eight filtered axis-mode control bytes. Nonmultiplexed output is written
+ * back to controls four and five.
  * @param[out] axes Two packet output axes.
  */
 void wheel_axis_override_process_axis_mode(WheelAxisOverrideProcessor *processor, uint8_t mode,
                                            uint8_t interface_mode, uint32_t now_ms,
                                            uint8_t *bite_point_percent, uint8_t *buttons,
-                                           int8_t *motion, const uint8_t controls[8],
+                                           int8_t *motion, uint8_t controls[8],
                                            uint8_t axes[2]);
 
 /**
