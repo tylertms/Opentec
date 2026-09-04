@@ -193,19 +193,43 @@ static void build_selection_response(WheelProtocol *protocol) {
 }
 
 /**
+ * @brief Builds the official response for an active mode without a packet decoder.
+ *
+ * Writes command A6, the three visible display glyphs, and cleared bytes five through ten while
+ * preserving the reserved response tail and transport flags, matching the builder at 0x02856E.
+ *
+ * @param[in,out] protocol Active protocol state and response storage.
+ */
+static void build_invalid_mode_response(WheelProtocol *protocol) {
+    uint8_t flags = protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET];
+    protocol->response[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    protocol->response[1] = 0;
+    for (uint8_t index = 0; index < WHEEL_DISPLAY_GLYPH_COUNT; index++) {
+        protocol->response[index + 2] = protocol->mode_one_output.display.glyphs[index];
+    }
+    for (uint8_t index = 5; index <= 10; index++) {
+        protocol->response[index] = 0;
+    }
+    protocol->response[WHEEL_PROTOCOL_CHECKSUM_OFFSET] =
+        crc8(protocol->response, WHEEL_PROTOCOL_CONTENT_SIZE);
+    protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] = flags;
+}
+
+/**
  * @brief Builds the next active attached-wheel response.
  *
  * Consumes a pending system status before a system-owned control response, remote-tuning work, and
  * host output reports. A setup-page response schedules its corresponding status for the following
- * exchange. Otherwise, encodes the selected packet family or a blank A6 remote-tuning frame and
- * overlays the highest-priority host output report. A closed interface gate blanks idle mode-0x0F
- * and mode-0x17 content. The checksum is updated while transport acknowledgement flags are
- * preserved.
+ * exchange. Otherwise, encodes the selected packet family, the official A6 invalid-mode display
+ * response, or a blank A6 remote-tuning frame and overlays the highest-priority host output report.
+ * A closed interface gate blanks idle mode-0x0F and mode-0x17 content. The checksum is updated
+ * while transport acknowledgement flags are preserved.
  *
  * @param[in,out] protocol Active protocol state and response storage.
  */
 static void build_active_response(WheelProtocol *protocol) {
     if (protocol->mode_input_invalid || !mode_has_input_decoder(protocol->mode)) {
+        build_invalid_mode_response(protocol);
         return;
     }
     bool remote_tuning_mode = protocol->mode == WHEEL_MODE_REMOTE_TUNING_LEGACY ||

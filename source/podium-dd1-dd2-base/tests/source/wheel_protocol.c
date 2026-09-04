@@ -2035,6 +2035,40 @@ static void test_accepts_a5_modes_and_rejects_out_of_range(void) {
     assert(wheel_protocol_response(&protocol)[0] == WHEEL_PROTOCOL_COMMAND_SELECT_MODE);
 }
 
+static void test_builds_invalid_mode_display_response(void) {
+    WheelProtocol protocol;
+    uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&protocol);
+    synchronize(&protocol, request);
+    select_mode(&protocol, request, 0x05);
+    assert(protocol.phase == WHEEL_PROTOCOL_ACTIVE);
+    assert(protocol.mode_input_invalid);
+
+    WheelPacketModeOneOutput output = {
+        .display = {.glyphs = {0x12, 0x34, 0x56}},
+    };
+    wheel_protocol_set_mode_one_output(&protocol, &output);
+    memset(protocol.response, 0x5a, WHEEL_PROTOCOL_CONTENT_SIZE);
+    request[WHEEL_PROTOCOL_CHECKSUM_OFFSET] = wheel_protocol_message_checksum(request);
+
+    wheel_protocol_accept(&protocol, request);
+
+    const uint8_t *response = wheel_protocol_response(&protocol);
+    assert(response[0] == WHEEL_PROTOCOL_COMMAND_AUTHENTICATE);
+    assert(response[1] == 0);
+    assert(response[2] == 0x12);
+    assert(response[3] == 0x34);
+    assert(response[4] == 0x56);
+    for (uint8_t index = 5; index <= 10; index++) {
+        assert(response[index] == 0);
+    }
+    for (uint8_t index = 11; index < WHEEL_PROTOCOL_CHECKSUM_OFFSET; index++) {
+        assert(response[index] == 0x5a);
+    }
+    assert(response[WHEEL_PROTOCOL_FLAGS_OFFSET] == WHEEL_PROTOCOL_RESPONSE_ACKNOWLEDGED);
+    assert(wheel_protocol_message_valid(response));
+}
+
 static void test_captures_extended_remote_tuning_controls(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {WHEEL_PROTOCOL_COMMAND_AUTHENTICATE_REPLY};
@@ -2128,6 +2162,7 @@ int main(void) {
     test_accumulates_axis_mode_interface_pulses();
     test_captures_extended_remote_tuning_controls();
     test_accepts_a5_modes_and_rejects_out_of_range();
+    test_builds_invalid_mode_display_response();
     test_crc8_vectors();
     return 0;
 }
