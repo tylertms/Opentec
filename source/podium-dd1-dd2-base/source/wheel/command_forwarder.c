@@ -16,6 +16,7 @@ enum {
         0x41,                          /**< Command-transport owner identifier for the forwarder. */
     WHEEL_COMMAND_PROBE_OFFSET = 0x0c, /**< Endpoint offset of the probe read. */
     WHEEL_COMMAND_PAYLOAD_OFFSET = 0xb0, /**< Endpoint offset of the forwarded command payload. */
+    WHEEL_COMMAND_FORWARDER_WAIT_LIMIT = 500, /**< Maximum busy polls before transfer recovery. */
 };
 
 /** @brief Remote target identifiers indexed by forwarder endpoint. */
@@ -48,6 +49,29 @@ static void advance_endpoint(WheelCommandForwarder *forwarder, CommandTransport 
     forwarder->endpoint_index =
         (uint8_t)((forwarder->endpoint_index + 1) % WHEEL_COMMAND_ENDPOINT_COUNT);
     forwarder->phase = WHEEL_COMMAND_FORWARDER_PROBE_READY;
+    forwarder->wait_calls = 0;
+}
+
+/**
+ * @brief Recovers a command transfer that has remained busy too long.
+ *
+ * Fails the active transport request, consumes its latched rejection, and starts discovery on the
+ * alternate endpoint after the 500-poll limit is exceeded.
+ *
+ * @param[in,out] forwarder Command forwarder tracking the pending transfer.
+ * @param[in,out] transport Shared command transport carrying the pending transfer.
+ */
+static void recover_after_timeout(WheelCommandForwarder *forwarder, CommandTransport *transport) {
+    if (++forwarder->wait_calls <= WHEEL_COMMAND_FORWARDER_WAIT_LIMIT) {
+        return;
+    }
+
+    command_transport_fail(transport);
+    if (command_transport_poll(transport, WHEEL_COMMAND_FORWARDER_OWNER) ==
+        COMMAND_TRANSPORT_BUSY) {
+        return;
+    }
+    advance_endpoint(forwarder, transport);
 }
 
 /**
@@ -93,8 +117,8 @@ static void start_probe(WheelCommandForwarder *forwarder, CommandTransport *tran
 /**
  * @brief Completes discovery of the selected attached-device endpoint.
  *
- * Marks a successful endpoint ready. A rejected probe releases it and selects the alternate
- * endpoint.
+ * Marks a completed probe, including an accepted zero-status probe, ready. A rejected or timed-out
+ * probe releases the transport and selects the alternate endpoint.
  *
  * @param[in,out] forwarder Command forwarder awaiting a probe result.
  * @param[in,out] transport Shared command transport carrying the probe.
@@ -103,16 +127,11 @@ static void finish_probe(WheelCommandForwarder *forwarder, CommandTransport *tra
     CommandTransportResult result =
         command_transport_poll(transport, WHEEL_COMMAND_FORWARDER_OWNER);
     if (result == COMMAND_TRANSPORT_BUSY) {
+        recover_after_timeout(forwarder, transport);
         return;
     }
+    forwarder->wait_calls = 0;
     if (result != COMMAND_TRANSPORT_COMPLETE) {
-        advance_endpoint(forwarder, transport);
-        return;
-    }
-
-    uint8_t status =
-        forwarder->endpoint_index == 0 ? forwarder->probe[0] : (forwarder->probe[0] & 0x3fu);
-    if (status == 0) {
         advance_endpoint(forwarder, transport);
         return;
     }
@@ -164,8 +183,8 @@ static void start_write(WheelCommandForwarder *forwarder, CommandTransport *tran
 /**
  * @brief Completes one generic attached-device command write.
  *
- * Releases a successful transfer and keeps the selected endpoint. A rejected transfer restarts
- * discovery at the alternate endpoint.
+ * Releases a successful transfer and keeps the selected endpoint. A rejected or timed-out transfer
+ * restarts discovery at the alternate endpoint.
  *
  * @param[in,out] forwarder Command forwarder awaiting a write result.
  * @param[in,out] transport Shared command transport carrying the write.
@@ -174,8 +193,10 @@ static void finish_write(WheelCommandForwarder *forwarder, CommandTransport *tra
     CommandTransportResult result =
         command_transport_poll(transport, WHEEL_COMMAND_FORWARDER_OWNER);
     if (result == COMMAND_TRANSPORT_BUSY) {
+        recover_after_timeout(forwarder, transport);
         return;
     }
+    forwarder->wait_calls = 0;
     if (result != COMMAND_TRANSPORT_COMPLETE) {
         advance_endpoint(forwarder, transport);
         return;
@@ -234,7 +255,7 @@ bool wheel_command_forwarder_queue(WheelCommandForwarder *forwarder, const uint8
  * @brief Advances generic attached-device command forwarding.
  *
  * Discovers the standard or extended endpoint when work first arrives, writes queued batches to
- * the selected endpoint, and restarts discovery after a rejected transfer.
+ * the selected endpoint, and restarts discovery after a rejected or timed-out transfer.
  *
  * @param[in,out] forwarder Command forwarder to advance.
  * @param[in,out] transport Shared command transport used by probes and writes.

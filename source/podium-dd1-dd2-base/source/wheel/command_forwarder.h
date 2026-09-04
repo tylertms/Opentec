@@ -40,6 +40,7 @@ typedef struct {
     uint8_t payload_length; /**< Number of valid bytes retained in payload. */
     uint8_t endpoint_index; /**< Selected endpoint index, zero for standard or one for extended. */
     WheelCommandForwarderPhase phase; /**< Current discovery or write phase. */
+    uint16_t wait_calls;              /**< Consecutive busy polls for the active probe or write. */
 } WheelCommandForwarder;
 
 /**
@@ -80,7 +81,8 @@ bool wheel_command_forwarder_queue(WheelCommandForwarder *forwarder, const uint8
  * @brief Advances generic attached-device command forwarding.
  *
  * Discovers an endpoint when work arrives, writes a retained batch when the endpoint is ready, and
- * restarts discovery on a rejected transfer. Null inputs are ignored.
+ * restarts discovery after a rejected or timed-out transfer. A pending transfer recovers after the
+ * official 500-poll wait limit. Null inputs are ignored.
  *
  * @param[in,out] forwarder Command forwarder to advance.
  * @param[in,out] transport Shared command transport used by probes and writes.
