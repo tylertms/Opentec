@@ -55,13 +55,13 @@ void usb_feature_report_31_encode(const UsbFeatureReport31State *state,
     output[13] = (uint8_t)(state->status >> 8);
 }
 
-void usb_feature_report_32_encode(const TuningProfileBank *bank, bool dirty,
+void usb_feature_report_32_encode(const TuningProfileBank *bank, bool wheel_tuning_values_dirty,
                                   uint8_t output[USB_DEVICE_REPORT_SIZE]) {
     memset(output, 0, USB_DEVICE_REPORT_SIZE);
     output[0] = REPORT_32;
     output[1] = (uint8_t)(bank->active_slot + 1u);
     output[2] = (uint8_t)(bank->selected_slot + 1u);
-    output[3] = dirty;
+    output[3] = wheel_tuning_values_dirty;
     usb_tuning_profile_report_encode(&bank->slots[bank->active_slot], output + 5);
 }
 

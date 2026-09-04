@@ -58,13 +58,16 @@ void usb_feature_report_31_encode(const UsbFeatureReport31State *state,
 /**
  * @brief Encodes native feature report 32.
  *
- * Publishes active and selected profile slots, persistence state, and active profile values.
+ * Publishes active and selected profile slots, whether wheel-tuning values changed since
+ * initialization, and active profile values. The change byte is independent of broad retained
+ * settings persistence.
  *
  * @param[in] bank Current tuning-profile bank.
- * @param[in] dirty True when retained settings require persistence.
+ * @param[in] wheel_tuning_values_dirty True when wheel-tuning values changed since initialization;
+ *                                     this supplies report byte 3.
  * @param[out] output Encoded 64-byte report.
  */
-void usb_feature_report_32_encode(const TuningProfileBank *bank, bool dirty,
+void usb_feature_report_32_encode(const TuningProfileBank *bank, bool wheel_tuning_values_dirty,
                                   uint8_t output[USB_DEVICE_REPORT_SIZE]);
 
 /**

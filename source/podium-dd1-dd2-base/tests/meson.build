@@ -234,6 +234,7 @@ base_tests = {
   'usb-feature-report': [
     'source/usb_feature_report.c',
     'usb/feature_report.c',
+    'usb/tuning_profile_service.c',
     'usb/tuning_profile_report.c',
     'profile/bank.c',
     'profile/tuning.c',

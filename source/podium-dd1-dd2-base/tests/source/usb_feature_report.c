@@ -4,6 +4,8 @@
 
 #include "profile/bank.h"
 #include "usb/feature_report.h"
+#include "usb/tuning_profile_service.h"
+#include "usb/vendor_command.h"
 
 static void test_status_report(void) {
     uint8_t output[USB_DEVICE_REPORT_SIZE];
@@ -31,16 +33,52 @@ static void test_status_report(void) {
     assert(output[11] == 1 && output[12] == 0x34 && output[13] == 0x12);
 }
 
-static void test_tuning_report(void) {
+static UsbVendorCommand tuning_profile_command(uint8_t arguments[62]) {
+    return (UsbVendorCommand){
+        .kind = USB_VENDOR_COMMAND_DEVICE_CONTROL_UPDATE,
+        .opcode = 3,
+        .arguments = arguments,
+        .length = 62,
+    };
+}
+
+static void test_tuning_report_tracks_profile_actions(void) {
     uint8_t output[USB_DEVICE_REPORT_SIZE];
+    uint8_t arguments[62] = {1, 6};
     TuningProfileBank bank;
+    UsbTuningProfileService service;
+    bool wheel_tuning_values_dirty = false;
     tuning_profile_bank_defaults(&bank);
-    bank.active_slot = 2;
-    bank.selected_slot = 4;
-    bank.slots[2].force_feedback_strength = 73;
-    usb_feature_report_32_encode(&bank, true, output);
-    assert(output[0] == 0x32 && output[1] == 3 && output[2] == 5 && output[3] == 1);
-    assert(output[6] == 73);
+    usb_tuning_profile_service_init(&service);
+    usb_tuning_profile_service_response_sent(&service);
+    UsbVendorCommand update = tuning_profile_command(arguments);
+
+    UsbTuningProfileAction result = usb_tuning_profile_service_apply(&service, &bank, &update, 100);
+    assert((result & USB_TUNING_PROFILE_ACTION_PROFILE_CHANGED) != 0);
+    assert((result & USB_TUNING_PROFILE_ACTION_SETTINGS_CHANGED) == 0);
+    wheel_tuning_values_dirty = (result & USB_TUNING_PROFILE_ACTION_SETTINGS_CHANGED) != 0;
+    usb_feature_report_32_encode(&bank, wheel_tuning_values_dirty, output);
+    assert(output[0] == 0x32 && output[1] == 6 && output[2] == 6 && output[3] == 0);
+
+    uint8_t mutation_arguments[62] = {
+        0,  6,  126, 80, 73, 101, 1, 0, 0, 10, 10, 10, 50, 0,
+        50, 50, 100, 3,  1,  6,   0, 0, 0, 1,  1,  3,  3,  3,
+    };
+    update = tuning_profile_command(mutation_arguments);
+    result = usb_tuning_profile_service_apply(&service, &bank, &update, 101);
+    assert((result & USB_TUNING_PROFILE_ACTION_SETTINGS_CHANGED) != 0);
+    wheel_tuning_values_dirty |= (result & USB_TUNING_PROFILE_ACTION_SETTINGS_CHANGED) != 0;
+    usb_feature_report_32_encode(&bank, wheel_tuning_values_dirty, output);
+    assert(output[0] == 0x32 && output[1] == 6 && output[2] == 6 && output[3] == 1);
+    assert(output[6] == 80);
+
+    mutation_arguments[0] = 3;
+    update = tuning_profile_command(mutation_arguments);
+    result = usb_tuning_profile_service_apply(&service, &bank, &update, 102);
+    assert((result & USB_TUNING_PROFILE_ACTION_SAVE) != 0);
+    assert((result & USB_TUNING_PROFILE_ACTION_SETTINGS_CHANGED) == 0);
+    usb_feature_report_32_encode(&bank, wheel_tuning_values_dirty, output);
+    assert(output[3] == 1);
 }
 
 static void test_rotary_and_fourth_pulse_report(void) {
@@ -77,7 +115,7 @@ static void test_page_report(void) {
 
 int main(void) {
     test_status_report();
-    test_tuning_report();
+    test_tuning_report_tracks_profile_actions();
     test_rotary_and_fourth_pulse_report();
     test_rotary_supported_mode_gate();
     test_page_report();

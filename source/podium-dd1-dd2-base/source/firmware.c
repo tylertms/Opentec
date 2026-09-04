@@ -441,8 +441,8 @@ static UsbTuningProfileService usb_tuning_profile_service;
 static TuningInteraction tuning_interaction;
 /** @brief Local tuning menu state. */
 static TuningMenu tuning_menu;
-/** @brief Whether the local tuning menu has changes awaiting persistence. */
-static bool tuning_menu_dirty;
+/** @brief Whether wheel-tuning values have changed since initialization. */
+static bool wheel_tuning_values_dirty;
 /** @brief Whether the final pedal tuning update is pending. */
 static bool tuning_pedal_final_pending;
 /** @brief Whether a rate-limited pedal tuning update is pending. */
@@ -816,7 +816,7 @@ enum {
     ALTERNATIVE_SHIFTER_ENABLED_EVENT_CODE = 0x20,   /**< Alternative-shifter enabled event code. */
     ALTERNATIVE_SHIFTER_DISABLED_EVENT_CODE = 0x21,  /**< Alternative-shifter disabled code. */
     WHEEL_CENTER_CALIBRATED_STATUS_CODE = 0x1f,      /**< Wheel-center calibrated status code. */
-    PROFILE_SAVE_EVENT_CODE = 0x0e,                 /**< Profile-save event code. */
+    PROFILE_SAVE_EVENT_CODE = 0x0e,                  /**< Profile-save event code. */
     SYSTEM_DISPLAY_DISMISS_EVENT_CODE = 0x11,        /**< System-display dismissal event code. */
     FORCE_OUTPUT_PROMPT_EVENT_CODE = 0x0c,           /**< Force-output prompt event code. */
     FORCE_OUTPUT_PROMPT_DISMISS_EVENT_CODE = 0x1a,   /**< Force-output dismissal event code. */
@@ -824,7 +824,7 @@ enum {
     TORQUE_KEY_PROMPT_DISMISS_EVENT_CODE = 0x18,     /**< Torque Key dismissal event code. */
     UNSUPPORTED_WHEEL_INVERTED_EVENT_CODE = 0x0f,    /**< Unsupported inverted-wheel event code. */
     UNSUPPORTED_WHEEL_OUTLINED_EVENT_CODE = 0x10,    /**< Unsupported outlined-wheel event code. */
-    PROFILE_SAVE_DISPLAY_COMMAND = 0x2d,            /**< Profile-save display command. */
+    PROFILE_SAVE_DISPLAY_COMMAND = 0x2d,             /**< Profile-save display command. */
     FORCE_FEEDBACK_FULL_STRENGTH_PERCENT = 100, /**< Full force-feedback strength in percent. */
     FORCE_FEEDBACK_AUTOMATIC_STRENGTH_PERCENT = 101,    /**< Automatic force-feedback sentinel. */
     FORCE_FEEDBACK_DD1_REDUCED_STRENGTH_PERCENT = 40,   /**< DD1 reduced strength in percent. */
@@ -835,7 +835,7 @@ enum {
     FORCE_FEEDBACK_RAMP_INTERVAL_MS = 50, /**< Force-feedback ramp interval in milliseconds. */
     DISPLAY_STARTUP_FRAME_SETTLE_MS = 33, /**< Display frame settle interval in milliseconds. */
     MOTOR_STARTUP_AUTOMATIC_STEERING_TRAVEL =
-        35520,                        /**< Automatic steering travel after startup centering. */
+        35520, /**< Automatic steering travel after startup centering. */
     MOTOR_STARTUP_DRIFT_MODE_VALUE =
         0xfb, /**< Temporary signed drift-mode byte used by the startup override. */
     MOTOR_STARTUP_NATURAL_DAMPER_PERCENT =
@@ -852,10 +852,10 @@ enum {
         2000, /**< Timeout for the wheel-mode status-memory startup read. */
     MOTOR_LINK_MALFORMED_FRAME_LIMIT = 100, /**< Malformed motor frames before link recovery. */
     SHIFTER_DISPLAY_REFRESH_COMMAND = 10,   /**< Native command that refreshes a shifter page. */
-    TUNING_SECONDARY_STANDARD_CENTER_BUTTON = 0x0080, /**< Standard center shortcut button. */
+    TUNING_SECONDARY_STANDARD_CENTER_BUTTON = 0x0080,  /**< Standard center shortcut button. */
     TUNING_SECONDARY_PROFILE_SHORTCUT_BUTTON = 0x0100, /**< Legacy shifter shortcut button. */
-    WHEEL_STARTUP_VERSION_COMMAND = 0x0a,   /**< Wheel startup-version command code. */
-    WHEEL_STARTUP_TEXT_METADATA = 0x10,     /**< Wheel startup text-metadata command code. */
+    WHEEL_STARTUP_VERSION_COMMAND = 0x0a,              /**< Wheel startup-version command code. */
+    WHEEL_STARTUP_TEXT_METADATA = 0x10,            /**< Wheel startup text-metadata command code. */
     WHEEL_DISPLAY_TORQUE_KEY_PROMPT_STATE = 0x07,  /**< Direct-wheel Torque Key prompt state. */
     WHEEL_DISPLAY_TORQUE_KEY_DISMISS_STATE = 0x11, /**< Direct-wheel Torque Key dismiss state. */
     WHEEL_DISPLAY_TORQUE_KEY_PROMPT = 0x1a,        /**< Wheel glyph code for Torque Key prompt. */
@@ -933,10 +933,21 @@ static const UsbMotorVendorServiceBuffers usb_motor_buffers = {
 };
 
 /**
+ * @brief Latches a wheel-tuning-value change and schedules retained persistence.
+ *
+ * The change latch is independent of the persistence dirty state and remains set after a successful
+ * retained write.
+ */
+static void mark_wheel_tuning_values_dirty(void) {
+    base_settings_persistence_mark_dirty(&settings_persistence);
+    wheel_tuning_values_dirty = true;
+}
+
+/**
  * @brief Stores pending base settings immediately.
  *
  * Performs the synchronous storage pass used at explicit commit, profile-save, and restart
- * boundaries.
+ * boundaries. Saving retained settings does not clear the wheel-tuning-value change latch.
  */
 static void save_base_settings(void) {
     base_settings_persistence_save(&settings_persistence, &base_settings);
@@ -947,7 +958,8 @@ static void save_base_settings(void) {
  * @brief Flushes retained settings with the processor interrupt gate closed.
  *
  * Matches the physical profile-save path by completing the persistent write before restoring
- * interrupts and publishing the active-profile acknowledgement.
+ * interrupts and publishing the active-profile acknowledgement. The wheel-tuning-value change
+ * latch remains set independently of the persistence result.
  */
 static void save_base_settings_interrupt_safe(void) {
     platform_system_interrupts_set(false);
@@ -997,7 +1009,7 @@ static void apply_profile_save_action(PowerAction action, uint32_t now_ms) {
         if ((int32_t)(now_ms - power_controller.completion_deadline_ms) > 0) {
             tuning_interaction_request_close(&tuning_interaction);
             wheel_service_queue_adapter_display_state(&wheel_service,
-                                                       SYSTEM_DISPLAY_DISMISS_EVENT_CODE);
+                                                      SYSTEM_DISPLAY_DISMISS_EVENT_CODE);
             system_control_state_set_active_event(&system_control_state,
                                                   SYSTEM_DISPLAY_DISMISS_EVENT_CODE);
         }
@@ -1025,11 +1037,10 @@ static void apply_profile_save_action(PowerAction action, uint32_t now_ms) {
  * @param[in] now_ms Current monotonic time in milliseconds.
  */
 static void service_profile_save(uint32_t now_ms) {
-    PowerAction action =
-        power_controller_update(&power_controller, platform_profile_save_input_active(),
-                                !base_settings.security_code.enabled &&
-                                    !security_code_interaction_active(&security_code),
-                                now_ms);
+    PowerAction action = power_controller_update(
+        &power_controller, platform_profile_save_input_active(),
+        !base_settings.security_code.enabled && !security_code_interaction_active(&security_code),
+        now_ms);
     apply_profile_save_action(action, now_ms);
 }
 
@@ -1671,7 +1682,7 @@ static void service_alternate_brake_force(uint32_t now_ms) {
         base_settings.tuning_profiles.slots[base_settings.tuning_profiles.active_slot]
             .alternate_brake_force = brake_force;
     }
-    base_settings_persistence_mark_dirty(&settings_persistence);
+    mark_wheel_tuning_values_dirty();
     usb_tuning_profile_service_request_response(&usb_tuning_profile_service);
 }
 
@@ -1702,6 +1713,7 @@ static void service_pedal_adjustment_display(uint32_t now_ms) {
  */
 static void initialize_base_settings(void) {
     base_settings_persistence_load(&settings_persistence, &base_settings);
+    wheel_tuning_values_dirty = false;
     automatic_tuning_profile = base_settings.tuning_profiles.slots[0];
     set_automatic_tuning_apply_pending(false);
     tuning_profile_previous_slot = TUNING_PROFILE_SLOT_COUNT;
@@ -3805,10 +3817,9 @@ static void service_force_feedback_script(uint32_t now_ms) {
         rotation_range_units = xbox_runtime_steering_range_units;
     }
     force_feedback_script_system.values.extended_rotation_range = rotation_range_units;
-    uint8_t raw_sensitivity_code =
-        tuning_profile->automatic_rotation != 0
-            ? 0x7eu
-            : (uint8_t)((int16_t)rotation_range_units - 127);
+    uint8_t raw_sensitivity_code = tuning_profile->automatic_rotation != 0
+                                       ? 0x7eu
+                                       : (uint8_t)((int16_t)rotation_range_units - 127);
     force_feedback_script_system.values.rotation_range_code = raw_sensitivity_code;
     force_feedback_script_output_config = (ForceFeedbackScriptOutputConfig){
         .soft_stop = {.travel_limit = (int32_t)travel},
@@ -4260,7 +4271,8 @@ static bool apply_fallback_device_command(const UsbOperatingModeCommand *command
             bool adapter_mode_one = adapter->connected && adapter->mode == 1;
             bool native_display = !extended && !adapter_mode_one &&
                                   wheel_service_tuning_display_supported(&wheel_service);
-            request_shifter_display_refresh(extended, !extended, native_display, platform_time_ms());
+            request_shifter_display_refresh(extended, !extended, native_display,
+                                            platform_time_ms());
         } else if (command->parameters[1] == 2) {
             h_pattern_calibration_service_request(
                 &h_pattern_calibration_service, H_PATTERN_CALIBRATION_COMMAND_ADVANCE,
@@ -4722,6 +4734,9 @@ static void service_usb_output(void) {
                 apply_active_tuning_profile();
             }
             if ((tuning_action & USB_TUNING_PROFILE_ACTION_SETTINGS_CHANGED) != 0) {
+                mark_wheel_tuning_values_dirty();
+            } else if ((tuning_action & (USB_TUNING_PROFILE_ACTION_PROFILE_CHANGED |
+                                         USB_TUNING_PROFILE_ACTION_MODE_CHANGED)) != 0) {
                 base_settings_persistence_mark_dirty(&settings_persistence);
             }
             if ((tuning_action & USB_TUNING_PROFILE_ACTION_SAVE) != 0) {
@@ -4867,8 +4882,11 @@ static void apply_tuning_interaction_action(TuningInteractionAction action, uint
                 wheel_steering_limits_defaults(&base_settings.steering_limits);
                 apply_active_tuning_profile();
             }
-            base_settings_persistence_mark_dirty(&settings_persistence);
-            tuning_menu_dirty = true;
+            if (enable_standard) {
+                mark_wheel_tuning_values_dirty();
+            } else {
+                base_settings_persistence_mark_dirty(&settings_persistence);
+            }
             publish_tuning_interaction_event(enable_standard ? STANDARD_TUNING_MODE_EVENT_CODE
                                                              : ADVANCED_TUNING_MODE_EVENT_CODE);
         }
@@ -4897,8 +4915,7 @@ static void apply_tuning_interaction_action(TuningInteractionAction action, uint
         base_settings.tuning_profiles.standard_mode_enabled = true;
         base_settings.tuning_profiles.selected_slot = 0;
         base_settings.tuning_profiles.active_slot = 0;
-        base_settings_persistence_mark_dirty(&settings_persistence);
-        tuning_menu_dirty = true;
+        mark_wheel_tuning_values_dirty();
         publish_tuning_interaction_event(TUNING_MENU_RESET_EVENT_CODE);
     }
 }
@@ -5036,7 +5053,7 @@ static void apply_tuning_menu_presentation(void) {
             if (active) {
                 apply_active_tuning_profile();
             }
-            base_settings_persistence_mark_dirty(&settings_persistence);
+            mark_wheel_tuning_values_dirty();
         }
     }
     tuning_display_output = *wheel_service_default_display_output(&wheel_service);
@@ -5160,9 +5177,8 @@ static void service_tuning_interaction(uint32_t now_ms) {
             tuning_pedal_final_pending = false;
             tuning_pedal_update_pending = false;
         }
-        if (tuning_menu_dirty) {
+        if (wheel_tuning_values_dirty) {
             save_base_settings();
-            tuning_menu_dirty = false;
         }
     }
     if (tuning_interaction.phase != previous_phase) {
@@ -5203,9 +5219,12 @@ static void service_tuning_interaction(uint32_t now_ms) {
         }
     }
     if (menu_update.value_changed) {
-        base_settings_persistence_mark_dirty(&settings_persistence);
+        if (menu_update.adjusted_entry == TUNING_ENTRY_SETUP) {
+            base_settings_persistence_mark_dirty(&settings_persistence);
+        } else {
+            mark_wheel_tuning_values_dirty();
+        }
         usb_tuning_profile_service_request_response(&usb_tuning_profile_service);
-        tuning_menu_dirty = true;
     }
     if (tuning_pedal_update_pending && (int32_t)(now_ms - tuning_pedal_update_deadline_ms) > 0) {
         if (pedal_service_legacy_mode(&pedal_service)) {
@@ -5346,8 +5365,7 @@ static void service_usb_input(uint32_t now_ms) {
             .calibration_available = wheel_service_calibration_available(&wheel_service),
             .axis_report_enabled = wheel_service_axis_report_enabled(&wheel_service),
             .adapter_connected = wheel_service_adapter_connected(&wheel_service),
-            .profile_selector_held =
-                tuning_interaction.phase == TUNING_INTERACTION_MENU_HELD,
+            .profile_selector_held = tuning_interaction.phase == TUNING_INTERACTION_MENU_HELD,
         };
         if (wheel_mode == 0x10u || wheel_mode == WHEEL_MODE_REMOTE_TUNING_LEGACY) {
             source.secondary_buttons = wheel_snapshot.auxiliary_report[0];
@@ -5679,7 +5697,7 @@ static void service_usb_feature_reports(void) {
     };
     usb_feature_report_31_encode(&report31, usb_feature_reports[0]);
     prepare_effective_tuning_profile_bank();
-    usb_feature_report_32_encode(&effective_tuning_profile_bank, settings_persistence.dirty,
+    usb_feature_report_32_encode(&effective_tuning_profile_bank, wheel_tuning_values_dirty,
                                  usb_feature_reports[1]);
 
     uint32_t now_ms = platform_time_ms();

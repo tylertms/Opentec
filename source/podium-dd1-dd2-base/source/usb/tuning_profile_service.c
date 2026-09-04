@@ -139,8 +139,7 @@ UsbTuningProfileAction usb_tuning_profile_service_apply(UsbTuningProfileService 
     case PROFILE_ACTION_SELECT:
         if (command->length >= 2 && select_profile(bank, command->arguments[1])) {
             service->response_pending = true;
-            result |= USB_TUNING_PROFILE_ACTION_PROFILE_CHANGED |
-                      USB_TUNING_PROFILE_ACTION_SETTINGS_CHANGED;
+            result |= USB_TUNING_PROFILE_ACTION_PROFILE_CHANGED;
         }
         return result;
     case PROFILE_ACTION_REFRESH:
@@ -182,9 +181,11 @@ UsbTuningProfileAction usb_tuning_profile_service_apply(UsbTuningProfileService 
                 }
                 service->mode_change_after_ms = now_ms + USB_TUNING_PROFILE_MODE_DELAY_MS;
                 service->response_pending = true;
-                result |= USB_TUNING_PROFILE_ACTION_MODE_CHANGED |
-                          USB_TUNING_PROFILE_ACTION_SETTINGS_CHANGED |
-                          USB_TUNING_PROFILE_ACTION_MODE_TOGGLED;
+                result |=
+                    USB_TUNING_PROFILE_ACTION_MODE_CHANGED | USB_TUNING_PROFILE_ACTION_MODE_TOGGLED;
+                if (enable_standard) {
+                    result |= USB_TUNING_PROFILE_ACTION_SETTINGS_CHANGED;
+                }
             }
         }
         return result;
@@ -201,9 +202,9 @@ void usb_tuning_profile_service_response_sent(UsbTuningProfileService *service) 
     service->response_pending = false;
 }
 
-void usb_tuning_profile_service_request_response_if_changed(
-    UsbTuningProfileService *service, const TuningProfile *previous,
-    const TuningProfile *current) {
+void usb_tuning_profile_service_request_response_if_changed(UsbTuningProfileService *service,
+                                                            const TuningProfile *previous,
+                                                            const TuningProfile *current) {
     if (service != NULL && usb_tuning_profile_report_changed(previous, current)) {
         usb_tuning_profile_service_request_response(service);
     }

@@ -26,7 +26,7 @@ typedef enum {
     USB_TUNING_PROFILE_ACTION_PROFILE_CHANGED = 1 << 1, /**< Active profile changed. */
     USB_TUNING_PROFILE_ACTION_SAVE = 1 << 2,            /**< Profile persistence should be saved. */
     USB_TUNING_PROFILE_ACTION_MODE_CHANGED = 1 << 3,    /**< Standard or Advanced mode changed. */
-    USB_TUNING_PROFILE_ACTION_SETTINGS_CHANGED = 1 << 4, /**< Profile settings changed. */
+    USB_TUNING_PROFILE_ACTION_SETTINGS_CHANGED = 1 << 4, /**< Wheel-tuning values changed. */
     USB_TUNING_PROFILE_ACTION_RESET_COMPLETED = 1 << 5,  /**< A guarded reset completed. */
     USB_TUNING_PROFILE_ACTION_MODE_TOGGLED = 1 << 6,     /**< Mode toggle completed. */
 } UsbTuningProfileAction;
@@ -56,10 +56,11 @@ void usb_tuning_profile_service_init(UsbTuningProfileService *service);
  * @brief Applies one device-control tuning-profile command.
  *
  * Handles profile updates, selection, refresh, save, guarded resets, and Standard or Advanced mode
- * toggles, returning bit flags for the effects that the firmware must service. Reset-all restores
- * retained profiles and the six Auto core values, preserves Auto secondary values and its
- * apply-pending marker, and selects Standard mode. Active-profile reset restores all Auto values
- * and clears that marker.
+ * toggles, returning bit flags for the effects that the firmware must service. The settings-changed
+ * flag is emitted only when wheel-tuning values change; profile selection and Advanced-mode entry
+ * report their independent profile or mode effects. Reset-all restores retained profiles and the
+ * six Auto core values, preserves Auto secondary values and its apply-pending marker, and selects
+ * Standard mode. Active-profile reset restores all Auto values and clears that marker.
  *
  * @param[in,out] service Command timing and response state to update.
  * @param[in,out] bank Profile bank to update.
@@ -101,9 +102,9 @@ void usb_tuning_profile_service_response_sent(UsbTuningProfileService *service);
  * @param[in] previous Profile before the update.
  * @param[in] current Profile after the update.
  */
-void usb_tuning_profile_service_request_response_if_changed(
-    UsbTuningProfileService *service, const TuningProfile *previous,
-    const TuningProfile *current);
+void usb_tuning_profile_service_request_response_if_changed(UsbTuningProfileService *service,
+                                                            const TuningProfile *previous,
+                                                            const TuningProfile *current);
 
 /**
  * @brief Requests publication of the active tuning-profile response.
