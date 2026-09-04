@@ -6,18 +6,18 @@
 /**
  * @brief Initializes the wheel-base power controls.
  *
- * Configures the power-button input and external power-hold output.
+ * Configures the RD9 profile-save input and RD8 external power-hold output.
  */
 void platform_power_init(void);
 
 /**
- * @brief Reports whether the power button is pressed.
+ * @brief Reports whether the physical profile-save input is active.
  *
- * Reads the board's active-high power-button input.
+ * Reads the board's active-high RD9 input.
  *
- * @return True while the power button is pressed; otherwise false.
+ * @return True while RD9 is asserted; otherwise false.
  */
-bool platform_power_button_pressed(void);
+bool platform_profile_save_input_active(void);
 
 /**
  * @brief Controls the external power hold.

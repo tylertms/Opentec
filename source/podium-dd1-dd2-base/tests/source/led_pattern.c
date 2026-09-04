@@ -80,11 +80,11 @@ static void test_heartbeat_resumes_after_normal_output(void) {
     assert(led_pattern_controller_update(&controller, input, 262) == 0xff);
 }
 
-static void test_shutdown_forces_output_off(void) {
+static void test_profile_save_forces_output_off(void) {
     LedPatternController controller;
     led_pattern_controller_init(&controller);
     LedPatternControllerInput input = controller_input();
-    input.shutdown_complete = true;
+    input.profile_save_complete = true;
 
     assert(led_pattern_controller_update(&controller, input, 0) == 0x00);
     assert(led_pattern_controller_update(&controller, input, 1) == 0x00);
@@ -167,7 +167,7 @@ int main(void) {
     test_runs_inhibited_heartbeat();
     test_inhibited_heartbeat_precedes_profile_save();
     test_heartbeat_resumes_after_normal_output();
-    test_shutdown_forces_output_off();
+    test_profile_save_forces_output_off();
     test_breathes_while_pedal_handshake_is_active();
     test_completed_breath_stops_after_request_clears();
     test_deadlines_survive_counter_wraparound();

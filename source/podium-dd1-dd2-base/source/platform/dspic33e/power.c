@@ -4,10 +4,10 @@
 #include <xc.h>
 
 /**
- * @brief Configures the wheel-base power button and hold output.
+ * @brief Configures the wheel-base profile-save input and hold output.
  *
- * Selects RD9 as the active-high button input and RD8 as the power-hold output without writing the
- * output latch before the first power-button sample.
+ * Selects RD9 as the active-high profile-save input and RD8 as the power-hold output without
+ * writing the output latch before the first profile-save sample.
  */
 void platform_power_init(void) {
     TRISDbits.TRISD9 = 1;
@@ -15,13 +15,13 @@ void platform_power_init(void) {
 }
 
 /**
- * @brief Reads the wheel-base power button.
+ * @brief Reads the wheel-base profile-save input.
  *
- * Samples the active-high input on RD9.
+ * Samples active-high RD9.
  *
- * @return True while the power button is pressed.
+ * @return True while RD9 is asserted.
  */
-bool platform_power_button_pressed(void) { return PORTDbits.RD9 != 0; }
+bool platform_profile_save_input_active(void) { return PORTDbits.RD9 != 0; }
 
 /**
  * @brief Controls the wheel-base power-hold output.

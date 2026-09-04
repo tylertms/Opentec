@@ -932,7 +932,8 @@ static const UsbMotorVendorServiceBuffers usb_motor_buffers = {
 /**
  * @brief Stores pending base settings immediately.
  *
- * Performs the synchronous storage pass used at explicit commit, shutdown, and restart boundaries.
+ * Performs the synchronous storage pass used at explicit commit, profile-save, and restart
+ * boundaries.
  */
 static void save_base_settings(void) {
     base_settings_persistence_save(&settings_persistence, &base_settings);
@@ -957,16 +958,6 @@ static uint16_t xbox_effective_steering_range_degrees(void);
 static void start_force_feedback_script_timer(void);
 
 /**
- * @brief Disables direct startup force output.
- *
- * Clears the startup override and the next primary motor output frame.
- */
-static void disable_motor_startup_direct_force(void) {
-    motor_startup_direct_force = false;
-    force_output_report_inhibit_primary(&motor_output_report);
-}
-
-/**
  * @brief Applies a physical profile-save transition to base hardware and retained settings.
  *
  * Enables the external power hold at startup. Profile-save start persists retained settings,
@@ -988,16 +979,10 @@ static void apply_profile_save_action(PowerAction action, uint32_t now_ms) {
                                             true);
         pedal_service_flush_configuration(&pedal_service, now_ms);
         platform_power_latch_set(false);
-        motor_startup_centering = (MotorStartupCentering){0};
-        motor_output_transport_enqueue_host_effect_clears(&motor_output_transport);
-        force_feedback_state_deactivate_host_effects(&force_feedback_state);
-        system_torque_transition_init(&system_torque_transition);
-        disable_motor_startup_direct_force();
-        force_output_enabled = false;
+        force_output_report_inhibit_primary(&motor_output_report);
         motor_output_override_active = false;
-        if (system_event_queue_try_push(&system_event_queue, PROFILE_SAVE_EVENT_CODE)) {
-            system_control_state_set_active_event(&system_control_state, PROFILE_SAVE_EVENT_CODE);
-        }
+        system_event_queue_try_push(&system_event_queue, PROFILE_SAVE_EVENT_CODE);
+        system_control_state_set_active_event(&system_control_state, PROFILE_SAVE_EVENT_CODE);
         system_control_state_set_status(&system_control_state, wheel_service_mode(&wheel_service),
                                         PROFILE_SAVE_DISPLAY_COMMAND);
         wheel_service_queue_tuning_display_command(&wheel_service, PROFILE_SAVE_DISPLAY_COMMAND);
@@ -1006,14 +991,15 @@ static void apply_profile_save_action(PowerAction action, uint32_t now_ms) {
         power_controller_arm_profile_save_completion(&power_controller, platform_time_ms());
         break;
     case POWER_ACTION_FINISH_PROFILE_SAVE:
-        platform_usb_detach();
-        wheel_position_ready = true;
-        tuning_interaction_request_close(&tuning_interaction);
-        wheel_service_queue_adapter_display_state(&wheel_service, SYSTEM_DISPLAY_DISMISS_EVENT_CODE);
-        if (system_event_queue_try_push(&system_event_queue, SYSTEM_DISPLAY_DISMISS_EVENT_CODE)) {
+        if ((int32_t)(now_ms - power_controller.completion_deadline_ms) > 0) {
+            tuning_interaction_request_close(&tuning_interaction);
+            wheel_service_queue_adapter_display_state(&wheel_service,
+                                                       SYSTEM_DISPLAY_DISMISS_EVENT_CODE);
             system_control_state_set_active_event(&system_control_state,
                                                   SYSTEM_DISPLAY_DISMISS_EVENT_CODE);
         }
+        platform_usb_detach();
+        wheel_position_ready = true;
         break;
     case POWER_ACTION_NONE:
     case POWER_ACTION_TORQUE_REQUEST_CHANGED:
@@ -1032,7 +1018,9 @@ static void apply_profile_save_action(PowerAction action, uint32_t now_ms) {
 static void service_profile_save(uint32_t now_ms) {
     PowerAction action =
         power_controller_update(&power_controller, platform_profile_save_input_active(),
-                                !base_settings.security_code.enabled, now_ms);
+                                !base_settings.security_code.enabled &&
+                                    !security_code_interaction_active(&security_code),
+                                now_ms);
     apply_profile_save_action(action, now_ms);
 }
 
@@ -1320,7 +1308,8 @@ static void service_cooling(uint32_t now_ms) {
         }
     }
     platform_cooling_set_duty(cooling_controller.primary_duty_percent,
-                              cooling_controller.secondary_duty_percent, false);
+                              cooling_controller.secondary_duty_percent,
+                              power_controller_profile_save_complete(&power_controller));
 }
 
 /**
@@ -4138,7 +4127,8 @@ static void apply_fallback_command(const UsbFallbackCommand *command) {
                                                   command->parameters[3]);
         if (cooling_controller.automatic_control_suspended) {
             platform_cooling_set_duty(cooling_controller.primary_duty_percent,
-                                      cooling_controller.secondary_duty_percent, false);
+                                      cooling_controller.secondary_duty_percent,
+                                      power_controller_profile_save_complete(&power_controller));
         }
         break;
     case USB_FALLBACK_SECURITY_DISABLE:
@@ -6588,7 +6578,7 @@ static void service_led_pattern(uint32_t now_ms) {
         .pedal_handshake_active = pedal_service.recovery_handshake,
         .alternate_runtime_active = runtime_bridge.phase != RUNTIME_BRIDGE_IDLE,
         .force_override_requested = power_controller.torque_disabled,
-        .profile_save_complete = power_controller.phase == POWER_PHASE_COMPLETE,
+        .profile_save_complete = power_controller_profile_save_complete(&power_controller),
     };
     uint16_t pattern = led_pattern_controller_update(&led_pattern_controller, input, now_ms);
     if (pattern != LED_PATTERN_NO_UPDATE) {
