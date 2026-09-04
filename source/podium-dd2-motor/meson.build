@@ -148,6 +148,7 @@ if motor_is_target
 
   motor_target_test_sources = files(
     'tests/source/target.c',
+    'tests/source/spi_restart.c',
     'tests/source/current_calibration.c',
     'tests/source/control.c',
     'tests/source/pi.c',

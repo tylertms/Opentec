@@ -63,17 +63,18 @@ void motor_spi_link_active_set(bool active);
 /**
  * @brief Services one delayed motor-link response timer event.
  *
- * An active pending response is prepared and both DMA channels are restarted.
+ * An active pending response clears its pending state and restarts both DMA channels. The restart
+ * prepares the response frame before asserting chip select.
  *
- * @param[in] context Timer callback context supplied by the communication timer.
  */
-void motor_spi_timeout_service(void *context);
+void motor_spi_timeout_service(void);
 
 /**
  * @brief Restarts both motor-link SPI DMA transfers.
  *
- * Chip select is asserted, stale receive data is flushed, and fresh transfer descriptors are
- * installed.
+ * Inactive links return without touching hardware. An active restart prepares the response, writes
+ * the complete GPIOC output register, clears the receive status with the official 0x400 MCR write
+ * when needed, and installs receive-before-transmit descriptors with major-loop rewind offsets.
  */
 void motor_spi_transfer_restart(void);
 

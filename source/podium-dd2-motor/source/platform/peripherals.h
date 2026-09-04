@@ -15,6 +15,9 @@
  */
 typedef void (*MotorTimerHandler)(void *context);
 
+/** @brief Handles one delayed motor-link response timer event. */
+typedef void (*MotorCommunicationTimerHandler)(void);
+
 /**
  * @brief Handles one FTM2 quadrature overflow event.
  *
@@ -237,8 +240,7 @@ void motor_service_timer_initialize(MotorTimerHandler handler, void *context);
  * The FTM4 overflow callback runs the delayed motor-link response service.
  *
  * @param[in] handler Function invoked for each communication period.
- * @param[in] context Caller context passed to the communication handler.
  */
-void motor_communication_timeout_timer_initialize(MotorTimerHandler handler, void *context);
+void motor_communication_timeout_timer_initialize(MotorCommunicationTimerHandler handler);
 
 #endif

@@ -878,7 +878,7 @@ void motor_runtime_initialize(void) {
     motor_spi_initialize(&motor_runtime.spi, motor_runtime_spi_prepare, motor_runtime_spi_receive,
                          &motor_runtime);
     motor_service_timer_initialize(motor_runtime_service_handler, &motor_runtime);
-    motor_communication_timeout_timer_initialize(motor_spi_timeout_service, &motor_runtime);
+    motor_communication_timeout_timer_initialize(motor_spi_timeout_service);
     motor_interrupts_initialize();
     EnableGlobalIRQ(interrupt_mask);
 }

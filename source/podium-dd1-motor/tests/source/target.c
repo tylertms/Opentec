@@ -15,6 +15,7 @@ int motor_test_parameter(void);
 int motor_test_pi(void);
 int motor_test_protocol(void);
 int motor_test_service_timing(void);
+int motor_test_spi_restart(void);
 int motor_test_telemetry(void);
 int motor_test_velocity_control(void);
 
@@ -34,6 +35,7 @@ _Noreturn void motor_test_main(void) {
                  motor_test_foc() | motor_test_velocity_control() |
                  motor_test_center() | motor_test_encoder() | motor_test_encoder_calibration() |
                  motor_test_service_timing() | motor_test_force_feedback() |
+                 motor_test_spi_restart() |
                  motor_test_link_frame() | motor_test_drive() | motor_test_hardware_profile() |
                  motor_test_motion() | motor_test_telemetry() | motor_test_parameter() |
                  motor_test_protocol();

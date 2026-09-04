@@ -50,12 +50,17 @@ static void motor_spi_controller_initialize(void) {
  * @param[in] channel DMA and DMAMUX channel number.
  * @param[in] request Peripheral request source selected by the DMAMUX.
  * @param[in] transfer Prepared NXP SDK transfer descriptor.
+ * @param[in] source_major_offset Source adjustment after each major loop.
+ * @param[in] destination_major_offset Destination adjustment after each major loop.
  */
 static void motor_spi_dma_channel_initialize(uint32_t channel, int32_t request,
-                                             edma_transfer_config_t *transfer) {
+                                             edma_transfer_config_t *transfer,
+                                             int32_t source_major_offset,
+                                             int32_t destination_major_offset) {
     DMAMUX_DisableChannel(DMAMUX, channel);
     EDMA_ResetChannel(DMA0, channel);
     EDMA_SetTransferConfig(DMA0, channel, transfer, NULL);
+    EDMA_SetMajorOffsetConfig(DMA0, channel, source_major_offset, destination_major_offset);
     EDMA_EnableChannelInterrupts(DMA0, channel, kEDMA_MajorInterruptEnable);
     DMAMUX_SetSource(DMAMUX, channel, request);
     DMAMUX_EnableChannel(DMAMUX, channel);
@@ -64,20 +69,40 @@ static void motor_spi_dma_channel_initialize(uint32_t channel, int32_t request,
 /**
  * @brief Rebuilds both official thirteen-byte motor-link DMA descriptors.
  *
+ * Startup installs the transmit descriptor before the receive descriptor. Recovery reverses this
+ * order so the receive channel is ready before the next transmit begins.
+ *
  * Channel zero transfers the response to SPI0 and channel one captures the simultaneous request.
+ * Major-loop offsets return each descriptor to its persistent frame boundary.
+ *
+ * @param[in] receive_first True to install the receive descriptor before the transmit descriptor.
  */
-static void motor_spi_dma_initialize(void) {
+static void motor_spi_dma_initialize(bool receive_first) {
     edma_transfer_config_t transfer;
 
     DMA0->CR = 0U;
 
-    EDMA_PrepareTransfer(&transfer, transfer_buffers->transmit, 1U, (void *)&SPI0->PUSHR, 1U, 1U,
-                         MOTOR_SPI_TRANSFER_SIZE, kEDMA_MemoryToPeripheral);
-    motor_spi_dma_channel_initialize(0U, kDmaRequestMux0SPI0Tx, &transfer);
+    if (receive_first) {
+        EDMA_PrepareTransfer(&transfer, (void *)&SPI0->POPR, 1U, transfer_buffers->receive, 1U, 1U,
+                             MOTOR_SPI_TRANSFER_SIZE, kEDMA_PeripheralToMemory);
+        motor_spi_dma_channel_initialize(1U, kDmaRequestMux0SPI0Rx, &transfer, 0,
+                                         -((int32_t)MOTOR_SPI_TRANSFER_SIZE));
 
-    EDMA_PrepareTransfer(&transfer, (void *)&SPI0->POPR, 1U, transfer_buffers->receive, 1U, 1U,
-                         MOTOR_SPI_TRANSFER_SIZE, kEDMA_PeripheralToMemory);
-    motor_spi_dma_channel_initialize(1U, kDmaRequestMux0SPI0Rx, &transfer);
+        EDMA_PrepareTransfer(&transfer, transfer_buffers->transmit, 1U, (void *)&SPI0->PUSHR, 1U,
+                             1U, MOTOR_SPI_TRANSFER_SIZE, kEDMA_MemoryToPeripheral);
+        motor_spi_dma_channel_initialize(0U, kDmaRequestMux0SPI0Tx, &transfer,
+                                         -((int32_t)MOTOR_SPI_TRANSFER_SIZE), 0);
+    } else {
+        EDMA_PrepareTransfer(&transfer, transfer_buffers->transmit, 1U, (void *)&SPI0->PUSHR, 1U,
+                             1U, MOTOR_SPI_TRANSFER_SIZE, kEDMA_MemoryToPeripheral);
+        motor_spi_dma_channel_initialize(0U, kDmaRequestMux0SPI0Tx, &transfer,
+                                         -((int32_t)MOTOR_SPI_TRANSFER_SIZE), 0);
+
+        EDMA_PrepareTransfer(&transfer, (void *)&SPI0->POPR, 1U, transfer_buffers->receive, 1U, 1U,
+                             MOTOR_SPI_TRANSFER_SIZE, kEDMA_PeripheralToMemory);
+        motor_spi_dma_channel_initialize(1U, kDmaRequestMux0SPI0Rx, &transfer, 0,
+                                         -((int32_t)MOTOR_SPI_TRANSFER_SIZE));
+    }
 
     EDMA_EnableChannelRequest(DMA0, 1U);
     EDMA_EnableChannelRequest(DMA0, 0U);
@@ -98,9 +123,7 @@ void motor_spi_initialize(MotorSpiTransferBuffers *buffers, MotorSpiPrepareHandl
     motor_spi_controller_initialize();
     CLOCK_EnableClock(kCLOCK_Dmamux0);
     CLOCK_EnableClock(kCLOCK_Dma0);
-    DMA0->CR = 0U;
-
-    motor_spi_dma_initialize();
+    motor_spi_dma_initialize(false);
 
     EnableIRQ(DMA0_DMA4_IRQn);
     EnableIRQ(DMA1_DMA5_IRQn);
@@ -108,8 +131,7 @@ void motor_spi_initialize(MotorSpiTransferBuffers *buffers, MotorSpiPrepareHandl
 
 void motor_spi_link_active_set(bool active) { transfer_active = active; }
 
-void motor_spi_timeout_service(void *context) {
-    (void)context;
+void motor_spi_timeout_service(void) {
     bool pending = response_pending;
     bool active = transfer_active;
     if (!pending || !active) {
@@ -117,19 +139,23 @@ void motor_spi_timeout_service(void *context) {
     }
 
     response_pending = false;
-    if (transfer_prepare_handler != NULL) {
-        transfer_prepare_handler(transfer_buffers->transmit, transfer_context);
-    }
     motor_spi_transfer_restart();
 }
 
 void motor_spi_transfer_restart(void) {
-    GPIO_PortClear(GPIOC, 1UL << 0U);
-    if ((SPI0->SR & SPI_SR_RXCTR_MASK) != 0U) {
-        DSPI_FlushFifo(SPI0, false, true);
-        (void)SPI0->POPR;
+    if (!transfer_active) {
+        return;
     }
-    motor_spi_dma_initialize();
+
+    if (transfer_prepare_handler != NULL) {
+        transfer_prepare_handler(transfer_buffers->transmit, transfer_context);
+    }
+    GPIOC->PDOR = ~(1UL << 0U);
+    if ((SPI0->SR & SPI_SR_RXCTR_MASK) != 0U) {
+        SPI0->MCR = SPI0->MCR & SPI_MCR_CLR_RXF_MASK;
+        SPI0->POPR;
+    }
+    motor_spi_dma_initialize(true);
 }
 
 /**

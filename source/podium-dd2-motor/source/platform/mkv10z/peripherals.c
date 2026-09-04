@@ -14,9 +14,7 @@ static MotorTimerHandler service_timer_handler;
 /** @brief Context passed to the FTM3 service-timer callback. */
 static void *service_timer_context;
 /** @brief Callback invoked by the FTM4 communication timer. */
-static MotorTimerHandler communication_timer_handler;
-/** @brief Context passed to the FTM4 communication-timer callback. */
-static void *communication_timer_context;
+static MotorCommunicationTimerHandler communication_timer_handler;
 /** @brief Callback invoked for each FTM2 quadrature overflow. */
 static MotorEncoderOverflowHandler encoder_overflow_handler;
 /** @brief Context passed to the FTM2 overflow callback. */
@@ -479,9 +477,8 @@ void motor_service_timer_initialize(MotorTimerHandler handler, void *context) {
     motor_periodic_timer_initialize(FTM3, kCLOCK_Ftm3, 9000U);
 }
 
-void motor_communication_timeout_timer_initialize(MotorTimerHandler handler, void *context) {
+void motor_communication_timeout_timer_initialize(MotorCommunicationTimerHandler handler) {
     communication_timer_handler = handler;
-    communication_timer_context = context;
     motor_periodic_timer_initialize(FTM4, kCLOCK_Ftm4, 3600U);
 }
 
@@ -504,7 +501,7 @@ void FTM3_IRQHandler(void) {
  */
 void FTM4_IRQHandler(void) {
     if (communication_timer_handler != NULL) {
-        communication_timer_handler(communication_timer_context);
+        communication_timer_handler();
     }
     FTM_ClearStatusFlags(FTM4, kFTM_TimeOverflowFlag);
 }
