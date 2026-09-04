@@ -1867,7 +1867,7 @@ static void test_accumulates_axis_mode_interface_pulses(void) {
     assert(protocol.motion.axes[2] == 0);
 }
 
-static void test_accepts_complete_a5_mode_range(void) {
+static void test_accepts_a5_modes_and_rejects_out_of_range(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
     for (uint16_t value = 0; value <= WHEEL_MODE_MAXIMUM; value++) {
@@ -1884,9 +1884,11 @@ static void test_accepts_complete_a5_mode_range(void) {
     memset(request, 0, sizeof(request));
     synchronize(&protocol, request);
     select_mode(&protocol, request, WHEEL_MODE_MAXIMUM + 1);
-    assert(protocol.phase == WHEEL_PROTOCOL_ACTIVE);
+    assert(protocol.phase == WHEEL_PROTOCOL_UNSUPPORTED);
     assert(protocol.mode == WHEEL_MODE_UNKNOWN);
     assert(protocol.command_invalid);
+    assert(protocol.mode_input_invalid);
+    assert(!protocol.selection_recovery_pending);
     assert(wheel_protocol_response(&protocol)[0] == WHEEL_PROTOCOL_COMMAND_SELECT_MODE);
 }
 
@@ -1979,7 +1981,7 @@ int main(void) {
     test_accumulates_axis_mode_interface_pulses();
     test_captures_extended_remote_tuning_controls();
     test_retains_selection_acknowledgement_until_ready_drops();
-    test_accepts_complete_a5_mode_range();
+    test_accepts_a5_modes_and_rejects_out_of_range();
     test_crc8_vectors();
     return 0;
 }

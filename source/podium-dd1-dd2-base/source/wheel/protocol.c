@@ -983,8 +983,8 @@ static void capture_request(WheelProtocol *protocol,
  *
  * Recognizes the two scan commands and command A5. Every A5 mode through the official maximum
  * enters authentication or active traffic; modes without an input decoder use a blank active
- * response. Out-of-range A5 values remain active with an invalid-command latch. Recognized
- * selections produce an acknowledgement response.
+ * response. Out-of-range A5 values enter the unsupported phase with an invalid-command latch.
+ * Recognized selections produce an acknowledgement response.
  *
  * @param[in,out] protocol Wheel protocol state to update.
  * @param[in] request Complete attached-wheel selection request.
@@ -1011,7 +1011,7 @@ static void select_mode(WheelProtocol *protocol,
             protocol->mode_input_invalid = true;
             protocol->command_invalid = true;
             protocol->selection_recovery_pending = false;
-            protocol->phase = WHEEL_PROTOCOL_ACTIVE;
+            protocol->phase = WHEEL_PROTOCOL_UNSUPPORTED;
             break;
         }
         protocol->mode = request[1];
@@ -1389,10 +1389,10 @@ void wheel_protocol_set_display_character_mode(WheelProtocol *protocol, bool ena
  *
  * Advances the ready-and-acknowledge handshake, selects or authenticates the requested packet
  * family, captures valid active input, and builds the corresponding response. Every in-range A5
- * mode byte is accepted; a mode without a decoder remains active with a blank response. An
- * out-of-range A5 value remains active with the invalid-command latch, while an unrecognized
- * selection is retained for the service deadline recovery path. Scan modes remain under the
- * separate scan service.
+ * mode byte is accepted; a mode without a decoder remains active with the official A6 response. An
+ * out-of-range A5 value enters the unsupported phase with the invalid-command latch, while an
+ * unrecognized selection is retained for the service deadline recovery path. Scan modes remain
+ * under the separate scan service.
  *
  * @param[in,out] protocol Wheel protocol state and response storage.
  * @param[in] request Complete 57-byte attached-wheel request.

@@ -6826,11 +6826,11 @@ int main(void) {
         }
         service_torque_key(now_ms);
         service_force_feedback_script(now_ms);
+        service_wheel_compatibility_alert(now_ms);
         service_force_output_enable();
         service_wheel_startup_display(now_ms);
         service_shifter_display(now_ms);
         service_local_display();
-        service_wheel_compatibility_alert(now_ms);
         (void)wheel_service_update_display_overlay(&wheel_service, now_ms);
         service_usb_input(now_ms);
         service_usb_feature_reports();
