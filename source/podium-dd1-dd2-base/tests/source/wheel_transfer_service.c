@@ -293,7 +293,11 @@ static void test_rejects_invalid_and_overlapping_requests(void) {
     command_transport_init(&transport);
 
     assert(!wheel_transfer_service_start(NULL, WHEEL_TRANSFER_READ));
+    assert(!wheel_transfer_service_start(&service, (WheelTransferRequest)-2));
+    assert(!wheel_transfer_service_start(&service, (WheelTransferRequest)-1));
     assert(!wheel_transfer_service_start(&service, WHEEL_TRANSFER_REQUEST_COUNT));
+    assert(!wheel_transfer_service_start(
+        &service, (WheelTransferRequest)(WHEEL_TRANSFER_REQUEST_COUNT + 1)));
     assert(wheel_transfer_service_start(&service, WHEEL_TRANSFER_READ));
     assert(!wheel_transfer_service_start(&service, WHEEL_TRANSFER_READ));
     wheel_transfer_service_run(NULL, &transport);
@@ -302,7 +306,14 @@ static void test_rejects_invalid_and_overlapping_requests(void) {
     wheel_transfer_service_init(&idle);
     wheel_transfer_service_run(&idle, &transport);
     assert(wheel_transfer_service_status(NULL, WHEEL_TRANSFER_READ) == WHEEL_TRANSFER_IDLE);
+    assert(wheel_transfer_service_status(&service, (WheelTransferRequest)-2) ==
+           WHEEL_TRANSFER_IDLE);
+    assert(wheel_transfer_service_status(&service, (WheelTransferRequest)-1) ==
+           WHEEL_TRANSFER_IDLE);
     assert(wheel_transfer_service_status(&service, WHEEL_TRANSFER_REQUEST_COUNT) ==
+           WHEEL_TRANSFER_IDLE);
+    assert(wheel_transfer_service_status(
+               &service, (WheelTransferRequest)(WHEEL_TRANSFER_REQUEST_COUNT + 1)) ==
            WHEEL_TRANSFER_IDLE);
 }
 

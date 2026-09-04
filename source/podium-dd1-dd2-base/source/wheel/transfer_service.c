@@ -20,6 +20,20 @@ static const uint8_t probe[WHEEL_TRANSFER_PAYLOAD_SIZE] = {'E', 'n', 'd', 'O', '
                                                            'L', 'i', 'n', 'e', '+'};
 
 /**
+ * @brief Tests whether a wheel-transfer request selects a supported channel.
+ *
+ * The official entry point accepts only request values zero and one before indexing channel state.
+ * The explicit lower bound also rejects negative enum values supplied by transport decoders.
+ *
+ * @param[in] request Wheel-transfer request channel.
+ * @return True for the write and read channels; otherwise false.
+ */
+static bool request_valid(WheelTransferRequest request) {
+    const int value = (int)request;
+    return value >= (int)WHEEL_TRANSFER_WRITE && value < (int)WHEEL_TRANSFER_REQUEST_COUNT;
+}
+
+/**
  * @brief Calculates the wheel-transfer response checksum.
  *
  * Applies the reflected 0x8C polynomial to each byte from an initial value of 0xFF.
@@ -135,7 +149,7 @@ void wheel_transfer_service_init(WheelTransferService *service) {
  * @return True when the request starts.
  */
 bool wheel_transfer_service_start(WheelTransferService *service, WheelTransferRequest request) {
-    if (service == 0 || request >= WHEEL_TRANSFER_REQUEST_COUNT ||
+    if (service == 0 || !request_valid(request) ||
         service->phase != WHEEL_TRANSFER_PHASE_IDLE) {
         return false;
     }
@@ -268,8 +282,8 @@ void wheel_transfer_service_run(WheelTransferService *service, CommandTransport 
  */
 WheelTransferStatus wheel_transfer_service_status(const WheelTransferService *service,
                                                   WheelTransferRequest request) {
-    return service != 0 && request < WHEEL_TRANSFER_REQUEST_COUNT ? service->statuses[request]
-                                                                  : WHEEL_TRANSFER_IDLE;
+    return service != 0 && request_valid(request) ? service->statuses[request]
+                                                  : WHEEL_TRANSFER_IDLE;
 }
 
 bool wheel_transfer_service_queue_native_payload(WheelTransferService *service,

@@ -75,8 +75,8 @@ void wheel_transfer_service_init(WheelTransferService *service);
  * write when the service is idle.
  *
  * @param[in,out] service Idle wheel-transfer service to update.
- * @param[in] request Request channel to start.
- * @return True when request is valid and the service accepted it; otherwise false.
+ * @param[in] request Write or read channel. Negative and out-of-range values are rejected.
+ * @return True when the service accepted a supported request; otherwise false.
  */
 bool wheel_transfer_service_start(WheelTransferService *service, WheelTransferRequest request);
 
