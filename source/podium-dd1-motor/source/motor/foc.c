@@ -19,6 +19,19 @@ static frac16_t motor_foc_square(frac16_t value) {
 }
 
 /**
+ * @brief Applies the official zero-bus endpoint conversion.
+ *
+ * Zero and positive stationary components saturate to positive full scale, while negative
+ * components saturate to negative full scale before space-vector modulation.
+ *
+ * @param[in] value Stationary voltage component.
+ * @return Positive full scale for nonnegative values, or negative full scale otherwise.
+ */
+static frac16_t motor_foc_zero_bus_component(frac16_t value) {
+    return value < 0 ? INT16_MIN : INT16_MAX;
+}
+
+/**
  * @brief Initializes both current controllers and current filters.
  *
  * D-axis and Q-axis paths receive the recovered gains, limits, filter coefficients, and cleared
@@ -57,7 +70,8 @@ void motor_foc_initialize(MotorFocState *state) {
  * @brief Runs one field-oriented current-control cycle.
  *
  * The cycle transforms measured phase current, regulates D/Q error, compensates bus ripple, and
- * produces the next space-vector modulation duties.
+ * produces the next space-vector modulation duties. A zero bus uses the sign-derived saturated
+ * compensation required by the motor-control library before SVM.
  *
  * @param[in,out] state Persistent current filters, PI controllers, and anti-windup flags.
  * @param[in] input Phase currents, current references, rotor angle, and DC-bus voltage.
@@ -99,6 +113,11 @@ void motor_foc_step(MotorFocState *state, const MotorFocInput *input, MotorFocOu
         motor_pi_step(current_error.f16Q, &state->stop_q_integrator, &state->q_controller);
 
     GMCLIB_ParkInv_F16(&output->voltage, &input->rotor_sin_cos, &stationary_voltage);
-    GMCLIB_ElimDcBusRipFOC_F16(input->dc_bus_voltage, &stationary_voltage, &compensated_voltage);
+    if (input->dc_bus_voltage == 0) {
+        compensated_voltage.f16Alpha = motor_foc_zero_bus_component(stationary_voltage.f16Alpha);
+        compensated_voltage.f16Beta = motor_foc_zero_bus_component(stationary_voltage.f16Beta);
+    } else {
+        GMCLIB_ElimDcBusRipFOC_F16(input->dc_bus_voltage, &stationary_voltage, &compensated_voltage);
+    }
     output->sector = GMCLIB_SvmStd_F16(&compensated_voltage, &output->duty);
 }

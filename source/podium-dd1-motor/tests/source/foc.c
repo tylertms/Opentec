@@ -1,6 +1,7 @@
 #include "motor/foc.h"
 
 #include <assert.h>
+#include <stdint.h>
 
 static void test_zero_bus_runs_limited_control_cycle(void) {
     MotorFocState state;
@@ -29,9 +30,10 @@ static void test_zero_bus_runs_limited_control_cycle(void) {
     assert(state.q_controller.bLimFlag == 1U);
     assert(output.voltage.f16D == 0);
     assert(output.voltage.f16Q == 0);
-    assert(output.duty.f16A == 0x4000);
-    assert(output.duty.f16B == 0x4000);
-    assert(output.duty.f16C == 0x4000);
+    assert(output.duty.f16A == INT16_MAX);
+    assert(output.duty.f16B == INT16_C(0x6893));
+    assert(output.duty.f16C == 0);
+    assert(output.sector == 1U);
 }
 
 int motor_test_foc(void) {
