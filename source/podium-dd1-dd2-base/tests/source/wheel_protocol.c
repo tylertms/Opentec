@@ -800,6 +800,47 @@ static void test_captures_packed_family_requests(void) {
     assert(wheel_protocol_request(&protocol)[1] == 0x08);
 }
 
+static void test_converts_compatibility_signed_primary_motion(void) {
+    static const int8_t motions[] = {1, -1, 0, 127, -128};
+    static const int8_t expected[] = {1, -1, 0, 1, -1};
+
+    for (uint8_t index = 0; index < sizeof(motions); index++) {
+        WheelProtocol protocol;
+        uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+        wheel_protocol_init(&protocol);
+        protocol.mode = WHEEL_MODE_LEGACY_COMPATIBILITY;
+        protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+        wheel_protocol_set_axis_processing(&protocol, 6, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50, 1);
+        request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+        request[7] = (uint8_t)motions[index];
+        mark_ready(request);
+
+        accept_active_request(&protocol, request);
+
+        const WheelPacketPackedInput *input = wheel_protocol_packed_input(&protocol);
+        assert(input != 0);
+        assert(input->motion == expected[index]);
+        assert(wheel_protocol_axis_motion_direction(&protocol, 0) == expected[index]);
+        assert(wheel_protocol_axis_motion_direction(&protocol, 1) == 0);
+        assert(wheel_protocol_axis_motion_direction(&protocol, 2) == 0);
+    }
+
+    WheelProtocol alternate_protocol;
+    uint8_t alternate_request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
+    wheel_protocol_init(&alternate_protocol);
+    alternate_protocol.mode = WHEEL_MODE_LEGACY_ALTERNATE;
+    alternate_protocol.phase = WHEEL_PROTOCOL_ACTIVE;
+    wheel_protocol_set_axis_processing(&alternate_protocol, 6, WHEEL_AXIS_OVERRIDE_MODE_NONE, 50,
+                                       1);
+    alternate_request[0] = WHEEL_PROTOCOL_COMMAND_AUTHENTICATE;
+    alternate_request[7] = 0x10;
+    mark_ready(alternate_request);
+
+    accept_active_request(&alternate_protocol, alternate_request);
+
+    assert(wheel_protocol_axis_motion_direction(&alternate_protocol, 0) == 1);
+}
+
 static void test_tracks_display_acknowledgement_input(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
@@ -1997,6 +2038,7 @@ int main(void) {
     test_resets_acknowledgement_motion_for_both_transitions();
     test_selects_mode_when_ready_drops();
     test_captures_normalized_active_requests();
+    test_converts_compatibility_signed_primary_motion();
     test_captures_packed_family_requests();
     test_averages_control_axes_only_for_authenticated_wheel_modes();
     test_routes_vendor_packet_modes();

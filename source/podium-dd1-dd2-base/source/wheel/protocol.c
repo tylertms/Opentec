@@ -459,6 +459,22 @@ static int8_t pulse_delta(uint8_t flags, uint8_t negative_mask, uint8_t positive
 }
 
 /**
+ * @brief Converts mode-0x17 signed primary motion to its packed pulse flags.
+ *
+ * @param[in] motion Signed primary motion from the packed request.
+ * @return Positive flag 0x10, negative flag 0x20, or zero.
+ */
+static uint8_t compatibility_primary_flags(int8_t motion) {
+    if (motion > 0) {
+        return 0x10u;
+    }
+    if (motion < 0) {
+        return 0x20u;
+    }
+    return 0;
+}
+
+/**
  * @brief Accumulates mode-0x18 pulse input.
  *
  * Applies the interface timing gate and maps each lower/higher bit pair to positive/negative
@@ -604,6 +620,9 @@ static void accumulate_extended_motion(WheelProtocol *protocol) {
 static void accumulate_common_pulses(WheelProtocol *protocol, WheelPacketCommonInput *input,
                                      bool fourth_axis) {
     uint8_t flags = (uint8_t)input->motion;
+    if (protocol->mode == WHEEL_MODE_LEGACY_COMPATIBILITY) {
+        flags = compatibility_primary_flags(input->motion);
+    }
     if (protocol->interface_mode != 6 && protocol->interface_mode != 7) {
         uint8_t active_flags = wheel_packet_extended_hold_direct_pulses(
             &protocol->extended_pulse_state, protocol->mode, protocol->now_ms, flags);
