@@ -202,7 +202,7 @@ static void test_protocol_active_clears_extended_fields(void) {
         .rotary_positions = {0x12, 0x34},
         .extended_buttons = {0x56, 0x78, 0x9a, 0xbc},
         .accessory = 0x0d,
-        .mode = 0x01,
+        .mode = 0x09,
         .protocol_active = true,
     };
     fanatec_input_state state = {
@@ -221,6 +221,75 @@ static void test_protocol_active_clears_extended_fields(void) {
     assert(fanatec_input_encode(report, &state));
     assert(memcmp(report + 6, expected_rotary, sizeof(expected_rotary)) == 0);
     assert(memcmp(report + 11, expected_accessory, sizeof(expected_accessory)) == 0);
+}
+
+static void test_unsupported_mode_preserves_extended_fields(void) {
+    const fanatec_input_source source = {
+        .rotary_positions = {0x12, 0x34},
+        .extended_buttons = {0x56, 0x78, 0x9a, 0xbc},
+        .accessory = 0x0d,
+        .mode = 0x18,
+        .protocol_active = true,
+    };
+    fanatec_input_state state = {
+        .rotary = {0xa1, 0xa2, 0xa3, 0xa4, 0xa5},
+        .accessory = {0xb1, 0xb2, 0xb3, 0xb4, 0xb5},
+    };
+    const uint8_t expected_rotary[FANATEC_INPUT_ROTARY_BYTES] = {0, 0, 0x56, 0x78, 0x9a};
+    const uint8_t expected_accessory[FANATEC_INPUT_ACCESSORY_BYTES] = {0xbc, 0, 0, 0, 0x0d};
+    uint8_t report[FANATEC_INPUT_REPORT_SIZE];
+
+    fanatec_input_pipeline_map(&state, &source);
+
+    assert(memcmp(state.rotary, expected_rotary, sizeof(expected_rotary)) == 0);
+    assert(memcmp(state.accessory, expected_accessory, sizeof(expected_accessory)) == 0);
+    assert(fanatec_input_encode(report, &state));
+    assert(memcmp(report + 6, expected_rotary, sizeof(expected_rotary)) == 0);
+    assert(memcmp(report + 11, expected_accessory, sizeof(expected_accessory)) == 0);
+}
+
+static void test_production_pipeline_preserves_unsupported_mode_fields(void) {
+    fanatec_input_pipeline_state pipeline;
+    fanatec_input_state state = {0};
+    const fanatec_input_source source = {
+        .rotary_positions = {0x12, 0x34},
+        .extended_buttons = {0x56, 0x78, 0x9a, 0xbc},
+        .accessory = 0x0d,
+        .mode = 0x18,
+        .protocol_active = true,
+    };
+
+    fanatec_input_pipeline_init(&pipeline);
+    for (uint8_t sample = 0; sample < FANATEC_INPUT_HISTORY_DEPTH; sample++) {
+        fanatec_input_pipeline_apply(&pipeline, &state, &source);
+    }
+
+    assert(memcmp(state.rotary, (uint8_t[5]){0, 0, 0x56, 0x78, 0x9a}, FANATEC_INPUT_ROTARY_BYTES) ==
+           0);
+    assert(memcmp(state.accessory, (uint8_t[5]){0xbc, 0, 0, 0, 0x0d},
+                  FANATEC_INPUT_ACCESSORY_BYTES) == 0);
+}
+
+static void test_rotary_mapping_branch_selection(void) {
+    const uint8_t mapped_modes[] = {0x04, 0x06, 0x09, 0x0a, 0x0b, 0x0c, 0x0e,
+                                    0x0f, 0x15, 0x17, 0x1b, 0x1c, 0x1d};
+    for (size_t index = 0; index < sizeof(mapped_modes) / sizeof(mapped_modes[0]); index++) {
+        assert(fanatec_input_mode_uses_multi_position_mapping(mapped_modes[index], true));
+    }
+
+    const uint8_t unsupported_modes[] = {0x00, 0x01, 0x05, 0x10, 0x18, 0x1e};
+    for (size_t index = 0; index < sizeof(unsupported_modes) / sizeof(unsupported_modes[0]);
+         index++) {
+        assert(!fanatec_input_mode_uses_multi_position_mapping(unsupported_modes[index], true));
+    }
+
+    assert(fanatec_input_mode_uses_multi_position_mapping(0x09, false));
+    assert(fanatec_input_mode_uses_multi_position_mapping(0x04, true));
+    assert(fanatec_input_mode_uses_multi_position_mapping(0x06, true));
+    assert(fanatec_input_mode_uses_multi_position_mapping(0x15, true));
+    assert(!fanatec_input_mode_uses_multi_position_mapping(0x04, false));
+    assert(!fanatec_input_mode_uses_multi_position_mapping(0x06, false));
+    assert(!fanatec_input_mode_uses_multi_position_mapping(0x15, false));
 }
 
 static void test_auxiliary_transfer_code_reaches_native_report_byte(void) {
@@ -621,6 +690,9 @@ int main(void) {
     test_official_first_five_mapping_and_axes();
     test_legacy_mode_maps_auxiliary_high_nibble();
     test_protocol_active_clears_extended_fields();
+    test_unsupported_mode_preserves_extended_fields();
+    test_production_pipeline_preserves_unsupported_mode_fields();
+    test_rotary_mapping_branch_selection();
     test_auxiliary_transfer_code_reaches_native_report_byte();
     test_production_pipeline_first_five_report();
     test_primary_third_button_bank_mapping();

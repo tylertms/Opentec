@@ -99,6 +99,42 @@ static uint16_t fanatec_remap_reduced_axis_bits(uint16_t value) {
                       ((value >> 12) << 15));
 }
 
+static void fanatec_copy_extended_controls(fanatec_input_state *state,
+                                           const fanatec_input_source *source) {
+    state->rotary[2] = source->extended_buttons[0];
+    state->rotary[3] = source->extended_buttons[1];
+    state->rotary[4] = source->extended_buttons[2];
+    state->accessory[0] = source->extended_buttons[3];
+    state->accessory[4] = source->accessory;
+}
+
+static bool fanatec_mode_uses_native_rotary_mapping(uint8_t mode) {
+    switch (mode) {
+    case 0x09:
+    case 0x0a:
+    case 0x0b:
+    case 0x0c:
+    case 0x0e:
+    case 0x0f:
+    case 0x17:
+    case 0x1b:
+    case 0x1c:
+    case 0x1d:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool fanatec_mode_uses_alternate_rotary_mapping(uint8_t mode) {
+    return mode == 0x04 || mode == 0x06 || mode == 0x15;
+}
+
+static bool fanatec_mode_uses_rotary_mapping(uint8_t mode) {
+    return fanatec_mode_uses_native_rotary_mapping(mode) ||
+           fanatec_mode_uses_alternate_rotary_mapping(mode);
+}
+
 static void fanatec_filter_bytes(uint8_t history[FANATEC_INPUT_HISTORY_DEPTH][3], uint8_t index,
                                  uint8_t value[3]) {
     for (uint8_t byte = 0; byte < 3; byte++) {
@@ -414,6 +450,17 @@ void fanatec_input_pipeline_map(fanatec_input_state *state, const fanatec_input_
         state->rotary[3] |= (uint8_t)((source->pulse_flags[0] >> 3) & 0x08u);
         state->rotary[3] |= (uint8_t)((source->pulse_flags[0] >> 5) & 0x04u);
     }
+
+    if (source->protocol_active && !fanatec_mode_uses_rotary_mapping(source->mode)) {
+        state->rotary[0] = 0;
+        state->rotary[1] = 0;
+        fanatec_copy_extended_controls(state, source);
+    }
+}
+
+bool fanatec_input_mode_uses_multi_position_mapping(uint8_t mode, bool adapter_connected) {
+    return fanatec_mode_uses_native_rotary_mapping(mode) ||
+           (adapter_connected && fanatec_mode_uses_alternate_rotary_mapping(mode));
 }
 
 uint8_t fanatec_input_report_mode(uint8_t wheel_mode, bool command_invalid) {

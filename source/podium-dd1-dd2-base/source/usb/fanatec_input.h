@@ -120,11 +120,26 @@ void fanatec_input_pipeline_filter(fanatec_input_pipeline_state *pipeline,
  * and accessory byte before applying the current packet. Standard mode preserves only the upper
  * nibble of the packed rotary source while the profile selector is held. The existing encoder then
  * serializes the resulting logical state without changing report length or usage identifiers.
+ * Unsupported active modes preserve the source extended rotary and accessory fields while clearing
+ * only the primary rotary pair, matching the official alternate no-mapped branch.
  *
  * @param[out] state Native Fanatec output state.
  * @param[in] source Filtered source packet.
  */
 void fanatec_input_pipeline_map(fanatec_input_state *state, const fanatec_input_source *source);
+
+/**
+ * @brief Reports whether the multi-position stage owns the rotary fields for a wheel mode.
+ *
+ * Native rotary-mapping modes always use the stage. Alternate modes 0x04, 0x06, and 0x15 use it
+ * only with an attached adapter; their no-adapter path retains the direct source fields.
+ * Unsupported modes never enter the stage and retain the alternate mapper result.
+ *
+ * @param[in] mode Negotiated attached-wheel mode.
+ * @param[in] adapter_connected True when the attached adapter is connected.
+ * @return True when the multi-position stage owns the rotary fields.
+ */
+bool fanatec_input_mode_uses_multi_position_mapping(uint8_t mode, bool adapter_connected);
 
 /**
  * @brief Selects the wheel mode written to a native Fanatec report.
@@ -246,7 +261,9 @@ void fanatec_input_apply_multi_position_mode(fanatec_input_state *state, uint8_t
  * @brief Applies multi-position rotary values to the Fanatec input state.
  *
  * Encodes event, pulse, or constant selector values according to the selected reporting mode and
- * clears the rotary fields before encoding them.
+ * clears the rotary fields before encoding them. The caller must invoke this stage only when
+ * fanatec_input_mode_uses_multi_position_mapping() returns true; unsupported active modes retain
+ * their alternate mapper fields instead.
  *
  * @param[in,out] state Input report state to update.
  * @param[in] mode Effective multi-position reporting mode.

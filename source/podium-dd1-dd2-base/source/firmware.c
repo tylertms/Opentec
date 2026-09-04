@@ -5405,7 +5405,9 @@ static void service_usb_input(uint32_t now_ms) {
     fanatec_input_apply_alternative_shifter(
         &usb_input_state.fanatec, wheel_service_alternative_shifter_enabled(&wheel_service));
     wheel_multi_position_input = (WheelMultiPositionInput){0};
-    if (!tuning_host_suppressed &&
+    if (fanatec_pipeline_active && !tuning_host_suppressed &&
+        fanatec_input_mode_uses_multi_position_mapping(
+            wheel_mode, wheel_service_adapter_connected(&wheel_service)) &&
         wheel_service_multi_position_input(&wheel_service, now_ms, &wheel_multi_position_input)) {
         fanatec_multi_position_input_state = (fanatec_multi_position_input){
             .remap_selectors = wheel_multi_position_input.remap_selectors,
