@@ -242,16 +242,14 @@ bool usb_remote_tuning_service_take_telemetry_report(UsbRemoteTuningService *ser
 /**
  * @brief Updates telemetry selection from physical controls.
  *
- * While remote tuning, profile presentation, and tuning display support are active, consumes
- * tuning-input or standard-wheel navigation edges to change the selected metric. An inactive
- * session requests clearing the selected metric.
+ * While remote tuning, profile presentation, and tuning display support are active outside
+ * extended wheel mode, consumes tuning-input or standard-wheel navigation edges to change the
+ * selected metric. An inactive session requests clearing the selected metric.
  *
  * @param[in,out] service Service state containing telemetry selection and input history.
  * @param[in] wheel_mode Current attached-wheel mode.
  * @param[in] profile_mode Whether the wheel currently presents the profile context.
  * @param[in] tuning_display_supported Whether the wheel supports tuning presentation.
- * @param[in] adapter_connected Current adapter connection state retained for interface
- * compatibility.
  * @param[in] tuning_input Signed tuning-control input.
  * @param[in] auxiliary_buttons Current standard-wheel navigation buttons.
  * @return True when the selected metric changed; otherwise false.
@@ -259,7 +257,6 @@ bool usb_remote_tuning_service_take_telemetry_report(UsbRemoteTuningService *ser
 bool usb_remote_tuning_service_update_physical_selection(UsbRemoteTuningService *service,
                                                          uint8_t wheel_mode, bool profile_mode,
                                                          bool tuning_display_supported,
-                                                         bool adapter_connected,
                                                          int8_t tuning_input,
                                                          uint8_t auxiliary_buttons);
 

@@ -587,16 +587,14 @@ void usb_remote_tuning_service_init(UsbRemoteTuningService *service) {
 bool usb_remote_tuning_service_update_physical_selection(UsbRemoteTuningService *service,
                                                          uint8_t wheel_mode, bool profile_mode,
                                                          bool tuning_display_supported,
-                                                         bool adapter_connected,
                                                          int8_t tuning_input,
                                                          uint8_t auxiliary_buttons) {
     if (service == NULL) {
         return false;
     }
-    (void)adapter_connected;
-
     RemoteTelemetryMetric selection = service->telemetry.metric;
-    if (service->active && tuning_display_supported && profile_mode) {
+    if (service->active && tuning_display_supported && profile_mode &&
+        wheel_mode != WHEEL_MODE_REMOTE_TUNING_EXTENDED) {
         if (wheel_mode != WHEEL_MODE_STANDARD) {
             if (tuning_input != service->physical_previous_input) {
                 if (tuning_input > 0) {

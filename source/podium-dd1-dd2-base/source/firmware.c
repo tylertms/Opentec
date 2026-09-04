@@ -5148,7 +5148,7 @@ static void service_tuning_interaction(uint32_t now_ms) {
     if (available) {
         (void)usb_remote_tuning_service_update_physical_selection(
             &usb_remote_tuning_service, wheel_service_mode(&wheel_service), profile_mode,
-            wheel_service_tuning_display_supported(&wheel_service), adapter->connected,
+            wheel_service_tuning_display_supported(&wheel_service),
             tuning_interaction_snapshot.tuning_input,
             tuning_interaction_snapshot.auxiliary_report[1]);
         (void)usb_remote_tuning_service_update_setup_navigation(

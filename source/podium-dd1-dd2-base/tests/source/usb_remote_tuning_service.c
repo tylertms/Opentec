@@ -473,35 +473,40 @@ static void selects_telemetry_from_physical_controls(void) {
     service.active = true;
 
     assert(
-        usb_remote_tuning_service_update_physical_selection(&service, 1, true, true, false, 1, 0));
+        usb_remote_tuning_service_update_physical_selection(&service, 1, true, true, 1, 0));
     assert(service.telemetry.metric == REMOTE_TELEMETRY_SPEED);
     assert(
-        !usb_remote_tuning_service_update_physical_selection(&service, 1, true, true, false, 1, 0));
+        !usb_remote_tuning_service_update_physical_selection(&service, 1, true, true, 1, 0));
     assert(
-        usb_remote_tuning_service_update_physical_selection(&service, 1, true, true, false, -1, 0));
+        usb_remote_tuning_service_update_physical_selection(&service, 1, true, true, -1, 0));
     assert(service.telemetry.metric == REMOTE_TELEMETRY_NONE);
 
     usb_remote_tuning_service_init(&service);
     service.active = true;
-    assert(!usb_remote_tuning_service_update_physical_selection(&service, 0x10, true, true, false,
-                                                                0, 0x04));
+    assert(!usb_remote_tuning_service_update_physical_selection(
+        &service, WHEEL_MODE_REMOTE_TUNING_EXTENDED, true, true, 1, 0x04));
+    assert(service.telemetry.metric == REMOTE_TELEMETRY_NONE);
+    assert(service.physical_previous_input == 0);
+    assert(service.physical_button_flags == 0);
+
+    assert(!usb_remote_tuning_service_update_physical_selection(&service, 0x10, true, true, 0,
+                                                                0x04));
     assert(service.physical_input_released);
-    assert(usb_remote_tuning_service_update_physical_selection(&service, 0x10, true, true, false, 0,
+    assert(usb_remote_tuning_service_update_physical_selection(&service, 0x10, true, true, 0,
                                                                0x04));
     assert(service.telemetry.metric == REMOTE_TELEMETRY_SPEED);
-    assert(!usb_remote_tuning_service_update_physical_selection(&service, 0x10, true, true, false,
-                                                                0, 0x04));
-    assert(!usb_remote_tuning_service_update_physical_selection(&service, 0x10, true, true, false,
-                                                                0, 0));
+    assert(!usb_remote_tuning_service_update_physical_selection(&service, 0x10, true, true, 0,
+                                                                0x04));
+    assert(!usb_remote_tuning_service_update_physical_selection(&service, 0x10, true, true, 0, 0));
     assert(service.physical_input_released);
-    assert(usb_remote_tuning_service_update_physical_selection(&service, 0x10, true, true, false, 0,
+    assert(usb_remote_tuning_service_update_physical_selection(&service, 0x10, true, true, 0,
                                                                0x02));
     assert(service.telemetry.metric == REMOTE_TELEMETRY_NONE);
 
     service.active = false;
     service.telemetry.metric = REMOTE_TELEMETRY_SPEED;
     assert(
-        usb_remote_tuning_service_update_physical_selection(&service, 1, false, true, false, 0, 0));
+        usb_remote_tuning_service_update_physical_selection(&service, 1, false, true, 0, 0));
     assert(service.telemetry.metric == REMOTE_TELEMETRY_NONE);
 }
 
