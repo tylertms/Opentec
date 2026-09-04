@@ -221,9 +221,10 @@ bool wheel_output_reports_queue_remote_telemetry(
 bool wheel_output_reports_remote_telemetry_pending(const WheelOutputReports *reports);
 
 /**
- * @brief Selects the requested attached-wheel button illumination state.
+ * @brief Selects the requested legacy attached-wheel button illumination state.
  *
- * Retains the requested state until a compatible wheel receives a changed value.
+ * Retains the requested state until a legacy mode 0x0e wheel receives a changed value. Other modes
+ * do not consume or emit the pending state.
  *
  * @param[in,out] reports Output-report state to update.
  * @param[in] enabled True to request button illumination.

@@ -247,9 +247,10 @@ bool wheel_output_reports_remote_telemetry_pending(const WheelOutputReports *rep
 }
 
 /**
- * @brief Selects the attached-wheel button illumination state.
+ * @brief Selects the legacy attached-wheel button illumination state.
  *
- * Retains the requested value for later transmission in compatible remote-tuning modes.
+ * Retains the requested value for later transmission in legacy remote-tuning mode 0x0e. Other
+ * modes leave the value pending.
  *
  * @param[in,out] reports Retained report payloads and profile-mode state.
  * @param[in] enabled True to enable attached-wheel button illumination.
@@ -450,7 +451,7 @@ bool wheel_output_reports_shifter_state_pending(const WheelOutputReports *report
  * state. Reports four and six use the same 25-byte payload. Report 17 emits its next segmented
  * transfer frame. Catalogs emit one definition or indexed-help frame. Remote telemetry writes
  * command 3 and its 30-byte payload for three successive selections. Button illumination uses
- * command 0x16 only in remote-tuning wheel modes. The caller supplies the checksum.
+ * command 0x16 only in legacy remote-tuning mode 0x0e. The caller supplies the checksum.
  *
  * @param[in,out] reports Retained report payloads and pending state.
  * @param[in] wheel_mode Negotiated attached-wheel mode.
@@ -549,8 +550,7 @@ bool wheel_output_reports_encode_next(WheelOutputReports *reports, uint8_t wheel
             reports->pending &= (uint8_t)~WHEEL_OUTPUT_REMOTE_TELEMETRY_PENDING;
         }
         return true;
-    } else if ((wheel_mode == WHEEL_MODE_REMOTE_TUNING_LEGACY ||
-                wheel_mode == WHEEL_MODE_REMOTE_TUNING_EXTENDED) &&
+    } else if (wheel_mode == WHEEL_MODE_REMOTE_TUNING_LEGACY &&
                reports->button_illumination != reports->sent_button_illumination) {
         frame[1] = WHEEL_OUTPUT_BUTTON_ILLUMINATION_COMMAND;
         frame[2] = reports->button_illumination ? 1 : 0;

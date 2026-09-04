@@ -402,21 +402,31 @@ static void test_streams_interface_catalogs(void) {
     assert(transfers > 26 * 7);
 }
 
-static void test_sends_button_illumination_changes_to_remote_tuning_modes(void) {
+static void test_sends_button_illumination_only_in_legacy_mode(void) {
     WheelOutputReports reports;
     wheel_output_reports_init(&reports);
-    uint8_t frame[33] = {0};
+    uint8_t frame[33];
 
     wheel_output_reports_set_button_illumination(&reports, true);
+    memset(frame, 0xa5, sizeof(frame));
     assert(!wheel_output_reports_encode_next(&reports, 0, frame));
+    assert(frame[1] == 0xa5);
+    assert(frame[2] == 0xa5);
+    memset(frame, 0xa5, sizeof(frame));
+    assert(!wheel_output_reports_encode_next(&reports, 0x1c, frame));
+    assert(frame[1] == 0xa5);
+    assert(frame[2] == 0xa5);
     assert(wheel_output_reports_encode_next(&reports, 0x0e, frame));
     assert(frame[1] == 0x16);
     assert(frame[2] == 1);
     assert(!wheel_output_reports_encode_next(&reports, 0x0e, frame));
 
     wheel_output_reports_set_button_illumination(&reports, false);
-    assert(!wheel_output_reports_encode_next(&reports, 0, frame));
-    assert(wheel_output_reports_encode_next(&reports, 0x1c, frame));
+    memset(frame, 0xa5, sizeof(frame));
+    assert(!wheel_output_reports_encode_next(&reports, 0x1c, frame));
+    assert(frame[1] == 0xa5);
+    assert(frame[2] == 0xa5);
+    assert(wheel_output_reports_encode_next(&reports, 0x0e, frame));
     assert(frame[1] == 0x16);
     assert(frame[2] == 0);
 }
@@ -437,6 +447,6 @@ int main(void) {
     test_activates_legacy_interface_presentations();
     test_streams_interface_catalogs();
     test_repeats_remote_telemetry_after_report_seventeen();
-    test_sends_button_illumination_changes_to_remote_tuning_modes();
+    test_sends_button_illumination_only_in_legacy_mode();
     return 0;
 }
