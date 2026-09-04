@@ -14,6 +14,7 @@ enum {
     TEST_MAILBOX_PAYLOAD_OFFSET = 0x80,
     TEST_MAILBOX_LENGTH_OFFSET = 0x81,
     TEST_MAILBOX_CONTROL_OFFSET = 0x82,
+    TEST_OTHER_TRANSPORT_OWNER = 0x7f,
 };
 
 typedef struct {
@@ -122,19 +123,27 @@ static void complete_transport(Fixture *fixture) {
     fixture->response_pending = false;
 }
 
+static MotorCommandStartupServiceResult run_service(Fixture *fixture) {
+    return motor_command_startup_service_run(&fixture->service, &fixture->channel,
+                                             &fixture->exchange, &fixture->transport);
+}
+
+static MotorCommandStartupServiceResult run_startup_to_completion(Fixture *fixture) {
+    MotorCommandStartupServiceResult result = MOTOR_COMMAND_STARTUP_SERVICE_RUNNING;
+    for (uint16_t iteration = 0; iteration < 500 &&
+                                   result == MOTOR_COMMAND_STARTUP_SERVICE_RUNNING;
+         iteration++) {
+        result = run_service(fixture);
+        complete_transport(fixture);
+    }
+    return result;
+}
+
 static void test_completes_startup_and_collects_identity(void) {
     Fixture fixture;
     fixture_init(&fixture);
 
-    MotorCommandStartupServiceResult result = MOTOR_COMMAND_STARTUP_SERVICE_RUNNING;
-    for (uint16_t iteration = 0; iteration < 500 && result == MOTOR_COMMAND_STARTUP_SERVICE_RUNNING;
-         iteration++) {
-        result = motor_command_startup_service_run(&fixture.service, &fixture.channel,
-                                                   &fixture.exchange, &fixture.transport);
-        complete_transport(&fixture);
-    }
-
-    assert(result == MOTOR_COMMAND_STARTUP_SERVICE_COMPLETE);
+    assert(run_startup_to_completion(&fixture) == MOTOR_COMMAND_STARTUP_SERVICE_COMPLETE);
     assert(!command_transport_is_owner(&fixture.transport, MOTOR_COMMAND_STARTUP_OWNER));
     const MotorCommandApplication *application =
         motor_command_channel_application(&fixture.channel);
@@ -144,7 +153,58 @@ static void test_completes_startup_and_collects_identity(void) {
     assert(application->information.selector_4 == 0x0405);
 }
 
+static void test_waits_for_ownership_before_reading_status(void) {
+    Fixture fixture;
+    fixture_init(&fixture);
+
+    assert(run_service(&fixture) == MOTOR_COMMAND_STARTUP_SERVICE_RUNNING);
+    command_transport_claim(&fixture.transport, TEST_OTHER_TRANSPORT_OWNER);
+    assert(run_service(&fixture) == MOTOR_COMMAND_STARTUP_SERVICE_RUNNING);
+    assert(fixture.service.startup.phase == MOTOR_COMMAND_STARTUP_CLAIM);
+    assert(!fixture.service.startup.active);
+
+    command_transport_release(&fixture.transport, TEST_OTHER_TRANSPORT_OWNER);
+    assert(run_service(&fixture) == MOTOR_COMMAND_STARTUP_SERVICE_RUNNING);
+    assert(fixture.service.startup.phase == MOTOR_COMMAND_STARTUP_READ_STATUS);
+    assert(command_transport_is_owner(&fixture.transport, MOTOR_COMMAND_STARTUP_OWNER));
+
+    assert(run_service(&fixture) == MOTOR_COMMAND_STARTUP_SERVICE_RUNNING);
+    const uint8_t *request;
+    uint16_t request_length;
+    assert(command_transport_request(&fixture.transport, &request, &request_length));
+    assert(request_length != 0);
+    assert((request[1] & 1u) != 0);
+    assert(request[2] == TEST_MAILBOX_LENGTH_OFFSET);
+
+    complete_transport(&fixture);
+    assert(run_startup_to_completion(&fixture) == MOTOR_COMMAND_STARTUP_SERVICE_COMPLETE);
+}
+
+static void test_continues_after_rejected_status_read(void) {
+    Fixture fixture;
+    fixture_init(&fixture);
+
+    for (uint8_t step = 0; step < 3; step++) {
+        assert(run_service(&fixture) == MOTOR_COMMAND_STARTUP_SERVICE_RUNNING);
+    }
+    const uint8_t *request;
+    uint16_t request_length;
+    assert(command_transport_request(&fixture.transport, &request, &request_length));
+    assert(request_length != 0);
+    assert(request[2] == TEST_MAILBOX_LENGTH_OFFSET);
+    assert(command_transport_request_sent(&fixture.transport));
+    command_transport_fail(&fixture.transport);
+
+    assert(run_service(&fixture) == MOTOR_COMMAND_STARTUP_SERVICE_RUNNING);
+    assert(!fixture.service.status_read_pending);
+    assert(fixture.service.startup.phase == MOTOR_COMMAND_STARTUP_WAIT_RESET);
+    assert(fixture.service.pending_write == MOTOR_COMMAND_STARTUP_WRITE_RESET);
+    assert(run_startup_to_completion(&fixture) == MOTOR_COMMAND_STARTUP_SERVICE_COMPLETE);
+}
+
 int main(void) {
     test_completes_startup_and_collects_identity();
+    test_waits_for_ownership_before_reading_status();
+    test_continues_after_rejected_status_read();
     return 0;
 }

@@ -24,8 +24,10 @@ MotorCommandStartupAction motor_command_startup_run(MotorCommandStartup *startup
         break;
     case MOTOR_COMMAND_STARTUP_CLAIM:
         command_transport_claim(transport, MOTOR_COMMAND_STARTUP_OWNER);
-        startup->active = true;
-        startup->phase = MOTOR_COMMAND_STARTUP_READ_STATUS;
+        if (command_transport_is_owner(transport, MOTOR_COMMAND_STARTUP_OWNER)) {
+            startup->active = true;
+            startup->phase = MOTOR_COMMAND_STARTUP_READ_STATUS;
+        }
         break;
     case MOTOR_COMMAND_STARTUP_READ_STATUS:
         startup->phase = MOTOR_COMMAND_STARTUP_WAIT_STATUS;

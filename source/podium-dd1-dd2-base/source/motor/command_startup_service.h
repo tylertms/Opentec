@@ -59,9 +59,11 @@ void motor_command_startup_service_init(MotorCommandStartupService *service);
  * @brief Advances motor-command startup through the mailbox exchange.
  *
  * Coordinates transport ownership, mailbox length discovery, startup request writes, protocol
- * acknowledgements, and application responses. Transfer failures release the startup owner and
- * latch a failed result; completed startup remains complete on later calls. A null pointer or a
- * previously failed service returns MOTOR_COMMAND_STARTUP_SERVICE_FAILED.
+ * acknowledgements, and application responses. The initial length-read result only gates
+ * progression; rejected reads advance to reset like successful reads. Later transfer failures
+ * release the startup owner and latch a failed result. Completed startup remains complete on later
+ * calls. A null pointer or a previously failed service returns
+ * MOTOR_COMMAND_STARTUP_SERVICE_FAILED.
  *
  * @param[in,out] service Startup service state to update.
  * @param[in,out] channel Motor-command channel used to encode and decode packets.

@@ -103,9 +103,6 @@ motor_command_startup_service_run(MotorCommandStartupService *service, MotorComm
         if (status == COMMAND_TRANSPORT_BUSY) {
             return MOTOR_COMMAND_STARTUP_SERVICE_RUNNING;
         }
-        if (status != COMMAND_TRANSPORT_COMPLETE) {
-            return fail(service, channel, exchange, transport);
-        }
         service->status_read_pending = false;
     } else if (service->startup.active &&
                (service->pending_write != MOTOR_COMMAND_STARTUP_WRITE_NONE ||

@@ -72,7 +72,7 @@ typedef struct {
  */
 typedef struct {
     MotorCommandStartupPhase phase; /**< Current startup phase. */
-    bool active;   /**< True after the planner executes its transport-claim phase. */
+    bool active;   /**< True after the planner owns the shared transport. */
     bool complete; /**< True after the release phase completes and the planner enters DONE. */
 } MotorCommandStartup;
 
@@ -89,7 +89,7 @@ void motor_command_startup_init(MotorCommandStartup *startup);
 /**
  * @brief Advances the motor-command startup planner.
  *
- * Attempts to claim the shared transport, schedules the initial mailbox read, and sequences the
+ * Waits until it owns the shared transport, schedules the initial mailbox read, and sequences the
  * reset, digest, and information-selector requests. A restart reinitializes the planner before that
  * call advances it. The startup and transport pointers must be non-null.
  *
