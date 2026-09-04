@@ -392,20 +392,23 @@ static void test_restarts_synchronization_when_ready_drops(void) {
     assert(wheel_protocol_response(&protocol)[WHEEL_PROTOCOL_FLAGS_OFFSET] == 0);
 }
 
-static void test_retains_selection_acknowledgement_until_ready_drops(void) {
+static void test_selects_mode_when_ready_drops(void) {
     WheelProtocol protocol;
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
     wheel_protocol_init(&protocol);
     synchronize(&protocol, request);
 
     assert(protocol.phase == WHEEL_PROTOCOL_SELECTING);
-    assert(wheel_protocol_response(&protocol)[WHEEL_PROTOCOL_FLAGS_OFFSET] ==
-           WHEEL_PROTOCOL_RESPONSE_ACKNOWLEDGED);
-    memset(request, 0, sizeof(request));
+    request[0] = WHEEL_PROTOCOL_COMMAND_SELECT_MODE;
+    request[1] = 1;
+    request[WHEEL_PROTOCOL_FLAGS_OFFSET] = 0;
     wheel_protocol_accept(&protocol, request);
 
-    assert(protocol.phase == WHEEL_PROTOCOL_WAITING);
-    assert(wheel_protocol_response(&protocol)[WHEEL_PROTOCOL_FLAGS_OFFSET] == 0);
+    assert(protocol.phase == WHEEL_PROTOCOL_ACTIVE);
+    assert(protocol.mode == 1);
+    assert(wheel_protocol_response(&protocol)[0] == WHEEL_PROTOCOL_COMMAND_SELECT_MODE);
+    assert(wheel_protocol_response(&protocol)[WHEEL_PROTOCOL_FLAGS_OFFSET] ==
+           WHEEL_PROTOCOL_RESPONSE_ACKNOWLEDGED);
 }
 
 static void test_captures_normalized_active_requests(void) {
@@ -837,11 +840,11 @@ static void test_builds_mode_four_active_response(void) {
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
     const WheelPacketModeFourOutput output = {
         .display = {.glyphs = {0x11, 0x22, 0x33}, .third_glyph_marker = true},
-        .vibration = {0x44, 0x55},
         .legacy_axes = {0x66, 0x77},
     };
     wheel_protocol_init(&protocol);
     wheel_protocol_set_mode_four_output(&protocol, &output);
+    protocol.adapter_output.display_report = 0x5544;
     synchronize(&protocol, request);
     select_mode(&protocol, request, 4);
 
@@ -889,11 +892,11 @@ static void test_builds_mode_one_active_response(void) {
     uint8_t request[WHEEL_PROTOCOL_PACKET_SIZE] = {0};
     const WheelPacketModeOneOutput output = {
         .display = {.glyphs = {0x11, 0x22, 0x33}, .third_glyph_marker = true},
-        .vibration = {0x44, 0x55},
         .legacy_axes = {0x66, 0x77},
     };
     wheel_protocol_init(&protocol);
     wheel_protocol_set_mode_one_output(&protocol, &output);
+    protocol.adapter_output.display_report = 0x5544;
     synchronize(&protocol, request);
     select_mode(&protocol, request, 1);
 
@@ -1699,7 +1702,7 @@ static void test_captures_adapter_packets(void) {
     assert(input->buttons[2] == 0x27);
     assert(input->axis_outputs[0] == 0x34);
     assert(input->axis_outputs[1] == 0xed);
-    assert(input->motion == 0x10);
+    assert(input->motion == 1);
     assert(input->controls[4] == 0xe1);
     assert(input->controls[5] == 0xc3);
     assert(input->controls[6] == 0x46);
@@ -1942,6 +1945,7 @@ int main(void) {
     test_accepts_authenticated_active_commands_and_restarts_authentication();
     test_refreshes_active_response_after_invalid_checksum();
     test_restarts_synchronization_when_ready_drops();
+    test_selects_mode_when_ready_drops();
     test_captures_normalized_active_requests();
     test_captures_packed_family_requests();
     test_averages_control_axes_only_for_authenticated_wheel_modes();
@@ -1980,7 +1984,6 @@ int main(void) {
     test_accumulates_extended_interface_pulses();
     test_accumulates_axis_mode_interface_pulses();
     test_captures_extended_remote_tuning_controls();
-    test_retains_selection_acknowledgement_until_ready_drops();
     test_accepts_a5_modes_and_rejects_out_of_range();
     test_crc8_vectors();
     return 0;

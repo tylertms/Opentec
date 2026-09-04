@@ -1393,8 +1393,9 @@ void wheel_protocol_set_display_character_mode(WheelProtocol *protocol, bool ena
  * family, captures valid active input, and builds the corresponding response. Every in-range A5
  * mode byte is accepted; a mode without a decoder remains active with the official A6 response. An
  * out-of-range A5 value enters the unsupported phase with the invalid-command latch, while an
- * unrecognized selection is retained for the service deadline recovery path. Scan modes remain
- * under the separate scan service.
+ * unrecognized selection is retained for the service deadline recovery path. Once the selecting
+ * phase is reached, the mode command is processed without rechecking the ready bit. Scan modes
+ * remain under the separate scan service.
  *
  * @param[in,out] protocol Wheel protocol state and response storage.
  * @param[in] request Complete 57-byte attached-wheel request.
@@ -1427,13 +1428,6 @@ void wheel_protocol_accept(WheelProtocol *protocol,
         }
         return;
     case WHEEL_PROTOCOL_SELECTING:
-        if (!ready) {
-            protocol->response[WHEEL_PROTOCOL_FLAGS_OFFSET] &=
-                (uint8_t)~WHEEL_PROTOCOL_RESPONSE_ACKNOWLEDGED;
-            protocol->selection_recovery_pending = false;
-            protocol->phase = WHEEL_PROTOCOL_WAITING;
-            return;
-        }
         select_mode(protocol, request);
         return;
     case WHEEL_PROTOCOL_AUTHENTICATING:
