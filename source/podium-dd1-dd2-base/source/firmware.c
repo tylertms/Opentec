@@ -1395,7 +1395,6 @@ static uint8_t motor_force_feedback_status(void) {
                          !wheel_service_force_output_transition_active(&wheel_service) &&
                          !usb_connection_monitor.disconnected;
     motor_output_status_input = (MotorOutputStatusInput){
-        .direct_force = motor_startup_direct_force,
         .xbox_mode = xbox_direct_force,
         .force_enabled = force_enabled,
         .override_active = motor_output_override_active,

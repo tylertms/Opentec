@@ -31,10 +31,10 @@ void motor_output_status_init(MotorOutputStatus *status) { status->value = 0; }
 /**
  * @brief Builds the status byte for the next motor output frame.
  *
- * Remote effects are enabled only when neither direct force nor Xbox mode is active. Primary and
- * secondary output-disable bits and full-torque acknowledgement refresh in every interface mode.
- * Xbox mode retains force-enable, override, transition, and disconnect bits from the preceding
- * non-Xbox update; other modes refresh those bits from the current runtime state.
+ * Remote effects are enabled in every non-Xbox interface mode, including direct-force operation.
+ * Primary and secondary output-disable bits and full-torque acknowledgement refresh in every
+ * interface mode. Xbox mode retains force-enable, override, protocol, and connection gates from
+ * the preceding non-Xbox update; other modes refresh those gates from the current runtime state.
  *
  * @param[in,out] status Persistent motor output status state.
  * @param[in] input Current force-output conditions.
@@ -52,9 +52,11 @@ uint8_t motor_output_status_update(MotorOutputStatus *status, const MotorOutputS
         value = set_flag(value, MOTOR_OUTPUT_STATUS_OVERRIDE_ACTIVE, input->override_active);
         if (!input->primary_disabled) {
             value =
-                set_flag(value, MOTOR_OUTPUT_STATUS_TRANSITION_ACTIVE, input->transition_active);
+                set_flag(value, MOTOR_OUTPUT_STATUS_PROTOCOL_INTERLOCKED,
+                         input->transition_active);
         }
-        value = set_flag(value, MOTOR_OUTPUT_STATUS_USB_DISCONNECTED, input->usb_disconnected);
+        value = set_flag(value, MOTOR_OUTPUT_STATUS_CONNECTION_INTERLOCKED,
+                         input->usb_disconnected);
     }
 
     status->value = value;

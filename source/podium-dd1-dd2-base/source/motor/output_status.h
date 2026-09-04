@@ -7,11 +7,9 @@
 /**
  * @brief Runtime conditions used to build a motor output status byte.
  *
- * Captures force-output mode, host gates, connection state, and torque acknowledgement for one
- * status update.
+ * Captures host gates, connection state, and torque acknowledgement for one status update.
  */
 typedef struct {
-    bool direct_force;    /**< True when startup or another owner directly controls force output. */
     bool xbox_mode;       /**< True when Xbox direct-force mode retains selected output gates. */
     bool force_enabled;   /**< True when the host permits force output. */
     bool override_active; /**< True when a force-output override is active. */
@@ -44,8 +42,8 @@ void motor_output_status_init(MotorOutputStatus *status);
 /**
  * @brief Builds the next motor output status byte.
  *
- * Updates the live status bits from the supplied conditions while retaining Xbox-specific gate
- * bits as required by the current operating mode.
+ * Sets remote effects for every non-Xbox update, including direct-force operation, and retains the
+ * selected output gates during Xbox mode.
  *
  * @param[in,out] status Persistent motor output status state.
  * @param[in] input Current force-output conditions.

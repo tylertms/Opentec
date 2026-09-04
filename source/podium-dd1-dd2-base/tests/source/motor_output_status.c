@@ -32,7 +32,8 @@ static void test_maps_normal_mode_conditions(void) {
 static void test_xbox_mode_retains_motor_gates(void) {
     MotorOutputStatus status = {
         .value = MOTOR_OUTPUT_STATUS_ENABLED | MOTOR_OUTPUT_STATUS_OVERRIDE_ACTIVE |
-                 MOTOR_OUTPUT_STATUS_TRANSITION_ACTIVE | MOTOR_OUTPUT_STATUS_USB_DISCONNECTED,
+                 MOTOR_OUTPUT_STATUS_PROTOCOL_INTERLOCKED |
+                     MOTOR_OUTPUT_STATUS_CONNECTION_INTERLOCKED,
     };
     MotorOutputStatusInput input = {
         .xbox_mode = true,
@@ -45,10 +46,10 @@ static void test_xbox_mode_retains_motor_gates(void) {
     assert((value & MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS) == 0);
     assert((value & MOTOR_OUTPUT_STATUS_ENABLED) != 0);
     assert((value & MOTOR_OUTPUT_STATUS_OVERRIDE_ACTIVE) != 0);
-    assert((value & MOTOR_OUTPUT_STATUS_TRANSITION_ACTIVE) != 0);
+    assert((value & MOTOR_OUTPUT_STATUS_PROTOCOL_INTERLOCKED) != 0);
     assert((value & MOTOR_OUTPUT_STATUS_PRIMARY_DISABLED) != 0);
     assert((value & MOTOR_OUTPUT_STATUS_SECONDARY_DISABLED) == 0);
-    assert((value & MOTOR_OUTPUT_STATUS_USB_DISCONNECTED) != 0);
+    assert((value & MOTOR_OUTPUT_STATUS_CONNECTION_INTERLOCKED) != 0);
     assert((value & MOTOR_OUTPUT_STATUS_FULL_TORQUE) != 0);
 }
 
@@ -61,16 +62,13 @@ static void test_leaving_xbox_refreshes_motor_gates(void) {
     assert(value == MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS);
 }
 
-static void test_non_xbox_direct_force_refreshes_motor_gates(void) {
+static void test_non_xbox_mode_keeps_remote_effects(void) {
     MotorOutputStatus status = {.value = UINT8_MAX};
-    MotorOutputStatusInput input = {
-        .direct_force = true,
-        .force_enabled = true,
-    };
+    MotorOutputStatusInput input = {0};
 
     uint8_t value = motor_output_status_update(&status, &input);
 
-    assert(value == (MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS | MOTOR_OUTPUT_STATUS_ENABLED));
+    assert(value == MOTOR_OUTPUT_STATUS_REMOTE_EFFECTS);
 }
 
 int main(void) {
@@ -78,6 +76,6 @@ int main(void) {
     test_maps_normal_mode_conditions();
     test_xbox_mode_retains_motor_gates();
     test_leaving_xbox_refreshes_motor_gates();
-    test_non_xbox_direct_force_refreshes_motor_gates();
+    test_non_xbox_mode_keeps_remote_effects();
     return 0;
 }
