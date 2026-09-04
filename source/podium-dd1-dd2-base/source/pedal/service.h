@@ -26,20 +26,22 @@ enum { PEDAL_ALTERNATE_BRAKE_FORCE_NO_UPDATE = UINT8_MAX /**< No alternate brake
  * fallback.
  */
 typedef enum {
-    PEDAL_SERVICE_DETECT_REQUEST,    /**< Detection request is ready to send. */
-    PEDAL_SERVICE_DETECT_RESPONSE,   /**< Waiting for a device response. */
-    PEDAL_SERVICE_PROTOCOL_REQUEST,  /**< Protocol request is ready to send. */
-    PEDAL_SERVICE_PROTOCOL_RESPONSE, /**< Waiting for a protocol response. */
-    PEDAL_SERVICE_SELECT_PROTOCOL,   /**< Selecting a transport from discovery responses. */
-    PEDAL_SERVICE_LEGACY_REQUEST,    /**< Legacy channel request is ready to send. */
-    PEDAL_SERVICE_LEGACY_RESPONSE,   /**< Waiting for a legacy channel response. */
-    PEDAL_SERVICE_V3_SWITCH_WAIT,    /**< Waiting for the V3 baud-rate switch. */
-    PEDAL_SERVICE_V3_START,          /**< V3 handshake is ready to send. */
-    PEDAL_SERVICE_V3_STREAM,         /**< Processing framed V3 reports. */
-    PEDAL_SERVICE_V4_START,          /**< Initializing the V4 transfer session. */
-    PEDAL_SERVICE_V4_STREAM,         /**< Processing V4 transfers and status polls. */
-    PEDAL_SERVICE_RECONNECT_WAIT,    /**< Holding digital input before restarting discovery. */
-    PEDAL_SERVICE_ANALOG,            /**< Publishing local analog pedal input. */
+    PEDAL_SERVICE_DETECT_REQUEST,       /**< Detection request is ready to send. */
+    PEDAL_SERVICE_DETECT_RESPONSE,      /**< Waiting for a device response. */
+    PEDAL_SERVICE_PROTOCOL_REQUEST,     /**< Protocol request is ready to send. */
+    PEDAL_SERVICE_PROTOCOL_RESPONSE,    /**< Waiting for a protocol response. */
+    PEDAL_SERVICE_SELECT_PROTOCOL,      /**< Selecting a transport from discovery responses. */
+    PEDAL_SERVICE_LEGACY_REQUEST,       /**< Legacy channel request is ready to send. */
+    PEDAL_SERVICE_LEGACY_RESPONSE,      /**< Waiting for a legacy channel response. */
+    PEDAL_SERVICE_V3_SWITCH_WAIT,       /**< Waiting for the V3 baud-rate switch. */
+    PEDAL_SERVICE_V3_START,             /**< V3 handshake is ready to send. */
+    PEDAL_SERVICE_V3_STREAM,            /**< Processing framed V3 reports. */
+    PEDAL_SERVICE_V4_START,             /**< Initializing the V4 transfer session. */
+    PEDAL_SERVICE_V4_STREAM,            /**< Processing V4 transfers and status polls. */
+    PEDAL_SERVICE_RECONNECT_HOLD_START, /**< Anchoring the reconnect hold after a failed digital
+                                           pass. */
+    PEDAL_SERVICE_RECONNECT_WAIT, /**< Setting up the link and holding input before discovery. */
+    PEDAL_SERVICE_ANALOG,         /**< Publishing local analog pedal input. */
 } PedalServicePhase;
 
 /**

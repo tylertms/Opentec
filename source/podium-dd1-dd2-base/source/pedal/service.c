@@ -110,23 +110,16 @@ static void clear_v3_outbound(PedalService *service) {
 }
 
 /**
- * @brief Releases the current pedal source and schedules digital discovery.
+ * @brief Clears protocol state for a reconnecting digital pedal.
  *
- * Stops serial reception before clearing the current generation. Selects local analog input only
- * when no digital traffic preceded the failure. A link that has produced accepted digital traffic
- * retains its published input through the reconnect hold before discovery resumes.
+ * Resets transport and operation state without changing published input, phase, or reconnect
+ * deadline. The caller controls when the stopped link and retained input become visible.
  *
- * @param[in,out] service Pedal source, transport, and reconnect state to reset.
- * @param[in] now_ms Current monotonic time in milliseconds.
+ * @param[in,out] service Pedal protocol and reconnect state to clear.
  */
-static void reconnect(PedalService *service, uint32_t now_ms) {
-    const bool retain_published_input = service->digital_activity;
-    bool configuration_pending = service->configuration_pending;
-    bool configuration_reset_pending = service->configuration_reset_pending;
-    platform_pedal_link_stop_receive();
-    if (!retain_published_input) {
-        release_published_input(service);
-    }
+static void reset_reconnect_state(PedalService *service) {
+    const bool configuration_pending = service->configuration_pending;
+    const bool configuration_reset_pending = service->configuration_reset_pending;
     pedal_v3_state_init(&service->v3);
     service->v4.active = false;
     clear_v3_outbound(service);
@@ -149,6 +142,25 @@ static void reconnect(PedalService *service, uint32_t now_ms) {
     for (uint8_t channel = 0; channel < PEDAL_LEGACY_CHANNEL_COUNT; channel++) {
         service->legacy_retries[channel] = 0;
     }
+}
+
+/**
+ * @brief Releases the current pedal source and schedules digital discovery.
+ *
+ * Stops serial reception before clearing the current generation. Selects local analog input only
+ * when no digital traffic preceded the failure. A link that has produced accepted digital traffic
+ * retains its published input through the reconnect hold before discovery resumes.
+ *
+ * @param[in,out] service Pedal source, transport, and reconnect state to reset.
+ * @param[in] now_ms Current monotonic time in milliseconds.
+ */
+static void reconnect(PedalService *service, uint32_t now_ms) {
+    const bool retain_published_input = service->digital_activity;
+    platform_pedal_link_stop_receive();
+    if (!retain_published_input) {
+        release_published_input(service);
+    }
+    reset_reconnect_state(service);
     if (!retain_published_input && service->analog_samples_ready &&
         pedal_analog_detect(service->analog_samples) &&
         pedal_analog_update(&service->analog, service->analog_samples, &service->input)) {
@@ -160,8 +172,20 @@ static void reconnect(PedalService *service, uint32_t now_ms) {
         return;
     }
     service->phase = PEDAL_SERVICE_RECONNECT_WAIT;
-    service->deadline_ms = now_ms +
-                           (retain_published_input ? PEDAL_RECONNECT_DELAY_MS : 0);
+    service->deadline_ms = now_ms + (retain_published_input ? PEDAL_RECONNECT_DELAY_MS : 0);
+}
+
+/**
+ * @brief Performs link setup on the first pass of a retained-input reconnect hold.
+ *
+ * Runs after the hold deadline is anchored, then leaves the existing deadline and wait phase for
+ * the remaining hold passes.
+ *
+ * @param[in,out] service Pedal transport and protocol state to reset.
+ */
+static void setup_reconnect_link(PedalService *service) {
+    platform_pedal_link_stop_receive();
+    reset_reconnect_state(service);
 }
 
 /**
@@ -1200,7 +1224,8 @@ static void send_v4_request(PedalService *service, uint32_t now_ms) {
  *
  * Receives transfer frames, completes accepted responses, maintains adjustment heartbeats and
  * deadlines, and selects adjustment, queued host, tuning, or periodic status work whenever the
- * current request slot becomes idle.
+ * current request slot becomes idle. Defers a timed-out session so the reconnect hold deadline is
+ * anchored before link setup on the following service passes.
  *
  * @param[in,out] service Pedal state, transfer session, and published axes to update.
  * @param[in] now_ms Current monotonic time in milliseconds.
@@ -1214,7 +1239,7 @@ static void service_v4_stream(PedalService *service, uint32_t now_ms) {
 
     if (transfer_session_poll(&service->v4) != TRANSFER_SESSION_OK) {
         service->digital_activity = true;
-        reconnect(service, now_ms);
+        service->phase = PEDAL_SERVICE_RECONNECT_HOLD_START;
         return;
     }
     if (service->v4_phase == PEDAL_V4_PHASE_ADJUSTMENT_WAIT) {
@@ -1599,8 +1624,16 @@ void pedal_service_run(PedalService *service, uint32_t now_ms) {
     case PEDAL_SERVICE_V4_STREAM:
         service_v4_stream(service, now_ms);
         break;
+    case PEDAL_SERVICE_RECONNECT_HOLD_START:
+        service->deadline_ms = now_ms + PEDAL_RECONNECT_DELAY_MS;
+        service->phase = PEDAL_SERVICE_RECONNECT_WAIT;
+        break;
     case PEDAL_SERVICE_RECONNECT_WAIT:
-        platform_pedal_link_stop_receive();
+        if (service->digital_activity) {
+            setup_reconnect_link(service);
+        } else {
+            platform_pedal_link_stop_receive();
+        }
         if (platform_time_reached(now_ms, service->deadline_ms)) {
             release_published_input(service);
             platform_pedal_link_begin_discovery();
