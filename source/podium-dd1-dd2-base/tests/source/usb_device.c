@@ -305,6 +305,7 @@ static void test_prearms_control_status_and_resets_configuration(void) {
 
 static void test_enumerates_podium_device(void) {
     static const uint8_t get_device_descriptor[] = {0x80, 6, 0, 1, 0, 0, 18, 0};
+    static const uint8_t get_configuration[] = {0x80, 8, 0, 0, 0, 0, 1, 0};
     static const uint8_t set_address[] = {0x00, 5, 42, 0, 0, 0, 0, 0};
     static const uint8_t set_configuration[] = {0x00, 9, 1, 0, 0, 0, 0, 0};
 
@@ -324,6 +325,15 @@ static void test_enumerates_podium_device(void) {
     usb_device_service();
     assert_control_status_arm(true);
     assert(address == 0);
+    push_setup(get_configuration);
+    usb_device_service();
+    assert(sent.endpoint == 0 && sent.length == 1 && sent.data[0] == 0);
+    complete_control_input();
+    assert(address == 42);
+
+    push_setup(set_address);
+    usb_device_service();
+    assert_control_status_arm(true);
     push_event(PLATFORM_USB_EVENT_IN_COMPLETE, 0, 0, 0);
     usb_device_service();
     assert(address == 42);
